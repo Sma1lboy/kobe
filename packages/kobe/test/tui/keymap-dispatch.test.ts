@@ -243,6 +243,83 @@ describe("dispatchKeyEvent", () => {
     expect(seen).toBeUndefined()
   })
 
+  // ─── Snapshot / re-entrancy stability ───────────────────────────────
+  // A matched handler's `cmd()` can synchronously mount/unmount components
+  // (Solid effects), which push/remove entries on the live binding stack
+  // mid-dispatch. The scan must run over a snapshot taken at entry so those
+  // mutations can't skip or double-visit the in-flight scan, and the matched
+  // binding must still fire exactly once.
+
+  test("a handler that mutates the stack during cmd() does not break dispatch", () => {
+    let topFires = 0
+    let bottomFires = 0
+    const stack: RegisteredBinding[] = []
+    const bottom = makeReg(1, "enter", () => {
+      bottomFires++
+    })
+    const top = makeReg(2, "enter", () => {
+      topFires++
+      // Mutate the live stack the way a mount/unmount would: remove a
+      // lower (already-relevant) entry and push a brand-new binding.
+      const idx = stack.findIndex((r) => r.id === 1)
+      if (idx >= 0) stack.splice(idx, 1)
+      stack.push(makeReg(3, "enter", () => bottomFires++))
+    })
+    stack.push(bottom, top)
+
+    const evt = makeEvt("return")
+    const handled = dispatchKeyEvent(stack, evt)
+
+    // Topmost binding won and fired exactly once; the lower binding it
+    // removed never fired, and the binding it pushed mid-scan was NOT
+    // visited in this dispatch (snapshot was frozen before the mutation).
+    expect(handled).toBe(true)
+    expect(topFires).toBe(1)
+    expect(bottomFires).toBe(0)
+    expect(evt.defaultPrevented).toBe(true)
+  })
+
+  test("re-entrant dispatch from inside cmd() is dropped (one keypress, one binding)", () => {
+    let outerFires = 0
+    let innerFires = 0
+    const stack: RegisteredBinding[] = []
+    // A lower binding that, if a nested dispatch ran the same key against
+    // the stack, would also fire. It must stay quiet.
+    const inner = makeReg(1, "enter", () => {
+      innerFires++
+    })
+    const outer = makeReg(2, "enter", () => {
+      outerFires++
+      // Handler synchronously triggers another dispatch of the same event.
+      dispatchKeyEvent(stack, makeEvt("return"))
+    })
+    stack.push(inner, outer)
+
+    const evt = makeEvt("return")
+    const handled = dispatchKeyEvent(stack, evt)
+
+    expect(handled).toBe(true)
+    expect(outerFires).toBe(1)
+    expect(innerFires).toBe(0) // nested dispatch guarded out
+    expect(evt.defaultPrevented).toBe(true)
+  })
+
+  test("the re-entrancy guard resets between independent dispatches", () => {
+    // Ensure the guard's flag is cleared via finally even after a hit, so a
+    // later, unrelated dispatch still works.
+    let fires = 0
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "enter", () => {
+        fires++
+      }),
+    ]
+
+    dispatchKeyEvent(stack, makeEvt("return"))
+    dispatchKeyEvent(stack, makeEvt("return"))
+
+    expect(fires).toBe(2)
+  })
+
   test("duplicate chords across slots: the first registered slot wins", () => {
     const seen: number[] = []
     const cmd = (_evt: unknown, slot?: number) => {

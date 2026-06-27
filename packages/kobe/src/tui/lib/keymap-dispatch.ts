@@ -90,11 +90,32 @@ export function matchKey(evt: KeyEvent): string[] {
 }
 
 /**
+ * Re-entrancy guard. A binding's `cmd()` runs synchronously and can mount /
+ * unmount Solid components, which in turn synchronously dispatch their own
+ * key events (rare, but possible — e.g. a handler that programmatically
+ * pushes a key into the renderer). A nested dispatch would scan a stack that
+ * the outer dispatch's handler is in the middle of mutating, firing a chord
+ * against a half-applied / wrong-scope set of bindings. We drop nested
+ * dispatches: a single physical keypress should resolve to at most one
+ * binding. In normal (non-re-entrant) use this flag is always false at entry,
+ * so the guard is a no-op and observed behavior is unchanged.
+ */
+let dispatching = false
+
+/**
  * Walk the binding stack top-down and fire the first matching binding.
  * Returns true if a binding was fired (caller can inspect this; the
  * production listener uses it to short-circuit). On a hit, the event's
  * `preventDefault()` is called so opentui's native widgets (e.g. the
  * textarea's onSubmit) don't also receive the key in the same tick.
+ *
+ * The scan runs over a STABLE SNAPSHOT of `bindingStack` taken at entry. A
+ * matched handler's `cmd()` can synchronously mutate the live stack (Solid
+ * mount/cleanup pushes/removes entries — see `useBindings` in keymap.tsx);
+ * iterating the live array would let those mid-flight mutations skip or
+ * double-visit entries. Snapshotting insulates the in-progress scan without
+ * changing precedence: the same top-down (LIFO) order is searched and the
+ * same binding wins.
  */
 export function dispatchKeyEvent(
   bindingStack: readonly RegisteredBinding[],
@@ -109,23 +130,32 @@ export function dispatchKeyEvent(
   },
 ): boolean {
   if (evt.defaultPrevented) return false
+  if (dispatching) return false
+  // Freeze the stack for this dispatch so a handler that mutates the live
+  // array (mount/unmount during cmd) can't corrupt the scan in flight.
+  const snapshot = bindingStack.slice()
   const candidates = matchKey(evt as KeyEvent)
-  for (let i = bindingStack.length - 1; i >= 0; i--) {
-    const reg = bindingStack[i]
-    if (!reg) continue
-    const cfg = reg.config()
-    if (cfg.enabled === false) continue
-    const hit = cfg.bindings.find((b) => candidates.includes(b.key))
-    if (hit) {
-      hit.cmd(evt as KeyEvent, hit.slot)
-      // Consume the event so native widgets (e.g. opentui's textarea
-      // onSubmit) don't also receive it in the same tick. Without this,
-      // an Enter that fires `sidebar.select` — whose handler pulls
-      // focus to the workspace — would then ALSO submit the
-      // freshly-focused composer's draft.
-      evt.preventDefault()
-      return true
+  dispatching = true
+  try {
+    for (let i = snapshot.length - 1; i >= 0; i--) {
+      const reg = snapshot[i]
+      if (!reg) continue
+      const cfg = reg.config()
+      if (cfg.enabled === false) continue
+      const hit = cfg.bindings.find((b) => candidates.includes(b.key))
+      if (hit) {
+        hit.cmd(evt as KeyEvent, hit.slot)
+        // Consume the event so native widgets (e.g. opentui's textarea
+        // onSubmit) don't also receive it in the same tick. Without this,
+        // an Enter that fires `sidebar.select` — whose handler pulls
+        // focus to the workspace — would then ALSO submit the
+        // freshly-focused composer's draft.
+        evt.preventDefault()
+        return true
+      }
     }
+    return false
+  } finally {
+    dispatching = false
   }
-  return false
 }
