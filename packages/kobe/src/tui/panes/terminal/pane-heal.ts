@@ -112,6 +112,45 @@ export function paneIdsByRole(rows: readonly KobePaneRow[], role: string): strin
   return rows.filter((row) => row.role === role).map((row) => row.paneId)
 }
 
+/**
+ * The pane id a heal command targets — the value after its `-t` flag — or
+ * `null` when it targets no pane. Every heal command in this module is
+ * pane-scoped (`respawn-pane`/`resize-pane`/`set-option -p`/`set-window-option`
+ * all carry exactly one `-t <pane>`), so this is the key a vanished-pane filter
+ * keys on. Pure.
+ */
+export function commandTargetPane(command: readonly string[]): string | null {
+  const i = command.indexOf("-t")
+  return i >= 0 && i + 1 < command.length ? (command[i + 1] ?? null) : null
+}
+
+/**
+ * Drop heal commands whose target pane is no longer present, given the set of
+ * pane ids that still exist. Pure so the planning half is unit-testable without
+ * a tmux server.
+ *
+ * Why this exists: {@link listKobePanes} reads a pane snapshot, then a single
+ * batched `cmd ; cmd …` tmux sequence respawns/resizes those panes. tmux runs
+ * the sequence in order and HALTS on the first failure — so if a pane was closed
+ * (tab close / task delete) between the snapshot and execution, its
+ * `respawn-pane -t <gone>` errors and every LATER command in the batch never
+ * runs, leaving the still-present panes unhealed until the next tick. Filtering
+ * the batch to the panes that still exist lets the rest heal this tick while
+ * preserving the original ORDER and the single batched repaint. A command that
+ * targets no pane (none today, but defensive) is always kept. Best-effort, not a
+ * transaction: a pane that vanishes AFTER this filter still aborts the tail, but
+ * that window self-heals next tick.
+ */
+export function dropCommandsForVanishedPanes(
+  commands: readonly (readonly string[])[],
+  presentPaneIds: ReadonlySet<string>,
+): (readonly string[])[] {
+  return commands.filter((cmd) => {
+    const target = commandTargetPane(cmd)
+    return target === null || presentPaneIds.has(target)
+  })
+}
+
 /** One kobe-owned pane {@link planPaneHeals} decided to respawn in place. */
 export type PaneHealTarget =
   | { readonly role: "tasks"; readonly paneId: string }
@@ -185,6 +224,29 @@ async function listKobePanes(session: string): Promise<KobePaneRow[] | null> {
   ])
   if (code !== 0) return null
   return parseKobePaneRows(stdout)
+}
+
+/**
+ * Run a best-effort heal batch, but first drop any command whose target pane
+ * vanished since the snapshot the batch was built from (see
+ * {@link dropCommandsForVanishedPanes}). A fresh `list-panes` immediately before
+ * exec shrinks the snapshot→exec window to near zero so one since-closed pane
+ * can't abort the heal of the others. Pre-validation (vs per-command tolerance)
+ * fits how heals run here: tmux has no "continue past a failed command" within a
+ * single `cmd ; cmd …` sequence, and splitting into one invocation per pane
+ * would lose both the preserved ordering and the single batched repaint the
+ * layout heal relies on.
+ *
+ * Only re-lists when there is work to do, so a healthy heal (no commands —
+ * panes already at the target width and version) keeps its exact behavior and
+ * spawn count. If the re-list itself fails (server gone), it runs the batch
+ * unfiltered — same exposure as before this guard existed, never worse.
+ */
+async function runHealBatchTolerant(session: string, commands: readonly (readonly string[])[]): Promise<void> {
+  if (commands.length === 0) return
+  const present = await listKobePanes(session)
+  const filtered = present ? dropCommandsForVanishedPanes(commands, new Set(present.map((r) => r.paneId))) : commands
+  if (filtered.length > 0) await runTmuxSequence(filtered)
 }
 
 /**
@@ -435,7 +497,10 @@ export async function healWorkspaceLayout(
       ),
     )
   }
-  if (commands.length > 0) await runTmuxSequence(commands)
+  // Re-validate pane existence right before the batch runs: a pane the user
+  // closed between the snapshot above and now would otherwise abort the heal of
+  // every later pane (tmux halts the sequence on the first failed respawn).
+  await runHealBatchTolerant(session, commands)
 }
 
 /**
@@ -604,7 +669,9 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
     taskId,
     vendor,
   })
-  if (commands.length > 0) await runTmuxSequence(commands)
+  // Same vanished-pane guard as healWorkspaceLayout: a sibling ChatTab closed
+  // between the snapshot and now must not abort the respawn of the others.
+  await runHealBatchTolerant(session, commands)
 
   // The Appearance prefs the respawned panes just re-read also drive tmux
   // chrome — re-derive those in the same pass so a theme switch restyles
