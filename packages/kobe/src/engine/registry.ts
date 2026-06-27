@@ -8,7 +8,7 @@
  *
  *   - `history`        — transcript store reader (auto-title, recap).
  *   - `detectAccount`  — read-only login/binary probe (Settings → Accounts).
- *   - `createHookAdapter` — activity-hook installer (claude only today).
+ *   - `createHookAdapter` — activity-hook installer (claude + codex today).
  *   - `createTurnDetector` — ChatTab turn-completion detection.
  *   - `defaultCommand` / `displayName` — launch + label defaults.
  *
@@ -41,6 +41,7 @@ import {
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import * as codexHistory from "./codex-local/history.ts"
+import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
@@ -176,8 +177,9 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
+
     detectAccount: (deps) => detectCodexAccount(deps),
-    createHookAdapter: () => new NoopHookAdapter("codex"),
+    createHookAdapter: () => new CodexHookAdapter(),
     createTurnDetector: () => new CodexTurnDetector(),
   },
   copilot: {
