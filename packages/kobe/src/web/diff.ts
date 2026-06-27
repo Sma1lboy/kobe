@@ -34,6 +34,7 @@
 
 import { statSync } from "node:fs"
 import { execHostForWorktreePath, worktreeUsable } from "../exec/resolve.ts"
+import { unquoteGitPath } from "../lib/git-parsers.ts"
 import { runWorktreeGit } from "../worktree/content.ts"
 
 const GIT_TIMEOUT_MS = 15_000
@@ -96,10 +97,40 @@ export function statusLabel(code: string): string {
 }
 
 /**
+ * Resolve the repo-relative path from a unified-diff `--- ` / `+++ ` marker
+ * payload (everything after the 4-char `--- ` / `+++ ` prefix, to end of line).
+ * Handles the three shapes real git emits:
+ *   - `/dev/null`             — the absent side of an add/delete → `null`.
+ *   - `b/<path>` / `a/<path>` — plain; git appends a disambiguation TAB when
+ *     the path contains a space (`+++ b/a b.txt\t`), so strip a trailing tab.
+ *   - `"b/<c-escaped>"`       — C-quoted when the path has control / non-ASCII
+ *     bytes or a quote (`"b/\303\274.txt"`); the quote wraps the whole `b/…`.
+ * Quoted forms are decoded with the shared rigorous unquoter so the key
+ * matches the raw (NUL-delimited, unquoted) path the porcelain `-z` pass emits.
+ */
+function markerPath(payload: string): string | null {
+  if (payload === "/dev/null") return null
+  let token = payload
+  if (token.startsWith('"')) {
+    token = unquoteGitPath(token) // `"b/<esc>"` → `b/<path>`
+  } else {
+    // A literal tab is git's space-disambiguation suffix, never part of the
+    // path (a path that truly contained a tab would be C-quoted instead).
+    const tab = token.indexOf("\t")
+    if (tab >= 0) token = token.slice(0, tab)
+  }
+  if (token.startsWith("a/") || token.startsWith("b/")) token = token.slice(2)
+  return token.length > 0 ? token : null
+}
+
+/**
  * Split a multi-file `git diff` blob into per-file patches keyed by the
  * post-image path. Each file's hunk starts at a `diff --git a/… b/…` line; we
- * read the destination path from the `+++ b/<path>` marker when present (it
- * handles renames and quoted/space paths better than parsing the header).
+ * read the path from the `+++ ` marker (post-image), falling back to `--- `
+ * for deletes (`+++ /dev/null`) and finally to the header for marker-less
+ * chunks (a pure rename / mode change). All three honour git's path quoting so
+ * non-ASCII, spaced, and special-char names key the same path the porcelain
+ * pass reports — otherwise their patch silently comes back empty.
  */
 export function splitDiffByFile(diff: string): Map<string, string> {
   const byFile = new Map<string, string>()
@@ -109,25 +140,22 @@ export function splitDiffByFile(diff: string): Map<string, string> {
   for (const chunk of chunks) {
     if (!chunk.startsWith("diff --git")) continue
     let path: string | null = null
-    const plus = chunk.match(/^\+\+\+ b\/(.*)$/m)
-    if (plus && plus[1] !== "/dev/null") {
-      path = plus[1]
-    } else {
-      // Deleted file (+++ /dev/null) or no body — fall back to the header's b/.
-      const header = chunk.match(/^diff --git a\/.* b\/(.*)$/m)
-      if (header) path = header[1]
+    const plus = chunk.match(/^\+\+\+ (.*)$/m)
+    if (plus) path = markerPath(plus[1])
+    if (path === null) {
+      // Deleted file (`+++ /dev/null`): take the pre-image path from `--- `.
+      const minus = chunk.match(/^--- (.*)$/m)
+      if (minus) path = markerPath(minus[1])
     }
-    if (!path) continue
-    byFile.set(unquoteGitPath(path), chunk.endsWith("\n") ? chunk : `${chunk}\n`)
+    if (path === null) {
+      // Marker-less chunk (pure rename / mode change): best-effort header key.
+      const header = chunk.match(/^diff --git a\/.* b\/(.*)$/m)
+      if (header) path = unquoteGitPath(header[1])
+    }
+    if (path === null) continue
+    byFile.set(path, chunk.endsWith("\n") ? chunk : `${chunk}\n`)
   }
   return byFile
-}
-
-/** Git quotes paths with special chars as C-style strings ("a\tb"); undo that. */
-function unquoteGitPath(p: string): string {
-  if (!(p.startsWith('"') && p.endsWith('"'))) return p
-  const inner = p.slice(1, -1)
-  return inner.replace(/\\([\\"nt])/g, (_m, c: string) => (c === "n" ? "\n" : c === "t" ? "\t" : c))
 }
 
 /**
