@@ -27,6 +27,7 @@
  *     rendering stale data.
  */
 
+import { parseNumstatRows, parsePorcelainRows } from "@/lib/git-parsers"
 import { runWorktreeGit } from "../../../worktree/content.ts"
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
@@ -120,17 +121,26 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
   // count line counts on disk so the user still sees how many lines
   // were added. Failures fall through silently: the pane already
   // handles missing stats by rendering blanks.
-  let stats: Map<string, { added: number | null; deleted: number | null }> | null = null
+  let stats: Map<string, { added: number | null; deleted: number | null }> = new Map()
   try {
     const diffOut = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath, signal)
     stats = new Map(parseNumstat(diffOut).map((n) => [n.path, { added: n.added, deleted: n.deleted }]))
   } catch {
-    // No HEAD yet (initial commit), or other diff failure — skip
-    // stats rather than failing the whole list.
-    stats = new Map()
+    // No HEAD yet (initial commit / unborn branch): `git diff HEAD` exits
+    // non-zero because there's no HEAD to diff against. On a first commit
+    // every tracked change is staged, so fall back to the staged diff so
+    // the files still show real +/- counts instead of silently blank. If
+    // even that fails, leave stats empty — the rows already render from the
+    // porcelain pass, just with "counts unavailable" (blank) cells.
+    try {
+      const cachedOut = await runGit(["diff", "--no-color", "--numstat", "--cached"], worktreePath, signal)
+      stats = new Map(parseNumstat(cachedOut).map((n) => [n.path, { added: n.added, deleted: n.deleted }]))
+    } catch {
+      stats = new Map()
+    }
   }
   return entries.map((e) => {
-    const s = stats?.get(e.path)
+    const s = stats.get(e.path)
     if (s) return { ...e, added: s.added, deleted: s.deleted }
     return e
   })
@@ -147,67 +157,16 @@ export async function numstatFiles(worktreePath: string): Promise<NumstatEntry[]
 }
 
 /**
- * Reconstruct the post-rename path from a `git diff --numstat` path field.
- *
- * numstat renders a rename/copy with ` => ` (NOT porcelain's ` -> `), and
- * compacts the unchanged segments around the change into `{old => new}`
- * braces:
- *   - `src/{old.txt => new.txt}` → `src/new.txt`   (common prefix + suffix)
- *   - `{dir => other}/x.txt`     → `other/x.txt`
- *   - `root1.txt => root2.txt`   → `root2.txt`      (no common segment, no braces)
- *
- * Returning the canonical NEW path is what lets {@link statusFiles} key the
- * numstat counts by the same path the porcelain `R` row reports — without
- * this the brace/`=>` text was kept verbatim, never matched the status
- * entry, and renamed files showed no +/- line counts in the Changes tab.
- * A plain (non-rename) path has no ` => ` and is returned unchanged.
- */
-function numstatRenamePath(field: string): string {
-  const open = field.indexOf("{")
-  if (open >= 0) {
-    const close = field.indexOf("}", open)
-    const sep = field.indexOf(" => ", open)
-    if (close > open && sep >= 0 && sep < close) {
-      const newSeg = field.slice(sep + " => ".length, close)
-      return field.slice(0, open) + newSeg + field.slice(close + 1)
-    }
-  }
-  const arrow = field.indexOf(" => ")
-  if (arrow >= 0) return field.slice(arrow + " => ".length)
-  return field
-}
-
-/**
- * Pure parser for `git diff --numstat` output. Each line is:
- *   `<added>\t<deleted>\t<path>`
- * Binary files use `-\t-\tpath` — we surface those as `null` counts.
- * Renames look like `<a>\t<d>\tsrc/{old => new}` (numstat uses ` => `, not
- * porcelain's ` -> `, and brace-compacts the unchanged segments); we resolve
- * them to the canonical post-rename path so the counts key by the same path
- * the porcelain status row reports.
+ * Pure parser for `git diff --numstat` output, kept as the pane's typed
+ * façade ({@link NumstatEntry}) over the shared {@link parseNumstatRows}.
+ * The shared parser owns the hard parts — C-string unquoting and rename
+ * resolution (numstat's ` => ` + brace-compaction → the canonical
+ * post-rename path) — so the counts key by the same unquoted path the
+ * porcelain `R` row reports. We drop the shared row's `origPath` here to
+ * preserve {@link NumstatEntry}'s `{ path, added, deleted }` shape.
  */
 export function parseNumstat(raw: string): NumstatEntry[] {
-  const lines = raw.split("\n").map((l) => l.replace(/\r$/, ""))
-  const out: NumstatEntry[] = []
-  for (const line of lines) {
-    if (line.length === 0) continue
-    const tab1 = line.indexOf("\t")
-    if (tab1 < 0) continue
-    const tab2 = line.indexOf("\t", tab1 + 1)
-    if (tab2 < 0) continue
-    const a = line.slice(0, tab1)
-    const d = line.slice(tab1 + 1, tab2)
-    const path = numstatRenamePath(line.slice(tab2 + 1))
-    const added = a === "-" ? null : Number.parseInt(a, 10)
-    const deleted = d === "-" ? null : Number.parseInt(d, 10)
-    if (path.length === 0) continue
-    out.push({
-      path,
-      added: Number.isNaN(added as number) ? null : added,
-      deleted: Number.isNaN(deleted as number) ? null : deleted,
-    })
-  }
-  return out
+  return parseNumstatRows(raw).map((r) => ({ path: r.path, added: r.added, deleted: r.deleted }))
 }
 
 /**
@@ -267,30 +226,24 @@ function sortTree(node: TreeNode): void {
 
 /**
  * Pure parser exported for unit testing. Accepts the raw stdout of
- * `git status --porcelain` and returns parsed entries. Lines that
- * don't match the expected `XY <path>` shape are silently dropped —
- * porcelain v1 has been stable since git 2.0, but we'd rather skip a
- * malformed row than throw and blank the pane.
+ * `git status --porcelain` and returns the pane's typed {@link StatusEntry}
+ * rows. Parsing (the `XY <path>` shape, C-string unquoting, and rename
+ * `old -> new` resolution) is delegated to the shared
+ * {@link parsePorcelainRows}; this façade applies only the file-tree's own
+ * editorial choices: collapse the two status chars to one headline, drop
+ * statuses it doesn't colour, and skip directory rows.
  */
 export function parsePorcelain(raw: string): StatusEntry[] {
-  const lines = raw.split("\n").map((l) => l.replace(/\r$/, ""))
   const out: StatusEntry[] = []
-  for (const line of lines) {
-    if (line.length < 4) continue // need at least "XY p"
-    // First two chars are the status pair, then a space, then path.
-    const x = line[0]
-    const y = line[1]
-    const sep = line[2]
-    if (x === undefined || y === undefined || sep !== " ") continue
-    let path = line.slice(3)
+  for (const row of parsePorcelainRows(raw)) {
     let status: FileStatus
-    if (x === "?" && y === "?") {
+    if (row.x === "?" && row.y === "?") {
       status = "?"
     } else {
       // Prefer the worktree-side status for our headline; fall back to
       // index-side. Spaces collapse to the other char so "M " (staged
       // modify) reports M.
-      const candidate = y !== " " ? y : x
+      const candidate = row.y !== " " ? row.y : row.x
       if (
         candidate === "M" ||
         candidate === "A" ||
@@ -305,11 +258,7 @@ export function parsePorcelain(raw: string): StatusEntry[] {
         continue
       }
     }
-    if (status === "R") {
-      // Rename rows look like `R  old -> new`. We display the new path.
-      const arrow = path.indexOf(" -> ")
-      if (arrow >= 0) path = path.slice(arrow + " -> ".length)
-    }
+    const path = row.path
     if (path.length === 0) continue
     // Defensive: the Changes tab is a flat list of FILES. `-uall` expands
     // untracked directories to their files, but skip any trailing-slash dir
