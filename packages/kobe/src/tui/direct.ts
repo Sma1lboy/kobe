@@ -16,6 +16,7 @@ import { PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { resolveEngineLaunchInit } from "../state/repo-init.ts"
 import {
   addSavedRepo,
+  getCustomEngineIds,
   getPersistedString,
   getSavedRepos,
   normalizeSavedRepos,
@@ -23,11 +24,13 @@ import {
 } from "../state/repos.ts"
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
+import { resolvePersistedVendor } from "../types/vendor.ts"
 import { applyTmuxChromeTheme } from "./lib/tmux-border-theme.ts"
 import { syncSessionZen } from "./panes/terminal/layout-actions.ts"
 import {
   attachArgv,
   ensureSession,
+  observeSessionVendor,
   prepareWindowForAttach,
   sessionExists,
   tmuxAvailable,
@@ -145,13 +148,28 @@ export async function startDirectTmux(): Promise<void> {
     const name = tmuxSessionName(task.id)
     await orchestrator.setActiveTask(task.id).catch(() => {})
     setPersistedString("lastSelectedTaskId", task.id)
+    // A project's main task must follow the user's default engine, not a vendor
+    // frozen at creation time. Reconcile before launch: adopt the live session's
+    // ACTUAL vendor when one is running (so a daemon restart never respawns a
+    // healthy codex session back to the persisted "claude"), otherwise fall back
+    // to the global default (so cold-opening an existing project honors it).
+    // Regular tasks keep their explicitly chosen vendor untouched.
+    let vendor = task.vendor
+    if (task.kind === "main") {
+      const live = await observeSessionVendor(name)
+      const desired = live ?? resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
+      if (desired !== task.vendor) {
+        await orchestrator.setVendor(task.id, desired).catch(() => {})
+        vendor = desired
+      }
+    }
     const launchInit = resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" })
     const ready = await ensureSession({
       name,
       cwd,
-      command: interactiveEngineCommand(task.vendor),
+      command: interactiveEngineCommand(vendor),
       taskId: task.id,
-      vendor: task.vendor,
+      vendor,
       repo: task.repo,
       launchInit,
     })
