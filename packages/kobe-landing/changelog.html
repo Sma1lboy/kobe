@@ -34,17 +34,18 @@
   .rel-body{border:1px solid #2c2823;border-radius:13px;background:#171614;padding:8px 26px;}
   .rn-h{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#cc785c;margin:20px 0 4px;}
   .rn-ul{list-style:none;}
-  /* each bullet is its own clearly-separated row */
-  .rn-li{position:relative;padding:15px 0 15px 26px;font-size:14px;line-height:1.66;color:#c4bdb1;border-top:1px solid #211f1c;}
+  /* each bullet = one clear, scannable point: [type] summary */
+  .rn-li{position:relative;display:flex;align-items:baseline;gap:11px;padding:12px 0 12px 24px;font-size:14px;line-height:1.55;color:#d2ccc1;border-top:1px solid #211f1c;}
   .rn-li:first-child{border-top:0;}
-  .rn-li::before{content:"";position:absolute;left:3px;top:23px;width:7px;height:7px;border-radius:2px;background:#cc785c;opacity:0.85;transform:rotate(45deg);}
-  .rn-li.tr-loading{opacity:0.45;}
-  .rn-p{font-size:14px;line-height:1.66;color:#bdb6aa;padding:12px 0;}
-  .rn-li code,.rn-p code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 6px;color:#e6c1b1;}
-  .rn-li strong,.rn-p strong{color:#eae7df;font-weight:600;}
-  .rn-li a,.rn-p a{color:#d98c72;text-decoration:none;border-bottom:1px solid rgba(217,140,114,0.3);}
-  .rn-li a:hover,.rn-p a:hover{color:#e6c1b1;}
-  html[data-lang="zh"] .rn-li,html[data-lang="zh"] .rn-p{font-family:'JetBrains Mono','PingFang SC','Microsoft YaHei',sans-serif;}
+  .rn-li::before{content:"";position:absolute;left:3px;top:18px;width:6px;height:6px;border-radius:2px;background:#cc785c;opacity:0.8;transform:rotate(45deg);}
+  .rn-li.tr-loading .sum{opacity:0.4;}
+  .rn-li .tag{flex:none;font-size:10.5px;font-weight:600;letter-spacing:0.03em;border-radius:5px;padding:2px 8px;border:1px solid;white-space:nowrap;}
+  .rn-li .sum{flex:1;min-width:0;}
+  .rn-li code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 6px;color:#e6c1b1;}
+  .rn-li strong{color:#eae7df;font-weight:600;}
+  .rn-li a{color:#d98c72;text-decoration:none;border-bottom:1px solid rgba(217,140,114,0.3);}
+  .rn-li a:hover{color:#e6c1b1;}
+  html[data-lang="zh"] .rn-li .sum{font-family:'JetBrains Mono','PingFang SC','Microsoft YaHei',sans-serif;}
   @media(max-width:760px){.rel-body{padding:6px 18px;}.rel-tag{font-size:21px;}}
 </style>
 </head>
@@ -149,15 +150,25 @@
         .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1').trim();
     }
 
-    // ---- parse a release body into ordered segments ----
+    // conventional-commit type → tint + Chinese label (the scannable tag on each bullet)
+    var TYPE_TINT = { feat: '#9aca86', fix: '#cc785c', perf: '#7fb5d6', refactor: '#d6a85c', chore: '#8a847a', test: '#a98fd0', ci: '#8a847a', docs: '#7fb5d6', style: '#8a847a', build: '#8a847a', revert: '#cc785c' };
+    var TYPE_ZH = { feat: '新功能', fix: '修复', perf: '性能', refactor: '重构', chore: '杂项', test: '测试', ci: 'CI', docs: '文档', style: '样式', build: '构建', revert: '回退' };
+    function splitBullet(raw) {
+      raw = raw.replace(/^[0-9a-f]{7,40}:\s*/i, '');                 // drop the commit sha prefix
+      var m = raw.match(/^(\w+)(?:\([^)]*\))?!?:\s*([\s\S]+)$/);     // type: summary
+      if (m && TYPE_TINT[m[1].toLowerCase()] !== undefined) return { type: m[1].toLowerCase(), sum: m[2].trim() };
+      return { type: '', sum: raw.trim() };
+    }
+
+    // ---- parse a release body into ordered segments. Only headings + bullets:
+    //      the indented detail paragraphs under each bullet are intentionally dropped
+    //      so the changelog shows just the scannable points. ----
     function parse(md) {
       var lines = String(md || '').split(/\r?\n/), segs = [];
       for (var i = 0; i < lines.length; i++) {
         var ln = lines[i];
         var h = ln.match(/^\s*(#{1,6})\s+(.*)$/); if (h) { segs.push({ t: 'h', raw: h[2] }); continue; }
         var li = ln.match(/^\s*[-*]\s+(.*)$/); if (li) { segs.push({ t: 'li', raw: li[1] }); continue; }
-        if (ln.trim() === '') continue;
-        segs.push({ t: 'p', raw: ln });
       }
       return segs;
     }
@@ -166,13 +177,21 @@
       var out = [], inList = false;
       function close() { if (inList) { out.push('</ul>'); inList = false; } }
       for (var i = 0; i < segs.length; i++) {
-        var s = segs[i], src = esc(plain(s.raw));
-        if (s.t === 'h') { close(); out.push('<div class="rn-h" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</div>'); }
-        else if (s.t === 'li') { if (!inList) { out.push('<ul class="rn-ul">'); inList = true; } out.push('<li class="rn-li" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</li>'); }
-        else { close(); out.push('<p class="rn-p" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</p>'); }
+        var s = segs[i];
+        if (s.t === 'h') {
+          close();
+          out.push('<div class="rn-h" data-src="' + esc(plain(s.raw)) + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</div>');
+        } else {
+          if (!inList) { out.push('<ul class="rn-ul">'); inList = true; }
+          var b = splitBullet(s.raw);
+          var tag = b.type
+            ? '<span class="tag" data-type="' + b.type + '" style="color:' + TYPE_TINT[b.type] + ';border-color:' + TYPE_TINT[b.type] + '55;background:' + TYPE_TINT[b.type] + '14;">' + b.type + '</span>'
+            : '';
+          out.push('<li class="rn-li">' + tag + '<span class="sum" data-src="' + esc(plain(b.sum)) + '" data-en="' + esc(inlineHtml(b.sum)) + '">' + inlineHtml(b.sum) + '</span></li>');
+        }
       }
       close();
-      return out.join('') || '<p class="rn-p" style="color:#6b655c;">—</p>';
+      return out.join('') || '<ul class="rn-ul"><li class="rn-li"><span class="sum" style="color:#6b655c;">—</span></li></ul>';
     }
 
     function fmtDate(iso) { try { return new Date(iso).toLocaleDateString(LANG === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
@@ -237,6 +256,11 @@
       document.getElementById('langEn').setAttribute('aria-pressed', LANG === 'en' ? 'true' : 'false');
       document.getElementById('langZh').setAttribute('aria-pressed', LANG === 'zh' ? 'true' : 'false');
       try { localStorage.setItem('kobe_lang', LANG); } catch (e) {}
+      // type tags swap label instantly (no API): fix ⇄ 修复, feat ⇄ 新功能, …
+      [].slice.call(document.querySelectorAll('.rn-li .tag')).forEach(function (tg) {
+        var ty = tg.getAttribute('data-type');
+        tg.textContent = LANG === 'zh' ? (TYPE_ZH[ty] || ty) : ty;
+      });
       var cards = [].slice.call(document.querySelectorAll('.rel'));
       if (LANG === 'en') { cards.forEach(enCard); }
       else { cards.forEach(function (c) { if (io) io.observe(c); else translateCard(c); }); }
