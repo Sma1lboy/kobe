@@ -66,6 +66,7 @@ import {
   setSessionOption,
   setWindowOption,
 } from "@/tmux/client"
+import { clipboardBinaryOnPath, clipboardTmuxConfig, resolveClipboardCopyCommand } from "@/tmux/clipboard"
 import {
   TMUX_FOCUS_DEFAULTS,
   TMUX_FOCUS_ID,
@@ -820,6 +821,22 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // active. fzf when present (filter/pick); else open the most-recent match.
   // BSD `xargs -I{}` runs nothing on empty input (no stray Finder on cancel/no-match).
   const openUrlTmuxCommand = openUrlCommand({ tmuxSocket: KOBE_TMUX_SOCKET })
+  // Pane-aware drag-copy to the SYSTEM clipboard. `mouse on` (below) already
+  // routes a plain left-drag into copy-mode, which selects WITHIN the focused
+  // pane — the pane-aware behaviour we want. But tmux's default leaves that
+  // selection only in its own paste buffer, so users fall back to the
+  // terminal's native Option+drag, which bleeds the selection ACROSS panes.
+  // `set-clipboard on` lets tmux push the selection to the terminal's
+  // clipboard via OSC 52; when a local clipboard tool is present we ALSO pipe
+  // the copy-mode "finish selection" actions straight to it (pbcopy / wl-copy
+  // / xclip / xsel), covering the drag-release (`MouseDragEnd1Pane` — the exact
+  // user flow) and keyboard copy (`y` / Enter), in BOTH the emacs and vi
+  // copy-mode tables. A missing tool is graceful: we keep `set-clipboard on`
+  // (OSC 52 only) and skip the copy-pipe bindings, never breaking session
+  // creation. These are copy-mode-table bindings only, so a pane app that
+  // grabs mouse events (its own selection) is unaffected.
+  const clipboardCopyCommand = resolveClipboardCopyCommand(process.platform, clipboardBinaryOnPath)
+  const clipboardBindings = clipboardTmuxConfig(clipboardCopyCommand)
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
   // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
@@ -913,6 +930,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
+    // Let a pane-aware copy-mode selection reach the system clipboard:
+    // `set-clipboard on` (OSC 52 fallback, always) + copy-pipe bindings when a
+    // local clipboard tool is available. See the comment on clipboardBindings.
+    ...clipboardBindings,
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
     ["set-hook", "-g", "client-resized", resyncWindowTmuxCommand],
     ["set-hook", "-g", "window-layout-changed", captureLayoutTmuxCommand],
