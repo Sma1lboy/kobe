@@ -236,10 +236,21 @@ describe("ensureSession reuse path — tmux invocation budget (fbaa3e0)", () => 
     expect(tmuxSpy.calls.length).toBeLessThanOrEqual(4)
   })
 
-  test("a stale-pane reuse folds ALL mutations into one tmux invocation (5 total)", async () => {
+  test("a stale-pane reuse folds ALL mutations into one tmux invocation (6 total)", async () => {
     // Same healthy session, but the Tasks pane was spawned by an older
     // kobe — the heal must respawn it, and the batching contract says
     // every mutation (respawn + role/version re-tag) rides ONE sequence.
+    //
+    // Budget is 6, not 5: when (and only when) the heal has mutations to run,
+    // it re-lists panes once immediately before the batch and drops commands
+    // for any pane that vanished since the heal snapshot, so one since-closed
+    // pane can't abort the respawn of the others (tmux halts a `cmd ; cmd …`
+    // sequence on the first failed respawn). The HEALTHY reuse above — the true
+    // every-switch hot path — has no commands, so it never pays this read and
+    // its 4-invocation budget is unchanged.
+    // The pre-exec re-validation read returns the SAME heal snapshot (the mock
+    // routes every heal-format list-panes to `healStdout`), so no command is
+    // dropped and the full respawn batch still runs — it just costs one read.
     primeHealthySession({ tasksVersion: "0.0.0-stale" })
     const ok = await ensureSession({
       name: "kobe-perf-budget-2",
@@ -250,7 +261,7 @@ describe("ensureSession reuse path — tmux invocation budget (fbaa3e0)", () => 
     })
     expect(ok).toBe(true)
     expect(tmuxSpy.calls.filter((c) => c.startsWith("mutate:"))).toEqual(["mutate:runTmuxSequence"])
-    expect(tmuxSpy.calls.length).toBeLessThanOrEqual(5)
+    expect(tmuxSpy.calls.length).toBeLessThanOrEqual(6)
   })
 })
 
