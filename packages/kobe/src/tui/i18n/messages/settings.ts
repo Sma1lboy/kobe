@@ -10,7 +10,7 @@ export const en = {
   esc: "esc",
   nav: {
     default: "j/k pick · h/l switch level · enter activate · esc close",
-    feedback: "tab next field · enter send · esc close",
+    feedback: "tab next field · enter sends on Send · esc close",
   },
   sections: {
     general: "General",
@@ -89,7 +89,7 @@ export const en = {
     titleLabel: "title",
     titlePlaceholder: "Short summary",
     descriptionLabel: "description",
-    descriptionPlaceholder: "What happened? (enter sends)",
+    descriptionPlaceholder: "What happened? (enter for a new line · tab to Send)",
     send: "[enter] Send to GitHub Discussions",
   },
   dev: {
@@ -124,7 +124,7 @@ export const zh: typeof en = {
   esc: "esc",
   nav: {
     default: "j/k 选择 · h/l 切换层级 · enter 确认 · esc 关闭",
-    feedback: "tab 下一项 · enter 发送 · esc 关闭",
+    feedback: "tab 下一项 · enter 在发送项发送 · esc 关闭",
   },
   sections: {
     general: "通用",
@@ -203,7 +203,7 @@ export const zh: typeof en = {
     titleLabel: "标题",
     titlePlaceholder: "简短概括",
     descriptionLabel: "描述",
-    descriptionPlaceholder: "发生了什么？(enter 发送)",
+    descriptionPlaceholder: "发生了什么？(enter 换行 · tab 跳到发送)",
     send: "[enter] 发送到 GitHub Discussions",
   },
   dev: {

@@ -22,7 +22,7 @@ import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { useDialog } from "../ui/dialog"
-import { stripNewlines } from "./new-task-dialog"
+import { isBlankText, stripNewlines } from "./new-task-dialog"
 import { quickTaskBindings } from "./quick-task-bindings"
 
 export interface QuickTaskComposerOptions {
@@ -75,12 +75,14 @@ function QuickTaskComposerView(
     setVendor(list[(i - 1 + list.length) % list.length] ?? vendor())
   }
   function commit(): void {
-    const p = prompt().trim()
-    if (!p) {
-      setField("prompt") // a prompt is required — bounce focus back to it
+    if (isBlankText(prompt())) {
+      // A prompt is required — bounce focus back to it. `isBlankText`
+      // (not `.trim()`) so a prompt of only full-width spaces `　`
+      // (common when typing Chinese) is rejected, not silently submitted.
+      setField("prompt")
       return
     }
-    props.onSubmit({ prompt: p, vendor: vendor(), baseRef: baseRef().trim() || props.defaultBaseRef })
+    props.onSubmit({ prompt: prompt().trim(), vendor: vendor(), baseRef: baseRef().trim() || props.defaultBaseRef })
     dialog.clear()
   }
 
