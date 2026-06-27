@@ -14,6 +14,8 @@ import { describe, expect, test } from "vitest"
 import {
   type KobePaneRow,
   classifyRelaunchOutcome,
+  commandTargetPane,
+  dropCommandsForVanishedPanes,
   paneIdsByRole,
   parseKobePaneRows,
   planPaneHeals,
@@ -198,6 +200,68 @@ describe("planPaneHeals — force (the settings refresh)", () => {
   test("still ignores engine and untagged panes", () => {
     const rows = [row("@1", "%0", "claude", "")]
     expect(planPaneHeals(rows, opts)).toEqual([])
+  })
+})
+
+describe("commandTargetPane", () => {
+  test("returns the value following the -t flag for each heal command shape", () => {
+    expect(commandTargetPane(["respawn-pane", "-k", "-t", "%2", "-c", "/wt", "cmd"])).toBe("%2")
+    expect(commandTargetPane(["resize-pane", "-t", "%1", "-x", "18"])).toBe("%1")
+    expect(commandTargetPane(["set-option", "-p", "-t", "%2", "@kobe_role", "ops"])).toBe("%2")
+    expect(commandTargetPane(["set-window-option", "-t", "%0", "@kobe_session_id", "uuid"])).toBe("%0")
+  })
+
+  test("returns null when the command targets no pane (defensive — kept by the filter)", () => {
+    expect(commandTargetPane(["refresh-client"])).toBeNull()
+    // A dangling `-t` with no following arg is treated as no target, not a crash.
+    expect(commandTargetPane(["resize-pane", "-t"])).toBeNull()
+  })
+})
+
+describe("dropCommandsForVanishedPanes", () => {
+  // The bug this guards: list-panes snapshots the pane ids, then ONE batched
+  // `cmd ; cmd …` respawns/resizes them; tmux halts the sequence on the first
+  // failure, so a pane closed (tab close / task delete) between snapshot and exec
+  // would abort the heal of every LATER pane. Filtering to still-present panes
+  // lets the rest heal this tick, preserving the original order + single repaint.
+  const tasksHeal = (id: string): (readonly string[])[] => [
+    ["respawn-pane", "-k", "-t", id, "-c", "/wt", "cmd"],
+    ["set-option", "-p", "-t", id, "@kobe_role", "tasks"],
+    ["set-option", "-p", "-t", id, "@kobe_pane_version", "0.8.0"],
+  ]
+
+  test("keeps every command when all target panes still exist", () => {
+    const commands = [...tasksHeal("%1"), ...tasksHeal("%5")]
+    expect(dropCommandsForVanishedPanes(commands, new Set(["%1", "%5", "%0"]))).toEqual(commands)
+  })
+
+  test("drops ALL commands for a vanished pane but keeps the survivors, in order", () => {
+    // %1 closed between snapshot and exec; %5's three-command respawn must still
+    // run (pre-fix, %1's failed respawn-pane aborted the whole tail).
+    const commands = [...tasksHeal("%1"), ...tasksHeal("%5")]
+    expect(dropCommandsForVanishedPanes(commands, new Set(["%5"]))).toEqual(tasksHeal("%5"))
+  })
+
+  test("interleaved layout + respawn commands keep their relative order after filtering", () => {
+    const commands: (readonly string[])[] = [
+      ["resize-pane", "-t", "%1", "-x", "18"], // tasks rail (present)
+      ["resize-pane", "-t", "%9", "-x", "40%"], // ops of a since-closed window
+      ...tasksHeal("%9"),
+      ["set-option", "-p", "-t", "%1", "@kobe_role", "tasks"],
+    ]
+    expect(dropCommandsForVanishedPanes(commands, new Set(["%1"]))).toEqual([
+      ["resize-pane", "-t", "%1", "-x", "18"],
+      ["set-option", "-p", "-t", "%1", "@kobe_role", "tasks"],
+    ])
+  })
+
+  test("an empty present-set drops every pane-targeted command", () => {
+    expect(dropCommandsForVanishedPanes(tasksHeal("%1"), new Set())).toEqual([])
+  })
+
+  test("keeps a command that targets no pane regardless of the present-set", () => {
+    const commands: (readonly string[])[] = [["refresh-client"], ...tasksHeal("%1")]
+    expect(dropCommandsForVanishedPanes(commands, new Set())).toEqual([["refresh-client"]])
   })
 })
 
