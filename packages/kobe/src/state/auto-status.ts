@@ -14,10 +14,10 @@
  * remote-projects precedent.
  */
 
-import { loadStateFile } from "./store.ts"
+import { getPersistedBool } from "./store.ts"
 
 export const AUTO_STATUS_KEY = "experimental.autoStatus"
 
 export function autoStatusEnabled(): boolean {
-  return loadStateFile()[AUTO_STATUS_KEY] === true
+  return getPersistedBool(AUTO_STATUS_KEY, false)
 }
