@@ -309,7 +309,7 @@ export async function globalTasksPaneWidth(): Promise<number> {
  * geometry consumer (build / heal / layout toggles / rail width) reads through.
  */
 export async function readLayoutGeometry(): Promise<LayoutGeometry> {
-  return resolveLayoutGeometry(await getServerOptions([...LAYOUT_GEOMETRY_OPTIONS]))
+  return resolveLayoutGeometry(await getServerOptions(LAYOUT_GEOMETRY_OPTIONS))
 }
 
 /** Per-pane user option marking a pane's role (set by `ensureSession`). */
