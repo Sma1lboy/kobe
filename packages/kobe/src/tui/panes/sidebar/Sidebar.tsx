@@ -104,6 +104,7 @@ import {
   flattenIds,
   reconcileSidebarRows,
   repoBasename,
+  resolveCursorTarget,
   sidebarProjectKey,
   splitSidebarRows,
 } from "./groups"
@@ -646,23 +647,8 @@ export function Sidebar(props: SidebarProps) {
       () => [props.selectedId(), flatIds()] as const,
       ([id, ids]) => {
         const cur = untrack(cursorIndex)
-        if (id === null) {
-          if (cur === -1 && ids.length > 0) setCursorIndex(0)
-          else if (cur >= ids.length) setCursorIndex(Math.max(0, ids.length - 1))
-          else if (ids.length === 0) setCursorIndex(-1)
-          return
-        }
-        const idx = ids.indexOf(id)
-        if (idx >= 0) {
-          if (idx !== cur) setCursorIndex(idx)
-        } else if (ids.length === 0) {
-          setCursorIndex(-1)
-        } else if (cur < 0 || cur >= ids.length) {
-          // The selected task vanished (deleted/archived from another surface)
-          // and the list shrank — clamp the cursor back into range so a row
-          // re-highlights instead of pointing past the shortened list.
-          setCursorIndex(ids.length - 1)
-        }
+        const next = resolveCursorTarget(id, ids, cur)
+        if (next !== cur) setCursorIndex(next)
       },
     ),
   )
