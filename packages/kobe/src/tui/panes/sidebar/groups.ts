@@ -233,6 +233,36 @@ export function flattenIds(rows: readonly SidebarRow[]): string[] {
 }
 
 /**
+ * Where the cursor should sit after the external selection or the flat id list
+ * changed — the single owner of the "follow selection / clamp into range" policy
+ * the Sidebar's sync effect used to inline. Returns the TARGET index (may equal
+ * `cursor`, i.e. leave it put). Pure, so the edge cases that kept biting —
+ * selection cleared, selected task vanished from another surface and the list
+ * shrank, cursor left dangling past a shortened list — are unit-tested instead
+ * of hand-traced. `cursor` is the current index (-1 when unset).
+ *
+ *  - `selectedId === null`: keep the cursor unless it's unset/out of range,
+ *    then snap to the first row (or -1 on an empty list).
+ *  - selected row present: follow it.
+ *  - selected row absent: leave the cursor put if still in range, else clamp to
+ *    the last row (or -1 on an empty list).
+ */
+export function resolveCursorTarget(selectedId: string | null, flatIds: readonly string[], cursor: number): number {
+  const len = flatIds.length
+  if (selectedId === null) {
+    if (cursor === -1 && len > 0) return 0
+    if (cursor >= len) return Math.max(0, len - 1)
+    if (len === 0) return -1
+    return cursor
+  }
+  const idx = flatIds.indexOf(selectedId)
+  if (idx >= 0) return idx
+  if (len === 0) return -1
+  if (cursor < 0 || cursor >= len) return len - 1
+  return cursor
+}
+
+/**
  * Split the already-ordered flat row list into the two rendered sections.
  *
  * The flat list remains the keyboard-navigation source of truth; this helper
