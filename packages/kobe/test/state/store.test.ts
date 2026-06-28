@@ -19,7 +19,14 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { setPersistedString } from "../../src/state/repos.ts"
-import { loadStateFile, patchStateFile, replaceStateFile, updateStateFile } from "../../src/state/store.ts"
+import {
+  getPersistedBool,
+  loadStateFile,
+  patchStateFile,
+  replaceStateFile,
+  setPersistedBool,
+  updateStateFile,
+} from "../../src/state/store.ts"
 
 let tmpHome: string
 let originalHome: string | undefined
@@ -198,5 +205,39 @@ describe("replaceStateFile", () => {
     replaceStateFile({})
     expect(readDisk()).toEqual({})
     expect(fs.existsSync(`${statePath()}.tmp`)).toBe(false)
+  })
+})
+
+describe("getPersistedBool / setPersistedBool", () => {
+  // Why: the default is explicit and only a REAL stored boolean overrides it.
+  // This is the footgun the helper exists to kill — a missing key must not be
+  // read as false when the flag defaults true (zen.keepTasks), and vice versa.
+  test("missing key falls back to the given default (either polarity)", () => {
+    expect(getPersistedBool("nope", false)).toBe(false)
+    expect(getPersistedBool("nope", true)).toBe(true)
+  })
+
+  test("a real stored boolean overrides the default", () => {
+    writeDisk({ flagA: true, flagB: false })
+    expect(getPersistedBool("flagA", false)).toBe(true)
+    expect(getPersistedBool("flagB", true)).toBe(false)
+  })
+
+  // Why: a non-boolean value (legacy string, garbage) must NOT be coerced —
+  // it falls back to the default, not `Boolean(value)`.
+  test("non-boolean values fall back to the default", () => {
+    writeDisk({ s: "true", n: 1, z: 0, nul: null })
+    expect(getPersistedBool("s", false)).toBe(false)
+    expect(getPersistedBool("n", false)).toBe(false)
+    expect(getPersistedBool("z", true)).toBe(true)
+    expect(getPersistedBool("nul", true)).toBe(true)
+  })
+
+  test("setPersistedBool round-trips through the merge writer", () => {
+    setPersistedBool("k", true)
+    expect(getPersistedBool("k", false)).toBe(true)
+    expect(readDisk().k).toBe(true)
+    setPersistedBool("k", false)
+    expect(getPersistedBool("k", true)).toBe(false)
   })
 })
