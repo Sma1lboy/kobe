@@ -112,7 +112,7 @@ describe("truncatePathTail", () => {
     expect(truncatePathTail("src/aaaaa-🎉🎉🎉.ts", 8)).toBe("…-🎉🎉🎉.ts")
   })
 
-  test("max <= 0 returns the path untouched", () => {
-    expect(truncatePathTail("a/b/c.ts", 0)).toBe("a/b/c.ts")
+  test("max <= 0 leaves no room, so yields the empty string", () => {
+    expect(truncatePathTail("a/b/c.ts", 0)).toBe("")
   })
 })

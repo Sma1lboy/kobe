@@ -92,6 +92,7 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
+import { truncateEnd, truncateStart } from "../../lib/truncate"
 import { currentBranch, pollCurrentBranch } from "./git-head"
 import {
   type SidebarProjectOption,
@@ -320,8 +321,7 @@ export const BRANCH_LABEL_MAX = 16
 
 /** Truncate keeping the prefix, with a trailing ellipsis when clipped. */
 export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): string {
-  if (branch.length <= max) return branch
-  return `${branch.slice(0, Math.max(0, max - 1))}…`
+  return truncateEnd(branch, max)
 }
 
 /**
@@ -352,10 +352,7 @@ export function approxCellWidth(s: string): number {
 }
 
 /** Truncate a filesystem path keeping the TAIL (the leaf carries the meaning). */
-function truncatePathTail(path: string, max: number): string {
-  if (max <= 0 || path.length <= max) return path
-  return `…${path.slice(path.length - Math.max(0, max - 1))}`
-}
+const truncatePathTail = truncateStart
 
 /**
  * Abbreviate the user's home prefix to `~` for the project (main row)

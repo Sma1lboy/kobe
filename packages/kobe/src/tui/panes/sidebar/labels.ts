@@ -1,13 +1,12 @@
+import { truncateEnd } from "../../lib/truncate"
+
 /**
  * Truncate a task title to a cell budget with a trailing ellipsis. Keeps the
  * prefix unconditionally because a title's front carries the most meaning.
- * Uses `.length` like the branch/path truncators; CJK wide-char accounting is a
- * known, accepted imprecision shared by these compact row labels.
+ * Thin alias over the shared {@link truncateEnd} owner.
  */
 export function truncateTitle(title: string, max: number): string {
-  if (max <= 0) return ""
-  if (title.length <= max) return title
-  return `${title.slice(0, Math.max(0, max - 1))}…`
+  return truncateEnd(title, max)
 }
 
 /**

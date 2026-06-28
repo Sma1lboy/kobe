@@ -86,6 +86,7 @@ import {
   renameTaskFlow,
 } from "../lib/task-actions"
 import { HandoverError, enterTask } from "../lib/task-enter.ts"
+import { truncateEnd } from "../lib/truncate"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
@@ -876,8 +877,7 @@ function ShortcutHints(props: {
   // ellipsised rather than allowed to overflow.
   const LABEL_COL_MAX = 18
   const labelColWidth = () => Math.min(LABEL_COL_MAX, Math.max(...hints().map((h) => h.label.length)))
-  const clipLabel = (s: string): string =>
-    s.length <= labelColWidth() ? s : `${s.slice(0, Math.max(0, labelColWidth() - 1))}…`
+  const clipLabel = (s: string): string => truncateEnd(s, labelColWidth())
   // Version + update moved UP to the Sidebar's `kobe` brand header (the old
   // `── system ──` block lived here); the footer is now just the key legend.
   // Move-mode overrides the fold: its two hints are the only exit
