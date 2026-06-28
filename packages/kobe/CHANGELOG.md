@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.50
+
+### Patch Changes
+
+- be37c6b: Internal: the sidebar's "where should the cursor go when the selection or the list changes" rules (follow selection, clamp a dangling cursor when the selected task vanished from another surface, snap an unset cursor) now live in one pure, unit-tested function instead of inline branches in the render effect. No behavior change — this is the area three recent selection/highlight fixes came from, now regression-netted.
+- eeb660d: Entering a task now goes through one Handover owner, so every path fits the window before switching and inherits global zen. Previously the Tasks-pane switch, the new-task/quick-task jump, and the delete-path switch-away each re-implemented "ensure session → fit → switch" and had drifted — the page-jump didn't follow global zen and the delete switch skipped the fit. Tasks opened from the new-task/quick-task pages now collapse to zen when it's on, and no enter path can land on an unfitted (reflowing) window.
+- 179cee2: Internal: the workspace's intended layout geometry (Tasks-rail width + right-column split) now resolves through one owner instead of being re-parsed/re-clamped/re-defaulted at every reader. No behavior change — the pure resolver is unit-tested, so the rail/right-column sizing is a regression-netted single source.
+- 26c056b: Internal: persisted boolean flags (zen on/off, zen keep-tasks, the experimental auto-status / dispatcher / remote-projects switches) now read through one `getPersistedBool(key, default)` owner instead of each inlining `x === true` / `x !== false`, where the idiom silently encoded the default and was easy to get backwards. No behavior change — the default-handling and the "don't coerce a non-boolean value" rule are now unit-tested in one place.
+- 98c1e7a: Internal: the `ui-prefs` wire decode (theme guard + the backward-compat defaults that let an older daemon's payload omit newer fields without resetting them) now lives in one pure, unit-tested `decodeUiPrefsPayload` instead of inline in the client's channel switch. No behavior change — the version-negotiation rules (notably "absent locale → leave the language alone", not reset to English) are now regression-netted.
+
 ## 0.7.49
 
 ### Patch Changes
