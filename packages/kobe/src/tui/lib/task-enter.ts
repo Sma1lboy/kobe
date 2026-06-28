@@ -17,33 +17,67 @@
 
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
-import { runTmux, sessionExists, tmuxSessionName } from "../../tmux/client.ts"
+import { worktreeUsable } from "../../exec/resolve.ts"
+import { getSessionOption, sessionExists, tmuxSessionName } from "../../tmux/client.ts"
 import type { Task, VendorId } from "../../types/task.ts"
 
 /**
+ * Which phase of a Handover failed, so the caller can pick the right toast
+ * (the deep `enterTask` owner has no notification context — it throws, the
+ * caller surfaces). `cause` carries the underlying error for the worktree phase.
+ */
+export type HandoverPhase = "no-daemon" | "worktree" | "session"
+export class HandoverError extends Error {
+  readonly phase: HandoverPhase
+  override readonly cause?: unknown
+  constructor(phase: HandoverPhase, message: string, cause?: unknown) {
+    super(message)
+    this.name = "HandoverError"
+    this.phase = phase
+    this.cause = cause
+  }
+}
+
+/**
  * Ensure the task's tmux session exists, building it on demand. Mirrors `kobe
- * api add`'s deliver path: ensure the worktree, then build the session. Pass
+ * api add`'s deliver path: ensure the worktree (re-materialise via the daemon
+ * when the recorded path is missing/stale), then build the session. Pass
  * `includeInitPrompt` to let the repo's init-prompt fire as the engine's first
- * message; omit it when the caller delivers its own first prompt. Returns true
- * when the session already existed (no build), false when freshly built.
+ * message; omit it when the caller delivers its own first prompt. `reload` is
+ * called after a cold worktree materialise so the caller's task mirror catches
+ * up without waiting for the daemon snapshot. Returns true when the session
+ * already existed (no build), false when freshly built. Throws {@link
+ * HandoverError} on a missing daemon / worktree / session failure.
  */
 export async function ensureTaskSession(
-  orch: RemoteOrchestrator,
+  orch: RemoteOrchestrator | null | undefined,
   task: Task,
   repo: string,
-  vendor: VendorId,
-  opts: { includeInitPrompt?: boolean } = {},
+  vendor: VendorId | undefined,
+  opts: { includeInitPrompt?: boolean; reload?: () => Promise<void> | void } = {},
 ): Promise<boolean> {
   const session = tmuxSessionName(task.id)
   if (await sessionExists(session)) return true
   let worktree = task.worktreePath
-  if (!worktree) worktree = await orch.ensureWorktree(task.id)
-  if (!worktree) throw new Error(`task ${task.id} has no worktree`)
+  if (!worktree || !worktreeUsable(worktree)) {
+    // Never-entered backlog task (or a stale recorded path): materialise the
+    // worktree via the daemon's RPC — only the Orchestrator may `git worktree add`.
+    if (!orch) throw new HandoverError("no-daemon", `no daemon; cannot materialise worktree for ${task.id}`)
+    try {
+      worktree = await orch.ensureWorktree(task.id)
+    } catch (err) {
+      throw new HandoverError("worktree", `ensureWorktree failed for ${task.id}`, err)
+    }
+    await opts.reload?.()
+  }
+  if (!worktree || !worktreeUsable(worktree)) {
+    throw new HandoverError("worktree", `task ${task.id} has no usable worktree`)
+  }
   const { ensureSession } = await import("../panes/terminal/tmux.ts")
   const { resolveEngineLaunchInit } = await import("../../state/repo-init.ts")
-  const launchInit = resolveEngineLaunchInit(repo, worktree, {
-    kind: opts.includeInitPrompt ? "repo-init" : "none",
-  })
+  const launchInit = repo
+    ? resolveEngineLaunchInit(repo, worktree, { kind: opts.includeInitPrompt ? "repo-init" : "none" })
+    : undefined
   const ok = await ensureSession({
     name: session,
     cwd: worktree,
@@ -53,18 +87,89 @@ export async function ensureTaskSession(
     repo,
     launchInit,
   })
-  if (!ok) throw new Error(`failed to start tmux session for ${task.id}`)
+  if (!ok) throw new HandoverError("session", `failed to start tmux session for ${task.id}`)
   return false // freshly built
 }
 
+export interface EnterTaskOpts {
+  /** Let the repo's init-prompt fire as the engine's first message (and, on a
+   *  heal, re-weave it). Off for adopt / when the caller delivers its own prompt. */
+  includeInitPrompt?: boolean
+  /** Re-run `ensureSession` on an ALREADY-running session to heal vendor/worktree
+   *  drift (cwd read from the session's `@kobe_worktree` tag — tasks.json can lag,
+   *  KOB-244). A heal failure never blocks the switch. Opt-in: the Tasks pane uses
+   *  it; the transitional new-task/quick-task pages don't. */
+  heal?: boolean
+  /** Save the CURRENT (from) session's layout into the global options before
+   *  leaving, so a manual rail/right-column drag becomes the shared shape. */
+  captureFrom?: boolean
+  /** Refresh the caller's task mirror after a cold worktree materialise. */
+  reload?: () => Promise<void> | void
+}
+
 /**
- * Jump the attached client to the task: mark it active and `switch-client` to
- * its tmux session, building the session first if a caller hasn't already.
- * Pass `includeInitPrompt` through to that build for the common case where the
- * caller hasn't pre-built the session (e.g. `n` new-task); when the session
- * already exists (quick-task pre-built it to deliver a typed prompt) the option
- * is a harmless no-op. The calling page then exits; the client is already on
- * the new task's session, so closing the old window doesn't disturb it.
+ * **Handover** — the single owner of "enter this Task": ensure its tmux Session
+ * exists (create cold, or heal a live one), reconcile zen, mark it active, then
+ * fit + `switch-client` the attached client into it via {@link enterWindow}. The
+ * `switchTo` (Tasks pane) and `jumpToTask` (new-task / quick-task) paths used to
+ * each re-implement this sequence and had drifted (jump lacked zen sync; the
+ * delete tail lacked the fit). All enter surfaces now funnel here.
+ *
+ * Throws {@link HandoverError} (the caller toasts) on a build failure; a heal
+ * failure on an existing session is swallowed so a live task always switches.
+ */
+export async function enterTask(
+  orch: RemoteOrchestrator | null | undefined,
+  task: Task,
+  repo: string,
+  vendor: VendorId | undefined,
+  opts: EnterTaskOpts = {},
+): Promise<void> {
+  const session = tmuxSessionName(task.id)
+  const tmux = await import("../panes/terminal/tmux.ts")
+  if (opts.captureFrom) {
+    const from = await tmux.currentSessionName()
+    if (from && from !== session) await tmux.captureGlobalLayout(from)
+  }
+  const existed = await ensureTaskSession(orch, task, repo, vendor, {
+    includeInitPrompt: opts.includeInitPrompt,
+    reload: opts.reload,
+  })
+  if (existed && opts.heal) {
+    try {
+      const cwd = (await getSessionOption(session, "@kobe_worktree")) || task.worktreePath || ""
+      if (cwd && worktreeUsable(cwd)) {
+        const { resolveEngineLaunchInit } = await import("../../state/repo-init.ts")
+        const launchInit = repo
+          ? resolveEngineLaunchInit(repo, cwd, { kind: opts.includeInitPrompt ? "repo-init" : "none" })
+          : undefined
+        await tmux.ensureSession({
+          name: session,
+          cwd,
+          command: interactiveEngineCommand(vendor),
+          taskId: task.id,
+          vendor,
+          repo,
+          launchInit,
+        })
+      }
+    } catch (err) {
+      console.error("[kobe handover] heal failed (continuing to switch):", err)
+    }
+  }
+  // Reconcile the target to the global zen intent BEFORE fitting, so a project
+  // you enter inherits zen and the fit accounts for the collapsed layout.
+  const { syncSessionZen } = await import("../panes/terminal/layout-actions.ts")
+  await syncSessionZen(session)
+  await orch?.setActiveTask(task.id).catch(() => {})
+  await tmux.enterWindow(session)
+}
+
+/**
+ * Thin **Handover** wrapper for the transitional new-task / quick-task pages:
+ * enter the freshly created task (no from-layout to capture, no live session to
+ * heal). Kept as a named convenience over {@link enterTask}; the calling page
+ * then exits, leaving the client on the new task's session.
  */
 export async function jumpToTask(
   orch: RemoteOrchestrator,
@@ -73,12 +178,5 @@ export async function jumpToTask(
   vendor: VendorId,
   opts: { includeInitPrompt?: boolean } = {},
 ): Promise<void> {
-  await ensureTaskSession(orch, task, repo, vendor, opts) // builds if needed; no-op if already built
-  await orch.setActiveTask(task.id).catch(() => {})
-  // Fit + heal the target to THIS client before switching in, so it doesn't
-  // reflow on screen — the calling window's stdout is its own pane, not the
-  // full terminal (see prepareWindowForSwitch).
-  const { prepareWindowForSwitch } = await import("../panes/terminal/tmux.ts")
-  await prepareWindowForSwitch(tmuxSessionName(task.id))
-  await runTmux(["switch-client", "-t", `=${tmuxSessionName(task.id)}`])
+  await enterTask(orch, task, repo, vendor, { includeInitPrompt: opts.includeInitPrompt })
 }

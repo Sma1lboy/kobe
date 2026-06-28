@@ -600,19 +600,15 @@ export async function ensureFallbackSession(): Promise<string> {
 export async function switchClientBeforeKill(killedName: string, nextSessionName?: string): Promise<void> {
   const current = await currentSessionName()
   if (current !== killedName) return
-  // Fit + heal the target to THIS client BEFORE switching in, exactly like the
-  // switch (`switchTo`/`jumpToTask`) paths do — otherwise deleting the active
-  // task drops the client onto a session still sized to whatever client last
-  // touched it, and it reflows ("window resize") the instant the switch lands.
-  // Dynamic import to avoid a static cycle (panes/terminal/tmux re-exports from
-  // this module), matching jumpToTask.
-  const { prepareWindowForSwitch } = await import("../tui/panes/terminal/tmux.ts")
+  // Switch via enterWindow so the target is fit before the client lands on it —
+  // deleting the active task must not drop the client onto a session sized to
+  // whatever client last touched it (it would reflow on arrival). enterWindow is
+  // the single fit+switch owner; dynamic import avoids a static cycle (panes/
+  // terminal/tmux re-exports from this module).
+  const { enterWindow } = await import("../tui/panes/terminal/tmux.ts")
   if (nextSessionName && nextSessionName !== killedName && (await sessionExists(nextSessionName))) {
-    await prepareWindowForSwitch(nextSessionName)
-    await runTmux(["switch-client", "-t", `=${nextSessionName}`])
+    await enterWindow(nextSessionName)
     return
   }
-  const fallback = await ensureFallbackSession()
-  await prepareWindowForSwitch(fallback)
-  await runTmux(["switch-client", "-t", `=${fallback}`])
+  await enterWindow(await ensureFallbackSession())
 }
