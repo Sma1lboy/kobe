@@ -25,12 +25,12 @@ import { kobeCliInvocation } from "@/cli/invocation"
 // the same KOBE_*-pinning logic the workspace panes already use.
 import { inheritedEnvPrefix } from "@/tui/panes/terminal/launch"
 import {
-  TASKS_PANE_WIDTH,
-  TASKS_WIDTH_OPTION,
-  clampTasksPaneWidth,
+  LAYOUT_GEOMETRY_OPTIONS,
+  type LayoutGeometry,
   hiddenTerminalSessionName,
   homeWelcomeCommand,
   keepAlive,
+  resolveLayoutGeometry,
   tasksPaneCommand,
 } from "./session-layout"
 
@@ -300,9 +300,16 @@ export async function getServerOptions(options: readonly string[]): Promise<Reco
  * width in every task. Falls back to the convention default when unset/garbage.
  */
 export async function globalTasksPaneWidth(): Promise<number> {
-  const raw = await getServerOption(TASKS_WIDTH_OPTION)
-  const n = Number.parseInt(raw, 10)
-  return Number.isFinite(n) && n > 0 ? clampTasksPaneWidth(n) : TASKS_PANE_WIDTH
+  return (await readLayoutGeometry()).tasksWidth
+}
+
+/**
+ * IO wrapper over {@link resolveLayoutGeometry}: read the global `@kobe_*`
+ * geometry options in ONE tmux spawn and resolve them. The single source every
+ * geometry consumer (build / heal / layout toggles / rail width) reads through.
+ */
+export async function readLayoutGeometry(): Promise<LayoutGeometry> {
+  return resolveLayoutGeometry(await getServerOptions([...LAYOUT_GEOMETRY_OPTIONS]))
 }
 
 /** Per-pane user option marking a pane's role (set by `ensureSession`). */

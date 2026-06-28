@@ -34,8 +34,8 @@ import { withClaudeSessionId } from "@/engine/interactive-command"
 import { localSpawnCwd } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
-  getServerOptions,
   getSessionOptions,
+  readLayoutGeometry,
   runTmuxCapturing,
   runTmuxSequence,
   sessionExists,
@@ -45,7 +45,6 @@ import {
   HIDDEN_TERMINAL_PANE_OPTION,
   OPS_HEIGHT_OPTION,
   RIGHT_COLUMN_WIDTH_OPTION,
-  TASKS_PANE_WIDTH,
   TASKS_WIDTH_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
@@ -378,29 +377,9 @@ export async function relaunchEngineInAllWindows(
   return classifyRelaunchOutcome(enginePanes.length, code)
 }
 
-/** The user's global layout prefs (rail width + right-column %), ONE tmux spawn. */
-async function globalLayoutPrefs(): Promise<{ tasksWidth: number; rcArgs: string[] }> {
-  const opts = await getServerOptions([TASKS_WIDTH_OPTION, RIGHT_COLUMN_WIDTH_OPTION, OPS_HEIGHT_OPTION])
-  const rawWidth = Number.parseInt(opts[TASKS_WIDTH_OPTION] ?? "", 10)
-  const tasksWidth = Number.isFinite(rawWidth) && rawWidth > 0 ? clampTasksPaneWidth(rawWidth) : TASKS_PANE_WIDTH
-  const rcArgs = rightColumnResizeArgs({
-    widthPct: clampPanePercent(Number.parseInt(opts[RIGHT_COLUMN_WIDTH_OPTION] ?? "", 10)),
-    heightPct: clampPanePercent(Number.parseInt(opts[OPS_HEIGHT_OPTION] ?? "", 10)),
-  })
-  return { tasksWidth, rcArgs }
-}
-
-/** Build the `resize-pane -x/-y N%` args for an Ops pane from a geometry pair. */
-function rightColumnResizeArgs(geom: { widthPct: number | null; heightPct: number | null }): string[] {
-  const args: string[] = []
-  if (geom.widthPct !== null) args.push("-x", `${geom.widthPct}%`)
-  if (geom.heightPct !== null) args.push("-y", `${geom.heightPct}%`)
-  return args
-}
-
 /** The user's global right-column geometry as `resize-pane` args (empty when unset). */
-export async function globalRightColumnResizeArgs(): Promise<string[]> {
-  return (await globalLayoutPrefs()).rcArgs
+export async function globalRightColumnResizeArgs(): Promise<readonly string[]> {
+  return (await readLayoutGeometry()).rightColumnResizeArgs
 }
 
 /**
@@ -452,7 +431,7 @@ export async function workspaceLayoutPaneCommands(
   session: string,
   opts: { readonly force?: boolean } = {},
 ): Promise<{ rows: KobePaneRow[] | null; commands: (readonly string[])[] }> {
-  const { tasksWidth, rcArgs } = await globalLayoutPrefs()
+  const { tasksWidth, rightColumnResizeArgs: rcArgs } = await readLayoutGeometry()
   const rows = await listKobePanes(session)
   if (!rows) return { rows: null, commands: [] }
   const commands: (readonly string[])[] = []

@@ -13,9 +13,9 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { localSpawnCwd } from "@/exec/resolve"
 import { setZenActive, zenIsActive, zenKeepsTasks } from "@/state/zen"
 import {
-  getServerOptions,
   getSessionOption,
   getSessionOptions,
+  readLayoutGeometry,
   runTmux,
   runTmuxCapturing,
   runTmuxSequence,
@@ -23,24 +23,18 @@ import {
   setSessionOption,
 } from "@/tmux/client"
 import {
-  CLAUDE_PANE_PERCENT,
   ENGINE_PANE_ROLE,
   HIDDEN_TASKS_PANE_OPTION,
   HIDDEN_TERMINAL_PANE_OPTION,
-  OPS_HEIGHT_OPTION,
   OPS_PANE_PERCENT,
   OPS_PANE_ROLE,
-  RIGHT_COLUMN_WIDTH_OPTION,
   SHELL_PANE_ROLE,
   TASKS_PANE_ROLE,
-  TASKS_PANE_WIDTH,
-  TASKS_WIDTH_OPTION,
   WORKSPACE_AUX_PANE_ROLE,
   WORKSPACE_SPLIT_MAX_PANES,
   ZEN_HIDDEN_PANES_OPTION,
   ZEN_SESSION_OPTION,
   clampPanePercent,
-  clampTasksPaneWidth,
   hiddenTerminalSessionName,
   hiddenTerminalWindowIndex,
   keepAlive,
@@ -127,11 +121,6 @@ export function resolveShellPane(rows: readonly LayoutPaneRow[]): LayoutPaneRow 
 export function expandedTerminalHeightPercent(rawOpsHeightPercent?: number): number {
   const opsPct = clampPanePercent(rawOpsHeightPercent ?? Number.NaN) ?? OPS_PANE_PERCENT
   return 100 - opsPct
-}
-
-function parsePositiveInt(raw: string | undefined): number | undefined {
-  const n = Number.parseInt(raw ?? "", 10)
-  return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
 async function windowPanes(session: string, windowId?: string): Promise<LayoutPaneRow[] | null> {
@@ -273,8 +262,7 @@ async function resetWorkspaceSplits(session: string, windowId: string): Promise<
 }
 
 async function preferredTasksWidth(): Promise<number> {
-  const opts = await getServerOptions([TASKS_WIDTH_OPTION])
-  return clampTasksPaneWidth(parsePositiveInt(opts[TASKS_WIDTH_OPTION]) ?? TASKS_PANE_WIDTH)
+  return (await readLayoutGeometry()).tasksWidth
 }
 
 async function tasksPaneLaunchCommand(session: string): Promise<{ readonly cwd: string; readonly command: string }> {
@@ -346,18 +334,15 @@ async function toggleOpsPane(session: string, windowId: string): Promise<void> {
 }
 
 async function preferredOpsHeightPercent(): Promise<number> {
-  const opts = await getServerOptions([OPS_HEIGHT_OPTION])
-  return clampPanePercent(Number.parseInt(opts[OPS_HEIGHT_OPTION] ?? "", 10)) ?? OPS_PANE_PERCENT
+  return (await readLayoutGeometry()).opsHeightPct
 }
 
 async function preferredRightColumnWidthPercent(): Promise<number> {
-  const opts = await getServerOptions([RIGHT_COLUMN_WIDTH_OPTION])
-  return clampPanePercent(Number.parseInt(opts[RIGHT_COLUMN_WIDTH_OPTION] ?? "", 10)) ?? 100 - CLAUDE_PANE_PERCENT
+  return (await readLayoutGeometry()).rightColumnWidthPct
 }
 
 async function preferredTerminalHeightPercent(): Promise<number> {
-  const opts = await getServerOptions([OPS_HEIGHT_OPTION])
-  return expandedTerminalHeightPercent(Number.parseInt(opts[OPS_HEIGHT_OPTION] ?? "", 10))
+  return expandedTerminalHeightPercent((await readLayoutGeometry()).opsHeightPct)
 }
 
 async function hiddenWindowIndices(hiddenSession: string): Promise<Set<number>> {
