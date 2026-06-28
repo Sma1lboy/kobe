@@ -33,7 +33,7 @@ A tmux **window** inside a **Task**'s **tmux Session** — one independent `clau
 _Avoid_: tab (unqualified), window (use "tmux window" if you must name the mechanism).
 
 **Handover**:
-Entering a **Task**: `tmux attach` to the task's **tmux Session** with the real TTY, await exit. agent-deck's `tea.Exec()` model, minus the outer shell — `kobe` attaches directly at launch (`startDirectTmux`, `tui/direct.ts`), and the **Tasks pane** `switch-client`s between tasks from inside. `Ctrl+Q` detaches back to the launching shell.
+Entering a **Task**: `tmux attach` to the task's **tmux Session** with the real TTY, await exit. agent-deck's `tea.Exec()` model, minus the outer shell — `kobe` attaches directly at launch (`startDirectTmux`, `tui/direct.ts`), and the **Tasks pane** `switch-client`s between tasks from inside. `Ctrl+Q` detaches back to the launching shell. The single applier is `enterTask` (`tui/lib/task-enter.ts`): ensure-or-heal the **tmux Session** → reconcile zen → mark active → fit + switch via `enterWindow`. Every enter surface (Tasks-pane switch, new-task/quick-task jump) funnels through it; `enterWindow` (`panes/terminal/tmux.ts`) welds the pre-switch fit to `switch-client` so no path can land on an unfitted (reflowing) window — even the delete-path switch-away.
 _Avoid_: enter, takeover, fullscreen (these describe the mechanics, not the concept).
 
 **Ops pane**:

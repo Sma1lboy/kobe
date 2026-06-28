@@ -35,15 +35,7 @@
 
 import { existsSync } from "node:fs"
 import { stat } from "node:fs/promises"
-import {
-  claudePaneIdStrict,
-  currentSessionName,
-  getSessionOption,
-  runTmux,
-  runTmuxCapturing,
-  sessionExists,
-  tmuxSessionName,
-} from "@/tmux/client"
+import { claudePaneIdStrict, currentSessionName, runTmux, runTmuxCapturing } from "@/tmux/client"
 import { ZEN_HIDDEN_PANES_OPTION } from "@/tmux/session-layout"
 import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
@@ -63,11 +55,8 @@ import {
   untrack,
 } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
-import { worktreeUsable } from "../../exec/resolve.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
-import { resolveEngineLaunchInit } from "../../state/repo-init.ts"
 import { getCustomEngineIds, getPersistedString, setPersistedString } from "../../state/repos.ts"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
 import type { Task } from "../../types/task.ts"
@@ -96,33 +85,22 @@ import {
   renameBranchFlow,
   renameTaskFlow,
 } from "../lib/task-actions"
+import { HandoverError, enterTask } from "../lib/task-enter.ts"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
-import { runLayoutAction, syncSessionZen } from "../panes/terminal/layout-actions.ts"
+import { runLayoutAction } from "../panes/terminal/layout-actions.ts"
 import {
-  captureGlobalLayout,
-  ensureSession,
   openHelpTab,
   openNewTaskTab,
   openSettingsTab,
   openUpdateTab,
-  prepareWindowForSwitch,
   refreshKobeWorkspacePanes,
 } from "../panes/terminal/tmux.ts"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
 const RELOAD_MS = 1500
-
-/**
- * Type-guard wrapper over the exec seam's {@link worktreeUsable}: whether a
- * worktree path is usable as a session cwd (a remote worktree is trusted; a
- * local one keeps the real on-disk check — the remoteness lives in `exec/`).
- */
-function worktreeCwdUsable(cwd: string | undefined): cwd is string {
-  return !!cwd && worktreeUsable(cwd)
-}
 
 /**
  * Toast text for a failed `ensureWorktree`. The new-task dialog blocks
@@ -572,106 +550,30 @@ function TasksShell(props: {
   // (a task you just made with `n` is enterable here, no detour through
   // the outer monitor).
   async function switchTo(id: string): Promise<void> {
-    const name = tmuxSessionName(id)
     const task = props.tasks().find((t) => t.id === id)
-    // Before jumping away, snapshot the layout the user is currently looking at
-    // (Tasks-rail width + right-column geometry) into the global options, so any
-    // manual resize they just made becomes the shared shape every task —
-    // including the one we're switching to — renders at.
-    const from = await currentSessionName()
-    if (from && from !== name) await captureGlobalLayout(from)
-    const exists = await sessionExists(name)
-
-    // A LIVE session ALWAYS gets switched into — clicking a running task
-    // must jump, full stop. Its worktree dir comes from the session's own
-    // `@kobe_worktree` tag, NOT the Tasks-pane tasks.json read (which can
-    // lag the daemon and show an empty worktreePath; relying on it made a
-    // click bail before switch-client — KOB-244 regression). We still run
-    // ensureSession to heal vendor/worktree drift, but never let that
-    // block the switch.
-    if (exists) {
-      const cwd = (await getSessionOption(name, "@kobe_worktree")) || task?.worktreePath || ""
-      if (worktreeCwdUsable(cwd)) {
-        // Thread the per-repo init even on the heal path: ensureSession may
-        // decide to REBUILD a stale/legacy session here (session-decision.ts),
-        // and a rebuild goes through the create path that weaves the init
-        // `if [ ! -f marker ]` group. Without this, a worktree whose init
-        // previously failed (the marker is touched only on success, so it must
-        // retry) never retries via this — the most common — re-entry surface,
-        // contradicting CLAUDE.md's "a full kill+rebuild does re-evaluate it".
-        // Passing on a pure REUSE is harmless: only the create path applies
-        // these (EnsureSessionOpts), and the first prompt is create-branch-only
-        // so there's no double paste.
-        const launchInit = task?.repo ? resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" }) : undefined
-        await ensureSession({
-          name,
-          cwd,
-          command: interactiveEngineCommand(task?.vendor),
-          taskId: id,
-          vendor: task?.vendor,
-          repo: task?.repo,
-          launchInit,
-        })
+    if (!task) return
+    // The whole enter sequence (capture from-layout → ensure/heal session →
+    // zen → setActive → fit + switch) lives in the Handover owner; the Tasks
+    // pane opts into capture + heal and reloads its mirror after a cold
+    // worktree materialise. `includeInitPrompt: true` keeps prior switchTo
+    // behaviour (always weave the marker-guarded repo-init). enterTask throws a
+    // HandoverError on a build failure; we map its phase to the right toast.
+    try {
+      await enterTask(props.orch, task, task.repo, task.vendor, {
+        includeInitPrompt: true,
+        heal: true,
+        captureFrom: true,
+        reload: () => props.reload(),
+      })
+    } catch (err) {
+      if (err instanceof HandoverError) {
+        if (err.phase === "no-daemon") notifyError(t("tasks.toast.noDaemonOpen"))
+        else if (err.phase === "worktree") notifyError(worktreeErrorToast(err.cause))
+        else notifyError(t("tasks.toast.sessionStartFailed"))
+      } else {
+        console.error("[kobe tasks] switchTo failed:", err)
       }
-      // Reconcile the target session to the global zen intent BEFORE fitting, so
-      // a project you switch to inherits zen (each task is its own tmux session,
-      // so the toggle alone never reached it) and the fit accounts for the
-      // collapsed layout instead of reflowing after the switch.
-      await syncSessionZen(name)
-      // Fit + heal the target to THIS client before switching in, so it doesn't
-      // reflow on screen (see prepareWindowForSwitch — this is the in-tmux
-      // counterpart to direct.ts's pre-attach fit).
-      await prepareWindowForSwitch(name)
-      await runTmux(["switch-client", "-t", `=${name}`])
-      void props.orch?.setActiveTask(id).catch(() => {})
-      return
     }
-
-    // No session yet. Resolve the worktree — for a never-entered backlog
-    // task, materialise it via the daemon's task.ensureWorktree RPC (git
-    // worktree add — only the Orchestrator can do it) — then build the
-    // session and switch.
-    let cwd = task?.worktreePath
-    if (!worktreeCwdUsable(cwd)) {
-      if (!props.orch) {
-        console.error("[kobe tasks] no daemon; cannot materialise worktree")
-        notifyError(t("tasks.toast.noDaemonOpen"))
-        return
-      }
-      try {
-        cwd = await props.orch.ensureWorktree(id)
-      } catch (err) {
-        console.error("[kobe tasks] task.ensureWorktree failed:", err)
-        notifyError(worktreeErrorToast(err))
-        return
-      }
-      await props.reload()
-    }
-    if (!worktreeCwdUsable(cwd)) return
-    const launchInit = task?.repo ? resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" }) : undefined
-    const ready = await ensureSession({
-      name,
-      cwd,
-      command: interactiveEngineCommand(task?.vendor),
-      taskId: id,
-      vendor: task?.vendor,
-      repo: task?.repo,
-      launchInit,
-    })
-    if (!ready) {
-      console.error(`[kobe tasks] failed to start session ${name}`)
-      notifyError(t("tasks.toast.sessionStartFailed"))
-      return
-    }
-    // Reconcile the freshly built session to the global zen intent before the
-    // fit (see the running-session branch above for why).
-    await syncSessionZen(name)
-    // Fit + heal to THIS client before switching in (see prepareWindowForSwitch):
-    // the session was just built detached at the host pane's narrow stdout size,
-    // so without this the full-terminal switch reflows it on screen.
-    await prepareWindowForSwitch(name)
-    await runTmux(["switch-client", "-t", `=${name}`])
-    void props.orch?.setActiveTask(id).catch(() => {})
   }
 
   // Version / update chip for the Sidebar's brand header — moved up from the
