@@ -332,6 +332,20 @@ export async function prepareWindowForSwitch(session: string): Promise<void> {
 }
 
 /**
+ * Switch the attached client into a session — the ONE way to land a client on a
+ * kobe tmux Session. The fit ({@link prepareWindowForSwitch}) is welded to the
+ * `switch-client` so no caller can switch into an unfitted window: that gap is
+ * exactly where the reflow ("window resize") bugs lived — the cold-open split-at-
+ * narrow-size and the delete-path switch both forgot the fit independently. With
+ * one owner the "fit before switch" invariant is structural, not per-caller
+ * discipline. `=${session}` is the exact-match target form.
+ */
+export async function enterWindow(session: string): Promise<void> {
+  await prepareWindowForSwitch(session)
+  await runTmux(["switch-client", "-t", `=${session}`])
+}
+
+/**
  * Re-pin a session's active window to the size of the client that just resized
  * — the `client-resized` tmux hook handler.
  *
