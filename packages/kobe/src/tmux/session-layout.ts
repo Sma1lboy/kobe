@@ -113,6 +113,55 @@ export function clampPanePercent(percent: number): number | null {
 }
 
 /**
+ * The user's effective workspace geometry, resolved from the global `@kobe_*`
+ * options. The single owner of "how wide should the rail / right column be" —
+ * every reader (`buildPanesAround`, `healWorkspaceLayout`, the layout-action
+ * toggles, `globalTasksPaneWidth`) goes through {@link resolveLayoutGeometry}
+ * instead of re-parsing + re-clamping + re-defaulting the same three options.
+ *
+ * Two consumption modes are both served:
+ *  - the concrete `*Pct` / `tasksWidth` numbers always carry a default, for the
+ *    toggle math that needs a value even when the user never dragged;
+ *  - `rightColumnResizeArgs` is per-axis and EMPTY when the user never dragged,
+ *    so the build/heal path leaves the default split untouched (no override).
+ */
+export interface LayoutGeometry {
+  /** Tasks-rail width in cells (clamped; default `TASKS_PANE_WIDTH`). */
+  readonly tasksWidth: number
+  /** Right-column width as a % of the window (clamped; default `100 - CLAUDE_PANE_PERCENT`). */
+  readonly rightColumnWidthPct: number
+  /** Ops (file-tree) height as a % of the window (clamped; default `OPS_PANE_PERCENT`). */
+  readonly opsHeightPct: number
+  /** `resize-pane -x/-y N%` args for the Ops pane — per-axis, EMPTY when the user
+   *  never dragged the right column (so build/heal keep the default split). */
+  readonly rightColumnResizeArgs: readonly string[]
+}
+
+/** The three server options the geometry resolver reads — one IO spawn covers all. */
+export const LAYOUT_GEOMETRY_OPTIONS = [TASKS_WIDTH_OPTION, RIGHT_COLUMN_WIDTH_OPTION, OPS_HEIGHT_OPTION] as const
+
+/**
+ * Resolve {@link LayoutGeometry} from a raw `@kobe_*` option map (pure — no IO,
+ * so it's unit-tested). `opts` is what {@link getServerOptions} returns; the IO
+ * wrapper `readLayoutGeometry` (tmux/client) feeds it.
+ */
+export function resolveLayoutGeometry(opts: Record<string, string | undefined>): LayoutGeometry {
+  const rawWidth = Number.parseInt(opts[TASKS_WIDTH_OPTION] ?? "", 10)
+  const tasksWidth = Number.isFinite(rawWidth) && rawWidth > 0 ? clampTasksPaneWidth(rawWidth) : TASKS_PANE_WIDTH
+  const widthPct = clampPanePercent(Number.parseInt(opts[RIGHT_COLUMN_WIDTH_OPTION] ?? "", 10))
+  const heightPct = clampPanePercent(Number.parseInt(opts[OPS_HEIGHT_OPTION] ?? "", 10))
+  const rightColumnResizeArgs: string[] = []
+  if (widthPct !== null) rightColumnResizeArgs.push("-x", `${widthPct}%`)
+  if (heightPct !== null) rightColumnResizeArgs.push("-y", `${heightPct}%`)
+  return {
+    tasksWidth,
+    rightColumnWidthPct: widthPct ?? 100 - CLAUDE_PANE_PERCENT,
+    opsHeightPct: heightPct ?? OPS_PANE_PERCENT,
+    rightColumnResizeArgs,
+  }
+}
+
+/**
  * Quote `s` for safe inclusion inside a single-line `sh -c` command.
  * tmux runs each pane command via `sh -c`, and we build that command
  * string ourselves, so any path with a space or quote needs POSIX
