@@ -18,6 +18,7 @@
  */
 
 import { reconcileStableRows } from "@/tui/lib/stable-rows"
+import { truncateStart } from "@/tui/lib/truncate"
 import type { FileStatus, StatusEntry, TreeNode } from "./git"
 
 /**
@@ -60,19 +61,12 @@ export function flattenTree(node: TreeNode, expanded: ReadonlySet<string>, depth
  * Truncate a path keeping its TAIL — the leaf (filename) carries the
  * meaning, so on a narrow pane we drop the leading directories and show
  * `…components/sidebar/Sidebar.tsx` rather than clipping the filename off
- * the right. A leading `…` marks the elided prefix.
- *
- * Counts by code POINT, not UTF-16 code unit: a plain `.slice` can bisect a
- * surrogate pair (emoji / astral char in a filename) and render a `�`
- * replacement glyph. Same fix as `orchestrator/title.ts`. `max` is still an
- * approximate cell budget — a code point can be a wide (CJK) glyph — but
- * never splitting a character is the correctness floor.
+ * the right. Thin alias over the shared {@link truncateStart} owner, which
+ * counts by code point so a surrogate pair (emoji / astral char in a
+ * filename) is never bisected into a `�` replacement glyph.
  */
 export function truncatePathTail(path: string, max: number): string {
-  if (max <= 0) return path
-  const points = [...path]
-  if (points.length <= max) return path
-  return `…${points.slice(points.length - Math.max(0, max - 1)).join("")}`
+  return truncateStart(path, max)
 }
 
 /** Map a status entry list to Changes-tab rows. */
