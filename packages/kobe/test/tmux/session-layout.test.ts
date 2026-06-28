@@ -7,14 +7,19 @@
 
 import { describe, expect, test } from "vitest"
 import {
+  CLAUDE_PANE_PERCENT,
+  OPS_HEIGHT_OPTION,
+  OPS_PANE_PERCENT,
   PANE_PERCENT_MAX,
   PANE_PERCENT_MIN,
   REPO_INIT_TIMEOUT_MAX_SECONDS,
   REPO_INIT_TIMEOUT_MIN_SECONDS,
   REPO_INIT_TIMEOUT_SECONDS,
+  RIGHT_COLUMN_WIDTH_OPTION,
   TASKS_PANE_WIDTH,
   TASKS_PANE_WIDTH_MAX,
   TASKS_PANE_WIDTH_MIN,
+  TASKS_WIDTH_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
   engineLaunchLine,
@@ -23,6 +28,7 @@ import {
   openUrlCommand,
   opsPaneCommand,
   previewWindowCommand,
+  resolveLayoutGeometry,
   resolveRepoInitTimeoutSeconds,
   shellQuote,
   shellQuoteArgv,
@@ -297,5 +303,45 @@ describe("resolveRepoInitTimeoutSeconds", () => {
     expect(resolveRepoInitTimeoutSeconds("45")).toBe(45)
     expect(resolveRepoInitTimeoutSeconds(2)).toBe(REPO_INIT_TIMEOUT_MIN_SECONDS)
     expect(resolveRepoInitTimeoutSeconds(10 ** 9)).toBe(REPO_INIT_TIMEOUT_MAX_SECONDS)
+  })
+})
+
+describe("resolveLayoutGeometry", () => {
+  test("empty options → convention defaults, no right-column resize args", () => {
+    const g = resolveLayoutGeometry({})
+    expect(g.tasksWidth).toBe(TASKS_PANE_WIDTH)
+    expect(g.rightColumnWidthPct).toBe(100 - CLAUDE_PANE_PERCENT)
+    expect(g.opsHeightPct).toBe(OPS_PANE_PERCENT)
+    expect(g.rightColumnResizeArgs).toEqual([])
+  })
+
+  test("tasks width: honoured, clamped, default on garbage", () => {
+    expect(resolveLayoutGeometry({ [TASKS_WIDTH_OPTION]: "50" }).tasksWidth).toBe(50)
+    expect(resolveLayoutGeometry({ [TASKS_WIDTH_OPTION]: "5" }).tasksWidth).toBe(TASKS_PANE_WIDTH_MIN)
+    expect(resolveLayoutGeometry({ [TASKS_WIDTH_OPTION]: "9999" }).tasksWidth).toBe(TASKS_PANE_WIDTH_MAX)
+    expect(resolveLayoutGeometry({ [TASKS_WIDTH_OPTION]: "nope" }).tasksWidth).toBe(TASKS_PANE_WIDTH)
+    expect(resolveLayoutGeometry({ [TASKS_WIDTH_OPTION]: "0" }).tasksWidth).toBe(TASKS_PANE_WIDTH)
+  })
+
+  test("right-column: per-axis resize args only for the axes the user set", () => {
+    const wOnly = resolveLayoutGeometry({ [RIGHT_COLUMN_WIDTH_OPTION]: "35" })
+    expect(wOnly.rightColumnWidthPct).toBe(35)
+    expect(wOnly.rightColumnResizeArgs).toEqual(["-x", "35%"])
+    expect(wOnly.opsHeightPct).toBe(OPS_PANE_PERCENT) // height untouched → default
+
+    const hOnly = resolveLayoutGeometry({ [OPS_HEIGHT_OPTION]: "70" })
+    expect(hOnly.opsHeightPct).toBe(70)
+    expect(hOnly.rightColumnResizeArgs).toEqual(["-y", "70%"])
+
+    const both = resolveLayoutGeometry({ [RIGHT_COLUMN_WIDTH_OPTION]: "35", [OPS_HEIGHT_OPTION]: "70" })
+    expect(both.rightColumnResizeArgs).toEqual(["-x", "35%", "-y", "70%"])
+  })
+
+  test("percentages clamp to the sane range; garbage falls back to default (no arg)", () => {
+    expect(resolveLayoutGeometry({ [OPS_HEIGHT_OPTION]: "5" }).opsHeightPct).toBe(PANE_PERCENT_MIN)
+    expect(resolveLayoutGeometry({ [OPS_HEIGHT_OPTION]: "95" }).opsHeightPct).toBe(PANE_PERCENT_MAX)
+    const garbage = resolveLayoutGeometry({ [OPS_HEIGHT_OPTION]: "x" })
+    expect(garbage.opsHeightPct).toBe(OPS_PANE_PERCENT)
+    expect(garbage.rightColumnResizeArgs).toEqual([])
   })
 })
