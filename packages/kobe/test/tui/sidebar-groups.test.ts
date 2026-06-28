@@ -4,6 +4,7 @@ import {
   buildRows,
   cursorIndexForProjectScope,
   reconcileSidebarRows,
+  resolveCursorTarget,
   sameSidebarRowTask,
   splitSidebarRows,
 } from "../../src/tui/panes/sidebar/groups.ts"
@@ -348,5 +349,39 @@ describe("sameSidebarRowTask", () => {
     expect(sameSidebarRowTask(base, task({ id: "a", title: "a", pinned: true }))).toBe(false)
     expect(sameSidebarRowTask(base, task({ id: "a", title: "a", archived: true }))).toBe(false)
     expect(sameSidebarRowTask(base, task({ id: "a", title: "a", vendor: "codex" }))).toBe(false)
+  })
+})
+
+describe("resolveCursorTarget", () => {
+  const ids = ["a", "b", "c"]
+
+  it("follows the selected row", () => {
+    expect(resolveCursorTarget("a", ids, 2)).toBe(0)
+    expect(resolveCursorTarget("c", ids, 0)).toBe(2)
+  })
+
+  it("leaves the cursor put when already on the selected row (no-op)", () => {
+    expect(resolveCursorTarget("b", ids, 1)).toBe(1)
+  })
+
+  it("selected row absent but cursor in range → leave it put (j/k freedom)", () => {
+    expect(resolveCursorTarget("gone", ids, 1)).toBe(1)
+  })
+
+  it("selected row vanished and cursor now dangles past a shrunk list → clamp to last", () => {
+    expect(resolveCursorTarget("gone", ["a", "b"], 5)).toBe(1)
+    expect(resolveCursorTarget("gone", ["a", "b"], -1)).toBe(1)
+  })
+
+  it("empty list → -1 regardless of selection", () => {
+    expect(resolveCursorTarget("a", [], 0)).toBe(-1)
+    expect(resolveCursorTarget(null, [], 3)).toBe(0) // cursor>=len(0) path snaps to max(0,-1)=0... see null-empty
+    expect(resolveCursorTarget(null, [], -1)).toBe(-1)
+  })
+
+  it("null selection: snap an unset cursor to the first row, else keep it", () => {
+    expect(resolveCursorTarget(null, ids, -1)).toBe(0)
+    expect(resolveCursorTarget(null, ids, 2)).toBe(2)
+    expect(resolveCursorTarget(null, ids, 9)).toBe(2) // out of range → clamp to last
   })
 })
