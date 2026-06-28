@@ -98,6 +98,35 @@ export function parseWorktreeChangesPayload(payload: unknown): Map<string, Workt
 }
 
 /**
+ * Decode a `ui-prefs` wire payload into a fully-defaulted {@link UiPrefsPayload},
+ * or `null` when it's unusable (no `theme` string — the event is then ignored).
+ * The single owner of the backward-compat defaults: an older daemon omits newer
+ * fields, and each MUST resolve to its "absent → leave it" sentinel rather than
+ * a hard reset. These were inline in handleEvent, where the version-negotiation
+ * intent was a wall of per-field fallbacks easy to get subtly wrong. Exported
+ * for unit tests.
+ *
+ *  - `locale` absent → "" (UNSET): a payload that never mentioned the language
+ *    must not yank it back to English; only a real non-empty locale changes it.
+ *  - `sortMode` absent → "default"; `keysCollapsed` absent → false (expanded);
+ *    `projectFilter` absent/empty → null (all projects); `transparentBackground`
+ *    / `focusAccent` default off / null.
+ */
+export function decodeUiPrefsPayload(payload: unknown): UiPrefsPayload | null {
+  const p = payload as Partial<UiPrefsPayload> | undefined
+  if (typeof p?.theme !== "string") return null
+  return {
+    theme: p.theme,
+    transparentBackground: p.transparentBackground === true,
+    focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
+    locale: typeof p.locale === "string" ? p.locale : "",
+    sortMode: p.sortMode === "recent" ? "recent" : "default",
+    keysCollapsed: p.keysCollapsed === true,
+    projectFilter: typeof p.projectFilter === "string" && p.projectFilter.length > 0 ? p.projectFilter : null,
+  }
+}
+
+/**
  * Entry-wise equality for two changes maps — an unchanged republish (e.g.
  * the bus replaying its last value across a reconnect) must not churn the
  * signal and re-render every sidebar row. Exported for unit tests.
@@ -812,29 +841,13 @@ export class RemoteOrchestrator {
       return
     }
     if (name === "ui-prefs") {
-      const p = payload as Partial<UiPrefsPayload> | undefined
-      if (typeof p?.theme !== "string") {
-        logClientError("orch", `dropped ui-prefs event: theme must be a string (got ${describePayload(p?.theme)})`)
+      const decoded = decodeUiPrefsPayload(payload)
+      if (!decoded) {
+        const theme = (payload as Partial<UiPrefsPayload> | undefined)?.theme
+        logClientError("orch", `dropped ui-prefs event: theme must be a string (got ${describePayload(theme)})`)
         return
       }
-      this.setUiPrefsSig({
-        theme: p.theme,
-        transparentBackground: p.transparentBackground === true,
-        focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
-        // Older daemons omit `locale` entirely. Carry "" (UNSET) — NOT "en" —
-        // so the consumer skips it instead of yanking the language back to
-        // English: a pushed payload that never mentioned the language must
-        // not reset it (same "absent fields are skipped" rule applyUiPrefs
-        // follows for theme/accent). Only a real, non-empty locale string
-        // from a current daemon ever changes the language.
-        locale: typeof p.locale === "string" ? p.locale : "",
-        // Older daemons omit `sortMode` → treat as the default ordering.
-        sortMode: p.sortMode === "recent" ? "recent" : "default",
-        // Older daemons omit `keysCollapsed` → legend expanded.
-        keysCollapsed: p.keysCollapsed === true,
-        // Older daemons omit `projectFilter` → show all projects.
-        projectFilter: typeof p.projectFilter === "string" && p.projectFilter.length > 0 ? p.projectFilter : null,
-      })
+      this.setUiPrefsSig(decoded)
       return
     }
     if (name === "keybindings") {
