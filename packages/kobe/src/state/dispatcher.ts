@@ -14,10 +14,10 @@
  * auto-status/remote-projects precedent.
  */
 
-import { loadStateFile } from "./store.ts"
+import { getPersistedBool } from "./store.ts"
 
 export const DISPATCHER_KEY = "experimental.dispatcher"
 
 export function dispatcherEnabled(): boolean {
-  return loadStateFile()[DISPATCHER_KEY] === true
+  return getPersistedBool(DISPATCHER_KEY, false)
 }
