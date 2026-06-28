@@ -142,7 +142,7 @@ export const LAYOUT_GEOMETRY_OPTIONS = [TASKS_WIDTH_OPTION, RIGHT_COLUMN_WIDTH_O
 
 /**
  * Resolve {@link LayoutGeometry} from a raw `@kobe_*` option map (pure — no IO,
- * so it's unit-tested). `opts` is what {@link getServerOptions} returns; the IO
+ * so it's unit-tested). `opts` is what `getServerOptions` returns; the IO
  * wrapper `readLayoutGeometry` (tmux/client) feeds it.
  */
 export function resolveLayoutGeometry(opts: Record<string, string | undefined>): LayoutGeometry {

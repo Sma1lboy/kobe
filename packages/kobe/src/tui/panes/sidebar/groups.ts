@@ -241,8 +241,10 @@ export function flattenIds(rows: readonly SidebarRow[]): string[] {
  * shrank, cursor left dangling past a shortened list — are unit-tested instead
  * of hand-traced. `cursor` is the current index (-1 when unset).
  *
- *  - `selectedId === null`: keep the cursor unless it's unset/out of range,
- *    then snap to the first row (or -1 on an empty list).
+ *  - `selectedId === null`: keep the cursor in place; snap an unset cursor (-1)
+ *    to the first row, and clamp an out-of-range cursor down to the last row.
+ *    (Empty list: -1 only when the cursor was already unset — a stray cursor >= 0
+ *    resolves to 0 here, which the view-switch reset then corrects.)
  *  - selected row present: follow it.
  *  - selected row absent: leave the cursor put if still in range, else clamp to
  *    the last row (or -1 on an empty list).

@@ -568,7 +568,7 @@ function TasksShell(props: {
     } catch (err) {
       if (err instanceof HandoverError) {
         if (err.phase === "no-daemon") notifyError(t("tasks.toast.noDaemonOpen"))
-        else if (err.phase === "worktree") notifyError(worktreeErrorToast(err.cause))
+        else if (err.phase === "worktree") notifyError(worktreeErrorToast(err.cause ?? err))
         else notifyError(t("tasks.toast.sessionStartFailed"))
       } else {
         console.error("[kobe tasks] switchTo failed:", err)
