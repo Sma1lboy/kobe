@@ -149,21 +149,58 @@ describe("splitDiffByFile", () => {
   })
 
   it("keys paths containing spaces by their post-image path", () => {
-    // Git leaves spaces unquoted (only control chars / quotes trigger C-quoting),
-    // so the `+++ b/<path>` marker carries the literal space.
+    // Git leaves spaces unquoted but appends a TAB after the name in the
+    // `---`/`+++` markers to disambiguate it — that tab is NOT part of the
+    // path and must be stripped, else the key never matches the porcelain row.
     const diff = [
       "diff --git a/has space.ts b/has space.ts",
       "index 111..222 100644",
-      "--- a/has space.ts",
-      "+++ b/has space.ts",
+      "--- a/has space.ts\t",
+      "+++ b/has space.ts\t",
       "@@ -1 +1 @@",
       "-x",
       "+y",
       "",
     ].join("\n")
     const byFile = splitDiffByFile(diff)
-    expect(byFile.has("has space.ts")).toBe(true)
+    expect([...byFile.keys()]).toEqual(["has space.ts"])
     expect(byFile.get("has space.ts")).toContain("+y")
+  })
+
+  it("decodes a C-quoted non-ASCII post-image path (octal byte escapes)", () => {
+    // Git C-quotes a path with non-ASCII bytes, octal-escaping each UTF-8 byte
+    // and wrapping the whole `b/…` in quotes: `+++ "b/\303\274.txt"` (ü.txt).
+    const diff = [
+      'diff --git "a/\\303\\274.txt" "b/\\303\\274.txt"',
+      "index 111..222 100644",
+      '--- "a/\\303\\274.txt"',
+      '+++ "b/\\303\\274.txt"',
+      "@@ -1 +1 @@",
+      "-a",
+      "+b",
+      "",
+    ].join("\n")
+    const byFile = splitDiffByFile(diff)
+    expect([...byFile.keys()]).toEqual(["ü.txt"])
+    expect(byFile.get("ü.txt")).toContain("+b")
+  })
+
+  it("decodes a C-quoted path with a control char (tab in the name)", () => {
+    // A genuine tab inside a name forces C-quoting (`"b/a\tb.txt"`); the decoded
+    // key carries the literal tab, matching the raw porcelain `-z` path.
+    const diff = [
+      'diff --git "a/a\\tb.txt" "b/a\\tb.txt"',
+      "index 111..222 100644",
+      '--- "a/a\\tb.txt"',
+      '+++ "b/a\\tb.txt"',
+      "@@ -1 +1 @@",
+      "-a",
+      "+b",
+      "",
+    ].join("\n")
+    const byFile = splitDiffByFile(diff)
+    expect([...byFile.keys()]).toEqual(["a\tb.txt"])
+    expect(byFile.get("a\tb.txt")).toContain("+b")
   })
 
   it("ignores leading content that is not a diff chunk", () => {
