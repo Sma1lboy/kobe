@@ -23,7 +23,7 @@
 import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 import { kvStatePath } from "../env.ts"
-import { type StateSnapshot, loadStateFile, patchStateFile, updateStateFile } from "./store.ts"
+import { type StateSnapshot, getPersistedBool, loadStateFile, patchStateFile, updateStateFile } from "./store.ts"
 
 /**
  * Resolve `absPath` to the git toplevel that owns it. A "main" task's
@@ -357,7 +357,7 @@ export function isRemoteRepoKey(key: string): boolean {
  * --remote` can refuse when the feature is off. See `docs/design/remote-projects.md`.
  */
 export function isRemoteProjectsEnabled(): boolean {
-  return loadStateFile()["experimental.remoteProjects"] === true
+  return getPersistedBool("experimental.remoteProjects", false)
 }
 
 /** The stable savedRepos key for a remote project: `ssh://user@host[:port]`. */

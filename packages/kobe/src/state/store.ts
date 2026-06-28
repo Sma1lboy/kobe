@@ -110,6 +110,24 @@ export function patchStateFile(patch: StateSnapshot): StateSnapshot {
 }
 
 /**
+ * Read a boolean flag from state.json with an explicit default — the single
+ * owner of the "stored bool with a default" rule. Only a real stored boolean
+ * overrides `defaultValue`; a missing key OR any non-boolean value falls back.
+ * This subsumes the `x === true` (default false) / `x !== false` (default true)
+ * idioms each flag module used to inline, where the idiom silently encoded the
+ * default and was easy to get backwards.
+ */
+export function getPersistedBool(key: string, defaultValue: boolean): boolean {
+  const value = loadStateFile()[key]
+  return typeof value === "boolean" ? value : defaultValue
+}
+
+/** Persist a boolean flag — single-key read-merge-write via {@link patchStateFile}. */
+export function setPersistedBool(key: string, value: boolean): void {
+  patchStateFile({ [key]: value })
+}
+
+/**
  * Replace the WHOLE file with `snapshot`, discarding keys other processes
  * may have written. Deliberately destructive — the only legitimate caller
  * is KVProvider's `clear()` ("reset UI state" in Settings → Dev), whose

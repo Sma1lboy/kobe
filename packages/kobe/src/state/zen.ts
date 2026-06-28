@@ -12,13 +12,13 @@
  * `prefix`-chord are always reachable to leave zen again.
  */
 
-import { loadStateFile, patchStateFile } from "./store.ts"
+import { getPersistedBool, setPersistedBool } from "./store.ts"
 
 export const ZEN_KEEP_TASKS_KEY = "zen.keepTasks"
 
 /** Whether zen mode preserves the Tasks rail. Default `true`. */
 export function zenKeepsTasks(): boolean {
-  return loadStateFile()[ZEN_KEEP_TASKS_KEY] !== false
+  return getPersistedBool(ZEN_KEEP_TASKS_KEY, true)
 }
 
 /**
@@ -35,10 +35,10 @@ export const ZEN_ACTIVE_KEY = "zen.active"
 
 /** Whether zen mode is globally on (across every project's session). */
 export function zenIsActive(): boolean {
-  return loadStateFile()[ZEN_ACTIVE_KEY] === true
+  return getPersistedBool(ZEN_ACTIVE_KEY, false)
 }
 
 /** Persist the global zen on/off intent. */
 export function setZenActive(on: boolean): void {
-  patchStateFile({ [ZEN_ACTIVE_KEY]: on })
+  setPersistedBool(ZEN_ACTIVE_KEY, on)
 }
