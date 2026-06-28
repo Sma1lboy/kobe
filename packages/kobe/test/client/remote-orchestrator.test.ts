@@ -2,6 +2,7 @@ import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   RemoteOrchestrator,
+  decodeUiPrefsPayload,
   parseWorktreeChangesPayload,
   sameWorktreeChangesMap,
 } from "../../src/client/remote-orchestrator.ts"
@@ -397,6 +398,47 @@ describe("worktree.changes capability gating (init)", () => {
     emit("worktree.changes", { changes: { "/wt/a": { added: 4, deleted: 2 } } })
     await orch.init()
     expect(orch.worktreeChangesSignal()()?.get("/wt/a")).toEqual({ added: 4, deleted: 2 })
+  })
+})
+
+describe("decodeUiPrefsPayload — backward-compat defaults", () => {
+  it("drops a payload with no theme string", () => {
+    expect(decodeUiPrefsPayload(undefined)).toBeNull()
+    expect(decodeUiPrefsPayload({})).toBeNull()
+    expect(decodeUiPrefsPayload({ theme: 42 })).toBeNull()
+  })
+
+  it("an older daemon's theme-only payload resolves every newer field to its absent-sentinel", () => {
+    // The footgun this owns: locale MUST be "" (skip), not "en"; sortMode
+    // "default"; keysCollapsed false; projectFilter null; transparent off.
+    expect(decodeUiPrefsPayload({ theme: "claude" })).toEqual({
+      theme: "claude",
+      transparentBackground: false,
+      focusAccent: null,
+      locale: "",
+      sortMode: "default",
+      keysCollapsed: false,
+      projectFilter: null,
+    })
+  })
+
+  it("carries real values through and normalizes odd ones", () => {
+    expect(
+      decodeUiPrefsPayload({ theme: "tokyonight", locale: "zh-CN", sortMode: "recent", keysCollapsed: true }),
+    ).toEqual({
+      theme: "tokyonight",
+      transparentBackground: false,
+      focusAccent: null,
+      locale: "zh-CN",
+      sortMode: "recent",
+      keysCollapsed: true,
+      projectFilter: null,
+    })
+    // empty projectFilter string → null (all projects); unknown sortMode → default
+    const d = decodeUiPrefsPayload({ theme: "x", projectFilter: "", sortMode: "weird", focusAccent: "#abc" })
+    expect(d?.projectFilter).toBeNull()
+    expect(d?.sortMode).toBe("default")
+    expect(d?.focusAccent).toBe("#abc")
   })
 })
 
