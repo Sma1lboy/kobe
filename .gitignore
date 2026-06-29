@@ -27,9 +27,9 @@ tsconfig.vitest-temp.json
 .env
 .env.local
 
-# Brand Studio scratch output is local-only. Accepted assets live under
+# Harness scratch output is local-only. Accepted assets live under
 # public/brand/ and are committed.
-.harness/brand-studio/out/
+.harness/*
 
 # brand/render outputs rendered assets into public/brand/ (committed).
 # Local-only build artefacts inside the render package itself
