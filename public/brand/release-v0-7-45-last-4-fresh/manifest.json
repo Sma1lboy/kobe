@@ -2,21 +2,21 @@
   "schema_version": "1.0",
   "kind": "approved_manifest",
   "campaign": "release-v0-7-45-last-4-fresh",
-  "generated_at": "2026-06-29T12:03:02Z",
+  "generated_at": "2026-06-29T13:37:33Z",
   "project_root": "/Users/narwhal/proj/kobe",
   "assets": [
     {
       "id": "release-poster",
       "file": "release-poster.png",
       "path": "public/brand/release-v0-7-45-last-4-fresh/release-poster.png",
-      "source_path": ".harness/brand-studio/out/release-v0-7-45-last-4-fresh/release-poster-4version-colorfix.png",
+      "source_path": ".harness/brand-studio/out/release-v0-7-45-last-4-designmatch/release-poster-4version-designmatch.png",
       "run_lock": ".harness/brand-studio/out/release-v0-7-45-last-4-fresh/run.lock.json",
       "size": [
         1088,
         1920
       ],
       "mime_type": "image/png",
-      "checksum_sha256": "da0dbd14a8dac8d1a5b2c50fd681fe3d6ef8849ee6544708446a98e2418c46a1"
+      "checksum_sha256": "59de7e74d2fcd236be33a4f4d539f4d528a85bf074b054b3dd2d418eb5c3f3b3"
     }
   ]
 }

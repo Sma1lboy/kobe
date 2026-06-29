@@ -93,7 +93,7 @@ assets:
       - 1088
       - 1920
     mime_type: "image/png"
-    checksum_sha256: "da0dbd14a8dac8d1a5b2c50fd681fe3d6ef8849ee6544708446a98e2418c46a1"
+    checksum_sha256: "59de7e74d2fcd236be33a4f4d539f4d528a85bf074b054b3dd2d418eb5c3f3b3"
     tags:
       - "release"
       - "poster"

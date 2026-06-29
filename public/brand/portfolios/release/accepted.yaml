@@ -16,7 +16,7 @@ accepted:
     path: "public/brand/release-v0-7-45-last-4-fresh/release-poster.png"
     manifest: "public/brand/release-v0-7-45-last-4-fresh/manifest.json"
     run_lock: ".harness/brand-studio/out/release-v0-7-45-last-4-fresh/run.lock.json"
-    checksum_sha256: "da0dbd14a8dac8d1a5b2c50fd681fe3d6ef8849ee6544708446a98e2418c46a1"
+    checksum_sha256: "59de7e74d2fcd236be33a4f4d539f4d528a85bf074b054b3dd2d418eb5c3f3b3"
     size:
       - 1088
       - 1920
@@ -31,4 +31,4 @@ accepted:
       - "release-v0-7-45-last-4-fresh"
       - "release-poster"
       - "accepted"
-    notes: "Accepted by user review after color correction as the 4-version release notes poster. Preserve the approved release palette: ink/graphite text, warm paper, and rust/clay release accents with no blue-dominant treatment."
+    notes: "Accepted by user review after regenerating against the previous release poster design. Preserve the release-archive layout: huge kobe wordmark, warm paper surface, left version metadata columns, right changelog rows, and rust/clay divider accents."
