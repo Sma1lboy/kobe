@@ -9,7 +9,7 @@ producer:
   output_format: png
 inputs:
   theme: brand/theme.md
-  campaign: brand/campaigns/mars-kobe.campaign.yaml
+  campaign: brand/campaigns/promo/mars-kobe.campaign.yaml
   references:
     - brand/references/kobe-tui-actual.png
     - brand/references/pane-grid.png

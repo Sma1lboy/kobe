@@ -5,7 +5,7 @@ accepted_at: "2026-06-27T03:43:16Z"
 objective: "Run a PR12 Brand Studio production-environment test for kobe in an MC End-inspired field-computing scene."
 inputs:
   theme: "brand/theme.md"
-  campaign: "brand/campaigns/mc-end-kobe.campaign.yaml"
+  campaign: "brand/campaigns/promo/mc-end-kobe.campaign.yaml"
   asset_index: "public/brand/asset-state.yaml"
   accepted_corpus: "public/brand/portfolios/promo/accepted.yaml"
   references:

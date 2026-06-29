@@ -15,8 +15,11 @@ skillDistribution:
 
 theme:
   path: brand/theme.md
-  campaigns: brand/campaigns
   references: brand/references
+
+campaigns:
+  release: brand/campaigns/release
+  promo: brand/campaigns/promo
 
 skills:
   image: gpt-image
@@ -24,7 +27,7 @@ skills:
 
 campaign:
   name: mars-kobe
-  path: brand/campaigns/mars-kobe.campaign.yaml
+  path: brand/campaigns/promo/mars-kobe.campaign.yaml
 
 artifacts:
   scratch: .harness/brand-studio/out
