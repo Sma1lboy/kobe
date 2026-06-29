@@ -1,4 +1,5 @@
 [submodule ".agents/skills/marketing-harness"]
 	path = .agents/skills/brand-studio
-	url = https://github.com/CodeFox-Repo/brand-studio
+	url = https://github.com/Sma1lboy/brand-studio
+	branch = feat/brand-studio-stage-cli
 	ignore = dirty
