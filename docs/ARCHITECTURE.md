@@ -13,8 +13,7 @@
 > `test/...`, and `scripts/...` paths in this doc are relative to
 > `packages/kobe/`. Brand Studio source lives in `brand/`, accepted assets live
 > in `public/brand/`, and the private Remotion render package lives in
-> `brand/render/`
-> and isn't covered here.
+> `packages/branding/` and isn't covered here.
 
 ## Contents
 

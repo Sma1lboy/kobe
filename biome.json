@@ -8,7 +8,7 @@
       "**/dist/**",
       "**/node_modules/**",
       "bun.lock",
-      "brand/render/**",
+      "packages/branding/**",
       "packages/kobe-web/**",
       "packages/*/.dev-sandbox/**",
       "packages/*/.dev-fixture/**",

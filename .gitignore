@@ -31,9 +31,9 @@ tsconfig.vitest-temp.json
 # public/brand/ and are committed.
 .harness/*
 
-# brand/render outputs rendered assets into public/brand/ (committed).
+# packages/branding outputs rendered assets into public/brand/ (committed).
 # Local-only build artefacts inside the render package itself
-# (Remotion's `out/`, etc.) are ignored via brand/render/.gitignore.
+# (Remotion's `out/`, etc.) are ignored via packages/branding/.gitignore.
 
 # autonomous-skill per-sprint worktrees + session state
 .worktrees/

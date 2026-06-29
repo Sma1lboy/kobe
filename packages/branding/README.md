@@ -21,7 +21,7 @@ All four use the tokyonight palette (`src/colors.ts`) so the assets stay consist
 ## Render
 
 ```bash
-cd brand/render
+cd packages/branding
 bun install            # or pnpm install / npm install
 bun run studio         # interactive preview at http://localhost:3000
 ```
@@ -67,7 +67,7 @@ for the dock.
 ## Files
 
 ```
-brand/render/
+packages/branding/
 ├── README.md          ← you are here
 ├── package.json
 ├── tsconfig.json
