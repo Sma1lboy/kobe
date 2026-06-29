@@ -21,12 +21,12 @@ All four use the tokyonight palette (`src/colors.ts`) so the assets stay consist
 ## Render
 
 ```bash
-cd branding
+cd brand/render
 bun install            # or pnpm install / npm install
 bun run studio         # interactive preview at http://localhost:3000
 ```
 
-One-shot renders (writes to `branding/out/`):
+One-shot renders write committed assets to `public/brand/`:
 
 ```bash
 bun run render:all     # all four MP4s
@@ -67,7 +67,7 @@ for the dock.
 ## Files
 
 ```
-branding/
+brand/render/
 ├── README.md          ← you are here
 ├── package.json
 ├── tsconfig.json

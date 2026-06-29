@@ -15,7 +15,7 @@ accepted:
     style_family: "log-full-editorial"
     path: "public/brand/release-v0-7-45-poster-logfull/release-poster.png"
     manifest: "public/brand/release-v0-7-45-poster-logfull/manifest.json"
-    run_lock: "packages/branding/.harness/out/release-v0-7-45-poster-logfull/run.lock.json"
+    run_lock: ".harness/brand-studio/out/release-v0-7-45-poster-logfull/run.lock.json"
     checksum_sha256: "fe4914f564baf03ff374a2d3183b276bb0bc5a2b2a79371a0fd5beac830a2754"
     size:
       - 1088

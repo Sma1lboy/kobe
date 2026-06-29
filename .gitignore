@@ -27,9 +27,13 @@ tsconfig.vitest-temp.json
 .env
 .env.local
 
-# packages/branding outputs the rendered assets into docs/assets/brand/
-# (committed). Local-only build artefacts inside the package itself
-# (Remotion's `out/`, etc.) are ignored via packages/branding/.gitignore.
+# Brand Studio scratch output is local-only. Accepted assets live under
+# public/brand/ and are committed.
+.harness/brand-studio/out/
+
+# brand/render outputs rendered assets into public/brand/ (committed).
+# Local-only build artefacts inside the render package itself
+# (Remotion's `out/`, etc.) are ignored via brand/render/.gitignore.
 
 # autonomous-skill per-sprint worktrees + session state
 .worktrees/

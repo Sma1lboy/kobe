@@ -78,10 +78,10 @@ global:
       $value: "cropped headline, cropped kobe wordmark, letters cut off at the frame edge, giant KOBE text touching the top edge, astronaut, Mars, moon, planet, lander, rover, rocket, helmet, human character, mission operator, robot mascot, official Anthropic logo, standalone Claude logo outside the terminal UI, fake sponsor logos, basketball imagery, celebrity likeness, glossy SaaS cards, browser chrome, generic hologram dashboard, unreadable terminal gibberish, excessive neon, purple-blue gradient, crowded sci-fi HUD, malformed main headline, watermark"
       $type: "text"
   reference:
-    actual-tui: { $value: "packages/branding/marketing/references/kobe-tui-actual.png", $type: "asset" }
-    clean-tui: { $value: "packages/branding/marketing/references/kobe-tui-clean.png", $type: "asset" }
-    pane-grid: { $value: "packages/branding/marketing/references/pane-grid.png", $type: "asset" }
-    bracket-chip: { $value: "packages/branding/marketing/references/bracket-chip.png", $type: "asset" }
+    actual-tui: { $value: "brand/references/kobe-tui-actual.png", $type: "asset" }
+    clean-tui: { $value: "brand/references/kobe-tui-clean.png", $type: "asset" }
+    pane-grid: { $value: "brand/references/pane-grid.png", $type: "asset" }
+    bracket-chip: { $value: "brand/references/bracket-chip.png", $type: "asset" }
 
 alias:
   style:

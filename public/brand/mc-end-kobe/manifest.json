@@ -8,8 +8,8 @@
       "id": "mc-end-hero",
       "file": "mc-end-hero.png",
       "path": "public/brand/mc-end-kobe/mc-end-hero.png",
-      "source_path": "packages/branding/.harness/out/mc-end-kobe/mc-end-hero.png",
-      "run_lock": "packages/branding/.harness/out/mc-end-kobe/run.lock.json",
+      "source_path": ".harness/brand-studio/out/mc-end-kobe/mc-end-hero.png",
+      "run_lock": ".harness/brand-studio/out/mc-end-kobe/run.lock.json",
       "size": [
         1536,
         1024

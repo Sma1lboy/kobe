@@ -11,8 +11,9 @@
 > package lives at `packages/kobe/`; daemon-owned code lives at
 > `packages/kobe-daemon/`. Unless a path is package-qualified, `src/...`,
 > `test/...`, and `scripts/...` paths in this doc are relative to
-> `packages/kobe/`. The branding workspace, `packages/branding/`, is the
-> Remotion render pipeline for the brand artwork in `public/brand/`
+> `packages/kobe/`. Brand Studio source lives in `brand/`, accepted assets live
+> in `public/brand/`, and the private Remotion render package lives in
+> `brand/render/`
 > and isn't covered here.
 
 ## Contents

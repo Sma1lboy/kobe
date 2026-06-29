@@ -2,11 +2,11 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "kobe-monorepo",
   "version": "0.0.0",
-  "description": "Monorepo for kobe (TUI orchestrator for Claude Code) + branding (Remotion render pipeline).",
+  "description": "Monorepo for kobe (TUI orchestrator for Claude Code) plus brand source and rendering tools.",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.13",
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "brand/render"],
   "scripts": {
     "dev": "cd packages/kobe && bun run dev",
     "dev:sandbox": "cd packages/kobe && bun run dev:sandbox",

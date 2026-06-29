@@ -8,16 +8,16 @@ producer:
   model: gpt-image-2
   output_format: png
 inputs:
-  theme: packages/branding/marketing/theme.md
-  campaign: packages/branding/marketing/campaigns/mars-kobe.campaign.yaml
+  theme: brand/theme.md
+  campaign: brand/campaigns/mars-kobe.campaign.yaml
   references:
-    - packages/branding/marketing/references/kobe-tui-actual.png
-    - packages/branding/marketing/references/pane-grid.png
+    - brand/references/kobe-tui-actual.png
+    - brand/references/pane-grid.png
 output:
-  scratch: packages/branding/.harness/out/mars-kobe/mars-hero.png
+  scratch: .harness/brand-studio/out/mars-kobe/mars-hero.png
   approved: public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
 generated:
-  path: packages/branding/.harness/out/mars-kobe/mars-hero.png
+  path: .harness/brand-studio/out/mars-kobe/mars-hero.png
   width: 2400
   height: 1264
   checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79

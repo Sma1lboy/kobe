@@ -1,6 +1,6 @@
 # Releasing kobe
 
-kobe versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The published package is `@sma1lboy/kobe` (`packages/kobe`); `packages/branding` is `private` and never published.
+kobe versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The published package is `@sma1lboy/kobe` (`packages/kobe`); `brand/render` is private and never published.
 
 ## The flow
 

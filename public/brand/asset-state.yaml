@@ -6,7 +6,7 @@ revision: 5
 assets:
   - id: "kobe-tui-actual"
     kind: "reference"
-    path: "packages/branding/marketing/references/kobe-tui-actual.png"
+    path: "brand/references/kobe-tui-actual.png"
     source: "workspace/products/kobe/kobe/references/kobe-tui-actual.png"
     width: 3016
     height: 1742
@@ -15,7 +15,7 @@ assets:
     status: "active"
   - id: "kobe-tui-clean"
     kind: "reference"
-    path: "packages/branding/marketing/references/kobe-tui-clean.png"
+    path: "brand/references/kobe-tui-clean.png"
     source: "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
     width: 3024
     height: 1632
@@ -24,7 +24,7 @@ assets:
     status: "active"
   - id: "pane-grid"
     kind: "reference"
-    path: "packages/branding/marketing/references/pane-grid.png"
+    path: "brand/references/pane-grid.png"
     source: "public/brand/pane-grid.png"
     width: 1200
     height: 800
@@ -33,7 +33,7 @@ assets:
     status: "active"
   - id: "bracket-chip"
     kind: "reference"
-    path: "packages/branding/marketing/references/bracket-chip.png"
+    path: "brand/references/bracket-chip.png"
     source: "public/brand/bracket-chip.png"
     width: 1200
     height: 630

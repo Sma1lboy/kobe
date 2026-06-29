@@ -1,7 +1,7 @@
 project:
   id: kobe
   root: .
-  marketingRoot: packages/branding/marketing
+  marketingRoot: brand
 
 organization:
   id: kobe
@@ -14,9 +14,9 @@ skillDistribution:
   ref: main
 
 theme:
-  path: packages/branding/marketing/theme.md
-  campaigns: packages/branding/marketing/campaigns
-  references: packages/branding/marketing/references
+  path: brand/theme.md
+  campaigns: brand/campaigns
+  references: brand/references
 
 skills:
   image: gpt-image
@@ -24,14 +24,14 @@ skills:
 
 campaign:
   name: mars-kobe
-  path: packages/branding/marketing/campaigns/mars-kobe.campaign.yaml
+  path: brand/campaigns/mars-kobe.campaign.yaml
 
 artifacts:
-  scratch: packages/branding/.harness/out
+  scratch: .harness/brand-studio/out
   approved: public/brand
 
 state:
-  plans: packages/branding/marketing/plans
+  plans: brand/plans
   assetIndex: public/brand/asset-state.yaml
   accepted: public/brand/accepted.yaml
   directoryStateFile: asset-state.yaml
@@ -48,7 +48,7 @@ portfolios:
 
 sources:
   assetRoots:
-    - packages/branding/marketing
+    - brand
     - public/brand
   relatedRepos: []
 
