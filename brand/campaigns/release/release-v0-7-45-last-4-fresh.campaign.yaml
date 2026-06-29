@@ -1,0 +1,67 @@
+name: "release-v0-7-45-last-4-fresh"
+brief: "Release notes page for kobe 0.7.45: Release improvements for focused developer workflows"
+style: "launch-hero"
+content:
+  headline: "Release improvements for focused developer workflows"
+  subject: |-
+    Render a release notes page for kobe 0.7.45.
+    The release notes are the main subject, not a decorative side panel.
+    Composition: premium product changelog page with a header, metadata chips, and a chronological release list.
+    Use the copy language from the headline and changelog summaries; do not translate it.
+    
+    Visible release notes structure:
+    - Page title/headline: "Release improvements for focused developer workflows"
+    - Supporting copy: "kobe 0.7.45 sharpens release improvements for focused developer workflows."
+    - Metadata chip: "Latest 0.7.45"
+    - Source chip: "CHANGELOG.md"
+    - Section label: "RELEASES"
+    
+    Chronological release list from CHANGELOG.md:
+    - Version heading: "v0.7.45"
+    - Change group label: "Patch Changes"
+    - Change: "8cebff3: fix: stop the activity watchdog from idling a still-running task mid-turn"
+    - Change: "The daemon's engine-activity badge armed a fixed ~10min lapse timer for any non-idle state and idled the task when it fired. But a long single agent turn emits only turn-start …..."
+    - Change: "c4037a8: refactor: back the daemon file-watch trigger with chokidar"
+    - Change: "Replace the hand-rolled node:fs.watch + manual polling safety-net in the"
+    - Change: "shared file-watch trigger with chokidar, which handles the cross-platform"
+    - Change: "fs-event edge cases (macOS rename/inode churn, rapid bursts, atomic saves)"
+    
+    - Version heading: "v0.7.44"
+    - Change group label: "Patch Changes"
+    - Change: "62dce57: fix: move node-pty to runtime dependencies so kobe web works on global installs"
+    - Change: "The kobe web PTY sidecar (dist/web-ui/pty-server.mjs) imports node-pty at"
+    - Change: "runtime, but it was declared under devDependencies, so a published `npm i -g"
+    - Change: "@sma1lboy/kobe never installed it and kobe web` crashed with"
+    - Change: "ERR_MODULE_NOT_FOUND: Cannot find package 'node-pty'. Moved it to"
+    - Change: "dependencies."
+    
+    - Version heading: "v0.7.43"
+    - Change group label: "Patch Changes"
+    - Change: "472bb27: Apply write backpressure on the daemon's per-client socket fan-out. Each subscribed client now writes through a bounded ClientWriter that pauses when socket.write()..."
+    - Change: "c526615: Consolidate git status --porcelain / git diff --numstat parsing into one rigorous shared module (src/lib/git-parsers.ts) with correct C-string unquoting. The file-tree..."
+    - Change: "fa52fc9: Harden engine transcript/credential file reads against OOM/hang. The Claude/Codex/Copilot history readers and account-detect now stat-bound a file before slurping it..."
+    - Change: "711134c: Snapshot the binding stack at keymap-dispatch entry so a handler that synchronously mounts/unmounts components (mutating the live stack via Solid mount/cleanup) can't..."
+    - Change: "c8b7fbd: Log dropped/malformed daemon events instead of silently swallowing them. When the daemon publishes a bad frame, RemoteOrchestrator.handleEvent now records one tagged..."
+    - Change: "9d5919a: Distinguish a gh/transport failure from a genuine "no PR yet" in the daemon's PR-status poller. A non-success gh pr view is now classified into a typed error..."
+    
+    - Version heading: "v0.7.42"
+    - Change group label: "Patch Changes"
+    - Change: "f677859: Wire Codex's hook mechanism for engine activity, mirroring Claude. Codex sessions now report session-start / turn-start / turn-complete and auto-adopt freshly-created..."
+    - Change: "b638bfe: kobe export --format table now aligns its columns by terminal display width instead of UTF-16 code-unit length, so a wide-glyph cell no longer shoves every column to its..."
+    - Change: "bf99f5c: Fix Ctrl+[ in the New Task dialog so it steps to the previous sub-tab instead of repeating Ctrl+]'s forward jump — with the three Existing / New Repo / Adopt tabs both..."
+    - Change: "6626b3a: File pane Changes tab now shows +/- line counts for renamed files. The pane merges git diff --numstat counts onto each git status row by path, but the numstat parser..."
+    - Change: "b7ea975: Add kobe completions bash|zsh|fish to generate shell completion scripts for the three major shells; scripts complete top-level subcommands and print to stdout for..."
+    - Change: "bedfb76: Make tasks.json writes safe across concurrent kobe processes. The TUI, daemon and CLI all write the same task manifest; previously each save serialized its whole..."
+    
+    The release notes page should occupy most of the image. Do not make the changelog a small side panel.
+    Avoid terminal-app hero screenshots unless they are tiny supporting motifs.
+    Visual mood: premium terminal workspace release
+    Motifs: dark terminal panes, task rail, tmux split layout, orange kobe accent, developer workflow board
+    Avoid: generic AI robot art, fake app screenshots, unreadable long changelog text, busy abstract gradients
+deliverables:
+  - id: "release-card"
+    size: [1200, 640]
+  - id: "release-square"
+    size: [1088, 1088]
+  - id: "release-poster"
+    size: [1088, 1920]
