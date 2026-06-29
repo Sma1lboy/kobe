@@ -3,7 +3,7 @@ owner:
   kind: "brand"
   id: "kobe"
 domain: "release"
-revision: 1
+revision: 2
 accepted:
   - id: "release-v0-7-45-poster-logfull-release-poster"
     kind: "artifact"
@@ -31,3 +31,30 @@ accepted:
       - "release-poster"
       - "accepted"
     notes: "Accepted by user review as the dense vertical release notes poster. Preserve the standalone editorial poster direction: no screenshots, no app UI container, log-heavy layout."
+  - id: "release-v0-7-45-last-4-fresh-release-poster"
+    kind: "artifact"
+    campaign: "release-v0-7-45-last-4-fresh"
+    asset_id: "release-poster"
+    domain: "release"
+    source_kind: "changelog"
+    asset_type: "release-poster"
+    style_family: "log-full-editorial"
+    path: "public/brand/release-v0-7-45-last-4-fresh/release-poster.png"
+    manifest: "public/brand/release-v0-7-45-last-4-fresh/manifest.json"
+    run_lock: ".harness/brand-studio/out/release-v0-7-45-last-4-fresh/run.lock.json"
+    checksum_sha256: "da0dbd14a8dac8d1a5b2c50fd681fe3d6ef8849ee6544708446a98e2418c46a1"
+    size:
+      - 1088
+      - 1920
+    mime_type: "image/png"
+    tags:
+      - "release"
+      - "poster"
+      - "editorial"
+      - "log-full"
+      - "no-screenshot"
+      - "four-version"
+      - "release-v0-7-45-last-4-fresh"
+      - "release-poster"
+      - "accepted"
+    notes: "Accepted by user review after color correction as the 4-version release notes poster. Preserve the approved release palette: ink/graphite text, warm paper, and rust/clay release accents with no blue-dominant treatment."

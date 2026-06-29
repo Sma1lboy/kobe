@@ -2,7 +2,7 @@ schema_version: "1.0"
 owner:
   kind: "brand"
   id: "kobe"
-revision: 5
+revision: 6
 assets:
   - id: "kobe-tui-actual"
     kind: "reference"
@@ -101,6 +101,30 @@ assets:
       - "log-full"
       - "no-screenshot"
       - "release-v0-7-45-poster-logfull"
+      - "release-poster"
+      - "accepted"
+  - id: "release-v0-7-45-last-4-fresh-release-poster"
+    path: "public/brand/release-v0-7-45-last-4-fresh/release-poster.png"
+    kind: "artifact"
+    campaign: "release-v0-7-45-last-4-fresh"
+    asset_id: "release-poster"
+    domain: "release"
+    source_kind: "changelog"
+    asset_type: "release-poster"
+    style_family: "log-full-editorial"
+    size:
+      - 1088
+      - 1920
+    mime_type: "image/png"
+    checksum_sha256: "da0dbd14a8dac8d1a5b2c50fd681fe3d6ef8849ee6544708446a98e2418c46a1"
+    tags:
+      - "release"
+      - "poster"
+      - "editorial"
+      - "log-full"
+      - "no-screenshot"
+      - "four-version"
+      - "release-v0-7-45-last-4-fresh"
       - "release-poster"
       - "accepted"
 patterns:
