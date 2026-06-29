@@ -3,34 +3,8 @@ owner:
   kind: "brand"
   id: "kobe"
 domain: "release"
-revision: 2
+revision: 3
 accepted:
-  - id: "release-v0-7-45-poster-logfull-release-poster"
-    kind: "artifact"
-    campaign: "release-v0-7-45-poster-logfull"
-    asset_id: "release-poster"
-    domain: "release"
-    source_kind: "changelog"
-    asset_type: "release-poster"
-    style_family: "log-full-editorial"
-    path: "public/brand/release-v0-7-45-poster-logfull/release-poster.png"
-    manifest: "public/brand/release-v0-7-45-poster-logfull/manifest.json"
-    run_lock: ".harness/brand-studio/out/release-v0-7-45-poster-logfull/run.lock.json"
-    checksum_sha256: "fe4914f564baf03ff374a2d3183b276bb0bc5a2b2a79371a0fd5beac830a2754"
-    size:
-      - 1088
-      - 1920
-    mime_type: "image/png"
-    tags:
-      - "release"
-      - "poster"
-      - "editorial"
-      - "log-full"
-      - "no-screenshot"
-      - "release-v0-7-45-poster-logfull"
-      - "release-poster"
-      - "accepted"
-    notes: "Accepted by user review as the dense vertical release notes poster. Preserve the standalone editorial poster direction: no screenshots, no app UI container, log-heavy layout."
   - id: "release-v0-7-45-last-4-fresh-release-poster"
     kind: "artifact"
     campaign: "release-v0-7-45-last-4-fresh"
