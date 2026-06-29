@@ -12,7 +12,7 @@
 > `packages/kobe-daemon/`. Unless a path is package-qualified, `src/...`,
 > `test/...`, and `scripts/...` paths in this doc are relative to
 > `packages/kobe/`. The branding workspace, `packages/branding/`, is the
-> Remotion render pipeline for the brand artwork in `docs/assets/brand/`
+> Remotion render pipeline for the brand artwork in `public/brand/`
 > and isn't covered here.
 
 ## Contents

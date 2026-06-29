@@ -71,7 +71,7 @@ kobe/
 │   │   │   ├── behavior/          # PTY-driven end-to-end (HARNESS.md)
 │   │   │   └── ...                # unit + integration
 │   │   └── scripts/
-│   └── branding/                  # Remotion → docs/assets/brand/
+│   └── branding/                  # Remotion → public/brand/
 ├── docs/                          # source-of-truth markdown
 │   ├── ARCHITECTURE.md
 │   ├── DESIGN.md

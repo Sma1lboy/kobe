@@ -2,16 +2,24 @@ schema_version: "1.0"
 owner:
   kind: "brand"
   id: "kobe"
-revision: 4
+revision: 5
 accepted:
   - id: "mars-kobe-mars-hero-2026-06-26"
     kind: "artifact"
     campaign: "mars-kobe"
     asset_id: "mars-hero"
-    path: "docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
-    manifest: "docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/manifest.json"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
+    path: "public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
+    manifest: "public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/manifest.json"
     run_lock: "packages/branding/.harness/out/mars-kobe/run.lock.json"
     checksum_sha256: "50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79"
+    size:
+      - 2400
+      - 1264
+    mime_type: "image/png"
     tags:
       - "mars-kobe"
       - "hero"
@@ -22,8 +30,12 @@ accepted:
     kind: "artifact"
     campaign: "mc-end-kobe"
     asset_id: "mc-end-hero"
-    path: "docs/assets/brand/mc-end-kobe/mc-end-hero.png"
-    manifest: "docs/assets/brand/mc-end-kobe/manifest.json"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
+    path: "public/brand/mc-end-kobe/mc-end-hero.png"
+    manifest: "public/brand/mc-end-kobe/manifest.json"
     run_lock: "packages/branding/.harness/out/mc-end-kobe/run.lock.json"
     checksum_sha256: "a310ec7f45b10991f7918fd12ea5768da1a089c171bf024f67dcea5b697fdb9a"
     size:
@@ -41,8 +53,12 @@ accepted:
     kind: "artifact"
     campaign: "release-v0-7-45-poster-logfull"
     asset_id: "release-poster"
-    path: "docs/assets/brand/release-v0-7-45-poster-logfull/release-poster.png"
-    manifest: "docs/assets/brand/release-v0-7-45-poster-logfull/manifest.json"
+    domain: "release"
+    source_kind: "changelog"
+    asset_type: "release-poster"
+    style_family: "log-full-editorial"
+    path: "public/brand/release-v0-7-45-poster-logfull/release-poster.png"
+    manifest: "public/brand/release-v0-7-45-poster-logfull/manifest.json"
     run_lock: "packages/branding/.harness/out/release-v0-7-45-poster-logfull/run.lock.json"
     checksum_sha256: "fe4914f564baf03ff374a2d3183b276bb0bc5a2b2a79371a0fd5beac830a2754"
     size:

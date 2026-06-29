@@ -28,18 +28,28 @@ campaign:
 
 artifacts:
   scratch: packages/branding/.harness/out
-  approved: docs/assets/brand
+  approved: public/brand
 
 state:
   plans: packages/branding/marketing/plans
-  assetIndex: packages/branding/marketing/asset-state.yaml
-  accepted: packages/branding/marketing/accepted.yaml
+  assetIndex: public/brand/asset-state.yaml
+  accepted: public/brand/accepted.yaml
   directoryStateFile: asset-state.yaml
+
+portfolios:
+  release:
+    accepted: public/brand/portfolios/release/accepted.yaml
+    assetState: public/brand/portfolios/release/asset-state.yaml
+    patterns: public/brand/portfolios/release/patterns.md
+  promo:
+    accepted: public/brand/portfolios/promo/accepted.yaml
+    assetState: public/brand/portfolios/promo/asset-state.yaml
+    patterns: public/brand/portfolios/promo/patterns.md
 
 sources:
   assetRoots:
     - packages/branding/marketing
-    - docs/assets/brand
+    - public/brand
   relatedRepos: []
 
 policy:

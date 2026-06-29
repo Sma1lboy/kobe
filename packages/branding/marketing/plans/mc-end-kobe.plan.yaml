@@ -6,8 +6,8 @@ objective: "Run a PR12 Brand Studio production-environment test for kobe in an M
 inputs:
   theme: "packages/branding/marketing/theme.md"
   campaign: "packages/branding/marketing/campaigns/mc-end-kobe.campaign.yaml"
-  asset_index: "packages/branding/marketing/asset-state.yaml"
-  accepted_corpus: "packages/branding/marketing/accepted.yaml"
+  asset_index: "public/brand/asset-state.yaml"
+  accepted_corpus: "public/brand/portfolios/promo/accepted.yaml"
   references:
     - "packages/branding/marketing/references/kobe-tui-actual.png"
     - "packages/branding/marketing/references/pane-grid.png"
@@ -29,5 +29,5 @@ acceptance_criteria:
 status: "accepted"
 accepted_asset:
   id: "mc-end-kobe-mc-end-hero"
-  path: "docs/assets/brand/mc-end-kobe/mc-end-hero.png"
+  path: "public/brand/mc-end-kobe/mc-end-hero.png"
   checksum_sha256: "a310ec7f45b10991f7918fd12ea5768da1a089c171bf024f67dcea5b697fdb9a"

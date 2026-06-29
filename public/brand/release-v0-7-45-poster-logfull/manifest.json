@@ -8,7 +8,7 @@
     {
       "id": "release-poster",
       "file": "release-poster.png",
-      "path": "docs/assets/brand/release-v0-7-45-poster-logfull/release-poster.png",
+      "path": "public/brand/release-v0-7-45-poster-logfull/release-poster.png",
       "source_path": "packages/branding/.harness/out/release-v0-7-45-poster-logfull/release-poster.png",
       "run_lock": "packages/branding/.harness/out/release-v0-7-45-poster-logfull/run.lock.json",
       "size": [

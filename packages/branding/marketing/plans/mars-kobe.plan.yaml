@@ -15,15 +15,15 @@ inputs:
     - packages/branding/marketing/references/pane-grid.png
 output:
   scratch: packages/branding/.harness/out/mars-kobe/mars-hero.png
-  approved: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
+  approved: public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
 generated:
   path: packages/branding/.harness/out/mars-kobe/mars-hero.png
   width: 2400
   height: 1264
   checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
 accepted:
-  path: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
-  manifest: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/manifest.json
+  path: public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
+  manifest: public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/manifest.json
   checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
 checks:
   - Brand Studio validate must pass.
