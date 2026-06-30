@@ -40,7 +40,7 @@ import { type VendorId, isTaskStatus } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { logDaemonError } from "./crash-log.ts"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
+import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd, matchTaskByWorktreePath } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import type { IssuesStore } from "./issues-store.ts"
 import {
@@ -439,6 +439,31 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         } catch (err) {
           logDaemonError("worktree-created", err)
           return { adopted: false }
+        }
+      },
+    },
+    {
+      name: "worktree.archiveRemoved",
+      async handle(payload, ctx) {
+        // A `kobe hook worktree-created` (global PostToolUse) reporting that a
+        // `git worktree remove <path>` just ran. Archive the task pinned to that
+        // exact worktree — the symmetric complement to `worktree.reconcile`
+        // (add a worktree → adopt a task; remove it → archive that task). We
+        // ARCHIVE, never delete: the task's history/branch survive, it just
+        // leaves the active board (and `setArchived` no-ops a `main` task, so a
+        // repo root can't be archived this way). Exact-path match (not
+        // longest-prefix) so removing an untracked worktree can't archive a
+        // parent main task. Idempotent: an already-archived or unmatched path is
+        // a harmless no-op.
+        const worktreePath = requireString(payload, "worktreePath")
+        const taskId = matchTaskByWorktreePath(ctx.orch.listTasks(), worktreePath)
+        if (!taskId) return { archived: false }
+        try {
+          await ctx.orch.setArchived(taskId, true)
+          return { archived: true, taskId }
+        } catch (err) {
+          logDaemonError("worktree-removed", err)
+          return { archived: false }
         }
       },
     },

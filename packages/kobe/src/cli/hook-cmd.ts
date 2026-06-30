@@ -82,8 +82,9 @@ function flagValue(argv: readonly string[], name: string): string | undefined {
   return undefined
 }
 
-/** The verb of the global `PostToolUse` (Bash) hook that auto-adopts a
- *  freshly-created worktree. Kept in sync with the engine adapter's
+/** The verb of the global `PostToolUse` (Bash) hook that keeps tasks in sync
+ *  with git-worktree lifecycle commands (adopt on `worktree add`, archive on
+ *  `worktree remove`). Kept in sync with the engine adapter's
  *  `WORKTREE_SYNC_MARKER` (the command substring the hook is installed with). */
 const WORKTREE_CREATED_VERB = "worktree-created"
 
@@ -130,10 +131,38 @@ export function parseWorktreeAddPath(command: string): string | undefined {
 }
 
 /**
+ * Extract the target path of a `git worktree remove` from a (possibly compound)
+ * shell command, or undefined when the command isn't a worktree-remove. Mirrors
+ * {@link parseWorktreeAddPath}: finds the first positional after the `worktree
+ * remove` tokens, skipping flags (all of `remove`'s flags — `-f`/`--force` — are
+ * valueless). Stops at a shell operator so a chained command can't be mistaken
+ * for the path.
+ */
+export function parseWorktreeRemovePath(command: string): string | undefined {
+  const tokens = tokenizeCommand(command)
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (tokens[i] !== "worktree" || tokens[i + 1] !== "remove") continue
+    let j = i + 2
+    while (j < tokens.length) {
+      const t = tokens[j]
+      if (t === "&&" || t === "||" || t === ";" || t === "|" || t === ">" || t === ">>") break
+      if (t.startsWith("-")) {
+        j += 1 // `git worktree remove` takes only valueless flags (-f/--force)
+        continue
+      }
+      return t // first positional after the flags is the worktree path
+    }
+  }
+  return undefined
+}
+
+/**
  * `kobe hook worktree-created` — the global `PostToolUse` (Bash) callback. Reads
- * the hook payload, and ONLY when the Bash command was a `git worktree add`,
- * asks the daemon (non-spawning) to adopt the new worktree as a task. Everything
- * is best-effort + swallowed: a hook must never fail the engine.
+ * the hook payload and asks the daemon (non-spawning) to keep tasks in sync with
+ * the two git-worktree lifecycle commands:
+ *  - `git worktree add <path>`    → adopt the new worktree as a task.
+ *  - `git worktree remove <path>` → archive the task pinned to that worktree.
+ * Everything is best-effort + swallowed: a hook must never fail the engine.
  */
 async function runWorktreeCreatedHook(): Promise<void> {
   const payload = await readStdinPayload()
@@ -141,14 +170,18 @@ async function runWorktreeCreatedHook(): Promise<void> {
   const toolInput = isPlainObject(payload.tool_input) ? payload.tool_input : {}
   const command = typeof toolInput.command === "string" ? toolInput.command : ""
   if (!command.includes("worktree")) return // cheap pre-filter: 99.9% of Bash calls bail here
-  const rawPath = parseWorktreeAddPath(command)
-  if (!rawPath) return
   const cwd = typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd()
-  const worktreePath = resolve(cwd, rawPath)
+  const addPath = parseWorktreeAddPath(command)
+  const removePath = addPath ? undefined : parseWorktreeRemovePath(command)
+  if (!addPath && !removePath) return
   const client = await connectIfRunning() // NON-spawning by contract
   if (!client) return
   try {
-    await client.request("worktree.reconcile", { cwd, worktreePath })
+    if (addPath) {
+      await client.request("worktree.reconcile", { cwd, worktreePath: resolve(cwd, addPath) })
+    } else if (removePath) {
+      await client.request("worktree.archiveRemoved", { worktreePath: resolve(cwd, removePath) })
+    }
   } finally {
     client.close()
   }
@@ -163,9 +196,9 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     await runHookSetup(rest)
     return
   }
-  // Creation-time worktree auto-adopt: the global `PostToolUse` (Bash) hook.
-  // Fires after EVERY Bash tool call machine-wide, so it must no-op fast — it
-  // only touches the daemon when the command was a `git worktree add`.
+  // Worktree lifecycle sync: the global `PostToolUse` (Bash) hook. Fires after
+  // EVERY Bash tool call machine-wide, so it must no-op fast — it only touches
+  // the daemon when the command was a `git worktree add`/`remove`.
   if (verb === WORKTREE_CREATED_VERB) {
     try {
       await runWorktreeCreatedHook()

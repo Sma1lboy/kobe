@@ -139,6 +139,7 @@ describe("daemon handler registry", () => {
       "worktree.discoverAdoptable",
       "worktree.adopt",
       "worktree.reconcile",
+      "worktree.archiveRemoved",
       "engine.reportEvent",
       "session.deliver",
       "note.file",
@@ -262,6 +263,42 @@ describe("daemon handler registry", () => {
           payload: { repoRoot: "/repo", exists: true, nextId: 2, issues: [] },
         },
       ])
+    })
+  })
+
+  describe("worktree.archiveRemoved", () => {
+    const TASKS = [
+      { id: "main", repo: "/repo", worktreePath: "/repo" },
+      { id: "sub", repo: "/repo", worktreePath: "/repo/.kobe/worktrees/demo" },
+    ]
+
+    it("archives the task whose worktree was removed", async () => {
+      const archived: Array<[string, boolean | undefined]> = []
+      const { ctx } = fakeCtx({
+        listTasks: () => TASKS,
+        setArchived: async (id: string, value?: boolean) => {
+          archived.push([id, value])
+        },
+      })
+      await expect(
+        dispatch("worktree.archiveRemoved", { worktreePath: "/repo/.kobe/worktrees/demo" }, ctx),
+      ).resolves.toEqual({ archived: true, taskId: "sub" })
+      expect(archived).toEqual([["sub", true]])
+    })
+
+    it("is a no-op when no task matches the removed worktree exactly", async () => {
+      const archived: unknown[] = []
+      const { ctx } = fakeCtx({
+        listTasks: () => TASKS,
+        setArchived: async (id: string) => {
+          archived.push(id)
+        },
+      })
+      // An untracked worktree under /repo must NOT archive the main task.
+      await expect(
+        dispatch("worktree.archiveRemoved", { worktreePath: "/repo/.kobe/worktrees/unknown" }, ctx),
+      ).resolves.toEqual({ archived: false })
+      expect(archived).toEqual([])
     })
   })
 
