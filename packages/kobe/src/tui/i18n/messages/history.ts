@@ -9,8 +9,8 @@ export const en = {
   loading: "loading…",
   sessionLabel: "Session",
   archivedTag: "ARCHIVED",
-  hint: "[ ] session · j/k scroll · ⏎ expand · q close",
-  hintExpanded: "[ ] session · j/k scroll · ⏎ collapse · q close",
+  hint: "[ ] session · j/k scroll · ⏎ expand",
+  hintExpanded: "[ ] session · j/k scroll · ⏎ collapse",
   role: {
     user: "USER",
     assistant: "ASSISTANT",
@@ -24,8 +24,8 @@ export const zh: typeof en = {
   loading: "加载中…",
   sessionLabel: "会话",
   archivedTag: "已归档",
-  hint: "[ ] 会话 · j/k 滚动 · ⏎ 展开 · q 关闭",
-  hintExpanded: "[ ] 会话 · j/k 滚动 · ⏎ 收起 · q 关闭",
+  hint: "[ ] 会话 · j/k 滚动 · ⏎ 展开",
+  hintExpanded: "[ ] 会话 · j/k 滚动 · ⏎ 收起",
   role: {
     user: "用户",
     assistant: "助手",

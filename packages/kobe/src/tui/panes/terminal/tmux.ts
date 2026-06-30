@@ -83,6 +83,7 @@ import {
   HIDDEN_TASKS_PANE_OPTION,
   engineLaunchLine,
   engineTabExitCleanup,
+  historyPaneKeepAlive,
   openUrlCommand,
   resolveRepoInitTimeoutSeconds,
   shellQuote,
@@ -716,6 +717,26 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(opts.title ? ["--title", opts.title] : []),
   ]
   const engineCmd = wrapEngineLaunch(shellQuoteArgv(historyPreview ? historyArgv : launchArgv), remoteKey, opts.cwd)
+  // The history preview is a PERSISTENT read-only pane: it re-launches itself on
+  // exit (and ignores SIGINT) instead of following the engine pane's exit path,
+  // which would drop to a shell and then spawn a LIVE engine via engine-tab-exit
+  // — the one thing an archived-task preview must never do. The live engine path
+  // keeps the per-repo init weave + engine-tab-exit cleanup verbatim.
+  const paneCommand = historyPreview
+    ? historyPaneKeepAlive(engineCmd)
+    : engineLaunchLine(
+        engineCmd,
+        {
+          initScript: remoteKey ? undefined : launchInit?.initScript,
+          markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+          // Operator escape hatch for an unusually slow (or fast-fail) init —
+          // clamped + defaulted by the resolver; unset keeps the 120s default.
+          timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
+        },
+        // Exiting the post-engine fallback shell tears this tab down → close it
+        // (or replace it with a fresh engine tab when it's the task's only tab).
+        engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
+      )
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
@@ -727,23 +748,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     "-P",
     "-F",
     "#{pane_id}",
-    // Weave the per-repo init script before the engine (once-per-worktree
-    // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(
-      engineCmd,
-      {
-        // No per-repo init script for the read-only history preview.
-        initScript: remoteKey || historyPreview ? undefined : launchInit?.initScript,
-        markerPath:
-          !remoteKey && !historyPreview && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
-        // Operator escape hatch for an unusually slow (or fast-fail) init —
-        // clamped + defaulted by the resolver; unset keeps the 120s default.
-        timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
-      },
-      // Exiting the post-engine fallback shell tears this tab down → close it
-      // (or replace it with a fresh engine tab when it's the task's only tab).
-      engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
-    ),
+    paneCommand,
   ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {
