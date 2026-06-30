@@ -1,5 +1,5 @@
-[submodule ".agents/skills/marketing-harness"]
+[submodule ".agents/skills/brand-studio"]
 	path = .agents/skills/brand-studio
-	url = https://github.com/Sma1lboy/brand-studio
-	branch = feat/brand-studio-stage-cli
+	url = https://github.com/CodeFox-Repo/brand-studio.git
+	branch = main
 	ignore = dirty
