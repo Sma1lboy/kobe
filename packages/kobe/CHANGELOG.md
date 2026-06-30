@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.53
+
+### Patch Changes
+
+- c91144e: fix: stop `invalid option: @kobe_zen` tmux banner on session-option polls
+
+  `getSessionOption` ran `show-options -v` without `-q`, so reading an unset
+  session-scoped user option (`@kobe_zen`, `@kobe_worktree`, …) made tmux error
+  with `invalid option: …` and the capturing wrapper surfaced it as a banner on
+  every zen/task-enter poll. Added the load-bearing `-q` (matching
+  `getServerOption`) so unset options resolve to `""` with exit 0 instead.
+
+- c91144e: fix: Tasks pane no longer strands a stale cursor on a jumped-to project
+
+  In a task-bound Tasks pane the selection is pinned to its own task (`onSelect`
+  no-ops), but clicking/Entering another project moved the pane's cursor to that
+  row before jumping the client away. Because the cursor-sync effect only re-runs
+  when `selectedId` changes — and a pinned pane's never does — the cursor stayed
+  stranded on the jumped-to row. Switching back then showed that stale cursor as a
+  second selection while the pinned project was the one actually open ("top-left
+  selection unreasonable" when clicking project A then B then back). Jump-away now
+  snaps the cursor back to the pinned row via a new `pinnedSelection` Sidebar prop.
+
+- c91144e: fix: a superseded project switch no longer steals the active task
+
+  Hardening alongside the cursor-stranding fix: when several project switches
+  overlap, a slow `enterTask` (cold session create) used to call `setActiveTask`
+  only after its session was built, so an earlier, slower switch could finish last
+  and clobber the shared active task. `enterTask` now takes an `isCurrent` guard
+  and the Tasks pane stamps each switch with a monotonic token, so a superseded
+  switch skips the disruptive `setActiveTask` + `switch-client` — the last switch
+  wins.
+
 ## 0.7.52
 
 ### Patch Changes
