@@ -23,6 +23,8 @@ export interface WebSettings {
   editorKind: EditorKind
   editorCustomCommand: string
   remoteProjects: boolean
+  /** Beta: open an archived task and preview its read-only engine history. */
+  archivedHistoryPreview: boolean
   autoStatus: boolean
   dispatcher: boolean
   defaultEngine: string
@@ -32,7 +34,11 @@ export interface WebSettings {
 export type WebSettingsPatch = Partial<
   Pick<
     WebSettings,
-    "remoteProjects" | "autoStatus" | "dispatcher" | "defaultEngine"
+    | "remoteProjects"
+    | "archivedHistoryPreview"
+    | "autoStatus"
+    | "dispatcher"
+    | "defaultEngine"
   >
 > & {
   engineUpdates?: Array<{ id: string; command?: string; label?: string }>

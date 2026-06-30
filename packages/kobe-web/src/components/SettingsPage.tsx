@@ -412,6 +412,16 @@ function DevSection({
           }
         />
         <ToggleRow
+          label="Archived history preview"
+          detail="Beta: click an archived task to preview its read-only engine history, even after its worktree is gone."
+          enabled={settings.archivedHistoryPreview}
+          onToggle={() =>
+            void patch({
+              archivedHistoryPreview: !settings.archivedHistoryPreview,
+            })
+          }
+        />
+        <ToggleRow
           label="Auto status flow"
           detail="Moves backlog tasks to in progress on turn start and injects the self-report protocol."
           enabled={settings.autoStatus}
