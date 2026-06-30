@@ -201,14 +201,24 @@ export function shellQuoteArgv(argv: readonly string[]): string {
  * with `"$SHELL"; <onExit>` so the wrapper survives the shell and can act on
  * its exit (e.g. close/replace this chat tab). Without `onExit` the behavior
  * is identical to before (`exec`), so Ops/Tasks/home panes are unaffected.
+ *
+ * Engine panes also get {@link SIGINT_GUARD}: a fast Ctrl+C while the engine is
+ * still starting (or while the per-repo init script runs) would otherwise SIGINT
+ * the whole `sh -c` process group and kill the wrapper BEFORE it reaches the
+ * fallback shell — closing the pane mid-init. The guard makes the wrapper ignore
+ * SIGINT (the engine child resets to the default, so Ctrl+C still interrupts it).
  */
+export const SIGINT_GUARD = "trap ':' INT; "
+
 export function keepAlive(cmd: string, onExit?: string): string {
   // Literal UTF-8 glyphs (⚠ →), not `\uXXXX`: POSIX `printf` doesn't
   // interpret `\u`, and the wrapper shell may be plain `sh`. Only `\n`
   // (newline) and `%s` (the exit code) are printf-interpreted. No stray
   // `%` in the prose, so the format string is safe.
   const banner = "\\n  ⚠ Engine exited (code %s). Check Settings → Engines and fix the launch command.\\n\\n"
-  const head = `${cmd}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; `
+  // Engine panes (onExit set) guard the wrapper against a startup Ctrl+C.
+  const guard = onExit ? SIGINT_GUARD : ""
+  const head = `${guard}${cmd}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; `
   // No `onExit`: exec the shell so it BECOMES the pane (original behavior).
   // With `onExit`: run the shell as a child, then run the cleanup when it exits.
   return onExit ? `${head}"\${SHELL:-/bin/sh}"; ${onExit}` : `${head}exec "\${SHELL:-/bin/sh}"`
@@ -360,18 +370,25 @@ export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch, onE
   if (!script) return tail
   const timeoutSeconds = resolveRepoInitTimeoutSeconds(init?.timeoutSeconds)
   const group = boundedInitGroup(script, timeoutSeconds)
+  // SIGINT_GUARD up front so a Ctrl+C DURING the init script can't kill the
+  // wrapper before it reaches the engine + fallback shell (keepAlive's own guard
+  // only covers from the engine command onward). Redundant with the tail's guard
+  // for the no-init path — harmless, `trap` is idempotent.
   if (init?.markerPath) {
     const marker = shQuote(init.markerPath)
     const markerDir = shQuote(markerDirOf(init.markerPath))
-    return [
-      `if [ ! -f ${marker} ]; then`,
-      group,
-      `if [ "$__kobe_init_rc" -eq 0 ]; then mkdir -p ${markerDir} && : > ${marker}; fi`,
-      "fi",
-      tail,
-    ].join("\n")
+    return (
+      SIGINT_GUARD +
+      [
+        `if [ ! -f ${marker} ]; then`,
+        group,
+        `if [ "$__kobe_init_rc" -eq 0 ]; then mkdir -p ${markerDir} && : > ${marker}; fi`,
+        "fi",
+        tail,
+      ].join("\n")
+    )
   }
-  return [group, tail].join("\n")
+  return SIGINT_GUARD + [group, tail].join("\n")
 }
 
 /** Parent dir of a marker path, without importing node:path into this pure module's hot path. */

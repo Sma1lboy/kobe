@@ -120,6 +120,14 @@ describe("keepAlive", () => {
     expect(out).not.toContain("exec ")
     expect(out).toContain("\"${SHELL:-/bin/sh}\"; kobe engine-tab-exit --session 'kobe-x'")
   })
+
+  test("engine panes (onExit) guard the wrapper against a startup Ctrl+C", () => {
+    // SIGINT must reach the engine child but NOT kill the wrapper, so a fast
+    // Ctrl+C during startup/init can't close the pane before the fallback shell.
+    expect(keepAlive("claude", "kobe engine-tab-exit --session 'kobe-x'").startsWith("trap ':' INT; ")).toBe(true)
+    // Non-engine panes keep their exact prior shape — no guard.
+    expect(keepAlive("claude")).not.toContain("trap ':' INT")
+  })
 })
 
 describe("engineTabExitCleanup", () => {
@@ -265,6 +273,12 @@ describe("engineLaunchLine", () => {
   test("no init script → plain keepAlive", () => {
     expect(engineLaunchLine(engine)).toBe(keepAlive(engine))
     expect(engineLaunchLine(engine, { initScript: "   " })).toBe(keepAlive(engine))
+  })
+
+  test("with an init script, the wrapper guards SIGINT from the very front", () => {
+    // A Ctrl+C during the per-repo init must not kill the wrapper before it
+    // reaches the engine + fallback shell — so the guard precedes the init block.
+    expect(engineLaunchLine(engine, { initScript: "export FOO=1" }).startsWith("trap ':' INT; ")).toBe(true)
   })
 
   test("init without a marker is watchdog-bounded and runs every launch", () => {
