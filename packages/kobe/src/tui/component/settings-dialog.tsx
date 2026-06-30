@@ -24,6 +24,7 @@ import {
 } from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
+import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
@@ -260,6 +261,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleDispatcher(): void {
     props.kv.set(DISPATCHER_KEY, !dispatcherOn())
+  }
+
+  // Experimental (beta): archived-task history preview (off by default) —
+  // opening an archived task shows a read-only `kobe history` pane in the
+  // engine slot instead of relaunching the engine. Shared with the web
+  // dashboard via the same state.json key.
+  function archivedHistoryOn(): boolean {
+    return props.kv.get(ARCHIVED_HISTORY_PREVIEW_KEY, false) === true
+  }
+
+  function toggleArchivedHistory(): void {
+    props.kv.set(ARCHIVED_HISTORY_PREVIEW_KEY, !archivedHistoryOn())
   }
 
   // Engines section: per-vendor launch command. Stored in the shared
@@ -515,6 +528,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     devRemoteProjects: () => toggleRemoteProjects(),
     devAutoStatus: () => toggleAutoStatus(),
     devDispatcher: () => toggleDispatcher(),
+    devArchivedHistory: () => toggleArchivedHistory(),
   }
 
   function activateBodyRow(): void {
@@ -705,6 +719,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleAutoStatus={toggleAutoStatus}
               dispatcherEnabled={dispatcherOn}
               toggleDispatcher={toggleDispatcher}
+              archivedHistoryEnabled={archivedHistoryOn}
+              toggleArchivedHistory={toggleArchivedHistory}
             />
           </Show>
         </box>

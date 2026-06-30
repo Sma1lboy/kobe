@@ -355,6 +355,8 @@ interface OpsFlags {
   status?: string
   /** tmux client name, used by `kobe resync-window`. */
   client?: string
+  /** Task title for the `kobe history` pane header. */
+  title?: string
 }
 
 /** Parse `kobe ops` / `kobe new-chattab` flags. */
@@ -405,6 +407,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--client") {
       flags.client = value
+      i++
+    } else if (flag === "--title") {
+      flags.title = value
       i++
     }
   }
@@ -791,6 +796,26 @@ async function main(): Promise<void> {
     // presents the version/release context and hands off to that updater.
     const { startUpdateHost } = await import("../tui/update/host.tsx")
     await startUpdateHost()
+    return
+  }
+  if (subcommand === "history") {
+    // The read-only engine-history pane (beta) — launched into the engine
+    // pane slot instead of the live engine when an archived task is opened
+    // with `experimental.archivedHistoryPreview` on. Its own process inside
+    // the tmux pane; reads the vendor transcript store by worktree path, so
+    // it works even when the worktree is gone. Dynamic import keeps opentui
+    // out of the other subcommands' startup graph.
+    const flags = parseOpsFlags(rest)
+    if (!flags.worktree) {
+      console.error("kobe history: --worktree <path> is required")
+      process.exit(2)
+    }
+    const { startHistoryHost } = await import("../tui/history/host.tsx")
+    await startHistoryHost({
+      worktree: flags.worktree,
+      vendor: coerceVendorId(flags.vendor),
+      title: flags.title,
+    })
     return
   }
   if (subcommand === "ops") {

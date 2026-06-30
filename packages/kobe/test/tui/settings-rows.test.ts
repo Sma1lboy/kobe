@@ -131,7 +131,7 @@ describe("engineRows", () => {
 })
 
 describe("devRows", () => {
-  it("with a daemon: reset, restart, remote-projects, auto-status, dispatcher", () => {
+  it("with a daemon: reset, restart, remote-projects, auto-status, dispatcher, archived-history", () => {
     const rows = devRows(true)
     expect(rows.map((r) => r.kind)).toEqual([
       "devReset",
@@ -139,18 +139,27 @@ describe("devRows", () => {
       "devRemoteProjects",
       "devAutoStatus",
       "devDispatcher",
+      "devArchivedHistory",
     ])
     expect(rowIndex(rows, "remote-projects")).toBe(2)
     expect(rowIndex(rows, "auto-status")).toBe(3)
     expect(rowIndex(rows, "dispatcher")).toBe(4)
+    expect(rowIndex(rows, "archived-history")).toBe(5)
   })
 
-  it("without a daemon: reset, remote-projects, auto-status, dispatcher", () => {
+  it("without a daemon: reset, remote-projects, auto-status, dispatcher, archived-history", () => {
     const rows = devRows(false)
-    expect(rows.map((r) => r.kind)).toEqual(["devReset", "devRemoteProjects", "devAutoStatus", "devDispatcher"])
+    expect(rows.map((r) => r.kind)).toEqual([
+      "devReset",
+      "devRemoteProjects",
+      "devAutoStatus",
+      "devDispatcher",
+      "devArchivedHistory",
+    ])
     expect(rowIndex(rows, "remote-projects")).toBe(1)
     expect(rowIndex(rows, "auto-status")).toBe(2)
     expect(rowIndex(rows, "dispatcher")).toBe(3)
+    expect(rowIndex(rows, "archived-history")).toBe(4)
   })
 })
 
@@ -182,8 +191,8 @@ describe("sectionRows / bodyRowCount", () => {
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)
     expect(bodyRowCount("feedback", inp)).toBe(3)
-    expect(bodyRowCount("dev", inp)).toBe(5)
-    expect(bodyRowCount("dev", { ...inp, hasDaemon: false })).toBe(4)
+    expect(bodyRowCount("dev", inp)).toBe(6)
+    expect(bodyRowCount("dev", { ...inp, hasDaemon: false })).toBe(5)
   })
 
   it("row ids are unique within every section", () => {

@@ -15,6 +15,7 @@
  *     imported, not a fresh start, so don't paste a first-run prompt into it.
  */
 
+import { homedir } from "node:os"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { worktreeUsable } from "../../exec/resolve.ts"
@@ -58,6 +59,34 @@ export async function ensureTaskSession(
 ): Promise<boolean> {
   const session = tmuxSessionName(task.id)
   if (await sessionExists(session)) return true
+
+  // Archived task + beta gate (experimental.archivedHistoryPreview): open a
+  // read-only history preview instead of relaunching the engine. We NEVER
+  // materialise the worktree here — the point is to preview without recreating
+  // a removed worktree — and the `kobe history` pane reads the vendor transcript
+  // store by the RECORDED path even when the dir is gone. Panes still need a
+  // usable spawn dir, so fall back worktree → repo → home while keying history
+  // by the recorded path.
+  const { archivedHistoryPreviewEnabled } = await import("../../state/archived-history.ts")
+  if (task.archived && archivedHistoryPreviewEnabled()) {
+    const { ensureSession } = await import("../panes/terminal/tmux.ts")
+    const recorded = task.worktreePath ?? ""
+    const spawnCwd = recorded && worktreeUsable(recorded) ? recorded : repo && worktreeUsable(repo) ? repo : homedir()
+    const ok = await ensureSession({
+      name: session,
+      cwd: spawnCwd,
+      command: interactiveEngineCommand(vendor),
+      taskId: task.id,
+      vendor,
+      repo,
+      archived: true,
+      archivedWorktree: recorded || spawnCwd,
+      title: task.title,
+    })
+    if (!ok) throw new HandoverError("session", `failed to start history session for ${task.id}`)
+    return false
+  }
+
   let worktree = task.worktreePath
   if (!worktree || !worktreeUsable(worktree)) {
     // Never-entered backlog task (or a stale recorded path): materialise the
