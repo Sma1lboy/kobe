@@ -1,0 +1,47 @@
+name: "release-v0-7-51-public-release"
+brief: "Release notes page for kobe-release-note-3 0.7.51: Faster task starts, deeper workspace control"
+style: "launch-hero"
+content:
+  headline: "Faster task starts, deeper workspace control"
+  subject: |-
+    Render a release notes page for kobe-release-note-3 0.7.51.
+    The release notes are the main subject, not a decorative side panel.
+    Composition: premium product changelog page with a header, metadata chips, and a chronological release list.
+    Use the copy language from the headline and changelog summaries; do not translate it.
+
+    Visible release notes structure:
+    - Page title/headline: "Faster task starts, deeper workspace control"
+    - Supporting copy: "kobe-release-note-3 0.7.51 sharpens faster task starts, deeper workspace control."
+    - Metadata chip: "Latest 0.7.51"
+    - Source chip: "CHANGELOG.md"
+    - Section label: "RELEASES"
+
+    Chronological release list from CHANGELOG.md:
+    - Version heading: "v0.7.51"
+    - Change group label: "Patch Changes"
+    - Change: "ab0828d: Own ellipsis truncation behind one code-point-safe module. Task titles, branch chips, and path tails previously each re-implemented their own slice-and-ellipsis logic..."
+
+    - Version heading: "v0.7.50"
+    - Change group label: "Patch Changes"
+    - Change: "be37c6b: Internal: the sidebar's "where should the cursor go when the selection or the list changes" rules (follow selection, clamp a dangling cursor when the selected task..."
+    - Change: "eeb660d: Entering a task now goes through one Handover owner, so every path fits the window before switching and inherits global zen. Previously the Tasks-pane switch, the..."
+    - Change: "179cee2: Internal: the workspace's intended layout geometry (Tasks-rail width + right-column split) now resolves through one owner instead of being..."
+    - Change: "26c056b: Internal: persisted boolean flags (zen on/off, zen keep-tasks, the experimental auto-status / dispatcher / remote-projects switches) now read through one..."
+    - Change: "98c1e7a: Internal: the ui-prefs wire decode (theme guard + the backward-compat defaults that let an older daemon's payload omit newer fields without resetting them) now lives in..."
+
+    - Version heading: "v0.7.49"
+    - Change group label: "Patch Changes"
+    - Change: "535756b: Clicking a row in the Tasks sidebar now always moves the cursor to it. After navigating away with j/k inside a task's own pane, a mouse click (even on the pane's own..."
+
+    The release notes page should occupy most of the image. Do not make the changelog a small side panel.
+    Avoid terminal-app hero screenshots unless they are tiny supporting motifs.
+    Visual mood: premium terminal workspace release
+    Motifs: dark terminal panes, task rail, tmux split layout, orange kobe accent, developer workflow board
+    Avoid: generic AI robot art, fake app screenshots, unreadable long changelog text, busy abstract gradients
+deliverables:
+  - id: "release-card"
+    size: [1200, 640]
+  - id: "release-square"
+    size: [1088, 1088]
+  - id: "release-poster"
+    size: [1088, 1920]

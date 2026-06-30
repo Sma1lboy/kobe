@@ -2,11 +2,11 @@ schema_version: "1.0"
 owner:
   kind: "brand"
   id: "kobe"
-revision: 3
+revision: 7
 assets:
   - id: "kobe-tui-actual"
     kind: "reference"
-    path: "packages/branding/marketing/references/kobe-tui-actual.png"
+    path: "brand/references/kobe-tui-actual.png"
     source: "workspace/products/kobe/kobe/references/kobe-tui-actual.png"
     width: 3016
     height: 1742
@@ -15,7 +15,7 @@ assets:
     status: "active"
   - id: "kobe-tui-clean"
     kind: "reference"
-    path: "packages/branding/marketing/references/kobe-tui-clean.png"
+    path: "brand/references/kobe-tui-clean.png"
     source: "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
     width: 3024
     height: 1632
@@ -24,8 +24,8 @@ assets:
     status: "active"
   - id: "pane-grid"
     kind: "reference"
-    path: "packages/branding/marketing/references/pane-grid.png"
-    source: "docs/assets/brand/pane-grid.png"
+    path: "brand/references/pane-grid.png"
+    source: "public/brand/pane-grid.png"
     width: 1200
     height: 800
     checksum_sha256: "19210406a83f329f5d4efdb7779f011e0dcdb472b849b4eb4b47c86bddffcc0c"
@@ -33,8 +33,8 @@ assets:
     status: "active"
   - id: "bracket-chip"
     kind: "reference"
-    path: "packages/branding/marketing/references/bracket-chip.png"
-    source: "docs/assets/brand/bracket-chip.png"
+    path: "brand/references/bracket-chip.png"
+    source: "public/brand/bracket-chip.png"
     width: 1200
     height: 630
     checksum_sha256: "8785ab52e8da0cc32c95aa4a7e6ed058c304c941b992c1cc30efef50cd89cd4a"
@@ -42,19 +42,31 @@ assets:
     status: "active"
   - id: "mars-kobe-mars-hero-2026-06-26"
     kind: "artifact"
-    path: "docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
+    path: "public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
     campaign: "mars-kobe"
     asset_id: "mars-hero"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
     width: 2400
     height: 1264
+    size:
+      - 2400
+      - 1264
+    mime_type: "image/png"
     checksum_sha256: "50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79"
     role: "accepted Mars field-computing hero image"
     status: "accepted"
   - id: "mc-end-kobe-mc-end-hero"
-    path: "docs/assets/brand/mc-end-kobe/mc-end-hero.png"
+    path: "public/brand/mc-end-kobe/mc-end-hero.png"
     kind: "artifact"
     campaign: "mc-end-kobe"
     asset_id: "mc-end-hero"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
     size:
       - 1536
       - 1024
@@ -68,6 +80,30 @@ assets:
       - "mc-end-hero"
     role: "accepted MC End field-computing hero image"
     status: "accepted"
+  - id: "release-v0-7-45-last-4-fresh-release-poster"
+    path: "public/brand/release-v0-7-45-last-4-fresh/release-poster.png"
+    kind: "artifact"
+    campaign: "release-v0-7-45-last-4-fresh"
+    asset_id: "release-poster"
+    domain: "release"
+    source_kind: "changelog"
+    asset_type: "release-poster"
+    style_family: "log-full-editorial"
+    size:
+      - 1088
+      - 1920
+    mime_type: "image/png"
+    checksum_sha256: "59de7e74d2fcd236be33a4f4d539f4d528a85bf074b054b3dd2d418eb5c3f3b3"
+    tags:
+      - "release"
+      - "poster"
+      - "editorial"
+      - "log-full"
+      - "no-screenshot"
+      - "four-version"
+      - "release-v0-7-45-last-4-fresh"
+      - "release-poster"
+      - "accepted"
 patterns:
   - id: "terminal-first"
     description: "The real kobe TUI should be the dominant readable product surface."

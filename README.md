@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/brand/bracket-chip.gif" alt="kobe" width="720" />
+  <img src="public/brand/bracket-chip.gif" alt="kobe" width="720" />
 </p>
 
 <p align="center">

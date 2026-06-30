@@ -1,7 +1,7 @@
 project:
   id: kobe
   root: .
-  marketingRoot: packages/branding/marketing
+  marketingRoot: brand
 
 organization:
   id: kobe
@@ -9,14 +9,17 @@ organization:
 
 skillDistribution:
   upstream: sma1lboy/brand-studio
-  fork: sma1lboy/brand-studio
+  fork: CodeFox-Repo/brand-studio
   scope: repo
-  ref: pr-12
+  ref: main
 
 theme:
-  path: packages/branding/marketing/theme.md
-  campaigns: packages/branding/marketing/campaigns
-  references: packages/branding/marketing/references
+  path: brand/theme.md
+  references: brand/references
+
+campaigns:
+  release: brand/campaigns/release
+  promo: brand/campaigns/promo
 
 skills:
   image: gpt-image
@@ -24,22 +27,32 @@ skills:
 
 campaign:
   name: mars-kobe
-  path: packages/branding/marketing/campaigns/mars-kobe.campaign.yaml
+  path: brand/campaigns/promo/mars-kobe.campaign.yaml
 
 artifacts:
-  scratch: packages/branding/.harness/out
-  approved: docs/assets/brand
+  scratch: .harness/brand-studio/out
+  approved: public/brand
 
 state:
-  plans: packages/branding/marketing/plans
-  assetIndex: packages/branding/marketing/asset-state.yaml
-  accepted: packages/branding/marketing/accepted.yaml
+  plans: brand/plans
+  assetIndex: public/brand/asset-state.yaml
+  accepted: public/brand/accepted.yaml
   directoryStateFile: asset-state.yaml
+
+portfolios:
+  release:
+    accepted: public/brand/portfolios/release/accepted.yaml
+    assetState: public/brand/portfolios/release/asset-state.yaml
+    patterns: public/brand/portfolios/release/patterns.md
+  promo:
+    accepted: public/brand/portfolios/promo/accepted.yaml
+    assetState: public/brand/portfolios/promo/asset-state.yaml
+    patterns: public/brand/portfolios/promo/patterns.md
 
 sources:
   assetRoots:
-    - packages/branding/marketing
-    - docs/assets/brand
+    - brand
+    - public/brand
   relatedRepos: []
 
 policy:

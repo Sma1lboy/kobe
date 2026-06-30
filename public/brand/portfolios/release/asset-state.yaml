@@ -1,0 +1,34 @@
+schema_version: "1.0"
+owner:
+  kind: "brand"
+  id: "kobe"
+domain: "release"
+revision: 3
+assets:
+  - id: "release-v0-7-45-last-4-fresh-release-poster"
+    path: "public/brand/release-v0-7-45-last-4-fresh/release-poster.png"
+    kind: "artifact"
+    campaign: "release-v0-7-45-last-4-fresh"
+    asset_id: "release-poster"
+    domain: "release"
+    source_kind: "changelog"
+    asset_type: "release-poster"
+    style_family: "log-full-editorial"
+    size:
+      - 1088
+      - 1920
+    mime_type: "image/png"
+    checksum_sha256: "59de7e74d2fcd236be33a4f4d539f4d528a85bf074b054b3dd2d418eb5c3f3b3"
+    tags:
+      - "release"
+      - "poster"
+      - "editorial"
+      - "log-full"
+      - "no-screenshot"
+      - "four-version"
+      - "release-v0-7-45-last-4-fresh"
+      - "release-poster"
+      - "accepted"
+patterns:
+  - id: "release-log-full-editorial"
+    description: "Release notes are the main subject: dense archive/poster layout, changelog rows, no screenshots unless explicitly requested."

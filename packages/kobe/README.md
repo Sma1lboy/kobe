@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/brand/bracket-chip.gif" alt="kobe" width="720" />
+  <img src="../../public/brand/bracket-chip.gif" alt="kobe" width="720" />
 </p>
 
 <p align="center">
@@ -69,7 +69,7 @@ talking to a fresh `claude` session inside it.
 ## A glimpse
 
 <p align="center">
-  <img src="docs/assets/brand/pane-grid.gif" alt="kobe pane layout" width="720" />
+  <img src="../../public/brand/pane-grid.gif" alt="kobe pane layout" width="720" />
 </p>
 
 ## What you can do

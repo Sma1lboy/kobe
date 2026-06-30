@@ -33,7 +33,9 @@ bun install
 This is a Bun-workspaces monorepo:
 
 - [`packages/kobe/`](./packages/kobe) — the TUI itself, published as `@sma1lboy/kobe`. Almost all work happens here.
-- [`packages/branding/`](./packages/branding) — Remotion render pipeline for brand assets. Private, never published.
+- [`brand/`](./brand) — Brand Studio source: theme, campaigns, references, and plans.
+- [`public/brand/`](./public/brand) — accepted public brand assets and portfolio state.
+- [`packages/branding/`](./packages/branding) — the private Remotion render package.
 
 Run package scripts from the root via `bun --filter @sma1lboy/kobe <script>`, or `cd packages/kobe` first. Most common scripts are also aliased at the root (`bun run dev`, `bun run test`, etc.).
 

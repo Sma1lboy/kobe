@@ -1,0 +1,53 @@
+schema_version: "1.0"
+owner:
+  kind: "brand"
+  id: "kobe"
+domain: "promo"
+revision: 1
+assets:
+  - id: "mars-kobe-mars-hero-2026-06-26"
+    path: "public/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
+    kind: "artifact"
+    campaign: "mars-kobe"
+    asset_id: "mars-hero"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
+    size:
+      - 2400
+      - 1264
+    mime_type: "image/png"
+    checksum_sha256: "50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79"
+    tags:
+      - "mars-kobe"
+      - "hero"
+      - "terminal-first"
+      - "accepted"
+  - id: "mc-end-kobe-mc-end-hero"
+    path: "public/brand/mc-end-kobe/mc-end-hero.png"
+    kind: "artifact"
+    campaign: "mc-end-kobe"
+    asset_id: "mc-end-hero"
+    domain: "promo"
+    source_kind: "campaign-brief"
+    asset_type: "hero"
+    style_family: "screen-first-field-scene"
+    size:
+      - 1536
+      - 1024
+    mime_type: "image/png"
+    checksum_sha256: "a310ec7f45b10991f7918fd12ea5768da1a089c171bf024f67dcea5b697fdb9a"
+    tags:
+      - "mc-end-kobe"
+      - "hero"
+      - "terminal-first"
+      - "accepted"
+      - "mc-end-hero"
+patterns:
+  - id: "screen-first-field-scene"
+    description: "Campaign-first promotional images may use field-computing scenes, but the real kobe product surface stays dominant and readable."
+  - id: "mars-field-terminal-hero"
+    description: "For Mars scenes, keep the terrain campaign-specific and preserve screen-first product hierarchy."
+  - id: "voxel-field-terminal-hero"
+    description: "For MC End-inspired voxel scenes, avoid official game marks and preserve kobe's terminal screen as the primary readable subject."
