@@ -20,6 +20,7 @@
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
+import { en as history, zh as historyZh } from "./messages/history"
 import { en as keys, zh as keysZh } from "./messages/keys"
 import { en as newTask, zh as newTaskZh } from "./messages/newTask"
 import { en as ops, zh as opsZh } from "./messages/ops"
@@ -28,7 +29,7 @@ import { en as settings, zh as settingsZh } from "./messages/settings"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as update, zh as updateZh } from "./messages/update"
 
-export const en = { settings, tasks, files, newTask, ops, update, quickTask, help, common, keys }
+export const en = { settings, tasks, files, newTask, ops, update, quickTask, help, history, common, keys }
 
 /**
  * Every locale must structurally match the English source of truth. The
@@ -46,6 +47,7 @@ export const zh: Messages = {
   update: updateZh,
   quickTask: quickTaskZh,
   help: helpZh,
+  history: historyZh,
   common: commonZh,
   keys: keysZh,
 }

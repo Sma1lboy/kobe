@@ -829,6 +829,8 @@ export function DevSettingsSection(
     toggleAutoStatus: () => void
     dispatcherEnabled: Accessor<boolean>
     toggleDispatcher: () => void
+    archivedHistoryEnabled: Accessor<boolean>
+    toggleArchivedHistory: () => void
   },
 ) {
   const { theme } = useTheme()
@@ -840,6 +842,8 @@ export function DevSettingsSection(
   const autoStatusIsCursor = () => props.level() === "body" && props.bodyRow() === autoStatusRow()
   const dispatcherRow = () => rowIndex(devRows(props.hasDaemon), "dispatcher")
   const dispatcherIsCursor = () => props.level() === "body" && props.bodyRow() === dispatcherRow()
+  const archivedHistoryRow = () => rowIndex(devRows(props.hasDaemon), "archived-history")
+  const archivedHistoryIsCursor = () => props.level() === "body" && props.bodyRow() === archivedHistoryRow()
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -957,6 +961,29 @@ export function DevSettingsSection(
             attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
           >
             {props.dispatcherEnabled() ? t("settings.dev.dispatcherOn") : t("settings.dev.dispatcherOff")}
+          </text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.dev.archivedHistoryHint")}
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={archivedHistoryIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(archivedHistoryRow())
+            props.toggleArchivedHistory()
+          }}
+        >
+          <text
+            fg={archivedHistoryIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.archivedHistoryEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.archivedHistoryEnabled()
+              ? t("settings.dev.archivedHistoryOn")
+              : t("settings.dev.archivedHistoryOff")}
           </text>
         </box>
       </box>

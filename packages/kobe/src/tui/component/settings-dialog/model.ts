@@ -61,6 +61,7 @@ export type SettingsRow =
   | { id: "remote-projects"; kind: "devRemoteProjects" }
   | { id: "auto-status"; kind: "devAutoStatus" }
   | { id: "dispatcher"; kind: "devDispatcher" }
+  | { id: "archived-history"; kind: "devArchivedHistory" }
 
 export type SettingsRowKind = SettingsRow["kind"]
 
@@ -148,6 +149,7 @@ export function devRows(hasDaemon: boolean): SettingsRow[] {
     { id: "remote-projects", kind: "devRemoteProjects" },
     { id: "auto-status", kind: "devAutoStatus" },
     { id: "dispatcher", kind: "devDispatcher" },
+    { id: "archived-history", kind: "devArchivedHistory" },
   ]
 }
 

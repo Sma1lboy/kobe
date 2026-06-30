@@ -116,6 +116,10 @@ export const en = {
       "Field-notes dispatcher: task sessions file one-line gotchas (`kobe api note`), the daemon forwards each to the repo's main session, and that session relays them to the in-flight tasks that benefit (`kobe api dispatch`). Web-hosted sessions receive the relays today.",
     dispatcherOn: "[x] Field-notes dispatcher (on)",
     dispatcherOff: "[ ] Field-notes dispatcher (off)",
+    archivedHistoryHint:
+      "Archived history preview (beta): opening an archived task shows a read-only `kobe history` pane (session selector + transcript) in the engine slot instead of relaunching the engine. Its transcript survives worktree removal because the engine store is keyed by the worktree path. Shared with the web dashboard.",
+    archivedHistoryOn: "[x] Archived history preview (on)",
+    archivedHistoryOff: "[ ] Archived history preview (off)",
   },
 }
 
@@ -230,5 +234,9 @@ export const zh: typeof en = {
       "现场笔记调度器：任务会话提交一行经验（`kobe api note`），daemon 将每条转发给仓库的主会话，主会话再把它们转达给能受益的进行中任务（`kobe api dispatch`）。目前由 Web 托管的会话会收到转达。",
     dispatcherOn: "[x] 现场笔记调度器 (开)",
     dispatcherOff: "[ ] 现场笔记调度器 (关)",
+    archivedHistoryHint:
+      "归档历史预览（beta）：打开已归档的任务时，引擎位置改为只读的 `kobe history` 面板（会话选择器 + 对话记录），而不是重新启动引擎。引擎记录按 worktree 路径存储，所以 worktree 被删除后历史仍然可读。与 Web 仪表盘共用同一开关。",
+    archivedHistoryOn: "[x] 归档历史预览 (开)",
+    archivedHistoryOff: "[ ] 归档历史预览 (关)",
   },
 }

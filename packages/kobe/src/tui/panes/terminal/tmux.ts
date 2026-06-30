@@ -54,6 +54,7 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { withClaudeSessionId, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
+import { archivedHistoryPreviewEnabled } from "@/state/archived-history"
 import type { EngineLaunchInit } from "@/state/repo-init"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
@@ -467,6 +468,23 @@ export interface EnsureSessionOpts {
    * applies it. Resolve via {@link resolveEngineLaunchInit}.
    */
   readonly launchInit?: EngineLaunchInit
+  /**
+   * The task is archived. With `experimental.archivedHistoryPreview` on, the
+   * create path launches `kobe history` (a read-only transcript view) into the
+   * engine pane slot INSTEAD of the live engine — no engine session, no init
+   * script, no status/dispatcher protocols. Absent/false keeps live-engine
+   * behavior verbatim.
+   */
+  readonly archived?: boolean
+  /**
+   * The worktree PATH the archived history pane keys the vendor transcript
+   * store by — distinct from {@link cwd} (where panes spawn) because a removed
+   * worktree's dir is gone, so panes must spawn in a usable fallback dir while
+   * history still reads the recorded path. Defaults to `cwd` when unset.
+   */
+  readonly archivedWorktree?: string
+  /** Task title — passed to the `kobe history` header when archived. */
+  readonly title?: string
 }
 
 /** Per-session-name in-flight lock — concurrent enters coalesce. */
@@ -651,10 +669,19 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // in KOB-233). Pane ids (`%N`) are server-global and immune to
   // `base-index`, so we always target by id.
   const inv = kobeCliInvocation()
+  // Archived task + beta gate (experimental.archivedHistoryPreview): replace
+  // the live engine with the read-only `kobe history` pane. There's no agent
+  // to instruct, so this path pins no engine session id and skips the init
+  // script + status/dispatcher protocols below. Read fresh so a Settings
+  // toggle needs no restart.
+  const historyPreview = opts.archived === true && archivedHistoryPreviewEnabled()
   // Force a known session id for a claude launch so this window can be mapped
   // to its transcript and auto-named from its first prompt (KOB). No-op for
-  // codex/copilot or a command that already pins its session.
-  const launch = withClaudeSessionId(opts.command, opts.vendor)
+  // codex/copilot or a command that already pins its session. Skipped entirely
+  // for the history preview (no live engine session).
+  const launch = historyPreview
+    ? { argv: [] as readonly string[], sessionId: undefined }
+    : withClaudeSessionId(opts.command, opts.vendor)
   // Status self-report protocol (web-kanban.md M5): bake this task's id into
   // the session's system prompt so the agent can move its own card to
   // in_review when done. No-op unless experimental.autoStatus is on.
@@ -673,11 +700,22 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     opts.vendor,
     dispatcherTaskId,
   )
+  // The history preview launches `kobe history --worktree <wt> --vendor <v>`;
+  // it reads the vendor transcript store by worktree path, so it renders even
+  // when the worktree is gone. Otherwise the normal engine launch.
   // Remote task: the engine runs over SSH on the remote host (`ssh … 'cd <wt>
   // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
   // remote. The repo's init script is deferred for remote (it runs locally
   // today — see docs/design/remote-projects.md phase 8), so it's skipped here.
-  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launchArgv), remoteKey, opts.cwd)
+  const historyArgv = [
+    ...inv,
+    "history",
+    "--worktree",
+    opts.archivedWorktree ?? opts.cwd,
+    ...(opts.vendor ? ["--vendor", opts.vendor] : []),
+    ...(opts.title ? ["--title", opts.title] : []),
+  ]
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(historyPreview ? historyArgv : launchArgv), remoteKey, opts.cwd)
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
@@ -694,8 +732,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     engineLaunchLine(
       engineCmd,
       {
-        initScript: remoteKey ? undefined : launchInit?.initScript,
-        markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+        // No per-repo init script for the read-only history preview.
+        initScript: remoteKey || historyPreview ? undefined : launchInit?.initScript,
+        markerPath:
+          !remoteKey && !historyPreview && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
         // Operator escape hatch for an unusually slow (or fast-fail) init —
         // clamped + defaulted by the resolver; unset keeps the 120s default.
         timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
