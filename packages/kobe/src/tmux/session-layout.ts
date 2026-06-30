@@ -189,7 +189,7 @@ export function shellQuoteArgv(argv: readonly string[]): string {
  * for a frame and then lands on a bare prompt — indistinguishable from
  * a healthy idle shell, so the user assumes kobe is broken. The banner
  * names the failing exit code and points at where to fix it (Settings →
- * Engines) and how to retry (`R` = relaunch). Exit 0 is unchanged: the
+ * Engines). Exit 0 is unchanged: the
  * pane drops straight to the shell with no banner, as before. `__rc` is
  * captured immediately so the embedded command (which may contain any
  * characters — it's already composed/quoted by callers) can't perturb
@@ -200,8 +200,7 @@ export function keepAlive(cmd: string): string {
   // interpret `\u`, and the wrapper shell may be plain `sh`. Only `\n`
   // (newline) and `%s` (the exit code) are printf-interpreted. No stray
   // `%` in the prose, so the format string is safe.
-  const banner =
-    "\\n  ⚠ Engine exited (code %s). Check Settings → Engines, fix the launch command, then press R to relaunch.\\n\\n"
+  const banner = "\\n  ⚠ Engine exited (code %s). Check Settings → Engines and fix the launch command.\\n\\n"
   return `${cmd}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}"`
 }
 
