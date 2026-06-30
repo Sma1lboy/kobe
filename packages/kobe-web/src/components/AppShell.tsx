@@ -36,6 +36,7 @@ import {
   setRailStatusFilter,
   useRailState,
 } from "../lib/rail-state.ts"
+import { fetchSettings } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { matchesTask, sortTasks } from "../lib/task-list.ts"
@@ -46,6 +47,7 @@ import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { isMixedEngineWorkspace, perRowEngineLabel } from "../lib/vendor.ts"
 import { webTransportTopBarView } from "../lib/web-transport.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
+import { ArchivedHistoryPeek } from "./ArchivedHistoryPeek.tsx"
 import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
@@ -148,15 +150,31 @@ function TaskRow({
 function ArchivedRow({
   task,
   onRestore,
+  onPreview,
 }: {
   task: Task
   onRestore: () => void
+  /** Beta: open the read-only history preview. Absent → title is plain text
+   *  (the gate is off), so the row keeps its restore-only behavior. */
+  onPreview?: () => void
 }) {
+  const label = task.title || task.branch
   return (
     <div className="group flex items-center gap-2 border-l-2 border-transparent px-3 py-1.5">
-      <span className="min-w-0 flex-1 truncate text-[12px] text-subtle">
-        {task.title || task.branch}
-      </span>
+      {onPreview ? (
+        <button
+          type="button"
+          onClick={onPreview}
+          title="Preview history"
+          className="min-w-0 flex-1 truncate text-left text-[12px] text-subtle transition-colors hover:text-fg"
+        >
+          {label}
+        </button>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-[12px] text-subtle">
+          {label}
+        </span>
+      )}
       <button
         type="button"
         onClick={onRestore}
@@ -322,6 +340,24 @@ function TaskRail({
       (err) => reportError(`restore "${task.title || task.branch}"`, err),
     )
   }
+
+  // Beta: archived-history preview gate (Settings → Experimental). Fetched once
+  // on mount — it lives in the per-user settings KV, not the live SSE snapshot —
+  // and the preview entry point stays hidden when off (default). Best-effort: a
+  // failed fetch just leaves the gate closed.
+  const [historyPreview, setHistoryPreview] = useState(false)
+  const [previewTask, setPreviewTask] = useState<Task | null>(null)
+  useEffect(() => {
+    let alive = true
+    void fetchSettings()
+      .then((s) => {
+        if (alive) setHistoryPreview(s.archivedHistoryPreview === true)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-bg">
@@ -527,11 +563,22 @@ function TaskRail({
             </button>
             {showArchived &&
               archivedTasks.map((t) => (
-                <ArchivedRow key={t.id} task={t} onRestore={() => restore(t)} />
+                <ArchivedRow
+                  key={t.id}
+                  task={t}
+                  onRestore={() => restore(t)}
+                  onPreview={
+                    historyPreview ? () => setPreviewTask(t) : undefined
+                  }
+                />
               ))}
           </div>
         )}
       </div>
+      <ArchivedHistoryPeek
+        task={previewTask}
+        onClose={() => setPreviewTask(null)}
+      />
       <div className="border-t border-line p-2">
         <button
           type="button"

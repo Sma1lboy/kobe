@@ -223,6 +223,7 @@ function settingsSnapshot(): Response {
     editorKind: normalizeEditorKind(state[EDITOR_KIND_KEY] ?? DEFAULT_EDITOR_KIND),
     editorCustomCommand: stringValue(state[EDITOR_CUSTOM_KEY]),
     remoteProjects: state["experimental.remoteProjects"] === true,
+    archivedHistoryPreview: state["experimental.archivedHistoryPreview"] === true,
     autoStatus: state[AUTO_STATUS_KEY] === true,
     dispatcher: state[DISPATCHER_KEY] === true,
     defaultEngine,
@@ -263,6 +264,7 @@ async function settingsPatch(req: Request): Promise<Response> {
       patch[EDITOR_KIND_KEY] = body.editorKind
     putIfString(patch, EDITOR_CUSTOM_KEY, body.editorCustomCommand)
     putIfBool(patch, "experimental.remoteProjects", body.remoteProjects)
+    putIfBool(patch, "experimental.archivedHistoryPreview", body.archivedHistoryPreview)
     putIfBool(patch, AUTO_STATUS_KEY, body.autoStatus)
     putIfBool(patch, DISPATCHER_KEY, body.dispatcher)
     putIfString(patch, "lastSelectedVendor", body.defaultEngine)
