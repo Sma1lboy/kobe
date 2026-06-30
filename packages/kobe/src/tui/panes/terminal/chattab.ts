@@ -46,6 +46,7 @@ import {
   OPS_PANE_ROLE,
   SHELL_PANE_ROLE,
   TASKS_PANE_ROLE,
+  engineTabExitCleanup,
   keepAlive,
   opsPaneCommand,
   shellQuote,
@@ -295,7 +296,12 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
     "#{pane_id}",
     // Re-wrap the engine over SSH for a remote task's chat tab (same engine the
     // task launched with), reusing the project's ControlMaster connection.
-    keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd)),
+    // Exiting the post-engine fallback shell closes this tab (or replaces it
+    // with a fresh engine tab when it's the task's only one).
+    keepAlive(
+      wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd),
+      engineTabExitCleanup(inheritedEnvPrefix(), inv, session),
+    ),
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return

@@ -563,6 +563,21 @@ async function main(): Promise<void> {
     await newChatTab(session, vendor)
     return
   }
+  if (subcommand === "engine-tab-exit") {
+    // Fired from an engine pane's keepAlive `onExit` (see engineTabExitCleanup)
+    // after the user exits the post-engine fallback shell. Closes this chat tab,
+    // or — when it's the task's only tab — replaces it with a fresh engine tab so
+    // the task session never goes empty. Reads the baked-in `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe engine-tab-exit: --session <name> is required")
+      process.exit(2)
+    }
+    const { engineTabExit } = await import("../tui/panes/terminal/layout-actions.ts")
+    await engineTabExit(session)
+    return
+  }
   if (subcommand === "kill-sessions") {
     // Dev/reset helper: tear down kobe's entire tmux server (all task
     // sessions on the `-L kobe` socket). Use after changing Tasks-pane /
@@ -612,11 +627,14 @@ async function main(): Promise<void> {
     return
   }
   if (subcommand === "heal-layout") {
-    // `window-resized` tmux hook handler: re-pin the resized session's Tasks-rail
-    // width + right-column geometry to the shared globals. Fixes the first-attach
-    // reflow (the first session is built before any client is attached, so tmux
-    // reflows its panes when `attach` lands the real terminal size) and any live
-    // terminal resize. No-op for the home/role-less session. Reads `--session`.
+    // `window-resized` + `pane-exited` tmux hook handler: re-pin the session's
+    // Tasks-rail width + right-column geometry to the shared globals. Fixes the
+    // first-attach reflow (the first session is built before any client is
+    // attached, so tmux reflows its panes when `attach` lands the real terminal
+    // size), any live terminal resize, and the pane-close reflow (exiting a
+    // workspace-split terminal hands its cells to a neighbour, knocking the rail /
+    // right column off their pinned geometry). No-op for the home/role-less
+    // session. Reads `--session`.
     //
     // A live resize fires this hook many times in a burst; `coalesceLayoutWork`
     // trailing-debounces so the burst collapses to ONE heal (no concurrent

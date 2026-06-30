@@ -848,6 +848,39 @@ async function closeChatTab(session: string, windowId: string): Promise<void> {
   await runTmux(["kill-window", "-t", windowId])
 }
 
+/**
+ * Tear down a chat tab whose engine the user fully exited (engine process
+ * exited → fallback shell → user typed `exit`). Invoked by `kobe engine-tab-exit`
+ * from that pane's own keepAlive `onExit` (see {@link engineTabExitCleanup}).
+ *
+ * Multi-tab: close this window; tmux moves the client to a sibling tab.
+ * Only tab: do NOT kill the task's last window (that would end the whole task
+ * session and orphan the client) — instead open a FRESH engine tab and then
+ * close the gutted one, so the task always has a live engine. The old window id
+ * is captured BEFORE `newChatTab` runs, because creating the new window makes it
+ * the active one; we only kill the old window once a new active window exists.
+ */
+export async function engineTabExit(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const oldWindowId = await activeWindowId(session)
+  if (!oldWindowId) return
+  if ((await activeSessionWindowCount(session)) > 1) {
+    await cleanupHiddenPanesForWindow(session, oldWindowId)
+    await runTmux(["kill-window", "-t", oldWindowId])
+    return
+  }
+  // Only tab → replace it. Dynamic import: chattab statically imports this
+  // module ({@link applyZenToNewWindow}), so a static import here would cycle.
+  const { newChatTab } = await import("./chattab")
+  await newChatTab(session)
+  // Kill the gutted window only if a fresh active window actually took over —
+  // otherwise newChatTab failed and we must not kill the task's last window.
+  if ((await activeWindowId(session)) !== oldWindowId) {
+    await cleanupHiddenPanesForWindow(session, oldWindowId)
+    await runTmux(["kill-window", "-t", oldWindowId])
+  }
+}
+
 export async function runLayoutAction(
   session: string,
   action: LayoutAction,
