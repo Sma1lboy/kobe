@@ -48,6 +48,7 @@ import {
   TASKS_WIDTH_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
+  engineTabExitCleanup,
   keepAlive,
   opsPaneCommand,
   shellQuoteArgv,
@@ -347,12 +348,13 @@ export async function relaunchEngineInAllWindows(
   const enginePanes = rows.filter((r) => r.role === "claude")
   if (enginePanes.length === 0) return "no-engine-pane"
   const localCwd = localSpawnCwd(cwd)
+  const cleanup = engineTabExitCleanup(inheritedEnvPrefix(), kobeCliInvocation(), session)
   const commands: (readonly string[])[] = []
   for (const pane of enginePanes) {
     // Fresh identity per window — a distinct `--session-id` UUID for claude so
     // each tab maps to its own transcript; `null` for codex/copilot.
     const launch = withClaudeSessionId(command, vendor)
-    const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd))
+    const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd), cleanup)
     // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
     // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
     commands.push(["respawn-pane", "-k", "-c", localCwd, "-t", pane.paneId, cmd])
@@ -535,6 +537,12 @@ export async function captureGlobalLayout(session: string): Promise<void> {
   if (rows.some((cols) => cols[5]?.trim() === "1")) return // zoomed → geometry is unreliable
   if (rows.some((cols) => (cols[6]?.trim() ?? "") !== "")) return // hidden shell → Ops is temporarily full-height
   if (rows.some((cols) => (cols[7]?.trim() ?? "") !== "")) return // hidden Tasks → remaining panes are temporarily full-width
+  // Shell pane CLOSED (user typed `exit` in the bottom-right terminal — it has no
+  // keepAlive, so it really dies) rather than hidden-by-toggle (caught above via
+  // HIDDEN_TERMINAL_PANE_OPTION). With the shell gone, Ops has grown to fill the
+  // right column, so its height reads back as ~100% — capturing that would poison
+  // the global Ops height for EVERY task until the next manual drag. Bail.
+  if (!rows.some((cols) => cols[0]?.trim() === "shell")) return
   const winW = Number.parseInt(rows[0][3]?.trim() ?? "", 10)
   const winH = Number.parseInt(rows[0][4]?.trim() ?? "", 10)
   const sets: (readonly string[])[] = []
@@ -568,9 +576,13 @@ export async function captureGlobalLayout(session: string): Promise<void> {
  *   - NOT zoomed — a zoomed pane reports the full-window grid, so the rail /
  *     right-column widths read back as garbage; capturing them would poison
  *     the global until the next real drag.
- *   - the full kobe role set is present (`tasks` + `ops`) — excludes the
- *     transient half-built layouts that pane splits emit during a session
- *     build / respawn, where the geometry isn't the user's to keep.
+ *   - the full kobe role set is present (`tasks` + `ops` + `shell`) — excludes
+ *     the transient half-built layouts that pane splits emit during a session
+ *     build / respawn, where the geometry isn't the user's to keep, AND the case
+ *     where the user closed the bottom-right shell pane via `exit` (it has no
+ *     keepAlive, so it dies): Ops then fills the right column and its height
+ *     would read back as ~100%, poisoning the global Ops height. The hidden-by-
+ *     toggle case is caught separately by the hidden-state columns below.
  *   - terminal is not hidden in a background tmux window — when hidden, the
  *     Ops pane temporarily fills the right column and would poison the saved
  *     Ops height.
@@ -593,7 +605,7 @@ export function shouldCaptureDrag(stdout: string): boolean {
   if (rows.some((cols) => (cols[2]?.trim() ?? "") !== "")) return false
   if (rows.some((cols) => (cols[3]?.trim() ?? "") !== "")) return false
   const roles = new Set(rows.map((cols) => cols[0]?.trim()))
-  return roles.has("tasks") && roles.has("ops")
+  return roles.has("tasks") && roles.has("ops") && roles.has("shell")
 }
 
 /**

@@ -81,6 +81,7 @@ import { type ObservedSession, decideSessionAction } from "@/tmux/session-decisi
 import {
   HIDDEN_TASKS_PANE_OPTION,
   engineLaunchLine,
+  engineTabExitCleanup,
   openUrlCommand,
   resolveRepoInitTimeoutSeconds,
   shellQuote,
@@ -690,13 +691,19 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     "#{pane_id}",
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(engineCmd, {
-      initScript: remoteKey ? undefined : launchInit?.initScript,
-      markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
-      // Operator escape hatch for an unusually slow (or fast-fail) init —
-      // clamped + defaulted by the resolver; unset keeps the 120s default.
-      timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
-    }),
+    engineLaunchLine(
+      engineCmd,
+      {
+        initScript: remoteKey ? undefined : launchInit?.initScript,
+        markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+        // Operator escape hatch for an unusually slow (or fast-fail) init —
+        // clamped + defaulted by the resolver; unset keeps the 120s default.
+        timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
+      },
+      // Exiting the post-engine fallback shell tears this tab down → close it
+      // (or replace it with a fresh engine tab when it's the task's only tab).
+      engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
+    ),
   ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {
@@ -832,6 +839,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // which reflows the rail the same way. `-b` runs it in the background so tmux
   // isn't blocked; `resize-pane` never changes the window size, so the heal
   // can't re-trigger the hook. `heal-layout` is a no-op for role-less sessions.
+  // Reused below for the `pane-exited` hook — a pane close reflows the rail the
+  // same way a resize does, and the same re-pin recovers it.
   const healLayoutCommand = `${envStr}${invStr} heal-layout --session '#{session_name}'`
   const healLayoutTmuxCommand = `run-shell -b ${shellQuote(healLayoutCommand)}`
   // `client-resized` companion to the `window-resized` heal. The pre-attach /
@@ -979,6 +988,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...clipboardBindings,
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
     ["set-hook", "-g", "client-resized", resyncWindowTmuxCommand],
+    // Re-pin the layout when a pane CLOSES too. Exiting a kobe-owned shell pane
+    // (the user types `exit` in a workspace-split terminal) destroys it and tmux
+    // gives its cells to a neighbour, reflowing the absolute-width Tasks rail and
+    // the right column off their pinned geometry — the same disorder a resize
+    // causes, but `window-resized` never fires (the window size is unchanged), so
+    // the only existing recovery was switching tasks (which heals on switch-in).
+    // The currently-focused task therefore stayed broken until a manual re-drag.
+    // `pane-exited` (tmux ≥ 2.2) fires on that close; `heal-layout` re-pins to the
+    // shared globals — the SAME idempotent, coalesced heal a switch runs. No-op
+    // for role-less sessions and for panes already at the target geometry.
+    ["set-hook", "-g", "pane-exited", healLayoutTmuxCommand],
     ["set-hook", "-g", "window-layout-changed", captureLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
