@@ -81,6 +81,7 @@ import { type ObservedSession, decideSessionAction } from "@/tmux/session-decisi
 import {
   HIDDEN_TASKS_PANE_OPTION,
   engineLaunchLine,
+  engineTabExitCleanup,
   openUrlCommand,
   resolveRepoInitTimeoutSeconds,
   shellQuote,
@@ -690,13 +691,19 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     "#{pane_id}",
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(engineCmd, {
-      initScript: remoteKey ? undefined : launchInit?.initScript,
-      markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
-      // Operator escape hatch for an unusually slow (or fast-fail) init —
-      // clamped + defaulted by the resolver; unset keeps the 120s default.
-      timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
-    }),
+    engineLaunchLine(
+      engineCmd,
+      {
+        initScript: remoteKey ? undefined : launchInit?.initScript,
+        markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+        // Operator escape hatch for an unusually slow (or fast-fail) init —
+        // clamped + defaulted by the resolver; unset keeps the 120s default.
+        timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
+      },
+      // Exiting the post-engine fallback shell tears this tab down → close it
+      // (or replace it with a fresh engine tab when it's the task's only tab).
+      engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
+    ),
   ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {

@@ -563,6 +563,21 @@ async function main(): Promise<void> {
     await newChatTab(session, vendor)
     return
   }
+  if (subcommand === "engine-tab-exit") {
+    // Fired from an engine pane's keepAlive `onExit` (see engineTabExitCleanup)
+    // after the user exits the post-engine fallback shell. Closes this chat tab,
+    // or — when it's the task's only tab — replaces it with a fresh engine tab so
+    // the task session never goes empty. Reads the baked-in `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe engine-tab-exit: --session <name> is required")
+      process.exit(2)
+    }
+    const { engineTabExit } = await import("../tui/panes/terminal/layout-actions.ts")
+    await engineTabExit(session)
+    return
+  }
   if (subcommand === "kill-sessions") {
     // Dev/reset helper: tear down kobe's entire tmux server (all task
     // sessions on the `-L kobe` socket). Use after changing Tasks-pane /

@@ -48,6 +48,7 @@ import {
   TASKS_WIDTH_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
+  engineTabExitCleanup,
   keepAlive,
   opsPaneCommand,
   shellQuoteArgv,
@@ -347,12 +348,13 @@ export async function relaunchEngineInAllWindows(
   const enginePanes = rows.filter((r) => r.role === "claude")
   if (enginePanes.length === 0) return "no-engine-pane"
   const localCwd = localSpawnCwd(cwd)
+  const cleanup = engineTabExitCleanup(inheritedEnvPrefix(), kobeCliInvocation(), session)
   const commands: (readonly string[])[] = []
   for (const pane of enginePanes) {
     // Fresh identity per window — a distinct `--session-id` UUID for claude so
     // each tab maps to its own transcript; `null` for codex/copilot.
     const launch = withClaudeSessionId(command, vendor)
-    const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd))
+    const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd), cleanup)
     // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
     // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
     commands.push(["respawn-pane", "-k", "-c", localCwd, "-t", pane.paneId, cmd])

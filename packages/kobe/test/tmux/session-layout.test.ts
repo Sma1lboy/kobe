@@ -23,6 +23,7 @@ import {
   clampPanePercent,
   clampTasksPaneWidth,
   engineLaunchLine,
+  engineTabExitCleanup,
   fallbackOpsScript,
   keepAlive,
   openUrlCommand,
@@ -107,6 +108,29 @@ describe("keepAlive", () => {
     const out = keepAlive("claude")
     expect(out).toContain('__rc=$?; [ "$__rc" -ne 0 ]')
     expect(out).toContain("Engine exited (code %s)")
+  })
+
+  test("the banner no longer promises a key that isn't wired", () => {
+    expect(keepAlive("claude")).not.toContain("press R")
+  })
+
+  test("with onExit: runs the shell as a child (no exec) then the cleanup", () => {
+    const out = keepAlive("claude", "kobe engine-tab-exit --session 'kobe-x'")
+    // No `exec` — the wrapper must survive the shell to run the cleanup after it.
+    expect(out).not.toContain("exec ")
+    expect(out).toContain("\"${SHELL:-/bin/sh}\"; kobe engine-tab-exit --session 'kobe-x'")
+  })
+})
+
+describe("engineTabExitCleanup", () => {
+  test("quotes the kobe invocation and session (a session name with a space is safe)", () => {
+    expect(engineTabExitCleanup("", ["kobe"], "kobe-my task")).toBe("'kobe' engine-tab-exit --session 'kobe-my task'")
+  })
+
+  test("carries the env prefix so cleanup hits the same home/daemon", () => {
+    expect(engineTabExitCleanup("KOBE_HOME_DIR='/h' ", ["kobe"], "kobe-x")).toBe(
+      "KOBE_HOME_DIR='/h' 'kobe' engine-tab-exit --session 'kobe-x'",
+    )
   })
 })
 

@@ -194,14 +194,37 @@ export function shellQuoteArgv(argv: readonly string[]): string {
  * captured immediately so the embedded command (which may contain any
  * characters — it's already composed/quoted by callers) can't perturb
  * it.
+ *
+ * `onExit` (engine panes only): a command to run AFTER the fallback shell
+ * itself exits — i.e. the user typed `exit` in the post-engine shell, fully
+ * tearing this tab's engine down. We replace the terminal `exec "$SHELL"`
+ * with `"$SHELL"; <onExit>` so the wrapper survives the shell and can act on
+ * its exit (e.g. close/replace this chat tab). Without `onExit` the behavior
+ * is identical to before (`exec`), so Ops/Tasks/home panes are unaffected.
  */
-export function keepAlive(cmd: string): string {
+export function keepAlive(cmd: string, onExit?: string): string {
   // Literal UTF-8 glyphs (⚠ →), not `\uXXXX`: POSIX `printf` doesn't
   // interpret `\u`, and the wrapper shell may be plain `sh`. Only `\n`
   // (newline) and `%s` (the exit code) are printf-interpreted. No stray
   // `%` in the prose, so the format string is safe.
   const banner = "\\n  ⚠ Engine exited (code %s). Check Settings → Engines and fix the launch command.\\n\\n"
-  return `${cmd}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}"`
+  const head = `${cmd}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; `
+  // No `onExit`: exec the shell so it BECOMES the pane (original behavior).
+  // With `onExit`: run the shell as a child, then run the cleanup when it exits.
+  return onExit ? `${head}"\${SHELL:-/bin/sh}"; ${onExit}` : `${head}exec "\${SHELL:-/bin/sh}"`
+}
+
+/**
+ * Build the engine pane's {@link keepAlive} `onExit` cleanup command: after the
+ * user exits the post-engine fallback shell (fully tearing this tab's engine
+ * down), run `kobe engine-tab-exit --session <name>`, which closes this chat
+ * tab — or, when it is the task's only tab, replaces it with a fresh engine tab
+ * so the task session never goes empty. `envPrefix` carries the inherited
+ * KOBE_* env (same reason the pane commands do); `inv` is the resolved kobe CLI
+ * argv. The session name is baked in (quoted) since it is known at build time.
+ */
+export function engineTabExitCleanup(envPrefix: string, inv: readonly string[], session: string): string {
+  return `${envPrefix}${inv.map(shellQuote).join(" ")} engine-tab-exit --session ${shellQuote(session)}`
 }
 
 /** Single-quote a string for safe interpolation into a `sh -c` program. */
@@ -331,8 +354,8 @@ function boundedInitGroup(script: string, timeoutSeconds: number): string {
  * launch instead of being marked done. A failed/timed-out init never blocks
  * the engine — the task always becomes enterable.
  */
-export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch): string {
-  const tail = keepAlive(engineCmd)
+export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch, onExit?: string): string {
+  const tail = keepAlive(engineCmd, onExit)
   const script = init?.initScript?.trim()
   if (!script) return tail
   const timeoutSeconds = resolveRepoInitTimeoutSeconds(init?.timeoutSeconds)
