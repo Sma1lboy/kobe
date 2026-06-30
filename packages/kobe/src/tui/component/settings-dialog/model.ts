@@ -51,6 +51,7 @@ export type SettingsRow =
   | { id: string; kind: "surface"; surface: "chattab" | "taskpanel" }
   | { id: "editor-kind"; kind: "editorKind" }
   | { id: "editor-custom"; kind: "editorCustom" }
+  | { id: "worktree-base"; kind: "worktreeBase" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: "feedback-title"; kind: "feedbackTitle" }
@@ -113,6 +114,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: surfaceRowId("taskpanel"), kind: "surface", surface: "taskpanel" },
     { id: "editor-kind", kind: "editorKind" },
     { id: "editor-custom", kind: "editorCustom" },
+    { id: "worktree-base", kind: "worktreeBase" },
   ]
 }
 

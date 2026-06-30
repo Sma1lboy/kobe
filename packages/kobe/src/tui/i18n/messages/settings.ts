@@ -54,6 +54,12 @@ export const en = {
     editorRow: "editor: < {kind} >  (enter to change)",
     editorCustom: "custom: {cmd}",
     editorCustomUnset: "(unset — enter to edit)",
+    worktree: "Worktree directory",
+    worktreeHint:
+      "Where new task worktrees are created. Default is `~/.kobe/worktrees`. Set an absolute path (`~` allowed) to keep worktrees elsewhere — e.g. a faster disk or outside a backed-up home. Applies to tasks created after the change; existing worktrees stay where they are.",
+    worktreeBase: "dir: {path}  (enter to change)",
+    worktreeBaseDefault: "(default — ~/.kobe/worktrees)",
+    worktreeBaseInvalid: "{path}  (not absolute — using default)",
   },
   engines: {
     title: "Launch command",
@@ -168,6 +174,12 @@ export const zh: typeof en = {
     editorRow: "编辑器: < {kind} >  (enter 切换)",
     editorCustom: "自定义: {cmd}",
     editorCustomUnset: "(未设置 — enter 编辑)",
+    worktree: "Worktree 目录",
+    worktreeHint:
+      "新任务的 worktree 创建在哪里。默认是 `~/.kobe/worktrees`。可设为绝对路径（支持 `~`）把 worktree 放到别处——例如更快的磁盘或主目录备份之外。仅对修改之后创建的任务生效；已有 worktree 保持原位。",
+    worktreeBase: "目录: {path}  (enter 修改)",
+    worktreeBaseDefault: "(默认 — ~/.kobe/worktrees)",
+    worktreeBaseInvalid: "{path}  (非绝对路径 — 使用默认)",
   },
   engines: {
     title: "启动命令",

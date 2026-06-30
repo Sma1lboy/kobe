@@ -27,6 +27,7 @@ import { submitFeedback } from "../../lib/feedback"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
+import { WORKTREE_BASE_PATH_KEY, isValidWorktreeBasePath } from "../../state/worktree-prefs"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor, resolvePersistedVendor } from "../../types/vendor"
@@ -425,6 +426,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
   }
 
+  // `worktree.basePath` is the directory new task worktrees are created
+  // under (default `~/.kobe/worktrees`). Stored raw (so a `~`-relative path
+  // displays as typed); the daemon expands + validates it at creation time
+  // and falls back to the default when blank/invalid. Read cross-process by
+  // orchestrator/worktree/paths.ts.
+  function worktreeBasePath(): string {
+    const v = props.kv.get(WORKTREE_BASE_PATH_KEY, "")
+    return typeof v === "string" ? v : ""
+  }
+  function worktreeBaseIsValid(): boolean {
+    return isValidWorktreeBasePath(worktreeBasePath())
+  }
+  async function editWorktreeBase(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, worktreeBasePath(), {
+      dialogTitle: "Worktree directory (absolute path, ~ allowed; blank = default ~/.kobe/worktrees)",
+      fieldLabel: "path",
+      submitLabel: "save",
+      allowEmpty: true,
+    })
+    if (next === undefined) return
+    // Store exactly what was typed (trimmed). Validation/expansion happens on
+    // read; an unusable value is reflected in the row label rather than
+    // silently swallowed, and never blocks task creation.
+    props.kv.set(WORKTREE_BASE_PATH_KEY, next.trim())
+  }
+
   async function sendFeedback(): Promise<void> {
     setFeedbackStatus("submitting...")
     try {
@@ -505,6 +532,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     surface: (row) => selectSurface(row.surface),
     editorKind: () => cycleEditorKind(),
     editorCustom: () => void editEditorCustom(),
+    worktreeBase: () => void editWorktreeBase(),
     engine: (row) => void editEngine(row.vendor),
     engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
     feedbackTitle: () => setBodyRow(0),
@@ -639,6 +667,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               cycleEditorKind={cycleEditorKind}
               editorCustomCommand={editorCustomCommand}
               editEditorCustom={() => void editEditorCustom()}
+              worktreeBasePath={worktreeBasePath}
+              worktreeBaseIsValid={worktreeBaseIsValid}
+              editWorktreeBase={() => void editWorktreeBase()}
             />
           </Show>
           <Show when={section() === "engines"}>

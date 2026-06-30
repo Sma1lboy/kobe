@@ -27,6 +27,7 @@ import path from "node:path"
 import { kobeStateDir } from "../../env.ts"
 import { execHostForRepo } from "../../exec/resolve.ts"
 import { getRemoteRepoConfig, isRemoteRepoKey } from "../../state/repos.ts"
+import { getConfiguredWorktreeBase } from "../../state/worktree-prefs.ts"
 
 /**
  * Directory under kobe's state dir where kobe stores all of its worktrees.
@@ -49,28 +50,54 @@ export const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
 ] as const
 
 /**
+ * The directory that holds every per-repo worktree root. Defaults to
+ * `<kobeStateDir>/worktrees`, but the user can point it elsewhere via the
+ * `worktree.basePath` setting (Settings → General → Worktree directory).
+ * The override is read FRESH from state.json on each call so a change made
+ * in the TUI takes effect for the next task the daemon creates without a
+ * restart. Unset/invalid falls back to the default.
+ */
+export function worktreesBaseDir(): string {
+  return getConfiguredWorktreeBase() ?? defaultWorktreesBaseDir()
+}
+
+/** The built-in worktrees root, ignoring any user override. */
+export function defaultWorktreesBaseDir(): string {
+  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
+}
+
+/**
  * Absolute path of the worktree root for a given repo.
  *
  * Example: `worktreeRootFor("/Users/x/proj")` →
- * `/Users/x/.kobe/worktrees/proj-a1b2c3d4e5f6`.
+ * `/Users/x/.kobe/worktrees/proj-a1b2c3d4e5f6` (or under the configured
+ * base when {@link worktreesBaseDir} is overridden).
  */
 export function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {
     throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
   }
-  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo))
+  return path.join(worktreesBaseDir(), repoWorktreeDirName(repo))
 }
 
 /**
  * Absolute paths of every worktree root kobe recognizes for `repo`.
  * Primary root is first; legacy roots follow for existing task records.
+ *
+ * When the base path is overridden, the built-in `<kobeStateDir>/worktrees`
+ * root is kept as a recognized (legacy) root so worktrees created before the
+ * override — and any the user points back at — stay discoverable, exactly
+ * like the repo-local compatibility roots below.
  */
 export function managedWorktreeRootsFor(repo: string): readonly string[] {
   if (!path.isAbsolute(repo)) {
     throw new Error(`managedWorktreeRootsFor: repo must be an absolute path, got: ${repo}`)
   }
+  const primary = worktreeRootFor(repo)
+  const builtinDefault = path.join(defaultWorktreesBaseDir(), repoWorktreeDirName(repo))
   return [
-    worktreeRootFor(repo),
+    primary,
+    ...(primary === builtinDefault ? [] : [builtinDefault]),
     ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath)),
   ]
 }
