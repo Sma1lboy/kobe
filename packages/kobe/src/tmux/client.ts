@@ -233,9 +233,17 @@ export async function setSessionOption(session: string, option: string, value: s
   await runTmux(["set-option", "-t", session, option, value])
 }
 
-/** Read a session-scoped user option. `""` when unset / session gone. */
+/**
+ * Read a session-scoped user option. `""` when unset / session gone.
+ *
+ * The `-q` flag is load-bearing (same reason as {@link getServerOption}):
+ * without it tmux *errors* on an unset user option (`invalid option:
+ * @kobe_zen`, exit 1), which the capturing wrapper surfaces as a banner on
+ * every poll before the option is first set. `-q` makes an unset option
+ * resolve to an empty string with exit 0 instead.
+ */
 export async function getSessionOption(session: string, option: string): Promise<string> {
-  const { code, stdout } = await runTmuxCapturing(["show-options", "-v", "-t", session, option])
+  const { code, stdout } = await runTmuxCapturing(["show-options", "-qv", "-t", session, option])
   return code === 0 ? stdout.trim() : ""
 }
 

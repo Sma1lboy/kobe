@@ -142,6 +142,17 @@ export type SidebarProps = {
    * affordance.
    */
   activateOnClick?: boolean
+  /**
+   * This pane's selection is PINNED to its own task — a task-bound Tasks pane
+   * no-ops {@link onSelect} so `selectedId` never follows clicks. Without this,
+   * clicking/Entering another project jumps the client away (via
+   * {@link onActivate}) but leaves THIS backgrounded pane's cursor stranded on
+   * the jumped-to row; switching back then shows that stale cursor as a second
+   * selection while the pinned task is the one actually open. When set, a
+   * jump-away snaps the cursor back to the pinned row. Off (home pane) keeps the
+   * old behaviour, where `selectedId` follows and the cursor tracks it.
+   */
+  pinnedSelection?: boolean
   focused?: Accessor<boolean>
   onDeleteRequest?: (taskId: string) => void
   /**
@@ -705,6 +716,21 @@ export function Sidebar(props: SidebarProps) {
     if (target) setView(target.view)
   }
 
+  // Activate (jump to) a row — the single funnel for both the keyboard `enter`
+  // path and the per-row `onMouseUp`. In a pinned-selection pane (see
+  // {@link SidebarProps.pinnedSelection}) a jump to ANOTHER task snaps this
+  // pane's cursor back to its pinned row so the backgrounded pane never strands
+  // a stale cursor that reads as a second selection. A jump to the pinned row
+  // itself, or any home pane, leaves the cursor where the click/keys put it.
+  const activateRow = (id: string): void => {
+    props.onActivate?.(id)
+    if (!props.pinnedSelection) return
+    const pinned = props.selectedId()
+    if (!pinned || id === pinned) return
+    const idx = flatIds().indexOf(pinned)
+    if (idx >= 0) setCursorIndex(idx)
+  }
+
   useSidebarBindings({
     focused: focusedAccessor,
     cursorIndex,
@@ -717,7 +743,7 @@ export function Sidebar(props: SidebarProps) {
       // clicks still go through `props.onSelect` only via the
       // per-row `onMouseUp`, so a stray click never auto-launches.
       props.onSelect(id)
-      props.onActivate?.(id)
+      activateRow(id)
     },
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
@@ -846,7 +872,7 @@ export function Sidebar(props: SidebarProps) {
             // couldn't bring the pointer back.
             setCursorIndex(flatIndex)
             props.onSelect(task.id)
-            if (props.activateOnClick) props.onActivate?.(task.id)
+            if (props.activateOnClick) activateRow(task.id)
           }}
           onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
           onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
@@ -1250,7 +1276,7 @@ export function Sidebar(props: SidebarProps) {
                       // a task-bound pane that no-ops onSelect to pin its row.
                       setCursorIndex(flatIndex)
                       props.onSelect(task.id)
-                      if (props.activateOnClick) props.onActivate?.(task.id)
+                      if (props.activateOnClick) activateRow(task.id)
                     }}
                     onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
                     onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}

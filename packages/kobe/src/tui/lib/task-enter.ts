@@ -105,6 +105,18 @@ export interface EnterTaskOpts {
   captureFrom?: boolean
   /** Refresh the caller's task mirror after a cold worktree materialise. */
   reload?: () => Promise<void> | void
+  /**
+   * Liveness guard against a superseded switch. Rapid project clicks start
+   * several `enterTask`s concurrently; a SLOW one (cold session create) can
+   * finish AFTER a faster, later click and then clobber the shared active task
+   * — yanking the home pane's selection back to the stale project while the
+   * cursor stays on the one you actually landed on (the "top-left selection
+   * unreasonable" bug). The caller passes a monotonic check; when it returns
+   * false this enter has been superseded, so we skip the two disruptive,
+   * globally-visible steps (`setActiveTask` + `switch-client`) and let the
+   * winning switch own focus. The session ensure/heal already done is harmless.
+   */
+  isCurrent?: () => boolean
 }
 
 /**
@@ -161,6 +173,9 @@ export async function enterTask(
   // you enter inherits zen and the fit accounts for the collapsed layout.
   const { syncSessionZen } = await import("../panes/terminal/layout-actions.ts")
   await syncSessionZen(session)
+  // A later switch superseded this one while its (cold) session was being
+  // built: don't fight the winner for the active task or the client focus.
+  if (opts.isCurrent && !opts.isCurrent()) return
   await orch?.setActiveTask(task.id).catch(() => {})
   await tmux.enterWindow(session)
 }

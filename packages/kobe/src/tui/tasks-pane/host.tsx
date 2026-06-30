@@ -140,6 +140,9 @@ function TasksShell(props: {
   const [selectedId, setSelectedId] = createSignal<string | null>(
     props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
   )
+  // Monotonic counter so a newer `switchTo` supersedes a slower in-flight one
+  // (see switchTo). Plain mutable int — nothing reactive observes it.
+  let switchToken = 0
 
   // Surface a user-action FAILURE as a red error toast. Under tmux's
   // alternate screen a bare `console.error` is invisible (it only reaches
@@ -553,6 +556,13 @@ function TasksShell(props: {
   async function switchTo(id: string): Promise<void> {
     const task = props.tasks().find((t) => t.id === id)
     if (!task) return
+    // Monotonic switch token: a newer switchTo supersedes any still-in-flight
+    // one. enterTask checks `isCurrent` before its disruptive setActive +
+    // switch-client, so a slow cold-session switch that finishes after a later
+    // click can't drag the active task (and thus the home pane's selection)
+    // back to the superseded project. (Fixes the "click A → click B → top-left
+    // selection sticks on A" race.)
+    const myToken = ++switchToken
     // The whole enter sequence (capture from-layout → ensure/heal session →
     // zen → setActive → fit + switch) lives in the Handover owner; the Tasks
     // pane opts into capture + heal and reloads its mirror after a cold
@@ -565,6 +575,7 @@ function TasksShell(props: {
         heal: true,
         captureFrom: true,
         reload: () => props.reload(),
+        isCurrent: () => switchToken === myToken,
       })
     } catch (err) {
       if (err instanceof HandoverError) {
@@ -621,6 +632,10 @@ function TasksShell(props: {
           // Internal flows (create→selectTask, move, delete-reselect) still
           // drive setSelectedId directly, so they're unaffected.
           onSelect={props.initialTaskId ? () => {} : setSelectedId}
+          // A task-bound pane pins its selection (onSelect no-ops): tell the
+          // Sidebar so a jump-away click/Enter snaps the cursor back to the
+          // pinned row instead of stranding it on the jumped-to project.
+          pinnedSelection={!!props.initialTaskId}
           onActivate={(id) => void switchTo(id)}
           activateOnClick
           // Brand-header version/update chip (replaces the footer system block).
