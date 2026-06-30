@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.55
+
+### Patch Changes
+
+- 8ce95b4: Beta (web): preview an archived task's read-only engine history. When a task is archived (e.g. after its git worktree is removed), its transcript still lives in the engine's vendor store keyed by the worktree path, so the existing `ChatTranscript` viewer can render it with no live engine. Behind a default-off experimental gate — Settings → Experimental → "Archived history preview" — which makes archived rows in the rail clickable, opening the transcript in a read-only drawer. Claude + Codex (and Copilot) are covered via the neutral `EngineHistoryReader`; no vendor formats are touched in the UI.
+- 91f70b1: Beta (TUI): preview an archived task's engine history in the engine pane. With the `experimental.archivedHistoryPreview` gate on (Settings → Dev → Experimental, shared with the web dashboard), opening an archived task launches a read-only `kobe history` pane — a session selector + scrollable transcript — into the engine pane slot instead of relaunching the engine. It reads the vendor transcript store (claude/codex/copilot) by the recorded worktree path, so it works even after `git worktree remove`; the worktree is never re-materialized, no init script or status/dispatcher protocols run, and panes fall back to the repo (or home) when the worktree dir is gone.
+
 ## 0.7.54
 
 ### Patch Changes
