@@ -118,6 +118,11 @@ export type DaemonRequestName =
   // daemon adopts the new worktree as a task the MOMENT it's created — no
   // engine session needed (the complement to session-start auto-adopt).
   | "worktree.reconcile"
+  // Removal-time auto-archive (KOB): the same `kobe hook worktree-created`
+  // (global PostToolUse) reports that a `git worktree remove <path>` just ran.
+  // The daemon archives the task whose worktree was that path — the symmetric
+  // complement to `worktree.reconcile` (remove a worktree → its task archives).
+  | "worktree.archiveRemoved"
   // Engine HOOK ingest (KOB): a `kobe hook <verb>` process reports a
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { parseWorktreeAddPath, readTextWithTimeout } from "../../src/cli/hook-cmd.ts"
+import { parseWorktreeAddPath, parseWorktreeRemovePath, readTextWithTimeout } from "../../src/cli/hook-cmd.ts"
 
 /**
  * `parseWorktreeAddPath` extracts the worktree path from a Bash command so the
@@ -46,6 +46,41 @@ describe("parseWorktreeAddPath", () => {
   it("stops at a shell operator so a chained command can't masquerade as the path", () => {
     // No positional path before `&&` → not a usable worktree-add target.
     expect(parseWorktreeAddPath("git worktree add -b x && echo done")).toBeUndefined()
+  })
+})
+
+/**
+ * `parseWorktreeRemovePath` is the removal-side mirror: the same global hook
+ * archives the task pinned to a worktree the MOMENT `git worktree remove` runs.
+ * It must find the path past `remove`'s (valueless) flags, ignore non-remove
+ * commands, and never be fooled by a chained command.
+ */
+describe("parseWorktreeRemovePath", () => {
+  it("returns undefined for commands that aren't a worktree-remove", () => {
+    expect(parseWorktreeRemovePath("git status")).toBeUndefined()
+    expect(parseWorktreeRemovePath("git worktree list")).toBeUndefined()
+    expect(parseWorktreeRemovePath("git worktree add foo")).toBeUndefined()
+  })
+
+  it("extracts a bare path", () => {
+    expect(parseWorktreeRemovePath("git worktree remove .claude/worktrees/lynx")).toBe(".claude/worktrees/lynx")
+  })
+
+  it("skips boolean flags like -f / --force", () => {
+    expect(parseWorktreeRemovePath("git worktree remove -f ../wt")).toBe("../wt")
+    expect(parseWorktreeRemovePath("git worktree remove --force /tmp/wt")).toBe("/tmp/wt")
+  })
+
+  it("strips quotes around the path", () => {
+    expect(parseWorktreeRemovePath('git worktree remove "my worktrees/lynx"')).toBe("my worktrees/lynx")
+  })
+
+  it("finds the worktree remove inside a compound command", () => {
+    expect(parseWorktreeRemovePath("cd /repo && git worktree remove -f wt")).toBe("wt")
+  })
+
+  it("stops at a shell operator so a chained command can't masquerade as the path", () => {
+    expect(parseWorktreeRemovePath("git worktree remove -f && echo done")).toBeUndefined()
   })
 })
 

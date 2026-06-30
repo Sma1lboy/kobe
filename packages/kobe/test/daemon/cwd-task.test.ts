@@ -1,5 +1,10 @@
 import path from "node:path"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "@sma1lboy/kobe-daemon/daemon/cwd-task"
+import {
+  findAdoptableWorktree,
+  matchRepoByCwd,
+  matchTaskByCwd,
+  matchTaskByWorktreePath,
+} from "@sma1lboy/kobe-daemon/daemon/cwd-task"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH, worktreeRootFor } from "../../src/orchestrator/worktree/paths.ts"
 
@@ -62,6 +67,31 @@ describe("matchTaskByCwd", () => {
   it("tolerates a trailing slash on either side", () => {
     expect(matchTaskByCwd([{ id: "z", worktreePath: "/repo/wt/" }], "/repo/wt")).toBe("z")
     expect(matchTaskByCwd([{ id: "z", worktreePath: "/repo/wt" }], "/repo/wt/")).toBe("z")
+  })
+})
+
+describe("matchTaskByWorktreePath", () => {
+  const tasks = [
+    { id: "main", repo: "/repo", worktreePath: "/repo" },
+    { id: "sub", repo: "/repo", worktreePath: "/repo/.claude/worktrees/snipe" },
+  ]
+
+  it("matches a task whose worktree IS exactly the path", () => {
+    expect(matchTaskByWorktreePath(tasks, "/repo/.claude/worktrees/snipe")).toBe("sub")
+  })
+
+  it("does NOT match a parent on a path prefix (unlike matchTaskByCwd)", () => {
+    // Removing an untracked worktree under /repo must not archive the main task.
+    expect(matchTaskByWorktreePath(tasks, "/repo/.claude/worktrees/unknown")).toBeUndefined()
+  })
+
+  it("tolerates a trailing slash on either side", () => {
+    expect(matchTaskByWorktreePath([{ id: "z", worktreePath: "/repo/wt/" }], "/repo/wt")).toBe("z")
+    expect(matchTaskByWorktreePath([{ id: "z", worktreePath: "/repo/wt" }], "/repo/wt/")).toBe("z")
+  })
+
+  it("ignores tasks without a worktree path", () => {
+    expect(matchTaskByWorktreePath([{ id: "x" }, { id: "y", worktreePath: null }], "/repo/wt")).toBeUndefined()
   })
 })
 
