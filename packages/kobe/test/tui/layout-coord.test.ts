@@ -118,6 +118,14 @@ describe("shouldCaptureDrag", () => {
     expect(shouldCaptureDrag("tasks\t0\nclaude\t0\n")).toBe(false)
   })
 
+  test("skips when the shell pane has closed via `exit` (Ops now fills the right column)", () => {
+    // tasks + ops + engine present, but the bottom-right shell pane is gone and
+    // NO hidden-state flag is set (a real `exit`, not a toggle). Capturing here
+    // would persist Ops at ~100% height into the global, squashing the terminal
+    // for every task — the regression this guard prevents.
+    expect(shouldCaptureDrag("tasks\t0\nclaude\t0\nops\t0\n")).toBe(false)
+  })
+
   test("skips while the terminal is hidden in a background window", () => {
     expect(shouldCaptureDrag("tasks\t0\t%9\nclaude\t0\t%9\nops\t0\t%9\n")).toBe(false)
   })
