@@ -25,6 +25,7 @@ import {
   engineLaunchLine,
   engineTabExitCleanup,
   fallbackOpsScript,
+  historyPaneKeepAlive,
   keepAlive,
   openUrlCommand,
   opsPaneCommand,
@@ -127,6 +128,22 @@ describe("keepAlive", () => {
     expect(keepAlive("claude", "kobe engine-tab-exit --session 'kobe-x'").startsWith("trap ':' INT; ")).toBe(true)
     // Non-engine panes keep their exact prior shape — no guard.
     expect(keepAlive("claude")).not.toContain("trap ':' INT")
+  })
+})
+
+describe("historyPaneKeepAlive", () => {
+  test("re-launches the command in a loop and never drops to a shell or engine", () => {
+    const out = historyPaneKeepAlive("kobe history --worktree /wt --vendor claude")
+    // Persistent like the Ops pane: re-run forever, bounded by a sleep.
+    expect(out).toBe("trap '' INT; while :; do kobe history --worktree /wt --vendor claude; sleep 1; done")
+    // The bug being fixed: the archived preview must NOT reach the engine pane's
+    // exit path, which drops to a shell and then spawns a live engine.
+    expect(out).not.toContain("${SHELL")
+    expect(out).not.toContain("engine-tab-exit")
+  })
+
+  test("ignores SIGINT so a Ctrl+C can't collapse the read-only pane", () => {
+    expect(historyPaneKeepAlive("kobe history").startsWith("trap '' INT; ")).toBe(true)
   })
 })
 

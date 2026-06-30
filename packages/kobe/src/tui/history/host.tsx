@@ -309,11 +309,13 @@ function HistoryScreen(props: HistoryHostArgs) {
     setSelected((i) => Math.min(Math.max(i + delta, 0), n - 1))
   }
 
+  // No self-close binding: this read-only preview replaces the engine pane of an
+  // ARCHIVED task. Its pane re-launches it on exit (historyPaneKeepAlive), so a
+  // quit would just reload the preview — and the original behavior was worse: it
+  // dropped to a shell that, on exit, spawned a live engine via engine-tab-exit.
+  // The preview is left like any other pane — the Tasks rail or Ctrl+Q.
   useBindings(() => ({
     bindings: [
-      { key: "q", cmd: () => process.exit(0) },
-      { key: "escape", cmd: () => process.exit(0) },
-      { key: "ctrl+c", cmd: () => process.exit(0) },
       { key: "j", cmd: () => scrollBy(SCROLL_STEP) },
       { key: "k", cmd: () => scrollBy(-SCROLL_STEP) },
       { key: "down", cmd: () => scrollBy(SCROLL_STEP) },

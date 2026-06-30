@@ -225,6 +225,27 @@ export function keepAlive(cmd: string, onExit?: string): string {
 }
 
 /**
+ * Keep-alive wrapper for the read-only archived-history preview pane (`kobe
+ * history`, shown in the engine pane slot when an archived task is opened with
+ * `experimental.archivedHistoryPreview` on).
+ *
+ * This pane must NEVER follow the engine pane's {@link keepAlive} `onExit` path:
+ * that drops to a fallback shell and then runs `kobe engine-tab-exit`, which on
+ * a task's ONLY tab opens a fresh chat tab via `newChatTab` — spawning a LIVE
+ * ENGINE. Relaunching a real engine on an ARCHIVED task is precisely what the
+ * preview exists to avoid (no engine spawn, no worktree re-materialize). So the
+ * preview is a PERSISTENT pane like the Ops fallback: SIGINT is ignored and
+ * `kobe history` is re-launched in a guarded loop, so closing/quitting the
+ * preview can never collapse the pane into a shell or an engine. The user leaves
+ * the preview the same way they leave any pane — the Tasks rail or Ctrl+Q — not
+ * by exiting this pane. The `sleep 1` bounds a re-launch spin if the history
+ * host can't boot.
+ */
+export function historyPaneKeepAlive(cmd: string): string {
+  return `trap '' INT; while :; do ${cmd}; sleep 1; done`
+}
+
+/**
  * Build the engine pane's {@link keepAlive} `onExit` cleanup command: after the
  * user exits the post-engine fallback shell (fully tearing this tab's engine
  * down), run `kobe engine-tab-exit --session <name>`, which closes this chat
