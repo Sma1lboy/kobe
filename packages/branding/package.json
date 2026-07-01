@@ -22,10 +22,10 @@
     "render:all": "mkdir -p ../../docs/assets/brand && bun run stills:all && bun run gifs:all"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.482",
+    "@remotion/cli": "4.0.484",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "remotion": "4.0.482"
+    "remotion": "4.0.484"
   },
   "devDependencies": {
     "@types/react": "19.0.0",
