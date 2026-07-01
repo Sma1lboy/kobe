@@ -9,11 +9,9 @@ import { fetchDiff } from "../src/lib/diff.ts"
 function mockFetch(impl: (url: string) => { ok: boolean; body: unknown }) {
   vi.stubGlobal("fetch", (url: string) => {
     const { ok, body } = impl(url)
-    return Promise.resolve({
-      ok,
-      status: ok ? 200 : 500,
-      json: () => Promise.resolve(body),
-    } as Response)
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { status: ok ? 200 : 500 }),
+    )
   })
 }
 
@@ -24,7 +22,7 @@ describe("fetchDiff", () => {
     let seen = ""
     mockFetch((url) => {
       seen = url
-      return { ok: true, body: { files: [], raw: "" } }
+      return { ok: true, body: { files: [] } }
     })
     await fetchDiff("/abs/wt")
     expect(seen).toContain("worktreePath=%2Fabs%2Fwt")
@@ -36,16 +34,16 @@ describe("fetchDiff", () => {
     let seen = ""
     mockFetch((url) => {
       seen = url
-      return { ok: true, body: { files: [], raw: "" } }
+      return { ok: true, body: { files: [] } }
     })
     await fetchDiff("/wt", { namesOnly: true, path: "src/a.ts" })
     expect(seen).toContain("namesOnly=1")
     expect(seen).toContain("path=src%2Fa.ts")
   })
 
-  it("normalizes a sparse response to files[] + raw", async () => {
+  it("normalizes a sparse response to files[]", async () => {
     mockFetch(() => ({ ok: true, body: {} }))
-    expect(await fetchDiff("/wt")).toEqual({ files: [], raw: "" })
+    expect(await fetchDiff("/wt")).toEqual({ files: [] })
   })
 
   it("throws the server error message on a JSON error", async () => {
