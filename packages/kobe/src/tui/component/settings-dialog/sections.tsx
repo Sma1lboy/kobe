@@ -473,13 +473,8 @@ export function GeneralSettingsSection(
           }}
         >
           <text
-            fg={
-              isWorktreeBaseRow()
-                ? theme.selectedListItemText
-                : props.worktreeBasePath().trim()
-                  ? theme.text
-                  : theme.textMuted
-            }
+            fg={isWorktreeBaseRow() ? theme.selectedListItemText : theme.accent}
+            attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
             {t("settings.general.worktreeBase", {
