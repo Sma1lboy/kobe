@@ -21,12 +21,8 @@ function mockFetch(resp: Resp | ((url: string) => Resp)) {
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
     lastReq = { url, init }
     const r = typeof resp === "function" ? resp(url) : resp
-    return Promise.resolve({
-      ok: r.ok,
-      status: r.status ?? (r.ok ? 200 : 500),
-      json: () => Promise.resolve(r.json ?? {}),
-      text: () => Promise.resolve(r.text ?? ""),
-    } as Response)
+    const body = r.text ?? (r.json !== undefined ? JSON.stringify(r.json) : "")
+    return Promise.resolve(new Response(body, { status: r.status ?? (r.ok ? 200 : 500) }))
   })
 }
 
