@@ -32,5 +32,3 @@ export const TOP_LEVEL_SUBCOMMANDS = [
   "reload",
   "kill-sessions",
 ] as const
-
-export type TopLevelSubcommand = (typeof TOP_LEVEL_SUBCOMMANDS)[number]

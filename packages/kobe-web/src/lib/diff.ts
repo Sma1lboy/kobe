@@ -21,8 +21,6 @@ export interface DiffFile {
 
 export interface DiffResult {
   files: DiffFile[]
-  /** Concatenated staged + unstaged raw diff (whole worktree). */
-  raw: string
 }
 
 /** Options that narrow what the diff route has to compute server-side. */
@@ -61,5 +59,5 @@ export async function fetchDiff(
     },
     label: "diff fetch",
   })
-  return { files: json.files ?? [], raw: json.raw ?? "" }
+  return { files: json.files ?? [] }
 }

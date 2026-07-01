@@ -147,16 +147,6 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
 }
 
 /**
- * Run `git diff HEAD --numstat` and parse into structured stats.
- * Useful as a primitive for callers that want raw numstat without the
- * porcelain status. Throws on non-zero exit (caller can wrap to soften).
- */
-export async function numstatFiles(worktreePath: string): Promise<NumstatEntry[]> {
-  const out = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
-  return parseNumstat(out)
-}
-
-/**
  * Pure parser for `git diff --numstat` output, kept as the pane's typed
  * façade ({@link NumstatEntry}) over the shared {@link parseNumstatRows}.
  * The shared parser owns the hard parts — C-string unquoting and rename

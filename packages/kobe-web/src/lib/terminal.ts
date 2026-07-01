@@ -9,16 +9,11 @@ import { ApiError, api } from "./api-client.ts"
 
 export type PtyMode = "engine" | "shell"
 
-function ptyOrigin(): string {
-  const proto = location.protocol === "https:" ? "wss" : "ws"
-  const host = location.hostname || "localhost"
-  const currentPort = Number.parseInt(location.port || "5173", 10)
-  const ptyPort = Number.isFinite(currentPort) ? currentPort + 2 : 5175
-  return `${proto}://${host}:${ptyPort}`
-}
-
-function ptyHttpOrigin(): string {
-  const proto = location.protocol === "https:" ? "https" : "http"
+/** PTY sidecar origin (port + 2). `ws` picks ws/wss; `http` picks http/https. */
+function ptyBase(kind: "ws" | "http"): string {
+  const secure = location.protocol === "https:"
+  const proto =
+    kind === "ws" ? (secure ? "wss" : "ws") : secure ? "https" : "http"
   const host = location.hostname || "localhost"
   const currentPort = Number.parseInt(location.port || "5173", 10)
   const ptyPort = Number.isFinite(currentPort) ? currentPort + 2 : 5175
@@ -39,14 +34,14 @@ export function ptyUrl(
     cols: String(cols),
     rows: String(rows),
   })
-  return `${ptyOrigin()}/pty?${q.toString()}`
+  return `${ptyBase("ws")}/pty?${q.toString()}`
 }
 
 /** Kill a tab's engine process server-side (when the user closes the tab). */
 export async function closePtyTab(tabId: string): Promise<void> {
   try {
     await api.post<void>(
-      `${ptyHttpOrigin()}/pty/close`,
+      `${ptyBase("http")}/pty/close`,
       { tab: tabId },
       { label: "close PTY tab" },
     )
@@ -70,7 +65,7 @@ export async function sendPtyText(
 ): Promise<{ spawned: boolean }> {
   try {
     const json = await api.post<{ sent?: boolean; spawned?: boolean }>(
-      `${ptyHttpOrigin()}/pty/send`,
+      `${ptyBase("http")}/pty/send`,
       { tab: tabId, taskId, text },
       { label: "send PTY text" },
     )
