@@ -46,7 +46,7 @@ import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { FileTree } from "../panes/filetree"
+import { FileTree } from "../panes/filetree/FileTree"
 import { inheritedEnvPrefix } from "../panes/terminal/launch"
 import {
   ACTIVITY_POLL_MIN_MS,
