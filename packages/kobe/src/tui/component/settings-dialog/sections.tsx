@@ -84,6 +84,8 @@ export function GeneralSettingsSection(
     cycleEditorKind: () => void
     editorCustomCommand: Accessor<string>
     editEditorCustom: () => void
+    worktreeBasePath: Accessor<string>
+    editWorktreeBase: () => void
   },
 ) {
   const themeCtx = useTheme()
@@ -100,6 +102,7 @@ export function GeneralSettingsSection(
   const surfaceTaskpanelRow = () => rowIdx(surfaceRowId("taskpanel"))
   const editorKindRow = () => rowIdx("editor-kind")
   const editorCustomRow = () => rowIdx("editor-custom")
+  const worktreeBaseRow = () => rowIdx("worktree-base")
   const isTransparentRow = () => props.bodyRow() === transparentRow()
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
@@ -108,6 +111,7 @@ export function GeneralSettingsSection(
   const isSurfaceTaskpanelRow = () => props.bodyRow() === surfaceTaskpanelRow()
   const isEditorKindRow = () => props.bodyRow() === editorKindRow()
   const isEditorCustomRow = () => props.bodyRow() === editorCustomRow()
+  const isWorktreeBaseRow = () => props.bodyRow() === worktreeBaseRow()
 
   return (
     <box flexDirection="column" gap={1}>
@@ -445,6 +449,36 @@ export function GeneralSettingsSection(
           >
             {t("settings.general.editorCustom", {
               cmd: props.editorCustomCommand().trim() || t("settings.general.editorCustomUnset"),
+            })}
+          </text>
+        </box>
+      </box>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {t("settings.general.worktree")}
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.general.worktreeHint")}
+        </text>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isWorktreeBaseRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(worktreeBaseRow())
+            props.editWorktreeBase()
+          }}
+        >
+          <text
+            fg={isWorktreeBaseRow() ? theme.selectedListItemText : theme.accent}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            {t("settings.general.worktreeBase", {
+              path: props.worktreeBasePath().trim() || t("settings.general.worktreeBaseDefault"),
             })}
           </text>
         </box>

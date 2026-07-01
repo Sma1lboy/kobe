@@ -54,6 +54,13 @@ export const en = {
     editorRow: "editor: < {kind} >  (enter to change)",
     editorCustom: "custom: {cmd}",
     editorCustomUnset: "(unset — enter to edit)",
+    worktree: "Worktree location",
+    worktreeHint:
+      "Where new task worktrees are created (default `~/.kobe/worktrees`). Each repo keeps its own `<repo>-<hash>` subfolder underneath. Applies to new tasks only — existing worktrees stay where they are. Remote projects are unaffected. enter to edit; leave blank for the default.",
+    worktreeBase: "worktree base: {path}",
+    worktreeBaseDefault: "(default — enter to change)",
+    worktreeBaseTitle: "Worktree location (blank = default ~/.kobe/worktrees)",
+    worktreeBaseField: "path",
   },
   engines: {
     title: "Launch command",
@@ -172,6 +179,13 @@ export const zh: typeof en = {
     editorRow: "编辑器: < {kind} >  (enter 切换)",
     editorCustom: "自定义: {cmd}",
     editorCustomUnset: "(未设置 — enter 编辑)",
+    worktree: "工作树位置",
+    worktreeHint:
+      "新任务工作树的创建位置（默认 `~/.kobe/worktrees`）。每个仓库在其下保留自己的 `<仓库名>-<哈希>` 子目录。仅对新任务生效——已有工作树保持原位。远程项目不受影响。enter 编辑；留空则用默认值。",
+    worktreeBase: "工作树根目录: {path}",
+    worktreeBaseDefault: "(默认 — enter 修改)",
+    worktreeBaseTitle: "工作树位置（留空 = 默认 ~/.kobe/worktrees）",
+    worktreeBaseField: "路径",
   },
   engines: {
     title: "启动命令",
