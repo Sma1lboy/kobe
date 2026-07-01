@@ -160,29 +160,20 @@ function init() {
     }, 1)
   }
 
+  // escape and ctrl+c both dismiss the top dialog identically.
+  const dismissTop = () => {
+    if (renderer?.getSelection()) renderer.clearSelection()
+    const current = store.stack.at(-1)
+    current?.onClose?.()
+    setStore("stack", store.stack.slice(0, -1))
+    refocus()
+  }
+
   useBindings(() => ({
     enabled: store.stack.length > 0 && !renderer?.getSelection()?.getSelectedText(),
     bindings: [
-      {
-        key: "escape",
-        cmd: () => {
-          if (renderer?.getSelection()) renderer.clearSelection()
-          const current = store.stack.at(-1)
-          current?.onClose?.()
-          setStore("stack", store.stack.slice(0, -1))
-          refocus()
-        },
-      },
-      {
-        key: "ctrl+c",
-        cmd: () => {
-          if (renderer?.getSelection()) renderer.clearSelection()
-          const current = store.stack.at(-1)
-          current?.onClose?.()
-          setStore("stack", store.stack.slice(0, -1))
-          refocus()
-        },
-      },
+      { key: "escape", cmd: dismissTop },
+      { key: "ctrl+c", cmd: dismissTop },
     ],
   }))
 
