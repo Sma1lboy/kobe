@@ -490,7 +490,6 @@ const VERBS: readonly VerbSpec[] = [
 
 /** Verb names in canonical order (schema/help/tests). */
 export const API_VERBS = VERBS.map((v) => v.name)
-export type ApiVerb = (typeof API_VERBS)[number]
 
 function findVerb(name: string): VerbSpec | undefined {
   const canonical = VERB_ALIASES[name] ?? name

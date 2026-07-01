@@ -76,11 +76,3 @@ export function useBindings(config: () => BindingsConfig): void {
     if (i >= 0) stack.splice(i, 1)
   })
 }
-
-/**
- * Hook for tests / debugging. Returns the number of currently active binding
- * groups in the stack.
- */
-export function _bindingStackSize(): number {
-  return stack.length
-}

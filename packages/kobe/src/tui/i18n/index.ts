@@ -63,11 +63,6 @@ export function t(key: string, params?: Record<string, string | number>): string
   return interpolate(resolved, params)
 }
 
-/** The label to show for a language id in the picker (e.g. `en` → "English"). */
-export function localeLabel(id: LocaleId): string {
-  return LOCALES.find((l) => l.id === id)?.label ?? id
-}
-
 /**
  * Lookup for the keybinding catalog (`keys.category.*` / `keys.desc.*`),
  * where the lookup key is itself a binding id like `chat.tab.new` whose dots

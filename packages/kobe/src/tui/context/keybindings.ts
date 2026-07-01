@@ -928,11 +928,6 @@ export function chordsOf(id: string): readonly string[] {
   return findBinding(id)?.keys ?? []
 }
 
-/** All bindings whose `scope` matches. */
-export function bindingsForScope(scope: KobeBindingScope): KobeBinding[] {
-  return KobeKeymap.filter((b) => b.scope === scope)
-}
-
 /**
  * Build a list of `Binding` (chord → handler) entries from a map of
  * `binding-id → handler`. Each id's chords from `KobeKeymap` get
