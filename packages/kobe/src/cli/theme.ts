@@ -23,7 +23,6 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
-import { kobeStateDir } from "../env"
 import { userThemesDir } from "../tui/context/theme/loader"
 import { validateTheme } from "../tui/context/theme/schema"
 
@@ -250,9 +249,6 @@ function printUsage(): void {
  * `kobe theme` on the command line.
  */
 export async function runThemeSubcommand(args: string[]): Promise<void> {
-  // Touch the state dir helper so tree-shakers don't drop it from
-  // bundled output when we add lazily-used callsites later.
-  void kobeStateDir
   const [action, ...rest] = args
   if (!action || action === "--help" || action === "-h" || action === "help") {
     printUsage()
