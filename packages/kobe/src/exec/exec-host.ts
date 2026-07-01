@@ -24,12 +24,13 @@
  *
  *   The cheap/metadata members stay sync:
  *
- *     - `isRemote`, `wrapCommand` (pure string building), `ensureReady`
- *       (ControlMaster bring-up; sync ssh, see caveat below), and
- *     - `existsSync` — kept for sync TUI fast-paths (`worktreeUsable`) that
- *       already guard with `isRemote`. Locally it's `fs.existsSync` (cheap);
- *       REMOTELY it is a BLOCKING ssh round-trip — callers must short-circuit
- *       on `isRemote` first and only use it for local paths.
+ *     - `isRemote`, `wrapCommand` (pure string building), and `ensureReady`
+ *       (ControlMaster bring-up; sync ssh, see caveat below).
+ *
+ *   (A sync existence probe used to live here, but its only caller —
+ *   `worktreeUsable` — short-circuits on `isRemote` and so only ever needs a
+ *   LOCAL check; it now calls `fs.existsSync` directly, and no remote sync
+ *   existence round-trip exists.)
  *
  *   `ensureReady()` remains sync: it's called from TUI processes
  *   (tmux engine launch) and from `RemoteExecHost.run`'s first call per host
@@ -90,8 +91,7 @@ export interface ExecOpts {
  * ASYNC members (`run`, `exists`, `mkdirp`, `readFile`, `readdir`) are the
  * ones that do real subprocess / ssh / disk work — awaiting them keeps the
  * daemon's event loop free. SYNC members are metadata (`isRemote`), pure
- * string building (`wrapCommand`), the documented `existsSync` local
- * fast-path, and `ensureReady` (see file header).
+ * string building (`wrapCommand`), and `ensureReady` (see file header).
  */
 export interface ExecHost {
   readonly isRemote: boolean
@@ -99,12 +99,6 @@ export interface ExecHost {
   run(argv: readonly string[], opts?: ExecOpts): Promise<ExecResult>
   /** Whether `path` exists on the host. ASYNC (remote = ssh round-trip). */
   exists(path: string): Promise<boolean>
-  /**
-   * SYNC existence probe for local-path fast-paths (e.g. `worktreeUsable`).
-   * Local: `fs.existsSync` (cheap). Remote: a BLOCKING ssh round-trip —
-   * callers MUST short-circuit on `isRemote` before reaching this.
-   */
-  existsSync(path: string): boolean
   /** `mkdir -p`. ASYNC (remote = ssh round-trip). */
   mkdirp(path: string): Promise<void>
   /** Read a file as utf8, or null when unreadable. ASYNC. */
@@ -239,9 +233,6 @@ export class LocalExecHost implements ExecHost {
   async exists(path: string): Promise<boolean> {
     return existsSync(path)
   }
-  existsSync(path: string): boolean {
-    return existsSync(path)
-  }
   async mkdirp(path: string): Promise<void> {
     await mkdir(path, { recursive: true })
   }
@@ -269,7 +260,7 @@ export class LocalExecHost implements ExecHost {
 
 /**
  * Spawn seam so tests can assert the ssh argv without a real connection.
- * SYNC — used by `ensureReady` (ControlMaster bring-up) and `existsSync`.
+ * SYNC — used by `ensureReady` (ControlMaster bring-up).
  */
 export type Spawner = (argv: readonly string[], env?: Record<string, string>) => ExecResult
 
@@ -358,12 +349,6 @@ export class RemoteExecHost implements ExecHost {
 
   async exists(path: string): Promise<boolean> {
     return (await this.run(["test", "-e", path])).exitCode === 0
-  }
-  /** BLOCKING ssh round-trip — see the interface doc; guard with `isRemote`. */
-  existsSync(path: string): boolean {
-    this.ensureReady()
-    const r = this.spawn([...sshConnectArgs(this.spec, { batch: true }), remoteShellCommand(["test", "-e", path])])
-    return r.exitCode === 0
   }
   async mkdirp(path: string): Promise<void> {
     await this.run(["mkdir", "-p", path])
