@@ -348,9 +348,6 @@ export interface SessionDeliverPayload {
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
 
-/** The `task.jobs` channel payload — long-operation lifecycle progress. */
-export type TaskJobsPayload = ChannelPayloads["task.jobs"]
-
 /** The `worktree.changes` channel payload — daemon-collected change counts. */
 export type WorktreeChangesPayload = ChannelPayloads["worktree.changes"]
 
