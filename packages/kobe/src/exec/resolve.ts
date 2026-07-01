@@ -10,6 +10,7 @@
  * the `repoConfigs` init-override discipline.
  */
 
+import { existsSync } from "node:fs"
 import { homeDir, remoteControlSocketPath } from "../env.ts"
 import { type RemoteRepoConfig, getRemoteRepoConfig, getRemoteRepos, isRemoteRepoKey } from "../state/repos.ts"
 import { type ExecHost, LocalExecHost, type RemoteAuth, RemoteExecHost, type RemoteSpec } from "./exec-host.ts"
@@ -85,11 +86,10 @@ export function remoteKeyForRepo(repo: string | undefined): string | undefined {
  * round-trip per render). Local paths keep the real on-disk check.
  */
 export function worktreeUsable(worktreePath: string): boolean {
-  const host = execHostForWorktreePath(worktreePath)
-  // `isRemote` short-circuits BEFORE `existsSync` — the sync probe is only
-  // ever evaluated for a LOCAL host (cheap fs.existsSync); a remote host's
-  // existsSync would be a blocking ssh round-trip and must not run here.
-  return host.isRemote || host.existsSync(worktreePath)
+  // `isRemote` short-circuits BEFORE the on-disk probe — a remote worktree is
+  // trusted (see above), and the cheap sync `fs.existsSync` only ever runs for
+  // a LOCAL path.
+  return execHostForWorktreePath(worktreePath).isRemote || existsSync(worktreePath)
 }
 
 /**

@@ -16,7 +16,6 @@ function fakeExecHost(result: ExecResult = { stdout: "", stderr: "", exitCode: 0
       return result
     },
     exists: async () => false,
-    existsSync: () => false,
     mkdirp: async () => {},
     readFile: async (path) => {
       reads.push(path)
@@ -74,7 +73,6 @@ describe("runWorktreeGit", () => {
         return { stdout: "", stderr: "", exitCode: -1 }
       },
       exists: async () => false,
-      existsSync: () => false,
       mkdirp: async () => {},
       readFile: async () => null,
       readdir: async () => [],
@@ -101,7 +99,6 @@ describe("runWorktreeGit", () => {
         throw new Error("ssh failed")
       },
       exists: async () => false,
-      existsSync: () => false,
       mkdirp: async () => {},
       readFile: async () => null,
       readdir: async () => [],
@@ -143,7 +140,6 @@ describe("readWorktreeFile", () => {
       isRemote: true,
       run: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
       exists: async () => false,
-      existsSync: () => false,
       mkdirp: async () => {},
       readFile: async () => {
         throw new Error("read failed")
