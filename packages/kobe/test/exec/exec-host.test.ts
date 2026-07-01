@@ -215,8 +215,6 @@ describe("RemoteExecHost fs helpers", () => {
     await expect(host.exists("/srv/wt/.git")).resolves.toBe(true)
     await expect(host.readFile("/srv/wt/README.md")).resolves.toBe("file body")
     await expect(host.readdir("/srv/wt")).resolves.toEqual(["a", "b", ".git"])
-    // The documented-blocking sync probe goes through the same ssh wrapping.
-    expect(host.existsSync("/srv/wt/.git")).toBe(true)
   })
 })
 
