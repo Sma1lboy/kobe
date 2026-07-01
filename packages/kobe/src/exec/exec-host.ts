@@ -50,6 +50,7 @@
 import { spawn, spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { mkdir, readFile as readFileAsync, readdir as readdirAsync } from "node:fs/promises"
+import { quoteShellArg, quoteShellArgv } from "../lib/shell-command"
 
 /** SSH auth: a key (or the agent) vs a password held in the OS keychain. */
 export type RemoteAuth =
@@ -128,21 +129,17 @@ export interface ExecHost {
 
 // ── pure shell / ssh construction (exported for tests) ───────────────────────
 
-/** Single-quote a string for a POSIX shell (`'` → `'\''`). */
-export function shQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
+/** Single-quote a string for a POSIX shell — the shared {@link quoteShellArg}. */
+export const shQuote = quoteShellArg
+
+/** Quote each argv element and join — the shared {@link quoteShellArgv}. */
+export const shJoin = quoteShellArgv
 
 /** Single-quote a token only if it contains characters that aren't safe to
  *  leave bare in a POSIX shell word. Keeps flags / `user@host` readable while
  *  still protecting paths with spaces or metachars. */
 export function shToken(s: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : shQuote(s)
-}
-
-/** Quote each argv element and join — a safe command line for a POSIX shell. */
-export function shJoin(argv: readonly string[]): string {
-  return argv.map(shQuote).join(" ")
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : quoteShellArg(s)
 }
 
 /** The remote command string: `cd <cwd> && <argv>` (or just `<argv>` with no cwd). */
