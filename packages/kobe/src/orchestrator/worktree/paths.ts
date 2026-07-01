@@ -86,6 +86,16 @@ export function worktreeRootFor(repo: string): string {
  * follows when an override moved it (so worktrees created before the
  * override stay discoverable for listing + slug allocation), then the
  * repo-local legacy roots for existing task records.
+ *
+ * KNOWN LIMITATION: only the CURRENT override and the built-in default
+ * are recognized — we don't persist a history of past override paths.
+ * If a user points the base at A, creates tasks, then re-points it at B,
+ * the worktrees under A fall out of managed listing + slug allocation.
+ * Those tasks are NOT lost — each task record pins its own absolute
+ * `worktreePath`, so opening/removing them keeps working; they just stop
+ * appearing in "list kobe-managed worktrees" and their slugs no longer
+ * block reuse. Recording every base ever used would close the gap but is
+ * deliberately out of scope here.
  */
 export function managedWorktreeRootsFor(repo: string): readonly string[] {
   if (!path.isAbsolute(repo)) {

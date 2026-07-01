@@ -9,6 +9,7 @@
  *   - `esc`                  — close (handled by the dialog stack).
  */
 
+import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { Show, createEffect, createMemo, createSignal } from "solid-js"
@@ -28,7 +29,7 @@ import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
-import { WORKTREE_BASE_KEY } from "../../state/worktree-base"
+import { WORKTREE_BASE_KEY, normalizeWorktreeBase } from "../../state/worktree-base"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor, resolvePersistedVendor } from "../../types/vendor"
@@ -52,6 +53,7 @@ import {
   normalizeSettingsSurface,
 } from "../lib/settings-surface"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
 import { type NavLevel, SECTIONS, type SectionId, type SettingsRow, rowAt, sectionRows } from "./settings-dialog/model"
@@ -456,9 +458,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
       allowEmpty: true,
     })
     if (next === undefined) return
-    // Persist the trimmed raw entry (empty clears the override); the
-    // daemon expands ~ / relative paths when it reads it.
-    props.kv.set(WORKTREE_BASE_KEY, next.trim())
+    const raw = next.trim()
+    // A non-empty override must point at a directory kobe can actually
+    // create worktrees under — otherwise every future `git worktree add`
+    // fails with a raw git error and new-task creation breaks silently.
+    // Validate here (create + writability check) and refuse to save a bad
+    // path, rather than persisting a footgun. Blank clears the override.
+    if (raw) {
+      const resolved = normalizeWorktreeBase(raw) ?? raw
+      try {
+        mkdirSync(resolved, { recursive: true })
+        accessSync(resolved, fsConstants.W_OK)
+      } catch (err) {
+        await DialogConfirm.show(
+          dialog,
+          "Can't use that worktree location",
+          `${resolved} isn't usable (${err instanceof Error ? err.message : String(err)}). Keeping the previous setting — pick a writable directory.`,
+          "cancel",
+        )
+        return
+      }
+    }
+    // Persist the trimmed raw entry; the daemon expands ~ / relative
+    // paths the same way when it reads it.
+    props.kv.set(WORKTREE_BASE_KEY, raw)
   }
 
   async function sendFeedback(): Promise<void> {

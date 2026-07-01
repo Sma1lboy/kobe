@@ -21,7 +21,6 @@
  * remote host under the project's own `basePath` (`remoteWorktreeRootFor`).
  */
 
-import { homedir } from "node:os"
 import { isAbsolute, join, resolve } from "node:path"
 import { homeDir } from "../env.ts"
 import { loadStateFile } from "./store.ts"
@@ -40,7 +39,8 @@ export function normalizeWorktreeBase(raw: string | undefined | null): string | 
   if (typeof raw !== "string") return null
   const trimmed = raw.trim()
   if (!trimmed) return null
-  const home = homeDir() || homedir()
+  // homeDir() already falls back to os.homedir() when KOBE_HOME_DIR is unset.
+  const home = homeDir()
   if (trimmed === "~") return home
   const expanded = trimmed.startsWith("~/") ? join(home, trimmed.slice(2)) : trimmed
   return isAbsolute(expanded) ? expanded : resolve(home, expanded)
