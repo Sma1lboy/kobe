@@ -308,21 +308,6 @@ function viewTabLabel(view: SidebarView): string {
 export const MAIN_BRANCH_POLL_MS = 2_000
 
 /**
- * Reserved width (cells) for the per-row "uncommitted changes" chip
- * (`+N −M`). Sized to fit the common `+9 −9` (5 cell) case exactly;
- * the chip is right-aligned inside the column so longer chips (e.g.
- * `+12 −3`, 6 char) extend slightly leftward toward the title rather
- * than cluttering the row's right edge with reserved padding. Even
- * longer chips (`+99 −99`, 7 char) clip on the left — rare in practice
- * and the right edge stays aligned, which is what the eye tracks.
- * Keeping the column reserved even when empty is the whole point of
- * this — the eye should land on the same x for every row's chip
- * regardless of how short or long the title above it is. Exported for
- * tests.
- */
-export const CHANGES_COLUMN_WIDTH = 5
-
-/**
  * Max width (cells) for a task row's branch label. The rail is narrow, so
  * a long branch is truncated keeping its PREFIX (`feat/long-branch…`) —
  * the front of a branch name carries the type/scope the eye scans for,
@@ -334,21 +319,6 @@ export const BRANCH_LABEL_MAX = 16
 export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): string {
   return truncateEnd(branch, max)
 }
-
-/**
- * Responsive column breakpoints (cells of total pane width). A task row packs
- * up to four columns — badge, title, the `+N −M` changes chip, and the branch
- * label. The branch (≤16 cells) + changes (5) are *metadata*; the title is the
- * primary content. On a narrow rail those metadata columns are `flexShrink={0}`
- * and would crush the title to a single character (`(new task)` → `(`), so we
- * drop them progressively as width shrinks: title-only first, then add the
- * changes chip, then the branch. The title always survives. Above the branch
- * breakpoint the full row shows. Tuned so the 32-cell convention width
- * ({@link SIDEBAR_WIDTH}) keeps the changes chip but hides the branch, leaving
- * a comfortable title budget; widen the pane and the branch returns.
- */
-export const SHOW_CHANGES_MIN_WIDTH = 30
-export const SHOW_BRANCH_MIN_WIDTH = 44
 
 /**
  * Rough display width in terminal cells, counting CJK / fullwidth codepoints
@@ -364,20 +334,6 @@ export function approxCellWidth(s: string): number {
 
 /** Truncate a filesystem path keeping the TAIL (the leaf carries the meaning). */
 const truncatePathTail = truncateStart
-
-/**
- * Abbreviate the user's home prefix to `~` for the project (main row)
- * directory label — `/Users/x/i/kobe` → `~/i/kobe`. Keeps the project
- * row's repo path compact and recognisable. Falls back to the raw path
- * when `$HOME` is unset or doesn't prefix the path.
- */
-export function abbrevHome(path: string): string {
-  const home = process.env.HOME
-  if (home && (path === home || path.startsWith(`${home}/`))) {
-    return `~${path.slice(home.length)}`
-  }
-  return path
-}
 
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()

@@ -67,11 +67,6 @@ export const clipboardBinaryOnPath: ClipboardProbe = (binary) => {
   }
 }
 
-/** Convenience: resolve using the real PATH probe for the current platform. */
-export function resolveSystemClipboardCopyCommand(): string | null {
-  return resolveClipboardCopyCommand(process.platform, clipboardBinaryOnPath)
-}
-
 /** A single tmux command as the argv tuple `runTmuxSequence` consumes. */
 export type TmuxCommand = readonly string[]
 

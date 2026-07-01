@@ -44,9 +44,6 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 // Users discover slashes natively inside the interactive `claude`
 // pane now. The dialog stays focused on kobe's own keybindings.
 
-/** Sentinel string the behavior test asserts on. */
-export const HELP_DIALOG_TITLE = "kobe — keybindings"
-
 /**
  * Group the flat keymap into categories in declaration order.
  */

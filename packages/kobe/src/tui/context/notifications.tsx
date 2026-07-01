@@ -148,7 +148,3 @@ export function useNotifications(): NotificationsContext {
   if (!value) throw new Error("useNotifications must be used within a NotificationsProvider")
   return value
 }
-
-export function notificationKey(taskId: string, tabId: string): string {
-  return unreadKey(taskId, tabId)
-}
