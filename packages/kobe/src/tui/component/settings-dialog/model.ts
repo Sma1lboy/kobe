@@ -64,8 +64,6 @@ export type SettingsRow =
   | { id: "dispatcher"; kind: "devDispatcher" }
   | { id: "archived-history"; kind: "devArchivedHistory" }
 
-export type SettingsRowKind = SettingsRow["kind"]
-
 /** Stable row ids for payload-bearing rows (shared by builders + views). */
 export function themeRowId(name: string): string {
   return `theme:${name}`

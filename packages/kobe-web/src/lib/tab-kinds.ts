@@ -26,10 +26,9 @@ export type WorkspaceTabKind =
 type TitleMode =
   /** `${label} N`, where N = (existing tabs of this kind) + 1. */
   | "count"
-  /** the fixed label. */
+  /** the fixed label — callers that derive their own title (e.g. file, from
+   *  its path) start from this label and override it afterward. */
   | "static"
-  /** the caller supplies the title (file: derived from its path). */
-  | "derived"
 
 interface TabKindSpec {
   /** Owns a server-side PTY — closing/pruning the tab must close that PTY. */
@@ -43,7 +42,7 @@ export const TAB_KINDS: Record<WorkspaceTabKind, TabKindSpec> = {
   vendor: { hasPty: true, titleMode: "count", label: "Vendor" },
   terminal: { hasPty: true, titleMode: "count", label: "Terminal" },
   transcript: { hasPty: false, titleMode: "static", label: "Chat" },
-  file: { hasPty: false, titleMode: "derived", label: "File" },
+  file: { hasPty: false, titleMode: "static", label: "File" },
 }
 
 /**
@@ -57,8 +56,9 @@ export function tabHasPty(kind: WorkspaceTabKind): boolean {
 
 /**
  * The title for a fresh tab of `kind`, given the task's existing tabs (for the
- * per-kind count). `derived`-titled kinds (file) return their bare label — the
- * caller titles those from their own data (e.g. the file basename).
+ * per-kind count). `static`-titled kinds return their bare label — kinds that
+ * derive a title (file) start from that label and override it from their own
+ * data (e.g. the file basename).
  */
 export function nextTabTitle(
   kind: WorkspaceTabKind,

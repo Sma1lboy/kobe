@@ -1,8 +1,5 @@
 import type { TaskStatus } from "../types/task.ts"
 
-/** Maximum simultaneous `in_progress` tasks. From DESIGN §11.5. */
-export const CONCURRENCY_CAP = 20
-
 /** Thrown when a state-machine transition is illegal. */
 export class IllegalTransitionError extends Error {
   constructor(
@@ -12,14 +9,6 @@ export class IllegalTransitionError extends Error {
   ) {
     super(`illegal transition for task ${taskId}: ${from} -> ${to}`)
     this.name = "IllegalTransitionError"
-  }
-}
-
-/** Thrown when we'd exceed {@link CONCURRENCY_CAP}. */
-export class ConcurrencyCapError extends Error {
-  constructor() {
-    super(`concurrency cap reached: ${CONCURRENCY_CAP} tasks running`)
-    this.name = "ConcurrencyCapError"
   }
 }
 

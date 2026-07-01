@@ -58,36 +58,13 @@ export function apiUrl(path: string, query?: QueryParams): string {
 async function readPayload(
   res: Response,
 ): Promise<{ json?: unknown; text: string }> {
-  const response = res as Response & {
-    text?: () => Promise<string>
-    json?: () => Promise<unknown>
+  const text = await res.text().catch(() => "")
+  if (!text) return { text }
+  try {
+    return { text, json: JSON.parse(text) }
+  } catch {
+    return { text }
   }
-  if (typeof response.text === "function") {
-    const text = await response.text().catch(() => "")
-    if (!text) {
-      if (typeof response.json === "function") {
-        try {
-          return { text, json: await response.json() }
-        } catch {
-          return { text }
-        }
-      }
-      return { text }
-    }
-    try {
-      return { text, json: JSON.parse(text) }
-    } catch {
-      return { text }
-    }
-  }
-  if (typeof response.json === "function") {
-    try {
-      return { text: "", json: await response.json() }
-    } catch {
-      return { text: "" }
-    }
-  }
-  return { text: "" }
 }
 
 function errorDetail(payload: { json?: unknown; text: string }): {

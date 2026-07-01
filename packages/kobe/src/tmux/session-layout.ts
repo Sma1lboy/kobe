@@ -258,11 +258,6 @@ export function engineTabExitCleanup(envPrefix: string, inv: readonly string[], 
   return `${envPrefix}${inv.map(shellQuote).join(" ")} engine-tab-exit --session ${shellQuote(session)}`
 }
 
-/** Single-quote a string for safe interpolation into a `sh -c` program. */
-function shQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
-
 /**
  * The kobe-home "no task" main pane — the welcome area to the right of the
  * Tasks rail in the home layout. Purely informational: the Tasks rail owns
@@ -272,7 +267,7 @@ function shQuote(s: string): string {
  */
 export function homeWelcomeCommand(): string {
   const msg = "\\n  No task selected\\n\\n  Press N to create a task, or pick one on the left.\\n\\n"
-  return `clear; printf ${shQuote(msg)}; exec "\${SHELL:-/bin/sh}"`
+  return `clear; printf ${shellQuote(msg)}; exec "\${SHELL:-/bin/sh}"`
 }
 
 export interface EngineInitLaunch {
@@ -396,8 +391,8 @@ export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch, onE
   // only covers from the engine command onward). Redundant with the tail's guard
   // for the no-init path — harmless, `trap` is idempotent.
   if (init?.markerPath) {
-    const marker = shQuote(init.markerPath)
-    const markerDir = shQuote(markerDirOf(init.markerPath))
+    const marker = shellQuote(init.markerPath)
+    const markerDir = shellQuote(markerDirOf(init.markerPath))
     return (
       SIGINT_GUARD +
       [
