@@ -24,6 +24,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
 import { kobeStateDir } from "../env"
+import { expandTilde } from "../lib/path-home.ts"
 import { userThemesDir } from "../tui/context/theme/loader"
 import { validateTheme } from "../tui/context/theme/schema"
 
@@ -129,7 +130,7 @@ async function readSource(source: string): Promise<{ text: string; defaultName: 
     const defaultName = file.endsWith(".json") ? file.slice(0, -".json".length) : file
     return { text, defaultName }
   }
-  const abs = resolve(process.cwd(), source)
+  const abs = resolve(process.cwd(), expandTilde(source))
   let text: string
   try {
     text = readFileSync(abs, "utf8")
