@@ -15,7 +15,6 @@ function fakeRemote(script: (argv: readonly string[]) => ExecResult) {
       return script(argv)
     },
     exists: async () => false,
-    existsSync: () => false,
     mkdirp: async () => {},
     readFile: async () => null,
     readdir: async () => [],
