@@ -40,6 +40,7 @@
  */
 import { resolve } from "node:path"
 import { matchPathGlob } from "../lib/path-glob.ts"
+import { expandTilde } from "../lib/path-home.ts"
 import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { topLevelUsage } from "./usage.ts"
@@ -65,7 +66,7 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
     process.stderr.write(`kobe add: unknown flag "${arg}"\n\n${ADD_USAGE}`)
     process.exit(2)
   }
-  const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
+  const target = resolve(process.cwd(), expandTilde(arg && arg.length > 0 ? arg : "."))
   const { addSavedRepo, isGitRepo } = await import("../state/repos.ts")
   // A saved project must be a real local git repository — reject garbage
   // paths (e.g. `kobe add ,`, which resolves to a non-existent dir) before
@@ -130,7 +131,7 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
   const target = saved.includes(raw)
     ? raw
     : (() => {
-        const abs = resolve(process.cwd(), raw)
+        const abs = resolve(process.cwd(), expandTilde(raw))
         const top = resolveRepoRoot(abs)
         if (saved.includes(top)) return top
         if (saved.includes(abs)) return abs
@@ -285,7 +286,7 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   }
 
   const { resolveRepoRoot } = await import("../state/repos.ts")
-  const repo = resolveRepoRoot(resolve(process.cwd(), repoArg && repoArg.length > 0 ? repoArg : "."))
+  const repo = resolveRepoRoot(resolve(process.cwd(), expandTilde(repoArg && repoArg.length > 0 ? repoArg : ".")))
   const vendor = coerceVendorId(vendorArg)
 
   // Discovery is a local read (git + tasks.json) — no daemon needed, so
