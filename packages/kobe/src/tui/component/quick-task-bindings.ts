@@ -21,6 +21,10 @@ export interface QuickTaskBindingHandlers {
   cycleField: (dir: 1 | -1) => void
   stepEngine: (dir: 1 | -1) => void
   commit: () => void
+  /** ctrl+v: read the OS clipboard for an image/file attachment. */
+  pasteAttachment: () => void
+  /** ctrl+x: drop the most recently added attachment. */
+  removeLastAttachment: () => void
 }
 
 export function quickTaskBindings(field: QuickTaskField, h: QuickTaskBindingHandlers): Binding[] {
@@ -28,6 +32,12 @@ export function quickTaskBindings(field: QuickTaskField, h: QuickTaskBindingHand
     { key: "tab", cmd: () => h.cycleField(1) },
     { key: "shift+tab", cmd: () => h.cycleField(-1) },
     { key: "ctrl+e", cmd: () => h.stepEngine(1) },
+    // Attachment chords are field-independent: text paste arrives as a
+    // bracketed PasteEvent (never as ctrl+v), so claiming the raw ctrl+v
+    // keypress steals nothing from the inputs — it's the only way to
+    // reach a clipboard IMAGE, which the terminal can't deliver as text.
+    { key: "ctrl+v", cmd: () => h.pasteAttachment() },
+    { key: "ctrl+x", cmd: () => h.removeLastAttachment() },
     ...(field === "engine"
       ? [
           // ←/→ cycle the engine; enter commits (a chip row has no input

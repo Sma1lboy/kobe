@@ -43,6 +43,7 @@ import type { Task, VendorId } from "../../types/task.ts"
 import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
+import { appendAttachmentRefs } from "../lib/attachments.ts"
 import { DEFAULT_BASE_REF, getCurrentBranch } from "../lib/git-snapshot.ts"
 import { bootPaneHost } from "../lib/host-boot"
 import { expandHome } from "../lib/path-helpers.ts"
@@ -149,8 +150,15 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
     try {
       const task = await orch.createTask({ repo: ctx.repo, baseRef: result.baseRef, vendor: result.vendor })
       // The composer requires a non-empty prompt, so always deliver, then jump
-      // the attached client into the new task.
-      await deliverFirstPromptToTask(orch, task, ctx.repo, result.vendor, result.prompt)
+      // the attached client into the new task. Attachment paths ride along as
+      // `images[n]: /path` reference lines — the engine reads the files itself.
+      await deliverFirstPromptToTask(
+        orch,
+        task,
+        ctx.repo,
+        result.vendor,
+        appendAttachmentRefs(result.prompt, result.attachments),
+      )
       await jumpToTask(orch, task, ctx.repo, result.vendor)
     } catch (err) {
       console.error("[kobe quick-task] task.create/deliver failed:", err)

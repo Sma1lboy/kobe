@@ -24,14 +24,17 @@ const handlers = () => {
       cycleField: (d: 1 | -1) => calls.push(`cycle:${d}`),
       stepEngine: (d: 1 | -1) => calls.push(`engine:${d}`),
       commit: () => calls.push("commit"),
+      pasteAttachment: () => calls.push("paste"),
+      removeLastAttachment: () => calls.push("unattach"),
     },
   }
 }
 
-function evt(name: string) {
+function evt(name: string, mods: { ctrl?: boolean } = {}) {
   let prevented = false
   return {
     name,
+    ctrl: mods.ctrl ?? false,
     defaultPrevented: false,
     preventDefault() {
       prevented = true
@@ -71,6 +74,15 @@ describe("quickTaskBindings field gating", () => {
     expect(dispatchKeyEvent(stackFor(bindings), evt("left"))).toBe(true)
     expect(dispatchKeyEvent(stackFor(bindings), evt("right"))).toBe(true)
     expect(calls).toEqual(["commit", "engine:-1", "engine:1"])
+  })
+
+  test("attachment chords (ctrl+v / ctrl+x) are claimed on every field", () => {
+    const { calls, h } = handlers()
+    for (const field of ["prompt", "engine", "branch"] as const) {
+      expect(dispatchKeyEvent(stackFor(quickTaskBindings(field, h)), evt("v", { ctrl: true }))).toBe(true)
+      expect(dispatchKeyEvent(stackFor(quickTaskBindings(field, h)), evt("x", { ctrl: true }))).toBe(true)
+    }
+    expect(calls).toEqual(["paste", "unattach", "paste", "unattach", "paste", "unattach"])
   })
 
   test("field cycling and ctrl+e work from every field", () => {
