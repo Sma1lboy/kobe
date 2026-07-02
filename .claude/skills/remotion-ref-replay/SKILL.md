@@ -183,6 +183,9 @@ A target near an edge sticks to that edge instead of cropping.
 | Leading chars of a typed prompt missing | typing raced a jittery engine boot | waitFor a readiness marker before typing |
 | waitFor never matches / fires late | matched rotating placeholder wording | match a stable glyph (composer prompt char) |
 | Zoom lands on the pane's header/banner | one-off banner repaint inside the region | start the region below the banner block |
+| Pane borders drift out of column | fallback glyphs (icons/braille) have a different advance | pin each span to its grid column (absolute left = col × cellW) |
+| Dialog walk lands on the wrong tab/field | blind timed keys vs. a UI whose bindings changed | read the dialog's key-binding source; prefer position-independent chords (ctrl+e) + waitFor the dialog |
+| Typing lands in a trust/confirm prompt | interstitial shares the composer's marker glyph | after waitFor, re-read the screen and dismiss the prompt first |
 | Black bars / frame not filled | fallback font's advance ≠ cell width | bundle the app's font (e.g. @remotion/google-fonts) |
 | Camera frames chrome above the input while typing | input row outside the stage region | dedicated region for the composer rows (it may drift — widen) |
 
