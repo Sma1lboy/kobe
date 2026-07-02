@@ -8,9 +8,15 @@ description: kobe 原生宣传片管线——把口播稿/字幕稿(transcriptio
 auto-motion 的教训:每镜头起独立子进程、从零搭工程、品牌色靠 prompt 文字约束——慢(小时级)、必然漂移、必然返工。
 本管线反其道:**一个 Remotion 工程,镜头是组件,theme 是 import,一致性由构造保证而不是 prompt 求来**。
 
-先加载这两个 skill(缺一不可):
-- **remotion-best-practices** — Remotion 动画/组合/字体/ffmpeg 领域知识。
-- **remotion-ref-replay**(本仓库)— 真机演示镜头的捕获管线(frames.json + 舞台相机)。
+全套 subskill 已 vendor 进本仓库 `.claude/skills/`,零外部依赖,按需加载:
+
+- **remotion-best-practices** — Remotion 动画/组合/字体/ffmpeg 领域知识。**必载。**
+- **remotion-ref-replay** — 真机演示镜头的捕获管线(frames.json + 舞台相机)。有 replay 镜头必载。
+- **hyperframes / hyperframes-design / hyperframes-motion** — HTML→视频引擎 + 设计语言 + MG 动效库
+  (GSAP 用法、blueprints、transitions、examples 都在 hyperframes-motion 里)。只在走 hyperframes
+  路线渲染单独 clip 时载,产物 mp4 用 `<OffthreadVideo>` 嵌回 Remotion 主时间轴。
+- **motion-graphics / general-video** — 短 MG 件与通用视频工作流的方法论,拿不准镜头形式时参考。
+- **image-gen** — 镜头需要生成图像素材时用。
 
 工程就是 `packages/branding`(依赖已装,`bun run studio` 可预览)。品牌 token 在
 [`src/colors.ts`](../../../packages/branding/src/colors.ts):暖黑底 `bg`、陶土橙强调 `blue`、
