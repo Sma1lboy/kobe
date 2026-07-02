@@ -11,3 +11,9 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Playwright (UI e2e)
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/

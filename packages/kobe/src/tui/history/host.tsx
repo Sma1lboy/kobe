@@ -21,8 +21,7 @@
  * spawn, no write path, no daemon dependency.
  */
 
-import { engineEntry } from "@/engine/registry"
-import { latestTranscriptMtime } from "@/monitor/activity"
+import { type EngineHistoryReader, engineEntry } from "@/engine/registry"
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
 import type { VendorId } from "@/types/task"
@@ -45,6 +44,12 @@ export interface HistoryHostArgs {
    * this only picks the badge.
    */
   readonly live?: boolean
+  /**
+   * Override the transcript source. Production leaves it undefined (reads the
+   * real engine store via {@link engineEntry}); the dev:mock host injects a
+   * fake reader so the whole pane renders without a real worktree/transcript.
+   */
+  readonly reader?: EngineHistoryReader
 }
 
 /** Lines of transcript scrolled per `j`/`k` keypress. */
@@ -265,6 +270,9 @@ function MessageCard(props: {
 
 function HistoryScreen(props: HistoryHostArgs) {
   const { theme } = useTheme()
+  // Data source: the injected reader (dev:mock) or the real engine transcript
+  // store. All three reads below go through it so a mock drives the whole pane.
+  const reader = props.reader ?? engineEntry(props.vendor).history
 
   // Live refresh: poll the vendor transcript mtime (adaptive backoff, shared
   // with the Ops pane) and bump this tick when it advances so the resources
@@ -277,7 +285,7 @@ function HistoryScreen(props: HistoryHostArgs) {
     () => [props.worktree, refreshTick()] as const,
     async ([wt]): Promise<readonly string[]> => {
       try {
-        return await engineEntry(props.vendor).history.listSessionIdsForWorktree(wt)
+        return await reader.listSessionIdsForWorktree(wt)
       } catch {
         return []
       }
@@ -309,7 +317,7 @@ function HistoryScreen(props: HistoryHostArgs) {
     },
     async ([id]): Promise<Message[]> => {
       try {
-        return await engineEntry(props.vendor).history.readHistory(id)
+        return await reader.readHistory(id)
       } catch {
         return []
       }
@@ -334,7 +342,7 @@ function HistoryScreen(props: HistoryHostArgs) {
     let primed = false
     async function poll(): Promise<void> {
       try {
-        const mtime = await latestTranscriptMtime(props.vendor, props.worktree)
+        const mtime = await reader.latestTranscriptMtimeForWorktree(props.worktree)
         if (disposed) return
         if (!primed) {
           primed = true
