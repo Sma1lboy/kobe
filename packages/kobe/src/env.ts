@@ -107,6 +107,17 @@ export function issueAssetsDir(): string {
 }
 
 /**
+ * Directory for prompt attachments pasted into composers (clipboard
+ * screenshots saved to disk so their path can travel in a prompt) —
+ * `<home>/.kobe/attachments/`. Created lazily at the write site; files
+ * are small PNGs named by timestamp+nonce so they never collide. Honours
+ * `KOBE_HOME_DIR` via {@link kobeStateDir}.
+ */
+export function promptAttachmentsDir(): string {
+  return join(kobeStateDir(), "attachments")
+}
+
+/**
  * SSH ControlMaster socket for a remote project — one multiplexed connection
  * per host/user/port, reused by every `ssh` kobe runs against that remote (see
  * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket

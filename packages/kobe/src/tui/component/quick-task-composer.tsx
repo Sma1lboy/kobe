@@ -14,11 +14,13 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, createSignal } from "solid-js"
+import { usePaste } from "@opentui/solid"
+import { For, Show, createSignal } from "solid-js"
 import type { VendorId } from "../../types/task"
 import { nextVendorWithin } from "../../types/vendor"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
+import { asAttachmentPaths, attachmentLabel, captureClipboardAttachment } from "../lib/attachments"
 import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { useDialog } from "../ui/dialog"
@@ -42,6 +44,8 @@ export interface QuickTaskResult {
   readonly prompt: string
   readonly vendor: VendorId
   readonly baseRef: string
+  /** Absolute file paths (images/PDFs) to reference alongside the prompt. */
+  readonly attachments: readonly string[]
 }
 
 type Field = "prompt" | "engine" | "branch"
@@ -59,6 +63,26 @@ function QuickTaskComposerView(
   const [prompt, setPrompt] = createSignal("")
   const [vendor, setVendor] = createSignal<VendorId>(props.defaultVendor)
   const [baseRef, setBaseRef] = createSignal(props.defaultBaseRef)
+  const [attachments, setAttachments] = createSignal<readonly string[]>([])
+
+  // Pasted text that is entirely image/PDF path(s) (Finder copy, drag-drop)
+  // becomes attachments instead of prompt text. This global paste hook runs
+  // BEFORE the focused input's own paste handler, so preventDefault() stops
+  // the path from also being inserted as text. Ordinary text falls through.
+  usePaste((event: { bytes: Uint8Array; preventDefault: () => void }) => {
+    const paths = asAttachmentPaths(new TextDecoder().decode(event.bytes))
+    if (!paths) return
+    event.preventDefault()
+    setAttachments((prev) => [...prev, ...paths.filter((p) => !prev.includes(p))])
+  })
+
+  // ctrl+v: a raw clipboard image (screenshot) or copied file never arrives
+  // as paste text — ask the OS clipboard directly. Async + best-effort.
+  function pasteAttachment(): void {
+    void captureClipboardAttachment().then((path) => {
+      if (path) setAttachments((prev) => (prev.includes(path) ? prev : [...prev, path]))
+    })
+  }
 
   function cycleField(dir: 1 | -1): void {
     const i = FIELDS.indexOf(field())
@@ -82,7 +106,12 @@ function QuickTaskComposerView(
       setField("prompt")
       return
     }
-    props.onSubmit({ prompt: prompt().trim(), vendor: vendor(), baseRef: baseRef().trim() || props.defaultBaseRef })
+    props.onSubmit({
+      prompt: prompt().trim(),
+      vendor: vendor(),
+      baseRef: baseRef().trim() || props.defaultBaseRef,
+      attachments: attachments(),
+    })
     dialog.clear()
   }
 
@@ -97,7 +126,13 @@ function QuickTaskComposerView(
   // config thunk re-runs per keypress, so it tracks `field()` live.
   useBindings(() => ({
     enabled: true,
-    bindings: quickTaskBindings(field(), { cycleField, stepEngine, commit }),
+    bindings: quickTaskBindings(field(), {
+      cycleField,
+      stepEngine,
+      commit,
+      pasteAttachment,
+      removeLastAttachment: () => setAttachments((prev) => prev.slice(0, -1)),
+    }),
   }))
 
   const fieldColor = (f: Field) => (field() === f ? theme.accent : theme.textMuted)
@@ -123,6 +158,18 @@ function QuickTaskComposerView(
           onSubmit={() => commit()}
         />
       </box>
+
+      <Show when={attachments().length > 0}>
+        <box flexDirection="row" gap={2} flexWrap="wrap">
+          <For each={attachments()}>
+            {(path, i) => (
+              <text fg={theme.primary} onMouseUp={() => setAttachments((prev) => prev.filter((p) => p !== path))}>
+                {attachmentLabel(path, i())}
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
 
       <box flexDirection="row" gap={2}>
         <text fg={fieldColor("engine")}>{t("quickTask.engineLabel")}</text>
