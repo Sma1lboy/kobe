@@ -29,6 +29,7 @@ import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
+import { sessionAttached } from "../lib/attach-gate"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { ACTIVITY_POLL_MIN_MS, nextActivityPollDelay } from "../ops/activity-poll"
@@ -341,6 +342,12 @@ function HistoryScreen(props: HistoryHostArgs) {
     let lastMtime = 0
     let primed = false
     async function poll(): Promise<void> {
+      // Detached (background) session: skip the transcript stat — the preview
+      // is invisible. Next tick after re-attach resumes the live tail.
+      if (!(await sessionAttached())) {
+        if (!disposed) timer = setTimeout(() => void poll(), delayMs)
+        return
+      }
       try {
         const mtime = await reader.latestTranscriptMtimeForWorktree(props.worktree)
         if (disposed) return
