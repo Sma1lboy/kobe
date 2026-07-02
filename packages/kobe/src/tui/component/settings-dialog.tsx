@@ -29,7 +29,12 @@ import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
-import { WORKTREE_BASE_KEY, normalizeWorktreeBase } from "../../state/worktree-base"
+import {
+  PROJECT_DIR_TOKEN,
+  WORKTREE_BASE_KEY,
+  hasProjectDirToken,
+  normalizeWorktreeBase,
+} from "../../state/worktree-base"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor, resolvePersistedVendor } from "../../types/vendor"
@@ -464,7 +469,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
     // fails with a raw git error and new-task creation breaks silently.
     // Validate here (create + writability check) and refuse to save a bad
     // path, rather than persisting a footgun. Blank clears the override.
-    if (raw) {
+    // A `$project_dir` path resolves per-project at task creation (parents
+    // are mkdirp'd there), so it can't be probed globally — only its shape
+    // is checked: the token must be the leading segment to expand at all.
+    if (raw.includes(PROJECT_DIR_TOKEN)) {
+      if (!hasProjectDirToken(raw)) {
+        await DialogConfirm.show(
+          dialog,
+          "Can't use that worktree location",
+          `${PROJECT_DIR_TOKEN} only expands as the leading path segment (e.g. ${PROJECT_DIR_TOKEN}/../kobe-worktrees). Keeping the previous setting.`,
+          "cancel",
+        )
+        return
+      }
+    } else if (raw) {
       const resolved = normalizeWorktreeBase(raw) ?? raw
       try {
         mkdirSync(resolved, { recursive: true })

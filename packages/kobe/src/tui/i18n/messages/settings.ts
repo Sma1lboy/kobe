@@ -56,10 +56,10 @@ export const en = {
     editorCustomUnset: "(unset — enter to edit)",
     worktree: "Worktree location",
     worktreeHint:
-      "Where new task worktrees are created (default `~/.kobe/worktrees`). Each repo keeps its own `<repo>-<hash>` subfolder underneath. Applies to new tasks only — existing worktrees stay where they are. Remote projects are unaffected. enter to edit; leave blank for the default.",
+      "Where new task worktrees are created (default `~/.kobe/worktrees`). Each repo keeps its own `<repo>-<hash>` subfolder underneath. Start the path with `$project_dir` to resolve it against each task's project root — e.g. `$project_dir/../` keeps worktrees next to the project. Applies to new tasks only — existing worktrees stay where they are. Remote projects are unaffected. enter to edit; leave blank for the default.",
     worktreeBase: "worktree base: {path}",
     worktreeBaseDefault: "(default — enter to change)",
-    worktreeBaseTitle: "Worktree location (blank = default ~/.kobe/worktrees)",
+    worktreeBaseTitle: "Worktree location (blank = default; $project_dir = project root)",
     worktreeBaseField: "path",
   },
   engines: {
@@ -181,10 +181,10 @@ export const zh: typeof en = {
     editorCustomUnset: "(未设置 — enter 编辑)",
     worktree: "工作树位置",
     worktreeHint:
-      "新任务工作树的创建位置（默认 `~/.kobe/worktrees`）。每个仓库在其下保留自己的 `<仓库名>-<哈希>` 子目录。仅对新任务生效——已有工作树保持原位。远程项目不受影响。enter 编辑；留空则用默认值。",
+      "新任务工作树的创建位置（默认 `~/.kobe/worktrees`）。每个仓库在其下保留自己的 `<仓库名>-<哈希>` 子目录。路径以 `$project_dir` 开头时会按每个任务的项目根目录展开——例如 `$project_dir/../` 让工作树紧挨项目存放。仅对新任务生效——已有工作树保持原位。远程项目不受影响。enter 编辑；留空则用默认值。",
     worktreeBase: "工作树根目录: {path}",
     worktreeBaseDefault: "(默认 — enter 修改)",
-    worktreeBaseTitle: "工作树位置（留空 = 默认 ~/.kobe/worktrees）",
+    worktreeBaseTitle: "工作树位置（留空 = 默认；$project_dir = 项目根目录）",
     worktreeBaseField: "路径",
   },
   engines: {
