@@ -17,7 +17,7 @@ canonical 执行逻辑在 auto-motion 仓库的 `.claude/skills/auto-motion/SKIL
 2. `refs/auto-motion` —— 已存在则用。
 3. 都没有:`git clone --depth 1 https://github.com/Sma1lboy/auto-motion.git refs/auto-motion`(我们的 fork,带 theme/引擎改动;refs/ 已 gitignore,40M 模板不进 kobe 仓库)。
 
-然后**通读 `<AUTO_MOTION_ROOT>/.claude/skills/auto-motion/SKILL.md` 并按它执行**(storyboard → theme.md → 镜头目录 → 顺序执行监控 → 拼接交付)。单镜头模板是 `<AUTO_MOTION_ROOT>/exampleFolder/run-claude-ai.sh`,scene skills 从 `<AUTO_MOTION_ROOT>/exampleFolder/.claude` 复制。
+然后**通读 `<AUTO_MOTION_ROOT>/.claude/skills/auto-motion/SKILL.md` 并按它执行**(storyboard → theme.md → 镜头目录 → 顺序执行监控 → 拼接交付)。单镜头模板是 `<AUTO_MOTION_ROOT>/exampleFolder/run-claude-ai.sh`;scene skills 本仓库 `.claude/skills/` 已 vendor 全套(hyperframes*、general-video、image-gen、motion-graphics),直接从这里复制,不必依赖模板根。
 
 ## Step B — kobe 的上层 theme(canonical SKILL 里 Step 0.5 优先级 ② 的具体来源)
 
