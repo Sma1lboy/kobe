@@ -31,9 +31,13 @@ import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
 import {
   PROJECT_DIR_TOKEN,
+  PROJECT_SIBLING_BASE,
+  WORKTREE_BASE_CUSTOM_KEY,
   WORKTREE_BASE_KEY,
+  type WorktreeBaseKind,
   hasProjectDirToken,
   normalizeWorktreeBase,
+  worktreeBaseKindOf,
 } from "../../state/worktree-base"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
 import type { VendorId } from "../../types/task"
@@ -447,19 +451,49 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
 
   // Worktree location: a global override for where new LOCAL task
-  // worktrees are created (default `~/.kobe/worktrees`). Free-text path
-  // field (reused RenameTaskDialog); blank = default. Read cross-process
-  // by the daemon's worktree path resolver (state/worktree-base.ts).
+  // worktrees are created (default `~/.kobe/worktrees`). A preset cycle
+  // mirroring the editor rows — default / next to project / custom —
+  // so the common choice ("beside each repo") never requires typing the
+  // $project_dir token; custom is a free-text path that still accepts
+  // it. The daemon's worktree path resolver (state/worktree-base.ts)
+  // reads WORKTREE_BASE_KEY alone; the companion custom key only
+  // remembers the last typed path across cycles.
   function worktreeBasePath(): string {
     const v = props.kv.get(WORKTREE_BASE_KEY, "")
     return typeof v === "string" ? v : ""
   }
-  async function editWorktreeBase(): Promise<void> {
-    const next = await RenameTaskDialog.show(dialog, worktreeBasePath(), {
+  const worktreeKind = (): WorktreeBaseKind => worktreeBaseKindOf(worktreeBasePath())
+  function worktreeKindLabel(): string {
+    const kind = worktreeKind()
+    if (kind === "default") return t("settings.general.worktreeKindDefault")
+    if (kind === "nextToProject") return t("settings.general.worktreeKindNext")
+    return t("settings.general.worktreeKindCustom")
+  }
+  function worktreeCustomPath(): string {
+    const v = props.kv.get(WORKTREE_BASE_CUSTOM_KEY, "")
+    const remembered = typeof v === "string" ? v.trim() : ""
+    // A custom path saved before the preset cycle existed lives only in
+    // the base key — surface it so the row isn't misleadingly "(unset)".
+    return remembered || (worktreeKind() === "custom" ? worktreeBasePath().trim() : "")
+  }
+  function cycleWorktreeBase(): void {
+    const kind = worktreeKind()
+    if (kind === "default") {
+      props.kv.set(WORKTREE_BASE_KEY, PROJECT_SIBLING_BASE)
+    } else if (kind === "nextToProject") {
+      // No remembered custom path → nothing to cycle onto; back to default.
+      props.kv.set(WORKTREE_BASE_KEY, worktreeCustomPath())
+    } else {
+      props.kv.set(WORKTREE_BASE_CUSTOM_KEY, worktreeBasePath().trim())
+      props.kv.set(WORKTREE_BASE_KEY, "")
+    }
+  }
+  async function editWorktreeCustom(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, worktreeCustomPath(), {
       dialogTitle: t("settings.general.worktreeBaseTitle"),
       fieldLabel: t("settings.general.worktreeBaseField"),
       submitLabel: "save",
-      placeholder: "~/.kobe/worktrees",
+      placeholder: `${PROJECT_DIR_TOKEN}/../worktrees`,
       allowEmpty: true,
     })
     if (next === undefined) return
@@ -497,9 +531,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return
       }
     }
-    // Persist the trimmed raw entry; the daemon expands ~ / relative
-    // paths the same way when it reads it.
-    props.kv.set(WORKTREE_BASE_KEY, raw)
+    // Persist the trimmed raw entry; the daemon expands ~ / relative /
+    // $project_dir paths the same way when it reads it. Typing a path
+    // here means the user wants it used — flip the preset to custom
+    // (mirrors the editor-custom flow); blank clears the custom choice.
+    props.kv.set(WORKTREE_BASE_CUSTOM_KEY, raw)
+    if (raw) props.kv.set(WORKTREE_BASE_KEY, raw)
+    else if (worktreeKind() === "custom") props.kv.set(WORKTREE_BASE_KEY, "")
   }
 
   async function sendFeedback(): Promise<void> {
@@ -582,7 +620,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     surface: (row) => selectSurface(row.surface),
     editorKind: () => cycleEditorKind(),
     editorCustom: () => void editEditorCustom(),
-    worktreeBase: () => void editWorktreeBase(),
+    worktreeBase: () => cycleWorktreeBase(),
+    worktreeCustom: () => void editWorktreeCustom(),
     engine: (row) => void editEngine(row.vendor),
     engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
     feedbackTitle: () => setBodyRow(0),
@@ -718,8 +757,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
               cycleEditorKind={cycleEditorKind}
               editorCustomCommand={editorCustomCommand}
               editEditorCustom={() => void editEditorCustom()}
-              worktreeBasePath={worktreeBasePath}
-              editWorktreeBase={() => void editWorktreeBase()}
+              worktreeKind={worktreeKind}
+              worktreeKindLabel={worktreeKindLabel}
+              cycleWorktreeBase={cycleWorktreeBase}
+              worktreeCustomPath={worktreeCustomPath}
+              editWorktreeCustom={() => void editWorktreeCustom()}
             />
           </Show>
           <Show when={section() === "engines"}>

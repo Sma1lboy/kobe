@@ -33,8 +33,35 @@ import { loadStateFile } from "./store.ts"
 
 export const WORKTREE_BASE_KEY = "worktree.basePath"
 
+/**
+ * TUI-only companion key remembering the last custom path the user
+ * typed, so cycling the setting away from `custom` and back restores it
+ * instead of forcing a retype. The daemon never reads this.
+ */
+export const WORKTREE_BASE_CUSTOM_KEY = "worktree.basePath.custom"
+
 /** Leading-segment token that expands to the task's project root. */
 export const PROJECT_DIR_TOKEN = "$project_dir"
+
+/**
+ * The stored value behind the "next to project" preset: worktrees land
+ * beside each repo (`<parent-of-repo>/<repo>-<hash>/<slug>`).
+ */
+export const PROJECT_SIBLING_BASE = `${PROJECT_DIR_TOKEN}/..`
+
+export type WorktreeBaseKind = "default" | "nextToProject" | "custom"
+
+/**
+ * Classify a raw stored base path into the Settings presets: blank →
+ * `default`, the `$project_dir/..` sibling preset (any trailing slashes
+ * tolerated) → `nextToProject`, anything else → `custom`.
+ */
+export function worktreeBaseKindOf(raw: string): WorktreeBaseKind {
+  const trimmed = raw.trim()
+  if (!trimmed) return "default"
+  if (trimmed.replace(/\/+$/, "") === PROJECT_SIBLING_BASE) return "nextToProject"
+  return "custom"
+}
 
 /** True iff `raw` starts with `$project_dir` as its first path segment. */
 export function hasProjectDirToken(raw: string): boolean {

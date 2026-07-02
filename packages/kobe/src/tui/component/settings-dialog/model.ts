@@ -52,6 +52,7 @@ export type SettingsRow =
   | { id: "editor-kind"; kind: "editorKind" }
   | { id: "editor-custom"; kind: "editorCustom" }
   | { id: "worktree-base"; kind: "worktreeBase" }
+  | { id: "worktree-custom"; kind: "worktreeCustom" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: "feedback-title"; kind: "feedbackTitle" }
@@ -116,6 +117,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "editor-kind", kind: "editorKind" },
     { id: "editor-custom", kind: "editorCustom" },
     { id: "worktree-base", kind: "worktreeBase" },
+    { id: "worktree-custom", kind: "worktreeCustom" },
   ]
 }
 
