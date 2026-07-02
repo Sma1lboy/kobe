@@ -39,6 +39,12 @@ export interface HistoryHostArgs {
   readonly vendor: VendorId
   /** Optional task title for the header; falls back to the worktree basename. */
   readonly title?: string
+  /**
+   * Live preview of a non-archived task (vs the frozen archived transcript):
+   * the header tags LIVE instead of ARCHIVED. The mtime poll runs either way;
+   * this only picks the badge.
+   */
+  readonly live?: boolean
 }
 
 /** Lines of transcript scrolled per `j`/`k` keypress. */
@@ -407,8 +413,8 @@ function HistoryScreen(props: HistoryHostArgs) {
         flexShrink={0}
         backgroundColor={theme.backgroundElement}
       >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-          {t("history.archivedTag")}
+        <text fg={props.live ? theme.success : theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+          {props.live ? t("history.liveTag") : t("history.archivedTag")}
         </text>
         <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
           {headerTitle()}

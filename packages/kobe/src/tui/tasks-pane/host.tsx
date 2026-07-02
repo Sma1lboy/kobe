@@ -35,7 +35,14 @@
 
 import { existsSync } from "node:fs"
 import { stat } from "node:fs/promises"
-import { claudePaneIdStrict, currentSessionName, runTmux, runTmuxCapturing } from "@/tmux/client"
+import {
+  claudePaneIdStrict,
+  currentSessionName,
+  killSession,
+  runTmux,
+  runTmuxCapturing,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { ZEN_HIDDEN_PANES_OPTION } from "@/tmux/session-layout"
 import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
@@ -500,6 +507,17 @@ function TasksShell(props: {
     await props.reload()
   }
 
+  // `i` — flip a task between the live read-only preview and the engine. The
+  // mode is read when the session is built and a healthy session is reused
+  // as-is, so kill this task's session to force a rebuild in the new mode, then
+  // switch into it to show the result. killSession no-ops when none exists.
+  async function togglePreviewFlow(id: string): Promise<void> {
+    const { togglePreviewMode } = await import("@/state/preview-mode")
+    togglePreviewMode(id)
+    await killSession(tmuxSessionName(id))
+    await switchTo(id)
+  }
+
   // Collapsed state of the `── keys ──` legend (toggled by `?` / clicking
   // the header). A GLOBAL pref fanned out like sort/theme: seed from the
   // persisted value, apply locally for instant feedback, and persist via
@@ -710,6 +728,7 @@ function TasksShell(props: {
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}
           onPinRequest={(id) => void togglePin(id)}
+          onPreviewToggleRequest={(id) => void togglePreviewFlow(id)}
           onLocalMergeRequest={(id) => {
             const task = props.tasks().find((t) => t.id === id)
             if (!task || task.kind === "main") return
