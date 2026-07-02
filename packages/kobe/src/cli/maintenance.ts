@@ -33,7 +33,7 @@ import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } f
 import { readPidFile } from "@sma1lboy/kobe-daemon/daemon/server"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
-import { KOBE_TMUX_SOCKET, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
+import { KOBE_TMUX_SOCKET, termAllPaneGroups, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
 import { CURRENT_VERSION } from "../version.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
@@ -348,7 +348,10 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   )
 
   // 2. tmux: kill the whole kobe server (all task sessions at once).
+  // TERM pane groups first — engines/helpers catch tmux's HUP without
+  // exiting, so a bare kill-server leaked every pane process to launchd.
   if (await tmuxAvailable()) {
+    await termAllPaneGroups()
     const { code } = await tmuxQuiet(["kill-server"])
     console.log(
       code === 0

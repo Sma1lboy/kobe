@@ -364,4 +364,29 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
     ),
     hostRenderOptions(screen.onDestroy),
   )
+  // Exit-signal backstop (orphaned-helper leak): opentui's own exit handler
+  // for SIGHUP/SIGTERM only destroys the renderer — it never calls
+  // process.exit — and installing that listener replaced the signals'
+  // default "terminate" action. A host keeps its event loop alive (daemon
+  // socket, file watcher, poll timers), so every tmux `kill-pane` /
+  // `respawn-pane -k` / session teardown left the process running forever
+  // with a revoked tty, reparented to launchd. Registered AFTER `render`
+  // resolves so opentui's handler (terminal restore + onDestroy) runs
+  // first.
+  //
+  // The exit is DELAYED, not immediate: some flows kill the session their
+  // own pane lives in and then keep orchestrating (togglePreview's
+  // kill→rebuild→switch, ensureSession's vendor-switch rebuild) — an
+  // instant exit on the incoming SIGHUP would truncate them. Five seconds
+  // is enough for any in-flight tmux sequence; the pane is already gone
+  // from the screen, so the tail is invisible.
+  let exitScheduled = false
+  const scheduleExit = () => {
+    if (exitScheduled) return
+    exitScheduled = true
+    setTimeout(() => process.exit(0), 5000)
+  }
+  for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"] as const) {
+    process.on(signal, scheduleExit)
+  }
 }

@@ -590,7 +590,10 @@ async function main(): Promise<void> {
     // an OLD version of those panes. Does NOT touch the user's own tmux
     // (different socket) or the daemon (run `kobe daemon restart` for
     // that). No-op when no kobe server is running.
-    const { runTmux, KOBE_TMUX_SOCKET } = await import("../tmux/client.ts")
+    const { runTmux, termAllPaneGroups, KOBE_TMUX_SOCKET } = await import("../tmux/client.ts")
+    // TERM every pane group first: engines and helpers catch tmux's HUP
+    // without exiting, so a bare kill-server leaked them all to launchd.
+    await termAllPaneGroups()
     const code = await runTmux(["kill-server"])
     console.log(
       code === 0
