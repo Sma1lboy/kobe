@@ -1,6 +1,7 @@
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { type Accessor, For, type Setter, Show, createEffect } from "solid-js"
 import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
+import type { WorktreeBaseKind } from "../../../state/worktree-base"
 import type { VendorId } from "../../../types/task"
 import { userKeybindingsReport } from "../../context/keybindings-user"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
@@ -84,8 +85,11 @@ export function GeneralSettingsSection(
     cycleEditorKind: () => void
     editorCustomCommand: Accessor<string>
     editEditorCustom: () => void
-    worktreeBasePath: Accessor<string>
-    editWorktreeBase: () => void
+    worktreeKind: Accessor<WorktreeBaseKind>
+    worktreeKindLabel: Accessor<string>
+    cycleWorktreeBase: () => void
+    worktreeCustomPath: Accessor<string>
+    editWorktreeCustom: () => void
   },
 ) {
   const themeCtx = useTheme()
@@ -103,6 +107,7 @@ export function GeneralSettingsSection(
   const editorKindRow = () => rowIdx("editor-kind")
   const editorCustomRow = () => rowIdx("editor-custom")
   const worktreeBaseRow = () => rowIdx("worktree-base")
+  const worktreeCustomRow = () => rowIdx("worktree-custom")
   const isTransparentRow = () => props.bodyRow() === transparentRow()
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
@@ -112,6 +117,7 @@ export function GeneralSettingsSection(
   const isEditorKindRow = () => props.bodyRow() === editorKindRow()
   const isEditorCustomRow = () => props.bodyRow() === editorCustomRow()
   const isWorktreeBaseRow = () => props.bodyRow() === worktreeBaseRow()
+  const isWorktreeCustomRow = () => props.bodyRow() === worktreeCustomRow()
 
   return (
     <box flexDirection="column" gap={1}>
@@ -469,7 +475,7 @@ export function GeneralSettingsSection(
           onMouseUp={() => {
             props.setLevel("body")
             props.setBodyRow(worktreeBaseRow())
-            props.editWorktreeBase()
+            props.cycleWorktreeBase()
           }}
         >
           <text
@@ -477,8 +483,33 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {t("settings.general.worktreeBase", {
-              path: props.worktreeBasePath().trim() || t("settings.general.worktreeBaseDefault"),
+            {t("settings.general.worktreeBase", { kind: props.worktreeKindLabel() })}
+          </text>
+        </box>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isWorktreeCustomRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(worktreeCustomRow())
+            props.editWorktreeCustom()
+          }}
+        >
+          <text
+            fg={
+              isWorktreeCustomRow()
+                ? theme.selectedListItemText
+                : props.worktreeKind() === "custom"
+                  ? theme.text
+                  : theme.textMuted
+            }
+            wrapMode="none"
+          >
+            {t("settings.general.worktreeCustom", {
+              path: props.worktreeCustomPath() || t("settings.general.worktreeCustomUnset"),
             })}
           </text>
         </box>
