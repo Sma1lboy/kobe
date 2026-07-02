@@ -78,6 +78,19 @@ await $`kobe api add --repo ${REPO} --title ${"fix flaky turn-detector test"} --
   .quiet()
   .nothrow()
 
+// Warm-up pass (off camera): boot the TUI once so the pre-seeded task's
+// worktree + bun install settle before we roll — the video must open on a
+// calm kobe workspace, not an install screen.
+await tmux(
+  "new-session", "-d", "-s", "warmup", "-x", String(COLS), "-y", String(ROWS),
+  "-e", `KOBE_HOME_DIR=${HOME}`, "-e", "KOBE_TMUX_SOCKET=kobe-capture-inner",
+  "-e", `PATH=${process.env.PATH}`,
+  "-c", REPO,
+  "kobe",
+)
+await sleep(50_000)
+await tmux("kill-session", "-t", "warmup").nothrow()
+
 // Plain shell first — the demo opens on `$ kobe<Enter>` like the original.
 await tmux(
   "new-session", "-d", "-s", SESSION, "-x", String(COLS), "-y", String(ROWS),
@@ -96,13 +109,14 @@ const BEATS: Array<[number, () => Promise<unknown>]> = [
   [8.0, () => createTaskViaDialog(0)], // claude task via NewTaskDialog
   // Engine boots ~14-30s (worktree + bun install + claude). Then type the
   // first prompt into the composer, visibly.
-  [32.0, () => typeText(CLAUDE_PROMPT, 45)],
-  [37.5, () => key("Enter")],
+  // Type, then submit — chained, not a separate timed beat: per-char send-keys
+  // overhead makes typing finish later than nominal, and a timed Enter can
+  // fire mid-prompt and submit a truncated message (it did).
+  [32.0, () => typeText(CLAUDE_PROMPT, 45).then(() => sleep(500)).then(() => key("Enter"))],
   // Let the agent stream tool calls, then create the codex task.
   [52.0, () => key("C-h")],
   [53.0, () => createTaskViaDialog(1)], // codex
-  [78.0, () => typeText(CODEX_PROMPT, 45)],
-  [82.5, () => key("Enter")],
+  [78.0, () => typeText(CODEX_PROMPT, 45).then(() => sleep(500)).then(() => key("Enter"))],
 ]
 
 const frames: Array<{ t: number; lines: string[] }> = []

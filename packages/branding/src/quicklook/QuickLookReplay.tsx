@@ -1,5 +1,10 @@
+import { loadFont } from "@remotion/google-fonts/JetBrainsMono"
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "../colors"
+
+// Bundle the real font: the fallback mono has a different advance width, so
+// the 160-col grid wouldn't fill 1280px and the frame shows bg "black bars".
+loadFont("normal", { weights: ["400", "700"] })
 import { parseAnsiLine, type Span } from "./ansi"
 import capture from "./frames.json"
 
@@ -56,6 +61,10 @@ type Region = { c0: number; c1: number; r0: number; r1: number }
 const FULL: Region = { c0: 0, c1: capture.cols - 1, r0: 0, r1: capture.rows - 1 }
 const CHAT: Region = { c0: 33, c1: 107, r0: 3, r1: 36 } // workspace conversation area
 const DIALOG: Region = { c0: 30, c1: 130, r0: 6, r1: 38 } // centered NewTaskDialog card
+const INPUT: Region = { c0: 33, c1: 110, r0: 37, r1: 44 } // composer at the chat pane's bottom
+// Codex's composer row drifts with what it printed above — give it the lower
+// half of the pane and let the change mask find the typing.
+const INPUT_CODEX: Region = { c0: 33, c1: 110, r0: 22, r1: 40 }
 
 // Stage boundaries mirror the capture script's beats.
 // No region = wide shot (boot repaints everything; wrap pulls out).
@@ -64,11 +73,11 @@ const STAGES: Array<{ name: string; from: number; to: number; region?: Region }>
   { name: "boot", from: 2.7, to: 8 }, // TUI paints — full shot, sidebar has a task
   { name: "dialog", from: 8, to: 15, region: DIALOG }, // NewTaskDialog: claude
   { name: "engine-boot", from: 15, to: 31 }, // worktree + bun install + claude — wide
-  { name: "type-prompt", from: 31, to: 39, region: CHAT }, // prompt typed live
+  { name: "type-prompt", from: 31, to: 39, region: INPUT }, // prompt typed into the composer
   { name: "agent", from: 39, to: 52, region: CHAT }, // tool stream
   { name: "dialog-codex", from: 52, to: 60, region: DIALOG }, // second task: codex
   { name: "codex-boot", from: 60, to: 77 }, // codex boots — wide
-  { name: "type-codex", from: 77, to: 84, region: CHAT }, // codex prompt typed
+  { name: "type-codex", from: 77, to: 84, region: INPUT_CODEX }, // codex prompt typed
   { name: "agent-2", from: 84, to: END - 4, region: CHAT },
   { name: "wrap", from: END - 4, to: END }, // pull back out
 ]

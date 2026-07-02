@@ -14,6 +14,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@remotion/cli": "4.0.482",
+        "@remotion/google-fonts": "4.0.482",
         "react": "19.0.0",
         "react-dom": "19.0.0",
         "remotion": "4.0.482",
@@ -501,6 +502,8 @@
     "@remotion/compositor-linux-x64-musl": ["@remotion/compositor-linux-x64-musl@4.0.482", "", { "os": "linux", "cpu": "x64" }, "sha512-T6czdbQi6H/LT5UtD8coJ9exLsvvcZJoXS5ndgJgRJh7es/A25aof40r/+D9JuikQAn1nT5PcFwbYH/hTMI+rQ=="],
 
     "@remotion/compositor-win32-x64-msvc": ["@remotion/compositor-win32-x64-msvc@4.0.482", "", { "os": "win32", "cpu": "x64" }, "sha512-KU67TFQzUqePcfreWsLgYvgU7DrtxbyBEqGXBFOTyUiKjdlOOFClUggrNYMHWAdWeJBhFo4VILo6ycecGKRcRg=="],
+
+    "@remotion/google-fonts": ["@remotion/google-fonts@4.0.482", "", { "dependencies": { "remotion": "4.0.482" } }, "sha512-1LvcOJLMYKTP65MC+8xAzEG956XEp71r6UjjGHZZIn4taGq7/ZdkjaCLfHAc1EkF28ybuzhvt+RqxQ7jPipzdA=="],
 
     "@remotion/licensing": ["@remotion/licensing@4.0.482", "", {}, "sha512-IjA9Wn2HTXsmmu26CcBfMSWMRI2iC3JpUlzASUPBkNEsB7xL28t/goNQ6vHWHpqr4HZ9mcYT+wQ3CYx9mxTR9A=="],
 

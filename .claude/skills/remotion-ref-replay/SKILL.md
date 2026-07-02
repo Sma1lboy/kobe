@@ -87,6 +87,13 @@ Reusable gotchas (all cost us time at least once):
   acting. A hand-rolled stand-in is both wrong and re-broken every UI change.
 - **Type char-by-char** (`send-keys -l <char>` + delay): ~45ms/char for prompts
   (readable), slower (~160ms) for short deliberate commands.
+- **Chain submit onto the typing, never a separate timed beat** — per-char
+  send-keys overhead makes real typing finish later than nominal, and a timed
+  Enter fires mid-prompt and submits a truncated message (it did):
+  `typeText(...).then(() => sleep(500)).then(() => key("Enter"))`.
+- **Warm up off camera** — boot the app once (not captured) so pre-seeded
+  state finishes its expensive init (worktree, installs); the video must open
+  on a settled screen, not an install spinner.
 - **Teardown fully** — kill every socket/process the run spawned (outer + inner
   tmux, the daemon, engine sessions) or they leak between runs.
 - **Side effects persist** — created tasks/branches/files in the target repo are
@@ -166,6 +173,10 @@ A target near an edge sticks to that edge instead of cropping.
 | Engine sessions leak after a run | partial teardown | kill both tmux sockets + stop the daemon |
 | Demo shows a fake/oversimplified dialog | stand-in instead of real surface | drive the real dialog's keystrokes |
 | Frames show env noise (nags, banners) | non-pristine capture profile | clean app-home / suppress interstitials first |
+| Video opens on an install/loading screen | pre-seeded state initializes on camera | warm-up boot off camera before capturing |
+| Submitted prompt is truncated | Enter scheduled as its own timed beat | chain Enter after typeText completes |
+| Black bars / frame not filled | fallback font's advance ≠ cell width | bundle the app's font (e.g. @remotion/google-fonts) |
+| Camera frames chrome above the input while typing | input row outside the stage region | dedicated region for the composer rows (it may drift — widen) |
 
 ## Production checklist (before a capture replaces a shipped asset)
 
