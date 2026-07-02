@@ -14,6 +14,28 @@ describe("globToRegExp", () => {
     expect(re.test("a/b/c")).toBe(true)
   })
 
+  it("lets an interior `**` match zero intervening directories", () => {
+    const re = globToRegExp("src/**/task.ts")
+    expect(re.test("src/task.ts")).toBe(true) // zero directories between
+    expect(re.test("src/a/task.ts")).toBe(true)
+    expect(re.test("src/a/b/task.ts")).toBe(true)
+    expect(re.test("srctask.ts")).toBe(false) // separator is still required
+    expect(re.test("src/task.tsx")).toBe(false) // still anchored
+  })
+
+  it("lets a leading `**/` match zero or more leading directories", () => {
+    const re = globToRegExp("**/task.ts")
+    expect(re.test("task.ts")).toBe(true)
+    expect(re.test("a/task.ts")).toBe(true)
+    expect(re.test("a/b/task.ts")).toBe(true)
+  })
+
+  it("keeps loose `**` semantics when it is not its own segment", () => {
+    const re = globToRegExp("a**b")
+    expect(re.test("a-x/y-b")).toBe(true) // still crosses slashes
+    expect(re.test("axb")).toBe(true)
+  })
+
   it("treats `?` as a single non-slash char", () => {
     const re = globToRegExp("?.ts")
     expect(re.test("a.ts")).toBe(true)
@@ -50,5 +72,12 @@ describe("matchPathGlob", () => {
 
   it("does not let `*` cross directory separators", () => {
     expect(matchPathGlob("/a/*", "/a/b/c")).toBe(false)
+  })
+
+  it("matches a nested `**` filter against a worktree directly under the prefix", () => {
+    // Regression: `src/**/login` previously failed to match `/work/src/login`
+    // because the globstar required at least one intervening directory.
+    expect(matchPathGlob("/work/**/login", "/work/login")).toBe(true)
+    expect(matchPathGlob("/work/**/login", "/work/feature/login")).toBe(true)
   })
 })
