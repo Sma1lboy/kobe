@@ -11,9 +11,9 @@ canonical 执行逻辑在 auto-motion 仓库的 `.claude/skills/auto-motion/SKIL
 
 按顺序取第一个命中的:
 
-1. `../auto-motion`(workspace sibling,`/Users/jacksonc/i/auto-motion`)——优先,含最新的 theme/引擎改动。
+1. `../auto-motion`(workspace sibling,`/Users/jacksonc/i/auto-motion`)——本地开发副本,可能领先 fork。
 2. `refs/auto-motion` —— 已存在则用。
-3. 都没有:`git clone --depth 1 https://github.com/vibe-motion/auto-motion.git refs/auto-motion`(refs/ 已 gitignore,40M 模板不进 kobe 仓库)。
+3. 都没有:`git clone --depth 1 https://github.com/Sma1lboy/auto-motion.git refs/auto-motion`(我们的 fork,带 theme/引擎改动;refs/ 已 gitignore,40M 模板不进 kobe 仓库)。
 
 然后**通读 `<AUTO_MOTION_ROOT>/.claude/skills/auto-motion/SKILL.md` 并按它执行**(storyboard → theme.md → 镜头目录 → 顺序执行监控 → 拼接交付)。单镜头模板是 `<AUTO_MOTION_ROOT>/exampleFolder/run-claude-ai.sh`,scene skills 从 `<AUTO_MOTION_ROOT>/exampleFolder/.claude` 复制。
 
