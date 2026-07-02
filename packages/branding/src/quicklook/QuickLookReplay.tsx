@@ -50,72 +50,88 @@ const stripLine = (l: string) =>
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const END = capture.frames[capture.frames.length - 1].t + 4 // + tail hold (matches Root.tsx)
 
+// Grid rect a stage is allowed to look at — the pane the story is about.
+// Chrome (composer/status/footer) and unrelated panes stay out of frame.
+type Region = { c0: number; c1: number; r0: number; r1: number }
+const FULL: Region = { c0: 0, c1: capture.cols - 1, r0: 0, r1: capture.rows - 1 }
+const SIDEBAR: Region = { c0: 0, c1: 31, r0: 0, r1: 30 } // excludes keys-help footer
+const CHAT: Region = { c0: 33, c1: 107, r0: 3, r1: 36 } // workspace conversation area
+
 // Stage boundaries mirror the capture script's beats.
-// `wide: true` forces a full shot (boot repaints everything; wrap pulls out).
-const STAGES: Array<{ name: string; from: number; to: number; wide?: boolean }> = [
-  { name: "shell", from: 0, to: 2.5 }, // $ kobe typed
-  { name: "boot", from: 2.5, to: 8, wide: true }, // TUI paints — full shot
-  { name: "task-created", from: 8, to: 14 }, // sidebar: task appears, selected
-  { name: "open-task", from: 14, to: 26, wide: true }, // workspace attaches, engine boots
-  { name: "prompt", from: 26, to: 31 }, // prompt pasted into composer
-  { name: "agent", from: 31, to: END - 4 }, // tool stream
-  { name: "wrap", from: END - 4, to: END, wide: true }, // pull back out
+// No region = wide shot (boot repaints everything; wrap pulls out).
+const STAGES: Array<{ name: string; from: number; to: number; region?: Region }> = [
+  { name: "shell", from: 0, to: 2.5, region: FULL }, // $ kobe typed
+  { name: "boot", from: 2.5, to: 8 }, // TUI paints — full shot
+  { name: "task-created", from: 8, to: 14, region: SIDEBAR }, // task appears, selected
+  { name: "open-task", from: 14, to: 26 }, // workspace attaches, engine boots
+  { name: "prompt", from: 26, to: 31, region: CHAT }, // prompt pasted + submitted
+  { name: "agent", from: 31, to: END - 4, region: CHAT }, // tool stream
+  { name: "wrap", from: END - 4, to: END }, // pull back out
 ]
 
-type Shot = { scale: number; ox: number; oy: number }
-const WIDE: Shot = { scale: 1, ox: 50, oy: 50 }
+// A shot is a scale + the content point (px) to center in the viewport.
+type Shot = { scale: number; cx: number; cy: number }
+const WIDE: Shot = { scale: 1, cx: 640, cy: 360 }
 
-// Frame a stage: union of every cell that changed during it, trimmed to the
-// 5–95% weight quantiles so a stray spinner/status tick can't stretch the box.
-function frameStage(from: number, to: number): Shot {
-  const rowW = new Array(capture.rows).fill(0)
-  const colW = new Array(capture.cols).fill(0)
+// Frame a stage: mark every cell inside the stage's region that changed at
+// least once (binary — a spinner redrawing 50 times counts once), cluster
+// changed rows into bands (gap > 3 splits), and frame the biggest band.
+function frameStage(from: number, to: number, region: Region): Shot {
+  const heat: number[][] = Array.from({ length: capture.rows }, () => new Array(capture.cols).fill(0))
   let total = 0
   for (let i = 1; i < capture.frames.length; i++) {
     if (capture.frames[i].t < from || capture.frames[i].t >= to) continue
     const prev = capture.frames[i - 1].lines.map(stripLine)
     const cur = capture.frames[i].lines.map(stripLine)
-    for (let r = 0; r < cur.length; r++) {
+    for (let r = region.r0; r <= Math.min(region.r1, cur.length - 1); r++) {
       const a = prev[r] ?? ""
       const b = cur[r]
       if (a === b) continue
-      const len = Math.max(a.length, b.length)
-      for (let c = 0; c < len; c++) {
-        if ((a[c] ?? " ") !== (b[c] ?? " ")) {
-          rowW[r] = (rowW[r] ?? 0) + 1
-          colW[c] = (colW[c] ?? 0) + 1
+      for (let c = region.c0; c <= region.c1; c++) {
+        if ((a[c] ?? " ") !== (b[c] ?? " ") && heat[r][c] === 0) {
+          heat[r][c] = 1
           total++
         }
       }
     }
   }
   if (total < 10) return WIDE
-  const span = (w: number[]): [number, number] => {
-    const sum = w.reduce((a, b) => a + b, 0)
-    let acc = 0
-    let lo = 0
-    let hi = w.length - 1
-    for (let i = 0; i < w.length; i++) {
-      acc += w[i]
-      if (acc < sum * 0.05) lo = i + 1
-      if (acc <= sum * 0.95) hi = i
+  const rowW = heat.map((row) => row.reduce((a, b) => a + b, 0))
+  // Biggest row band.
+  let best: { w: number; r0: number; r1: number } | null = null
+  let band: typeof best = null
+  for (let r = region.r0; r <= region.r1; r++) {
+    if (!rowW[r]) continue
+    if (band && r - band.r1 <= 3) {
+      band.w += rowW[r]
+      band.r1 = r
+    } else {
+      band = { w: rowW[r], r0: r, r1: r }
     }
-    return [lo, Math.max(lo, hi)]
+    if (!best || band.w > best.w) best = band
   }
-  const [r0, r1] = span(rowW)
-  const [c0, c1] = span(colW)
-  const h = (r1 - r0 + 1) / capture.rows
-  const w = (c1 - c0 + 1) / capture.cols
-  // Fit the box into ~80% of the viewport, capped so text stays crisp.
-  const scale = clamp(0.8 / Math.max(w, h), 1, 1.6)
-  return {
-    scale,
-    ox: clamp(((c0 + c1) / 2 / capture.cols) * 100, 5, 95),
-    oy: clamp(((r0 + r1) / 2 / capture.rows) * 100, 5, 95),
+  if (!best) return WIDE
+  // Column span: 5–95% weight quantiles within the winning band.
+  const colW = new Array(capture.cols).fill(0)
+  for (let r = best.r0; r <= best.r1; r++) for (let c = region.c0; c <= region.c1; c++) colW[c] += heat[r][c]
+  const sum = colW.reduce((a: number, b: number) => a + b, 0)
+  let acc = 0
+  let c0 = region.c0
+  let c1 = region.c1
+  for (let c = region.c0; c <= region.c1; c++) {
+    acc += colW[c]
+    if (acc < sum * 0.05) c0 = c + 1
+    if (acc <= sum * 0.95) c1 = c
   }
+  c1 = Math.max(c0, c1)
+  const w = (c1 - c0 + 1) * CELL_W
+  const h = (best.r1 - best.r0 + 1) * LINE_H
+  // Fit the band into ~80% of the viewport, capped so text stays crisp.
+  const scale = clamp(Math.min((1280 * 0.8) / w, (720 * 0.8) / h), 1, 1.6)
+  return { scale, cx: ((c0 + c1 + 1) / 2) * CELL_W, cy: ((best.r0 + best.r1 + 1) / 2) * LINE_H }
 }
 
-const SHOTS: Shot[] = STAGES.map((s) => (s.wide ? WIDE : frameStage(s.from, s.to)))
+const SHOTS: Shot[] = STAGES.map((s) => (s.region ? frameStage(s.from, s.to, s.region) : WIDE))
 
 const easeInOut = (p: number) => p * p * (3 - 2 * p)
 const TRANSITION = 1.2 // seconds to move between stage shots
@@ -136,8 +152,8 @@ function cameraAt(t: number): Shot {
   const p = easeInOut(into / TRANSITION)
   return {
     scale: prev.scale + (shot.scale - prev.scale) * p,
-    ox: prev.ox + (shot.ox - prev.ox) * p,
-    oy: prev.oy + (shot.oy - prev.oy) * p,
+    cx: prev.cx + (shot.cx - prev.cx) * p,
+    cy: prev.cy + (shot.cy - prev.cy) * p,
   }
 }
 
@@ -155,6 +171,10 @@ export const QuickLookReplay: React.FC = () => {
   })
 
   const cam = cameraAt(t)
+  // Center the shot's target point, clamped so the viewport never leaves the
+  // content — a target near an edge sticks to that edge instead of cropping.
+  const tx = clamp(640 - cam.cx * cam.scale, 1280 * (1 - cam.scale), 0)
+  const ty = clamp(360 - cam.cy * cam.scale, 720 * (1 - cam.scale), 0)
 
   return (
     <AbsoluteFill style={{ backgroundColor: colors.bg, fontFamily: monoStack }}>
@@ -164,8 +184,8 @@ export const QuickLookReplay: React.FC = () => {
           height: 720,
           fontSize: CELL_W / 0.6,
           lineHeight: `${LINE_H}px`,
-          transform: `scale(${cam.scale})`,
-          transformOrigin: `${cam.ox}% ${cam.oy}%`,
+          transform: `translate(${tx}px, ${ty}px) scale(${cam.scale})`,
+          transformOrigin: "0 0",
         }}
       >
         {lines.map((spans, i) => (
