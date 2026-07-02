@@ -86,6 +86,12 @@ export async function resolveBranchHead(
   // exits non-zero on detached HEAD instead of returning the literal
   // string `HEAD`, so the failure mode is unambiguous.
   let value = ""
+  // Track whether we genuinely resolved (branch name or verified
+  // detached HEAD) vs. both spawns failing/timing out. On a timeout both
+  // spawns resolve with status:null and `value` stays "" — caching that
+  // empty value against a still-valid HEAD fingerprint would permanently
+  // blank the branch label (KOB-8), so only the resolved case is cached.
+  let resolved = false
   const ref = await spawn("git", ["symbolic-ref", "--short", "HEAD"], {
     cwd: repo,
     env: readOnlyGitProcessEnv(),
@@ -94,6 +100,7 @@ export async function resolveBranchHead(
   const name = ref.status === 0 ? ref.stdout.trim() : ""
   if (name && name !== "HEAD") {
     value = name
+    resolved = true
   } else {
     // Detached HEAD path: symbolic-ref exits non-zero. Confirm with
     // rev-parse so we don't mislabel an unreadable repo as detached.
@@ -102,9 +109,14 @@ export async function resolveBranchHead(
       env: readOnlyGitProcessEnv(),
       signal,
     })
-    if (head.status === 0) value = "(detached)"
+    if (head.status === 0) {
+      value = "(detached)"
+      resolved = true
+    }
   }
-  if (fingerprint !== null) headCache.set(repo, { fingerprint, value })
+  // Only memoize a genuine resolve. A failed/timed-out poll must fall
+  // back and retry, not stick "" against a valid fingerprint.
+  if (resolved && fingerprint !== null) headCache.set(repo, { fingerprint, value })
   return value
 }
 
