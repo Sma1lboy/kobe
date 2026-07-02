@@ -176,12 +176,10 @@ export const QuickLookReplay: React.FC = () => {
   const t = frame / fps
 
   const snapshot = frameAt(t)
-  let state = {}
-  const lines = snapshot.lines.map((line) => {
-    const parsed = parseAnsiLine(line, state)
-    state = parsed.state
-    return parsed.spans
-  })
+  // Each capture-pane line is self-contained (leading unstyled cells mean
+  // DEFAULT bg) — carrying SGR state across lines painted a stray trailing
+  // bg color onto the next line's leading spaces (black band left of dialogs).
+  const lines = snapshot.lines.map((line) => parseAnsiLine(line).spans)
 
   const cam = cameraAt(t)
   // Center the shot's target point, clamped so the viewport never leaves the
