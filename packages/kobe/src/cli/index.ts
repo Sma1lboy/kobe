@@ -825,6 +825,9 @@ async function main(): Promise<void> {
       worktree: flags.worktree,
       vendor: coerceVendorId(flags.vendor),
       title: flags.title,
+      // Boolean flag (no value) — the shared parseOpsFlags is value-based and
+      // would skip it, so read it straight off the argv.
+      live: rest.includes("--live"),
     })
     return
   }

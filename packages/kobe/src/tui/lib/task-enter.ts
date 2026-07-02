@@ -103,6 +103,26 @@ export async function ensureTaskSession(
     throw new HandoverError("worktree", `task ${task.id} has no usable worktree`)
   }
   const { ensureSession } = await import("../panes/terminal/tmux.ts")
+  // Preview mode (per-task opt-in): open the LIVE read-only history preview in
+  // the engine pane slot instead of spawning the engine. The worktree is
+  // resolved above, so panes spawn in it and the pane tails its transcript.
+  // Same beta gate as the archived preview; toggled from the Tasks pane (`i`).
+  const { previewModeEnabled } = await import("../../state/preview-mode.ts")
+  if (previewModeEnabled(task.id) && archivedHistoryPreviewEnabled()) {
+    const ok = await ensureSession({
+      name: session,
+      cwd: worktree,
+      command: interactiveEngineCommand(vendor),
+      taskId: task.id,
+      vendor,
+      repo,
+      preview: true,
+      archivedWorktree: worktree,
+      title: task.title,
+    })
+    if (!ok) throw new HandoverError("session", `failed to start preview session for ${task.id}`)
+    return false
+  }
   const { resolveEngineLaunchInit } = await import("../../state/repo-init.ts")
   const launchInit = repo
     ? resolveEngineLaunchInit(repo, worktree, { kind: opts.includeInitPrompt ? "repo-init" : "none" })
