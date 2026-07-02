@@ -39,40 +39,98 @@ const Line: React.FC<{ spans: Span[] }> = ({ spans }) => (
   </div>
 )
 
-// Camera storyboard replicating the original quicklook.mp4 motion:
-// wide on launch, push into the workspace when the task starts, deep zoom on
-// the agent's tool stream, pan to the files/terminal column, pull back out.
-// {t: seconds, scale, ox/oy: transform-origin %}
-const CAMERA = [
-  { t: 0, scale: 1, ox: 50, oy: 50 },
-  { t: 8, scale: 1, ox: 50, oy: 50 }, // launch + workspace wide
-  { t: 11, scale: 1.45, ox: 20, oy: 30 }, // sidebar: task appears + selected
-  { t: 15, scale: 1.45, ox: 20, oy: 30 },
-  { t: 18, scale: 1.25, ox: 45, oy: 30 }, // workspace: engine boots
-  { t: 27, scale: 1.25, ox: 45, oy: 30 },
-  { t: 31, scale: 1.6, ox: 40, oy: 28 }, // deep: prompt + tool stream
-  { t: 49, scale: 1.6, ox: 40, oy: 28 },
-  { t: 55, scale: 1.15, ox: 50, oy: 45 },
-  { t: 61, scale: 1, ox: 50, oy: 50 }, // pull back wide
-]
+// Pointer-follow camera, like the original quicklook.mp4: the "pointer" of a
+// TUI is wherever the screen is changing. Diff consecutive keyframes, take
+// the centroid of changed cells as the gaze target, and lazily follow it.
+// Screen-flooding changes (boot, full redraws) pull the camera wide; local
+// changes (typing, a streaming reply) push it in.
 
-const ease = (p: number) => p * p * (3 - 2 * p)
+const stripLine = (l: string) =>
+  l.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)?/g, "").replace(/\x1b\[[0-9;]*m/g, "")
 
-function cameraAt(t: number) {
-  let a = CAMERA[0]
-  let b = CAMERA[CAMERA.length - 1]
-  for (let i = 0; i < CAMERA.length - 1; i++) {
-    if (t >= CAMERA[i].t && t <= CAMERA[i + 1].t) {
-      a = CAMERA[i]
-      b = CAMERA[i + 1]
-      break
+type Target = { t: number; ox: number; oy: number; spread: number }
+
+function activityTargets(): Target[] {
+  const targets: Target[] = []
+  for (let i = 1; i < capture.frames.length; i++) {
+    const prev = capture.frames[i - 1].lines.map(stripLine)
+    const cur = capture.frames[i].lines.map(stripLine)
+    // Per-row change stats.
+    const rows: Array<{ r: number; n: number; sx: number }> = []
+    for (let r = 0; r < cur.length; r++) {
+      const a = prev[r] ?? ""
+      const b = cur[r]
+      if (a === b) continue
+      let n = 0
+      let sx = 0
+      const len = Math.max(a.length, b.length)
+      for (let c = 0; c < len; c++) {
+        if ((a[c] ?? " ") !== (b[c] ?? " ")) {
+          n++
+          sx += c
+        }
+      }
+      if (n > 0) rows.push({ r, n, sx })
     }
+    // Cluster changed rows into bands (gap > 3 rows splits), follow the
+    // biggest band — spinners and status-bar ticks elsewhere stop dragging
+    // the camera wide or into empty space between clusters.
+    let best: { n: number; sx: number; sy: number; minR: number; maxR: number } | null = null
+    let cluster: typeof best = null
+    for (const row of rows) {
+      if (cluster && row.r - cluster.maxR <= 3) {
+        cluster.n += row.n
+        cluster.sx += row.sx
+        cluster.sy += row.r * row.n
+        cluster.maxR = row.r
+      } else {
+        cluster = { n: row.n, sx: row.sx, sy: row.r * row.n, minR: row.r, maxR: row.r }
+      }
+      if (!best || cluster.n > best.n) best = cluster
+    }
+    if (!best || best.n < 3) continue // ignore cursor blink / clock ticks
+    targets.push({
+      t: capture.frames[i].t,
+      ox: (best.sx / best.n / capture.cols) * 100,
+      oy: (best.sy / best.n / capture.rows) * 100,
+      spread: (best.maxR - best.minR) / capture.rows,
+    })
   }
-  if (t >= b.t) return b
-  const p = ease((t - a.t) / (b.t - a.t || 1))
-  const mix = (x: number, y: number) => x + (y - x) * p
-  return { scale: mix(a.scale, b.scale), ox: mix(a.ox, b.ox), oy: mix(a.oy, b.oy) }
+  return targets
 }
+
+const OUT_FPS = 30
+const TAIL = 4 // seconds of hold after the last keyframe (matches Root.tsx)
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+// Precomputed per-output-frame camera path: exponential lag toward the
+// current activity point. Deterministic — pure function of frames.json.
+const CAM_PATH = (() => {
+  const targets = activityTargets()
+  const end = capture.frames[capture.frames.length - 1].t + TAIL
+  const path: Array<{ scale: number; ox: number; oy: number }> = []
+  let cam = { scale: 1, ox: 50, oy: 50 }
+  let goal = { scale: 1, ox: 50, oy: 50 }
+  let ti = 0
+  const K = 0.055 // follow lag: ~0.6s to close half the distance at 30fps
+  for (let f = 0; f <= Math.ceil(end * OUT_FPS); f++) {
+    const t = f / OUT_FPS
+    while (ti < targets.length && targets[ti].t <= t) {
+      const g = targets[ti++]
+      // Wide when the whole screen repaints, tight when the change is local.
+      const scale = g.spread > 0.55 ? 1 : g.spread > 0.3 ? 1.25 : 1.55
+      goal = { scale, ox: clamp(g.ox, 5, 95), oy: clamp(g.oy, 5, 95) }
+    }
+    if (t > end - 3) goal = { scale: 1, ox: 50, oy: 50 } // final pull-back
+    cam = {
+      scale: cam.scale + K * (goal.scale - cam.scale),
+      ox: cam.ox + K * (goal.ox - cam.ox),
+      oy: cam.oy + K * (goal.oy - cam.oy),
+    }
+    path.push(cam)
+  }
+  return path
+})()
 
 export const QuickLookReplay: React.FC = () => {
   const frame = useCurrentFrame()
@@ -87,7 +145,7 @@ export const QuickLookReplay: React.FC = () => {
     return parsed.spans
   })
 
-  const cam = cameraAt(t)
+  const cam = CAM_PATH[Math.min(frame, CAM_PATH.length - 1)]
 
   return (
     <AbsoluteFill style={{ backgroundColor: colors.bg, fontFamily: monoStack }}>
