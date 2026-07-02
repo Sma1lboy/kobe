@@ -282,8 +282,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "sidebar",
     keys: ["m"],
     category: "Sidebar",
-    description: "Local merge task into parent repo (Shift+M)",
-    hint: { keys: "M", label: "merge", status: false },
+    description: "Reorder task (Shift+M, then j/k)",
+    hint: { keys: "M", label: "reorder", status: false },
   },
   {
     // Capital P pins / unpins a regular task. Lowercase `p` falls

@@ -86,9 +86,8 @@ import {
   renameTaskFlow,
 } from "../lib/task-actions"
 import { HandoverError, enterTask } from "../lib/task-enter.ts"
-import { truncateEnd } from "../lib/truncate"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
-import { Sidebar } from "../panes/sidebar/Sidebar"
+import { Sidebar, approxCellWidth } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
 import { runLayoutAction } from "../panes/terminal/layout-actions.ts"
 import {
@@ -140,6 +139,13 @@ function TasksShell(props: {
   const [selectedId, setSelectedId] = createSignal<string | null>(
     props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
   )
+  // The task id under the Sidebar's CURSOR (its highlighted row), pushed via
+  // the Sidebar's onCursorChange. Distinct from `selectedId`: in a home pane
+  // `selectedId` follows the active-task channel, but the cursor-row actions
+  // (o/b/v) must target whatever row j/k landed on — the same row d/a/r act
+  // on. Falls back to `selectedId()` before the first cursor push.
+  const [cursorId, setCursorId] = createSignal<string | null>(null)
+  const actionTargetId = (): string | null => cursorId() ?? selectedId()
   // Monotonic counter so a newer `switchTo` supersedes a slower in-flight one
   // (see switchTo). Plain mutable int — nothing reactive observes it.
   let switchToken = 0
@@ -478,6 +484,22 @@ function TasksShell(props: {
     await props.reload()
   }
 
+  // Pin / unpin the cursor task (Shift+P). `setPinned` with no explicit flag
+  // toggles daemon-side; reload mirrors the new order into the poll fallback,
+  // matching how archive/delete refresh the list. No-op without a daemon.
+  // A pin failure is log-only (like focusEnginePane): it's rare, non-destructive,
+  // and there's no dedicated toast key in the tasks-pane message namespace.
+  async function togglePin(id: string): Promise<void> {
+    if (!props.orch) return
+    try {
+      await props.orch.setPinned(id)
+    } catch (err) {
+      console.error("[kobe tasks] task.pin failed:", err)
+      return
+    }
+    await props.reload()
+  }
+
   // Collapsed state of the `── keys ──` legend (toggled by `?` / clicking
   // the header). A GLOBAL pref fanned out like sort/theme: seed from the
   // persisted value, apply locally for instant feedback, and persist via
@@ -524,15 +546,15 @@ function TasksShell(props: {
       "settings.open.sidebar": () => void openSettings(),
       "tasks.update": () => void openUpdate(),
       "tasks.openWorktree": () => {
-        const id = selectedId()
+        const id = actionTargetId()
         if (id) void openSelectedWorktree(id)
       },
       "tasks.renameBranch": () => {
-        const id = selectedId()
+        const id = actionTargetId()
         if (id) void renameBranch(id)
       },
       "tasks.cycleEngine": () => {
-        const id = selectedId()
+        const id = actionTargetId()
         if (id) void cycleVendor(id)
       },
       "tasks.toggleKeys": () => setKeysCollapsed(!keysCollapsed()),
@@ -687,6 +709,7 @@ function TasksShell(props: {
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}
+          onPinRequest={(id) => void togglePin(id)}
           onLocalMergeRequest={(id) => {
             const task = props.tasks().find((t) => t.id === id)
             if (!task || task.kind === "main") return
@@ -715,6 +738,10 @@ function TasksShell(props: {
           // the n/b/v gate above (KOB-244).
           focused={() => dialog.stack.length === 0}
           onSearchActiveChange={setSearchActive}
+          // Track the cursor row so the host-scoped o/b/v chords act on the
+          // highlighted task (like d/a/r), not on the active-task-following
+          // `selectedId` (bug: o/b/v hit a different task than the cursor).
+          onCursorChange={setCursorId}
         />
       </box>
       <ShortcutHints
@@ -891,8 +918,28 @@ function ShortcutHints(props: {
   // the whole column hugs the pane's right side. Labels longer than the cap are
   // ellipsised rather than allowed to overflow.
   const LABEL_COL_MAX = 18
-  const labelColWidth = () => Math.min(LABEL_COL_MAX, Math.max(...hints().map((h) => h.label.length)))
-  const clipLabel = (s: string): string => truncateEnd(s, labelColWidth())
+  // Size the column in DISPLAY CELLS, not code points: a CJK label (default zh)
+  // renders 2 cells per glyph, so `.length` (code points) sized the box at ~half
+  // the needed width and clipped the label. `approxCellWidth` (the CJK-aware
+  // helper the hover tooltip already uses) counts fullwidth codepoints as 2.
+  const labelColWidth = () => Math.min(LABEL_COL_MAX, Math.max(...hints().map((h) => approxCellWidth(h.label))))
+  // Truncate to the CELL budget too. truncateEnd's budget is code points, so a
+  // CJK label needs a code-point budget of at most floor(cells/2) to fit the
+  // cell-sized box; take the tighter of the two so a wide label can't overflow.
+  const clipLabel = (s: string): string => {
+    const cells = labelColWidth()
+    if (approxCellWidth(s) <= cells) return s
+    const points = [...s]
+    let used = 0
+    let cut = 0
+    for (const ch of points) {
+      const w = (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1
+      if (used + w > cells - 1) break // reserve 1 cell for the ellipsis
+      used += w
+      cut++
+    }
+    return `${points.slice(0, cut).join("")}…`
+  }
   // Version + update moved UP to the Sidebar's `kobe` brand header (the old
   // `── system ──` block lived here); the footer is now just the key legend.
   // Move-mode overrides the fold: its two hints are the only exit

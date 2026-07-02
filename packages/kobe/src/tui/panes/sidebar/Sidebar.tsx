@@ -201,6 +201,16 @@ export type SidebarProps = {
    */
   onSearchActiveChange?: (active: boolean) => void
   /**
+   * Fires with the task id under the CURSOR whenever it changes (j/k nav,
+   * click, view/filter reset). The Tasks-pane host needs this because its
+   * own host-scoped chords (o/b/v) must act on the highlighted row, not on
+   * `selectedId` — which in a home pane follows the active-task channel, not
+   * the cursor (d/a/r already target the cursor via the sidebar's own
+   * bindings). Fires `null` when no row is under the cursor. Optional; hosts
+   * that don't need it just don't wire it.
+   */
+  onCursorChange?: (taskId: string | null) => void
+  /**
    * Optional width override. When omitted, falls back to {@link SIDEBAR_WIDTH}.
    * Wired by the Shell so the sidebar↔workspace splitter can resize the pane
    * at runtime. Reactive — changing the accessor's value reflows immediately.
@@ -686,6 +696,15 @@ export function Sidebar(props: SidebarProps) {
     const idx = flatIds().indexOf(pinned)
     if (idx >= 0) setCursorIndex(idx)
   }
+
+  // Surface the cursor row's task id to the host (o/b/v target the cursor,
+  // not `selectedId`). Derived from the same flatIds+cursorIndex pair the
+  // sidebar's own d/a/r use, so all cursor-row actions agree on the target.
+  createEffect(
+    on([cursorIndex, flatIds] as const, ([idx, ids]) => {
+      props.onCursorChange?.(idx >= 0 && idx < ids.length ? ids[idx]! : null)
+    }),
+  )
 
   useSidebarBindings({
     focused: focusedAccessor,

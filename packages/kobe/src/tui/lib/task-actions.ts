@@ -161,6 +161,21 @@ export function nextActiveTask(tasks: readonly Task[], excludeId: string): Task 
   return tasks.find((t) => t.id !== excludeId && !t.archived)
 }
 
+/**
+ * True when `taskId` is the CURRENTLY active task, so archive/delete should
+ * hand the shared active-task focus to the next task. Archiving/deleting a
+ * BACKGROUND task must not steal focus from whatever is active — the old
+ * unconditional `setActiveTask(nextTask)` did exactly that (bug #6). Both real
+ * orchestrators expose `activeTaskSignal()`; when it's absent (a bare test
+ * mock) we fall back to `true` to preserve the pre-guard behavior rather than
+ * throw — real usage always resolves the active id and gets the guard.
+ */
+function removedTaskIsActive(orch: KobeOrchestrator, taskId: string): boolean {
+  const read = (orch as { activeTaskSignal?: () => () => string | null }).activeTaskSignal
+  if (typeof read !== "function") return true
+  return read.call(orch)() === taskId
+}
+
 export async function toggleTaskArchivedFlow(opts: {
   readonly orch: KobeOrchestrator
   readonly tasks: readonly Task[]
@@ -195,7 +210,13 @@ export async function toggleTaskArchivedFlow(opts: {
       opts.logger.error(`${opts.logPrefix} switch-client failed:`, err)
     },
   )
-  if (opts.updateActiveTask) await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
+  // Only re-point the shared active-task focus when the archived task WAS the
+  // active one. Archiving a background task must not yank every surface's focus
+  // onto some other task (mirrors switchClientBeforeKill's current!=target
+  // guard). The active-task channel keeps pointing where it did.
+  if (opts.updateActiveTask && removedTaskIsActive(opts.orch, opts.taskId)) {
+    await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
+  }
   await killSession(sessionName).catch((err: unknown) => {
     opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
   })
@@ -220,7 +241,12 @@ export async function finishDeletedTaskFlow(opts: {
       },
     )
   }
-  if (opts.updateActiveTask) await opts.orch?.setActiveTask(nextTask?.id ?? null).catch(() => {})
+  // Only re-point shared active-task focus when the DELETED task was the active
+  // one — deleting a background task must leave the current focus alone (same
+  // guard as the archive flow above).
+  if (opts.updateActiveTask && opts.orch && removedTaskIsActive(opts.orch, opts.taskId)) {
+    await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
+  }
   await killSession(sessionName).catch((err: unknown) => {
     opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
   })
