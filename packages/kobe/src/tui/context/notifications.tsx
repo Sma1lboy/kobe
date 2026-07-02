@@ -103,8 +103,12 @@ export function NotificationsProvider(props: ParentProps) {
 
     // Toast gate. Independent of sound so a quiet-office user can keep
     // the visual cue without audio, and an eyes-elsewhere user can keep
-    // audio without the popup.
-    if ((kv.get("notifications.toast.enabled", true) as boolean) !== false) {
+    // audio without the popup. `error` always shows: error toasts are
+    // failure feedback (the tasks pane routes failures through here), and
+    // must not vanish into the daemon log when someone disables the
+    // completion "Toast" preference — that's a silent-failure regression.
+    const toastEnabled = (kv.get("notifications.toast.enabled", true) as boolean) !== false
+    if (input.kind === "error" || toastEnabled) {
       const id = ++counter
       const toast: Toast = {
         id,

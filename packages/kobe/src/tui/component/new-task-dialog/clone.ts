@@ -163,6 +163,12 @@ export function cloneRepo(url: string, target: string, onProgress?: CloneProgres
     try {
       const child = spawn("git", ["clone", "--progress", url, target], {
         stdio: ["ignore", "ignore", "pipe"],
+        // Never prompt for credentials on the shared tty: stdin=ignore
+        // does NOT stop git — it falls back to /dev/tty (the renderer's
+        // pane), garbling the render and hanging forever. Fail fast with
+        // a credential error instead, which maps to the inline cloneFailed
+        // message like any other git failure.
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" },
       }) as unknown as EventedCloneProcess
       child.stderr?.setEncoding("utf-8")
       child.stderr?.on("data", (chunk: string) => {
