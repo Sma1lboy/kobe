@@ -49,6 +49,18 @@ async function typeText(text: string, msPerChar: number): Promise<void> {
   }
 }
 
+// Engine boot time jitters run to run — typing at a fixed time raced the
+// boot and dropped leading chars. Poll until the screen shows `re` (the
+// composer's placeholder), then it is safe to type.
+async function waitFor(re: RegExp, timeoutMs: number): Promise<void> {
+  const t0 = Date.now()
+  while (Date.now() - t0 < timeoutMs) {
+    const text = await tmux("capture-pane", "-p", "-t", SESSION).text()
+    if (re.test(text)) return
+    await sleep(300)
+  }
+}
+
 // Walk the NewTaskDialog with Enter (tabs -> engine -> repo -> branch ->
 // Create). `engineRights` arrows the engine picker before advancing.
 async function createTaskViaDialog(engineRights: number): Promise<void> {
@@ -113,10 +125,18 @@ const BEATS: Array<[number, () => Promise<unknown>]> = [
   // overhead makes typing finish later than nominal, and a timed Enter can
   // fire mid-prompt and submit a truncated message (it did).
   [32.0, () => typeText(CLAUDE_PROMPT, 45).then(() => sleep(500)).then(() => key("Enter"))],
-  // Let the agent stream tool calls, then create the codex task.
-  [52.0, () => key("C-h")],
-  [53.0, () => createTaskViaDialog(1)], // codex
-  [78.0, () => typeText(CODEX_PROMPT, 45).then(() => sleep(500)).then(() => key("Enter"))],
+  // Let the agent stream tool calls + response breathe (~20s on camera),
+  // then create the codex task.
+  [60.0, () => key("C-h")],
+  [61.0, () => createTaskViaDialog(1)], // codex
+  // NB: codex rotates its placeholder examples — never match their wording.
+  // The composer prompt char "›" (U+203A) is codex-only (claude uses ❯,
+  // the file tree uses ▸) and appears exactly when the composer is ready.
+  [86.0, () => waitFor(/›/, 25_000)
+    .then(() => sleep(1200)) // composer just appeared — let it sit a beat
+    .then(() => typeText(CODEX_PROMPT, 45))
+    .then(() => sleep(500))
+    .then(() => key("Enter"))],
 ]
 
 const frames: Array<{ t: number; lines: string[] }> = []
