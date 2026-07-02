@@ -59,6 +59,59 @@ const tmux = (...args: string[]) => $`tmux -L ${SOCKET} ${args}`.env(ENV).quiet(
 const key = (k: string) => tmux("send-keys", "-t", SESSION, k)
 const sleep = (ms: number) => Bun.sleep(ms)
 
+/**
+ * Kill a socket's pane PROCESSES, then its server. `kill-server` alone only
+ * SIGHUPs the panes, and the opentui pane hosts survive SIGHUP — they reparent
+ * to init and keep polling forever (the observed leak: 16 orphaned `kobe
+ * tasks/ops` processes from dead capture sockets). SIGKILL each pane's process
+ * group first so nothing outlives the capture.
+ */
+async function killPanesThenServer(socket: string): Promise<void> {
+  const out = await $`tmux -L ${socket} list-panes -a -F '#{pane_pid}'`.env(ENV).quiet().nothrow().text()
+  for (const line of out.split("\n")) {
+    const pid = Number.parseInt(line.trim(), 10)
+    if (!Number.isFinite(pid) || pid <= 1) continue
+    try {
+      process.kill(-pid, "SIGKILL") // pane's process group
+    } catch {
+      try {
+        process.kill(pid, "SIGKILL")
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+  await $`tmux -L ${socket} kill-server`.env(ENV).quiet().nothrow()
+}
+
+/**
+ * Idempotent full teardown — outer capture server, sandbox daemon, inner kobe
+ * server. Wired to normal exit AND crash/interrupt paths below: a capture that
+ * dies mid-run must never leave engine/pane processes behind (leaks are bugs).
+ */
+let torndown = false
+async function teardown(): Promise<void> {
+  if (torndown) return
+  torndown = true
+  await killPanesThenServer(SOCKET)
+  await $`kobe daemon stop`.env(ENV).quiet().nothrow()
+  await killPanesThenServer("kobe-capture-inner")
+}
+
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => {
+    void teardown().finally(() => process.exit(130))
+  })
+}
+process.on("uncaughtException", (err) => {
+  console.error("capture crashed:", err)
+  void teardown().finally(() => process.exit(1))
+})
+process.on("unhandledRejection", (err) => {
+  console.error("capture crashed (rejection):", err)
+  void teardown().finally(() => process.exit(1))
+})
+
 async function typeText(text: string, msPerChar: number): Promise<void> {
   for (const ch of text) {
     await $`tmux -L ${SOCKET} send-keys -t ${SESSION} -l ${ch}`.env(ENV).quiet()
@@ -193,10 +246,7 @@ while (elapsed() < SECONDS) {
   await sleep(Math.max(0, 1000 / FPS - (elapsed() - t) * 1000))
 }
 
-await tmux("kill-server").nothrow()
-// Stop the sandbox daemon + engine sessions on the inner socket.
-await $`kobe daemon stop`.env(ENV).quiet().nothrow()
-await $`tmux -L kobe-capture-inner kill-server`.env(ENV).quiet().nothrow()
+await teardown()
 
 await Bun.write(
   new URL(`../${OUT}`, import.meta.url),

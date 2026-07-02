@@ -27,7 +27,7 @@
  * must live elsewhere.
  */
 
-import { render } from "@opentui/solid"
+import { render, useRenderer } from "@opentui/solid"
 import {
   installClientCrashHandlers,
   logClientError,
@@ -45,6 +45,7 @@ import { loadUserThemes } from "../context/theme/loader"
 import { isLocaleId, setLocaleLang, t } from "../i18n"
 import { DialogProvider } from "../ui/dialog"
 import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
+import { sessionAttached } from "./attach-gate"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
 
 /**
@@ -245,6 +246,38 @@ function PaneCrashFallback(props: { error: unknown }) {
  * `refreshKobeWorkspacePanes` → `applyTmuxChromeTheme` call already covers
  * every session; doing it from N panes would just race the same `set-option`s.
  */
+/** Detached fps while the pane's session has no attached client. */
+const DETACHED_FPS = 2
+/** How often to re-check attachment (the probe itself is TTL-cached). */
+const DETACH_CHECK_MS = 3000
+
+/**
+ * Render-loop throttle for background panes, ONCE for every host (sibling of
+ * {@link UiPrefsSync}). The attach gate already stops the pollers; this stops
+ * the other half of a detached pane's idle burn — the opentui render loop
+ * ticking at full fps for a screen nobody can see. Detached → targetFps drops
+ * to {@link DETACHED_FPS}; re-attach restores the boot fps within ~3s (the
+ * loop keeps running, so the first restored frame repaints any staleness).
+ * Deliberately fps-throttle rather than pause(): the renderer state machine
+ * (input, dialogs, suspend semantics) stays untouched, and a gate failure
+ * fails open to full fps.
+ */
+function DetachFpsThrottle() {
+  const renderer = useRenderer()
+  onMount(() => {
+    if (!renderer) return
+    const attachedFps = renderer.targetFps
+    const timer = setInterval(() => {
+      void sessionAttached().then((attached) => {
+        const want = attached ? attachedFps : DETACHED_FPS
+        if (renderer.targetFps !== want) renderer.targetFps = want
+      })
+    }, DETACH_CHECK_MS)
+    onCleanup(() => clearInterval(timer))
+  })
+  return null
+}
+
 function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   const themeCtx = useTheme()
   const target: UiPrefsTarget = {
@@ -359,6 +392,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
     () => (
       <HostProviders theme={prefs.theme} kv={kv} focus={focus} notifications={notifications}>
         <UiPrefsSync boot={prefs} />
+        <DetachFpsThrottle />
         <ErrorBoundary fallback={(err) => <PaneCrashFallback error={err} />}>{screen.root()}</ErrorBoundary>
       </HostProviders>
     ),
