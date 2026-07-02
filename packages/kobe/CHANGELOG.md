@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.59
+
+### Patch Changes
+
+- 3a271e1: Add a per-task live preview mode: press `i` in the Tasks pane to toggle a task
+  between the live engine and a read-only LIVE preview — the `kobe history`
+  renderer tailing the transcript in the engine pane slot — for inspecting a task
+  an agent is working in without driving it. The history preview pane is now
+  live-refreshing (adaptive mtime poll shared with the Ops pane), so both the
+  archived preview and this new mode follow the transcript instead of showing a
+  one-shot snapshot.
+- bc69596: Fix orphaned pane-process leak: killed tmux panes left their `kobe tasks` / `kobe ops` helpers (and engine CLIs) running forever. opentui's exit handler catches SIGHUP/SIGTERM but never exits the process, so every `respawn-pane -k` / session teardown reparented the old helper to launchd with a revoked tty — over a hundred zombies burning ~14 GB / 100%+ CPU in a busy week. Hosts now exit shortly after an exit signal (with a 5s grace so kill-own-session flows like the preview toggle still finish), and `killSession` / `kobe kill-sessions` / `kobe reset` SIGTERM each pane's process group before tmux's HUP so engine CLIs that swallow HUP are also reaped.
+- 277fda0: The "Worktree location" setting (Settings → General) is now a preset cycle instead of a bare text field: enter switches between `default ~/.kobe/worktrees`, `next to project` (worktrees land beside each repo), and `custom` — mirroring the editor rows. Under the hood the sibling preset stores a new `$project_dir` token that expands to each task's project root when the worktree path is computed, and the custom path field accepts it too (e.g. `$project_dir/../scratch`) for hand-rolled per-project layouts. `..` segments are collapsed after expansion, the per-repo `<repo>-<hash>` subfolder is still appended so repos sharing a parent directory never collide, and the default root stays recognized for listing pre-existing tasks. New tasks only; existing worktrees stay where they are.
+
 ## 0.7.58
 
 ### Patch Changes
