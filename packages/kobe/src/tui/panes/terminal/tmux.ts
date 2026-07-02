@@ -484,6 +484,14 @@ export interface EnsureSessionOpts {
    * history still reads the recorded path. Defaults to `cwd` when unset.
    */
   readonly archivedWorktree?: string
+  /**
+   * Live preview mode (per-task opt-in, same `experimental.archivedHistoryPreview`
+   * beta gate as {@link archived}). Like archived it launches `kobe history` into
+   * the engine pane slot INSTEAD of the live engine — but for a NON-archived task
+   * whose worktree is live, so the pane tails the transcript (`--live`) and tags
+   * itself LIVE rather than ARCHIVED. Absent/false keeps live-engine behavior.
+   */
+  readonly preview?: boolean
   /** Task title — passed to the `kobe history` header when archived. */
   readonly title?: string
 }
@@ -675,7 +683,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // to instruct, so this path pins no engine session id and skips the init
   // script + status/dispatcher protocols below. Read fresh so a Settings
   // toggle needs no restart.
-  const historyPreview = opts.archived === true && archivedHistoryPreviewEnabled()
+  const historyPreview = (opts.archived === true || opts.preview === true) && archivedHistoryPreviewEnabled()
   // Force a known session id for a claude launch so this window can be mapped
   // to its transcript and auto-named from its first prompt (KOB). No-op for
   // codex/copilot or a command that already pins its session. Skipped entirely
@@ -715,6 +723,9 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     opts.archivedWorktree ?? opts.cwd,
     ...(opts.vendor ? ["--vendor", opts.vendor] : []),
     ...(opts.title ? ["--title", opts.title] : []),
+    // Live preview of a non-archived task: tail the transcript + tag LIVE. An
+    // archived task's transcript is frozen, so it stays the static ARCHIVED view.
+    ...(opts.preview && !opts.archived ? ["--live"] : []),
   ]
   const engineCmd = wrapEngineLaunch(shellQuoteArgv(historyPreview ? historyArgv : launchArgv), remoteKey, opts.cwd)
   // The history preview is a PERSISTENT read-only pane: it re-launches itself on
