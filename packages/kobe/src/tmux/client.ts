@@ -502,13 +502,50 @@ export async function currentSessionName(): Promise<string | null> {
   return code === 0 && name.length > 0 ? name : null
 }
 
+/**
+ * SIGTERM every pane's process group before `kill-session`. tmux teardown
+ * only delivers SIGHUP, which engine CLIs (claude) and older kobe helpers
+ * catch without exiting — each killed session then leaked its pane
+ * processes to launchd with a revoked tty, burning CPU forever. SIGTERM is
+ * the signal those processes actually honour; whatever ignores it still
+ * gets tmux's HUP right after.
+ */
+async function termPaneGroups(listPanesArgs: readonly string[]): Promise<void> {
+  const { code, stdout } = await runTmuxCapturing(["list-panes", ...listPanesArgs, "-F", "#{pane_pid}"])
+  if (code !== 0) return
+  for (const line of stdout.split("\n")) {
+    const pid = Number.parseInt(line.trim(), 10)
+    if (!Number.isFinite(pid) || pid <= 1) continue
+    try {
+      process.kill(-pid, "SIGTERM")
+    } catch {
+      // group already gone — nothing to reap
+    }
+  }
+}
+
+async function termSessionPaneGroups(name: string): Promise<void> {
+  await termPaneGroups(["-s", "-t", `=${name}`])
+}
+
+/** SIGTERM every pane group on the whole kobe server — `kill-sessions`' sweep. */
+export async function termAllPaneGroups(): Promise<void> {
+  await termPaneGroups(["-a"])
+}
+
 /** Kill a session (if any). */
 export async function killSession(name: string): Promise<void> {
   if (!name.startsWith("kobe-hidden-")) {
     const hidden = hiddenTerminalSessionName(name)
-    if (await sessionExists(hidden)) await runTmux(["kill-session", "-t", `=${hidden}`])
+    if (await sessionExists(hidden)) {
+      await termSessionPaneGroups(hidden)
+      await runTmux(["kill-session", "-t", `=${hidden}`])
+    }
   }
-  if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
+  if (await sessionExists(name)) {
+    await termSessionPaneGroups(name)
+    await runTmux(["kill-session", "-t", `=${name}`])
+  }
 }
 
 /** Session name for the kobe home window shown when a task is archived/deleted. */
