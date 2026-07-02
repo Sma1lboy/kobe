@@ -39,6 +39,15 @@ function ptyEnv() {
 }
 
 async function fetchSpec(taskId, mode) {
+  // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
+  // the PTY instead of resolving a task's engine via the daemon — so a Playwright
+  // test can drive the real TUI through the web terminal with no daemon or task.
+  if (process.env.KOBE_PTY_DEV_COMMAND) {
+    return {
+      cwd: process.env.KOBE_PTY_DEV_CWD ?? process.cwd(),
+      command: ["/bin/sh", "-lc", process.env.KOBE_PTY_DEV_COMMAND],
+    }
+  }
   const path = mode === "shell" ? "/api/terminal-spec" : "/api/engine-spec"
   const res = await fetch(`http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
   const json = await res.json()
