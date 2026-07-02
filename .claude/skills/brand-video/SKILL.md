@@ -88,8 +88,10 @@ scratch/approved 目录看 `artifacts.*`。换一个产品 repo,换的是 metada
 
 - **bgm**:`<Audio src={staticFile("bgm.mp3")} volume={0.15} loop />` 作第二音轨;
   有口播时 bgm 压到 0.1–0.2,收尾随片尾 `interpolate` 淡出。
-- **TTS 口播**:按 vendored `remotion-best-practices/rules/voiceover.md`(ElevenLabs)生成
-  `voiceover.mp3` + 逐句时间戳;**SRT 时间轴以 TTS 实际时长为准反推**,不要拿预估时长硬套。
+- **TTS 口播**:按 vendored `remotion-best-practices/rules/voiceover.md`(ElevenLabs,无 key
+  必须问用户、禁止换别的 TTS)逐镜头生成 mp3,ffprobe 量实际时长写进 `src/audio-manifest.json`;
+  composition 从 manifest 反推镜头边界(时长 = 实测 + 呼吸垫,且不低于该镜头最晚内部动效的
+  下限),累计取整防漂移。manifest 为 null 时回落 SRT 静音版——同一工程双形态,不分叉项目。
 - **人脸角标(facecam PiP)**:录好的人脸片段用 `<OffthreadVideo>` 挂右下角固定 slot
   (圆角矩形 + theme 边框,宽 ≈ 22% 画幅,`muted`——声音走口播轨),整段常驻或按镜头显隐;
   它是时间轴上的一个 layer,不改任何镜头组件。
