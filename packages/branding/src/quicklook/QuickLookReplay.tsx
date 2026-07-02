@@ -39,98 +39,107 @@ const Line: React.FC<{ spans: Span[] }> = ({ spans }) => (
   </div>
 )
 
-// Pointer-follow camera, like the original quicklook.mp4: the "pointer" of a
-// TUI is wherever the screen is changing. Diff consecutive keyframes, take
-// the centroid of changed cells as the gaze target, and lazily follow it.
-// Screen-flooding changes (boot, full redraws) pull the camera wide; local
-// changes (typing, a streaming reply) push it in.
+// Stage camera. The demo is a scripted storyboard (scripts/capture-tui.ts
+// beats), so the camera is too: one fixed shot per stage, framed on the
+// region that actually changed during that stage, eased between stages.
+// No per-frame tracking — nothing to twitch.
 
 const stripLine = (l: string) =>
   l.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)?/g, "").replace(/\x1b\[[0-9;]*m/g, "")
 
-type Target = { t: number; ox: number; oy: number; spread: number }
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const END = capture.frames[capture.frames.length - 1].t + 4 // + tail hold (matches Root.tsx)
 
-function activityTargets(): Target[] {
-  const targets: Target[] = []
+// Stage boundaries mirror the capture script's beats.
+// `wide: true` forces a full shot (boot repaints everything; wrap pulls out).
+const STAGES: Array<{ name: string; from: number; to: number; wide?: boolean }> = [
+  { name: "shell", from: 0, to: 2.5 }, // $ kobe typed
+  { name: "boot", from: 2.5, to: 8, wide: true }, // TUI paints — full shot
+  { name: "task-created", from: 8, to: 14 }, // sidebar: task appears, selected
+  { name: "open-task", from: 14, to: 26, wide: true }, // workspace attaches, engine boots
+  { name: "prompt", from: 26, to: 31 }, // prompt pasted into composer
+  { name: "agent", from: 31, to: END - 4 }, // tool stream
+  { name: "wrap", from: END - 4, to: END, wide: true }, // pull back out
+]
+
+type Shot = { scale: number; ox: number; oy: number }
+const WIDE: Shot = { scale: 1, ox: 50, oy: 50 }
+
+// Frame a stage: union of every cell that changed during it, trimmed to the
+// 5–95% weight quantiles so a stray spinner/status tick can't stretch the box.
+function frameStage(from: number, to: number): Shot {
+  const rowW = new Array(capture.rows).fill(0)
+  const colW = new Array(capture.cols).fill(0)
+  let total = 0
   for (let i = 1; i < capture.frames.length; i++) {
+    if (capture.frames[i].t < from || capture.frames[i].t >= to) continue
     const prev = capture.frames[i - 1].lines.map(stripLine)
     const cur = capture.frames[i].lines.map(stripLine)
-    // Per-row change stats.
-    const rows: Array<{ r: number; n: number; sx: number }> = []
     for (let r = 0; r < cur.length; r++) {
       const a = prev[r] ?? ""
       const b = cur[r]
       if (a === b) continue
-      let n = 0
-      let sx = 0
       const len = Math.max(a.length, b.length)
       for (let c = 0; c < len; c++) {
         if ((a[c] ?? " ") !== (b[c] ?? " ")) {
-          n++
-          sx += c
+          rowW[r] = (rowW[r] ?? 0) + 1
+          colW[c] = (colW[c] ?? 0) + 1
+          total++
         }
       }
-      if (n > 0) rows.push({ r, n, sx })
     }
-    // Cluster changed rows into bands (gap > 3 rows splits), follow the
-    // biggest band — spinners and status-bar ticks elsewhere stop dragging
-    // the camera wide or into empty space between clusters.
-    let best: { n: number; sx: number; sy: number; minR: number; maxR: number } | null = null
-    let cluster: typeof best = null
-    for (const row of rows) {
-      if (cluster && row.r - cluster.maxR <= 3) {
-        cluster.n += row.n
-        cluster.sx += row.sx
-        cluster.sy += row.r * row.n
-        cluster.maxR = row.r
-      } else {
-        cluster = { n: row.n, sx: row.sx, sy: row.r * row.n, minR: row.r, maxR: row.r }
-      }
-      if (!best || cluster.n > best.n) best = cluster
-    }
-    if (!best || best.n < 3) continue // ignore cursor blink / clock ticks
-    targets.push({
-      t: capture.frames[i].t,
-      ox: (best.sx / best.n / capture.cols) * 100,
-      oy: (best.sy / best.n / capture.rows) * 100,
-      spread: (best.maxR - best.minR) / capture.rows,
-    })
   }
-  return targets
+  if (total < 10) return WIDE
+  const span = (w: number[]): [number, number] => {
+    const sum = w.reduce((a, b) => a + b, 0)
+    let acc = 0
+    let lo = 0
+    let hi = w.length - 1
+    for (let i = 0; i < w.length; i++) {
+      acc += w[i]
+      if (acc < sum * 0.05) lo = i + 1
+      if (acc <= sum * 0.95) hi = i
+    }
+    return [lo, Math.max(lo, hi)]
+  }
+  const [r0, r1] = span(rowW)
+  const [c0, c1] = span(colW)
+  const h = (r1 - r0 + 1) / capture.rows
+  const w = (c1 - c0 + 1) / capture.cols
+  // Fit the box into ~80% of the viewport, capped so text stays crisp.
+  const scale = clamp(0.8 / Math.max(w, h), 1, 1.6)
+  return {
+    scale,
+    ox: clamp(((c0 + c1) / 2 / capture.cols) * 100, 5, 95),
+    oy: clamp(((r0 + r1) / 2 / capture.rows) * 100, 5, 95),
+  }
 }
 
-const OUT_FPS = 30
-const TAIL = 4 // seconds of hold after the last keyframe (matches Root.tsx)
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const SHOTS: Shot[] = STAGES.map((s) => (s.wide ? WIDE : frameStage(s.from, s.to)))
 
-// Precomputed per-output-frame camera path: exponential lag toward the
-// current activity point. Deterministic — pure function of frames.json.
-const CAM_PATH = (() => {
-  const targets = activityTargets()
-  const end = capture.frames[capture.frames.length - 1].t + TAIL
-  const path: Array<{ scale: number; ox: number; oy: number }> = []
-  let cam = { scale: 1, ox: 50, oy: 50 }
-  let goal = { scale: 1, ox: 50, oy: 50 }
-  let ti = 0
-  const K = 0.055 // follow lag: ~0.6s to close half the distance at 30fps
-  for (let f = 0; f <= Math.ceil(end * OUT_FPS); f++) {
-    const t = f / OUT_FPS
-    while (ti < targets.length && targets[ti].t <= t) {
-      const g = targets[ti++]
-      // Wide when the whole screen repaints, tight when the change is local.
-      const scale = g.spread > 0.55 ? 1 : g.spread > 0.3 ? 1.25 : 1.55
-      goal = { scale, ox: clamp(g.ox, 5, 95), oy: clamp(g.oy, 5, 95) }
+const easeInOut = (p: number) => p * p * (3 - 2 * p)
+const TRANSITION = 1.2 // seconds to move between stage shots
+
+function cameraAt(t: number): Shot {
+  let i = STAGES.length - 1
+  for (let s = 0; s < STAGES.length; s++) {
+    if (t >= STAGES[s].from && t < STAGES[s].to) {
+      i = s
+      break
     }
-    if (t > end - 3) goal = { scale: 1, ox: 50, oy: 50 } // final pull-back
-    cam = {
-      scale: cam.scale + K * (goal.scale - cam.scale),
-      ox: cam.ox + K * (goal.ox - cam.ox),
-      oy: cam.oy + K * (goal.oy - cam.oy),
-    }
-    path.push(cam)
   }
-  return path
-})()
+  const shot = SHOTS[i]
+  if (i === 0) return shot
+  const into = t - STAGES[i].from
+  if (into >= TRANSITION) return shot
+  const prev = SHOTS[i - 1]
+  const p = easeInOut(into / TRANSITION)
+  return {
+    scale: prev.scale + (shot.scale - prev.scale) * p,
+    ox: prev.ox + (shot.ox - prev.ox) * p,
+    oy: prev.oy + (shot.oy - prev.oy) * p,
+  }
+}
 
 export const QuickLookReplay: React.FC = () => {
   const frame = useCurrentFrame()
@@ -145,7 +154,7 @@ export const QuickLookReplay: React.FC = () => {
     return parsed.spans
   })
 
-  const cam = CAM_PATH[Math.min(frame, CAM_PATH.length - 1)]
+  const cam = cameraAt(t)
 
   return (
     <AbsoluteFill style={{ backgroundColor: colors.bg, fontFamily: monoStack }}>
