@@ -1,105 +1,110 @@
 ---
 name: brand-video
-description: brand-studio 的 video producer(marketing.studio.yaml 里 skills.video 绑定的生产端)——把口播稿/字幕稿(transcription.srt)做成品牌宣传视频。每支视频是 .studio/out/<name>/ 下的独立 Remotion 项目(studio scratch 工作区,自带 package.json 与项目管理):镜头 = 共享品牌 theme 的 React 组件(Series 串接),theme 从 packages/branding 物化拷入,真机演示镜头走 remotion-ref-replay 捕获,一条 remotion render 出片;用户 accept 后按 brand-studio settle 流程落入 public/assets/。当用户说"做一条 kobe 宣传片"、"把口播稿做成视频"、"做 promo/brand video"、"给这段字幕配 MG 动画"时使用。
+description: brand-studio 绑定的通用 video producer(skills.video)——把口播稿/字幕稿(transcription.srt)、参考录屏或 brief 做成品牌视频。核心能力是分析层:脚本/参考视频 → storyboard + 权重分配(时间预算、镜头类型、相机 region);生产层是每支视频一个 .studio/out/<name>/ 独立 Remotion 项目,镜头组件共享从宿主 metadata 注入的品牌 theme;真机演示走内置 replay-capture 模块;支持 bgm/TTS 口播/人脸角标 PiP。用户 accept 后按 brand-studio settle 流程落入 public/assets/。当用户说"做一条宣传片"、"把口播稿/参考视频做成视频"、"做 promo/brand video"时使用。
 ---
 
-# brand-video(brand-studio 的 video producer)
+# brand-video(brand-studio 的通用 video producer)
 
-**在 brand-studio 体系里的位置**:本 skill 是 `marketing.studio.yaml` 中 `skills.video` 绑定的
-producer——只负责"生产"。目录契约归 brand-studio 管:
-- **生产(scratch)**:`.studio/out/<name>/`,每支视频一个独立 Remotion 项目。`.studio/` 已 gitignore,是临时工作区。
-- **验收(settle)**:用户 accept 后,把成片拷到 `public/assets/video/<name>.mp4`,在
-  `public/assets/accepted.yaml` 里追加条目(modality: video,带 source/checksum/尺寸/时长),bump revision。
-  没 accept 的产物永远留在 scratch,不进 public/assets。
+**不 for 任何单一产品。** 宿主上下文全部来自宿主 repo 的 brand-studio metadata
+(`marketing.studio.yaml`):theme 源看 `theme.references`(kobe = `packages/branding`),
+scratch/approved 目录看 `artifacts.*`。换一个产品 repo,换的是 metadata,不是本 skill。
+本 skill 可整体抽成独立 GitHub 仓库、以 submodule 挂载(同 brand-studio 本体)——
+不变量:`git clone --recursive` 一次拉全。
 
-auto-motion 的教训:每镜头起独立子进程、从零搭工程、品牌色靠 prompt 文字约束——慢(小时级)、必然漂移、必然返工。
-本管线反其道:**一个 Remotion 工程,镜头是组件,theme 是 import,一致性由构造保证而不是 prompt 求来**。
+**在 brand-studio 体系里的位置**:`skills.video` 绑定的 producer——只生产,不落账:
+- **生产(scratch)**:统一 temp `.studio/out/` 下,**每支视频/每类适配一个独立项目**
+  `.studio/out/<name>/`(自带 package.json 与项目管理,gitignored)。
+- **验收(settle)**:用户 accept 后,成片拷到 `public/assets/video/<name>.mp4`,在
+  `public/assets/accepted.yaml` 追加条目(modality: video,带 source/checksum/尺寸/时长),
+  bump revision。没 accept 的产物永远留在 scratch。
 
-全套 subskill 已 vendor 进本仓库 `.claude/skills/`,零外部依赖,按需加载:
+## 能力权重(迭代本 skill 时按这个优先级)
 
-- **remotion-best-practices** — Remotion 动画/组合/字体/ffmpeg 领域知识。**必载。**
-- **remotion-ref-replay** — 真机演示镜头的捕获管线(frames.json + 舞台相机)。有 replay 镜头必载。
-- **hyperframes / hyperframes-design / hyperframes-motion** — HTML→视频引擎 + 设计语言 + MG 动效库
-  (GSAP 用法、blueprints、transitions、examples 都在 hyperframes-motion 里)。只在走 hyperframes
-  路线渲染单独 clip 时载,产物 mp4 用 `<OffthreadVideo>` 嵌回 Remotion 主时间轴。
-- **motion-graphics / general-video** — 短 MG 件与通用视频工作流的方法论,拿不准镜头形式时参考。
-- **image-gen** — 镜头需要生成图像素材时用。
+1. **分析层(核心资产)** —— 把输入变成带权重的 storyboard:时间预算怎么切、每拍是什么
+   镜头类型、相机看哪个 region。视频的成败在这一层就定了;生产层只是执行。
+2. **生产层** —— per-project Remotion 工程,一致性由构造保证。
+3. **能力插槽** —— bgm / TTS 口播 / 人脸角标,按需挂在同一时间轴上。
 
-**每支视频是一个独立项目 `.studio/out/<name>/`**(自带 package.json / tsconfig / .gitignore,
-不进 bun workspace,自己 `bun install`)——不往 `packages/branding` 里加 composition;
-branding 只是品牌资产库(theme 源、logo、quicklook capture 管线)。scaffold 时从上层继承 theme:
-把 [`packages/branding/src/colors.ts`](../../../packages/branding/src/colors.ts) 拷成项目内
-`src/theme.ts`(暖黑底 `bg`、陶土橙强调 `blue`、`monoStack` 等宽字体);replay 镜头再把
-`packages/branding/src/quicklook/{QuickLookReplay.tsx,ansi.ts,frames.json}` 拷进 `src/replay/`。
-**镜头组件只准从 theme.ts 取色,不准出现字面 hex**——这一条就是对 auto-motion
-"青绿 hacker 风清零"式返工的结构性根治。worked example:`.studio/out/kobe-intro/`(scratch,机器本地;
-其 accept 成片见 `public/assets/video/kobe-intro.mp4` + `public/assets/accepted.yaml` 条目)。
+## Step 0 — 分析层:输入 → storyboard(最高杠杆)
 
-## Step 0 — storyboard(和 ref-replay 同一纪律,最高杠杆)
+三种输入,同一产出 `.studio/out/<name>/storyboard.md`:
 
-输入:口播稿或 `transcription.srt`(可选配好的 `voiceover.mp3`)。
-通读后写 `.studio/out/<name>/storyboard.md`:
-
-| 镜头 | 起止 (s) | 时长 (s) | 口播文案 | 视觉概念(具体到能直接写组件) | 类型 (mg / replay) |
+| 镜头 | 起止 (s) | 时长 (s) | 口播/画面要点 | 视觉概念(具体到能直接写组件) | 类型 (mg / replay) |
 |---|---|---|---|---|---|
 
-- 时长毫秒精度;所有镜头首尾相接覆盖全稿,**Σ 时长 = 末条结束 − 首条开始,误差 ≤ 0.1s**。
-- `replay` 类型 = 真实 kobe TUI 演示片段(装 app、开任务、并行会话之类),走 ref-replay 捕获;
-  `mg` 类型 = 纯 MG 动画(标题、数据、概念图),纯 Remotion 组件。
-- 视觉概念写不具体 = 没拆完,回去重写。
+- **口播稿/SRT**:时长毫秒精度,镜头首尾相接覆盖全稿,**Σ 时长 = 末条结束 − 首条开始,
+  误差 ≤ 0.1s**;字幕间空白并入前一镜头。
+- **参考录屏**:按 [references/replay-capture.md](references/replay-capture.md) 的纪律逐帧
+  理解(1 帧/秒抽样),storyboard 行要具体到"user action 可逐字敲进捕获脚本、region 可直接
+  写成矩形"。**相机权重分配是这一层的核心**:每个 stage 看哪个 region、binary change-mask
+  怎么选主体、band/quantile 怎么框——算法和踩坑全在那份 reference 里。
+- **brief**:先补齐受众/时长/落位,再拆表;视觉概念写不具体 = 没拆完,回去重写。
 
-## Step 1 — 镜头组件 + 单一 composition
+## Step 1 — 生产层:镜头组件 + 单一 composition
 
 ```text
 .studio/out/<name>/
-  package.json         ← 独立项目;依赖版本抄 packages/branding(remotion 全家 + google-fonts)
+  package.json         ← 独立项目;remotion + @remotion/google-fonts(版本对齐宿主既有工程)
   .gitignore           ← node_modules/ out/
   storyboard.md
   src/
     index.ts / Root.tsx
-    theme.ts           ← 从 packages/branding/src/colors.ts 拷入(上层 theme 物化)
-    ui.tsx             ← SceneShell(底部字幕条)、Wordmark 等共享件
+    theme.ts           ← 从宿主 theme 源物化拷入(metadata theme.references 指到的 token 文件)
+    ui.tsx             ← SceneShell(字幕条)、Wordmark 等共享件
     Scene01Hook.tsx    ← 每镜头一个组件,import { colors, monoStack } from "./theme"
-    ...
-    <Video>.tsx        ← <Series> 串接所有镜头 + <Audio> 口播轨
-    replay/            ← 有真机镜头才有:QuickLookReplay + ansi + frames.json 拷贝
+    <Video>.tsx        ← <Series> 串接所有镜头 + 音轨
+    replay/            ← 有真机镜头才有:replay 渲染器 + frames.json 拷贝
 ```
 
-- 主组件用 `<Series>`,每个 `<Series.Sequence durationInFrames={…}>` 一个镜头。
-- **帧数从 SRT 的累计时间点取整**:`start = Math.round(startSec * fps)`,时长 = 相邻 start 之差。
-  逐镜头独立取整再求和会累计漂移,禁止。
-- 动效用 Remotion 原生 `interpolate` / `spring`(帧驱动,天然确定性)。不需要 GSAP——
-  Remotion 里帧就是真相;确需 hyperframes/GSAP 产物时,先渲成 mp4 再 `<OffthreadVideo>` 嵌入,不混跑两套时间轴。
-- 口播:`<Audio src={staticFile("voiceover.mp3")} />`;没有音频就纯字幕/无声,结构不变。
-- 在 `src/Root.tsx` 注册 composition;竖屏口播默认 1080x1920@30fps,横屏 demo 1280x720。
-  `durationInFrames` 从 storyboard 总跨度算,不要拍脑袋。
+- **镜头组件只准从 theme.ts 取色,不准字面 hex**(review 时 grep `#[0-9a-fA-F]{6}`)——
+  品牌一致性由构造保证,不靠 prompt 约束。
+- **帧数从 SRT 累计时间点取整**:`start = Math.round(startSec * fps)`,时长 = 相邻差;
+  逐镜头取整再求和会累计漂移,禁止。
+- 动效用 Remotion 原生 `interpolate`/`spring`;hyperframes/GSAP 产物先渲 mp4 再
+  `<OffthreadVideo>` 嵌入,不混两套时间轴。
+- 领域知识按需加载(宿主 `.claude/skills/` 已 vendor):remotion-best-practices(必载)、
+  hyperframes 系(走 clip 嵌入时)、motion-graphics / general-video / image-gen。
 
-## Step 2 — replay 镜头(真机演示,auto-motion 做不到的部分)
+## Step 2 — replay 镜头(真机演示)
 
-按 remotion-ref-replay 的方法:隔离 tmux socket + 一次性 HOME 跑真 kobe,
-`scripts/capture-<video>.ts` 产出 `frames.json`,镜头组件套用
-`src/quicklook/QuickLookReplay.tsx` 的渲染器 + 舞台相机(worked example,直接抄结构)。
-UI 迭代后重跑 capture 即可,视频自动跟上。
+方法全在 [references/replay-capture.md](references/replay-capture.md):隔离环境跑真 app、
+`capture-<name>.ts` 产出 frames.json、舞台相机(STAGES + frameStage 权重算法)、speed cut
+双时钟、交付压缩与全套排错表。UI 迭代后重跑 capture 即可,视频自动跟上。
+捕获对象不限 TUI——任何可脚本化+截屏的 app 都行,只换"capture 原语"。
 
-## Step 3 — 预览、渲染、验收
+## Step 3 — 能力插槽(同一时间轴,按需挂载)
+
+- **bgm**:`<Audio src={staticFile("bgm.mp3")} volume={0.15} loop />` 作第二音轨;
+  有口播时 bgm 压到 0.1–0.2,收尾随片尾 `interpolate` 淡出。
+- **TTS 口播**:按 vendored `remotion-best-practices/rules/voiceover.md`(ElevenLabs)生成
+  `voiceover.mp3` + 逐句时间戳;**SRT 时间轴以 TTS 实际时长为准反推**,不要拿预估时长硬套。
+- **人脸角标(facecam PiP)**:录好的人脸片段用 `<OffthreadVideo>` 挂右下角固定 slot
+  (圆角矩形 + theme 边框,宽 ≈ 22% 画幅,`muted`——声音走口播轨),整段常驻或按镜头显隐;
+  它是时间轴上的一个 layer,不改任何镜头组件。
+
+## Step 4 — 预览、渲染、验收
 
 ```bash
 cd .studio/out/<name>
-bun run studio                                      # 热重载调镜头/相机,秒级迭代
-bun run render                                      # -> out/<name>.mp4
+bun run studio        # 热重载调镜头/相机,秒级迭代
+bun run render        # -> out/<name>.mp4
 ffprobe -v error -show_entries format=duration -of csv=p=0 out/<name>.mp4
 ```
 
 - 时长 ≈ storyboard 总跨度(±0.1s);逐镜头抽帧检查品牌色(`remotion still --frame=N`)。
-- 一条命令一个 mp4,没有 per-scene 拼接,不存在规格归一问题。
-- 落位走 brand-studio settle(见文件头的目录契约):accept → `public/assets/video/<name>.mp4` + `accepted.yaml` 条目;不 accept 就留在 scratch。landing 等消费方从 `public/assets/` 取。
+- 落位走 brand-studio settle(见文件头):accept → `public/assets/` + 台账;不 accept 留 scratch。
 
 ## 常见坑
 
 | 症状 | 原因 | 修法 |
 |---|---|---|
-| 镜头间配色漂移 | 组件里写了字面 hex | 只从 `colors.ts` import;review 时 grep `#[0-9a-fA-F]{6}` |
+| 镜头间配色漂移 | 组件里写了字面 hex | 只从 theme.ts import;review 时 grep hex |
 | 音画错位越到后面越大 | 逐镜头取整帧数再求和 | 帧数从累计时间点取整,时长=相邻差 |
-| 字体闪换/缺字 | 系统字体不确定 | `@remotion/google-fonts` 显式加载,栈用 `monoStack` |
-| replay 镜头过期 | UI 改了没重跑 capture | 重跑 `scripts/capture-<video>.ts` 再 render,别手改 frames.json |
+| TTS 对不上字幕 | 拿预估时长硬套 SRT | 以 TTS 实际时长反推镜头边界 |
+| 字体闪换/缺字 | 系统字体不确定 | `@remotion/google-fonts` 显式加载 |
+| replay 镜头过期 | UI 改了没重跑 capture | 重跑 capture 再 render,别手改 frames.json |
+| 相机框错主体/抖动 | region/权重没调对 | 按 replay-capture.md 的 tuning knobs 顺序调 |
 | 渲染时长对不上 | durationInFrames 拍脑袋 | 从 storyboard 总跨度(或 frames.json 末帧)推导 |
+
+worked example:`.studio/out/kobe-intro/`(宿主 kobe,scratch 本地)→
+`public/assets/video/kobe-intro.mp4`(已 settle,台账 `public/assets/accepted.yaml`)。
