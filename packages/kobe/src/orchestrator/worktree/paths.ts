@@ -54,11 +54,13 @@ export const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
  * to `<home>/.kobe/worktrees`; a user-configured global override
  * (Settings → General → Worktree location) relocates it wholesale. The
  * override IS the worktrees root — the per-repo `<repo-key>` subdir is
- * still appended below it by {@link worktreeRootFor}. Read fresh so a
- * settings change needs no daemon restart.
+ * still appended below it by {@link worktreeRootFor}. An override with
+ * a leading `$project_dir` token expands against `repo`, so the root
+ * lands relative to each project (e.g. `$project_dir/../`). Read fresh
+ * so a settings change needs no daemon restart.
  */
-function localWorktreesRoot(): string {
-  return getWorktreeBaseOverride() ?? path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
+function localWorktreesRoot(repo: string): string {
+  return getWorktreeBaseOverride(repo) ?? path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
 }
 
 /** The built-in default worktrees root, ignoring any override. */
@@ -77,7 +79,7 @@ export function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {
     throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
   }
-  return path.join(localWorktreesRoot(), repoWorktreeDirName(repo))
+  return path.join(localWorktreesRoot(repo), repoWorktreeDirName(repo))
 }
 
 /**
