@@ -1,0 +1,118 @@
+schema_version: "1.0"
+owner:
+  kind: repo
+  id: kobe
+domain: promo
+revision: 3
+accepted:
+  - id: cursor-block
+    concept: "cursor block"
+    round: "round 4 · 01"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/cursor-block.png
+    source: .studio/out/kobe-logo/kobe-logo-01.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 0f0755b68fa43e1ca4ec5643b08229930fd87211febf30fc9677ffb2a4756d5c
+    accepted_at: "2026-06-30"
+  - id: prompt-lockup
+    concept: "> kobe prompt lockup"
+    round: "round 5 · r5-03"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/prompt-lockup.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-03.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: c2024bbcaf2711f94f00c91ede6fa4fbf068fa2c4bd899d434d64652e935c649
+    accepted_at: "2026-06-30"
+  - id: wordmark-status-dot
+    concept: "kobe wordmark + status dot"
+    round: "round 5 · r5-10"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/wordmark-status-dot.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-10.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 948de6855677ebb8a835d4e93680ab17fa8ecc3fb230486d19b8f1b4f685e021
+    accepted_at: "2026-06-30"
+  - id: wordmark-two-tone
+    concept: "kobe two-tone wordmark"
+    round: "round 5 · r5-09"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/wordmark-two-tone.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-09.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 3d93b45223f87eed359615b5678de1822355dbfb6cf64860337ce21f66e73be9
+    accepted_at: "2026-06-30"
+  - id: bracket-badge
+    concept: "[k] bracket badge"
+    round: "round 4 · 09b"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/bracket-badge.png
+    source: .studio/out/kobe-logo/kobe-logo-09b.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 93bb0082827828cc526b7ffb91014b1ffd3929c1d78d4625507e9c5df8e33099
+    accepted_at: "2026-06-30"
+  - id: bracket-wordmark
+    concept: "[kobe] bracket wordmark"
+    round: "round 5 · r5-13"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/bracket-wordmark.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-13.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 2b9dda87d41c6a394c91b12e21fa11770b638a60f05c914f44e7264723821dfc
+    accepted_at: "2026-06-30"
+  - id: selection-highlight
+    concept: "kobe selection-highlight"
+    round: "round 5 · r5-16"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/selection-highlight.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-16.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 994c55c2f6706ae6e319bd98f18ebf677af40346219a0f13de5dc3d3540d6f6d
+    accepted_at: "2026-06-30"
+  - id: k-underscore-cursor
+    concept: "k_ underscore cursor"
+    round: "round 5 · r5-01"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/k-underscore-cursor.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-01.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: badd8ddf848172f4f0d4bf639c8dbfbd512c81804a626a2f04527efa790e7962
+    accepted_at: "2026-06-30"
+  - id: wordmark-cursor
+    concept: "kobe wordmark + cursor"
+    round: "round 5 · r5-02"
+    modality: image
+    asset_type: logo
+    path: public/assets/logos/wordmark-cursor.png
+    source: .studio/out/kobe-logo/kobe-logo-r5-02.png
+    mime_type: image/png
+    size: [1024, 1024]
+    checksum_sha256: 9bb8d7133a9956ad24dfb80b7950c36c2e8e0501ede03ff52f19c00d1e915b96
+    accepted_at: "2026-06-30"
+  - id: kobe-intro
+    concept: "kobe-intro 34s vertical promo (voiceover storyboard, 6 scenes + real-TUI replay)"
+    round: "round 1"
+    modality: video
+    asset_type: promo-video
+    path: public/assets/video/kobe-intro.mp4
+    source: .studio/out/kobe-intro/out/kobe-intro.mp4
+    mime_type: video/mp4
+    size: [1080, 1920]
+    duration_seconds: 34.0
+    checksum_sha256: c87604dadc577d67ea00ef4dad550c3959686cf6770ed763114ae50311c4685b
+    accepted_at: "2026-07-02"

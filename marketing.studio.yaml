@@ -1,0 +1,53 @@
+# brand-studio metadata for the kobe repo (skill: .claude/skills/brand-studio).
+# Directory contract: production is scratch under .studio/ (gitignored);
+# user-accepted assets settle into public/assets/ and are recorded in
+# public/assets/accepted.yaml. Brand tokens live in packages/branding/src/colors.ts.
+project:
+  id: kobe
+  root: .
+  marketingRoot: marketing
+
+skillDistribution:
+  upstream: sma1lboy/brand-studio
+  scope: repo
+  ref: main
+
+theme:
+  path: marketing/theme.md
+  references: packages/branding
+
+campaigns:
+  release: marketing/campaigns/release
+  promo: marketing/campaigns/promo
+
+skills:
+  # Capability -> producer skill (installed at project scope).
+  image: gpt-image
+  video: brand-video
+
+backends:
+  text-to-image:
+    runner: codex-exec
+    command: "codex exec --image"
+    model: gpt-image-2
+
+artifacts:
+  scratch: .studio/out
+  approved: public/assets
+
+state:
+  plans: marketing/plans
+  assetIndex: marketing/asset-state.yaml
+  accepted: public/assets/accepted.yaml
+  directoryStateFile: asset-state.yaml
+
+sources:
+  assetRoots:
+    - public/assets
+    - docs/assets/brand
+  relatedRepos: []
+
+policy:
+  requireHumanApprovalBeforeRender: true
+  requireHumanApprovalBeforeStateUpdate: true
+  allowRootWorkspaceBootstrap: false
