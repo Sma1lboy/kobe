@@ -54,18 +54,22 @@ const END = capture.frames[capture.frames.length - 1].t + 4 // + tail hold (matc
 // Chrome (composer/status/footer) and unrelated panes stay out of frame.
 type Region = { c0: number; c1: number; r0: number; r1: number }
 const FULL: Region = { c0: 0, c1: capture.cols - 1, r0: 0, r1: capture.rows - 1 }
-const SIDEBAR: Region = { c0: 0, c1: 31, r0: 0, r1: 30 } // excludes keys-help footer
 const CHAT: Region = { c0: 33, c1: 107, r0: 3, r1: 36 } // workspace conversation area
+const DIALOG: Region = { c0: 30, c1: 130, r0: 6, r1: 38 } // centered NewTaskDialog card
 
 // Stage boundaries mirror the capture script's beats.
 // No region = wide shot (boot repaints everything; wrap pulls out).
 const STAGES: Array<{ name: string; from: number; to: number; region?: Region }> = [
-  { name: "shell", from: 0, to: 2.5, region: FULL }, // $ kobe typed
-  { name: "boot", from: 2.5, to: 8 }, // TUI paints — full shot
-  { name: "task-created", from: 8, to: 14, region: SIDEBAR }, // task appears, selected
-  { name: "open-task", from: 14, to: 26 }, // workspace attaches, engine boots
-  { name: "prompt", from: 26, to: 31, region: CHAT }, // prompt pasted + submitted
-  { name: "agent", from: 31, to: END - 4, region: CHAT }, // tool stream
+  { name: "shell", from: 0, to: 2.7, region: FULL }, // $ kobe typed
+  { name: "boot", from: 2.7, to: 8 }, // TUI paints — full shot, sidebar has a task
+  { name: "dialog", from: 8, to: 15, region: DIALOG }, // NewTaskDialog: claude
+  { name: "engine-boot", from: 15, to: 31 }, // worktree + bun install + claude — wide
+  { name: "type-prompt", from: 31, to: 39, region: CHAT }, // prompt typed live
+  { name: "agent", from: 39, to: 52, region: CHAT }, // tool stream
+  { name: "dialog-codex", from: 52, to: 60, region: DIALOG }, // second task: codex
+  { name: "codex-boot", from: 60, to: 77 }, // codex boots — wide
+  { name: "type-codex", from: 77, to: 84, region: CHAT }, // codex prompt typed
+  { name: "agent-2", from: 84, to: END - 4, region: CHAT },
   { name: "wrap", from: END - 4, to: END }, // pull back out
 ]
 
