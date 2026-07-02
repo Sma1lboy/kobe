@@ -36,6 +36,7 @@ import {
 } from "@/tmux/client"
 import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
+import { sessionAttached } from "@/tui/lib/attach-gate"
 import type { VendorId } from "@/types/task"
 import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 import { SyntaxStyle } from "@opentui/core"
@@ -162,6 +163,12 @@ function OpsShell(props: OpsHostArgs) {
     let idleStreak = 0
     let lastSeenMtime = 0
     async function poll(): Promise<void> {
+      // Detached (background) session: skip the readdir+stat sweep entirely —
+      // the badge is invisible. Next tick after re-attach resumes.
+      if (!(await sessionAttached())) {
+        if (!disposed) timer = setTimeout(() => void poll(), delayMs)
+        return
+      }
       try {
         const mtime = await latestTranscriptMtime(props.vendor, props.worktree)
         if (disposed) return
@@ -274,6 +281,11 @@ function OpsShell(props: OpsHostArgs) {
     }
 
     async function poll(): Promise<void> {
+      // Detached session: no capture-pane spawn for an invisible status chip.
+      if (!(await sessionAttached())) {
+        if (!disposed) timer = setTimeout(() => void poll(), delayMs)
+        return
+      }
       const shared = usingShared()
       try {
         const nextPaneHash = fingerprint(await capturePaneById(props.targetPane!, 80))

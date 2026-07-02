@@ -79,6 +79,7 @@ import { bindByIds, findBinding, keymapVersion } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
+import { sessionAttached } from "../lib/attach-gate"
 import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
 import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
@@ -1110,6 +1111,8 @@ async function setupTasksPane(opts: { initialTaskId?: string }): Promise<HostScr
   const timer = setInterval(() => {
     if (orch && orch.connectionStateSignal()() === "online") return
     void (async () => {
+      // Detached (background) session: skip even the stat — nobody's looking.
+      if (!(await sessionAttached())) return
       let fingerprint = "missing"
       try {
         const st = await stat(store.filePath)
