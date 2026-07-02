@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 // Capture a scripted kobe TUI demo as ANSI keyframes for the Remotion
-// quicklook composition. Replays the original quicklook.mp4 storyboard:
-// shell -> type `kobe` -> workspace -> create a real task (engine starts,
-// agent works with tool calls) -> capture throughout.
+// quicklook composition. Storyboard mirrors the original quicklook.mp4:
+//   shell types `kobe` -> workspace with a pre-existing task -> NewTaskDialog
+//   (claude) -> engine boots on camera -> prompt typed char-by-char ->
+//   agent tool stream -> second NewTaskDialog (codex) -> codex boots.
 //
 // Runs the real TUI in an isolated tmux server + throwaway KOBE_HOME, polls
-// `capture-pane -e` and stores changed frames.
+// `capture-pane -e` and stores changed frames with wall-clock timestamps
+// (so spinners and typing replay at true speed).
 //
-// Usage: bun scripts/capture-tui.ts [--fps 10] [--seconds 75] [--out src/quicklook/frames.json]
-//
-// Side effect: creates one kobe task (branch kobe/<slug>-<id>) in --repo.
+// Usage: bun scripts/capture-tui.ts [--home .capture-home-5] [--seconds 120]
+// Side effect: creates kobe task branches in --repo (one per created task).
 
 import { $ } from "bun"
 
@@ -19,7 +20,7 @@ const arg = (name: string, fallback: string) => {
 }
 
 const FPS = Number(arg("fps", "10"))
-const SECONDS = Number(arg("seconds", "100"))
+const SECONDS = Number(arg("seconds", "120"))
 const OUT = arg("out", "src/quicklook/frames.json")
 const REPO = arg("repo", "/Users/jacksonc/i/kobe")
 const COLS = 160
@@ -27,23 +28,57 @@ const ROWS = 45
 
 const SOCKET = "kobe-capture"
 const SESSION = "quicklook"
-const HOME = `${import.meta.dir}/../${arg("home", ".capture-home-2")}`
+const HOME = `${import.meta.dir}/../${arg("home", ".capture-home-5")}`
 const ENV = {
   ...process.env,
   KOBE_HOME_DIR: HOME,
   KOBE_TMUX_SOCKET: "kobe-capture-inner",
 }
 
-const PROMPT =
-  "Explain in three bullet points what packages/kobe/src/cli/api-cmd.ts does and how its verb groups are organized. Read-only: do not change any files."
+const CLAUDE_PROMPT = "Explain what packages/kobe/src/cli/api-cmd.ts does in three short bullets. Read-only."
+const CODEX_PROMPT = "Summarize the purpose of packages/branding in two sentences. Read-only."
 
 const tmux = (...args: string[]) => $`tmux -L ${SOCKET} ${args}`.env(ENV).quiet()
+const key = (k: string) => tmux("send-keys", "-t", SESSION, k)
+const sleep = (ms: number) => Bun.sleep(ms)
 
-let taskId = ""
+async function typeText(text: string, msPerChar: number): Promise<void> {
+  for (const ch of text) {
+    await $`tmux -L ${SOCKET} send-keys -t ${SESSION} -l ${ch}`.env(ENV).quiet()
+    await sleep(msPerChar)
+  }
+}
+
+// Walk the NewTaskDialog with Enter (tabs -> engine -> repo -> branch ->
+// Create). `engineRights` arrows the engine picker before advancing.
+async function createTaskViaDialog(engineRights: number): Promise<void> {
+  await key("n")
+  await sleep(1800) // dialog opens, let it breathe on camera
+  await key("Enter") // tabs -> engine
+  await sleep(900)
+  for (let i = 0; i < engineRights; i++) {
+    await key("Right")
+    await sleep(700)
+  }
+  await key("Enter") // engine -> repo
+  await sleep(900)
+  await key("Enter") // repo -> branch
+  await sleep(900)
+  await key("Enter") // branch -> Create
+  await sleep(900)
+  await key("Enter") // commit
+}
 
 await $`mkdir -p ${HOME}`.quiet()
 await tmux("kill-server").nothrow()
-// Plain shell first — the demo opens on `$ kobe<Enter>` like the original video.
+
+// Pre-existing task so the sidebar isn't empty (no engine, just the row).
+await $`kobe api add --repo ${REPO} --title ${"fix flaky turn-detector test"} --status in_progress`
+  .env(ENV)
+  .quiet()
+  .nothrow()
+
+// Plain shell first — the demo opens on `$ kobe<Enter>` like the original.
 await tmux(
   "new-session", "-d", "-s", SESSION, "-x", String(COLS), "-y", String(ROWS),
   "-e", `KOBE_HOME_DIR=${HOME}`, "-e", "KOBE_TMUX_SOCKET=kobe-capture-inner",
@@ -52,69 +87,50 @@ await tmux(
   "sh",
 )
 
-// Scripted beats: [atSecond, action]
+// Scripted beats: [atSecond, action]. Long-running beats sleep internally;
+// the capture loop keeps polling concurrently.
 const BEATS: Array<[number, () => Promise<unknown>]> = [
-  [1.0, () => tmux("send-keys", "-t", SESSION, "k")],
-  [1.2, () => tmux("send-keys", "-t", SESSION, "o")],
-  [1.4, () => tmux("send-keys", "-t", SESSION, "b")],
-  [1.6, () => tmux("send-keys", "-t", SESSION, "e")],
-  [2.0, () => tmux("send-keys", "-t", SESSION, "Enter")],
-  [
-    8.0,
-    async () => {
-      const out = await $`kobe api add --repo ${REPO} --vendor claude --title ${"explain kobe api cli"}`
-        .env(ENV)
-        .nothrow()
-        .json()
-        .catch(() => null)
-      taskId = out?.task?.id ?? out?.id ?? ""
-    },
-  ],
-  // Focus sidebar and walk selection onto the new task; `enter` opens it in
-  // the workspace + builds the engine session (Sidebar.tsx / task-enter.ts).
-  [11.0, () => tmux("send-keys", "-t", SESSION, "C-h")],
-  [12.0, () => tmux("send-keys", "-t", SESSION, "j")],
-  [13.0, () => tmux("send-keys", "-t", SESSION, "j")],
-  [14.0, () => tmux("send-keys", "-t", SESSION, "Enter")],
-  // Once the engine is up on-camera, paste the demo prompt into it.
-  [
-    26.0,
-    () =>
-      (taskId
-        ? $`kobe api send --task-id ${taskId} --prompt ${PROMPT}`
-        : $`kobe api send --prompt ${PROMPT}`
-      )
-        .env(ENV)
-        .quiet()
-        .nothrow(),
-  ],
+  [1.0, () => typeText("kobe", 160)],
+  [2.2, () => key("Enter")],
+  [7.0, () => key("C-h")], // sidebar focus
+  [8.0, () => createTaskViaDialog(0)], // claude task via NewTaskDialog
+  // Engine boots ~14-30s (worktree + bun install + claude). Then type the
+  // first prompt into the composer, visibly.
+  [32.0, () => typeText(CLAUDE_PROMPT, 45)],
+  [37.5, () => key("Enter")],
+  // Let the agent stream tool calls, then create the codex task.
+  [52.0, () => key("C-h")],
+  [53.0, () => createTaskViaDialog(1)], // codex
+  [78.0, () => typeText(CODEX_PROMPT, 45)],
+  [82.5, () => key("Enter")],
 ]
 
 const frames: Array<{ t: number; lines: string[] }> = []
 let last = ""
-const total = Math.round(FPS * SECONDS)
 const fired = new Set<number>()
+const start = Date.now()
+const elapsed = () => (Date.now() - start) / 1000
 
-for (let i = 0; i < total; i++) {
-  const t = i / FPS
+while (elapsed() < SECONDS) {
+  const t = elapsed()
   for (let b = 0; b < BEATS.length; b++) {
     if (t >= BEATS[b][0] && !fired.has(b)) {
       fired.add(b)
       // Bun Shell promises are lazy — .catch() forces execution without
-      // stalling the capture loop on slow beats (task creation).
+      // stalling the capture loop on slow beats.
       BEATS[b][1]().catch(() => {})
     }
   }
   const text = await tmux("capture-pane", "-ep", "-t", SESSION).text()
   if (text !== last) {
     last = text
-    frames.push({ t, lines: text.replace(/\n$/, "").split("\n") })
+    frames.push({ t: elapsed(), lines: text.replace(/\n$/, "").split("\n") })
   }
-  await Bun.sleep(1000 / FPS)
+  await sleep(Math.max(0, 1000 / FPS - (elapsed() - t) * 1000))
 }
 
 await tmux("kill-server").nothrow()
-// Stop the sandbox daemon + the engine session living on the inner socket.
+// Stop the sandbox daemon + engine sessions on the inner socket.
 await $`kobe daemon stop`.env(ENV).quiet().nothrow()
 await $`tmux -L kobe-capture-inner kill-server`.env(ENV).quiet().nothrow()
 
