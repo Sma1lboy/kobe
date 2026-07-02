@@ -1,8 +1,11 @@
 # quicklook-replay — capture + camera pipeline
 
-See [`.claude/skills/quicklook-replay/SKILL.md`](../../../.claude/skills/quicklook-replay/SKILL.md)
-for the full method (how to analyze a reference video, the capture-script beat
-model, the stage-camera weighting/algorithm, and effect boundaries).
+This composition is the **worked example** for the generic
+[`remotion-ref-replay`](../../../.claude/skills/remotion-ref-replay/SKILL.md)
+skill — the reusable method (how to analyze a reference video, the capture-script
+beat model, the stage-camera weighting/algorithm, effect boundaries, and
+troubleshooting) for reproducing any reference recording as a Remotion-driven
+real-app capture.
 
 Quick reference:
 
