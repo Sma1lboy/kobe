@@ -28,11 +28,12 @@
  */
 
 import { parseNumstatRows, parsePorcelainRows } from "@/lib/git-parsers"
-import { runWorktreeGit } from "../../../worktree/content.ts"
+import { readWorktreeFile, runWorktreeGit } from "../../../worktree/content.ts"
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
- * collapsed to a single-char headline. */
-export type FileStatus = "M" | "A" | "D" | "?" | "R" | "C" | "U"
+ * collapsed to a single-char headline. `T` is a typechange (a regular
+ * file became a symlink or vice-versa). */
+export type FileStatus = "M" | "A" | "D" | "?" | "R" | "C" | "U" | "T"
 
 /** A single row from `git status --porcelain`. */
 export type StatusEntry = {
@@ -139,11 +140,54 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
       stats = new Map()
     }
   }
-  return entries.map((e) => {
+  const merged = entries.map((e) => {
     const s = stats.get(e.path)
     if (s) return { ...e, added: s.added, deleted: s.deleted }
     return e
   })
+  // Untracked files never appear in `git diff --numstat`, so the merge above
+  // leaves their `added` blank. Count their lines on disk (all lines are
+  // "added" against nothing; deleted stays 0) so the Changes tab shows how big
+  // each new file is. Unreadable/binary reads fall through to blank rather than
+  // guessing. Runs in parallel — a big untracked drop is rare but shouldn't
+  // serialize dozens of reads.
+  const untracked = merged.filter((e) => e.status === "?" && e.added == null)
+  if (untracked.length > 0) {
+    await Promise.all(
+      untracked.map(async (e) => {
+        const added = await countAddedLines(worktreePath, e.path, signal)
+        if (added != null) {
+          e.added = added
+          e.deleted = 0
+        }
+      }),
+    )
+  }
+  return merged
+}
+
+/**
+ * Count the added-line count of an untracked file on disk. Every line is an
+ * addition (there is no HEAD version), so this is just the newline count with
+ * a trailing non-empty line counted as a line too — matching how `wc -l`-style
+ * "lines added" reads to a user. An empty file is `0` added. Returns `null`
+ * for unreadable files (missing/binary/permission) so callers leave the cell
+ * blank instead of showing a wrong `+0`.
+ */
+async function countAddedLines(worktreePath: string, relPath: string, signal?: AbortSignal): Promise<number | null> {
+  if (signal?.aborted) return null
+  const text = await readWorktreeFile(worktreePath, relPath)
+  if (text == null) return null
+  // NUL byte => treat as binary; git wouldn't count its lines either.
+  if (text.includes("\u0000")) return null
+  if (text.length === 0) return 0
+  let count = 0
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") count++
+  }
+  // A final line without a trailing newline still counts as a line.
+  if (!text.endsWith("\n")) count++
+  return count
 }
 
 /**
@@ -240,7 +284,8 @@ export function parsePorcelain(raw: string): StatusEntry[] {
         candidate === "D" ||
         candidate === "R" ||
         candidate === "C" ||
-        candidate === "U"
+        candidate === "U" ||
+        candidate === "T"
       ) {
         status = candidate
       } else {
