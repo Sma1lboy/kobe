@@ -125,7 +125,7 @@ function UpdatePage() {
     setStatus(t("update.statusRunningUpdater"))
     await new Promise((resolve) => setTimeout(resolve, 30))
     renderer?.destroy()
-    process.stdout.write(`\nkobe ${CURRENT_VERSION} -> latest\n`)
+    process.stdout.write(`\nkobe ${CURRENT_VERSION} -> ${latest()}\n`)
     process.stdout.write(`running: ${UPDATE_COMMAND}\n\n`)
     const result = spawnSync("sh", ["-c", UPDATE_COMMAND], { stdio: "inherit" })
     const code = result.status ?? (result.error ? 1 : 0)

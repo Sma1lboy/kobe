@@ -998,6 +998,11 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     const chords = ids.map((id) => b[id]?.chord).filter((chord): chord is string => !!chord)
     return chords.length > 0 ? chords.join("/") : null
   }
+  // Same surface guard chatTabSwitchBindings uses (kept identical): "0" (skip) on
+  // a surface window, "1" (switch) everywhere else. Reused by the single-direction
+  // tab-switch fallbacks below so a lone prev/next chord doesn't fire raw on a
+  // half-filled surface dialog.
+  const TAB_SWITCH_SURFACE_GUARD = "#{?#{@kobe_surface},0,1}"
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
     ["set-window-option", "-g", "aggressive-resize", "on"],
@@ -1073,9 +1078,33 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(b["tmux.tab.prev"] && b["tmux.tab.next"]
       ? chatTabSwitchBindings(b["tmux.tab.prev"].key, b["tmux.tab.next"].key)
       : b["tmux.tab.prev"]
-        ? [["bind-key", "-n", b["tmux.tab.prev"].key, "previous-window"] as const]
+        ? // Single-direction fallback must carry the SAME surface guard as
+          // chatTabSwitchBindings — a lone prev/next chord fires from the
+          // session-global root table too, so raw `previous-window`/`next-window`
+          // would yank the user off a half-filled surface dialog.
+          [
+            [
+              "bind-key",
+              "-n",
+              b["tmux.tab.prev"].key,
+              "if-shell",
+              "-F",
+              TAB_SWITCH_SURFACE_GUARD,
+              "previous-window",
+            ] as const,
+          ]
         : b["tmux.tab.next"]
-          ? [["bind-key", "-n", b["tmux.tab.next"].key, "next-window"] as const]
+          ? [
+              [
+                "bind-key",
+                "-n",
+                b["tmux.tab.next"].key,
+                "if-shell",
+                "-F",
+                TAB_SWITCH_SURFACE_GUARD,
+                "next-window",
+              ] as const,
+            ]
           : []),
     ...(b["tmux.tab.close"] ? [chatTabCloseBinding(b["tmux.tab.close"].key, closeChatTabTmuxCommand)] : []),
     ...(b["tmux.tab.rename"] ? [chatTabRenameBinding(b["tmux.tab.rename"].key)] : []),
