@@ -38,9 +38,11 @@
  *     expensive than a manual refresh.
  *
  * Reactivity: `worktreePath` is an `Accessor` so the pane reacts to
- * task switches without a manual prop-equality check. The internal
- * `entries` signal is recomputed in a `createEffect` that depends on
- * (worktreePath, tab, refreshTick). `refreshTick` is bumped on `r`.
+ * task switches without a manual prop-equality check. Data is refetched
+ * by three separate effects — on `worktreePath` (wipe + reload), on `tab`
+ * (cache-first tab switch + cursor reset), and on `refreshTick` (deferred;
+ * always reloads the active tab, PRESERVING the cursor). `refreshTick` is
+ * bumped by `r` and by the debounced fs-watch handler.
  *
  * Empty / error states:
  *   - `worktreePath() == null` → "No worktree" (we treat this as the
@@ -158,8 +160,9 @@ function statusToken(s: FileStatus): "warning" | "success" | "error" | "textMute
     case "R":
     case "C":
     case "U":
-      // Renames/copies/conflicts are uncommon in the loop; render
-      // them in info-blue to distinguish from the M/A/D/? majority.
+    case "T":
+      // Renames/copies/conflicts/typechanges are uncommon in the loop;
+      // render them in info-blue to distinguish from the M/A/D/? majority.
       return "info"
   }
 }
@@ -322,34 +325,49 @@ export function FileTree(props: FileTreeProps) {
     }),
   )
 
-  // Re-fetch when the active tab changes (only if data isn't loaded
-  // yet) and on every refresh tick.
+  // Re-fetch when the active TAB changes — cache-first, so pinging
+  // 1/2/1/2 between already-loaded tabs never respawns git. Resetting the
+  // cursor belongs here (a different tab is a different list); a refresh of
+  // the SAME tab must NOT yank the cursor to the top (that effect is below).
   createEffect(
-    on([tab, refreshTick], async ([currentTab, _tick]) => {
+    on(tab, async (currentTab) => {
       const path = props.worktreePath()
-      if (path == null) return
       // Reset cursor on tab switch — different row count, different list.
       setCursorIndex(0)
-      // Abort an overlapping git read when the tab switches or another
-      // refresh tick lands before this one resolves — without this, a
-      // rapid 1/2/1/2 or repeated `r` stacks live subprocesses even
-      // though `fetchSeq` already drops their stale writes.
+      if (path == null) return
+      // Abort an overlapping git read if the tab switches again before this
+      // one resolves — without this, a rapid 1/2/1/2 stacks live subprocesses
+      // even though `fetchSeq` already drops their stale writes.
       const controller = new AbortController()
       onCleanup(() => controller.abort())
-      // For an explicit refresh tick > 0 we always re-fetch even if
-      // data is loaded.
-      const tickVal = refreshTick()
-      const isExplicitRefresh = tickVal > 0
       if (currentTab === "all") {
-        if (allFiles() == null || isExplicitRefresh) {
-          await refetch("all", path, controller.signal)
-        }
+        if (allFiles() == null) await refetch("all", path, controller.signal)
       } else if (currentTab === "changes") {
-        if (changes() == null || isExplicitRefresh) {
-          await refetch("changes", path, controller.signal)
-        }
+        if (changes() == null) await refetch("changes", path, controller.signal)
       }
     }),
+  )
+
+  // Re-fetch on a real refresh tick (`r` or a debounced fs-watch event).
+  // `defer: true` skips the tick=0 mount run — the worktree effect already
+  // does the first fetch — so this fires only when the tick actually changes.
+  // Unlike a tab switch, a refresh PRESERVES the cursor (the clamp effect
+  // below pulls it back only if the row count shrank past it), so an engine
+  // writing files under the Ops pane no longer snaps the view to the top.
+  createEffect(
+    on(
+      refreshTick,
+      async () => {
+        const currentTab = tab()
+        const path = props.worktreePath()
+        if (path == null) return
+        // Abort an overlapping read if another tick lands before this resolves.
+        const controller = new AbortController()
+        onCleanup(() => controller.abort())
+        await refetch(currentTab, path, controller.signal)
+      },
+      { defer: true },
+    ),
   )
 
   // Tree built once per `allFiles` change and reused while expansion
@@ -379,6 +397,16 @@ export function FileTree(props: FileTreeProps) {
     }
     return reconcileRows(prev ?? [], next)
   }, [])
+
+  // Keep the cursor in range when a refresh shrinks the list (e.g. an engine
+  // deletes files). Tab switches already reset the cursor to 0, so this is a
+  // no-op there; it only clamps a preserved cursor that now points past the end.
+  createEffect(
+    on(rows, (r) => {
+      if (r.length === 0) return
+      if (cursorIndex() > r.length - 1) setCursorIndex(r.length - 1)
+    }),
+  )
 
   /**
    * Column widths for the `+N` / `-N` stats on the Changes tab. Computed

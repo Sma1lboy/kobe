@@ -301,15 +301,22 @@ export function clampCursor(cursor: number, listLength: number): number {
 }
 
 /**
- * Resolve the baseRef the dialog should submit. Prefers the currently
- * highlighted branch in the picker over the typed text — free-text
- * only kicks in when nothing matches (e.g. typed a tag / commit SHA
- * the local branch list doesn't know). Returns the trimmed typed text
- * (or DEFAULT_BASE_REF) when no list match is available.
+ * Resolve the baseRef the dialog should submit. An EXACT (case-
+ * insensitive) match of the trimmed typed text against the filtered
+ * branch list wins first — otherwise a substring-filtered list plus the
+ * cursor-reset-to-0 behavior would resolve `prod` to `preprod` (the
+ * alphabetically-first branch that merely *contains* the typed text).
+ * Falling back to the highlighted row (cursor) is right only when the
+ * typed text isn't itself a branch name; free-text (or DEFAULT_BASE_REF)
+ * kicks in last when nothing in the list matches at all — e.g. a tag /
+ * commit SHA the local branch list doesn't know.
  */
 export function resolveBaseRef(typed: string, filteredBranches: readonly string[], cursor: number): string {
+  const t = typed.trim()
+  const lower = t.toLowerCase()
+  const exact = t ? filteredBranches.find((b) => b.toLowerCase() === lower) : undefined
+  if (exact) return exact
   const picked = filteredBranches[cursor]
   if (picked) return picked
-  const t = typed.trim()
   return t || DEFAULT_BASE_REF
 }

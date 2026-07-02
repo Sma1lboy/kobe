@@ -738,6 +738,16 @@ async function main(): Promise<void> {
       )
       process.exit(2)
     }
+    // `tasks-restore` is the one action reachable from a session-global no-prefix
+    // chord (Ctrl+h's focus-left edge command). A surface window (settings /
+    // new-task / …) is always single-pane, so its active pane is at the left edge
+    // and the edge command fires — but a surface has no Tasks pane, so
+    // `restoreTasksPane` would `createTasksPane`, splitting the dialog and
+    // injecting a Tasks rail. Guard it the same way focus-tasks / new-chattab do.
+    if (action === "tasks-restore" && flags.windowId) {
+      const { windowIsSurface } = await import("../tmux/client.ts")
+      if (await windowIsSurface(flags.windowId)) return
+    }
     const { runLayoutAction } = await import("../tui/panes/terminal/tmux.ts")
     await runLayoutAction(session, action as import("../tui/panes/terminal/tmux.ts").LayoutAction, {
       windowId: flags.windowId,
