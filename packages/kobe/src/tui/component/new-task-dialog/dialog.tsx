@@ -252,6 +252,20 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     void adoptList()
     setAdoptCursor((c) => clampCursor(c, adoptList().length))
   })
+  // Reset the adopt multi-select whenever the resolved repo changes.
+  // Worktree paths are unique per repo, so a selection made for repo A
+  // can never match repo B — without this the stale set survives the
+  // refetch and commitAdopt silently no-ops (filters to zero) while the
+  // "N selected" hint still shows. Keyed on the same expanded path the
+  // adoptable resource fetches on, so it fires exactly when that refetches.
+  createEffect((prev: string | undefined) => {
+    const r = expandHome(repo().trim())
+    if (prev !== undefined && r !== prev) {
+      setAdoptSelected(new Set<string>())
+      setAdoptCursor(0)
+    }
+    return r
+  })
 
   function toggleAdopt(p: string): void {
     setAdoptSelected((prev) => {
@@ -348,7 +362,21 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     const targetReason = validateCloneTarget(cloneParent(), cloneFolder())
     if (targetReason) {
       setSubmitError(targetReason)
-      setField(cloneFolder().trim() ? "cloneParent" : "cloneFolder")
+      // Focus the field actually at fault. validateCloneTarget returns an
+      // opaque (localized, interpolated) i18n string, so we can't switch on
+      // it. Folder-side structural faults (blank / has separator) are decided
+      // here; for anything else the failure is either a parent fs problem
+      // (not found / not a dir) or targetExists (folder-side, occurs with a
+      // valid folder+parent). We tell those apart by re-validating the parent
+      // against a throwaway folder name that structurally passes and won't
+      // collide: if that clears, the parent is fine and the real fault was
+      // targetExists → Folder; otherwise the parent itself is wrong → Parent.
+      // The old "non-empty folder ⇒ blame parent" heuristic sent
+      // folderHasSeparator and targetExists to the wrong field.
+      const folder = cloneFolder().trim()
+      const folderStructurallyBad = !folder || folder.includes("/") || folder.includes("\\")
+      const parentAtFault = !folderStructurallyBad && validateCloneTarget(cloneParent(), "__kobe_probe__") != null
+      setField(parentAtFault ? "cloneParent" : "cloneFolder")
       return
     }
     const target = resolveCloneTarget(cloneParent(), cloneFolder())
@@ -750,10 +778,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                 setRepoPicked(false)
                 setRepo(stripNewlines(v))
               }}
-              onSubmit={() => {
-                if (!repo().trim()) return
-                onRepoSubmit()
-              }}
+              // Route every Enter through onRepoSubmit — it already handles
+              // the empty-input case (pick the first saved repo and advance).
+              // A prior `if (!repo().trim()) return` guard here made that
+              // pick-first branch unreachable, so Enter on an empty field was
+              // dead.
+              onSubmit={() => onRepoSubmit()}
             />
           </box>
           <Show when={field() === "repo" && activeList().length > 0 && !repoPicked()}>
