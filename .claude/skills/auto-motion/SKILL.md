@@ -5,6 +5,8 @@ description: 在 kobe 仓库内跑 auto-motion——把 transcription.srt 拆成
 
 # auto-motion(kobe wrapper)
 
+> **kobe 自己的宣传片优先用 `brand-video` skill**(单一 Remotion 工程、theme 靠 import、支持真机 replay 镜头)。本 wrapper 只在需要 auto-motion 通用外部工作流(hyperframes 逐镜头子进程)时用。
+
 canonical 执行逻辑在 auto-motion 仓库的 `.claude/skills/auto-motion/SKILL.md`——本文件不复制那份流程(避免漂移),只做两件事:定位模板根、注入 kobe 的上层 theme。
 
 ## Step A — 解析模板根(AUTO_MOTION_ROOT)
