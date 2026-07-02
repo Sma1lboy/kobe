@@ -429,6 +429,38 @@ export function focusBindCommand(key: string, dir: FocusDirection, edgeCommand?:
   return ["bind-key", "-n", key, "if-shell", "-F", condition, `select-pane ${dir}`]
 }
 
+/**
+ * The ctrl+h left-edge fallback: restore/focus the Tasks rail via the
+ * kobe CLI. Two guards, both load-bearing (the "kobe freezes for a few
+ * seconds / ctrl+hjkl feels random" macOS Terminal report):
+ *
+ * - `run-shell -b`: a FOREGROUND run-shell stalls tmux's entire command
+ *   queue until the spawned process exits (man tmux, COMMAND PARSING AND
+ *   EXECUTION), so every left-edge press blocked the client for a full
+ *   CLI startup and rapid presses queued serially into multi-second
+ *   freezes; a failing spawn additionally dropped the pane into view
+ *   mode, eating keystrokes until dismissed.
+ * - the `@kobe_role` gate skips the spawn entirely for the hot case —
+ *   pressing ctrl+h while already sitting in the leftmost Tasks pane
+ *   (vim muscle-memory spam), where the restore only re-selected the
+ *   pane the user was already in. The rail-hidden and rail-crashed
+ *   cases still fire: their left-edge pane is the engine/shell, whose
+ *   role is never `tasks`.
+ *
+ * The nested run-shell is wrapped in tmux BRACES, not double quotes:
+ * the shell-quoted CLI command contains `'\''` sequences (env prefix +
+ * `--session '#{session_name}'`), and tmux double-quote parsing
+ * processes those backslashes — the re-parse then splits the command
+ * ("run-shell: too many arguments"). Braces copy the content verbatim,
+ * so the branch re-parses exactly like the pre-gate argv form did.
+ * Both branches verified live on tmux 3.6 via `run-shell -C`
+ * re-parsing with a production-shaped command (fires with no/other
+ * role, no-op with `@kobe_role=tasks`).
+ */
+export function tasksRestoreEdgeCommand(restoreTasksCommand: string): string {
+  return `if-shell -F '#{?#{==:#{@kobe_role},tasks},,1}' { run-shell -b ${shellQuote(restoreTasksCommand)} }`
+}
+
 export interface EnsureSessionOpts {
   readonly name: string
   /** Working directory for every pane in the new session. */
@@ -877,12 +909,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const layoutCommand = (action: string): string =>
     `${envStr}${invStr} layout --session '#{session_name}' --window '#{window_id}' --action ${action}`
   const restoreTasksCommand = layoutCommand("tasks-restore")
-  // `-b`: run in the background. This is ctrl+h's left-EDGE command, so it
-  // fires on every press while the Tasks rail is already focused (the common
-  // spam/key-repeat case, where it ends in a no-op select-pane). A foreground
-  // run-shell blocks tmux's key processing per press — a held ctrl+h queued
-  // dozens of ~200ms CLI spawns and froze the client for seconds (issue #192).
-  const restoreTasksTmuxCommand = `run-shell -b ${shellQuote(restoreTasksCommand)}`
+
   const closeChatTabCommand = layoutCommand("chat-tab-close")
   const closeChatTabTmuxCommand = `run-shell ${shellQuote(closeChatTabCommand)}`
   // Re-pin the layout whenever a window settles to a new size. The FIRST task
@@ -1002,7 +1029,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const focusDirections: readonly FocusDirection[] = ["-L", "-D", "-U", "-R"]
   const focusBinds = userKeys.focus.flatMap((bind, i) => {
     const dir = focusDirections[i]
-    const edgeCommand = dir === "-L" ? restoreTasksTmuxCommand : undefined
+    const edgeCommand = dir === "-L" ? tasksRestoreEdgeCommand(restoreTasksCommand) : undefined
     return bind && dir ? [focusBindCommand(bind.key, dir, edgeCommand)] : []
   })
   const b = userKeys.binds

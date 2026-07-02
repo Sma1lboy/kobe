@@ -20,6 +20,7 @@ import {
   kobeStatusRight,
   parseObservedSession,
   parseTmuxClientRows,
+  tasksRestoreEdgeCommand,
   tmuxInitialSizeArgs,
   tmuxSessionName,
   tmuxWindowSizeArgsForClient,
@@ -126,6 +127,26 @@ describe("focusBindCommand", () => {
       "select-pane -L",
       "run-shell restore",
     ])
+  })
+})
+
+describe("tasksRestoreEdgeCommand", () => {
+  // Regression: the ctrl+h left-edge restore used to be a FOREGROUND
+  // run-shell, which stalls tmux's whole command queue until the kobe CLI
+  // exits — every press inside the leftmost Tasks pane froze the client
+  // for a full CLI startup, and rapid presses compounded into multi-second
+  // freezes ("shortcut keys are very random / kobe gets stuck"). The fix
+  // is twofold and both halves must survive: the spawn is backgrounded
+  // (`run-shell -b`) and skipped entirely when the active pane already IS
+  // the Tasks rail (`@kobe_role=tasks`). The run-shell is nested in tmux
+  // BRACES, never double quotes: the shell-quoted command carries `'\''`
+  // sequences that double-quote re-parsing corrupts ("too many
+  // arguments"). Gate + brace re-parsing verified live on tmux 3.6 via
+  // `run-shell -C` with a production-shaped command.
+  test("backgrounds the CLI spawn and skips it when the Tasks rail is the active pane", () => {
+    expect(tasksRestoreEdgeCommand("kobe layout --session '#{session_name}' --action tasks-restore")).toBe(
+      `if-shell -F '#{?#{==:#{@kobe_role},tasks},,1}' { run-shell -b 'kobe layout --session '\\''#{session_name}'\\'' --action tasks-restore' }`,
+    )
   })
 })
 
