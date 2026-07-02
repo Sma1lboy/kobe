@@ -4,8 +4,8 @@ brand-studio 是**策展层**(curate/settle,永不生产),在上层管理所有 
 (`skills.video`)、gpt-image(`skills.image`)是它在 `marketing.studio.yaml` 里绑定的生产端
 (只生产,不落账)。
 
-**brand-video 是唯一的 video producer,且是通用 skill**(不 for 单一产品;宿主上下文全部由
-metadata 注入)。原 remotion-ref-replay 已并入它:参考视频/脚本的**分析层(storyboard +
+**brand-video 是唯一的 video producer,且是通用 skill**(不 for 单一产品;宿主上下文由
+metadata 注入;没有宿主 repo 时它会先问一句品牌方向和落位,而不是假设)。原 remotion-ref-replay 已并入它:参考视频/脚本的**分析层(storyboard +
 相机权重分配)是这个 skill 的核心资产**,捕获方法收在其 `references/replay-capture.md`;
 旧名保留为兼容别名,只迭代这一个 skill。能力插槽(bgm / TTS 口播 / 人脸角标 PiP)挂在
 同一时间轴上,不另立 skill。
