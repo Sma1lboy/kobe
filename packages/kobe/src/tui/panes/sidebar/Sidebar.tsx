@@ -183,6 +183,7 @@ export type SidebarProps = {
    * stateless of the toggle.
    */
   onPinRequest?: (taskId: string) => void
+  onPreviewToggleRequest?: (taskId: string) => void
   /** Display ordering for task rows. Defaults to the persisted/manual order. */
   sortMode?: Accessor<TaskSortMode>
   /** Cycle the display ordering (`t`). */
@@ -728,6 +729,7 @@ export function Sidebar(props: SidebarProps) {
     onMoveModeExit: () => props.onMoveModeExit?.(),
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
+    onPreviewToggleRequest: (id) => props.onPreviewToggleRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
     onSortModeToggle: () => props.onSortModeToggle?.(),
     onProjectFilterToggle: () => cycleProjectFilter(),

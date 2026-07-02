@@ -106,6 +106,12 @@ export type SidebarBindingsOpts = {
    */
   onPinRequest?: (taskId: string) => void
   /**
+   * Live-preview toggle callback. Fires on `i` with the task id under the
+   * cursor: flip the task between the live read-only history preview and the
+   * engine. The parent owns the session rebuild.
+   */
+  onPreviewToggleRequest?: (taskId: string) => void
+  /**
    * View-switch callback. Fires on `[` (-1, "previous view") and `]`
    * (+1, "next view"). The parent owns the active-view signal.
    */
@@ -237,6 +243,11 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         if (!evt.shift) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onPinRequest?.(id)
+      },
+      "sidebar.previewToggle": () => {
+        if (moveModeAccessor()) return
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onPreviewToggleRequest?.(id)
       },
       "sidebar.search.enter": () => {
         if (moveModeAccessor()) return

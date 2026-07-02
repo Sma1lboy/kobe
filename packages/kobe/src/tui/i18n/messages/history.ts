@@ -9,6 +9,7 @@ export const en = {
   loading: "loading…",
   sessionLabel: "Session",
   archivedTag: "ARCHIVED",
+  liveTag: "● LIVE",
   hint: "[ ] session · j/k scroll · ⏎ expand",
   hintExpanded: "[ ] session · j/k scroll · ⏎ collapse",
   role: {
@@ -24,6 +25,7 @@ export const zh: typeof en = {
   loading: "加载中…",
   sessionLabel: "会话",
   archivedTag: "已归档",
+  liveTag: "● 实时",
   hint: "[ ] 会话 · j/k 滚动 · ⏎ 展开",
   hintExpanded: "[ ] 会话 · j/k 滚动 · ⏎ 收起",
   role: {

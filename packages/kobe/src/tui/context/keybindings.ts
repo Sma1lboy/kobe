@@ -300,6 +300,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "P", label: "pin", status: false },
   },
   {
+    // `i` opens the cursor task in a live read-only preview (the `kobe history`
+    // renderer tailing the transcript) in the engine pane slot instead of the
+    // engine, and toggles back on a second press. For inspecting a task an agent
+    // is working in without driving it. Same beta gate as the archived preview.
+    id: "sidebar.previewToggle",
+    scope: "sidebar",
+    keys: ["i"],
+    category: "Sidebar",
+    description: "Toggle live preview for task (i)",
+    hint: { keys: "i", label: "preview", status: false },
+  },
+  {
     // POSITIONAL: [previous view, next view] pairs (slot dispatch).
     id: "sidebar.view",
     scope: "sidebar",

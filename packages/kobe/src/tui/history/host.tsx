@@ -21,22 +21,35 @@
  * spawn, no write path, no daemon dependency.
  */
 
-import { engineEntry } from "@/engine/registry"
+import { type EngineHistoryReader, engineEntry } from "@/engine/registry"
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
 import type { VendorId } from "@/types/task"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { For, Show, createEffect, createMemo, createResource, createSignal, on } from "solid-js"
+import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
+import { ACTIVITY_POLL_MIN_MS, nextActivityPollDelay } from "../ops/activity-poll"
 
 export interface HistoryHostArgs {
   readonly worktree: string
   readonly vendor: VendorId
   /** Optional task title for the header; falls back to the worktree basename. */
   readonly title?: string
+  /**
+   * Live preview of a non-archived task (vs the frozen archived transcript):
+   * the header tags LIVE instead of ARCHIVED. The mtime poll runs either way;
+   * this only picks the badge.
+   */
+  readonly live?: boolean
+  /**
+   * Override the transcript source. Production leaves it undefined (reads the
+   * real engine store via {@link engineEntry}); the dev:mock host injects a
+   * fake reader so the whole pane renders without a real worktree/transcript.
+   */
+  readonly reader?: EngineHistoryReader
 }
 
 /** Lines of transcript scrolled per `j`/`k` keypress. */
@@ -257,44 +270,109 @@ function MessageCard(props: {
 
 function HistoryScreen(props: HistoryHostArgs) {
   const { theme } = useTheme()
+  // Data source: the injected reader (dev:mock) or the real engine transcript
+  // store. All three reads below go through it so a mock drives the whole pane.
+  const reader = props.reader ?? engineEntry(props.vendor).history
+
+  // Live refresh: poll the vendor transcript mtime (adaptive backoff, shared
+  // with the Ops pane) and bump this tick when it advances so the resources
+  // below refetch. An archived task whose transcript never changes ramps the
+  // backoff to its cap — effectively idle — so the same host serves both the
+  // static archived preview and a live follow of an active worktree.
+  const [refreshTick, setRefreshTick] = createSignal(0)
 
   const [sessions] = createResource(
-    () => props.worktree,
-    async (wt): Promise<readonly string[]> => {
+    () => [props.worktree, refreshTick()] as const,
+    async ([wt]): Promise<readonly string[]> => {
       try {
-        return await engineEntry(props.vendor).history.listSessionIdsForWorktree(wt)
+        return await reader.listSessionIdsForWorktree(wt)
       } catch {
         return []
       }
     },
   )
-  const sessionList = (): readonly string[] => sessions() ?? []
+  // `.latest` keeps the last resolved list visible while a refresh refetch is in
+  // flight, so a live tick doesn't blink the pane back to its loading state.
+  const sessionList = (): readonly string[] => sessions.latest ?? []
 
   const [selected, setSelected] = createSignal(0)
+  // Follow the newest session when a NEW one appears (or on first load), but
+  // leave the cursor alone on a same-count refresh so a user browsing an older
+  // session with `[`/`]` isn't yanked back to the tail every poll.
+  let prevSessionCount = 0
   createEffect(
     on(sessions, (s) => {
       const n = (s ?? []).length
-      setSelected(n > 0 ? n - 1 : 0)
+      if (n > prevSessionCount) setSelected(n > 0 ? n - 1 : 0)
+      else setSelected((i) => Math.min(i, Math.max(0, n - 1)))
+      prevSessionCount = n
     }),
   )
   const selectedId = (): string | undefined => sessionList()[selected()]
 
   const [messages] = createResource(
-    () => selectedId(),
-    async (id): Promise<Message[]> => {
-      if (!id) return []
+    () => {
+      const id = selectedId()
+      return id ? ([id, refreshTick()] as const) : undefined
+    },
+    async ([id]): Promise<Message[]> => {
       try {
-        return await engineEntry(props.vendor).history.readHistory(id)
+        return await reader.readHistory(id)
       } catch {
         return []
       }
     },
   )
-  const messageList = (): Message[] => messages() ?? []
+  const messageList = (): Message[] => messages.latest ?? []
   const results = createMemo(() => resultsByCallId(messageList()))
   const tokenTotal = createMemo(() => messageList().reduce((sum, m) => sum + (m.usage?.output_tokens ?? 0), 0))
 
   const [expanded, setExpanded] = createSignal(false)
+
+  // Drive refreshTick from the transcript mtime. The first read only seeds the
+  // baseline (the resources already fetched once on mount); after that a tick
+  // fires only when the mtime advances. On an archived / idle worktree the
+  // delay ramps to the cap so this isn't a stat-churn loop.
+  onMount(() => {
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let delayMs = ACTIVITY_POLL_MIN_MS
+    let idleStreak = 0
+    let lastMtime = 0
+    let primed = false
+    async function poll(): Promise<void> {
+      try {
+        const mtime = await reader.latestTranscriptMtimeForWorktree(props.worktree)
+        if (disposed) return
+        if (!primed) {
+          primed = true
+          lastMtime = mtime
+          idleStreak++
+        } else if (mtime > lastMtime) {
+          lastMtime = mtime
+          idleStreak = 0
+          setRefreshTick((n) => n + 1)
+        } else {
+          idleStreak++
+        }
+      } catch {
+        // The worktree can vanish under a live pane (task deletion); a transient
+        // read failure must not crash this daemon-less process — swallow and let
+        // the idle ramp keep climbing.
+        idleStreak++
+      } finally {
+        if (!disposed) {
+          delayMs = nextActivityPollDelay(delayMs, idleStreak)
+          timer = setTimeout(() => void poll(), delayMs)
+        }
+      }
+    }
+    void poll()
+    onCleanup(() => {
+      disposed = true
+      if (timer) clearTimeout(timer)
+    })
+  })
 
   let scrollRef: ScrollBoxRenderable | undefined
   const scrollBy = (dy: number): void => {
@@ -343,8 +421,8 @@ function HistoryScreen(props: HistoryHostArgs) {
         flexShrink={0}
         backgroundColor={theme.backgroundElement}
       >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-          {t("history.archivedTag")}
+        <text fg={props.live ? theme.success : theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+          {props.live ? t("history.liveTag") : t("history.archivedTag")}
         </text>
         <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
           {headerTitle()}
@@ -369,7 +447,7 @@ function HistoryScreen(props: HistoryHostArgs) {
         verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
       >
         <Show
-          when={!sessions.loading && !messages.loading}
+          when={sessions.latest !== undefined}
           fallback={
             <box paddingTop={1} paddingLeft={1}>
               <text fg={theme.textMuted}>{t("history.loading")}</text>
