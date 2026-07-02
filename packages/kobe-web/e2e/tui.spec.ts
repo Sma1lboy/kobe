@@ -14,6 +14,8 @@ import { expect, test } from "@playwright/test"
  * harmless (the harness bypasses the daemon via the pty-server DEV override).
  */
 test("mock live-history pane renders + responds to keys in the web terminal", async ({ page }) => {
+  test.skip(!!process.env.KOBE_PTY_DEV_COMMAND?.includes("sandbox"), "dev:mock only")
+
   await page.goto("/harness")
 
   const rows = page.locator(".xterm-rows")

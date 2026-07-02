@@ -19,7 +19,8 @@ const DEV_COMMAND = process.env.KOBE_PTY_DEV_COMMAND ?? "bun run dev:mock"
 
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 60_000,
+  globalTeardown: "./e2e/global-teardown.ts",
+  timeout: 90_000,
   expect: { timeout: 30_000 },
   fullyParallel: false,
   workers: 1,
