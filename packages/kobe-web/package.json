@@ -13,6 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check"
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-plugin": "latest",
