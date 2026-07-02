@@ -1,6 +1,6 @@
 ---
 name: remotion-ref-replay
-description: Reproduce a reference screen-recording (product demo, feature walkthrough, marketing clip) as a Remotion composition driven by a real, scripted app session — so the video re-renders itself when the UI changes instead of being re-recorded by hand. Use when the user has a reference video and wants "the same video but on the current UI", "redo/replace/re-render a demo video", "turn this recording into Remotion", "capture a TUI/app demo", or is building any packages/branding replay composition. Covers reference-video analysis, the capture-script beat model, the stage-camera algorithm + weights, effect boundaries, and troubleshooting. See the quicklook-replay worked example for a concrete implementation.
+description: Brand-studio video pipeline — turn a reference screen-recording (product demo, tutorial, pitch/marketing clip) into a Remotion composition driven by a real, scripted app session, so the video re-renders itself when the UI changes instead of being re-recorded by hand. Use when the user has a reference video and wants "the same video but on the current UI", "redo/replace/re-render a demo video", "turn this recording into Remotion", "capture a TUI/app demo", needs a tutorial or pitch video that stays current, or is building any packages/branding replay composition. Covers content understanding (the storyboard), the capture-script beat model, the stage-camera algorithm + weights, speed cuts (camera easing in output time), delivery (compress/poster/deploy), effect boundaries, and troubleshooting. See the quicklook-replay worked example for a concrete implementation.
 metadata:
   internal: true
 ---
@@ -13,6 +13,18 @@ deleting — the subject changes with every UI iteration, and re-shooting by han
 is the pain. Instead: drive the **real** app with a scripted session, capture
 frames, and render them with Remotion + a camera. UI iterates → re-run capture
 → re-render. No manual recording, ever.
+
+This is the brand-studio production line, not a one-off. Two product shapes
+ride the same pipeline:
+- **Tutorials** — step-accurate walkthroughs; correctness of every on-screen
+  step matters, usually rendered at 1x.
+- **Pitch/marketing cuts** — the same capture rendered as a speed cut (see
+  Step 3) with tighter camera work; energy matters, individual keystrokes don't.
+
+What the pipeline guarantees: **stability and normalization**. The output is
+deterministic given (frames.json, STAGES, speed) — no shaky hand, no missed
+click, no "the recording person's env leaked in" (given a clean profile). An
+asset regenerates with two commands when the product changes.
 
 This skill is the **method** and the **hard-won pitfalls**. It is engine- and
 subject-agnostic: the first implementation replays a terminal UI (kobe TUI, via
@@ -39,21 +51,31 @@ bun x remotion render src/index.ts <id> out/<id>.mp4   # 3. render
 
 Studio hot-reloads the camera/composition; `frames.json` only changes on re-capture.
 
-## Step 0 — analyze the reference video FIRST (never skip)
+## Step 0 — content understanding (the single highest-leverage step)
 
 Both the storyboard and the camera derive from what the reference actually
 shows. The dominant failure mode is a *superficial* read that ships a video
-doing the wrong thing — we paid for this more than once.
+doing the wrong thing — we paid for this more than once. In the worked example
+most of round-one's wall-clock went into re-deriving stages and steps that a
+proper first pass should have produced — budget the time HERE, not in rework.
 
 ```bash
 # 1 frame/sec is the right granularity — 1/2s misses beats; denser wastes context
 ffmpeg -y -i <ref>.mp4 -vf fps=1 <dir>/s%02d.png
 ```
 
-`Read` the stills in order and write down the **storyboard**: the ordered beats
-(what the user does, what the screen shows, roughly when) and, for each beat,
-*which pane/region is the subject*. This storyboard IS the input to both the
-capture script and the camera stages — get it right before writing either.
+`Read` the stills in order and write down the **storyboard table** — it is the
+single shared source that the capture beats, the camera `STAGES`, and any speed
+cut are all projections of. A complete row has:
+
+| beat | ~when | user action (exact keys/inputs) | screen shows | subject pane/region | camera intent (wide/zoom) |
+|---|---|---|---|---|---|
+
+Grade your own pass: if a row's "user action" isn't concrete enough to type
+into the capture script verbatim, or "subject region" isn't concrete enough to
+become a `region` rect, the understanding pass isn't done. Keep the table in
+the composition's directory and update it when the reference or the beats
+change — capture, camera, and cut must never drift from it separately.
 
 Watch specifically for beats a shallow read collapses:
 - A real **modal/page/dialog** vs. a shortcut that produces the same end-state.
@@ -146,6 +168,32 @@ A target near an edge sticks to that edge instead of cropping.
 4. Edge glyph stretching the box → the `0.05 / 0.95` column quantiles.
 5. Move feels abrupt → `TRANSITION` seconds / the easing.
 
+## Step 3 — speed cuts and delivery
+
+A marketing/landing cut is usually the same capture at 2–4x. **Never speed up
+the rendered file with ffmpeg `setpts`** — that compresses the camera easing
+too (a 1.2s zoom becomes 0.3s and every move turns into a lurch). Instead the
+composition takes a `speed` prop and decouples the two clocks:
+
+- **Content clock**: `t_capture = (frame / fps) * speed` — frames, stage
+  boundaries, everything scripted runs sped up.
+- **Camera clock**: easing progress runs in OUTPUT seconds:
+  `into = (t_capture - stage.from) / speed`, eased over the same ~1.2s a 1x
+  render uses — zooms feel identical at any speed.
+- **Clamp each transition to ~half the stage's on-screen duration**
+  (`min(TRANSITION, stageOutputLen * 0.5)`) so short sped-up stages still
+  *settle* on their subject instead of drifting through the whole stage.
+
+Register the cut as its own composition (`<id>-4x`, `defaultProps={{speed: 4}}`,
+duration = capture length / speed) so studio previews both.
+
+Delivery checklist (a raw Remotion render is not a web asset):
+- Re-encode: `ffmpeg -i in.mp4 -c:v libx264 -crf 27 -preset slow -movflags
+  +faststart -an out.mp4` — took the worked example 9.1MB → 2.4MB.
+- Regenerate the poster frame from the NEW render (`-ss <t> -frames:v 1`) —
+  a stale poster shows the old UI for exactly the flash that matters.
+- Verify after deploy: `curl -sI <url>` content-length matches the local file.
+
 ## Effect boundaries (what NOT to do)
 
 - **No generative video (Seedance/i2v/etc.) for the UI surface** — it
@@ -186,6 +234,9 @@ A target near an edge sticks to that edge instead of cropping.
 | Pane borders drift out of column | fallback glyphs (icons/braille) have a different advance | pin each span to its grid column (absolute left = col × cellW) |
 | Dialog walk lands on the wrong tab/field | blind timed keys vs. a UI whose bindings changed | read the dialog's key-binding source; prefer position-independent chords (ctrl+e) + waitFor the dialog |
 | Typing lands in a trust/confirm prompt | interstitial shares the composer's marker glyph | after waitFor, re-read the screen and dismiss the prompt first |
+| Zooms lurch in a sped-up render | ffmpeg setpts sped up the camera too | `speed` prop: content clock × speed, camera easing in output time |
+| Camera never settles in short stages | transition longer than the sped-up stage | clamp transition to ~0.5 × stage output duration |
+| Web asset heavy / starts slowly | raw Remotion render shipped as-is | re-encode crf 27 + faststart; regenerate the poster |
 | Black bars / frame not filled | fallback font's advance ≠ cell width | bundle the app's font (e.g. @remotion/google-fonts) |
 | Camera frames chrome above the input while typing | input row outside the stage region | dedicated region for the composer rows (it may drift — widen) |
 

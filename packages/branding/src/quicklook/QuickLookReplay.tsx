@@ -165,9 +165,13 @@ function frameStage(from: number, to: number, region: Region): Shot {
 const SHOTS: Shot[] = STAGES.map((s) => (s.region ? frameStage(s.from, s.to, s.region) : WIDE))
 
 const easeInOut = (p: number) => p * p * (3 - 2 * p)
-const TRANSITION = 1.2 // seconds to move between stage shots
+const TRANSITION = 1.2 // seconds of OUTPUT time to move between stage shots
 
-function cameraAt(t: number): Shot {
+// `t` is capture time; `speed` is the content playback rate. Camera easing
+// runs in OUTPUT time — a sped-up render must not speed up the zooms too —
+// and each move is clamped to half the stage's on-screen duration so short
+// (sped-up) stages still settle instead of drifting the whole time.
+function cameraAt(t: number, speed: number): Shot {
   let i = STAGES.length - 1
   for (let s = 0; s < STAGES.length; s++) {
     if (t >= STAGES[s].from && t < STAGES[s].to) {
@@ -177,10 +181,12 @@ function cameraAt(t: number): Shot {
   }
   const shot = SHOTS[i]
   if (i === 0) return shot
-  const into = t - STAGES[i].from
-  if (into >= TRANSITION) return shot
+  const stageOut = (STAGES[i].to - STAGES[i].from) / speed
+  const transition = Math.min(TRANSITION, stageOut * 0.5)
+  const into = (t - STAGES[i].from) / speed
+  if (into >= transition) return shot
   const prev = SHOTS[i - 1]
-  const p = easeInOut(into / TRANSITION)
+  const p = easeInOut(into / transition)
   return {
     scale: prev.scale + (shot.scale - prev.scale) * p,
     cx: prev.cx + (shot.cx - prev.cx) * p,
@@ -188,10 +194,10 @@ function cameraAt(t: number): Shot {
   }
 }
 
-export const QuickLookReplay: React.FC = () => {
+export const QuickLookReplay: React.FC<{ speed?: number }> = ({ speed = 1 }) => {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
-  const t = frame / fps
+  const t = (frame / fps) * speed
 
   const snapshot = frameAt(t)
   // Each capture-pane line is self-contained (leading unstyled cells mean
@@ -199,7 +205,7 @@ export const QuickLookReplay: React.FC = () => {
   // bg color onto the next line's leading spaces (black band left of dialogs).
   const lines = snapshot.lines.map((line) => parseAnsiLine(line).spans)
 
-  const cam = cameraAt(t)
+  const cam = cameraAt(t, speed)
   // Center the shot's target point, clamped so the viewport never leaves the
   // content — a target near an edge sticks to that edge instead of cropping.
   const tx = clamp(640 - cam.cx * cam.scale, 1280 * (1 - cam.scale), 0)
