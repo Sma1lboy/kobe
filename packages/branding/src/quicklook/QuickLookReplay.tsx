@@ -24,25 +24,40 @@ function frameAt(t: number) {
   return current
 }
 
-const Line: React.FC<{ spans: Span[] }> = ({ spans }) => (
-  <div style={{ height: LINE_H, whiteSpace: "pre" }}>
-    {spans.map((s, i) => (
-      <span
-        key={i}
-        style={{
-          color: s.fg ?? colors.fg,
-          backgroundColor: s.bg,
-          fontWeight: s.bold ? 700 : 400,
-          opacity: s.dim ? 0.6 : 1,
-          fontStyle: s.italic ? "italic" : undefined,
-          textDecoration: s.underline ? "underline" : undefined,
-        }}
-      >
-        {s.text}
-      </span>
-    ))}
-  </div>
-)
+// Spans are pinned to their grid column, not flowed: glyphs missing from
+// JetBrains Mono (nerd-font icons, braille spinners) fall back to a font
+// with a different advance width, and flowed layout lets that drift shift
+// everything after them — pane borders stopped lining up.
+const Line: React.FC<{ spans: Span[] }> = ({ spans }) => {
+  let col = 0
+  return (
+    <div style={{ height: LINE_H, position: "relative" }}>
+      {spans.map((s, i) => {
+        const at = col
+        col += [...s.text].length
+        return (
+          <span
+            key={i}
+            style={{
+              position: "absolute",
+              left: at * CELL_W,
+              top: 0,
+              whiteSpace: "pre",
+              color: s.fg ?? colors.fg,
+              backgroundColor: s.bg,
+              fontWeight: s.bold ? 700 : 400,
+              opacity: s.dim ? 0.6 : 1,
+              fontStyle: s.italic ? "italic" : undefined,
+              textDecoration: s.underline ? "underline" : undefined,
+            }}
+          >
+            {s.text}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
 
 // Stage camera. The demo is a scripted storyboard (scripts/capture-tui.ts
 // beats), so the camera is too: one fixed shot per stage, framed on the
