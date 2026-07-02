@@ -1,0 +1,24 @@
+{
+  "name": "kobe-intro-video",
+  "version": "0.0.0",
+  "private": true,
+  "description": "kobe-intro 34s vertical promo (brand-video pipeline). Standalone Remotion project — not a workspace member.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts kobe-intro out/kobe-intro.mp4",
+    "still": "remotion still src/index.ts kobe-intro",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.482",
+    "@remotion/google-fonts": "4.0.482",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.482"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "typescript": "5.8.2"
+  }
+}
