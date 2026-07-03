@@ -51,6 +51,11 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 
 ## Hard rules (non-negotiable)
 
+### PR-only mainline (2026-07-03)
+- ALL development lands via pull request: feature branch → commits → `gh pr create` → CI green (typecheck/test, behavior, file-size-cap, coverage-cap, Review CI) → `gh pr merge --squash --delete-branch`. **NEVER push commits directly to `main`.**
+- Sole exception: the `chore: release — X.Y.Z` commit + tag pushed by `scripts/release.sh` (see [`docs/RELEASING.md`](./docs/RELEASING.md)).
+- Rationale: the PR gates are the enforcement point for the hard rules below — direct pushes bypass them.
+
 ### Commits
 - Commit at the end of each stream when green (per-stream commits are pre-authorized). Message: `<type>: <summary>` + a 2-3 sentence body.
 - **NEVER** add `Co-Authored-By: Claude` / any AI/Anthropic attribution or "Generated with Claude Code" footers.

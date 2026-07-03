@@ -130,10 +130,11 @@ jobs:
         run: bun run --filter @sma1lboy/kobe test:behavior
 
   coverage-cap:
-    # Per-touched-file coverage floor (the coverage sibling of file-size-cap).
-    # No repo-wide % gate — only files this PR touches must clear the bar, so
+    # Per-touched-file coverage floor (the coverage sibling of file-size-cap)
+    # + the Codecov upload that feeds the README badge. Runs on push too so
+    # main's coverage stays current; the touched-file GATE step is PR-only.
+    # No repo-wide % gate — only files a PR touches must clear the bar, so
     # coverage ratchets up where work actually happens.
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -153,7 +154,18 @@ jobs:
         working-directory: packages/kobe
         run: bun run coverage
 
+      - name: Upload coverage to Codecov
+        # Tokenless works for public repos; if uploads start 429ing, add a
+        # CODECOV_TOKEN repo secret and it gets picked up automatically.
+        uses: codecov/codecov-action@v5
+        with:
+          files: packages/kobe/coverage/lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Touched files must meet the coverage floor
+        if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
