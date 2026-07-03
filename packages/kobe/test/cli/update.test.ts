@@ -21,6 +21,31 @@ describe("parseUpdateArgs", () => {
       dryRun: true,
     })
   })
+
+  it("recognizes every help spelling", () => {
+    expect(parseUpdateArgs(["--help"])).toEqual({ help: true, dryRun: false })
+    expect(parseUpdateArgs(["-h"])).toEqual({ help: true, dryRun: false })
+    expect(parseUpdateArgs(["help"])).toEqual({ help: true, dryRun: false })
+  })
+
+  it("an unknown argument prints the error + full usage to stderr and exits 2", () => {
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`)
+    }) as never)
+    try {
+      expect(() => parseUpdateArgs(["--fast"])).toThrow("exit 2")
+      const err = errSpy.mock.calls.map((c) => String(c[0])).join("")
+      // The instruction surface, not a bare one-liner: usage + script URL + fallback.
+      expect(err).toContain('kobe update: unknown argument "--fast"')
+      expect(err).toContain("Usage: kobe update [--dry-run]")
+      expect(err).toContain(UPDATE_SCRIPT_URL)
+      expect(err).toContain(recommendedGlobalInstallCommand())
+    } finally {
+      errSpy.mockRestore()
+      exitSpy.mockRestore()
+    }
+  })
 })
 
 describe("runUpdateSubcommand", () => {
@@ -72,5 +97,66 @@ describe("runUpdateSubcommand", () => {
 
     expect(spawn).toHaveBeenCalledWith("sh", ["-c", UPDATE_COMMAND], { stdio: "inherit" })
     expect(exits).toEqual([7])
+  })
+
+  it("--help prints usage to STDOUT and never spawns or exits", async () => {
+    const out: string[] = []
+    const spawn = vi.fn()
+    const exit = vi.fn((code: number) => {
+      throw new Error(`unexpected exit ${code}`)
+    })
+    await runUpdateSubcommand(["--help"], {
+      spawn: spawn as never,
+      stdout: {
+        write: (s: string) => {
+          out.push(s)
+          return true
+        },
+      },
+      stderr: { write: () => true },
+      exit: exit as never,
+    })
+    expect(out.join("")).toContain("Usage: kobe update [--dry-run]")
+    expect(spawn).not.toHaveBeenCalled()
+    expect(exit).not.toHaveBeenCalled()
+  })
+
+  it("a spawn failure (e.g. sh missing) reports the cause and exits 1", async () => {
+    const err: string[] = []
+    const exits: number[] = []
+    const spawn = vi.fn(() => ({ error: new Error("ENOENT") }))
+    await runUpdateSubcommand([], {
+      spawn: spawn as never,
+      stdout: { write: () => true },
+      stderr: {
+        write: (s: string) => {
+          err.push(s)
+          return true
+        },
+      },
+      exit: ((code: number) => {
+        exits.push(code)
+        throw new Error("exit")
+      }) as never,
+    }).catch((e) => {
+      expect((e as Error).message).toBe("exit")
+    })
+    expect(err.join("")).toContain("kobe update: failed to run sh: ENOENT")
+    expect(exits).toEqual([1])
+  })
+
+  it("a null spawn status falls back to exit 1", async () => {
+    const exits: number[] = []
+    const spawn = vi.fn(() => ({ status: null }))
+    await runUpdateSubcommand([], {
+      spawn: spawn as never,
+      stdout: { write: () => true },
+      stderr: { write: () => true },
+      exit: ((code: number) => {
+        exits.push(code)
+        throw new Error("exit")
+      }) as never,
+    }).catch(() => {})
+    expect(exits).toEqual([1])
   })
 })

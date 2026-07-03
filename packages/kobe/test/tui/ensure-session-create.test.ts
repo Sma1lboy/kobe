@@ -257,3 +257,59 @@ describe("ensureSession — rebuild and vendor switch", () => {
     expect(state.calls.some((c) => c[0] === "new-session")).toBe(true)
   })
 })
+
+describe("ensureSession — archived history preview + in-tmux window fit", () => {
+  test("archived + beta gate launches `kobe history` instead of the engine (no session id pin)", async () => {
+    const archived = await import("../../src/state/archived-history")
+    vi.spyOn(archived, "archivedHistoryPreviewEnabled").mockReturnValue(true)
+    await tmux.ensureSession({
+      name: "kobe-t1",
+      cwd: "/spawn-dir",
+      command: ["claude"],
+      taskId: "t1",
+      vendor: "claude",
+      archived: true,
+      archivedWorktree: "/recorded-wt",
+      title: "My Task",
+    })
+    const newSession = state.calls.find((c) => c[0] === "new-session")
+    const paneCmd = newSession?.[newSession.length - 1] ?? ""
+    expect(paneCmd).toContain("history")
+    expect(paneCmd).toContain("/recorded-wt")
+    expect(paneCmd).toContain("My Task")
+    expect(paneCmd).not.toContain("--session-id")
+    // no engine session id is recorded on the window
+    expect(state.calls.some((c) => c[0] === "set-window-option" && c[2] === "@kobe_session_id")).toBe(false)
+  })
+
+  test("live preview mode tails the transcript with --live", async () => {
+    const archived = await import("../../src/state/archived-history")
+    vi.spyOn(archived, "archivedHistoryPreviewEnabled").mockReturnValue(true)
+    await tmux.ensureSession({
+      name: "kobe-t1",
+      cwd: "/wt",
+      command: ["claude"],
+      vendor: "claude",
+      preview: true,
+      archivedWorktree: "/wt",
+    })
+    const newSession = state.calls.find((c) => c[0] === "new-session")
+    expect(newSession?.[newSession.length - 1]).toContain("--live")
+  })
+
+  test("inside tmux, the fresh window is fit to the attached client BEFORE panes split", async () => {
+    process.env.TMUX = "/tmp/tmux-sock,1,0"
+    // attachedWindowInfo reads display-message → route a client-size answer.
+    const client = await import("../../src/tmux/client")
+    vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
+      state.calls.push(args)
+      if (args[0] === "new-session") return { code: 0, stdout: "%0\n" }
+      if (args[0] === "display-message") return { code: 0, stdout: "cli\t180\t45\ton" }
+      if (args[0] === "list-panes") return { code: 0, stdout: "" }
+      return { code: 0, stdout: "" }
+    })
+    await tmux.ensureSession({ name: "kobe-t1", cwd: "/wt", command: ["claude"], vendor: "claude" })
+    const resize = state.calls.find((c) => c[0] === "resize-window")
+    expect(resize).toEqual(["resize-window", "-t", "=kobe-t1", "-x", "180", "-y", "44"])
+  })
+})

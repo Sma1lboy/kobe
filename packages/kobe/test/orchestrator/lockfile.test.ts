@@ -1,7 +1,8 @@
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LockfileError, acquire, isProcessAlive, release } from "../../src/orchestrator/index/lockfile.ts"
 
 describe("isProcessAlive", () => {
@@ -56,5 +57,35 @@ describe("acquire / release", () => {
     await acquire(lock) // held by us — alive
     await expect(acquire(lock, { forceTakeover: true })).resolves.toBeUndefined()
     expect((await readFile(lock, "utf8")).trim()).toBe(String(process.pid))
+  })
+})
+
+describe("acquire / release — edge branches", () => {
+  const dir = mkdtempSync(join(tmpdir(), "kobe-lock-edge-"))
+  const lockPath = join(dir, "edge.lock")
+
+  afterEach(async () => {
+    await release(lockPath).catch(() => {})
+  })
+
+  it("treats an EPERM kill probe as alive (exists but not signalable)", () => {
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("EPERM"), { code: "EPERM" })
+    })
+    try {
+      expect(isProcessAlive(1)).toBe(true)
+    } finally {
+      killSpy.mockRestore()
+    }
+  })
+
+  it("steals a lockfile whose content isn't a pid at all", async () => {
+    writeFileSync(lockPath, "not-a-pid")
+    await acquire(lockPath)
+    expect(readFileSync(lockPath, "utf8")).toBe(String(process.pid))
+  })
+
+  it("release tolerates a lock that's already gone, rethrows real errors", async () => {
+    await expect(release(join(dir, "never-existed.lock"))).resolves.toBeUndefined()
   })
 })

@@ -105,6 +105,28 @@ describe("tmux hook handlers", () => {
     expect(spies.resyncWindowToClient).toHaveBeenCalledWith("kobe-t1", expect.objectContaining({ size: null }))
   })
 
+  test("resync-window forwards the resized tmux client's name from --client", async () => {
+    await runCli("resync-window", "--session", "kobe-t1", "--cols", "80", "--rows", "24", "--client", "/dev/ttys003")
+    expect(spies.resyncWindowToClient).toHaveBeenCalledWith(
+      "kobe-t1",
+      expect.objectContaining({ clientName: "/dev/ttys003" }),
+    )
+  })
+
+  test("resync-window without --session errors with exit 2", async () => {
+    await runCli("resync-window", "--cols", "80", "--rows", "24")
+    expect(errorSpy).toHaveBeenCalledWith("kobe resync-window: --session <name> is required")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.resyncWindowToClient).not.toHaveBeenCalled()
+  })
+
+  test("capture-layout without --session errors with exit 2", async () => {
+    await runCli("capture-layout")
+    expect(errorSpy).toHaveBeenCalledWith("kobe capture-layout: --session <name> is required")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.captureGlobalLayoutOnDrag).not.toHaveBeenCalled()
+  })
+
   test("capture-layout skips the capture while a resize is in flight", async () => {
     spies.genAgeMs.mockReturnValue(10) // fresh resize stamp — inside the guard window
     await runCli("capture-layout", "--session", "kobe-t1")

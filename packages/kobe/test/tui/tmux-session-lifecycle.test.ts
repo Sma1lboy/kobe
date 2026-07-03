@@ -205,3 +205,56 @@ describe("observeSessionVendor", () => {
     await expect(tmux.observeSessionVendor("kobe-t1")).resolves.toBeNull()
   })
 })
+
+describe("selectTasksPane", () => {
+  test("returns '' for a session that doesn't exist", async () => {
+    state.existingSessions = new Set()
+    await expect(tmux.selectTasksPane("kobe-ghost")).resolves.toBe("")
+  })
+
+  test("selects the window's Tasks pane directly when visible", async () => {
+    // paneIdByRoleInWindow lists panes with the id+role format
+    const client = await import("../../src/tmux/client")
+    vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
+      if (args[0] === "list-panes") return { code: 0, stdout: "%1\tclaude\n%2\ttasks" }
+      return { code: 0, stdout: "" }
+    })
+    await expect(tmux.selectTasksPane("kobe-t1", { windowId: "@1" })).resolves.toBe("%2")
+    expect(callsWith("select-pane")).toEqual([["select-pane", "-t", "%2"]])
+  })
+
+  test("restores a hidden rail via tasks-restore, then selects the restored pane", async () => {
+    const client = await import("../../src/tmux/client")
+    let listed = 0
+    vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
+      state.capturingCalls.push(args)
+      if (args[0] === "list-panes") {
+        const fIdx = args.indexOf("-F")
+        const format = fIdx >= 0 ? (args[fIdx + 1] ?? "") : ""
+        if (format.includes("@kobe_role") && !format.includes("pane_active") && !format.includes("pane_width")) {
+          // 1st lookup: no tasks pane → triggers restore; 2nd: restored
+          listed++
+          return { code: 0, stdout: listed === 1 ? "%1\tclaude" : "%1\tclaude\n%7\ttasks" }
+        }
+        // runLayoutAction's window listing: engine-only window
+        return { code: 0, stdout: "%1\tclaude\t1\t80\t20\t160\t40" }
+      }
+      if (args[0] === "list-windows") return { code: 0, stdout: "1\t@1" }
+      if (args[0] === "show-options") return { code: 0, stdout: "" }
+      if (args[0] === "split-window") return { code: 0, stdout: "%7" }
+      return { code: 0, stdout: "" }
+    })
+    await expect(tmux.selectTasksPane("kobe-t1")).resolves.toBe("%7")
+    expect(callsWith("select-pane").pop()).toEqual(["select-pane", "-t", "%7"])
+  })
+
+  test("returns '' when the rail cannot be restored at all", async () => {
+    const client = await import("../../src/tmux/client")
+    vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
+      if (args[0] === "list-panes") return { code: 0, stdout: "" } // no panes, restore fails too
+      if (args[0] === "list-windows") return { code: 0, stdout: "1\t@1" }
+      return { code: 0, stdout: "" }
+    })
+    await expect(tmux.selectTasksPane("kobe-t1")).resolves.toBe("")
+  })
+})

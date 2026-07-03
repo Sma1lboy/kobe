@@ -253,4 +253,27 @@ describe("runDoctorSubcommand", () => {
     expect(out).toContain("2 task(s)")
     expect(out).toContain("state.json: absent")
   })
+
+  it("formats hour-scale uptime as h/m", async () => {
+    mocks.daemonRequest.mockResolvedValue({
+      daemonPid: 1,
+      uptimeMs: 3_725_000, // 1h 2m 5s
+      taskCount: 0,
+      attachedClients: 0,
+    })
+    await runDoctorSubcommand([])
+    expect(output()).toContain("up 1h 2m")
+  })
+
+  it("formats file sizes in KB and MB once they outgrow bytes", async () => {
+    mocks.daemonRequest.mockRejectedValue(new Error("down"))
+    // ~2 KB tasks.json (unparseable as v3 → no task count suffix, size still shown)
+    writeFileSync(join(home, ".kobe", "tasks.json"), "x".repeat(2048), "utf8")
+    // ~1.2 MB daemon.log (small lines so the log tail stays cheap)
+    writeFileSync(join(home, ".kobe", "daemon.log"), `${"y".repeat(62)}\n`.repeat(19_972), "utf8")
+    await runDoctorSubcommand([])
+    const out = output()
+    expect(out).toContain("tasks.json: present (2.0 KB")
+    expect(out).toContain("daemon.log: present (1.2 MB")
+  })
 })

@@ -17,6 +17,23 @@ const mocks = vi.hoisted(() => ({
   setKeychainPassword: vi.fn(() => true),
   getKeychainPassword: vi.fn(() => "pw"),
   remoteKeychainRef: vi.fn((host: string, user: string, port?: number) => `kobe-ssh:${user}@${host}:${port ?? 22}`),
+  /** What the mocked hidden-password prompt answers. */
+  passwordAnswer: "hunter2",
+}))
+
+// promptHidden reads the password through readline against the real tty;
+// answer it synchronously so no test ever blocks on stdin. Before answering,
+// poke the echo-mask hook the way readline would while the user types, so
+// the muting seam is exercised too.
+vi.mock("node:readline", () => ({
+  createInterface: vi.fn(() => ({
+    question: (_q: string, cb: (answer: string) => void) => {
+      const out = process.stdout as NodeJS.WriteStream & { _writeToOutput?: (s: string) => void }
+      out._writeToOutput?.("echoed-while-typing")
+      cb(mocks.passwordAnswer)
+    },
+    close: vi.fn(),
+  })),
 }))
 
 vi.mock("../../src/exec/exec-host.ts", async (importOriginal) => {
@@ -167,5 +184,64 @@ describe("runAddRemote key-auth registration", () => {
     expect(log()).toContain("could not connect (connection refused)")
     expect(log()).toContain("the project is saved")
     expect(getRemoteRepos()["ssh://dev@box"]).toBeDefined()
+  })
+
+  it("--help prints usage and exits 0 without registering anything", async () => {
+    enableRemoteProjects()
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    await expect(runAddRemote(["--help"])).rejects.toThrow("exit 0")
+    expect(outSpy.mock.calls.join("")).toContain("Usage: kobe add --remote")
+    expect(getSavedRepos()).toEqual([])
+    outSpy.mockRestore()
+  })
+
+  it("an unknown flag is a usage error, exit 2", async () => {
+    enableRemoteProjects()
+    await expect(runAddRemote(["--frobnicate"])).rejects.toThrow("exit 2")
+    expect(err()).toContain('unknown flag "--frobnicate"')
+  })
+})
+
+describe("runAddRemote password-auth registration", () => {
+  beforeEach(() => {
+    mocks.isKeychainSupported.mockReturnValue(true)
+    mocks.passwordAnswer = "hunter2"
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+  })
+
+  it("prompts for the password, stores it in the keychain, and persists only the ref", async () => {
+    enableRemoteProjects()
+
+    await runAddRemote(["--host", "box", "--user", "dev", "--path", "/srv", "--password"])
+
+    const ref = "kobe-ssh:dev@box:22"
+    expect(mocks.setKeychainPassword).toHaveBeenCalledWith(ref, "hunter2")
+    // state.json carries the keychainRef, never the secret.
+    const stored = getRemoteRepos()["ssh://dev@box"]
+    expect(stored?.auth).toEqual({ kind: "password", keychainRef: ref })
+    expect(JSON.stringify(stored)).not.toContain("hunter2")
+    // The probe still ran against the (mocked) remote host.
+    expect(mocks.run).toHaveBeenCalledWith(["test", "-d", "/srv"])
+  })
+
+  it("an empty password aborts with exit 2 before any keychain write", async () => {
+    enableRemoteProjects()
+    mocks.passwordAnswer = ""
+    await expect(runAddRemote(["--host", "box", "--user", "dev", "--path", "/srv", "--password"])).rejects.toThrow(
+      "exit 2",
+    )
+    expect(err()).toContain("empty password")
+    expect(mocks.setKeychainPassword).not.toHaveBeenCalled()
+    expect(getRemoteRepos()["ssh://dev@box"]).toBeUndefined()
+  })
+
+  it("a keychain write failure aborts with exit 2 and registers nothing", async () => {
+    enableRemoteProjects()
+    mocks.setKeychainPassword.mockReturnValue(false)
+    await expect(runAddRemote(["--host", "box", "--user", "dev", "--path", "/srv", "--password"])).rejects.toThrow(
+      "exit 2",
+    )
+    expect(err()).toContain("failed to store the password in the keychain")
+    expect(getRemoteRepos()["ssh://dev@box"]).toBeUndefined()
   })
 })
