@@ -15,7 +15,10 @@ brand-video 的产出**按 project 分目录**——每支片子/每类适配一
 (`.studio/out/kobe-intro/` 这类)。用户 accept 后才 settle 进 `public/assets/` 并记入 `accepted.yaml`。
 
 仓库分发:brand-studio 本体是独立 GitHub 仓库,以 submodule 挂在 `.agents/skills/brand-studio`;
-producer skill 也可以各开独立仓库、按同样方式挂载——**不变量是 `git clone --recursive` 一次拉全**。
+**brand-video 就住在 brand-studio 仓库里**(`skills/brand-studio/producers/brand-video/`,纯
+instruction-grade,Remotion 工具链在宿主 `.studio/out/<name>/` 按项目物化,不违反 studio 的
+no-heavy-toolchain 红线),kobe 侧 `.claude/skills/brand-video` 只是指进 submodule 的 symlink——
+**不变量是 `git clone --recursive` 一次拉全**。
 
 ## 架构:谁管谁
 
