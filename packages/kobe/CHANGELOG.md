@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.61
+
+### Patch Changes
+
+- b2d6b5d: fix: persisted engine hooks prefer the packaged `kobe` bin over the dev entry path
+
+  Global hook commands written into `~/.claude/settings.json` / `~/.codex/hooks.json` previously baked the absolute dev entry path (often inside a task worktree) when installed from a dev run — every hook fire then failed with "Module not found" once that worktree was removed. Hook installs now use `kobe` from PATH whenever a packaged bin exists, falling back to the dev invocation only when none is installed.
+
+- 75ad039: Fix ctrl+h / ctrl+j pane focus on legacy terminals (macOS Terminal.app, #192): terminals without the kitty keyboard protocol send those chords as ambiguous C0 bytes (0x08 backspace / 0x0a linefeed), which never matched the focus bindings — they now alias back to their ctrl chords, while the real Backspace key (0x7f) keeps deleting. Also stop ctrl+h's left-edge tmux command from blocking the key queue (`run-shell -b`), so holding the chord can no longer freeze the client for seconds. `kobe doctor` now reports a terminal section (build/platform, TERM/TERM_PROGRAM, tmux nesting, live kitty-keyboard-protocol probe) and the bug-report issue template asks for its output.
+
 ## 0.7.60
 
 ### Patch Changes
