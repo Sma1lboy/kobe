@@ -28,7 +28,7 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { repoSnapshotAliases } from "../src/lib/repo-key.ts"
+import { pruneSnapshotAliases, repoSnapshotAliases } from "../src/lib/repo-key.ts"
 import { SPA_CHANNEL_SET, SPA_CHANNELS } from "./spa-channels.ts"
 
 const RECONNECT_INTERVAL_MS = 500
@@ -221,12 +221,14 @@ export class DaemonLink implements DaemonRpcClient {
         // to-idle task) and bloats the snapshot every fresh browser hydrates
         // from. Mirrors the SPA's pruneByTask. (worktreeChanges is path-keyed
         // and fully replaced per frame; jobs drop terminal phases at source —
-        // neither leaks, so only engineStates needs this.)
+        // neither leaks.) issueSnapshots gets the same sweep: its alias keys
+        // accumulate one-per-worktree as tasks churn (see repoSnapshotAliases).
         const live = new Set(tasks.map((t) => t.id))
         const kept = Object.entries(this.engineStates).filter(([id]) => live.has(id))
         if (kept.length !== Object.keys(this.engineStates).length) {
           this.engineStates = Object.fromEntries(kept)
         }
+        this.issueSnapshots = pruneSnapshotAliases(this.issueSnapshots, tasks)
         break
       }
       case "active-task":
