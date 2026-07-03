@@ -24,6 +24,11 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 scripts/release.sh
 ```
 
+> **PR-only exception.** Development lands on `main` exclusively via pull
+> requests (AGENTS.md "PR-only mainline"); the `chore: release — X.Y.Z`
+> commit + tag that `release.sh` pushes is the ONE sanctioned direct push —
+> it only consumes changesets that already passed PR CI.
+
 This consumes every pending `.changeset/*.md`:
 
 1. `changeset version` — computes the next version from the pending bump types, rewrites `packages/kobe/package.json`, and prepends the collected notes to `CHANGELOG.md` (then deletes the consumed changesets).
