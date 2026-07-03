@@ -21,6 +21,17 @@ const mocks = vi.hoisted(() => ({
     exited: Promise.resolve(0),
     kill: vi.fn(),
   })),
+  /** What the mocked y/N confirm prompt answers on a TTY. */
+  confirmAnswer: "y",
+}))
+
+// confirmTty goes through readline against the real stdin; answer it
+// synchronously so a TTY test never blocks.
+vi.mock("node:readline", () => ({
+  createInterface: vi.fn(() => ({
+    question: (_q: string, cb: (answer: string) => void) => cb(mocks.confirmAnswer),
+    close: vi.fn(),
+  })),
 }))
 
 vi.mock("@sma1lboy/kobe-daemon/daemon/lifecycle", () => ({
@@ -53,6 +64,7 @@ beforeEach(() => {
   process.env.KOBE_HOME_DIR = home
   mkdirSync(join(home, ".kobe"), { recursive: true })
 
+  mocks.confirmAnswer = "y"
   mocks.stopDaemonProcess.mockReset().mockResolvedValue({ pid: null, method: "absent" })
   mocks.tmuxAvailable.mockReset().mockResolvedValue(false)
   mocks.tmuxArgs.mockReset().mockImplementation((..._args: string[]) => ["true"])
@@ -178,5 +190,34 @@ describe("runResetSubcommand", () => {
     const out = output()
     expect(out).toContain("your task list & worktrees are kept")
     expect(out).not.toContain("DELETE")
+  })
+
+  it("on a TTY without --yes, a 'y' answer proceeds with the reset", async () => {
+    ;(process.stdin as unknown as { isTTY: boolean }).isTTY = true
+    mocks.confirmAnswer = "y"
+    await runResetSubcommand([])
+    expect(mocks.stopDaemonProcess).toHaveBeenCalledTimes(1)
+    expect(output()).toContain("reset complete")
+  })
+
+  it("on a TTY without --yes, anything but yes aborts with nothing changed", async () => {
+    ;(process.stdin as unknown as { isTTY: boolean }).isTTY = true
+    mocks.confirmAnswer = "n"
+    await runResetSubcommand(["--hard"])
+    expect(output()).toContain("aborted — nothing changed")
+    expect(mocks.stopDaemonProcess).not.toHaveBeenCalled()
+  })
+
+  it("--hard reports (but survives) a state file it cannot remove", async () => {
+    // A DIRECTORY at the tasks.json path makes unlink fail with a non-ENOENT
+    // error — the reset must report it and still finish the rest of the wipe.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    mkdirSync(join(home, ".kobe", "tasks.json"), { recursive: true })
+    await runResetSubcommand(["--hard", "--yes"])
+    expect(errorSpy.mock.calls.join("\n")).toContain("failed to remove task index")
+    const out = output()
+    expect(out).toContain("UI state: already absent")
+    expect(out).toContain("reset complete")
+    errorSpy.mockRestore()
   })
 })

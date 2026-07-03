@@ -86,6 +86,13 @@ describe("runApiSubcommand", () => {
     expect(err.message).toContain("bogus")
   })
 
+  test("a positional argument is a parse-stage BAD_FLAG JSON error, exit 2", async () => {
+    await expect(runApiSubcommand(["list", "positional"])).rejects.toThrow("exit(2)")
+    const err = stderrJson().error
+    expect(err.code).toBe("BAD_FLAG")
+    expect(err.message).toContain("unexpected positional arg: positional")
+  })
+
   test("an offline verb emits its JSON result without touching the daemon", async () => {
     const { openDaemonSession } = await import("../../src/cli/daemon-session.ts")
     await runApiSubcommand(["schema"])

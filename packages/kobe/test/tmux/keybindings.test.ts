@@ -12,8 +12,8 @@
  * prefix bare-key allowance, and chord→tmux-syntax mapping are the
  * load-bearing invariants.
  *
- * Only the pure half is tested; `resolveUserTmuxKeys` (file read +
- * Bun.YAML) is Bun-runtime-only and exercised by the smoke path.
+ * Only the pure half lives here; `resolveUserTmuxKeys` (file read +
+ * Bun.YAML + cache) is covered in `keybindings-user.test.ts`.
  */
 
 import { describe, expect, test } from "vitest"
@@ -70,6 +70,10 @@ describe("chordToTmuxKey", () => {
   test("rejects key names tmux can't bind", () => {
     expect("error" in chordToTmuxKey("ctrl+banana")).toBe(true)
   })
+
+  test("a literal + as the key survives the split ('ctrl++' → C-+)", () => {
+    expect(chordToTmuxKey("ctrl++")).toEqual({ key: "C-+" })
+  })
 })
 
 describe("resolveTmuxKeyEntries", () => {
@@ -114,6 +118,20 @@ describe("resolveTmuxKeyEntries", () => {
     ])
     expect(res.focus.map((f) => f?.key)).toEqual(["C-Left", "C-Down", "C-Up", "C-Right"])
     expect(res.overridden.has(TMUX_FOCUS_ID)).toBe(true)
+  })
+
+  test("tmux.focus: null/[] unbinds the whole group and flags it overridden", () => {
+    const res = resolveTmuxKeyEntries([{ id: TMUX_FOCUS_ID, keys: [] }])
+    expect(res.focus).toEqual([null, null, null, null])
+    expect(res.overridden.has(TMUX_FOCUS_ID)).toBe(true)
+    expect(res.warnings).toEqual([])
+  })
+
+  test("tmux.focus with an untranslatable chord keeps the whole default group and warns", () => {
+    const res = resolveTmuxKeyEntries([{ id: TMUX_FOCUS_ID, keys: ["ctrl+left", "cmd+down", "ctrl+up", "ctrl+right"] }])
+    expect(res.focus.map((f) => f?.chord)).toEqual([...TMUX_FOCUS_DEFAULTS])
+    expect(res.warnings.some((w) => w.startsWith(TMUX_FOCUS_ID) && w.includes("Command key"))).toBe(true)
+    expect(res.overridden.has(TMUX_FOCUS_ID)).toBe(false)
   })
 
   test("tmux.focus with the wrong count keeps the default and warns", () => {
