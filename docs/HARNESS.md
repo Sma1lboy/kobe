@@ -95,7 +95,7 @@ A bug fix is not done until the same commit carries a test that **fails before t
 
 ### Coverage gate (per-touched-file, PR CI)
 
-`cd packages/kobe && bun run coverage` writes text + `coverage/coverage-summary.json` (v8). CI's `coverage-cap` job gates PRs: every `packages/kobe/src` file the PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); a file absent from the report counts as 0%. Escape hatch: a `coverage-exemption: <reason>` line in the PR body. Deliberately NO repo-wide % threshold — global bars breed filler tests; the per-touched-file floor ratchets coverage exactly where work happens.
+`cd packages/kobe && bun run coverage` writes text + `coverage/coverage-summary.json` (v8). CI's `coverage-cap` job gates PRs: every `packages/kobe/src` file the PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); a file absent from the report counts as 0%. Escape hatch: a `coverage-exemption: <reason>` line in the PR body. Deliberately NO repo-wide % threshold — global bars breed filler tests; the per-touched-file floor ratchets coverage exactly where work happens. **Scope**: the metric covers `src/**/*.ts` only — opentui Solid components (`*.tsx`) cannot execute under vitest's node env (their behavior is pinned black-box in `test/behavior/`), so they are excluded from both the report and the gate rather than sitting in the denominator as unreachable 0% lines.
 
 ### When unit tests are still useful
 
