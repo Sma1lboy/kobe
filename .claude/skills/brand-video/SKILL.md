@@ -88,8 +88,11 @@ scratch/approved 目录看 `artifacts.*`。换一个产品 repo,换的是 metada
 
 - **bgm**:`<Audio src={staticFile("bgm.mp3")} volume={0.15} loop />` 作第二音轨;
   有口播时 bgm 压到 0.1–0.2,收尾随片尾 `interpolate` 淡出。
-- **TTS 口播**:按 vendored `remotion-best-practices/rules/voiceover.md`(ElevenLabs,无 key
-  必须问用户、禁止换别的 TTS)逐镜头生成 mp3,ffprobe 量实际时长写进 `src/audio-manifest.json`;
+- **TTS 口播**:三条引擎路线,同一管线(逐镜头 mp3 → ffprobe 实测 → manifest):
+  ① ElevenLabs(质量最高;免费计划只能用 premade 音色,中文有口音,library 中文音色要付费);
+  ② **edge-tts(免费无 key,中文首选)**——`uvx edge-tts --voice zh-CN-YunxiNeural`,原生中文
+  神经音,晓晓/云扬可选;③ 本地零样本克隆(F5-TTS / CosyVoice2,用 5–15s 干净参考音频出
+  自己的声音,免费但要装模型环境)。逐镜头生成后 ffprobe 量实际时长写进 `src/audio-manifest.json`;
   composition 从 manifest 反推镜头边界(时长 = 实测 + 呼吸垫,且不低于该镜头最晚内部动效的
   下限),累计取整防漂移。manifest 为 null 时回落 SRT 静音版——同一工程双形态,不分叉项目。
 - **人脸角标(facecam PiP)**:录好的人脸片段用 `<OffthreadVideo>` 挂右下角固定 slot
