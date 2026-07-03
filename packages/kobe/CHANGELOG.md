@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.62
+
+### Patch Changes
+
+- 6ef6460: Fix: CLI path arguments now expand a leading `~` to your home directory. A quoted or tool-forwarded `~` reaches kobe verbatim (the shell only expands unquoted words), and it was being treated as an ordinary path segment — so `kobe add "~/repo"`, `kobe remove ~/repo`, `kobe adopt ~/repo`, `kobe repo set --init-script-file ~/s.sh ~/repo`, `kobe theme import ~/theme.json`, and `kobe api --repo ~/repo` all resolved to a bogus `<cwd>/~/repo` path that failed the downstream git/file checks with a confusing "not a git repository / file not found" error. These entry points now expand `~` / `~/…` (honouring `KOBE_HOME_DIR`) before resolving relative paths against the current directory, so `~`-relative paths work the same as absolute ones.
+- 8ea5e57: Fix (tmux handover): the ctrl+h left-edge fallback now skips the CLI spawn entirely when the active pane already IS the Tasks rail (`@kobe_role=tasks` format gate) — the muscle-memory spam case spawned a background `kobe layout tasks-restore` per press (backgrounding shipped in 0.7.61; this removes the spawn itself). The real restore cases — rail hidden or crashed, where the left-edge pane is the engine/shell — still fire. Verified live on tmux 3.6.
+
 ## 0.7.61
 
 ### Patch Changes
