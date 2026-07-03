@@ -28,6 +28,8 @@ vi.mock("../../src/tui/panes/terminal/tmux", () => ({
   killSession: vi.fn(async () => {}),
   switchClientBeforeKill: vi.fn(async () => {}),
 }))
+// Rename/branch/vendor flows live in task-actions-rename.test.ts (file split
+// to stay under the ~500-line cap).
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
 import { type TaskActionContext, archiveTaskFlow, deleteTaskFlow, nextActiveTask } from "../../src/tui/lib/task-actions"
@@ -52,6 +54,9 @@ type OrchMock = {
   setArchived: ReturnType<typeof vi.fn>
   setActiveTask: ReturnType<typeof vi.fn>
   forgetProject: ReturnType<typeof vi.fn>
+  setTitle: ReturnType<typeof vi.fn>
+  setBranch: ReturnType<typeof vi.fn>
+  setVendor: ReturnType<typeof vi.fn>
 }
 
 function makeOrch(overrides: Partial<OrchMock> = {}): OrchMock {
@@ -60,42 +65,51 @@ function makeOrch(overrides: Partial<OrchMock> = {}): OrchMock {
     setArchived: vi.fn(async () => {}),
     setActiveTask: vi.fn(async () => {}),
     forgetProject: vi.fn(async () => {}),
+    setTitle: vi.fn(async () => {}),
+    setBranch: vi.fn(async () => {}),
+    setVendor: vi.fn(async () => {}),
     ...overrides,
   }
 }
 
 function makeCtx(opts: {
   tasks: readonly Task[]
-  orch: OrchMock
+  orch: OrchMock | null
   confirms?: readonly boolean[]
   switchBeforeKill?: boolean
   updateActiveTask?: boolean
+  promptTextResult?: string | undefined
 }): {
   ctx: TaskActionContext
   confirm: ReturnType<typeof vi.fn>
+  promptText: ReturnType<typeof vi.fn>
   notifyError: ReturnType<typeof vi.fn>
+  notifyInfo: ReturnType<typeof vi.fn>
   onTaskDeleted: ReturnType<typeof vi.fn>
   reload: ReturnType<typeof vi.fn>
 } {
   const answers = [...(opts.confirms ?? [true])]
   const confirm = vi.fn(async () => answers.shift() ?? false)
+  const promptText = vi.fn(async () => opts.promptTextResult)
   const notifyError = vi.fn()
+  const notifyInfo = vi.fn()
   const onTaskDeleted = vi.fn()
   const reload = vi.fn(async () => {})
   const ctx: TaskActionContext = {
-    orch: opts.orch as unknown as KobeOrchestrator,
+    orch: opts.orch as unknown as KobeOrchestrator | null,
     tasks: () => opts.tasks,
     confirm,
-    promptText: async () => undefined,
+    promptText,
     logger: { error: vi.fn() },
     logPrefix: "[test]",
     notifyError,
+    notifyInfo,
     reload,
     switchBeforeKill: opts.switchBeforeKill,
     updateActiveTask: opts.updateActiveTask,
     onTaskDeleted,
   }
-  return { ctx, confirm, notifyError, onTaskDeleted, reload }
+  return { ctx, confirm, promptText, notifyError, notifyInfo, onTaskDeleted, reload }
 }
 
 beforeEach(() => {
@@ -281,5 +295,63 @@ describe("archiveTaskFlow — session teardown", () => {
 
     expect(orch.setActiveTask).not.toHaveBeenCalled()
     expect(killSession).toHaveBeenCalledWith("kobe-t1")
+  })
+
+  test("setArchived failure logs and skips teardown/reload entirely", async () => {
+    const tasks = [makeTask({ id: "t1" })]
+    const orch = makeOrch({
+      setArchived: vi.fn(async () => {
+        throw new Error("daemon down")
+      }),
+    })
+    const { ctx, confirm, reload } = makeCtx({ tasks, orch, confirms: [true] })
+
+    await archiveTaskFlow(ctx, "t1")
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(killSession).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  test("unknown taskId is a no-op", async () => {
+    const tasks = [makeTask({ id: "t1" })]
+    const orch = makeOrch()
+    const { ctx, confirm } = makeCtx({ tasks, orch, confirms: [true] })
+
+    await archiveTaskFlow(ctx, "does-not-exist")
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(orch.setArchived).not.toHaveBeenCalled()
+  })
+
+  test("no daemon (orch null) is a no-op", async () => {
+    const tasks = [makeTask({ id: "t1" })]
+    const { ctx, confirm } = makeCtx({ tasks, orch: null })
+
+    await archiveTaskFlow(ctx, "t1")
+
+    expect(confirm).not.toHaveBeenCalled()
+  })
+})
+
+describe("deleteTaskFlow — misc guards", () => {
+  test("unknown taskId is a no-op", async () => {
+    const tasks = [makeTask({ id: "t1" })]
+    const orch = makeOrch()
+    const { ctx, confirm } = makeCtx({ tasks, orch, confirms: [true] })
+
+    await deleteTaskFlow(ctx, "nope")
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(orch.deleteTask).not.toHaveBeenCalled()
+  })
+
+  test("no daemon (orch null) is a no-op", async () => {
+    const tasks = [makeTask({ id: "t1" })]
+    const { ctx, confirm } = makeCtx({ tasks, orch: null })
+
+    await deleteTaskFlow(ctx, "t1")
+
+    expect(confirm).not.toHaveBeenCalled()
   })
 })

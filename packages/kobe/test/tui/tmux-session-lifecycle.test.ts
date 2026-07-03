@@ -1,0 +1,207 @@
+/**
+ * Behavioral tests for the smaller session-lifecycle helpers in
+ * `panes/terminal/tmux.ts` that sit AROUND `ensureSession`: the pre-attach /
+ * pre-switch fit-and-heal pair, the client-resize resync, and the
+ * session-vendor observer. `ensureSession`/`ensureSessionImpl` itself (the
+ * observe → decide → apply session BUILD) is intentionally left to
+ * `test/tui/perf-budgets.test.ts` (its REUSE-path operation budget) and
+ * interactive verification — building a session fans out through ~12
+ * sibling modules (interactive-command, repo-init, clipboard, keybindings,
+ * prompt-delivery, session-decision, tmux-border-theme, chattab, launch,
+ * layout-coord, pane-heal), and mocking all of them for the create/rebuild
+ * branches would be scaffolding disproportionate to one function — the
+ * existing `terminal-tmux.test.ts` header already scopes this file to
+ * "small deterministic choices", not the live session build.
+ *
+ * `@/tmux/client` is replaced with an in-memory fake (same technique as the
+ * other layout-actions/chattab/pane-heal test files) so no real tmux is
+ * spawned; `KOBE_HOME_DIR` points at a throwaway temp dir because
+ * `recordGen` (layout-coord.ts) persists a small generation-marker file.
+ */
+
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+
+const state = vi.hoisted(() => ({
+  existingSessions: new Set<string>(["kobe-t1"]),
+  calls: [] as string[][],
+  capturingCalls: [] as string[][],
+  clientListStdout: "",
+  displayMessageStdout: "",
+  sessionOptions: {} as Record<string, string>,
+  paneRows: [] as Array<{ windowId: string; paneId: string; role: string; version: string; paneWidth?: number }>,
+  observeStdout: "",
+}))
+
+vi.mock("../../src/cli/invocation", () => ({ kobeCliInvocation: () => ["kobe"] }))
+vi.mock("../../src/exec/resolve", () => ({
+  localSpawnCwd: (p: string) => p,
+  remoteKeyForRepo: () => undefined,
+}))
+vi.mock("../../src/tui/lib/tmux-border-theme", () => ({ applyTmuxChromeTheme: vi.fn(async () => {}) }))
+
+vi.mock("../../src/tmux/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/tmux/client")>()
+  return {
+    ...actual,
+    sessionExists: async (name: string) => state.existingSessions.has(name),
+    getSessionOptions: async (_session: string, options: readonly string[]) =>
+      Object.fromEntries(options.map((o) => [o, state.sessionOptions[o]])),
+    runTmux: async (args: string[]) => {
+      state.calls.push(args)
+      return 0
+    },
+    runTmuxSequence: async (commands: readonly (readonly string[])[]) => {
+      for (const c of commands) state.calls.push([...c])
+      return 0
+    },
+    runTmuxCapturing: async (args: string[]) => {
+      state.capturingCalls.push(args)
+      if (args[0] === "list-clients") return { code: 0, stdout: state.clientListStdout }
+      if (args[0] === "display-message") return { code: 0, stdout: state.displayMessageStdout }
+      if (args[0] === "list-panes") {
+        const fIdx = args.indexOf("-F")
+        const format = fIdx >= 0 ? args[fIdx + 1] : ""
+        if (format?.includes("window_active")) return { code: 0, stdout: state.observeStdout }
+        return {
+          code: 0,
+          stdout: state.paneRows
+            .map((r) => `${r.windowId}\t${r.paneId}\t${r.role}\t${r.version}\t${r.paneWidth ?? ""}`)
+            .join("\n"),
+        }
+      }
+      return { code: 0, stdout: "" }
+    },
+  }
+})
+
+const tmux = await import("../../src/tui/panes/terminal/tmux")
+
+let home: string
+let prevHome: string | undefined
+let prevTmuxVar: string | undefined
+
+function resetState(): void {
+  state.existingSessions = new Set(["kobe-t1"])
+  state.calls = []
+  state.capturingCalls = []
+  state.clientListStdout = ""
+  state.displayMessageStdout = ""
+  state.sessionOptions = {}
+  state.paneRows = []
+  state.observeStdout = ""
+}
+
+function callsWith(cmd: string): string[][] {
+  return state.calls.filter((c) => c[0] === cmd)
+}
+
+beforeEach(() => {
+  resetState()
+  vi.clearAllMocks()
+  prevHome = process.env.KOBE_HOME_DIR
+  home = mkdtempSync(join(tmpdir(), "kobe-tmux-lifecycle-"))
+  process.env.KOBE_HOME_DIR = home
+  prevTmuxVar = process.env.TMUX
+  Reflect.deleteProperty(process.env, "TMUX")
+})
+
+afterEach(() => {
+  vi.clearAllMocks()
+  vi.restoreAllMocks()
+  if (prevHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+  else process.env.KOBE_HOME_DIR = prevHome
+  if (prevTmuxVar === undefined) Reflect.deleteProperty(process.env, "TMUX")
+  else process.env.TMUX = prevTmuxVar
+  rmSync(home, { recursive: true, force: true })
+})
+
+describe("prepareWindowForAttach", () => {
+  let prevColumns: number | undefined
+  let prevRows: number | undefined
+
+  beforeEach(() => {
+    prevColumns = process.stdout.columns
+    prevRows = process.stdout.rows
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, "columns", { value: prevColumns, configurable: true })
+    Object.defineProperty(process.stdout, "rows", { value: prevRows, configurable: true })
+  })
+
+  test("resizes the window to process.stdout's size and heals the layout", async () => {
+    Object.defineProperty(process.stdout, "columns", { value: 200, configurable: true })
+    Object.defineProperty(process.stdout, "rows", { value: 50, configurable: true })
+    await tmux.prepareWindowForAttach("kobe-t1")
+    const resize = callsWith("resize-window")
+    expect(resize).toEqual([["resize-window", "-t", "=kobe-t1", "-x", "200", "-y", "50"]])
+  })
+
+  test("skips the resize entirely when the terminal size is unknown", async () => {
+    Object.defineProperty(process.stdout, "columns", { value: undefined, configurable: true })
+    Object.defineProperty(process.stdout, "rows", { value: undefined, configurable: true })
+    Reflect.deleteProperty(process.env, "COLUMNS")
+    Reflect.deleteProperty(process.env, "LINES")
+    await tmux.prepareWindowForAttach("kobe-t1")
+    expect(callsWith("resize-window")).toEqual([])
+  })
+
+  test("marks other attached clients at a conflicting size as ignore-size", async () => {
+    Object.defineProperty(process.stdout, "columns", { value: 200, configurable: true })
+    Object.defineProperty(process.stdout, "rows", { value: 50, configurable: true })
+    state.clientListStdout = "otherclient\tkobe-t1\t100\t30\t\nmatching\tkobe-t1\t200\t50\t"
+    await tmux.prepareWindowForAttach("kobe-t1")
+    expect(callsWith("refresh-client")).toEqual([["refresh-client", "-f", "ignore-size", "-t", "otherclient"]])
+  })
+})
+
+describe("prepareWindowForSwitch / enterWindow", () => {
+  test("fits the window to the currently-attached client before switching", async () => {
+    state.displayMessageStdout = "myclient\t180\t45\ton"
+    await tmux.enterWindow("kobe-t1")
+    expect(callsWith("resize-window")).toEqual([["resize-window", "-t", "=kobe-t1", "-x", "180", "-y", "44"]])
+    expect(callsWith("switch-client")).toEqual([["switch-client", "-t", "=kobe-t1"]])
+  })
+
+  test("skips the resize when the attached client's size can't be read", async () => {
+    state.displayMessageStdout = ""
+    await tmux.enterWindow("kobe-t1")
+    expect(callsWith("resize-window")).toEqual([])
+    expect(callsWith("switch-client")).toEqual([["switch-client", "-t", "=kobe-t1"]])
+  })
+})
+
+describe("resyncWindowToClient", () => {
+  test("no-ops when the reported size is null", async () => {
+    await tmux.resyncWindowToClient("kobe-t1", { size: null, status: "on" })
+    expect(state.calls).toEqual([])
+  })
+
+  test("batches the window resize with the layout re-pin in one sequence", async () => {
+    state.paneRows = [{ windowId: "@1", paneId: "%1", role: "tasks", version: "0.8.0", paneWidth: 10 }]
+    await tmux.resyncWindowToClient("kobe-t1", { size: { columns: 200, rows: 50 }, status: "on" })
+    // resize-window and the rail re-pin land in the SAME runTmuxSequence call.
+    expect(callsWith("resize-window")).toEqual([["resize-window", "-t", "=kobe-t1", "-x", "200", "-y", "49"]])
+    expect(callsWith("resize-pane")).toEqual([["resize-pane", "-t", "%1", "-x", expect.any(String)]])
+  })
+})
+
+describe("observeSessionVendor", () => {
+  test("returns null when the session doesn't exist", async () => {
+    state.existingSessions = new Set()
+    await expect(tmux.observeSessionVendor("kobe-ghost")).resolves.toBeNull()
+  })
+
+  test("returns the session's tagged vendor when present", async () => {
+    state.observeStdout = "@1\t1\tclaude\t/wt\tcodex"
+    await expect(tmux.observeSessionVendor("kobe-t1")).resolves.toBe("codex")
+  })
+
+  test("returns null when the session exists but carries no vendor tag", async () => {
+    state.observeStdout = "@1\t1\tclaude\t/wt\t"
+    await expect(tmux.observeSessionVendor("kobe-t1")).resolves.toBeNull()
+  })
+})

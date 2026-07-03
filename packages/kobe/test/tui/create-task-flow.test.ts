@@ -24,17 +24,25 @@ vi.mock("../../src/state/repos", () => ({
   addSavedRepo: vi.fn(() => ({ added: false, path: "/repo", total: 1 })),
 }))
 vi.mock("../../src/engine/account-detect", () => ({
-  availableEngineIds: vi.fn(async () => ["claude"]),
+  availableEngineIds: () => mockAvailableEngineIds(),
 }))
+// Reassignable so the "no engine detected" test can flip it to []; every
+// other test resets it to the built-in default in the per-test setup below.
+const mockAvailableEngineIds = vi.fn(async () => ["claude"])
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
+import type { NewTaskInput } from "../../src/tui/component/new-task-dialog"
 import { type CreateTaskContext, createTaskFlow } from "../../src/tui/lib/task-actions"
 
 type AdoptItem = { worktreePath: string; branch: string }
 
 function makeCreateCtx(opts: {
-  adopt: readonly AdoptItem[]
-  adoptWorktree: (input: { worktreePath: string }) => Promise<{ id: string }>
+  adopt?: readonly AdoptItem[]
+  adoptWorktree?: (input: { worktreePath: string }) => Promise<{ id: string }>
+  createTask?: (input: { repo: string; baseRef?: string; vendor: unknown }) => Promise<{ id: string }>
+  promptNewTask?: () => Promise<NewTaskInput | undefined>
+  openCreateSurface?: (defaultRepo: string) => Promise<boolean>
+  orch?: KobeOrchestrator | null
 }): {
   ctx: CreateTaskContext
   notifyInfo: ReturnType<typeof vi.fn>
@@ -43,24 +51,31 @@ function makeCreateCtx(opts: {
   selectTask: ReturnType<typeof vi.fn>
   enterTask: ReturnType<typeof vi.fn>
   adoptWorktree: ReturnType<typeof vi.fn>
+  createTask: ReturnType<typeof vi.fn>
+  rememberVendor: ReturnType<typeof vi.fn>
+  logger: { error: ReturnType<typeof vi.fn> }
 } {
   const notifyInfo = vi.fn()
   const notifyError = vi.fn()
   const reload = vi.fn(async () => {})
   const selectTask = vi.fn()
   const enterTask = vi.fn(async () => {})
-  const adoptWorktree = vi.fn(opts.adoptWorktree)
-  const orch = {
+  const adoptWorktree = vi.fn(opts.adoptWorktree ?? (async ({ worktreePath }) => ({ id: worktreePath })))
+  const createTask = vi.fn(opts.createTask ?? (async () => ({ id: "created-id" })))
+  const rememberVendor = vi.fn()
+  const logger = { error: vi.fn() }
+  const innerOrch = {
     adoptWorktree,
-    createTask: vi.fn(),
+    createTask,
     discoverAdoptableWorktrees: vi.fn(async () => []),
   } as unknown as KobeOrchestrator
+  const orch = opts.orch === undefined ? innerOrch : opts.orch
   const ctx: CreateTaskContext = {
     orch,
     tasks: () => [],
     confirm: async () => true,
     promptText: async () => undefined,
-    logger: { error: vi.fn() },
+    logger,
     logPrefix: "[test]",
     notifyInfo,
     notifyError,
@@ -69,10 +84,24 @@ function makeCreateCtx(opts: {
     enterTask,
     cursorRepo: () => "/repo",
     lastVendor: () => "claude" as never,
-    rememberVendor: vi.fn(),
-    promptNewTask: async () => ({ mode: "adopt", repo: "/repo", vendor: "claude" as never, adopt: opts.adopt }),
+    rememberVendor,
+    openCreateSurface: opts.openCreateSurface,
+    promptNewTask:
+      opts.promptNewTask ??
+      (async () => ({ mode: "adopt", repo: "/repo", vendor: "claude" as never, adopt: opts.adopt ?? [] })),
   }
-  return { ctx, notifyInfo, notifyError, reload, selectTask, enterTask, adoptWorktree }
+  return {
+    ctx,
+    notifyInfo,
+    notifyError,
+    reload,
+    selectTask,
+    enterTask,
+    adoptWorktree,
+    createTask,
+    rememberVendor,
+    logger,
+  }
 }
 
 describe("createTaskFlow — adopt summary", () => {
@@ -139,5 +168,109 @@ describe("createTaskFlow — adopt summary", () => {
     expect(reload).not.toHaveBeenCalled()
     expect(selectTask).not.toHaveBeenCalled()
     expect(enterTask).not.toHaveBeenCalled()
+  })
+})
+
+describe("createTaskFlow — create mode + guards", () => {
+  test("create mode: calls task.create, remembers the vendor, saves the repo, lands on the new task", async () => {
+    const promptNewTask = vi.fn(async () => ({
+      mode: "create" as const,
+      repo: "/repo",
+      baseRef: "main",
+      vendor: "claude",
+    }))
+    const { ctx, createTask, reload, selectTask, enterTask, rememberVendor } = makeCreateCtx({
+      createTask: async () => ({ id: "new-id" }),
+      promptNewTask,
+    })
+
+    await createTaskFlow(ctx)
+
+    expect(createTask).toHaveBeenCalledWith({ repo: "/repo", baseRef: "main", vendor: "claude" })
+    expect(rememberVendor).toHaveBeenCalledWith("claude")
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(selectTask).toHaveBeenCalledWith("new-id")
+    expect(enterTask).toHaveBeenCalledWith("new-id")
+  })
+
+  test("create mode failure surfaces a toast and skips reload/selection", async () => {
+    const promptNewTask = vi.fn(async () => ({
+      mode: "create" as const,
+      repo: "/repo",
+      baseRef: "main",
+      vendor: "claude",
+    }))
+    const { ctx, notifyError, reload, selectTask } = makeCreateCtx({
+      createTask: async () => {
+        throw new Error("git worktree add failed")
+      },
+      promptNewTask,
+    })
+
+    await createTaskFlow(ctx)
+
+    expect(notifyError).toHaveBeenCalledWith("Couldn't create task: git worktree add failed")
+    expect(reload).not.toHaveBeenCalled()
+    expect(selectTask).not.toHaveBeenCalled()
+  })
+
+  test("dialog cancelled (promptNewTask returns undefined) is a no-op", async () => {
+    const promptNewTask = vi.fn(async () => undefined)
+    const { ctx, reload, rememberVendor } = makeCreateCtx({ promptNewTask })
+
+    await createTaskFlow(ctx)
+
+    expect(rememberVendor).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  test("openCreateSurface handling it (returns true) short-circuits before the dialog", async () => {
+    const openCreateSurface = vi.fn(async () => true)
+    const promptNewTask = vi.fn(async () => ({
+      mode: "create" as const,
+      repo: "/repo",
+      baseRef: "main",
+      vendor: "claude",
+    }))
+    const { ctx } = makeCreateCtx({ openCreateSurface, promptNewTask })
+
+    await createTaskFlow(ctx)
+
+    expect(openCreateSurface).toHaveBeenCalledWith("/repo")
+    expect(promptNewTask).not.toHaveBeenCalled()
+  })
+
+  test("no engine CLI detected surfaces an info notice but still proceeds", async () => {
+    mockAvailableEngineIds.mockResolvedValueOnce([])
+    const promptNewTask = vi.fn(async () => ({
+      mode: "create" as const,
+      repo: "/repo",
+      baseRef: "main",
+      vendor: "claude",
+    }))
+    const { ctx, notifyInfo, createTask } = makeCreateCtx({ promptNewTask })
+
+    await createTaskFlow(ctx)
+
+    expect(notifyInfo).toHaveBeenCalledWith(expect.stringContaining("No engine CLI detected"))
+    expect(createTask).toHaveBeenCalled()
+  })
+
+  test("no daemon (orch null): saves the repo/vendor choice but logs instead of creating", async () => {
+    const promptNewTask = vi.fn(async () => ({
+      mode: "create" as const,
+      repo: "/repo",
+      baseRef: "main",
+      vendor: "claude",
+    }))
+    const { ctx, rememberVendor, notifyInfo, reload, logger } = makeCreateCtx({ orch: null, promptNewTask })
+
+    await createTaskFlow(ctx)
+
+    expect(rememberVendor).toHaveBeenCalledWith("claude")
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("no daemon"))
+    // Never reaches the "Creating task…" toast — that's gated on `orch`.
+    expect(notifyInfo).not.toHaveBeenCalledWith(expect.stringContaining("Creating task"))
+    expect(reload).not.toHaveBeenCalled()
   })
 })
