@@ -30,6 +30,45 @@ permissions:
   contents: read
 
 jobs:
+  file-size-cap:
+    # Hard rule (AGENTS.md "File size cap"): any code file a PR touches must
+    # end up ≤500 lines. Only touched files are gated, so legacy oversized
+    # files stay green until someone edits them — touch it, you shrink it.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Touched code files must be ≤500 lines
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$PR_BODY" | grep -qi 'file-size-exemption'; then
+            echo "PR body declares a file-size-exemption — skipping the cap check."
+            exit 0
+          fi
+          fail=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              refs/*|*.snap|*fixtures/*|*.lock|*.lockb) continue ;;
+            esac
+            case "$f" in
+              *.ts|*.tsx|*.js|*.jsx|*.mjs) ;;
+              *) continue ;;
+            esac
+            lines=$(wc -l < "$f")
+            if [ "$lines" -gt 500 ]; then
+              echo "::error file=$f::$f is $lines lines (cap ~500). Refactor/split it, or add a 'file-size-exemption: <reason>' line to the PR body. See AGENTS.md 'File size cap'."
+              fail=1
+            fi
+          done < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD)
+          exit $fail
+
   typecheck-and-test:
     runs-on: ubuntu-latest
     steps:
