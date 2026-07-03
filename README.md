@@ -143,3 +143,20 @@ bun run test
 ```
 
 Start with [`HANDOFF.md`](./HANDOFF.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
+
+### Testing & coverage
+
+Three test layers (contract: [`docs/HARNESS.md`](./docs/HARNESS.md)):
+
+```bash
+bun run test                                   # unit + socket suites (fast, CI-gated)
+bun run build && bun run test:behavior         # black-box: the BUILT CLI in a temp home
+                                               # + scratch tmux, driven via send-keys /
+                                               # capture-pane (CI-gated, `behavior` job)
+cd packages/kobe && bun run coverage           # v8 coverage report (text + json-summary)
+```
+
+Two hard rules keep regressions from coming back:
+
+- **Every bug fix ships a regression test** that fails before the fix and passes after, commented with the issue it pins. Environment-shaped bugs (terminal bytes, PATH state, packaged-vs-dev) get pinned in `test/behavior/`, not in a mocked unit test.
+- **Per-touched-file coverage floor on PRs** — every `packages/kobe/src` file a PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); `coverage-exemption: <reason>` in the PR body opts out with a paper trail. There is deliberately no repo-wide % gate.
