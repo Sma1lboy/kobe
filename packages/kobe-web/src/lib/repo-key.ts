@@ -58,3 +58,30 @@ export function repoSnapshotAliases(
   }
   return [...aliases]
 }
+
+/**
+ * Sweep the issue-snapshot cache to keys still reachable from a live task's
+ * `repo`/`worktreePath`. Alias keys accumulate one-per-worktree as tasks are
+ * created and deleted ({@link repoSnapshotAliases} only ever adds), so both
+ * mirrors — the bridge's `DaemonLink.issueSnapshots` and the SPA store — call
+ * this on every authoritative `task.snapshot`, exactly like the engine-state
+ * sweep beside them. A canonical (realpath'd) repoRoot key whose repo has no
+ * live task is dropped too; that only costs a warm-start miss — the UI
+ * re-fetches via GET. Returns the SAME object when nothing was pruned.
+ */
+export function pruneSnapshotAliases<T>(
+  snapshots: Record<string, T>,
+  tasks: readonly RepoPaths[],
+): Record<string, T> {
+  const live = new Set<string>()
+  for (const task of tasks) {
+    if (task.repo) live.add(normalizeRepoPath(task.repo))
+    if (task.worktreePath) live.add(normalizeRepoPath(task.worktreePath))
+  }
+  const kept = Object.entries(snapshots).filter(([key]) =>
+    live.has(normalizeRepoPath(key)),
+  )
+  return kept.length === Object.keys(snapshots).length
+    ? snapshots
+    : Object.fromEntries(kept)
+}

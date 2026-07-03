@@ -9,7 +9,7 @@ import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { useSyncExternalStore } from "react"
 import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
-import { repoSnapshotAliases } from "./repo-key.ts"
+import { pruneSnapshotAliases, repoSnapshotAliases } from "./repo-key.ts"
 import { daemonRpc } from "./rpc-client.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
@@ -135,6 +135,7 @@ function applyTaskList(tasks: Task[]): void {
     tasks,
     engineStates: pruneByTask(state.engineStates, live),
     jobs: pruneByTask(state.jobs, live),
+    issueSnapshots: pruneSnapshotAliases(state.issueSnapshots, tasks),
   })
   pruneMissingTasks(live)
 }
@@ -219,14 +220,14 @@ export function validateSnapshot(raw: unknown): WebTransportSnapshot | null {
   if (typeof raw.connected !== "boolean") return null
   // Optional maps, when present, must be objects (the store spreads/iterates
   // them); a present-but-wrong type is as fatal as a bad `tasks`.
-  for (const key of [
-    "jobs",
-    "worktreeChanges",
-    "issueSnapshots",
-  ] as const) {
+  for (const key of ["jobs", "worktreeChanges", "issueSnapshots"] as const) {
     if (raw[key] !== undefined && !isRecord(raw[key])) return null
   }
-  if (raw.uiPrefs !== undefined && raw.uiPrefs !== null && !isRecord(raw.uiPrefs)) {
+  if (
+    raw.uiPrefs !== undefined &&
+    raw.uiPrefs !== null &&
+    !isRecord(raw.uiPrefs)
+  ) {
     return null
   }
   return raw as unknown as WebTransportSnapshot
