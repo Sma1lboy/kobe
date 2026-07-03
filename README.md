@@ -9,6 +9,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@sma1lboy/kobe"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg" alt="npm version" /></a>
+  <a href="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml"><img src="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://codecov.io/gh/Sma1lboy/kobe"><img src="https://codecov.io/gh/Sma1lboy/kobe/graph/badge.svg" alt="coverage" /></a>
   <a href="./packages/kobe/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-latest-blue" alt="changelog" /></a>
 </p>
 <img width="2559" height="1510" alt="image" src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" />
