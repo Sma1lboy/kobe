@@ -4,6 +4,7 @@ import {
   ApiError,
   VERBS,
   apiUsage,
+  buildCountPlan,
   findVerb,
   fullSchema,
   parseAgentsSpec,
@@ -94,6 +95,21 @@ describe("parseAgentsSpec", () => {
 
   it("rejects a spec that expands to nothing", () => {
     expect(() => parseAgentsSpec(" , ")).toThrow(/no agents/)
+  })
+})
+
+describe("buildCountPlan", () => {
+  it("expands --count N into N copies of the vendor", () => {
+    expect(buildCountPlan(3, "codex")).toEqual(["codex", "codex", "codex"])
+    expect(buildCountPlan(1, "claude")).toEqual(["claude"])
+  })
+
+  it("rejects an over-cap count BEFORE allocating (no OOM on a huge --count)", () => {
+    // Mirrors the parseAgentsSpec guard: `--count 1000000000` must fail fast
+    // instead of building a billion-element array only to hit the post-build
+    // cap check.
+    expect(() => buildCountPlan(1_000_000_000, "claude")).toThrow(/exceeds the cap/)
+    expect(() => buildCountPlan(11, "claude")).toThrow(/exceeds the cap/)
   })
 })
 
