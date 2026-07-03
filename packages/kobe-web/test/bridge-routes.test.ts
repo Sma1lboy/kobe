@@ -239,6 +239,27 @@ describe("daemon web request handler", () => {
       await reader!.cancel()
       expect(cleanup).toHaveBeenCalledTimes(1)
     })
+
+    it("tears down on request abort even when cancel() never fires (half-open disconnect)", async () => {
+      const link = fakeLink()
+      const sseSends = new Set<(type: string, data: unknown) => void>()
+      const cleanup = vi.fn()
+      const handle = createDaemonWebRequestHandler({ link, sseSends, onSseOpen: () => cleanup })
+
+      const ac = new AbortController()
+      const res = await handle(new Request("http://localhost/events", { signal: ac.signal }))
+      const reader = res.body?.getReader()
+      await reader!.read()
+      expect(sseSends.size).toBe(1)
+
+      ac.abort()
+      expect(cleanup).toHaveBeenCalledTimes(1)
+      expect(sseSends.size).toBe(0)
+
+      // cancel() arriving later must not double-run the unregister path.
+      await reader!.cancel()
+      expect(cleanup).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe("/api/engines", () => {

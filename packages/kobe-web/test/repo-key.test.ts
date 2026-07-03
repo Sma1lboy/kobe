@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   normalizeRepoPath,
+  pruneSnapshotAliases,
   type RepoPaths,
   repoSnapshotAliases,
 } from "../src/lib/repo-key.ts"
@@ -80,5 +81,38 @@ describe("repoSnapshotAliases", () => {
       },
     ]
     expect(repoSnapshotAliases(wide, "/p")).toEqual(["/p", "/w"])
+  })
+})
+
+describe("pruneSnapshotAliases", () => {
+  const tasks: RepoPaths[] = [
+    { repo: "/proj/kobe/", worktreePath: "/wt/kobe/live" },
+  ]
+
+  it("drops alias keys left behind by deleted tasks", () => {
+    const snapshots = {
+      "/proj/kobe": { n: 1 },
+      "/wt/kobe/live": { n: 1 },
+      "/wt/kobe/deleted-task": { n: 1 },
+      "/some/other/repo": { n: 2 },
+    }
+    expect(Object.keys(pruneSnapshotAliases(snapshots, tasks))).toEqual([
+      "/proj/kobe",
+      "/wt/kobe/live",
+    ])
+  })
+
+  it("keeps a key that differs from a live task path only by trailing slash", () => {
+    const snapshots = { "/proj/kobe/": { n: 1 } }
+    expect(pruneSnapshotAliases(snapshots, tasks)).toEqual(snapshots)
+  })
+
+  it("returns the SAME object when nothing was pruned", () => {
+    const snapshots = { "/wt/kobe/live": { n: 1 } }
+    expect(pruneSnapshotAliases(snapshots, tasks)).toBe(snapshots)
+  })
+
+  it("empties the cache when no tasks remain", () => {
+    expect(pruneSnapshotAliases({ "/proj/kobe": { n: 1 } }, [])).toEqual({})
   })
 })
