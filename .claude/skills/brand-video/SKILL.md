@@ -96,12 +96,15 @@ scratch/approved 目录看 `artifacts.*`。换一个产品 repo,换的是 metada
 - **TTS 口播**:到口播这步**必须用 AskUserQuestion 问声音路线**——声音是用户的身份,不替用户拍板。
   选项(默认推荐第一个):
   1. **默认音色(Recommended)**:edge-tts `zh-CN-YunxiNeural`(免费无 key,原生中文;晓晓/云扬可换)。
-  2. **用自己的声音**:F5-TTS 零样本克隆(`pip install f5-tts`,本地跑)。参考音频约定
-     `~/voice-ref-general.wav`(用户的通用声纹,一次录制处处复用);没有就给用户这套录音引导——
-     **通用参考文案**(内容与产品无关、中英混合覆盖英文音素、含数字与语气变化,~18s,照念,
-     念的英文按用户平时的说法)+ 录音命令
-     `ffmpeg -f avfoundation -i ":0" -t 20 -ar 24000 -ac 1 -y ~/voice-ref-general.wav`。
-     ref_text 必须与实际朗读一字不差;参考里英文样本太少会导致克隆声念英文发飘。
+  2. **用自己的声音**:F5-TTS 零样本克隆(`pip install f5-tts`,本地跑)。**参考母带协议**:
+     - 母带 20–30s(`ffmpeg -f avfoundation -i ":0" -t 32 -ar 24000 -ac 1 -y ~/voice-ref-master.wav`),
+       文案内容与产品无关(通用声纹,一次录制处处复用),照念、段间明确停 1 秒。
+     - **口播含外语(如中英混)→ 母带录三段**:纯中文 / 纯外语 / 中外混合;**口播只有英语 →
+       一段纯英语即可**。单段 ref ≤15s(F5 上限)。
+     - 切段用 whisper 词级时间戳定界(silencedetect 会被句内停顿骗),切成 ref-zh / ref-en /
+       ref-mix 三个 wav;**合成时按目标句的语言构成挑 ref**——英文重的句子用 ref-en,混合句用
+       ref-mix。参考里外语样本不足 = 克隆声念外语发飘,这就是三段协议存在的原因。
+     - ref_text 必须与该段实际朗读一字不差(用原始文案,别用 whisper 的转写——base 模型转写有错)。
   3. ElevenLabs(有 key 且要更高质量;免费计划只能用 premade,中文有口音)。
   4. 无口播(纯字幕 + bgm)。
   逐镜头生成后 ffprobe 量实际时长写进 `src/audio-manifest.json`;
