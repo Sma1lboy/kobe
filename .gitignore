@@ -57,8 +57,11 @@ packages/*/.dev-sandbox/
 
 # Session handoff — local working state / scratchpad for the next agent in
 # THIS environment. Not shared history (the durable record lives in git
-# commits, CHANGELOG.md, docs/, and docs/issues.json). Keep it local.
+# commits, CHANGELOG.md, docs/, and the daemon issue store). Keep it local.
 HANDOFF.md
+# Skill-driven issue/PRD scratch tracker (docs/agents/issue-tracker.md) —
+# same local-working-state posture as HANDOFF.md.
+.scratch/
 .gstack/
 /.env
 /outputs/

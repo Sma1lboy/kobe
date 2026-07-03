@@ -133,7 +133,7 @@ keyboard", below).
 
 The unified kanban over BOTH stores — the daemon-owned issues and the task
 list — grouped by **Project (= git repo)** (full plan + decisions:
-[`web-kanban.md`](./web-kanban.md)). The two stores stay separate (Path 1);
+`web-kanban.md`, in git history). The two stores stay separate (Path 1);
 the board is a join, not a merge. One column per `TaskStatus`
 (`error`/`canceled` fold away when empty; unknown statuses become trailing
 read-only columns rather than dropping cards). Columns bind ONLY to the

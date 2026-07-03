@@ -86,3 +86,17 @@ The engine adapter is the source of truth for agent/product identity, capabiliti
 
 ### Diagrams in `docs/`: use Mermaid
 Diagrams in `docs/` go in a ` ```mermaid ` fence (renders natively in GitHub + VS Code preview; PlantUML and friends don't). ASCII boxes only for tiny relationships (≤3 nodes, no states). Canonical example: [`docs/design/tasks.md`](./docs/design/tasks.md).
+
+## Agent skills
+
+### Issue tracker
+
+Skill-driven flows (`to-issues`/`triage`/`to-prd`/`qa`) use local markdown under `.scratch/<feature>/` (gitignored); the daemon issue store stays the product backlog and GitHub Issues stay inbound-user-reports-only. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary, unchanged (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`), as `Status:` lines in issue files. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` (strict glossary with banned synonyms) + `docs/adr/`. See `docs/agents/domain.md`.

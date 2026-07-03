@@ -4,7 +4,7 @@
 > future agent (human or otherwise) picks up implementation with full
 > context.
 >
-> Sibling of [`bridge.md`](./bridge.md): that doc covers the MCP-bridge
+> Sibling of `bridge.md` (superseded by ADR-0003; doc now in git history): that doc covers the MCP-bridge
 > surface (long-lived stdio child of `claude`); this doc covers a
 > short-lived CLI surface that the model drives from its `Bash` tool.
 > MCP bridge stays in tree as a fallback; CLI becomes the recommended

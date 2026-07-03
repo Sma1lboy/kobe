@@ -4,7 +4,7 @@ Domain vocabulary for the TUI orchestrator. Every architectural conversation abo
 
 > **v0.6 reshape (KOB-226).** kobe no longer drives `claude` as a stream-json subprocess and no longer renders its own chat. It is now a **task launcher**: each **Task** gets a **tmux Session** that runs interactive `claude` natively, and "entering" a task is a **Handover** (attach the real TTY). A **ChatTab** survives the reshape — but it's now a **tmux window**, not a kobe-rendered tab. Terms from the v0.5 chat era — **AI Engine Port**, **SessionPump**, **PendingInputBroker**, **ChatSessionController**, **Bridge** — are **gone**; they're listed in the Retired section so old references resolve.
 
-> **Outer monitor retired (2026-06, docs/design/app-retirement.md).** The transitional opentui shell (`app.tsx`) and its vocabulary — **Workspace** (capital W), **Live Preview**, **Cost Dashboard**, the `KOBE_NO_DAEMON` daemon-less mode — are **gone**. `kobe` launches straight into the tmux workspace (`direct.ts`); the Tasks pane owns task switching. See the Retired section.
+> **Outer monitor retired (2026-06; inventory/decision record `docs/design/app-retirement.md` lives in git history).** The transitional opentui shell (`app.tsx`) and its vocabulary — **Workspace** (capital W), **Live Preview**, **Cost Dashboard**, the `KOBE_NO_DAEMON` daemon-less mode — are **gone**. `kobe` launches straight into the tmux workspace (`direct.ts`); the Tasks pane owns task switching. See the Retired section.
 
 ## Language
 
@@ -125,7 +125,7 @@ These no longer exist in the code; kept so old comments/commits resolve:
 - **ChatSessionController** — the chat pane's per-tab subscription choreography.
 - **Bridge** — the MCP server exposing the Orchestrator to spawned claude.
 
-## Retired (v0.6 outer monitor, removed 2026-06 — docs/design/app-retirement.md)
+## Retired (v0.6 outer monitor, removed 2026-06 — retirement record in git history: docs/design/app-retirement.md)
 
 The transitional opentui shell and its surfaces; kept so old comments/commits resolve:
 
