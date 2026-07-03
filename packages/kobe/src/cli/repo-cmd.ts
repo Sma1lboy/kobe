@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { expandTilde } from "../lib/path-home.ts"
 
 const REPO_USAGE = [
   "Usage: kobe repo <show|set|unset> [path] [options]",
@@ -40,7 +41,7 @@ function usageError(message: string): never {
 
 function readArgFile(path: string): string {
   try {
-    return readFileSync(resolve(process.cwd(), path), "utf8")
+    return readFileSync(resolve(process.cwd(), expandTilde(path)), "utf8")
   } catch (err) {
     usageError(`cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`)
   }
@@ -106,7 +107,7 @@ export async function runRepoSubcommand(args: readonly string[]): Promise<void> 
 
   if (verb === "show") {
     const [pathArg] = rest.filter((a) => !a.startsWith("-"))
-    const repo = resolveRepoRoot(resolve(process.cwd(), pathArg ?? "."))
+    const repo = resolveRepoRoot(resolve(process.cwd(), expandTilde(pathArg ?? ".")))
     const override = getRepoInitOverride(repo)
     const hasFileScript = existsSync(join(repo, ".kobe", "init.sh"))
     const hasFilePrompt = existsSync(join(repo, ".kobe", "init-prompt.md"))
@@ -123,7 +124,7 @@ export async function runRepoSubcommand(args: readonly string[]): Promise<void> 
     if (flags.initScript === undefined && flags.initPrompt === undefined) {
       usageError("set needs at least one of --init-script(-file) / --init-prompt(-file)")
     }
-    const repo = resolveRepoRoot(resolve(process.cwd(), flags.path ?? "."))
+    const repo = resolveRepoRoot(resolve(process.cwd(), expandTilde(flags.path ?? ".")))
     const next = setRepoInitOverride(repo, {
       ...(flags.initScript !== undefined ? { initScript: flags.initScript } : {}),
       ...(flags.initPrompt !== undefined ? { initPrompt: flags.initPrompt } : {}),
@@ -136,7 +137,7 @@ export async function runRepoSubcommand(args: readonly string[]): Promise<void> 
 
   if (verb === "unset") {
     const { path, clearScript, clearPrompt } = parseUnsetArgs(rest)
-    const repo = resolveRepoRoot(resolve(process.cwd(), path ?? "."))
+    const repo = resolveRepoRoot(resolve(process.cwd(), expandTilde(path ?? ".")))
     const next = setRepoInitOverride(repo, {
       ...(clearScript ? { initScript: "" } : {}),
       ...(clearPrompt ? { initPrompt: "" } : {}),
