@@ -28,5 +28,14 @@ export default defineConfig({
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
     exclude,
     environment: "node",
+    // `bun run coverage` / --coverage. v8 provider; json-summary feeds the
+    // per-touched-file CI gate (scripts/coverage-gate.mjs), text is for humans.
+    // No global % thresholds — the gate is per-file on files a PR touches.
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      reporter: ["text-summary", "json-summary"],
+      reportsDirectory: "./coverage",
+    },
   },
 })

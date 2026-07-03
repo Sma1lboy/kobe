@@ -6,6 +6,7 @@
     "ignore": [
       "refs/**",
       "**/dist/**",
+      "**/coverage/**",
       "**/node_modules/**",
       "bun.lock",
       "packages/branding/**",

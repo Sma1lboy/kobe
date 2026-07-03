@@ -81,15 +81,21 @@ test("sidebar reflects new task immediately", async () => {
 - A green typecheck + passing unit tests + broken UX = wasted time. The harness exists to prevent that exact failure mode.
 - Without behavioral tests, every stream becomes a coin flip until human review. With them, the agent self-certifies.
 
-### What the harness provides (Stream 0.4)
+### What the harness provides (shipped 2026-07)
 
-- `test/behavior/driver.ts` — PTY-based driver: `spawnKobe()`, `sendKeys()`, `capture()`, `exit()`, with optional tmux backend for richer scenarios.
-- `test/behavior/fake-engine.ts` — `FakeAIEngine implements AIEngine` so behavior tests don't depend on a real `claude` CLI or burn Anthropic tokens. Scripted event sequences, deterministic.
-- `test/behavior/fixtures/` — reusable git fixture repos, sample task indices, etc.
-- `bun run test:behavior` — runs every `test/behavior/**/*.test.ts`.
-- `test/behavior/README.md` — author guide.
+- `test/behavior/harness.ts` — black-box driver over the **BUILT** CLI (`dist/cli/index.js`): `makeBehaviorEnv()` (temp `KOBE_HOME` + own tmux sockets + PATH-first `kobe` shim + fake `claude` shim), `runKobe()` (piped CLI runs), `tmux()`/`tmuxInner()`/`waitForScreen()` (send-keys / capture-pane driving — the same pattern the demo-video capture `packages/branding/scripts/capture-tui.ts` uses), `makeScratchRepo()`. Runs dist on purpose: packaged-only code paths (`import.meta.url.endsWith(".js")` branches, PATH resolution) are exactly where dev-only unit runs go blind.
+- `bun run test:behavior` — runs every `test/behavior/**/*.test.ts` (`bun run build` first; the harness errors clearly if dist is missing). CI runs it in the dedicated `behavior` job (ubuntu + apt tmux — no real engine needed).
+- Current suites: `cli-doctor` (doctor report surface, env isolation, TTY-vs-pipe), `cli-update` (+ the `scripts/update.sh` package-manager matrix, issue #205), `tui-smoke` (boot renders workspace; ctrl+h/l focus + the #192 left-edge no-wrap pin).
 
-Once Stream 0.4 lands, every subsequent stream's "Done when" clause **must** include at least one behavior test that proves the user-visible feature works.
+Every stream whose "Done when" is user-visible behavior **must** include at least one behavior test that proves it works.
+
+### Regression tests are mandatory on every bug fix (HARD RULE)
+
+A bug fix is not done until the same commit carries a test that **fails before the fix and passes after**, with a comment naming the issue/commit it pins (grep `issue #192` / `#205` in the suites for the shape). "The same bug came back" always means the first fix shipped without its pin. If the bug is environment-shaped (terminal bytes, PATH state, packaged-vs-dev), the pin belongs in `test/behavior/`, not in a mocked unit test — a module mock replaces EVERY export, and a best-effort catch can silently eat the resulting `undefined()` (that exact chain shipped red CI once; see `codex-hook-adapter.test.ts`).
+
+### Coverage gate (per-touched-file, PR CI)
+
+`cd packages/kobe && bun run coverage` writes text + `coverage/coverage-summary.json` (v8). CI's `coverage-cap` job gates PRs: every `packages/kobe/src` file the PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); a file absent from the report counts as 0%. Escape hatch: a `coverage-exemption: <reason>` line in the PR body. Deliberately NO repo-wide % threshold — global bars breed filler tests; the per-touched-file floor ratchets coverage exactly where work happens.
 
 ### When unit tests are still useful
 
