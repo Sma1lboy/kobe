@@ -3,7 +3,7 @@ owner:
   kind: repo
   id: kobe
 domain: promo
-revision: 3
+revision: 4
 accepted:
   - id: cursor-block
     concept: "cursor block"
@@ -104,15 +104,27 @@ accepted:
     size: [1024, 1024]
     checksum_sha256: 9bb8d7133a9956ad24dfb80b7950c36c2e8e0501ede03ff52f19c00d1e915b96
     accepted_at: "2026-06-30"
-  - id: kobe-intro
-    concept: "kobe-intro 34s vertical promo (voiceover storyboard, 6 scenes + real-TUI replay)"
+  - id: kobe-intro-v1-silent
+    concept: "kobe-intro 34s vertical promo, silent cut (superseded by kobe-intro v2 voiced)"
     round: "round 1"
+    modality: video
+    asset_type: promo-video
+    path: public/assets/video/kobe-intro-v1-silent.mp4
+    source: .studio/out/kobe-intro/out/kobe-intro.mp4
+    mime_type: video/mp4
+    size: [1080, 1920]
+    duration_seconds: 34.0
+    checksum_sha256: c87604dadc577d67ea00ef4dad550c3959686cf6770ed763114ae50311c4685b
+    accepted_at: "2026-07-02"
+  - id: kobe-intro
+    concept: "kobe-intro 54s vertical promo v2 — ElevenLabs voiceover (Daniel), Floating Cities bgm (CC-BY Kevin MacLeod), scene bounds derived from measured TTS durations"
+    round: "round 2 · voiced"
     modality: video
     asset_type: promo-video
     path: public/assets/video/kobe-intro.mp4
     source: .studio/out/kobe-intro/out/kobe-intro.mp4
     mime_type: video/mp4
     size: [1080, 1920]
-    duration_seconds: 34.0
-    checksum_sha256: c87604dadc577d67ea00ef4dad550c3959686cf6770ed763114ae50311c4685b
+    duration_seconds: 54.0
+    checksum_sha256: d96108b738f61511a31aa49a89d2aa79d096ab72f05df91896896d176e065a02
     accepted_at: "2026-07-02"
