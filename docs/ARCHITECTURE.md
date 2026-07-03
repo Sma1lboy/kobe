@@ -189,8 +189,8 @@ read the ref before deciding to deviate further.
 The product center is the tmux-native workspace reached by Handover:
 `kobe` attaches straight into the active Task's tmux Session
 (`src/tui/direct.ts`). The opentui outer monitor (`app.tsx`, with its
-Live Preview / Cost Dashboard Workspace) was retired in 2026-06 — see
-`docs/design/app-retirement.md` for the inventory and decisions. The
+Live Preview / Cost Dashboard Workspace) was retired in 2026-06 (the
+inventory/decision record `docs/design/app-retirement.md` is in git history). The
 Sidebar component (`src/tui/panes/sidebar/` — Working / Archives split,
 PROJECTS + TASKS sections, default/recent sort, row-view logic in
 `row-view.ts`) lives on inside the Tasks pane.
