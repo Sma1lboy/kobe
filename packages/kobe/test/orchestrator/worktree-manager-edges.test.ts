@@ -51,12 +51,8 @@ describe("create() conflicts", () => {
   })
 
   it("rejects relative paths outright", async () => {
-    await expect(manager.create("relative/repo", "b", join(root, "x"))).rejects.toThrow(
-      /absolute path/,
-    )
-    await expect(manager.create(repo, "b", "relative/wt")).rejects.toThrow(
-      /absolute path/,
-    )
+    await expect(manager.create("relative/repo", "b", join(root, "x"))).rejects.toThrow(/absolute path/)
+    await expect(manager.create(repo, "b", "relative/wt")).rejects.toThrow(/absolute path/)
   })
 })
 

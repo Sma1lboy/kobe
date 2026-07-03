@@ -9,7 +9,6 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import type { KeyEvent } from "../../src/tui/lib/keymap"
 
 const captured = vi.hoisted(() => ({
   config: null as null | (() => { enabled: boolean; bindings: unknown }),
@@ -23,7 +22,8 @@ vi.mock("../../src/tui/lib/keymap", () => ({
 
 const { TAB_ORDER, useFileTreeBindings } = await import("../../src/tui/panes/filetree/keys")
 
-type Handler = (evt: KeyEvent, slot?: number) => void
+type KeyEvt = Parameters<import("../../src/tui/lib/keymap-dispatch").Binding["cmd"]>[0]
+type Handler = (evt: KeyEvt, slot?: number) => void
 
 function makeController() {
   return {
@@ -57,7 +57,7 @@ function press(map: Map<string, { cmd: Handler; slot?: number }>, key: string): 
   b?.cmd(evt, b.slot)
 }
 
-const evt = {} as KeyEvent
+const evt = {} as KeyEvt
 
 beforeEach(() => {
   captured.config = null
@@ -105,7 +105,7 @@ describe("useFileTreeBindings", () => {
 
   test("files.tab no-ops when the current tab isn't in TAB_ORDER", () => {
     const ctrl = makeController()
-    ctrl.currentTab.mockReturnValue("bogus" as unknown as (typeof TAB_ORDER)[number])
+    ctrl.currentTab.mockReturnValue("bogus" as unknown as "all")
     const h = bindingsFor(ctrl)
     press(h, "]")
     expect(ctrl.setTab).not.toHaveBeenCalled()

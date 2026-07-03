@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
     supportsHooks: vi.fn(() => true),
     supportsWorktreeSync: vi.fn(() => true),
     activityDetailFromPayload: vi.fn(() => undefined as unknown),
-    globalSettingsPath: vi.fn(() => "/fake/.claude/settings.json"),
+    globalSettingsPath: vi.fn((): string | null => "/fake/.claude/settings.json"),
     installActivityHooks: vi.fn(),
     installWorktreeWatchHook: vi.fn(),
     removeWorktreeSyncHook: vi.fn(),
@@ -171,9 +171,7 @@ describe("kobe hook setup (deprecated cleanup)", () => {
     const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     setPersistedString("externalWorktreeSync", "repo:/proj/app")
     await runHookSubcommand(["setup"])
-    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(
-      resolve("/proj/app", ".claude", "settings.json"),
-    )
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(resolve("/proj/app", ".claude", "settings.json"))
     // The global settings are always swept too.
     expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(join(homedir(), ".claude", "settings.json"))
     expect(getPersistedString("externalWorktreeSync")).toBe("off")

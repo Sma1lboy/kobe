@@ -74,7 +74,7 @@ vi.mock("../../src/tmux/client", async (importOriginal) => {
         return { code: 0, stdout: state.hiddenSessionRoles.join("\n") }
       }
       if (cmd === "list-windows" && format === "#{window_active}\t#{window_id}") {
-        return { code: 0, stdout: `1\t@1` }
+        return { code: 0, stdout: "1\t@1" }
       }
       if (cmd === "list-windows" && format === "#{window_index}") return { code: 0, stdout: "" }
       if (cmd === "list-windows" && format === "#{window_id}") {

@@ -7,7 +7,7 @@
  * concrete RemoteOrchestrator class.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const fake = vi.hoisted(() => ({
   confirmAnswer: true as boolean | undefined,
@@ -55,7 +55,7 @@ function makeRenderer() {
 }
 
 let exitSpy: ReturnType<typeof vi.fn>
-let stderrSpy: ReturnType<typeof vi.spyOn>
+let stderrSpy: MockInstance
 
 beforeEach(() => {
   fake.confirmAnswer = true
@@ -113,9 +113,11 @@ describe("confirmResetState", () => {
 
   test("a throwing renderer.destroy never blocks the reset", async () => {
     const kv = makeKv()
-    const renderer = { destroy: () => {
-      throw new Error("renderer boom")
-    } } as unknown as Renderer
+    const renderer = {
+      destroy: () => {
+        throw new Error("renderer boom")
+      },
+    } as unknown as Renderer
     await expect(actions.confirmResetState(dialog, kv, renderer)).rejects.toThrow("exit sentinel")
     expect(exitSpy).toHaveBeenCalledWith(0)
   })

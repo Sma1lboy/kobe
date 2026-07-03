@@ -26,7 +26,13 @@ afterEach(() => {
 
 describe("TaskIndexStore.remove", () => {
   it("removes the task from cache AND disk", async () => {
-    const task = await store.create({ repo: "/repo", title: "t" })
+    const task = await store.create({
+      repo: "/repo",
+      title: "t",
+      branch: "kobe/t",
+      worktreePath: "/repo/wt",
+      status: "backlog",
+    })
     await store.remove(task.id)
     expect(store.list().some((t) => t.id === task.id)).toBe(false)
 
@@ -36,7 +42,13 @@ describe("TaskIndexStore.remove", () => {
   })
 
   it("a stale concurrent writer cannot resurrect a removed task (tombstone)", async () => {
-    const task = await store.create({ repo: "/repo", title: "t" })
+    const task = await store.create({
+      repo: "/repo",
+      title: "t",
+      branch: "kobe/t",
+      worktreePath: "/repo/wt",
+      status: "backlog",
+    })
     // A second store still holding the task in memory…
     const stale = new TaskIndexStore({ homeDir: home })
     await stale.load()
@@ -59,7 +71,7 @@ describe("TaskIndexStore.remove", () => {
   })
 
   it("_unlinkForTests wipes disk + memory and tolerates already-gone files", async () => {
-    await store.create({ repo: "/repo", title: "t" })
+    await store.create({ repo: "/repo", title: "t", branch: "kobe/t", worktreePath: "/repo/wt", status: "backlog" })
     await store._unlinkForTests()
     await store._unlinkForTests() // idempotent — ENOENT tolerated
     await store.load()

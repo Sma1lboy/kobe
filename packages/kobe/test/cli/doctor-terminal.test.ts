@@ -8,7 +8,12 @@
 
 import { EventEmitter } from "node:events"
 import { describe, expect, test, vi } from "vitest"
-import { kittyProbeLine, parseKittyProbeReply, probeKittyKeyboard, terminalEnvLines } from "../../src/cli/doctor-terminal"
+import {
+  kittyProbeLine,
+  parseKittyProbeReply,
+  probeKittyKeyboard,
+  terminalEnvLines,
+} from "../../src/cli/doctor-terminal"
 
 describe("terminalEnvLines", () => {
   test("formats TERM / TERM_PROGRAM(+version) / COLORTERM and tmux nesting", () => {
@@ -84,10 +89,7 @@ describe("probeKittyKeyboard (live probe against a fake tty)", () => {
     return { stdin, stdout, writes }
   }
 
-  async function withFakeTty<T>(
-    tty: { stdin: unknown; stdout: unknown },
-    run: () => Promise<T>,
-  ): Promise<T> {
+  async function withFakeTty<T>(tty: { stdin: unknown; stdout: unknown }, run: () => Promise<T>): Promise<T> {
     const stdinDesc = Object.getOwnPropertyDescriptor(process, "stdin")
     const stdoutDesc = Object.getOwnPropertyDescriptor(process, "stdout")
     Object.defineProperty(process, "stdin", { value: tty.stdin, configurable: true })

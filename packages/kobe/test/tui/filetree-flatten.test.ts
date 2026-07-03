@@ -11,7 +11,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { type Row, type TreeNode, flattenTree, statusRows, truncatePathTail } from "../../src/tui/panes/filetree/rows.ts"
+import type { TreeNode } from "../../src/tui/panes/filetree/git.ts"
+import { type Row, flattenTree, statusRows, truncatePathTail } from "../../src/tui/panes/filetree/rows.ts"
 import { readWorktreeChanges } from "../../src/tui/panes/sidebar/worktree-changes.ts"
 
 describe("flattenTree", () => {

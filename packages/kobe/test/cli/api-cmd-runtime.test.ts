@@ -18,6 +18,11 @@ const mocks = vi.hoisted(() => ({
   switchClientBeforeKill: vi.fn(),
   killSession: vi.fn(),
   submitFeedback: vi.fn(),
+  ensureSession: vi.fn(),
+  resolveEngineLaunchInit: vi.fn(),
+  waitForEnginePane: vi.fn(),
+  pasteAndSubmit: vi.fn(),
+  interactiveEngineCommand: vi.fn(),
 }))
 
 vi.mock("../../src/state/repos.ts", async (importOriginal) => {
@@ -48,7 +53,21 @@ vi.mock("../../src/lib/feedback.ts", () => ({
   submitFeedback: mocks.submitFeedback,
 }))
 
-import { defaultApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
+// The realPromptDeliveryOps seams: the session builder + repo-init are
+// lazy-imported (so `kobe api list` never loads the TUI pane stack); the
+// pane wait / paste and the engine command are static imports.
+vi.mock("../../src/tui/panes/terminal/tmux.ts", () => ({ ensureSession: mocks.ensureSession }))
+vi.mock("../../src/state/repo-init.ts", () => ({ resolveEngineLaunchInit: mocks.resolveEngineLaunchInit }))
+vi.mock("../../src/tmux/prompt-delivery.ts", () => ({
+  waitForEnginePane: mocks.waitForEnginePane,
+  pasteAndSubmit: mocks.pasteAndSubmit,
+}))
+vi.mock("../../src/engine/interactive-command.ts", () => ({
+  interactiveEngineCommand: mocks.interactiveEngineCommand,
+}))
+
+import { defaultApiRuntime, deliverPrompt, invokeVerb } from "../../src/cli/api-cmd.ts"
+import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 import { tmuxSessionName } from "../../src/tmux/client.ts"
 
 beforeEach(() => {
@@ -59,6 +78,11 @@ beforeEach(() => {
   mocks.switchClientBeforeKill.mockReset().mockResolvedValue(undefined)
   mocks.killSession.mockReset().mockResolvedValue(undefined)
   mocks.submitFeedback.mockReset().mockReturnValue({ url: "https://github.com/d/1", number: 1 })
+  mocks.ensureSession.mockReset().mockResolvedValue(true)
+  mocks.resolveEngineLaunchInit.mockReset().mockResolvedValue({ initScript: "./setup.sh" })
+  mocks.waitForEnginePane.mockReset().mockResolvedValue({ pane: "%7", ready: true })
+  mocks.pasteAndSubmit.mockReset().mockResolvedValue(undefined)
+  mocks.interactiveEngineCommand.mockReset().mockReturnValue(["claude", "--continue"])
 })
 
 afterEach(() => {
@@ -113,6 +137,39 @@ describe("defaultApiRuntime", () => {
     await expect(defaultApiRuntime.tearDownSession("t1")).resolves.toBeUndefined()
     // The kill is still attempted even when the switch failed.
     expect(mocks.killSession).toHaveBeenCalledWith(tmuxSessionName("t1"))
+  })
+})
+
+describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
+  const client: DaemonRpc = {
+    request: async () => {
+      throw new Error("no RPC expected — the target already has a worktree")
+    },
+    subscribe: async () => ({}),
+    onChannel: () => () => {},
+  }
+
+  it("builds a fresh session through the lazily-imported builder, with repo-init + the engine command", async () => {
+    mocks.sessionExists.mockResolvedValue(false)
+    const result = await deliverPrompt(
+      client,
+      { id: "t1", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x" },
+      "go",
+    )
+    // repo-init resolved for the worktree (explicit prompt wins → intent none).
+    expect(mocks.resolveEngineLaunchInit).toHaveBeenCalledWith("/repo/x", "/wt/t1", { kind: "none" })
+    expect(mocks.interactiveEngineCommand).toHaveBeenCalledWith("claude")
+    expect(mocks.ensureSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: tmuxSessionName("t1"),
+        cwd: "/wt/t1",
+        command: ["claude", "--continue"],
+        launchInit: { initScript: "./setup.sh" },
+      }),
+    )
+    expect(mocks.waitForEnginePane).toHaveBeenCalledWith(tmuxSessionName("t1"), true)
+    expect(mocks.pasteAndSubmit).toHaveBeenCalledWith("%7", "go")
+    expect(result).toEqual({ session: tmuxSessionName("t1"), pane: "%7", started: true, engineReady: true })
   })
 })
 

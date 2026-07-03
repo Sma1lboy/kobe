@@ -22,10 +22,16 @@ const mocks = vi.hoisted(() => ({
 }))
 
 // promptHidden reads the password through readline against the real tty;
-// answer it synchronously so no test ever blocks on stdin.
+// answer it synchronously so no test ever blocks on stdin. Before answering,
+// poke the echo-mask hook the way readline would while the user types, so
+// the muting seam is exercised too.
 vi.mock("node:readline", () => ({
   createInterface: vi.fn(() => ({
-    question: (_q: string, cb: (answer: string) => void) => cb(mocks.passwordAnswer),
+    question: (_q: string, cb: (answer: string) => void) => {
+      const out = process.stdout as NodeJS.WriteStream & { _writeToOutput?: (s: string) => void }
+      out._writeToOutput?.("echoed-while-typing")
+      cb(mocks.passwordAnswer)
+    },
     close: vi.fn(),
   })),
 }))

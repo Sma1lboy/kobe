@@ -235,6 +235,26 @@ describe("runWebSubcommand full launch", () => {
     expect(spawnCalls.find((c) => c.cmd[0] === "node")).toBeUndefined()
   })
 
+  it("still launches when the lsof port scan itself fails (no pids → nothing to kill)", async () => {
+    routeFetch({
+      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:5174/": { ok: true },
+      "localhost:5176/__kobe_web": { body: "kobe-web" }, // a stale kobe-web answers…
+    })
+    // …but lsof is unavailable — pidsOnPort degrades to [] instead of crashing.
+    const bunSpawn = (globalThis as unknown as { Bun: { spawn: ReturnType<typeof vi.fn> } }).Bun.spawn
+    bunSpawn.mockImplementation((cmd: string[], opts?: Record<string, unknown>) => {
+      spawnCalls.push({ cmd, opts })
+      if (cmd[0] === "lsof") throw new Error("lsof: command not found")
+      return ptyProc
+    })
+    void runWebSubcommand([])
+    await vi.waitFor(() => {
+      expect(out()).toContain("kobe web → http://localhost:5174")
+    })
+    expect(killSpy).not.toHaveBeenCalled()
+  })
+
   it("an unexpected PTY sidecar exit tears the command down with exit 1", async () => {
     routeFetch({
       "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
