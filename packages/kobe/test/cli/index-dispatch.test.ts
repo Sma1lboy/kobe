@@ -268,8 +268,28 @@ describe("in-session handlers (new-chattab / focus-tasks / layout / kill-session
   })
 
   test("quick-create requires --session and then delegates", async () => {
+    await runCli("quick-create")
+    expect(errorSpy).toHaveBeenCalledWith("kobe quick-create: --session <name> is required")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.quickCreate).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
     await runCli("quick-create", "--session", "kobe-t1")
     expect(spies.quickCreate).toHaveBeenCalledWith("kobe-t1")
+  })
+
+  test("focus-tasks without --session errors with exit 2", async () => {
+    await runCli("focus-tasks")
+    expect(errorSpy).toHaveBeenCalledWith("kobe focus-tasks: --session <name> is required")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.selectTasksPane).not.toHaveBeenCalled()
+  })
+
+  test("layout without --session errors with exit 2 before validating the action", async () => {
+    await runCli("layout", "--action", "ops-toggle")
+    expect(errorSpy).toHaveBeenCalledWith("kobe layout: --session <name> is required")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.runLayoutAction).not.toHaveBeenCalled()
   })
 
   test("kill-sessions TERMs every pane group BEFORE killing the server", async () => {
@@ -279,5 +299,11 @@ describe("in-session handlers (new-chattab / focus-tasks / layout / kill-session
     const termOrder = spies.termAllPaneGroups.mock.invocationCallOrder[0] ?? 0
     const killOrder = spies.runTmux.mock.invocationCallOrder[0] ?? 0
     expect(termOrder).toBeLessThan(killOrder)
+  })
+
+  test("kill-sessions reports 'no sessions' when the server wasn't running", async () => {
+    spies.runTmux.mockResolvedValueOnce(1)
+    await runCli("kill-sessions")
+    expect(logSpy.mock.calls.map((c) => String(c[0])).join("\n")).toContain("no tmux sessions to kill")
   })
 })

@@ -87,6 +87,23 @@ describe("runReloadSubcommand", () => {
     expect(mocks.refreshKobeWorkspacePanes).not.toHaveBeenCalled()
   })
 
+  it("--help spellings all print usage", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    await runReloadSubcommand(["help"])
+    expect(writeSpy.mock.calls.join("")).toContain("Usage: kobe reload")
+  })
+
+  it("reports no sessions when list-sessions succeeds but prints only whitespace", async () => {
+    mocks.bunSpawn.mockImplementation((_cmd: string[]) => ({
+      stdout: new Response("\n   \n").body,
+      exited: Promise.resolve(0),
+      kill: vi.fn(),
+    }))
+    await runReloadSubcommand([])
+    expect(output()).toContain("no kobe tmux sessions")
+    expect(mocks.refreshKobeWorkspacePanes).not.toHaveBeenCalled()
+  })
+
   it("reports no sessions when list-sessions exits non-zero", async () => {
     mocks.bunSpawn.mockImplementation((_cmd: string[]) => ({
       stdout: new Response("").body,

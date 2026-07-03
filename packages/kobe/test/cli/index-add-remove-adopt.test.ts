@@ -155,9 +155,48 @@ describe("kobe add", () => {
     expect(fake.addSavedRepo).toHaveBeenCalled()
     expect(exitSpy).not.toHaveBeenCalled()
   })
+
+  test("an already-saved repo says so instead of re-adding", async () => {
+    fake.addSavedRepo.mockImplementationOnce((p: string) => ({ added: false, path: p, total: 3 }))
+    await runCli("add", "/repo")
+    expect(logText()).toContain("already saved: /repo")
+    expect(logText()).not.toContain("added /repo")
+  })
+
+  test("adopts through a RUNNING daemon when one is up (live TUI updates)", async () => {
+    fake.adoptable = [{ path: "/repo/wt-a", branch: "kobe/a" }]
+    const request = vi.fn(async () => ({ task: { id: "d1", title: "via-daemon" } }))
+    const close = vi.fn()
+    fake.daemonClient = { request, close }
+    await runCli("add", "/repo")
+    expect(request).toHaveBeenCalledWith("worktree.adopt", {
+      repo: "/repo",
+      worktreePath: "/repo/wt-a",
+      branch: "kobe/a",
+      vendor: "claude",
+    })
+    expect(close).toHaveBeenCalled()
+    // The in-process orchestrator write path is NOT used when the daemon answers.
+    expect(fake.adoptWorktree).not.toHaveBeenCalled()
+    expect(logText()).toContain("adopted kobe/a → task d1 (via-daemon)")
+  })
 })
 
 describe("kobe remove", () => {
+  test("--help prints usage without forgetting anything", async () => {
+    fake.savedRepos = ["/repo"]
+    await runCli("remove", "--help")
+    expect(stdoutSpy.mock.calls.map((c) => String(c[0])).join("")).toContain("Usage: kobe remove")
+    expect(fake.forgetProject).not.toHaveBeenCalled()
+  })
+
+  test("rejects an unknown flag with exit 2 and the usage text", async () => {
+    await runCli("remove", "--frobnicate")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(stderrText()).toContain('unknown flag "--frobnicate"')
+    expect(stderrText()).toContain("Usage: kobe remove")
+  })
+
   test("with nothing saved, says so and exits cleanly", async () => {
     await runCli("remove", "/repo")
     expect(logText()).toContain("no saved projects to remove")
@@ -250,5 +289,18 @@ describe("kobe adopt", () => {
     await runCli("adopt", "--repo")
     expect(exitSpy).toHaveBeenCalledWith(2)
     expect(stderrText()).toContain("--repo requires a value")
+  })
+
+  test("--vendor without a value is a usage error", async () => {
+    await runCli("adopt", "--vendor")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(stderrText()).toContain("--vendor requires a value")
+  })
+
+  test("--help prints usage without scanning anything", async () => {
+    await runCli("adopt", "--help")
+    expect(stdoutSpy.mock.calls.map((c) => String(c[0])).join("")).toContain("Usage: kobe adopt")
+    expect(fake.adoptWorktree).not.toHaveBeenCalled()
+    expect(exitSpy).not.toHaveBeenCalled()
   })
 })

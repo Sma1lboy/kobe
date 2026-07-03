@@ -36,8 +36,8 @@ vi.mock("../../src/engine/hook-adapter.ts", () => ({
   createEngineHookAdapter: vi.fn(() => mocks.adapter),
 }))
 
-import { runHookSubcommand } from "../../src/cli/hook-cmd.ts"
-import { getPersistedString } from "../../src/state/repos.ts"
+import { ensureGlobalKobeHooks, runHookSubcommand } from "../../src/cli/hook-cmd.ts"
+import { getPersistedString, setPersistedString } from "../../src/state/repos.ts"
 
 let home: string
 let originalHome: string | undefined
@@ -107,6 +107,28 @@ describe("runHookSubcommand — activity verbs", () => {
     await runHookSubcommand(["turn-complete"])
     expect(mocks.request).not.toHaveBeenCalled()
   })
+
+  it("accepts the --task-id=... equals form", async () => {
+    await runHookSubcommand(["turn-complete", "--task-id=t9"])
+    expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", { taskId: "t9", kind: "turn-complete" })
+  })
+
+  it("treats malformed stdin JSON as an empty payload (cwd falls back to the process)", async () => {
+    vi.stubGlobal("Bun", { stdin: { text: () => Promise.resolve("{not json") } })
+    await runHookSubcommand(["turn-complete"])
+    expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", { cwd: process.cwd(), kind: "turn-complete" })
+  })
+
+  it("treats a non-object JSON payload (array) as empty too", async () => {
+    vi.stubGlobal("Bun", { stdin: { text: () => Promise.resolve("[1,2,3]") } })
+    await runHookSubcommand(["turn-complete"])
+    expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", { cwd: process.cwd(), kind: "turn-complete" })
+  })
+
+  it("swallows a daemon connect failure — a hook must never fail the engine", async () => {
+    mocks.connectIfRunning.mockRejectedValue(new Error("socket exploded"))
+    await expect(runHookSubcommand(["turn-complete"])).resolves.toBeUndefined()
+  })
 })
 
 describe("runHookSubcommand worktree-created", () => {
@@ -143,5 +165,72 @@ describe("kobe hook setup (deprecated cleanup)", () => {
     expect(getPersistedString("externalWorktreeSync")).toBe("off")
     expect(outSpy.mock.calls.join("")).toContain("deprecated")
     outSpy.mockRestore()
+  })
+
+  it("also cleans the repo-scoped path the legacy `repo:<path>` setting pointed at", async () => {
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    setPersistedString("externalWorktreeSync", "repo:/proj/app")
+    await runHookSubcommand(["setup"])
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(
+      resolve("/proj/app", ".claude", "settings.json"),
+    )
+    // The global settings are always swept too.
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(join(homedir(), ".claude", "settings.json"))
+    expect(getPersistedString("externalWorktreeSync")).toBe("off")
+    outSpy.mockRestore()
+  })
+
+  it("cleans a persisted absolute settings path (the current stored form)", async () => {
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    setPersistedString("externalWorktreeSync", "/custom/place/settings.json")
+    await runHookSubcommand(["setup"])
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith("/custom/place/settings.json")
+    outSpy.mockRestore()
+  })
+
+  it("resolves the legacy `global` form to the global settings path (deduped)", async () => {
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    setPersistedString("externalWorktreeSync", "global")
+    await runHookSubcommand(["setup"])
+    // `global` maps to the same path the default sweep already covers —
+    // the path set is deduped, so every adapter sweeps exactly ONE path.
+    const sweptPaths = new Set(mocks.adapter.removeWorktreeSyncHook.mock.calls.map((c) => String(c[0])))
+    expect([...sweptPaths]).toEqual([join(homedir(), ".claude", "settings.json")])
+    outSpy.mockRestore()
+  })
+})
+
+describe("ensureGlobalKobeHooks (default-ON global install)", () => {
+  it("installs activity + worktree-watch hooks into each engine's own settings file, then cleans the removed WorktreeCreate hook", async () => {
+    await ensureGlobalKobeHooks()
+    expect(mocks.adapter.installActivityHooks).toHaveBeenCalledWith("/fake/.claude/settings.json")
+    expect(mocks.adapter.installWorktreeWatchHook).toHaveBeenCalledWith("/fake/.claude/settings.json")
+    // The WorktreeCreate provider-hook cleanup runs on every launch.
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(join(homedir(), ".claude", "settings.json"))
+    expect(getPersistedString("externalWorktreeSync")).toBe("off")
+  })
+
+  it("skips engines whose adapter has no global settings path", async () => {
+    mocks.adapter.globalSettingsPath.mockReturnValue(null)
+    await ensureGlobalKobeHooks()
+    expect(mocks.adapter.installActivityHooks).not.toHaveBeenCalled()
+    expect(mocks.adapter.installWorktreeWatchHook).not.toHaveBeenCalled()
+    // Cleanup still runs — it doesn't depend on the engine settings path.
+    expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalled()
+  })
+
+  it("never throws when an install fails (best-effort, must not block launch)", async () => {
+    mocks.adapter.installActivityHooks.mockRejectedValue(new Error("EACCES"))
+    await expect(ensureGlobalKobeHooks()).resolves.toBeUndefined()
+  })
+})
+
+describe("runHookSubcommand worktree-created failure swallowing", () => {
+  it("swallows a daemon error mid-reconcile — the Bash hook must exit 0", async () => {
+    stubStdin({ cwd: "/repo", tool_input: { command: "git worktree add wt" } })
+    mocks.request.mockRejectedValue(new Error("daemon blew up"))
+    await expect(runHookSubcommand(["worktree-created"])).resolves.toBeUndefined()
+    // The socket is still closed on the failure path.
+    expect(mocks.close).toHaveBeenCalledTimes(1)
   })
 })
