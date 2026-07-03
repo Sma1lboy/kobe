@@ -39,7 +39,8 @@ const diff = execSync(`git diff --name-only --diff-filter=ACMR origin/${baseRef}
 const touched = diff
   .split("\n")
   .map((l) => l.trim())
-  .filter((f) => /^packages\/kobe\/src\/.*\.(ts|tsx)$/.test(f))
+  // .ts only — .tsx (opentui components) is outside the coverage scope; see vitest.config.ts.
+  .filter((f) => /^packages\/kobe\/src\/.*\.ts$/.test(f))
   .filter((f) => !f.endsWith(".d.ts"))
 
 if (touched.length === 0) {
