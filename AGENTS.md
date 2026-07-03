@@ -69,6 +69,12 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 - 3-strike rule: same root cause fails 3× → stop and surface. Max-depth: 3+ levels of sub-investigation → surface before going deeper.
 - When fixing a feature, scope the requirement explicitly — if a fix applies to one subcommand/file, confirm whether it should extend to all similar cases before declaring it done.
 
+### File size cap: ~500 lines (code-review gate)
+- Every source file should stay at or under ~500 lines.
+- If your change touches a file that is over 500 lines, the change is NOT done until that file is refactored/split back to ~500 or below — touch it → you own shrinking it. CI hard-gates this (`ci.yml` file-size-cap job on touched files) and the Review CI flags it as Blocking.
+- New files must not be born over 500 lines.
+- Exemptions: generated files, lockfiles, snapshots/test fixtures, and `refs/`. A deliberate exception needs a one-line justification in the PR/commit.
+
 ### Don't touch
 - `refs/` — read-only study material, forever.
 - Other agents' worktree slices — coordinate via the orchestrator.

@@ -54,6 +54,7 @@ jobs:
             - Layout must be flex-first (`flexGrow`/`flexShrink`/`flexBasis`); a hardcoded `width={N}`/`height={N}` needs a documented rationale (sidebar rail, fixed terminal glyph, modal overlay).
             - Engine-owned UI data: neutral TUI/web/orchestrator layers must NOT hard-code Claude/Codex strings — name/label/model/capability data comes from the engine registry.
             - No placeholder/stub/TODO implementations; no deletion of files/branches/worktrees unless clearly intended.
+            - **File size cap (HARD RULE):** for every code file this PR adds or modifies, check its post-PR line count (`wc -l`). Any touched file over 500 lines is a **Blocking** finding demanding a refactor/split down to ~500 or below — touching an oversized file means you own shrinking it. Exemptions: generated files, lockfiles, snapshots/test fixtures; a deliberate exception needs an explicit one-line justification in the PR body, otherwise it blocks.
 
             Then assess the PR along these directions and note gaps: (a) correctness/bugs, (b) does it actually resolve the issue/user-story it claims, (c) architecture & code-health fit, (d) feature/UX quality, (e) shipped behavior vs stated intent.
 
