@@ -93,11 +93,18 @@ scratch/approved 目录看 `artifacts.*`。换一个产品 repo,换的是 metada
 
 - **bgm**:`<Audio src={staticFile("bgm.mp3")} volume={0.15} loop />` 作第二音轨;
   有口播时 bgm 压到 0.1–0.2,收尾随片尾 `interpolate` 淡出。
-- **TTS 口播**:三条引擎路线,同一管线(逐镜头 mp3 → ffprobe 实测 → manifest):
-  ① ElevenLabs(质量最高;免费计划只能用 premade 音色,中文有口音,library 中文音色要付费);
-  ② **edge-tts(免费无 key,中文首选)**——`uvx edge-tts --voice zh-CN-YunxiNeural`,原生中文
-  神经音,晓晓/云扬可选;③ 本地零样本克隆(F5-TTS / CosyVoice2,用 5–15s 干净参考音频出
-  自己的声音,免费但要装模型环境)。逐镜头生成后 ffprobe 量实际时长写进 `src/audio-manifest.json`;
+- **TTS 口播**:到口播这步**必须用 AskUserQuestion 问声音路线**——声音是用户的身份,不替用户拍板。
+  选项(默认推荐第一个):
+  1. **默认音色(Recommended)**:edge-tts `zh-CN-YunxiNeural`(免费无 key,原生中文;晓晓/云扬可换)。
+  2. **用自己的声音**:F5-TTS 零样本克隆(`pip install f5-tts`,本地跑)。参考音频约定
+     `~/voice-ref-general.wav`(用户的通用声纹,一次录制处处复用);没有就给用户这套录音引导——
+     **通用参考文案**(内容与产品无关、中英混合覆盖英文音素、含数字与语气变化,~18s,照念,
+     念的英文按用户平时的说法)+ 录音命令
+     `ffmpeg -f avfoundation -i ":0" -t 20 -ar 24000 -ac 1 -y ~/voice-ref-general.wav`。
+     ref_text 必须与实际朗读一字不差;参考里英文样本太少会导致克隆声念英文发飘。
+  3. ElevenLabs(有 key 且要更高质量;免费计划只能用 premade,中文有口音)。
+  4. 无口播(纯字幕 + bgm)。
+  逐镜头生成后 ffprobe 量实际时长写进 `src/audio-manifest.json`;
   composition 从 manifest 反推镜头边界(时长 = 实测 + 呼吸垫,且不低于该镜头最晚内部动效的
   下限),累计取整防漂移。manifest 为 null 时回落 SRT 静音版——同一工程双形态,不分叉项目。
 - **人脸角标(facecam PiP)**:录好的人脸片段用 `<OffthreadVideo>` 挂右下角固定 slot
