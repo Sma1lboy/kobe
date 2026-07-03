@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest"
+import { execFileSync } from "node:child_process"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { handleDiffRequest, mapPool, splitDiffByFile, statusLabel } from "../../src/web/diff.ts"
 
 describe("mapPool", () => {
@@ -257,5 +261,101 @@ describe("handleDiffRequest — input guards", () => {
   it("rejects a non-existent absolute worktreePath with 400", async () => {
     const { req: r, url } = req("/api/diff?worktreePath=/nonexistent-kobe-diff-test-dir-xyz")
     expect((await handleDiffRequest(r, url))?.status).toBe(400)
+  })
+
+  it("rejects a malformed percent-encoded worktreePath with 400", async () => {
+    const url = new URL("http://localhost/api/diff?worktreePath=%")
+    const r = new Request(url)
+    expect((await handleDiffRequest(r, url))?.status).toBe(400)
+  })
+})
+
+/**
+ * End-to-end happy-path coverage against a REAL git repo — this route's whole
+ * job is slicing real `git status`/`git diff` output, so a real repo exercises
+ * the actual porcelain -z parsing, staged/unstaged merge, and untracked-file
+ * synthesized-patch path that the input-guard tests above (by design) never
+ * reach.
+ */
+describe("handleDiffRequest — real repo", () => {
+  let dir: string
+
+  function git(...args: string[]): string {
+    return execFileSync("git", args, { cwd: dir, encoding: "utf8" })
+  }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-diff-test-"))
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    fs.writeFileSync(path.join(dir, "tracked.txt"), "line one\nline two\n")
+    git("add", "tracked.txt")
+    git("commit", "-q", "-m", "initial")
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  function request(): { req: Request; url: URL } {
+    const url = new URL(`http://localhost/api/diff?worktreePath=${encodeURIComponent(dir)}`)
+    return { req: new Request(url), url }
+  }
+
+  it("returns an empty file list for a clean worktree", async () => {
+    const { req, url } = request()
+    const res = await handleDiffRequest(req, url)
+    expect(res?.status).toBe(200)
+    const body = await res!.json()
+    expect(body.files).toEqual([])
+    expect(body.raw).toBe("")
+  })
+
+  it("reports an unstaged modification with its patch and staged:false", async () => {
+    fs.writeFileSync(path.join(dir, "tracked.txt"), "line one\nline TWO\n")
+    const { req, url } = request()
+    const body = await (await handleDiffRequest(req, url))!.json()
+    expect(body.files).toEqual([{ path: "tracked.txt", status: "modified", staged: false, patch: expect.any(String) }])
+    expect(body.files[0].patch).toContain("+line TWO")
+    expect(body.raw).toContain("+line TWO")
+  })
+
+  it("reports a staged addition as staged:true", async () => {
+    fs.writeFileSync(path.join(dir, "staged.txt"), "hello\n")
+    git("add", "staged.txt")
+    const { req, url } = request()
+    const body = await (await handleDiffRequest(req, url))!.json()
+    expect(body.files).toEqual([{ path: "staged.txt", status: "added", staged: true, patch: expect.any(String) }])
+    expect(body.files[0].patch).toContain("+hello")
+  })
+
+  it("synthesizes an all-added patch for an untracked file", async () => {
+    fs.writeFileSync(path.join(dir, "new.txt"), "brand new\n")
+    const { req, url } = request()
+    const body = await (await handleDiffRequest(req, url))!.json()
+    expect(body.files).toEqual([{ path: "new.txt", status: "untracked", staged: false, patch: expect.any(String) }])
+    expect(body.files[0].patch).toContain("+brand new")
+  })
+
+  it("shows both hunks when a tracked file has staged AND unstaged changes", async () => {
+    fs.writeFileSync(path.join(dir, "tracked.txt"), "line one\nSTAGED\n")
+    git("add", "tracked.txt")
+    fs.writeFileSync(path.join(dir, "tracked.txt"), "line one\nUNSTAGED\n")
+    const { req, url } = request()
+    const body = await (await handleDiffRequest(req, url))!.json()
+    expect(body.files).toHaveLength(1)
+    expect(body.files[0].path).toBe("tracked.txt")
+    expect(body.files[0].patch).toContain("STAGED")
+    expect(body.files[0].patch).toContain("UNSTAGED")
+  })
+
+  it("sorts files alphabetically by path and covers a delete", async () => {
+    fs.rmSync(path.join(dir, "tracked.txt"))
+    fs.writeFileSync(path.join(dir, "a-new.txt"), "x\n")
+    const { req, url } = request()
+    const body = await (await handleDiffRequest(req, url))!.json()
+    expect(body.files.map((f: { path: string }) => f.path)).toEqual(["a-new.txt", "tracked.txt"])
+    expect(body.files[1].status).toBe("deleted")
   })
 })

@@ -322,7 +322,7 @@ describe("deleteHistory (real temp rollout tree)", () => {
     await mkdir(dayDir, { recursive: true })
     const fname = `rollout-2026-01-01T00-00-00-${SID}.jsonl`
     const file = path.join(dayDir, fname)
-    await writeFile(file, JSON.stringify({ type: "session_meta", payload: { id: SID, cwd: "/wt" } }) + "\n")
+    await writeFile(file, `${JSON.stringify({ type: "session_meta", payload: { id: SID, cwd: "/wt" } })}\n`)
     const { readdir: realReaddir } = await import("node:fs/promises")
     const deps: HistoryDeps = {
       sessionsDir: () => tmpRoot,
