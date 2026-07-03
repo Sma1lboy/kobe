@@ -114,7 +114,8 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 out/<name>.mp4
 |---|---|---|
 | 镜头间配色漂移 | 组件里写了字面 hex | 只从 theme.ts import;review 时 grep hex |
 | 音画错位越到后面越大 | 逐镜头取整帧数再求和 | 帧数从累计时间点取整,时长=相邻差 |
-| TTS 对不上字幕 | 拿预估时长硬套 SRT | 以 TTS 实际时长反推镜头边界 |
+| TTS 对不上字幕 | 拿预估时长硬套 SRT | 以 TTS 实际时长反推镜头边界(kobe-intro 实测:预估 34s,实说 50.4s) |
+| ElevenLabs 402 paid_plan_required | 免费计划不能用 library voice | 先 GET /v1/voices,选 category=premade 的音色 |
 | 字体闪换/缺字 | 系统字体不确定 | `@remotion/google-fonts` 显式加载 |
 | replay 镜头过期 | UI 改了没重跑 capture | 重跑 capture 再 render,别手改 frames.json |
 | 相机框错主体/抖动 | region/权重没调对 | 按 replay-capture.md 的 tuning knobs 顺序调 |
