@@ -39,3 +39,18 @@ export function kobeCliInvocation(): string[] {
   const preload = fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
   return [process.execPath, "--preload", preload, "--conditions=browser", entry]
 }
+
+/**
+ * argv prefix for commands PERSISTED into global config (engine hook files in
+ * `~/.claude` / `~/.codex`). Unlike {@link kobeCliInvocation}, a persisted
+ * command outlives this process — a dev-run absolute entry path (often inside
+ * a task worktree) goes stale the moment that worktree is removed, and every
+ * hook fire then fails with "Module not found". So prefer the packaged `kobe`
+ * on PATH even in dev; fall back to the dev invocation only when no packaged
+ * bin exists.
+ */
+export function kobeHookInvocation(): string[] {
+  if (import.meta.url.endsWith(".js")) return ["kobe"]
+  if (Bun.which("kobe")) return ["kobe"]
+  return kobeCliInvocation()
+}

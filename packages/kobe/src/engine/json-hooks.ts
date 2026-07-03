@@ -15,7 +15,7 @@
  * vendor's event-name vocabulary. Pure (no I/O), so it's unit-tested directly.
  */
 
-import { kobeCliInvocation } from "../cli/invocation.ts"
+import { kobeHookInvocation } from "../cli/invocation.ts"
 import { shellQuoteArgv } from "../tmux/session-layout.ts"
 import type { EngineActivityKind } from "./hook-events.ts"
 
@@ -58,7 +58,7 @@ function isKobeActivityGroup(group: unknown, markers: readonly string[]): boolea
  *  `kobe hook <verb>` (cwd-based; no task id). `inv` is injectable for tests. */
 export function buildActivityHooks(
   eventMap: readonly HookEventSpec[],
-  inv: readonly string[] = kobeCliInvocation(),
+  inv: readonly string[] = kobeHookInvocation(),
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const { event, matcher, verb } of eventMap) {
@@ -80,7 +80,7 @@ export function mergeActivityHooks(
   current: Record<string, unknown>,
   install: boolean,
   eventMap: readonly HookEventSpec[],
-  inv: readonly string[] = kobeCliInvocation(),
+  inv: readonly string[] = kobeHookInvocation(),
 ): Record<string, unknown> {
   const markers = activityMarkers(eventMap)
   const { hooks: rawHooks, ...restSettings } = current
@@ -103,7 +103,7 @@ export function mergeActivityHooks(
  * a task. A pure observer (fires AFTER the tool), so its presence never changes
  * git/`--worktree` behaviour.
  */
-export function buildWorktreeWatchHook(inv: readonly string[] = kobeCliInvocation()): Record<string, unknown> {
+export function buildWorktreeWatchHook(inv: readonly string[] = kobeHookInvocation()): Record<string, unknown> {
   const command = shellQuoteArgv([...inv, "hook", WORKTREE_WATCH_MARKER])
   return { [WORKTREE_WATCH_EVENT]: [{ matcher: WORKTREE_WATCH_MATCHER, hooks: [{ type: "command", command }] }] }
 }
@@ -124,7 +124,7 @@ function isKobeWorktreeWatchGroup(group: unknown): boolean {
 export function mergeWorktreeWatchHook(
   current: Record<string, unknown>,
   install: boolean,
-  inv: readonly string[] = kobeCliInvocation(),
+  inv: readonly string[] = kobeHookInvocation(),
 ): Record<string, unknown> {
   const { hooks: rawHooks, ...restSettings } = current
   const hooks: Record<string, unknown> = isObject(rawHooks) ? { ...rawHooks } : {}
