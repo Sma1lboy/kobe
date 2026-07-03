@@ -43,6 +43,7 @@ import { resolve } from "node:path"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../lib/feedback.ts"
+import { expandTilde } from "../lib/path-home.ts"
 import type { EngineLaunchInit, PromptDeliveryIntent } from "../state/repo-init.ts"
 import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
@@ -652,15 +653,15 @@ class VerbArgs {
     return n
   }
 
-  /** Optional PATH flag resolved against $PWD. */
+  /** Optional PATH flag resolved against $PWD (with a leading `~` expanded first). */
   path(name: string): string | undefined {
     const v = this.str(name)
-    return v === undefined ? undefined : resolve(process.cwd(), v)
+    return v === undefined ? undefined : resolve(process.cwd(), expandTilde(v))
   }
 
-  /** Required PATH flag resolved against $PWD. */
+  /** Required PATH flag resolved against $PWD (with a leading `~` expanded first). */
   requirePath(name: string): string {
-    return resolve(process.cwd(), this.require(name))
+    return resolve(process.cwd(), expandTilde(this.require(name)))
   }
 }
 
