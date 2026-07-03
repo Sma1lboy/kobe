@@ -154,15 +154,12 @@ jobs:
         working-directory: packages/kobe
         run: bun run coverage
 
-      - name: Upload coverage to Codecov
-        # Tokenless works for public repos; if uploads start 429ing, add a
-        # CODECOV_TOKEN repo secret and it gets picked up automatically.
+      - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/kobe/coverage/lcov.info
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Touched files must meet the coverage floor
         if: github.event_name == 'pull_request'
