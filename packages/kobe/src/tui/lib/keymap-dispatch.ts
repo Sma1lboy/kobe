@@ -57,6 +57,17 @@ export function matchKey(evt: KeyEvent): string[] {
   if (name === "return") base.push("enter")
   if (name === "enter") base.push("return")
 
+  // Legacy C0 fallback (issue #192). Terminals without the kitty keyboard
+  // protocol (macOS Terminal.app) send ctrl+h as raw 0x08 and ctrl+j as raw
+  // 0x0a, which opentui's legacy parser surfaces as {name:"backspace"} /
+  // {name:"linefeed"} with ctrl=false — so `ctrl+h`/`ctrl+j` chords (pane
+  // focus) were dead there while ctrl+k/ctrl+l (0x0b/0x0c) worked. Alias the
+  // two ambiguous bytes back to their chord names. The real Backspace key
+  // sends 0x7f, so it never aliases; a terminal configured to "Backspace
+  // sends ^H" trades deletion for pane focus, same as kitty-mode terminals.
+  if (name === "backspace" && evt.raw === "\b" && !evt.meta && !evt.option) base.push("ctrl+h")
+  if (name === "linefeed" && !evt.meta && !evt.option) base.push("ctrl+j")
+
   // Modifier mapping rules (the *only* place chord prefixes are minted):
   //   - `evt.ctrl`   → `ctrl+`. Universal across terminals.
   //   - `evt.meta`   → `cmd+`. The Command key on macOS / Win key on Windows.
@@ -123,6 +134,7 @@ export function dispatchKeyEvent(
     defaultPrevented: boolean
     preventDefault(): void
     name?: string
+    raw?: string
     ctrl?: boolean
     meta?: boolean
     option?: boolean

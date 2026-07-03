@@ -35,6 +35,7 @@ import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { KOBE_TMUX_SOCKET, termAllPaneGroups, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
 import { CURRENT_VERSION } from "../version.ts"
+import { terminalDoctorLines } from "./doctor-terminal.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
  *  alive but owned by someone else. */
@@ -159,7 +160,18 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   const tasksPath = join(kobeStateDir(), "tasks.json")
   const statePath = kvStatePath()
 
-  const out: string[] = ["kobe doctor", `  home:   ${homeDir()}`, `  socket: ${socketPath}`, ""]
+  const out: string[] = [
+    "kobe doctor",
+    `  build:  v${CURRENT_VERSION} (${process.platform} ${process.arch}, bun ${Bun.version})`,
+    `  home:   ${homeDir()}`,
+    `  socket: ${socketPath}`,
+    "",
+  ]
+
+  // --- Terminal ---------------------------------------------------------
+  // Keyboard bugs are terminal-dependent (issue #192): capture what the
+  // reporter's terminal is and whether kobe sees the kitty keyboard protocol.
+  out.push(...(await terminalDoctorLines()), "")
 
   // --- Daemon ---------------------------------------------------------
   const status = await probeDaemonStatus(socketPath)

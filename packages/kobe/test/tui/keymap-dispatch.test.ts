@@ -13,10 +13,14 @@
 import { describe, expect, test } from "vitest"
 import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 
-function makeEvt(name: string, mods: Partial<{ ctrl: boolean; meta: boolean; option: boolean; shift: boolean }> = {}) {
+function makeEvt(
+  name: string,
+  mods: Partial<{ ctrl: boolean; meta: boolean; option: boolean; shift: boolean; raw: string }> = {},
+) {
   let defaultPrevented = false
   return {
     name,
+    raw: mods.raw,
     ctrl: mods.ctrl ?? false,
     meta: mods.meta ?? false,
     option: mods.option ?? false,
@@ -318,6 +322,83 @@ describe("dispatchKeyEvent", () => {
     dispatchKeyEvent(stack, makeEvt("return"))
 
     expect(fires).toBe(2)
+  })
+
+  // ─── Legacy C0 fallback (issue #192) ─────────────────────────────────
+  // Non-kitty terminals (macOS Terminal.app) deliver ctrl+h as raw 0x08 →
+  // parsed {name:"backspace", raw:"\b"} and ctrl+j as 0x0a →
+  // {name:"linefeed"}. matchKey aliases those back to the ctrl chords so
+  // pane focus works on the legacy key path; the real Backspace key (0x7f)
+  // must NOT alias.
+
+  test("legacy ctrl+h (raw 0x08 backspace) fires a ctrl+h binding", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+h", () => {
+        fired = true
+      }),
+    ]
+    const evt = makeEvt("backspace", { raw: "\b" })
+
+    expect(dispatchKeyEvent(stack, evt)).toBe(true)
+    expect(fired).toBe(true)
+  })
+
+  test("the real Backspace key (raw 0x7f) does NOT fire a ctrl+h binding", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+h", () => {
+        fired = true
+      }),
+    ]
+    const evt = makeEvt("backspace", { raw: "\x7f" })
+
+    expect(dispatchKeyEvent(stack, evt)).toBe(false)
+    expect(fired).toBe(false)
+  })
+
+  test("legacy ctrl+j (parsed as linefeed) fires a ctrl+j binding", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+j", () => {
+        fired = true
+      }),
+    ]
+    const evt = makeEvt("linefeed", { raw: "\n" })
+
+    expect(dispatchKeyEvent(stack, evt)).toBe(true)
+    expect(fired).toBe(true)
+  })
+
+  test("meta variants (esc-prefixed backspace/linefeed) do not alias to ctrl chords", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+h", () => {
+        fired = true
+      }),
+      makeReg(2, "ctrl+j", () => {
+        fired = true
+      }),
+    ]
+
+    expect(dispatchKeyEvent(stack, makeEvt("backspace", { raw: "\x1b\b", meta: true }))).toBe(false)
+    expect(dispatchKeyEvent(stack, makeEvt("linefeed", { raw: "\x1b\n", meta: true }))).toBe(false)
+    expect(fired).toBe(false)
+  })
+
+  test("a legacy-aliased event still matches a plain backspace binding (candidates coexist)", () => {
+    // A pane that binds "backspace" (no ctrl+h binding anywhere) must keep
+    // receiving the 0x08 byte — the alias adds a candidate, it doesn't
+    // replace the original name.
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "backspace", () => {
+        fired = true
+      }),
+    ]
+
+    expect(dispatchKeyEvent(stack, makeEvt("backspace", { raw: "\b" }))).toBe(true)
+    expect(fired).toBe(true)
   })
 
   test("duplicate chords across slots: the first registered slot wins", () => {

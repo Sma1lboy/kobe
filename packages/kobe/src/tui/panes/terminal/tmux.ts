@@ -877,7 +877,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const layoutCommand = (action: string): string =>
     `${envStr}${invStr} layout --session '#{session_name}' --window '#{window_id}' --action ${action}`
   const restoreTasksCommand = layoutCommand("tasks-restore")
-  const restoreTasksTmuxCommand = `run-shell ${shellQuote(restoreTasksCommand)}`
+  // `-b`: run in the background. This is ctrl+h's left-EDGE command, so it
+  // fires on every press while the Tasks rail is already focused (the common
+  // spam/key-repeat case, where it ends in a no-op select-pane). A foreground
+  // run-shell blocks tmux's key processing per press — a held ctrl+h queued
+  // dozens of ~200ms CLI spawns and froze the client for seconds (issue #192).
+  const restoreTasksTmuxCommand = `run-shell -b ${shellQuote(restoreTasksCommand)}`
   const closeChatTabCommand = layoutCommand("chat-tab-close")
   const closeChatTabTmuxCommand = `run-shell ${shellQuote(closeChatTabCommand)}`
   // Re-pin the layout whenever a window settles to a new size. The FIRST task
