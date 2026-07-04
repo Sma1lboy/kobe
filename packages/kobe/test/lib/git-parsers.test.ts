@@ -158,6 +158,32 @@ describe("parseNumstatRows", () => {
     expect(parseNumstatRows("1\t0\tsrc/{shared}/util.ts")).toEqual([numstat("src/{shared}/util.ts", 1, 0)])
   })
 
+  test("resolves a move OUT of a subdirectory (empty new brace side)", () => {
+    // `git mv src/sub/a.txt src/a.txt` — git empties the new side. Naive
+    // concat would double the seam into `src//a.txt`; the new path must be
+    // `src/a.txt` and the old path `src/sub/a.txt`.
+    expect(parseNumstatRows("0\t0\tsrc/{sub => }/a.txt")).toEqual([numstat("src/a.txt", 0, 0, "src/sub/a.txt")])
+  })
+
+  test("resolves a move INTO a subdirectory (empty old brace side)", () => {
+    // `git mv src/a.txt src/sub/a.txt` — git empties the old side. The old
+    // path must collapse to `src/a.txt`, not `src//a.txt`.
+    expect(parseNumstatRows("0\t0\tsrc/{ => sub}/a.txt")).toEqual([numstat("src/sub/a.txt", 0, 0, "src/a.txt")])
+  })
+
+  test("collapses the seam for a deeper move-out (empty side, nested prefix)", () => {
+    expect(parseNumstatRows("3\t1\ta/b/{c => }/f.txt")).toEqual([numstat("a/b/f.txt", 3, 1, "a/b/c/f.txt")])
+  })
+
+  test("only collapses at a real directory seam, not any empty side", () => {
+    // Defensive: git only ever empties a WHOLE `/`-bounded component, so a real
+    // seam is always slash-flanked. This synthetic partial-component field
+    // (which git never emits) must NOT collapse, since the suffix (`file.txt`)
+    // is not `/`-led — proving the collapse is scoped to the seam, not any
+    // empty side. Plain concat stands: `src/file.txt` / `src/subfile.txt`.
+    expect(parseNumstatRows("0\t0\tsrc/{sub => }file.txt")).toEqual([numstat("src/file.txt", 0, 0, "src/subfile.txt")])
+  })
+
   test("resolves a quoted (tab) rename with independent quoting per side", () => {
     expect(parseNumstatRows('2\t1\t"weird\\tname.txt" => "weird\\trenamed.txt"')).toEqual([
       numstat("weird\trenamed.txt", 2, 1, "weird\tname.txt"),
@@ -196,5 +222,17 @@ describe("porcelain ↔ numstat path coherence (the join the bug breaks)", () =>
     const [n] = parseNumstatRows('1\t0\t"a\\tb.txt"')
     expect(p?.path).toBe("a\tb.txt")
     expect(n?.path).toBe("a\tb.txt")
+  })
+
+  test("a move OUT of a subdirectory keys onto the same porcelain path", () => {
+    // `git mv src/sub/a.txt src/a.txt`. Porcelain reports the full new path;
+    // numstat empties the new brace side (`src/{sub => }/a.txt`). Both must
+    // resolve to `src/a.txt` or the +/- counts orphan from the status row.
+    const [p] = parsePorcelainRows("R  src/sub/a.txt -> src/a.txt")
+    const [n] = parseNumstatRows("4\t2\tsrc/{sub => }/a.txt")
+    expect(p?.path).toBe("src/a.txt")
+    expect(n?.path).toBe("src/a.txt")
+    expect(p?.path).toBe(n?.path)
+    expect(n?.origPath).toBe("src/sub/a.txt")
   })
 })
