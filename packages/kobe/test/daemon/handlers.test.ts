@@ -140,6 +140,8 @@ describe("daemon handler registry", () => {
       "worktree.adopt",
       "worktree.reconcile",
       "worktree.archiveRemoved",
+      "worktree.list",
+      "worktree.remove",
       "engine.reportEvent",
       "session.deliver",
       "note.file",
