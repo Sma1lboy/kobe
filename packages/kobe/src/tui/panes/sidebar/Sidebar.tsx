@@ -751,14 +751,18 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
       <box flexDirection="row" flexShrink={0} gap={1} paddingLeft={1} paddingRight={1}>
-        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
           {p.label}
         </text>
-        <text fg={theme.border} wrapMode="none">
-          {"─".repeat(Math.max(2, effectiveWidth() - 10 - p.label.length - (p.suffix?.length ?? 0)))}
+        {/* Ruler fills whatever the row leaves over: flexBasis 0 keeps its
+            240-char content out of layout (it would crush the siblings),
+            flexGrow takes the leftover, overflow clips. No width math —
+            correct in the 32-cell native rail and a full tmux pane alike. */}
+        <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+          {"─".repeat(240)}
         </text>
         <Show when={p.suffix}>
-          <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none">
+          <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
             {p.suffix}
           </text>
         </Show>
@@ -1069,7 +1073,7 @@ export function Sidebar(props: SidebarProps) {
             paddingRight={1}
             onMouseUp={() => cycleProjectFilter()}
           >
-            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
               {t("tasks.header.projects")}
             </text>
             <Show when={projectOptions().length > 1}>
@@ -1077,24 +1081,17 @@ export function Sidebar(props: SidebarProps) {
                 fg={projectFilterRepo() ? theme.primary : theme.textMuted}
                 attributes={projectFilterRepo() ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
+                flexShrink={0}
               >
                 {projectFilterLabel()}
               </text>
             </Show>
-            <text fg={theme.border} wrapMode="none">
-              {"─".repeat(
-                Math.max(
-                  2,
-                  effectiveWidth() -
-                    10 -
-                    t("tasks.header.projects").length -
-                    (projectOptions().length > 1 ? projectFilterLabel().length + 1 : 0) -
-                    (projectOptions().length > 1 ? projectFilterCountLabel().length + 1 : 0),
-                ),
-              )}
+            {/* Same flex ruler as SectionHeader — flexBasis 0 + grow + clip. */}
+            <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+              {"─".repeat(240)}
             </text>
             <Show when={projectOptions().length > 1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
                 {projectFilterCountLabel()}
               </text>
             </Show>

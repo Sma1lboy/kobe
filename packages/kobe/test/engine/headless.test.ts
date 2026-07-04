@@ -21,6 +21,7 @@ describe("buildHeadlessArgs", () => {
       "--output-format",
       "stream-json",
       "--verbose",
+      "--include-partial-messages",
     ])
   })
 
@@ -31,6 +32,7 @@ describe("buildHeadlessArgs", () => {
       "--output-format",
       "stream-json",
       "--verbose",
+      "--include-partial-messages",
     ])
   })
 })
@@ -63,6 +65,21 @@ describe("parseSdkLine", () => {
     if (msg?.type === "result") {
       expect(msg.usage?.output_tokens).toBe(42)
       expect(msg.total_cost_usd).toBe(0.0512)
+    }
+  })
+
+  it("passes stream_event lines through for the live typewriter preview", () => {
+    const msg = parseSdkLine(
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "he" } },
+        parent_tool_use_id: null,
+        session_id: "sid-3",
+      }),
+    )
+    expect(msg?.type).toBe("stream_event")
+    if (msg?.type === "stream_event") {
+      expect(msg.event.delta?.text).toBe("he")
     }
   })
 

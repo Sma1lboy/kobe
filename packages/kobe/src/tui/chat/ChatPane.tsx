@@ -24,6 +24,7 @@
 import { findClaudeBinary } from "@/engine/claude-code-local/binary"
 import { BUILTIN_CLAUDE_SLASHES } from "@/engine/claude-code-local/builtin-slashes"
 import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
+import type { SdkStreamEventMessage } from "@/engine/claude-code-local/headless"
 import { engineEntry, getCapabilities } from "@/engine/registry"
 import type { PermissionMode } from "@/types/engine"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
@@ -72,6 +73,26 @@ export function ChatPane(props: ChatPaneProps) {
   const [draft, setDraft] = createSignal("")
   const [expanded, setExpanded] = createSignal(false)
   const results = createMemo(() => sdkResultsByToolUseId(items()))
+
+  // Live typewriter preview from `--include-partial-messages` stream events.
+  // Deltas accumulate here (NOT in `items` — thousands of events would bloat
+  // the transcript array); the complete assistant message that follows
+  // replaces the preview, so nothing renders twice.
+  const [live, setLive] = createSignal<{ readonly thinking: boolean; readonly text: string }>({
+    thinking: false,
+    text: "",
+  })
+  const resetLive = () => setLive({ thinking: false, text: "" })
+  function applyStreamEvent(event: SdkStreamEventMessage["event"]): void {
+    if (event.type === "content_block_start" && event.content_block?.type === "thinking") {
+      setLive((l) => ({ ...l, thinking: true }))
+      return
+    }
+    if (event.type !== "content_block_delta") return
+    const delta = event.delta
+    if (delta?.type === "thinking_delta") setLive((l) => (l.thinking ? l : { ...l, thinking: true }))
+    if (delta?.type === "text_delta" && delta.text) setLive((l) => ({ ...l, text: l.text + delta.text }))
+  }
 
   const capabilities = getCapabilities("claude")
   const identity = engineEntry("claude").identity
@@ -144,6 +165,14 @@ export function ChatPane(props: ChatPaneProps) {
       activeInterrupt = turn.interrupt
       for await (const msg of turn.events) {
         if ("session_id" in msg && typeof msg.session_id === "string") resumeSessionId = msg.session_id
+        if (msg.type === "stream_event") {
+          // Top-level deltas drive the live preview; subagent deltas stay
+          // internal (their tool rows surface via the complete messages).
+          if (msg.parent_tool_use_id == null) applyStreamEvent(msg.event)
+          continue
+        }
+        // A complete top-level assistant message supersedes its preview.
+        if (msg.type === "assistant" && msg.parent_tool_use_id == null) resetLive()
         setItems((prev) => [...prev, { kind: "sdk", msg }])
       }
     } catch (err) {
@@ -151,6 +180,7 @@ export function ChatPane(props: ChatPaneProps) {
       setItems((prev) => [...prev, { kind: "error", text }])
     } finally {
       activeInterrupt = undefined
+      resetLive()
       setRunning(false)
       drainQueue()
     }
@@ -260,15 +290,17 @@ export function ChatPane(props: ChatPaneProps) {
         flexShrink={0}
         backgroundColor={theme.backgroundElement}
       >
-        <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
+        {/* Quiet header — muted CAPS tag + plain bold title. One accent per
+            surface: the transcript's ❯ prompt marker; the header stays gray. */}
+        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
           {t("chat.tag")}
         </text>
-        <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           {headerTitle()}
         </text>
         <box flexGrow={1} />
         <Show when={running()}>
-          <text fg={theme.warning} wrapMode="none">
+          <text fg={theme.textMuted} attributes={TextAttributes.ITALIC} wrapMode="none">
             {t("chat.working")}
           </text>
         </Show>
@@ -294,6 +326,22 @@ export function ChatPane(props: ChatPaneProps) {
               carries its own marginTop (turn separation). */}
           <box flexDirection="column" paddingLeft={1} paddingRight={1}>
             <For each={items()}>{(item) => <ChatRow item={item} results={results()} expanded={expanded()} />}</For>
+            {/* Live typewriter preview — replaced by the complete assistant
+                message when it lands (resetLive), so it never doubles up. */}
+            <Show when={running() && (live().thinking || live().text)}>
+              <box flexDirection="column">
+                <Show when={live().thinking && !live().text}>
+                  <text fg={theme.textMuted} attributes={TextAttributes.ITALIC} wrapMode="none">
+                    {`✱ ${t("chat.thinking")}…`}
+                  </text>
+                </Show>
+                <Show when={live().text}>
+                  <text fg={theme.text} wrapMode="word">
+                    {`${live().text}▌`}
+                  </text>
+                </Show>
+              </box>
+            </Show>
           </box>
         </Show>
       </scrollbox>

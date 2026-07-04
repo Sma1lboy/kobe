@@ -76,9 +76,31 @@ export interface SdkResultMessage {
     readonly cache_creation_input_tokens?: number
   }
 }
-export type SdkMessage = SdkSystemMessage | SdkAssistantMessage | SdkUserMessage | SdkResultMessage
+/**
+ * Raw Anthropic streaming event (`--include-partial-messages`) — text /
+ * thinking deltas while a message is being generated. The complete
+ * `assistant` message still follows; these exist ONLY for the live
+ * typewriter preview. Fields verbatim from the wire.
+ */
+export interface SdkStreamEventMessage {
+  readonly type: "stream_event"
+  readonly event: {
+    readonly type: string
+    readonly index?: number
+    readonly content_block?: { readonly type?: string }
+    readonly delta?: { readonly type?: string; readonly text?: string; readonly thinking?: string }
+  }
+  readonly parent_tool_use_id?: string | null
+  readonly session_id?: string
+}
+export type SdkMessage =
+  | SdkSystemMessage
+  | SdkAssistantMessage
+  | SdkUserMessage
+  | SdkResultMessage
+  | SdkStreamEventMessage
 
-const SDK_MESSAGE_TYPES = new Set(["system", "assistant", "user", "result"])
+const SDK_MESSAGE_TYPES = new Set(["system", "assistant", "user", "result", "stream_event"])
 
 /**
  * Parse one stream-json line into an {@link SdkMessage}, or undefined for
@@ -134,7 +156,7 @@ export function buildHeadlessArgs(
   if (opts.model) args.push("--model", opts.model)
   if (opts.modelEffort) args.push("--effort", opts.modelEffort)
   if (opts.permissionMode) args.push("--permission-mode", opts.permissionMode)
-  args.push("--output-format", "stream-json", "--verbose")
+  args.push("--output-format", "stream-json", "--verbose", "--include-partial-messages")
   return args
 }
 
