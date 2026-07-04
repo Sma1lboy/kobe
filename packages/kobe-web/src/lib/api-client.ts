@@ -132,6 +132,13 @@ export const api = {
   patch<T>(path: string, body?: unknown, opts?: ApiRequestOptions): Promise<T> {
     return requestJson<T>(path, jsonInit("PATCH", body), opts)
   },
+  delete<T>(
+    path: string,
+    body?: unknown,
+    opts?: ApiRequestOptions,
+  ): Promise<T> {
+    return requestJson<T>(path, jsonInit("DELETE", body), opts)
+  },
   form<T>(path: string, body: FormData, opts?: ApiRequestOptions): Promise<T> {
     return requestJson<T>(path, { method: "POST", body }, opts)
   },
