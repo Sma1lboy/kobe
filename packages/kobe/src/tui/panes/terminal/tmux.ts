@@ -51,6 +51,7 @@
  */
 
 import { runTmux, runTmuxCapturing, runTmuxSequence, sessionExists } from "@/tmux/client"
+import { ENGINE_PANE_ROLE, TASKS_PANE_ROLE } from "@/tmux/session-layout"
 import { runLayoutAction } from "./layout-actions"
 import { recordGen } from "./layout-coord"
 import { healWorkspaceLayout, workspaceLayoutPaneCommands } from "./pane-heal"
@@ -368,10 +369,15 @@ async function paneIdByRoleInWindow(session: string, role: string, windowId?: st
 
 export async function selectTasksPane(session: string, opts: { readonly windowId?: string } = {}): Promise<string> {
   if (!(await sessionExists(session))) return ""
-  let tasksPane = await paneIdByRoleInWindow(session, "tasks", opts.windowId)
+  let tasksPane = await paneIdByRoleInWindow(session, TASKS_PANE_ROLE, opts.windowId)
   if (!tasksPane) {
+    // Full-window tabs (file preview / editor windows) have neither a Tasks
+    // pane nor an engine pane. Ctrl+Q there must be a no-op — restoring would
+    // graft a Tasks rail into the preview. Only a real workspace window
+    // (engine pane present, rail crashed/missing) earns the restore.
+    if (!(await paneIdByRoleInWindow(session, ENGINE_PANE_ROLE, opts.windowId))) return ""
     await runLayoutAction(session, "tasks-restore", { windowId: opts.windowId })
-    tasksPane = await paneIdByRoleInWindow(session, "tasks", opts.windowId)
+    tasksPane = await paneIdByRoleInWindow(session, TASKS_PANE_ROLE, opts.windowId)
   }
   if (!tasksPane) return ""
   await runTmux(["select-pane", "-t", tasksPane])
