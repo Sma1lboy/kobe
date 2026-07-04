@@ -123,6 +123,13 @@ export type DaemonRequestName =
   // The daemon archives the task whose worktree was that path — the symmetric
   // complement to `worktree.reconcile` (remove a worktree → its task archives).
   | "worktree.archiveRemoved"
+  // Cross-project worktree audit (the standalone worktree-management TUI
+  // page): list every worktree of every local saved project (kobe-managed
+  // or not, linked to a task or not) with dirty/age/remote-branch status,
+  // and remove one (refuses a dirty worktree unless `force: true`, same
+  // safety property `GitWorktreeManager.remove` always had).
+  | "worktree.list"
+  | "worktree.remove"
   // Engine HOOK ingest (KOB): a `kobe hook <verb>` process reports a
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.

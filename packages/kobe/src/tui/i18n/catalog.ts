@@ -28,8 +28,9 @@ import { en as quickTask, zh as quickTaskZh } from "./messages/quickTask"
 import { en as settings, zh as settingsZh } from "./messages/settings"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as update, zh as updateZh } from "./messages/update"
+import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 
-export const en = { settings, tasks, files, newTask, ops, update, quickTask, help, history, common, keys }
+export const en = { settings, tasks, files, newTask, ops, update, quickTask, help, history, common, keys, worktrees }
 
 /**
  * Every locale must structurally match the English source of truth. The
@@ -50,6 +51,7 @@ export const zh: Messages = {
   history: historyZh,
   common: commonZh,
   keys: keysZh,
+  worktrees: worktreesZh,
 }
 
 /** Registered locales, in display order. */

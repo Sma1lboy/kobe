@@ -33,15 +33,17 @@
  * `packages/kobe/test/daemon/handlers.test.ts`).
  */
 
-import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
+import { isEngineActivityKind } from "@/engine/hook-events"
 import { maybeAutoStart } from "@/monitor/status-rules"
 import type { Orchestrator } from "@/orchestrator/core"
-import { type VendorId, isTaskStatus } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { logDaemonError } from "./crash-log.ts"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd, matchTaskByWorktreePath } from "./cwd-task.ts"
+import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
+import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
+import { TASK_HANDLERS } from "./handlers-task.ts"
+import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
 import type { IssuesStore } from "./issues-store.ts"
 import {
   CHANNEL_NAMES,
@@ -52,6 +54,17 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
+
+// Re-exported for backward compatibility — `server.ts` and (transitively)
+// `packages/kobe/test/daemon/handlers.test.ts` import these from here.
+export {
+  objectPayload,
+  optionalActivityDetail,
+  optionalBoolean,
+  optionalString,
+  optionalVendor,
+  requireString,
+} from "./handler-validators.ts"
 
 /**
  * Everything a request handler may touch, threaded in by the caller per
@@ -203,284 +216,13 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         return {}
       },
     },
-    {
-      name: "task.list",
-      handle(_payload, ctx) {
-        return { tasks: ctx.orch.listTasks().map(serializeTask) }
-      },
-    },
-    {
-      name: "task.get",
-      handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const task = ctx.orch.getTask(taskId)
-        if (!task) throw new Error(`task not found: ${taskId}`)
-        return { task: serializeTask(task) }
-      },
-    },
-    {
-      name: "task.create",
-      async handle(payload, ctx) {
-        const repo = requireString(payload, "repo")
-        const task = await ctx.orch.createTask({
-          repo,
-          title: optionalString(payload, "title"),
-          branch: optionalString(payload, "branch"),
-          baseRef: optionalString(payload, "baseRef"),
-          vendor: optionalVendor(payload, "vendor"),
-          modelEffort: optionalString(payload, "effort"),
-        })
-        return { taskId: task.id, task: serializeTask(task) }
-      },
-    },
-    {
-      name: "task.archive",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        await ctx.orch.setArchived(taskId, optionalBoolean(payload, "archived"))
-        return {}
-      },
-    },
-    {
-      name: "task.rename",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        await ctx.orch.setTitle(taskId, requireString(payload, "title"))
-        return {}
-      },
-    },
-    {
-      name: "task.setBranch",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        await ctx.orch.setBranch(taskId, requireString(payload, "branch"))
-        return {}
-      },
-    },
-    {
-      name: "task.setVendor",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const vendor = optionalVendor(payload, "vendor")
-        if (!vendor) throw new Error("task.setVendor: vendor is required")
-        await ctx.orch.setVendor(taskId, vendor)
-        return {}
-      },
-    },
-    {
-      name: "task.delete",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        await ctx.orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
-        ctx.activity.clearTask(taskId)
-        return {}
-      },
-    },
-    {
-      name: "task.pin",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        await ctx.orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
-        return {}
-      },
-    },
-    {
-      name: "task.move",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const direction = requireString(payload, "direction")
-        if (direction !== "up" && direction !== "down") throw new Error("direction must be up or down")
-        await ctx.orch.moveTask(taskId, direction === "up" ? -1 : 1)
-        return {}
-      },
-    },
-    {
-      name: "task.status",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const status = requireString(payload, "status")
-        if (!isTaskStatus(status)) throw new Error("status must be a TaskStatus")
-        // Capture the task (for repo) AND its prior status BEFORE the
-        // transition so we can mirror a real task→done transition into the
-        // issue store below.
-        const linked = status === "done" ? ctx.orch.getTask(taskId) : undefined
-        const prevStatus = linked?.status
-        await ctx.orch.setStatus(taskId, status)
-        // Done-mirroring: a task reaching `done` flips its source issue to
-        // `done` too, so a unified board stays consistent. The reverse-look-up
-        // (issue owns the link via `Issue.taskId`) and the conditional flip run
-        // atomically inside the issue store under one lock — so a concurrent
-        // reopen from another surface can't be clobbered by a stale read.
-        // Guarded to an ACTUAL →done transition (prevStatus !== "done", so
-        // re-firing done on an already-done task never re-clobbers a
-        // manually-reopened issue); the issue write must never fail the task
-        // update (the status change already committed), so a missing/raced
-        // issue is logged + swallowed.
-        if (status === "done" && prevStatus !== "done" && linked) {
-          try {
-            const next = await ctx.issues.mirrorTaskDone(linked.repo, taskId)
-            if (next) ctx.bus.publish("issue.snapshot", next)
-          } catch (err) {
-            logDaemonError("issue-done-mirror", err)
-          }
-        }
-        return {}
-      },
-    },
-    {
-      name: "task.reorder",
-      async handle(payload, ctx) {
-        const moves = payload.moves
-        if (!Array.isArray(moves) || moves.length === 0) throw new Error("moves must be a non-empty array")
-        if (moves.length > 500) throw new Error("too many moves in one task.reorder batch (max 500)")
-        const parsed = moves.map((move) => {
-          if (typeof move !== "object" || move === null) throw new Error("each move needs taskId and position")
-          const entry = move as Record<string, unknown>
-          const taskId = requireString(entry, "taskId")
-          const position = entry.position
-          if (typeof position !== "number" || !Number.isFinite(position)) {
-            throw new Error("position must be a finite number")
-          }
-          return { taskId, position }
-        })
-        await ctx.orch.reorderTasks(parsed)
-        return {}
-      },
-    },
-    {
-      name: "task.ensureMain",
-      async handle(payload, ctx) {
-        const repo = requireString(payload, "repo")
-        const task = await ctx.orch.ensureMainTask(repo)
-        return { task: serializeTask(task) }
-      },
-    },
-    {
-      name: "project.forget",
-      async handle(payload, ctx) {
-        const repo = requireString(payload, "repo")
-        await ctx.orch.forgetProject(repo)
-        return {}
-      },
-    },
-    {
-      name: "task.ensureWorktree",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        // Long-operation feedback (issue #5): `git worktree add` is
-        // minute-class on a huge repo, and the RPC stays BLOCKING (callers
-        // need the path to build the tmux session) — so publish lifecycle
-        // progress on the `task.jobs` channel around the call. Every
-        // attached Tasks pane shows a "materializing" row state, not just
-        // the initiating client. A terminal phase (`done`/`error`) is
-        // published ALWAYS, including on throw — otherwise the bus's
-        // last-value replay would show late subscribers a stuck `running`
-        // forever. Fast paths (already-materialised worktree, `main`
-        // tasks) publish running→done back-to-back, which clients fold
-        // into a no-op blink at worst. The error message rides along for
-        // UI hints; the RPC error itself still reaches the caller via the
-        // rethrow.
-        ctx.bus.publish("task.jobs", { taskId, kind: "ensureWorktree", phase: "running" })
-        try {
-          const path = await ctx.orch.ensureWorktree(taskId)
-          ctx.bus.publish("task.jobs", { taskId, kind: "ensureWorktree", phase: "done" })
-          return { worktreePath: path }
-        } catch (err) {
-          ctx.bus.publish("task.jobs", {
-            taskId,
-            kind: "ensureWorktree",
-            phase: "error",
-            error: err instanceof Error ? err.message : String(err),
-          })
-          throw err
-        }
-      },
-    },
-    {
-      name: "worktree.discoverAdoptable",
-      async handle(payload, ctx) {
-        const repo = requireString(payload, "repo")
-        const worktrees = await ctx.orch.discoverAdoptableWorktrees(repo)
-        return { worktrees }
-      },
-    },
-    {
-      name: "worktree.adopt",
-      async handle(payload, ctx) {
-        const task = await ctx.orch.adoptWorktree({
-          repo: requireString(payload, "repo"),
-          worktreePath: requireString(payload, "worktreePath"),
-          branch: optionalString(payload, "branch"),
-          vendor: optionalVendor(payload, "vendor"),
-          title: optionalString(payload, "title"),
-          ifExists: optionalString(payload, "ifExists") === "return" ? "return" : "error",
-        })
-        return { task: serializeTask(task) }
-      },
-    },
-    {
-      name: "worktree.reconcile",
-      async handle(payload, ctx) {
-        // A `kobe hook worktree-created` (global PostToolUse) reporting that a
-        // `git worktree add` just ran in `cwd`, creating `worktreePath`. Adopt
-        // it the MOMENT it's created — no engine session needed (the
-        // creation-time complement to the `session-start` auto-adopt in
-        // `engine.reportEvent` below). Bounded to repos kobe already tracks
-        // (so a stray worktree in an untracked repo is ignored); `adoptWorktree`
-        // is idempotent + git-validated, so a re-fired hook or a bogus path is a
-        // harmless no-op (the path just fails validation → caught → dropped).
-        const cwd = requireString(payload, "cwd")
-        const worktreePath = requireString(payload, "worktreePath")
-        const repo = matchRepoByCwd(ctx.orch.listTasks(), cwd) ?? matchRepoByCwd(ctx.orch.listTasks(), worktreePath)
-        if (!repo) return { adopted: false }
-        try {
-          const task = await ctx.orch.adoptWorktree({ repo, worktreePath, ifExists: "return" })
-          return { adopted: true, taskId: task.id }
-        } catch (err) {
-          logDaemonError("worktree-created", err)
-          return { adopted: false }
-        }
-      },
-    },
-    {
-      name: "worktree.archiveRemoved",
-      async handle(payload, ctx) {
-        // A `kobe hook worktree-created` (global PostToolUse) reporting that a
-        // `git worktree remove <path>` just ran. Archive the task pinned to that
-        // exact worktree — the symmetric complement to `worktree.reconcile`
-        // (add a worktree → adopt a task; remove it → archive that task). We
-        // ARCHIVE, never delete: the task's history/branch survive, it just
-        // leaves the active board (and `setArchived` no-ops a `main` task, so a
-        // repo root can't be archived this way). Exact-path match (not
-        // longest-prefix) so removing an untracked worktree can't archive a
-        // parent main task. Idempotent: an already-archived or unmatched path is
-        // a harmless no-op.
-        const worktreePath = requireString(payload, "worktreePath")
-        const taskId = matchTaskByWorktreePath(ctx.orch.listTasks(), worktreePath)
-        if (!taskId) return { archived: false }
-        try {
-          await ctx.orch.setArchived(taskId, true)
-          return { archived: true, taskId }
-        } catch (err) {
-          logDaemonError("worktree-removed", err)
-          return { archived: false }
-        }
-      },
-    },
-    {
-      name: "task.setActive",
-      async handle(payload, ctx) {
-        // UI/session focus lives on the bus, but setting it also touches the
-        // task's updatedAt so "recent" task sorting reflects actual use.
-        // Publishing caches the last value so a late-subscribing Tasks pane
-        // gets the current focus on connect and every pane highlights the
-        // same active task (KOB-247).
-        const taskId = optionalString(payload, "taskId") ?? null
-        await ctx.orch.setActiveTask(taskId)
-        ctx.bus.publish("active-task", { taskId })
-        return {}
-      },
-    },
+    // `task.*` (+ `project.forget`) and `worktree.*` live in their own files
+    // (handlers-task.ts / handlers-worktree.ts) — split out to stay under
+    // the repo's 500-line file-size cap. Entry ORDER here doesn't affect any
+    // individual response's byte shape (only within-object key order is
+    // wire-load-bearing), so grouping them via spread is safe.
+    ...TASK_HANDLERS,
+    ...WORKTREE_HANDLERS,
     {
       name: "issue.list",
       async handle(payload, ctx) {
@@ -603,60 +345,4 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     },
   ]
   return new Map(entries.map((entry) => [entry.name, entry]))
-}
-
-// ---------------------------------------------------------------------------
-// Payload validators — the shared vocabulary every entry validates with.
-// Promoted verbatim from server.ts's switch; the error wording
-// (`"${key} is required"`, `"${key} must be a string"`, …) is part of the
-// wire contract, so don't reword it.
-// ---------------------------------------------------------------------------
-
-/** Coerce an unknown request payload into a plain object (`{}` for anything else). */
-export function objectPayload(payload: unknown): Record<string, unknown> {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {}
-  return payload as Record<string, unknown>
-}
-
-export function requireString(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key]
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${key} is required`)
-  return value
-}
-
-export function optionalString(payload: Record<string, unknown>, key: string): string | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null || value === "") return undefined
-  if (typeof value !== "string") throw new Error(`${key} must be a string`)
-  return value
-}
-
-export function optionalBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`)
-  return value
-}
-
-export function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
-  // Engines are open: a vendor id may be a built-in OR a user-registered
-  // custom engine (its launch command lives in the kobe-side customEngineIds
-  // registry, which the daemon can't see). So accept any non-empty string and
-  // let the launch path resolve it — a bogus id just fails to launch its
-  // (missing) binary in the pane. Empty/absent stays undefined (→ claude).
-  const value = optionalString(payload, key)
-  return value && value.trim().length > 0 ? (value as VendorId) : undefined
-}
-
-/** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping
- *  anything malformed (the field is best-effort UI hint, never load-bearing). */
-export function optionalActivityDetail(payload: Record<string, unknown>): EngineActivityDetail | undefined {
-  const raw = payload.detail
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
-  const d = raw as Record<string, unknown>
-  const out: { failure?: "rate_limit" | "billing" | "other"; waiting?: "permission" | "input"; note?: string } = {}
-  if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
-  if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
-  if (typeof d.note === "string") out.note = d.note
-  return Object.keys(out).length > 0 ? out : undefined
 }

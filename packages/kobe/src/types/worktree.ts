@@ -49,6 +49,30 @@ export interface AdoptableWorktree {
 }
 
 /**
+ * One row of the cross-project worktree audit (`worktree.list` RPC, the
+ * standalone worktree-management TUI page). Extends {@link
+ * AdoptableWorktree} — every worktree of a repo, kobe-managed or not — with
+ * two fields no other caller needs: which project it belongs to, when the
+ * worktree directory was created, and whether its branch has reached
+ * `origin`. Local projects only (v1) — see `worktree.list`'s handler.
+ */
+export interface WorktreeAuditRow extends AdoptableWorktree {
+  readonly repo: string
+  /** Worktree directory's creation time (epoch ms), 0 when unreadable —
+   *  distinct from {@link AdoptableWorktree.lastActivityMs} (last commit). */
+  readonly createdAtMs: number
+  /** Whether `branch` exists on `origin`. `null` = no origin / unreachable /
+   *  timed out — rendered as "unknown", never a delete-blocker. */
+  readonly branchOnRemote: boolean | null
+}
+
+/** One local project's worktree audit rows (`worktree.list` response shape). */
+export interface WorktreeProject {
+  readonly repo: string
+  readonly worktrees: readonly WorktreeAuditRow[]
+}
+
+/**
  * Manager for git worktrees mapped 1:1 to kobe Tasks.
  *
  * Conventions / invariants the impl must hold:
