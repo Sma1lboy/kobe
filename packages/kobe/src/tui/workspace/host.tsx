@@ -7,6 +7,7 @@
  */
 
 import { join } from "node:path"
+import { useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -26,6 +27,8 @@ import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
 const SIDEBAR_WIDTH = 32
+const WORKTREE_TOOLS_MIN_WIDTH = 22
+const WORKTREE_TOOLS_MAX_WIDTH = 34
 const PANE_BY_SLOT = ["sidebar", "workspace", "files", "terminal"] as const satisfies readonly PaneId[]
 
 function firstSelectableTask(tasks: readonly Task[], activeId: string | null): Task | undefined {
@@ -43,9 +46,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const focus = useFocus()
+  const dims = useTerminalDimensions()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.orchestrator.activeTaskSignal()())
 
   const tasks = props.orchestrator.tasksSignal()
+  const worktreeToolsWidth = createMemo(() => {
+    const available = Math.max(WORKTREE_TOOLS_MIN_WIDTH, dims().width - SIDEBAR_WIDTH)
+    return Math.max(WORKTREE_TOOLS_MIN_WIDTH, Math.min(WORKTREE_TOOLS_MAX_WIDTH, Math.floor(available / 3)))
+  })
   const selectedTask = createMemo<Task | undefined>(() => {
     const id = selectedId()
     return id ? tasks().find((task) => task.id === id) : undefined
@@ -142,7 +150,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       </box>
 
       <box
-        flexGrow={2}
+        flexGrow={1}
         flexShrink={1}
         borderColor={focus.is("workspace")() ? theme.focusAccent : theme.border}
         onMouseUp={() => focus.setFocused("workspace")}
@@ -150,7 +158,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         <ShowWorkspace task={selectedTask()} worktree={worktree()} focused={focus.is("workspace")} />
       </box>
 
-      <box flexGrow={1} flexShrink={1} flexDirection="column">
+      <box width={worktreeToolsWidth()} flexShrink={0} flexDirection="column">
         <box
           flexGrow={3}
           flexShrink={1}
