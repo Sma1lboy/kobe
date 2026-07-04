@@ -38,15 +38,26 @@ export { dispatchKeyEvent } from "./keymap-dispatch"
 
 let nextId = 1
 const stack: RegisteredBinding[] = []
+// `installedRenderer` guards against re-attaching the listener on every
+// keystroke; it does NOT assume there's only ever one renderer per process.
+// Production only ever runs one renderer per process, so `renderer ===
+// installedRenderer` is true from the second call onward and this is a
+// no-op — but the render test track (test/render/harness.tsx) creates a
+// fresh `testRender()` renderer per test in the SAME process, and without
+// rebinding here every test after the first would silently attach zero
+// listeners to its own (destroyed) predecessor's keyInput emitter.
+let installedRenderer: unknown = null
 let installed: KeyHandler | null = null
 let listener: ((evt: KeyEvent) => void) | null = null
 
 function ensureInstalled() {
-  if (installed) return
   const renderer = useRenderer()
   if (!renderer) {
     throw new Error("useBindings: no renderer in scope; call inside a component rendered by @opentui/solid.")
   }
+  if (installedRenderer === renderer) return
+  if (installed && listener) installed.off("keypress", listener)
+  installedRenderer = renderer
   installed = renderer.keyInput
   listener = (evt: KeyEvent) => {
     dispatchKeyEvent(stack, evt)

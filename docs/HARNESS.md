@@ -95,7 +95,39 @@ A bug fix is not done until the same commit carries a test that **fails before t
 
 ### Coverage gate (per-touched-file, PR CI)
 
-`cd packages/kobe && bun run coverage` writes text + `coverage/coverage-summary.json` (v8). CI's `coverage-cap` job gates PRs: every `packages/kobe/src` file the PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); a file absent from the report counts as 0%. Escape hatch: a `coverage-exemption: <reason>` line in the PR body. Deliberately NO repo-wide % threshold — global bars breed filler tests; the per-touched-file floor ratchets coverage exactly where work happens. **Scope**: the metric covers `src/**/*.ts` only — opentui Solid components (`*.tsx`) cannot execute under vitest's node env (their behavior is pinned black-box in `test/behavior/`), so they are excluded from both the report and the gate rather than sitting in the denominator as unreachable 0% lines.
+`cd packages/kobe && bun run coverage` writes text + `coverage/coverage-summary.json` (v8). CI's `coverage-cap` job gates PRs: every `packages/kobe/src` file the PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); a file absent from the report counts as 0%. Escape hatch: a `coverage-exemption: <reason>` line in the PR body. Deliberately NO repo-wide % threshold — global bars breed filler tests; the per-touched-file floor ratchets coverage exactly where work happens. **Scope**: the metric covers `src/**/*.ts` only — opentui Solid components (`*.tsx`) cannot execute under vitest's node env (their behavior is pinned black-box in `test/behavior/`), so they are excluded from both the report and the gate rather than sitting in the denominator as unreachable 0% lines. `.tsx` gets its own report from the render track below, uploaded to Codecov alongside the `.ts` report but **not yet gated per-file**.
+
+### Render track (`bun test` + `@opentui/solid`'s `testRender`)
+
+A second, narrower test track for `src/**/*.tsx` — opentui Solid components. Lives entirely under `packages/kobe/test/render/`, invisible to vitest (`vitest.config.ts` excludes `test/render/**` — the two runners would otherwise fight over `bun:test` globals and vitest's node environment can't execute opentui anyway).
+
+**Why `bun test`, not vitest**: `@opentui/core` ships raw `.scm`/`.wasm` tree-sitter assets via `with { type: "file" }` imports that vitest's node environment can't resolve, and the JSX needs `@opentui/solid`'s Babel-driven transform rather than vitest's default. `bun test --preload @opentui/solid/preload` is the one runner where both resolve natively — confirmed by a throwaway spike before this track was built. The preload must be under `bunfig.toml`'s `[test]` table specifically: the top-level `preload` key (used by `bun run dev`/`dev:mock`) is **not** read by `bun test`.
+
+**Running it**: `cd packages/kobe && bun run test:render` (plain `bun test test/render` works too; always scope the path argument to `test/render` — an unscoped `bun test` would also try to execute the vitest suites' `*.test.ts` files, which use `vi.mock` and blow up under bun's runner). Coverage: `--coverage --coverage-reporter=lcov --coverage-dir=coverage-render` (gitignored, matching `coverage/`).
+
+**Writing a new component test**: import `renderComponent` from `test/render/harness.tsx`.
+
+```tsx
+import { describe, expect, it } from "bun:test"
+import { MyDialog } from "../../src/tui/component/my-dialog"
+import { renderComponent } from "./harness"
+
+it("shows the title and confirms on enter", async () => {
+  const { frame, mockInput } = await renderComponent(() => <MyDialog title="Delete task?" />, {
+    providers: { dialog: true }, // opt into Theme(default)/KV/Focus/Dialog/Notifications as needed
+  })
+  expect(await frame()).toContain("Delete task?")
+  mockInput.pressEnter() // NOT pressKey("return") — string literals are typed verbatim; use the named helpers
+  expect(await frame()).toContain("...")
+})
+```
+
+Three gotchas the harness's own tests hit first, so later ones don't have to:
+1. **`mockInput.pressKey("return")`/`"escape"`/`"left"` do nothing** — those lowercase names aren't in opentui's `KeyCodes` table, so the string is typed as literal text instead. Use the named convenience methods (`pressEnter()`, `pressEscape()`, `pressArrow("left"|"right"|"up"|"down")`, `pressTab()`, `pressBackspace()`, `pressCtrlC()`) or a single literal character (`pressKey("?")`) instead.
+2. **`pressEscape()` needs a settle tick** — a lone ESC byte is ambiguous with a multi-byte escape sequence, so the parser holds it briefly before deciding it's a standalone key. `await settle()` (exported from `harness.tsx`) before asserting.
+3. **A `let result: T | undefined = undefined` mutated inside an async callback narrows to `undefined` under `tsc`** (a classic closure-narrowing gotcha, not opentui-specific) — drop the `= undefined` initializer (`let result: T | undefined`) so TS doesn't narrow the declared type down to the literal.
+
+Skipped for now: the four large pane hosts (`tasks-pane/host.tsx`, `panes/filetree/FileTree.tsx`, `component/settings-dialog.tsx`, `component/settings-dialog/sections.tsx`) pending the issue #12 split, and every `*/host.tsx` CLI entry point (`new-task/host.tsx`, `quick-task/host.tsx`, `settings/host.tsx`, `update/host.tsx`, `help/host.tsx`, `history/host.tsx`, `ops/host.tsx`) — those call `render()` and connect to the daemon; they're process bootstrappers, not embeddable components, and are already covered black-box by `test/behavior/`.
 
 ### When unit tests are still useful
 
