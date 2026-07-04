@@ -23,7 +23,8 @@ import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
-import { Sidebar } from "../panes/sidebar/Sidebar"
+import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
+import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -50,6 +51,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const renderer = useRenderer()
   const dims = useTerminalDimensions()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.orchestrator.activeTaskSignal()())
+  const [sidebarHover, setSidebarHover] = createSignal<SidebarHover | null>(null)
 
   const tasks = props.orchestrator.tasksSignal()
   const worktreeToolsWidth = createMemo(() => {
@@ -173,6 +175,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           taskJobs={props.orchestrator.taskJobsSignal()}
           worktreeChanges={props.orchestrator.worktreeChangesSignal()}
           focused={focus.is("sidebar")}
+          onHoverChange={(hover) => setSidebarHover(hover)}
         />
       </box>
 
@@ -200,6 +203,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           }}
         />
       </box>
+
+      <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
     </box>
   )
 }

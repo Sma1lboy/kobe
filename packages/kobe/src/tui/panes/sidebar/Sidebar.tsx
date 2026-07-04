@@ -1,99 +1,7 @@
-/**
- * kobe sidebar pane (Stream F → Wave 4.A → Wave 4.5).
- *
- * Wave 4.5 reverses Wave 4.A's repo grouping; the list is NOT grouped
- * per project. Instead it renders as two flat sections — the PROJECTS
- * (repo-root `main` rows) on top, a divider, then ALL the TASKS
- * (worktrees) flat below (Jackson's call). Two views switch with `[`/`]`:
- *
- *   ┌───────────────────────────────────────┐
- *   │ KOBE                       v0.6.10     │
- *   │                                        │
- *   │ Working session   Archives             │
- *   │                                        │
- *   │ PROJECTS ──────────────────────────    │
- *   │ ★ kobe                                 │
- *   │   main                       +3 −1     │
- *   │ ★ pochi                                │
- *   │   feat/login-fix                       │
- *   │                                        │
- *   │ TASKS ─────────────────────────────    │
- *   │ ▌⠹ fix login redirect bug    working   │
- *   │ ▌  feat/login-fix            +12 −3     │
- *   │                                        │
- *   │   ○ add password reset                 │
- *   │     backlog                            │
- *   └───────────────────────────────────────┘
- *
- * Each section gets a small BOLD CAPS header + trailing rule. A PROJECT
- * row is a two-line card like a task: line 1 = ★ (an animated spinner
- * while its repo-root session is live) + repo name; line 2 = the repo
- * root's current branch + the `+N −M` uncommitted-change chip. (The repo
- * dir moved to the hover tooltip.) A TASK row is the same two-line card:
- * line 1 = status badge + title + a `working` chip while the engine
- * streams; line 2 = the branch (or a status word when the task has no
- * branch yet) + the `+N −M` change chip. Tasks carry a trailing blank
- * line so each reads as its own card; projects sit tight. The cursor row
- * gets a left accent ▌ and a subtle background tint; the active row keeps
- * a dimmer ▌ when the cursor moves off it.
- *
- * Loading is driven by `task.status === "in_progress"` (the Tasks pane's
- * only liveness signal — chatRunState is unwired there) or a live engine
- * handle when the outer monitor passes chatRunState: the badge animates
- * (braille spinner) and a `working` chip appears.
- *
- * The active view shows tasks where `task.archived === false`; the
- * archived view shows the rest. `a` on a row toggles its archived flag
- * (non-destructive; the worktree, the branch, and the chat history all
- * stay).
- *
- * The sidebar width is a documented hardcode (CLAUDE.md "flex-first,
- * hardcode last"): convention rationale — matches the direct-tmux Tasks pane
- * navigator width, wide enough for view tabs and useful task titles.
- *
- * Status badges (●○) still render on per-task rows as a visual hint of
- * the underlying `task.status` (the orchestrator's concurrency cap and
- * lifecycle still depend on it), but the sidebar no longer groups
- * by status, by repo, or by anything else — only the active-view
- * filter applies.
- *
- * Cursor / nav: a Solid signal `cursorIndex` indexes the *flat*
- * navigable task list within the active view. View switches reset the
- * cursor to 0. `enter` selects, `d` deletes, `a` toggles archive,
- * `M` starts local merge,
- * `[`/`]` switches view, `g g` jumps to top, `G` jumps to bottom.
- *
- * Reactivity: every prop is an `Accessor`. We never `.map()` arrays in
- * JSX — `For` is used so Solid keeps the row list reactive. The view
- * filter and row build recompute via `createMemo` only when their
- * inputs change.
- *
- * Focus: `props.focused` defaults to `() => true` so embedders that
- * don't yet thread the focus signal still get a working sidebar.
- */
-
-import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import { t } from "@/tui/i18n"
-import type { Task } from "@/types/task"
-import type { KeyEvent } from "@opentui/core"
-import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
-import { useTheme as _useTheme } from "../../context/theme"
-
-/**
- * Legacy chat-run-state shape kept as an inert type so older
- * callers don't break their imports. Always-empty in v0.6 — the
- * spinner derives "in progress" from `Task.status` alone now.
- */
-export type ChatRunState = "running" | "awaiting_input" | "idle"
-
-/** Default sidebar width — task-list rail matching the tmux Tasks pane. */
-const SIDEBAR_WIDTH = 32
-void _useTheme
-import { useTheme } from "../../context/theme"
-import { truncateEnd, truncateStart } from "../../lib/truncate"
-import { currentBranch, pollCurrentBranch } from "./git-head"
+import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 import {
   type SidebarProjectOption,
   type SidebarRow,
@@ -104,251 +12,26 @@ import {
   cursorIndexForProjectScope,
   flattenIds,
   reconcileSidebarRows,
-  repoBasename,
   resolveCursorTarget,
   sidebarProjectKey,
   splitSidebarRows,
 } from "./groups"
 import { useSidebarBindings } from "./keys"
-import { spacedTitle, truncateTitle } from "./labels"
-import {
-  IN_PROGRESS_SPINNER,
-  SPINNER_FRAME_MS,
-  type SidebarTone,
-  buildSidebarRowView,
-  prCheckChip,
-  withSpinnerFrame,
-} from "./row-view"
-import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
-import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
+import { SidebarPanel, VIEW_TABS } from "./panel"
+import type { SidebarRowCardSharedProps } from "./row-cards"
+import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS } from "./row-view"
+import type { SidebarHover, SidebarProps } from "./types"
 
-export type SidebarProps = {
-  tasks: Accessor<readonly Task[]>
-  selectedId: Accessor<string | null>
-  onSelect: (id: string) => void
-  /**
-   * Fires on keyboard `enter` (NOT on mouse click). v0.6 wires this
-   * to "open the selected task in the workspace + launch tmux";
-   * mouse click stays a plain highlight via {@link onSelect} so
-   * accidental clicks don't suspend the renderer.
-   */
-  onActivate?: (taskId: string) => void
-  /**
-   * When true, a mouse click on a row fires {@link onActivate} (not
-   * just {@link onSelect}). Off in the outer app — there activate is a
-   * **Handover** that suspends the renderer, so a stray click must not
-   * launch. The **Tasks pane** opts in: its activate is a cheap,
-   * reversible `tmux switch-client`, so click-to-switch is the natural
-   * affordance.
-   */
-  activateOnClick?: boolean
-  /**
-   * This pane's selection is PINNED to its own task — a task-bound Tasks pane
-   * no-ops {@link onSelect} so `selectedId` never follows clicks. Without this,
-   * clicking/Entering another project jumps the client away (via
-   * {@link onActivate}) but leaves THIS backgrounded pane's cursor stranded on
-   * the jumped-to row; switching back then shows that stale cursor as a second
-   * selection while the pinned task is the one actually open. When set, a
-   * jump-away snaps the cursor back to the pinned row. Off (home pane) keeps the
-   * old behaviour, where `selectedId` follows and the cursor tracks it.
-   */
-  pinnedSelection?: boolean
-  focused?: Accessor<boolean>
-  onDeleteRequest?: (taskId: string) => void
-  /**
-   * Archive-toggle callback. Wave 4.5: pressing `a` flips the cursor
-   * task's `archived` flag, which moves it between the Working session
-   * and Archives views.
-   */
-  onArchiveRequest?: (taskId: string) => void
-  /** Local merge callback. Pressing Shift+M asks the parent to start the merge flow. */
-  onLocalMergeRequest?: (taskId: string) => void
-  /**
-   * Optional task-reorder mode. In this mode the sidebar keeps the same
-   * cursor row selected, but j/k ask the parent to move that row up/down
-   * in the persisted task order. Used by the tmux Tasks pane.
-   */
-  moveMode?: Accessor<boolean>
-  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
-  onMoveModeExit?: () => void
-  /**
-   * Rename callback. Pressing `r` on the cursor task emits this with
-   * the task id; the parent (app.tsx) opens an input dialog defaulted
-   * to the current title and on submit calls `orchestrator.setTitle`.
-   */
-  onRenameRequest?: (taskId: string) => void
-  /**
-   * Pin-toggle callback. Pressing Shift+P on the cursor task emits
-   * this; the parent calls `orchestrator.setPinned`. Sidebar stays
-   * stateless of the toggle.
-   */
-  onPinRequest?: (taskId: string) => void
-  onPreviewToggleRequest?: (taskId: string) => void
-  /** Display ordering for task rows. Defaults to the persisted/manual order. */
-  sortMode?: Accessor<TaskSortMode>
-  /** Cycle the display ordering (`t`). */
-  onSortModeToggle?: () => void
-  /** Global project scope for task rows. Defaults to local state for legacy embedders. */
-  projectFilter?: Accessor<string | null>
-  /** Update the global project scope. */
-  onProjectFilterChange?: (repo: string | null) => void
-  /**
-   * Fires when the `/`-search filter opens or closes. Lifted out of
-   * the sidebar so the app-level Shell can gate its sidebar-scoped
-   * plain-letter bindings (`n` / `s` / `q` in app-keymap.tsx) on
-   * `!sidebarSearchActive()` — otherwise typing `n` / `s` / `q` into
-   * the search query would fire those chords and steal the
-   * keystroke before it could reach the input.
-   */
-  onSearchActiveChange?: (active: boolean) => void
-  /**
-   * Fires with the task id under the CURSOR whenever it changes (j/k nav,
-   * click, view/filter reset). The Tasks-pane host needs this because its
-   * own host-scoped chords (o/b/v) must act on the highlighted row, not on
-   * `selectedId` — which in a home pane follows the active-task channel, not
-   * the cursor (d/a/r already target the cursor via the sidebar's own
-   * bindings). Fires `null` when no row is under the cursor. Optional; hosts
-   * that don't need it just don't wire it.
-   */
-  onCursorChange?: (taskId: string | null) => void
-  /**
-   * Optional width override. When omitted, falls back to {@link SIDEBAR_WIDTH}.
-   * Wired by the Shell so the sidebar↔workspace splitter can resize the pane
-   * at runtime. Reactive — changing the accessor's value reflows immediately.
-   */
-  width?: Accessor<number>
-  /**
-   * Optional status chip in the `kobe` brand header — the Tasks pane wires
-   * the version / "update available" chip here (it moved up from the footer's
-   * old `── system ──` block). It sits in the left cluster right after the
-   * KOBE name. `emphasize: true` paints it in the warning colour (an update is
-   * waiting); omit / return `null` to hide it.
-   */
-  headerStatus?: Accessor<{ label: string; emphasize: boolean } | null>
-  /** Click handler for {@link headerStatus} — e.g. open the update page. */
-  onHeaderStatusClick?: () => void
-  /**
-   * Optional new-task affordance: when wired, a clickable `+` renders at the
-   * end of the brand-header cluster (after the version) and fires this — the
-   * SAME create flow as the `n` chord. Omitted (e.g. the deprecated outer
-   * monitor) renders no `+`.
-   */
-  onAddTask?: () => void
-  /**
-   * Whether the ChatTab is in Zen mode (the file/terminal panes collapsed to
-   * the engine). When true, a small `☯ ZEN` indicator renders at the rail's
-   * bottom-left so the kept Tasks pane shows the mode and reminds the user of
-   * the `prefix`+space exit chord. Polled from the window's `@kobe_zen_panes`
-   * option by the Tasks-pane host.
-   */
-  zenActive?: Accessor<boolean>
-  /**
-   * Click handler for the `☯ ZEN` badge — toggles zen back off (the mouse
-   * counterpart to the `prefix`+space exit chord). Wired by the Tasks-pane
-   * host to the global zen toggle.
-   */
-  onZenClick?: () => void
-  /**
-   * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
-   * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
-   * spinner animates only when a row's task has at least one tab in
-   * the `"running"` state — i.e. an actual live engine handle — so
-   * interrupting a turn (which kills the handle but keeps
-   * `task.status === "in_progress"` because the *task* is still
-   * active) immediately stops the dots. Optional so embedders that
-   * don't have the orchestrator handy can still mount the sidebar
-   * (the spinner falls back to a static "active" badge).
-   */
-  chatRunState?: Accessor<ReadonlyMap<string, ChatRunState>>
-  /**
-   * Per-task engine activity from the daemon's `engine-state` channel
-   * (event-driven, via engine hooks), keyed by taskId. The PRIMARY liveness
-   * signal: `running` animates the spinner + "working" chip; `rate_limited` /
-   * `permission_needed` / `error` show a distinct status chip. Optional — when
-   * absent (or a task has no entry) the row falls back to the chatRunState /
-   * `task.status` heuristics, so the polling turn-detector still covers it.
-   */
-  engineState?: Accessor<ReadonlyMap<string, TaskEngineState>>
-  /**
-   * Long daemon operations in flight, keyed by taskId, from the daemon's
-   * `task.jobs` channel (today: `ensureWorktree` — a minutes-long
-   * `git worktree add` on a huge repo). A row with an entry shows the
-   * spinner + a "materializing" subtitle — in EVERY attached Tasks pane,
-   * not just the one that initiated the blocking RPC. Optional like
-   * {@link engineState}; absent means no job feedback (e.g. no daemon).
-   */
-  taskJobs?: Accessor<ReadonlyMap<string, TaskJobState>>
-  /**
-   * Daemon-collected `+N −M` counts keyed by worktree path, from the
-   * `worktree.changes` channel (issue #6). When this yields a non-null
-   * map, the per-row chips render the PUSHED counts and this process
-   * spawns ZERO git subprocesses — the daemon is the single collector.
-   * `null` / omitted (no daemon, an old daemon without the channel, or
-   * the socket dropped) falls back to the local async poller, row by
-   * row, with the original archived-row gate intact.
-   */
-  worktreeChanges?: Accessor<ReadonlyMap<string, WorktreeChanges> | null>
-}
+export type { ChatRunState, SidebarHover, SidebarProps } from "./types"
+export { approxCellWidth } from "./hover-tooltip"
 
-/**
- * View ids for the view switcher. Order matches the `SidebarView` union;
- * the `[` / `]` keys cycle within this list (currently 2 entries).
- * Labels are resolved via `t()` at the render site so they stay reactive.
- */
-const VIEW_TABS: ReadonlyArray<{ view: SidebarView }> = [{ view: "active" }, { view: "archived" }]
+/** Default sidebar width — task-list rail matching the tmux Tasks pane. */
+const SIDEBAR_WIDTH = 32
 
-/** Returns the localised tab label for a given view id. */
-function viewTabLabel(view: SidebarView): string {
-  switch (view) {
-    case "active":
-      return t("tasks.view.workspace")
-    case "archived":
-      return t("tasks.view.archives")
-  }
-}
-
-/**
- * Polling interval (ms) for the per-main-row git branch refresh. The
- * sidebar caches each main row's branch name behind a `createMemo`
- * keyed on this tick + the repo path; advancing the tick busts the
- * memo and re-shells `git symbolic-ref` once per row. 2s is a
- * compromise — fast enough that the user doesn't notice a stale label
- * after a manual checkout, slow enough that the sidebar isn't a git
- * call generator on every redraw frame. Exported for tests.
- */
+/** Polling interval for the per-main-row git branch refresh. */
 export const MAIN_BRANCH_POLL_MS = 2_000
 
-/**
- * Max width (cells) for a task row's branch label. The rail is narrow, so
- * a long branch is truncated keeping its PREFIX (`feat/long-branch…`) —
- * the front of a branch name carries the type/scope the eye scans for,
- * the tail is usually a redundant slug. Exported for tests.
- */
-export const BRANCH_LABEL_MAX = 16
-
-/** Truncate keeping the prefix, with a trailing ellipsis when clipped. */
-export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): string {
-  return truncateEnd(branch, max)
-}
-
-/**
- * Rough display width in terminal cells, counting CJK / fullwidth codepoints
- * as 2. Not Unicode-exact (no combining-mark or emoji-ZWJ handling) — just
- * enough to size the hover tooltip so a Chinese task title isn't clipped. A
- * slight over-estimate only widens the box, which is harmless.
- */
-export function approxCellWidth(s: string): number {
-  let n = 0
-  for (const ch of s) n += (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1
-  return n
-}
-
-/** Truncate a filesystem path keeping the TAIL (the leaf carries the meaning). */
-const truncatePathTail = truncateStart
-
 export function Sidebar(props: SidebarProps) {
-  const { theme } = useTheme()
-
   const focusedAccessor = () => (props.focused ? props.focused() : true)
 
   // Active view; default to the working session. `[` / `]` cycle
@@ -568,7 +251,16 @@ export function Sidebar(props: SidebarProps) {
     const contentHeight = Math.max(2, projectRows().length * 2)
     return Math.min(cellCap, contentHeight)
   })
-  const [hover, setHover] = createSignal<{ task: Task; x: number; y: number } | null>(null)
+  const [hover, setLocalHover] = createSignal<SidebarHover | null>(null)
+  const setHover = (next: SidebarHover | null): void => {
+    setLocalHover(next)
+    props.onHoverChange?.(next)
+  }
+  const clearHoverForTask = (taskId: string): void => {
+    if (hover()?.task.id !== taskId) return
+    setHover(null)
+  }
+  onCleanup(() => props.onHoverChange?.(null))
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
@@ -738,701 +430,66 @@ export function Sidebar(props: SidebarProps) {
     onSearchExit: (select) => exitSearch(select),
   })
 
-  // Small section header — a BOLD CAPS label + a trailing dim rule that
-  // fills the row (agent-deck pane-header grammar). Splits the PROJECTS
-  // section from the TASKS section. `topPad` adds a blank line above so the
-  // TASKS header lifts off the tight project list; the PROJECTS header sits
-  // flush under the view tabs.
-  const SectionHeader = (p: { label: string; suffix?: string; topPad?: boolean }) => (
-    <box flexDirection="column" flexShrink={0}>
-      <Show when={p.topPad}>
-        <box flexShrink={0}>
-          <text wrapMode="none"> </text>
-        </box>
-      </Show>
-      <box flexDirection="row" flexShrink={0} gap={1} paddingLeft={1} paddingRight={1}>
-        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-          {p.label}
-        </text>
-        {/* Ruler fills whatever the row leaves over: flexBasis 0 keeps its
-            240-char content out of layout (it would crush the siblings),
-            flexGrow takes the leftover, overflow clips. No width math —
-            correct in the 32-cell native rail and a full tmux pane alike. */}
-        <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-          {"─".repeat(240)}
-        </text>
-        <Show when={p.suffix}>
-          <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-            {p.suffix}
-          </text>
-        </Show>
-      </box>
-    </box>
-  )
-
-  const toneColor = (tone: SidebarTone) => {
-    switch (tone) {
-      case "success":
-        return theme.success
-      case "warning":
-        return theme.warning
-      case "primary":
-        return theme.primary
-      case "error":
-        return theme.error
-      default:
-        return theme.textMuted
-    }
-  }
-
-  const ProjectRowCard = (p: { row: SidebarRow }) => {
-    const task = p.row.task
-    const flatIndex = p.row.flatIndex
-    const isCursor = () => flatIndex === cursorIndex()
-    const isSelected = () => task.id === props.selectedId()
-    const isLive = createMemo(() => {
-      const map = props.chatRunState?.()
-      if (!map) return false
-      const prefix = `${task.id}:`
-      for (const [key, state] of map) {
-        if (state === "running" && key.startsWith(prefix)) return true
-      }
-      return false
-    })
-    const changes = createMemo(
-      () => {
-        const pushed = pickPushedChanges(props.worktreeChanges?.(), task.worktreePath)
-        if (pushed) return pushed
-        branchTick()
-        if (!task.archived) pollWorktreeChanges(task.worktreePath)
-        return worktreeChanges(task.worktreePath)
-      },
-      undefined,
-      { equals: sameWorktreeChanges },
-    )
-    const projectBranch = createMemo(() => {
-      branchTick()
-      pollCurrentBranch(task.repo)
-      return currentBranch(task.repo)
-    })
-    const baseRowView = createMemo(() =>
-      buildSidebarRowView({
-        task,
-        activity: props.engineState?.().get(task.id),
-        job: props.taskJobs?.().get(task.id),
-        live: isLive(),
-        spinnerFrame: 0,
-        subtitleBudget: subtitleBudget(),
-        truncateBranch: truncateBranchLabel,
-        mainBranch: projectBranch(),
-      }),
-    )
-    const rowView = createMemo(() => withSpinnerFrame(baseRowView(), spinnerFrame))
-    const stateColor = () => (!rowView().loading ? theme.primary : toneColor(rowView().tone))
-    const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
-    const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
-
-    return (
-      <box flexDirection="column" gap={0} paddingBottom={0}>
-        {/* biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply. */}
-        <box
-          ref={(r: BoxRenderable) => {
-            rowEls.set(flatIndex, r)
-            onCleanup(() => {
-              if (rowEls.get(flatIndex) === r) rowEls.delete(flatIndex)
-            })
-          }}
-          flexDirection="column"
-          gap={0}
-          backgroundColor={isCursor() ? theme.backgroundElement : undefined}
-          onMouseUp={() => {
-            // A click moves the cursor (the visual "selected pointer") to the
-            // clicked row directly — it must not depend on onSelect, which a
-            // task-bound pane no-ops to pin its highlight. Without this, after
-            // j/k navigates away, clicking a row (even the pane's own task)
-            // couldn't bring the pointer back.
-            setCursorIndex(flatIndex)
-            props.onSelect(task.id)
-            if (props.activateOnClick) activateRow(task.id)
-          }}
-          onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
-          onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
-        >
-          <box flexDirection="row" gap={0}>
-            <text fg={barColor()} wrapMode="none">
-              {barGlyph()}
-            </text>
-            <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-              <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                {rowView().projectGlyph}
-              </text>
-              <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-                {spacedTitle(rowView().titleText, titleBudget())}
-              </text>
-            </box>
-          </box>
-          <box flexDirection="row" gap={0}>
-            <text fg={barColor()} wrapMode="none">
-              {barGlyph()}
-            </text>
-            <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                {rowView().subtitleText}
-              </text>
-              <Show when={changes().added > 0}>
-                <text fg={theme.success} wrapMode="none">
-                  +{changes().added}
-                </text>
-              </Show>
-              <Show when={changes().deleted > 0}>
-                <text fg={theme.error} wrapMode="none">
-                  −{changes().deleted}
-                </text>
-              </Show>
-            </box>
-          </box>
-        </box>
-      </box>
-    )
+  const rowCardShared: SidebarRowCardSharedProps = {
+    selectedId: props.selectedId,
+    cursorIndex,
+    setCursorIndex,
+    rowEls,
+    onSelect: props.onSelect,
+    activateRow,
+    activateOnClick: props.activateOnClick,
+    setHover,
+    clearHoverForTask,
+    branchTick,
+    spinnerFrame,
+    titleBudget,
+    subtitleBudget,
+    chatRunState: props.chatRunState,
+    engineState: props.engineState,
+    taskJobs: props.taskJobs,
+    worktreeChanges: props.worktreeChanges,
+    moveMode: props.moveMode,
   }
 
   return (
-    <box
-      // width + flexShrink are applied together via `outerBoxRef` below, NOT as
-      // props here. This is load-bearing and was the whole reason the task list
-      // wouldn't scroll: opentui's `width` setter force-zeroes flexShrink (it
-      // assumes an explicitly-sized box shouldn't flex). With flexShrink=0 this
-      // rail refuses to shrink to its height-bounded host parent and sizes to
-      // its FULL content height; the inner scrollbox inherits that height, so
-      // opentui sees no overflow and the list never scrolls — j/k just walks
-      // the cursor off the bottom edge. Setting width then restoring
-      // flexShrink={1} in one effect (so order is guaranteed) re-bounds the box
-      // to the pane, which lets the scrollbox clip + the viewport-follow effect
-      // scroll. FileTree's outer box has no explicit width, so it kept the
-      // shrink default and never hit this.
-      ref={(r: BoxRenderable) => {
+    <SidebarPanel
+      rootRef={(r) => {
         outerBoxRef = r
       }}
-      flexGrow={1}
-      minHeight={0}
-      flexDirection="column"
-      paddingTop={1}
-      paddingBottom={1}
-      paddingLeft={0}
-      paddingRight={0}
-    >
-      {/* Brand header: `kobe` on the left (focus-aware — focusAccent when
-          this pane has focus, dimmed when not), with the version / update
-          chip right-aligned (moved up from the footer's old `── system ──`
-          block). paddingLeft={1} clears the 1-cell selection gutter (the ▌
-          accent edge on each row) so the brand lines up with the row badge
-          column. The root box has no horizontal padding — the pane sits
-          flush to its tmux edges; this 1 cell is the kobe selection gutter,
-          not padding. */}
-      {/* Brand header: a left cluster (KOBE + the version/update chip hugging
-          the name) and a clickable `[+]` new-task button pushed to the far
-          right (justify space-between). */}
-      <box
-        flexDirection="row"
-        justifyContent="space-between"
-        gap={1}
-        paddingBottom={1}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <box flexDirection="row" gap={1}>
-          <text
-            fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-          >
-            KOBE
-          </text>
-          <Show when={props.headerStatus?.()}>
-            {(status) => (
-              <text
-                fg={status().emphasize ? theme.warning : theme.textMuted}
-                attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
-                wrapMode="none"
-                onMouseUp={() => props.onHeaderStatusClick?.()}
-              >
-                {status().label}
-              </text>
-            )}
-          </Show>
-        </box>
-        <Show when={props.onAddTask}>
-          <text
-            fg={theme.primary}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-            onMouseUp={() => props.onAddTask?.()}
-          >
-            [+]
-          </text>
-        </Show>
-      </box>
-
-      {/* Inline `/`-search input. Only rendered while searchMode is on
-         (entered via `/`); de-rendering on exit keeps the row count
-         stable for users not using search. The input is auto-focused
-         so the user can start typing immediately; up/down/enter/esc
-         are handled by the sidebar-scope search bindings in keys.ts,
-         not by the input itself. */}
-      {/* Inline `/`-search row. Rendered as plain text rather than
-         an opentui `<input>` element so the typed query is fully
-         controlled by our `searchQuery` signal — see the
-         createEffect above that captures keystrokes from the global
-         keypress event. Avoids the focus/value-prop quirks of
-         InputRenderable in a conditionally-mounted slot. */}
-      <Show when={searchMode()}>
-        <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
-          <text fg={theme.info} wrapMode="none">
-            /
-          </text>
-          <text fg={theme.text} wrapMode="none">
-            {searchQuery()}
-          </text>
-          <text fg={theme.info} attributes={TextAttributes.BLINK} wrapMode="none">
-            █
-          </text>
-          <Show when={searchQuery().length === 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              {" "}
-              {t("tasks.search.placeholder")}
-            </text>
-          </Show>
-          <Show when={searchQuery().length > 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              {" "}
-              {flatIds().length}/{totalRows()}
-            </text>
-          </Show>
-        </box>
-      </Show>
-
-      {/* View switcher + sort toggle. `[` / `]` toggles the view; `t`
-          cycles default/manual order vs recent-use order. Non-default
-          sort state is shown on the TASKS section header. */}
-      <box
-        flexDirection="row"
-        justifyContent="space-between"
-        gap={1}
-        paddingBottom={1}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <box flexDirection="row" gap={2}>
-          <For each={VIEW_TABS}>
-            {(tab) => {
-              const active = () => view() === tab.view
-              return (
-                <text
-                  fg={active() ? theme.primary : theme.textMuted}
-                  attributes={active() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                  onMouseUp={() => setView(tab.view)}
-                >
-                  {viewTabLabel(tab.view)}
-                </text>
-              )
-            }}
-          </For>
-          {/* Subtle chord hint so new users discover `[`/`]` switches the
-              view without hunting the footer legend. Quiet (muted + DIM),
-              non-interactive — it doesn't alter tab layout or clicks. */}
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-            [/]
-          </text>
-        </box>
-        <Show when={props.sortMode}>
-          <text
-            fg={theme.textMuted}
-            attributes={TextAttributes.DIM}
-            wrapMode="none"
-            onMouseUp={() => props.onSortModeToggle?.()}
-          >
-            {t("tasks.sort")}
-          </text>
-        </Show>
-      </box>
-
-      {/* Body: split PROJECTS and TASKS into independent scroll regions.
-         The flat cursor list is unchanged, but task overflow no longer pushes
-         the project switcher/rows out of the rail. */}
-      <Show when={projectRows().length > 0}>
-        <box flexDirection="column" flexShrink={0}>
-          {/* PROJECTS header doubles as the project filter: clicking cycles the
-             active filter; the current filter label + matching task count ride
-             on the same row instead of a separate line above. */}
-          <box
-            flexDirection="row"
-            flexShrink={0}
-            gap={1}
-            paddingLeft={1}
-            paddingRight={1}
-            onMouseUp={() => cycleProjectFilter()}
-          >
-            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-              {t("tasks.header.projects")}
-            </text>
-            <Show when={projectOptions().length > 1}>
-              <text
-                fg={projectFilterRepo() ? theme.primary : theme.textMuted}
-                attributes={projectFilterRepo() ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                flexShrink={0}
-              >
-                {projectFilterLabel()}
-              </text>
-            </Show>
-            {/* Same flex ruler as SectionHeader — flexBasis 0 + grow + clip. */}
-            <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-              {"─".repeat(240)}
-            </text>
-            <Show when={projectOptions().length > 1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
-                {projectFilterCountLabel()}
-              </text>
-            </Show>
-          </box>
-          <scrollbox
-            ref={(r: ScrollBoxRenderable) => {
-              projectScrollRef = r
-            }}
-            flexShrink={0}
-            flexGrow={0}
-            minHeight={0}
-            maxHeight={projectScrollMaxHeight()}
-            stickyScroll={false}
-            verticalScrollbarOptions={{
-              trackOptions: {
-                foregroundColor: "transparent",
-              },
-            }}
-          >
-            <box flexShrink={0} gap={0} paddingRight={1}>
-              <For each={projectRows()}>{(row) => <ProjectRowCard row={row} />}</For>
-            </box>
-          </scrollbox>
-        </box>
-      </Show>
-
-      <SectionHeader
-        label={t("tasks.header.tasks")}
-        suffix={sortMode() === "default" ? undefined : sortMode()}
-        topPad={projectRows().length > 0}
-      />
-      <scrollbox
-        ref={(r: ScrollBoxRenderable) => {
-          taskScrollRef = r
-        }}
-        flexGrow={1}
-        minHeight={0}
-        stickyScroll={false}
-        verticalScrollbarOptions={{
-          trackOptions: {
-            foregroundColor: "transparent",
-          },
-        }}
-      >
-        {/* gap={0} — TASK cards each carry a trailing blank line so they read
-            as separate cards. PROJECT rows live in their own scroll region. */}
-        <box flexShrink={0} gap={0} paddingRight={1}>
-          <For each={taskRows()}>
-            {(row) => {
-              const task = row.task
-              const flatIndex = row.flatIndex
-              const isCursor = () => flatIndex === cursorIndex()
-              const isSelected = () => task.id === props.selectedId()
-              // "Is this task actually streaming a turn right now?"
-              // True when the orchestrator holds a live engine handle for
-              // ANY of this task's tabs — covers multi-tab tasks where the
-              // running tab is not the active one. Spinner fires on isLive,
-              // not on task.status, so it stops immediately on interrupt
-              // (the handle drops) without waiting for the lifecycle to settle.
-              const isLive = createMemo(() => {
-                const map = props.chatRunState?.()
-                if (!map) return false
-                const prefix = `${task.id}:`
-                for (const [key, state] of map) {
-                  if (state === "running" && key.startsWith(prefix)) return true
-                }
-                return false
-              })
-              // Per-row "uncommitted changes" file counts, rendered on
-              // the right edge as `+N −M`. PREFERRED source: the daemon's
-              // `worktree.changes` pushes (issue #6) — one collector in
-              // the daemon, zero git subprocesses in this pane. FALLBACK
-              // (no daemon / old daemon / socket down): the local ASYNC
-              // poller — the `branchTick` read keeps the ~2s cadence, and
-              // a huge worktree costs a background child process, never a
-              // frozen event loop (a 30GB repo's sync `git status` used
-              // to hard-freeze the pane the moment its row rendered).
-              // Archived rows show nothing and trigger nothing on either
-              // path: the daemon never collects them, and the local path
-              // keeps its poll gate — the Archives view must not pay
-              // git-status for shelved worktrees (the original bug).
-              // The memo's custom `equals` keeps §5.5 intact on the push
-              // path: each push is a fresh map reference, so the memo
-              // recomputes, but unchanged counts don't propagate to the
-              // row. Empty when the worktree is clean — the renderer
-              // skips the chip entirely. Returned as a struct (not a
-              // joined string) so the renderer can colour `+N` with
-              // `theme.success` and `−N` with `theme.error`, matching
-              // the FileTree pane's per-file `+/−` badges.
-              const changes = createMemo(
-                () => {
-                  const pushed = pickPushedChanges(props.worktreeChanges?.(), task.worktreePath)
-                  if (pushed) return pushed
-                  branchTick()
-                  if (!task.archived) pollWorktreeChanges(task.worktreePath)
-                  return worktreeChanges(task.worktreePath)
-                },
-                undefined,
-                { equals: sameWorktreeChanges },
-              )
-              // Two-stage view derivation (waste audit). Stage 1 builds
-              // everything EXCEPT the animated glyph with a fixed frame —
-              // it deliberately does NOT read `spinnerFrame`, so the 10Hz
-              // tick re-derives nothing here. Stage 2 overlays the live
-              // frame via `withSpinnerFrame`, which reads the frame
-              // accessor only when the row is loading — Solid re-collects
-              // memo deps per run, so an idle row's memo simply isn't
-              // subscribed to the tick. Before this split every row
-              // rebuilt its full view 10×/s even with nothing running
-              // (N rows × 10Hz string/object churn); now an idle sidebar
-              // does zero per-tick work.
-              const baseRowView = createMemo(() =>
-                buildSidebarRowView({
-                  task,
-                  activity: props.engineState?.().get(task.id),
-                  job: props.taskJobs?.().get(task.id),
-                  live: isLive(),
-                  spinnerFrame: 0,
-                  subtitleBudget: subtitleBudget(),
-                  truncateBranch: truncateBranchLabel,
-                  mainBranch: "",
-                }),
-              )
-              const rowView = createMemo(() => withSpinnerFrame(baseRowView(), spinnerFrame))
-              const stateColor = () => toneColor(rowView().tone)
-              // Accent edge: focus-accent ▌ on the cursor row, a quieter
-              // (dimmed primary) ▌ on the active row when the two differ after
-              // j/k nav, a bare space otherwise to hold the gutter.
-              const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
-              const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
-              return (
-                <box flexDirection="column" gap={0} paddingBottom={1}>
-                  {/* Interactive row body. The cursor row carries a SUBTLE
-                      `backgroundElement` tint (a quiet block, not the old
-                      solid-terracotta full fill) so badges / branch / `+N −M`
-                      keep their semantic colours instead of being flattened to
-                      inverted text — warp/agent-deck selection grammar: a left
-                      accent ▌ carries focus, the fill stays quiet.
-                      `backgroundElement` survives transparent mode (theme.tsx
-                      keeps it tinted) and the bar is foreground paint, so the
-                      row reads even when the fill is suppressed. */}
-                  {/* biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply. */}
-                  <box
-                    ref={(r: BoxRenderable) => {
-                      rowEls.set(flatIndex, r)
-                      onCleanup(() => {
-                        if (rowEls.get(flatIndex) === r) rowEls.delete(flatIndex)
-                      })
-                    }}
-                    flexDirection="column"
-                    gap={0}
-                    backgroundColor={isCursor() ? theme.backgroundElement : undefined}
-                    onMouseUp={() => {
-                      // Click moves the cursor directly (see the project-row
-                      // handler above) — decoupled from onSelect so it works in
-                      // a task-bound pane that no-ops onSelect to pin its row.
-                      setCursorIndex(flatIndex)
-                      props.onSelect(task.id)
-                      if (props.activateOnClick) activateRow(task.id)
-                    }}
-                    onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
-                    onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
-                  >
-                    {/* TASK row (a worktree) — two-line card. */}
-                    {/* Line 1: accent edge + status badge + title + a
-                        "working" chip while the engine is streaming. */}
-                    <box flexDirection="row" gap={0}>
-                      <text fg={barColor()} wrapMode="none">
-                        {barGlyph()}
-                      </text>
-                      <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-                        <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                          {rowView().stateGlyph}
-                        </text>
-                        <text
-                          fg={theme.text}
-                          attributes={isSelected() || isCursor() ? TextAttributes.BOLD : undefined}
-                          wrapMode="none"
-                          flexGrow={1}
-                        >
-                          {spacedTitle(rowView().titleText, titleBudget())}
-                        </text>
-                        <Show when={props.moveMode?.() && isCursor()}>
-                          <text fg={theme.warning} wrapMode="none">
-                            {t("tasks.moveChip")}
-                          </text>
-                        </Show>
-                      </box>
-                    </box>
-                    {/* Line 2: accent edge (continues the bar) + subtitle,
-                        indented under the title. Branch (or status word) on
-                        the left, the `+N −M` change chip pushed to the right. */}
-                    <box flexDirection="row" gap={0}>
-                      <text fg={barColor()} wrapMode="none">
-                        {barGlyph()}
-                      </text>
-                      <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-                        <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                          {rowView().subtitleText}
-                        </text>
-                        <Show when={task.pinned === true}>
-                          <text fg={theme.warning} wrapMode="none">
-                            ▴
-                          </text>
-                        </Show>
-                        <Show when={prCheckChip(task)}>
-                          {(chip) => (
-                            <text fg={toneColor(chip().tone)} wrapMode="none">
-                              {chip().glyph}
-                            </text>
-                          )}
-                        </Show>
-                        <Show when={changes().added > 0}>
-                          <text fg={theme.success} wrapMode="none">
-                            +{changes().added}
-                          </text>
-                        </Show>
-                        <Show when={changes().deleted > 0}>
-                          <text fg={theme.error} wrapMode="none">
-                            −{changes().deleted}
-                          </text>
-                        </Show>
-                      </box>
-                    </box>
-                  </box>
-                </box>
-              )
-            }}
-          </For>
-          <Show when={flatIds().length === 0}>
-            <box paddingTop={1} paddingLeft={1}>
-              <text fg={theme.textMuted}>
-                {searchMode() && searchQuery().trim().length > 0
-                  ? t("tasks.empty.noMatchSearch")
-                  : projectFilterRepo()
-                    ? view() === "active"
-                      ? t("tasks.empty.noActiveProject")
-                      : t("tasks.empty.noArchivedProject")
-                    : view() === "active"
-                      ? t("tasks.empty.noActive")
-                      : t("tasks.empty.noArchived")}
-              </text>
-            </box>
-          </Show>
-          <Show
-            when={
-              projectFilterRepo() &&
-              flatIds().length > 0 &&
-              !hasTaskRows() &&
-              !(searchMode() && searchQuery().trim().length > 0)
-            }
-          >
-            <box paddingTop={1} paddingLeft={1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                {view() === "active" ? t("tasks.empty.noActiveProject") : t("tasks.empty.noArchivedProject")}
-              </text>
-            </box>
-          </Show>
-          {/* Non-empty Archives: remind the user `a` returns a row to Working.
-              Only shown when there's actually a row to act on. */}
-          <Show when={view() === "archived" && flatIds().length > 0}>
-            <box paddingTop={1} paddingLeft={1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                {t("tasks.archiveHint")}
-              </text>
-            </box>
-          </Show>
-        </box>
-      </scrollbox>
-
-      {/* Zen-mode indicator, pinned to the rail's bottom-left. The scrollbox
-          above takes flexGrow={1}, so this row sits flush at the bottom. Only
-          rendered while the ChatTab is collapsed to the engine pane — a quiet
-          reminder that `prefix`+space (or the `zen` chip) toggles it back. */}
-      <Show when={props.zenActive?.()}>
-        <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>
-          <text
-            fg={theme.accent}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-            onMouseUp={() => props.onZenClick?.()}
-          >
-            ☯ ZEN
-          </text>
-        </box>
-      </Show>
-
-      {/* Hover tooltip overlay. Absolute + high zIndex so it floats above the
-          rows; anchored just below-right of the cursor and clamped inside the
-          screen. `backgroundElement` stays opaque even in transparent mode, so
-          the detail stays readable over whatever is behind it. The full title,
-          branch, and worktree path live here — the place to look when the
-          narrow-rail row had to drop them. */}
-      <Show when={hover()}>
-        {(h) => {
-          const lines = createMemo(() => {
-            const t = h().task
-            const out: { text: string; bold?: boolean; dim?: boolean }[] = []
-            out.push({ text: t.kind === "main" ? repoBasename(t.repo) : t.title, bold: true })
-            if (t.branch.length > 0) out.push({ text: `⎇ ${t.branch}` })
-            if (t.worktreePath.length > 0) out.push({ text: t.worktreePath, dim: true })
-            return out
-          })
-          // Width = widest line (CJK-aware) capped, + padding (2) + border (2).
-          const TOOLTIP_MAX_W = 72
-          const innerW = createMemo(() =>
-            Math.min(TOOLTIP_MAX_W - 4, Math.max(...lines().map((l) => approxCellWidth(l.text)))),
-          )
-          const boxW = createMemo(() => innerW() + 4)
-          const boxH = createMemo(() => lines().length + 2) // content rows + top/bottom border
-          const left = createMemo(() => Math.max(0, Math.min(h().x + 2, dims().width - boxW() - 1)))
-          const top = createMemo(() => Math.max(0, Math.min(h().y + 1, dims().height - boxH() - 1)))
-          return (
-            <box
-              position="absolute"
-              zIndex={2600}
-              left={left()}
-              top={top()}
-              width={boxW()}
-              flexDirection="column"
-              border
-              borderColor={theme.focusAccent}
-              backgroundColor={theme.backgroundElement}
-              paddingLeft={1}
-              paddingRight={1}
-            >
-              <For each={lines()}>
-                {(l) => (
-                  <text
-                    fg={l.dim ? theme.textMuted : theme.text}
-                    attributes={l.bold ? TextAttributes.BOLD : l.dim ? TextAttributes.DIM : undefined}
-                    wrapMode="none"
-                  >
-                    {l.dim ? truncatePathTail(l.text, innerW()) : truncateTitle(l.text, innerW())}
-                  </text>
-                )}
-              </For>
-            </box>
-          )
-        }}
-      </Show>
-    </box>
+      focused={focusedAccessor}
+      view={view}
+      setView={setView}
+      sortMode={sortMode}
+      hasSortToggle={props.sortMode !== undefined}
+      onSortModeToggle={props.onSortModeToggle}
+      searchMode={searchMode}
+      searchQuery={searchQuery}
+      flatIds={flatIds}
+      totalRows={totalRows}
+      projectRows={projectRows}
+      taskRows={taskRows}
+      hasTaskRows={hasTaskRows}
+      projectOptions={projectOptions}
+      projectFilterRepo={projectFilterRepo}
+      projectFilterLabel={projectFilterLabel}
+      projectFilterCountLabel={projectFilterCountLabel}
+      cycleProjectFilter={cycleProjectFilter}
+      projectScrollMaxHeight={projectScrollMaxHeight}
+      setProjectScrollRef={(r) => {
+        projectScrollRef = r
+      }}
+      setTaskScrollRef={(r) => {
+        taskScrollRef = r
+      }}
+      rowCardShared={rowCardShared}
+      headerStatus={props.headerStatus}
+      onHeaderStatusClick={props.onHeaderStatusClick}
+      onAddTask={props.onAddTask}
+      zenActive={props.zenActive}
+      onZenClick={props.onZenClick}
+      hover={hover}
+      dims={dims}
+      renderHoverFallback={!props.onHoverChange}
+    />
   )
 }
