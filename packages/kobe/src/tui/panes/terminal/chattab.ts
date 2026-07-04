@@ -334,6 +334,24 @@ export async function openSettingsTab(session: string): Promise<void> {
 }
 
 /**
+ * Open the worktree-management page as a dedicated chat-tab window in an
+ * existing task session (mirroring {@link openSettingsTab}). A single
+ * full-window `kobe worktrees` page listing every git worktree across all
+ * locally-saved projects. Not `keepAlive`-wrapped: closing the page
+ * (q / esc / Ctrl+C) exits the process, tmux closes the window and
+ * returns to the previous tab.
+ */
+export async function openWorktreesTab(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const command = `${envPrefix}${inv.map(shellQuote).join(" ")} worktrees`
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "worktrees", surface: true })
+}
+
+/**
  * Open the F1 keybindings help as a dedicated chat-tab window in an
  * existing task session (mirroring {@link openSettingsTab}). A single
  * full-window `kobe help-page` — the in-pane HelpDialog overlay only had
