@@ -161,6 +161,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
+          // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
+          // without this, Sidebar's imperative self-width (32) overflows the
+          // inner 30 and the cursor row's background paints over the border.
+          width={() => SIDEBAR_WIDTH - 2}
           tasks={tasks}
           selectedId={selectedId}
           onSelect={selectTask}
