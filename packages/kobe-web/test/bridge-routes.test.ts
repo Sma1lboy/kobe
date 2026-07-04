@@ -424,7 +424,15 @@ describe("/api/quick-prompts", () => {
       archivedHistoryPreview: boolean
       autoStatus: boolean
       dispatcher: boolean
-      engines: Array<{ id: string; isBuiltin: boolean; isDefault: boolean }>
+      engines: Array<{
+        id: string
+        isBuiltin: boolean
+        isDefault: boolean
+        runTurnModel: string
+        runTurnSmallModel: string
+        runTurnEffort: string
+        runTurnEffortLevels: readonly string[]
+      }>
     }
     expect(empty.activeTheme).toBe("claude")
     expect(empty.transparentBackground).toBe(false)
@@ -433,6 +441,15 @@ describe("/api/quick-prompts", () => {
     expect(empty.editorKind).toBe("auto")
     expect(empty.archivedHistoryPreview).toBe(false)
     expect(empty.engines.some((engine) => engine.id === "claude" && engine.isBuiltin)).toBe(true)
+    expect(empty.engines).toContainEqual(
+      expect.objectContaining({
+        id: "codex",
+        runTurnModel: "",
+        runTurnSmallModel: "",
+        runTurnEffort: "",
+        runTurnEffortLevels: ["none", "low", "medium", "high", "xhigh"],
+      }),
+    )
 
     const patched = (await (
       await handle(
@@ -508,13 +525,27 @@ describe("/api/quick-prompts", () => {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            engineUpdates: [{ id: "aider", command: "aider --yes", label: "Aider CLI" }],
+            engineUpdates: [
+              {
+                id: "aider",
+                command: "aider --yes",
+                label: "Aider CLI",
+                runTurnModel: "aider-large",
+                runTurnSmallModel: "aider-small",
+              },
+            ],
           }),
         }),
       )
     ).json()) as typeof added
     expect(edited.engines).toContainEqual(
-      expect.objectContaining({ id: "aider", label: "Aider CLI", command: "aider --yes" }),
+      expect.objectContaining({
+        id: "aider",
+        label: "Aider CLI",
+        command: "aider --yes",
+        runTurnModel: "aider-large",
+        runTurnSmallModel: "aider-small",
+      }),
     )
 
     const removed = (await (
@@ -568,6 +599,43 @@ describe("/api/quick-prompts", () => {
         id: "codex",
         label: "Codex",
         command: "codex --dangerously-bypass-approvals-and-sandbox",
+      }),
+    )
+  })
+
+  it("rounds codex runTurn model settings through engine updates", async () => {
+    const { handle } = build()
+    const patched = (await (
+      await handle(
+        new Request("http://localhost/api/settings", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            engineUpdates: [
+              {
+                id: "codex",
+                runTurnModel: "gpt-large",
+                runTurnSmallModel: "gpt-small",
+                runTurnEffort: "low",
+              },
+            ],
+          }),
+        }),
+      )
+    ).json()) as {
+      engines: Array<{
+        id: string
+        runTurnModel: string
+        runTurnSmallModel: string
+        runTurnEffort: string
+      }>
+    }
+    expect(patched.engines).toContainEqual(
+      expect.objectContaining({
+        id: "codex",
+        runTurnModel: "gpt-large",
+        runTurnSmallModel: "gpt-small",
+        runTurnEffort: "low",
       }),
     )
   })

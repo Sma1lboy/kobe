@@ -21,6 +21,7 @@ export const TOP_LEVEL_SUBCOMMANDS = [
   "adopt",
   "export",
   "repo",
+  "run-turn",
   "api",
   "daemon",
   "theme",

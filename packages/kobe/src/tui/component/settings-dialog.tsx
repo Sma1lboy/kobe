@@ -24,6 +24,12 @@ import {
   detectCopilotAccount,
 } from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
+import {
+  normalizeRunTurnEffort,
+  runTurnEffortKey,
+  runTurnModelKey,
+  runTurnSmallModelKey,
+} from "../../engine/run-turn-settings"
 import { submitFeedback } from "../../lib/feedback"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
@@ -312,7 +318,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
   function engineIsDefault(vendor: VendorId): boolean {
     // Custom engines have no built-in default, so they never read as "(default)".
-    return isBuiltinVendor(vendor) && engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
+    return (
+      isBuiltinVendor(vendor) &&
+      engineOverride(vendor).length === 0 &&
+      !engineNameIsCustom(vendor) &&
+      runTurnModel(vendor).length === 0 &&
+      runTurnSmallModel(vendor).length === 0 &&
+      runTurnEffort(vendor).length === 0
+    )
   }
   // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL / id.
   function engineNameOverride(vendor: VendorId): string {
@@ -351,6 +364,60 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (next === undefined) return
     props.kv.set(engineCommandKey(vendor), next.trim())
   }
+  function runTurnModel(vendor: VendorId): string {
+    const v = props.kv.get(runTurnModelKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
+  }
+  function runTurnModelText(vendor: VendorId): string {
+    return runTurnModel(vendor) || "default"
+  }
+  async function editRunTurnModel(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, runTurnModel(vendor), {
+      dialogTitle: `${engineName(vendor)} runTurn model (blank = CLI default)`,
+      fieldLabel: "model",
+      submitLabel: "save",
+      allowEmpty: true,
+    })
+    if (next === undefined) return
+    props.kv.set(runTurnModelKey(vendor), next.trim())
+  }
+  function runTurnSmallModel(vendor: VendorId): string {
+    const v = props.kv.get(runTurnSmallModelKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
+  }
+  function runTurnSmallModelText(vendor: VendorId): string {
+    return runTurnSmallModel(vendor) || "unset"
+  }
+  async function editRunTurnSmallModel(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, runTurnSmallModel(vendor), {
+      dialogTitle: `${engineName(vendor)} small-model runTurn (blank = unset)`,
+      fieldLabel: "model",
+      submitLabel: "save",
+      allowEmpty: true,
+    })
+    if (next === undefined) return
+    props.kv.set(runTurnSmallModelKey(vendor), next.trim())
+  }
+  function runTurnEffort(vendor: VendorId): string {
+    return normalizeRunTurnEffort(vendor, props.kv.get(runTurnEffortKey(vendor), ""))
+  }
+  function runTurnEffortText(vendor: VendorId): string {
+    if (vendor !== "codex") return "n/a"
+    return runTurnEffort(vendor) || "default"
+  }
+  async function editRunTurnEffort(vendor: VendorId): Promise<void> {
+    const levels = vendor === "codex" ? ["none", "low", "medium", "high", "xhigh"] : []
+    if (levels.length === 0) return
+    const next = await RenameTaskDialog.show(dialog, runTurnEffort(vendor), {
+      dialogTitle: `${engineName(vendor)} runTurn effort (blank = default; ${levels.join(" / ")})`,
+      fieldLabel: "effort",
+      submitLabel: "save",
+      allowEmpty: true,
+    })
+    if (next === undefined) return
+    const normalized = normalizeRunTurnEffort(vendor, next)
+    props.kv.set(runTurnEffortKey(vendor), normalized)
+  }
   async function renameEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineName(vendor), {
       dialogTitle: `${engineName(vendor)} display name (blank = default)`,
@@ -368,6 +435,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   function resetEngine(vendor: VendorId): void {
     props.kv.set(engineCommandKey(vendor), "")
     props.kv.set(engineNameKey(vendor), "")
+    props.kv.set(runTurnModelKey(vendor), "")
+    props.kv.set(runTurnSmallModelKey(vendor), "")
+    props.kv.set(runTurnEffortKey(vendor), "")
     if (!isBuiltinVendor(vendor)) {
       props.kv.set(
         "customEngineIds",
@@ -690,6 +760,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
         },
       },
       {
+        key: "m",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) void editRunTurnModel(v)
+        },
+      },
+      {
+        key: "s",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) void editRunTurnSmallModel(v)
+        },
+      },
+      {
+        key: "f",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) void editRunTurnEffort(v)
+        },
+      },
+      {
         // Engines section: `d` sets the focused engine as the DEFAULT for new
         // tasks (the ● marker) — the same `lastSelectedVendor` Ctrl+Shift+T sets.
         key: "d",
@@ -774,6 +865,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               isCustom={(v) => !isBuiltinVendor(v)}
               displayName={engineName}
               commandText={engineCommandText}
+              runTurnModelText={runTurnModelText}
+              runTurnSmallModelText={runTurnSmallModelText}
+              runTurnEffortText={runTurnEffortText}
               isDefault={engineIsDefault}
               isDefaultEngine={isDefaultEngine}
               editEngine={(v) => void editEngine(v)}

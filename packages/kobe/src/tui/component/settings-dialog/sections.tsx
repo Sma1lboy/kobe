@@ -527,6 +527,12 @@ export function EngineSettingsSection(
     displayName: (vendor: VendorId) => string
     /** Current launch command shown for a vendor (override or default). */
     commandText: (vendor: VendorId) => string
+    /** Current headless runTurn model (or "default"). */
+    runTurnModelText: (vendor: VendorId) => string
+    /** Current small-model runTurn model (or "unset"). */
+    runTurnSmallModelText: (vendor: VendorId) => string
+    /** Current runTurn effort (or "default"/"n/a"). */
+    runTurnEffortText: (vendor: VendorId) => string
     /** Whether the engine is fully at its built-in default (dims it). */
     isDefault: (vendor: VendorId) => boolean
     /** Open the editor for a vendor's launch command (`enter`). */
@@ -560,8 +566,8 @@ export function EngineSettingsSection(
             const isCursor = () => props.level() === "body" && props.bodyRow() === i()
             return (
               <box
-                flexDirection="row"
-                gap={1}
+                flexDirection="column"
+                gap={0}
                 paddingLeft={1}
                 paddingRight={1}
                 backgroundColor={isCursor() ? theme.primary : undefined}
@@ -571,35 +577,46 @@ export function EngineSettingsSection(
                   props.editEngine(vendor)
                 }}
               >
-                {/* ● marks the DEFAULT engine for new tasks (radio-style, like
-                    the theme list); a space holds the column on the others. */}
-                <text
-                  fg={isCursor() ? theme.selectedListItemText : theme.accent}
-                  attributes={TextAttributes.BOLD}
-                  wrapMode="none"
-                >
-                  {props.isDefaultEngine(vendor) ? "●" : " "}
-                </text>
-                <text
-                  fg={isCursor() ? theme.selectedListItemText : theme.text}
-                  attributes={TextAttributes.BOLD}
-                  wrapMode="none"
-                >
-                  {props.displayName(vendor)}
-                </text>
-                <text
-                  fg={
-                    isCursor() ? theme.selectedListItemText : props.isDefault(vendor) ? theme.textMuted : theme.accent
-                  }
-                  wrapMode="none"
-                >
-                  {props.commandText(vendor)}
-                  {props.isDefault(vendor)
-                    ? t("settings.engines.defaultTag")
-                    : props.isCustom(vendor)
-                      ? t("settings.engines.customTag")
-                      : ""}
-                </text>
+                <box flexDirection="row" gap={1}>
+                  {/* ● marks the DEFAULT engine for new tasks (radio-style, like
+                      the theme list); a space holds the column on the others. */}
+                  <text
+                    fg={isCursor() ? theme.selectedListItemText : theme.accent}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {props.isDefaultEngine(vendor) ? "●" : " "}
+                  </text>
+                  <text
+                    fg={isCursor() ? theme.selectedListItemText : theme.text}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {props.displayName(vendor)}
+                  </text>
+                  <text
+                    fg={
+                      isCursor() ? theme.selectedListItemText : props.isDefault(vendor) ? theme.textMuted : theme.accent
+                    }
+                    wrapMode="none"
+                  >
+                    {props.commandText(vendor)}
+                    {props.isDefault(vendor)
+                      ? t("settings.engines.defaultTag")
+                      : props.isCustom(vendor)
+                        ? t("settings.engines.customTag")
+                        : ""}
+                  </text>
+                </box>
+                <box flexDirection="row" gap={1} paddingLeft={2}>
+                  <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                    {t("settings.engines.runTurnLine", {
+                      model: props.runTurnModelText(vendor),
+                      small: props.runTurnSmallModelText(vendor),
+                      effort: props.runTurnEffortText(vendor),
+                    })}
+                  </text>
+                </box>
               </box>
             )
           }}

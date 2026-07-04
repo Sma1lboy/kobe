@@ -13,6 +13,13 @@ import {
   kobeApiInvocation,
 } from "@/engine/interactive-command"
 import { engineEntry } from "@/engine/registry"
+import {
+  normalizeRunTurnEffort,
+  runTurnEffortKey,
+  runTurnModelKey,
+  runTurnSettingsFromState,
+  runTurnSmallModelKey,
+} from "@/engine/run-turn-settings"
 import type { Orchestrator } from "@/orchestrator/core"
 import { AUTO_STATUS_KEY } from "@/state/auto-status"
 import { DISPATCHER_KEY } from "@/state/dispatcher"
@@ -227,14 +234,21 @@ function settingsSnapshot(): Response {
     autoStatus: state[AUTO_STATUS_KEY] === true,
     dispatcher: state[DISPATCHER_KEY] === true,
     defaultEngine,
-    engines: engineIds.map((id) => ({
-      id,
-      label: engineLabelText(state, id),
-      command: engineCommandText(state, id),
-      isBuiltin: isBuiltinVendor(id),
-      isCustom: !isBuiltinVendor(id),
-      isDefault: id === defaultEngine,
-    })),
+    engines: engineIds.map((id) => {
+      const runTurn = runTurnSettingsFromState(state, id)
+      return {
+        id,
+        label: engineLabelText(state, id),
+        command: engineCommandText(state, id),
+        runTurnModel: runTurn.model,
+        runTurnSmallModel: runTurn.smallModel,
+        runTurnEffort: runTurn.effort,
+        runTurnEffortLevels: runTurn.effortLevels,
+        isBuiltin: isBuiltinVendor(id),
+        isCustom: !isBuiltinVendor(id),
+        isDefault: id === defaultEngine,
+      }
+    }),
   })
 }
 
@@ -276,10 +290,25 @@ async function settingsPatch(req: Request): Promise<Response> {
     const updates = Array.isArray(body.engineUpdates) ? body.engineUpdates : []
     for (const raw of updates) {
       if (!raw || typeof raw !== "object") continue
-      const update = raw as { id?: unknown; command?: unknown; label?: unknown }
+      const update = raw as {
+        id?: unknown
+        command?: unknown
+        label?: unknown
+        runTurnModel?: unknown
+        runTurnSmallModel?: unknown
+        runTurnEffort?: unknown
+      }
       if (typeof update.id !== "string" || !known.has(update.id)) continue
       putIfString(patch, engineCommandKey(update.id), update.command)
       putIfString(patch, engineNameKey(update.id), update.label)
+      putIfString(patch, runTurnModelKey(update.id), update.runTurnModel)
+      putIfString(patch, runTurnSmallModelKey(update.id), update.runTurnSmallModel)
+      if (typeof update.runTurnEffort === "string") {
+        const effort = update.runTurnEffort.trim()
+        if (effort.length === 0 || normalizeRunTurnEffort(update.id, effort) === effort) {
+          patch[runTurnEffortKey(update.id)] = effort
+        }
+      }
     }
 
     if (body.addEngine && typeof body.addEngine === "object") {
@@ -300,6 +329,9 @@ async function settingsPatch(req: Request): Promise<Response> {
         patch.customEngineIds = custom.filter((engine) => engine !== id)
         patch[engineCommandKey(id)] = undefined
         patch[engineNameKey(id)] = undefined
+        patch[runTurnModelKey(id)] = undefined
+        patch[runTurnSmallModelKey(id)] = undefined
+        patch[runTurnEffortKey(id)] = undefined
         if (state.lastSelectedVendor === id) patch.lastSelectedVendor = "claude"
       }
     }

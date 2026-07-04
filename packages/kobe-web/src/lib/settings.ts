@@ -8,6 +8,10 @@ export interface WebSettingsEngine {
   id: string
   label: string
   command: string
+  runTurnModel: string
+  runTurnSmallModel: string
+  runTurnEffort: string
+  runTurnEffortLevels: readonly string[]
   isBuiltin: boolean
   isCustom: boolean
   isDefault: boolean
@@ -41,7 +45,14 @@ export type WebSettingsPatch = Partial<
     | "defaultEngine"
   >
 > & {
-  engineUpdates?: Array<{ id: string; command?: string; label?: string }>
+  engineUpdates?: Array<{
+    id: string
+    command?: string
+    label?: string
+    runTurnModel?: string
+    runTurnSmallModel?: string
+    runTurnEffort?: string
+  }>
   addEngine?: { id: string; command: string; label?: string }
   removeEngine?: string
 }

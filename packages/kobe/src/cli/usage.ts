@@ -25,6 +25,7 @@ export function topLevelUsage(): string {
     "  adopt [glob]            Import existing git worktrees as tasks",
     "  export [--csv|--json]   Print the task list (json/csv/table; daemon-free)",
     "  repo <verb>             Per-repo init script + first prompt (show|set|unset)",
+    "  run-turn [options]      Run one headless engine turn (Codex first)",
     "  api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)",
     "  daemon <verb>           Manage the daemon (start|stop|status|restart)",
     "  theme <verb>            Manage user themes (list|add|remove)",

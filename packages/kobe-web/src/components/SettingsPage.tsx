@@ -141,12 +141,24 @@ function EngineRow({
   onRemove,
 }: {
   engine: WebSettingsEngine
-  onSave: (id: string, command: string, label: string) => void
+  onSave: (
+    id: string,
+    command: string,
+    label: string,
+    runTurnModel: string,
+    runTurnSmallModel: string,
+    runTurnEffort: string,
+  ) => void
   onDefault: (id: string) => void
   onRemove: (id: string) => void
 }) {
   const [command, setCommand] = useState(engine.command)
   const [label, setLabel] = useState(engine.label)
+  const [runTurnModel, setRunTurnModel] = useState(engine.runTurnModel)
+  const [runTurnSmallModel, setRunTurnSmallModel] = useState(
+    engine.runTurnSmallModel,
+  )
+  const [runTurnEffort, setRunTurnEffort] = useState(engine.runTurnEffort)
   const labelLooksLikeCommand =
     /\s--[A-Za-z0-9][\w-]*/.test(label) &&
     !/\s--[A-Za-z0-9][\w-]*/.test(command)
@@ -154,7 +166,16 @@ function EngineRow({
   useEffect(() => {
     setCommand(engine.command)
     setLabel(engine.label)
-  }, [engine.command, engine.label])
+    setRunTurnModel(engine.runTurnModel)
+    setRunTurnSmallModel(engine.runTurnSmallModel)
+    setRunTurnEffort(engine.runTurnEffort)
+  }, [
+    engine.command,
+    engine.label,
+    engine.runTurnModel,
+    engine.runTurnSmallModel,
+    engine.runTurnEffort,
+  ])
 
   return (
     <div className="border border-line bg-bg p-3">
@@ -201,6 +222,42 @@ function EngineRow({
           className="mt-1 w-full border border-line bg-surface px-2 py-1 font-mono text-fg focus:border-line-active focus:outline-none"
         />
       </label>
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <label className="block">
+          <span className="text-[11px] text-muted">
+            runTurn model (blank = CLI default)
+          </span>
+          <input
+            value={runTurnModel}
+            onChange={(event) => setRunTurnModel(event.target.value)}
+            className="mt-1 w-full border border-line bg-surface px-2 py-1 font-mono text-fg focus:border-line-active focus:outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] text-muted">Small-model call</span>
+          <input
+            value={runTurnSmallModel}
+            onChange={(event) => setRunTurnSmallModel(event.target.value)}
+            className="mt-1 w-full border border-line bg-surface px-2 py-1 font-mono text-fg focus:border-line-active focus:outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[11px] text-muted">Reasoning effort</span>
+          <select
+            value={runTurnEffort}
+            onChange={(event) => setRunTurnEffort(event.target.value)}
+            disabled={engine.runTurnEffortLevels.length === 0}
+            className="mt-1 w-full border border-line bg-surface px-2 py-1 font-mono text-fg disabled:opacity-40 focus:border-line-active focus:outline-none"
+          >
+            <option value="">default</option>
+            {engine.runTurnEffortLevels.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {labelLooksLikeCommand ? (
         <div className="mt-2 border border-kobe-yellow/40 bg-kobe-yellow/10 px-2 py-1 text-[11px] leading-relaxed text-kobe-yellow">
           This looks like a flag in the display name. Put permission/model flags
@@ -210,7 +267,16 @@ function EngineRow({
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
-          onClick={() => onSave(engine.id, command, label)}
+          onClick={() =>
+            onSave(
+              engine.id,
+              command,
+              label,
+              runTurnModel,
+              runTurnSmallModel,
+              runTurnEffort,
+            )
+          }
           className="border border-primary bg-inset px-2 py-1 text-[11px] text-fg"
         >
           Save
@@ -243,9 +309,21 @@ function EnginesSection({
     engineId: string,
     nextCommand: string,
     nextLabel: string,
+    runTurnModel: string,
+    runTurnSmallModel: string,
+    runTurnEffort: string,
   ) =>
     void patch({
-      engineUpdates: [{ id: engineId, command: nextCommand, label: nextLabel }],
+      engineUpdates: [
+        {
+          id: engineId,
+          command: nextCommand,
+          label: nextLabel,
+          runTurnModel,
+          runTurnSmallModel,
+          runTurnEffort,
+        },
+      ],
     }).then(() => pushToast("success", "engine saved"))
 
   return (
@@ -254,8 +332,9 @@ function EnginesSection({
         <p className="text-[11px] leading-relaxed text-subtle">
           Same shared engine settings as the TUI. Built-ins can be renamed or
           pointed at a different command. Permission/model flags must live in
-          Launch command, not Display name. Custom engines are available in new
-          task and tab pickers.
+          Launch command, not Display name. Headless runTurn model settings are
+          separate so router/probe calls can switch models without changing the
+          interactive task pane.
         </p>
         <div className="space-y-2">
           {settings.engines.map((engine) => (

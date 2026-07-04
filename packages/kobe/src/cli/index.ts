@@ -9,6 +9,7 @@
  *   - `kobe remove [path]`      Forget a saved project (inverse of `add`; non-destructive).
  *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
  *   - `kobe export [--csv]`     Print the task list (json/csv/table; daemon-free).
+ *   - `kobe run-turn`           Run one headless engine turn (Codex first).
  *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
@@ -455,6 +456,11 @@ async function main(): Promise<void> {
   if (subcommand === "repo") {
     const { runRepoSubcommand } = await import("./repo-cmd.ts")
     await runRepoSubcommand(rest)
+    return
+  }
+  if (subcommand === "run-turn") {
+    const { runRunTurnSubcommand } = await import("./run-turn-cmd.ts")
+    await runRunTurnSubcommand(rest)
     return
   }
   if (subcommand === "api") {

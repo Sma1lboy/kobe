@@ -68,9 +68,10 @@ export const en = {
   },
   engines: {
     title: "Launch command",
-    hint: "The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` / `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = default engine for new tasks (also set by Ctrl+Shift+T). enter edit command · r rename · x reset/remove · d set default.",
+    hint: "The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` / `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = default engine for new tasks (also set by Ctrl+Shift+T). enter edit command · r rename · x reset/remove · d set default · m runTurn model · s small model · f effort.",
     defaultTag: "  (default)",
     customTag: "  (custom)",
+    runTurnLine: "runTurn: {model} · small: {small} · effort: {effort}",
     addEngine: "+ Add engine",
   },
   accounts: {
@@ -197,9 +198,10 @@ export const zh: typeof en = {
   },
   engines: {
     title: "启动命令",
-    hint: "每个引擎的任务面板运行的命令。当二进制文件不在 PATH 上的 `claude` / `codex` 名下（比如叫 `cl`）、要传默认参数，或要添加自己的引擎时，可覆盖内置项。● = 新任务的默认引擎（也可用 Ctrl+Shift+T 设置）。enter 编辑命令 · r 重命名 · x 重置/移除 · d 设为默认。",
+    hint: "每个引擎的任务面板运行的命令。当二进制文件不在 PATH 上的 `claude` / `codex` 名下（比如叫 `cl`）、要传默认参数，或要添加自己的引擎时，可覆盖内置项。● = 新任务的默认引擎（也可用 Ctrl+Shift+T 设置）。enter 编辑命令 · r 重命名 · x 重置/移除 · d 设为默认 · m 改 runTurn model · s 改小模型 · f 改 effort。",
     defaultTag: "  (默认)",
     customTag: "  (自定义)",
+    runTurnLine: "runTurn: {model} · 小模型: {small} · effort: {effort}",
     addEngine: "+ 添加引擎",
   },
   accounts: {
