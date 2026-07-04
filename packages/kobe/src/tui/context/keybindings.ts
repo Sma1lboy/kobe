@@ -59,13 +59,10 @@
  *     doesn't get silently swallowed by the stdin reader for lack of a
  *     binding).
  *
- * Why `app.quit.keys` lists both `ctrl+shift+q` and `ctrl+q`: the keymap
- * layer (`src/tui/lib/keymap.tsx`) intentionally drops the shift modifier
- * on letter keys (terminals deliver shift+letter as uppercase, not as a
- * modifier event), so `ctrl+shift+q` and `ctrl+q` produce the same
- * candidate at match time. Listing both documents intent — the status-bar
- * hint advertises ctrl+shift+q (safer/harder to fat-finger) but the
- * actual byte path is ctrl+q.
+ * The native workspace also registers `ctrl+q` while the sidebar is focused,
+ * matching the tmux handover's two-stage detach shape: first ctrl+q returns to
+ * Tasks, second ctrl+q exits the attached UI. Plain `q` remains the sidebar
+ * quit-confirm shortcut.
  */
 
 import { createSignal } from "solid-js"
@@ -190,21 +187,23 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "x", label: "worktrees", status: false },
   },
   {
-    // Sidebar-only — single letter `q`. ctrl+q is reserved for
-    // "back to sidebar" (focus.sidebar) so the user has a one-chord
-    // path out of the composer; once back on the sidebar, `q` is the
-    // quit verb. Pressing q while in the composer just types a `q`.
+    // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is
+    // also registered here for the native workspace's tmux-like two-stage
+    // detach: first ctrl+q returns focus to the sidebar, second ctrl+q exits
+    // the attached native UI. Pressing q while in the composer just types q.
     id: "app.quit",
     scope: "sidebar",
-    keys: ["q"],
+    keys: ["q", "ctrl+q"],
     category: "Sidebar",
     description: "Quit (with confirm)",
     hint: { keys: "q", label: "quit", status: false },
   },
   {
-    // Workspace-only "back to tasks" chord. Plain `q` (sidebar
-    // scope) actually quits; ctrl+q is the chord-form aliased to
-    // sidebar focus, mirroring esc / ctrl+1 in effect.
+    // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
+    // ctrl+q is the chord-form aliased to sidebar focus, mirroring
+    // esc / ctrl+1 in effect. Scope stays "workspace" for override
+    // validation, but the native workspace enables it from any
+    // non-sidebar pane (files/terminal too).
     id: "focus.sidebar",
     scope: "workspace",
     keys: ["ctrl+q"],

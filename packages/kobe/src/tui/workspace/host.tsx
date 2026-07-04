@@ -117,7 +117,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     ],
   }))
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && focus.is("workspace")(),
+    enabled: dialog.stack.length === 0 && !focus.is("sidebar")(),
     bindings: bindByIds({
       "focus.sidebar": () => focus.setFocused("sidebar"),
     }),
@@ -125,7 +125,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   useBindings(() => ({
     enabled: dialog.stack.length === 0 && focus.is("sidebar")(),
     bindings: bindByIds({
-      "app.quit": () => void quit(),
+      // Slot dispatch (SLOT_CONTRACTS): slot 0 = quit confirm, slot 1 =
+      // hard exit — so user rebinds keep both verbs without inspecting
+      // the event's modifiers.
+      "app.quit": (_evt, slot) => {
+        if (slot === 1) process.exit(0)
+        void quit()
+      },
     }),
   }))
 
