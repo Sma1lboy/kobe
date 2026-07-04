@@ -21,6 +21,7 @@
  * remounts this component per selected task (keyed on worktree).
  */
 
+import { disposeAiSdkRuntime, startAiSdkTurn } from "@/engine/ai-sdk/harness-turn"
 import { findClaudeBinary } from "@/engine/claude-code-local/binary"
 import { BUILTIN_CLAUDE_SLASHES } from "@/engine/claude-code-local/builtin-slashes"
 import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
@@ -147,7 +148,39 @@ export function ChatPane(props: ChatPaneProps) {
   let activeInterrupt: (() => void) | undefined
   onCleanup(() => activeInterrupt?.())
 
+  // Provider-runtime spike (KOBE_AISDK=1): the AI SDK harness drives the
+  // local Claude Code runtime (subscription login) and streams growing
+  // UIMessage snapshots; the pane replaces the tail "ui" item per update.
+  const useAiSdk = process.env.KOBE_AISDK === "1"
+  onCleanup(() => {
+    if (useAiSdk) disposeAiSdkRuntime(props.worktree)
+  })
+
+  async function runAiSdkTurn(prompt: string): Promise<void> {
+    setRunning(true)
+    setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
+    let hasTail = false
+    const turn = startAiSdkTurn({
+      worktree: props.worktree,
+      prompt,
+      onUpdate: (assistant) => {
+        setItems((prev) => {
+          const next = hasTail ? prev.slice(0, -1) : prev
+          hasTail = true
+          return [...next, { kind: "ui", msg: assistant }]
+        })
+      },
+    })
+    activeInterrupt = turn.interrupt
+    const { error } = await turn.done
+    if (error) setItems((prev) => [...prev, { kind: "error", text: error }])
+    activeInterrupt = undefined
+    setRunning(false)
+    drainQueue()
+  }
+
   async function runTurn(prompt: string): Promise<void> {
+    if (useAiSdk) return runAiSdkTurn(prompt)
     setRunning(true)
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     try {
