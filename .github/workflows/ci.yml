@@ -12,7 +12,9 @@
 # coverage-cap (PR only) is the coverage sibling of file-size-cap: every
 # packages/kobe/src file a PR touches must meet a line-coverage floor
 # (scripts/coverage-gate.mjs; `coverage-exemption: <reason>` in the PR body
-# opts out with a paper trail).
+# opts out with a paper trail). It also runs `test:render` (the bun-test-only
+# .tsx render track, see docs/HARNESS.md "render track") and folds its lcov
+# into the same Codecov upload — not yet per-file gated.
 
 name: CI
 
@@ -154,11 +156,20 @@ jobs:
         working-directory: packages/kobe
         run: bun run coverage
 
+      - name: Render-track coverage (kobe package .tsx)
+        # bun test + @opentui/solid's testRender (docs/HARNESS.md "render
+        # track") — the only runner that can execute opentui Solid
+        # components at all. Separate report; not gated per-file (yet), just
+        # folded into the Codecov upload below so the repo-wide badge
+        # reflects .tsx too.
+        working-directory: packages/kobe
+        run: bun run test:render
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: packages/kobe/coverage/lcov.info
+          files: packages/kobe/coverage/lcov.info,packages/kobe/coverage-render/lcov.info
           fail_ci_if_error: false
 
       - name: Touched files must meet the coverage floor

@@ -59,6 +59,10 @@ packages/*/.dev-sandbox/
 # json-summary in-place, nothing here is source.
 packages/*/coverage/
 
+# `bun test test/render --coverage` output (the render-track sibling of the
+# vitest coverage/ above) — see docs/HARNESS.md "render track".
+packages/*/coverage-render/
+
 # Session handoff — local working state / scratchpad for the next agent in
 # THIS environment. Not shared history (the durable record lives in git
 # commits, CHANGELOG.md, docs/, and the daemon issue store). Keep it local.
