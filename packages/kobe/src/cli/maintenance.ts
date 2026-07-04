@@ -35,6 +35,7 @@ import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { KOBE_TMUX_SOCKET, termAllPaneGroups, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
 import { CURRENT_VERSION } from "../version.ts"
+import { resourceDoctorLines } from "./doctor-resources.ts"
 import { terminalDoctorLines } from "./doctor-terminal.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
@@ -218,6 +219,11 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     out.push("tmux:    ✗ not found on PATH (task sessions need tmux)")
   }
   out.push("")
+
+  // --- resources --------------------------------------------------------
+  // Memory/CPU complaints (#205) had no hard numbers to triage from —
+  // attach this snapshot to a report instead of "eventually killed bun".
+  out.push(...(await resourceDoctorLines()), "")
 
   // --- agent skill ----------------------------------------------------
   const skill = kobeSkillState()
