@@ -1,22 +1,24 @@
 /**
- * `kobe chat` host — the experimental native chat pane (KOBE_TUI=1).
+ * `ChatPane` — the experimental native chat pane (KOBE_TUI=1), the center
+ * column of the single-process opentui workspace (tui/workspace/host.tsx).
  *
- * Launched into the task's engine pane slot INSTEAD of the interactive engine
- * CLI (the tmux handover). Each prompt runs ONE headless `claude -p
- * --output-format stream-json` turn (engine/claude-code-local/headless.ts);
- * between prompts no engine process exists — that's this backend's reason to
- * exist: the always-on interactive CLI's render loop is what cooks laptops
- * under many parallel tasks.
+ * Rendered INSTEAD of a tmux-hosted interactive engine CLI. Each prompt
+ * runs ONE headless `claude -p --output-format stream-json` turn
+ * (engine/claude-code-local/headless.ts); between prompts no engine
+ * process exists — that's this backend's reason to exist: the always-on
+ * interactive CLI's render loop is what cooks laptops under many
+ * parallel tasks.
  *
  * Rendering contract: the transcript store holds the SDK stream-json messages
  * VERBATIM and the view reads SDK fields directly (`message.content` blocks,
  * `usage.output_tokens`, `total_cost_usd`, …). No normalization layer between
  * the wire and the screen — by product decision the SDK is the render schema.
  *
- * Conversation continuity: on boot we resume the worktree's newest claude
- * session (same vendor store the `kobe history` pane reads), so a relaunched
+ * Conversation continuity: on mount we resume the worktree's newest claude
+ * session (same vendor store the `kobe history` pane reads), so a remounted
  * pane — or a task that previously ran interactive claude — continues where
- * it left off instead of starting a fresh conversation.
+ * it left off instead of starting a fresh conversation. The workspace
+ * remounts this component per selected task (keyed on worktree).
  */
 
 import { findClaudeBinary } from "@/engine/claude-code-local/binary"
@@ -30,7 +32,6 @@ import { For, Match, Show, Switch, createMemo, createSignal, onCleanup, onMount 
 import { useTheme } from "../context/theme"
 import { BodyLines, bodyText, toolInputSummary } from "../history/host"
 import { t } from "../i18n"
-import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { Composer, type ComposerSlashEntry } from "./Composer"
@@ -38,7 +39,7 @@ import { ModelPicker, type ModelPickerResult } from "./composer/ModelPicker"
 import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
 
-export interface ChatHostArgs {
+export interface ChatPaneProps {
   readonly worktree: string
   /** Task title for the header; falls back to the worktree basename. */
   readonly title?: string
@@ -48,6 +49,12 @@ export interface ChatHostArgs {
    * ponytail: static per-pane mode; interactive approval is the upgrade path.
    */
   readonly permissionMode?: string
+  /**
+   * Whether this pane owns the keyboard (workspace focus). Gates the
+   * composer's textarea focus and the pane-scoped bindings (esc / ctrl+o /
+   * pgup / pgdn) so the sidebar and terminal keep their own keys.
+   */
+  readonly focused?: () => boolean
 }
 
 /** Transcript entries: the typed prompt echo, SDK messages verbatim, spawn-level failures. */
@@ -215,7 +222,7 @@ function ChatRow(props: { item: ChatItem; results: Map<string, SdkToolResultBloc
   return null
 }
 
-function ChatScreen(props: ChatHostArgs) {
+export function ChatPane(props: ChatPaneProps) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const [items, setItems] = createSignal<readonly ChatItem[]>([])
@@ -384,7 +391,11 @@ function ChatScreen(props: ChatHostArgs) {
     scrollRef.scrollTo({ x: 0, y: Math.max(0, scrollRef.scrollTop + dy) })
   }
 
+  const paneFocused = (): boolean => props.focused?.() ?? true
+
   useBindings(() => ({
+    // Pane-scoped: only when the workspace column owns the keyboard.
+    enabled: paneFocused(),
     bindings: [
       // pgup/pgdn + ctrl+o only: the composer input owns letters/arrows/enter.
       { key: "pageup", cmd: () => scrollBy(-SCROLL_STEP) },
@@ -452,7 +463,7 @@ function ChatScreen(props: ChatHostArgs) {
         hasTask={true}
         onSubmit={(text, mode) => submit(text, mode)}
         historyKey={props.worktree}
-        focused={() => true}
+        focused={paneFocused}
         modelLabel={modelLabel}
         inputPlaceholder={() => identity?.inputPlaceholder ?? t("chat.placeholder")}
         slashes={slashList}
@@ -478,14 +489,4 @@ function ChatScreen(props: ChatHostArgs) {
       </box>
     </box>
   )
-}
-
-export async function startChatHost(args: ChatHostArgs): Promise<void> {
-  await bootPaneHost({
-    logContext: "chat",
-    // focus: the Composer consumes the FocusProvider (refocusTick after
-    // dialogs close); kv stays off — this pane persists no UI state.
-    providers: { kv: false, focus: true },
-    setup: () => ({ root: () => <ChatScreen {...args} /> }),
-  })
 }

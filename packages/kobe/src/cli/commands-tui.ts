@@ -403,29 +403,6 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     await startUpdateHost()
     return true
   }
-  if (subcommand === "chat") {
-    // Experimental native chat pane (KOBE_TUI=1) — launched into the engine
-    // pane slot instead of the interactive engine CLI. Renders headless
-    // `claude -p` stream-json turns natively in opentui; no engine process
-    // idles between prompts. Dynamic import keeps opentui out of the other
-    // subcommands' startup graph.
-    const flags = parseOpsFlags(rest)
-    if (!flags.worktree) {
-      console.error("kobe chat: --worktree <path> is required")
-      process.exit(2)
-    }
-    const permIdx = rest.indexOf("--permission-mode")
-    const { startChatHost } = await import("../tui/chat/host.tsx")
-    await startChatHost({
-      worktree: flags.worktree,
-      title: flags.title,
-      // Headless -p can't prompt for tool permission; acceptEdits keeps the
-      // agent able to edit its own worktree while Bash stays gated by the
-      // user's claude settings. Overridable per launch.
-      permissionMode: (permIdx >= 0 ? rest[permIdx + 1] : undefined) ?? "acceptEdits",
-    })
-    return true
-  }
   if (subcommand === "history") {
     // The read-only engine-history pane (beta) — launched into the engine
     // pane slot instead of the live engine when an archived task is opened

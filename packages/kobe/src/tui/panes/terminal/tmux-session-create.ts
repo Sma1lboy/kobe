@@ -9,7 +9,7 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { withClaudeSessionId, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
-import { nativeChatEnabled, worktreeInitMarkerPath } from "@/env"
+import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import { archivedHistoryPreviewEnabled } from "@/state/archived-history"
 import { CHAT_TAB_SESSION_ID_OPTION, runTmux, runTmuxCapturing, runTmuxSequence, setWindowOption } from "@/tmux/client"
@@ -50,23 +50,13 @@ export async function createSession(opts: EnsureSessionOpts): Promise<boolean> {
   // script + status/dispatcher protocols below. Read fresh so a Settings
   // toggle needs no restart.
   const historyPreview = (opts.archived === true || opts.preview === true) && archivedHistoryPreviewEnabled()
-  // Experimental native chat backend (KOBE_TUI=1): a claude task's engine
-  // pane runs `kobe chat` — an opentui-rendered transcript + composer that
-  // drives one headless `claude -p` turn per prompt — instead of the
-  // interactive CLI. No live engine session id to pin, no init/status
-  // protocols to weave (same shape as the history preview). Local claude
-  // tasks only: other vendors and remote tasks keep the tmux handover.
-  const nativeChat =
-    !historyPreview && !remoteKey && nativeChatEnabled() && (opts.vendor === undefined || opts.vendor === "claude")
   // Force a known session id for a claude launch so this window can be mapped
   // to its transcript and auto-named from its first prompt (KOB). No-op for
   // codex/copilot or a command that already pins its session. Skipped entirely
-  // for the history preview (no live engine session) and the native chat pane
-  // (it manages its own resume chain from the transcript store).
-  const launch =
-    historyPreview || nativeChat
-      ? { argv: [] as readonly string[], sessionId: undefined }
-      : withClaudeSessionId(opts.command, opts.vendor)
+  // for the history preview (no live engine session).
+  const launch = historyPreview
+    ? { argv: [] as readonly string[], sessionId: undefined }
+    : withClaudeSessionId(opts.command, opts.vendor)
   // Status self-report protocol (web-kanban.md M5): bake this task's id into
   // the session's system prompt so the agent can move its own card to
   // in_review when done. No-op unless experimental.autoStatus is on.
@@ -103,37 +93,27 @@ export async function createSession(opts: EnsureSessionOpts): Promise<boolean> {
     // archived task's transcript is frozen, so it stays the static ARCHIVED view.
     ...(opts.preview && !opts.archived ? ["--live"] : []),
   ]
-  // Native chat pane (KOBE_TUI=1): `kobe chat` in the engine slot.
-  const chatArgv = [...inv, "chat", "--worktree", opts.cwd, ...(opts.title ? ["--title", opts.title] : [])]
-  const engineCmd = wrapEngineLaunch(
-    shellQuoteArgv(historyPreview ? historyArgv : nativeChat ? chatArgv : launchArgv),
-    remoteKey,
-    opts.cwd,
-  )
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(historyPreview ? historyArgv : launchArgv), remoteKey, opts.cwd)
   // The history preview is a PERSISTENT read-only pane: it re-launches itself on
   // exit (and ignores SIGINT) instead of following the engine pane's exit path,
   // which would drop to a shell and then spawn a LIVE engine via engine-tab-exit
   // — the one thing an archived-task preview must never do. The live engine path
   // keeps the per-repo init weave + engine-tab-exit cleanup verbatim.
-  // The native chat pane shares the history preview's PERSISTENT wrapper: its
-  // exit must relaunch the pane, never fall through to engine-tab-exit (which
-  // would spawn the interactive engine this backend exists to avoid).
-  const paneCommand =
-    historyPreview || nativeChat
-      ? historyPaneKeepAlive(engineCmd)
-      : engineLaunchLine(
-          engineCmd,
-          {
-            initScript: remoteKey ? undefined : launchInit?.initScript,
-            markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
-            // Operator escape hatch for an unusually slow (or fast-fail) init —
-            // clamped + defaulted by the resolver; unset keeps the 120s default.
-            timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
-          },
-          // Exiting the post-engine fallback shell tears this tab down → close it
-          // (or replace it with a fresh engine tab when it's the task's only tab).
-          engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
-        )
+  const paneCommand = historyPreview
+    ? historyPaneKeepAlive(engineCmd)
+    : engineLaunchLine(
+        engineCmd,
+        {
+          initScript: remoteKey ? undefined : launchInit?.initScript,
+          markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+          // Operator escape hatch for an unusually slow (or fast-fail) init —
+          // clamped + defaulted by the resolver; unset keeps the 120s default.
+          timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
+        },
+        // Exiting the post-engine fallback shell tears this tab down → close it
+        // (or replace it with a fresh engine tab when it's the task's only tab).
+        engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
+      )
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
