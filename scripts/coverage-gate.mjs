@@ -40,6 +40,9 @@ const touched = diff
   .split("\n")
   .map((l) => l.trim())
   // .ts only — .tsx (opentui components) is outside the coverage scope; see vitest.config.ts.
+  // .tsx render coverage is reported separately by `bun run test:render` (bun test +
+  // @opentui/solid's testRender, see docs/HARNESS.md "render track") and uploaded to
+  // Codecov alongside this report; it is NOT gated per-file here yet.
   .filter((f) => /^packages\/kobe\/src\/.*\.ts$/.test(f))
   .filter((f) => !f.endsWith(".d.ts"))
 
