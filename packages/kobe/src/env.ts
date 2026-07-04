@@ -40,6 +40,19 @@ export function isDev(): boolean {
 }
 
 /**
+ * `KOBE_TUI=1` — experimental native chat backend. Instead of launching
+ * the interactive engine CLI into the task's engine pane (tmux handover),
+ * the pane runs `kobe chat`: an opentui-rendered transcript + composer
+ * that drives one headless `claude -p --output-format stream-json` turn
+ * per prompt and renders the SDK message stream natively. No long-lived
+ * engine process idles between prompts. Claude-vendor tasks only; other
+ * vendors keep the interactive handover. See engine/claude-code-local/headless.ts.
+ */
+export function nativeChatEnabled(): boolean {
+  return process.env.KOBE_TUI === "1"
+}
+
+/**
  * `KOBE_HOME_DIR` — overrides `os.homedir()` for everything kobe
  * persists (state file, task index). Tests point this at a temp dir
  * so they don't trample the real `~/.kobe/`.

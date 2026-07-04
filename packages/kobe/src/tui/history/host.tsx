@@ -83,7 +83,7 @@ function relativeTime(iso: string): string {
  * prompt → query) so a Bash call reads as its command and a Read as its path,
  * not a raw JSON blob; falls back to compact JSON, truncated.
  */
-function toolInputSummary(input: unknown): string {
+export function toolInputSummary(input: unknown): string {
   if (input && typeof input === "object" && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
     const pick = (key: string): string | null => (typeof obj[key] === "string" ? (obj[key] as string) : null)
@@ -107,7 +107,7 @@ function toolInputSummary(input: unknown): string {
 }
 
 /** Full multi-line stringification of a tool result, for the expanded body. */
-function bodyText(value: unknown): string {
+export function bodyText(value: unknown): string {
   if (typeof value === "string") return value
   try {
     return JSON.stringify(value, null, 2)
@@ -128,7 +128,7 @@ function resultsByCallId(messages: readonly Message[]): Map<string, Extract<Cont
 }
 
 /** A tool-output / thinking body, one `<text>` per line so +/- diff lines tint. */
-function BodyLines(props: { text: string; error?: boolean }) {
+export function BodyLines(props: { text: string; error?: boolean }) {
   const { theme } = useTheme()
   const lines = () => props.text.replace(/\s+$/, "").split("\n")
   const lineColor = (line: string) => {

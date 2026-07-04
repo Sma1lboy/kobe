@@ -17,6 +17,7 @@
  * examples) is left in the calling code as-is — it isn't language.
  */
 
+import { en as chat, zh as chatZh } from "./messages/chat"
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
@@ -30,7 +31,21 @@ import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as update, zh as updateZh } from "./messages/update"
 import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 
-export const en = { settings, tasks, files, newTask, ops, update, quickTask, help, history, common, keys, worktrees }
+export const en = {
+  settings,
+  tasks,
+  files,
+  newTask,
+  ops,
+  update,
+  quickTask,
+  help,
+  history,
+  chat,
+  common,
+  keys,
+  worktrees,
+}
 
 /**
  * Every locale must structurally match the English source of truth. The
@@ -49,6 +64,7 @@ export const zh: Messages = {
   quickTask: quickTaskZh,
   help: helpZh,
   history: historyZh,
+  chat: chatZh,
   common: commonZh,
   keys: keysZh,
   worktrees: worktreesZh,
