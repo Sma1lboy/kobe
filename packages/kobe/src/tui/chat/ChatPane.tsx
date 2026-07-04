@@ -23,17 +23,16 @@
 
 import { findClaudeBinary } from "@/engine/claude-code-local/binary"
 import { BUILTIN_CLAUDE_SLASHES } from "@/engine/claude-code-local/builtin-slashes"
-import type { SdkContentBlock, SdkMessage, SdkToolResultBlock } from "@/engine/claude-code-local/headless"
 import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
 import { engineEntry, getCapabilities } from "@/engine/registry"
 import type { PermissionMode } from "@/types/engine"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { For, Match, Show, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
-import { BodyLines, bodyText, toolInputSummary } from "../history/host"
 import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
+import { type ChatItem, ChatRow, sdkResultsByToolUseId } from "./ChatRow"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { ModelPicker, type ModelPickerResult } from "./composer/ModelPicker"
 import { permissionModeLabel } from "./composer/permission-mode"
@@ -57,169 +56,12 @@ export interface ChatPaneProps {
   readonly focused?: () => boolean
 }
 
-/** Transcript entries: the typed prompt echo, SDK messages verbatim, spawn-level failures. */
-type ChatItem =
-  | { readonly kind: "prompt"; readonly text: string }
-  | { readonly kind: "sdk"; readonly msg: SdkMessage }
-  | { readonly kind: "error"; readonly text: string }
-
 /** Scroll cells per pgup/pgdn keypress. */
 const SCROLL_STEP = 10
 
 function basename(p: string): string {
   const i = p.lastIndexOf("/")
   return i >= 0 ? p.slice(i + 1) : p
-}
-
-/** Index tool_result blocks (SDK `user` messages) by their `tool_use_id`. */
-function sdkResultsByToolUseId(items: readonly ChatItem[]): Map<string, SdkToolResultBlock> {
-  const map = new Map<string, SdkToolResultBlock>()
-  for (const item of items) {
-    if (item.kind !== "sdk" || item.msg.type !== "user") continue
-    for (const block of item.msg.message.content) {
-      if (block.type === "tool_result") map.set(block.tool_use_id, block)
-    }
-  }
-  return map
-}
-
-/** One SDK content block of an assistant message, SDK fields straight to glyphs. */
-function SdkBlockView(props: {
-  block: SdkContentBlock
-  result?: SdkToolResultBlock
-  /** Subagent step (parent_tool_use_id set) — indented under its Agent row. */
-  nested: boolean
-  expanded: boolean
-}) {
-  const { theme } = useTheme()
-  const block = props.block
-  return (
-    <Switch>
-      <Match when={block.type === "text" && block}>
-        {(b) => (
-          <text fg={theme.text} wrapMode="word">
-            {b().text}
-          </text>
-        )}
-      </Match>
-      <Match when={block.type === "thinking" && block}>
-        {(b) => (
-          <box flexDirection="column">
-            <text fg={theme.textMuted} attributes={TextAttributes.ITALIC} wrapMode="none">
-              {`✱ ${t("chat.thinking")}${props.expanded ? "" : "…"}`}
-            </text>
-            <Show when={props.expanded && b().thinking.trim()}>
-              <BodyLines text={b().thinking} />
-            </Show>
-          </box>
-        )}
-      </Match>
-      <Match when={block.type === "tool_use" && block}>
-        {(b) => {
-          const ok = () => !props.result?.is_error
-          const summary = () => toolInputSummary(b().input)
-          const body = () => (props.result ? bodyText(props.result.content) : "")
-          return (
-            <box flexDirection="column" paddingLeft={props.nested ? 2 : 0}>
-              <box flexDirection="row" gap={1}>
-                <text fg={props.result ? (ok() ? theme.success : theme.error) : theme.textMuted} wrapMode="none">
-                  ⏺
-                </text>
-                <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-                  {b().name}
-                </text>
-                <Show when={summary()}>
-                  <text fg={theme.textMuted} wrapMode="none">
-                    {summary()}
-                  </text>
-                </Show>
-              </box>
-              <Show when={props.expanded && body().trim()}>
-                <BodyLines text={body()} error={props.result?.is_error} />
-              </Show>
-            </box>
-          )
-        }}
-      </Match>
-    </Switch>
-  )
-}
-
-/** One transcript row. SDK `user` (tool results) and `system` rows render nothing —
- *  results attach to their tool_use row; init only feeds the resume session id. */
-function ChatRow(props: { item: ChatItem; results: Map<string, SdkToolResultBlock>; expanded: boolean }) {
-  const { theme } = useTheme()
-  const item = props.item
-  if (item.kind === "prompt") {
-    return (
-      <box
-        flexDirection="row"
-        gap={1}
-        paddingLeft={1}
-        paddingRight={1}
-        marginBottom={1}
-        backgroundColor={theme.backgroundElement}
-      >
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
-          ❯
-        </text>
-        <text fg={theme.text} wrapMode="word" flexGrow={1}>
-          {item.text}
-        </text>
-      </box>
-    )
-  }
-  if (item.kind === "error") {
-    return (
-      <text fg={theme.error} wrapMode="word">
-        {`${t("chat.errorPrefix")}: ${item.text}`}
-      </text>
-    )
-  }
-  const msg = item.msg
-  if (msg.type === "assistant") {
-    const nested = msg.parent_tool_use_id != null
-    // Subagent prose stays internal — only its tool steps surface (same rule
-    // the v0.5 stream parser applied): nested rows keep tool_use blocks only.
-    const blocks = msg.message.content.filter((b) => !nested || b.type === "tool_use")
-    return (
-      <box flexDirection="column" marginBottom={blocks.some((b) => b.type === "text") ? 1 : 0}>
-        <For each={blocks}>
-          {(block) => (
-            <SdkBlockView
-              block={block}
-              result={block.type === "tool_use" ? props.results.get(block.id) : undefined}
-              nested={nested}
-              expanded={props.expanded}
-            />
-          )}
-        </For>
-      </box>
-    )
-  }
-  if (msg.type === "result") {
-    // SDK result fields verbatim: duration_ms · output_tokens · total_cost_usd.
-    if (msg.is_error) {
-      const detail = typeof msg.result === "string" && msg.result.trim() ? msg.result.trim() : msg.subtype
-      return (
-        <text fg={theme.error} wrapMode="word">
-          {`${t("chat.errorPrefix")}: ${detail}`}
-        </text>
-      )
-    }
-    const parts: string[] = []
-    if (typeof msg.duration_ms === "number") parts.push(`${(msg.duration_ms / 1000).toFixed(1)}s`)
-    if (typeof msg.usage?.output_tokens === "number") parts.push(`${msg.usage.output_tokens} tok`)
-    if (typeof msg.total_cost_usd === "number") parts.push(`$${msg.total_cost_usd.toFixed(4)}`)
-    return (
-      <Show when={parts.length > 0}>
-        <text fg={theme.textMuted} wrapMode="none" marginBottom={1}>
-          {`· ${parts.join(" · ")}`}
-        </text>
-      </Show>
-    )
-  }
-  return null
 }
 
 export function ChatPane(props: ChatPaneProps) {
@@ -448,7 +290,9 @@ export function ChatPane(props: ChatPaneProps) {
             </box>
           }
         >
-          <box flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1}>
+          {/* No paddingTop — the first row is always a prompt echo, which
+              carries its own marginTop (turn separation). */}
+          <box flexDirection="column" paddingLeft={1} paddingRight={1}>
             <For each={items()}>{(item) => <ChatRow item={item} results={results()} expanded={expanded()} />}</For>
           </box>
         </Show>

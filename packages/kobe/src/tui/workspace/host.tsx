@@ -1,13 +1,15 @@
 /**
  * Experimental native opentui workspace (`KOBE_TUI=1`).
  *
- * This is the v0.5-shaped single-process app: Sidebar | Chat | Files/Terminal.
+ * This is the v0.5-shaped single-process app: Sidebar | Chat | Files.
  * The default product path stays the tmux handover; this host is intentionally
  * gated behind `KOBE_TUI=1` while the headless chat backend proves out.
+ * No embedded Terminal pane in v1 — the @xterm/headless-backed pane's
+ * rendering bled outside its box; it returns once that's fixed.
  */
 
 import { join } from "node:path"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -22,14 +24,13 @@ import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
 import { Sidebar } from "../panes/sidebar/Sidebar"
-import { Terminal } from "../panes/terminal/Terminal"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
-const PANE_BY_SLOT = ["sidebar", "workspace", "files", "terminal"] as const satisfies readonly PaneId[]
+const PANE_BY_SLOT = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
 
 function firstSelectableTask(tasks: readonly Task[], activeId: string | null): Task | undefined {
   const active = activeId ? tasks.find((task) => task.id === activeId && !task.archived) : undefined
@@ -46,6 +47,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const focus = useFocus()
+  const renderer = useRenderer()
   const dims = useTerminalDimensions()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.orchestrator.activeTaskSignal()())
 
@@ -94,6 +96,21 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focus.setFocused("workspace")
   }
 
+  /**
+   * Restore the terminal BEFORE exiting — a bare process.exit leaves mouse
+   * tracking / kitty keyboard on, spraying `35;66;18M`-style junk into the
+   * user's shell. destroy() also runs the render options' onDestroy
+   * (orchestrator dispose). Same shape as settings-dialog/actions.ts.
+   */
+  function exitApp(): void {
+    try {
+      renderer?.destroy()
+    } catch (err) {
+      console.error("kobe: renderer.destroy() failed during quit:", err)
+    }
+    process.exit(0)
+  }
+
   async function quit(): Promise<void> {
     const ok = await DialogConfirm.show(
       dialog,
@@ -101,7 +118,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       "The daemon and task sessions keep running. This closes only the native workspace.",
       "quit",
     )
-    if (ok) process.exit(0)
+    if (ok) exitApp()
   }
 
   useBindings(() => ({
@@ -129,7 +146,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       // hard exit — so user rebinds keep both verbs without inspecting
       // the event's modifiers.
       "app.quit": (_evt, slot) => {
-        if (slot === 1) process.exit(0)
+        if (slot === 1) exitApp()
         void quit()
       },
     }),
@@ -164,30 +181,20 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         <ShowWorkspace task={selectedTask()} worktree={worktree()} focused={focus.is("workspace")} />
       </box>
 
-      <box width={worktreeToolsWidth()} flexShrink={0} flexDirection="column">
-        <box
-          flexGrow={3}
-          flexShrink={1}
-          borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
-          onMouseUp={() => focus.setFocused("files")}
-        >
-          <FileTree
-            worktreePath={worktree}
-            focused={focus.is("files")}
-            onOpenFile={(relPath) => {
-              const root = worktree()
-              if (root) openExternally(join(root, relPath))
-            }}
-          />
-        </box>
-        <box
-          flexGrow={2}
-          flexShrink={1}
-          borderColor={focus.is("terminal")() ? theme.focusAccent : theme.border}
-          onMouseUp={() => focus.setFocused("terminal")}
-        >
-          <Terminal cwd={worktree} taskId={() => selectedTask()?.id ?? null} focused={focus.is("terminal")} />
-        </box>
+      <box
+        width={worktreeToolsWidth()}
+        flexShrink={0}
+        borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
+        onMouseUp={() => focus.setFocused("files")}
+      >
+        <FileTree
+          worktreePath={worktree}
+          focused={focus.is("files")}
+          onOpenFile={(relPath) => {
+            const root = worktree()
+            if (root) openExternally(join(root, relPath))
+          }}
+        />
       </box>
     </box>
   )
