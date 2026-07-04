@@ -26,7 +26,7 @@
  * Must stay importable from vitest and MUST NOT import from `src/tui/`.
  */
 
-import type { Message } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity, Message } from "@/types/engine"
 import { type VendorId, isBuiltinVendor } from "@/types/vendor"
 import {
   type ClaudeAccount,
@@ -38,6 +38,7 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "./account-detect.ts"
+import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import * as codexHistory from "./codex-local/history.ts"
@@ -107,6 +108,14 @@ export interface EngineRegistryEntry {
    * whose `supportsCompletionMarkers()` is false.
    */
   readonly createTurnDetector: () => EngineTurnDetector
+  /**
+   * Model catalog + permission modes + identity, consumed by the native
+   * chat composer (KOBE_TUI=1). Only vendors the headless backend can
+   * drive define it (claude today); undefined hides the model picker.
+   */
+  readonly capabilities?: EngineCapabilities
+  /** Product identity (composer placeholder etc.). Paired with capabilities. */
+  readonly identity?: EngineIdentity
 }
 
 /**
@@ -167,6 +176,8 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     detectAccount: (deps) => detectClaudeAccount(deps),
     createHookAdapter: () => new ClaudeHookAdapter(),
     createTurnDetector: () => new ClaudeTurnDetector(),
+    capabilities: claudeCapabilities,
+    identity: claudeIdentity,
   },
   codex: {
     vendor: "codex",
@@ -221,4 +232,30 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
  */
 export function engineEntry(vendor: VendorId): EngineRegistryEntry {
   return isBuiltinVendor(vendor) ? BUILTIN_ENGINES[vendor] : customEngineEntry(vendor)
+}
+
+/**
+ * Capabilities for a vendor, falling back to claude's (the only headless
+ * backend today). Consumed by the native chat composer's model picker +
+ * permission-mode cycle; claude fallback keeps the picker rendering
+ * something rather than blanking on an unknown id.
+ */
+export function getCapabilities(vendor: VendorId): EngineCapabilities {
+  return engineEntry(vendor).capabilities ?? claudeCapabilities
+}
+
+/** Flat de-duped list of every model surfaced by every registered vendor. */
+export function allModels(): readonly EngineCapabilities["models"][number][] {
+  const seen = new Set<string>()
+  const out: EngineCapabilities["models"][number][] = []
+  for (const entry of Object.values(BUILTIN_ENGINES)) {
+    if (!entry.capabilities) continue
+    for (const m of entry.capabilities.models) {
+      const key = `${m.vendor}:${m.id}:${m.effort ?? ""}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(m)
+    }
+  }
+  return out
 }

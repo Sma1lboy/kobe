@@ -20,9 +20,11 @@
  */
 
 import { findClaudeBinary } from "@/engine/claude-code-local/binary"
+import { BUILTIN_CLAUDE_SLASHES } from "@/engine/claude-code-local/builtin-slashes"
 import type { SdkContentBlock, SdkMessage, SdkToolResultBlock } from "@/engine/claude-code-local/headless"
 import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
-import { engineEntry } from "@/engine/registry"
+import { engineEntry, getCapabilities } from "@/engine/registry"
+import type { PermissionMode } from "@/types/engine"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { For, Match, Show, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
@@ -30,6 +32,11 @@ import { BodyLines, bodyText, toolInputSummary } from "../history/host"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
+import { useDialog } from "../ui/dialog"
+import { Composer, type ComposerSlashEntry } from "./Composer"
+import { ModelPicker, type ModelPickerResult } from "./composer/ModelPicker"
+import { permissionModeLabel } from "./composer/permission-mode"
+import { loadUserSlashes } from "./composer/user-slashes"
 
 export interface ChatHostArgs {
   readonly worktree: string
@@ -210,11 +217,49 @@ function ChatRow(props: { item: ChatItem; results: Map<string, SdkToolResultBloc
 
 function ChatScreen(props: ChatHostArgs) {
   const { theme } = useTheme()
+  const dialog = useDialog()
   const [items, setItems] = createSignal<readonly ChatItem[]>([])
   const [running, setRunning] = createSignal(false)
   const [draft, setDraft] = createSignal("")
   const [expanded, setExpanded] = createSignal(false)
   const results = createMemo(() => sdkResultsByToolUseId(items()))
+
+  const capabilities = getCapabilities("claude")
+  const identity = engineEntry("claude").identity
+
+  // Composer state: pinned model (undefined = claude's default), permission
+  // mode (shift+tab cycles the engine's list), and the mid-turn prompt queue.
+  const [model, setModel] = createSignal<ModelPickerResult>(undefined)
+  const initialMode: PermissionMode = capabilities.permissionModes.some((m) => m.id === props.permissionMode)
+    ? (props.permissionMode as PermissionMode)
+    : "acceptEdits"
+  const [permissionMode, setPermissionMode] = createSignal<PermissionMode>(initialMode)
+  const [queue, setQueue] = createSignal<readonly { id: string; kind: "prompt"; text: string }[]>([])
+
+  // Slash-command list: claude's -p-compatible builtins + the user's own
+  // `.claude/{commands,skills}/` entries (project + global). Selecting one
+  // submits `/name` through the same turn pipeline — `claude -p` executes it.
+  const [slashList, setSlashList] = createSignal<readonly ComposerSlashEntry[]>([])
+  onMount(() => {
+    void loadUserSlashes(props.worktree)
+      .then((user) => {
+        const builtin: ComposerSlashEntry[] = BUILTIN_CLAUDE_SLASHES.map((s) => ({
+          display: `/${s.name}`,
+          description: s.description,
+          aliases: s.aliases ? [...s.aliases] : undefined,
+          source: "builtin",
+          onSelect: () => submit(`/${s.name}`),
+        }))
+        const userEntries: ComposerSlashEntry[] = user.map((s) => ({
+          display: `/${s.name}`,
+          description: s.description,
+          source: "user",
+          onSelect: () => submit(`/${s.name}`),
+        }))
+        setSlashList([...builtin, ...userEntries])
+      })
+      .catch(() => {})
+  })
 
   // The conversation to resume — seeded from the worktree's newest claude
   // session at boot, then updated from each turn's SDK `session_id` (a
@@ -237,12 +282,15 @@ function ChatScreen(props: ChatHostArgs) {
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     try {
       const binaryPath = await findClaudeBinary()
+      const pick = model()
       const turn = startHeadlessTurn({
         binaryPath,
         cwd: props.worktree,
         prompt,
         resumeSessionId,
-        permissionMode: props.permissionMode,
+        model: pick?.id,
+        modelEffort: pick?.effort,
+        permissionMode: permissionMode(),
       })
       activeInterrupt = turn.interrupt
       for await (const msg of turn.events) {
@@ -255,14 +303,79 @@ function ChatScreen(props: ChatHostArgs) {
     } finally {
       activeInterrupt = undefined
       setRunning(false)
+      drainQueue()
     }
   }
 
-  function submit(): void {
-    const prompt = draft().trim()
-    if (!prompt || running()) return
+  /** FIFO auto-drain: fire the queue head once the turn ends. */
+  function drainQueue(): void {
+    queueMicrotask(() => {
+      if (running()) return
+      const head = queue()[0]
+      if (!head) return
+      setQueue((q) => q.slice(1))
+      void runTurn(head.text)
+    })
+  }
+
+  /**
+   * Submit pipeline shared by the composer, slash entries, and the queue.
+   * `auto` queues while a turn is in flight; `steer` interrupts the live
+   * turn and lets the drain fire this prompt next.
+   */
+  function submit(text: string, mode: "auto" | "steer" = "auto"): void {
+    const prompt = text.trim()
+    if (!prompt) return
     setDraft("")
-    void runTurn(prompt)
+    if (!running()) {
+      void runTurn(prompt)
+      return
+    }
+    if (mode === "steer") {
+      setQueue((q) => [{ id: `q-${Date.now()}-${q.length}`, kind: "prompt" as const, text: prompt }, ...q])
+      activeInterrupt?.()
+      return
+    }
+    setQueue((q) => [...q, { id: `q-${Date.now()}-${q.length}`, kind: "prompt" as const, text: prompt }])
+  }
+
+  /** Footer label for the pinned (or default) model, from the vendor catalog. */
+  const modelLabel = (): string => {
+    const pick = model()
+    if (!pick) {
+      const id = capabilities.defaultModelId()
+      return capabilities.models.find((m) => m.id === id && !m.effort)?.label ?? id
+    }
+    return (
+      capabilities.models.find((m) => m.id === pick.id && m.effort === pick.effort)?.label ??
+      (pick.effort ? `${pick.id} · ${pick.effort}` : pick.id)
+    )
+  }
+
+  function openModelPicker(): void {
+    const pick = model()
+    dialog.replace(
+      () => (
+        <ModelPicker
+          current={pick?.id}
+          currentEffort={pick?.effort}
+          currentVendor="claude"
+          lockedVendor="claude"
+          onPick={(choice) => {
+            setModel(choice)
+            dialog.clear()
+          }}
+          onCancel={() => dialog.clear()}
+        />
+      ),
+      () => {},
+    )
+  }
+
+  function cyclePermissionMode(): void {
+    const modes = capabilities.permissionModes
+    const i = modes.findIndex((m) => m.id === permissionMode())
+    setPermissionMode(modes[(i + 1) % modes.length]?.id ?? "acceptEdits")
   }
 
   let scrollRef: ScrollBoxRenderable | undefined
@@ -329,19 +442,35 @@ function ChatScreen(props: ChatHostArgs) {
           </box>
         </Show>
       </scrollbox>
-      {/* Composer — always focused; enter submits, disabled while running. */}
-      <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} flexShrink={0}>
-        <text fg={running() ? theme.textMuted : theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
-          ❯
-        </text>
-        <input
-          value={draft()}
-          placeholder={t("chat.placeholder")}
-          focused={true}
-          onInput={(v: string) => setDraft(v)}
-          onSubmit={() => submit()}
-        />
-      </box>
+      {/* The full v0.5 composer: multi-line textarea, per-key prompt history
+          (↑↓ + ctrl+r palette), `/` slash dropdown, `@` file mentions, image
+          paste, model picker, shift+tab permission cycle, mid-turn queue. */}
+      <Composer
+        draft={draft()}
+        onDraftChange={setDraft}
+        isStreaming={running()}
+        hasTask={true}
+        onSubmit={(text, mode) => submit(text, mode)}
+        historyKey={props.worktree}
+        focused={() => true}
+        modelLabel={modelLabel}
+        inputPlaceholder={() => identity?.inputPlaceholder ?? t("chat.placeholder")}
+        slashes={slashList}
+        permissionMode={permissionMode}
+        permissionModeLabel={() => permissionModeLabel(capabilities, permissionMode())}
+        onCyclePermissionMode={cyclePermissionMode}
+        onChooseModel={openModelPicker}
+        worktreePath={() => props.worktree}
+        queue={queue}
+        onCancelQueued={(id) => setQueue((q) => q.filter((e) => e.id !== id))}
+        onSendQueuedNow={(id) => {
+          const entry = queue().find((e) => e.id === id)
+          if (!entry) return
+          setQueue((q) => [entry, ...q.filter((e) => e.id !== id)])
+          activeInterrupt?.()
+        }}
+        currentProjectRoot={() => props.worktree}
+      />
       <box paddingLeft={1} paddingRight={1} flexShrink={0} backgroundColor={theme.backgroundElement}>
         <text fg={theme.textMuted} wrapMode="none">
           {running() ? t("chat.hintRunning") : t("chat.hint")}
@@ -354,7 +483,9 @@ function ChatScreen(props: ChatHostArgs) {
 export async function startChatHost(args: ChatHostArgs): Promise<void> {
   await bootPaneHost({
     logContext: "chat",
-    providers: { kv: false, focus: false },
+    // focus: the Composer consumes the FocusProvider (refocusTick after
+    // dialogs close); kv stays off — this pane persists no UI state.
+    providers: { kv: false, focus: true },
     setup: () => ({ root: () => <ChatScreen {...args} /> }),
   })
 }

@@ -122,18 +122,18 @@ export async function createSession(opts: EnsureSessionOpts): Promise<boolean> {
     historyPreview || nativeChat
       ? historyPaneKeepAlive(engineCmd)
       : engineLaunchLine(
-        engineCmd,
-        {
-          initScript: remoteKey ? undefined : launchInit?.initScript,
-          markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
-          // Operator escape hatch for an unusually slow (or fast-fail) init —
-          // clamped + defaulted by the resolver; unset keeps the 120s default.
-          timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
-        },
-        // Exiting the post-engine fallback shell tears this tab down → close it
-        // (or replace it with a fresh engine tab when it's the task's only tab).
-        engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
-      )
+          engineCmd,
+          {
+            initScript: remoteKey ? undefined : launchInit?.initScript,
+            markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+            // Operator escape hatch for an unusually slow (or fast-fail) init —
+            // clamped + defaulted by the resolver; unset keeps the 120s default.
+            timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
+          },
+          // Exiting the post-engine fallback shell tears this tab down → close it
+          // (or replace it with a fresh engine tab when it's the task's only tab).
+          engineTabExitCleanup(inheritedEnvPrefix(), inv, opts.name),
+        )
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",

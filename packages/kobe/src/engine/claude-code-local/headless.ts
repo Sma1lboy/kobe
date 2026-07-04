@@ -111,6 +111,10 @@ export interface HeadlessTurnOpts {
   readonly prompt: string
   /** `--resume <sessionId>` — continue the previous turn's conversation. */
   readonly resumeSessionId?: string
+  /** `--model <id>` — the composer's pinned model. Omit for claude's default. */
+  readonly model?: string
+  /** `--effort <level>` — model-bound reasoning effort, when the pick carries one. */
+  readonly modelEffort?: string
   /**
    * `--permission-mode <mode>`. Headless `-p` cannot prompt interactively,
    * so a tool outside the mode's allowance is denied, not asked.
@@ -122,11 +126,13 @@ export interface HeadlessTurnOpts {
 
 /** Build the canonical argv. Exposed for unit tests (arg order pinned). */
 export function buildHeadlessArgs(
-  opts: Pick<HeadlessTurnOpts, "prompt" | "resumeSessionId" | "permissionMode">,
+  opts: Pick<HeadlessTurnOpts, "prompt" | "resumeSessionId" | "permissionMode" | "model" | "modelEffort">,
 ): string[] {
   const args: string[] = []
   if (opts.resumeSessionId) args.push("--resume", opts.resumeSessionId)
   args.push("-p", opts.prompt)
+  if (opts.model) args.push("--model", opts.model)
+  if (opts.modelEffort) args.push("--effort", opts.modelEffort)
   if (opts.permissionMode) args.push("--permission-mode", opts.permissionMode)
   args.push("--output-format", "stream-json", "--verbose")
   return args
