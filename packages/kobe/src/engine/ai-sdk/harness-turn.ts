@@ -16,43 +16,92 @@
  * the UIMessage parts ARE the render schema on this path).
  */
 
+import type { VendorId } from "@/types/vendor"
 import { createClaudeCode } from "@ai-sdk/harness-claude-code"
+import { createCodex } from "@ai-sdk/harness-codex"
 import { HarnessAgent } from "@ai-sdk/harness/agent"
 import { type UIMessage, readUIMessageStream } from "ai"
 import { createLocalSandbox } from "./local-sandbox"
 
+export type AiSdkHarnessVendor = "claude" | "codex"
+type CodexReasoningEffort = "low" | "medium" | "high"
+
 interface WorktreeRuntime {
   readonly agent: HarnessAgent
+  readonly vendor: AiSdkHarnessVendor
+  readonly worktree: string
   session?: Awaited<ReturnType<HarnessAgent["createSession"]>>
   busy: boolean
 }
 
-// One harness runtime per worktree, created on first turn. The bridge keeps
-// a child process alive, so panes must call disposeAiSdkRuntime on unmount.
+// One harness runtime per (vendor, worktree), created on first turn. The bridge
+// keeps a child process alive, so panes must call disposeAiSdkRuntime on unmount.
 const runtimes = new Map<string, WorktreeRuntime>()
 
-function ensureRuntime(worktree: string): WorktreeRuntime {
-  const existing = runtimes.get(worktree)
+export function resolveAiSdkHarnessVendor(vendor: VendorId | undefined): AiSdkHarnessVendor {
+  return vendor === "codex" ? "codex" : "claude"
+}
+
+export function aiSdkRuntimeKey(vendor: AiSdkHarnessVendor, worktree: string): string {
+  return `${vendor}:${worktree}`
+}
+
+export function codexReasoningEffort(effort: string | undefined): CodexReasoningEffort | undefined {
+  return effort === "low" || effort === "medium" || effort === "high" ? effort : undefined
+}
+
+function createHarness(opts: {
+  readonly vendor: AiSdkHarnessVendor
+  readonly model?: string
+  readonly modelEffort?: string
+}) {
+  if (opts.vendor === "codex") {
+    const effort = codexReasoningEffort(opts.modelEffort)
+    return createCodex({
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(effort ? { reasoningEffort: effort } : {}),
+    })
+  }
+  return createClaudeCode({
+    ...(opts.model ? { model: opts.model } : {}),
+  })
+}
+
+function ensureRuntime(opts: {
+  readonly vendor: AiSdkHarnessVendor
+  readonly worktree: string
+  readonly model?: string
+  readonly modelEffort?: string
+}): WorktreeRuntime {
+  const key = aiSdkRuntimeKey(opts.vendor, opts.worktree)
+  const existing = runtimes.get(key)
   if (existing) return existing
   const runtime: WorktreeRuntime = {
+    vendor: opts.vendor,
+    worktree: opts.worktree,
     agent: new HarnessAgent({
-      harness: createClaudeCode({}),
-      sandbox: createLocalSandbox({ workRoot: worktree }),
+      harness: createHarness(opts),
+      sandbox: createLocalSandbox({ workRoot: opts.worktree }),
     }),
     busy: false,
   }
-  runtimes.set(worktree, runtime)
+  runtimes.set(key, runtime)
   return runtime
 }
 
 export function disposeAiSdkRuntime(worktree: string): void {
-  const runtime = runtimes.get(worktree)
-  runtimes.delete(worktree)
-  void runtime?.session?.destroy().catch(() => {})
+  for (const [key, runtime] of runtimes) {
+    if (runtime.worktree !== worktree) continue
+    runtimes.delete(key)
+    void runtime.session?.destroy().catch(() => {})
+  }
 }
 
 export interface AiSdkTurnOpts {
   readonly worktree: string
+  readonly vendor?: VendorId
+  readonly model?: string
+  readonly modelEffort?: string
   readonly prompt: string
   /** Growing assistant snapshot per stream chunk — replace the tail message. */
   readonly onUpdate: (assistant: UIMessage) => void
@@ -68,7 +117,12 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
   const controller = new AbortController()
 
   const done = (async (): Promise<{ error?: string }> => {
-    const runtime = ensureRuntime(opts.worktree)
+    const runtime = ensureRuntime({
+      vendor: resolveAiSdkHarnessVendor(opts.vendor),
+      worktree: opts.worktree,
+      model: opts.model,
+      modelEffort: opts.modelEffort,
+    })
     if (runtime.busy) return { error: "ai-sdk runtime busy — turns are sequential" }
     runtime.busy = true
     let error: string | undefined

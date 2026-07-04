@@ -68,6 +68,13 @@ describe("engineEntry — built-in vendors", () => {
     }
   })
 
+  it("exposes Codex identity and its harness default model through capabilities", () => {
+    const entry = engineEntry("codex")
+    expect(entry.identity?.inputPlaceholder).toBe("Ask Codex…")
+    expect(entry.capabilities?.defaultModelId()).toBe("gpt-5.3-codex")
+    expect(entry.capabilities?.permissionModes).toEqual([])
+  })
+
   it("routes detectAccount to the vendor's own detector (claude oauth)", async () => {
     const status = await engineEntry("claude").detectAccount(
       deps({

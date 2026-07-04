@@ -50,6 +50,7 @@
   "dependencies": {
     "@ai-sdk/harness": "^1",
     "@ai-sdk/harness-claude-code": "^1",
+    "@ai-sdk/harness-codex": "^1",
     "@ai-sdk/provider-utils": "^5",
     "@ansi-tools/parser": "^1.0.15",
     "@opentui/core": "0.2.4",

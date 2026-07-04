@@ -28,6 +28,7 @@ import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
 import type { SdkStreamEventMessage } from "@/engine/claude-code-local/headless"
 import { engineEntry, getCapabilities } from "@/engine/registry"
 import type { PermissionMode } from "@/types/engine"
+import type { VendorId } from "@/types/vendor"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
@@ -44,6 +45,8 @@ export interface ChatPaneProps {
   readonly worktree: string
   /** Task title for the header; falls back to the worktree basename. */
   readonly title?: string
+  /** Engine vendor recorded on the selected task. Native chat supports Claude and Codex. */
+  readonly vendor?: VendorId
   /**
    * `--permission-mode` forwarded to every turn. Headless `-p` can't prompt,
    * so tools outside the mode's allowance are denied, not asked.
@@ -66,11 +69,27 @@ function basename(p: string): string {
   return i >= 0 ? p.slice(i + 1) : p
 }
 
+export function ChatTurnErrorBanner(props: { readonly error: string | null }) {
+  const { theme } = useTheme()
+  return (
+    <Show when={props.error}>
+      {(error) => (
+        <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>
+          <text fg={theme.error} wrapMode="word">
+            {`${t("chat.errorPrefix")}: ${error()}`}
+          </text>
+        </box>
+      )}
+    </Show>
+  )
+}
+
 export function ChatPane(props: ChatPaneProps) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const [items, setItems] = createSignal<readonly ChatItem[]>([])
   const [running, setRunning] = createSignal(false)
+  const [turnError, setTurnError] = createSignal<string | null>(null)
   const [draft, setDraft] = createSignal("")
   const [expanded, setExpanded] = createSignal(false)
   const results = createMemo(() => sdkResultsByToolUseId(items()))
@@ -95,13 +114,16 @@ export function ChatPane(props: ChatPaneProps) {
     if (delta?.type === "text_delta" && delta.text) setLive((l) => ({ ...l, text: l.text + delta.text }))
   }
 
-  const capabilities = getCapabilities("claude")
-  const identity = engineEntry("claude").identity
+  const vendor = createMemo<VendorId>(() => props.vendor ?? "claude")
+  const entry = createMemo(() => engineEntry(vendor()))
+  const capabilities = createMemo(() => getCapabilities(vendor()))
+  const identity = createMemo(() => entry().identity)
+  const aiSdkVendor = createMemo(() => (vendor() === "codex" ? "codex" : "claude"))
 
   // Composer state: pinned model (undefined = claude's default), permission
   // mode (shift+tab cycles the engine's list), and the mid-turn prompt queue.
   const [model, setModel] = createSignal<ModelPickerResult>(undefined)
-  const initialMode: PermissionMode = capabilities.permissionModes.some((m) => m.id === props.permissionMode)
+  const initialMode: PermissionMode = capabilities().permissionModes.some((m) => m.id === props.permissionMode)
     ? (props.permissionMode as PermissionMode)
     : "acceptEdits"
   const [permissionMode, setPermissionMode] = createSignal<PermissionMode>(initialMode)
@@ -112,6 +134,7 @@ export function ChatPane(props: ChatPaneProps) {
   // submits `/name` through the same turn pipeline — `claude -p` executes it.
   const [slashList, setSlashList] = createSignal<readonly ComposerSlashEntry[]>([])
   onMount(() => {
+    if (vendor() !== "claude") return
     void loadUserSlashes(props.worktree)
       .then((user) => {
         const builtin: ComposerSlashEntry[] = BUILTIN_CLAUDE_SLASHES.map((s) => ({
@@ -137,7 +160,7 @@ export function ChatPane(props: ChatPaneProps) {
   // `--resume` turn gets a fresh id; chaining the latest keeps continuity).
   let resumeSessionId: string | undefined
   onMount(() => {
-    void engineEntry("claude")
+    void entry()
       .history.listSessionIdsForWorktree(props.worktree)
       .then((ids) => {
         if (!resumeSessionId && ids.length > 0) resumeSessionId = ids[ids.length - 1]
@@ -152,16 +175,21 @@ export function ChatPane(props: ChatPaneProps) {
   // local Claude Code runtime (subscription login) and streams growing
   // UIMessage snapshots; the pane replaces the tail "ui" item per update.
   const useAiSdk = process.env.KOBE_AISDK === "1"
+  const showClaudeControls = () => !useAiSdk && vendor() === "claude"
   onCleanup(() => {
     if (useAiSdk) disposeAiSdkRuntime(props.worktree)
   })
 
   async function runAiSdkTurn(prompt: string): Promise<void> {
     setRunning(true)
+    setTurnError(null)
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     let hasTail = false
     const turn = startAiSdkTurn({
       worktree: props.worktree,
+      vendor: aiSdkVendor(),
+      model: model()?.id,
+      modelEffort: model()?.effort,
       prompt,
       onUpdate: (assistant) => {
         setItems((prev) => {
@@ -173,7 +201,7 @@ export function ChatPane(props: ChatPaneProps) {
     })
     activeInterrupt = turn.interrupt
     const { error } = await turn.done
-    if (error) setItems((prev) => [...prev, { kind: "error", text: error }])
+    if (error) setTurnError(error)
     activeInterrupt = undefined
     setRunning(false)
     drainQueue()
@@ -181,7 +209,12 @@ export function ChatPane(props: ChatPaneProps) {
 
   async function runTurn(prompt: string): Promise<void> {
     if (useAiSdk) return runAiSdkTurn(prompt)
+    if (vendor() !== "claude") {
+      setTurnError(`${entry().displayName} native chat requires KOBE_AISDK=1`)
+      return
+    }
     setRunning(true)
+    setTurnError(null)
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     try {
       const binaryPath = await findClaudeBinary()
@@ -204,13 +237,18 @@ export function ChatPane(props: ChatPaneProps) {
           if (msg.parent_tool_use_id == null) applyStreamEvent(msg.event)
           continue
         }
+        if (msg.type === "result" && msg.is_error) {
+          const detail = typeof msg.result === "string" && msg.result.trim() ? msg.result.trim() : msg.subtype
+          setTurnError(detail)
+          continue
+        }
         // A complete top-level assistant message supersedes its preview.
         if (msg.type === "assistant" && msg.parent_tool_use_id == null) resetLive()
         setItems((prev) => [...prev, { kind: "sdk", msg }])
       }
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err)
-      setItems((prev) => [...prev, { kind: "error", text }])
+      setTurnError(text)
     } finally {
       activeInterrupt = undefined
       resetLive()
@@ -239,6 +277,7 @@ export function ChatPane(props: ChatPaneProps) {
     const prompt = text.trim()
     if (!prompt) return
     setDraft("")
+    setTurnError(null)
     if (!running()) {
       void runTurn(prompt)
       return
@@ -255,16 +294,17 @@ export function ChatPane(props: ChatPaneProps) {
   const modelLabel = (): string => {
     const pick = model()
     if (!pick) {
-      const id = capabilities.defaultModelId()
-      return capabilities.models.find((m) => m.id === id && !m.effort)?.label ?? id
+      const id = capabilities().defaultModelId()
+      return capabilities().models.find((m) => m.id === id && !m.effort)?.label ?? id
     }
     return (
-      capabilities.models.find((m) => m.id === pick.id && m.effort === pick.effort)?.label ??
+      capabilities().models.find((m) => m.id === pick.id && m.effort === pick.effort)?.label ??
       (pick.effort ? `${pick.id} · ${pick.effort}` : pick.id)
     )
   }
 
   function openModelPicker(): void {
+    if (vendor() !== "claude") return
     const pick = model()
     dialog.replace(
       () => (
@@ -285,7 +325,8 @@ export function ChatPane(props: ChatPaneProps) {
   }
 
   function cyclePermissionMode(): void {
-    const modes = capabilities.permissionModes
+    const modes = capabilities().permissionModes
+    if (modes.length === 0) return
     const i = modes.findIndex((m) => m.id === permissionMode())
     setPermissionMode(modes[(i + 1) % modes.length]?.id ?? "acceptEdits")
   }
@@ -378,6 +419,7 @@ export function ChatPane(props: ChatPaneProps) {
           </box>
         </Show>
       </scrollbox>
+      <ChatTurnErrorBanner error={turnError()} />
       {/* The full v0.5 composer: multi-line textarea, per-key prompt history
           (↑↓ + ctrl+r palette), `/` slash dropdown, `@` file mentions, image
           paste, model picker, shift+tab permission cycle, mid-turn queue. */}
@@ -390,12 +432,14 @@ export function ChatPane(props: ChatPaneProps) {
         historyKey={props.worktree}
         focused={paneFocused}
         modelLabel={modelLabel}
-        inputPlaceholder={() => identity?.inputPlaceholder ?? t("chat.placeholder")}
+        inputPlaceholder={() => identity()?.inputPlaceholder ?? t("chat.placeholder")}
         slashes={slashList}
-        permissionMode={permissionMode}
-        permissionModeLabel={() => permissionModeLabel(capabilities, permissionMode())}
-        onCyclePermissionMode={cyclePermissionMode}
-        onChooseModel={openModelPicker}
+        permissionMode={showClaudeControls() ? permissionMode : undefined}
+        permissionModeLabel={
+          showClaudeControls() ? () => permissionModeLabel(capabilities(), permissionMode()) : undefined
+        }
+        onCyclePermissionMode={showClaudeControls() ? cyclePermissionMode : undefined}
+        onChooseModel={showClaudeControls() ? openModelPicker : undefined}
         worktreePath={() => props.worktree}
         queue={queue}
         onCancelQueued={(id) => setQueue((q) => q.filter((e) => e.id !== id))}

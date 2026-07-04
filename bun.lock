@@ -34,6 +34,7 @@
       "dependencies": {
         "@ai-sdk/harness": "^1",
         "@ai-sdk/harness-claude-code": "^1",
+        "@ai-sdk/harness-codex": "^1",
         "@ai-sdk/provider-utils": "^5",
         "@ansi-tools/parser": "^1.0.15",
         "@opentui/core": "0.2.4",
@@ -141,6 +142,8 @@
     "@ai-sdk/harness": ["@ai-sdk/harness@1.0.18", "", { "dependencies": { "@ai-sdk/provider": "4.0.2", "@ai-sdk/provider-utils": "5.0.5", "ai": "7.0.15" }, "peerDependencies": { "ws": "^8.21.0", "zod": "^3.25.76 || ^4.1.8" }, "optionalPeers": ["ws"] }, "sha512-zJCufxLWZAg8Nmucive5CT6wb4OAELycrwbF1FviRM7M+NSHSqU56HgAhMMcSVPvles0ZzkIsYomqiZ6e0PQYQ=="],
 
     "@ai-sdk/harness-claude-code": ["@ai-sdk/harness-claude-code@1.0.18", "", { "dependencies": { "@ai-sdk/harness": "1.0.18", "@ai-sdk/provider-utils": "5.0.5", "ws": "^8.21.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-XJ2yHiLYRl6oB7wPGWUf8Q3Tcg/1WNKSumO5MQtosdbvwqjbENtMsIWqpPGegWgsfiP8VrmHX+SQ8gy0MgnrGA=="],
+
+    "@ai-sdk/harness-codex": ["@ai-sdk/harness-codex@1.0.19", "", { "dependencies": { "@ai-sdk/harness": "1.0.18", "@ai-sdk/provider-utils": "5.0.5", "ws": "^8.21.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-NJ7ArYVB+kRaYLFroMDJiCH7wv1xMyDYE+qEAwUEW7hmaobz2/3BeygITSUGKEQWfGNU1A5mduDmTzrWIF0hQA=="],
 
     "@ai-sdk/provider": ["@ai-sdk/provider@4.0.2", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-pfPoy9J1B1xV7cqJ8MYHOsDYrMv5tR3+EMNfI249OhkD2uRakvav3Fo7XpD2luuN/YNCBY7KfEQc7vEV7KEtyw=="],
 

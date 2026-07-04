@@ -221,7 +221,9 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
       }
       keyed
     >
-      {(path) => <ChatPane worktree={path} title={props.task?.title} focused={props.focused} />}
+      {(path) => (
+        <ChatPane worktree={path} title={props.task?.title} vendor={props.task?.vendor} focused={props.focused} />
+      )}
     </Show>
   )
 }

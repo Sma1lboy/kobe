@@ -237,7 +237,7 @@ export function ChatRow(props: { item: ChatItem; results: Map<string, SdkToolRes
     )
   }
   if (msg.type === "result") {
-    // SDK result fields verbatim: duration_ms · output_tokens · total_cost_usd.
+    // Keep the turn footer terse: duration and output tokens only.
     if (msg.is_error) {
       const detail = typeof msg.result === "string" && msg.result.trim() ? msg.result.trim() : msg.subtype
       return (
@@ -249,7 +249,6 @@ export function ChatRow(props: { item: ChatItem; results: Map<string, SdkToolRes
     const parts: string[] = []
     if (typeof msg.duration_ms === "number") parts.push(`${(msg.duration_ms / 1000).toFixed(1)}s`)
     if (typeof msg.usage?.output_tokens === "number") parts.push(`${msg.usage.output_tokens} tok`)
-    if (typeof msg.total_cost_usd === "number") parts.push(`$${msg.total_cost_usd.toFixed(4)}`)
     // No marginBottom — the NEXT prompt row's marginTop owns turn spacing
     // (margins don't collapse in Yoga; both would stack to 2 blank rows).
     return (
