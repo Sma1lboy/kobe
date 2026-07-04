@@ -60,7 +60,10 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
   await writeFile(join(bin, "kobe"), `#!/bin/sh\nexec bun ${DIST_CLI} "$@"\n`)
   await chmod(join(bin, "kobe"), 0o755)
   // Fake engine so a task/engine pane renders without a real `claude` on CI.
-  await writeFile(join(bin, "claude"), `#!/bin/sh\necho "fake-claude ready"\nexec sleep 600\n`)
+  // Ignores SIGHUP like the real CLI does (`trap` sets SIG_IGN, which `exec`
+  // preserves) — pane-cleanup.test.ts depends on this to reproduce the
+  // "engine CLI swallows HUP" half of the #205/bc69596 leak.
+  await writeFile(join(bin, "claude"), `#!/bin/sh\ntrap '' HUP\necho "fake-claude ready"\nexec sleep 600\n`)
   await chmod(join(bin, "claude"), 0o755)
 
   const env: NodeJS.ProcessEnv = {
