@@ -25,6 +25,7 @@ import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
 import { WEB_RPC_ALLOWSET } from "./web-rpc-allowlist.ts"
 import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./web-session.ts"
 import { settingsPatch, settingsSnapshot } from "./web-settings.ts"
+import { handleWorktreesRequest } from "./web-worktrees-route.ts"
 
 export const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 export const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
@@ -268,6 +269,8 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
     if (issues) return issues
     const issueAssets = await handleIssueAssetsRequest(req, url)
     if (issueAssets) return issueAssets
+    const worktrees = await handleWorktreesRequest(req, url)
+    if (worktrees) return worktrees
     const themes = handleThemesRequest(req, url)
     if (themes) return themes
     if (staticDir) return staticResponse(url.pathname, staticDir)
