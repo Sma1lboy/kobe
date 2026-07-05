@@ -696,6 +696,20 @@ export function parseAgentsSpec(spec: string): VendorId[] {
   return out
 }
 
+/**
+ * Build the fan-out plan for the `--count` form (`--count N`, all one vendor):
+ * N copies of `vendor`. Rejects against the fanout cap BEFORE allocating —
+ * symmetric to {@link parseAgentsSpec}, so `--count 1000000000` fails fast
+ * instead of materializing a billion-element array (OOM) only to be caught by
+ * the post-build `plan.length > FANOUT_CAP` check.
+ */
+export function buildCountPlan(count: number, vendor: VendorId): VendorId[] {
+  if (count > FANOUT_CAP) {
+    throw new ApiError(`fan-out of ${count} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
+  }
+  return new Array<VendorId>(count).fill(vendor)
+}
+
 // ── Schema (LEVELED) + help (all derived from VERBS) ─────────────────────────
 
 const GLOBAL_FLAGS = [
@@ -1172,7 +1186,7 @@ async function fanOut(ctx: VerbContext): Promise<unknown> {
   const defaultVendor = await runtime.defaultVendor(repo)
   const plan: VendorId[] = agentsSpec
     ? parseAgentsSpec(agentsSpec)
-    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? defaultVendor ?? "claude")
+    : buildCountPlan(args.int("count") ?? 1, args.vendor() ?? defaultVendor ?? "claude")
 
   if (plan.length > FANOUT_CAP) {
     throw new ApiError(`fan-out of ${plan.length} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
