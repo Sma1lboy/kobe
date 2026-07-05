@@ -12,8 +12,9 @@ import { existsSync } from "node:fs"
 import { claudePaneIdStrict, currentSessionName, killSession, runTmux, tmuxSessionName } from "@/tmux/client"
 import { t } from "@/tui/i18n"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
+import { getCustomEngineIds, getPersistedString, setPersistedString } from "../../state/repos.ts"
 import type { Task } from "../../types/task.ts"
+import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { HelpDialog } from "../component/help-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
@@ -339,8 +340,8 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
     },
     // This pane uses disk-only persistence (no in-process kv store), so the
     // atomic disk write is sufficient — no onRepoSaved kv mirror needed.
-    lastVendor: (repo) => resolvePreferredVendor(repo),
-    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
+    lastVendor: () => resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds()),
+    rememberVendor: (vendor) => setPersistedString("lastSelectedVendor", vendor),
     // Same surface preference as Settings (default chattab): open the
     // new-task flow as a dedicated full-window page in a new tmux tab.
     // The page performs the create/adopt itself and the subscribe pushes

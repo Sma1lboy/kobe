@@ -217,10 +217,10 @@ describe("in-session handlers (new-chattab / focus-tasks / layout / kill-session
     expect(spies.newChatTab).not.toHaveBeenCalled()
   })
 
-  test("new-chattab opens a tab in the session, honoring a valid --vendor", async () => {
+  test("new-chattab opens a tab in the session, honoring a valid --vendor and persisting it as default", async () => {
     await runCli("new-chattab", "--session", "kobe-t1", "--vendor", "codex")
-    // Per-repo last-active persistence happens inside newChatTab (mocked here).
     expect(spies.newChatTab).toHaveBeenCalledWith("kobe-t1", "codex")
+    expect(spies.setPersistedString).toHaveBeenCalledWith("lastSelectedVendor", "codex")
   })
 
   test("new-chattab rejects an unknown engine VISIBLY via tmux display-message", async () => {

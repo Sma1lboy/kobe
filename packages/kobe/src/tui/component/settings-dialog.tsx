@@ -28,7 +28,7 @@ import { submitFeedback } from "../../lib/feedback"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
-import { getGlobalDefaultVendor, setGlobalDefaultVendor } from "../../state/vendor-prefs"
+import { getPersistedString, setPersistedString } from "../../state/repos"
 import {
   PROJECT_DIR_TOKEN,
   PROJECT_SIBLING_BASE,
@@ -40,8 +40,8 @@ import {
   worktreeBaseKindOf,
 } from "../../state/worktree-base"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
-import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
-import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
+import type { VendorId } from "../../types/task"
+import { ALL_VENDORS, isBuiltinVendor, resolvePersistedVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import { type LocaleId, currentLang, setLocaleLang, t } from "../i18n"
@@ -326,15 +326,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
     // Built-ins fall back to VENDOR_LABEL; a custom engine falls back to its id.
     return engineNameOverride(vendor) || VENDOR_LABEL[vendor] || vendor
   }
-  // The GLOBAL default engine (the ● marker) — only this dialog writes it;
-  // per-project picks live in their own layer (state/vendor-prefs.ts).
-  const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(getGlobalDefaultVendor() ?? DEFAULT_TASK_VENDOR)
+  // The DEFAULT engine for new tasks — the single `lastSelectedVendor` reference
+  // the new-task dialog / quick-task read and Ctrl+Shift+T writes. Read fresh on
+  // open (getPersistedString) so a default set via Ctrl+Shift+T in another
+  // process is reflected here; `d` on an engine row sets it (the ● marker).
+  const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(
+    resolvePersistedVendor(getPersistedString("lastSelectedVendor"), customEngines()),
+  )
   function isDefaultEngine(vendor: VendorId): boolean {
     return defaultEngine() === vendor
   }
   function setEngineDefault(vendor: VendorId): void {
-    setGlobalDefaultVendor(vendor)
-    props.kv.set("defaultVendor", vendor) // keep the in-process kv consistent
+    setPersistedString("lastSelectedVendor", vendor)
+    props.kv.set("lastSelectedVendor", vendor) // keep the in-process kv consistent
     setDefaultEngineSig(vendor)
   }
   async function editEngine(vendor: VendorId): Promise<void> {
@@ -686,8 +690,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
         },
       },
       {
-        // Engines section: `d` sets the focused engine as the global default
-        // (the ● marker).
+        // Engines section: `d` sets the focused engine as the DEFAULT for new
+        // tasks (the ● marker) — the same `lastSelectedVendor` Ctrl+Shift+T sets.
         key: "d",
         cmd: () => {
           const v = currentEngineRow()

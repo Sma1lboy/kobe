@@ -36,8 +36,8 @@ export type NewTaskDialogOptions = {
    */
   defaultCloneParent?: string
   /**
-   * Engine to pre-select — the repo's preferred vendor
-   * (state/vendor-prefs.ts). Falls back to `claude` in the dialog.
+   * Engine to pre-select — the user's last-selected vendor (kv
+   * `lastSelectedVendor`). Falls back to `claude` in the dialog.
    */
   defaultVendor?: VendorId
   /**

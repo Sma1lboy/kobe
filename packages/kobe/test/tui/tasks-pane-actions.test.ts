@@ -417,8 +417,8 @@ describe("buildTaskActionsContext", () => {
 
     expect(taskActions.cursorRepo()).toBe("/repo")
 
-    expect(taskActions.lastVendor("/repo")).toBeDefined()
-    taskActions.rememberVendor("/repo", "claude" as never)
+    expect(taskActions.lastVendor()).toBeDefined()
+    taskActions.rememberVendor("claude" as never)
 
     taskActions.selectTask!("t2")
     expect(setSelectedId).toHaveBeenCalledWith("t2")

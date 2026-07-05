@@ -16,14 +16,15 @@ import { PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { resolveEngineLaunchInit } from "../state/repo-init.ts"
 import {
   addSavedRepo,
+  getCustomEngineIds,
   getPersistedString,
   getSavedRepos,
   normalizeSavedRepos,
   setPersistedString,
 } from "../state/repos.ts"
-import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
+import { resolvePersistedVendor } from "../types/vendor.ts"
 import { applyTmuxChromeTheme } from "./lib/tmux-border-theme.ts"
 import { syncSessionZen } from "./panes/terminal/layout-actions.ts"
 import {
@@ -151,12 +152,12 @@ export async function startDirectTmux(): Promise<void> {
     // frozen at creation time. Reconcile before launch: adopt the live session's
     // ACTUAL vendor when one is running (so a daemon restart never respawns a
     // healthy codex session back to the persisted "claude"), otherwise fall back
-    // to the repo's preferred vendor (so cold-opening an existing project honors it).
+    // to the global default (so cold-opening an existing project honors it).
     // Regular tasks keep their explicitly chosen vendor untouched.
     let vendor = task.vendor
     if (task.kind === "main") {
       const live = await observeSessionVendor(name)
-      const desired = live ?? resolvePreferredVendor(task.repo)
+      const desired = live ?? resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
       if (desired !== task.vendor) {
         await orchestrator.setVendor(task.id, desired).catch(() => {})
         vendor = desired
