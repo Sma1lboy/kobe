@@ -36,6 +36,13 @@ vi.mock("../../src/tui/panes/terminal/pane-heal", () => ({
   PANE_VERSION_OPTION: "@kobe_pane_version",
   globalRightColumnResizeArgs: vi.fn(async () => [] as readonly string[]),
 }))
+vi.mock("../../src/state/repos", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/state/repos")>()
+  return { ...actual, resolveMainRepoRoot: vi.fn((p: string) => `${p}-root`) }
+})
+vi.mock("../../src/state/vendor-prefs", () => ({
+  setRepoLastActiveVendor: vi.fn(),
+}))
 
 vi.mock("../../src/tmux/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/tmux/client")>()
@@ -85,6 +92,8 @@ vi.mock("@sma1lboy/kobe-daemon/client/daemon-process", () => ({
 
 const chattab = await import("../../src/tui/panes/terminal/chattab")
 const daemonProcess = await import("@sma1lboy/kobe-daemon/client/daemon-process")
+const stateRepos = await import("../../src/state/repos")
+const vendorPrefs = await import("../../src/state/vendor-prefs")
 
 function resetState(): void {
   state.existingSessions = new Set(["kobe-t1"])
@@ -188,6 +197,19 @@ describe("newChatTab", () => {
     await chattab.newChatTab("kobe-t1", "codex")
     expect(state.sessionOptions["@kobe_vendor"]).toBe("codex")
     expect(daemonProcess.connectOrStartDaemon).toHaveBeenCalled()
+    // ... and as the PROJECT's last-active engine, keyed on the repo root.
+    expect(vendorPrefs.setRepoLastActiveVendor).toHaveBeenCalledWith("/wt-root", "codex")
+  })
+
+  test("a stale worktree path never blocks the new tab (repo-root resolution throws)", async () => {
+    state.sessionOptions = { "@kobe_worktree": "/gone", "@kobe_task": "t1" }
+    vi.mocked(stateRepos.resolveMainRepoRoot).mockImplementationOnce(() => {
+      throw new Error("not a git repository")
+    })
+    await chattab.newChatTab("kobe-t1", "codex")
+    expect(vendorPrefs.setRepoLastActiveVendor).not.toHaveBeenCalled()
+    const newWindowCall = state.capturingCalls.find((c) => c[0] === "new-window")
+    expect(newWindowCall).toBeDefined()
   })
 
   test("degrades gracefully when new-window returns no pane id", async () => {

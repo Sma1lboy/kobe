@@ -24,15 +24,9 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
-import {
-  addSavedRepo,
-  getCustomEngineIds,
-  getPersistedString,
-  getSavedRepos,
-  setPersistedString,
-} from "../../state/repos.ts"
+import { addSavedRepo, getSavedRepos } from "../../state/repos.ts"
+import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import type { Task } from "../../types/task.ts"
-import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
@@ -57,7 +51,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
   async function run(): Promise<void> {
     const repos = getSavedRepos()
     const defaultRepo = props.defaultRepo || repos[0] || process.cwd()
-    const defaultVendor = resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
+    const defaultVendor = resolvePreferredVendor(defaultRepo)
     const availableVendors = await availableEngineIds()
     const orch = props.orchestrator
 
@@ -70,9 +64,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
       process.exit(0)
     }
 
-    // Remember the choices (shared kv state.json) so the next new-task
-    // dialog — here or in any Tasks pane — defaults to them.
-    setPersistedString("lastSelectedVendor", result.vendor)
+    setRepoLastActiveVendor(result.repo, result.vendor)
     addSavedRepo(result.repo)
 
     if (!orch) {
