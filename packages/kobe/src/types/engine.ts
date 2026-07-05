@@ -19,13 +19,92 @@
  *
  * What's gone (vs v0.5): `AIEngine`, `EngineEvent`, `SessionHandle`,
  * `SpawnOpts`, all UserInput / ApprovePlan / AskUserQuestion shapes,
- * `OrchestratorEvent`, model / capability / command-discovery surfaces.
+ * `OrchestratorEvent`, command-discovery surfaces.
  * If a 0.6.x feature needs any of that, restore it deliberately —
  * don't drag the whole port back.
+ *
+ * Deliberately RESTORED for the experimental native chat backend
+ * (KOBE_TUI=1, see tui/chat/): `ModelChoice` / `ModelEffortLevel` /
+ * `EngineCapabilities` / `EngineIdentity` / `PermissionMode` — the
+ * composer's model picker + permission-mode cycle consume these
+ * through the engine registry (engine-owned UI data, CLAUDE.md).
  */
 
 import type { ContentBlock } from "./content"
+import type { VendorId } from "./vendor"
 export type { ContentBlock } from "./content"
+
+/**
+ * One selectable model in the composer's model picker. `id` is what the
+ * adapter forwards to its CLI verbatim (`claude --model <id>`).
+ * Vendor-owned: each adapter exports its catalog through
+ * {@link EngineCapabilities.models}; the TUI just consumes it.
+ */
+export type ModelChoice = {
+  /** Which engine adapter owns this model. */
+  readonly vendor: VendorId
+  /** Vendor-specific model id passed to the adapter. */
+  readonly id: string
+  /** Optional model-bound reasoning/effort level passed to the adapter. */
+  readonly effort?: ModelEffortLevel
+  /** Optional picker grouping label for model-bound levels. */
+  readonly level?: string
+  /** Short label shown in the composer footer + picker. */
+  readonly label: string
+  /** Optional one-liner shown next to the label in the picker. */
+  readonly hint?: string
+}
+
+export type ModelEffortLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+
+/**
+ * Tool-permission mode for a headless chat session. Forwarded verbatim
+ * as `--permission-mode`; headless `-p` cannot prompt, so a tool outside
+ * the mode's allowance is denied, not asked. shift+tab in the composer
+ * cycles through the engine's {@link EngineCapabilities.permissionModes}.
+ */
+export type PermissionMode = "default" | "acceptEdits" | "plan"
+
+export interface PermissionModeChoice {
+  readonly id: PermissionMode
+  readonly label: string
+}
+
+/**
+ * Vendor-supplied capability surface — the single way the TUI asks
+ * "what does this engine know / offer?". No module outside the adapter
+ * should hard-code `~/.claude/...` paths or model-id literals.
+ * Function members are pure (no IO beyond cached settings reads) so
+ * callers can invoke them freely from render code.
+ */
+export interface EngineCapabilities {
+  readonly vendorId: VendorId
+  /** Human-readable vendor name shown in UI ("Claude Code"). */
+  readonly label: string
+  /** Catalog of models this vendor offers in the composer picker. */
+  readonly models: readonly ModelChoice[]
+  /** Permission/trust modes this vendor can run through kobe. */
+  readonly permissionModes: readonly PermissionModeChoice[]
+  /** Resolve the vendor's current default model id (settings file, then fallback). */
+  defaultModelId(): string
+  /** Max context tokens for a model id, or 0 when unknown statically. */
+  contextWindowFor(modelId: string): number
+  /** The vendor's small/fast model id for metadata one-shots, if any. */
+  smallFastModelId?(): string | undefined
+}
+
+/**
+ * Product identity surfaced by the engine adapter — the composer asks
+ * the engine how it wants to be named instead of hard-coding vendor
+ * strings in TUI code.
+ */
+export interface EngineIdentity {
+  readonly vendorId: VendorId
+  readonly productName: string
+  readonly shortName: string
+  readonly assistantName: string
+  readonly inputPlaceholder: string
+}
 
 /**
  * One historical message read off disk by an engine adapter's history

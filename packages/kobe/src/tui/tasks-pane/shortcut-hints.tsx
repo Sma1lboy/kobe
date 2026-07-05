@@ -13,7 +13,7 @@ import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings
 import { findBinding, keymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
-import { approxCellWidth } from "../panes/sidebar/Sidebar"
+import { approxCellWidth } from "../panes/sidebar/hover-tooltip"
 
 /**
  * Resolve a single binding id to the chord cap the footer should advertise:

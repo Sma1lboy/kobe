@@ -145,6 +145,13 @@ export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
   "files.hierarchy": pairContract("collapse", "expand"),
   "sidebar.view": pairContract("previous view", "next view"),
   "files.tab": pairContract("previous tab", "next tab"),
+  // Not a pair: slot 0 = quit confirm, slot 1 = hard exit (native
+  // workspace's second ctrl+q). The hard-exit chord is optional — a
+  // single-chord override keeps the confirm and drops the two-stage exit.
+  "app.quit": {
+    layout: "[quit confirm, hard exit] (second chord optional)",
+    validateCount: (count) => (count <= 2 ? null : `needs [quit confirm, hard exit] (1 or 2 chords — got ${count})`),
+  },
 }
 
 /** Scopes where a bare single-character chord would steal typed input. */

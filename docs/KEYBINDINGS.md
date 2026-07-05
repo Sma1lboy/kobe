@@ -26,9 +26,11 @@ works without iTerm CSI-u, kitty keyboard, tmux extended-keys, or any per-user s
 open dialog — binding registrations include `enabled: dialog.stack.length === 0` so dialog-internal keys
 (esc to dismiss, enter to confirm) win on the dialog stack.
 
-`ctrl+q` from workspace focus jumps back to the sidebar (`focus.sidebar`). `esc` is **not** a global "back to sidebar" — it
-would yank focus out of the chat composer mid-edit. ESC is reserved for: closing the top dialog (DialogProvider) and
-interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm) and plain `n` (new task).
+`ctrl+q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`). In the native workspace, a second `ctrl+q`
+from sidebar focus exits the attached native UI, matching the direct-tmux handover's two-stage detach shape. `esc` is
+**not** a global "back to sidebar" — it would yank focus out of the chat composer mid-edit. ESC is reserved for: closing
+the top dialog (DialogProvider) and interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm)
+and plain `n` (new task).
 
 ## Binding categories — three flavours
 
@@ -195,9 +197,10 @@ Semantics and guard rails:
   to the handler as a second argument), so an override just has to respect the
   id's positional layout, validated in `SLOT_CONTRACTS`
   ([`src/tui/lib/keymap-overrides.ts`](../packages/kobe/src/tui/lib/keymap-overrides.ts)) —
-  same idea as `tmux.focus`'s exactly-4-chords rule. All current layouts are
-  **alternating pairs**, so any even chord count works (a wrong count warns
-  and keeps the default; `null`/`[]` still unbinds):
+  same idea as `tmux.focus`'s exactly-4-chords rule. The direction ids are
+  **alternating pairs**, so any even chord count works; `app.quit` is a
+  1-or-2 chord layout (a wrong count warns and keeps the default;
+  `null`/`[]` still unbinds):
 
   | id | slot layout (even slots, odd slots) | default keys |
   |---|---|---|
@@ -207,6 +210,7 @@ Semantics and guard rails:
   | `files.hierarchy` | collapse, expand | `h, l, left, right` |
   | `sidebar.view` | previous view, next view | `[, ]` |
   | `files.tab` | previous tab, next tab | `[, ]` |
+  | `app.quit` | quit confirm, hard exit (optional) | `q, ctrl+q` |
 
   ```yaml
   bindings:
