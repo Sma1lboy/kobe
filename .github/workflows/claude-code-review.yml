@@ -43,6 +43,12 @@ jobs:
           plugins: 'pr-review-toolkit@claude-code-plugins'
           additional_permissions: |
             actions: read
+          track_progress: true
+          # Agent mode grants NO comment/Bash tools by default: without this
+          # allowlist the "post a PR comment" instruction below is silently
+          # permission-denied and the review only ever lands in the job log.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(wc:*)"
           prompt: |
             Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
