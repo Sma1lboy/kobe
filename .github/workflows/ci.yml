@@ -52,9 +52,9 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           # Exemptions are PER FILE: each `file-size-exemption: <path> — <reason>`
-          # line in the PR body exempts only the paths it names (a bare reason
-          # with no matching path exempts nothing).
-          exemptions=$(printf '%s' "$PR_BODY" | grep -io 'file-size-exemption:[^\r\n]*' || true)
+          # line in the PR body exempts only the exact path it names (a bare
+          # reason with no path exempts nothing).
+          exempt_paths=$(printf '%s\n' "$PR_BODY" | grep -io 'file-size-exemption:[[:space:]]*[^[:space:]]*' | sed 's/^[^:]*:[[:space:]]*//' || true)
           fail=0
           while IFS= read -r f; do
             [ -f "$f" ] || continue
@@ -67,7 +67,7 @@ jobs:
             esac
             lines=$(wc -l < "$f")
             if [ "$lines" -gt 500 ]; then
-              if [ -n "$exemptions" ] && printf '%s' "$exemptions" | grep -qF "$f"; then
+              if [ -n "$exempt_paths" ] && printf '%s\n' "$exempt_paths" | grep -qxF "$f"; then
                 echo "::notice file=$f::$f is $lines lines but exempted by the PR body."
                 continue
               fi
