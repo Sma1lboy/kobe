@@ -139,13 +139,7 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
         process.exit(2)
       }
       vendor = typed as VendorId
-      // An explicit engine pick (Ctrl+Shift+T / prefix T → engine prompt) sets
-      // the DEFAULT engine for new tasks too — `lastSelectedVendor` is the one
-      // reference the new-task dialog, quick-task, and Settings → Engines all
-      // read/show. Without this, picking an engine for a chat tab silently left
-      // the default untouched.
-      const { setPersistedString } = await import("../state/repos.ts")
-      setPersistedString("lastSelectedVendor", vendor)
+      // newChatTab records the pick as the project's last-active engine.
     }
     const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
     await newChatTab(session, vendor)

@@ -90,9 +90,9 @@ export type NewTaskDialogProps = {
    */
   defaultCloneParent?: string
   /**
-   * Engine to pre-select, defaulting to the user's last-selected vendor
-   * (kv `lastSelectedVendor`). `ctrl+e` cycles it; the choice rides out
-   * on {@link NewTaskInput.vendor} and the caller persists it.
+   * Engine to pre-select — the repo's preferred vendor. `ctrl+e` cycles it;
+   * the choice rides out on {@link NewTaskInput.vendor} and the caller
+   * persists it.
    */
   defaultVendor?: VendorId
   /**

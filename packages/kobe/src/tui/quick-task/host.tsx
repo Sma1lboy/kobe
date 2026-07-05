@@ -30,17 +30,11 @@ import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
 import { engineDisplayName } from "../../engine/interactive-command.ts"
-import {
-  addSavedRepo,
-  getCustomEngineIds,
-  getPersistedString,
-  getSavedRepos,
-  setPersistedString,
-} from "../../state/repos.ts"
+import { addSavedRepo, getSavedRepos } from "../../state/repos.ts"
+import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import { getSessionOptions, tmuxSessionName } from "../../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
 import type { Task, VendorId } from "../../types/task.ts"
-import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
 import { appendAttachmentRefs } from "../lib/attachments.ts"
@@ -87,10 +81,10 @@ async function resolveQuickTaskContext(
   const fallbackRepo = repo ?? worktree ?? process.cwd()
   if (!repo) return { ctx: null, fallbackRepo }
 
-  // Engine: last-selected vendor, clamped to a detected one. With nothing
-  // detected we keep the preference (the dialog-less path can't ask).
+  // Engine: the repo's preferred vendor, clamped to a detected one. With
+  // nothing detected we keep the preference (the dialog-less path can't ask).
   const detected = await availableEngineIds()
-  const pref = resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
+  const pref = resolvePreferredVendor(repo)
   const vendor: VendorId = detected.length === 0 || detected.includes(pref) ? pref : (detected[0] ?? pref)
   const baseRef = getCurrentBranch(expandHome(repo)) ?? DEFAULT_BASE_REF
   // The composer needs at least the chosen vendor to render its chip even when
@@ -137,8 +131,7 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
     })
     if (result === undefined) process.exit(0) // esc
 
-    // Remember the chosen engine so the next dialog (here or any pane) matches.
-    setPersistedString("lastSelectedVendor", result.vendor)
+    setRepoLastActiveVendor(ctx.repo, result.vendor)
     addSavedRepo(ctx.repo)
 
     const orch = props.orchestrator

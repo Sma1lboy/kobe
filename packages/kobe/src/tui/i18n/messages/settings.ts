@@ -68,7 +68,7 @@ export const en = {
   },
   engines: {
     title: "Launch command",
-    hint: "The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` / `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = default engine for new tasks (also set by Ctrl+Shift+T). enter edit command · r rename · x reset/remove · d set default.",
+    hint: "The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` / `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = global default engine (per-project picks, e.g. Ctrl+Shift+T, override it). enter edit command · r rename · x reset/remove · d set default.",
     defaultTag: "  (default)",
     customTag: "  (custom)",
     addEngine: "+ Add engine",
@@ -197,7 +197,7 @@ export const zh: typeof en = {
   },
   engines: {
     title: "启动命令",
-    hint: "每个引擎的任务面板运行的命令。当二进制文件不在 PATH 上的 `claude` / `codex` 名下（比如叫 `cl`）、要传默认参数，或要添加自己的引擎时，可覆盖内置项。● = 新任务的默认引擎（也可用 Ctrl+Shift+T 设置）。enter 编辑命令 · r 重命名 · x 重置/移除 · d 设为默认。",
+    hint: "每个引擎的任务面板运行的命令。当二进制文件不在 PATH 上的 `claude` / `codex` 名下（比如叫 `cl`）、要传默认参数，或要添加自己的引擎时，可覆盖内置项。● = 全局默认引擎（各项目自己的选择会覆盖它，如 Ctrl+Shift+T）。enter 编辑命令 · r 重命名 · x 重置/移除 · d 设为默认。",
     defaultTag: "  (默认)",
     customTag: "  (自定义)",
     addEngine: "+ 添加引擎",
