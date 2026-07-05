@@ -51,10 +51,10 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if printf '%s' "$PR_BODY" | grep -qi 'file-size-exemption'; then
-            echo "PR body declares a file-size-exemption — skipping the cap check."
-            exit 0
-          fi
+          # Exemptions are PER FILE: each `file-size-exemption: <path> — <reason>`
+          # line in the PR body exempts only the paths it names (a bare reason
+          # with no matching path exempts nothing).
+          exemptions=$(printf '%s' "$PR_BODY" | grep -io 'file-size-exemption:[^\r\n]*' || true)
           fail=0
           while IFS= read -r f; do
             [ -f "$f" ] || continue
@@ -67,7 +67,11 @@ jobs:
             esac
             lines=$(wc -l < "$f")
             if [ "$lines" -gt 500 ]; then
-              echo "::error file=$f::$f is $lines lines (cap ~500). Refactor/split it, or add a 'file-size-exemption: <reason>' line to the PR body. See AGENTS.md 'File size cap'."
+              if [ -n "$exemptions" ] && printf '%s' "$exemptions" | grep -qF "$f"; then
+                echo "::notice file=$f::$f is $lines lines but exempted by the PR body."
+                continue
+              fi
+              echo "::error file=$f::$f is $lines lines (cap ~500). Refactor/split it, or add a 'file-size-exemption: $f — <reason>' line to the PR body. See AGENTS.md 'File size cap'."
               fail=1
             fi
           done < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD)
