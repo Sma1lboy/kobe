@@ -942,8 +942,8 @@ interface ApiRuntime {
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
   /** Canonical source repo for task creation and grouping. */
   resolveRepoRoot(absPath: string): Promise<string>
-  /** Settings default engine for new tasks; undefined delegates to daemon defaults. */
-  defaultVendor(): Promise<VendorId | undefined>
+  /** Preferred engine for new tasks in `repo`; undefined delegates to daemon defaults. */
+  defaultVendor(repo?: string): Promise<VendorId | undefined>
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
   /**
@@ -962,10 +962,9 @@ const defaultApiRuntime: ApiRuntime = {
   isTaskRunning: (taskId) => sessionExists(tmuxSessionName(taskId)),
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
   resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveMainRepoRoot(absPath),
-  defaultVendor: async () => {
-    const { getPersistedString } = await import("../state/repos.ts")
-    const value = getPersistedString("lastSelectedVendor")?.trim()
-    return value ? (value as VendorId) : undefined
+  defaultVendor: async (repo) => {
+    const { getGlobalDefaultVendor, getRepoLastActiveVendor } = await import("../state/vendor-prefs.ts")
+    return (repo ? getRepoLastActiveVendor(repo) : undefined) ?? getGlobalDefaultVendor()
   },
   readWorktreeChanges: async (worktreePath) =>
     (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
@@ -1016,7 +1015,7 @@ async function add(ctx: VerbContext): Promise<unknown> {
   if (branch) payload.branch = branch
   const baseRef = args.str("base-branch")
   if (baseRef) payload.baseRef = baseRef
-  const vendor = args.vendor() ?? (await runtime.defaultVendor())
+  const vendor = args.vendor() ?? (await runtime.defaultVendor(repo))
   if (vendor) payload.vendor = vendor
 
   const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
@@ -1170,7 +1169,7 @@ async function fanOut(ctx: VerbContext): Promise<unknown> {
   const baseRef = args.str("base-branch")
 
   const agentsSpec = args.str("agents")
-  const defaultVendor = await runtime.defaultVendor()
+  const defaultVendor = await runtime.defaultVendor(repo)
   const plan: VendorId[] = agentsSpec
     ? parseAgentsSpec(agentsSpec)
     : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? defaultVendor ?? "claude")

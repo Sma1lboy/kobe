@@ -124,14 +124,9 @@ export interface CreateTaskContext extends TaskActionContext {
    * `savedRepos[0]` then `process.cwd()` for both.
    */
   readonly cursorRepo: () => string | undefined
-  /**
-   * DIVERGENCE — last-selected-vendor persistence: the outer monitor
-   * goes through its in-process kv store, the Tasks pane through the
-   * disk-only `getPersistedString`/`setPersistedString` pair. Same
-   * state.json underneath, different write paths.
-   */
-  readonly lastVendor: () => VendorId | undefined
-  readonly rememberVendor: (vendor: VendorId) => void
+  /** Repo-scoped vendor preference — see state/vendor-prefs.ts. */
+  readonly lastVendor: (repo: string) => VendorId | undefined
+  readonly rememberVendor: (repo: string, vendor: VendorId) => void
   /**
    * DIVERGENCE — after `addSavedRepo`, the outer monitor mirrors the fresh
    * list into its kv store so the debounced whole-store flush doesn't
@@ -459,7 +454,7 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   // "spawn a sibling" default.
   const defaultRepo = ctx.cursorRepo() ?? repos[0] ?? process.cwd()
   if (ctx.openCreateSurface && (await ctx.openCreateSurface(defaultRepo))) return
-  const defaultVendor = ctx.lastVendor() ?? DEFAULT_TASK_VENDOR
+  const defaultVendor = ctx.lastVendor(defaultRepo) ?? DEFAULT_TASK_VENDOR
   const availableVendors = await availableEngineIds()
   // First-run guard (#24): no built-in engine detected AND no custom engine
   // configured. The dialog would still let the user pick a vendor, then the
@@ -475,9 +470,7 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
     discoverAdoptable: orch ? (repo) => orch.discoverAdoptableWorktrees(repo) : undefined,
   })
   if (!result) return
-  // Remember the choice so the next new-task dialog — either host —
-  // defaults to it (shared state.json; write path is host-provided).
-  ctx.rememberVendor(result.vendor)
+  ctx.rememberVendor(result.repo, result.vendor)
   // Auto-save the chosen repo so the saved list self-populates and
   // `kobe add` stays optional.
   addSavedRepo(result.repo)
