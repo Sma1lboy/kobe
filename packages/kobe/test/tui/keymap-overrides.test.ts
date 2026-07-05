@@ -48,6 +48,15 @@ describe("normalizeChord", () => {
 
   test("trailing + means the literal plus key", () => {
     expect(chordOf("ctrl++")).toBe("ctrl++")
+    expect(chordOf("+")).toBe("+")
+  })
+
+  test("a dangling modifier (no key after the +) is an error, not silently Ctrl+Plus", () => {
+    for (const raw of ["ctrl+", "cmd+alt+", "ctrl+shift+", "shift+"]) {
+      const r = normalizeChord(raw)
+      if (!("error" in r)) throw new Error(`expected ${raw} to error, got chord ${r.chord}`)
+      expect(r.error).toMatch(/no key after the modifiers/)
+    }
   })
 
   test("rejects shift+<single char> — terminals deliver it as a plain character", () => {
