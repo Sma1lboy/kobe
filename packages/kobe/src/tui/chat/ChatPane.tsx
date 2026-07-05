@@ -147,7 +147,7 @@ export function ChatPane(props: ChatPaneProps) {
         }))
         setSlashList([...builtin, ...userEntries])
       })
-      .catch(() => {})
+      .catch((err) => console.error("[kobe chat] failed to load user slash commands:", err))
   })
 
   let activeInterrupt: (() => void) | undefined
