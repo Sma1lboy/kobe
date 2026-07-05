@@ -29,6 +29,7 @@ import { en as quickTask, zh as quickTaskZh } from "./messages/quickTask"
 import { en as settings, zh as settingsZh } from "./messages/settings"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as update, zh as updateZh } from "./messages/update"
+import { en as workspace, zh as workspaceZh } from "./messages/workspace"
 import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 
 export const en = {
@@ -44,6 +45,7 @@ export const en = {
   chat,
   common,
   keys,
+  workspace,
   worktrees,
 }
 
@@ -67,6 +69,7 @@ export const zh: Messages = {
   chat: chatZh,
   common: commonZh,
   keys: keysZh,
+  workspace: workspaceZh,
   worktrees: worktreesZh,
 }
 

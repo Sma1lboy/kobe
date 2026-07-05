@@ -19,6 +19,7 @@ import { HelpDialog } from "../component/help-dialog"
 import { type PaneId, useFocus } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree/FileTree"
@@ -116,9 +117,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   async function quit(): Promise<void> {
     const ok = await DialogConfirm.show(
       dialog,
-      "Quit kobe?",
-      "The daemon and task sessions keep running. This closes only the native workspace.",
-      "quit",
+      t("workspace.quit.confirmTitle"),
+      t("workspace.quit.confirmBody"),
+      t("common.cancel"),
+      t("workspace.quit.confirmLabel"),
     )
     if (ok) exitApp()
   }
@@ -216,7 +218,7 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
       when={props.worktree}
       fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center">
-          <text fg={theme.textMuted}>Select a task with a worktree</text>
+          <text fg={theme.textMuted}>{t("workspace.empty.selectTask")}</text>
         </box>
       }
       keyed

@@ -5,7 +5,7 @@ import { type KeyEvent, type PasteEvent, TextAttributes, type TextareaRenderable
 import { For, Show } from "solid-js"
 import type { ComposerSlashEntry } from "./Composer"
 import { ComposerPathChips } from "./ComposerPathChips"
-import { ComposerQueue } from "./ComposerQueue"
+import { ComposerQueue, type ComposerQueuedItem } from "./ComposerQueue"
 import type { DropdownWindow } from "./composer/dropdown-window"
 import { composerKeyBindings } from "./composer/keybindings"
 import type { MentionMatch } from "./composer/mention"
@@ -22,10 +22,6 @@ export type ComposerModeBadge = {
   readonly label: string
   readonly tone: ComposerModeTone
 }
-
-type QueuedComposerItem =
-  | { readonly id: string; readonly kind: "prompt"; readonly text: string }
-  | { readonly id: string; readonly kind: "bash"; readonly command: string }
 
 export interface ComposerViewProps {
   readonly theme: Theme
@@ -48,7 +44,7 @@ export interface ComposerViewProps {
   readonly slashMatchesLength: number
   readonly slashWindow: DropdownWindow<ComposerSlashEntry>
   readonly slashCursor: number
-  readonly queue: readonly QueuedComposerItem[]
+  readonly queue: readonly ComposerQueuedItem[]
   readonly queuePaused: boolean
   readonly onToggleQueuePause?: () => void
   readonly editingQueueId?: () => string | null

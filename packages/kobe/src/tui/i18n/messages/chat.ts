@@ -14,6 +14,7 @@ export const en = {
   hintRunning: "esc interrupt · ctrl+o expand · pgup/pgdn scroll",
   interrupted: "interrupted",
   errorPrefix: "error",
+  runtimeBusy: "chat runtime busy — turns run one at a time",
   thinking: "thinking",
   composer: {
     noTask: "(no task — press n to create)",
@@ -48,6 +49,7 @@ export const zh: typeof en = {
   hintRunning: "esc 中断 · ctrl+o 展开 · pgup/pgdn 滚动",
   interrupted: "已中断",
   errorPrefix: "错误",
+  runtimeBusy: "对话运行时繁忙 — 每次只能处理一个回合",
   thinking: "思考",
   composer: {
     noTask: "（没有任务 — 按 n 创建）",

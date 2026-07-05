@@ -1,4 +1,9 @@
 /**
+ * DORMANT — not wired into v1. This is the embedded-xterm terminal pane; it
+ * has zero importers and does not ship (the rendering bled outside its box).
+ * See ./CLAUDE.md for status, why it was parked, and the revival checklist
+ * (fix bleed → wire into workspace host → i18n these hardcoded strings → tests).
+ *
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.

@@ -49,35 +49,14 @@ export const CLAUDE_MODELS: readonly ModelChoice[] = [
 const LONG_CTX = 1_000_000
 const STD_CTX = 200_000
 
-function parseContextWindowSize(modelIdentifier: string): number | null {
-  const delimitedMatch = /(?:\(|\[)\s*(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])\s*(?:\)|\])/i.exec(modelIdentifier)
-  if (delimitedMatch?.[1] && delimitedMatch[2]) {
-    const parsed = Number.parseFloat(delimitedMatch[1].replace(/[,_]/g, ""))
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.round(parsed * (delimitedMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
-    }
-  }
-
-  const contextMatch = /\b(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])(?:\s*(?:token\s*)?context)?\b/i.exec(modelIdentifier)
-  if (!contextMatch?.[1] || !contextMatch[2]) return null
-
-  const parsed = Number.parseFloat(contextMatch[1].replace(/[,_]/g, ""))
-  if (!Number.isFinite(parsed) || parsed <= 0) return null
-  return Math.round(parsed * (contextMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
-}
-
 /**
- * Max context tokens for a Claude model id. `[1m]` suffix implies the
- * 1M-context variant; unknown ids fall back to 200k so the meter still
- * renders something rather than reading zero.
+ * Max context tokens for a Claude model id. The only context-window variant
+ * across the catalog (and ad-hoc pinned ids) is the `[1m]` suffix — the
+ * 1M-context build; everything else is the standard 200k window.
+ *
+ * ponytail: matched loosely (`/1m/i`) so variant spellings (`[1M]`, a bare
+ * `-1m`) still resolve. No catalog id contains an incidental `1m`.
  */
 export function claudeContextWindowFor(modelId: string): number {
-  const parsed = parseContextWindowSize(modelId)
-  if (parsed !== null) return parsed
-  if (modelId.includes("[1m]")) return LONG_CTX
-  const inCatalog = CLAUDE_MODELS.some((m) => m.id === modelId)
-  if (inCatalog) return STD_CTX
-  // Defensive — accept variant spellings used by ad-hoc pinned ids.
-  if (modelId.includes("1m") || modelId.includes("[1M]")) return LONG_CTX
-  return STD_CTX
+  return /1m/i.test(modelId) ? LONG_CTX : STD_CTX
 }

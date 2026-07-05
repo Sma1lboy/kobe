@@ -2,32 +2,28 @@
  * `ChatPane` — the experimental native chat pane (KOBE_TUI=1), the center
  * column of the single-process opentui workspace (tui/workspace/host.tsx).
  *
- * Rendered INSTEAD of a tmux-hosted interactive engine CLI. Each prompt
- * runs ONE headless `claude -p --output-format stream-json` turn
- * (engine/claude-code-local/headless.ts); between prompts no engine
- * process exists — that's this backend's reason to exist: the always-on
- * interactive CLI's render loop is what cooks laptops under many
+ * Rendered INSTEAD of a tmux-hosted interactive engine CLI. Each prompt runs
+ * ONE turn through the AI SDK harness backend (engine/ai-sdk/harness-turn.ts),
+ * which drives the locally-installed Claude Code runtime (subscription login)
+ * and streams a growing `UIMessage` snapshot per chunk. No long-lived engine
+ * process idles between prompts — that's this backend's reason to exist: the
+ * always-on interactive CLI's render loop is what cooks laptops under many
  * parallel tasks.
  *
- * Rendering contract: the transcript store holds the SDK stream-json messages
- * VERBATIM and the view reads SDK fields directly (`message.content` blocks,
- * `usage.output_tokens`, `total_cost_usd`, …). No normalization layer between
- * the wire and the screen — by product decision the SDK is the render schema.
+ * Rendering contract: the transcript holds the harness `UIMessage`s VERBATIM
+ * and the view renders their parts directly (ChatRow's UiPartView). No
+ * normalization layer between the harness stream and the screen — by product
+ * decision the UIMessage is the render schema.
  *
- * Conversation continuity: on mount we resume the worktree's newest claude
- * session (same vendor store the `kobe history` pane reads), so a remounted
- * pane — or a task that previously ran interactive claude — continues where
- * it left off instead of starting a fresh conversation. The workspace
- * remounts this component per selected task (keyed on worktree).
+ * ponytail: this pane keeps no on-disk history yet — a remounted pane starts a
+ * fresh harness session. Resuming from claude's session records is future work
+ * at the persistence boundary (see harness-turn.ts), not wired here.
  */
 
 import { disposeAiSdkRuntime, startAiSdkTurn } from "@/engine/ai-sdk/harness-turn"
-import { findClaudeBinary } from "@/engine/claude-code-local/binary"
-import { BUILTIN_CLAUDE_SLASHES } from "@/engine/claude-code-local/builtin-slashes"
-import { startHeadlessTurn } from "@/engine/claude-code-local/headless"
-import type { SdkStreamEventMessage } from "@/engine/claude-code-local/headless"
 import { engineEntry, getCapabilities } from "@/engine/registry"
 import type { PermissionMode } from "@/types/engine"
+import { DEFAULT_TASK_VENDOR } from "@/types/task"
 import type { VendorId } from "@/types/vendor"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
@@ -35,8 +31,9 @@ import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
-import { type ChatItem, ChatRow, sdkResultsByToolUseId } from "./ChatRow"
+import { type ChatItem, ChatRow } from "./ChatRow"
 import { Composer, type ComposerSlashEntry } from "./Composer"
+import type { ComposerQueuedItem } from "./ComposerQueue"
 import { ModelPicker, type ModelPickerResult } from "./composer/ModelPicker"
 import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
@@ -48,9 +45,9 @@ export interface ChatPaneProps {
   /** Engine vendor recorded on the selected task. Native chat supports Claude and Codex. */
   readonly vendor?: VendorId
   /**
-   * `--permission-mode` forwarded to every turn. Headless `-p` can't prompt,
-   * so tools outside the mode's allowance are denied, not asked.
-   * ponytail: static per-pane mode; interactive approval is the upgrade path.
+   * Initial permission mode for the composer's shift+tab cycle.
+   * ponytail: the harness turn doesn't forward it yet (see hasNativeChat),
+   * so this is the seed for the UI, not an enforced per-turn setting.
    */
   readonly permissionMode?: string
   /**
@@ -92,33 +89,17 @@ export function ChatPane(props: ChatPaneProps) {
   const [turnError, setTurnError] = createSignal<string | null>(null)
   const [draft, setDraft] = createSignal("")
   const [expanded, setExpanded] = createSignal(false)
-  const results = createMemo(() => sdkResultsByToolUseId(items()))
 
-  // Live typewriter preview from `--include-partial-messages` stream events.
-  // Deltas accumulate here (NOT in `items` — thousands of events would bloat
-  // the transcript array); the complete assistant message that follows
-  // replaces the preview, so nothing renders twice.
-  const [live, setLive] = createSignal<{ readonly thinking: boolean; readonly text: string }>({
-    thinking: false,
-    text: "",
-  })
-  const resetLive = () => setLive({ thinking: false, text: "" })
-  function applyStreamEvent(event: SdkStreamEventMessage["event"]): void {
-    if (event.type === "content_block_start" && event.content_block?.type === "thinking") {
-      setLive((l) => ({ ...l, thinking: true }))
-      return
-    }
-    if (event.type !== "content_block_delta") return
-    const delta = event.delta
-    if (delta?.type === "thinking_delta") setLive((l) => (l.thinking ? l : { ...l, thinking: true }))
-    if (delta?.type === "text_delta" && delta.text) setLive((l) => ({ ...l, text: l.text + delta.text }))
-  }
-
-  const vendor = createMemo<VendorId>(() => props.vendor ?? "claude")
+  const vendor = createMemo<VendorId>(() => props.vendor ?? DEFAULT_TASK_VENDOR)
   const entry = createMemo(() => engineEntry(vendor()))
   const capabilities = createMemo(() => getCapabilities(vendor()))
   const identity = createMemo(() => entry().identity)
-  const aiSdkVendor = createMemo(() => (vendor() === "codex" ? "codex" : "claude"))
+  // Engine-owned capability: does this engine have a native-chat (harness)
+  // backend, and which harness family does it map to? Gates the composer's
+  // model controls (and resolves the harness vendor) instead of comparing
+  // vendor-id strings in the TUI (CLAUDE.md "Engine-owned UI data").
+  const nativeChat = createMemo(() => entry().nativeChat)
+  const harnessVendor = createMemo(() => nativeChat()?.harnessVendor)
 
   // Composer state: pinned model (undefined = claude's default), permission
   // mode (shift+tab cycles the engine's list), and the mid-turn prompt queue.
@@ -127,17 +108,28 @@ export function ChatPane(props: ChatPaneProps) {
     ? (props.permissionMode as PermissionMode)
     : "acceptEdits"
   const [permissionMode, setPermissionMode] = createSignal<PermissionMode>(initialMode)
-  const [queue, setQueue] = createSignal<readonly { id: string; kind: "prompt"; text: string }[]>([])
+  const [queue, setQueue] = createSignal<readonly ComposerQueuedItem[]>([])
 
-  // Slash-command list: claude's -p-compatible builtins + the user's own
+  // Composer model/permission controls show when the engine has a native-chat
+  // backend (capability, not a vendor-id check).
+  // ponytail: permissionMode is surfaced + cycled here but the harness turn
+  // doesn't forward it yet — createClaudeCode exposes no permission surface.
+  // Wire it through startAiSdkTurn when the harness gains one.
+  const hasNativeChat = () => nativeChat() != null
+
+  // Slash-command list: claude's builtins + the user's own
   // `.claude/{commands,skills}/` entries (project + global). Selecting one
-  // submits `/name` through the same turn pipeline — `claude -p` executes it.
+  // submits `/name` through the same turn pipeline — the harness runtime runs it.
   const [slashList, setSlashList] = createSignal<readonly ComposerSlashEntry[]>([])
   onMount(() => {
-    if (vendor() !== "claude") return
+    // Builtin slashes are engine-owned data on the nativeChat descriptor.
+    // ponytail: user slashes live under the `.claude/{commands,skills}/`
+    // convention, so loading them stays claude-gated — move the loader onto
+    // NativeChatBackend when another engine grows a user-slash directory.
+    if (harnessVendor() !== "claude") return
     void loadUserSlashes(props.worktree)
       .then((user) => {
-        const builtin: ComposerSlashEntry[] = BUILTIN_CLAUDE_SLASHES.map((s) => ({
+        const builtin: ComposerSlashEntry[] = (nativeChat()?.builtinSlashes ?? []).map((s) => ({
           display: `/${s.name}`,
           description: s.description,
           aliases: s.aliases ? [...s.aliases] : undefined,
@@ -155,39 +147,21 @@ export function ChatPane(props: ChatPaneProps) {
       .catch(() => {})
   })
 
-  // The conversation to resume — seeded from the worktree's newest claude
-  // session at boot, then updated from each turn's SDK `session_id` (a
-  // `--resume` turn gets a fresh id; chaining the latest keeps continuity).
-  let resumeSessionId: string | undefined
-  onMount(() => {
-    void entry()
-      .history.listSessionIdsForWorktree(props.worktree)
-      .then((ids) => {
-        if (!resumeSessionId && ids.length > 0) resumeSessionId = ids[ids.length - 1]
-      })
-      .catch(() => {})
-  })
-
   let activeInterrupt: (() => void) | undefined
   onCleanup(() => activeInterrupt?.())
+  onCleanup(() => disposeAiSdkRuntime(props.worktree))
 
-  // Provider-runtime spike (KOBE_AISDK=1): the AI SDK harness drives the
-  // local Claude Code runtime (subscription login) and streams growing
-  // UIMessage snapshots; the pane replaces the tail "ui" item per update.
-  const useAiSdk = process.env.KOBE_AISDK === "1"
-  const showClaudeControls = () => !useAiSdk && vendor() === "claude"
-  onCleanup(() => {
-    if (useAiSdk) disposeAiSdkRuntime(props.worktree)
-  })
-
-  async function runAiSdkTurn(prompt: string): Promise<void> {
+  // The AI SDK harness drives the local Claude Code runtime (subscription
+  // login) and streams growing UIMessage snapshots; the pane replaces the tail
+  // "ui" item per update.
+  async function runTurn(prompt: string): Promise<void> {
     setRunning(true)
     setTurnError(null)
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     let hasTail = false
     const turn = startAiSdkTurn({
       worktree: props.worktree,
-      vendor: aiSdkVendor(),
+      vendor: vendor(),
       model: model()?.id,
       modelEffort: model()?.effort,
       prompt,
@@ -201,60 +175,10 @@ export function ChatPane(props: ChatPaneProps) {
     })
     activeInterrupt = turn.interrupt
     const { error } = await turn.done
-    if (error) setTurnError(error)
+    if (error) setTurnError("code" in error ? t("chat.runtimeBusy") : error.message)
     activeInterrupt = undefined
     setRunning(false)
     drainQueue()
-  }
-
-  async function runTurn(prompt: string): Promise<void> {
-    if (useAiSdk) return runAiSdkTurn(prompt)
-    if (vendor() !== "claude") {
-      setTurnError(`${entry().displayName} native chat requires KOBE_AISDK=1`)
-      return
-    }
-    setRunning(true)
-    setTurnError(null)
-    setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
-    try {
-      const binaryPath = await findClaudeBinary()
-      const pick = model()
-      const turn = startHeadlessTurn({
-        binaryPath,
-        cwd: props.worktree,
-        prompt,
-        resumeSessionId,
-        model: pick?.id,
-        modelEffort: pick?.effort,
-        permissionMode: permissionMode(),
-      })
-      activeInterrupt = turn.interrupt
-      for await (const msg of turn.events) {
-        if ("session_id" in msg && typeof msg.session_id === "string") resumeSessionId = msg.session_id
-        if (msg.type === "stream_event") {
-          // Top-level deltas drive the live preview; subagent deltas stay
-          // internal (their tool rows surface via the complete messages).
-          if (msg.parent_tool_use_id == null) applyStreamEvent(msg.event)
-          continue
-        }
-        if (msg.type === "result" && msg.is_error) {
-          const detail = typeof msg.result === "string" && msg.result.trim() ? msg.result.trim() : msg.subtype
-          setTurnError(detail)
-          continue
-        }
-        // A complete top-level assistant message supersedes its preview.
-        if (msg.type === "assistant" && msg.parent_tool_use_id == null) resetLive()
-        setItems((prev) => [...prev, { kind: "sdk", msg }])
-      }
-    } catch (err) {
-      const text = err instanceof Error ? err.message : String(err)
-      setTurnError(text)
-    } finally {
-      activeInterrupt = undefined
-      resetLive()
-      setRunning(false)
-      drainQueue()
-    }
   }
 
   /** FIFO auto-drain: fire the queue head once the turn ends. */
@@ -262,7 +186,9 @@ export function ChatPane(props: ChatPaneProps) {
     queueMicrotask(() => {
       if (running()) return
       const head = queue()[0]
-      if (!head) return
+      // ponytail: this pane only ever enqueues prompts (no bash items), so the
+      // non-prompt arm of ComposerQueuedItem is unreachable here.
+      if (head?.kind !== "prompt") return
       setQueue((q) => q.slice(1))
       void runTurn(head.text)
     })
@@ -304,15 +230,16 @@ export function ChatPane(props: ChatPaneProps) {
   }
 
   function openModelPicker(): void {
-    if (vendor() !== "claude") return
+    const hv = harnessVendor()
+    if (!hv) return
     const pick = model()
     dialog.replace(
       () => (
         <ModelPicker
           current={pick?.id}
           currentEffort={pick?.effort}
-          currentVendor="claude"
-          lockedVendor="claude"
+          currentVendor={hv}
+          lockedVendor={hv}
           onPick={(choice) => {
             setModel(choice)
             dialog.clear()
@@ -397,25 +324,10 @@ export function ChatPane(props: ChatPaneProps) {
           }
         >
           {/* No paddingTop — the first row is always a prompt echo, which
-              carries its own marginTop (turn separation). */}
+              carries its own marginTop (turn separation). The streaming
+              UIMessage snapshot grows in place, so it IS the live view. */}
           <box flexDirection="column" paddingLeft={1} paddingRight={1}>
-            <For each={items()}>{(item) => <ChatRow item={item} results={results()} expanded={expanded()} />}</For>
-            {/* Live typewriter preview — replaced by the complete assistant
-                message when it lands (resetLive), so it never doubles up. */}
-            <Show when={running() && (live().thinking || live().text)}>
-              <box flexDirection="column">
-                <Show when={live().thinking && !live().text}>
-                  <text fg={theme.textMuted} attributes={TextAttributes.ITALIC} wrapMode="none">
-                    {`✱ ${t("chat.thinking")}…`}
-                  </text>
-                </Show>
-                <Show when={live().text}>
-                  <text fg={theme.text} wrapMode="word">
-                    {`${live().text}▌`}
-                  </text>
-                </Show>
-              </box>
-            </Show>
+            <For each={items()}>{(item) => <ChatRow item={item} expanded={expanded()} />}</For>
           </box>
         </Show>
       </scrollbox>
@@ -434,12 +346,10 @@ export function ChatPane(props: ChatPaneProps) {
         modelLabel={modelLabel}
         inputPlaceholder={() => identity()?.inputPlaceholder ?? t("chat.placeholder")}
         slashes={slashList}
-        permissionMode={showClaudeControls() ? permissionMode : undefined}
-        permissionModeLabel={
-          showClaudeControls() ? () => permissionModeLabel(capabilities(), permissionMode()) : undefined
-        }
-        onCyclePermissionMode={showClaudeControls() ? cyclePermissionMode : undefined}
-        onChooseModel={showClaudeControls() ? openModelPicker : undefined}
+        permissionMode={hasNativeChat() ? permissionMode : undefined}
+        permissionModeLabel={hasNativeChat() ? () => permissionModeLabel(capabilities(), permissionMode()) : undefined}
+        onCyclePermissionMode={hasNativeChat() ? cyclePermissionMode : undefined}
+        onChooseModel={hasNativeChat() ? openModelPicker : undefined}
         worktreePath={() => props.worktree}
         queue={queue}
         onCancelQueued={(id) => setQueue((q) => q.filter((e) => e.id !== id))}

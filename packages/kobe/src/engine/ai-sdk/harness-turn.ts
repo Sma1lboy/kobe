@@ -1,6 +1,6 @@
 /**
- * AI SDK harness backend for the native chat pane (KOBE_AISDK=1) — the
- * provider-runtime spike, following mc-launcher's local-runtime engine
+ * AI SDK harness backend for the native chat pane — the sole native-chat
+ * backend (KOBE_TUI=1), following mc-launcher's local-runtime engine
  * (`packages/agent-core/src/harness/index.ts` in the sibling repo).
  *
  * `HarnessAgent` + `createClaudeCode()` drive the locally-installed Claude
@@ -14,17 +14,31 @@
  * GROWING assistant `UIMessage` snapshot per chunk; the pane replaces its
  * tail message on every update (no delta bookkeeping, no mapping layer —
  * the UIMessage parts ARE the render schema on this path).
+ *
+ * ponytail: turn results are ephemeral — nothing here persists the UIMessage
+ * history to claude's on-disk session-record format. That conversion is
+ * future work handled by a one-way adapter at the persistence boundary (the
+ * UIMessage schema is Vercel-owned; the session record is claude-owned), NOT
+ * in this stream path. Don't build it here.
  */
 
 import type { VendorId } from "@/types/vendor"
 import { createClaudeCode } from "@ai-sdk/harness-claude-code"
-import { createCodex } from "@ai-sdk/harness-codex"
+import { type CodexHarnessSettings, createCodex } from "@ai-sdk/harness-codex"
 import { HarnessAgent } from "@ai-sdk/harness/agent"
+import { getErrorMessage } from "@ai-sdk/provider-utils"
 import { type UIMessage, readUIMessageStream } from "ai"
 import { createLocalSandbox } from "./local-sandbox"
 
 export type AiSdkHarnessVendor = "claude" | "codex"
-type CodexReasoningEffort = "low" | "medium" | "high"
+type CodexReasoningEffort = NonNullable<CodexHarnessSettings["reasoningEffort"]>
+
+/**
+ * Turn failure surfaced to the pane. `runtimeBusy` is a kobe-authored
+ * condition the pane translates (i18n); `message` carries a raw runtime/stream
+ * error string, which is diagnostic and rendered verbatim.
+ */
+export type AiSdkTurnError = { readonly code: "runtimeBusy" } | { readonly message: string }
 
 interface WorktreeRuntime {
   readonly agent: HarnessAgent
@@ -109,23 +123,23 @@ export interface AiSdkTurnOpts {
 
 export interface AiSdkTurn {
   /** Resolves when the turn ends; `error` set on stream/setup failure. */
-  readonly done: Promise<{ error?: string }>
+  readonly done: Promise<{ error?: AiSdkTurnError }>
   interrupt(): void
 }
 
 export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
   const controller = new AbortController()
 
-  const done = (async (): Promise<{ error?: string }> => {
+  const done = (async (): Promise<{ error?: AiSdkTurnError }> => {
     const runtime = ensureRuntime({
       vendor: resolveAiSdkHarnessVendor(opts.vendor),
       worktree: opts.worktree,
       model: opts.model,
       modelEffort: opts.modelEffort,
     })
-    if (runtime.busy) return { error: "ai-sdk runtime busy — turns are sequential" }
+    if (runtime.busy) return { error: { code: "runtimeBusy" } }
     runtime.busy = true
-    let error: string | undefined
+    let error: AiSdkTurnError | undefined
     try {
       runtime.session ??= await runtime.agent.createSession()
       const result = await runtime.agent.stream({
@@ -137,14 +151,14 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
       for await (const msg of readUIMessageStream({
         stream: uiStream,
         onError: (e: unknown) => {
-          error = errText(e)
+          error = { message: getErrorMessage(e) }
         },
       })) {
         opts.onUpdate(msg as UIMessage)
       }
     } catch (e) {
       const aborted = controller.signal.aborted || (e instanceof Error && e.name === "AbortError")
-      if (!aborted) error = errText(e)
+      if (!aborted) error = { message: getErrorMessage(e) }
     } finally {
       runtime.busy = false
     }
@@ -152,14 +166,4 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
   })()
 
   return { done, interrupt: () => controller.abort() }
-}
-
-function errText(e: unknown): string {
-  if (e instanceof Error) return e.message
-  if (typeof e === "string") return e
-  try {
-    return JSON.stringify(e)
-  } catch {
-    return String(e)
-  }
 }
