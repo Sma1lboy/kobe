@@ -132,7 +132,7 @@ describe("applyKeymapOverrides", () => {
         keys: ["ctrl+f"],
         hint: { keys: "ctrl+f", label: "fork" },
       },
-      { id: "app.quit", scope: "sidebar", keys: ["q"], hint: { keys: "q", label: "quit", status: false } },
+      { id: "app.quit", scope: "sidebar", keys: ["q", "ctrl+q"], hint: { keys: "q", label: "quit", status: false } },
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
       { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k", label: "nav" } },
       { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
@@ -181,7 +181,7 @@ describe("applyKeymapOverrides", () => {
       { id: "chat.fork.new", keys: ["f"] }, // workspace — must be rejected
       { id: "app.quit", keys: ["x"] }, // sidebar — fine
     ])
-    expect(applied).toEqual([{ id: "app.quit", keys: ["x"], defaultKeys: ["q"] }])
+    expect(applied).toEqual([{ id: "app.quit", keys: ["x"], defaultKeys: ["q", "ctrl+q"] }])
     expect(warnings.some((w) => w.includes("steal typed input"))).toBe(true)
     expect(warnings.some((w) => w.includes("keeping the default"))).toBe(true)
     expect(keymap.find((b) => b.id === "chat.fork.new")?.keys).toEqual(["ctrl+f"])
@@ -227,6 +227,14 @@ describe("applyKeymapOverrides", () => {
     expect(applied).toEqual([])
     expect(warnings.some((w) => w.includes("[down, up]") && w.includes("keeping the default"))).toBe(true)
     expect(keymap.find((b) => b.id === "sidebar.nav")?.keys).toEqual(["j", "k", "down", "up"])
+  })
+
+  test("slot ids: app.quit takes 1 or 2 chords, rejects a third", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "app.quit", keys: ["x", "ctrl+x", "ctrl+y"] }])
+    expect(applied).toEqual([])
+    expect(warnings.some((w) => w.includes("hard exit") && w.includes("keeping the default"))).toBe(true)
+    expect(keymap.find((b) => b.id === "app.quit")?.keys).toEqual(["q", "ctrl+q"])
   })
 
   test("slot ids: a single-chord override of a [prev, next] pair warns and keeps the default", () => {

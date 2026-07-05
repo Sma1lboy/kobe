@@ -16,9 +16,9 @@
  * turns are tinted cards with a `❯` glyph + relative-time chip, assistant text is
  * plain, tool calls are a colored `⏺` status glyph + bold name + dim summary, and
  * `enter` expands the tool-output / thinking bodies. Runs in its own OS process
- * inside the tmux pane (separate opentui render loop), the same standalone-pane
- * shape as `kobe ops` — see `tui/ops/host.tsx`. Pure read surface: no engine
- * spawn, no write path, no daemon dependency.
+ * inside the tmux pane, same standalone-pane shape as `kobe ops`
+ * (`tui/ops/host.tsx`). Pure read surface: no engine spawn, no write path, no
+ * daemon dependency.
  */
 
 import { type EngineHistoryReader, engineEntry } from "@/engine/registry"
@@ -77,13 +77,12 @@ function relativeTime(iso: string): string {
 }
 
 /**
- * One-line label for a tool call — ported from the web `tool-display.ts` so the
- * two surfaces read identically (don't reinvent). Picks the most meaningful
- * string field by priority (command → file_path → pattern → url → description →
- * prompt → query) so a Bash call reads as its command and a Read as its path,
- * not a raw JSON blob; falls back to compact JSON, truncated.
+ * One-line label for a tool call — ported from the web `tool-display.ts` so both
+ * surfaces read identically (don't reinvent). Picks the most meaningful string field
+ * by priority (command → file_path → pattern → url → description → prompt → query), so
+ * a Bash call reads as its command and a Read as its path; else compact JSON, truncated.
  */
-function toolInputSummary(input: unknown): string {
+export function toolInputSummary(input: unknown): string {
   if (input && typeof input === "object" && !Array.isArray(input)) {
     const obj = input as Record<string, unknown>
     const pick = (key: string): string | null => (typeof obj[key] === "string" ? (obj[key] as string) : null)
@@ -107,7 +106,7 @@ function toolInputSummary(input: unknown): string {
 }
 
 /** Full multi-line stringification of a tool result, for the expanded body. */
-function bodyText(value: unknown): string {
+export function bodyText(value: unknown): string {
   if (typeof value === "string") return value
   try {
     return JSON.stringify(value, null, 2)
@@ -128,7 +127,7 @@ function resultsByCallId(messages: readonly Message[]): Map<string, Extract<Cont
 }
 
 /** A tool-output / thinking body, one `<text>` per line so +/- diff lines tint. */
-function BodyLines(props: { text: string; error?: boolean }) {
+export function BodyLines(props: { text: string; error?: boolean }) {
   const { theme } = useTheme()
   const lines = () => props.text.replace(/\s+$/, "").split("\n")
   const lineColor = (line: string) => {
@@ -330,10 +329,9 @@ function HistoryScreen(props: HistoryHostArgs) {
 
   const [expanded, setExpanded] = createSignal(false)
 
-  // Drive refreshTick from the transcript mtime. The first read only seeds the
-  // baseline (the resources already fetched once on mount); after that a tick
-  // fires only when the mtime advances. On an archived / idle worktree the
-  // delay ramps to the cap so this isn't a stat-churn loop.
+  // Drive refreshTick from the transcript mtime: the first read seeds the
+  // baseline (resources already fetched on mount), then a tick fires only when
+  // mtime advances. On an archived / idle worktree the delay ramps to its cap.
   onMount(() => {
     let disposed = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -396,9 +394,8 @@ function HistoryScreen(props: HistoryHostArgs) {
 
   // No self-close binding: this read-only preview replaces the engine pane of an
   // ARCHIVED task. Its pane re-launches it on exit (historyPaneKeepAlive), so a
-  // quit would just reload the preview — and the original behavior was worse: it
-  // dropped to a shell that, on exit, spawned a live engine via engine-tab-exit.
-  // The preview is left like any other pane — the Tasks rail or Ctrl+Q.
+  // quit would just reload the preview. The preview is left like any other pane —
+  // dismissed via the Tasks rail or Ctrl+Q.
   useBindings(() => ({
     bindings: [
       { key: "j", cmd: () => scrollBy(SCROLL_STEP) },

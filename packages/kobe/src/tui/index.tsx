@@ -8,6 +8,7 @@
  * `kobe reset`, not a daemon-less in-process Orchestrator.
  */
 
+import { nativeChatEnabled } from "../env.ts"
 import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 
 export async function startTui(): Promise<void> {
@@ -15,6 +16,12 @@ export async function startTui(): Promise<void> {
   // skill isn't installed, tell the user how. Best-effort — the reliable
   // check is `kobe doctor`. No-op when installed or already shown once.
   maybeHintSkillInstall()
+
+  if (nativeChatEnabled()) {
+    const { startWorkspaceHost } = await import("./workspace/host")
+    await startWorkspaceHost()
+    return
+  }
 
   const { startDirectTmux } = await import("./direct")
   await startDirectTmux()

@@ -15,6 +15,10 @@ import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
 
 describe("resetKeymapToDefaults", () => {
+  test("app quit defaults include native two-stage ctrl+q", () => {
+    expect(findBinding("app.quit")?.keys).toEqual(["q", "ctrl+q"])
+  })
+
   test("restores a row's chords + hint after an override", () => {
     const row = findBinding(ID)
     expect(row).toBeDefined()
