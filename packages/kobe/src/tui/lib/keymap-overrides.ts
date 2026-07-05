@@ -229,14 +229,19 @@ export function normalizeChord(raw: string, opts?: NormalizeChordOpts): ChordRes
   const trimmed = raw.trim().toLowerCase()
   if (!trimmed) return { error: "empty chord" }
 
-  // Split on "+" but let a trailing "+" mean the literal plus key
-  // ("ctrl++" = ctrl plus "+").
+  // Split on "+", then read the trailing token. A trailing "+" leaves an
+  // empty final token; whether that means "the literal plus key" or "a
+  // dangling modifier with no key" is decided by the part BEFORE it:
+  //   "ctrl++" → ["ctrl", "", ""] — an empty marker part precedes, so "+"
+  //              is the key; drop the marker.
+  //   "+"      → ["", ""]         — the plus key on its own.
+  //   "ctrl+"  → ["ctrl", ""]     — a real modifier precedes, so there is
+  //              no key; fall through to the error below.
   const parts = trimmed.split("+")
   let key = parts.pop() ?? ""
-  if (key === "" && parts.length > 0) {
+  if (key === "" && parts.length > 0 && parts[parts.length - 1] === "") {
     key = "+"
-    // "ctrl++" splits to ["ctrl", "", ""] — drop the empty marker part.
-    if (parts[parts.length - 1] === "") parts.pop()
+    parts.pop()
   }
   if (!key) return { error: `"${raw}": no key after the modifiers` }
 
