@@ -71,8 +71,12 @@ describe("clipboardTmuxConfig", () => {
         ])
       }
     }
-    // 1 set-option + 2 tables * 3 triggers = 7 commands.
-    expect(config).toHaveLength(7)
+    // 2 set-options + 2 tables * 3 triggers = 8 commands.
+    expect(config).toHaveLength(8)
+  })
+
+  test("with a clip command: sets copy-command so a binding stripped to a bare copy-pipe (oh-my-tmux rewrite) still reaches the clipboard", () => {
+    expect(clipboardTmuxConfig("pbcopy")).toContainEqual(["set-option", "-g", "copy-command", "pbcopy"])
   })
 
   test("MouseDragEnd1Pane (the drag-release flow) pipes to the resolved command", () => {
