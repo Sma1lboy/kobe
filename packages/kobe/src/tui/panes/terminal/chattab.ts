@@ -279,7 +279,17 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   const taskId = sessionOptions["@kobe_task"] || undefined
   const remoteKey = sessionOptions[REMOTE_KEY_OPTION] || undefined
   const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
-  if (vendorOverride) await rememberSessionVendor(session, taskId, vendorOverride)
+  if (vendorOverride) {
+    await rememberSessionVendor(session, taskId, vendorOverride)
+    // Also the project's last-active engine (never the global default).
+    try {
+      const { resolveMainRepoRoot } = await import("../../../state/repos.ts")
+      const { setRepoLastActiveVendor } = await import("../../../state/vendor-prefs.ts")
+      setRepoLastActiveVendor(resolveMainRepoRoot(cwd), vendorOverride)
+    } catch {
+      // Best-effort: a stale worktree path must not block the new tab.
+    }
+  }
   const command = interactiveEngineCommand(vendor)
   // Same forced-session-id mapping as the first window, so a Ctrl+T tab is
   // auto-named from its OWN first prompt (KOB).

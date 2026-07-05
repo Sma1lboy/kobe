@@ -58,7 +58,8 @@ export function settingsSnapshot(): Response {
   const state = loadStateFile()
   const custom = customEngineIdsFrom(state)
   const engineIds = [...BUILTIN_VENDORS, ...custom] as VendorId[]
-  const defaultEngine = stringValue(state.lastSelectedVendor, "claude")
+  // `lastSelectedVendor` is the pre-split legacy key (see kobe's state/vendor-prefs.ts).
+  const defaultEngine = stringValue(state.defaultVendor, stringValue(state.lastSelectedVendor, "claude"))
   const focusAccent = stringValue(state.focusAccent, "primary")
   return Response.json({
     activeTheme: stringValue(state.activeTheme, "claude"),
@@ -114,7 +115,7 @@ export async function settingsPatch(req: Request): Promise<Response> {
     putIfBool(patch, "experimental.archivedHistoryPreview", body.archivedHistoryPreview)
     putIfBool(patch, AUTO_STATUS_KEY, body.autoStatus)
     putIfBool(patch, DISPATCHER_KEY, body.dispatcher)
-    putIfString(patch, "lastSelectedVendor", body.defaultEngine)
+    putIfString(patch, "defaultVendor", body.defaultEngine)
 
     const state = loadStateFile()
     const custom = customEngineIdsFrom(state)
@@ -147,6 +148,7 @@ export async function settingsPatch(req: Request): Promise<Response> {
         patch.customEngineIds = custom.filter((engine) => engine !== id)
         patch[engineCommandKey(id)] = undefined
         patch[engineNameKey(id)] = undefined
+        if (state.defaultVendor === id) patch.defaultVendor = "claude"
         if (state.lastSelectedVendor === id) patch.lastSelectedVendor = "claude"
       }
     }
