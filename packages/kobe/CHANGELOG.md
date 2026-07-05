@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.63
+
+### Patch Changes
+
+- 3476e0b: Ctrl+Q is now a no-op in full-window file preview / editor tabs. It used to run tasks-restore against the preview window and graft a Tasks rail into the full-width view; the restore now only fires in real workspace windows (engine pane present, rail missing).
+- 00b46e6: test: pin the #205 orphaned-pane-process regression + add a `kobe doctor` resource snapshot
+
+  - `test/behavior/pane-cleanup.test.ts` boots a real kobe session, runs `kobe kill-sessions` (the command `kobe reset`/`dev:sandbox:reset` also call), and asserts every pane's full process group is gone after the exit grace — not just the pane leader, since an engine CLI that ignores SIGHUP (real `claude` does) survives as an orphaned child of an already-dead leader. Verified against a temporary revert of the `termAllPaneGroups()` sweep: the test fails and catches the leaked pid, then passes again with the fix restored.
+  - The shared behavior-test fake `claude` shim (`test/behavior/harness.ts`) now ignores SIGHUP like the real CLI does, so this and future behavior tests exercise the same "engine survives HUP" path production hits.
+  - `kobe doctor` gains a `resources:` section (`src/cli/doctor-resources.ts`): kobe pane-process count + RSS grouped by command, so a future memory report comes with hard numbers instead of "eventually had to kill bun manually".
+
+  No behavior change to the shipped CLI beyond the new `kobe doctor` section.
+
+- 821dc48: fix: web memory leaks — SSE disconnect backstop + issue-snapshot cache sweep
+
+  - SSE streams (daemon web transport + bridge) now tear down on the request's abort signal and on a failed heartbeat write, not only via `ReadableStream.cancel()`. A half-open disconnect (laptop sleep, dropped Wi-Fi, killed browser) could previously leave a phantom web client that kept `guiCount > 0` forever — pinning every collector (git status / transcript / PR polls) alive for a browser that was gone and preventing the daemon from ever lazily stopping.
+  - The issue-snapshot mirrors (bridge `DaemonLink` and the SPA store) are now swept against the live task set on every `task.snapshot`, like the engine-state mirror beside them. Alias keys used to accumulate one per worktree path forever as tasks were created and deleted.
+  - Split the `/api/settings` route block out of `web-server.ts` / `bridge.ts` into `web-settings.ts` / `bridge-settings.ts` (file-size cap; no behavior change).
+
+- 4f48067: feat: standalone worktree management page (`x` from the Tasks pane sidebar)
+
+  Lists every local saved project's git worktrees in one full-window tab, mirroring `kobe settings`'s shape: kobe-managed vs adopted, dirty state, whether the branch has reached `origin`, and how long ago the worktree was created. Deleting a worktree with uncommitted/untracked changes needs a second, more severe confirmation before force-deleting.
+
+  New daemon RPCs `worktree.list` / `worktree.remove` back the page; `handlers.ts` was split by domain (`handlers-task.ts` / `handlers-worktree.ts`) to add them within the repo's file-size cap.
+
 ## 0.7.62
 
 ### Patch Changes

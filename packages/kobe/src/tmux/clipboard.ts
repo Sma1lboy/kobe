@@ -89,10 +89,19 @@ const COPY_FINISH_TRIGGERS = ["MouseDragEnd1Pane", "y", "Enter"] as const
  * clipboard command is available it ALSO binds the copy-mode finish actions to
  * `copy-pipe-and-cancel <cmd>` in both copy-mode tables. With no command the
  * copy-pipe bindings are omitted but `set-clipboard on` stays.
+ *
+ * `copy-command` is set alongside the bindings because a user tmux.conf can
+ * rewrite them: oh-my-tmux (gpakosz) dumps `list-keys` and, with its default
+ * `tmux_conf_copy_to_os_clipboard=false`, strips the `<cmd>` argument off
+ * every `copy-pipe*` binding — including ours — leaving a bare
+ * `copy-pipe-and-cancel`. On tmux ≥ 3.2 a bare copy-pipe falls back to the
+ * `copy-command` option, so setting it keeps the copy reaching the OS
+ * clipboard even after that rewrite.
  */
 export function clipboardTmuxConfig(clipboardCopyCommand: string | null): TmuxCommand[] {
   const config: TmuxCommand[] = [["set-option", "-g", "set-clipboard", "on"]]
   if (clipboardCopyCommand) {
+    config.push(["set-option", "-g", "copy-command", clipboardCopyCommand])
     for (const table of COPY_MODE_TABLES) {
       for (const trigger of COPY_FINISH_TRIGGERS) {
         config.push(["bind-key", "-T", table, trigger, "send-keys", "-X", "copy-pipe-and-cancel", clipboardCopyCommand])

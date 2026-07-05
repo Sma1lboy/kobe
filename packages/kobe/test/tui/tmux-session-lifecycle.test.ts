@@ -248,6 +248,24 @@ describe("selectTasksPane", () => {
     expect(callsWith("select-pane").pop()).toEqual(["select-pane", "-t", "%7"])
   })
 
+  test("no-ops in a full-window tab (no tasks pane, no engine pane) — never grafts a rail", async () => {
+    // A file-preview/editor window has one role-less full-width pane. Ctrl+Q
+    // there must do NOTHING: no tasks-restore split into the preview, no
+    // pane selection. (The workspace-window restore path is the test above.)
+    const client = await import("../../src/tmux/client")
+    const seen: string[][] = []
+    vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
+      seen.push(args)
+      if (args[0] === "list-panes") return { code: 0, stdout: "%9\t" }
+      return { code: 0, stdout: "" }
+    })
+    await expect(tmux.selectTasksPane("kobe-t1", { windowId: "@5" })).resolves.toBe("")
+    // Restore was never attempted: no window listing, no split.
+    expect(seen.filter((c) => c[0] !== "list-panes")).toEqual([])
+    expect(callsWith("select-pane")).toEqual([])
+    expect(callsWith("split-window")).toEqual([])
+  })
+
   test("returns '' when the rail cannot be restored at all", async () => {
     const client = await import("../../src/tmux/client")
     vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
