@@ -124,9 +124,8 @@ export interface CreateTaskContext extends TaskActionContext {
    * `savedRepos[0]` then `process.cwd()` for both.
    */
   readonly cursorRepo: () => string | undefined
-  /** Vendor preference for `repo` (layered resolution: state/vendor-prefs.ts). */
+  /** Repo-scoped vendor preference — see state/vendor-prefs.ts. */
   readonly lastVendor: (repo: string) => VendorId | undefined
-  /** Record `vendor` as `repo`'s last-active engine. */
   readonly rememberVendor: (repo: string, vendor: VendorId) => void
   /**
    * DIVERGENCE — after `addSavedRepo`, the outer monitor mirrors the fresh
