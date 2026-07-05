@@ -41,8 +41,8 @@ export function isDev(): boolean {
 
 /**
  * `KOBE_TUI=1` — experimental native opentui workspace. Instead of entering
- * the tmux handover, `kobe` boots a single-process Sidebar / Chat / Files /
- * Terminal app. The chat column drives one AI SDK harness turn per prompt and
+ * the tmux handover, `kobe` boots a single-process Sidebar / Chat / Files app
+ * (no embedded Terminal pane in v1). The chat column drives one AI SDK harness turn per prompt and
  * renders the streamed `UIMessage` natively, so no long-lived engine process
  * idles between prompts. See `src/tui/workspace/host.tsx` and
  * `src/engine/ai-sdk/harness-turn.ts`.

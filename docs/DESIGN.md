@@ -31,11 +31,13 @@ The corollary: we accept the constraints those modules impose. If opencode's dia
 
 ### 2.2 Engine CLIs are products, not vendors
 
-We don't build a vendor-neutral LLM abstraction. We don't ship `@ai-sdk/*` adapters. kobe runs local interactive engine CLIs and lets those tools own auth, prompts, approvals, and model execution.
+We don't build our own vendor-neutral LLM abstraction, and we never call raw model APIs — engines own auth (subscription login), prompts, approvals, and model execution. The default product path runs local interactive engine CLIs inside tmux.
+
+The native chat pane (`KOBE_TUI=1`, experimental) is the one sanctioned exception to "no `@ai-sdk/*`": it drives the SAME locally-installed engines through the AI SDK's harness packages (`ai` + `@ai-sdk/harness-claude-code` / `harness-codex`) and renders the streamed `UIMessage` verbatim — Vercel owns that schema, we build no mapping layer on top. Rationale + boundaries: [`docs/design/provider-runtime.md`](./design/provider-runtime.md). (The original 2026-06 "we don't ship `@ai-sdk/*` adapters" lock predates this decision — superseded 2026-07-04 after the pi RPC spike was rejected.)
 
 But: we keep engine-owned Adapter seams for product identity, command launch, hook normalization, history, telemetry, and model/catalog capability. Neutral layers ask those Adapters instead of hard-coding Claude/Codex strings.
 
-Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and the local interactive engine running inside that task's tmux Session. Everything else (theme, panes, persistence) is hardcoded for now.
+Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and the engine backend that runs it (tmux interactive CLI today; the AI SDK harness behind the same engine contract in the native pane). Everything else (theme, panes, persistence) is hardcoded for now.
 
 ### 2.3 The terminal is a feature, not a constraint
 

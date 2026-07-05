@@ -89,6 +89,12 @@ export interface NativeChatBackend {
   readonly harnessVendor: AiSdkHarnessVendor
   /** Engine-owned builtin slash commands shown in the composer (empty = none). */
   readonly builtinSlashes: readonly BuiltinSlash[]
+  /**
+   * True when this engine defines user slash directories the composer should
+   * scan (claude's `.claude/{commands,skills}/`). Neutral TUI code gates the
+   * user-slash loader on this instead of comparing vendor-id strings.
+   */
+  readonly userSlashes?: boolean
 }
 
 export interface EngineRegistryEntry {
@@ -202,7 +208,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new ClaudeTurnDetector(),
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
-    nativeChat: { harnessVendor: "claude", builtinSlashes: BUILTIN_CLAUDE_SLASHES },
+    nativeChat: { harnessVendor: "claude", builtinSlashes: BUILTIN_CLAUDE_SLASHES, userSlashes: true },
   },
   codex: {
     vendor: "codex",
@@ -263,13 +269,13 @@ export function engineEntry(vendor: VendorId): EngineRegistryEntry {
 }
 
 /**
- * Capabilities for a vendor, falling back to claude's (the only headless
- * backend today). Consumed by the native chat composer's model picker +
- * permission-mode cycle; claude fallback keeps the picker rendering
- * something rather than blanking on an unknown id.
+ * Capabilities for a vendor, or `undefined` when the engine has none (copilot,
+ * custom). Consumed by the native chat composer's model picker +
+ * permission-mode cycle; callers must handle the missing case rather than
+ * borrow another vendor's catalog + permission modes.
  */
-export function getCapabilities(vendor: VendorId): EngineCapabilities {
-  return engineEntry(vendor).capabilities ?? claudeCapabilities
+export function getCapabilities(vendor: VendorId): EngineCapabilities | undefined {
+  return engineEntry(vendor).capabilities
 }
 
 /** Flat de-duped list of every model surfaced by every registered vendor. */

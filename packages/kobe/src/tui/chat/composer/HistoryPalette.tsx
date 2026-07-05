@@ -29,6 +29,7 @@ import { useBindings } from "@/tui/lib/keymap"
 import { useDialog } from "@/tui/ui/dialog"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createMemo, createSignal } from "solid-js"
+import { makeDropdownWindow } from "./dropdown-window"
 import { getAllHistoryEntries } from "./history"
 
 /** Maximum visible rows in the palette body. Bigger than the slash dropdown
@@ -111,14 +112,7 @@ export function HistoryPaletteView(props: {
   const [cursor, setCursor] = createSignal(0)
 
   const matches = createMemo(() => fuzzyFilter(allRows, query()))
-  const window = createMemo(() => {
-    const list = matches()
-    if (list.length <= PALETTE_MAX_ROWS) return { items: list, start: 0, total: list.length }
-    const half = Math.floor(PALETTE_MAX_ROWS / 2)
-    let start = Math.max(0, cursor() - half)
-    if (start + PALETTE_MAX_ROWS > list.length) start = list.length - PALETTE_MAX_ROWS
-    return { items: list.slice(start, start + PALETTE_MAX_ROWS), start, total: list.length }
-  })
+  const window = createMemo(() => makeDropdownWindow(matches(), cursor(), PALETTE_MAX_ROWS))
 
   function commit(): void {
     const list = matches()

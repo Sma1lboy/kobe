@@ -62,9 +62,15 @@ is what needs to be made robust before it can ship.
    `"terminal unavailable — …"` states, and `"(no task — press n to create)"`, which
    duplicates the `chat.composer.noTask` idea. Add a `terminal.*` namespace
    (`i18n/messages/terminal.ts`) in all locales; do not leave literals in the JSX.
-4. **Add tests** — the cluster currently has none. `keys-pure.ts`, `sgr.ts`, and the
-   viewport-slicing math are the natural pure-unit targets; `pty-mock.ts` already
-   exists to back a component test.
+4. **Add tests for the untested half** — `sgr.ts` is already covered
+   (`test/tui/terminal-sgr.test.ts` + `terminal-sgr-attrs.test.ts`); the gaps are
+   `keys-pure.ts` and the viewport-slicing math. `pty-mock.ts` already exists to
+   back a component test.
+5. **Surface a dead-shell state on the Bun PTY** — `BunTerminalTaskPty` (`pty.ts`)
+   has no error-surfacing path. Unlike `PipeTaskPty` (`pty-pipe.ts` appends spawn
+   errors to the buffer), a post-spawn shell crash just `markDead`s and freezes the
+   last snapshot — the pane shows stale output with no signal. Wire an exit/error
+   indicator into the pane on revival.
 
 ## Dependency note
 

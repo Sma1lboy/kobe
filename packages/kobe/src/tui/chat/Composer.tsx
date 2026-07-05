@@ -11,9 +11,11 @@
  *   - Per-key prompt history (in-memory): up arrow at line 1 recalls
  *     the previous submission, down arrow at the last line walks
  *     forward (and falls off the end into the live draft).
- *   - The placeholder cadence — "Ask Claude…" by default, "(streaming
- *     — wait for done)" while a turn is in flight, "(no task — press n
- *     to create)" when no task is selected.
+ *   - The placeholder cadence (see `composer/placeholder.ts`) — the
+ *     engine-supplied `inputPlaceholder` (e.g. "Ask Claude…") or the
+ *     i18n "Type a prompt…" fallback when idle, empty while a turn is
+ *     in flight (the prefix glyph recolors instead), "(no task — press
+ *     n to create)" when no task is selected.
  *   - Bracketed paste support — opentui's textarea handles multi-line
  *     paste natively, no flicker, no per-character replay. We don't
  *     have to do anything; the renderable's `handlePaste` decodes

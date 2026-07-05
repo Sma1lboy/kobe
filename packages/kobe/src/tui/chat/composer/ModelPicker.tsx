@@ -13,6 +13,7 @@ import { t } from "@/tui/i18n"
 import { useBindings } from "@/tui/lib/keymap"
 import { type DialogContext, useDialog } from "@/tui/ui/dialog"
 import type { ModelChoice } from "@/types/engine"
+import { DEFAULT_TASK_VENDOR } from "@/types/task"
 import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, createMemo, createSignal } from "solid-js"
@@ -46,8 +47,8 @@ function ModelPicker(props: ModelPickerProps) {
   // re-confirms the existing choice without changing it. When unpinned,
   // seed on the active vendor's resolved default so the picker reflects
   // what the user is actually running.
-  const seedVendor = props.currentVendor ?? props.lockedVendor ?? "claude"
-  const seed = props.current ?? getCapabilities(seedVendor).defaultModelId()
+  const seedVendor = props.currentVendor ?? props.lockedVendor ?? DEFAULT_TASK_VENDOR
+  const seed = props.current ?? getCapabilities(seedVendor)?.defaultModelId()
   const initial = models().findIndex((m) => m.id === seed)
   const [cursor, setCursor] = createSignal(nextEnabledIndex(models(), initial >= 0 ? initial : 0, 1))
   const [effortCursor, setEffortCursor] = createSignal(0)

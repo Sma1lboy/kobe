@@ -44,6 +44,10 @@ interface WorktreeRuntime {
   readonly agent: HarnessAgent
   readonly vendor: AiSdkHarnessVendor
   readonly worktree: string
+  // Settings the agent was built with; a later turn requesting a different
+  // model/effort rebuilds the runtime rather than silently serving the old one.
+  readonly model?: string
+  readonly modelEffort?: string
   session?: Awaited<ReturnType<HarnessAgent["createSession"]>>
   busy: boolean
 }
@@ -89,10 +93,13 @@ function ensureRuntime(opts: {
 }): WorktreeRuntime {
   const key = aiSdkRuntimeKey(opts.vendor, opts.worktree)
   const existing = runtimes.get(key)
-  if (existing) return existing
+  if (existing && existing.model === opts.model && existing.modelEffort === opts.modelEffort) return existing
+  if (existing) destroyRuntimeSession(existing)
   const runtime: WorktreeRuntime = {
     vendor: opts.vendor,
     worktree: opts.worktree,
+    model: opts.model,
+    modelEffort: opts.modelEffort,
     agent: new HarnessAgent({
       harness: createHarness(opts),
       sandbox: createLocalSandbox({ workRoot: opts.worktree }),
@@ -103,11 +110,17 @@ function ensureRuntime(opts: {
   return runtime
 }
 
+function destroyRuntimeSession(runtime: WorktreeRuntime): void {
+  void runtime.session?.destroy().catch((err) => {
+    console.error(`[kobe ai-sdk] failed to dispose runtime session for ${runtime.worktree}:`, err)
+  })
+}
+
 export function disposeAiSdkRuntime(worktree: string): void {
   for (const [key, runtime] of runtimes) {
     if (runtime.worktree !== worktree) continue
     runtimes.delete(key)
-    void runtime.session?.destroy().catch(() => {})
+    destroyRuntimeSession(runtime)
   }
 }
 
@@ -131,12 +144,20 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
   const controller = new AbortController()
 
   const done = (async (): Promise<{ error?: AiSdkTurnError }> => {
-    const runtime = ensureRuntime({
-      vendor: resolveAiSdkHarnessVendor(opts.vendor),
-      worktree: opts.worktree,
-      model: opts.model,
-      modelEffort: opts.modelEffort,
-    })
+    // ensureRuntime builds the harness synchronously (createHarness can throw on
+    // a bad model id / validation) — keep it inside the async body so setup
+    // failures resolve as a turn error, never an unhandled rejection.
+    let runtime: WorktreeRuntime
+    try {
+      runtime = ensureRuntime({
+        vendor: resolveAiSdkHarnessVendor(opts.vendor),
+        worktree: opts.worktree,
+        model: opts.model,
+        modelEffort: opts.modelEffort,
+      })
+    } catch (e) {
+      return { error: { message: getErrorMessage(e) } }
+    }
     if (runtime.busy) return { error: { code: "runtimeBusy" } }
     runtime.busy = true
     let error: AiSdkTurnError | undefined

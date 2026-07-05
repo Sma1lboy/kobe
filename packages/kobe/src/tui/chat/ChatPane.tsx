@@ -104,29 +104,32 @@ export function ChatPane(props: ChatPaneProps) {
   // Composer state: pinned model (undefined = claude's default), permission
   // mode (shift+tab cycles the engine's list), and the mid-turn prompt queue.
   const [model, setModel] = createSignal<ModelPickerResult>(undefined)
-  const initialMode: PermissionMode = capabilities().permissionModes.some((m) => m.id === props.permissionMode)
+  const initialMode: PermissionMode = capabilities()?.permissionModes.some((m) => m.id === props.permissionMode)
     ? (props.permissionMode as PermissionMode)
     : "acceptEdits"
   const [permissionMode, setPermissionMode] = createSignal<PermissionMode>(initialMode)
   const [queue, setQueue] = createSignal<readonly ComposerQueuedItem[]>([])
 
-  // Composer model/permission controls show when the engine has a native-chat
-  // backend (capability, not a vendor-id check).
+  // Composer model controls show when the engine has a native-chat backend;
+  // the permission badge/cycle needs actual modes to offer (codex declares
+  // none, so it must not render a dead `acceptEdits ▾`). Both are capability
+  // checks, not vendor-id checks.
   // ponytail: permissionMode is surfaced + cycled here but the harness turn
   // doesn't forward it yet — createClaudeCode exposes no permission surface.
   // Wire it through startAiSdkTurn when the harness gains one.
   const hasNativeChat = () => nativeChat() != null
+  const hasPermissionModes = () => (capabilities()?.permissionModes.length ?? 0) > 0
 
   // Slash-command list: claude's builtins + the user's own
   // `.claude/{commands,skills}/` entries (project + global). Selecting one
   // submits `/name` through the same turn pipeline — the harness runtime runs it.
   const [slashList, setSlashList] = createSignal<readonly ComposerSlashEntry[]>([])
   onMount(() => {
-    // Builtin slashes are engine-owned data on the nativeChat descriptor.
-    // ponytail: user slashes live under the `.claude/{commands,skills}/`
-    // convention, so loading them stays claude-gated — move the loader onto
-    // NativeChatBackend when another engine grows a user-slash directory.
-    if (harnessVendor() !== "claude") return
+    // Builtin slashes are engine-owned data on the nativeChat descriptor; the
+    // user-slash loader runs only for engines that declare user-slash
+    // directories (the `.claude/{commands,skills}/` convention), gated on the
+    // engine-owned `userSlashes` capability rather than a vendor-id string.
+    if (!nativeChat()?.userSlashes) return
     void loadUserSlashes(props.worktree)
       .then((user) => {
         const builtin: ComposerSlashEntry[] = (nativeChat()?.builtinSlashes ?? []).map((s) => ({
@@ -175,7 +178,13 @@ export function ChatPane(props: ChatPaneProps) {
     })
     activeInterrupt = turn.interrupt
     const { error } = await turn.done
-    if (error) setTurnError("code" in error ? t("chat.runtimeBusy") : error.message)
+    if (error) {
+      // Banner is ephemeral (cleared on next submit); also append an error row
+      // so the failure persists in the transcript history.
+      const message = "code" in error ? t("chat.runtimeBusy") : error.message
+      setTurnError(message)
+      setItems((prev) => [...prev, { kind: "error", text: message }])
+    }
     activeInterrupt = undefined
     setRunning(false)
     drainQueue()
@@ -218,13 +227,14 @@ export function ChatPane(props: ChatPaneProps) {
 
   /** Footer label for the pinned (or default) model, from the vendor catalog. */
   const modelLabel = (): string => {
+    const caps = capabilities()
     const pick = model()
     if (!pick) {
-      const id = capabilities().defaultModelId()
-      return capabilities().models.find((m) => m.id === id && !m.effort)?.label ?? id
+      const id = caps?.defaultModelId() ?? ""
+      return caps?.models.find((m) => m.id === id && !m.effort)?.label ?? id
     }
     return (
-      capabilities().models.find((m) => m.id === pick.id && m.effort === pick.effort)?.label ??
+      caps?.models.find((m) => m.id === pick.id && m.effort === pick.effort)?.label ??
       (pick.effort ? `${pick.id} · ${pick.effort}` : pick.id)
     )
   }
@@ -252,7 +262,7 @@ export function ChatPane(props: ChatPaneProps) {
   }
 
   function cyclePermissionMode(): void {
-    const modes = capabilities().permissionModes
+    const modes = capabilities()?.permissionModes ?? []
     if (modes.length === 0) return
     const i = modes.findIndex((m) => m.id === permissionMode())
     setPermissionMode(modes[(i + 1) % modes.length]?.id ?? "acceptEdits")
@@ -346,9 +356,13 @@ export function ChatPane(props: ChatPaneProps) {
         modelLabel={modelLabel}
         inputPlaceholder={() => identity()?.inputPlaceholder ?? t("chat.placeholder")}
         slashes={slashList}
-        permissionMode={hasNativeChat() ? permissionMode : undefined}
-        permissionModeLabel={hasNativeChat() ? () => permissionModeLabel(capabilities(), permissionMode()) : undefined}
-        onCyclePermissionMode={hasNativeChat() ? cyclePermissionMode : undefined}
+        permissionMode={hasPermissionModes() ? permissionMode : undefined}
+        permissionModeLabel={
+          hasPermissionModes()
+            ? () => permissionModeLabel(capabilities() ?? { permissionModes: [] }, permissionMode())
+            : undefined
+        }
+        onCyclePermissionMode={hasPermissionModes() ? cyclePermissionMode : undefined}
         onChooseModel={hasNativeChat() ? openModelPicker : undefined}
         worktreePath={() => props.worktree}
         queue={queue}

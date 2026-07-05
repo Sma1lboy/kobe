@@ -150,7 +150,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       // hard exit — so user rebinds keep both verbs without inspecting
       // the event's modifiers.
       "app.quit": (_evt, slot) => {
-        if (slot === 1) exitApp()
+        if (slot === 1) {
+          exitApp()
+          return
+        }
         void quit()
       },
     }),

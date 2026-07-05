@@ -28,6 +28,16 @@ describe("ChatRow", () => {
     expect(text).toContain("ls -la")
   })
 
+  it("renders a persisted turn-failure error row", async () => {
+    const { frame } = await renderComponent(
+      () => <ChatRow item={{ kind: "error", text: "runtime exploded" }} expanded={false} />,
+      { width: 80, height: 4 },
+    )
+
+    const text = await frame()
+    expect(text).toContain("runtime exploded")
+  })
+
   it("echoes a typed prompt with the ❯ marker", async () => {
     const { frame } = await renderComponent(
       () => <ChatRow item={{ kind: "prompt", text: "fix the bug" }} expanded={false} />,

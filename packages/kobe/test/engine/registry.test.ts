@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { DetectDeps } from "../../src/engine/account-detect.ts"
-import { EMPTY_HISTORY, engineEntry } from "../../src/engine/registry.ts"
+import { EMPTY_HISTORY, engineEntry, getCapabilities } from "../../src/engine/registry.ts"
 
 /** A DetectDeps with every binary found and no files/env, overridable per test. */
 function deps(over: Partial<DetectDeps> = {}): DetectDeps {
@@ -43,6 +43,10 @@ describe("engineEntry — built-in vendors", () => {
     const detector = entry.createTurnDetector()
     expect(detector.vendor).toBe("claude")
     expect(detector.supportsCompletionMarkers()).toBe(true)
+    // Claude is the only engine declaring user-slash directories — the TUI
+    // gates its `.claude/{commands,skills}/` loader on this, not a vendor string.
+    expect(entry.nativeChat?.userSlashes).toBe(true)
+    expect(engineEntry("codex").nativeChat?.userSlashes).toBeFalsy()
   })
 
   it("resolves codex/copilot with their identity, history, and hook wiring", () => {
@@ -93,6 +97,19 @@ describe("engineEntry — built-in vendors", () => {
       }),
     )
     expect(status.account.kind).toBe("apikey")
+  })
+})
+
+describe("getCapabilities", () => {
+  it("returns the engine's own capabilities for vendors that have them", () => {
+    expect(getCapabilities("claude")?.vendorId).toBe("claude")
+    expect(getCapabilities("codex")?.vendorId).toBe("codex")
+  })
+
+  it("returns undefined for engines with no capabilities (no claude fallback)", () => {
+    // copilot + custom must NOT borrow claude's model catalog / permission modes.
+    expect(getCapabilities("copilot")).toBeUndefined()
+    expect(getCapabilities("aider")).toBeUndefined()
   })
 })
 

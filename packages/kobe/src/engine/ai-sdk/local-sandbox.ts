@@ -62,6 +62,20 @@ function toSandboxProcess(child: ReturnType<typeof nodeSpawn>, abortSignal?: Abo
   }
 }
 
+/**
+ * Read a file, mapping ONLY a genuine "not found" (ENOENT) to null — the
+ * sandbox read contract's null case. Other errors (EACCES, EISDIR, disk)
+ * propagate so they surface as tool errors to the model, not silent misses.
+ */
+async function readOrNull(p: string): Promise<Buffer | null> {
+  try {
+    return await readFile(p)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw err
+  }
+}
+
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
   let out = ""
   const decoder = new TextDecoder()
@@ -115,7 +129,7 @@ export function createLocalSandbox({ workRoot }: { workRoot: string }): HarnessV
         },
 
         readFile: async ({ path: p }) => {
-          const bytes = await readFile(p).catch(() => null)
+          const bytes = await readOrNull(p)
           if (bytes == null) return null
           return new ReadableStream<Uint8Array>({
             start(c) {
@@ -125,11 +139,11 @@ export function createLocalSandbox({ workRoot }: { workRoot: string }): HarnessV
           })
         },
         readBinaryFile: async ({ path: p }) => {
-          const bytes = await readFile(p).catch(() => null)
+          const bytes = await readOrNull(p)
           return bytes == null ? null : new Uint8Array(bytes)
         },
         readTextFile: async ({ path: p, encoding = "utf-8", startLine, endLine }) => {
-          const bytes = await readFile(p).catch(() => null)
+          const bytes = await readOrNull(p)
           if (bytes == null) return null
           const text = new TextDecoder(encoding).decode(bytes)
           if (startLine == null && endLine == null) return text
