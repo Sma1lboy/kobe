@@ -199,13 +199,32 @@ function splitRenameField(field: string, sep: string): { orig: string; neu: stri
 }
 
 /**
+ * Rejoin a brace-compacted rename side (`prefix` + the `{…}` segment + `suffix`).
+ *
+ * When a rename adds or drops a leading/trailing directory level, git empties
+ * ONE brace side — `src/{sub => }/a.txt` (moved up out of `sub/`) or
+ * `src/{ => sub}/a.txt` (moved down into `sub/`). Naive `prefix + seg + suffix`
+ * then doubles the shared separator: `src/` + `""` + `/a.txt` = `src//a.txt`,
+ * which no longer key-matches the porcelain row's `src/a.txt` — the exact join
+ * this module exists to keep coherent. Collapse the seam: an empty segment
+ * flanked by a `/`-terminated prefix and a `/`-led suffix drops one slash.
+ */
+function joinBraceParts(prefix: string, seg: string, suffix: string): string {
+  if (seg.length === 0 && prefix.endsWith("/") && suffix.startsWith("/")) {
+    return prefix + suffix.slice(1)
+  }
+  return prefix + seg + suffix
+}
+
+/**
  * Resolve a `git diff --numstat` path field to its canonical (post-rename,
  * unquoted) path, plus the original path when it is a rename.
  *
  * Handles, in order:
  *   1. Brace-compacted rename `a/{old => new}/b` → new `a/new/b`, orig `a/old/b`.
  *      (Brace compaction only ever appears UNQUOTED — git abandons it the
- *      moment either side needs C-quoting.)
+ *      moment either side needs C-quoting.) An empty brace side (a directory
+ *      level added/removed) collapses its doubled separator via {@link joinBraceParts}.
  *   2. Non-brace rename `orig => new` (each side independently C-quoted).
  *   3. Plain path (possibly C-quoted, no rename).
  */
@@ -219,7 +238,10 @@ function resolveNumstatField(field: string): { path: string; origPath?: string }
       const oldSeg = field.slice(open + 1, sep)
       const newSeg = field.slice(sep + " => ".length, close)
       const suffix = field.slice(close + 1)
-      return { path: prefix + newSeg + suffix, origPath: prefix + oldSeg + suffix }
+      return {
+        path: joinBraceParts(prefix, newSeg, suffix),
+        origPath: joinBraceParts(prefix, oldSeg, suffix),
+      }
     }
   }
   const split = splitRenameField(field, " => ")
