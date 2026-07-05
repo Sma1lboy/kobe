@@ -7,7 +7,7 @@
 //
 // Inputs (env):
 //   BASE_REF            PR base branch (required) — diff is origin/BASE...HEAD
-//   PR_BODY             PR description; a `coverage-exemption:` line skips the gate
+//   PR_BODY             PR description; `coverage-exemption: <path> — <reason>` lines exempt the named files
 //   KOBE_COVERAGE_MIN   line-% floor for touched files (default 50)
 //
 // Expects packages/kobe/coverage/coverage-summary.json to exist
@@ -27,10 +27,11 @@ if (!baseRef) {
   console.error("coverage-gate: BASE_REF is required")
   process.exit(2)
 }
-if (/coverage-exemption/i.test(prBody)) {
-  console.log("PR body declares a coverage-exemption — skipping the coverage gate.")
-  process.exit(0)
-}
+// Exemptions are PER FILE: each `coverage-exemption: <path> — <reason>` line
+// exempts only the exact path it names (a bare reason with no path exempts nothing).
+const exemptPaths = new Set(
+  [...prBody.matchAll(/coverage-exemption:\s*(\S+)/gi)].map((m) => m[1]),
+)
 
 const summaryPath = resolve("packages/kobe/coverage/coverage-summary.json")
 const summary = JSON.parse(readFileSync(summaryPath, "utf8"))
@@ -64,9 +65,13 @@ for (const file of touched) {
   const entry = byRelative.get(file)
   const pct = entry ? entry.lines.pct : 0
   if (pct < MIN) {
+    if (exemptPaths.has(file)) {
+      console.log(`::notice file=${file}::${file} is ${pct}% but exempted by the PR body.`)
+      continue
+    }
     console.log(
       `::error file=${file}::${file} line coverage is ${pct}% (floor ${MIN}% on touched files). ` +
-        "Add tests for the changed behavior, or add a 'coverage-exemption: <reason>' line to the PR body. " +
+        `Add tests for the changed behavior, or add a 'coverage-exemption: ${file} — <reason>' line to the PR body. ` +
         "See docs/HARNESS.md 'Coverage gate'.",
     )
     fail = 1
