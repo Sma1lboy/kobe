@@ -32,10 +32,11 @@
 import { TextAttributes } from "@opentui/core"
 import { For, createSignal, onMount } from "solid-js"
 import { runTmuxCapturing } from "../../tmux/client"
-import { type KobeBinding, KobeKeymap } from "../context/keybindings"
+import { KobeKeymap } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { t, tKeys } from "../i18n"
 import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
+import { groupBindings } from "../lib/help-groups"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 
@@ -43,22 +44,7 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 // (which read `BUILTIN_CLAUDE_SLASHES` from the composer) is gone.
 // Users discover slashes natively inside the interactive `claude`
 // pane now. The dialog stays focused on kobe's own keybindings.
-
-/**
- * Group the flat keymap into categories in declaration order.
- */
-function groupBindings(keymap: readonly KobeBinding[]): { category: string; rows: readonly KobeBinding[] }[] {
-  const groups = new Map<string, KobeBinding[]>()
-  const order: string[] = []
-  for (const b of keymap) {
-    if (!groups.has(b.category)) {
-      groups.set(b.category, [])
-      order.push(b.category)
-    }
-    groups.get(b.category)!.push(b)
-  }
-  return order.map((cat) => ({ category: cat, rows: groups.get(cat)! }))
-}
+// Category grouping is the shared framework-free `lib/help-groups`.
 
 export function HelpDialog(props: { onClose?: () => void } = {}) {
   const dialog = useDialog()

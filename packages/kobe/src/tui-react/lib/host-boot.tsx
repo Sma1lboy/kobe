@@ -18,10 +18,10 @@
  *     signals don't notify outside a reactive-solid runtime.
  *   - Error boundary is a small class component (React's only boundary
  *     primitive); crash logging + themed fallback match the Solid host.
- *   - Provider flags: only `focus` is portable today. `kv` /
- *     `notifications` have no React port yet — requesting one throws
- *     loudly at boot rather than silently skipping a provider a pane
- *     depends on. They land with the panes that need them (issue #15 G3).
+ *   - Provider flags: `focus` and `notifications` are portable today.
+ *     `kv` has no React port yet — requesting it throws loudly at boot
+ *     rather than silently skipping a provider a pane depends on. It
+ *     lands with the settings slice (issue #15 G3).
  */
 
 import { createCliRenderer } from "@opentui/core"
@@ -42,6 +42,7 @@ import { sessionAttached } from "../../tui/lib/attach-gate"
 import { hostRenderOptions, installPaneExitBackstop } from "../../tui/lib/host-render-options"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../../tui/lib/persisted-ui-prefs"
 import { FocusProvider } from "../context/focus"
+import { NotificationsProvider } from "../context/notifications"
 import {
   ThemeProvider,
   addTheme,
@@ -60,13 +61,13 @@ import { DialogProvider } from "../ui/dialog"
 /** Theme used when `state.json` is missing/stale — kobe's brand default. */
 const FALLBACK_THEME = "claude"
 
-/** Same flag surface as the Solid host; see header for the un-ported pair. */
+/** Same flag surface as the Solid host; see header for the un-ported one. */
 export interface HostProviderFlags {
   /** KVProvider — NOT PORTED yet; `true` throws at boot. */
   readonly kv?: boolean
   /** FocusProvider, initial pane "sidebar". Default true. */
   readonly focus?: boolean
-  /** NotificationsProvider — NOT PORTED yet; `true` throws at boot. */
+  /** NotificationsProvider (toast queue). Default false. */
   readonly notifications?: boolean
 }
 
@@ -236,9 +237,8 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   setLocaleLang(prefs.locale)
 
   if (opts.providers?.kv) throw new Error("bootPaneHost(react): KVProvider is not ported yet (issue #15 G3)")
-  if (opts.providers?.notifications)
-    throw new Error("bootPaneHost(react): NotificationsProvider is not ported yet (issue #15 G3)")
   const focus = opts.providers?.focus ?? true
+  const notifications = opts.providers?.notifications ?? false
 
   const screen = await opts.setup(prefs)
   const renderer = await createCliRenderer(hostRenderOptions(screen.onDestroy))
@@ -250,15 +250,14 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
       <PaneErrorBoundary>{screen.root()}</PaneErrorBoundary>
     </>
   )
+  // Same nesting ORDER as the Solid host (Theme > Focus > Dialog >
+  // Notifications) — only membership varies.
+  const dialogTree = (
+    <DialogProvider>{notifications ? <NotificationsProvider>{body}</NotificationsProvider> : body}</DialogProvider>
+  )
   createRoot(renderer).render(
     <ThemeProvider mode="dark" theme={prefs.theme}>
-      {focus ? (
-        <FocusProvider initial="sidebar">
-          <DialogProvider>{body}</DialogProvider>
-        </FocusProvider>
-      ) : (
-        <DialogProvider>{body}</DialogProvider>
-      )}
+      {focus ? <FocusProvider initial="sidebar">{dialogTree}</FocusProvider> : dialogTree}
     </ThemeProvider>,
   )
   installPaneExitBackstop()

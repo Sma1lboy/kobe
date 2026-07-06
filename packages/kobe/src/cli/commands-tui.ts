@@ -375,7 +375,8 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // (distinct from `kobe help`, which prints CLI usage). Opened by
     // `openHelpTab` as a new tmux window; reuses the same HelpDialog
     // the in-pane overlay uses.
-    const { startHelpHost } = await import("../tui/help/host.tsx")
+    const { startHelpHost } =
+      process.env.KOBE_REACT === "1" ? await import("../tui-react/help/host.tsx") : await import("../tui/help/host.tsx")
     await startHelpHost()
     return true
   }
