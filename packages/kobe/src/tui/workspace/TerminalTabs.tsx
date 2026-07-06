@@ -18,6 +18,7 @@
  * registry's acquire-reuse).
  */
 
+import type { TranscriptActivity } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { engineEntry } from "@/engine/registry"
@@ -31,6 +32,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { EnginePickerDialog } from "../component/engine-picker-dialog/index"
 import { RenameTaskDialog } from "../component/rename-task-dialog/index"
 import { bindByIds } from "../context/keybindings"
+import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
@@ -50,7 +52,9 @@ import {
   closeTab,
   cycleTab,
   initialTabs,
+  markTabSpawned,
   openEditorTab,
+  rehydrateTabs,
   renameActiveTab,
   setTabAutoTitle,
   setTabSessionId,
@@ -102,11 +106,21 @@ export function TerminalTabs(props: {
    * in `host.tsx`), rebinding to that mount's own tab state.
    */
   onEditorTabReady?: (open: (command: readonly string[], label: string) => void) => void
+  /**
+   * This worktree's slice of the daemon's `transcript.activity` push
+   * (issue #24) — feeds the turn-status loops' shared mode (adaptive
+   * capture cadence + push-driven completion reads). Omitted/null =
+   * fallback mode (fixed-cadence local polling), same contract as the
+   * Ops pane.
+   */
+  sharedActivity?: () => TranscriptActivity | null
   focused: () => boolean
 }): ReturnType<typeof Terminal> {
   const { theme } = useTheme()
   const dialog = useDialog()
   const notif = useNotifications()
+  const kv = useKV()
+  const persistKey = `terminalTabs.${props.taskId}`
 
   /** Pin a fresh engine-session id on the just-created active engine tab —
    *  the tmux `@kobe_session_id` stash. Only the ID is state; the argv
@@ -121,9 +135,13 @@ export function TerminalTabs(props: {
   const initState = (): TabsState => {
     const existing = tabsByTask.get(props.taskId)
     if (existing) return existing
+    // Restart survival (issue #22): rehydrate the persisted engine-tab
+    // snapshot (titles/ordinals/sessionIds — command tabs are transient
+    // and dropped) before falling back to a fresh single tab.
+    const saved = kv.get(persistKey, null) as TabsState | null
+    const fresh = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved) : pinSession(initialTabs(), undefined)
     // Persist immediately so a remount before the first mutation doesn't
     // re-pin a different session id against the already-spawned PTY.
-    const fresh = pinSession(initialTabs(), undefined)
     tabsByTask.set(props.taskId, fresh)
     return fresh
   }
@@ -132,15 +150,32 @@ export function TerminalTabs(props: {
   const update = (next: TabsState): void => {
     tabsByTask.set(props.taskId, next)
     setState(next)
+    // Tab metadata survives restarts via kv/state.json (issue #22); the
+    // rehydrate above filters what shouldn't come back.
+    kv.set(persistKey, next)
   }
 
-  /** Engine-tab argv: the tab's pinned session id rides the base command —
-   *  the same `--session-id` append `withClaudeSessionId` produced when the
-   *  id was generated at tab creation. */
+  /** Engine-tab argv: the tab's pinned session id rides the base command.
+   *  Three cases: a LIVE PTY ignores `command` entirely (registry reuse);
+   *  a tab that already ran but whose PTY is gone (app restart —
+   *  `releaseAll` killed everything) RESUMES its conversation; a
+   *  never-spawned tab opens a fresh session under its pinned id — the
+   *  same `--session-id` append `withClaudeSessionId` produced. */
   const engineTabCommand = (tab: EngineTab): readonly string[] => {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
-    return tab.sessionId ? [...base, "--session-id", tab.sessionId] : base
+    if (!tab.sessionId) return base
+    const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
+    if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
+    return [...base, "--session-id", tab.sessionId]
   }
+
+  // Mark the mounted engine tab as spawned (its PTY acquires right after
+  // mount) — the flag flips the restart path above from fresh-session to
+  // resume. Self-terminating: once set, the guard stops further writes.
+  createEffect(() => {
+    const tab = active()
+    if (tab?.kind === "engine" && !tab.spawned) update(markTabSpawned(state(), tab.id))
+  })
 
   props.onEditorTabReady?.((command, label) => update(openEditorTab(state(), command, label)))
 
@@ -177,9 +212,9 @@ export function TerminalTabs(props: {
   /* --------- per-tab turn state (tmux @kobe_tab_state, logic layer) -------
    * The SAME `startTurnStatusPoll` loop the Ops pane runs, with PTY IO in
    * place of tmux capture-pane — the in-process snapshot IS the pane
-   * capture. Fallback mode for now (no daemon shared-activity feed wired
-   * into this host yet): fixed-cadence capture hashing + local
-   * completion-marker reads. Polls attach lazily (a tab's PTY spawns after
+   * capture. Shared mode when the host passes the daemon's
+   * transcript.activity slice (`sharedActivity`), local fixed-cadence
+   * fallback otherwise. Polls attach lazily (a tab's PTY spawns after
    * its Terminal mounts and measures), retried on a slow tick. */
   const [turnStates, setTurnStates] = createSignal<ReadonlyMap<string, ChatTabTurnState>>(new Map())
   const turnPolls = new Map<string, () => void>()
@@ -201,7 +236,16 @@ export function TerminalTabs(props: {
       const tabId = tab.id
       const detector = engineEntry(tab.vendor ?? props.vendor).createTurnDetector()
       const dispose = startTurnStatusPoll(
-        { worktree: props.worktree, detector, usingShared: () => false, sharedEntry: () => null },
+        {
+          worktree: props.worktree,
+          detector,
+          // Shared mode (issue #24): the daemon's transcript.activity push
+          // supplies completion reads + drives the adaptive capture
+          // cadence; null (no daemon data) falls back to fixed-cadence
+          // local polling — the Ops pane's exact contract.
+          usingShared: () => (props.sharedActivity?.() ?? null) !== null,
+          sharedEntry: () => props.sharedActivity?.() ?? null,
+        },
         {
           sessionAttached: async () => true,
           capturePane: async () => {
