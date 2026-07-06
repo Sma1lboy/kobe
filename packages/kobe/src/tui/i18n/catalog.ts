@@ -17,7 +17,6 @@
  * examples) is left in the calling code as-is — it isn't language.
  */
 
-import { en as chat, zh as chatZh } from "./messages/chat"
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
@@ -42,7 +41,6 @@ export const en = {
   quickTask,
   help,
   history,
-  chat,
   common,
   keys,
   workspace,
@@ -66,7 +64,6 @@ export const zh: Messages = {
   quickTask: quickTaskZh,
   help: helpZh,
   history: historyZh,
-  chat: chatZh,
   common: commonZh,
   keys: keysZh,
   workspace: workspaceZh,
