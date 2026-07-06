@@ -245,8 +245,13 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   private refreshSnapshot(): void {
     if (this._killed) return
-    // Don't snapshot a half-painted frame — wait for the sync block to close.
-    if (this.inSynchronizedOutput()) return
+    // Don't snapshot a half-painted frame. Self-reschedule rather than
+    // relying solely on the closing write's callback — under rapid redraws
+    // a new sync block can open before that write lands, bouncing forever.
+    if (this.inSynchronizedOutput()) {
+      this.queueRefresh()
+      return
+    }
     const active = this.term.buffer.active
     const rows: TerminalRow[] = []
     const cursorY = active.baseY + active.cursorY
