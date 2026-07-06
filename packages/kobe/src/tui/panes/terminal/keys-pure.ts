@@ -11,17 +11,48 @@
 import type { KeyEvent } from "@opentui/core"
 
 /**
+ * Kitty keyboard-protocol CSI-u sequence (e.g. ctrl+c = `\x1b[99;5u`,
+ * esc = `\x1b[27u`). The host renderer enables kitty
+ * (`useKittyKeyboard` in host-render-options.ts), so on kitty-capable
+ * terminals modifier chords and esc arrive CSI-u encoded on the wire.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the raw ESC-prefixed kitty wire encoding is the whole point
+const KITTY_CSI_U_RE = /^\x1b\[[\d:;]*u$/
+
+/** Classic C0 mappings for ctrl+punctuation (ctrl+\ = SIGQUIT etc.). */
+const CTRL_PUNCT_C0: Record<string, string> = {
+  "@": "\x00",
+  "[": "\x1b",
+  "\\": "\x1c",
+  "]": "\x1d",
+  "^": "\x1e",
+  _: "\x1f",
+  "?": "\x7f",
+}
+
+/**
  * Encode an opentui `KeyEvent` to the byte sequence the shell expects.
  *
- * Where `evt.sequence` is present we forward it verbatim (real
- * keystrokes carry the upstream byte stream there). Synthetic events
- * (notably the ones unit tests build) lack `sequence`; we synthesize
- * the common cases below.
+ * Where the keystroke arrived as legacy bytes we forward `evt.sequence`
+ * verbatim. Kitty CSI-u keystrokes must be re-encoded: the embedded PTY
+ * never negotiated kitty, and opentui's parser makes `sequence`
+ * unusable for them — measured on the real wire (probe 2026-07-06):
+ * ctrl+c ⇒ `{ raw: "\x1b[99;5u", sequence: "c" }` (forwarding sequence
+ * types a literal "c"!) while esc ⇒ `{ raw: "\x1b[27u", sequence:
+ * "\x1b[27u" }` (forwarding sends garbage). So if EITHER field is
+ * CSI-u shaped we synthesize from name+modifiers instead. Synthetic
+ * events (unit tests) lack `sequence` and take the same synthesis path.
  */
 export function keyEventToShellBytes(evt: KeyEvent): string | null {
-  const seq = (evt as KeyEvent & { sequence?: string }).sequence
-  if (typeof seq === "string" && seq.length > 0) return seq
+  const e = evt as KeyEvent & { sequence?: string; raw?: string }
+  const seq = typeof e.sequence === "string" && e.sequence.length > 0 ? e.sequence : null
+  const kittyWire =
+    (typeof e.raw === "string" && KITTY_CSI_U_RE.test(e.raw)) || (seq != null && KITTY_CSI_U_RE.test(seq))
+  if (seq != null && !kittyWire) return seq
+  return synthesizeShellBytes(evt)
+}
 
+function synthesizeShellBytes(evt: KeyEvent): string | null {
   const name = evt.name
   if (!name) return null
 
@@ -30,7 +61,7 @@ export function keyEventToShellBytes(evt: KeyEvent): string | null {
   // expects; alt+<key> is ESC-prefixed per xterm convention.
   if (evt.shift && name === "tab") return "\x1b[Z"
   if (evt.option || evt.meta) {
-    const inner = keyEventToShellBytes({ ...evt, option: false, meta: false } as KeyEvent)
+    const inner = synthesizeShellBytes({ ...evt, option: false, meta: false } as KeyEvent)
     return inner == null ? null : `\x1b${inner}`
   }
 
@@ -59,13 +90,17 @@ export function keyEventToShellBytes(evt: KeyEvent): string | null {
     case "escape":
       return "\x1b"
     case "space":
-      return " "
+      return evt.ctrl ? "\x00" : " "
     default:
       if (name.length === 1) {
         if (evt.ctrl) {
           const lower = name.toLowerCase()
           const code = lower.charCodeAt(0)
           if (code >= 0x61 && code <= 0x7a) return String.fromCharCode(code - 0x60)
+          const c0 = CTRL_PUNCT_C0[name]
+          if (c0 != null) return c0
+          // Unknown ctrl chord: dropping beats typing a stray literal.
+          return null
         }
         return name
       }
