@@ -39,10 +39,10 @@ import { t } from "../../i18n"
 import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
-import type { CursorPos, TaskPty, TerminalRow } from "./pty"
 import { type PtyRegistry, getDefaultPtyRegistry } from "./registry"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "./terminal-render"
+import { useTerminalPty } from "./use-terminal-pty"
 import { computeViewport, viewportCursor } from "./viewport"
 
 /* --------------------------------------------------------------------- */
@@ -101,147 +101,34 @@ export function Terminal(props: TerminalProps): JSXElement {
   const [focusedLocal, setFocusedLocal] = createSignal(false)
   const focused = () => props.focused?.() ?? focusedLocal()
 
-  // The current PTY — null when no task is active.
-  const [pty, setPty] = createSignal<TaskPty | null>(null)
-
-  // Surfaced when `registry.acquire()` throws. Without this, the effect's exception bubbles out of the
-  // Solid scheduler and the pane renders blank with no hint as to why.
-  const [acquireError, setAcquireError] = createSignal<string | null>(null)
-
-  // Latest structured snapshot from the PTY: one style-run list per row,
-  // already opentui-ready. The Bun backend builds these straight from
-  // xterm's cells; there is no ANSI string to re-parse (KOB-224).
-  const [snapshot, setSnapshot] = createSignal<readonly TerminalRow[]>([])
-
-  // Latest cursor position from the PTY (null when backend can't report).
-  const [cursor, setCursor] = createSignal<CursorPos | null>(null)
-
-  // Dead-shell flag (revival checklist #5): flips when the PTY reports
-  // exit for any reason — its own end, a write failure, or an external
-  // kill. The last snapshot stays visible (frozen output has value);
-  // the banner + F5 reset are the recovery path.
-  const [exited, setExited] = createSignal(false)
-
   // Scroll offset: 0 = follow bottom; positive = N lines back into history.
   const [scrollOffset, setScrollOffset] = createSignal(0)
+
+  // Shared by the ctrl+pgup/pgdn chords and the mouse wheel. Contract:
+  // positive `lines` moves toward newer output (offset shrinks back to
+  // follow-bottom), negative moves up into history — tests assert this.
+  const scrollBy = (lines: number): void => {
+    setScrollOffset((cur) => Math.max(0, cur - lines))
+  }
+  /** Wheel rows per tick — matches common terminal emulator defaults. */
+  const WHEEL_SCROLL_LINES = 3
 
   const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const [bodyRows, setBodyRows] = createSignal(4)
   const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
-  const bodyGeometryReady = createMemo(() => bodyGeometry() !== null)
-  /* --------- pty lifecycle ---------- */
 
-  createEffect(
-    on([props.cwd, props.taskId, bodyGeometryReady], ([cwd, taskId, geometryReady]) => {
-      if (!cwd || !taskId || !geometryReady) {
-        setPty(null)
-        setSnapshot([])
-        setCursor(null)
-        setAcquireError(null)
-        return
-      }
-      const geometry = bodyGeometry()
-      if (!geometry) return
-      const reg = registry()
-      let handle: TaskPty
-      try {
-        handle = reg.acquire(taskId, cwd, { ...geometry, command: props.command })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        setAcquireError(message)
-        setPty(null)
-        setSnapshot([])
-        setCursor(null)
-        return
-      }
-      setAcquireError(null)
-      setPty(handle)
-      // Reset scroll on task switch — every task gets its own viewport.
-      setScrollOffset(0)
-    }),
-  )
+  /* --------- pty lifecycle (see use-terminal-pty.ts) ---------- */
 
-  // Subscribe to whichever PTY is currently active. Own effect (keyed on
-  // `pty()`) instead of inline with acquire so it reattaches whenever the
-  // active PTY changes for any reason — task switch, reset, or recovery
-  // after an external kill (wiring `onData` only in the acquire effect
-  // left a `reset()`'s fresh PTY without a listener: input echoed to the
-  // shell but never reached the snapshot signal).
-  createEffect(() => {
-    const handle = pty()
-    const killed = handle ? handle.killed : false
-    setExited(killed)
-    if (!handle) return
-    if (killed) {
-      // Already dead by the time we mounted (e.g. re-selecting a
-      // backgrounded ephemeral editor tab whose process quit while
-      // unfocused) — fire onExit now, there's no live handle to attach
-      // a listener to.
-      props.onExit?.()
-      return
-    }
-    const unsubscribeExit = handle.onExit(() => {
-      setExited(true)
-      props.onExit?.()
-    })
-    onCleanup(() => unsubscribeExit())
-    const unsubscribe = handle.onData((snap, c) => {
-      setSnapshot(snap)
-      setCursor(c)
-    })
-    // Prime the renderer with whatever the backend has cached so a
-    // freshly-mounted (or freshly-reset) pane doesn't blink empty
-    // for one tick.
-    try {
-      const initial = handle.capture()
-      if (initial.length > 0) setSnapshot(initial)
-      setCursor(handle.captureCursor())
-    } catch {
-      /* capture can fail on a freshly-spawned shell; ignore */
-    }
-    onCleanup(() => {
-      unsubscribe()
-    })
+  const { pty, snapshot, cursor, exited, acquireError, forceReacquire } = useTerminalPty({
+    cwd: props.cwd,
+    taskId: props.taskId,
+    command: () => props.command,
+    resetToken: props.resetToken,
+    onExit: () => props.onExit?.(),
+    registry,
+    bodyGeometry,
+    onFreshPty: () => setScrollOffset(0),
   })
-
-  // Final teardown: drop the registry reference. Don't kill the PTY —
-  // the orchestrator owns kill via release().
-  onCleanup(() => {
-    setPty(null)
-  })
-
-  // Kill + fresh-acquire under the same `cwd`/`taskId` (shared by the F5
-  // confirm below and the external `resetToken` bump) — reset the render
-  // signals together so a stale snapshot/cursor never survives onto the
-  // new PTY.
-  const forceReacquire = (cwd: string, taskId: string, geometry: { cols: number; rows: number }): void => {
-    try {
-      const fresh = registry().reset(taskId, cwd, { ...geometry, command: props.command })
-      setPty(fresh)
-      setSnapshot([])
-      setCursor(null)
-      setScrollOffset(0)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setAcquireError(message)
-    }
-  }
-
-  // External forced-reacquire (see `resetToken` doc above) — skipped on
-  // the initial mount (`defer: true`) so a fresh Terminal doesn't reset
-  // itself the instant it acquires its first PTY.
-  createEffect(
-    on(
-      () => props.resetToken?.(),
-      () => {
-        const cwd = props.cwd()
-        const taskId = props.taskId()
-        const geometry = bodyGeometry()
-        if (cwd && taskId && geometry) forceReacquire(cwd, taskId, geometry)
-      },
-      { defer: true },
-    ),
-  )
 
   /* --------- bindings ---------- */
 
@@ -284,13 +171,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       if (!handle || handle.killed) return
       handle.paste(text)
     },
-    scroll: (lines) => {
-      setScrollOffset((cur) => Math.max(0, cur - lines))
-      // (negative `lines` moves up = increases the offset toward
-      // history, but we accept positive integers in `scroll(n)`'s
-      // contract being "lines forward, i.e. toward newer output";
-      // tests assert this convention.)
-    },
+    scroll: scrollBy,
     reset: requestReset,
   })
 
@@ -349,6 +230,23 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Reactive terminal dims — when the host window resizes, this changes
   // and re-fires effects that read the body's live `width/height`.
   const dims = useTerminalDimensions()
+
+  // Copy-on-select (tmux convention): the snapshot <text> is `selectable`,
+  // opentui's renderer drives the mouse-drag selection itself, and
+  // `finishSelection` emits "selection" with isDragging=false — at that
+  // moment the selected text goes to the system clipboard via OSC52.
+  // The event is renderer-global; with several panes mounted (splits)
+  // every listener sees the same selection and copies the same string,
+  // so no per-pane gating is needed.
+  const onSelectionEvent = (sel: { isDragging: boolean; getSelectedText(): string }): void => {
+    if (sel.isDragging) return
+    const text = sel.getSelectedText()
+    if (text.length > 0) renderer.copyToClipboardOSC52(text)
+  }
+  renderer.on("selection", onSelectionEvent)
+  onCleanup(() => {
+    renderer.off("selection", onSelectionEvent)
+  })
 
   // Layout-tick — bumped by the body box's real `onSizeChange` (fires once
   // Yoga computes a new size) so effects reading non-reactive geometry
@@ -431,6 +329,15 @@ export function Terminal(props: TerminalProps): JSXElement {
       overflow="hidden"
       backgroundColor={theme.background}
       onMouseUp={() => setFocusedLocal(true)}
+      onMouseScroll={(evt) => {
+        // Wheel = local scrollback, same channel as ctrl+pgup/pgdn (the
+        // scrollback view is a kobe-rendered widget, not shell input).
+        const scroll = (evt as { scroll?: { direction: string; delta: number } }).scroll
+        if (!scroll) return
+        const step = Math.max(1, scroll.delta || 1) * WHEEL_SCROLL_LINES
+        if (scroll.direction === "up") scrollBy(-step)
+        else if (scroll.direction === "down") scrollBy(step)
+      }}
     >
       {/* Scroll affordance — only rendered when the user has scrolled
           back into history. Replaces what used to be a permanent
@@ -489,6 +396,7 @@ export function Terminal(props: TerminalProps): JSXElement {
           <text
             fg={theme.text}
             wrapMode="none"
+            selectable={true}
             ref={(r: TextRenderable) => {
               setSnapshotTextRef(r)
             }}
