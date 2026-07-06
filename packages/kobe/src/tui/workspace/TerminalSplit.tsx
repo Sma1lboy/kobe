@@ -147,12 +147,18 @@ export function TerminalSplit(props: {
 
   const leafFocused = (id: string) => props.focused() && state().activeLeafId === id
 
-  const renderLeaf = (leaf: SplitLeaf<LeafCommand>): JSXElement => (
+  /* Dividers, not frames (owner feedback 2026-07-06): a node draws ONLY
+   * the single edge it shares with its previous sibling (`left` in a row,
+   * `top` in a column) — tmux's separator-line look, zero padding, no
+   * outer wrapping. The divider a focused LEAF owns lights up in the
+   * focus accent (the first leaf owns none; its cursor is the signal). */
+
+  const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
     <box
       flexGrow={1}
       flexShrink={1}
       flexBasis={0}
-      border={true}
+      border={divider ? [divider] : false}
       borderColor={leafFocused(leaf.id) ? theme.focusAccent : theme.border}
       onMouseUp={() => update(focusLeaf(state(), leaf.id))}
     >
@@ -167,12 +173,21 @@ export function TerminalSplit(props: {
     </box>
   )
 
-  const renderNode = (node: SplitNode<LeafCommand>): JSXElement =>
+  const renderNode = (node: SplitNode<LeafCommand>, divider?: "left" | "top"): JSXElement =>
     node.kind === "leaf" ? (
-      renderLeaf(node)
+      renderLeaf(node, divider)
     ) : (
-      <box flexDirection={node.orientation} flexGrow={1} flexShrink={1} flexBasis={0}>
-        <For each={node.children}>{(child) => renderNode(child)}</For>
+      <box
+        flexDirection={node.orientation}
+        flexGrow={1}
+        flexShrink={1}
+        flexBasis={0}
+        border={divider ? [divider] : false}
+        borderColor={theme.border}
+      >
+        <For each={node.children}>
+          {(child, i) => renderNode(child, i() > 0 ? (node.orientation === "row" ? "left" : "top") : undefined)}
+        </For>
       </box>
     )
 
