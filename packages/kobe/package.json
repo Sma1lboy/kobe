@@ -26,6 +26,7 @@
   "scripts": {
     "dev": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:mock": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/tui/mock/host.tsx",
+    "dev:mock-react": "env KOBE_DEV=1 bun ./src/tui-react/mock/host.tsx",
     "dev:sandbox": "bun run scripts/dev-sandbox.ts run",
     "dev:sandbox:reset": "bun run scripts/dev-sandbox.ts reset",
     "dev:version": "bash ../../scripts/dev-version.sh",
@@ -54,10 +55,12 @@
     "@ai-sdk/provider-utils": "^5",
     "@ansi-tools/parser": "^1.0.15",
     "@opentui/core": "0.4.3",
+    "@opentui/react": "0.4.3",
     "@opentui/solid": "0.4.3",
     "@xterm/headless": "^6.0.0",
     "ai": "^7",
     "node-pty": "^1.1.0",
+    "react": "^19.2.0",
     "solid-js": "1.9.13",
     "ws": "^8.18.0"
   },
