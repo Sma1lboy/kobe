@@ -18,7 +18,7 @@ interface TabBase {
   readonly id: string
   /** User title; null = untitled (view shows the numbered default). */
   readonly title: string | null
-  /** 1-based creation ordinal — drives the "Terminal {n}" default. */
+  /** 1-based creation ordinal — drives the "Tab {n}" default title. */
   readonly ordinal: number
   /**
    * Auto-derived title (the tab's own engine session's first prompt — the
