@@ -94,11 +94,12 @@ export class RemoteOrchestrator {
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
   private readonly setKeybindingsRevSig: (next: number | null) => void
-  // Framework-free twins of the two signals above (issue #15 G3) — React
-  // hosts need stores because solid-js reactivity is inert outside
+  // Framework-free twins of Solid signals (issue #15 G3) — React hosts
+  // need stores because solid-js reactivity is inert outside
   // reactive-solid runtimes. Setters dual-write; single writer, no drift.
   private readonly uiPrefsStoreInner = createExternalStore<UiPrefsPayload | null>(null)
   private readonly keybindingsRevStoreInner = createExternalStore<number | null>(null)
+  private readonly transcriptActivityStoreInner = createExternalStore<TranscriptActivityMap | null>(null)
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -143,7 +144,10 @@ export class RemoteOrchestrator {
     this.worktreeChangesAcc = worktreeChanges
     this.setWorktreeChangesSig = (next) => setWorktreeChanges(() => next)
     this.transcriptActivityAcc = transcriptActivity
-    this.setTranscriptActivitySig = (next) => setTranscriptActivity(() => next)
+    this.setTranscriptActivitySig = (next) => {
+      setTranscriptActivity(() => next)
+      this.transcriptActivityStoreInner.set(next)
+    }
     this.uiPrefsAcc = uiPrefs
     this.setUiPrefsSig = (next) => {
       setUiPrefs(() => next)
@@ -359,6 +363,11 @@ export class RemoteOrchestrator {
    */
   transcriptActivitySignal(): Accessor<TranscriptActivityMap | null> {
     return this.transcriptActivityAcc
+  }
+
+  /** Framework-free twin of {@link transcriptActivitySignal} — see uiPrefsStore. */
+  transcriptActivityStore(): ExternalStore<TranscriptActivityMap | null> {
+    return this.transcriptActivityStoreInner
   }
 
   /**

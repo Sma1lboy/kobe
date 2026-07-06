@@ -442,11 +442,15 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // `--preview <rel>` → full-width syntax-highlighted file/diff view
     // (opentui `<diff>` / `<code>`). Otherwise the FileTree browser.
     if (flags.preview) {
-      const { startOpsPreview } = await import("../tui/ops/host.tsx")
+      const { startOpsPreview } =
+        process.env.KOBE_REACT === "1"
+          ? await import("../tui-react/ops/preview.tsx")
+          : await import("../tui/ops/preview.tsx")
       await startOpsPreview({ worktree: flags.worktree, relPath: flags.preview })
       return true
     }
-    const { startOpsHost } = await import("../tui/ops/host.tsx")
+    const { startOpsHost } =
+      process.env.KOBE_REACT === "1" ? await import("../tui-react/ops/host.tsx") : await import("../tui/ops/host.tsx")
     await startOpsHost({
       taskId: flags.taskId ?? "",
       worktree: flags.worktree,

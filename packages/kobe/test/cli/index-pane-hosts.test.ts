@@ -46,10 +46,8 @@ vi.mock("../../src/tui/help/host.tsx", () => ({ startHelpHost: spies.startHelpHo
 vi.mock("../../src/tui/new-task/host.tsx", () => ({ startNewTaskHost: spies.startNewTaskHost }))
 vi.mock("../../src/tui/update/host.tsx", () => ({ startUpdateHost: spies.startUpdateHost }))
 vi.mock("../../src/tui/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
-vi.mock("../../src/tui/ops/host.tsx", () => ({
-  startOpsHost: spies.startOpsHost,
-  startOpsPreview: spies.startOpsPreview,
-}))
+vi.mock("../../src/tui/ops/host.tsx", () => ({ startOpsHost: spies.startOpsHost }))
+vi.mock("../../src/tui/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
 
 let originalArgv: string[]
 let exitSpy: ReturnType<typeof vi.fn>
