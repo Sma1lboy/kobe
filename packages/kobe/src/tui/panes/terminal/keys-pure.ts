@@ -105,6 +105,15 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   // reserving it the pane forwarder sent `\x11` (XON) to claude and the
   // global jump never fired (KOB-208 interactive mode).
   "ctrl+q",
+  // Terminal tab chords (workspace chattab, issue #16) — the strip must
+  // win these against the engine CLI, same interception the tmux root
+  // key-table performed. ctrl+w costs shells their delete-word and F2 is
+  // rebindable per docs/KEYBINDINGS.md; parity with the tmux chattab wins.
+  "ctrl+t",
+  "ctrl+w",
+  "ctrl+]",
+  "ctrl+[",
+  "f2",
   // Help / palette / settings.
   "f1",
   "ctrl+p",

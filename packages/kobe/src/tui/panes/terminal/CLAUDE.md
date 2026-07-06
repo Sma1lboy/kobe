@@ -1,7 +1,8 @@
-# `panes/terminal/` — mixed: live tmux stack + DORMANT embedded-terminal pane
+# `panes/terminal/` — mixed: live tmux stack + LIVE embedded-terminal pane
 
 This directory holds two unrelated things. Read this before assuming anything
-here ships (or doesn't).
+here ships. (Historical note: the embedded pane was dormant until the
+terminal-in-the-middle pivot, issue #16, revived it — 2026-07-06.)
 
 ## Two stacks, one folder
 
@@ -12,27 +13,21 @@ These are imported all over the codebase (`cli/commands-tui.ts`, `tui/lib/task-e
 `tmux/*`, `settings/host.tsx`, …) and drive the default product path — the tmux
 handover. Nothing below applies to them.
 
-**DORMANT — the embedded-terminal pane (this doc's subject):**
+**LIVE — the embedded-terminal pane (this doc's subject), since issue #16:**
 `Terminal.tsx`, `pty.ts`, `pty-pipe.ts`, `pty-types.ts`, `pty-mock.ts`, `registry.ts`,
 `keys.ts`, `keys-pure.ts`, `xterm-chunks.ts`, `sgr.ts`, `sgr-to-text-chunk.ts`,
 `terminal-render.ts` (~1820 lines).
 
-## Status of the dormant cluster
+## Status
 
-**Dormant. Not wired into v1. Zero importers outside this directory — intentional.**
-It was revived from git history as an in-process embedded shell pane (Conductor's
-bottom-right terminal). It is kept in-tree on purpose but nothing renders it: the
-native workspace host (`tui/workspace/host.tsx`) deliberately omits it and says so
-in its header comment.
-
-## Why it was parked
-
-The `@xterm/headless`-backed pane's rendering bled outside its box — the snapshot
-`<text>` painted past the pane's bounds instead of clipping to it. `Terminal.tsx`'s
-own comments record how brittle the geometry is: cursor position is computed from
-`body.screenY + cursor.y` and depends on a single flat multi-line `<text>` (one
-`<text>` per row shifted `screenY` and parked the cursor a row off). That coupling
-is what needs to be made robust before it can ship.
+**Live — the terminal-in-the-middle center column (issue #16).** The KOBE_TUI
+workspace host mounts it through `tui/workspace/TerminalTabs.tsx` (the PTY-world
+chattab: ctrl+t/ctrl+w/F2/ctrl+]/[ on registry keys `${taskId}::${tabId}`),
+running the task's real interactive engine CLI via `interactiveEngineCommand`.
+Bleed is contained by opentui 0.4 `overflow="hidden"` + viewport slicing
+(`viewport.ts`); the snapshot StyledText is assigned through the renderable's
+`content` setter (the solid binding's content prop stringifies at runtime);
+a dead shell surfaces via the backends' `onExit` + the pane's exit banner.
 
 ## What it is (by responsibility cluster)
 
@@ -50,7 +45,7 @@ is what needs to be made robust before it can ship.
   `terminal-render.ts`): turn xterm cells / SGR runs into opentui `StyledText`
   chunks, overlay the cursor cell, and detect the "shell missing" error state.
 
-## Revival checklist
+## Revival checklist (ALL DONE — issue #16, PRs #249/#250 + terminal tabs)
 
 1. **Fix the rendering bleed** — clip the body `<text>` to the pane box; re-verify
    the `screenY + cursor.y` math survives resize and the single-`<text>` constraint.
