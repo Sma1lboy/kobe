@@ -74,4 +74,11 @@ describe("terminal tabs state", () => {
     expect(tabPtyKey("task-a", "tab-1")).not.toBe(tabPtyKey("task-b", "tab-1"))
     expect(tabPtyKey("task-a", "tab-1")).toBe("task-a::tab-1")
   })
+
+  it("addTab carries an optional per-tab vendor override; plain new tabs have none", () => {
+    const plain = addTab(initialTabs())
+    expect(plain.tabs[1].vendor).toBeUndefined()
+    const withEngine = addTab(initialTabs(), "codex")
+    expect(withEngine.tabs[1].vendor).toBe("codex")
+  })
 })

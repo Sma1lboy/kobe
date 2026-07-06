@@ -1,22 +1,29 @@
 /**
  * Workspace terminal tabs (issue #16) — the PTY-world chattab. A strip of
  * engine-terminal tabs above the embedded Terminal pane; every tab runs
- * the task's SAME interactive engine command in its own PTY (registry key
+ * an interactive engine command in its own PTY (registry key
  * `${taskId}::${tabId}`), so ctrl+t gives a parallel session in the same
- * worktree exactly like the tmux chattab did with windows.
+ * worktree exactly like the tmux chattab did with windows. Plain ctrl+t
+ * inherits the task's current engine; ctrl+e prompts for one instead
+ * (`chat.tab.chooseEngine`, tmux's `ctrl+shift+t` equivalent) and pins it
+ * to just that tab via `TerminalTab.vendor`.
  *
  * Chords reuse the canonical chattab binding ids (keybindings-chat.ts):
- * ctrl+t new · ctrl+w close (last tab refuses) · F2 rename · ctrl+]/[
- * cycle. They are reserved from PTY passthrough in keys-pure.ts — same
- * interception the tmux root key-table performed.
+ * ctrl+t new · ctrl+e new-with-engine · ctrl+w close (last tab refuses) ·
+ * F2 rename · ctrl+]/[ cycle. They are reserved from PTY passthrough in
+ * keys-pure.ts — same interception the tmux root key-table performed.
  *
  * Per-task tab state lives in a module-level map so switching tasks and
  * back preserves each task's tabs (their PTYs already survive via the
  * registry's acquire-reuse).
  */
 
+import { availableEngineIds } from "@/engine/account-detect"
+import { interactiveEngineCommand } from "@/engine/interactive-command"
+import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createSignal } from "solid-js"
+import { EnginePickerDialog } from "../component/engine-picker-dialog/index"
 import { RenameTaskDialog } from "../component/rename-task-dialog/index"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
@@ -46,6 +53,13 @@ export function TerminalTabs(props: {
   taskId: string
   worktree: string
   command: readonly string[]
+  /** Task's current engine + effort — used to build a per-tab command when
+   *  a tab pins its own vendor via `chooseEngine`. */
+  vendor: VendorId
+  modelEffort?: string
+  /** Best-effort: persist the picked vendor as the task's new default
+   *  (mirrors tmux chattab's `rememberSessionVendor`). Omit to skip. */
+  onChooseEngine?: (vendor: VendorId) => void
   focused: () => boolean
 }): ReturnType<typeof Terminal> {
   const { theme } = useTheme()
@@ -72,10 +86,21 @@ export function TerminalTabs(props: {
     })
   }
 
+  const requestChooseEngine = (): void => {
+    void (async () => {
+      const available = await availableEngineIds()
+      const picked = await EnginePickerDialog.show(dialog, available, props.vendor)
+      if (picked === undefined) return
+      update(addTab(state(), picked))
+      props.onChooseEngine?.(picked)
+    })()
+  }
+
   useBindings(() => ({
     enabled: props.focused(),
     bindings: bindByIds({
       "chat.tab.new": () => update(addTab(state())),
+      "chat.tab.chooseEngine": requestChooseEngine,
       "chat.tab.close": () => {
         const { state: next } = closeActiveTab(state())
         update(next)
@@ -111,7 +136,7 @@ export function TerminalTabs(props: {
           <Terminal
             cwd={() => props.worktree}
             taskId={() => tabPtyKey(props.taskId, tab.id)}
-            command={props.command}
+            command={tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command}
             focused={props.focused}
           />
         )}

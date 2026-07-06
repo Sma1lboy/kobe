@@ -149,6 +149,20 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+t", label: "new tab" },
   },
   {
+    // tmux's chattab has a "prompt for engine, then open a tab" chord on
+    // `ctrl+shift+t`. Can't reuse that chord here: same KOB-74 collision
+    // (the keymap layer drops shift+ on letter keys, so ctrl+shift+t and
+    // ctrl+t are indistinguishable) — see docs/KEYBINDINGS.md decision log.
+    // `ctrl+e` mirrors the "engine" mnemonic the new-task dialog already
+    // uses for its own vendor cycle chord.
+    id: "chat.tab.chooseEngine",
+    scope: "workspace",
+    keys: ["ctrl+e"],
+    category: "Workspace",
+    description: "New chat tab with a chosen engine",
+    hint: { keys: "ctrl+e", label: "choose engine", status: false },
+  },
+  {
     // KOB-74. Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires
