@@ -30,11 +30,11 @@
     "@tanstack/react-router": "latest",
     "@tanstack/react-router-devtools": "latest",
     "@tanstack/router-plugin": "^1.132.0",
-    "@tiptap/extension-image": "^3.26.1",
-    "@tiptap/extensions": "^3.26.1",
-    "@tiptap/pm": "^3.26.1",
-    "@tiptap/react": "^3.26.1",
-    "@tiptap/starter-kit": "^3.26.1",
+    "@tiptap/extension-image": "^3.27.2",
+    "@tiptap/extensions": "^3.27.2",
+    "@tiptap/pm": "^3.27.2",
+    "@tiptap/react": "^3.27.2",
+    "@tiptap/starter-kit": "^3.27.2",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^0.545.0",
@@ -61,7 +61,7 @@
     "jsdom": "^28.1.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "lightningcss"]
