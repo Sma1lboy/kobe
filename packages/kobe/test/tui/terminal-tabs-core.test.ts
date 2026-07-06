@@ -12,8 +12,11 @@ import {
   closeActiveTab,
   cycleTab,
   initialTabs,
+  markTabSpawned,
   openEditorTab,
+  rehydrateTabs,
   renameActiveTab,
+  selectTab,
   setTabAutoTitle,
   setTabSessionId,
   tabPtyKey,
@@ -67,6 +70,12 @@ describe("terminal tabs state", () => {
     expect(cycleTab(initialTabs(), 1).activeId).toBe("tab-1")
   })
 
+  it("selectTab jumps straight to a clicked tab and ignores an unknown id", () => {
+    const s = addTab(addTab(initialTabs())) // [1, 2, 3*]
+    expect(selectTab(s, "tab-1").activeId).toBe("tab-1")
+    expect(selectTab(s, "tab-99")).toBe(s)
+  })
+
   it("rename trims; blank clears back to the numbered default", () => {
     let s = renameActiveTab(initialTabs(), "  build watch  ")
     expect(s.tabs[0].title).toBe("build watch")
@@ -115,6 +124,30 @@ describe("terminal tabs state", () => {
     s = openEditorTab(s, ["sh", "-c", "nvim x"], "x")
     const after = setTabSessionId(s, "tab-2", "uuid-2")
     expect(after.tabs[1]).not.toHaveProperty("sessionId", "uuid-2")
+  })
+
+  // Why: rehydrateTabs is the restart contract (issue #22) — engine tabs
+  // come back resumable, transient command tabs (dead editors, degraded
+  // shells) must NOT respawn, and a stale activeId can't strand the UI.
+  it("rehydrateTabs keeps engine tabs, drops command tabs, re-anchors activeId", () => {
+    let s = addTab(initialTabs(), "codex") // [1, 2*(codex)]
+    s = setTabSessionId(s, "tab-1", "uuid-1")
+    s = openEditorTab(s, ["sh", "-c", "nvim x"], "x") // [1, 2, 3*(editor)]
+    const back = rehydrateTabs(s) // active was the editor tab → dropped
+    expect(back.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-2"])
+    expect(back.activeId).toBe("tab-1")
+    expect(back.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
+    expect(back.nextOrdinal).toBe(s.nextOrdinal)
+    // All-command snapshot (everything degraded) → fresh initial state.
+    const allCommand = rehydrateTabs(tabToShell(initialTabs(), "tab-1", ["/bin/zsh"]))
+    expect(allCommand).toEqual(initialTabs())
+  })
+
+  it("markTabSpawned flips once on engine tabs and is identity-stable after", () => {
+    const s = markTabSpawned(initialTabs(), "tab-1")
+    expect(s.tabs[0]).toMatchObject({ kind: "engine", spawned: true })
+    const again = markTabSpawned(s, "tab-1")
+    expect(again.tabs[0]).toBe(s.tabs[0])
   })
 
   it("autoTitle fills the display gap under a manual title and survives degradation", () => {
