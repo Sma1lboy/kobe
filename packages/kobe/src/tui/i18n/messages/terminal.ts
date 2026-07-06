@@ -9,7 +9,7 @@ export const en = {
   exited: "process exited — F5 restarts it",
   restoring: "restoring session…",
   tab: {
-    // Content-neutral on purpose (owner, 2026-07-06): tabs will host
+    // Content-neutral on purpose: tabs will host
     // more than terminals, so the numbered fallback must not say
     // "Terminal".
     defaultTitle: "Tab {n}",

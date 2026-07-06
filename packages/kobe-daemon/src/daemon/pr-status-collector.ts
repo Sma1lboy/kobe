@@ -1,5 +1,5 @@
 /**
- * Daemon-side PR-status poller (KOB-10).
+ * Daemon-side PR-status poller.
  *
  * For every non-archived task with a real branch + local worktree, shell
  * `gh pr view <branch> --json …` on an interval, map the result to a neutral
@@ -11,7 +11,7 @@
  * — mirroring `useCompletionNotifications` — fires a toast/bell when a task's
  * checks resolve (pending → passing/failing); the poller itself only persists.
  *
- * GitHub only (KOB-10): the runner is `gh`, so remote (`ssh://`) projects and
+ * GitHub only: the runner is `gh`, so remote (`ssh://`) projects and
  * non-GitHub remotes simply yield no PR and are cheap no-ops.
  *
  * Cost control — a per-task schedule keyed off the outcome:

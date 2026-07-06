@@ -75,9 +75,9 @@ export const TMUX_PREFIX_BINDING_DEFAULTS = {
 } as const
 
 /**
- * 0.7.30 briefly shipped layout controls as no-prefix F6-F11 root bindings.
- * Always unbind these during session setup so a long-lived tmux server does not
- * keep stale root keys after the defaults move to prefix-table bindings.
+ * Unbind the legacy no-prefix F6-F11 root bindings during session setup so a
+ * long-lived tmux server never keeps stale root keys after the defaults moved
+ * to prefix-table bindings.
  */
 export const TMUX_LEGACY_LAYOUT_ROOT_KEYS = ["F6", "F7", "F8", "F9", "F10", "F11"] as const
 

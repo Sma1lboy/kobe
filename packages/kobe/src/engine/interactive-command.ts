@@ -1,5 +1,5 @@
 /**
- * Which interactive engine CLI to launch in a task's tmux pane (KOB-233).
+ * Which interactive engine CLI to launch in a task's tmux pane.
  *
  * The "middle" pane of a task session runs a vendor's *interactive* CLI
  * (the same binary a human would run in a terminal) — not the headless
@@ -13,7 +13,7 @@
  * same way bare `claude` does — `codex exec` is the headless path we
  * deliberately don't use here.
  *
- * Per-vendor OVERRIDE (KOB-244): the launch command is configurable in
+ * Per-vendor OVERRIDE: the launch command is configurable in
  * Settings → Engines, so a user whose binary isn't on PATH as `claude`
  * (e.g. it's `cl`) or who wants default flags (`claude --model …`) can
  * set their own. The override is a shell-ish command STRING persisted in
@@ -49,7 +49,7 @@ export function engineCommandKey(vendor: VendorId): string {
 }
 
 /**
- * state.json key holding a vendor's custom DISPLAY-NAME override (KOB-244).
+ * state.json key holding a vendor's custom DISPLAY-NAME override.
  * Parallel to {@link engineCommandKey}; an empty/unset value means "use the
  * built-in {@link VENDOR_LABEL}", so resetting an engine to default is just
  * clearing both keys — no sentinel value.

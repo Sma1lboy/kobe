@@ -185,7 +185,7 @@ export class RemoteOrchestrator {
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
     // Socket drop flips us to `disconnected`. What happens next depends on
     // the role:
-    //   - gui:  STOP here (KOB-38). The host TUI watches this signal, shows
+    //   - gui:  STOP here. The host TUI watches this signal, shows
     //     a "Restart daemon or Quit?" modal, and the user decides — a gui
     //     losing its daemon is rare and never transient, so a human prompt
     //     beats a backoff loop.
@@ -276,7 +276,7 @@ export class RemoteOrchestrator {
   }
 
   /** Shared active task id (session last switched/entered), pushed live on
-   *  `active-task` — every surface highlights the SAME focus (KOB-247). */
+   *  `active-task` — every surface highlights the SAME focus. */
   activeTaskSignal(): Accessor<string | null> {
     return this.activeTaskAcc
   }
@@ -518,7 +518,7 @@ export class RemoteOrchestrator {
   /**
    * Mark a task as the active focus (the session just switched/entered).
    * The daemon publishes it on the `active-task` channel so every Tasks
-   * pane + the outer monitor highlight the same task (KOB-247).
+   * pane + the outer monitor highlight the same task.
    */
   setActiveTask(id: TaskId | string | null): Promise<void> {
     return setActiveTaskOp(this.client, id)

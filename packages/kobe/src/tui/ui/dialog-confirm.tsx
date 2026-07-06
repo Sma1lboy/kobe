@@ -68,10 +68,9 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
 
-  // Tight vertical layout — confirms used to have a paragraph-of-air
-  // around the title/message/buttons (gap=1 + bottom paddings), which
-  // made a six-word prompt take 7 vertical lines. Now: title row,
-  // message right under it, buttons row right under that. The dialog
+  // Tight vertical layout: title row, message right under it, buttons
+  // row right under that — no gaps or bottom paddings, so a six-word
+  // prompt stays compact. The dialog
   // wrapper still adds a 1-row paddingTop above the card body.
   return (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={0}>

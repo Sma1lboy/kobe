@@ -310,7 +310,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   /* --------- zen mode (issue #18, pure-tui shape) -----------------------
-   * Matches the tmux zen contract (owner 2026-07-06): hide the FILES
+   * Matches the tmux zen contract: hide the FILES
    * column, keep the Tasks sidebar visible (tmux keeps it per the
    * zenKeepTasks setting — hardcoded keep here for now), terminal takes
    * the freed width. Entering pulls focus to the terminal; the way out is
@@ -339,8 +339,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
    * `kobe ops --preview` full CLI subcommand is out of scope for this pass).
    *
    * Focus: opening an INTERACTIVE editor tab pulls focus to the workspace
-   * (owner ask 2026-07-06 — an editor you can't type into is broken), in
-   * deliberate contrast to KOB-25's no-focus-pull rule, which applies to
+   * (an editor you can't type into is broken), in
+   * deliberate contrast to the no-focus-pull rule, which applies to
    * read-only content swaps (previews), not to spawned editors.
    */
   async function openFileInEditor(relPath: string): Promise<void> {
@@ -414,7 +414,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // d/a/r/pin/move fire from the Sidebar's OWN keys via the Request props
   // below; these three are host-scoped in both hosts. Gated on sidebar
   // focus + no dialog + search inactive (typing `n` into the search box
-  // must not open the new-task dialog — same leak class as KOB-244).
+  // must not open the new-task dialog — same chord-leak class).
   useBindings(() => ({
     enabled:
       dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && focus.is("sidebar")() && !searchActive(),
@@ -462,8 +462,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         }
       >
         <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
-          {/* Tasks sidebar stays visible in zen (tmux-parity, owner
-              2026-07-06) — its ☯ ZEN chip is also the exit affordance. */}
+          {/* Tasks sidebar stays visible in zen (tmux parity) — its
+              ☯ ZEN chip is also the exit affordance. */}
           <box
             width={SIDEBAR_WIDTH}
             flexShrink={0}
@@ -545,7 +545,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
                 // + its refresh-as-ack, same contract as ops/host.tsx.
                 cornerBadge={filesCornerBadge}
                 onRefresh={() => setBadgeBaseline(badgeLatest())}
-                // Ops-pane corner actions (owner ask 2026-07-06): zen + PR.
+                // Ops-pane corner actions: zen + PR.
                 onZenToggle={toggleZen}
                 onCreatePR={() => void createPR()}
               />

@@ -116,7 +116,7 @@ export type FileTreeProps = {
    */
   focused?: Accessor<boolean>
   /**
-   * Optional right-aligned badge in the header (KOB-254). The Ops host
+   * Optional right-aligned badge in the header. The Ops host
    * uses it to surface "new engine activity since you last looked" —
    * `active: true` paints it in the accent colour. Omit (or return
    * `null`) to hide it.
@@ -125,7 +125,7 @@ export type FileTreeProps = {
   /**
    * Fires when the user explicitly refreshes the pane (`r`). The Ops
    * host treats a refresh as "I've looked" and clears the activity
-   * badge (KOB-254).
+   * badge.
    */
   onRefresh?: () => void
 }

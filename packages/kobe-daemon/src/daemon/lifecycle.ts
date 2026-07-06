@@ -1,5 +1,5 @@
 /**
- * Shared daemon-stop primitive (KOB-258).
+ * Shared daemon-stop primitive.
  *
  * `kobe daemon restart` and `kobe reset` both need to make a daemon
  * actually GO AWAY — not just ask it to — before they continue (restart

@@ -85,7 +85,7 @@ export interface HostScreen {
    * Teardown on ACTUAL exit. opentui's `render` resolves at mount, so
    * disposing after `await render(...)` would kill daemon clients / poll
    * timers the moment the pane comes up — `onDestroy` is the only correct
-   * place (the KOB-247 "daemon client disposed" lesson from the Tasks pane).
+   * place (the "daemon client disposed" lesson from the Tasks pane).
    */
   readonly onDestroy?: () => void
 }

@@ -151,7 +151,7 @@ function AccountBlock(props: {
   )
 }
 
-/** Read-only "is this engine installed + logged in" view (KOB-249). */
+/** Read-only "is this engine installed + logged in" view. */
 export function AccountsSettingsSection(props: {
   claudeStatus: EngineAccountStatus<ClaudeAccount> | null
   codexStatus: EngineAccountStatus<CodexAccount> | null

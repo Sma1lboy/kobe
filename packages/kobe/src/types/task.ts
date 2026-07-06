@@ -73,7 +73,7 @@ export type PRLifecycleState = "creating" | "open" | "ready_to_merge" | "merged"
 /**
  * PR status persisted on Task. v0.6 keeps the shape (the monitor can
  * still display it) but the orchestrator no longer drives PR creation
- * itself — KOB-232 will re-introduce the create-PR flow via the Ops
+ * itself — a follow-up will re-introduce the create-PR flow via the Ops
  * pane (`tmux send-keys` into the claude pane).
  */
 export interface TaskPRStatus {

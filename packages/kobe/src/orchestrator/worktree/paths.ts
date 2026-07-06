@@ -3,13 +3,13 @@
  *
  * The worktree root is per-repo and lives in kobe's state dir at
  * `~/.kobe/worktrees/<repo-key>/<slug>/` (or under `$KOBE_HOME_DIR`
- * when overridden). `<slug>` is an animal-name slug (KOB-65) for tasks
+ * when overridden). `<slug>` is an animal-name slug for tasks
  * created after the switch, or the task's ULID for older records whose
  * path is already persisted.
  *
- * Backwards compatibility: kobe briefly used repo-local
- * `<repo>/.kobe/worktrees/<slug>/`, and before multi-engine support it
- * used `<repo>/.claude/worktrees/<slug>/`. Existing tasks in both roots
+ * Backwards compatibility: older checkouts hold worktrees under
+ * repo-local `<repo>/.kobe/worktrees/<slug>/` or
+ * `<repo>/.claude/worktrees/<slug>/`. Existing tasks in both roots
  * remain managed and discoverable, but new kobe-created tasks use the
  * global kobe state dir so no repo-level `.gitignore` entry is needed.
  *
@@ -113,7 +113,7 @@ export function managedWorktreeRootsFor(repo: string): readonly string[] {
  * Absolute path of the worktree directory keyed by `slug` in `repo`.
  *
  * `slug` is the workspace's directory basename — an animal-name slug
- * allocated by {@link SlugAllocator} for tasks created after KOB-65,
+ * allocated by {@link SlugAllocator} for tasks created since the slug scheme landed,
  * or the task's ULID for older tasks whose worktree was created back
  * when "dir name == task id" was the invariant.
  *

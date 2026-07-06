@@ -36,7 +36,7 @@ const CTRL_PUNCT_C0: Record<string, string> = {
  * Where the keystroke arrived as legacy bytes we forward `evt.sequence`
  * verbatim. Kitty CSI-u keystrokes must be re-encoded: the embedded PTY
  * never negotiated kitty, and opentui's parser makes `sequence`
- * unusable for them — measured on the real wire (probe 2026-07-06):
+ * unusable for them — measured on the real wire:
  * ctrl+c ⇒ `{ raw: "\x1b[99;5u", sequence: "c" }` (forwarding sequence
  * types a literal "c"!) while esc ⇒ `{ raw: "\x1b[27u", sequence:
  * "\x1b[27u" }` (forwarding sends garbage). So if EITHER field is
@@ -123,7 +123,7 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
 
 /**
  * Chord strings the terminal pane must NEVER passthrough to the shell.
- * Deliberately MINIMAL (owner decision 2026-07-06): the engine CLI owns
+ * Deliberately MINIMAL: the engine CLI owns
  * its own chords (shift+tab plan-mode, ctrl+r history, ctrl+hjkl, F1…),
  * so kobe keeps only ctrl+q as the escape hatch plus the tab-management
  * and reset chords. Kobe's other global chords stay reachable from every
@@ -136,10 +136,10 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
  *     same bindings array (scrollback) — first-match-wins handles them.
  */
 export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
-  // THE escape hatch out of the terminal (KOB-208): from anywhere inside
+  // THE escape hatch out of the terminal: from anywhere inside
   // the engine CLI, ctrl+q returns to the tasks list. Everything else the
   // engine may want (shift+tab plan-mode, ctrl+hjkl, f1, ctrl+p, ctrl+,)
-  // now PASSES THROUGH — owner decision 2026-07-06: kobe must not eat the
+  // now PASSES THROUGH — kobe must not eat the
   // engine's own chords; kobe-global chords remain available from every
   // other pane.
   "ctrl+q",
@@ -152,7 +152,7 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f2",
   // Engine picker for a new chat tab (tmux's `ctrl+shift+t` equivalent —
   // ctrl+e instead, since the keymap layer can't distinguish shift+letter
-  // from the bare letter; see docs/KEYBINDINGS.md's KOB-74 decision log).
+  // from the bare letter).
   "ctrl+e",
   // Split panes inside the tab (tmux % / "): ctrl+\ splits right (the
   // glyph is a vertical divider), ctrl+= splits down (horizontal strokes),

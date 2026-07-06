@@ -45,7 +45,7 @@ export const DIRTY_WORKTREE_CODE = "DIRTY_WORKTREE"
  * Thrown when deleting a task whose worktree has uncommitted / untracked
  * changes and `force` was not requested. The UI catches it (via
  * {@link DIRTY_WORKTREE_CODE}) and re-prompts for explicit force-delete
- * confirmation rather than silently destroying the work (KOB-244).
+ * confirmation rather than silently destroying the work.
  */
 export class DirtyWorktreeError extends Error {
   constructor(public readonly taskId: string) {
@@ -58,7 +58,7 @@ export class DirtyWorktreeError extends Error {
  * Thrown when `git worktree remove` itself failed (locked, permission,
  * corrupt git-dir). The orchestrator keeps the task index entry in this
  * case so the orphaned worktree stays visible + re-deletable instead of
- * becoming invisible on-disk debris (KOB-244).
+ * becoming invisible on-disk debris.
  */
 export class WorktreeRemoveFailedError extends Error {
   constructor(

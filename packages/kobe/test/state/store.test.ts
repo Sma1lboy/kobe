@@ -85,12 +85,6 @@ describe("loadStateFile", () => {
 })
 
 describe("patchStateFile — the lost-update fix", () => {
-  // Why this matters: THE bug this module exists for. Process A (the TUI's
-  // KVProvider) loads its snapshot at boot; process B (a Tasks pane via
-  // setPersistedString) writes a new key afterwards; process A then
-  // flushes a DIFFERENT dirty key. Under the old whole-snapshot write-back
-  // A's flush rewrote the file from its stale snapshot and B's key
-  // vanished. With read-merge-write, B's key must survive.
   test("interleaved writers do not lose each other's keys", () => {
     writeDisk({ activeTheme: "claude" })
 

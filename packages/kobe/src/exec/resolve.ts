@@ -62,10 +62,7 @@ export function execHostForWorktreePath(worktreePath: string): ExecHost {
 
 // ── Intent-named queries (the remoteness conditionals live HERE, once) ──────
 //
-// Callers around session/spawn code used to derive remoteness themselves
-// (`isRemoteRepoKey(task.repo) ? task.repo : undefined`, `.isRemote ||
-// existsSync(...)`, `.isRemote ? homeDir() : cwd`). These helpers own those
-// derivations so TUI/pane/CLI code asks intent-shaped questions and a third
+// These helpers own the remoteness derivations so TUI/pane/CLI code asks intent-shaped questions and a third
 // adapter only needs changes inside `exec/`.
 
 /**

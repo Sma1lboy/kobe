@@ -12,7 +12,7 @@
  *     broker. No live event stream from inside an engine to surface.
  *   - Orchestrator-owned ChatTab CRUD. ChatTabs are tmux windows inside a
  *     task's tmux Session now, so tmux owns their lifecycle/persistence.
- *   - Create-PR / merge / refresh-PR-status. KOB-232 will re-introduce
+ *   - Create-PR / merge / refresh-PR-status. A follow-up will re-introduce
  *     create-PR as a `tmux send-keys` injection from the Ops pane.
  *
  * What it gained: `ensureWorktree(id)` — the path task-entry surfaces
@@ -153,7 +153,7 @@ export class Orchestrator {
    * The active-task focus, in-process. Mirrors {@link RemoteOrchestrator}'s
    * daemon-backed `active-task` channel so the `KobeOrchestrator` union has
    * one API; in this local (no-daemon) mode there are no sibling panes to
-   * sync, so it's just an in-process signal (KOB-247).
+   * sync, so it's just an in-process signal.
    */
   activeTaskSignal(): Accessor<string | null> {
     return this.activeTaskAcc
@@ -219,7 +219,7 @@ export class Orchestrator {
     // materialises. We must NOT pre-derive a branch here — at create time
     // there is no task id yet, so every placeholder-titled task would get
     // the SAME name (`kobe/new-task-…`) and the second `git worktree add
-    // -b` would fail on a duplicate branch (KOB-244). Deferring also lets
+    // -b` would fail on a duplicate branch. Deferring also lets
     // the branch follow a rename made before first enter.
     const task = await this.store.create({
       repo: input.repo,
@@ -518,7 +518,7 @@ export class Orchestrator {
    * Permanently remove a task. Refuses to delete `kind: "main"`
    * tasks (the user removes the repo from saved repos instead).
    *
-   * Worktree safety (KOB-244): without `opts.force` a worktree with
+   * Worktree safety: without `opts.force` a worktree with
    * uncommitted / untracked changes is NOT destroyed — we throw
    * {@link DirtyWorktreeError} so the UI can re-prompt for explicit
    * force confirmation. And if `git worktree remove` itself fails
@@ -601,7 +601,7 @@ export class Orchestrator {
 
   /**
    * Discover git worktrees on `repo` that exist on disk but aren't yet
-   * linked to any task — candidates for adoption (KOB-256). Includes
+   * linked to any task — candidates for adoption. Includes
    * worktrees outside the kobe convention root (the user's own
    * `git worktree add`). De-dupes against the task store by canonical
    * path so an already-adopted worktree never reappears.
@@ -619,7 +619,7 @@ export class Orchestrator {
   }
 
   /**
-   * Adopt an existing git worktree as a new task (KOB-256). The worktree
+   * Adopt an existing git worktree as a new task. The worktree
    * already exists on disk, so we record the task with its real path +
    * branch directly — `ensureWorktree` then short-circuits (non-empty
    * `worktreePath`) and never touches the filesystem. Validates the path
@@ -725,7 +725,7 @@ function normalizeMainRepo(repo: string): { repo: string; key: string } {
  * Resolve symlinks so two strings naming the same node compare equal
  * (macOS `/var` → `/private/var`). Falls back to `resolve` when the path
  * doesn't exist. Used to de-dupe discovered worktrees against task paths,
- * which may be stored in different (caller vs git) forms (KOB-256).
+ * which may be stored in different (caller vs git) forms.
  */
 function canonPath(p: string): string {
   try {

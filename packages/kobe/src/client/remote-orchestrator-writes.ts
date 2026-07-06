@@ -123,7 +123,7 @@ export async function removeWorktreeOp(client: KobeDaemonClient, path: string, f
 /**
  * Mark a task as the active focus (the session just switched/entered).
  * The daemon publishes it on the `active-task` channel so every Tasks
- * pane + the outer monitor highlight the same task (KOB-247).
+ * pane + the outer monitor highlight the same task.
  */
 export async function setActiveTaskOp(client: KobeDaemonClient, id: TaskId | string | null): Promise<void> {
   await client.request("task.setActive", { taskId: id === null ? null : String(id) })

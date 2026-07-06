@@ -9,12 +9,6 @@ import {
   setRailStatusFilter,
 } from "../src/lib/rail-state.ts"
 
-// Why this matters: the rail's filter state lives at module level precisely so
-// it SURVIVES the AppShell remount on the first `/` → /task/$taskId navigation
-// (issue #7). These tests lock the store's semantics — especially the
-// rising-edge pref sync, which is what keeps a remount from stomping a local
-// sort toggle the way the old useState + mount-effect did.
-
 beforeEach(() => {
   resetRailState()
 })

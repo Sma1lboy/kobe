@@ -630,7 +630,7 @@ export function EngineSettingsSection(
   )
 }
 
-/** Read-only "is this engine installed + logged in" view (KOB-249). */
+/** Read-only "is this engine installed + logged in" view. */
 export function AccountsSettingsSection(props: {
   claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
   codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>

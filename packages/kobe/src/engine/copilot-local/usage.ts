@@ -1,5 +1,5 @@
 /**
- * Copilot usage-snapshot derivation (KOB-249).
+ * Copilot usage-snapshot derivation.
  *
  * The Copilot CLI's `session.shutdown` event carries a `modelMetrics`
  * map (per-model token tallies) plus a `currentTokens` context figure.

@@ -94,7 +94,7 @@ export interface TaskActionContext {
   readonly switchBeforeKill?: boolean
   /**
    * DIVERGENCE — publish the shared active-task focus after archive/delete
-   * (KOB-247). The Tasks pane sets this; the outer monitor historically
+   *. The Tasks pane sets this; the outer monitor historically
    * didn't and keeps that behavior.
    */
   readonly updateActiveTask?: boolean
@@ -285,7 +285,7 @@ export async function archiveTaskFlow(ctx: TaskActionContext, taskId: string): P
  * selection hook. The first attempt is deliberately non-force: the
  * orchestrator refuses to destroy a worktree with uncommitted/untracked
  * work and throws a DIRTY_WORKTREE error instead, so the user can't lose
- * unsaved work silently (KOB-244). A failed/declined delete leaves
+ * unsaved work silently. A failed/declined delete leaves
  * everything in place — no session kill, no selection move.
  */
 export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
@@ -487,7 +487,7 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   let createdId: string | undefined
   if (result.mode === "adopt") {
     // Adopt: import one or more existing worktrees as tasks, focusing the last
-    // success (KOB-256). Each adopt is independent — collect per-item results
+    // success. Each adopt is independent — collect per-item results
     // so a later failure can't bury the ones that DID persist behind a generic
     // "couldn't create" toast (they'd be silently invisible). Surface a real
     // N/M summary instead.

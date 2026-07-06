@@ -377,7 +377,7 @@ export function TerminalTabs(props: {
     update(next)
   }
 
-  /** Vendor exit is an allowed case (owner decision 2026-07-06): an engine
+  /** Vendor exit is an allowed case: an engine
    *  tab whose CLI exits degrades into a plain shell at the same worktree
    *  instead of freezing behind the dead-shell banner. */
   function degradeToShell(id: string): void {
@@ -441,7 +441,7 @@ export function TerminalTabs(props: {
     })()
   }
 
-  /** What a plain ctrl+t tab should run (owner decision 2026-07-06): the
+  /** What a plain ctrl+t tab should run: the
    *  full preference chain — repo lastActiveVendor (ctrl+e / dialog picks
    *  write it) → Settings global default → claude. Returning undefined
    *  when the resolution equals the task's engine keeps the tab in

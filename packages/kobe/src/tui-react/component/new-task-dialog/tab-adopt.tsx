@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Adopt tab of the React new-task dialog (issue #15, G3W2 / KOB-256) —
+ * Adopt tab of the React new-task dialog (issue #15, G3W2) —
  * discover existing git worktrees not yet linked to a task, filter by a
  * path glob, multi-select, then import. Discovery + selection state live
  * in the view-model; this file is JSX only.

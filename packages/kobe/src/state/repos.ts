@@ -284,7 +284,7 @@ export function setRepoInitOverride(repoRoot: string, patch: RepoInitOverride): 
 export type RemoveResult = { removed: boolean; path: string; total: number }
 
 /**
- * Remove `absPath` from `savedRepos`. KOB-15 wires this from the
+ * Remove `absPath` from `savedRepos`. Wired from the
  * sidebar's `d` keypress on a main-task row: the confirm copy is
  * "this will remove '<repo>' from your saved repos. The directory and
  * its files stay on disk." The directory itself is never touched —

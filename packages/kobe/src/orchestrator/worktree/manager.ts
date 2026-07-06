@@ -183,8 +183,8 @@ export class GitWorktreeManager implements WorktreeManager {
    * the layout).
    *
    * `slug` is the directory basename — allocated by the orchestrator's
-   * {@link SlugAllocator}. Post-KOB-65 this is an animal name (e.g.
-   * `panda`) or version-suffixed (`panda-v2`); pre-KOB-65 it was the
+   * {@link SlugAllocator}. Under the slug scheme this is an animal name (e.g.
+   * `panda`) or version-suffixed (`panda-v2`); before it, this was the
    * task's ULID. The manager doesn't care which — it just joins.
    *
    * `baseRef` (optional): forwarded to {@link create} so the new branch
@@ -304,7 +304,7 @@ export class GitWorktreeManager implements WorktreeManager {
 
   /**
    * List ALL git worktrees registered on `repo` — including ones the
-   * user created outside kobe-managed roots (KOB-256). Unlike
+   * user created outside kobe-managed roots. Unlike
    * {@link list}, this does NOT filter to the kobe convention root; it's
    * the discovery source for "adopt an existing worktree as a task".
    *
@@ -341,7 +341,7 @@ export class GitWorktreeManager implements WorktreeManager {
         lastActivityMs: await this.lastActivityMs(ctx.exec, entry.path),
       })
     }
-    // Most recently active first (KOB-256).
+    // Most recently active first.
     infos.sort((a, b) => b.lastActivityMs - a.lastActivityMs)
     return infos
   }

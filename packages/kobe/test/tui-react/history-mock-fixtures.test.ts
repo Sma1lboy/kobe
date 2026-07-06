@@ -1,10 +1,3 @@
-/**
- * Why this matters: these fixtures back BOTH frameworks' mock hosts
- * (dev:mock and dev:mock-react-history) — the live render smokes in the
- * migration gates grep for this data. If the fake reader drifts from the
- * EngineHistoryReader contract, the smokes go blind while looking green.
- */
-
 import { describe, expect, it } from "vitest"
 import {
   MOCK_HISTORY_SESSION_ID,

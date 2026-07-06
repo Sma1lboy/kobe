@@ -83,7 +83,7 @@ export function OpsShell(props: OpsHostArgs) {
   const sharedMapRef = useRef<TranscriptActivityMap | null>(sharedActivityMap)
   sharedMapRef.current = sharedActivityMap
 
-  // New-activity badge (KOB-254) — same two-source design as the Solid
+  // New-activity badge — same two-source design as the Solid
   // host: the daemon push when available, the local mtime probe otherwise.
   // `baseline` seeds at the first observed mtime so a pane mounting onto an
   // already-busy task doesn't flash stale activity; `r` refresh acks it.

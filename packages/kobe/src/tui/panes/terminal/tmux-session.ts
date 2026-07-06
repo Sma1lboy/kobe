@@ -94,7 +94,7 @@ const ensureSessionLocks = new Map<string, Promise<boolean>>()
  * Ensure a detached session named `name` exists with the four-pane
  * layout. Returns `true` once the session is ready (reused or freshly
  * built), `false` if creation failed (so callers can avoid attaching to
- * a nonexistent session — KOB-244).
+ * a nonexistent session).
  *
  * Idempotent in the happy path: a healthy session that matches this
  * task is left running (that's the persistence — it survives detach /
@@ -191,8 +191,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // to a task. No per-worktree write, so reuse/rebuild/fresh all behave the
   // same and a project's real repo root is never touched.)
   //
-  // Observe → decide → apply. The WHY of each branch (KOB-244 pane-count
-  // trap, KOB-232 sibling-tab preservation, legacy/pre-tag rebuilds) is
+  // Observe → decide → apply. The WHY of each branch (pane-count
+  // trap, sibling-tab preservation, legacy/pre-tag rebuilds) is
   // documented on `decideSessionAction`; this function only applies the
   // chosen action against the real tmux server.
   const observed = await observeSession(opts.name)
@@ -215,7 +215,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 
   // Vendor switch: relaunch the engine pane IN PLACE in every window via
   // respawn-pane (keeps pane ids + @kobe_role tags, so the Ops pane's
-  // --target-pane stays valid — KOB-232). Falls through to a full rebuild
+  // --target-pane stays valid). Falls through to a full rebuild
   // when no engine pane is found to respawn — that fact is only knowable
   // here at apply time, so it's the applier's fallback, not the decision's.
   if (action.kind === "respawn-engine") {
@@ -229,7 +229,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       // `vendorChanged` forces every window's Ops pane to respawn so its baked
       // `--vendor` flag (and the transcript store its activity badge + turn
       // detector poll) tracks the NEW engine — a same-version Ops pane would
-      // otherwise keep polling the OLD vendor's store (KOB-232).
+      // otherwise keep polling the OLD vendor's store.
       await healWorkspaceLayout(opts.name, {
         cwd: opts.cwd,
         taskId: opts.taskId,
@@ -242,7 +242,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       // A respawn in some window failed (tmux already logged the error and
       // halted the sequence). The session still exists and is usable, so we
       // do NOT kill+rebuild — that would drop the sibling chat tabs the
-      // in-place respawn exists to preserve (KOB-232). We also leave the prior
+      // in-place respawn exists to preserve. We also leave the prior
       // `@kobe_vendor` tag untouched rather than falsely claim the switch; the
       // tag still mismatching the task's vendor means the next `ensureSession`
       // re-enters this respawn branch and retries. Heal layout WITHOUT

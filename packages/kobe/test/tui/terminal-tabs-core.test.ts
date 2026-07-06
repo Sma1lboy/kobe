@@ -1,11 +1,3 @@
-/**
- * Why this matters: these transitions ARE the chattab contract carried
- * into the PTY world (issue #16) — new-tab placement, the can't-close-last
- * guard, left-neighbor focus on close, wrap-around cycling, and the
- * never-reused registry key. A regression silently kills or orphans live
- * engine PTYs (each tab id keys one).
- */
-
 import { describe, expect, it } from "vitest"
 import {
   addTab,

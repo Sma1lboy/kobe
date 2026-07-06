@@ -60,7 +60,7 @@ export type NewTaskDialogProps = {
   defaultVendor?: VendorId
   /** Vendors detected on this machine; empty falls back to all. */
   availableVendors?: readonly VendorId[]
-  /** Adopt-tab discovery (KOB-256). Omit to leave the tab empty. */
+  /** Adopt-tab discovery. Omit to leave the tab empty. */
   discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
 

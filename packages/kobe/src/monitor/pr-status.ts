@@ -1,5 +1,5 @@
 /**
- * Pure mapping for the PR-status poller (KOB-10).
+ * Pure mapping for the PR-status poller.
  *
  * The daemon-side `pr-status-collector` shells `gh pr view <branch> --json
  * <fields>` per task and feeds the parsed JSON through {@link mapGhPrView} to
@@ -7,7 +7,7 @@
  * tmux, no fs) is what lets the error-prone bits — the `statusCheckRollup`
  * reduction and the `state`→lifecycle mapping — be unit-tested directly.
  *
- * GitHub only by design (KOB-10): GitLab/Bitbucket carry no `gh` equivalent
+ * GitHub only by design: GitLab/Bitbucket carry no `gh` equivalent
  * here, so the collector never runs for them and this module always stamps
  * `provider: "github"`.
  */

@@ -3,7 +3,7 @@
  * React view for the file tree pane's header chrome — the `src/tui/panes/
  * filetree/header-view.tsx` counterpart (issue #15, G3): the optional
  * Zen / Create-PR action row, the All / Changes tab chips, the corner
- * activity badge (KOB-254), and the Changes-tab status legend. Pure
+ * activity badge, and the Changes-tab status legend. Pure
  * render — tab state and actions stay in the pane component.
  */
 
@@ -75,7 +75,7 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
             )
           })}
         </box>
-        {/* Right-aligned activity badge (KOB-254). No background fill so
+        {/* Right-aligned activity badge. No background fill so
            it stays clean in transparent mode. */}
         {badge ? (
           <text

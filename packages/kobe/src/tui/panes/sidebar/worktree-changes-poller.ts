@@ -2,14 +2,11 @@
  * Async, self-throttling poller behind the sidebar's per-row `+N −M`
  * worktree-changes chip.
  *
- * Why this exists (the 30GB-repo freeze): the chip used to call the
- * synchronous `readWorktreeChanges` (`spawnSync git status`) for EVERY
- * row on every ~2s `branchTick`. `git status` walks the working tree —
- * O(repo size) — so a row pointing at a huge repo blocked the whole
- * event loop for seconds per tick, permanently freezing the Tasks pane
- * the moment that row rendered (the Archives view was the reported
- * trigger). The sync helper survives ONLY for one-shot CLI use
- * (`kobe api`); render paths must go through this poller.
+ * Why this exists: `git status` walks the working tree — O(repo size) —
+ * so calling the synchronous `readWorktreeChanges` (`spawnSync git
+ * status`) from a render path blocks the whole event loop for seconds
+ * per tick on a huge repo. The sync helper survives ONLY for one-shot
+ * CLI use (`kobe api`); render paths must go through this poller.
  *
  * The scheduling core (per-key Solid signal, in-flight dedupe, adaptive
  * cadence, timeout + hard backoff) is the generic

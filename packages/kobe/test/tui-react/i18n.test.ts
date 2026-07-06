@@ -1,11 +1,3 @@
-/**
- * Why this matters: the React i18n runtime re-implements the Solid one's
- * OBSERVABLE behavior (dotted lookup, en → raw-key fallback, interpolation,
- * per-process language switch) on a different reactivity substrate. These
- * tests pin that the two runtimes resolve identically — drift here means a
- * pane shows different copy depending on which framework rendered it.
- */
-
 import { afterEach, describe, expect, it } from "vitest"
 import { DEFAULT_LOCALE, currentLang, setLocaleLang, t, tKeys } from "../../src/tui-react/i18n"
 import { t as solidT } from "../../src/tui/i18n"

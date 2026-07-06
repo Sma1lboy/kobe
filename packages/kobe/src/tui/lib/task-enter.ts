@@ -145,8 +145,8 @@ export interface EnterTaskOpts {
    *  heal, re-weave it). Off for adopt / when the caller delivers its own prompt. */
   includeInitPrompt?: boolean
   /** Re-run `ensureSession` on an ALREADY-running session to heal vendor/worktree
-   *  drift (cwd read from the session's `@kobe_worktree` tag — tasks.json can lag,
-   *  KOB-244). A heal failure never blocks the switch. Opt-in: the Tasks pane uses
+   *  drift (cwd read from the session's `@kobe_worktree` tag — tasks.json can lag).
+   *  A heal failure never blocks the switch. Opt-in: the Tasks pane uses
    *  it; the transitional new-task/quick-task pages don't. */
   heal?: boolean
   /** Save the CURRENT (from) session's layout into the global options before

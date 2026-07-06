@@ -1,5 +1,5 @@
 /**
- * Tiny zero-dependency path glob matcher (KOB-256).
+ * Tiny zero-dependency path glob matcher.
  *
  * Used by `kobe adopt`'s `--glob` and the New Task → Adopt tab's filter
  * to narrow discovered worktree paths. We roll our own instead of

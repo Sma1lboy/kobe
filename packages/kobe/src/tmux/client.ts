@@ -1,5 +1,5 @@
 /**
- * Shared low-level tmux client (v0.6 / KOB-233).
+ * Shared low-level tmux client (v0.6).
  *
  * kobe drives a dedicated tmux server on the `-L kobe` socket
  * (isolated from the user's own tmux). The session-lifecycle code
@@ -10,7 +10,7 @@
  *
  * That workaround is load-bearing: most tmux configs set
  * `base-index 1`, so the first window/pane is `:1.1`, and any code
- * that targeted `:0.0` silently hit nothing (KOB-233 burned hours on
+ * that targeted `:0.0` silently hit nothing (this burned hours on
  * exactly this, twice). Centralising the pane-id resolution here means
  * the fix lives in one place.
  */
@@ -21,7 +21,7 @@ import { kobeCliInvocation } from "@/cli/invocation"
 // module's only deps are `@/exec/resolve` + `@/tmux/session-layout`, neither of
 // which imports this file, so the reference is acyclic at runtime even though it
 // reaches "up" into the tui layer — the import is for the kobe-home Tasks pane's
-// env pinning below (KOB-244). Keeping the prefix in one place avoids re-deriving
+// env pinning below. Keeping the prefix in one place avoids re-deriving
 // the same KOBE_*-pinning logic the workspace panes already use.
 import { inheritedEnvPrefix } from "@/tui/panes/terminal/launch"
 import {
@@ -87,8 +87,8 @@ async function drainText(stream: ReadableStream<Uint8Array> | null | undefined):
  * Deleting a task unlinks that worktree, after which `Bun.spawn` fails
  * with `posix_spawn` ENOENT BEFORE the command runs — even though tmux is
  * on PATH — because the kernel can't resolve the inherited (now-gone)
- * cwd. That ENOENT used to throw straight into a pane's opentui loop and
- * crash the whole pane to a bare shell when its task was deleted.
+ * cwd. Unanchored, that ENOENT throws straight into a pane's opentui loop
+ * and crashes the whole pane to a bare shell when its task is deleted.
  * Anchoring to `$HOME` (→ `/` if unset) keeps the helpers spawnable from
  * a pane whose worktree just vanished. Read once — `$HOME` is fixed for
  * the process lifetime.
@@ -97,7 +97,7 @@ const SAFE_SPAWN_CWD = homedir() || "/"
 
 /**
  * Run a tmux command, logging stderr when it fails. Silent tmux
- * errors are a foot-gun (KOB-233): a `split-window -t :0.0` that
+ * errors are a foot-gun: a `split-window -t :0.0` that
  * failed because of `base-index 1` left the layout broken with no
  * trace. We only emit on a non-zero exit.
  *
@@ -105,7 +105,7 @@ const SAFE_SPAWN_CWD = homedir() || "/"
  * tmux invocation ever filled the stderr pipe buffer before exiting,
  * reading it only post-exit would dead-lock (the child blocks on the
  * write, we block on `exited`). tmux diagnostics are tiny in practice,
- * but the concurrent read removes the latent hang regardless (KOB-244).
+ * but the concurrent read removes the latent hang regardless.
  */
 export async function runTmux(args: string[]): Promise<number> {
   try {
@@ -165,7 +165,7 @@ export async function runTmuxSequence(commands: readonly (readonly string[])[]):
  * Run a tmux command and capture stdout (stderr logged on failure).
  * Both streams are drained concurrently with the exit so neither a full
  * stdout (large capture-pane) nor a full stderr can dead-lock the call
- * (KOB-244).
+ *.
  */
 export async function runTmuxCapturing(args: string[]): Promise<{ code: number; stdout: string }> {
   try {
@@ -210,7 +210,7 @@ export async function sessionExists(name: string): Promise<boolean> {
 /**
  * Number of windows (chat tabs) in the session. `0` when the session
  * doesn't exist. Used to avoid a whole-session rebuild that would drop
- * sibling Ctrl+T chat-tab windows (KOB-244).
+ * sibling Ctrl+T chat-tab windows.
  */
 export async function windowCount(sessionName: string): Promise<number> {
   const { code, stdout } = await runTmuxCapturing(["list-windows", "-t", `=${sessionName}`, "-F", "#{window_id}"])
@@ -224,7 +224,7 @@ export async function windowCount(sessionName: string): Promise<number> {
  * NOTE: `set-option` / `show-options` do NOT accept the `=name`
  * exact-match prefix that most other tmux targets take — tmux 3.5a
  * treats `=name` as a literal session name and reports "no such
- * session", silently dropping the option (KOB-233 burned a debug cycle
+ * session", silently dropping the option (easy to lose a debug cycle
  * on exactly this). So these two helpers target the bare name. Our
  * session names are `kobe-<taskId>` slugs; a prefix collision between
  * two live tasks is the only theoretical risk and we accept it.
@@ -391,7 +391,7 @@ export async function claudePaneId(sessionName: string): Promise<string> {
  * its reuse decision on: a legacy/pre-tag (v0.5) session has no tagged
  * claude pane, so this returns `""` and the session is rebuilt, while a
  * healthy session whose disposable shell/ops pane was closed still has
- * its tagged claude pane and is reused (KOB-244).
+ * its tagged claude pane and is reused.
  */
 export async function claudePaneIdStrict(sessionName: string): Promise<string> {
   return paneIdByRole(sessionName, CLAUDE_ROLE_VALUE, false)
@@ -421,7 +421,7 @@ export async function capturePaneById(paneId: string, lines?: number): Promise<s
  * equal to `Enter` / `Space` / `Tab` / `C-x` (or an injected file path
  * shaped like one) fires that key instead of being typed. With `-l` the
  * text is always typed verbatim; `--` ends flag parsing so text starting
- * with `-` isn't mistaken for a flag (KOB-244). To send an actual named
+ * with `-` isn't mistaken for a flag. To send an actual named
  * key (e.g. Enter to submit) use {@link sendKeyName}, not this.
  */
 export async function sendKeys(target: string, text: string): Promise<void> {
@@ -626,7 +626,7 @@ export async function ensureFallbackSession(): Promise<string> {
       // SERVER was born with — which goes stale when the server persists across
       // kobe relaunches (KOBE_* aren't in tmux's update-environment list), so a
       // non-default-home run that lands on home could read/mutate the PRODUCTION
-      // tasks.json / a dead daemon — the KOB-244 desync class.
+      // tasks.json / a dead daemon — the stale-list desync class.
       keepAlive(inheritedEnvPrefix() + tasksPaneCommand(kobeCliInvocation())),
     ])
     const tasksPane = r1.stdout.trim()
