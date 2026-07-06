@@ -4,6 +4,7 @@ import path from "node:path"
 import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
+import { createAppendParseCache } from "../history-cache"
 import { copilotUsageToSnapshot } from "./usage"
 
 export interface CopilotHistoryDeps {
@@ -101,9 +102,10 @@ export async function readHistoryWithMetrics(
 ): Promise<EngineHistory> {
   const dir = await findSessionDir(sessionId, deps)
   if (!dir) return { messages: [] }
-  const raw = await deps.readFile(path.join(dir, "events.jsonl")).catch(() => "")
-  const parsed = parseEvents(raw, sessionId)
-  return { messages: parsed.messages, ...(parsed.usageMetrics ? { usageMetrics: parsed.usageMetrics } : {}) }
+  const file = path.join(dir, "events.jsonl")
+  const raw = await deps.readFile(file).catch(() => "")
+  const state = eventsCache(file, raw, sessionId)
+  return { messages: state.messages, ...(state.usageMetrics ? { usageMetrics: state.usageMetrics } : {}) }
 }
 
 export async function readHistory(sessionId: string, deps: CopilotHistoryDeps = defaultDeps): Promise<Message[]> {
@@ -167,11 +169,49 @@ export function parseEvents(
   raw: string,
   fallbackSessionId: string,
 ): { messages: Message[]; usageMetrics?: EngineUsageSnapshot; firstUserMessage?: string | null } {
-  const messages: Message[] = []
-  const toolNameById = new Map<string, string>()
-  let sessionId = fallbackSessionId
-  let usageMetrics: EngineUsageSnapshot | undefined
-  let firstUserMessage: string | null = null
+  const state = foldEvents(raw, initialParseState(fallbackSessionId))
+  return { messages: state.messages, usageMetrics: state.usageMetrics, firstUserMessage: state.firstUserMessage }
+}
+
+/**
+ * Fold state for `events.jsonl` parsing. Unlike claude/codex, the copilot
+ * event stream is NOT line-local: `session.start` sets the sessionId for
+ * everything after it, tool names are resolved from an earlier
+ * `tool.execution_start`, and firstUserMessage/usage are first/last-wins.
+ * The append-aware cache therefore snapshots this whole fold state at the
+ * cached prefix boundary, so folding an appended slice onto it reproduces
+ * a full parse exactly.
+ */
+interface CopilotParseState {
+  readonly messages: Message[]
+  readonly toolNameById: ReadonlyMap<string, string>
+  readonly sessionId: string
+  readonly usageMetrics: EngineUsageSnapshot | undefined
+  readonly firstUserMessage: string | null
+}
+
+function initialParseState(fallbackSessionId: string): CopilotParseState {
+  return {
+    messages: [],
+    toolNameById: new Map(),
+    sessionId: fallbackSessionId,
+    usageMetrics: undefined,
+    firstUserMessage: null,
+  }
+}
+
+const eventsCache = createAppendParseCache<CopilotParseState, string>({
+  initial: initialParseState,
+  parseChunk: (chunk, prev) => foldEvents(chunk, prev),
+})
+
+/** Fold event lines onto `prev` without mutating it (cache contract). */
+function foldEvents(raw: string, prev: CopilotParseState): CopilotParseState {
+  const messages = prev.messages.slice()
+  const toolNameById = new Map(prev.toolNameById)
+  let sessionId = prev.sessionId
+  let usageMetrics = prev.usageMetrics
+  let firstUserMessage = prev.firstUserMessage
 
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
@@ -246,7 +286,7 @@ export function parseEvents(
     }
   }
 
-  return { messages, usageMetrics, firstUserMessage }
+  return { messages, toolNameById, sessionId, usageMetrics, firstUserMessage }
 }
 
 const PREVIEW_CHAR_CAP = 200
