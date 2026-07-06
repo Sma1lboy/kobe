@@ -26,6 +26,20 @@ export interface TerminalTab {
    * `chat.tab.new` tab.
    */
   readonly vendor?: VendorId
+  /**
+   * One-off shell argv this tab runs instead of the task's engine command
+   * (the FileTree "open in editor" flow — see `openEditorTab`). Undefined
+   * for every ordinary engine tab.
+   */
+  readonly command?: readonly string[]
+  /**
+   * Set alongside `command`: this tab closes itself (and releases its PTY)
+   * when its process exits, the PTY-world equivalent of tmux closing an
+   * editor's transient window on quit. Ordinary engine tabs instead
+   * degrade to a plain shell on exit (`tabToShell`), so this is never
+   * set without `command`.
+   */
+  readonly ephemeral?: boolean
 }
 
 export interface TabsState {
@@ -40,6 +54,13 @@ export function initialTabs(): TabsState {
   return { tabs: [{ id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
 }
 
+/** Shared insert: append `tab` after the active tab and focus it. */
+function insertAfterActive(state: TabsState, tab: TerminalTab): TabsState {
+  const i = state.tabs.findIndex((t) => t.id === state.activeId)
+  const tabs = [...state.tabs.slice(0, i + 1), tab, ...state.tabs.slice(i + 1)]
+  return { tabs, activeId: tab.id, nextOrdinal: state.nextOrdinal + 1 }
+}
+
 /**
  * Open a new tab after the active one and focus it. `vendor` pins that tab
  * to a specific engine (the `chat.tab.chooseEngine` flow); omitted, it
@@ -47,10 +68,52 @@ export function initialTabs(): TabsState {
  */
 export function addTab(state: TabsState, vendor?: VendorId): TabsState {
   const ordinal = state.nextOrdinal
-  const tab: TerminalTab = { id: `tab-${ordinal}`, title: null, ordinal, vendor }
-  const i = state.tabs.findIndex((t) => t.id === state.activeId)
-  const tabs = [...state.tabs.slice(0, i + 1), tab, ...state.tabs.slice(i + 1)]
-  return { tabs, activeId: tab.id, nextOrdinal: ordinal + 1 }
+  return insertAfterActive(state, { id: `tab-${ordinal}`, title: null, ordinal, vendor })
+}
+
+/**
+ * Open a one-off editor tab after the active tab and focus it — the
+ * PTY-world equivalent of tmux's `openInEditor` transient window
+ * (`tmux/editor-launch.ts`): runs the already-resolved `command` (e.g.
+ * `["sh", "-c", "nvim -d ..."]`), labeled `label` (the file's basename),
+ * and closes itself when the process exits (`ephemeral`, consumed by
+ * `TerminalTabs.tsx`'s `onExit` wiring).
+ */
+export function openEditorTab(state: TabsState, command: readonly string[], label: string): TabsState {
+  const ordinal = state.nextOrdinal
+  return insertAfterActive(state, { id: `tab-${ordinal}`, title: label, ordinal, command, ephemeral: true })
+}
+
+/**
+ * Degrade an engine tab whose CLI exited into a plain shell tab. Exiting
+ * the vendor CLI is an allowed action, not an error (owner decision
+ * 2026-07-06): the tab keeps its identity (id/title/ordinal) and respawns
+ * as `shell` in the same worktree instead of freezing behind the
+ * dead-shell exit banner. No-op if the tab is gone or already runs a
+ * one-off `command` (editor tabs close themselves on exit instead, and a
+ * degraded shell tab closes on its next exit — see `TerminalTabs.tsx`).
+ */
+export function tabToShell(state: TabsState, id: string, shell: readonly string[]): TabsState {
+  const tabs = state.tabs.map((t) => (t.id === id && !t.command ? { ...t, vendor: undefined, command: shell } : t))
+  return { ...state, tabs }
+}
+
+/**
+ * Close a specific tab by id, focusing its left neighbor if it was the
+ * active tab (right neighbor when closing the first) — same neighbor rule
+ * as `closeActiveTab`, generalized so an ephemeral editor tab can close
+ * itself on exit even when the user has since switched to another tab.
+ * Refuses to close the only tab; no-op (`closedId: null`) if `id` isn't
+ * present.
+ */
+export function closeTab(state: TabsState, id: string): { state: TabsState; closedId: string | null } {
+  if (state.tabs.length <= 1) return { state, closedId: null }
+  const i = state.tabs.findIndex((t) => t.id === id)
+  if (i < 0) return { state, closedId: null }
+  const tabs = state.tabs.filter((t) => t.id !== id)
+  if (state.activeId !== id) return { state: { ...state, tabs }, closedId: id }
+  const next = tabs[Math.max(0, i - 1)]
+  return { state: { ...state, tabs, activeId: (next ?? tabs[0]).id }, closedId: id }
 }
 
 /**
@@ -59,16 +122,7 @@ export function addTab(state: TabsState, vendor?: VendorId): TabsState {
  * tmux chattab had; the caller surfaces the refusal, state is unchanged.
  */
 export function closeActiveTab(state: TabsState): { state: TabsState; closedId: string | null } {
-  if (state.tabs.length <= 1) return { state, closedId: null }
-  const i = state.tabs.findIndex((t) => t.id === state.activeId)
-  const closed = state.tabs[i]
-  if (!closed) return { state, closedId: null }
-  const tabs = state.tabs.filter((t) => t.id !== closed.id)
-  const next = tabs[Math.max(0, i - 1)]
-  return {
-    state: { ...state, tabs, activeId: (next ?? tabs[0]).id },
-    closedId: closed.id,
-  }
+  return closeTab(state, state.activeId)
 }
 
 /** Rename the active tab; empty/whitespace titles clear back to default. */
