@@ -13,34 +13,47 @@
 
 import type { VendorId } from "@/types/vendor"
 
-export interface TerminalTab {
+interface TabBase {
   /** Stable id — registry key suffix. Never reused within a task. */
   readonly id: string
   /** User title; null = untitled (view shows the numbered default). */
   readonly title: string | null
   /** 1-based creation ordinal — drives the "Terminal {n}" default. */
   readonly ordinal: number
+}
+
+/**
+ * Runs an interactive engine CLI. When its process exits, the tab
+ * degrades in place to a {@link CommandTab} running the user's shell
+ * (`tabToShell`) — exiting the vendor is allowed, not an error.
+ */
+export interface EngineTab extends TabBase {
+  readonly kind: "engine"
   /**
    * Vendor override for THIS tab only (chosen via `chat.tab.chooseEngine`).
    * Undefined = inherit the task's current engine, like every plain
    * `chat.tab.new` tab.
    */
   readonly vendor?: VendorId
-  /**
-   * One-off shell argv this tab runs instead of the task's engine command
-   * (the FileTree "open in editor" flow — see `openEditorTab`). Undefined
-   * for every ordinary engine tab.
-   */
-  readonly command?: readonly string[]
-  /**
-   * Set alongside `command`: this tab closes itself (and releases its PTY)
-   * when its process exits, the PTY-world equivalent of tmux closing an
-   * editor's transient window on quit. Ordinary engine tabs instead
-   * degrade to a plain shell on exit (`tabToShell`), so this is never
-   * set without `command`.
-   */
-  readonly ephemeral?: boolean
 }
+
+/**
+ * Runs a fixed one-off argv: an editor tab (the FileTree "open in
+ * editor" flow, see `openEditorTab`) or an engine tab degraded to the
+ * user's shell (`tabToShell`). Closes itself (and releases its PTY)
+ * when its process exits — the PTY-world equivalent of tmux closing an
+ * editor's transient window on quit.
+ */
+export interface CommandTab extends TabBase {
+  readonly kind: "command"
+  readonly command: readonly string[]
+}
+
+/**
+ * Discriminated on `kind` so the illegal shapes (vendor+command on one
+ * tab, close-on-exit without a command) cannot be represented.
+ */
+export type TerminalTab = EngineTab | CommandTab
 
 export interface TabsState {
   readonly tabs: readonly TerminalTab[]
@@ -49,9 +62,9 @@ export interface TabsState {
   readonly nextOrdinal: number
 }
 
-/** A task's initial state: one untitled tab, active. */
+/** A task's initial state: one untitled engine tab, active. */
 export function initialTabs(): TabsState {
-  return { tabs: [{ id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
+  return { tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
 }
 
 /** Shared insert: append `tab` after the active tab and focus it. */
@@ -68,7 +81,7 @@ function insertAfterActive(state: TabsState, tab: TerminalTab): TabsState {
  */
 export function addTab(state: TabsState, vendor?: VendorId): TabsState {
   const ordinal = state.nextOrdinal
-  return insertAfterActive(state, { id: `tab-${ordinal}`, title: null, ordinal, vendor })
+  return insertAfterActive(state, { kind: "engine", id: `tab-${ordinal}`, title: null, ordinal, vendor })
 }
 
 /**
@@ -76,12 +89,12 @@ export function addTab(state: TabsState, vendor?: VendorId): TabsState {
  * PTY-world equivalent of tmux's `openInEditor` transient window
  * (`tmux/editor-launch.ts`): runs the already-resolved `command` (e.g.
  * `["sh", "-c", "nvim -d ..."]`), labeled `label` (the file's basename),
- * and closes itself when the process exits (`ephemeral`, consumed by
+ * and closes itself when the process exits (kind "command", consumed by
  * `TerminalTabs.tsx`'s `onExit` wiring).
  */
 export function openEditorTab(state: TabsState, command: readonly string[], label: string): TabsState {
   const ordinal = state.nextOrdinal
-  return insertAfterActive(state, { id: `tab-${ordinal}`, title: label, ordinal, command, ephemeral: true })
+  return insertAfterActive(state, { kind: "command", id: `tab-${ordinal}`, title: label, ordinal, command })
 }
 
 /**
@@ -89,12 +102,16 @@ export function openEditorTab(state: TabsState, command: readonly string[], labe
  * the vendor CLI is an allowed action, not an error (owner decision
  * 2026-07-06): the tab keeps its identity (id/title/ordinal) and respawns
  * as `shell` in the same worktree instead of freezing behind the
- * dead-shell exit banner. No-op if the tab is gone or already runs a
- * one-off `command` (editor tabs close themselves on exit instead, and a
- * degraded shell tab closes on its next exit — see `TerminalTabs.tsx`).
+ * dead-shell exit banner. No-op if the tab is gone or already a command
+ * tab (those close themselves on exit instead — see `TerminalTabs.tsx`).
  */
 export function tabToShell(state: TabsState, id: string, shell: readonly string[]): TabsState {
-  const tabs = state.tabs.map((t) => (t.id === id && !t.command ? { ...t, vendor: undefined, command: shell } : t))
+  const tabs = state.tabs.map(
+    (t): TerminalTab =>
+      t.id === id && t.kind === "engine"
+        ? { kind: "command", id: t.id, title: t.title, ordinal: t.ordinal, command: shell }
+        : t,
+  )
   return { ...state, tabs }
 }
 
