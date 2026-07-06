@@ -199,6 +199,25 @@ export async function fileHasDiff(worktree: string, relPath: string): Promise<bo
 }
 
 /**
+ * Resolve + (maybe) diff-upgrade the editor command for `absPath`, without
+ * launching it anywhere — the tmux-agnostic half of {@link openInEditor}.
+ * The puretui workspace (`KOBE_TUI=1`, no tmux session to spawn a window
+ * into) reuses this to open the same command in an embedded terminal tab
+ * instead. Returns `null` when nothing usable is configured/installed
+ * (caller falls back to the read-only preview / an external opener).
+ */
+export async function resolveEditorLaunch(
+  worktree: string,
+  absPath: string,
+): Promise<{ command: string; label: string } | null> {
+  const resolved = await resolveEditorCommand(absPath)
+  if (!resolved) return null
+  if (!(await binaryAvailable(resolved.bin))) return null
+  const command = await maybeDiffCommand(resolved, worktree, absPath)
+  return { command, label: editorWindowLabel(absPath) }
+}
+
+/**
  * Open `absPath` in the configured editor in a new tmux window of
  * `session`. Returns `true` if the editor was launched, `false` if it
  * couldn't be resolved / isn't installed (caller should fall back to the
@@ -206,15 +225,13 @@ export async function fileHasDiff(worktree: string, relPath: string): Promise<bo
  * closes the window and returns to the previous one.
  */
 export async function openInEditor(session: string, worktree: string, absPath: string): Promise<boolean> {
-  const resolved = await resolveEditorCommand(absPath)
-  if (!resolved) return false
-  if (!(await binaryAvailable(resolved.bin))) return false
-  const command = await maybeDiffCommand(resolved, worktree, absPath)
+  const launch = await resolveEditorLaunch(worktree, absPath)
+  if (!launch) return false
   // Name the window after the FILE being edited (its basename), matching
   // the read-only preview window's labelling. With several files open this
   // is what tells the tmux window list apart; which editor it is, is
   // obvious from the editor's own UI.
-  await newWindow(session, { cwd: worktree, command, name: editorWindowLabel(absPath) })
+  await newWindow(session, { cwd: worktree, command: launch.command, name: launch.label })
   return true
 }
 
