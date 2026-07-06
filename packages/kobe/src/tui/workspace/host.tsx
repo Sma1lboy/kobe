@@ -14,6 +14,7 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import { HelpDialog } from "../component/help-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
@@ -146,6 +147,39 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     if (ok) exitApp()
   }
 
+  // Imperative handle from the currently-mounted TerminalTabs (issue #16
+  // editor-tab flow) — a plain ref, not a signal: FileTree's "open" action
+  // only ever READS it at click time, and TerminalTabs re-hands it on every
+  // mount (task/worktree switch), so there's nothing to react to here.
+  let openEditorTabFn: ((command: readonly string[], label: string) => void) | null = null
+
+  /**
+   * FileTree's Enter action (issue #16 editor-tab flow) — the puretui
+   * equivalent of tmux's Ops-pane `openInEditor`: resolve the user's real
+   * editor (with the nvim/vim diff-mode upgrade when the file differs from
+   * HEAD) via the SAME tmux-agnostic command builder
+   * (`tmux/editor-launch.ts`'s `resolveEditorLaunch`), then run it in a new
+   * embedded terminal tab instead of a tmux window. Falls back to the
+   * host-OS opener (same as the FileTree `o` key) when no editor is
+   * configured/installed — there's no in-TUI read-only preview here (tmux's
+   * `kobe ops --preview` full CLI subcommand is out of scope for this pass).
+   *
+   * Deliberately does NOT move focus to the workspace pane — opening a file
+   * is a content swap, not a navigation (rejected twice previously when it
+   * pulled focus; see KOB-25).
+   */
+  async function openFileInEditor(relPath: string): Promise<void> {
+    const wt = worktree()
+    if (!wt) return
+    const abs = join(wt, relPath)
+    const launch = openEditorTabFn ? await resolveEditorLaunch(wt, abs) : null
+    if (!launch) {
+      openExternally(abs)
+      return
+    }
+    openEditorTabFn?.(["sh", "-c", launch.command], launch.label)
+  }
+
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
   // `kobe settings` window, not an overlay dialog stacked over the 3-pane
   // row. This single process has no tmux window to spawn into, so the
@@ -257,6 +291,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             worktree={worktree()}
             orchestrator={props.orchestrator}
             focused={focus.is("workspace")}
+            onEditorTabReady={(open) => {
+              openEditorTabFn = open
+            }}
           />
         </box>
 
@@ -269,10 +306,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           <FileTree
             worktreePath={worktree}
             focused={focus.is("files")}
-            onOpenFile={(relPath) => {
-              const root = worktree()
-              if (root) openExternally(join(root, relPath))
-            }}
+            onOpenFile={(relPath) => void openFileInEditor(relPath)}
           />
         </box>
 
@@ -287,6 +321,7 @@ function ShowWorkspace(props: {
   worktree: string | null
   orchestrator: RemoteOrchestrator
   focused: () => boolean
+  onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
 }) {
   const { theme } = useTheme()
   return (
@@ -323,6 +358,7 @@ function ShowWorkspace(props: {
               : undefined
           }
           focused={props.focused}
+          onEditorTabReady={props.onEditorTabReady}
         />
       )}
     </Show>
