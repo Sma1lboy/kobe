@@ -1,3 +1,13 @@
+/**
+ * Transcript row rendering for the history pane — extracted from `host.tsx`
+ * (500-line cap). One `MessageCard` per message: user turns are tinted cards
+ * with a `❯` glyph + relative-time chip, assistant text is plain, tool calls
+ * are a colored `⏺` status glyph + bold name + dim summary, and the expanded
+ * state reveals tool-output / thinking bodies. `BodyLines`, `bodyText` and
+ * `toolInputSummary` are shared with the chat surface (`chat/ChatRow.tsx`,
+ * via the `host.tsx` re-export) so both transcripts read identically.
+ */
+
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
 import { TextAttributes } from "@opentui/core"
@@ -8,6 +18,7 @@ import { type ToolResultBlock, bodyText, relativeTime, resultsByCallId, toolInpu
 
 export { bodyText, resultsByCallId, toolInputSummary } from "./message-core"
 
+/** A tool-output / thinking body, one `<text>` per line so +/- diff lines tint. */
 export function BodyLines(props: { text: string; error?: boolean }) {
   const { theme } = useTheme()
   const lines = () => props.text.replace(/\s+$/, "").split("\n")
@@ -39,6 +50,7 @@ function BlockView(props: {
   const block = props.block
   switch (block.type) {
     case "text":
+      // user-text is rendered as a card by MessageCard; this path is assistant/system.
       return (
         <text fg={theme.text} wrapMode="word">
           {block.text}
@@ -81,6 +93,7 @@ function BlockView(props: {
       )
     }
     case "tool_result":
+      // Attached to its tool_call above — never rendered standalone.
       return null
   }
 }
@@ -101,6 +114,8 @@ export function MessageCard(props: {
   const { theme } = useTheme()
   const isUser = () => props.msg.role === "user"
   const stamp = () => relativeTime(props.msg.timestamp)
+  // user text blocks → a tinted card with a ❯ glyph + time chip; everything
+  // else (assistant/system text, tools, thinking) renders flush below.
   const userText = createMemo(() =>
     isUser()
       ? props.msg.blocks

@@ -1,4 +1,10 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * Clone ("For New Repo") tab of the React new-task dialog (issue #15,
+ * G3W2) — git URL, parent dir (with the same drill-down picker the
+ * existing tab uses), auto-derived folder name, base branch. The async
+ * clone runs in the view-model; this file is JSX only.
+ */
 
 import { DEFAULT_BASE_REF } from "../../../tui/lib/git-snapshot"
 import { useTheme } from "../../context/theme"
@@ -40,7 +46,8 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           onSubmit={() => vm.onCloneParentSubmit()}
         />
       </box>
-      {}
+      {/* Persistence hint — this field remembers its last value across
+          dialog opens (kv `lastClonedRepoParent`). */}
       {vm.field === "cloneParent" ? (
         <box paddingLeft={2}>
           <text fg={theme.textMuted} wrapMode="none">
@@ -73,6 +80,7 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           placeholder={DEFAULT_BASE_REF}
           focused={vm.field === "cloneBaseRef"}
           onInput={(v: string) => vm.setCloneBaseRefText(v)}
+          // Last field on the tab — Enter kicks off the clone + create.
           onSubmit={() => void vm.commitClone()}
         />
       </box>

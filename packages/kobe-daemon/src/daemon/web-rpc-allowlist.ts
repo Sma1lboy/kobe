@@ -1,5 +1,11 @@
 import type { DaemonRequestName } from "./protocol.ts"
 
+/**
+ * The daemon RPCs the browser UI may invoke through POST /api/rpc.
+ *
+ * Explicit allowlist: a new daemon verb is not browser-reachable until added
+ * deliberately alongside the SPA surface that uses it.
+ */
 export const WEB_RPC_ALLOWLIST: readonly DaemonRequestName[] = [
   "daemon.status",
   "task.list",

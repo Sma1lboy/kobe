@@ -1,3 +1,8 @@
+/**
+ * Root-level web affordances. Board/Issues bypass AppShell, so shortcut
+ * overlays and toast delivery have to live above the route outlet.
+ */
+
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
@@ -54,6 +59,7 @@ export function GlobalShortcuts() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  // Let notification clicks jump to their task from any route.
   useEffect(() => {
     setNotifyNavigate((taskId) => {
       selectTask(taskId)

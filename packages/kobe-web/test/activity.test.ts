@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest"
 import { activityColor, activityLabel, activityMeta } from "../src/lib/activity.ts"
 import type { ActivityState } from "../src/lib/types.ts"
 
+/**
+ * activityColor/activityLabel are the SHARED engine-activity presentation used
+ * by both the task rail (AppShell) and the Overview triage view, so the two
+ * never drift. Lock the dot color + human label for every known state, and the
+ * neutral fallback for unknown/undefined, so a renamed engine state can't
+ * silently render a blank dot in one surface and a colored one in the other.
+ */
 
 const KNOWN: ActivityState[] = [
   "running",

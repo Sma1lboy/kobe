@@ -58,6 +58,7 @@ describe("relativeToWorktree", () => {
 
   it("returns null when the path isn't under the worktree (skips diff upgrade)", () => {
     expect(relativeToWorktree("/wt", "/other/a.ts")).toBeNull()
+    // a sibling dir sharing a name prefix must not match
     expect(relativeToWorktree("/wt", "/wt-2/a.ts")).toBeNull()
   })
 })
@@ -65,9 +66,12 @@ describe("relativeToWorktree", () => {
 describe("buildNvimDiffCommand", () => {
   it("dumps HEAD to a tmp file and diffs it read-only against the live file", () => {
     const cmd = buildNvimDiffCommand("nvim", "/wt/src/a.ts", "src/a.ts")
+    // process-substitution stand-in: mktemp + git show into it
     expect(cmd).toContain("f=$(mktemp 2>/dev/null)")
     expect(cmd).toContain("git show 'HEAD:./src/a.ts' > \"$f\"")
+    // HEAD blob on the LEFT (first -d arg), live editable file on the RIGHT
     expect(cmd).toContain("nvim -d \"$f\" '/wt/src/a.ts' -c 'setlocal nomodifiable' -c 'wincmd l'")
+    // tmp file is always cleaned up, exit code preserved
     expect(cmd).toContain('rm -f "$f" 2>/dev/null; exit $r')
   })
 

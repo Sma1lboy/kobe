@@ -1,3 +1,17 @@
+/**
+ * `createTaskFlow` adopt-mode summary (stability fix C).
+ *
+ * Adopting several worktrees is a loop of independent `adoptWorktree` calls.
+ * The old code wrapped the loop in one try/catch: if item 2 failed, item 1 was
+ * already persisted but the user only saw a generic "couldn't create task" and
+ * the flow returned before reloading — the succeeded task was invisible. These
+ * tests pin the per-item accounting + the real N/M summary that replaced it.
+ *
+ * The module deliberately has no `@opentui` imports, so the flow runs under
+ * plain vitest with mocks. We stub the disk/CLI seams (`tmux`, saved-repo
+ * state, engine detection) so the test is hermetic.
+ */
+
 import { describe, expect, test, vi } from "vitest"
 
 vi.mock("../../src/tui/panes/terminal/tmux", () => ({
@@ -12,6 +26,8 @@ vi.mock("../../src/state/repos", () => ({
 vi.mock("../../src/engine/account-detect", () => ({
   availableEngineIds: () => mockAvailableEngineIds(),
 }))
+// Reassignable so the "no engine detected" test can flip it to []; every
+// other test resets it to the built-in default in the per-test setup below.
 const mockAvailableEngineIds = vi.fn(async () => ["claude"])
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
@@ -104,6 +120,7 @@ describe("createTaskFlow — adopt summary", () => {
     expect(notifyError).not.toHaveBeenCalled()
     const summary = notifyInfo.mock.calls.map((c) => String(c[0]))
     expect(summary.some((m) => /2/.test(m))).toBe(true)
+    // Reloaded + landed on the LAST success.
     expect(reload).toHaveBeenCalledTimes(1)
     expect(selectTask).toHaveBeenCalledWith("id-b")
     expect(enterTask).toHaveBeenCalledWith("id-b")
@@ -124,9 +141,12 @@ describe("createTaskFlow — adopt summary", () => {
 
     await createTaskFlow(ctx)
 
+    // No fatal error toast — a partial success is surfaced as info, not a
+    // dead-end "couldn't create".
     expect(notifyError).not.toHaveBeenCalled()
     const summary = notifyInfo.mock.calls.map((c) => String(c[0]))
     expect(summary.some((m) => /1\/2/.test(m))).toBe(true)
+    // The flow still reloaded + focused the task that DID persist.
     expect(reload).toHaveBeenCalledTimes(1)
     expect(selectTask).toHaveBeenCalledWith("id-ok")
     expect(enterTask).toHaveBeenCalledWith("id-ok")
@@ -249,6 +269,7 @@ describe("createTaskFlow — create mode + guards", () => {
 
     expect(rememberVendor).toHaveBeenCalledWith("/repo", "claude")
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("no daemon"))
+    // Never reaches the "Creating task…" toast — that's gated on `orch`.
     expect(notifyInfo).not.toHaveBeenCalledWith(expect.stringContaining("Creating task"))
     expect(reload).not.toHaveBeenCalled()
   })

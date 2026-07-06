@@ -1,4 +1,16 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React view for a single file tree row — the `src/tui/panes/filetree/
+ * row-view.tsx` counterpart (issue #15, G3). Pure render: all row math
+ * (stat widths, path budget, status→token mapping) comes from the shared
+ * framework-free `pane-core.ts`, so the two runtimes render identically.
+ *
+ * Cursor row treatment — matches the Sidebar: a left accent ▌
+ * (focusAccent) + a subtle `backgroundElement` tint, NOT a solid
+ * terracotta fill, so the semantic colours survive instead of being
+ * flattened to inverted text. A bare space holds the 1-cell gutter on
+ * non-cursor rows so content stays aligned.
+ */
 
 import { TextAttributes } from "@opentui/core"
 import { type StatWidths, statCell, statusToken } from "../../../tui/panes/filetree/pane-core"
@@ -7,9 +19,13 @@ import { useTheme } from "../../context/theme"
 
 export type FileTreeRowProps = {
   row: Row
+  /** Whether the cursor sits on this row. */
   cursor: boolean
+  /** Shared stat column widths (Changes tab). */
   statWidths: StatWidths
+  /** Path cell budget (Changes tab). */
   pathBudget: number
+  /** Mouse activation: sets the cursor here and opens/toggles the row. */
   onActivate: () => void
 }
 
@@ -23,6 +39,7 @@ export function FileTreeRowView(props: FileTreeRowProps) {
   const rowBg = props.cursor ? theme.backgroundElement : undefined
   const row = props.row
   if (row.kind === "dir") {
+    // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
     const indent = "  ".repeat(row.depth)
     return (
       <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate()}>
@@ -37,6 +54,7 @@ export function FileTreeRowView(props: FileTreeRowProps) {
   }
   if (row.kind === "file") {
     const indent = "  ".repeat(row.depth)
+    // Two-cell gutter where the dir marker would sit.
     return (
       <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate()}>
         {bar}
@@ -48,6 +66,7 @@ export function FileTreeRowView(props: FileTreeRowProps) {
       </box>
     )
   }
+  // Changes row: status char + path + +N -N stats.
   const tone = statusToken(row.status)
   const statusColor =
     tone === "success"

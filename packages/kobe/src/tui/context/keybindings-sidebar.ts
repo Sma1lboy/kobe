@@ -1,7 +1,19 @@
+/**
+ * `sidebar.*` / `tasks.*` keybinding rows — split out of `keybindings.ts`
+ * (which was over the repo's 500-line file-size cap) purely mechanically:
+ * same entries, same order, moved verbatim. See `keybindings.ts`'s doc
+ * comment for the full contract (id stability, scope semantics, hint
+ * display rules).
+ */
+
 import type { KobeBinding } from "./keybindings.ts"
 
 export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
+  // ─── Sidebar ──────────────────────────────────────────────────────────
   {
+    // POSITIONAL: alternating [down, up] pairs — slot dispatch
+    // (SLOT_CONTRACTS in lib/keymap-overrides.ts). Overrides may supply
+    // any even chord count, e.g. `sidebar.nav: [w, s]`.
     id: "sidebar.nav",
     scope: "sidebar",
     keys: ["j", "k", "down", "up"],
@@ -49,6 +61,12 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "M", label: "reorder", status: false },
   },
   {
+    // Capital P pins / unpins a regular task. Lowercase `p` falls
+    // through to a no-op (the handler gates on evt.shift) so a
+    // mistyped lowercase doesn't churn the flag. Pinned regular tasks
+    // float to the top of the sidebar's flat list, just below the
+    // saved-repo "main" rows. `kind: "main"` rows ignore the chord —
+    // they're implicitly pinned.
     id: "sidebar.pin",
     scope: "sidebar",
     keys: ["p"],
@@ -57,6 +75,10 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "P", label: "pin", status: false },
   },
   {
+    // `i` opens the cursor task in a live read-only preview (the `kobe history`
+    // renderer tailing the transcript) in the engine pane slot instead of the
+    // engine, and toggles back on a second press. For inspecting a task an agent
+    // is working in without driving it. Same beta gate as the archived preview.
     id: "sidebar.previewToggle",
     scope: "sidebar",
     keys: ["i"],
@@ -65,6 +87,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "i", label: "preview", status: false },
   },
   {
+    // POSITIONAL: [previous view, next view] pairs (slot dispatch).
     id: "sidebar.view",
     scope: "sidebar",
     keys: ["[", "]"],
@@ -97,6 +120,14 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "d", label: "delete", status: false },
   },
   {
+    // `/`-search filter. Enters an inline search mode rendered at the
+    // top of the sidebar: typed text fuzz-matches against task title +
+    // repo basename, up/down navigates the filtered list, enter selects
+    // + exits, esc cancels + restores. While search is active the
+    // single-letter sidebar chords (j/k/g/G/d/a/r/P/m) are
+    // de-registered so they fall through to the input as literal text.
+    // `[` / `]` view switch keeps working so the user can search inside
+    // Archives.
     id: "sidebar.search.enter",
     scope: "sidebar",
     keys: ["/"],
@@ -105,6 +136,9 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "/", label: "search" },
   },
   {
+    // Search-mode nav. Only fires while the search input is focused —
+    // j/k are intentionally NOT bound here so they reach the input.
+    // POSITIONAL: [down, up] pairs (slot dispatch).
     id: "sidebar.search.nav",
     scope: "sidebar",
     keys: ["down", "up"],
@@ -112,6 +146,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     description: "Move highlight in search results",
   },
   {
+    // Search-mode submit: select highlighted match and leave search.
     id: "sidebar.search.submit",
     scope: "sidebar",
     keys: ["return"],
@@ -119,6 +154,8 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     description: "Select search match and exit search",
   },
   {
+    // Search-mode cancel. Only registered while searching; outside
+    // search there is no sidebar-scope esc handler.
     id: "sidebar.search.cancel",
     scope: "sidebar",
     keys: ["escape"],
@@ -126,6 +163,15 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     description: "Cancel search (restore prior selection)",
   },
 
+  // ─── Tasks pane ───────────────────────────────────────────────────────
+  // The standalone Tasks pane (`kobe tasks`, src/tui/tasks-pane/host.tsx)
+  // consumes these ids via `bindByIds` (since the keybindings-customization
+  // pass; they were raw `{ key: "…" }` literals before), so the rows are
+  // LIVE bindings there and follow user overrides from
+  // `~/.kobe/settings/keybindings.yaml`. New-task (n), settings (s),
+  // rename (r), archive (a), delete (d), merge (M), views ([/]), sort (t)
+  // are already covered by the Sidebar / Global rows above and aren't
+  // duplicated here.
   {
     id: "tasks.openWorktree",
     scope: "sidebar",
@@ -159,6 +205,12 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "u", label: "update", status: false },
   },
   {
+    // Right arrow jumps from the Tasks pane back into the current
+    // window's engine (claude/codex) pane — the spatial "go right into
+    // the conversation" gesture, the inverse of ctrl+h. Named key, not a
+    // bare letter, but still sidebar-scoped per the boundary rule; the
+    // Tasks-pane host gates it on no dialog + `/`-search inactive, so
+    // Right typed while searching keeps moving the input cursor.
     id: "tasks.focusEngine",
     scope: "sidebar",
     keys: ["right"],
@@ -167,6 +219,11 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "→", label: "engine", status: false },
   },
   {
+    // `?` (shift+/ — terminals deliver the literal character) folds the
+    // Tasks pane's `── keys ──` legend down to its header line and back.
+    // The legend is ~20 rows tall with the tmux session chords included;
+    // on short terminals it crowds out the task list. The collapsed state
+    // persists via KV so the preference survives pane respawns.
     id: "tasks.toggleKeys",
     scope: "sidebar",
     keys: ["?"],

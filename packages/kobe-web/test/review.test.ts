@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { createPrPrompt, reviewPrompt } from "../src/lib/review.ts"
 
+/**
+ * One-click review instruction. Load-bearing: claude gets its native
+ * /review command (no re-taught checklist) plus ONLY the click-scoped
+ * `done` authorization; the CLI path is the top-level `kobe api
+ * set-status` (NOT the bogus `api edit` form a field agent once hit);
+ * and a failing review must leave the status untouched.
+ */
 describe("reviewPrompt", () => {
   it("claude: leads with the native /review command", () => {
     const text = reviewPrompt("01HXABC", "claude")

@@ -1,3 +1,13 @@
+/*
+ * RichEditor (TipTap / ProseMirror) WYSIWYG surface styling. Scoped to
+ * `.kobe-rich` so it never leaks into the rest of the app. Colors reference
+ * the same CSS custom properties the theme picker drives (see styles.css), so
+ * the editor re-themes alongside everything else — matching notes-markdown.css.
+ *
+ * The editable surface is ProseMirror's `.ProseMirror` node; we style it to
+ * read like rendered kobe markdown while it is being typed (Notion-like).
+ */
+
 .kobe-rich .ProseMirror {
   outline: none;
   min-height: 12rem;
@@ -14,6 +24,8 @@
   margin-bottom: 0;
 }
 
+/* Empty-document placeholder. ProseMirror tags the first empty block with
+ * `is-editor-empty`; we surface the prop-supplied placeholder via a data attr. */
 .kobe-rich .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
@@ -118,13 +130,14 @@
   font-style: italic;
 }
 
+/* Inline images render full-width-capped, like the markdown preview. */
 .kobe-rich .ProseMirror img {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
   margin: 0.4em 0;
 }
-
+/* The currently-selected image node gets a primary outline. */
 .kobe-rich .ProseMirror img.ProseMirror-selectednode {
   outline: 2px solid var(--color-primary);
 }

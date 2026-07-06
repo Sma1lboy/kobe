@@ -1,3 +1,19 @@
+/**
+ * `/api/worktrees` — cross-project worktree audit for the standalone
+ * worktree-management page.
+ *
+ * Deliberately NOT a daemon RPC (`handlers.ts`/`protocol.ts`): everything it
+ * needs — `GitWorktreeManager`, `getSavedRepos` — is already a public,
+ * orchestrator-independent primitive, so this route composes them directly
+ * instead of adding to the already-oversized handler registry. Task linkage
+ * ("is this worktree backing an active task?") is left to the caller, which
+ * already holds the task list client-side.
+ *
+ * Local projects only for v1 — a remote (`ssh://…`) project's worktrees would
+ * need `git ls-remote`/`fs.stat` run over its `ExecHost` instead of directly,
+ * a real follow-up rather than bundled here.
+ */
+
 import { statSync } from "node:fs"
 import { execHostForWorktreePath } from "@/exec/resolve"
 import { GitWorktreeManager } from "@/orchestrator/worktree/manager"
@@ -11,7 +27,11 @@ const manager = new GitWorktreeManager()
 
 export interface WorktreeRow extends AdoptableWorktree {
   readonly repo: string
+  /** Worktree directory's creation time (epoch ms) — distinct from the
+   *  existing `lastActivityMs` (last-commit time). 0 when unreadable. */
   readonly createdAtMs: number
+  /** Whether `branch` exists on `origin`. `null` = no origin / unreachable /
+   *  timed out — rendered as "unknown", never a delete-blocker. */
   readonly branchOnRemote: boolean | null
 }
 

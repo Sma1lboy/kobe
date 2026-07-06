@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest"
 import { parseJsonl } from "../../src/engine/claude-code-local/history.ts"
 import { isClaudeCommandBreadcrumb, isSyntheticClaudeRecord } from "../../src/engine/claude-code-local/synthetic.ts"
 
+/**
+ * Claude persists injected rows (the local-command caveat as `isMeta`, the
+ * `<command-name>` slash-command breadcrumb as a plain user record) BEFORE the
+ * real prompt. They must be dropped from the neutral Message[] so auto-title
+ * names a task from the user's actual first prompt, not the boilerplate —
+ * mirroring Claude Code's own human-turn filter.
+ */
+
 describe("isSyntheticClaudeRecord", () => {
   it("flags isMeta and isCompactSummary records", () => {
     expect(isSyntheticClaudeRecord({ isMeta: true })).toBe(true)

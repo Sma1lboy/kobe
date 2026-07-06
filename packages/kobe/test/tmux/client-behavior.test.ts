@@ -1,7 +1,21 @@
+/**
+ * Behavioral tests for `src/tmux/client.ts`'s real tmux-invoking functions —
+ * `client.test.ts` only covers the pure builders and the "spawn itself
+ * throws" degrade path (Bun.spawn isn't defined under vitest's node
+ * environment, so every real call there degrades before doing anything).
+ * Here `Bun.spawn` is stubbed with a tiny fake tmux that answers based on
+ * the subcommand (the 4th argv token, after `tmux -L <socket>`), returning
+ * canned stdout as a real ReadableStream (drainText does `new
+ * Response(stream).text()`), so the actual PARSING logic in each client
+ * function gets exercised — not just its degrade path.
+ */
+
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const enterWindowMock = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock("../../src/tui/panes/terminal/tmux", () => ({ enterWindow: enterWindowMock }))
+// kobeCliInvocation uses import.meta.resolve, unsupported under vitest's SSR
+// transform (same stub the perf-budgets suite uses).
 vi.mock("../../src/cli/invocation", () => ({ kobeCliInvocation: () => ["kobe"] }))
 
 type FakeResult = { code: number; stdout?: string; stderr?: string }
@@ -234,7 +248,7 @@ describe("termAllPaneGroups / killSession", () => {
     const calls: string[][] = []
     state.router = (cmd) => {
       calls.push(cmd)
-      return { code: 0 }
+      return { code: 0 } // has-session always "exists"
     }
     await client.killSession("kobe-t1")
     const killed = calls.filter((c) => subcommandOf(c) === "kill-session").map((c) => c[c.indexOf("-t") + 1])

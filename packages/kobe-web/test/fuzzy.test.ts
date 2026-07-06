@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { fuzzyScore } from "../src/lib/fuzzy.ts"
 
+/**
+ * fuzzyScore ranks the command palette's task search. The contract: a
+ * subsequence match (chars in order) returns a score where LOWER is better
+ * (earlier + tighter = lower), a non-match returns null, an empty query
+ * matches everything at the best score, and matching is case-insensitive.
+ */
 
 describe("fuzzyScore — match / no-match", () => {
   it("matches a contiguous substring", () => {
@@ -55,6 +61,7 @@ describe("fuzzyScore — ranking (lower is better)", () => {
       .filter((m): m is { c: string; s: number } => m.s !== null)
       .sort((a, b) => a.s - b.s)
     expect(ranked).toHaveLength(3)
+    // "feature" — the tightest, earliest hit — must rank first.
     expect(ranked[0].c).toBe("feature")
   })
 })

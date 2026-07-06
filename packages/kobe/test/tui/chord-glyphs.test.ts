@@ -24,8 +24,8 @@ describe("formatChord", () => {
   it("keeps function keys, and keeps BARE keys in their typed case (#14)", () => {
     expect(formatChord("F1")).toBe("F1")
     expect(formatChord("f2")).toBe("F2")
-    expect(formatChord("n")).toBe("n")
-    expect(formatChord("M")).toBe("M")
+    expect(formatChord("n")).toBe("n") // bare plain-letter — the literal key to press
+    expect(formatChord("M")).toBe("M") // bare capital (Shift+M) stays capital
   })
 
   it("renders a tmux prefix chord as two steps", () => {
@@ -36,11 +36,11 @@ describe("formatChord", () => {
   })
 
   it("handles `/` compound keys, casing each side by context", () => {
-    expect(formatChord("j/k")).toBe("j/k")
+    expect(formatChord("j/k")).toBe("j/k") // bare → keep case
     expect(formatChord("h/l")).toBe("h/l")
     expect(formatChord("enter/esc")).toBe("⏎/⎋")
     expect(formatChord("[/]")).toBe("[/]")
-    expect(formatChord("ctrl+[/]")).toBe("⌃ [/]")
+    expect(formatChord("ctrl+[/]")).toBe("⌃ [/]") // modified
     expect(formatChord("1-9")).toBe("1-9")
   })
 })

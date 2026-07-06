@@ -1,3 +1,14 @@
+/**
+ * `kobe web` full-launch path (`runWebSubcommand` without --routes-only) —
+ * sibling of web-cmd.test.ts (which covers flag parsing + the routes-only
+ * health probes). Here `node:fs.existsSync` is mocked so the SPA dist /
+ * PTY-server resolution can be scripted, `fetch` is routed per-URL to
+ * script the daemon-web + PTY-port health probes, and `Bun.spawn` answers
+ * both the `lsof` port scans and the PTY sidecar spawn. The success path
+ * parks on a forever-promise by design, so it is asserted via waitFor
+ * without awaiting the returned promise.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -31,6 +42,7 @@ let resolvePtyExited: (code: number) => void
 let signalHandlers: Map<string, () => void>
 let savedEnv: Record<string, string | undefined>
 
+/** Route fetch by URL substring; unrouted URLs reject (loudly visible). */
 function routeFetch(routes: Record<string, { ok?: boolean; body?: string } | Error>): void {
   fetchMock.mockImplementation(async (url: unknown) => {
     const u = String(url)
@@ -118,8 +130,10 @@ describe("runWebSubcommand full launch", () => {
     routeFetch({
       "127.0.0.1:5180/__kobe_web": { body: "kobe-web" },
       "127.0.0.1:5180/": { ok: true },
-      "localhost:5182/__kobe_web": { body: "kobe-web" },
+      "localhost:5182/__kobe_web": { body: "kobe-web" }, // stale kobe-web on the PTY port
     })
+    // lsof: takeover listing → two pids (one dies, one throws "already gone");
+    // first deadline poll still sees one (forces the 100ms wait), second is clear.
     lsofOutputs = [`4242\n555\n${process.pid}\n`, "4242\n", ""]
     killSpy.mockImplementation((pid: number) => {
       if (pid === 555) throw new Error("ESRCH")
@@ -131,10 +145,12 @@ describe("runWebSubcommand full launch", () => {
       expect(out()).toContain("kobe web → http://localhost:5180")
     })
 
+    // Own pid is never a takeover target; both stale pids got SIGTERM.
     expect(killSpy).toHaveBeenCalledWith(4242, "SIGTERM")
     expect(killSpy).toHaveBeenCalledWith(555, "SIGTERM")
     expect(killSpy).not.toHaveBeenCalledWith(process.pid, "SIGTERM")
 
+    // The PTY sidecar runs under node with the web/pty ports wired in.
     const node = spawnCalls.find((c) => c.cmd[0] === "node")
     expect(node).toBeDefined()
     const env = node?.opts?.env as Record<string, string>
@@ -142,14 +158,17 @@ describe("runWebSubcommand full launch", () => {
     expect(env.KOBE_PTY_PORT).toBe("5182")
     expect(process.env.KOBE_DAEMON_WEB_STATIC_DIR).toBeTruthy()
 
+    // The sandbox home is surfaced, never a mystery.
     expect(out()).toContain("sandbox: /tmp/sandbox-home")
 
+    // SIGINT/SIGTERM stop the sidecar and exit 0.
     const sigint = signalHandlers.get("SIGINT")
     expect(sigint).toBeDefined()
     expect(() => sigint?.()).toThrow("exit 0")
     expect(ptyProc.kill).toHaveBeenCalledTimes(1)
     const sigterm = signalHandlers.get("SIGTERM")
     expect(() => sigterm?.()).toThrow("exit 0")
+    // stop() is idempotent — the second signal doesn't double-kill.
     expect(ptyProc.kill).toHaveBeenCalledTimes(1)
   })
 
@@ -158,13 +177,14 @@ describe("runWebSubcommand full launch", () => {
     routeFetch({
       "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
       "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": new Error("ECONNREFUSED"),
+      "localhost:5176/__kobe_web": new Error("ECONNREFUSED"), // free PTY port → takeover no-ops
     })
     void runWebSubcommand([])
     await vi.waitFor(() => {
       expect(out()).toContain("kobe web → http://localhost:5174")
     })
     expect(out()).toContain(".kobe (production)")
+    // Nothing listening on the PTY port → no lsof scan, no kills.
     expect(spawnCalls.filter((c) => c.cmd[0] === "lsof")).toHaveLength(0)
     expect(killSpy).not.toHaveBeenCalled()
   })
@@ -201,6 +221,7 @@ describe("runWebSubcommand full launch", () => {
   })
 
   it("warns (but keeps serving) when the PTY server script is missing from the build", async () => {
+    // SPA dist exists, pty-server.mjs does not.
     mocks.existsSync.mockImplementation((p: string) => !p.endsWith("pty-server.mjs"))
     routeFetch({
       "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
@@ -218,8 +239,9 @@ describe("runWebSubcommand full launch", () => {
     routeFetch({
       "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
       "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": { body: "kobe-web" },
+      "localhost:5176/__kobe_web": { body: "kobe-web" }, // a stale kobe-web answers…
     })
+    // …but lsof is unavailable — pidsOnPort degrades to [] instead of crashing.
     const bunSpawn = (globalThis as unknown as { Bun: { spawn: ReturnType<typeof vi.fn> } }).Bun.spawn
     bunSpawn.mockImplementation((cmd: string[], opts?: Record<string, unknown>) => {
       spawnCalls.push({ cmd, opts })
@@ -239,6 +261,8 @@ describe("runWebSubcommand full launch", () => {
       "127.0.0.1:5174/": { ok: true },
       "localhost:5176/__kobe_web": new Error("ECONNREFUSED"),
     })
+    // The exit-watcher's process.exit(1) runs inside a detached .then — a
+    // throwing stub would surface as an unhandled rejection, so record only.
     exitSpy.mockImplementation((() => undefined) as never)
     void runWebSubcommand([])
     await vi.waitFor(() => {

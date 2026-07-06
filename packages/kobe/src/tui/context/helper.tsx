@@ -1,3 +1,10 @@
+/**
+ * Provider/use pair factory.
+ *
+ * Lifted from `refs/opencode/packages/opencode/src/cli/cmd/tui/context/helper.tsx`
+ * unchanged. The `init.ready` short-circuit lets context providers gate
+ * children on async readiness without each consumer caring.
+ */
 import { type ParentProps, Show, createContext, useContext } from "solid-js"
 
 export function createSimpleContext<T, Props extends Record<string, unknown>>(input: {

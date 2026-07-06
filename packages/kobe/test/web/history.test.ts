@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { handleHistoryRequest } from "../../src/web/history.ts"
 
+/**
+ * The history routes expose engine transcript stores to the browser, so the
+ * input guards ARE the security boundary: a crafted sessionId/vendor must
+ * never traverse the filesystem, and non-history paths must fall through
+ * (null) so the bridge's route chain keeps working.
+ */
+
 function get(path: string): { req: Request; url: URL } {
   const url = new URL(`http://localhost${path}`)
   return { req: new Request(url), url }

@@ -1,3 +1,14 @@
+/**
+ * Companion to `interactive-command.test.ts` for the halves that read the
+ * shared state.json: the per-vendor launch-command / display-name overrides
+ * (KOB-244) and the effort + session-id argv weaving.
+ *
+ * Why these matter: every launch site (Handover, Tasks-pane switch,
+ * `new-chattab`) goes through `interactiveEngineCommand` — a bad override
+ * fallback silently launches the wrong binary, and a mis-woven effort flag
+ * makes codex refuse to start. State is isolated via `KOBE_HOME_DIR`.
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"

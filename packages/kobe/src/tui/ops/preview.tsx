@@ -1,3 +1,13 @@
+/**
+ * `kobe ops --preview <rel>` — the full-width fallback preview window,
+ * extracted from `tui/ops/host.tsx` (file-size-cap split, issue #15 G3).
+ * Renders opentui's `<diff>` / `<code>` (tree-sitter syntax highlighting +
+ * line numbers, zero external deps) in a fresh tmux window when no
+ * nvim/vim is available; closed with `q` back to the three-pane layout.
+ * Data + syntax-style mapping live in `./preview-core` / `./preview-syntax`,
+ * shared with the React port.
+ */
+
 import { Show, createResource } from "solid-js"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
@@ -55,6 +65,8 @@ function PreviewScreen(props: OpsPreviewArgs) {
 }
 
 export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
+  // Same minimal provider set as the Ops pane. Note: unlike startOpsHost
+  // this entrypoint never set a client-log context — preserved as-is.
   await bootPaneHost({
     providers: { kv: false, focus: false },
     setup: () => ({ root: () => <PreviewScreen {...args} /> }),

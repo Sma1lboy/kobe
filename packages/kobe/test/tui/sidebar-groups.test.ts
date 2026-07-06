@@ -66,6 +66,8 @@ describe("sidebar task ordering", () => {
   })
 
   it("projects sit tight in recent mode — alphabetised, not reshuffled by use", () => {
+    // alpha's repo basename is "alpha", zeta's is "zeta"; zeta was used more
+    // recently, but projects stay alphabetised in recent mode (no reshuffle).
     const rows = buildRows(
       [
         task({
@@ -88,6 +90,7 @@ describe("sidebar task ordering", () => {
       "",
       "recent",
     )
+    // alpha before zeta despite zeta being more recent.
     expect(ids(rows)).toEqual(["a", "z", "reg"])
   })
 
@@ -265,8 +268,24 @@ describe("sidebar project filter cursor", () => {
   })
 })
 
+/**
+ * Identity contract for the sidebar's row reconciler (docs/DESIGN.md §5.5).
+ *
+ * Why these matter: the Tasks pane lives for days in every tmux session,
+ * Solid's `<For>` keys rows by OBJECT IDENTITY, and @opentui/core 0.2.4
+ * retains ~300B of native memory per renderable create/destroy cycle.
+ * Every daemon `task.snapshot` push deserializes ALL-new Task objects —
+ * including the no-visual-change push from `setActiveTask`'s recency
+ * touch on EVERY task switch — so without reconciliation each push
+ * destroyed and recreated every row's renderables (the same leak class
+ * as the Ops-pane filetree, `test/tui/filetree-rows.test.ts`). The fix
+ * is invisible to value-equality assertions: these tests pin identity
+ * reuse with toBe — break it and the UI renders identically while the
+ * leak silently returns.
+ */
 describe("reconcileSidebarRows", () => {
   it("a content-identical snapshot push returns the PREVIOUS array itself (no downstream notify)", () => {
+    // Simulates the daemon echo: all-new Task objects, identical content.
     const prev = buildRows([task({ id: "a", title: "a" }), task({ id: "b", title: "b" })], "active", "", "default")
     const next = buildRows([task({ id: "a", title: "a" }), task({ id: "b", title: "b" })], "active", "", "default")
     expect(reconcileSidebarRows(prev, next)).toBe(prev)
@@ -293,8 +312,8 @@ describe("reconcileSidebarRows", () => {
     )
     const out = reconcileSidebarRows(prev, next)
     expect(out).not.toBe(prev)
-    expect(out[0]).toBe(next[0])
-    expect(out[1]).toBe(prev[1])
+    expect(out[0]).toBe(next[0]) // title changed → fresh object (renderer captures task non-reactively)
+    expect(out[1]).toBe(prev[1]) // untouched → reused, <For> keeps its renderables
   })
 
   it("a reorder breaks reuse via flatIndex (renderer captures flatIndex non-reactively)", () => {
@@ -356,13 +375,13 @@ describe("resolveCursorTarget", () => {
 
   it("empty list → -1 regardless of selection", () => {
     expect(resolveCursorTarget("a", [], 0)).toBe(-1)
-    expect(resolveCursorTarget(null, [], 3)).toBe(0)
+    expect(resolveCursorTarget(null, [], 3)).toBe(0) // cursor>=len(0) path snaps to max(0,-1)=0... see null-empty
     expect(resolveCursorTarget(null, [], -1)).toBe(-1)
   })
 
   it("null selection: snap an unset cursor to the first row, else keep it", () => {
     expect(resolveCursorTarget(null, ids, -1)).toBe(0)
     expect(resolveCursorTarget(null, ids, 2)).toBe(2)
-    expect(resolveCursorTarget(null, ids, 9)).toBe(2)
+    expect(resolveCursorTarget(null, ids, 9)).toBe(2) // out of range → clamp to last
   })
 })

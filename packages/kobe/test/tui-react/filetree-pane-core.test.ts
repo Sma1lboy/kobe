@@ -1,3 +1,14 @@
+/**
+ * pane-core — the framework-free file-tree logic extracted for the React
+ * port (issue #15, G3). Both runtimes drive their cursor / expansion /
+ * stat-column behavior through these functions, so this suite is the single
+ * behavioral pin for hierarchy navigation (`h`/`l` semantics), the
+ * Changes-tab stat alignment math, git-error summarization, and the
+ * fs-watch event filter. A regression here misbehaves identically in the
+ * Solid pane and the React pane — which is exactly the point of the
+ * extraction.
+ */
+
 import { describe, expect, test } from "vitest"
 import { TAB_ORDER, tabLabelKey } from "../../src/tui/panes/filetree/keys-core"
 import {
@@ -15,6 +26,11 @@ import {
 } from "../../src/tui/panes/filetree/pane-core"
 import type { Row } from "../../src/tui/panes/filetree/rows"
 
+// A small All-tab row list:
+//   0  dir  src/        (expanded, has children)
+//   1  file src/a.ts    (depth 1)
+//   2  dir  src/lib/    (closed, has children, depth 1)
+//   3  file top.ts      (depth 0)
 const treeRows: Row[] = [
   { kind: "dir", path: "src", name: "src", depth: 0, expanded: true, hasChildren: true },
   { kind: "file", path: "src/a.ts", name: "a.ts", depth: 1 },
@@ -59,6 +75,7 @@ describe("summarizeGitError", () => {
 
 describe("stat columns", () => {
   test("widths pad to the widest sibling, sign included", () => {
+    // widest added `+12` → 3; widest deleted `-202` → 4.
     expect(computeStatWidths(statusRowsFixture)).toEqual({ added: 3, deleted: 4 })
   })
   test("non-status rows and null counts contribute nothing", () => {
@@ -85,7 +102,7 @@ describe("toggleDir", () => {
     expect([...opened].sort()).toEqual(["a", "b"])
     const closed = toggleDir(opened, "a")
     expect([...closed]).toEqual(["b"])
-    expect([...start]).toEqual(["a"])
+    expect([...start]).toEqual(["a"]) // untouched
   })
 })
 

@@ -23,6 +23,11 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number][0]
 
+// A flat section: a BOLD CAPS header over its content, with NO enclosing
+// border/fill. The controls inside (EngineRow, ToggleRow, inputs, textareas)
+// already carry their own border, so wrapping them in a bordered card stacked a
+// third concentric box (card → row → field) and read as over-nested. Dropping
+// the card box leaves the header to group, the controls to delineate.
 function Card({
   title,
   children,
@@ -83,6 +88,8 @@ function useSharedSettings() {
   const [settings, setSettings] = useState<WebSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // A failed load leaves `settings` null forever, so track the error
+  // separately to show a retryable empty state instead of a stuck spinner.
   const seqRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -327,6 +334,10 @@ function BoardSection() {
         setLoaded(true)
       })
       .catch((err: unknown) => {
+        // Surface the failure instead of leaving the form silently disabled
+        // forever. Stay !loaded (disabled) on purpose: enabling with empty
+        // values would let a Save overwrite the user's saved templates with
+        // blanks on a transient load failure.
         if (!cancelled) reportError("load quick-action templates", err)
       })
     return () => {

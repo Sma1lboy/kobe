@@ -1,3 +1,10 @@
+/**
+ * Client for `/api/worktrees` — the standalone worktree-management page.
+ * See `packages/kobe-daemon/src/daemon/web-worktrees-route.ts` for the
+ * server side. `DirtyWorktreeError` distinguishes "refused: dirty" from any
+ * other delete failure so the page knows when to offer a force-confirm.
+ */
+
 import { ApiError, api } from "./api-client.ts"
 
 export interface WorktreeRow {

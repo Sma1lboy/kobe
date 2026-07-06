@@ -1,3 +1,13 @@
+/**
+ * `kobe api` verb handlers not covered by api-handlers.test.ts: the leveled
+ * schema drill-ins (--verb / --group), the simple-RPC edit verbs (rename /
+ * set-branch / set-vendor / set-status / pin), the issue verbs, and the
+ * dispatch / note delivery verbs — plus the VerbArgs coercion errors that
+ * only a handler (not spec validation) can raise. Same technique as the
+ * sibling file: `invokeVerb` against a fake daemon client that records
+ * request traffic; these pin RPC names + payloads scripts depend on.
+ */
+
 import { describe, expect, it } from "vitest"
 import {
   API_SCHEMA_VERSION,
@@ -10,6 +20,7 @@ import {
 } from "../../src/cli/api-cmd.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 
+/** Records every request; answers from a per-RPC responder table. */
 class FakeClient implements DaemonRpc {
   readonly requests: Array<{ name: string; payload: unknown }> = []
   constructor(private readonly responders: Record<string, (payload: unknown) => unknown> = {}) {}

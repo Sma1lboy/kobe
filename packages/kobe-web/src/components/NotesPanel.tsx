@@ -1,3 +1,14 @@
+/**
+ * Notes panel (web-only) — a per-task free-form markdown scratchpad.
+ *
+ * Loads notes when `taskId` changes, edits in a full-height <textarea>,
+ * and autosaves on a debounce (~600ms after typing stops). The TUI has no
+ * equivalent; notes live server-side under <KOBE_HOME>/.kobe/notes/.
+ *
+ * Mount this anywhere a task is in focus. The center workspace uses `full`
+ * so notes fill the whole tab instead of behaving like a side-panel card.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { renderMarkdown } from "../lib/markdown.ts"
 import { fetchNotes, saveNotes } from "../lib/notes.ts"
@@ -36,12 +47,17 @@ export function NotesPanel({
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const rendered = useMemo(() => renderMarkdown(markdown), [markdown])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track the task the current buffer belongs to, so an in-flight load or
+  // a queued autosave for a previous task never writes to the new one.
   const loadedTaskRef = useRef<string | null>(null)
 
+  // Load on task change.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     loadedTaskRef.current = taskId
     setSaveState("idle")
+    // Clear the buffer + drop to Edit mode immediately so the previous task's
+    // content (or a stale preview render) can't show during the async reload.
     setMarkdown("")
     setPreview(false)
     if (!taskId) {
@@ -64,6 +80,7 @@ export function NotesPanel({
     }
   }, [taskId])
 
+  // Cleanup any pending debounce on unmount.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -80,6 +97,7 @@ export function NotesPanel({
       debounceRef.current = setTimeout(() => {
         saveNotes(target, value)
           .then(() => {
+            // Only reflect success if we're still on the same task.
             if (loadedTaskRef.current === target) setSaveState("saved")
           })
           .catch(() => {

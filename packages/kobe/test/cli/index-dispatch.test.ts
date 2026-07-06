@@ -1,3 +1,17 @@
+/**
+ * Behavioral tests for the CLI entry dispatcher (`src/cli/index.ts`).
+ *
+ * The module runs `main()` at import time, so each test resets the module
+ * registry, sets `process.argv`, imports the entry fresh, and flushes the
+ * microtask queue. Every subcommand module is mocked at the seam the entry
+ * dynamically imports, so a test asserts exactly one thing: the argv
+ * routed to the right handler with the right rest-args (or printed the
+ * right usage/error and exit code). `process.exit` throws a sentinel on
+ * its FIRST call (so the code after an exit really stops, like production)
+ * and no-ops afterwards — main()'s top-level .catch calls exit(1) again,
+ * and a second throw there would surface as an unhandled rejection.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const spies = vi.hoisted(() => ({
@@ -99,6 +113,7 @@ async function runCli(...args: string[]): Promise<void> {
   process.argv = ["bun", "/kobe/src/cli/index.ts", ...args]
   vi.resetModules()
   await import("../../src/cli/index.ts")
+  // main() runs detached at import time; flush the mocked-async chain.
   for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r))
 }
 
@@ -204,6 +219,7 @@ describe("in-session handlers (new-chattab / focus-tasks / layout / kill-session
 
   test("new-chattab opens a tab in the session, honoring a valid --vendor", async () => {
     await runCli("new-chattab", "--session", "kobe-t1", "--vendor", "codex")
+    // Per-repo last-active persistence happens inside newChatTab (mocked here).
     expect(spies.newChatTab).toHaveBeenCalledWith("kobe-t1", "codex")
   })
 

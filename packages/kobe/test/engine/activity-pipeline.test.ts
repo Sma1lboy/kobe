@@ -1,3 +1,22 @@
+/**
+ * End-to-end activity vocabulary test (no socket) — pins the WHOLE hook
+ * pipeline through every translation edge:
+ *
+ *   vendor hook event (Claude Code's `Stop` / `StopFailure` / …)
+ *     → adapter install-time translation (event → neutral verb)
+ *     → `kobe hook <verb>` gate (`isEngineActivityKind`)
+ *     → adapter fire-time translation (stdin payload → neutral detail)
+ *     → daemon reduce (`DaemonActivityRegistry` / `reduceActivity`)
+ *     → `engine-state` payload → the `TaskEngineState` a sidebar row gets
+ *     → `buildSidebarRowView` badge.
+ *
+ * The point: the neutral vocabulary (`EngineActivityKind` →
+ * `TaskActivityState`, both in `engine/hook-events.ts`) is translated INTO
+ * exactly once per hop — vendor names at the adapter, render glyphs at the
+ * row — and a representative payload for each badge class survives the trip.
+ * If any hop grows a private re-mapping, these assertions are where it shows.
+ */
+
 import { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
 import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import { describe, expect, it } from "vitest"
@@ -16,7 +35,7 @@ function task(): Task {
     branch: "feature/sidebar",
     worktreePath: "/repo/kobe/worktrees/sidebar",
     kind: "task",
-    status: "backlog",
+    status: "backlog", // neutral lifecycle so the badge comes purely from activity
     archived: false,
     pinned: false,
     vendor: "claude",
@@ -25,19 +44,32 @@ function task(): Task {
   } as Task
 }
 
+/** Run one vendor hook (event name + stdin payload) through every hop and
+ *  return the sidebar row a task would render afterwards. */
 function rowAfterClaudeHook(event: string, payload: Record<string, unknown>) {
+  // 1. Install-time translation: Claude event name → neutral verb. This is
+  //    what the adapter bakes into the `kobe hook <verb>` command it installs.
   const verb = claudeVerbForHookEvent(event)
   if (!verb) throw new Error(`kobe installs no hook for Claude event ${event}`)
+  // 2. The `kobe hook` CLI gate: the verb on the wire must be a member of the
+  //    one canonical kind vocabulary.
   expect(isEngineActivityKind(verb)).toBe(true)
+  // 3. Fire-time translation: the vendor stdin payload → neutral detail
+  //    (exactly what `runHookSubcommand` asks the hook-supporting adapters).
   const detail = new ClaudeHookAdapter().activityDetailFromPayload(verb, payload)
+  // 4. Daemon side: `engine.reportEvent` lands in the activity registry,
+  //    which reduces verb+detail to a TaskActivityState and publishes it.
   const bus = new DaemonEventBus()
   const registry = new DaemonActivityRegistry(bus, 60_000, () => 42)
   try {
     registry.report("task-1", verb, detail)
     const published = registry.snapshotByTask()["task-1"]
     expect(published).toBeDefined()
+    // 5. Client side: RemoteOrchestrator accumulates non-idle states into
+    //    TaskEngineState (an `idle` publish deletes the entry → undefined).
     const activity: TaskEngineState | undefined =
       published.state === "idle" ? undefined : { state: published.state, detail: published.detail, at: published.at }
+    // 6. Render: the sidebar badge.
     return buildSidebarRowView({
       task: task(),
       activity,
@@ -57,7 +89,7 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
     expect(row.loading).toBe(true)
     expect(row.stateGlyph).toBe(IN_PROGRESS_SPINNER[0])
     expect(row.tone).toBe("primary")
-    expect(row.subtitleText).toBe("feature/sidebar")
+    expect(row.subtitleText).toBe("feature/sidebar") // running keeps the branch
   })
 
   it("turn done: Stop shows the checkmark", () => {
@@ -102,7 +134,7 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
   it("session end: the row falls back to its lifecycle badge", () => {
     const row = rowAfterClaudeHook("SessionEnd", { cwd: "/repo/kobe/worktrees/sidebar" })
     expect(row.loading).toBe(false)
-    expect(row.stateGlyph).toBe("○")
+    expect(row.stateGlyph).toBe("○") // backlog lifecycle badge — no activity left
     expect(row.tone).toBe("textMuted")
   })
 })

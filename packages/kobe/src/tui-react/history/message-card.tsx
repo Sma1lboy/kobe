@@ -1,4 +1,9 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React transcript row rendering for the history pane. The visual grammar
+ * mirrors `src/tui/history/message-card.tsx`; pure formatting helpers live in
+ * `src/tui/history/message-core.ts` so Solid and React cannot drift.
+ */
 
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
@@ -26,6 +31,7 @@ function blockKey(block: ContentBlock, index: number): string {
   }
 }
 
+/** A tool-output / thinking body, one `<text>` per line so +/- diff lines tint. */
 export function BodyLines(props: { text: string; error?: boolean }) {
   const { theme } = useTheme()
   const lines = useMemo(() => props.text.replace(/\s+$/, "").split("\n"), [props.text])

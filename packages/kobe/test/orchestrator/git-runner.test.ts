@@ -1,3 +1,11 @@
+/**
+ * `git()` — the one synchronous git runner every worktree operation routes
+ * through. Pinned: the cwd guard (never inherit process.cwd), env merging,
+ * the allowFail contract, and GitCommandError's diagnostic payload. Uses a
+ * real temp git repo (the worktree.test.ts convention) — this runner is
+ * exactly the layer where a mocked git would prove nothing.
+ */
+
 import { execSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,6 +36,8 @@ describe("git()", () => {
   })
 
   test("merges extra env over process.env", () => {
+    // GIT_AUTHOR_NAME flows into commit authorship — observable proof the
+    // env option reached the child.
     git(["commit", "--allow-empty", "-m", "probe"], {
       cwd: repo,
       env: {

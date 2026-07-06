@@ -1,3 +1,10 @@
+/**
+ * `settings.*` messages — the Settings dialog (sidebar, footer, every
+ * section). English is the source of truth; `zh` mirrors its shape exactly
+ * (`zh: typeof en`). One namespace per surface keeps parallel translation
+ * work conflict-free — see `../catalog.ts` for how the namespaces compose.
+ */
+
 export const en = {
   title: "Settings",
   esc: "esc",

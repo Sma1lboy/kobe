@@ -1,3 +1,17 @@
+/**
+ * ChatTerminal — a live xterm.js attached (over the PTY WebSocket) to one
+ * PTY-backed workspace tab. Vendor tabs run the selected engine; terminal
+ * tabs run the user's shell. Keyed by tab id in the parent so switching tabs
+ * swaps terminals while the PTY persists server-side across reconnects.
+ *
+ * Engine tabs get a prompt composer under the terminal: a textarea whose
+ * submit pastes into the engine via bracketed paste + Enter (the same
+ * delivery contract as kobe's tmux `pasteAndSubmit`), so driving a session
+ * doesn't require terminal typing ergonomics. A dropped socket shows a
+ * Reattach affordance — the PTY survives server-side and replays its
+ * scrollback ring on re-attach, so reattaching is loss-free.
+ */
+
 import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
@@ -14,8 +28,13 @@ import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
 import { isWebTransportOffline } from "../lib/web-transport.ts"
 
+// One decoder reused across every WebSocket message — a fresh `new
+// TextDecoder()` per frame (hundreds/sec during engine streaming) was needless
+// allocation churn. Stateless here: each binary frame is a self-contained UTF-8
+// chunk, decoded in one `decode()` call with no streaming state carried over.
 const PTY_DECODER = new TextDecoder()
 
+// xterm palette mirrored from the claude TUI theme (claude.json).
 const CLAUDE_XTERM_THEME = {
   background: "#141413",
   foreground: "#eae7df",
@@ -47,7 +66,9 @@ async function loadTerminalFont(): Promise<void> {
   if (!("fonts" in document)) return
   try {
     await document.fonts.load(`12px "JetBrains Mono"`)
-  } catch {}
+  } catch {
+    /* fallback font stack still renders if the bundled font fails */
+  }
 }
 
 type WsStatus = "connecting" | "open" | "closed"
@@ -64,15 +85,23 @@ export function ChatTerminal({
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<WsStatus>("connecting")
+  // A dropped PTY socket normally means "still running, just detached". But if
+  // the daemon web transport is down, the PTY may be PAUSED — the reassuring
+  // "keeps running" copy would be wrong. Distinguish the two for the close UI.
   const { daemonConnected, streamConnected } = useAppState()
   const transportOffline = isWebTransportOffline({
     daemonConnected,
     streamConnected,
   })
+  // Bumping the epoch tears the terminal down and re-attaches to the
+  // SAME server-side PTY (keyed by tab id) — its scrollback ring replays.
   const [epoch, setEpoch] = useState(0)
+  // Seed the composer with a task's pending first prompt (set by the New Task
+  // dialog) on the first engine tab to mount — consumed once.
   const [draft, setDraft] = useState(() =>
     mode === "engine" ? (consumePendingPrompt(taskId) ?? "") : "",
   )
+  // Shell-like prompt recall: ↑/↓ walk previously-sent prompts (newest-first).
   const [history, setHistory] = useState<string[]>(() =>
     mode === "engine" ? loadHistory(taskId) : [],
   )
@@ -95,6 +124,7 @@ export function ChatTerminal({
       if (disposed) return
 
       term = new Terminal({
+        // Active TUI-synced palette when loaded; static claude otherwise.
         theme: xtermTheme() ?? CLAUDE_XTERM_THEME,
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: 12,
@@ -107,7 +137,9 @@ export function ChatTerminal({
       term.open(el)
       try {
         fit.fit()
-      } catch {}
+      } catch {
+        /* container not measured yet */
+      }
 
       ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows))
       wsRef.current = ws
@@ -116,6 +148,9 @@ export function ChatTerminal({
         if (!disposed) setStatus("open")
       }
       ws.onmessage = (e) => {
+        // A WS close is async, so a frame already queued can fire after
+        // cleanup disposed the terminal — writing to a disposed xterm throws.
+        // onopen/onclose already guard on `disposed`; onmessage must too.
         if (disposed) return
         const data =
           typeof e.data === "string"
@@ -168,7 +203,16 @@ export function ChatTerminal({
     const ws = wsRef.current
     const text = draft.trim()
     if (!text || ws?.readyState !== WebSocket.OPEN) return
+    // Bracketed paste + Enter — the same submit contract as kobe's tmux
+    // prompt delivery (`paste-buffer -p` + Enter), so multi-line prompts
+    // arrive as ONE paste instead of line-by-line keystrokes.
     ws.send(`\x1b[200~${text}\x1b[201~`)
+    // Defer the Enter so it lands as a SEPARATE tty read. Sent back-to-back the
+    // paste and the CR coalesce into one chunk and the engine treats the CR as
+    // paste *content* — the prompt sits in the composer, unsent. This mirrors
+    // the ~150ms split the sidecar's /pty/send path already uses for the same
+    // reason. Re-read wsRef at fire time so a reconnect mid-defer still targets
+    // the live socket (same tab → same PTY), and skip if it's gone.
     setTimeout(() => {
       const live = wsRef.current
       if (live?.readyState === WebSocket.OPEN) live.send("\r")
@@ -212,6 +256,7 @@ export function ChatTerminal({
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value)
+              // Editing means we're back on a live draft, not browsing history.
               histCursorRef.current = -1
             }}
             onKeyDown={(event) => {
@@ -220,6 +265,7 @@ export function ChatTerminal({
                 sendPrompt()
                 return
               }
+              // Escape exits history browsing → restore the in-progress draft.
               if (event.key === "Escape" && histCursorRef.current >= 0) {
                 event.preventDefault()
                 histCursorRef.current = -1
@@ -232,6 +278,9 @@ export function ChatTerminal({
               const atEnd =
                 ta.selectionStart === draft.length &&
                 ta.selectionEnd === draft.length
+              // Enter history from a live draft only when the caret is at the
+              // edge (so ↑/↓ still move inside a multi-line draft); once
+              // browsing, ↑/↓ keep walking the ring regardless of caret.
               if (event.key === "ArrowUp" && (browsing || atStart)) {
                 if (histCursorRef.current === -1) liveDraftRef.current = draft
                 const step = navigateHistory(

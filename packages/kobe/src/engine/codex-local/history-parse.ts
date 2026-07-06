@@ -1,3 +1,17 @@
+/**
+ * Rollout JSONL → Message[] parsing for Codex transcripts, on top of the
+ * shared append-aware per-file cache (`../history-cache.ts`) so repeated
+ * `readHistory` polls don't re-parse the whole rollout every ~2.5s tick.
+ *
+ * One fold pass extracts BOTH the conversation messages (`response_item`
+ * records) and the latest `turn.completed` usage snapshot — previously two
+ * separate full scans of the raw text per poll. The fold is line-local
+ * apart from the usage carry-over (latest snapshot + its timestamp), which
+ * threads through the cached state, so folding the appended slice onto the
+ * cached prefix reproduces a full parse exactly, with stable message
+ * object identities.
+ */
+
 import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { isJsonlLineWithinBound } from "../file-bounds"
@@ -7,8 +21,11 @@ import { isSyntheticCodexUserRow } from "./synthetic"
 import { codexUsageToSnapshot } from "./usage"
 
 interface CodexParseState {
+  /** `response_item` messages in file order (pre-sort). */
   readonly messages: Message[]
+  /** Winning `turn.completed` usage snapshot so far. */
   readonly latestUsage: EngineUsageSnapshot | undefined
+  /** Timestamp (epoch ms) of that snapshot, when it carried one. */
   readonly latestUsageTimestampMs: number | null
 }
 
@@ -19,20 +36,28 @@ const cache = createAppendParseCache<CodexParseState, string>({
   parseChunk: foldRolloutChunk,
 })
 
+/**
+ * Parse `raw` (the full current contents of rollout `filePath`) into
+ * sorted messages + the latest usage snapshot, reusing the cached fold of
+ * the unchanged prefix when the file only appended since the last call.
+ */
 export function parseRolloutRaw(filePath: string, raw: string, sessionId: string): EngineHistory {
   const state = cache(filePath, raw, sessionId)
   const messages = sortByTimestamp(state.messages)
   return { messages, ...(state.latestUsage ? { usageMetrics: state.latestUsage } : {}) }
 }
 
+/** Uncached message-only parse. Exported for unit testing. */
 export function parseJsonl(raw: string, sessionId: string): Message[] {
   return foldRolloutChunk(raw, emptyState, sessionId).messages
 }
 
+/** Latest `turn.completed` usage in `raw`, uncached. Exported for unit testing. */
 export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | undefined {
   return foldRolloutChunk(raw, emptyState, "").latestUsage
 }
 
+/** Fold rollout lines onto `prev` without mutating it (cache contract). */
 function foldRolloutChunk(chunk: string, prev: CodexParseState, sessionId: string): CodexParseState {
   const messages = prev.messages.slice()
   let latestUsage = prev.latestUsage
@@ -69,6 +94,11 @@ function foldRolloutChunk(chunk: string, prev: CodexParseState, sessionId: strin
       latestUsageTimestampMs = timestampMs
       latestUsage = snapshot
     } else if (latestUsageTimestampMs === null) {
+      // No timestamped record has won yet — keep advancing to the latest in
+      // FILE order. Gating on `latestUsage === undefined` (the old check) froze
+      // on the FIRST snapshot when turn.completed lines carry no timestamp, so
+      // every later turn's usage was silently discarded and the session
+      // reported stale first-turn tokens.
       latestUsage = snapshot
     }
   }
@@ -85,6 +115,11 @@ function normalizeCodexResponseItem(
     const role = payload.role
     if (role !== "user" && role !== "assistant" && role !== "system") return undefined
     const blocks = normalizeCodexContent(payload.content)
+    // Drop Codex's synthetic user rows. Codex persists both repository
+    // instructions and the environment envelope in rollout JSONL as
+    // role=user messages, but the live `codex exec --json` stream does
+    // not replay them. Reloading history should therefore hide them so
+    // the visible transcript matches what the user actually typed.
     if (role === "user" && isSyntheticCodexUserRow(blocks)) return undefined
     return { role, blocks, timestamp, sessionId }
   }

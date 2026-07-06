@@ -1,3 +1,9 @@
+/**
+ * DialogConfirm — yes/no prompt (src/tui/ui/dialog-confirm.tsx). Drives the
+ * real DialogProvider stack (DialogConfirm.show pushes onto it) and asserts
+ * on the actual keyboard flow: left/right swaps the focused button, enter
+ * commits, esc cancels via the dialog's own escape binding.
+ */
 import { describe, expect, it } from "bun:test"
 import { useDialog } from "../../src/tui/ui/dialog"
 import { DialogConfirm } from "../../src/tui/ui/dialog-confirm"

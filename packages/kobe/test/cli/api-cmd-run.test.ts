@@ -1,3 +1,12 @@
+/**
+ * Tests for `runApiSubcommand` — the process-exit / JSON-emit wrapper around
+ * `invokeVerb` (which api-handlers.test.ts covers). What's pinned: the JSON
+ * error contract on stderr ({error:{message,code}} + exit code), the usage /
+ * per-verb help paths, offline-verb emission without a daemon session, and
+ * the BAD_DAEMON path when the daemon can't be reached. `daemon-session` is
+ * mocked so no socket is ever opened.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const fake = vi.hoisted(() => ({

@@ -1,3 +1,17 @@
+/**
+ * ArchivedHistoryPeek — beta read-only preview of an archived task's engine
+ * history (Settings → Experimental → "Archived history preview").
+ *
+ * An archived task's git worktree is usually gone (it was archived precisely
+ * because `git worktree remove` ran). Its transcript, however, lives in the
+ * engine's own vendor store keyed by the worktree PATH STRING — claude's
+ * `~/.claude/projects/<encoded-path>/*`, codex's `~/.codex/sessions/**` — which
+ * the deletion never touched. So `ChatTranscript`, which already reads through
+ * the neutral `/api/history/*` routes keyed by `worktreePath` + `vendor`, renders
+ * the full history unchanged; we just host it in a docked drawer with no live
+ * PTY / engine tab. Pure read surface — no write path is wired here.
+ */
+
 import type { Task } from "../lib/types.ts"
 import { ChatTranscript } from "./ChatTranscript.tsx"
 import { SlideOver } from "./SlideOver.tsx"
@@ -6,6 +20,7 @@ export function ArchivedHistoryPeek({
   task,
   onClose,
 }: {
+  /** The archived task to preview, or null when the drawer is closed. */
   task: Task | null
   onClose: () => void
 }) {

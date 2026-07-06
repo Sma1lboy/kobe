@@ -1,3 +1,17 @@
+/**
+ * RemoteOrchestrator (v0.6). Mirror of the slim {@link Orchestrator} that
+ * runs in the daemon: same read surface (tasks signal + subscribe), and a
+ * write surface forwarding each method as a daemon RPC.
+ *
+ * File-size-cap split: `performInit`/`handleOrchestratorEvent`
+ * (`remote-orchestrator-connect.ts`/`-events.ts`) take an explicit
+ * {@link OrchestratorSignals} deps bag — built once in the constructor from
+ * the same Solid signals this class's read methods return — instead of
+ * closing over `this`. Write methods below are 1-line delegates to
+ * `remote-orchestrator-writes.ts`. Wire-payload types/helpers live in
+ * `remote-orchestrator-payloads.ts`, re-exported below for existing importers.
+ */
+
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -80,6 +94,9 @@ export class RemoteOrchestrator {
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
   private readonly setKeybindingsRevSig: (next: number | null) => void
+  // Framework-free twins of Solid signals (issue #15 G3) — React hosts
+  // need stores because solid-js reactivity is inert outside
+  // reactive-solid runtimes. Setters dual-write; single writer, no drift.
   private readonly uiPrefsStoreInner = createExternalStore<UiPrefsPayload | null>(null)
   private readonly keybindingsRevStoreInner = createExternalStore<number | null>(null)
   private readonly transcriptActivityStoreInner = createExternalStore<TranscriptActivityMap | null>(null)
@@ -87,9 +104,14 @@ export class RemoteOrchestrator {
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
+  /** Per-channel subscribe filter; `undefined` = subscribe to all channels. */
   private readonly channels?: readonly ChannelName[]
+  /** True when the filter excludes `task.snapshot` — skip hello task hydration. */
   private readonly subscribesTasks: boolean
+  /** Guards against stacking multiple reconnect loops (one `close` already
+   *  running a retry loop must not spawn a second on the next `close`). */
   private reconnecting = false
+  /** Deps bag for `performInit`/`handleOrchestratorEvent` — see file header. */
   private readonly signals: OrchestratorSignals
 
   constructor(
@@ -161,6 +183,22 @@ export class RemoteOrchestrator {
       setConnectionState: this.setConnectionState,
     }
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
+    // Socket drop flips us to `disconnected`. What happens next depends on
+    // the role:
+    //   - gui:  STOP here (KOB-38). The host TUI watches this signal, shows
+    //     a "Restart daemon or Quit?" modal, and the user decides — a gui
+    //     losing its daemon is rare and never transient, so a human prompt
+    //     beats a backoff loop.
+    //   - pane: AUTO-RECONNECT (non-spawning). An in-tmux pane DOES routinely
+    //     lose its daemon — the refcounted lazy-shutdown idle-stops the daemon
+    //     3s after the last gui quits, while the pane persists with the tmux
+    //     session. Without reconnect the pane's task list froze forever at the
+    //     last snapshot (the create/delete sync drift). The loop reconnects to
+    //     the SAME socket when a daemon returns and re-subscribes → the bus
+    //     replays the current task.snapshot → the pane re-syncs. It must NOT
+    //     spawn a daemon (that would resurrect an idle-stopped daemon and break
+    //     lazy-shutdown — panes alone never hold it alive), so it only retries
+    //     a plain connect, never `ensureReachable`.
     this.client.onLifecycle("close", () => {
       this.setConnectionState("disconnected")
       if (this.role === "pane") {
@@ -170,6 +208,15 @@ export class RemoteOrchestrator {
     })
   }
 
+  /**
+   * Reconnect a `role: "pane"` orchestrator to the daemon WITHOUT spawning
+   * one. Retries {@link init} (a plain connect + hello + subscribe — never
+   * `ensureReachable`) with capped backoff until it succeeds or the host
+   * disposes the client. On success the daemon replays every channel's
+   * last value, so `tasksSignal()` re-hydrates to the current list with no
+   * extra round-trip. Idempotent: a second `close` while a loop is already
+   * running is a no-op.
+   */
   private async reconnectLoop(): Promise<void> {
     if (this.reconnecting) return
     this.reconnecting = true
@@ -185,6 +232,9 @@ export class RemoteOrchestrator {
         this.reconnecting = false
         return
       } catch (err) {
+        // Expected while no daemon is listening yet (ECONNREFUSED): the user
+        // hasn't re-attached, so no gui has spawned a daemon. Keep waiting
+        // quietly — do NOT spawn one ourselves.
         if (attempt === 1 || attempt % 10 === 0) logClientError("orch-reconnect", err)
         delayMs = Math.min(delayMs * 2, 3000)
       }
@@ -192,6 +242,7 @@ export class RemoteOrchestrator {
     this.reconnecting = false
   }
 
+  /** Open the daemon socket, hello, subscribe to the task snapshot stream. */
   async init(): Promise<void> {
     await performInit(
       this.client,
@@ -204,6 +255,10 @@ export class RemoteOrchestrator {
     return this.connectionStateAcc
   }
 
+  /**
+   * User-driven reconnect after a `disconnected` event. The host TUI
+   * calls this from the "Restart daemon or Quit?" modal.
+   */
   async manualReconnect(): Promise<void> {
     this.client.forceDisconnect()
     await this.ensureReachable()
@@ -214,58 +269,140 @@ export class RemoteOrchestrator {
     this.client.close()
   }
 
+  // --- read ---
+
   tasksSignal(): Accessor<Task[]> {
     return this.tasksAcc
   }
 
+  /** Shared active task id (session last switched/entered), pushed live on
+   *  `active-task` — every surface highlights the SAME focus (KOB-247). */
   activeTaskSignal(): Accessor<string | null> {
     return this.activeTaskAcc
   }
 
+  /**
+   * Latest published-version info, pushed live on the daemon-owned `update`
+   * channel (the daemon polls npm once and fans it out — panes don't poll
+   * the registry themselves). `null` until the first check resolves, or when
+   * the check is suppressed (dev) / unavailable (offline).
+   */
   updateSignal(): Accessor<UpdateInfo | null> {
     return this.updateAcc
   }
 
+  /**
+   * The daemon's reported BUILD version (from the `hello` handshake), or
+   * `null` when unknown — an older daemon that predates the field, or before
+   * `init()` has resolved. Distinct from {@link updateSignal} ("a newer kobe
+   * exists on npm") — this is "what version is the daemon I'm talking to".
+   */
   daemonVersionSignal(): Accessor<string | null> {
     return this.daemonVersionAcc
   }
 
+  /**
+   * Derived: is the daemon running a DIFFERENT build than this process
+   * (you upgraded the binary but the long-lived daemon — Bun has no
+   * hot-reload — is still running old code)? NON-fatal, drives the
+   * dismissible restart banner. `false` while unknown, so no false banner
+   * pre-handshake or on an old daemon; clears once a restarted daemon
+   * reports the matching version.
+   */
   daemonStaleSignal(): Accessor<boolean> {
     return () => isDaemonVersionStale(this.daemonVersionAcc() ?? undefined, CURRENT_VERSION)
   }
 
+  /**
+   * Per-task engine activity (running / turn-complete / rate-limited /
+   * permission-needed / error), pushed live on the daemon's `engine-state`
+   * channel from engine hooks. The transient, event-driven counterpart to the
+   * lifecycle `tasksSignal()` — the sidebar reads it for real-time badges.
+   */
   engineStateSignal(): Accessor<ReadonlyMap<string, TaskEngineState>> {
     return this.engineStateAcc
   }
 
+  /**
+   * Long daemon operations currently in flight, keyed by taskId — pushed
+   * live on the `task.jobs` channel (today: `ensureWorktree`, minute-class
+   * on a huge repo). The Tasks pane reads it to show a "materializing" row
+   * state in EVERY attached pane while the blocking RPC runs, not just the
+   * one that initiated it. Entries are removed on the terminal phases and
+   * pruned against each `task.snapshot` (same leak guard as engine-state).
+   */
   taskJobsSignal(): Accessor<ReadonlyMap<string, TaskJobState>> {
     return this.taskJobsAcc
   }
 
+  /**
+   * Daemon-collected `+N −M` uncommitted-change counts keyed by worktree
+   * path, pushed live on the `worktree.changes` channel (issue #6 — ONE
+   * collector in the daemon instead of per-pane git polling). `null` =
+   * no daemon-collected data (old daemon without the channel, or before
+   * `init()`): the sidebar then falls back to its local poller; non-null
+   * means "render pushes, spawn zero git processes".
+   *
+   * Unlike `engine-state` / `task.jobs` there is NO per-snapshot prune:
+   * each push REPLACES the whole map (the daemon publishes the full
+   * picture and drops deleted/archived tasks' entries itself on its next
+   * tick), so stale keys cannot accumulate in a long-lived pane.
+   */
   worktreeChangesSignal(): Accessor<WorktreeChangesMap | null> {
     return this.worktreeChangesAcc
   }
 
+  /**
+   * Daemon-collected transcript facts keyed by worktree path, pushed live on
+   * the `transcript.activity` channel (perf — deduplicate per-Ops-pane
+   * polling): the newest transcript mtime (the `● new` badge source) + the
+   * engine-owned latest-completion marker (the ChatTab "done" chip source).
+   * `null` = no daemon-collected data (old daemon, or before `init()`): the
+   * Ops pane falls back to local probes. Same whole-map-replace semantics as
+   * {@link worktreeChangesSignal} (no per-snapshot prune needed).
+   */
   transcriptActivitySignal(): Accessor<TranscriptActivityMap | null> {
     return this.transcriptActivityAcc
   }
 
+  /** Framework-free twin of {@link transcriptActivitySignal} — see uiPrefsStore. */
   transcriptActivityStore(): ExternalStore<TranscriptActivityMap | null> {
     return this.transcriptActivityStoreInner
   }
 
+  /**
+   * The persisted visual prefs (theme / transparent / focus accent),
+   * pushed live on the daemon's `ui-prefs` channel from its state-file
+   * watcher. `null` until the first payload arrives (e.g. before the
+   * subscribe replay, or talking to an older daemon without the channel).
+   * Consumed by every pane host's boot sequence (`tui/lib/host-boot.tsx`)
+   * to re-apply appearance changes live across all task sessions.
+   */
   uiPrefsSignal(): Accessor<UiPrefsPayload | null> {
     return this.uiPrefsAcc
   }
 
+  /**
+   * Framework-free twin of {@link uiPrefsSignal} for React hosts: a
+   * subscribe/get pair that notifies in every runtime. Same values,
+   * same nullability, one writer (the setter dual-writes).
+   */
   uiPrefsStore(): ExternalStore<UiPrefsPayload | null> {
     return this.uiPrefsStoreInner
   }
 
+  /**
+   * The keybindings-file revision, bumped on the daemon's `keybindings`
+   * channel whenever `~/.kobe/settings/keybindings.yaml` changes. An opaque
+   * token — a consumer re-reads + re-applies the file on each transition.
+   * `null` until the first payload. Consumed by host-boot's `UiPrefsSync`
+   * to live-reload keys across every pane.
+   */
   keybindingsRevSignal(): Accessor<number | null> {
     return this.keybindingsRevAcc
   }
 
+  /** Framework-free twin of {@link keybindingsRevSignal} — see uiPrefsStore. */
   keybindingsRevStore(): ExternalStore<number | null> {
     return this.keybindingsRevStoreInner
   }
@@ -284,6 +421,11 @@ export class RemoteOrchestrator {
     } catch (err) {
       console.error("[kobe RemoteOrchestrator] task listener threw on subscribe:", err)
     }
+    // Forward subsequent snapshots reactively off the Solid signal instead
+    // of polling it on a timer. createEffect re-runs whenever tasksAcc()
+    // changes; createRoot gives it an owner so the returned disposer tears
+    // it down. The effect fires once synchronously on creation — skip that
+    // run since we already delivered the current snapshot eagerly above.
     let first = true
     return createRoot((dispose) => {
       createEffect(() => {
@@ -301,6 +443,8 @@ export class RemoteOrchestrator {
       return dispose
     })
   }
+
+  // --- write --- (each a thin delegate; bodies moved to remote-orchestrator-writes.ts)
 
   createTask(input: Parameters<typeof createTaskOp>[1]): Promise<Task> {
     return createTaskOp(this.client, input)
@@ -358,17 +502,29 @@ export class RemoteOrchestrator {
     return adoptWorktreeOp(this.client, input)
   }
 
+  /** Every worktree of every local saved project — the standalone
+   *  worktree-management TUI page (`worktree.list`). */
   listWorktrees(): Promise<readonly WorktreeProject[]> {
     return listWorktreesOp(this.client)
   }
 
+  /** Remove a worktree (`worktree.remove`); refuses a dirty one unless
+   *  `force` is true — same safety property `GitWorktreeManager.remove`
+   *  always had. */
   removeWorktree(path: string, force?: boolean): Promise<void> {
     return removeWorktreeOp(this.client, path, force)
   }
 
+  /**
+   * Mark a task as the active focus (the session just switched/entered).
+   * The daemon publishes it on the `active-task` channel so every Tasks
+   * pane + the outer monitor highlight the same task (KOB-247).
+   */
   setActiveTask(id: TaskId | string | null): Promise<void> {
     return setActiveTaskOp(this.client, id)
   }
+
+  // --- internals ---
 
   private handleEvent(name: string, payload: unknown): void {
     handleOrchestratorEvent(name, payload, this.signals)

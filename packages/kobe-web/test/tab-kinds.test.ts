@@ -6,6 +6,12 @@ import {
   type WorkspaceTabKind,
 } from "../src/lib/tab-kinds.ts"
 
+/**
+ * tab-kinds is the single source of truth for the two cross-cutting facts a
+ * tab's kind drives: whether it owns a PTY (so close/prune tears it down) and
+ * how a fresh tab of the kind is titled. These tests pin both so a new kind
+ * can't silently miss a PTY-cleanup guard or a title rule.
+ */
 
 const ALL: WorkspaceTabKind[] = [
   "empty",
@@ -50,6 +56,7 @@ describe("nextTabTitle — fresh-tab titling", () => {
   })
 
   it("the count ignores other kinds", () => {
+    // Two transcripts + an empty don't bump the vendor count.
     expect(
       nextTabTitle("vendor", [
         { kind: "transcript" },

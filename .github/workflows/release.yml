@@ -1,3 +1,33 @@
+# Release pipeline.
+#
+# Trigger: pushing a `vX.Y.Z` tag, OR a prerelease tag `vX.Y.Z-<id>.<n>`
+# (e.g. `v0.6.1-experimental.0`). A plain semver tag publishes to the npm
+# `latest` dist-tag and a normal GitHub release; a prerelease tag
+# publishes to a dist-tag named after the prerelease identifier (the
+# `experimental` in `0.6.1-experimental.0`) and marks the GitHub release
+# as a prerelease — so `npm i @sma1lboy/kobe` keeps getting the stable
+# line while testers opt in with `npm i @sma1lboy/kobe@experimental`.
+#
+# Two job families run in parallel after the tag lands:
+#
+#   `publish`   — gates (typecheck/test/build) → npm publish → create
+#                 the GitHub Release shell with the extracted CHANGELOG
+#                 notes.
+#   `binaries`  — matrix per OS+arch. Each runner builds the standalone
+#                 `kobe` executable for its native platform
+#                 (no cross-compile: `@opentui/core` resolves
+#                 `@opentui/core-${platform}-${arch}` via a runtime
+#                 template-literal import, and the matching native
+#                 subpackage carries `os`/`cpu` restrictions that block
+#                 install on foreign hosts), tarballs them, and appends
+#                 the artifact to the release. `softprops/action-gh-release`
+#                 is idempotent on the same `tag_name`, so the matrix
+#                 jobs upload concurrently without stomping each other.
+#
+# Required repo secrets:
+#   - NPM_TOKEN: an npm automation token (Settings → Access Tokens
+#     → Generate New Token → Automation). Must have publish rights
+#     on the @sma1lboy scope.
 
 name: Release
 
@@ -7,6 +37,8 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
 
+# Default permissions are set to read-only for security; the publish
+# job re-grants only what it actually needs.
 permissions:
   contents: read
 
@@ -20,6 +52,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          # Full history so the release notes / future tooling can
+          # reach back if needed.
           fetch-depth: 0
 
       - name: Setup Bun
@@ -34,6 +68,10 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests
+        # Behavior tests are intentionally skipped here — they need tmux,
+        # bun-PTY, and a real `claude` binary on PATH, none of which are
+        # reliable in GitHub-hosted runners. Run them locally with
+        # `bun run test:behavior` before cutting a tag.
         working-directory: packages/kobe
         run: bun x vitest run test/cli test/tui test/types test/orchestrator test/engine test/state --passWithNoTests
 
@@ -56,6 +94,9 @@ jobs:
         id: channel
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          # A prerelease version carries a `-<id>.<n>` suffix. The npm
+          # dist-tag is the prerelease identifier (`experimental` from
+          # `0.6.1-experimental.0`); a plain semver goes to `latest`.
           if [[ "$VERSION" == *-* ]]; then
             PRE="${VERSION#*-}"
             DIST_TAG="${PRE%%.*}"
@@ -73,6 +114,10 @@ jobs:
         working-directory: packages/kobe
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          # Pull everything between this version's heading and the next one.
+          # Matches BOTH the legacy hand-written format (`## [0.6.9] - date`)
+          # and the Changesets format (`## 0.7.0`), so old tags still extract.
+          # awk is happier than sed for this multi-line slice.
           NOTES=$(awk -v ver="$VERSION" '
             $0 ~ "^## \\[?" ver "([]). -]|$)" { found=1; next }
             found && /^## / { exit }
@@ -94,10 +139,16 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
+        # Workspaces hoist deps to root; `npm publish` still runs
+        # against the package's own dir.
         working-directory: packages/kobe
         run: npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
 
       - name: Create GitHub release
+        # Creates the release shell with the changelog notes. The
+        # `binaries` matrix appends executables to this same release
+        # via subsequent `softprops/action-gh-release` invocations
+        # against the same `tag_name`.
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
@@ -109,6 +160,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   binaries:
+    # Wait for `publish` so the release shell exists before we append
+    # binaries; also avoids burning four runners on a release that fails
+    # the typecheck/test/build gate.
     needs: publish
     permissions:
       contents: write   # appending assets to the release
@@ -122,6 +176,9 @@ jobs:
             asset: kobe-linux-x64
           - runner: ubuntu-24.04-arm    # Graviton-class arm64 host
             asset: kobe-linux-arm64
+          # macOS Intel (darwin-x64) intentionally dropped — no longer
+          # targeting Intel Macs, and the macos-13 runner queue stalled
+          # releases waiting for a host.
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -133,6 +190,8 @@ jobs:
           bun-version: 1.3.13
 
       - name: Install dependencies
+        # Each runner installs its own platform's `@opentui/core-*`
+        # native subpackage automatically via optional dependencies.
         run: bun install --frozen-lockfile
 
       - name: Compile standalone binaries
@@ -140,6 +199,9 @@ jobs:
         run: bun run scripts/compile.ts
 
       - name: Tar binary
+        # Tar from inside release-bin so the archive contains the bare
+        # `kobe` binary at the root — users can extract straight onto
+        # their PATH directory.
         working-directory: packages/kobe/release-bin
         run: tar -czf "${{ matrix.asset }}.tar.gz" kobe
 

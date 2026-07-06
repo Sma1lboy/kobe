@@ -1,3 +1,8 @@
+// Minimal SGR (ANSI color) parser for tmux capture-pane -e output.
+// tmux emits only SGR sequences per line (no cursor movement), so a
+// span-splitter is all we need — no full terminal emulator.
+// ponytail: covers reset/bold/dim/italic/underline/reverse + 16/256/truecolor;
+// add charset or OSC handling only if a capture ever shows artifacts.
 
 export type Span = {
   text: string
@@ -35,6 +40,7 @@ export function parseAnsiLine(line: string, prev: State = {}): { spans: Span[]; 
   let state: State = { ...prev }
   let buf = ""
 
+  // Strip OSC sequences (tmux emits OSC 8 hyperlinks) — we only render SGR.
   line = line.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)?/g, "")
 
   const flush = () => {

@@ -1,3 +1,14 @@
+/**
+ * `kobe completions` — generate shell completion scripts.
+ *
+ * Usage:
+ *   kobe completions bash   > ~/.bash_completion.d/kobe
+ *   kobe completions zsh    > ~/.zsh/completions/_kobe
+ *   kobe completions fish   > ~/.config/fish/completions/kobe.fish
+ *
+ * The generated scripts complete subcommands (and only subcommands — flags
+ * are omitted because most kobe subcommands define their own flags).
+ */
 import { TOP_LEVEL_SUBCOMMANDS } from "./subcommands.ts"
 
 const COMPLETION_USAGE =

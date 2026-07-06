@@ -1,5 +1,29 @@
+/**
+ * Claude Code → neutral content normalization.
+ *
+ * One direction only: Claude Code's on-disk / stream-json content-block
+ * shape → kobe's {@link ContentBlock} union. Lives inside the Claude
+ * adapter directory because the input shape is vendor-specific.
+ *
+ * Drop-list (silently elided from output):
+ *   - `image` blocks (kobe doesn't render images yet)
+ *   - `redacted_thinking` (no usable text)
+ *   - any unknown block type
+ *
+ * These match the historical pre-v0.6 chat renderer drop list, so transcript
+ * preview output stays conservative even though kobe no longer owns chat UI.
+ */
+
 import type { ContentBlock } from "@/types/content"
 
+/**
+ * Coerce a Claude `content` field into a flat list of neutral blocks.
+ *
+ * Accepts the three shapes Claude Code persists on disk:
+ *   - `string`                                → single text block
+ *   - `Array<string | { type, ... }>`         → element-wise normalization
+ *   - anything else (null, object, number)    → empty list
+ */
 export function normalizeClaudeContent(content: unknown): ContentBlock[] {
   if (typeof content === "string") {
     return content.length > 0 ? [{ type: "text", text: content }] : []
@@ -43,6 +67,7 @@ export function normalizeClaudeContent(content: unknown): ContentBlock[] {
     if (b.type === "thinking" && typeof b.thinking === "string") {
       out.push({ type: "thinking", text: b.thinking })
     }
+    // Unknown / image / redacted_thinking — drop.
   }
   return out
 }

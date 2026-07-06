@@ -27,6 +27,10 @@ describe("renderPRPrompt", () => {
   })
 })
 
+// The git gathering went ASYNC (render-path rule: the Ops pane must not
+// spawnSync — a huge repo's `git status` blocked the pane until timeout).
+// These pin the async path against a real repo and the never-throw
+// fallbacks against a missing one.
 describe("buildPRPrompt (async git)", () => {
   function makeRepo(): string {
     const dir = mkdtempSync(join(tmpdir(), "kobe-pr-prompt-"))
@@ -42,7 +46,7 @@ describe("buildPRPrompt (async git)", () => {
     writeFileSync(join(repo, "a.txt"), "hello")
     const text = await buildPRPrompt(repo)
     expect(text).toContain("The current branch is feature/x.")
-    expect(text).toContain("The target branch is main.")
+    expect(text).toContain("The target branch is main.") // no origin/HEAD → fallback
     expect(text).toContain("There is 1 uncommitted change.")
     expect(text).toContain("There is no upstream branch yet.")
   })

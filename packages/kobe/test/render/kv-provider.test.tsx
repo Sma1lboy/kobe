@@ -1,3 +1,12 @@
+/**
+ * KVProvider — disk-backed UI state (src/tui/context/kv.tsx). Imports
+ * @opentui/solid indirectly via createSimpleContext's sibling modules? No —
+ * kv.tsx itself has no @opentui import, but every real host mounts it
+ * alongside Theme/Focus (lib/host-boot.tsx) and it's exercised here as the
+ * other providers' shared dependency (NotificationsProvider reads
+ * `useKV()`). Covers get/set/signal/dirty-key persistence against a
+ * throwaway state.json, independent of any real ~/.config/kobe.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"

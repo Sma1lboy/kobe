@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { ATTACH_TTL_MS, createAttachGate } from "../../src/tui/lib/attach-gate"
 
+/**
+ * The attach gate decides whether background pollers may spawn subprocesses.
+ * Pin its three load-bearing behaviors: the TTL cache (one probe per window,
+ * however many pollers ask), the attached/detached parse, and fail-open (a
+ * probe failure must never quiesce a possibly-visible pane).
+ */
+
 function fakeProbe(results: Array<{ code: number; stdout: string } | Error>) {
   let calls = 0
   const probe = async () => {

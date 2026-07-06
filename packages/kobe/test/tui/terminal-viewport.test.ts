@@ -1,3 +1,10 @@
+/**
+ * Why this matters: the viewport window is what keeps the revived terminal
+ * pane from bleeding — the pane renders EXACTLY this slice into its body
+ * box. Off-by-ones here paint outside the pane or park the inline cursor
+ * on the wrong row (the exact bugs that got the cluster shelved).
+ */
+
 import { describe, expect, it } from "vitest"
 import { computeViewport, viewportCursor } from "../../src/tui/panes/terminal/viewport"
 

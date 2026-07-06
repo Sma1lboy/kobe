@@ -1,3 +1,16 @@
+/**
+ * Unit tests for the new-task dialog's clone-tab helpers
+ * (`src/tui/component/new-task-dialog/clone.ts`).
+ *
+ * Why these matter: these were untestable while buried in state.ts's
+ * junk drawer. `deriveFolderName` / `validateGitUrl` gate the Create
+ * button before any network round-trip; `validateCloneTarget` /
+ * `findAvailableFolderName` are the fs-backed collision checks that
+ * keep a second clone of the same repo from instantly failing
+ * validation (the auto `-2` suffix). The fs cases run against a
+ * throwaway tmpdir fixture — never the real home dir.
+ */
+
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -70,7 +83,7 @@ describe("validateCloneTarget / resolveCloneTarget / findAvailableFolderName (tm
   it("auto-suffixes a colliding URL-derived folder name", () => {
     expect(findAvailableFolderName(parent, "fresh")).toBe("fresh")
     expect(findAvailableFolderName(parent, "taken")).toBe("taken-2")
-    expect(findAvailableFolderName(parent, "dup")).toBe("dup-3")
+    expect(findAvailableFolderName(parent, "dup")).toBe("dup-3") // dup and dup-2 both exist
   })
 
   it("returns the base verbatim when the parent is unusable (doesn't mask validation)", () => {

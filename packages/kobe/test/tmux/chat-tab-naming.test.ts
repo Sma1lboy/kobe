@@ -1,3 +1,11 @@
+/**
+ * Per-ChatTab auto-naming (KOB). Drives `runChatTabNamingPass` with a fake
+ * TmuxRunner + injected title derivers, against a real Orchestrator + store,
+ * so window selection, the recorded-session-id path, the origin fallback, and
+ * the manual-rename guard are tested without a live tmux server or on-disk
+ * transcripts (those live in the behavior suite).
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -26,7 +34,9 @@ beforeEach(async () => {
 afterEach(() => {
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {}
+  } catch {
+    // ignored
+  }
 })
 
 async function makeTask(worktree: string | undefined): Promise<string> {
@@ -35,6 +45,17 @@ async function makeTask(worktree: string | undefined): Promise<string> {
   return task.id
 }
 
+/**
+ * Fake runner. `windows` is the list-windows reply (one
+ * `index\tautoRenameFlag\tsessionId` per line — flag 0 = manually named
+ * under a global-on server); `globalAutoRename` is the
+ * `show-window-options -g automatic-rename` reply (default on);
+ * `autoRenameOff` is the set of window indices whose LOCAL
+ * automatic-rename reads off, served to the per-window probe the pass
+ * only issues when the flag is ambiguous. Records every rename-window
+ * and every show-window-options probe (so tests can assert the batched
+ * flag path issues none).
+ */
 function fakeDeps(opts: {
   windows: string
   globalAutoRename?: "on" | "off"
@@ -57,7 +78,7 @@ function fakeDeps(opts: {
           optionProbes.push("-g")
           return { code: 0, stdout: `automatic-rename ${opts.globalAutoRename ?? "on"}\n` }
         }
-        const target = args[args.indexOf("-t") + 1]
+        const target = args[args.indexOf("-t") + 1] // =session:index
         optionProbes.push(target)
         const index = Number.parseInt(target.split(":")[1] ?? "", 10)
         return { code: 0, stdout: off.has(index) ? "automatic-rename off\n" : "" }
@@ -133,22 +154,28 @@ describe("runChatTabNamingPass", () => {
   it("skips a manually-named window from the listing flag alone (no per-window probe)", async () => {
     await makeTask("/wt/a")
     const { deps, renames, optionProbes } = fakeDeps({
-      windows: "1\t0\tsess-1\n2\t1\tsess-2\n",
+      windows: "1\t0\tsess-1\n2\t1\tsess-2\n", // window 1 flag 0 = manually named
       titleFromSessionId: (_v, s) => `title-${s}`,
     })
 
     await runChatTabNamingPass(orch, deps)
 
     expect(renames).toEqual([{ index: "2", title: "title-sess-2" }])
+    // Global automatic-rename is on, so the flag is conclusive: ONE lazy
+    // global probe, zero per-window show-window-options spawns. This is the
+    // steady-state spawn budget the batching exists for.
     expect(optionProbes).toEqual(["-g"])
   })
 
   it("falls back to per-window probes when the GLOBAL automatic-rename is off", async () => {
     await makeTask("/wt/a")
+    // Global off ⇒ every window's effective flag expands 0 regardless of the
+    // local option, so the flag can't distinguish "manually named" — the
+    // pass must ask each window directly, like the pre-batch behavior.
     const { deps, renames, optionProbes } = fakeDeps({
       windows: "1\t0\tsess-1\n2\t0\tsess-2\n",
       globalAutoRename: "off",
-      autoRenameOff: [1],
+      autoRenameOff: [1], // only window 1 is locally off (manually named)
       titleFromSessionId: (_v, s) => `title-${s}`,
     })
 
@@ -161,12 +188,13 @@ describe("runChatTabNamingPass", () => {
   it("falls back to the task's first session for the origin window without a recorded id (codex)", async () => {
     await makeTask("/wt/a")
     const { deps, renames } = fakeDeps({
-      windows: "2\t1\t\n3\t1\t\n",
+      windows: "2\t1\t\n3\t1\t\n", // no recorded ids; lowest index (2) is the origin
       titleFromWorktree: () => "task first prompt",
     })
 
     await runChatTabNamingPass(orch, deps)
 
+    // Only the origin (index 2) is named; the non-origin id-less window is left.
     expect(renames).toEqual([{ index: "2", title: "task first prompt" }])
   })
 
@@ -186,7 +214,7 @@ describe("runChatTabNamingPass", () => {
   })
 
   it("skips a task that has no worktree yet", async () => {
-    await makeTask(undefined)
+    await makeTask(undefined) // a task with no worktree yet
     const { deps, renames } = fakeDeps({ windows: "1\t1\tsess-1\n", titleFromSessionId: () => "should not run" })
     await runChatTabNamingPass(orch, deps)
     expect(renames).toEqual([])

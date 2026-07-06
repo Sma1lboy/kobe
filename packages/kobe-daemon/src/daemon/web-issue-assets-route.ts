@@ -1,3 +1,10 @@
+/**
+ * Daemon-hosted issue-attachment asset store.
+ *
+ * Uploads are scoped per repo by a hex hash of repoRoot and persist under
+ * `<KOBE_HOME>/.kobe/issue-assets/<repoHash>/<assetId>.<ext>`.
+ */
+
 import { createHash, randomUUID } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { join, resolve } from "node:path"

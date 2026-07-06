@@ -39,6 +39,7 @@ describe("remoteRepoKey / isRemoteRepoKey", () => {
     expect(remoteRepoKey("box", "dev")).toBe("ssh://dev@box")
     expect(isRemoteRepoKey("ssh://dev@box")).toBe(true)
     expect(isRemoteRepoKey("/Users/dev/proj")).toBe(false)
+    // resolveRepoRoot must NOT canonicalize a remote key (no local path to ask git about).
     expect(resolveRepoRoot("ssh://dev@box:2222")).toBe("ssh://dev@box:2222")
   })
 })
@@ -103,6 +104,10 @@ describe("execHostForRepo", () => {
   })
 })
 
+// The intent-named seam queries: callers around ensureSession/spawning ask
+// these instead of deriving remoteness per call site (`isRemoteRepoKey(...)
+// ? repo : undefined`, `.isRemote || existsSync`, `.isRemote ? homeDir() :
+// cwd`). A third adapter must only change `exec/`, never the call sites.
 describe("remoteKeyForRepo", () => {
   it("passes a remote ssh:// key through and drops local/absent repos", () => {
     expect(remoteKeyForRepo("ssh://dev@box:2222")).toBe("ssh://dev@box:2222")
@@ -114,12 +119,13 @@ describe("remoteKeyForRepo", () => {
 
 describe("worktreeUsable", () => {
   it("local paths keep the real on-disk check", () => {
-    expect(worktreeUsable(home)).toBe(true)
+    expect(worktreeUsable(home)).toBe(true) // the temp home exists
     expect(worktreeUsable(join(home, "definitely-missing"))).toBe(false)
   })
 
   it("a path under a remote project's basePath is trusted without a local stat", () => {
     addRemoteRepo({ host: "box", user: "dev", basePath: "/srv/work", auth: { kind: "key" } })
+    // Doesn't exist locally — must still be usable (it lives on the remote).
     expect(worktreeUsable("/srv/work/kobe-task-1")).toBe(true)
   })
 })
@@ -131,6 +137,7 @@ describe("localSpawnCwd", () => {
 
   it("falls back to the local home dir for a remote worktree path", () => {
     addRemoteRepo({ host: "box", user: "dev", basePath: "/srv/work", auth: { kind: "key" } })
+    // KOBE_HOME_DIR (= the temp home) overrides os.homedir() in env.homeDir().
     expect(localSpawnCwd("/srv/work/kobe-task-1")).toBe(home)
   })
 })
@@ -158,6 +165,7 @@ describe("remoteSpecFromConfig", () => {
     })
     expect(spec.auth.kind).toBe("password")
     if (spec.auth.kind === "password") {
+      // No keychain item exists in this temp env → getter yields null, never throws.
       expect(spec.auth.getPassword()).toBeNull()
     }
   })

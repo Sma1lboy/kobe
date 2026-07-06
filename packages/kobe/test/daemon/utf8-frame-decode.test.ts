@@ -5,10 +5,30 @@ import { join } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
+/**
+ * Regression for the UTF-8 chunk-boundary corruption: a multibyte codepoint
+ * (CJK / em-dash / emoji) split across two TCP chunks must survive decode. A
+ * bare `chunk.toString("utf8")` per chunk emits U+FFFD for the split halves,
+ * silently mangling task titles / field notes / prompts as they stream from
+ * the daemon to a front-end. Both socket read paths now feed a `StringDecoder`
+ * that holds the partial sequence across chunks.
+ *
+ * This drives the real `KobeDaemonClient` read path against a fake raw server
+ * that controls the chunk boundary — the only way to deterministically bisect
+ * a multibyte character mid-frame. Corruption is detectable here because the
+ * decoded title is asserted byte-for-byte (a mangled title contains U+FFFD and
+ * fails the equality), unlike a structural round-trip where U+FFFD inside a
+ * JSON string would still parse cleanly.
+ */
+
+// Packs a 3-byte CJK run, a 3-byte em-dash, and a 4-byte emoji, so the split
+// can land inside any of the three multibyte widths.
 const TRICKY = "任务 — 中文标题 🚀"
 
 function splitMidCodepoint(line: string): [Buffer, Buffer] {
   const full = Buffer.from(`${line}\n`, "utf8")
+  // Cut at a UTF-8 continuation byte (0b10xxxxxx) so the split is guaranteed
+  // to bisect a multibyte character.
   let cut = -1
   for (let i = 1; i < full.length; i++) {
     if ((full[i] & 0b1100_0000) === 0b1000_0000) {
@@ -54,6 +74,8 @@ describe("UTF-8 frame decode survives chunk boundaries (daemon → client)", () 
     const [head, tail] = splitMidCodepoint(eventLine)
 
     raw = createServer((socket) => {
+      // Answer any request line (hello/subscribe) so the client's promises
+      // resolve, then push the split event.
       let buf = ""
       socket.on("data", (chunk) => {
         buf += chunk.toString("utf8")
@@ -66,10 +88,13 @@ describe("UTF-8 frame decode survives chunk boundaries (daemon → client)", () 
             if (frame.type === "request" && frame.id) {
               socket.write(`${JSON.stringify({ type: "response", id: frame.id, payload: {} })}\n`)
             }
-          } catch {}
+          } catch {
+            // ignore non-JSON
+          }
           nl = buf.indexOf("\n")
         }
       })
+      // Push the split frame after the handshake settles.
       setTimeout(() => {
         socket.write(head)
         setTimeout(() => socket.write(tail), 15)

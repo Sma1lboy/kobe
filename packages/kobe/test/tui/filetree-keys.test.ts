@@ -1,3 +1,13 @@
+/**
+ * useFileTreeBindings — the slot-multiplexed dispatch for the file tree's
+ * chords. `useBindings` (the opentui-touching registration layer) is mocked
+ * to capture the binding table; `bindByIds` runs REAL against KobeKeymap so
+ * the ids used here must actually exist. What's pinned: each id maps to the
+ * right controller action, and the direction ids dispatch on the SLOT
+ * parity (even → down/collapse/prev-tab, odd → up/expand/next-tab) — the
+ * property that makes them user-rebindable.
+ */
+
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const captured = vi.hoisted(() => ({
@@ -32,6 +42,7 @@ function makeController() {
   }
 }
 
+/** bindByIds flattens to one { key, cmd, slot } entry PER CHORD — index by key. */
 function bindingsFor(ctrl: ReturnType<typeof makeController>): Map<string, { cmd: Handler; slot?: number }> {
   useFileTreeBindings(ctrl)
   const cfg = captured.config?.()
@@ -57,6 +68,7 @@ describe("useFileTreeBindings", () => {
   test("registers real chords from KobeKeymap (bindByIds ran for real)", () => {
     const ctrl = makeController()
     const keys = [...bindingsFor(ctrl).keys()]
+    // spot-check the documented defaults are all bound
     expect(keys).toEqual(expect.arrayContaining(["j", "k", "h", "l", "[", "]", "r"]))
   })
 
@@ -83,8 +95,10 @@ describe("useFileTreeBindings", () => {
   test("files.tab cycles TAB_ORDER with wrap-around in both directions", () => {
     const ctrl = makeController()
     const h = bindingsFor(ctrl)
+    // current=all (index 0); [ → previous → wraps to the last tab
     press(h, "[")
     expect(ctrl.setTab).toHaveBeenLastCalledWith(TAB_ORDER[TAB_ORDER.length - 1])
+    // ] → next
     press(h, "]")
     expect(ctrl.setTab).toHaveBeenLastCalledWith(TAB_ORDER[1 % TAB_ORDER.length])
   })
@@ -107,6 +121,7 @@ describe("useFileTreeBindings", () => {
     press(h, "p")
     expect(ctrl.createPR).toHaveBeenCalled()
 
+    // Ops-host-only callbacks omitted → the handlers are safe no-ops.
     const bare = { ...makeController(), mentionCurrent: undefined, createPR: undefined }
     const h2 = bindingsFor(bare as unknown as ReturnType<typeof makeController>)
     expect(() => {

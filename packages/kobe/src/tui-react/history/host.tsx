@@ -1,4 +1,15 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React `kobe history` host — G3.1's first real pane port.
+ *
+ * Async pattern canon for later React panes: each async read is modeled with
+ * `useState` plus a dependency-keyed `useEffect`. The effect keeps the last
+ * resolved value visible while a refresh is in flight, catches read failures to
+ * an empty value at the reader boundary, and cancels stale promise completions
+ * with an effect-local `disposed` flag. Live transcript mtime polling is a
+ * separate effect that bumps `refreshTick`; the data effects refetch from that
+ * scalar instead of owning their own timers.
+ */
 
 import { type EngineHistoryReader, engineEntry } from "@/engine/registry"
 import type { Message } from "@/types/engine"
@@ -18,11 +29,15 @@ import { MessageCard } from "./message-card"
 export interface HistoryHostArgs {
   readonly worktree: string
   readonly vendor: VendorId
+  /** Optional task title for the header; falls back to the worktree basename. */
   readonly title?: string
+  /** Live preview of a non-archived task (vs the frozen archived transcript). */
   readonly live?: boolean
+  /** Override the transcript source; dev:mock injects a fake reader. */
   readonly reader?: EngineHistoryReader
 }
 
+/** Lines of transcript scrolled per `j`/`k` keypress. */
 const SCROLL_STEP = 3
 
 function basename(p: string): string {
@@ -43,6 +58,8 @@ function HistoryScreen(props: HistoryHostArgs) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
 
   useEffect(() => {
+    // Dependency-only invalidation key: the reader API takes worktree, while
+    // refreshTick tells this effect when the mtime poll saw new transcript data.
     void refreshTick
     let disposed = false
     void reader
@@ -68,6 +85,7 @@ function HistoryScreen(props: HistoryHostArgs) {
 
   const selectedId = sessionList[selected]
   useEffect(() => {
+    // Dependency-only invalidation key; readHistory itself is session-id based.
     void refreshTick
     if (!selectedId) {
       setMessages([])
@@ -143,6 +161,7 @@ function HistoryScreen(props: HistoryHostArgs) {
     scroll.scrollTo({ x: 0, y: Math.max(0, scroll.scrollTop + dy) })
   }, [])
   useEffect(() => {
+    // Dependency-only reset key: scroll to top whenever the selected session changes.
     void selectedId
     scrollRef.current?.scrollTo({ x: 0, y: 0 })
   }, [selectedId])

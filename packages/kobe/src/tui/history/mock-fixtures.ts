@@ -1,9 +1,16 @@
+/**
+ * Shared mock transcript fixtures for Solid and React history-pane smoke hosts.
+ * The host injects the returned EngineHistoryReader, so both renderers exercise
+ * the same data path without a real engine transcript store.
+ */
+
 import type { EngineHistoryReader } from "@/engine/registry"
 import type { Message } from "@/types/engine"
 
 export const MOCK_HISTORY_SESSION_ID = "mock-session"
 export const MOCK_HISTORY_WORKTREE = "/mock/worktree"
 
+/** A representative starter transcript exercising every block renderer. */
 export function seedHistoryMessages(): Message[] {
   const ts = new Date().toISOString()
   return [
@@ -60,6 +67,7 @@ export function seedHistoryMessages(): Message[] {
   ]
 }
 
+/** A fake reader whose transcript grows on a timer to demo the live tail. */
 export function createMockHistoryReader(): EngineHistoryReader {
   const grown = seedHistoryMessages()
   let mtime = 1000

@@ -1,3 +1,16 @@
+/**
+ * Edge-case coverage for `src/engine/copilot-local/history.ts` beyond what
+ * `copilot-history.test.ts` already pins (basic parseWorkspaceYaml,
+ * listSessionIdsForWorktree, a happy-path parseEvents, usage snapshot).
+ * This file covers:
+ *   - `parseEvents`'s remaining record types (tool.execution_start/complete,
+ *     session.shutdown, toolRequests variants, malformed/blank lines).
+ *   - `listSessionDirs` / `latestTranscriptMtimeForWorktree` / `findSessionDir`
+ *     / `readWorkspace` / `readHistoryWithMetrics` / `readHistory`.
+ *   - `deleteHistory`, which calls `deps.rm` (injectable, unlike codex's
+ *     history module) — exercised with a fake deps.rm spy.
+ */
+
 import { describe, expect, it } from "vitest"
 import {
   type CopilotHistoryDeps,

@@ -36,6 +36,7 @@ describe("parseUpdateArgs", () => {
     try {
       expect(() => parseUpdateArgs(["--fast"])).toThrow("exit 2")
       const err = errSpy.mock.calls.map((c) => String(c[0])).join("")
+      // The instruction surface, not a bare one-liner: usage + script URL + fallback.
       expect(err).toContain('kobe update: unknown argument "--fast"')
       expect(err).toContain("Usage: kobe update [--dry-run]")
       expect(err).toContain(UPDATE_SCRIPT_URL)

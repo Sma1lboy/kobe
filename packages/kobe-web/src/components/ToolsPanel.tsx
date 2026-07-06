@@ -1,3 +1,8 @@
+/**
+ * ToolsPanel — the right rail. A segmented switch between the web-only Notes
+ * scratchpad and a compact worktree CHANGES list.
+ */
+
 import { useNavigate } from "@tanstack/react-router"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
@@ -28,6 +33,8 @@ const STATUSES = [
   "error",
 ] as const
 
+/** Matches the orchestrator's DIRTY_WORKTREE error prefix (the daemon only
+ *  ships the message string over the wire — same detection as the TUI). */
 const DIRTY_WORKTREE_CODE = "DIRTY_WORKTREE"
 
 function label(value: string): string {
@@ -181,6 +188,9 @@ function TaskOverview({ task }: { task: Task | null }) {
     )
   }
 
+  // Delete flow mirrors the TUI: non-force first; a DIRTY_WORKTREE rejection
+  // re-prompts with an explicit force confirm so uncommitted work can't be
+  // lost on a single click.
   const doDelete = (force: boolean): void => {
     setConfirm(null)
     setBusy("delete")
@@ -403,6 +413,8 @@ export function ToolsPanel({
   drawer = false,
   onClose,
 }: {
+  /** Drawer mode (narrow screens): fills its container + shows a close ×.
+   *  Default (lg+ column): fixed 20rem width, no close button. */
   drawer?: boolean
   onClose?: () => void
 } = {}) {

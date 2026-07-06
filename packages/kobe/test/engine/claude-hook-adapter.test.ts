@@ -8,7 +8,14 @@ import {
   mergeWorktreeWatchHook,
 } from "../../src/engine/claude-code-local/hook-adapter.ts"
 
+/**
+ * The ONLY place Claude Code hook event names live. These lock the
+ * vendor→neutral mapping shape + the non-clobbering merge. Activity hooks are
+ * now GLOBAL + cwd-based (no `--task-id`): one block in ~/.claude makes every
+ * Claude session report, and the daemon maps each hook's cwd to a task.
+ */
 describe("buildClaudeHooks", () => {
+  // Inject a fixed invocation so the test doesn't depend on the dev/prod CLI resolver.
   const hooks = buildClaudeHooks(["kobe"]) as Record<string, Array<{ matcher?: string; hooks: { command: string }[] }>>
 
   it("installs a hook for each Claude event kobe owns", () => {
@@ -45,8 +52,9 @@ describe("mergeActivityHooks (global, cwd-based)", () => {
       model: "opus",
     }
     const out = mergeActivityHooks(userSettings, true, ["kobe"]) as SettingsShape
-    expect(out.model).toBe("opus")
-    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse)
+    expect(out.model).toBe("opus") // untouched
+    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse) // untouched
+    // kobe's Stop coexists with the user's Stop hook (both kept).
     expect(JSON.stringify(out.hooks?.Stop)).toContain("turn-complete")
     expect(JSON.stringify(out.hooks?.Stop)).toContain("user-old-stop")
     expect(out.hooks?.Stop).toHaveLength(2)
@@ -89,8 +97,8 @@ describe("mergeWorktreeSyncHook (external worktree sync)", () => {
       model: "opus",
     }
     const out = mergeWorktreeSyncHook(userSettings, "kobe hook worktree-created") as SettingsShape
-    expect(out.model).toBe("opus")
-    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse)
+    expect(out.model).toBe("opus") // untouched
+    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse) // untouched
     expect(JSON.stringify(out.hooks?.WorktreeCreate)).toContain("worktree-created")
   })
 
@@ -116,6 +124,7 @@ describe("mergeWorktreeSyncHook (external worktree sync)", () => {
     const both = mergeWorktreeSyncHook(withActivity, "kobe hook worktree-created") as SettingsShape
     expect(both.hooks?.Stop).toHaveLength(1)
     expect(both.hooks?.WorktreeCreate).toHaveLength(1)
+    // Removing one leaves the other intact.
     const noSync = mergeWorktreeSyncHook(both, null) as SettingsShape
     expect(noSync.hooks?.Stop).toHaveLength(1)
     expect(noSync.hooks?.WorktreeCreate).toBeUndefined()
@@ -144,9 +153,9 @@ describe("mergeWorktreeWatchHook (PostToolUse observer)", () => {
       model: "opus",
     }
     const out = mergeWorktreeWatchHook(userSettings, true, ["kobe"]) as SettingsShape
-    expect(out.model).toBe("opus")
+    expect(out.model).toBe("opus") // untouched
     const post = out.hooks?.PostToolUse as Array<{ matcher?: string; hooks: { command: string }[] }>
-    expect(post).toHaveLength(2)
+    expect(post).toHaveLength(2) // user's Edit hook + kobe's Bash hook coexist
     expect(JSON.stringify(post)).toContain("user-fmt")
     expect(JSON.stringify(post)).toContain("worktree-created")
   })

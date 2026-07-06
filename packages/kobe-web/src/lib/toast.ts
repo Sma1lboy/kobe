@@ -1,3 +1,10 @@
+/**
+ * Toast store — the web UI's one error/notice surface. RPC failures used to
+ * be swallowed (`.catch(() => {})`) so a failed rename/archive/create looked
+ * like nothing happened; every mutation path now reports here instead.
+ * Module-level external store, same persistence semantics as store.ts/tabs.ts.
+ */
+
 import { createExternalStore } from "./external-store.ts"
 
 export type ToastKind = "error" | "success" | "info"
@@ -27,11 +34,15 @@ export function dismissToast(id: number): void {
   store.replace(toasts.filter((t) => t.id !== id))
 }
 
+/** Standard shape for a failed mutation: `label: cause`. An Error contributes
+ *  its message; anything else is stringified. Pure + exported so the contract
+ *  is testable without the window-bound toast store. */
 export function formatError(label: string, err: unknown): string {
   const cause = err instanceof Error ? err.message : String(err)
   return `${label}: ${cause}`
 }
 
+/** Standard shape for a failed mutation: `label: cause`. */
 export function reportError(label: string, err: unknown): void {
   pushToast("error", formatError(label, err))
 }

@@ -1,3 +1,38 @@
+/**
+ * The new-task dialog JSX shell.
+ *
+ * The dialog hosts two sibling sub-tabs sharing one frame:
+ *
+ *   1. **Existing** — pick an existing local repo path + base branch.
+ *      Repo input is a unified free-text + smart dropdown that swaps
+ *      between two surfaces based on what the user typed
+ *      (see `pickerModeFor`):
+ *        - saved mode (default, empty / short input): substring-filter
+ *          the curated saved-repo list (cwd + /add-repo entries).
+ *        - browse mode (user typed a path): directory drill-down.
+ *      Branch picker augments the input so the user can arrow + enter
+ *      rather than retype.
+ *
+ *   2. **New Repo** — clone a remote repo, then create a task on the
+ *      clone. Fields: git URL, parent directory (with the same
+ *      drill-down picker the existing tab uses), folder name (auto-
+ *      derived from the URL, editable), base branch (defaults to
+ *      "main"). The clone is spawned asynchronously and the dialog
+ *      stays responsive while it runs.
+ *
+ * Tabs are switched with `Ctrl+[` / `Ctrl+]` while the dialog is open
+ * — same bracket-pair pattern as chat-tab cycling and the
+ * Working/Archives view-switcher. With only two tabs the chord pair
+ * behaves as a toggle.
+ *
+ * Pure logic (field cycling, repo dedup, filtering, windowing) lives in
+ * `./state.ts` so it can be unit-tested without standing up the dialog
+ * stack or opentui; clone-tab fs/spawn helpers in `./clone.ts`; sync
+ * git snapshots (branch enumeration, repo validation) in
+ * `../../lib/git-snapshot.ts`; path drill-down plumbing in
+ * `../../lib/path-helpers.ts`.
+ */
+
 import { t } from "@/tui/i18n"
 import { ALL_VENDORS, type VendorId, nextVendorWithin, prevVendorWithin } from "@/types/vendor"
 import type { AdoptableWorktree } from "@/types/worktree"
@@ -40,10 +75,37 @@ export type NewTaskDialogProps = {
   onSubmit: (v: NewTaskInput) => void
   onCancel: () => void
   defaultRepo: string
+  /**
+   * User-curated repo list, persisted via `/add-repo`. Surfaced in
+   * the unified picker's "saved" mode (the default when the input is
+   * empty or doesn't look like a path). The current launch directory
+   * (`defaultRepo`) is always prepended so the user can pick "where I
+   * started kobe" without having to add it first.
+   */
   savedRepos: readonly string[]
+  /**
+   * Default parent directory for the Clone tab — persisted across
+   * dialog opens by the caller (kv `lastClonedRepoParent`). Empty
+   * falls back to `~/` inside the dialog.
+   */
   defaultCloneParent?: string
+  /**
+   * Engine to pre-select, defaulting to the user's last-selected vendor
+   * (kv `lastSelectedVendor`). `ctrl+e` cycles it; the choice rides out
+   * on {@link NewTaskInput.vendor} and the caller persists it.
+   */
   defaultVendor?: VendorId
+  /**
+   * Vendors whose engine CLI was detected on this machine — the engine
+   * selector renders only these, so a vendor you can't run is never
+   * offered. Omitted or empty falls back to {@link ALL_VENDORS} (so the
+   * selector is never empty and task creation is never blocked).
+   */
   availableVendors?: readonly VendorId[]
+  /**
+   * Discover existing git worktrees on a repo not yet linked to a task
+   * (KOB-256) — powers the Adopt tab's list. Omit to leave the tab empty.
+   */
   discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
 
@@ -51,12 +113,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
 
+  // Which sub-tab is currently visible. Switched via Ctrl+[ / Ctrl+].
   const [tab, setTab] = createSignal<DialogTab>("existing")
 
+  // Engine selector source: detected vendors only, falling back to the full
+  // list when the caller passed nothing/empty (so the selector is never empty).
   const availableVendors = (): readonly VendorId[] => {
     const a = props.availableVendors
     return a && a.length > 0 ? a : ALL_VENDORS
   }
+  // Engine vendor for the new task — defaults to the last-selected one,
+  // clamped to a detected vendor, cycled with `ctrl+e`. Rides out on submit.
   const initialVendor = ((): VendorId => {
     const set = availableVendors()
     const pref = props.defaultVendor ?? "claude"
@@ -64,39 +131,87 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   })()
   const [vendor, setVendor] = createSignal<VendorId>(initialVendor)
 
+  // Dialog only asks for repo + branch on the existing tab. The first
+  // prompt lives in the chat composer — orchestrator.runTask back-fills
+  // the task title from it on first submit (see PLACEHOLDER_TASK_TITLE
+  // in core.ts).
+  // Open focused on the mode selector so ←/→ switches existing/clone/adopt
+  // the moment the dialog appears (no text input has the arrows yet); Tab
+  // then walks down engine → repo → branch → Create.
   const [field, setField] = createSignal<Field>("tabs")
   const [repo, setRepo] = createSignal(props.defaultRepo)
+  // Initial baseRef tracks the cwd's current branch (e.g. a worktree
+  // forked from a feature branch should default to that branch, not
+  // hardcoded "main"). Falls back to DEFAULT_BASE_REF when the path
+  // isn't a repo or HEAD is detached.
   const [baseRef, setBaseRef] = createSignal(getCurrentBranch(expandHome(props.defaultRepo.trim())) ?? DEFAULT_BASE_REF)
+  // True once the user has typed into the baseRef input. We stop
+  // auto-syncing from the repo's current branch after that so a manual
+  // override isn't overwritten when the user goes back to tweak the
+  // repo path.
   const [baseRefTouched, setBaseRefTouched] = createSignal(false)
 
+  // Clone-tab state. Folder name auto-derives from the URL until the
+  // user manually edits it (`cloneFolderTouched`).
   const [cloneUrl, setCloneUrl] = createSignal("")
   const [cloneParent, setCloneParent] = createSignal(props.defaultCloneParent?.trim() ? props.defaultCloneParent : "~/")
   const [cloneFolder, setCloneFolder] = createSignal("")
   const [cloneFolderTouched, setCloneFolderTouched] = createSignal(false)
   const [cloneBaseRef, setCloneBaseRef] = createSignal(DEFAULT_BASE_REF)
+  // True while a `git clone` subprocess is running. The dialog dims
+  // its inputs and shows the latest stderr line while this is set;
+  // Ctrl+[/] and tab cycling are gated to prevent state churn mid-clone.
   const [cloneInFlight, setCloneInFlight] = createSignal(false)
   const [cloneProgress, setCloneProgress] = createSignal<string>("")
 
+  // Curated list: cwd + /add-repo entries, deduped. Used in saved
+  // mode; substring-filtered against the typed input.
   const repoOptions = createMemo<readonly string[]>(() => computeRepoOptions(props.defaultRepo, props.savedRepos))
 
+  // Mode flip — saved (curated list) vs browse (directory drill-down).
+  // The memo over `repoOptions` makes the dialog open in saved mode
+  // even though `repo()` is prefilled with the cwd (exact-match
+  // shortcut in `pickerModeFor`).
   const mode = createMemo(() => pickerModeFor(repo(), repoOptions()))
 
+  // Browse-mode plumbing for the existing tab: split the input into a
+  // base dir (to readdir) and a partial leaf (to filter). When the
+  // mode is "saved" the memos still recompute but their output is unused.
   const subdirSplit = createMemo(() => splitPathForDirSuggest(repo()))
   const subdirAll = createMemo<readonly string[]>(() => listSubdirs(subdirSplit().base))
   const subdirFiltered = createMemo<readonly string[]>(() => filterSubdirs(subdirAll(), subdirSplit().filter))
 
+  // Saved-mode list: substring filter against repoOptions. Empty
+  // input keeps the full list. The picker is augmenting the input,
+  // not gating it, so an exact-match input still appears in the list.
   const savedFiltered = createMemo<readonly string[]>(() => filterRepos(repoOptions(), repo()))
 
+  // The single list the keyboard / dropdown drives on the existing tab.
   const activeList = createMemo<readonly string[]>(() => (mode() === "browse" ? subdirFiltered() : savedFiltered()))
   const [repoCursor, setRepoCursor] = createSignal(0)
   const activeWindow = createMemo<PickerWindow>(() => windowAround(activeList(), repoCursor()))
+  // True once the user has SELECTED a directory (Enter / click) rather
+  // than drilling into it — collapses the suggestion dropdown so the path
+  // reads as "locked in". Reset on the next keystroke so typing resumes
+  // browsing. Without this, browse mode would keep listing the selected
+  // dir's children and there'd be no way to say "this one, done".
   const [repoPicked, setRepoPicked] = createSignal(false)
 
+  // Branch picker — refreshed whenever the repo path changes. The
+  // baseRef field still accepts free text (so tags / commit SHAs / refs
+  // not in the local branch list still work), but typing is augmented
+  // with up/down navigation over the discovered branches: highlights
+  // the cursor row and pre-fills the input as the user moves.
+  // listLocalBranches doesn't expand `~`, so we resolve it here — same
+  // as `commit()` does before validating.
   const branches = createMemo<readonly string[]>(() => listLocalBranches(expandHome(repo().trim())))
   const branchFiltered = createMemo<readonly string[]>(() => filterBranches(branches(), baseRef()))
   const [branchCursor, setBranchCursor] = createSignal(0)
   const branchWindow = createMemo<PickerWindow>(() => windowAround(branchFiltered(), branchCursor()))
 
+  // Clone-tab parent-dir picker: same drill-down primitives as the
+  // existing-tab browse mode, applied only when the user is on the
+  // cloneParent field.
   const cloneParentSplit = createMemo(() => splitPathForDirSuggest(cloneParent()))
   const cloneParentAll = createMemo<readonly string[]>(() => listSubdirs(cloneParentSplit().base))
   const cloneParentFiltered = createMemo<readonly string[]>(() =>
@@ -104,11 +219,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   )
   const [cloneParentCursor, setCloneParentCursor] = createSignal(0)
   const cloneParentWindow = createMemo<PickerWindow>(() => windowAround(cloneParentFiltered(), cloneParentCursor()))
+  // Same "selected, not drilled" latch as repoPicked, for the clone
+  // parent-dir picker.
   const [cloneParentPicked, setCloneParentPicked] = createSignal(false)
 
+  // Adopt-tab state (KOB-256): discover existing worktrees for the
+  // chosen repo, filter by a path glob, multi-select, then import.
   const [adoptFilter, setAdoptFilter] = createSignal("")
   const [adoptCursor, setAdoptCursor] = createSignal(0)
   const [adoptSelected, setAdoptSelected] = createSignal<ReadonlySet<string>>(new Set())
+  // Re-discovers whenever the Adopt tab is active for the current repo.
+  // Keyed on the expanded repo path so switching repos refetches.
   const [adoptable] = createResource(
     () => (tab() === "adopt" ? expandHome(repo().trim()) : null),
     async (r) => (props.discoverAdoptable ? await props.discoverAdoptable(r) : []),
@@ -126,10 +247,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     const w = adoptWindow()
     return adoptList().slice(w.start, w.start + w.items.length)
   })
+  // Keep the cursor in range as the filtered list shrinks/grows.
   createEffect(() => {
     void adoptList()
     setAdoptCursor((c) => clampCursor(c, adoptList().length))
   })
+  // Reset the adopt multi-select whenever the resolved repo changes.
+  // Worktree paths are unique per repo, so a selection made for repo A
+  // can never match repo B — without this the stale set survives the
+  // refetch and commitAdopt silently no-ops (filters to zero) while the
+  // "N selected" hint still shows. Keyed on the same expanded path the
+  // adoptable resource fetches on, so it fires exactly when that refetches.
   createEffect((prev: string | undefined) => {
     const r = expandHome(repo().trim())
     if (prev !== undefined && r !== prev) {
@@ -152,10 +280,16 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     if (w) toggleAdopt(w.path)
   }
 
+  // Reset cursors whenever the filtered list changes — typing should
+  // always land the highlight on the first match, otherwise the cursor
+  // can sit on a now-hidden index and feels broken.
   createEffect(() => {
     void branchFiltered()
     setBranchCursor(0)
   })
+  // Auto-sync baseRef to the repo's current branch when the user picks
+  // a different repo. Skipped once the user has manually edited the
+  // branch field — the override wins.
   createEffect(() => {
     const r = expandHome(repo().trim())
     if (!r) return
@@ -171,6 +305,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     void cloneParentFiltered()
     setCloneParentCursor(0)
   })
+  // Folder name follows the URL until the user explicitly edits it.
+  // Auto-suffixes (`name-2`, `name-3`, …) when the URL-derived name
+  // would collide with an existing entry inside the chosen parent dir,
+  // so a second clone of the same repo doesn't immediately fail
+  // validation. Re-runs whenever URL OR parent changes; the user's
+  // manual edits still win via `cloneFolderTouched`.
   createEffect(() => {
     const url = cloneUrl()
     const parent = cloneParent()
@@ -179,6 +319,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setCloneFolder(findAvailableFolderName(parent, base))
   })
 
+  // Validation error shown inline when the user tries to submit a bad
+  // repo path / URL / target. Null while the user is still typing — we
+  // don't shout before they're done. Cleared on every keystroke that
+  // changes any input field so the message doesn't linger after they
+  // fix the typo.
   const [submitError, setSubmitError] = createSignal<string | null>(null)
   createEffect(() => {
     void repo()
@@ -190,6 +335,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   })
 
   function commitExisting() {
+    // expandHome before validating — `~/foo` won't fs.statSync without
+    // resolution. We submit the expanded path so downstream consumers
+    // (orchestrator.createTask, git worktree add) get an absolute one.
     const r = expandHome(repo().trim())
     if (!r) return
     const reason = validateRepoPath(r)
@@ -214,6 +362,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     const targetReason = validateCloneTarget(cloneParent(), cloneFolder())
     if (targetReason) {
       setSubmitError(targetReason)
+      // Focus the field actually at fault. validateCloneTarget returns an
+      // opaque (localized, interpolated) i18n string, so we can't switch on
+      // it. Folder-side structural faults (blank / has separator) are decided
+      // here; for anything else the failure is either a parent fs problem
+      // (not found / not a dir) or targetExists (folder-side, occurs with a
+      // valid folder+parent). We tell those apart by re-validating the parent
+      // against a throwaway folder name that structurally passes and won't
+      // collide: if that clears, the parent is fine and the real fault was
+      // targetExists → Folder; otherwise the parent itself is wrong → Parent.
+      // The old "non-empty folder ⇒ blame parent" heuristic sent
+      // folderHasSeparator and targetExists to the wrong field.
       const folder = cloneFolder().trim()
       const folderStructurallyBad = !folder || folder.includes("/") || folder.includes("\\")
       const parentAtFault = !folderStructurallyBad && validateCloneTarget(cloneParent(), "__kobe_probe__") != null
@@ -276,6 +435,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setSubmitError(null)
   }
 
+  // ←/→ while the mode-tab selector (field === "tabs") is focused: switch
+  // the active sub-tab but KEEP focus on the selector so the user can keep
+  // arrowing. (switchToTab, used by mouse + ctrl+[/], dives into the form
+  // instead.) `tabs` is a shared field, valid on every sub-tab.
   function cycleTab(dir: 1 | -1) {
     if (cloneInFlight()) return
     const next = dir === 1 ? nextDialogTab(tab()) : prevDialogTab(tab())
@@ -285,10 +448,15 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setField("tabs")
   }
 
+  // ←/→ while the engine selector (field === "engine") is focused: cycle
+  // the vendor within the detected set. Mirrors ctrl+e, which works from
+  // any field.
   function cycleEngine(dir: 1 | -1) {
     setVendor((v) => (dir === 1 ? nextVendorWithin(availableVendors(), v) : prevVendorWithin(availableVendors(), v)))
   }
 
+  // Enter on the repo field (existing tab). Pure selection — never
+  // commits. Commit lives on the Create button at the bottom.
   function onRepoSubmit() {
     if (!repo().trim() && mode() === "saved") {
       const picked = activeList()[0]
@@ -303,6 +471,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       const picked = list[repoCursor()]
       const split = subdirSplit()
       if (picked) {
+        // Enter = SELECT this directory as the repo (no trailing slash, no
+        // deeper drill) and advance to the branch field. Collapse the
+        // dropdown; typing in repo again resumes browsing. Previously Enter
+        // drilled into the dir and re-listed its children, so there was no
+        // way to say "this one — done".
         setRepo(joinPicked(repo(), split.base, picked))
         setRepoCursor(0)
         setRepoPicked(true)
@@ -326,6 +499,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     const picked = list[absoluteIndex]
     if (!picked) return
     if (mode() === "browse") {
+      // Click = select (not drill) and advance, mirroring Enter.
       const split = subdirSplit()
       setRepo(joinPicked(repo(), split.base, picked))
       setRepoCursor(absoluteIndex)
@@ -338,11 +512,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setField("baseRef")
   }
 
+  // Mirror of the existing-tab repo drill-down, but for the Clone
+  // tab's cloneParent input. The Clone tab's parent picker is always
+  // browse-mode (no saved-repo curation here — saved repos are an
+  // "existing" concept).
   function onCloneParentSubmit() {
     const list = cloneParentFiltered()
     const picked = list[cloneParentCursor()]
     const split = cloneParentSplit()
     if (picked) {
+      // Enter = select this parent dir (not drill) and advance to the
+      // folder-name field. Collapse the dropdown; typing resumes browsing.
       setCloneParent(joinPicked(cloneParent(), split.base, picked))
       setCloneParentCursor(0)
       setCloneParentPicked(true)
@@ -362,6 +542,14 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setField("cloneFolder")
   }
 
+  // Ctrl+A toggles select-all on the Adopt tab. It MUST be gated at
+  // REGISTRATION (not handler-side): the dispatcher calls preventDefault()
+  // on every matched binding, so an unconditional ctrl+a with an internal
+  // `if (tab() !== "adopt") return` would still swallow the key and kill
+  // opentui's input line-home (ctrl+a) in the Existing/Clone text fields.
+  // Same regression class the quick-task composer fixed — see
+  // quick-task-bindings.ts. The config thunk re-runs per keypress, so this
+  // spread tracks tab() live.
   const adoptSelectAll = () => {
     const list = adoptList()
     if (list.length === 0) return
@@ -372,18 +560,22 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   useBindings(() => ({
     bindings: [
       {
+        // Tab cycles fields within the current sub-tab.
         key: "tab",
         cmd: () => setField((f) => nextField(f, tab())),
       },
       {
+        // Ctrl+] → next sub-tab. With two tabs this toggles.
         key: "ctrl+]",
         cmd: () => switchToTab(nextDialogTab(tab())),
       },
       {
+        // Ctrl+[ → previous sub-tab (reverse of Ctrl+]).
         key: "ctrl+[",
         cmd: () => switchToTab(prevDialogTab(tab())),
       },
       {
+        // Ctrl+E cycles the engine vendor within the detected set.
         key: "ctrl+e",
         cmd: () => setVendor((v) => nextVendorWithin(availableVendors(), v)),
       },
@@ -445,17 +637,35 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           }
         },
       },
+      // ←/→ and Enter on the shared selectors (mode tabs + engine). These
+      // MUST be registration-gated to field === "tabs"|"engine": while a
+      // text input is focused, left/right belong to the input's cursor and
+      // Enter to its onSubmit — the dispatcher calls preventDefault() on
+      // every matched binding, so an always-on left/right would swallow
+      // those keys from the focused input (same regression class as the
+      // ctrl+a gating above). The config thunk re-runs per keypress, so
+      // this spread tracks field() live.
       ...(field() === "tabs" || field() === "engine"
         ? [
             { key: "left", cmd: () => (field() === "tabs" ? cycleTab(-1) : cycleEngine(-1)) },
             { key: "right", cmd: () => (field() === "tabs" ? cycleTab(1) : cycleEngine(1)) },
+            // Enter on a selector commits the highlight and advances, same
+            // as Tab — so a keyboard user can run the whole form on Enter.
             { key: "return", cmd: () => setField((f) => nextField(f, tab())) },
           ]
         : []),
+      // Ctrl+A select-all exists ONLY on the Adopt tab (registration-gated;
+      // see `adoptSelectAll` above). On the Existing/Clone tabs it's absent,
+      // so ctrl+a falls through to the focused input as line-home.
       ...(tab() === "adopt" ? [{ key: "ctrl+a", cmd: adoptSelectAll }] : []),
     ],
   }))
 
+  // Enter on the Create button = commit. Lives in its own useBindings
+  // call with a config-level `enabled` so the binding is OUT of the
+  // dispatch stack while field !== "confirm" — otherwise the dispatcher
+  // calls preventDefault() after firing the no-op cmd and swallows the
+  // Enter before the focused input's onSubmit can see it.
   useBindings(() => ({
     enabled: field() === "confirm" && !cloneInFlight(),
     bindings: [
@@ -466,6 +676,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     ],
   }))
 
+  // A focused field label goes primary + bold + underline; unfocused
+  // labels stay muted. (Input values, mode tabs, and engine chips are
+  // unchanged.) Active selections (mode tab, engine) keep ▸ + bold +
+  // primary and add an underline only while that selector holds focus.
   const labelFg = (f: Field) => (field() === f ? theme.primary : theme.textMuted)
   const labelAttrs = (f: Field) => (field() === f ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
   const selectedAttrs = (selected: boolean, focused: boolean) =>
@@ -478,9 +692,18 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           {t("newTask.title")}
         </text>
       </box>
-      {}
+      {/* Top section — interactive surface: the sub-tab selector, the
+          active tab's form fields. Sizes to content height so the
+          dialog breathes with the active tab (existing has 2 fields,
+          clone has 4). ctrl+[ / ctrl+] toggles tabs; mouse click
+          selects. */}
       <box gap={1} paddingTop={1} paddingBottom={1}>
-        {}
+        {/* Mode-tab selector. Self-describing phrases, so no label line
+            (unlike the engine chips). Reachable by Tab (field === "tabs");
+            ←/→ switches the active tab while focused, ctrl+[/] from anywhere,
+            mouse click selects. The active tab is always ▸ + bold + primary;
+            an underline (not a colour change) marks it while the mode
+            selector holds focus. */}
         {(() => {
           const tabFocused = () => field() === "tabs"
           const tabFg = (active: boolean) => (active ? theme.primary : theme.textMuted)
@@ -510,7 +733,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           )
         })()}
-        {}
+        {/* Engine selector — label-on-top / options-below. Reachable by Tab
+            (field === "engine"); ←/→ cycles while focused, ctrl+e from
+            anywhere, click picks. Only detected vendors are listed. The
+            selected vendor is ▸ + bold + primary (no underline — selection
+            is shown by weight+colour); focus of the whole selector is shown
+            by the underlined `engine` label instead. The ctrl+e hint is
+            right-stuck + muted so it reads as a hint, not an engine. */}
         <box gap={0}>
           <text fg={labelFg("engine")} attributes={labelAttrs("engine")}>
             {t("newTask.field.engine")}
@@ -536,7 +765,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </box>
         </box>
         <Show when={tab() === "existing"}>
-          {}
+          {/* ── Existing tab body ───────────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("repo")} attributes={labelAttrs("repo")}>
               {t("newTask.field.repo")}
@@ -549,6 +778,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                 setRepoPicked(false)
                 setRepo(stripNewlines(v))
               }}
+              // Route every Enter through onRepoSubmit — it already handles
+              // the empty-input case (pick the first saved repo and advance).
+              // A prior `if (!repo().trim()) return` guard here made that
+              // pick-first branch unreachable, so Enter on an empty field was
+              // dead.
               onSubmit={() => onRepoSubmit()}
             />
           </box>
@@ -604,6 +838,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                 setBaseRef(stripNewlines(v))
               }}
               onSubmit={() => {
+                // Last field on the existing tab — Enter resolves the
+                // highlighted branch and creates straight away (no second
+                // Enter on Create). Mouse users still get the Create button.
                 setBaseRef(resolveBaseRef(baseRef(), branchFiltered(), branchCursor()))
                 setBaseRefTouched(true)
                 commitExisting()
@@ -658,7 +895,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </Show>
         </Show>
         <Show when={tab() === "clone"}>
-          {}
+          {/* ── Clone tab body ──────────────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("cloneUrl")} attributes={labelAttrs("cloneUrl")}>
               {t("newTask.field.gitUrl")}
@@ -689,7 +926,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               onSubmit={() => onCloneParentSubmit()}
             />
           </box>
-          {}
+          {/* Persistence hint — surfaces the fact that this field
+              remembers your last value across dialog opens (kv
+              `lastClonedRepoParent`), so a follow-up clone defaults
+              to the same parent. Only shown while the field is
+              focused; sits between the input and the drill-down so
+              the user sees it where they're already looking. */}
           <Show when={field() === "cloneParent"}>
             <box paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
@@ -754,6 +996,8 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               placeholder={DEFAULT_BASE_REF}
               focused={field() === "cloneBaseRef"}
               onInput={(v: string) => setCloneBaseRef(stripNewlines(v))}
+              // Last field on the clone tab — Enter kicks off the clone +
+              // create directly, no second Enter on the Create button.
               onSubmit={() => void commitClone()}
             />
           </box>
@@ -766,7 +1010,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </Show>
         </Show>
         <Show when={tab() === "adopt"}>
-          {}
+          {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("adoptFilter")} attributes={labelAttrs("adoptFilter")}>
               {t("newTask.field.adoptFilter")}
@@ -850,7 +1094,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </text>
         </Show>
       </box>
-      {}
+      {/* Bottom action row — hint legend on the left, Create button stuck
+          to the bottom-right (the conventional "tab through, then commit"
+          anchor). Create commits the active tab's form on click; it's also
+          reachable by tabbing to the confirm field (Enter), or by pressing
+          Enter on the last input of the tab. Shows accent/bold while the
+          confirm field is focused so the keyboard anchor is visible. */}
       <box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1} paddingBottom={1}>
         <text fg={theme.textMuted}>{t("newTask.hint.legend")}</text>
         <text

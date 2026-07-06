@@ -1,3 +1,19 @@
+/**
+ * Unit tests for `src/state/store.ts` — the single owner of
+ * `~/.config/kobe/state.json` I/O.
+ *
+ * The module exists to fix a multi-process lost-update bug: the TUI's
+ * KVProvider used to debounce-write its ENTIRE in-memory snapshot, so a
+ * key another kobe process (Tasks pane, quick-task, a CLI command) wrote
+ * in the meantime was silently reverted on the next flush. These tests
+ * pin the read-merge-write contract that prevents that, plus the
+ * atomicity and corrupt-file behaviors carried over from the two former
+ * writers.
+ *
+ * Same isolation pattern as test/state/repos.test.ts: redirect HOME via
+ * `KOBE_HOME_DIR` to a per-test tmpdir so the real `~/.config/kobe/` is
+ * never touched.
+ */
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -42,16 +58,25 @@ afterEach(() => {
 })
 
 describe("loadStateFile", () => {
+  // Why: a fresh machine has no state.json; every reader treats that as
+  // "no persisted prefs", never as an error.
   test("returns {} when the file does not exist", () => {
     expect(loadStateFile()).toEqual({})
   })
 
+  // Why: corrupt-file policy — a malformed state.json must not block the
+  // UI or a CLI run. It reads as {} and gets rebuilt on the next write.
+  // (This silently discards whatever was in the corrupt file; that is the
+  // documented, pre-existing trade-off carried over from both former
+  // writers, kv.tsx and repos.ts.)
   test("returns {} for malformed JSON", () => {
     fs.mkdirSync(path.dirname(statePath()), { recursive: true })
     fs.writeFileSync(statePath(), "{not valid json", "utf8")
     expect(loadStateFile()).toEqual({})
   })
 
+  // Why: a non-object root (array, string) would break every keyed reader
+  // downstream — treat it like corruption, not like data.
   test("returns {} for a non-object JSON root", () => {
     fs.mkdirSync(path.dirname(statePath()), { recursive: true })
     fs.writeFileSync(statePath(), JSON.stringify(["a", "b"]), "utf8")
@@ -60,14 +85,26 @@ describe("loadStateFile", () => {
 })
 
 describe("patchStateFile — the lost-update fix", () => {
+  // Why this matters: THE bug this module exists for. Process A (the TUI's
+  // KVProvider) loads its snapshot at boot; process B (a Tasks pane via
+  // setPersistedString) writes a new key afterwards; process A then
+  // flushes a DIFFERENT dirty key. Under the old whole-snapshot write-back
+  // A's flush rewrote the file from its stale snapshot and B's key
+  // vanished. With read-merge-write, B's key must survive.
   test("interleaved writers do not lose each other's keys", () => {
     writeDisk({ activeTheme: "claude" })
 
+    // Process A boots and takes its in-memory snapshot.
     const processASnapshot = loadStateFile()
     expect(processASnapshot).toEqual({ activeTheme: "claude" })
 
+    // Process B (another kobe process) persists a new key via the public
+    // repos.ts API — the real cross-process write path.
     setPersistedString("lastSelectedVendor", "codex")
 
+    // Process A flushes its one dirty key. Its snapshot never contained
+    // lastSelectedVendor — under whole-snapshot write-back this is the
+    // moment B's write used to be erased.
     patchStateFile({ activeTheme: "tokyonight" })
 
     expect(readDisk()).toEqual({
@@ -76,24 +113,36 @@ describe("patchStateFile — the lost-update fix", () => {
     })
   })
 
+  // Why: the patch must apply ONLY the keys the caller changed — sibling
+  // keys it never touched pass through byte-for-byte. This is the
+  // single-key read-merge-write that setPersistedString relies on.
   test("merges only the patched keys, preserving siblings", () => {
     writeDisk({ a: 1, b: "two", nested: { keep: true } })
     patchStateFile({ b: "TWO" })
     expect(readDisk()).toEqual({ a: 1, b: "TWO", nested: { keep: true } })
   })
 
+  // Why: an explicit `undefined` deletes the key. KVProvider's old
+  // whole-snapshot write dropped undefined entries at stringify time;
+  // the dirty-key patch must serialize the same way or a `kv.set(k,
+  // undefined)` would silently stop deleting.
   test("a patch value of undefined deletes the key", () => {
     writeDisk({ doomed: "x", kept: "y" })
     patchStateFile({ doomed: undefined })
     expect(readDisk()).toEqual({ kept: "y" })
   })
 
+  // Why: first-ever write on a fresh machine — the .config/kobe dir
+  // doesn't exist yet and the writer is responsible for creating it.
   test("creates the directory and file on first write", () => {
     expect(fs.existsSync(statePath())).toBe(false)
     patchStateFile({ savedRepos: ["/x"] })
     expect(readDisk()).toEqual({ savedRepos: ["/x"] })
   })
 
+  // Why: corrupt-file recovery on the WRITE side — merging onto a corrupt
+  // file bases the merge on {} (matching loadStateFile) and rebuilds a
+  // valid file rather than throwing or appending to garbage.
   test("rebuilds a valid file when merging onto corrupt JSON", () => {
     fs.mkdirSync(path.dirname(statePath()), { recursive: true })
     fs.writeFileSync(statePath(), "<<garbage>>", "utf8")
@@ -101,6 +150,11 @@ describe("patchStateFile — the lost-update fix", () => {
     expect(readDisk()).toEqual({ recovered: true })
   })
 
+  // Why: atomicity. The write goes tmp+rename so a crash mid-write can't
+  // leave a half-written state.json. We can't crash mid-write in a unit
+  // test, but we CAN pin the observable contract: after a write the tmp
+  // file is gone (renamed, not copied-and-left-behind) and the target
+  // parses cleanly.
   test("write is tmp+rename: no .tmp file survives a flush", () => {
     patchStateFile({ k: "v" })
     expect(fs.existsSync(`${statePath()}.tmp`)).toBe(false)
@@ -109,6 +163,9 @@ describe("patchStateFile — the lost-update fix", () => {
 })
 
 describe("updateStateFile", () => {
+  // Why: read-modify-write transactions (addSavedRepo etc.) need the read
+  // and the write to share ONE fresh snapshot — the mutator sees what is
+  // on disk now, not what some earlier load() saw.
   test("mutator sees the current on-disk state and its result is written", () => {
     writeDisk({ savedRepos: ["/a"] })
     const result = updateStateFile((state) => {
@@ -120,6 +177,9 @@ describe("updateStateFile", () => {
     expect(readDisk()).toEqual({ savedRepos: ["/a", "/b"] })
   })
 
+  // Why: no-op guard. "Repo already saved" paths return false so an
+  // idempotent re-add doesn't churn the file (mtime, watchers, and one
+  // fewer pointless write racing other processes).
   test("mutator returning false skips the write entirely", () => {
     updateStateFile(() => false)
     expect(fs.existsSync(statePath())).toBe(false)
@@ -127,7 +187,7 @@ describe("updateStateFile", () => {
     writeDisk({ keep: 1 })
     const before = fs.statSync(statePath()).mtimeMs
     updateStateFile((state) => {
-      state.keep = 999
+      state.keep = 999 // mutation is discarded when we return false
       return false
     })
     expect(readDisk()).toEqual({ keep: 1 })
@@ -136,6 +196,10 @@ describe("updateStateFile", () => {
 })
 
 describe("replaceStateFile", () => {
+  // Why: clear()'s contract is the deliberate exception to merging —
+  // "reset UI state" must wipe keys other processes wrote too, including
+  // ones this process never loaded. Pin that it really is a whole-file
+  // replace, so nobody "fixes" it into a merge and breaks the reset.
   test("replaces the whole file, discarding unknown siblings", () => {
     writeDisk({ activeTheme: "claude", lastSelectedVendor: "codex" })
     replaceStateFile({})
@@ -145,6 +209,9 @@ describe("replaceStateFile", () => {
 })
 
 describe("getPersistedBool / setPersistedBool", () => {
+  // Why: the default is explicit and only a REAL stored boolean overrides it.
+  // This is the footgun the helper exists to kill — a missing key must not be
+  // read as false when the flag defaults true (zen.keepTasks), and vice versa.
   test("missing key falls back to the given default (either polarity)", () => {
     expect(getPersistedBool("nope", false)).toBe(false)
     expect(getPersistedBool("nope", true)).toBe(true)
@@ -156,6 +223,8 @@ describe("getPersistedBool / setPersistedBool", () => {
     expect(getPersistedBool("flagB", true)).toBe(false)
   })
 
+  // Why: a non-boolean value (legacy string, garbage) must NOT be coerced —
+  // it falls back to the default, not `Boolean(value)`.
   test("non-boolean values fall back to the default", () => {
     writeDisk({ s: "true", n: 1, z: 0, nul: null })
     expect(getPersistedBool("s", false)).toBe(false)

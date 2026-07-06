@@ -1,3 +1,10 @@
+/**
+ * PR-status poller (KOB-10). Drives the pass logic against a REAL Orchestrator
+ * + on-disk store with an injected `gh pr view` runner, so the seams under
+ * test are: eligibility filtering, write-on-change + samePrStatus diffing,
+ * keep-last on `empty`, and the per-task backoff schedule.
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -33,15 +40,20 @@ beforeEach(async () => {
 afterEach(() => {
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {}
+  } catch {
+    // ignored
+  }
 })
 
 async function makeTask(opts: { worktree?: string } = {}): Promise<string> {
   const task = await orch.createTask({ repo: "/repo" })
+  // A backlog task has no branch until its worktree is materialized; stamp one
+  // (plus a worktree path) so it clears the pr-pollable gate.
   await store.update(task.id, { worktreePath: opts.worktree ?? `/wt/${task.id}`, branch: `kobe/test-${task.id}` })
   return task.id
 }
 
+/** A runner that returns a fixed PR view (open, with one check in `state`). */
 function prRunner(state: string, checkConclusion: string): PrViewRunner {
   return async (): Promise<PrViewResult> => ({
     kind: "pr",
@@ -55,6 +67,7 @@ function prRunner(state: string, checkConclusion: string): PrViewRunner {
 
 const emptyRunner: PrViewRunner = async () => ({ kind: "empty" })
 
+/** Cancel jitter (rand 0.5 → no offset) so the scheduled delays are exact. */
 const noJitter = (): number => 0.5
 
 describe("isPrPollable", () => {
@@ -103,6 +116,7 @@ describe("runPrStatusPass", () => {
     const id = await makeTask()
     const schedule: PrPollSchedule = new Map()
     await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 0, at: "t1", schedule, rand: noJitter })
+    // Advance past the backoff so the task is due again.
     const changed = await runPrStatusPass(orch, {
       run: prRunner("OPEN", "SUCCESS"),
       now: 10_000_000,
@@ -124,8 +138,10 @@ describe("runPrStatusPass", () => {
     }
     await runPrStatusPass(orch, { run: counting, now: 1_000, at: "t1", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(1)
+    // Immediately again — still inside the 30s backoff window → skipped.
     await runPrStatusPass(orch, { run: counting, now: 5_000, at: "t2", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(1)
+    // Past the window → polled again.
     await runPrStatusPass(orch, { run: counting, now: 40_000, at: "t3", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(2)
     expect(id).toBeTruthy()
@@ -136,6 +152,7 @@ describe("runPrStatusPass", () => {
     const schedule: PrPollSchedule = new Map()
     await runPrStatusPass(orch, { run: prRunner("OPEN", "FAILURE"), now: 0, at: "t1", schedule, rand: noJitter })
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("failing")
+    // gh ran but the branch has no PR — must NOT clear the known status.
     await runPrStatusPass(orch, { run: emptyRunner, now: 10_000_000, at: "t2", schedule, rand: noJitter })
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("failing")
     expect(schedule.get(id)?.nextAllowedAt).toBe(10_000_000 + NO_PR_BACKOFF_MS)
@@ -192,15 +209,18 @@ describe("runPrStatusPass", () => {
   test("a gh ERROR keeps the last status and backs off exponentially (not as 'no PR')", async () => {
     const id = await makeTask()
     const schedule: PrPollSchedule = new Map()
+    // Seed a known-good chip.
     await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 0, at: "t1", schedule, rand: noJitter })
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing")
 
     const authError: PrViewRunner = async () => ({ kind: "error", error: "auth" })
+    // First failure: keep the chip, back off by the base interval, streak = 1.
     await runPrStatusPass(orch, { run: authError, now: 10_000_000, at: "t2", schedule, rand: noJitter })
-    expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing")
+    expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing") // NOT cleared
     expect(schedule.get(id)?.failures).toBe(1)
     expect(schedule.get(id)?.nextAllowedAt).toBe(10_000_000 + PR_FAILURE_BASE_MS)
 
+    // Second consecutive failure: streak = 2, backoff doubles.
     const due = schedule.get(id)?.nextAllowedAt ?? 0
     await runPrStatusPass(orch, { run: authError, now: due, at: "t3", schedule, rand: noJitter })
     expect(schedule.get(id)?.failures).toBe(2)

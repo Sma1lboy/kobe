@@ -1,3 +1,10 @@
+/**
+ * Adopt-tab state hook for the React new-task dialog (issue #15, G3W2 /
+ * KOB-256) — split out of `./view-model.ts`: worktree discovery (async
+ * canon: useState + dependency-keyed effect with a disposed flag), glob
+ * filter, windowed cursor, and the multi-select import commit.
+ */
+
 import type { VendorId } from "@/types/vendor"
 import type { AdoptableWorktree } from "@/types/worktree"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -13,6 +20,7 @@ import { t } from "../../i18n"
 import { toggleInSet, toggleSelectAll } from "./pure"
 
 export function useAdoptState(args: {
+  /** Discovery runs only while the Adopt tab is active. */
   active: boolean
   expandedRepo: string
   vendor: VendorId
@@ -36,6 +44,7 @@ export function useAdoptState(args: {
   const adoptDiscoveredCount = (adoptable ?? []).length
 
   const { active, expandedRepo, discoverAdoptable } = args
+  // Refetch whenever the Adopt tab is active for the current repo.
   useEffect(() => {
     if (!active) return
     let disposed = false
@@ -56,10 +65,13 @@ export function useAdoptState(args: {
     }
   }, [active, expandedRepo, discoverAdoptable])
 
+  // Keep the cursor in range as the filtered list shrinks/grows.
   useEffect(() => {
     setAdoptCursor((c) => clampCursor(c, adoptList.length))
   }, [adoptList])
 
+  // Reset the multi-select when the resolved repo changes — worktree paths
+  // are unique per repo; a stale set would silently no-op the import.
   const prevRepo = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (prevRepo.current !== undefined && prevRepo.current !== expandedRepo) {

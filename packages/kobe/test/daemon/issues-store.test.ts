@@ -77,6 +77,12 @@ describe("IssuesStore", () => {
   })
 
   it("does not drop mutations when two different repos write concurrently", async () => {
+    // The store holds ALL repos in one file, read/written whole. Two repos'
+    // read-modify-write cycles must serialize on the FILE, not the repoKey —
+    // otherwise one cycle reads the file before the other's rename lands, and
+    // its own write clobbers the other repo's just-created issue. Fire many
+    // interleaved creates per repo so the read/write windows reliably overlap;
+    // every create must survive.
     const repoA = await makeRepo()
     const repoB = await makeRepo()
     const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-conc-"))

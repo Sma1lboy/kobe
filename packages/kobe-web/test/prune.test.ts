@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { pruneByTask } from "../src/lib/store.ts"
 
+/**
+ * pruneByTask sweeps per-task side tables (engine states, jobs) to the live
+ * task set on each snapshot — the round-2 fix that keeps a deleted task's
+ * stale entry from lingering. The same-ref-when-unchanged behavior matters
+ * so React doesn't re-render needlessly.
+ */
 
 describe("pruneByTask", () => {
   it("drops entries for tasks not in the live set", () => {

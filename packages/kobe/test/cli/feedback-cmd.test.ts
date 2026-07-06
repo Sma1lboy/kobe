@@ -1,3 +1,10 @@
+/**
+ * `kobe feedback` (`parseFeedbackArgs` + `runFeedbackSubcommand`) and the
+ * underlying `submitFeedback` gh-GraphQL flow. submitFeedback already takes
+ * an injectable `deps.spawn` / `deps.repoSlug`, so the network/gh boundary
+ * is exercised with a scripted fake — no real `gh` runs.
+ */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -109,6 +116,8 @@ describe("runFeedbackSubcommand", () => {
 })
 
 describe("submitFeedback (real module, scripted gh)", () => {
+  // Import the REAL implementation — the vi.mock above only swapped the
+  // export the CLI wrapper consumes; importOriginal gives us the actual fn.
   async function realSubmit() {
     const actual = await vi.importActual<typeof import("../../src/lib/feedback.ts")>("../../src/lib/feedback.ts")
     return actual.submitFeedback
@@ -142,8 +151,11 @@ describe("submitFeedback (real module, scripted gh)", () => {
 
     expect(result).toEqual({ number: 7, url: "https://github.com/o/r/discussions/7" })
     expect(spawn).toHaveBeenCalledTimes(2)
+    // First call: category query with owner/name variables.
     const firstArgs = spawn.mock.calls[0][1] as string[]
     expect(firstArgs).toEqual(expect.arrayContaining(["api", "graphql", "-f", "owner=owner", "-f", "name=repo"]))
+    // Second call: the mutation carries repo id, category id, title, and a
+    // body stamped with the kobe version footer.
     const secondArgs = spawn.mock.calls[1][1] as string[]
     expect(secondArgs).toEqual(expect.arrayContaining(["-f", "repositoryId=R_1", "-f", "categoryId=C_feedback"]))
     const bodyArg = secondArgs.find((a) => a.startsWith("body="))

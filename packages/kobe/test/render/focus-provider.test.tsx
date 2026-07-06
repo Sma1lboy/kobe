@@ -1,3 +1,9 @@
+/**
+ * FocusProvider — pane focus context (src/tui/context/focus.tsx). Imports
+ * @opentui/solid (useRenderer) so it can't run under vitest at all; this is
+ * its only coverage. Drives the real reactive `focused`/`cycle`/`setFocused`
+ * surface every pane wrapper reads.
+ */
 import { describe, expect, it } from "bun:test"
 import { FocusProvider, useFocus } from "../../src/tui/context/focus"
 import { renderComponent } from "./harness"
@@ -54,10 +60,10 @@ describe("FocusProvider", () => {
     setFocusedFn?.("files")
     expect(await frame()).toContain("focused:files")
 
-    cycleFn?.(1)
+    cycleFn?.(1) // files -> terminal (PANE_ORDER: sidebar, workspace, files, terminal)
     expect(await frame()).toContain("focused:terminal")
 
-    cycleFn?.(1)
+    cycleFn?.(1) // terminal wraps back to sidebar
     expect(await frame()).toContain("focused:sidebar")
   })
 })

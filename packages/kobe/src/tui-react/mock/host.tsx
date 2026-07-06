@@ -1,4 +1,14 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React pilot entry (issue #15) — G1 established the isolated runtime;
+ * G2 upgraded this host to mount the full React infrastructure stack
+ * (Theme → Focus → Dialog providers + useBindings + i18n) so `bun run
+ * dev:mock-react` is an end-to-end proof that the ported context layer
+ * renders and dispatches keys. Deliberately NOT wired into the CLI entry
+ * or compile graph yet.
+ *
+ * Keys: q quits · tab cycles pane focus · d opens a dialog (esc closes).
+ */
 
 import { TextAttributes } from "@opentui/core"
 import { PANE_ORDER, useFocus } from "../context/focus"
@@ -61,7 +71,7 @@ function Workbench() {
       </box>
       <box paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="column" flexGrow={1}>
         <text fg={theme.text} wrapMode="word">
-          {}
+          {/* i18n runtime proof: a real catalog key through the shared lookup. */}
           {t("settings.title")} — theme "{themeCtx.selected}", focused pane: {focus.focused}
         </text>
         <text fg={theme.textMuted} wrapMode="none">
@@ -72,6 +82,9 @@ function Workbench() {
   )
 }
 
+// Boot through the real React pane host (G3): shared boot steps, persisted
+// prefs seeding, live ui-prefs subscription, crash boundary, exit backstop —
+// this entry IS the live smoke for that path.
 await bootPaneHost({
   setup: () => ({ root: () => <Workbench /> }),
 })

@@ -6,6 +6,14 @@ import {
 import { describe, expect, it, vi } from "vitest"
 import { build, fakeLink, post } from "./route-fakes.ts"
 
+/**
+ * Integration coverage for the daemon-hosted web HTTP route table, driven
+ * through createDaemonWebRequestHandler against a FAKE link (no tmux).
+ * This is the gate for the whole browser-facing surface: the RPC allowlist +
+ * teardown hook, the SSE snapshot/fan-out, the engine/theme routes, and the
+ * static/404 fallthrough. The state.json-backed routes (quick-prompts +
+ * settings) live in web-state-routes.test.ts.
+ */
 
 describe("daemon web request handler", () => {
   it("serves the health marker", async () => {
@@ -31,6 +39,7 @@ describe("daemon web request handler", () => {
         }),
       )
       expect(res.status).toBe(403)
+      // The dangerous RPC never reached the daemon link.
       expect(link.calls).toHaveLength(0)
     })
 
@@ -208,6 +217,7 @@ describe("daemon web request handler", () => {
       expect(cleanup).toHaveBeenCalledTimes(1)
       expect(sseSends.size).toBe(0)
 
+      // cancel() arriving later must not double-run the unregister path.
       await reader!.cancel()
       expect(cleanup).toHaveBeenCalledTimes(1)
     })
@@ -267,6 +277,9 @@ describe("daemon web request handler", () => {
     })
   })
 
+  // The session/spec routes build a PTY launch (tmux session, shell command),
+  // so only the input guard is unit-safe here — the happy path would spawn real
+  // tmux. These cases return BEFORE any link/tmux work.
   describe("/api/session & spec guards", () => {
     it("400s POST /api/session with no taskId (never touches the link)", async () => {
       const { handle, link } = build()
@@ -302,4 +315,8 @@ describe("daemon web request handler", () => {
     })
   })
 
+  // Note: the static fallthrough uses `Bun.file`, which only exists under the
+  // Bun runtime — the live `kobe web` server. It's not exercised here because
+  // vitest runs under node; the route ordering (404 when no staticDir) is
+  // covered above.
 })

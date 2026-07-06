@@ -1,3 +1,11 @@
+/**
+ * Why this matters: the React i18n runtime re-implements the Solid one's
+ * OBSERVABLE behavior (dotted lookup, en → raw-key fallback, interpolation,
+ * per-process language switch) on a different reactivity substrate. These
+ * tests pin that the two runtimes resolve identically — drift here means a
+ * pane shows different copy depending on which framework rendered it.
+ */
+
 import { afterEach, describe, expect, it } from "vitest"
 import { DEFAULT_LOCALE, currentLang, setLocaleLang, t, tKeys } from "../../src/tui-react/i18n"
 import { t as solidT } from "../../src/tui/i18n"
@@ -29,6 +37,8 @@ describe("react i18n runtime", () => {
   })
 
   it("interpolates {params} and leaves absent params literal", () => {
+    // The raw-key fallback goes through interpolation too (same as Solid),
+    // which pins both the substitution and the absent-param-stays-literal rule.
     expect(t("x {who}", { who: "kobe" })).toBe("x kobe")
     expect(t("x {who}", { other: "y" })).toBe("x {who}")
     expect(t("x {who}")).toBe("x {who}")
@@ -36,6 +46,8 @@ describe("react i18n runtime", () => {
 
   it("tKeys indexes the keybinding catalog by exact id", () => {
     setLocaleLang("en")
+    // Any real binding id resolves to a non-empty string that isn't the raw id,
+    // and an unknown id echoes back.
     expect(tKeys("desc", "not.a.real.binding.id")).toBe("not.a.real.binding.id")
   })
 })

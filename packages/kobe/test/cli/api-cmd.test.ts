@@ -48,6 +48,7 @@ describe("parseFlags", () => {
 
   it("rejects a flag missing its value", () => {
     expect(() => parseFlags(["--repo"])).toThrow(/--repo requires a value/)
+    // A following flag does not count as the value.
     expect(() => parseFlags(["--repo", "--prompt", "x"])).toThrow(/--repo requires a value/)
   })
 })
@@ -86,6 +87,8 @@ describe("parseAgentsSpec", () => {
   })
 
   it("rejects an over-cap count before allocating (no OOM on a huge count)", () => {
+    // Guards against `--agents claude:1000000000` building a billion-element
+    // array before the post-build cap check rejects it.
     expect(() => parseAgentsSpec("claude:1000000000")).toThrow(/exceeds the cap/)
     expect(() => parseAgentsSpec("claude:6,codex:6")).toThrow(/exceeds the cap/)
   })
@@ -102,6 +105,9 @@ describe("buildCountPlan", () => {
   })
 
   it("rejects an over-cap count BEFORE allocating (no OOM on a huge --count)", () => {
+    // Mirrors the parseAgentsSpec guard: `--count 1000000000` must fail fast
+    // instead of building a billion-element array only to hit the post-build
+    // cap check.
     expect(() => buildCountPlan(1_000_000_000, "claude")).toThrow(/exceeds the cap/)
     expect(() => buildCountPlan(11, "claude")).toThrow(/exceeds the cap/)
   })
@@ -159,6 +165,7 @@ describe("API surface (full CRUD)", () => {
   it("the compact index lists every verb + summary but NO flags (context economy)", () => {
     const idx = schemaIndex() as { verbs: { name: string; group: string; summary: string; flags?: unknown }[] }
     expect(idx.verbs.map((v) => v.name)).toEqual([...API_VERBS])
+    // Crucially, the index does NOT carry per-verb flags — that's the drill-in level.
     for (const v of idx.verbs) expect(v.flags).toBeUndefined()
     expect(idx.verbs.find((v) => v.name === "add")?.group).toBe("create")
   })

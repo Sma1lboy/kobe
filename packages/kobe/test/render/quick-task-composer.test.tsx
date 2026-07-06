@@ -1,3 +1,8 @@
+/**
+ * QuickTaskComposer — prompt-first quick-task dialog (`<prefix> f`), src/tui/component/quick-task-composer.tsx.
+ * Covers the "type a prompt, hit enter" happy path and tab-cycling to the
+ * engine field with ctrl+e stepping the vendor.
+ */
 import { describe, expect, it } from "bun:test"
 import { QuickTaskComposer, type QuickTaskResult } from "../../src/tui/component/quick-task-composer"
 import { useDialog } from "../../src/tui/ui/dialog"
@@ -70,8 +75,8 @@ describe("QuickTaskComposer", () => {
     )
     await frame()
     await mockInput.typeText("switch engine")
-    mockInput.pressTab()
-    mockInput.pressKey("e", { ctrl: true })
+    mockInput.pressTab() // prompt -> engine field
+    mockInput.pressKey("e", { ctrl: true }) // step vendor within the engine field
     mockInput.pressEnter()
     await frame()
     expect(result?.vendor).toBe("codex")

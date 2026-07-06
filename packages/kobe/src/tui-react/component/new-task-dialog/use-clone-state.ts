@@ -1,3 +1,11 @@
+/**
+ * Clone-tab state hook for the React new-task dialog (issue #15, G3W2) —
+ * the "For New Repo" cluster split out of `./view-model.ts`: git URL,
+ * parent-dir drill-down picker, auto-derived folder name, base branch,
+ * and the async `git clone` commit path. All fs/spawn plumbing comes from
+ * the shared `src/tui/component/new-task-dialog/clone.ts`.
+ */
+
 import type { VendorId } from "@/types/vendor"
 import { useEffect, useState } from "react"
 import {
@@ -34,14 +42,18 @@ export function useCloneState(args: {
   const [cloneFolder, setCloneFolder] = useState("")
   const [cloneFolderTouched, setCloneFolderTouched] = useState(false)
   const [cloneBaseRef, setCloneBaseRef] = useState(DEFAULT_BASE_REF)
+  // True while `git clone` runs — inputs dim, tab switching is gated.
   const [cloneInFlight, setCloneInFlight] = useState(false)
   const [cloneProgress, setCloneProgress] = useState("")
   const [cloneParentCursor, setCloneParentCursor] = useState(0)
+  // "Selected, not drilled" latch — collapses the dropdown after Enter/click.
   const [cloneParentPicked, setCloneParentPicked] = useState(false)
 
   const { split: cloneParentSplit, filtered: cloneParentFiltered } = useDerivedDir(cloneParent)
   const cloneParentWindow: PickerWindow = windowAround(cloneParentFiltered, cloneParentCursor)
 
+  // Folder name follows the URL until manually edited; auto-suffixes on
+  // collision inside the chosen parent dir.
   useEffect(() => {
     if (cloneFolderTouched) return
     setCloneFolder(findAvailableFolderName(cloneParent, deriveFolderName(cloneUrl)))
@@ -98,6 +110,8 @@ export function useCloneState(args: {
     const targetReason = validateCloneTarget(cloneParent, cloneFolder)
     if (targetReason) {
       args.setSubmitError(targetReason)
+      // Blame the field actually at fault — same probe strategy as the
+      // Solid shell (see its commitClone for the full rationale).
       const folder = cloneFolder.trim()
       const folderStructurallyBad = !folder || folder.includes("/") || folder.includes("\\")
       const parentAtFault = !folderStructurallyBad && validateCloneTarget(cloneParent, "__kobe_probe__") != null

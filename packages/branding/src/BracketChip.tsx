@@ -1,6 +1,10 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "./colors"
 
+// Concept 1 — Bracket Chip [ kobe ]
+// On-brand for the agent-deck "[Tab] label" hotkey grammar that runs through
+// kobe's UI. Brackets snap in, "kobe" types in, the cursor blinks.
+// Reads as a button you can press — that's the point.
 
 export const BracketChip: React.FC = () => {
   const frame = useCurrentFrame()

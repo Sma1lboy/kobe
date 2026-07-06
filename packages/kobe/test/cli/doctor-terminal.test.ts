@@ -1,3 +1,11 @@
+/**
+ * `kobe doctor` terminal section — pure halves only (env formatting + kitty
+ * probe reply parsing). Why this matters: keyboard bugs are terminal-
+ * dependent (issue #192 — Terminal.app's legacy key path broke ctrl+h/j),
+ * and doctor's terminal line is how a reporter tells us which key path
+ * they're on. The live TTY probe is I/O-thin and untested by design.
+ */
+
 import { EventEmitter } from "node:events"
 import { describe, expect, test, vi } from "vitest"
 import {
@@ -44,6 +52,13 @@ describe("parseKittyProbeReply", () => {
   })
 })
 
+/**
+ * The live probe, against a FAKE controlling terminal: process.stdin/stdout
+ * are swapped for tty-shaped stand-ins (restored per test), so the raw-mode
+ * dance, the reply decode, and the hard timeout are all exercised without a
+ * real terminal. What matters: raw mode is always restored to what it was,
+ * the listener is detached, and a mute terminal can never hang doctor.
+ */
 describe("probeKittyKeyboard (live probe against a fake tty)", () => {
   type FakeStdin = EventEmitter & {
     isTTY: boolean
@@ -92,14 +107,16 @@ describe("probeKittyKeyboard (live probe against a fake tty)", () => {
     ;(tty.stdin as FakeStdin).isTTY = false
     const result = await withFakeTty(tty, () => probeKittyKeyboard(50))
     expect(result).toEqual({ kind: "skipped", reason: "not an interactive terminal" })
-    expect(tty.writes).toEqual([])
+    expect(tty.writes).toEqual([]) // never emits escape bytes into a pipe
   })
 
   test("a kitty flags reply resolves supported and restores non-raw mode", async () => {
     const tty = fakeTty()
     const result = await withFakeTty(tty, async () => {
       const probe = probeKittyKeyboard(1000)
+      // The probe wrote its query + DA1 fence before listening for the reply.
       expect(tty.writes.join("")).toBe("\x1b[?u\x1b[c")
+      // Reply arrives split across chunks — the decoder accumulates.
       tty.stdin.emit("data", Buffer.from("\x1b[?"))
       tty.stdin.emit("data", Buffer.from("5u"))
       return probe
@@ -107,9 +124,9 @@ describe("probeKittyKeyboard (live probe against a fake tty)", () => {
     expect(result).toEqual({ kind: "supported", flags: 5 })
     const stdin = tty.stdin as FakeStdin
     expect(stdin.setRawMode).toHaveBeenCalledWith(true)
-    expect(stdin.setRawMode).toHaveBeenLastCalledWith(false)
+    expect(stdin.setRawMode).toHaveBeenLastCalledWith(false) // restored — wasn't raw before
     expect(stdin.pause).toHaveBeenCalled()
-    expect(stdin.listenerCount("data")).toBe(0)
+    expect(stdin.listenerCount("data")).toBe(0) // listener detached
   })
 
   test("a DA1-only reply resolves unsupported; raw mode is LEFT ON when it was already on", async () => {
@@ -121,6 +138,7 @@ describe("probeKittyKeyboard (live probe against a fake tty)", () => {
     })
     expect(result).toEqual({ kind: "unsupported" })
     const stdin = tty.stdin as FakeStdin
+    // The terminal was already raw (e.g. inside another TUI) — don't undo that.
     expect(stdin.setRawMode).not.toHaveBeenCalledWith(false)
   })
 

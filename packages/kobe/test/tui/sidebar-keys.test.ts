@@ -1,3 +1,18 @@
+/**
+ * Sidebar key wiring (`panes/sidebar/keys.ts`): the dispatch decisions the
+ * hook layer owns on top of the pure controller — slot-multiplexed nav
+ * (even=down / odd=up so user rebinds keep working), shift discrimination for
+ * P/M (the keymap layer drops shift on letters), move-mode rerouting of j/k
+ * into reorder requests, and the search-mode gate that de-registers letter
+ * chords while `[`/`]` view switching stays live.
+ *
+ * `useBindings` (the only @opentui-touching import) is mocked to CAPTURE the
+ * reactive configs; the test then simulates the keymap dispatcher: evaluate
+ * `enabled`, match `key`, call `cmd(evt, slot)`. `bindByIds` + the KobeKeymap
+ * chord table + the controller are all REAL — the chords a user actually gets
+ * are the ones under test.
+ */
+
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 type CapturedConfig = () => {
@@ -151,7 +166,7 @@ describe("search mode", () => {
     expect(s.onSearchEnter).toHaveBeenCalledTimes(1)
 
     searching = true
-    press("j")
+    press("j") // must NOT move the cursor — it's literal input now
     press("d")
     expect(s.cursor()).toBe(0)
     expect(s.onDeleteRequest).not.toHaveBeenCalled()
@@ -180,7 +195,7 @@ describe("move (reorder) mode", () => {
     expect(s.onMoveRequest).toHaveBeenCalledWith("t2", 1)
     press("k")
     expect(s.onMoveRequest).toHaveBeenCalledWith("t2", -1)
-    expect(s.cursor()).toBe(1)
+    expect(s.cursor()).toBe(1) // cursor itself never moved
   })
 
   test("enter and escape both exit move mode", () => {

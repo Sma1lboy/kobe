@@ -1,3 +1,10 @@
+/**
+ * Pure-helper tests for the tmux session layer (KOB-225).
+ *
+ * Only the name + argv builders are exercised here — the session ops
+ * spawn `tmux` and are verified interactively, not in CI.
+ */
+
 import { describe, expect, test } from "vitest"
 import {
   CHAT_TAB_ENGINE_PROMPT,
@@ -46,6 +53,16 @@ describe("chatTabSwitchBindings", () => {
 })
 
 describe("focusBindCommand", () => {
+  // Directional focus must NOT wrap: bare `select-pane -L` jumps from the
+  // leftmost Tasks pane to the RIGHTMOST pane. Each bind is gated on the
+  // matching `pane_at_*` edge format var — "" at the edge (falsy →
+  // if-shell runs nothing; the else command is omitted, which parses)
+  // and "1" elsewhere (→ the move runs). The OUTER window_zoomed_flag
+  // conditional exempts zoomed panes: zoom sets ALL FOUR pane_at_* flags
+  // to 1, which would otherwise make every focus chord a dead key while
+  // zoomed — zoomed presses fall through to plain select-pane (unzoom +
+  // move, the pre-guard behavior). Both halves verified live on tmux
+  // 3.5a with an attached client.
   test("guards each direction with its pane_at_* edge variable", () => {
     expect(focusBindCommand("C-h", "-L")).toEqual([
       "bind-key",
@@ -85,6 +102,8 @@ describe("focusBindCommand", () => {
     ])
   })
 
+  // The guard lives on the COMMAND side, so a user-overridden tmux.focus
+  // key set (resolveUserTmuxKeys) gets the same no-wrap behavior.
   test("wraps whatever resolved key the user chose for the direction", () => {
     expect(focusBindCommand("C-Left", "-L")).toEqual([
       "bind-key",
@@ -112,6 +131,18 @@ describe("focusBindCommand", () => {
 })
 
 describe("tasksRestoreEdgeCommand", () => {
+  // Regression: the ctrl+h left-edge restore used to be a FOREGROUND
+  // run-shell, which stalls tmux's whole command queue until the kobe CLI
+  // exits — every press inside the leftmost Tasks pane froze the client
+  // for a full CLI startup, and rapid presses compounded into multi-second
+  // freezes ("shortcut keys are very random / kobe gets stuck"). The fix
+  // is twofold and both halves must survive: the spawn is backgrounded
+  // (`run-shell -b`) and skipped entirely when the active pane already IS
+  // the Tasks rail (`@kobe_role=tasks`). The run-shell is nested in tmux
+  // BRACES, never double quotes: the shell-quoted command carries `'\''`
+  // sequences that double-quote re-parsing corrupts ("too many
+  // arguments"). Gate + brace re-parsing verified live on tmux 3.6 via
+  // `run-shell -C` with a production-shaped command.
   test("backgrounds the CLI spawn and skips it when the Tasks rail is the active pane", () => {
     expect(tasksRestoreEdgeCommand("kobe layout --session '#{session_name}' --action tasks-restore")).toBe(
       `if-shell -F '#{?#{==:#{@kobe_role},tasks},,1}' { run-shell -b 'kobe layout --session '\\''#{session_name}'\\'' --action tasks-restore' }`,
@@ -240,12 +271,16 @@ describe("tmux client size conflict helpers", () => {
 })
 
 describe("parseObservedSession", () => {
+  // One `list-panes -s` answers all four observe questions (the reuse path
+  // runs on EVERY task switch, so its spawn count matters): session options
+  // ride the format on every row, `window_active` scopes the claude-pane
+  // check to the current window, distinct window ids are the tab count.
   test("derives options, active-window claude pane and window count from one listing", () => {
     const stdout = [
-      "@1\t0\tclaude\t/wt/a\tclaude",
+      "@1\t0\tclaude\t/wt/a\tclaude", // claude pane in an INACTIVE window
       "@1\t0\ttasks\t/wt/a\tclaude",
-      "@2\t1\tclaude\t/wt/a\tclaude",
-      "@2\t1\t\t/wt/a\tclaude",
+      "@2\t1\tclaude\t/wt/a\tclaude", // the active window's claude pane
+      "@2\t1\t\t/wt/a\tclaude", // untagged shell pane
     ].join("\n")
     expect(parseObservedSession(stdout)).toEqual({
       worktree: "/wt/a",

@@ -1,3 +1,12 @@
+/**
+ * Worktree content reads.
+ *
+ * File/preview surfaces need a small, soft-failing way to inspect a Task's
+ * Worktree without knowing whether it lives locally or behind SSH. This module
+ * is that interface: callers ask for git output or file text, and the
+ * local/remote choice stays behind ExecHost.
+ */
+
 import type { ExecResult } from "../exec/exec-host.ts"
 import { execHostForWorktreePath } from "../exec/resolve.ts"
 import { READ_ONLY_GIT_ENV } from "../lib/git-env.ts"
@@ -14,9 +23,20 @@ export interface WorktreeContentDeps {
 
 export interface RunWorktreeGitOptions extends WorktreeContentDeps {
   readonly timeoutMs?: number
+  /**
+   * Caller cancellation. Combined with the internal timeout (if any) so
+   * aborting the signal kills the underlying subprocess — lets UI panes
+   * cancel an in-flight `git` read when the tab/worktree changes out from
+   * under them instead of stacking overlapping subprocesses.
+   */
   readonly signal?: AbortSignal
 }
 
+/**
+ * Run `git <args>` in a Worktree via its ExecHost. Never throws for git
+ * failure; spawn/SSH failures come back as `status: -1`, matching the previous
+ * spawn-wrapper shape used by pane code.
+ */
 export async function runWorktreeGit(
   worktreePath: string,
   args: readonly string[],
@@ -34,6 +54,8 @@ export async function runWorktreeGit(
         controller.abort()
       }, options.timeoutMs)
     : null
+  // Fold the caller's signal in with the timeout controller so either
+  // source aborts the subprocess.
   const signal =
     controller && options.signal
       ? AbortSignal.any([controller.signal, options.signal])
@@ -71,6 +93,10 @@ function joinedWorktreePath(worktreePath: string, relPath: string): string | nul
   return `${worktreePath.replace(/\/+$/, "")}/${parts.filter(Boolean).join("/")}`
 }
 
+/**
+ * Read a utf8 file inside a Worktree. Invalid relative paths and unreadable
+ * files return `null` so UI panes can render an empty/soft state.
+ */
 export async function readWorktreeFile(
   worktreePath: string,
   relPath: string,

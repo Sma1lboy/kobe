@@ -1,3 +1,12 @@
+/**
+ * Activity-poll transcript-mtime readers (KOB-254). Each engine exposes
+ * `latestTranscriptMtimeForWorktree(worktree)` returning the newest
+ * transcript mtime for a worktree (0 when none) — the signal the Ops
+ * pane polls to light its "new activity" badge. Codex/Copilot are
+ * tested with injected deps; Claude uses a real temp dir since its
+ * lister stats the filesystem directly.
+ */
+
 import { mkdtemp, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -16,6 +25,7 @@ describe("codex latestTranscriptMtimeForWorktree", () => {
   function deps(files: Record<string, { cwd: string; mtimeMs: number }>): CodexDeps {
     return {
       sessionsDir: () => "/sessions",
+      // Single flat day-dir so listRolloutFiles enumerates our files.
       readdir: async (p) => {
         if (p === "/sessions") return ["2026"]
         if (p === "/sessions/2026") return ["05"]
@@ -42,6 +52,7 @@ describe("codex latestTranscriptMtimeForWorktree", () => {
       "rollout-2026-05-29T02-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl": { cwd: "/wt", mtimeMs: 2000 },
       "rollout-2026-05-29T03-00-00-cccccccc-cccc-cccc-cccc-cccccccccccc.jsonl": { cwd: "/other", mtimeMs: 3000 },
     }
+    // Newest filename (03:00, /other) is skipped; first /wt match is 02:00.
     expect(await codexMtime("/wt", deps(files))).toBe(2000)
   })
 
@@ -94,6 +105,9 @@ describe("copilot latestTranscriptMtimeForWorktree", () => {
 
 describe("claude latestTranscriptMtimeForWorktree", () => {
   it("returns the newest session-file mtime for the worktree", async () => {
+    // Claude encodes the worktree cwd as the projects subdir name
+    // (`/`→`-`), and its lister reads ~/.claude/projects. Point HOME at
+    // a temp dir and build that layout for a fake worktree path.
     const home = await mkdtemp(path.join(tmpdir(), "kobe-claude-mtime-"))
     const prevHome = process.env.HOME
     process.env.HOME = home

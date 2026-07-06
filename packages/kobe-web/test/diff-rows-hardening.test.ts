@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { diffStat, parseDiffRows } from "../src/lib/diff-rows.ts"
 
+/**
+ * Real-world git patch shapes the gutter parser must survive without
+ * mis-tagging a header as a content row (which would corrupt line numbers and
+ * inflate the +/- stat). diff-rows.test.ts covers the modify case; these lock
+ * new-file / binary / rename / no-newline / single-line-hunk shapes so a future
+ * trim of META_PREFIXES or HUNK_RE can't silently regress them. Coverage only.
+ */
 
 describe("parseDiffRows — real git shapes", () => {
   it("treats a full new-file header block as meta and counts the adds", () => {
@@ -14,6 +21,7 @@ index 0000000..abc1234
 +b
 `
     const rows = parseDiffRows(patch)
+    // The 5 header lines (incl. "new file mode" and the /dev/null ---) are meta.
     expect(rows.slice(0, 5).every((r) => r.kind === "meta")).toBe(true)
     expect(rows.filter((r) => r.kind === "add").map((r) => r.newLn)).toEqual([
       1, 2,
@@ -28,6 +36,7 @@ Binary files a/img.png and b/img.png differ
 `
     const rows = parseDiffRows(patch)
     expect(rows.every((r) => r.kind === "meta")).toBe(true)
+    // No content rows means no bogus line-number advance and a zero stat.
     expect(diffStat(patch)).toEqual({ added: 0, deleted: 0 })
   })
 
@@ -51,6 +60,7 @@ rename to new.ts
     const last = rows[rows.length - 1]
     expect(last.kind).toBe("meta")
     expect(last.text).toBe("\\ No newline at end of file")
+    // The marker must not be counted as an add/del.
     expect(diffStat(patch)).toEqual({ added: 1, deleted: 1 })
   })
 
@@ -65,10 +75,15 @@ rename to new.ts
   })
 
   it("treats a zero-length line inside a hunk as meta, not a context line", () => {
+    // A bare "" must NOT advance the gutters (real in-hunk context is " ").
+    // If a producer ever strips trailing whitespace from a blank context line,
+    // counting "" as context would offset every following line number.
     const patch = ["@@ -1,3 +1,3 @@", " a", "", "-b", "+B", " c"].join("\n")
     const rows = parseDiffRows(patch)
     const blank = rows[2]
     expect(blank).toMatchObject({ kind: "meta", oldLn: null, newLn: null })
+    // The deletion that follows the blank line is still line 2 (the blank did
+    // not advance the count off-by-one).
     expect(rows.find((r) => r.kind === "del")).toMatchObject({ oldLn: 2 })
     expect(rows.find((r) => r.kind === "add")).toMatchObject({ newLn: 2 })
   })

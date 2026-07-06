@@ -1,3 +1,12 @@
+/**
+ * `kobe update` — self-update helper for the globally-installed CLI.
+ *
+ * The TUI update chip points at a GitHub-hosted update script. This
+ * wrapper intentionally delegates to that remote script instead of
+ * baking the package-manager command into the binary, so future install
+ * flow changes only require editing `scripts/update.sh` on main.
+ */
+
 import { spawnSync } from "node:child_process"
 import { CURRENT_VERSION, UPDATE_COMMAND, UPDATE_SCRIPT_URL, recommendedGlobalInstallCommand } from "../version.ts"
 
@@ -37,6 +46,9 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
       dryRun = true
       continue
     }
+    // Malformed invocation → show the error AND the usage, exit 2. An
+    // agent that guesses a flag wrong should land on the instruction
+    // surface, not a bare one-liner.
     process.stderr.write(`kobe update: unknown argument "${arg}"\n\n`)
     printUsage(process.stderr)
     process.exit(2)

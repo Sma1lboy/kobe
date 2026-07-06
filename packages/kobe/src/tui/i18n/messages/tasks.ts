@@ -1,21 +1,33 @@
+/**
+ * `tasks.*` messages. English is the source of truth; `zh: typeof en` keeps
+ * the shapes locked together. Filled during the TUI i18n migration.
+ */
+
 export const en = {
+  /** View-switcher tab labels */
   view: {
     workspace: "Workspace",
     archives: "Archives",
   },
+  /** Section headers */
   header: {
     projects: "PROJECTS",
     tasks: "TASKS",
   },
+  /** Search bar */
   search: {
     placeholder: "fuzzy filter",
   },
+  /** Sort toggle label */
   sort: "sort",
+  /** Project filter row */
   project: {
     taskSingular: "task",
     taskPlural: "tasks",
   },
+  /** Inline chip while move/reorder mode is active */
   moveChip: " move",
+  /** Empty-state messages */
   empty: {
     noMatchSearch: "No matching tasks — esc to clear.",
     noActiveProject: "No active tasks for this project.",
@@ -23,7 +35,9 @@ export const en = {
     noActive: "No active tasks — press n or [+] to create one.",
     noArchived: "No archived tasks.",
   },
+  /** In-list hint shown at the bottom of the Archives view */
   archiveHint: "a to unarchive",
+  /** Row-view status labels (shown in subtitle when no branch) */
   status: {
     done: "done",
     inReview: "in review",
@@ -32,18 +46,23 @@ export const en = {
     canceled: "canceled",
     error: "error",
   },
+  /** Row-view engine activity labels (shown in subtitle, override branch) */
   activity: {
     rateLimited: "rate limited",
     permissionNeeded: "needs permission",
     error: "error",
   },
+  /** Row-view special subtitle words */
   subtitle: {
     noTracking: "no activity tracking",
     materializing: "materializing",
   },
+  /** ShortcutHints legend */
   hints: {
+    /** Collapsible legend header (folded / unfolded) */
     headerFolded: "── keys ?▸ ──",
     headerUnfolded: "── keys ?▾ ──",
+    /** In-pane action labels */
     fullHelp: "full help",
     newTask: "new task",
     settings: "settings",
@@ -53,13 +72,16 @@ export const en = {
     delete: "delete",
     views: "views",
     project: "project",
+    /** tmux session-key labels */
     movePanes: "move panes",
     detach: "tasks→detach",
     splits: "splits",
     panes: "panes",
+    /** Move/reorder mode labels */
     reorder: "reorder",
     done: "done",
   },
+  /** Toast / error messages */
   toast: {
     noDaemonWorktree: "No daemon running — can't create the worktree",
     noDaemonOpen: "No daemon running — can't open this task",

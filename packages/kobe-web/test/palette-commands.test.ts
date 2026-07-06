@@ -5,6 +5,12 @@ import {
 } from "../src/lib/palette-commands.ts"
 import type { Task } from "../src/lib/types.ts"
 
+/**
+ * themeCommandEntries feeds the command palette's "Theme: <name>" entries. The
+ * label is what fuzzy search matches (so typing "theme" or a theme name finds
+ * them), the id is stable per theme, and the active theme is flagged so the
+ * palette can mark it.
+ */
 
 describe("themeCommandEntries", () => {
   it("returns one entry per theme with a stable id and a 'Theme: ' label", () => {
@@ -74,6 +80,7 @@ describe("orderTasksForPalette", () => {
       task("a", { updatedAt: "2026-06-01T00:00:00Z" }),
       task("b", { updatedAt: "2026-06-01T00:00:00Z" }),
     ])
+    // localeCompare(b.id, a.id) → "b" before "a".
     expect(out.map((t) => t.id)).toEqual(["b", "a"])
   })
 

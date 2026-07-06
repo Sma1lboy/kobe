@@ -1,3 +1,13 @@
+/**
+ * Open the active task worktree in the user's editor.
+ *
+ * Inspired by AeroSpace's menu-bar `Open config in '<editor>'` flow:
+ * choose an editor dynamically at runtime, show that choice in the UI,
+ * and delegate the actual open to the platform instead of hardcoding a
+ * single app. kobe's version favours editor CLIs because they can open
+ * directories portably; macOS app fallbacks use `open -a`.
+ */
+
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { basename, delimiter, isAbsolute, join } from "node:path"

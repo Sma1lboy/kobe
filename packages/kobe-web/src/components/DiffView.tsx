@@ -1,3 +1,18 @@
+/**
+ * DiffView — the web CHANGES pane.
+ *
+ * Shows the git working-tree changes of a task's worktree: a file list (left)
+ * + the selected file's unified diff (main), with per-line +/- coloring from
+ * the claude theme. Read-only; re-fetches when worktreePath changes, on a
+ * manual refresh, and LIVE whenever the daemon's worktree.changes counts for
+ * this worktree move (the agent edits → daemon collector ticks → counts
+ * change → we refetch; no browser-side git polling).
+ *
+ * Mount note: render <DiffView worktreePath={activeTask?.worktreePath ?? null} />
+ * — the lead wires the active task's worktreePath in (e.g. in AppShell's
+ * ToolsPane region).
+ */
+
 import { RotateCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
@@ -9,6 +24,7 @@ import { useAppState } from "../lib/store.ts"
 import { isWebTransportOffline } from "../lib/web-transport.ts"
 import "./diff-view.css"
 
+/** `+a −d` chip; renders nothing when both are zero. */
 function StatChip({ added, deleted }: { added: number; deleted: number }) {
   if (added === 0 && deleted === 0) return null
   return (
@@ -19,12 +35,16 @@ function StatChip({ added, deleted }: { added: number; deleted: number }) {
   )
 }
 
+/** Stable refresh key for a worktree's daemon-collected change counts —
+ *  changes exactly when the +N/−M pair moves, which is the refetch signal. */
 function useChangesKey(worktreePath: string | null): string {
   const { worktreeChanges } = useAppState()
   const counts = worktreePath ? worktreeChanges[worktreePath] : undefined
   return counts ? `${counts.added}:${counts.deleted}` : "none"
 }
 
+/** Diff fetch failed. If the daemon web transport is down a retry can only
+ *  fail, so point at the outage; otherwise offer a Retry that re-runs it. */
 function DiffError({ onRetry }: { onRetry: () => void }) {
   const { daemonConnected, streamConnected } = useAppState()
   const offline = isWebTransportOffline({ daemonConnected, streamConnected })
@@ -50,6 +70,8 @@ function DiffError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
+/** Render a parsed unified diff into the gutter+text row grid. `wrap` soft-wraps
+ *  long lines instead of the default horizontal scroll. */
 export function DiffBody({ patch, wrap }: { patch: string; wrap?: boolean }) {
   const rows = useMemo(() => parseDiffRows(patch), [patch])
   if (!patch.trim()) {
@@ -88,9 +110,14 @@ export function ChangesList({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const changesKey = useChangesKey(worktreePath)
+  // The list is names-only (no patches), so per-file counts aren't available
+  // here — show the daemon's worktree total instead.
   const { worktreeChanges } = useAppState()
   const wtTotal = worktreePath ? worktreeChanges[worktreePath] : undefined
 
+  // Out-of-order guard: a fast task switch (or refresh spam) fires overlapping
+  // fetches; only the most recent may write state, else a late response for the
+  // previous worktree clobbers the current one's file list.
   const seqRef = useRef(0)
   const load = useCallback(async () => {
     if (!worktreePath) {
@@ -102,6 +129,7 @@ export function ChangesList({
     setLoading(true)
     setError(null)
     try {
+      // The list renders only names + badges, so skip per-file patch assembly.
       const data = await fetchDiff(worktreePath, { namesOnly: true })
       if (seq === seqRef.current) setResult(data)
     } catch (err) {
@@ -120,6 +148,9 @@ export function ChangesList({
   }, [load, changesKey])
 
   const [filter, setFilter] = useState("")
+  // Clear the filter on task switch — a query for one worktree's paths is
+  // meaningless in another. (Not on changesKey: a live refresh of the SAME
+  // worktree must keep what the user typed.)
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on worktreePath only, by design.
   useEffect(() => {
     setFilter("")
@@ -236,6 +267,8 @@ export function FilePreview({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const changesKey = useChangesKey(worktreePath)
+  // Out-of-order guard: a Retry / live refetch can overlap, so only the most
+  // recent fetch may write (mirrors ChangesList's seqRef).
   const seqRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -248,6 +281,7 @@ export function FilePreview({
     setLoading(true)
     setError(null)
     try {
+      // Ask for just this file's patch instead of the whole worktree's diff set.
       const result = await fetchDiff(worktreePath, { path })
       if (seq !== seqRef.current) return
       setFile(result.files.find((item) => item.path === path) ?? null)
@@ -301,6 +335,8 @@ export function FilePreview({
       {error ? (
         <DiffError onRetry={() => void load()} />
       ) : file ? (
+        // Keep the previous patch on screen during a live refetch — a count
+        // tick must not flash the view back to a loading state.
         <DiffBody patch={file.patch} wrap={wrap} />
       ) : loading ? (
         <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">

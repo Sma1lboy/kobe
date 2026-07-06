@@ -76,6 +76,7 @@ describe("checkLatestVersion — dev suppression and the KOBE_FAKE_UPDATE debug 
       latest: "999.0.0",
       hasUpdate: true,
     })
+    // A LOWER fake version still reads as "no update", not a downgrade chip.
     process.env.KOBE_FAKE_UPDATE = "0.0.1"
     await expect(checkLatestVersion()).resolves.toMatchObject({ hasUpdate: false })
     expect(fetchMock).not.toHaveBeenCalled()

@@ -6,6 +6,11 @@ import {
   repoSnapshotAliases,
 } from "../src/lib/repo-key.ts"
 
+/**
+ * repo-key is the single home for the issue-snapshot aliasing contract that
+ * used to be copy-pasted across store.ts, daemon-link.ts, and use-repo-issues.ts.
+ * These tests pin the contract so the three consumers can't silently diverge.
+ */
 
 describe("normalizeRepoPath", () => {
   it("drops a trailing slash", () => {
@@ -51,6 +56,7 @@ describe("repoSnapshotAliases", () => {
   })
 
   it("matches across a trailing-slash difference (the cache-split bug)", () => {
+    // A push under `/repo` must still alias to a task that stored `/repo/`.
     expect(repoSnapshotAliases(tasks, "/Users/narwhal/proj/kobe/")).toContain(
       "/Users/narwhal/.kobe/worktrees/kobe/bovid",
     )
@@ -63,6 +69,8 @@ describe("repoSnapshotAliases", () => {
   })
 
   it("accepts the structural shape — extra task fields are ignored", () => {
+    // Proves both the SPA `Task` and the daemon `SerializedTask` satisfy it:
+    // only `repo` + `worktreePath` are read.
     const wide = [
       {
         id: "t1",

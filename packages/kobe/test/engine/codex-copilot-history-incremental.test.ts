@@ -10,6 +10,19 @@ import {
   readHistoryWithMetrics as readCopilotHistoryWithMetrics,
 } from "../../src/engine/copilot-local/history.ts"
 
+/**
+ * Why these tests matter: the history pane polls `readHistory` every ~2.5s
+ * and Solid's `<For>` keys rows by object reference — all-new identities per
+ * poll destroy + recreate every rendered row. PR #233 gave the claude reader
+ * an append-aware parse cache; these tests pin the same contract for the
+ * codex and copilot readers: (a) already-seen messages keep object identity
+ * when the file only appended, (b) output stays identical to a full re-parse,
+ * falling back on rewrite/truncation, and (c) copilot's cross-line fold state
+ * (session.start id, tool-name map, usage) survives the cache boundary.
+ */
+
+// ---------------------------------------------------------------- codex ----
+
 const CODEX_UUID = "aaaaaaaa-1111-2222-3333-444444444444"
 const CODEX_ROLLOUT = `rollout-2026-06-10T01-00-00-${CODEX_UUID}.jsonl`
 
@@ -26,6 +39,11 @@ function codexTurn(output: number): string {
   return JSON.stringify({ type: "turn.completed", usage: { output_tokens: output } })
 }
 
+/**
+ * Fake FS where the rollout contents are mutable between reads. Each test
+ * uses a unique sessions root so the module-level cache (keyed by file path)
+ * never bleeds state across tests.
+ */
 function codexDeps(name: string): { deps: HistoryDeps; set: (raw: string) => void } {
   let raw = ""
   const root = `/codex-${name}`
@@ -67,6 +85,7 @@ describe("codex readHistory append-aware cache", () => {
     const second = await readCodexHistory(CODEX_UUID, deps)
 
     expect(second).toHaveLength(3)
+    // Identity-stable prefix: same refs, not just deep-equal copies.
     expect(second[0]).toBe(first[0])
     expect(second[1]).toBe(first[1])
     expect(second[2]?.blocks).toEqual([{ type: "text", text: "third" }])
@@ -112,6 +131,8 @@ describe("codex readHistory append-aware cache", () => {
     expect(second.messages[0]).toBe(first.messages[0])
   })
 })
+
+// -------------------------------------------------------------- copilot ----
 
 function copilotEvent(type: string, data: Record<string, unknown>, ts: string): string {
   return JSON.stringify({ type, data, timestamp: ts })
@@ -179,6 +200,8 @@ describe("copilot readHistory append-aware cache", () => {
     const first = await readCopilotHistory("sess1", deps)
     expect(first[0]?.sessionId).toBe("real-sid")
 
+    // The appended message must pick up the sessionId recorded in the CACHED
+    // prefix — a naive line-local cache would fall back to "sess1".
     const l2 = copilotEvent("assistant.message", { content: "yo" }, "2026-06-10T01:00:02Z")
     set(`${start}\n${l1}\n${l2}\n`)
     const second = await readCopilotHistory("sess1", deps)

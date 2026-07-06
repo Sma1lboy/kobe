@@ -35,6 +35,8 @@ describe("matchTaskByCwd", () => {
   })
 
   it("prefers the longest (most specific) worktree — sub-task over its repo root", () => {
+    // A sub-task's worktree lives UNDER the main task's repo root, so the cwd
+    // prefix-matches both; the longer path must win.
     expect(matchTaskByCwd(tasks, "/repo/.claude/worktrees/snipe")).toBe("sub")
     expect(matchTaskByCwd(tasks, "/repo/.claude/worktrees/snipe/pkg")).toBe("sub")
   })
@@ -79,6 +81,7 @@ describe("matchTaskByWorktreePath", () => {
   })
 
   it("does NOT match a parent on a path prefix (unlike matchTaskByCwd)", () => {
+    // Removing an untracked worktree under /repo must not archive the main task.
     expect(matchTaskByWorktreePath(tasks, "/repo/.claude/worktrees/unknown")).toBeUndefined()
   })
 
@@ -105,6 +108,8 @@ describe("matchRepoByCwd", () => {
 
   it("maps a cwd inside the repo (or a worktree under it) to the repo root", () => {
     expect(matchRepoByCwd(tasks, "/repo/src/deep")).toBe("/repo")
+    // A `git worktree add` run from inside an existing worktree still resolves
+    // to the tracked repo root (the longest repo prefix).
     expect(matchRepoByCwd(tasks, "/repo/.claude/worktrees/known")).toBe("/repo")
   })
 
@@ -130,6 +135,7 @@ describe("matchRepoByCwd", () => {
 })
 
 describe("findAdoptableWorktree", () => {
+  // kobe tracks repo "/repo" (main task) + one sub-task worktree.
   const tasks = () => [
     { id: "main", repo: "/repo", worktreePath: "/repo" },
     { id: "sub", repo: "/repo", worktreePath: path.join(worktreeRootFor("/repo"), "known") },

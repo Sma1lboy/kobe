@@ -7,6 +7,15 @@ import {
 } from "../src/lib/store.ts"
 import type { Task, TaskJob, WebTransportSnapshot } from "../src/lib/types.ts"
 
+/**
+ * The two decision points inside applyEvent, extracted as pure helpers so the
+ * bugs they encode stay fixed:
+ *  - isOrphanIdleEngineState: a delete emits task.snapshot (task gone) then a
+ *    trailing idle engine-state for the same id; that orphan must be dropped,
+ *    but a NON-idle state for an unknown task is a mid-creation race and kept.
+ *  - applyJobEvent: a running job is tracked by taskId; any terminal phase
+ *    clears it, so a finished worktree-materialize spinner can't linger.
+ */
 
 const task = (id: string): Task => ({ id }) as Task
 const job = (taskId: string, phase: TaskJob["phase"]): TaskJob => ({

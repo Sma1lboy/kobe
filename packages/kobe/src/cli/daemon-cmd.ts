@@ -1,3 +1,12 @@
+/**
+ * `kobe daemon <command>` — daemon lifecycle subcommands.
+ *
+ * Ported from the now-removed `kobed` bin (KOB-136). The body is the same
+ * logic with a different argv shape: the dispatcher in `cli/index.ts`
+ * passes `rest` already trimmed of the `daemon` verb, so we read the
+ * sub-command at `argv[0]` instead of `argv[2]`.
+ */
+
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
@@ -60,6 +69,10 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
       await client.request("daemon.stop")
       console.log("kobe daemon: stop requested")
     } catch {
+      // No daemon answering the socket → "stop" is already satisfied. Report
+      // it cleanly and exit 0 (a defensive `daemon stop` in a teardown script
+      // must not fail just because nothing was running) rather than letting
+      // the connection error bubble to the top-level "failed to start" catch.
       console.log(`kobe daemon: no daemon running at ${socketPath}`)
     } finally {
       client.close()
@@ -68,6 +81,11 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
   }
 
   if (command === "restart") {
+    // Stop + confirm-dead + unlink socket/pidfile via the shared
+    // escalation helper (KOB-258), then respawn. Spawn the new daemon as
+    // a detached child instead of becoming it ourselves — otherwise
+    // `kobe daemon restart` blocks the shell forever and looks "hung" to
+    // anyone running it interactively.
     await stopDaemonProcess(socketPath, pidPath)
     const next = await connectOrStartDaemon()
     next.close()
@@ -81,6 +99,11 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     process.exit(2)
   }
 
+  // We ARE the daemon process from here on. Install the crash net
+  // before doing any work so a stray rejection during startup (or any
+  // time after) is logged to daemon.log instead of silently killing
+  // the daemon. Safe here because this branch only runs in the spawned
+  // daemon process, never in the TUI or tests.
   installDaemonCrashHandlers()
 
   const core = await createKobeCore()

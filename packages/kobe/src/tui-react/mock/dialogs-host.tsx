@@ -1,4 +1,17 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React dialogs/notifications mock host (`bun run dev:mock-react-dialogs`,
+ * issue #15 G3) — the live render proof for the small-shared-dialogs slice:
+ * NotificationsProvider wired through `bootPaneHost` (providers:
+ * notifications), VersionSkewBanner, ToastOverlay, and HelpDialog all on
+ * one screen.
+ *
+ * At boot the banner is visible (stale=true) and a fixture toast fires;
+ * ~2.5s in, the help dialog opens on its own so a piped `timeout 6` run
+ * captures every fixture string without keystroke injection. Interactive
+ * keys: `?` help dialog · n toast · e error toast · v toggle banner ·
+ * q / ctrl+c quit.
+ */
 
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
@@ -12,6 +25,7 @@ import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 
+/** Render-proof grep string for the dev:mock-react-dialogs gate. */
 const MOCK_TOAST_TITLE = "React toast fixture"
 
 function MockDialogsScreen() {
@@ -21,6 +35,9 @@ function MockDialogsScreen() {
   const dialog = useDialog()
   const [stale, setStale] = useState(true)
 
+  // Boot sequence for the piped proof: fixture toast immediately, help
+  // dialog after the first frames so the banner/toast strings are captured
+  // before the dialog backdrop covers them.
   // biome-ignore lint/correctness/useExhaustiveDependencies: boot-once sequence.
   useEffect(() => {
     notif.notify({ kind: "done", taskId: "mock-task", tabId: "tab-1", title: MOCK_TOAST_TITLE })

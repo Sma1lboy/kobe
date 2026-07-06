@@ -1,10 +1,22 @@
+/**
+ * `quickTask.*` messages. English is the source of truth; `zh: typeof en` keeps
+ * the shapes locked together. Filled during the TUI i18n migration.
+ */
+
 export const en = {
+  /** Dialog header: "Quick task · <repo>" */
   title: "Quick task · {repoLabel}",
+  /** Cancel / close hint */
   esc: "esc",
+  /** Prompt field label */
   promptLabel: "prompt",
+  /** Prompt input placeholder */
   promptPlaceholder: "what should this task do?",
+  /** Engine field label */
   engineLabel: "engine",
+  /** Branch field label */
   branchLabel: "branch",
+  /** Footer hint legend */
   legend: "enter create · tab field · ctrl+e engine · ctrl+v attach · ctrl+x unattach · esc cancel",
 }
 

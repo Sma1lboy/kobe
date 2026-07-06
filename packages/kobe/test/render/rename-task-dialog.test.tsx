@@ -1,3 +1,8 @@
+/**
+ * RenameTaskDialog — single-field rename prompt (src/tui/component/rename-task-dialog/{index,dialog}.tsx).
+ * Drives it through the public `RenameTaskDialog.show` entry point (same
+ * call the sidebar's `r` chord makes) rather than the inner view directly.
+ */
 import { describe, expect, it } from "bun:test"
 import { RenameTaskDialog } from "../../src/tui/component/rename-task-dialog"
 import { useDialog } from "../../src/tui/ui/dialog"
@@ -34,6 +39,8 @@ describe("RenameTaskDialog", () => {
       },
     )
     await frame()
+    // Clear the pre-filled text (one backspace per character of "old title"),
+    // then type the replacement.
     for (let i = 0; i < "old title".length; i++) mockInput.pressBackspace()
     await mockInput.typeText("new title")
     mockInput.pressEnter()

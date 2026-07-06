@@ -1,3 +1,18 @@
+/**
+ * Unit tests for `src/state/keybindings-file.ts` — the shared, cached reader
+ * for `~/.kobe/settings/keybindings.yaml`.
+ *
+ * Why these matter: two consumers (the opentui keymap loader and the tmux
+ * resolver) parse this one file; the reader is the seam that keeps them
+ * consistent. The cache semantics are load-bearing — a second disk read
+ * could only make the two consumers disagree — and a broken/unparseable
+ * file must degrade to warnings, never a throw at TUI boot.
+ *
+ * The module parses via `Bun.YAML`; vitest runs under Node, so the global is
+ * stubbed with a JSON-based parser (the reader only cares that parse() maps
+ * text → doc or throws).
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -63,6 +78,7 @@ describe("readKeybindingsFile", () => {
     const r = readKeybindingsFile()
     expect(r.exists).toBe(true)
     expect(r.doc).toEqual({ bindings: {} })
+    // Canonical spelling even though the .yml file was read.
     expect(r.path).toBe(path.join(settingsDir(), "keybindings.yaml"))
   })
 
@@ -86,6 +102,7 @@ describe("readKeybindingsFile", () => {
     expect(first.doc).toEqual({ bindings: { a: "ctrl+a" } })
 
     fs.writeFileSync(file, JSON.stringify({ bindings: { a: "ctrl+b" } }))
+    // Same object back — the edit is invisible without a reset.
     expect(readKeybindingsFile()).toBe(first)
 
     resetKeybindingsFileCache()

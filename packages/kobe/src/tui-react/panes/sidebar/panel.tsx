@@ -1,4 +1,10 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React sidebar panel (issue #15, G3) — the presentational half of the
+ * sidebar, mirroring `src/tui/panes/sidebar/panel.tsx`. All copy comes
+ * through `useT()` (language-reactive); tab metadata and empty-state key
+ * selection are the shared framework-free `view-core.ts`.
+ */
 
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { SidebarProjectOption, SidebarRow, SidebarView, TaskSortMode } from "../../../tui/panes/sidebar/groups"
