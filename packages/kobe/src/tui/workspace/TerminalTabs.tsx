@@ -19,21 +19,29 @@
  */
 
 import { availableEngineIds } from "@/engine/account-detect"
-import { interactiveEngineCommand } from "@/engine/interactive-command"
+import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
+import { engineEntry } from "@/engine/registry"
+import type { ChatTabTurnState } from "@/engine/turn-detector"
+import { deriveTitleFromSessionId } from "@/monitor/auto-title"
+import { resolveMainRepoRoot } from "@/state/repos"
+import { setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createSignal } from "solid-js"
+import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { EnginePickerDialog } from "../component/engine-picker-dialog/index"
 import { RenameTaskDialog } from "../component/rename-task-dialog/index"
 import { bindByIds } from "../context/keybindings"
+import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
+import { startTurnStatusPoll } from "../ops/activity-monitor"
 import { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
 import { useDialog } from "../ui/dialog"
 import {
+  type EngineTab,
   type TabsState,
   type TerminalTab,
   addTab,
@@ -43,6 +51,8 @@ import {
   initialTabs,
   openEditorTab,
   renameActiveTab,
+  setTabAutoTitle,
+  setTabSessionId,
   tabPtyKey,
   tabToShell,
 } from "./terminal-tabs-core"
@@ -50,8 +60,24 @@ import {
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
 
+/** Cadence of the tab auto-naming pass (tmux ran its pass on the monitor tick). */
+const NAMING_POLL_MS = 5000
+/** Cadence of the lazy turn-poll attach retry (a tab's PTY spawns after mount). */
+const TURN_POLL_ATTACH_MS = 2000
+
+/** Same glyph vocabulary as tmux's `CHAT_TAB_STATUS_FORMAT` (`@kobe_tab_state`). */
+const TURN_GLYPHS: Record<ChatTabTurnState, string> = {
+  running: "●",
+  done: "✓",
+  error: "!",
+  unknown: "?",
+  idle: "○",
+}
+
 function tabTitle(tab: TerminalTab): string {
-  return tab.title ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
+  // Manual rename wins; the auto-derived first-prompt title is the
+  // fallback; the numbered default is last — tmux automatic-rename order.
+  return tab.title ?? tab.autoTitle ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
 }
 
 export function TerminalTabs(props: {
@@ -79,24 +105,159 @@ export function TerminalTabs(props: {
 }): ReturnType<typeof Terminal> {
   const { theme } = useTheme()
   const dialog = useDialog()
-  const [state, setState] = createSignal<TabsState>(tabsByTask.get(props.taskId) ?? initialTabs())
+  const notif = useNotifications()
+
+  /** Pin a fresh engine-session id on the just-created active engine tab —
+   *  the tmux `@kobe_session_id` stash. Only the ID is state; the argv
+   *  mapping happens at render (`engineTabCommand`), so a remount of a
+   *  surviving PTY reuses the same id. Codex/custom pin nothing (null). */
+  const pinSession = (s: TabsState, vendor: VendorId | undefined): TabsState => {
+    const base = vendor ? interactiveEngineCommand(vendor, props.modelEffort) : props.command
+    const { sessionId } = withClaudeSessionId(base, vendor ?? props.vendor)
+    return setTabSessionId(s, s.activeId, sessionId)
+  }
+
+  const initState = (): TabsState => {
+    const existing = tabsByTask.get(props.taskId)
+    if (existing) return existing
+    // Persist immediately so a remount before the first mutation doesn't
+    // re-pin a different session id against the already-spawned PTY.
+    const fresh = pinSession(initialTabs(), undefined)
+    tabsByTask.set(props.taskId, fresh)
+    return fresh
+  }
+
+  const [state, setState] = createSignal<TabsState>(initState())
   const update = (next: TabsState): void => {
     tabsByTask.set(props.taskId, next)
     setState(next)
+  }
+
+  /** Engine-tab argv: the tab's pinned session id rides the base command —
+   *  the same `--session-id` append `withClaudeSessionId` produced when the
+   *  id was generated at tab creation. */
+  const engineTabCommand = (tab: EngineTab): readonly string[] => {
+    const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
+    return tab.sessionId ? [...base, "--session-id", tab.sessionId] : base
   }
 
   props.onEditorTabReady?.((command, label) => update(openEditorTab(state(), command, label)))
 
   const active = () => state().tabs.find((tab) => tab.id === state().activeId) ?? state().tabs[0]
 
-  /** Remount key for the active tab's Terminal: the id, suffixed by kind.
-   *  A tab's kind only changes when it degrades to a shell (`tabToShell`)
-   *  — the suffix flip then forces the keyed Show to remount so a fresh
-   *  PTY is acquired with the new command. */
-  const renderKey = () => {
-    const tab = active()
-    return tab ? `${tab.id}::${tab.kind}` : undefined
-  }
+  /* --------- auto-naming (tmux runChatTabNamingPass, logic layer) ---------
+   * Every NAMING_POLL_MS, derive a title from each unnamed engine tab's own
+   * transcript (`deriveTitleFromSessionId` — the same tmux-free deriver the
+   * tmux pass used). Self-limiting: once autoTitle lands (or the user
+   * F2-renames) the tab leaves the candidate set; a tab with no prompt yet
+   * derives "" and retries next tick. */
+  let namingBusy = false
+  const namingTimer = setInterval(() => {
+    if (namingBusy) return
+    const candidates = state().tabs.filter(
+      (tab): tab is EngineTab => tab.kind === "engine" && !!tab.sessionId && !tab.title && !tab.autoTitle,
+    )
+    if (candidates.length === 0) return
+    namingBusy = true
+    void (async () => {
+      try {
+        for (const tab of candidates) {
+          if (!tab.sessionId) continue
+          const title = await deriveTitleFromSessionId(tab.vendor ?? props.vendor, tab.sessionId)
+          if (title) update(setTabAutoTitle(state(), tab.id, title))
+        }
+      } finally {
+        namingBusy = false
+      }
+    })()
+  }, NAMING_POLL_MS)
+  onCleanup(() => clearInterval(namingTimer))
+
+  /* --------- per-tab turn state (tmux @kobe_tab_state, logic layer) -------
+   * The SAME `startTurnStatusPoll` loop the Ops pane runs, with PTY IO in
+   * place of tmux capture-pane — the in-process snapshot IS the pane
+   * capture. Fallback mode for now (no daemon shared-activity feed wired
+   * into this host yet): fixed-cadence capture hashing + local
+   * completion-marker reads. Polls attach lazily (a tab's PTY spawns after
+   * its Terminal mounts and measures), retried on a slow tick. */
+  const [turnStates, setTurnStates] = createSignal<ReadonlyMap<string, ChatTabTurnState>>(new Map())
+  const turnPolls = new Map<string, () => void>()
+  const [pollTick, setPollTick] = createSignal(0)
+  const pollAttachTimer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)
+  onCleanup(() => clearInterval(pollAttachTimer))
+  createEffect(() => {
+    pollTick()
+    const reg = getDefaultPtyRegistry()
+    const engineIds = new Set<string>()
+    for (const tab of state().tabs) {
+      if (tab.kind !== "engine") continue
+      engineIds.add(tab.id)
+      if (turnPolls.has(tab.id)) continue
+      const key = tabPtyKey(props.taskId, tab.id)
+      // Attach only once the PTY exists so the loop's prime() hashes a
+      // real first capture (the Ops pane's prime-before-poll contract).
+      if (!reg.has(key)) continue
+      const tabId = tab.id
+      const detector = engineEntry(tab.vendor ?? props.vendor).createTurnDetector()
+      const dispose = startTurnStatusPoll(
+        { worktree: props.worktree, detector, usingShared: () => false, sharedEntry: () => null },
+        {
+          sessionAttached: async () => true,
+          capturePane: async () => {
+            const pty = getDefaultPtyRegistry().get(key)
+            if (!pty) throw new Error("pty gone")
+            return pty
+              .capture()
+              .map((row) => row.map((chunk) => chunk.text).join(""))
+              .join("\n")
+          },
+          setTurnState: async (turn) => {
+            setTurnStates((prev) => new Map(prev).set(tabId, turn))
+            // Background completion rides the standard notification path
+            // (unread + toast) — the PTY-world version of noticing a ✓
+            // land on an unfocused tmux window.
+            if (turn === "done" && state().activeId !== tabId) {
+              const current = state().tabs.find((t) => t.id === tabId)
+              if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current) })
+            }
+          },
+        },
+      )
+      turnPolls.set(tabId, dispose)
+    }
+    // Tabs that closed or degraded to a shell stop polling.
+    for (const [id, dispose] of turnPolls) {
+      if (engineIds.has(id)) continue
+      dispose()
+      turnPolls.delete(id)
+      setTurnStates((prev) => {
+        const next = new Map(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  })
+  onCleanup(() => {
+    for (const dispose of turnPolls.values()) dispose()
+  })
+
+  // Visiting a tab clears its unread mark (toast already auto-dismisses).
+  createEffect(
+    on(
+      () => state().activeId,
+      (activeId) => notif.markRead(props.taskId, activeId),
+    ),
+  )
+
+  /** Nudge Terminal to re-acquire under the CURRENTLY visible tab's key —
+   *  see the `resetToken` doc on `Terminal.tsx`. Only the shell-degrade
+   *  flow needs this: same tab id before/after, so a plain taskId change
+   *  never fires. Ordinary tab switches don't touch it — `taskId`/`command`
+   *  below already change on every switch, and Terminal's own cwd/taskId
+   *  effect re-acquires + re-primes in place without a remount (a forced
+   *  remount per switch was the fast-cycling "flashes back to the
+   *  previous tab" bug this replaces). */
+  const [resetToken, setResetToken] = createSignal(0)
 
   /** Auto-close (issue #16): a command tab (editor tab, or an engine
    *  tab already degraded to a shell — kind "command" either way) closes
@@ -112,14 +273,35 @@ export function TerminalTabs(props: {
 
   /** Vendor exit is an allowed case (owner decision 2026-07-06): an engine
    *  tab whose CLI exits degrades into a plain shell at the same worktree
-   *  instead of freezing behind the dead-shell banner. State swaps first —
-   *  the keyed remount detaches the old PTY's subscribers — then the dead
-   *  PTY is released so the remount acquires a fresh shell. */
+   *  instead of freezing behind the dead-shell banner. */
   function degradeToShell(id: string): void {
     const tab = state().tabs.find((t) => t.id === id)
     if (tab?.kind !== "engine") return
+    const wasActive = id === state().activeId
     update(tabToShell(state(), id, [defaultShell()]))
     getDefaultPtyRegistry().release(tabPtyKey(props.taskId, id))
+    // The degraded tab's id (hence pty key) is unchanged, so if it's the
+    // one on screen Terminal is still holding the now-dead handle — force
+    // it to notice. A backgrounded tab needs no nudge: switching TO it
+    // later is itself a taskId change, which re-acquires naturally.
+    if (wasActive) setResetToken((n) => n + 1)
+  }
+
+  /** The active tab's argv, narrowed by kind — read fresh on every switch
+   *  (Solid's JSX-prop getters keep `command` below reactive to `active()`
+   *  without a remount). */
+  const activeCommand = (): readonly string[] => {
+    const tab = active()
+    return tab.kind === "command" ? tab.command : engineTabCommand(tab)
+  }
+
+  /** The active tab's exit behavior, resolved at invocation time (not
+   *  capture time) — always reflects whichever tab is actually mounted
+   *  when its process exits. */
+  function handleActiveExit(): void {
+    const tab = active()
+    if (tab.kind === "command") closeExitedTab(tab.id)
+    else degradeToShell(tab.id)
   }
 
   const requestRename = (): void => {
@@ -141,24 +323,42 @@ export function TerminalTabs(props: {
       const available = await availableEngineIds()
       const picked = await EnginePickerDialog.show(dialog, available, props.vendor)
       if (picked === undefined) return
-      update(addTab(state(), picked))
+      update(pinSession(addTab(state(), picked), picked))
       props.onChooseEngine?.(picked)
+      // Also the project's last-active engine (never the global default) —
+      // the second half of tmux's rememberSessionVendor dual persistence.
+      try {
+        setRepoLastActiveVendor(resolveMainRepoRoot(props.worktree), picked)
+      } catch {
+        // Best-effort: a stale worktree path must not block the new tab.
+      }
     })()
   }
 
   useBindings(() => ({
     enabled: props.focused(),
     bindings: bindByIds({
-      "chat.tab.new": () => update(addTab(state())),
+      "chat.tab.new": () => update(pinSession(addTab(state()), undefined)),
       "chat.tab.chooseEngine": requestChooseEngine,
       "chat.tab.close": () => {
         const { state: next, closedId } = closeActiveTab(state())
+        if (!closedId) {
+          // tmux surfaced `display-message 'Cannot close the only ChatTab'`;
+          // the PTY-world equivalent is an error toast (always shown).
+          notif.notify({
+            kind: "error",
+            taskId: props.taskId,
+            tabId: state().activeId,
+            title: t("terminal.tab.cannotCloseLast"),
+          })
+          return
+        }
         update(next)
         // Kill the closed tab's PTY — nobody else owns this teardown
         // (releaseWhere only fires on task archive, releaseAll on app
         // exit), so dropping closedId here leaked the engine process
         // until archive — the exact ctrl+w leak class of issue #14.
-        if (closedId) getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
+        getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
       },
       "chat.tab.rename": requestRename,
       "chat.tab.cycle-next": () => update(cycleTab(state(), 1)),
@@ -172,47 +372,50 @@ export function TerminalTabs(props: {
       <Show when={state().tabs.length > 1}>
         <box flexDirection="row" gap={1} flexShrink={0} paddingLeft={1} backgroundColor={theme.backgroundElement}>
           <For each={state().tabs}>
-            {(tab) => (
-              <text
-                fg={tab.id === state().activeId ? theme.focusAccent : theme.textMuted}
-                attributes={tab.id === state().activeId ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-              >
-                {tabTitle(tab)}
-              </text>
-            )}
+            {(tab) => {
+              const turn = () => turnStates().get(tab.id) ?? "idle"
+              const turnColor = () =>
+                turn() === "running"
+                  ? theme.focusAccent
+                  : turn() === "done"
+                    ? theme.success
+                    : turn() === "error"
+                      ? theme.error
+                      : theme.textMuted
+              return (
+                <box flexDirection="row" gap={0}>
+                  {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○,
+                      engine tabs only (a command tab has no turns). */}
+                  <Show when={tab.kind === "engine"}>
+                    <text fg={turnColor()} wrapMode="none">
+                      {`${TURN_GLYPHS[turn()]} `}
+                    </text>
+                  </Show>
+                  <text
+                    fg={tab.id === state().activeId ? theme.focusAccent : theme.textMuted}
+                    attributes={tab.id === state().activeId ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                  >
+                    {tabTitle(tab)}
+                  </text>
+                </box>
+              )
+            }}
           </For>
         </box>
       </Show>
-      {/* keyed remount per tab — each tab owns a registry-backed PTY that
-          survives switches; only the visible one renders. Keyed on
-          renderKey(), not the tab object: rename rebuilds the active tab
-          object ({ ...t, title }), and object-keying made that remount
-          the whole Terminal (teardown + re-measure + resize push against
-          the live engine session) for a pure title change. The key only
-          changes on tab switch or shell degradation (the one mutation
-          that must respawn the PTY). */}
-      <Show when={renderKey()} keyed>
-        {(_key: string) => {
-          const tab = active()
-          const tabId = tab.id
-          return (
-            <Terminal
-              cwd={() => props.worktree}
-              taskId={() => tabPtyKey(props.taskId, tabId)}
-              command={
-                tab.kind === "command"
-                  ? tab.command
-                  : tab.vendor
-                    ? interactiveEngineCommand(tab.vendor, props.modelEffort)
-                    : props.command
-              }
-              onExit={tab.kind === "command" ? () => closeExitedTab(tabId) : () => degradeToShell(tabId)}
-              focused={props.focused}
-            />
-          )
-        }}
-      </Show>
+      {/* One long-lived Terminal, never remounted on an ordinary tab
+          switch — only its `taskId`/`command` change, and its own
+          cwd/taskId effect re-acquires + re-primes in place (see the
+          `resetToken` doc above for the one case that needs a nudge). */}
+      <Terminal
+        cwd={() => props.worktree}
+        taskId={() => tabPtyKey(props.taskId, active().id)}
+        command={activeCommand()}
+        onExit={handleActiveExit}
+        resetToken={resetToken}
+        focused={props.focused}
+      />
     </box>
   )
 }
