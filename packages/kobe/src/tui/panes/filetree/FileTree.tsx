@@ -15,27 +15,16 @@
  *   │  ...                                    │
  *   └────────────────────────────────────────┘
  *
- * Layout: ~38 cells wide in the old five-pane shell. The width is
- * a layout target, not a hard cap — the parent can adjust by overriding
- * via the surrounding box; we just render as `width={FILETREE_WIDTH}`.
- *
  * Tabs:
  *   - `All`: `git ls-files --cached --others --exclude-standard`
- *     (gitignore respected). Flat list of paths, alphabetically sorted.
+ *     (gitignore respected). Collapsible directory tree.
  *   - `Changes`: `git status --porcelain`, with a single-char status
  *     prefix coloured per the theme tokens.
- *   - `Checks`: placeholder — CI/test integration not yet implemented.
  *
  * State lives where it lives (DESIGN.md §2.5): files come from disk via
- * git, not from a separate cache. We re-fetch on:
- *   - tab switch
- *   - worktree path change
- *   - explicit `r` keypress
- *   - first mount
- *   - optional filesystem activity inside the worktree when
- *     `KOBE_FILETREE_WATCH=1` is set. Recursive watch is intentionally
- *     opt-in because large monorepos can make the watcher itself more
- *     expensive than a manual refresh.
+ * git, not from a separate cache. We re-fetch on tab switch, worktree
+ * path change, explicit `r`, first mount, and (opt-in via
+ * `KOBE_FILETREE_WATCH=1`) filesystem activity inside the worktree.
  *
  * Reactivity: `worktreePath` is an `Accessor` so the pane reacts to
  * task switches without a manual prop-equality check. Data is refetched
@@ -45,38 +34,39 @@
  * bumped by `r` and by the debounced fs-watch handler.
  *
  * Empty / error states:
- *   - `worktreePath() == null` → "No worktree" (we treat this as the
- *     "no task selected" placeholder; matches what the chat pane does
- *     at G3).
- *   - non-null path but listFiles/statusFiles errors → render the
- *     error message in red. Most likely cause: the path isn't a git
- *     worktree yet (orchestrator races during task creation).
+ *   - `worktreePath() == null` → "No worktree" placeholder.
+ *   - non-null path but listFiles/statusFiles errors → the error message
+ *     in red (most likely: the path isn't a git worktree yet).
  *   - empty results → "No files" (All) or "No changes" (Changes).
  *
- * This file is intentionally cross-stream-import-safe: it imports only
- * from sibling files in the same directory and from `../../context/theme`,
- * `../../lib/keymap`. It never touches the orchestrator (the parent
- * threads `worktreePath` and consumes `onOpenFile`).
+ * Split for the 500-line cap (issue #15, G3): pure pane logic lives in
+ * `pane-core.ts`, the bindings map in `keys-core.ts`, the per-row view in
+ * `row-view.tsx` — all shared with the React port. This file owns only
+ * the Solid reactivity + pane chrome.
  */
 
-import { type FSWatcher, watch } from "node:fs"
 import { t } from "@/tui/i18n"
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
+import { type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
+import { FileTreeHeaderView } from "./header-view"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
 import { openExternally } from "./open-external"
 import {
-  type Row,
-  flattenTree,
-  reconcileRows,
-  sameFileList,
-  sameStatusEntries,
-  statusRows,
-  truncatePathTail,
-} from "./rows"
+  type NavAction,
+  collapseOrParentAction,
+  computePathBudget,
+  computeStatWidths,
+  expandOrDescendAction,
+  followScrollTop,
+  summarizeGitError,
+  toggleDir,
+  watchWorktree,
+} from "./pane-core"
+import { FileTreeRowView } from "./row-view"
+import { type Row, flattenTree, reconcileRows, sameFileList, sameStatusEntries, statusRows } from "./rows"
 
 /**
  * Default width of the pane in terminal cells from the old centre-column
@@ -87,9 +77,8 @@ import {
 export const FILETREE_WIDTH = 38
 
 /**
- * Public props for `FileTree`. Stable contract — `app.tsx` (the
- * orchestrator's integration point) imports this shape from the
- * barrel. Adding fields is fine; renaming or removing is breaking.
+ * Public props for `FileTree`. Stable contract — adding fields is fine;
+ * renaming or removing is breaking.
  */
 export type FileTreeProps = {
   /**
@@ -123,9 +112,7 @@ export type FileTreeProps = {
    */
   onZenToggle?: () => void
   /**
-   * Whether the pane has keyboard focus. Defaults to `() => true` —
-   * Wave 3 has no focus manager yet, the integration agent will
-   * thread real signals when the 5-pane layout lands.
+   * Whether the pane has keyboard focus. Defaults to `() => true`.
    */
   focused?: Accessor<boolean>
   /**
@@ -143,65 +130,6 @@ export type FileTreeProps = {
   onRefresh?: () => void
 }
 
-/**
- * Map a status code to its theme token. Resolved at render time so a
- * theme switch reactively recolours pre-existing rows.
- */
-function statusToken(s: FileStatus): "warning" | "success" | "error" | "textMuted" | "info" {
-  switch (s) {
-    case "M":
-      return "warning"
-    case "A":
-      return "success"
-    case "D":
-      return "error"
-    case "?":
-      return "textMuted"
-    case "R":
-    case "C":
-    case "U":
-    case "T":
-      // Renames/copies/conflicts/typechanges are uncommon in the loop;
-      // render them in info-blue to distinguish from the M/A/D/? majority.
-      return "info"
-  }
-}
-
-/**
- * The tabs in render order. `as const` so TypeScript keeps the
- * literal-tuple narrowing for downstream `.map()` callers.
- */
-const TABS = ["all", "changes"] as const satisfies readonly FileTreeTab[]
-
-/**
- * Boil a raw `git ls-files` / `git status` error down to a single
- * human-friendly sentence. The thrown messages from `git.ts` look
- * like `git ls-files ... (cwd=/foo) exited with code 128: fatal: not
- * a git repository`. Most users don't need the full args / exit
- * code; we surface the common cases and keep the rest generic.
- */
-export function summarizeGitError(raw: string): string {
-  const m = raw.toLowerCase()
-  if (m.includes("not a git repository")) return t("files.error.notGitRepo")
-  if (m.includes("does not exist") || m.includes("enoent")) return t("files.error.pathMissing")
-  if (m.includes("permission denied") || m.includes("eacces")) return t("files.error.permissionDenied")
-  if (m.includes("git: not found") || m.includes("command not found")) return t("files.error.gitNotInstalled")
-  // Fallback: strip the leading `git <args> (cwd=...)` boilerplate.
-  const colon = raw.indexOf(": ")
-  if (colon >= 0 && raw.startsWith("git ")) return raw.slice(colon + 2).trim() || t("files.error.gitFailed")
-  return raw.trim() || t("files.error.gitFailed")
-}
-
-/** Display label for each tab — resolved at render time via t() so language switches are reactive. */
-function tabLabel(tab: FileTreeTab): string {
-  switch (tab) {
-    case "all":
-      return t("files.tabs.all")
-    case "changes":
-      return t("files.tabs.changes")
-  }
-}
-
 export function FileTree(props: FileTreeProps) {
   const { theme } = useTheme()
 
@@ -210,7 +138,7 @@ export function FileTree(props: FileTreeProps) {
   // the Changes-tab path truncation on resize.
   const dims = useTerminalDimensions()
 
-  // Default `focused` accessor — see file header.
+  // Default `focused` accessor — see props doc.
   const focusedAccessor = () => (props.focused ? props.focused() : true)
 
   // ---------- pane state ----------
@@ -291,37 +219,13 @@ export function FileTree(props: FileTreeProps) {
     }),
   )
 
-  // Realtime watch is opt-in. On large repos a recursive watcher can
-  // overwhelm the TUI process before the user does anything, so the
-  // default path is explicit refresh (`r`) plus tab/worktree changes.
+  // Realtime watch is opt-in (see watchWorktree) — the default path is
+  // explicit refresh (`r`) plus tab/worktree changes.
   createEffect(
     on(props.worktreePath, (path) => {
       if (path == null) return
       if (process.env.KOBE_FILETREE_WATCH !== "1") return
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null
-      let watcher: EventedWatcher | null = null
-      try {
-        watcher = watch(path, { recursive: true }, (_event, filename) => {
-          if (filename == null) return
-          const f = filename.toString()
-          if (f === ".git" || f.startsWith(".git/") || f.startsWith(".git\\")) return
-          if (f.startsWith("node_modules/") || f.startsWith("node_modules\\")) return
-          if (debounceTimer != null) clearTimeout(debounceTimer)
-          debounceTimer = setTimeout(() => {
-            debounceTimer = null
-            setRefreshTick((n) => n + 1)
-          }, 500)
-        }) as unknown as EventedWatcher
-        watcher.on("error", () => {
-          // Swallow — the `r` keystroke remains as the escape hatch.
-        })
-      } catch {
-        // Path missing or not watchable — fall back to manual refresh.
-      }
-      onCleanup(() => {
-        if (debounceTimer != null) clearTimeout(debounceTimer)
-        if (watcher != null) watcher.close()
-      })
+      onCleanup(watchWorktree(path, () => setRefreshTick((n) => n + 1)))
     }),
   )
 
@@ -408,255 +312,91 @@ export function FileTree(props: FileTreeProps) {
     }),
   )
 
-  /**
-   * Column widths for the `+N` / `-N` stats on the Changes tab. Computed
-   * across the visible rows so every cell pads to the widest sibling —
-   * without this, `+0 -202` and `+1 -1` end at the same right edge but
-   * the `-` columns drift, which reads as misaligned. Width includes
-   * the leading sign (`+`/`-`).
-   */
-  const statWidths = createMemo<{ added: number; deleted: number }>(() => {
-    let added = 0
-    let deleted = 0
-    for (const row of rows()) {
-      if (row.kind !== "status") continue
-      if (row.added != null) added = Math.max(added, String(row.added).length + 1)
-      if (row.deleted != null) deleted = Math.max(deleted, String(row.deleted).length + 1)
-    }
-    return { added, deleted }
-  })
-
-  /**
-   * Cell budget for a Changes-tab path. Tail-truncated to whatever the pane
-   * leaves after the status char, the `+N`/`-N` stat columns, the inter-column
-   * gaps, row padding, and the scrollbar — so the filename always survives and
-   * only the leading directories elide. Recomputes on resize / stat-width change.
-   */
-  const pathBudget = createMemo<number>(() => {
-    const w = statWidths()
-    const stats = (w.added > 0 ? w.added + 1 : 0) + (w.deleted > 0 ? w.deleted + 1 : 0)
-    // row padding (2) + status glyph (1) + gap (1) + stats + scrollbar (1) + slack (1).
-    return Math.max(8, dims().width - 6 - stats)
-  })
+  const statWidths = createMemo(() => computeStatWidths(rows()))
+  const pathBudget = createMemo(() => computePathBudget(dims().width, statWidths()))
 
   // ---------- key bindings ----------
-  function moveDown(): void {
-    const r = rows()
-    if (r.length === 0) return
-    setCursorIndex(Math.min(cursorIndex() + 1, r.length - 1))
-  }
-  function moveUp(): void {
-    if (rows().length === 0) return
-    setCursorIndex(Math.max(cursorIndex() - 1, 0))
+  function applyNav(action: NavAction | null): void {
+    if (!action) return
+    if (action.type === "cursor") setCursorIndex(action.index)
+    else if (action.type === "expand") setExpandedDirs((prev) => new Set(prev).add(action.path))
+    else setExpandedDirs((prev) => toggleDir(prev, action.path))
   }
 
-  /** `l` — hierarchy navigation only. On a closed dir, expand it; on
-   * an open dir, step into its first child; on a file, no-op (use
-   * `enter` to open). Keeping `l` purely structural lets the user roam
-   * through the tree without accidentally pulling the file into the
-   * preview pane. */
-  function expandOrDescend(): void {
-    const r = rows()
-    const i = cursorIndex()
-    const row = r[i]
-    if (!row) return
-    if (row.kind !== "dir") return
-    if (!row.expanded && row.hasChildren) {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev)
-        next.add(row.path)
-        return next
-      })
-    } else if (row.expanded) {
-      if (i + 1 < r.length) setCursorIndex(i + 1)
-    }
+  /** Shared enter/click activation: dirs toggle, files open. */
+  function activateRow(row: Row): void {
+    if (row.kind === "dir") setExpandedDirs((prev) => toggleDir(prev, row.path))
+    else props.onOpenFile(row.path)
   }
 
-  /** `h` — collapse current directory, or jump to parent. Behavior on
-   * the All tab; no-op elsewhere. */
-  function collapseOrParent(): void {
-    if (tab() !== "all") return
-    const r = rows()
-    const i = cursorIndex()
-    const row = r[i]
-    if (!row) return
-    // Open dir → collapse.
-    if (row.kind === "dir" && row.expanded) {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev)
-        next.delete(row.path)
-        return next
-      })
-      return
-    }
-    // Otherwise jump to parent dir (depth - 1) walking upward in rows.
-    if (row.kind !== "dir" && row.kind !== "file") return
-    const targetDepth = row.depth - 1
-    if (targetDepth < 0) return
-    for (let j = i - 1; j >= 0; j--) {
-      const candidate = r[j]
-      if (!candidate) continue
-      if (candidate.kind === "dir" && candidate.depth === targetDepth) {
-        setCursorIndex(j)
-        return
-      }
-    }
-  }
-
-  function openCurrent(): void {
-    const r = rows()
-    const i = cursorIndex()
-    if (i < 0 || i >= r.length) return
-    const row = r[i]
-    if (!row) return
-    if (row.kind === "dir") {
-      // Toggle expansion on enter for directory rows.
-      setExpandedDirs((prev) => {
-        const next = new Set(prev)
-        if (next.has(row.path)) next.delete(row.path)
-        else next.add(row.path)
-        return next
-      })
-      return
-    }
-    props.onOpenFile(row.path)
-  }
-  function mentionCurrent(): void {
-    const r = rows()
-    const i = cursorIndex()
-    if (i < 0 || i >= r.length) return
-    const row = r[i]
-    // Only files make sense as an @mention; dirs are ignored.
-    if (!row || row.kind === "dir") return
-    props.onMention?.(row.path)
-  }
-  function refresh(): void {
-    setRefreshTick((n) => n + 1)
-    props.onRefresh?.()
-  }
-  function openExternal(): void {
-    const r = rows()
-    const i = cursorIndex()
-    if (i < 0 || i >= r.length) return
-    const row = r[i]
-    if (!row || row.kind === "dir") return
-    const wt = props.worktreePath()
-    if (!wt) return
-    const absPath = `${wt}/${row.path}`
-    openExternally(absPath)
+  function currentRow(): Row | undefined {
+    return rows()[cursorIndex()]
   }
 
   useFileTreeBindings({
     focused: focusedAccessor,
-    moveDown,
-    moveUp,
+    moveDown: () => {
+      const r = rows()
+      if (r.length === 0) return
+      setCursorIndex(Math.min(cursorIndex() + 1, r.length - 1))
+    },
+    moveUp: () => {
+      if (rows().length === 0) return
+      setCursorIndex(Math.max(cursorIndex() - 1, 0))
+    },
     setTab: (t) => setTab(t),
     currentTab: tab,
-    openCurrent,
-    mentionCurrent,
+    openCurrent: () => {
+      const row = currentRow()
+      if (row) activateRow(row)
+    },
+    mentionCurrent: () => {
+      const row = currentRow()
+      // Only files make sense as an @mention; dirs are ignored.
+      if (!row || row.kind === "dir") return
+      props.onMention?.(row.path)
+    },
     createPR: props.onCreatePR,
-    openExternal,
-    refresh,
-    expandOrDescend,
-    collapseOrParent,
+    openExternal: () => {
+      const row = currentRow()
+      if (!row || row.kind === "dir") return
+      const wt = props.worktreePath()
+      if (!wt) return
+      openExternally(`${wt}/${row.path}`)
+    },
+    refresh: () => {
+      setRefreshTick((n) => n + 1)
+      props.onRefresh?.()
+    },
+    expandOrDescend: () => applyNav(expandOrDescendAction(rows(), cursorIndex())),
+    collapseOrParent: () => {
+      if (tab() !== "all") return
+      applyNav(collapseOrParentAction(rows(), cursorIndex()))
+    },
   })
 
   // ---------- viewport follow ----------
-  // Each row renders as a height-1 box, so its y-offset inside the
-  // scrollbox content equals its index in `rows()`. When the cursor
-  // moves past the visible window (either edge), nudge the scrollbox
-  // so the cursor row is just inside the viewport.
   let scrollRef: ScrollBoxRenderable | undefined
   createEffect(
     on([cursorIndex, rows], ([i, r]) => {
       if (!scrollRef) return
       if (r.length === 0) return
-      const top = scrollRef.scrollTop
-      const height = scrollRef.viewport.height
-      if (height <= 0) return
-      if (i < top) {
-        scrollRef.scrollTo({ x: 0, y: i })
-      } else if (i >= top + height) {
-        scrollRef.scrollTo({ x: 0, y: i - height + 1 })
-      }
+      const y = followScrollTop(scrollRef.scrollTop, scrollRef.viewport.height, i)
+      if (y != null) scrollRef.scrollTo({ x: 0, y })
     }),
   )
 
   // ---------- render ----------
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
-      {/* Action row — sits above the All / Changes tabs so it's reachable
-         from both tabs. Zen toggle sits left of Create PR (bound to `p`). */}
-      <Show when={props.onZenToggle || props.onCreatePR}>
-        <box flexDirection="row" justifyContent="flex-end" gap={2} paddingBottom={1} flexShrink={0}>
-          <Show when={props.onZenToggle}>
-            <box flexDirection="row" gap={1} onMouseUp={() => props.onZenToggle?.()}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [~]
-              </text>
-              <text fg={theme.text} wrapMode="none">
-                {t("files.actions.zen")}
-              </text>
-            </box>
-          </Show>
-          <Show when={props.onCreatePR}>
-            <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [P]
-              </text>
-              <text fg={theme.text} wrapMode="none">
-                {t("files.actions.createPR")}
-              </text>
-            </box>
-          </Show>
-        </box>
-      </Show>
-      {/* Header: tabs row. Each tab is clickable (sets active), and
-         `1` / `2` / `3` switch from the keyboard. */}
-      <box flexDirection="row" justifyContent="space-between" paddingBottom={0} flexShrink={0}>
-        <box flexDirection="row" gap={2}>
-          <For each={TABS}>
-            {(t) => {
-              const isActive = () => tab() === t
-              return (
-                <text
-                  fg={isActive() ? theme.primary : theme.textMuted}
-                  attributes={isActive() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                  onMouseUp={() => setTab(t)}
-                >
-                  {tabLabel(t)}
-                </text>
-              )
-            }}
-          </For>
-        </box>
-        {/* Right-aligned activity badge (KOB-254). No background fill so
-           it stays clean in transparent mode. */}
-        <Show when={props.cornerBadge?.()}>
-          {(badge) => (
-            <text
-              fg={badge().active ? theme.accent : theme.textMuted}
-              attributes={badge().active ? TextAttributes.BOLD : undefined}
-              wrapMode="none"
-            >
-              {badge().text}
-            </text>
-          )}
-        </Show>
-      </box>
-      {/* Status legend — only shown on the Changes tab so users can
-         decode single-char git status codes without leaving the TUI. */}
-      <Show when={tab() === "changes"}>
-        <box flexDirection="column" paddingBottom={1} flexShrink={0} gap={0}>
-          <text fg={theme.textMuted} wrapMode="none">
-            {t("files.legend.changes")}
-          </text>
-        </box>
-      </Show>
-      <Show when={tab() !== "changes"}>
-        <box flexDirection="row" paddingBottom={1} flexShrink={0} />
-      </Show>
+      {/* Header chrome — action chips, tab row, badge, legend. */}
+      <FileTreeHeaderView
+        tab={tab()}
+        onSelectTab={setTab}
+        cornerBadge={props.cornerBadge?.() ?? null}
+        onZenToggle={props.onZenToggle}
+        onCreatePR={props.onCreatePR}
+      />
 
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
          into the panel bg, thumb is muted text color. */}
@@ -682,7 +422,7 @@ export function FileTree(props: FileTreeProps) {
         <Show when={props.worktreePath() != null && error() != null}>
           <box paddingTop={1} paddingLeft={1} flexDirection="column" gap={0}>
             <text fg={theme.error} wrapMode="word">
-              {summarizeGitError(error() ?? "")}
+              {summarizeGitError(error() ?? "", t)}
             </text>
             <text fg={theme.textMuted} wrapMode="word">
               {t("files.error.retryHint")}
@@ -706,120 +446,18 @@ export function FileTree(props: FileTreeProps) {
         <Show when={props.worktreePath() != null && error() == null && rows().length > 0}>
           <box flexShrink={0} gap={0} paddingRight={1}>
             <For each={rows()}>
-              {(row, index) => {
-                const isCursor = () => index() === cursorIndex()
-                // Cursor row treatment — matches the Sidebar: a left accent ▌
-                // (focusAccent) + a subtle `backgroundElement` tint, NOT a solid
-                // terracotta fill, so the semantic colours survive instead of
-                // being flattened to inverted text. A bare space holds the
-                // 1-cell gutter on non-cursor rows so content stays aligned.
-                const bar = (
-                  <text fg={isCursor() ? theme.focusAccent : undefined} wrapMode="none">
-                    {isCursor() ? "▌" : " "}
-                  </text>
-                )
-                const rowBg = () => (isCursor() ? theme.backgroundElement : undefined)
-                if (row.kind === "dir") {
-                  // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
-                  const indent = "  ".repeat(row.depth)
-                  const marker = row.expanded ? "▾" : "▸"
-                  return (
-                    <box
-                      flexDirection="row"
-                      gap={0}
-                      backgroundColor={rowBg()}
-                      onMouseUp={() => {
-                        setCursorIndex(index())
-                        setExpandedDirs((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(row.path)) next.delete(row.path)
-                          else next.add(row.path)
-                          return next
-                        })
-                      }}
-                    >
-                      {bar}
-                      <box flexGrow={1} paddingRight={1}>
-                        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-                          {`${indent}${marker} ${row.name}/`}
-                        </text>
-                      </box>
-                    </box>
-                  )
-                }
-                if (row.kind === "file") {
-                  const indent = "  ".repeat(row.depth)
-                  // Two-cell gutter where the dir marker would sit.
-                  return (
-                    <box
-                      flexDirection="row"
-                      gap={0}
-                      backgroundColor={rowBg()}
-                      onMouseUp={() => {
-                        setCursorIndex(index())
-                        props.onOpenFile(row.path)
-                      }}
-                    >
-                      {bar}
-                      <box flexGrow={1} paddingRight={1}>
-                        <text fg={theme.text} wrapMode="none">
-                          {`${indent}  ${row.name}`}
-                        </text>
-                      </box>
-                    </box>
-                  )
-                }
-                // Changes row: status char + path + +N -N stats.
-                const tone = statusToken(row.status)
-                const statusColor = () => {
-                  switch (tone) {
-                    case "success":
-                      return theme.success
-                    case "warning":
-                      return theme.warning
-                    case "error":
-                      return theme.error
-                    case "info":
-                      return theme.info
-                    default:
-                      return theme.textMuted
-                  }
-                }
-                const w = statWidths()
-                const addedText = row.added == null ? " ".repeat(w.added) : `+${row.added}`.padStart(w.added)
-                const deletedText = row.deleted == null ? " ".repeat(w.deleted) : `-${row.deleted}`.padStart(w.deleted)
-                return (
-                  <box
-                    flexDirection="row"
-                    gap={0}
-                    backgroundColor={rowBg()}
-                    onMouseUp={() => {
-                      setCursorIndex(index())
-                      props.onOpenFile(row.path)
-                    }}
-                  >
-                    {bar}
-                    <box flexDirection="row" flexGrow={1} gap={1} paddingRight={1}>
-                      <text fg={statusColor()} wrapMode="none">
-                        {row.status}
-                      </text>
-                      <text fg={theme.text} wrapMode="none" flexGrow={1}>
-                        {truncatePathTail(row.path, pathBudget())}
-                      </text>
-                      <Show when={w.added > 0}>
-                        <text fg={theme.success} wrapMode="none">
-                          {addedText}
-                        </text>
-                      </Show>
-                      <Show when={w.deleted > 0}>
-                        <text fg={theme.error} wrapMode="none">
-                          {deletedText}
-                        </text>
-                      </Show>
-                    </box>
-                  </box>
-                )
-              }}
+              {(row, index) => (
+                <FileTreeRowView
+                  row={row}
+                  cursor={index() === cursorIndex()}
+                  statWidths={statWidths()}
+                  pathBudget={pathBudget()}
+                  onActivate={() => {
+                    setCursorIndex(index())
+                    activateRow(row)
+                  }}
+                />
+              )}
             </For>
           </box>
         </Show>
@@ -839,4 +477,3 @@ export function FileTree(props: FileTreeProps) {
     </box>
   )
 }
-type EventedWatcher = FSWatcher & { on(event: "error", listener: (err: Error) => void): void }
