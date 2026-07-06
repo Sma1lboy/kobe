@@ -12,8 +12,10 @@ import {
   closeActiveTab,
   cycleTab,
   initialTabs,
+  openEditorTab,
   renameActiveTab,
   tabPtyKey,
+  tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
 
 describe("terminal tabs state", () => {
@@ -80,5 +82,29 @@ describe("terminal tabs state", () => {
     expect(plain.tabs[1].vendor).toBeUndefined()
     const withEngine = addTab(initialTabs(), "codex")
     expect(withEngine.tabs[1].vendor).toBe("codex")
+  })
+
+  it("tabToShell degrades an engine tab in place — exiting the vendor CLI is allowed, not an error", () => {
+    const s = renameActiveTab(addTab(initialTabs(), "codex"), "my agent") // [1, 2*(codex, titled)]
+    const degraded = tabToShell(s, "tab-2", ["/bin/zsh"])
+    const tab = degraded.tabs[1]
+    // Same tab identity (id/title/ordinal survive; the PTY key must not change) …
+    expect(tab.id).toBe("tab-2")
+    expect(tab.title).toBe("my agent")
+    expect(degraded.activeId).toBe("tab-2")
+    // … now running a plain shell, no longer pinned to a vendor, and NOT
+    // ephemeral (a degraded tab closes on its next exit via `command`,
+    // not the editor-tab flag).
+    expect(tab.command).toEqual(["/bin/zsh"])
+    expect(tab.vendor).toBeUndefined()
+    expect(tab.ephemeral).toBeUndefined()
+  })
+
+  it("tabToShell never re-degrades command tabs (editor tabs keep their argv)", () => {
+    const s = openEditorTab(initialTabs(), ["sh", "-c", "nvim x"], "x")
+    const after = tabToShell(s, "tab-2", ["/bin/zsh"])
+    expect(after.tabs[1].command).toEqual(["sh", "-c", "nvim x"])
+    // Unknown id: state shape unchanged.
+    expect(tabToShell(s, "tab-99", ["/bin/zsh"]).tabs).toEqual(s.tabs)
   })
 })
