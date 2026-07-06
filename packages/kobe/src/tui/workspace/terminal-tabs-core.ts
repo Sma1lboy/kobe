@@ -230,7 +230,22 @@ export function cycleTab(state: TabsState, delta: 1 | -1): TabsState {
   return { ...state, activeId: next.id }
 }
 
+/** Switch directly to `id` (the tab strip's click target) — no-op if it isn't present. */
+export function selectTab(state: TabsState, id: string): TabsState {
+  return state.tabs.some((t) => t.id === id) ? { ...state, activeId: id } : state
+}
+
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */
 export function tabPtyKey(taskId: string, tabId: string): string {
   return `${taskId}::${tabId}`
+}
+
+/**
+ * Registry key for one split leaf's PTY inside a tab (`TerminalSplit.tsx`
+ * over the content-agnostic `split-core.ts`). `leaf-1` maps to the TAB
+ * key itself so the PTY that existed before the first split is reused,
+ * not respawned; later leaves namespace under it.
+ */
+export function splitLeafPtyKey(tabKey: string, leafId: string): string {
+  return leafId === "leaf-1" ? tabKey : `${tabKey}::${leafId}`
 }

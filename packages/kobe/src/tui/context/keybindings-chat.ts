@@ -244,37 +244,40 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+[", label: "prev tab", status: false },
   },
   {
-    // tmux-style splits inside the active terminal tab (issue #16).
-    // `ctrl+\` reads as a vertical divider → new pane to the RIGHT;
-    // `ctrl+=` reads as horizontal strokes → new pane BELOW. Both need
-    // the kitty keyboard protocol (legacy terminals can't encode
-    // ctrl+=; ctrl+\ would be SIGQUIT) — see docs/KEYBINDINGS.md.
-    id: "chat.pane.split-right",
+    // tmux-style splits inside the active workspace tab (issue #16).
+    // Deliberately CONTENT-NEUTRAL ids (`workspace.split.*`, not
+    // chat/terminal): the split tree (`workspace/split-core.ts`) is
+    // generic over leaf content — terminals today, other surfaces
+    // later. `ctrl+\` reads as a vertical divider → new leaf to the
+    // RIGHT; `ctrl+=` reads as horizontal strokes → new leaf BELOW.
+    // Both need the kitty keyboard protocol (legacy terminals can't
+    // encode ctrl+=; ctrl+\ would be SIGQUIT) — see docs/KEYBINDINGS.md.
+    id: "workspace.split.right",
     scope: "workspace",
     keys: ["ctrl+\\"],
     category: "Workspace",
-    description: "Split pane right (shell)",
+    description: "Split right",
     hint: { keys: "ctrl+\\", label: "split →", status: false },
   },
   {
-    id: "chat.pane.split-down",
+    id: "workspace.split.down",
     scope: "workspace",
     keys: ["ctrl+="],
     category: "Workspace",
-    description: "Split pane down (shell)",
+    description: "Split down",
     hint: { keys: "ctrl+=", label: "split ↓", status: false },
   },
   {
-    // Pane-focus cycle in reading order (tmux `prefix o`). F3 because
+    // Split-focus cycle in reading order (tmux `prefix o`). F3 because
     // every useful ctrl+letter is either engine passthrough (owner
     // decision 2026-07-06) or taken; F-keys already carry the tab
     // vocabulary here (F2 rename).
-    id: "chat.pane.focus-next",
+    id: "workspace.split.focus-next",
     scope: "workspace",
     keys: ["f3"],
     category: "Workspace",
-    description: "Focus next split pane",
-    hint: { keys: "f3", label: "next pane", status: false },
+    description: "Focus next split",
+    hint: { keys: "f3", label: "next split", status: false },
   },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
