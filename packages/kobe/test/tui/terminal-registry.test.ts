@@ -120,3 +120,14 @@ describe("releaseWhere (task-scoped teardown, issue #16)", () => {
     expect(reg.size).toBe(1)
   })
 })
+
+describe("paste contract (mock backend)", () => {
+  it("records pastes while alive and drops them once dead", () => {
+    const pty = new MockTaskPty({ taskId: "t", cwd: "/" })
+    pty.paste("multi\nline prompt")
+    expect(pty.pastes).toEqual(["multi\nline prompt"])
+    pty.kill()
+    pty.paste("late")
+    expect(pty.pastes).toEqual(["multi\nline prompt"])
+  })
+})

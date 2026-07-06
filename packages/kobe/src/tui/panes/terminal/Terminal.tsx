@@ -259,6 +259,11 @@ export function Terminal(props: TerminalProps): JSXElement {
       if (!handle || handle.killed) return
       handle.write(data)
     },
+    paste: (text) => {
+      const handle = pty()
+      if (!handle || handle.killed) return
+      handle.paste(text)
+    },
     scroll: (lines) => {
       setScrollOffset((cur) => Math.max(0, cur - lines))
       // (negative `lines` moves up = increases the offset toward

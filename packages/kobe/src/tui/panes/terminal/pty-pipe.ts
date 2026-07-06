@@ -154,6 +154,11 @@ export class PipeTaskPty implements TaskPtyLike {
     }
   }
 
+  paste(text: string): void {
+    // Pipes have no bracketed-paste negotiation — deliver raw.
+    this.write(text)
+  }
+
   onExit(cb: () => void): () => void {
     if (this._killed) {
       cb()
