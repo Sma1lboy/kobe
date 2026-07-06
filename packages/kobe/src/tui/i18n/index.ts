@@ -17,7 +17,8 @@
  */
 
 import { createStore } from "solid-js/store"
-import { CATALOGS, DEFAULT_LOCALE, LOCALES, type LocaleId, type Messages } from "./catalog"
+import { CATALOGS, DEFAULT_LOCALE, LOCALES, type LocaleId } from "./catalog"
+import { interpolate, lookup, lookupKeys } from "./lookup"
 
 export { LOCALES, DEFAULT_LOCALE, isLocaleId } from "./catalog"
 export type { LocaleId } from "./catalog"
@@ -32,25 +33,6 @@ export function setLocaleLang(lang: LocaleId): void {
 /** The active language id. Reactive — reads inside a tracked scope re-run on change. */
 export function currentLang(): LocaleId {
   return store.lang
-}
-
-/** Walk a dotted key (`a.b.c`) into a catalog, returning the leaf string or undefined. */
-function lookup(catalog: Messages, key: string): string | undefined {
-  let node: unknown = catalog
-  for (const part of key.split(".")) {
-    if (node && typeof node === "object" && part in (node as Record<string, unknown>)) {
-      node = (node as Record<string, unknown>)[part]
-    } else {
-      return undefined
-    }
-  }
-  return typeof node === "string" ? node : undefined
-}
-
-/** Substitute `{name}` placeholders; an absent param is left literal so the gap is visible. */
-function interpolate(template: string, params?: Record<string, string | number>): string {
-  if (!params) return template
-  return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole))
 }
 
 /**
@@ -72,9 +54,5 @@ export function t(key: string, params?: Record<string, string | number>): string
  */
 export function tKeys(group: "category" | "desc", key: string): string {
   const lang = store.lang
-  const read = (cat: Messages): string | undefined => {
-    const leaf = (cat.keys as Record<string, Record<string, string>>)[group]
-    return leaf?.[key]
-  }
-  return read(CATALOGS[lang]) ?? read(CATALOGS.en) ?? key
+  return lookupKeys(CATALOGS[lang], group, key) ?? lookupKeys(CATALOGS.en, group, key) ?? key
 }

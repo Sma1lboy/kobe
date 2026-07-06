@@ -1,65 +1,80 @@
 /** @jsxImportSource @opentui/react */
 /**
- * G1 React runtime pilot for issue #15.
+ * React pilot entry (issue #15) — G1 established the isolated runtime;
+ * G2 upgraded this host to mount the full React infrastructure stack
+ * (Theme → Focus → Dialog providers + useBindings + i18n) so `bun run
+ * dev:mock-react` is an end-to-end proof that the ported context layer
+ * renders and dispatches keys. Deliberately NOT wired into the CLI entry
+ * or compile graph yet.
  *
- * This entry is deliberately NOT wired into the CLI entry or compile graph yet.
- * It proves @opentui/react can run beside the existing Solid TUI without
- * sharing imports, providers, or theme context.
+ * Keys: q quits · tab cycles pane focus · d opens a dialog (esc closes).
  */
 
 import { TextAttributes, createCliRenderer } from "@opentui/core"
-import { createRoot, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
+import { createRoot } from "@opentui/react"
+import { FocusProvider, PANE_ORDER, useFocus } from "../context/focus"
+import { ThemeProvider, useTheme } from "../context/theme"
+import { t } from "../i18n"
+import { useBindings } from "../lib/keymap"
+import { Dialog, DialogProvider, useDialog } from "../ui/dialog"
 
-const palette = {
-  background: "#0b0f14",
-  surface: "#18212b",
-  tag: "#7dd3fc",
-  title: "#e5eef7",
-  muted: "#9aa8b5",
-  body: "#c8d3dd",
+function DemoDialog() {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  return (
+    <Dialog size="small" onClose={() => dialog.clear()}>
+      <box paddingLeft={2} paddingRight={2} paddingBottom={1}>
+        <text fg={theme.text} wrapMode="word">
+          React dialog stack works — esc closes.
+        </text>
+      </box>
+    </Dialog>
+  )
 }
 
-function exitCleanly(renderer: ReturnType<typeof useRenderer>): void {
-  try {
-    renderer?.destroy()
-  } catch (err) {
-    console.error("kobe react mock: renderer.destroy() failed:", err)
-  }
-  process.exit(0)
-}
+function Workbench() {
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
+  const focus = useFocus()
+  const dialog = useDialog()
 
-function ReactMockPane() {
-  const renderer = useRenderer()
-  const dims = useTerminalDimensions()
-
-  useKeyboard((evt) => {
-    if (evt.name === "q") exitCleanly(renderer)
-  })
+  useBindings(() => ({
+    enabled: true,
+    bindings: [
+      { key: "q", cmd: () => process.exit(0) },
+      { key: "tab", cmd: () => focus.cycle(1) },
+      { key: "d", cmd: () => dialog.replace(() => <DemoDialog />) },
+    ],
+  }))
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={palette.background}>
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box
         flexDirection="row"
         gap={1}
         paddingLeft={1}
         paddingRight={1}
         flexShrink={0}
-        backgroundColor={palette.surface}
+        backgroundColor={theme.backgroundElement}
       >
-        <text fg={palette.tag} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
           REACT
         </text>
-        <text fg={palette.title} attributes={TextAttributes.BOLD} wrapMode="none">
-          kobe mock pane
+        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+          kobe infra pilot
         </text>
         <box flexGrow={1} />
-        <text fg={palette.muted} wrapMode="none">
-          q exits
+        <text fg={theme.textMuted} wrapMode="none">
+          q quit · tab focus · d dialog
         </text>
       </box>
-      <box paddingLeft={1} paddingRight={1} paddingTop={1} flexGrow={1}>
-        <text fg={palette.body} wrapMode="word">
-          React 19.2 + @opentui/react 0.4.3 are isolated under src/tui-react ({dims.width}x{dims.height}).
+      <box paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="column" flexGrow={1}>
+        <text fg={theme.text} wrapMode="word">
+          {/* i18n runtime proof: a real catalog key through the shared lookup. */}
+          {t("chat.thinking")} — theme "{themeCtx.selected}", focused pane: {focus.focused}
+        </text>
+        <text fg={theme.textMuted} wrapMode="none">
+          panes: {PANE_ORDER.map((p) => (p === focus.focused ? `[${p}]` : p)).join(" ")}
         </text>
       </box>
     </box>
@@ -67,4 +82,12 @@ function ReactMockPane() {
 }
 
 const renderer = await createCliRenderer({ exitOnCtrlC: true })
-createRoot(renderer).render(<ReactMockPane />)
+createRoot(renderer).render(
+  <ThemeProvider>
+    <FocusProvider>
+      <DialogProvider>
+        <Workbench />
+      </DialogProvider>
+    </FocusProvider>
+  </ThemeProvider>,
+)
