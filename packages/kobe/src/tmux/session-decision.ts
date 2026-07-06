@@ -39,7 +39,7 @@ export interface ObservedSession {
    * Does the ACTIVE window have a live `@kobe_role=claude` pane? This is
    * the load-bearing health signal — keyed off the role tag, NOT a raw
    * pane count, so closing a disposable shell/ops pane never reads as
-   * "session broken" (KOB-244).
+   * "session broken".
    */
   readonly claudePaneAlive: boolean
   /** Number of windows (chat tabs) in the session. */
@@ -71,7 +71,7 @@ export interface TargetSession {
  *   - `reuse`           — leave the session running (then heal widths +
  *                         kobe-owned pane versions in the applier).
  *   - `respawn-engine`  — relaunch the engine pane in place in every
- *                         window (vendor switch, KOB-232). Applier falls
+ *                         window (vendor switch). Applier falls
  *                         back to `rebuild` if no engine pane is found.
  *   - `rebuild`         — kill the session, then build fresh.
  */
@@ -91,19 +91,19 @@ export type SessionAction =
  *   2. Healthy + right place + right engine → reuse. We key health off
  *      the LOAD-BEARING claude pane's role tag in the active window,
  *      not a pane count — typing `exit` in the shell pane used to drop
- *      the count and nuke the live engine conversation (KOB-244).
+ *      the count and nuke the live engine conversation.
  *   3. Vendor-only drift (right worktree, task switched engines via
  *      `setVendor`) with a launch command → respawn the engine pane IN
  *      PLACE in every window instead of kill-session, so the switch
- *      lands WITHOUT destroying sibling Ctrl+T chat tabs (KOB-232).
+ *      lands WITHOUT destroying sibling Ctrl+T chat tabs.
  *      Checked before the degraded-reuse branch and regardless of the
  *      active window's pane health — the respawn is session-wide.
  *   4. Right place + right engine but the active window's engine pane
  *      is gone, with sibling windows present → reuse anyway. A rebuild
  *      would drop those sibling chat tabs; per-window pane recreate is
  *      a future follow-up. (The common shell-exit case never gets here
- *      because the engine pane survives — KOB-244.)
- *   5. Otherwise rebuild: a legacy/pre-tag (v0.5/KOB-225) session, a
+ *      because the engine pane survives.)
+ *   5. Otherwise rebuild: a legacy/pre-tag (v0.5) session, a
  *      wrong-PLACE session (different/empty `@kobe_worktree` — stale
  *      from before env+socket isolation, panes in the wrong dir/wrong
  *      KOBE_HOME), a vendor-drifted session with no command to respawn

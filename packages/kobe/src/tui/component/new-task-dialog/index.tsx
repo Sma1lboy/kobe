@@ -48,7 +48,7 @@ export type NewTaskDialogOptions = {
   availableVendors?: readonly VendorId[]
   /**
    * Discover existing git worktrees on `repo` not yet linked to a task
-   * (KOB-256) — powers the Adopt tab. Omit to disable adoption (the tab
+   * — powers the Adopt tab. Omit to disable adoption (the tab
    * still renders but shows nothing to import).
    */
   discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>

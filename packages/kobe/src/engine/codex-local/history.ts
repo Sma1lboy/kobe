@@ -262,7 +262,7 @@ export async function findLatestRolloutForWorktree(
 /**
  * Newest rollout mtime (epoch ms) for `worktree`, or 0 when none match.
  * The Ops pane polls this to detect new Codex conversation output
- * without parsing the tmux pane (KOB-254). Thin wrapper over
+ * without parsing the tmux pane. Thin wrapper over
  * {@link findLatestRolloutForWorktree}.
  */
 export async function latestTranscriptMtimeForWorktree(

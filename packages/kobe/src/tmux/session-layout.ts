@@ -7,9 +7,8 @@
  * *policy* it encodes — pane sizes, which shell command each pane
  * runs, the keep-alive wrapper, the Ops-pane fallback — is pure data
  * + string building. Pulling it out here makes that policy unit
- * testable without a real tmux server, which is exactly the surface
- * that bit us in KOB-233 (quoting + targeting bugs that only showed
- * up at runtime).
+ * testable without a real tmux server — exactly the surface where
+ * quoting + targeting bugs only show up at runtime.
  *
  * Everything in this file is pure: same inputs → same strings, no IO.
  */
@@ -18,7 +17,7 @@ import { quoteShellArg, quoteShellArgv } from "@/lib/shell-command"
 
 /**
  * Far-left Tasks pane width in CELLS — FIXED, not a % of the window
- * (KOB-248). A %-split drifted: the pane's absolute width changed with the
+ *. A %-split drifted: the pane's absolute width changed with the
  * terminal size, between chat-tab windows, and across engine (claude/codex)
  * rebuilds (tmux re-lays-out %-panes on those events). Direct-tmux mode
  * makes this pane the primary navigator, not a tiny preview rail, so 32 cells
@@ -441,7 +440,7 @@ done`
 
 /**
  * Shell command for the full-width preview window opened when the user
- * activates a file in the Ops pane (KOB-233). Runs in a fresh tmux
+ * activates a file in the Ops pane. Runs in a fresh tmux
  * window so review gets the whole terminal width.
  *
  * Primary path: `kobe ops --preview <rel>` — opentui's `<diff>` /

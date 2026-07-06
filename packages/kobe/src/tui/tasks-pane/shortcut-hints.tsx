@@ -46,7 +46,7 @@ export function legendRowCap(ids: readonly string[]): string | null {
 }
 
 /**
- * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
+ * A small shortcut legend pinned to the bottom of the Tasks pane:
  * shows the in-pane task actions plus the session-level tmux chords so the
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.

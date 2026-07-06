@@ -5,11 +5,6 @@ import {
 } from "../src/lib/attention-nav.ts"
 import type { EngineState, Task } from "../src/lib/types.ts"
 
-// Why this matters: this is the one keystroke from "something needs me"
-// (notification / tab badge) to the actual task. It must select the SAME set
-// the Overview "Needs you" bucket shows, and "next" must cycle so a user can
-// walk every waiting task without one stealing focus forever.
-
 function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id,

@@ -1,5 +1,5 @@
 /**
- * `kobe doctor` and `kobe reset` — packaged-build recovery (KOB-258).
+ * `kobe doctor` and `kobe reset` — packaged-build recovery.
  *
  * Dev has `bun run dev:sandbox:reset` (a `kobe kill-sessions` on the
  * sandbox tmux socket) to wipe a throwaway environment. The installed
@@ -116,7 +116,7 @@ function tailFile(path: string, n: number): string {
 async function tmuxQuiet(args: string[]): Promise<{ code: number; stdout: string }> {
   const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "pipe", stderr: "ignore" })
   // Drain stdout CONCURRENTLY with awaiting exit (the runTmuxCapturing
-  // pattern, KOB-244) so a large `list-sessions` can never fill the pipe
+  // pattern) so a large `list-sessions` can never fill the pipe
   // buffer and wedge the call.
   const [stdout, code] = await Promise.all([new Response(proc.stdout).text().catch(() => ""), proc.exited])
   return { code, stdout }

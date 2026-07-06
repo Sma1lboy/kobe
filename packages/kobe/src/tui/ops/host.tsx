@@ -1,6 +1,6 @@
 /**
  * `kobe ops` host — the Ops pane on the right side of a task's tmux
- * session (v0.6 / KOB-233).
+ * session (v0.6).
  *
  * Reuses the v0.5 `FileTree` to browse the worktree. Activating a file
  * (enter / click) is a one-key "just open it": it opens the file in the
@@ -98,7 +98,7 @@ function OpsShell(props: OpsHostArgs) {
   const sharedActivityMap = () => activityOrch()?.transcriptActivitySignal()() ?? null
   const sharedEntry = (): TranscriptActivity | null => sharedActivityMap()?.get(props.worktree) ?? null
 
-  // New-activity badge (KOB-254). v0.6 has no chat-stream "done" signal and
+  // New-activity badge. v0.6 has no chat-stream "done" signal and
   // we explicitly don't parse the tmux pane, so the engine's own transcript
   // store (the JSONL the cost dashboard reads) is the source: light a corner
   // badge when its newest mtime advances past what we last acknowledged.

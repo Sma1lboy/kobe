@@ -1,7 +1,7 @@
 /**
  * Tiny git-HEAD poller for the sidebar's pinned "main" task rows.
  *
- * Each main task is bound to a saved repo (KOB-15) and shows the repo's
+ * Each main task is bound to a saved repo and shows the repo's
  * live current branch as a right-aligned hint — the row reads e.g.
  * `★ kobe   main`. The branch isn't stored on the task; it's computed
  * at display time so checking out a different branch in another shell
@@ -91,7 +91,7 @@ export async function resolveBranchHead(
   // detached HEAD) vs. both spawns failing/timing out. On a timeout both
   // spawns resolve with status:null and `value` stays "" — caching that
   // empty value against a still-valid HEAD fingerprint would permanently
-  // blank the branch label (KOB-8), so only the resolved case is cached.
+  // blank the branch label, so only the resolved case is cached.
   let resolved = false
   const ref = await spawn("git", ["symbolic-ref", "--short", "HEAD"], {
     cwd: repo,

@@ -309,7 +309,7 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
     confirm: async (p) =>
       (await DialogConfirm.show(deps.dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
     // Dialogs show IN the Tasks pane without zooming it full-window
-    // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
+    //: the old `resize-pane -Z` hid the claude / ops / shell
     // panes for the dialog's lifetime, which felt like the whole layout
     // "popped out". The dialog overlay already caps to the pane width
     // (`maxWidth = dimensions().width - 2`), so it renders fine in the
@@ -323,7 +323,7 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
     // This pane runs INSIDE the tmux client whose session a delete kills —
     // switch away first so the kill doesn't yank the user's terminal.
     switchBeforeKill: true,
-    // Publish the shared active-task focus so every surface follows (KOB-247).
+    // Publish the shared active-task focus so every surface follows.
     updateActiveTask: true,
     onTaskDeleted: (taskId, nextTask) => {
       if (deps.selectedId() !== taskId) return

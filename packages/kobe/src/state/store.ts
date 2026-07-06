@@ -1,18 +1,11 @@
 /**
  * Single owner of `~/.config/kobe/state.json` I/O.
  *
- * History: this file exists to kill a dual-writer hazard. Two modules used
- * to write the SAME blob independently — the TUI's `KVProvider`
- * (src/tui/context/kv.tsx) debounce-wrote its ENTIRE in-memory snapshot,
- * while `src/state/repos.ts` did sync load→mutate→save for CLI commands
- * and the standalone panes (Tasks pane, quick-task, settings window). With
- * several kobe processes alive at once, the whole-snapshot write-back
- * clobbered any key another process had written since the snapshot was
- * taken (lost update: Tasks pane persists `lastSelectedVendor`, the outer
- * TUI flushes 250ms later from a stale snapshot, the vendor choice is
- * gone). env.ts even carried a "keep them in sync if either moves" comment
- * pointing at the duplicated path expression — the smell that triggered
- * this module.
+ * This file exists to kill a dual-writer hazard: with several kobe
+ * processes alive at once, any writer that flushes a whole in-memory
+ * snapshot clobbers keys another process wrote since that snapshot was
+ * taken (the classic lost update). Every write therefore goes through
+ * the read-merge-write transaction here.
  *
  * The fix is read-merge-write: every write re-reads the file fresh and
  * applies ONLY the keys the caller actually changed, then writes the
@@ -114,8 +107,8 @@ export function patchStateFile(patch: StateSnapshot): StateSnapshot {
  * owner of the "stored bool with a default" rule. Only a real stored boolean
  * overrides `defaultValue`; a missing key OR any non-boolean value falls back.
  * This subsumes the `x === true` (default false) / `x !== false` (default true)
- * idioms each flag module used to inline, where the idiom silently encoded the
- * default and was easy to get backwards.
+ * idioms flag modules would otherwise inline, where the idiom silently
+ * encodes the default and is easy to get backwards.
  */
 export function getPersistedBool(key: string, defaultValue: boolean): boolean {
   const value = loadStateFile()[key]

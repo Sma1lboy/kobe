@@ -25,14 +25,14 @@ export async function setupTasksPane(opts: { initialTaskId?: string }): Promise<
   // Task source. PRIMARY = a live daemon SUBSCRIBE (via RemoteOrchestrator):
   // a task created / renamed / deleted in ANY session's Tasks pane or in
   // the outer monitor is pushed to THIS pane in real time, so every
-  // session's list stays in sync (KOB-244 — a new task wasn't showing up
+  // session's list stays in sync (a new task wasn't showing up
   // in an already-open session's Tasks pane). The shared env baked onto
   // this pane's command (inheritedEnvPrefix) guarantees we connect to the
   // SAME daemon as everyone else.
   //
   // FALLBACK = a direct tasks.json read + slow poll, used only when the
   // daemon is unreachable. MUST pass `homeDir()` (KOBE_HOME_DIR-aware) or
-  // it would read the PRODUCTION `~/.kobe/tasks.json` (KOB-233).
+  // it would read the PRODUCTION `~/.kobe/tasks.json`.
   const store = new TaskIndexStore({ homeDir: homeDir() })
   await store.load()
   const [fileTasks, setFileTasks] = createSignal<readonly Task[]>(store.list())
@@ -121,7 +121,7 @@ export async function setupTasksPane(opts: { initialTaskId?: string }): Promise<
     // onDestroy), so disposing here is the only correct place. Disposing
     // after `await render(...)` killed the daemon client + poll the moment
     // the pane mounted → "daemon client disposed" on the next switch and
-    // a dead subscribe (KOB-247).
+    // a dead subscribe.
     onDestroy: () => {
       if (timer) clearInterval(timer)
       orch?.dispose()

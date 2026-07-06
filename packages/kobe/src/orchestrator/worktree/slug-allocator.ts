@@ -7,7 +7,7 @@
  *   ~/.kobe/worktrees/<repo-key>/panda/
  *   ~/.kobe/worktrees/<repo-key>/panda-v2/   # if `panda` was recycled
  *
- * Mechanism (mirrors Conductor's city-name scheme, KOB-65):
+ * Mechanism (mirrors Conductor's city-name scheme):
  *   1. Build the "occupied" set: every slug currently held by a
  *      non-archived task in the store, PLUS every directory name
  *      already present on disk under kobe-managed worktree roots,

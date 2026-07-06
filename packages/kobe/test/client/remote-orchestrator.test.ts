@@ -459,12 +459,6 @@ describe("worktree.changes pure helpers", () => {
 })
 
 describe("framework-free store twins (React hosts, issue #15 G3)", () => {
-  // Why this matters: React panes receive live daemon pushes ONLY through
-  // these stores — solid-js signals are inert under node/vitest and plain
-  // bun (SSR build). If the dual-write drifts or stops notifying, React
-  // panes silently freeze on boot-time prefs. Note the SUBSCRIBE assertions:
-  // in this very environment the Solid accessor would not notify, which is
-  // the reason the stores exist.
   it("ui-prefs channel lands in uiPrefsStore and notifies subscribers", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)

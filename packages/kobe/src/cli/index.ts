@@ -85,7 +85,7 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
     console.log(`already saved: ${result.path}`)
   }
   // Fold in the repo's existing git worktrees: scan + adopt the ones not
-  // yet linked to a task, most-recently-active first (KOB-256). A plain
+  // yet linked to a task, most-recently-active first. A plain
   // repo with no extra worktrees imports nothing.
   await adoptAllWorktrees(result.path)
 }
@@ -162,7 +162,7 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
 /**
  * Discover every unlinked git worktree of `repo` and adopt each as a
  * task (discovery sorts most-recently-active first). Used by `kobe add`
- * to fold a repo's worktrees in on the way (KOB-256).
+ * to fold a repo's worktrees in on the way.
  *
  * Discovery runs IN-PROCESS — `git worktree list` + a `tasks.json` read,
  * no daemon — so a plain repo with no extra worktrees stays instant and
@@ -203,7 +203,7 @@ async function openLocalOrchestrator() {
  * Adopt `list` as tasks, printing one line each. Prefers a RUNNING
  * daemon (writes over RPC so a live TUI updates + the on-disk index
  * isn't split-brained); falls back to the in-process orchestrator when
- * no daemon is up. Never boots a daemon (KOB-256).
+ * no daemon is up. Never boots a daemon.
  */
 async function adoptWorktreesInto(
   orch: Awaited<ReturnType<typeof openLocalOrchestrator>>,
@@ -236,7 +236,7 @@ async function adoptWorktreesInto(
  * `kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]` — scan a
  * repo's existing git worktrees (including ones outside kobe-managed
  * roots) and import the ones not yet linked to a task
- * (KOB-256). No glob → dry-run listing. With a path glob → list matches;
+ *. No glob → dry-run listing. With a path glob → list matches;
  * `--yes` actually adopts them. Goes through the daemon so a running TUI
  * sees the new tasks live.
  */
@@ -291,7 +291,7 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   const vendor = coerceVendorId(vendorArg)
 
   // Discovery is a local read (git + tasks.json) — no daemon needed, so
-  // listing never boots one (KOB-256).
+  // listing never boots one.
   const orch = await openLocalOrchestrator()
   const worktrees = await orch.discoverAdoptableWorktrees(repo)
   if (worktrees.length === 0) {

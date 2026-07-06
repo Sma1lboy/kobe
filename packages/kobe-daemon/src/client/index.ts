@@ -136,7 +136,7 @@ export class KobeDaemonClient implements DaemonRpcClient {
   }
 
   /**
-   * Typed sugar over {@link on} for a push channel (KOB-246): the handler
+   * Typed sugar over {@link on} for a push channel: the handler
    * receives the channel's payload, typed from {@link ChannelPayloads}.
    * Adding a consumer for a new channel is just `onChannel("cost", …)`.
    */

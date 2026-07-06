@@ -214,7 +214,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
       // task's updatedAt so "recent" task sorting reflects actual use.
       // Publishing caches the last value so a late-subscribing Tasks pane
       // gets the current focus on connect and every pane highlights the
-      // same active task (KOB-247).
+      // same active task.
       const taskId = optionalString(payload, "taskId") ?? null
       await ctx.orch.setActiveTask(taskId)
       ctx.bus.publish("active-task", { taskId })

@@ -28,7 +28,7 @@ export type NewTaskDialogOptions = {
   defaultVendor?: VendorId
   /** Vendors detected on this machine; omit/empty falls back to all. */
   availableVendors?: readonly VendorId[]
-  /** Adopt-tab discovery (KOB-256); omit to disable adoption. */
+  /** Adopt-tab discovery; omit to disable adoption. */
   discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
 

@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url"
  * whose node_modules has no opentui), so a bare `@opentui/solid/preload`
  * specifier wouldn't resolve. `import.meta.resolve` resolves against
  * THIS module (inside the kobe package), so it always finds kobe's
- * own copy. (Bug history: KOB-233.)
+ * own copy.
  */
 export function kobeCliInvocation(): string[] {
   const isBuilt = import.meta.url.endsWith(".js")

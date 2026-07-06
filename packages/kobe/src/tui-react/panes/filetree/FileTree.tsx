@@ -69,7 +69,7 @@ export type FileTreeProps = {
   onZenToggle?: () => void
   /** Whether the pane has keyboard focus. Defaults to `true`. */
   focused?: boolean
-  /** Right-aligned activity badge (KOB-254); `null`/omit hides it. */
+  /** Right-aligned activity badge; `null`/omit hides it. */
   cornerBadge?: { text: string; active: boolean } | null
   /** Fires on explicit `r` refresh — the Ops host's "I've looked" ack. */
   onRefresh?: () => void

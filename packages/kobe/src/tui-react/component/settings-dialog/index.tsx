@@ -96,7 +96,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const prefs = useSettingsPrefs(props.kv, dialog)
   const engines = useEngineSettings(props.kv, dialog, (max) => setBodyRow((r) => Math.max(0, Math.min(r, max))))
 
-  // Account detection (KOB-249): read-only fs/env probes, lazily run the
+  // Account detection: read-only fs/env probes, lazily run the
   // first time the Accounts section is opened so a settings open that
   // never visits it pays nothing.
   const [claudeStatus, setClaudeStatus] = useState<EngineAccountStatus<ClaudeAccount> | null>(null)

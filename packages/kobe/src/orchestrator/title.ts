@@ -30,7 +30,7 @@ export function deriveTitleFromPrompt(prompt: string): string {
  * Build `kobe/<slug>-<ulid-suffix-6>` from a user-supplied title and a
  * freshly-minted ulid. The 6-char suffix comes from the ulid's random
  * tail, so two tasks created from the same placeholder title still get
- * distinct branches (KOB-244 — branch collisions failed `git worktree
+ * distinct branches (branch collisions failed `git worktree
  * add -b`). MUST be passed the real task id, never a fixed placeholder.
  */
 export function autoBranch(title: string, taskId: string): string {

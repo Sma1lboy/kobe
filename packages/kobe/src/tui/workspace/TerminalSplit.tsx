@@ -148,7 +148,7 @@ export function TerminalSplit(props: {
 
   const leafFocused = (id: string) => props.focused() && state().activeLeafId === id
 
-  /* Dividers, not frames (owner feedback 2026-07-06): a node draws ONLY
+  /* Dividers, not frames: a node draws ONLY
    * the single edge it shares with its previous sibling (`left` in a row,
    * `top` in a column) — tmux's separator-line look, zero padding, no
    * outer wrapping. The divider a focused LEAF owns lights up in the
@@ -160,8 +160,7 @@ export function TerminalSplit(props: {
   // and in the `borderColor` setter (`initializeBorder`), and the setter
   // fires even for undefined because parseColor mints a fresh RGBA every
   // call. Hence the conditional spread. This coercion is what drew the
-  // phantom frames around the first leaf and the group (owner
-  // screenshot, 2026-07-06).
+  // phantom frames around the first leaf and the group.
   const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
     divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
 

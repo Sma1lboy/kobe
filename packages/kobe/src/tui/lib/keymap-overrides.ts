@@ -36,7 +36,7 @@
  *     option/opt→alt, esc→escape, pgup/pgdn→pageup/pagedown.
  *   - `shift+<single char>` is rejected: terminals deliver shift+letter as
  *     a plain (uppercase) character, never as a shift-modified event, so
- *     such a chord can never match (see docs/KEYBINDINGS.md decision log).
+ *     such a chord can never match.
  *   - left/right ARROW keys are just `left` / `right`; left vs right
  *     MODIFIER keys cannot be told apart by terminal protocols, so there
  *     is no `lctrl`/`rcmd` syntax.

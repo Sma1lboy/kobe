@@ -161,7 +161,7 @@ export async function buildPanesAround(
 ): Promise<void> {
   // Tag claude by a pane user-option — tmux renumbers panes by
   // position when the Tasks pane is inserted on the left, so the
-  // monitor can't rely on "first pane" to find claude (KOB-233).
+  // monitor can't rely on "first pane" to find claude.
   const envPrefix = inheritedEnvPrefix()
   // Build the rail at the user's global width so a brand-new task/chat tab
   // matches the size every existing task already shows (consistency across
@@ -197,7 +197,7 @@ export async function buildPanesAround(
       claudePane,
       "-l",
       // Fixed cell width (no `%`) so the Tasks rail is the same size in every
-      // window + across engine rebuilds (KOB-248). The width is the user's
+      // window + across engine rebuilds. The width is the user's
       // global preference, applied uniformly so every task shows one size.
       `${tasksWidth}`,
       "-c",

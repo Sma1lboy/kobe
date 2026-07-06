@@ -76,7 +76,7 @@ export const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸
 export const SPINNER_FRAME_MS = 100
 
 /**
- * The right-stuck PR-check chip for a task's subtitle row (KOB-10). The
+ * The right-stuck PR-check chip for a task's subtitle row. The
  * daemon's pr-status poller writes `task.prStatus`; this maps its `checkState`
  * to a single coloured glyph (✓ passing / ✗ failing / • pending). Returns null
  * for tasks with no PR or no checks configured (`none` / `unknown`) so the row
@@ -225,9 +225,8 @@ export function buildSidebarRowView(opts: {
  * `spinnerFrame: 0`. The frame is passed as an ACCESSOR and read only
  * when the row is actually loading — inside a Solid memo that makes the
  * 10Hz frame signal a conditional dependency, so an idle row never
- * re-derives on the spinner tick (waste audit: with N tasks and nothing
- * running, every row used to rebuild its whole view 10×/s; now the tick
- * has zero subscribers when no row spins). For a loading row this
+ * re-derives on the spinner tick (with N tasks and nothing running, the
+ * tick has zero subscribers — no row rebuilds its view 10×/s). For a loading row this
  * reproduces exactly what `buildSidebarRowView` would have produced with
  * the live frame: both glyph fields carry the spinner.
  */

@@ -164,7 +164,7 @@ export type SubscribeRole = "gui" | "pane"
 
 /**
  * Channel registry — the SINGLE source of truth for daemon→client push
- * channels (KOB-246). The daemon is a cross-process pub/sub bus over the
+ * channels. The daemon is a cross-process pub/sub bus over the
  * socket: each channel carries a last-value the daemon caches and replays
  * to a late subscriber on connect (see `daemon/event-bus.ts`). Add a key
  * here (name + payload type) and the whole stack — `bus.publish`,
@@ -191,7 +191,7 @@ export interface ChannelPayloads {
   /**
    * The currently-active task (the session last switched/entered into).
    * Shared so EVERY Tasks pane + the outer monitor highlight the SAME
-   * focus, instead of each pane remembering its own last click (KOB-247).
+   * focus, instead of each pane remembering its own last click.
    * `null` = nothing active yet. Set via the `task.setActive` RPC.
    */
   "active-task": { taskId: string | null }

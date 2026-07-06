@@ -1,11 +1,3 @@
-/**
- * Why this matters: keyEventToShellBytes is every keystroke's path into the
- * embedded engine CLI — a wrong byte turns Enter into a literal, or a ctrl
- * chord into shell garbage. RESERVED_GLOBAL_CHORDS is the user's only way
- * OUT of the terminal pane; if a chord leaks from that list into the PTY
- * the user is trapped inside the engine (the KOB-208 class of bug).
- */
-
 import type { KeyEvent } from "@opentui/core"
 import { describe, expect, it } from "vitest"
 import {

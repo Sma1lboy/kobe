@@ -104,7 +104,7 @@ export type NewTaskDialogProps = {
   availableVendors?: readonly VendorId[]
   /**
    * Discover existing git worktrees on a repo not yet linked to a task
-   * (KOB-256) — powers the Adopt tab's list. Omit to leave the tab empty.
+   * — powers the Adopt tab's list. Omit to leave the tab empty.
    */
   discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
@@ -223,7 +223,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   // parent-dir picker.
   const [cloneParentPicked, setCloneParentPicked] = createSignal(false)
 
-  // Adopt-tab state (KOB-256): discover existing worktrees for the
+  // Adopt-tab state: discover existing worktrees for the
   // chosen repo, filter by a path glob, multi-select, then import.
   const [adoptFilter, setAdoptFilter] = createSignal("")
   const [adoptCursor, setAdoptCursor] = createSignal(0)
@@ -1010,7 +1010,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </Show>
         </Show>
         <Show when={tab() === "adopt"}>
-          {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
+          {/* ── Adopt tab body ────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("adoptFilter")} attributes={labelAttrs("adoptFilter")}>
               {t("newTask.field.adoptFilter")}

@@ -1,11 +1,3 @@
-/**
- * `kobe doctor` terminal section — pure halves only (env formatting + kitty
- * probe reply parsing). Why this matters: keyboard bugs are terminal-
- * dependent (issue #192 — Terminal.app's legacy key path broke ctrl+h/j),
- * and doctor's terminal line is how a reporter tells us which key path
- * they're on. The live TTY probe is I/O-thin and untested by design.
- */
-
 import { EventEmitter } from "node:events"
 import { describe, expect, test, vi } from "vitest"
 import {

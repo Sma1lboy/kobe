@@ -113,7 +113,7 @@ export function tasksRestoreEdgeCommand(restoreTasksCommand: string): string {
  * server is definitely up. All `-g` options are idempotent so
  * calling them on every ensureSession is harmless.
  *
- * Status bar: ON (KOB-233). v0.5/KOB-225 hid it because there was
+ * Status bar: ON. v0.5 hid it because there was
  * only one pane and it was pure noise. With three panes it's useful
  * — it tells the user they're inside a kobe-managed tmux session,
  * which pane/window is active, and how to get out. We explicitly
@@ -150,7 +150,7 @@ export function tasksRestoreEdgeCommand(restoreTasksCommand: string): string {
  * vim-tmux-navigator convention — and are edge-guarded so they never
  * wrap (see focusBindCommand). (Ctrl+1/2/3 was tried first but
  * terminals can't encode Ctrl+<digit> without the kitty protocol, so
- * the bindings registered yet never fired — KOB-233.) Directional
+ * the bindings registered yet never fired.) Directional
  * keys DO produce distinct codes and are the tmux-idiomatic choice.
  * Server-scoped on the `-L kobe` socket so the user's own tmux is
  * untouched. Trade-off: this shadows readline Ctrl+k (kill-line) /
@@ -256,7 +256,7 @@ export async function installSessionBindings(inv: readonly string[]): Promise<vo
   const clipboardCopyCommand = resolveClipboardCopyCommand(process.platform, clipboardBinaryOnPath)
   const clipboardBindings = clipboardTmuxConfig(clipboardCopyCommand)
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
-  // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
+  // v0.5 quick-fork chord, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
   // ONLY a prompt and fills repo / engine / base branch from this task's
   // defaults, then creates + delivers and exits. PREFIX-scoped (not no-prefix
@@ -270,7 +270,7 @@ export async function installSessionBindings(inv: readonly string[]): Promise<vo
   // small one). tmux's default sizes a window to the SMALLEST client of the
   // session regardless of which window that client is actually viewing — so a
   // small client on chat-tab B drags chat-tab A down for the big client too,
-  // which then squeezes the fixed-width Tasks pane (KOB-248) against a too-narrow
+  // which then squeezes the fixed-width Tasks pane against a too-narrow
   // window. `aggressive-resize on` scopes the size to the client(s) for which the
   // window is CURRENT, so each chat-tab window tracks only its own viewer.
   // Same-session clients still share one tmux grid; prepareWindowForAttach /

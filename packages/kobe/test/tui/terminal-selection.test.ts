@@ -1,12 +1,3 @@
-/**
- * Why this matters: grid selection is the embedded terminal's ONLY copy
- * path (opentui's flow selection breaks over a wholesale-replaced
- * snapshot). These pin the xterm/tmux linear-selection semantics —
- * reading-order normalization, first/middle/last row spans, per-line
- * trailing-space trim — so a drag in any direction copies exactly the
- * cells the highlight showed.
- */
-
 import { describe, expect, it } from "vitest"
 import { ATTR, type Chunk } from "../../src/tui/panes/terminal/sgr"
 import {

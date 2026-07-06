@@ -66,7 +66,7 @@ export interface EngineHistoryReader {
   /**
    * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
    * has no transcript yet. The Ops pane's activity poll watches this to
-   * light its "new activity" badge (KOB-254). Never throws — readers are
+   * light its "new activity" badge. Never throws — readers are
    * best-effort and the poller treats 0 as "no activity seen".
    */
   latestTranscriptMtimeForWorktree(worktree: string): Promise<number>

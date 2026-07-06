@@ -41,7 +41,7 @@ export interface OpsShellContext {
 export interface OpsActions {
   /** enter on a file → editor window, falling back to the opentui preview. */
   readonly openFile: (rel: string) => void
-  /** `a` — inject `@<path> ` into the engine pane (no Enter; KOB-232). */
+  /** `a` — inject `@<path> ` into the engine pane (no Enter). */
   readonly injectMention: (rel: string) => void
   /** `p` — send the PR prompt to the engine pane and submit it. */
   readonly createPR: () => Promise<void>
@@ -54,7 +54,7 @@ export interface OpsActions {
 export function makeOpsActions(ctx: OpsShellContext): OpsActions {
   // Open the file's diff/content in a full-width preview window of the
   // task's tmux session (`kobe-<taskId>`). Without a task id there is no
-  // session to target — bail rather than fire at a phantom (KOB-244).
+  // session to target — bail rather than fire at a phantom.
   function openPreview(rel: string): void {
     if (!ctx.taskId) return
     void newWindow(tmuxSessionName(ctx.taskId), {

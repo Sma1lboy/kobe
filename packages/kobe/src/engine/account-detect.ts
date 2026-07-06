@@ -16,14 +16,14 @@
  *     carries `emailAddress`, `organizationName`, `displayName`,
  *     `billingType`. Verified by reading
  *     `refs/claude-code/src/services/oauth/client.ts` (the canonical
- *     producer) and the live file on Jackson's machine.
+ *     producer) and a live account file.
  *
  *   - **codex**: `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`).
  *     Has two mutually-exclusive shapes:
  *       - ChatGPT login → `tokens.id_token` is a JWT whose payload
  *         carries `email` and `https://api.openai.com/auth.chatgpt_plan_type`.
  *       - API-key login → `OPENAI_API_KEY` is a non-null string.
- *     Verified against the live file on Jackson's machine.
+ *     Verified against a live account file.
  *
  * The functions are pure — fs + env + binary discovery are injected
  * via {@link DetectDeps}, so tests pin every path and the production

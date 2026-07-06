@@ -51,7 +51,7 @@ export function useTerminalPty(opts: {
 
   // Latest structured snapshot from the PTY: one style-run list per row,
   // already opentui-ready. The Bun backend builds these straight from
-  // xterm's cells; there is no ANSI string to re-parse (KOB-224).
+  // xterm's cells; there is no ANSI string to re-parse.
   const [snapshot, setSnapshot] = createSignal<readonly TerminalRow[]>([])
 
   // Latest cursor position from the PTY (null when backend can't report).

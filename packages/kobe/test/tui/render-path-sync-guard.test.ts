@@ -1,22 +1,3 @@
-/**
- * CI guard: render processes must not run synchronous subprocesses.
- *
- * Why this matters (the 30GB-repo freeze): a `spawnSync git status` on
- * the sidebar's ~2s tick blocked the whole event loop for the duration
- * of an O(repo size) status walk — the Tasks pane hard-froze the moment
- * a huge repo's row rendered. Every `src/tui/**` file runs inside a
- * render process (the TUI itself or a tmux pane host), so a sync
- * subprocess anywhere in the tree is a freeze waiting for a big enough
- * repo. Live data belongs in `src/tui/lib/background-poll.ts`
- * (reactive read + fire-and-forget async poll); one-shot actions use
- * async spawn (`spawnCapture`) with await at the call site.
- *
- * This test scans `src/tui/**` source for `spawnSync` / `execSync` /
- * `execFileSync` imports-or-calls and fails unless the file is in the
- * whitelist below. Add to the whitelist only with a reason — and prefer
- * not adding at all.
- */
-
 import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
