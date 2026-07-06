@@ -27,6 +27,7 @@ import { en as ops, zh as opsZh } from "./messages/ops"
 import { en as quickTask, zh as quickTaskZh } from "./messages/quickTask"
 import { en as settings, zh as settingsZh } from "./messages/settings"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
+import { en as terminal, zh as terminalZh } from "./messages/terminal"
 import { en as update, zh as updateZh } from "./messages/update"
 import { en as workspace, zh as workspaceZh } from "./messages/workspace"
 import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
@@ -34,6 +35,7 @@ import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 export const en = {
   settings,
   tasks,
+  terminal,
   files,
   newTask,
   ops,
@@ -57,6 +59,7 @@ export type Messages = typeof en
 export const zh: Messages = {
   settings: settingsZh,
   tasks: tasksZh,
+  terminal: terminalZh,
   files: filesZh,
   newTask: newTaskZh,
   ops: opsZh,
