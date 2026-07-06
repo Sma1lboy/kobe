@@ -17,19 +17,24 @@ import {
   splitSidebarRows,
 } from "./groups"
 import { useSidebarBindings } from "./keys"
-import { SidebarPanel, VIEW_TABS } from "./panel"
+import { SidebarPanel } from "./panel"
 import type { SidebarRowCardSharedProps } from "./row-cards"
 import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS } from "./row-view"
 import type { SidebarHover, SidebarProps } from "./types"
+import {
+  MAIN_BRANCH_POLL_MS,
+  SIDEBAR_WIDTH,
+  cycleViewTarget,
+  projectScrollMaxHeightFor,
+  projectTaskCountKey,
+  searchQueryKeystroke,
+  subtitleBudgetFor,
+  titleBudgetFor,
+} from "./view-core"
 
 export type { ChatRunState, SidebarHover, SidebarProps } from "./types"
 export { approxCellWidth } from "./hover-tooltip"
-
-/** Default sidebar width — task-list rail matching the tmux Tasks pane. */
-const SIDEBAR_WIDTH = 32
-
-/** Polling interval for the per-main-row git branch refresh. */
-export const MAIN_BRANCH_POLL_MS = 2_000
+export { MAIN_BRANCH_POLL_MS } from "./view-core"
 
 export function Sidebar(props: SidebarProps) {
   const focusedAccessor = () => (props.focused ? props.focused() : true)
@@ -98,23 +103,10 @@ export function Sidebar(props: SidebarProps) {
     const r = useRenderer()
     if (!r) return
     const listener = (evt: KeyEvent): void => {
-      if (evt.defaultPrevented) return
       if (!focusedAccessor()) return
-      if (evt.ctrl || evt.meta || evt.option) return
-      if (evt.name === "backspace") {
-        setSearchQuery((q) => q.slice(0, -1))
-        return
-      }
-      // Printable single chars only — opentui's KeyEvent.sequence
-      // holds the raw byte that arrived; non-printables (esc, arrows,
-      // function keys) have multi-byte sequences or names like
-      // "escape" / "return" / "up" that we already handle through
-      // Block C bindings.
-      const seq = evt.sequence
-      if (!seq || seq.length !== 1) return
-      const code = seq.charCodeAt(0)
-      if (code < 32 || code === 127) return
-      setSearchQuery((q) => q + seq)
+      // The printable/backspace/modifier policy is the shared reducer
+      // (view-core.ts, shared with the React port); null = not ours.
+      setSearchQuery((q) => searchQueryKeystroke(q, evt) ?? q)
     }
     r.keyInput.on("keypress", listener)
     onCleanup(() => r.keyInput.off("keypress", listener))
@@ -172,7 +164,7 @@ export function Sidebar(props: SidebarProps) {
   })
   const projectFilterCountLabel = createMemo(() => {
     const count = projectFilterCount()
-    return `${count} ${count === 1 ? t("tasks.project.taskSingular") : t("tasks.project.taskPlural")}`
+    return `${count} ${t(projectTaskCountKey(count))}`
   })
   const rows = createMemo<readonly SidebarRow[]>(
     (prev) =>
@@ -226,12 +218,9 @@ export function Sidebar(props: SidebarProps) {
   // title gets the WHOLE first line and the branch the whole second line —
   // each just truncated to its own line budget.
   const effectiveWidth = (): number => (props.width ? props.width() : SIDEBAR_WIDTH)
-  // Line 1: container pad (4) + accent edge (1) + badge + its gap (2) +
-  // scrollbar (1) + right pad (1) = 9 reserved.
-  const titleBudget = createMemo(() => Math.max(6, effectiveWidth() - 9))
-  // Line 2: the above plus the badge-column indent (2) and a reserve for the
-  // right-aligned `+N −M` chip (~6) ≈ 16 reserved.
-  const subtitleBudget = createMemo(() => Math.max(6, effectiveWidth() - 16))
+  // Reserved-cell math lives in view-core.ts (shared with the React port).
+  const titleBudget = createMemo(() => titleBudgetFor(effectiveWidth()))
+  const subtitleBudget = createMemo(() => subtitleBudgetFor(effectiveWidth()))
 
   // Hover tooltip (KOB): on a narrow rail the responsive columns hide the
   // branch and the title is ellipsised, so hovering a row pops a detail
@@ -246,11 +235,7 @@ export function Sidebar(props: SidebarProps) {
   // cap from terminal cells and clamp it to a small, predictable rail band.
   // Then shrink to the actual project rows (each card is 2 lines, no inter-card
   // gap) so a one-project workspace doesn't reserve the full cap as dead space.
-  const projectScrollMaxHeight = createMemo(() => {
-    const cellCap = Math.max(2, Math.min(10, Math.floor(dims().height * 0.25)))
-    const contentHeight = Math.max(2, projectRows().length * 2)
-    return Math.min(cellCap, contentHeight)
-  })
+  const projectScrollMaxHeight = createMemo(() => projectScrollMaxHeightFor(dims().height, projectRows().length))
   const [hover, setLocalHover] = createSignal<SidebarHover | null>(null)
   const setHover = (next: SidebarHover | null): void => {
     setLocalHover(next)
@@ -367,12 +352,8 @@ export function Sidebar(props: SidebarProps) {
    * "[ goes right" bug was a pinyin-IME swallow.)
    */
   function cycleView(delta: -1 | 1): void {
-    const cur = view()
-    const idx = VIEW_TABS.findIndex((t) => t.view === cur)
-    if (idx < 0) return
-    const next = (idx + delta + VIEW_TABS.length) % VIEW_TABS.length
-    const target = VIEW_TABS[next]
-    if (target) setView(target.view)
+    const target = cycleViewTarget(view(), delta)
+    if (target) setView(target)
   }
 
   // Activate (jump to) a row — the single funnel for both the keyboard `enter`
