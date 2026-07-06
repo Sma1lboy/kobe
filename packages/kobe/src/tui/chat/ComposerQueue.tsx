@@ -2,10 +2,9 @@ import { useTheme } from "@/tui/context/theme"
 import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show } from "solid-js"
+import type { ComposerQueuedItem } from "./composer/queue-item"
 
-export type ComposerQueuedItem =
-  | { readonly id: string; readonly kind: "prompt"; readonly text: string }
-  | { readonly id: string; readonly kind: "bash"; readonly command: string }
+export type { ComposerQueuedItem } from "./composer/queue-item"
 
 /**
  * Hard cap on visible queued rows so a fast typist who stacked many

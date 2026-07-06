@@ -4,7 +4,7 @@
  * predicates, the static keybinding table, and the model-picker row grouping.
  *
  * All of these are pure functions or plain data (no opentui runtime — the
- * `@opentui/solid` import in keybindings.ts is type-only and erased), so they
+ * `@opentui/core` import in keybindings.ts is type-only and erased), so they
  * run directly under vitest's node environment.
  */
 
@@ -57,20 +57,26 @@ type Fake = ReturnType<typeof fakeTextarea>
 const asRef = (f: Fake) => f as unknown as TextareaRenderable
 
 describe("resolvePlaceholder", () => {
+  // The i18n runtime is injected (framework-free module, issue #15 G3);
+  // a key-echo stub proves WHICH catalog key each fallback resolves.
+  const translate = (key: string) => `<${key}>`
+
   test("no task → the noTask override or the i18n default", () => {
-    expect(resolvePlaceholder({ isStreaming: false, hasTask: false, noTaskMessage: "nada" })).toBe("nada")
-    expect(resolvePlaceholder({ isStreaming: true, hasTask: false, noTaskMessage: "nada" })).toBe("nada")
-    // No override → falls through to t("chat.composer.noTask") (en default).
-    expect(resolvePlaceholder({ isStreaming: false, hasTask: false })).toBe("(no task — press n to create)")
+    expect(resolvePlaceholder({ isStreaming: false, hasTask: false, noTaskMessage: "nada" }, translate)).toBe("nada")
+    expect(resolvePlaceholder({ isStreaming: true, hasTask: false, noTaskMessage: "nada" }, translate)).toBe("nada")
+    // No override → falls through to translate("chat.composer.noTask").
+    expect(resolvePlaceholder({ isStreaming: false, hasTask: false }, translate)).toBe("<chat.composer.noTask>")
   })
 
   test("streaming with a task → empty (placeholder hidden mid-stream)", () => {
-    expect(resolvePlaceholder({ isStreaming: true, hasTask: true, inputPlaceholder: "Ask X" })).toBe("")
+    expect(resolvePlaceholder({ isStreaming: true, hasTask: true, inputPlaceholder: "Ask X" }, translate)).toBe("")
   })
 
   test("idle with a task → the input override or the i18n fallback", () => {
-    expect(resolvePlaceholder({ isStreaming: false, hasTask: true, inputPlaceholder: "Ask X" })).toBe("Ask X")
-    expect(resolvePlaceholder({ isStreaming: false, hasTask: true })).toBe("Type a prompt…")
+    expect(resolvePlaceholder({ isStreaming: false, hasTask: true, inputPlaceholder: "Ask X" }, translate)).toBe(
+      "Ask X",
+    )
+    expect(resolvePlaceholder({ isStreaming: false, hasTask: true }, translate)).toBe("<chat.composer.askFallback>")
   })
 })
 
