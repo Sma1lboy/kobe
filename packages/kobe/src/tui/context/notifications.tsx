@@ -28,27 +28,19 @@
 
 import { type Accessor, type ParentProps, createContext, createSignal, useContext } from "solid-js"
 import { createManagedTimeouts } from "../lib/managed-timeout"
+import {
+  type NotificationKind,
+  type NotifyInput,
+  TOAST_DURATION_MS,
+  type Toast,
+  addUnread,
+  removeUnread,
+  shouldShowToast,
+} from "../lib/notify-state"
 import { pulse as pulseSound } from "../lib/sound"
 import { useKV } from "./kv"
 
-export type NotificationKind = "done" | "needs_input" | "error"
-
-export interface Toast {
-  readonly id: number
-  readonly kind: NotificationKind
-  readonly taskId: string
-  readonly tabId: string
-  readonly title: string
-}
-
-export interface NotifyInput {
-  readonly kind: NotificationKind
-  readonly taskId: string
-  readonly tabId: string
-  readonly title: string
-}
-
-const TOAST_DURATION_MS = 4500
+export type { NotificationKind, Toast, NotifyInput } from "../lib/notify-state"
 
 export interface NotificationsContext {
   toasts: Accessor<readonly Toast[]>
@@ -59,10 +51,6 @@ export interface NotificationsContext {
 }
 
 const ctx = createContext<NotificationsContext>()
-
-function unreadKey(taskId: string, tabId: string): string {
-  return `${taskId}:${tabId}`
-}
 
 export function NotificationsProvider(props: ParentProps) {
   const kv = useKV()
@@ -76,18 +64,9 @@ export function NotificationsProvider(props: ParentProps) {
 
   function notify(input: NotifyInput): void {
     // Always update the unread map — the dot is a passive marker, not
-    // an interruption, so neither toggle gates it.
-    setUnread((prev) => {
-      const next = new Map(prev)
-      const key = unreadKey(input.taskId, input.tabId)
-      // Attention-demanding kinds outrank `done` if both fire for the
-      // same key before the user clears it — yellow (`needs_input`) /
-      // red (`error`) trump green.
-      const existing = prev.get(key)
-      if (existing === "needs_input" || existing === "error") return prev
-      next.set(key, input.kind)
-      return next
-    })
+    // an interruption, so neither toggle gates it. Escalation rule
+    // (needs_input/error outrank done) lives in the shared notify-state.
+    setUnread((prev) => addUnread(prev, input))
 
     // Sound gate (BEL + chime). BEL alone leaks past `pulse.wav`
     // failure — they're the same intent (audible cue), so they share
@@ -103,12 +82,13 @@ export function NotificationsProvider(props: ParentProps) {
 
     // Toast gate. Independent of sound so a quiet-office user can keep
     // the visual cue without audio, and an eyes-elsewhere user can keep
-    // audio without the popup. `error` always shows: error toasts are
-    // failure feedback (the tasks pane routes failures through here), and
-    // must not vanish into the daemon log when someone disables the
-    // completion "Toast" preference — that's a silent-failure regression.
+    // audio without the popup. `error` always shows (shared notify-state
+    // invariant): error toasts are failure feedback (the tasks pane routes
+    // failures through here), and must not vanish into the daemon log when
+    // someone disables the completion "Toast" preference — that's a
+    // silent-failure regression.
     const toastEnabled = (kv.get("notifications.toast.enabled", true) as boolean) !== false
-    if (input.kind === "error" || toastEnabled) {
+    if (shouldShowToast(input.kind, toastEnabled)) {
       const id = ++counter
       const toast: Toast = {
         id,
@@ -127,13 +107,7 @@ export function NotificationsProvider(props: ParentProps) {
   }
 
   function markRead(taskId: string, tabId: string): void {
-    setUnread((prev) => {
-      const key = unreadKey(taskId, tabId)
-      if (!prev.has(key)) return prev
-      const next = new Map(prev)
-      next.delete(key)
-      return next
-    })
+    setUnread((prev) => removeUnread(prev, taskId, tabId))
   }
 
   const value: NotificationsContext = {
