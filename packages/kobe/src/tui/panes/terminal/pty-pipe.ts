@@ -159,6 +159,11 @@ export class PipeTaskPty implements TaskPtyLike {
     this.write(text)
   }
 
+  wheel(): boolean {
+    // No emulator state behind a pipe — the pane owns wheel scrolling.
+    return false
+  }
+
   onExit(cb: () => void): () => void {
     if (this._killed) {
       cb()
