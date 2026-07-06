@@ -94,11 +94,6 @@ describe("buildSidebarRowView", () => {
     expect(v).toMatchObject({ isMain: true, titleText: "kobe", subtitleText: "main" })
   })
 
-  // Long daemon job feedback (issue #5): while the daemon's blocking
-  // `task.ensureWorktree` RPC runs a minutes-long `git worktree add`, the
-  // `task.jobs` channel marks the task in every attached pane; the row must
-  // spin with a "materializing" subtitle instead of sitting frozen on the
-  // backlog dot (or lying with a branch label that doesn't exist on disk yet).
   it("spins with a materializing subtitle while a worktree job is in flight", () => {
     const v = buildSidebarRowView({
       task: task({ status: "backlog", branch: "", worktreePath: "" }),
@@ -154,12 +149,6 @@ describe("buildSidebarRowView", () => {
   })
 })
 
-// The spinner-frame overlay is what makes the 10Hz tick a CONDITIONAL
-// dependency in the Sidebar (waste audit): the frame accessor must only
-// be read for loading rows, so an idle sidebar does zero per-tick work
-// — Solid's dep collection drops the tick signal entirely when nothing
-// is spinning. These tests pin both halves: identity preservation +
-// accessor non-read for idle rows, exact frame overlay for loading ones.
 describe("withSpinnerFrame", () => {
   function loadingView() {
     return buildSidebarRowView({
@@ -180,8 +169,8 @@ describe("withSpinnerFrame", () => {
       reads++
       return 3
     })
-    expect(out).toBe(idle) // identity preserved → downstream memos never notify
-    expect(reads).toBe(0) // the 10Hz signal is not a dependency of idle rows
+    expect(out).toBe(idle)
+    expect(reads).toBe(0)
   })
 
   it("overlays the live frame on both glyph fields of a loading view", () => {
@@ -190,8 +179,6 @@ describe("withSpinnerFrame", () => {
     const out = withSpinnerFrame(base, () => 3)
     expect(out.stateGlyph).toBe(IN_PROGRESS_SPINNER[3])
     expect(out.projectGlyph).toBe(IN_PROGRESS_SPINNER[3])
-    // Everything else is untouched — exactly what buildSidebarRowView
-    // would have produced with spinnerFrame: 3.
     const direct = buildSidebarRowView({
       task: task({ status: "backlog" }),
       activity: { state: "running", at: 1 },
@@ -204,7 +191,7 @@ describe("withSpinnerFrame", () => {
   })
 
   it("keeps identity when the frame resolves to the glyph already shown", () => {
-    const base = loadingView() // built with frame 0
+    const base = loadingView()
     const out = withSpinnerFrame(base, () => 0)
     expect(out).toBe(base)
   })

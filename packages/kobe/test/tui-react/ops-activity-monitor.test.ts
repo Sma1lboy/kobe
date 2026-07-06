@@ -1,15 +1,3 @@
-/**
- * The Ops pane's framework-free poll loops (`tui/ops/activity-monitor.ts`),
- * extracted from the Solid host so the React port (issue #15, G3) runs the
- * SAME loop bodies. Why these tests matter: the loops were previously
- * component-internal and untestable (host.tsx pulls @opentui render
- * assets); the extraction makes the badge-prime rule ("only post-mount
- * activity flags"), the teardown-race swallow, and the ChatTab done rule
- * ("new completion id + quiescent pane") directly checkable with fake IO
- * and fake timers — regressions here silently break the `● new` badge or
- * report "done" for a sibling window's turn.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { startLocalBadgePoll, startTurnStatusPoll } from "../../src/tui/ops/activity-monitor.ts"
 import { ACTIVITY_POLL_MIN_MS, TURN_STATUS_POLL_MS } from "../../src/tui/ops/activity-poll.ts"
@@ -21,7 +9,6 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-/** Badge-state harness standing in for the host's primed/baseline/latest. */
 function badgeHooks() {
   const state = { primed: false, baseline: [] as number[], latest: [] as number[] }
   return {
@@ -52,7 +39,6 @@ describe("startLocalBadgePoll", () => {
       hooks,
     )
     await vi.advanceTimersByTimeAsync(0)
-    // First read seeds the baseline — it must NOT count as new activity.
     expect(state.baseline).toEqual([100])
     expect(state.latest).toEqual([100])
     await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS)
@@ -92,7 +78,6 @@ describe("startLocalBadgePoll", () => {
     expect(state.baseline).toEqual([42])
     expect(state.latest).toEqual([42])
     stop()
-    // Disposed: no further reads regardless of elapsed time.
     const after = reads
     await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS * 10)
     expect(reads).toBe(after)
@@ -130,12 +115,9 @@ describe("startTurnStatusPoll", () => {
     )
     await vi.advanceTimersByTimeAsync(0)
     expect(published).toEqual(["idle"])
-    // The pane content changed → a turn is running.
     pane = "B"
     await vi.advanceTimersByTimeAsync(TURN_STATUS_POLL_MS)
     expect(published).toEqual(["idle", "running"])
-    // A new completion id lands, pane goes quiescent: done only after the
-    // stable-poll threshold, not on the first unchanged read.
     completion = "c1"
     await vi.advanceTimersByTimeAsync(TURN_STATUS_POLL_MS)
     expect(published).toEqual(["idle", "running"])

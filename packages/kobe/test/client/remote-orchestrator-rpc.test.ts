@@ -1,13 +1,3 @@
-/**
- * Wire-mapping tests for RemoteOrchestrator's write methods: each thin
- * wrapper must call the daemon with the RIGHT method name and payload
- * shape (these strings are the daemon protocol — a typo here is a silent
- * no-op against a real daemon, exactly the class of bug a type system
- * can't catch across the socket). Fake client per the sibling
- * remote-orchestrator.test.ts convention, extended with a recording
- * `request`.
- */
-
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { RemoteOrchestrator } from "../../src/client/remote-orchestrator.ts"
@@ -56,7 +46,6 @@ describe("RemoteOrchestrator RPC wire mapping", () => {
       vendor: "claude",
       effort: "high",
     })
-    // modelEffort must NOT leak through under its task-field name.
     const payload = (request.mock.calls[0] as unknown[])?.[1] as Record<string, unknown>
     expect("modelEffort" in payload).toBe(false)
   })

@@ -1,11 +1,3 @@
-/**
- * Codex adapter capabilities for the native AI SDK harness path.
- *
- * The harness-codex adapter pins its default model when the caller leaves
- * `model` unset; mirror that value here so the composer footer can display an
- * engine-owned label without inventing UI-side Codex strings.
- */
-
 import type { EngineCapabilities, EngineIdentity } from "@/types/engine"
 
 export const CODEX_DEFAULT_MODEL = "gpt-5.3-codex"

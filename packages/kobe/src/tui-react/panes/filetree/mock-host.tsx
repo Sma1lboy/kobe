@@ -1,12 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * React file-tree mock host (`bun run dev:mock-react-filetree`) — the live
- * render proof for the ported pane. The pane reads real git, so the fixture
- * is a throwaway `git init` repo in the OS tempdir with deterministic
- * `kobe-fixture-*` file names: the All tab lists them via
- * `git ls-files --others`, no commit required, and the smoke greps one of
- * them out of the captured ANSI output.
- */
 
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
@@ -25,8 +17,6 @@ function makeFixtureWorktree(): string {
   return dir
 }
 
-// Same minimal provider set as the Ops pane host that mounts the Solid
-// FileTree: Theme > Dialog only, no KV / Focus.
 await bootPaneHost({
   logContext: "filetree-mock",
   providers: { kv: false, focus: false },

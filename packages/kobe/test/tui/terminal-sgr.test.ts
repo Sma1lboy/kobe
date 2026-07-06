@@ -1,23 +1,6 @@
-/**
- * Behavior tests for the SGR parser at
- * `src/tui/panes/terminal/sgr.ts`.
- *
- * The parser converts shell output containing text + SGR escapes into
- * a list of per-row chunks. We assert each SGR family parses to the
- * right `{fg, bg, attributes}` triple so the terminal pane can render
- * colors without the rest of the stack needing to know about ANSI.
- *
- * Imports here MUST NOT pull in `@opentui/core` directly or
- * transitively — under vitest, opentui's tree-sitter `.scm` assets
- * fail to load. That's why `sgr.ts` returns plain RGB tuples and
- * exposes its own `ATTR` constants; the opentui adapter lives in
- * `sgr-to-text-chunk.ts` and is only loaded by production code.
- */
-
 import { describe, expect, test } from "vitest"
 import { ATTR, parseAnsiLine, parseAnsiSnapshot } from "../../src/tui/panes/terminal/sgr"
 
-// CSI introducer: ESC + "[". Tests template as `${ESC}<params>m`.
 const ESC = "\x1b["
 
 describe("parseAnsiLine — plain text", () => {
@@ -124,12 +107,6 @@ describe("parseAnsiLine — colors", () => {
     expect(chunks[0]?.bg).toEqual([10, 20, 30])
   })
 
-  // Regression: the terminal pane re-serializes xterm cells as
-  // `\x1b[0;38;2;R;G;B…m` — the true-color introducer is ALWAYS chained
-  // behind a leading `0` reset (and possibly bold etc.). The underlying
-  // tokenizer injects a phantom ITU colorspace id only for a *bare*
-  // single color escape, so a chained introducer must still land the
-  // RGB triple exactly. Before the fix this shifted to [120,92,0].
   test("true-color fg chained behind a reset keeps exact RGB", () => {
     const { chunks } = parseAnsiLine(`${ESC}0;38;2;204;120;92mx${ESC}0m`)
     expect(chunks[0]?.fg).toEqual([204, 120, 92])
@@ -157,9 +134,6 @@ describe("parseAnsiLine — style transitions", () => {
 
   test("contiguous same-style text stays in one chunk", () => {
     const { chunks } = parseAnsiLine(`${ESC}31mAAA${ESC}31mBBB${ESC}0m`)
-    // The two identical SGR escapes flush+restyle, so two chunks
-    // even though they share style. This is OK behavior — it just
-    // means a slightly longer chunk list, never an incorrect render.
     expect(chunks.length).toBeGreaterThanOrEqual(1)
     expect(chunks.map((c) => c.text).join("")).toBe("AAABBB")
   })

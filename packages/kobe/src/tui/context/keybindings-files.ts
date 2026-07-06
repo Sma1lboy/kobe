@@ -1,16 +1,7 @@
-/**
- * `files.*` keybinding rows — split out of `keybindings.ts` (which was
- * over the repo's 500-line file-size cap) purely mechanically: same
- * entries, same order, moved verbatim. See `keybindings.ts`'s doc comment
- * for the full contract (id stability, scope semantics, hint display
- * rules).
- */
-
 import type { KobeBinding } from "./keybindings.ts"
 
 export const FILES_BINDINGS: readonly KobeBinding[] = [
   {
-    // POSITIONAL: alternating [down, up] pairs (slot dispatch).
     id: "files.nav",
     scope: "files",
     keys: ["j", "k", "down", "up"],
@@ -19,13 +10,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "j/k", label: "nav" },
   },
   {
-    // `h`/`l` for hierarchy navigation in the All tab tree:
-    //   l → expand directory / descend into first child / open file
-    //   h → collapse directory / jump to parent
-    // Plain letters are pane-scoped per the keybinding-boundaries
-    // rule (docs/KEYBINDINGS.md): files-focused only, so they don't
-    // collide with composer typing.
-    // POSITIONAL: alternating [collapse, expand] pairs (slot dispatch).
     id: "files.hierarchy",
     scope: "files",
     keys: ["h", "l", "left", "right"],
@@ -34,10 +18,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "h/l", label: "level" },
   },
   {
-    // enter → one-key "just open it": opens the file in the user's
-    // nvim/vim (side-by-side `nvim -d` diff vs HEAD when changed, a plain
-    // editable open otherwise), falling back to our own opentui read-only
-    // preview only when no nvim/vim is installed.
     id: "files.open",
     scope: "files",
     keys: ["return"],
@@ -46,10 +26,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "enter", label: "open" },
   },
   {
-    // `[` / `]` cycle the All / Changes tabs. Bracket pair matches
-    // the sidebar's Working/Archives view-switcher so the muscle
-    // memory is consistent across panes.
-    // POSITIONAL: [previous tab, next tab] pairs (slot dispatch).
     id: "files.tab",
     scope: "files",
     keys: ["[", "]"],
@@ -74,10 +50,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "o", label: "open external", status: false },
   },
   {
-    // `a` → inject `@<path>` into the engine (claude/codex) pane via
-    // tmux send-keys (KOB-232). Enter stays the full-width preview; this
-    // is the "add as a mention" action. Plain letter, files-scoped per
-    // the keybinding-boundaries rule, so it can't collide elsewhere.
     id: "files.mention",
     scope: "files",
     keys: ["a"],
@@ -86,10 +58,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "a", label: "@mention" },
   },
   {
-    // Ops-pane action on the Changes tab. This is the v0.5 Create PR
-    // button rehomed into the file-changes surface: pressing `p` sends
-    // the PR prompt into the engine pane instead of rendering an outer
-    // monitor button.
     id: "files.createPR",
     scope: "files",
     keys: ["p"],

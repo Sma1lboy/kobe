@@ -1,10 +1,3 @@
-/**
- * `kobe doctor` resource section — pure halves (ps-output parsing +
- * pane-group filtering) plus the async wiring (`resourceDoctorLines`)
- * against a mocked tmux + `ps`. Why this matters: #205's memory reports had
- * no hard numbers to triage from; this is what kobe uses to build them.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({

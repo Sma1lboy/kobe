@@ -1,28 +1,3 @@
-/**
- * `kobe doctor` and `kobe reset` — packaged-build recovery (KOB-258).
- *
- * Dev has `bun run dev:sandbox:reset` (a `kobe kill-sessions` on the
- * sandbox tmux socket) to wipe a throwaway environment. The installed
- * (`npm i -g @sma1lboy/kobe`) build had no equivalent: when the daemon
- * wedged or died, a user had only scattered partial tools (`daemon
- * restart` = daemon only, `kill-sessions` = tmux only, `daemon status` =
- * report-but-don't-fix). These two commands close that gap:
- *
- *   - `kobe doctor`  — read-only. Diagnose daemon / tmux / state, and tail
- *                      daemon.log when the daemon is down. Mutates nothing.
- *   - `kobe reset`   — the prod equivalent of dev:sandbox:reset. Stops the
- *                      daemon (graceful → SIGTERM → SIGKILL), removes its
- *                      socket + pidfile, and kills all kobe tmux sessions.
- *                      `--hard` also wipes the task index + UI state.
- *                      NEVER touches git worktrees.
- *
- * The real wedge `reset` exists for: `startDaemonServer` unlinks the
- * socket before `listen`, so a stale socket FILE alone is harmless — the
- * trap is an OLD daemon process still alive but not servicing the socket
- * (pidfile → live pid). A fresh launch then steals the socket and you get
- * two daemons writing one `tasks.json`. `reset` makes the old one go away.
- */
-
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { unlink } from "node:fs/promises"
 import { join } from "node:path"
@@ -38,8 +13,6 @@ import { CURRENT_VERSION } from "../version.ts"
 import { resourceDoctorLines } from "./doctor-resources.ts"
 import { terminalDoctorLines } from "./doctor-terminal.ts"
 
-/** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
- *  alive but owned by someone else. */
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -49,9 +22,6 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** Connect-and-ask `daemon.status`. Returns null if the daemon isn't
- *  reachable. Read-only: {@link KobeDaemonClient} only dials the socket,
- *  it never spawns a daemon, so calling this can't accidentally start one. */
 async function probeDaemonStatus(socketPath: string): Promise<Record<string, unknown> | null> {
   const client = new KobeDaemonClient(socketPath)
   try {
@@ -78,7 +48,6 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** "present (4.2 KB, modified 2026-05-29T…)" or "absent". */
 function describeFile(path: string): string {
   try {
     const st = statSync(path)
@@ -88,7 +57,6 @@ function describeFile(path: string): string {
   }
 }
 
-/** Number of tasks recorded in a v3 `tasks.json`, or null if unreadable. */
 function taskCount(tasksPath: string): number | null {
   try {
     const parsed = JSON.parse(readFileSync(tasksPath, "utf8")) as { tasks?: unknown[] }
@@ -98,7 +66,6 @@ function taskCount(tasksPath: string): number | null {
   }
 }
 
-/** Last `n` non-empty lines of a file, or "" if missing/unreadable. */
 function tailFile(path: string, n: number): string {
   try {
     const lines = readFileSync(path, "utf8")
@@ -110,19 +77,12 @@ function tailFile(path: string, n: number): string {
   }
 }
 
-/** Run a tmux command on kobe's socket, swallowing the "no server
- *  running" stderr that `runTmux`/`runTmuxCapturing` would otherwise log.
- *  doctor/reset treat an absent server as a normal state, not an error. */
 async function tmuxQuiet(args: string[]): Promise<{ code: number; stdout: string }> {
   const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "pipe", stderr: "ignore" })
-  // Drain stdout CONCURRENTLY with awaiting exit (the runTmuxCapturing
-  // pattern, KOB-244) so a large `list-sessions` can never fill the pipe
-  // buffer and wedge the call.
   const [stdout, code] = await Promise.all([new Response(proc.stdout).text().catch(() => ""), proc.exited])
   return { code, stdout }
 }
 
-/** Count of sessions on kobe's tmux server (0 when no server is running). */
 async function kobeSessionCount(): Promise<number> {
   if (!(await tmuxAvailable())) return 0
   const { code, stdout } = await tmuxQuiet(["list-sessions", "-F", "#{session_name}"])
@@ -130,11 +90,6 @@ async function kobeSessionCount(): Promise<number> {
   return stdout.split("\n").filter((l) => l.trim().length > 0).length
 }
 
-/**
- * `kobe doctor` — read-only health check. Never kills, unlinks, or wipes;
- * it only reports and recommends. The fix is `kobe reset` / `kobe daemon
- * restart`, surfaced in the output.
- */
 export async function runDoctorSubcommand(argv: readonly string[] = []): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
     process.stdout.write(
@@ -169,12 +124,8 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     "",
   ]
 
-  // --- Terminal ---------------------------------------------------------
-  // Keyboard bugs are terminal-dependent (issue #192): capture what the
-  // reporter's terminal is and whether kobe sees the kitty keyboard protocol.
   out.push(...(await terminalDoctorLines()), "")
 
-  // --- Daemon ---------------------------------------------------------
   const status = await probeDaemonStatus(socketPath)
   if (status) {
     const pid = typeof status.daemonPid === "number" ? status.daemonPid : "?"
@@ -182,9 +133,6 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     const tasks = typeof status.taskCount === "number" ? status.taskCount : "?"
     const clients = typeof status.attachedClients === "number" ? status.attachedClients : "?"
     out.push(`daemon:  ✓ running (pid ${pid}, up ${up}, ${tasks} task(s), ${clients} client(s))`)
-    // Surface a stale-build daemon: the long-lived daemon may be running an
-    // older binary than the one that launched `kobe doctor` (Bun has no
-    // hot-reload). The TUI shows a banner for this; doctor names the fix.
     const daemonVersion = typeof status.kobeVersion === "string" ? status.kobeVersion : undefined
     if (daemonVersion && daemonVersion !== CURRENT_VERSION) {
       out.push(`         ⚠ stale build: daemon is v${daemonVersion}, you launched v${CURRENT_VERSION}`)
@@ -212,7 +160,6 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   }
   out.push("")
 
-  // --- tmux -----------------------------------------------------------
   if (await tmuxAvailable()) {
     out.push(`tmux:    ${await kobeSessionCount()} kobe session(s) on \`${KOBE_TMUX_SOCKET}\` socket`)
   } else {
@@ -220,12 +167,8 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   }
   out.push("")
 
-  // --- resources --------------------------------------------------------
-  // Memory/CPU complaints (#205) had no hard numbers to triage from —
-  // attach this snapshot to a report instead of "eventually killed bun".
   out.push(...(await resourceDoctorLines()), "")
 
-  // --- agent skill ----------------------------------------------------
   const skill = kobeSkillState()
   if (!skill.installed) {
     out.push("skill:   ✗ kobe agent skill not installed (optional — lets a coding agent drive `kobe api`)")
@@ -239,7 +182,6 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   }
   out.push("")
 
-  // --- State files ----------------------------------------------------
   const count = taskCount(tasksPath)
   out.push(`tasks.json: ${describeFile(tasksPath)}${count === null ? "" : ` — ${count} task(s)`}`)
   out.push(`state.json: ${describeFile(statePath)}`)
@@ -248,7 +190,6 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   console.log(out.join("\n"))
 }
 
-/** Interactive y/N confirm on a TTY. Returns false on anything but yes. */
 async function confirmTty(prompt: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
@@ -259,8 +200,6 @@ async function confirmTty(prompt: string): Promise<boolean> {
   }
 }
 
-/** Best-effort delete of a kobe state file. ENOENT is success (already
- *  gone); any other error is reported but non-fatal. */
 async function removeStateFile(path: string, label: string): Promise<void> {
   try {
     await unlink(path)
@@ -274,17 +213,6 @@ async function removeStateFile(path: string, label: string): Promise<void> {
   }
 }
 
-/**
- * `kobe reset [--hard] [--yes]` — the packaged equivalent of
- * `dev:sandbox:reset`. Tears down the daemon + all kobe tmux sessions so a
- * fresh `kobe` launch starts clean. `--hard` additionally wipes the task
- * index + UI state. Git worktrees (under `~/.kobe/worktrees/` or legacy
- * repo-local roots) are NEVER touched. Does not respawn the daemon — relaunch
- * kobe for that.
- *
- * Confirmation: interactive y/N on a TTY; `--yes`/`-y` skips it; on a
- * non-TTY without `--yes` it prints the plan and exits without acting.
- */
 function printResetUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
@@ -308,8 +236,6 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     printResetUsage(process.stdout)
     return
   }
-  // Reject any unrecognized flag with usage instead of silently ignoring
-  // it — a typo like `--harf` must not quietly run a soft reset.
   const known = new Set(["--hard", "--yes", "-y"])
   const unknown = argv.find((a) => !known.has(a))
   if (unknown !== undefined) {
@@ -357,7 +283,6 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   }
 
   console.log("")
-  // 1. Daemon: stop + confirm-dead + remove socket/pidfile.
   const { pid, method } = await stopDaemonProcess(socketPath, pidPath)
   console.log(
     method === "absent"
@@ -365,9 +290,6 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
       : `  daemon: stopped via ${method}${pid ? ` (pid ${pid})` : ""}`,
   )
 
-  // 2. tmux: kill the whole kobe server (all task sessions at once).
-  // TERM pane groups first — engines/helpers catch tmux's HUP without
-  // exiting, so a bare kill-server leaked every pane process to launchd.
   if (await tmuxAvailable()) {
     await termAllPaneGroups()
     const { code } = await tmuxQuiet(["kill-server"])
@@ -380,7 +302,6 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     console.log("  tmux: not installed — no sessions to kill")
   }
 
-  // 3. Hard wipe: task index + UI state (still NOT worktrees).
   if (hard) {
     await removeStateFile(tasksPath, "task index")
     await removeStateFile(statePath, "UI state")
@@ -389,22 +310,6 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   console.log("\nkobe: reset complete. Relaunch kobe to start fresh.")
 }
 
-/**
- * `kobe reload` — hot-reload kobe's in-tmux helper panes (Tasks + Ops)
- * across every live session WITHOUT a `kobe reset`. The use case: after
- * changing kobe TUI-layer code, the long-lived `kobe tasks` / `kobe ops`
- * pane processes are still running the OLD binary, so new shortcuts /
- * layout / file-pane behaviour look "missing" until something restarts
- * them. `kobe reset` would restart them too — but by killing the whole tmux
- * server, which also kills the user's engine (claude) panes mid-turn.
- *
- * This is the surgical alternative: it reuses {@link refreshKobeWorkspacePanes}
- * (the same in-place `respawn-pane -k` heal the post-Settings refresh uses),
- * which respawns ONLY the kobe-owned Tasks/Ops panes and leaves pane-0 (the
- * engine) and shell panes untouched. Each respawned pane re-execs the
- * current binary and reconnects to the daemon fresh, so it also clears any
- * accumulated task-list drift. Pure tmux — needs no running daemon.
- */
 export async function runReloadSubcommand(argv: readonly string[] = []): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
     process.stdout.write(
@@ -442,8 +347,6 @@ export async function runReloadSubcommand(argv: readonly string[] = []): Promise
     console.log(`kobe reload: no kobe tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`)
     return
   }
-  // Dynamic import: the heal lives in the TUI/tmux module graph; keep it off
-  // the static path of the other maintenance commands.
   const { refreshKobeWorkspacePanes } = await import("../tui/panes/terminal/tmux.ts")
   let reloaded = 0
   for (const session of sessions) {

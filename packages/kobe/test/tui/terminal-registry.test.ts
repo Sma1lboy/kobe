@@ -1,11 +1,3 @@
-/**
- * Why this matters: the registry is the seam that decouples pane lifecycle
- * (per-render) from shell lifecycle (per-task) — the terminal-in-the-middle
- * center column (issue #16) leans on acquire-reuse so switching tasks and
- * back does NOT restart the engine CLI. A regression here kills running
- * claude sessions on every sidebar keystroke.
- */
-
 import { describe, expect, it } from "vitest"
 import { MockTaskPty } from "../../src/tui/panes/terminal/pty-mock"
 import type { TaskPtyOpts } from "../../src/tui/panes/terminal/pty-types"

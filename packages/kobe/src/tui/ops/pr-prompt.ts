@@ -31,20 +31,12 @@ Follow these steps to create a PR:
 
 If any of these steps fail, ask the user for help.`
 
-// Async spawn — `git status` is O(repo size), and this runs on the Ops
-// pane's render process. On a huge repo the old spawnSync blocked the
-// pane until the timeout; the async child costs nothing on the event
-// loop. Same timeout, SIGKILLed via AbortSignal.
 async function git(cwd: string, args: readonly string[]): Promise<string | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), GIT_TIMEOUT_MS)
   try {
     const out = await spawnCapture("git", args, {
       cwd,
-      // Read-only inspection (`status`, `rev-parse`, `symbolic-ref`).
-      // `git status` would otherwise rewrite `.git/index`'s stat cache
-      // and take `.git/index.lock`, racing the worktree's engine commits
-      // for the lock. `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
       env: readOnlyGitProcessEnv(),
       signal: controller.signal,
     })

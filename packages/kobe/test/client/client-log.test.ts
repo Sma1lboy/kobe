@@ -11,13 +11,6 @@ import {
 } from "@sma1lboy/kobe-daemon/client/client-log"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-/**
- * The client log is the observability that was MISSING when the Tasks-pane
- * sync drift went undiagnosed: a pane in an opentui alternate-screen has no
- * visible stdout, so its disconnect churn left no trace. These lock the line
- * format (context + pid + subsystem tag) and that a real write lands on disk
- * under the KOBE_HOME_DIR-isolated `.kobe/client.log`.
- */
 describe("client-log", () => {
   it("formats a line with context, pid, and subsystem tag", () => {
     setClientLogContext("tasks")
@@ -48,7 +41,7 @@ describe("client-log", () => {
       setClientLogContext("ops")
       logClient("reconnect", "daemon socket closed")
       logClient("reconnect", "reconnected after 2 attempts")
-      await flushClientLog() // append is fire-and-forget async; wait for the chain
+      await flushClientLog()
       const contents = await readFile(join(home, ".kobe", "client.log"), "utf8")
       const lines = contents.trim().split("\n")
       expect(lines).toHaveLength(2)
@@ -58,12 +51,6 @@ describe("client-log", () => {
     })
   })
 
-  /**
-   * The pane crash net: each `kobe <pane>` process used to terminate on a
-   * single stray rejected fire-and-forget. These lock that the handlers are
-   * installed exactly once (idempotent) and remove cleanly, mirroring the
-   * daemon's `crash-log` contract.
-   */
   describe("crash handlers", () => {
     afterEach(() => resetClientCrashHandlersForTest())
 

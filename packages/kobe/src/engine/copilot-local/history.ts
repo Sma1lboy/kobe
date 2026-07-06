@@ -29,8 +29,6 @@ const defaultDeps: CopilotHistoryDeps = {
     }
   },
   async readFile(p) {
-    // Size-bounded: an oversize/corrupt events.jsonl degrades to "" rather
-    // than slurping a multi-GB file into memory.
     return await readTextFileBounded(p)
   },
   stat,
@@ -45,18 +43,6 @@ export async function listSessionDirs(deps: CopilotHistoryDeps = defaultDeps): P
   return names.map((name) => path.join(root, name))
 }
 
-/**
- * Session ids of Copilot conversations rooted at `worktree`, oldest-first.
- *
- * The monitor's auto-title dispatch (and any future per-vendor history
- * walk) calls this the same way it calls Claude's
- * `listSessionFilesForWorktree` / Codex's `listSessionIdsForWorktree`.
- * Copilot stores each session as a directory under
- * `~/.copilot/session-state/<id>/` with a `workspace.yaml` recording the
- * `cwd`; we match that against the worktree and order by `updatedAt`
- * (newest workspace timestamp last so the origin conversation comes
- * first, matching the other readers' oldest-first contract).
- */
 export async function listSessionIdsForWorktree(
   worktree: string,
   deps: CopilotHistoryDeps = defaultDeps,
@@ -70,13 +56,6 @@ export async function listSessionIdsForWorktree(
   return matches.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((m) => m.id)
 }
 
-/**
- * Newest `events.jsonl` mtime (epoch ms) across the Copilot sessions
- * rooted at `worktree`, or 0 when none match. The Ops pane polls this to
- * detect new Copilot conversation output without parsing the tmux pane
- * (KOB-254). Each session is a dir with a `workspace.yaml` (for the cwd
- * match) and a growing `events.jsonl` (the transcript we stat).
- */
 export async function latestTranscriptMtimeForWorktree(
   worktree: string,
   deps: CopilotHistoryDeps = defaultDeps,
@@ -89,9 +68,7 @@ export async function latestTranscriptMtimeForWorktree(
     try {
       const { mtimeMs } = await deps.stat(path.join(dir, "events.jsonl"))
       if (mtimeMs > newest) newest = mtimeMs
-    } catch {
-      // session dir without an events.jsonl yet — skip
-    }
+    } catch {}
   }
   return newest
 }
@@ -173,15 +150,6 @@ export function parseEvents(
   return { messages: state.messages, usageMetrics: state.usageMetrics, firstUserMessage: state.firstUserMessage }
 }
 
-/**
- * Fold state for `events.jsonl` parsing. Unlike claude/codex, the copilot
- * event stream is NOT line-local: `session.start` sets the sessionId for
- * everything after it, tool names are resolved from an earlier
- * `tool.execution_start`, and firstUserMessage/usage are first/last-wins.
- * The append-aware cache therefore snapshots this whole fold state at the
- * cached prefix boundary, so folding an appended slice onto it reproduces
- * a full parse exactly.
- */
 interface CopilotParseState {
   readonly messages: Message[]
   readonly toolNameById: ReadonlyMap<string, string>
@@ -205,7 +173,6 @@ const eventsCache = createAppendParseCache<CopilotParseState, string>({
   parseChunk: (chunk, prev) => foldEvents(chunk, prev),
 })
 
-/** Fold event lines onto `prev` without mutating it (cache contract). */
 function foldEvents(raw: string, prev: CopilotParseState): CopilotParseState {
   const messages = prev.messages.slice()
   const toolNameById = new Map(prev.toolNameById)
@@ -236,9 +203,6 @@ function foldEvents(raw: string, prev: CopilotParseState): CopilotParseState {
     if (record.type === "user.message") {
       const text = typeof data.content === "string" ? data.content : ""
       if (!text) continue
-      // Force-copy: in JSC (Bun) `.slice` shares the parent string's backing
-      // buffer, so a 200-char preview would otherwise pin the full message
-      // text for as long as a caller retains the preview.
       if (!firstUserMessage) firstUserMessage = Buffer.from(text.slice(0, PREVIEW_CHAR_CAP), "utf8").toString("utf8")
       messages.push({ role: "user", blocks: [{ type: "text", text }], timestamp, sessionId })
       continue

@@ -16,10 +16,9 @@ describe("DaemonEventBus", () => {
   it("caches the LAST value per channel for late-subscriber replay", () => {
     const bus = new DaemonEventBus()
     bus.publish("active-task", { taskId: "t1" })
-    bus.publish("active-task", { taskId: "t2" }) // newer wins
+    bus.publish("active-task", { taskId: "t2" })
     bus.publish("task.snapshot", { tasks: [] })
     const snap = bus.snapshot()
-    // one entry per channel, holding the most recent payload
     expect(snap).toContainEqual({ channel: "active-task", payload: { taskId: "t2" } })
     expect(snap).toContainEqual({ channel: "task.snapshot", payload: { tasks: [] } })
     expect(snap.filter((e) => e.channel === "active-task")).toHaveLength(1)

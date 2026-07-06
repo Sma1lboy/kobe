@@ -1,15 +1,3 @@
-/**
- * Prompt-attachment parsing + rendering (quick-task multimodal paste).
- *
- * Why these matter: the paste interceptor decides whether pasted TEXT is
- * "attachment path(s)" (consume, attach) or ordinary prompt text (fall
- * through to the input). A false positive silently eats the user's text;
- * a false negative leaves a raw path in the prompt. The tests pin the
- * boundary: absolute + existing + known extension, all-lines-or-nothing
- * for multi-path pastes, and the exact `images[n]` / `pdf[n]` reference
- * format the engine receives.
- */
-
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -50,7 +38,6 @@ describe("asAttachmentPaths (whole-paste gate)", () => {
   test("multi-line Finder copy: all lines must resolve", () => {
     const known = ["/a/x.png", "/a/y.pdf"]
     expect(asAttachmentPaths("/a/x.png\n/a/y.pdf\n", exists(known))).toEqual(known)
-    // One ordinary-text line → the WHOLE paste is prompt text, not attachments.
     expect(asAttachmentPaths("/a/x.png\nfix this bug", exists(known))).toBeNull()
   })
 
@@ -74,13 +61,6 @@ describe("rendering", () => {
   })
 })
 
-/**
- * captureClipboardAttachment drives the OS clipboard through `Bun.spawn`
- * (osascript / wl-paste / xclip). In vitest's node env `Bun` is undefined, so
- * a fake `globalThis.Bun.spawn` is injected per test — `capture()` reads only
- * `{ stdout, exited }`, so a plain object stands in for a subprocess. Platform
- * is forced via defineProperty and restored after each test.
- */
 describe("captureClipboardAttachment", () => {
   const realPlatform = Object.getOwnPropertyDescriptor(process, "platform")!
   let home: string
@@ -124,8 +104,7 @@ describe("captureClipboardAttachment", () => {
     setPlatform("darwin")
     setSpawn((cmd) => {
       const joined = cmd.join(" ")
-      if (joined.includes("class furl")) return { stdout: "", exited: Promise.resolve(1) } // no file on clipboard
-      // The PNGf script embeds the destination path; write it like osascript would.
+      if (joined.includes("class furl")) return { stdout: "", exited: Promise.resolve(1) }
       const dest = joined.match(/POSIX file "([^"]+)"/)?.[1]
       if (dest) {
         writeFileSync(dest, "saved-png")
@@ -141,18 +120,16 @@ describe("captureClipboardAttachment", () => {
 
   test("darwin: nothing attachable on the clipboard yields null", async () => {
     setPlatform("darwin")
-    // Both osascript calls fail; the PNGf one also writes no file.
     setSpawn(() => ({ stdout: "", exited: Promise.resolve(1) }))
     expect(await captureClipboardAttachment()).toBeNull()
   })
 
   test("darwin: a PNGf 'success' without a file on disk still yields null (exists guard)", async () => {
     setPlatform("darwin")
-    setSpawn(
-      (cmd) =>
-        cmd.join(" ").includes("class furl")
-          ? { stdout: "", exited: Promise.resolve(1) }
-          : { stdout: "", exited: Promise.resolve(0) }, // claims success, writes nothing
+    setSpawn((cmd) =>
+      cmd.join(" ").includes("class furl")
+        ? { stdout: "", exited: Promise.resolve(1) }
+        : { stdout: "", exited: Promise.resolve(0) },
     )
     expect(await captureClipboardAttachment()).toBeNull()
   })
@@ -175,7 +152,7 @@ describe("captureClipboardAttachment", () => {
     setPlatform("linux")
     const bytes = new Uint8Array([1, 2, 3])
     setSpawn((cmd) => {
-      if (cmd[0] === "wl-paste") throw new Error("ENOENT") // binary missing
+      if (cmd[0] === "wl-paste") throw new Error("ENOENT")
       if (cmd[0] === "xclip") return { stdout: bytes, exited: Promise.resolve(0) }
       throw new Error("unexpected spawn")
     })

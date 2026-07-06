@@ -11,7 +11,6 @@ import {
 
 const REF: KeychainRef = { service: "kobe-remote-ssh", account: "dev@box:2222" }
 
-/** A fake keychain that records argv and answers from an in-memory store. */
 function fakeKeychain(platform = "darwin", store: Record<string, string> = {}) {
   const calls: string[][] = []
   const run: KeychainDeps["run"] = (argv) => {
@@ -84,7 +83,6 @@ describe("non-darwin degradation", () => {
     expect(setKeychainPassword(REF, "x", deps)).toBe(false)
     expect(getKeychainPassword(REF, deps)).toBeNull()
     expect(deleteKeychainPassword(REF, deps)).toBe(false)
-    // Nothing was shelled out to `security` on an unsupported platform.
     expect(calls).toHaveLength(0)
   })
 })

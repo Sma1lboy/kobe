@@ -1,11 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Existing tab of the React new-task dialog (issue #15, G3W2) — pick an
- * existing local repo path + base branch. Direct port of the Solid
- * shell's existing-tab body: unified free-text repo input with the
- * saved/browse smart dropdown, branch picker that augments the input.
- * All behavior lives in the view-model; this file is JSX only.
- */
 
 import { DEFAULT_BASE_REF } from "../../../tui/lib/git-snapshot"
 import { useTheme } from "../../context/theme"
@@ -43,8 +36,6 @@ export function ExistingTab({ vm }: { vm: NewTaskVm }) {
           placeholder={vm.defaultRepo}
           focused={vm.field === "repo"}
           onInput={(v: string) => vm.setRepoText(v)}
-          // Every Enter routes through onRepoSubmit — it handles the
-          // empty-input pick-first case too.
           onSubmit={() => vm.onRepoSubmit()}
         />
       </box>
@@ -58,8 +49,6 @@ export function ExistingTab({ vm }: { vm: NewTaskVm }) {
           placeholder={DEFAULT_BASE_REF}
           focused={vm.field === "baseRef"}
           onInput={(v: string) => vm.setBaseRefText(v)}
-          // Last field on the tab — Enter resolves the highlighted branch
-          // and creates straight away.
           onSubmit={() => vm.onBaseRefSubmit()}
         />
       </box>

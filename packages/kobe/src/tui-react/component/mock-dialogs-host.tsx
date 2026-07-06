@@ -1,18 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * React task-dialogs mock host (`bun run dev:mock-react-dialogs`) —
- * live-render proof for the ported NewTaskDialog + RenameTaskDialog
- * (issue #15, G3W2). Boots through the real React pane host, opens a
- * dialog on mount with fixture data (saved repos, adoptable worktrees,
- * a detected-vendor set), and leaves the full dialog interactive:
- * tab/←→/ctrl+[]/ctrl+e all run for real; esc closes; the last dialog
- * result is echoed on the backdrop.
- *
- * Env knobs (proof-grep seams):
- *   KOBE_MOCK_DIALOG=rename  — open the rename dialog instead of new-task.
- *   KOBE_MOCK_LOCALE=zh      — render the zh catalog (via setLocaleLang).
- * Keys while no dialog is open: n new-task · r rename · q quit.
- */
 
 import type { AdoptableWorktree } from "@/types/worktree"
 import { TextAttributes } from "@opentui/core"
@@ -51,9 +37,6 @@ function MockDialogsScreen() {
   const dialog = useDialog()
   const [lastResult, setLastResult] = useState("(none yet)")
 
-  // Pin the proof locale: host-boot's UiPrefsSync applies the daemon's
-  // persisted locale after mount, which would race the KOBE_MOCK_LOCALE
-  // seed from setup — re-assert whenever the language drifts.
   const lang = useLang()
   const wantLocale = process.env.KOBE_MOCK_LOCALE
   useEffect(() => {
@@ -72,7 +55,6 @@ function MockDialogsScreen() {
     void RenameTaskDialog.show(dialog, "My mock task").then((r) => setLastResult(r ?? "(cancelled)"))
   }
 
-  // Open the requested dialog once on mount (proof seam).
   const opened = useRef(false)
   useEffect(() => {
     if (opened.current) return
@@ -81,9 +63,6 @@ function MockDialogsScreen() {
     else openNewTask()
   })
 
-  // Plain letters must stay typable inside the dialog inputs — gate the
-  // whole set on the dialog stack being empty (the config thunk re-runs
-  // per keypress, so this tracks the live stack).
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
@@ -112,7 +91,6 @@ function MockDialogsScreen() {
 await bootPaneHost({
   logContext: "mock-dialogs",
   setup: () => {
-    // Locale proof seam — override AFTER the persisted-prefs seed.
     const locale = process.env.KOBE_MOCK_LOCALE
     if (locale && isLocaleId(locale)) setLocaleLang(locale)
     return { root: () => <MockDialogsScreen /> }

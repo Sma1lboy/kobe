@@ -2,13 +2,6 @@ import { describe, expect, it } from "vitest"
 import { matchesTask, sortTasks } from "../src/lib/task-list.ts"
 import type { Task } from "../src/lib/types.ts"
 
-/**
- * Task-rail ordering + filtering. The load-bearing rule is the GROUP order:
- * projects (main) > pinned > regular, in BOTH modes — `recent` re-orders the
- * WORKTREE groups (pinned, regular) by update time but never lets a recent
- * regular task jump above a project or a pinned one, and never reshuffles the
- * projects themselves (projects "sit tight"). matchesTask is the rail search.
- */
 
 const task = (over: Partial<Task>): Task =>
   ({
@@ -78,22 +71,16 @@ describe("sortTasks — recent mode", () => {
       task({ id: "b", createdAt: "2026-06-01T00:00:00Z" }),
       task({ id: "a", createdAt: "2026-06-01T00:00:00Z" }),
     ]
-    // Equal times → id tiebreak (localeCompare(b.id, a.id), so "b" before "a").
     expect(ids(sortTasks(t, "recent"))).toEqual(["b", "a"])
   })
 
   it("projects sit tight — recent does NOT reshuffle them by updatedAt", () => {
-    // projA is older than projB, but recent must keep their incoming order
-    // (selecting a project bumps its updatedAt; the project list must not
-    // jump around underneath the user).
     const t = [
       task({ id: "projA", kind: "main", updatedAt: "2020-01-01T00:00:00Z" }),
       task({ id: "projB", kind: "main", updatedAt: "2026-06-10T00:00:00Z" }),
       task({ id: "reg", updatedAt: "2026-06-09T00:00:00Z" }),
     ]
-    // projA stays before projB despite being staler; only worktrees reorder.
     expect(ids(sortTasks(t, "recent"))).toEqual(["projA", "projB", "reg"])
-    // And the order matches default mode for the projects.
     expect(ids(sortTasks(t, "default")).slice(0, 2)).toEqual(["projA", "projB"])
   })
 })
@@ -129,8 +116,6 @@ describe("matchesTask", () => {
 })
 
 describe("rail Enter target — top match of filter+sort", () => {
-  // What the task rail's Enter-to-jump opens: the first element of the same
-  // sorted+filtered list the rail renders (visible[0] in AppShell).
   const topMatch = (
     all: Task[],
     query: string,
@@ -152,9 +137,6 @@ describe("rail Enter target — top match of filter+sort", () => {
   })
 
   it("respects group order — a project outranks a matching worktree", () => {
-    // "feat" matches both worktrees, but a project (main) that also matches
-    // sorts first; here the query matches only worktrees, so the first
-    // worktree in order wins.
     expect(topMatch(all, "feat", "default")?.id).toBe("a")
   })
 

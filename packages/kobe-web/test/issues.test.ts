@@ -27,11 +27,6 @@ import { ensureEngineTab } from "../src/lib/tabs.ts"
 import { sendPtyText } from "../src/lib/terminal.ts"
 import type { Task } from "../src/lib/types.ts"
 
-/**
- * Pure helpers for the Issues panel: search/filter semantics, column
- * grouping + ordering, the cross-project overview math, and the
- * quick-start prompt contract (id + title + body + done instruction).
- */
 
 const issue = (over: Partial<Issue>): Issue => ({
   id: over.id ?? 1,
@@ -350,7 +345,6 @@ describe("quickStartPrompt", () => {
     expect(prompt).toContain(
       "kobe api issue-set-status --repo . --id 42 --status done",
     )
-    // The caller flips to doing; the prompt must NOT tell the agent to.
     expect(prompt).not.toContain('"doing"')
   })
 
@@ -408,15 +402,11 @@ describe("quickStartIssue", () => {
 
     const result = await quickStartIssue("/u/p/kobe", target)
     expect(result).toEqual({ taskId: "task-1" })
-    // No branch; vendor follows Settings' default engine. Task.issueId was
-    // dropped — the create payload no longer carries an issueId; Issue.taskId
-    // (set by the link op below) is the only link.
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
       vendor: "codex",
     })
-    // The daemon's active-task pointer follows, like every open-task path.
     expect(rpc).toHaveBeenCalledWith("task.setActive", { taskId: "task-1" })
     expect(rpc).not.toHaveBeenCalledWith("task.ensureWorktree", expect.anything())
     expect(ensureEngineTab).toHaveBeenCalledWith("task-1")
@@ -425,8 +415,6 @@ describe("quickStartIssue", () => {
       "task-1",
       quickStartPrompt(target, "bun ./src/cli/index.ts api"),
     )
-    // The link went through the issues POST route as a {type:"link"} op
-    // carrying the new taskId (flips status doing + arms the daemon mirror).
     const issuesPost = fetchMock.mock.calls.find(
       ([url, opts]) =>
         url === "/api/issues" &&
@@ -463,7 +451,6 @@ describe("quickStartIssue", () => {
     )
 
     await quickStartIssue("/u/p/kobe", target, "claude")
-    // Drawer-chosen engine wins; Settings is not even read for the vendor.
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
@@ -558,7 +545,6 @@ describe("quickStartIssue", () => {
     await expect(quickStartIssue("/u/p/kobe", target)).rejects.toThrow(
       "daemon unreachable",
     )
-    // task.create failed, so there's no task to point the daemon at.
     expect(rpc).not.toHaveBeenCalledWith(
       "task.setActive",
       expect.anything(),

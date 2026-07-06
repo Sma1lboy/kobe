@@ -1,15 +1,3 @@
-/**
- * The bundled theme JSONs as a plain map, importable WITHOUT the Solid
- * runtime.
- *
- * `theme.tsx` keeps its own static imports (it needs them inside a Solid
- * store built at module load), and `cli/theme.ts` mirrors just the NAMES
- * for the same reason. This module is for code that needs the actual
- * JSON payloads outside the TUI runtime — e.g. resolving tmux border
- * colors at session-build time. Keep the set in sync with
- * `BUNDLED_THEMES` in `theme.tsx` and `BUNDLED_NAMES` in `cli/theme.ts`.
- */
-
 import type { ThemeJson } from "../theme"
 
 import claude from "./claude.json" with { type: "json" }

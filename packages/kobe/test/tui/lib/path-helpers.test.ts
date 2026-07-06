@@ -1,18 +1,3 @@
-/**
- * Unit tests for `src/tui/lib/path-helpers.ts` — the path/dir
- * suggestion plumbing behind the new-task dialog's browse-mode picker
- * and `kobe quick-task`'s repo resolution.
- *
- * Why these matter: this module was split out of the dialog's state.ts
- * junk drawer; it's now a shared lib, so regressions here break two
- * surfaces at once. `splitPathForDirSuggest` + `joinDrill` together
- * implement the "type a path, drill with enter" loop — the split tests
- * (moved here from new-task-dialog/state.test.ts) pin the
- * trailing-slash and partial-leaf cases, and the joinDrill tests pin
- * the `~/` round-trip (expand for readdir, rewrap for display) that
- * keeps the rendered input readable.
- */
-
 import * as os from "node:os"
 import { expandHome, filterSubdirs, joinDrill, joinPicked, splitPathForDirSuggest } from "@/tui/lib/path-helpers"
 import { describe, expect, it } from "vitest"
@@ -69,7 +54,7 @@ describe("filterSubdirs", () => {
   })
 
   it("prefix-matches case-insensitively (not substring)", () => {
-    expect(filterSubdirs(all, "proj")).toEqual(["projects"]) // not my-projects
+    expect(filterSubdirs(all, "proj")).toEqual(["projects"])
     expect(filterSubdirs(all, "app")).toEqual(["Apps"])
   })
 })
@@ -102,7 +87,6 @@ describe("joinPicked (select, don't drill — no trailing slash)", () => {
 
   it("collapses a pick AT the home root back to bare ~", () => {
     const home = os.homedir()
-    // base is the parent of home, name is home's leaf → out === home.
     const parent = `${home.slice(0, home.lastIndexOf("/") + 1)}`
     const leaf = home.slice(home.lastIndexOf("/") + 1)
     expect(joinPicked("~", parent, leaf)).toBe("~")

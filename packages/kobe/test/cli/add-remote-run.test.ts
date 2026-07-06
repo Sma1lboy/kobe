@@ -1,11 +1,3 @@
-/**
- * `runAddRemote` (kobe add --remote) — sibling of add-remote.test.ts (which
- * covers parseRemoteFlags). RemoteExecHost + keychain are mocked (a real one
- * would SSH out / hit the macOS keychain); state.json lives under a
- * KOBE_HOME_DIR tempdir, so registration is asserted against the real
- * persisted remoteRepos entry — not a mocked write.
- */
-
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,14 +9,9 @@ const mocks = vi.hoisted(() => ({
   setKeychainPassword: vi.fn(() => true),
   getKeychainPassword: vi.fn(() => "pw"),
   remoteKeychainRef: vi.fn((host: string, user: string, port?: number) => `kobe-ssh:${user}@${host}:${port ?? 22}`),
-  /** What the mocked hidden-password prompt answers. */
   passwordAnswer: "hunter2",
 }))
 
-// promptHidden reads the password through readline against the real tty;
-// answer it synchronously so no test ever blocks on stdin. Before answering,
-// poke the echo-mask hook the way readline would while the user types, so
-// the muting seam is exercised too.
 vi.mock("node:readline", () => ({
   createInterface: vi.fn(() => ({
     question: (_q: string, cb: (answer: string) => void) => {
@@ -157,7 +144,6 @@ describe("runAddRemote key-auth registration", () => {
       auth: { kind: "key", keyPath: "/k" },
     })
     expect(log()).toContain(`added remote project ${key} (base /srv/work)`)
-    // The probe ran `test -d <basePath>` on the (mocked) remote host.
     expect(mocks.run).toHaveBeenCalledWith(["test", "-d", "/srv/work"])
     expect(log()).toContain("ok")
     outSpy.mockRestore()
@@ -216,11 +202,9 @@ describe("runAddRemote password-auth registration", () => {
 
     const ref = "kobe-ssh:dev@box:22"
     expect(mocks.setKeychainPassword).toHaveBeenCalledWith(ref, "hunter2")
-    // state.json carries the keychainRef, never the secret.
     const stored = getRemoteRepos()["ssh://dev@box"]
     expect(stored?.auth).toEqual({ kind: "password", keychainRef: ref })
     expect(JSON.stringify(stored)).not.toContain("hunter2")
-    // The probe still ran against the (mocked) remote host.
     expect(mocks.run).toHaveBeenCalledWith(["test", "-d", "/srv"])
   })
 

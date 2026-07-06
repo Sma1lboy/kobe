@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { isEngineActivityKind, reduceActivity } from "../../src/engine/hook-events.ts"
 
-/**
- * The neutral state machine that turns normalized hook verbs into the badge
- * state the sidebar renders. Pure — this is where the engine→UI mapping is
- * pinned, vendor-agnostic.
- */
 describe("reduceActivity", () => {
   it("maps each verb to the right activity state", () => {
     expect(reduceActivity(undefined, "session-start")).toBe("idle")

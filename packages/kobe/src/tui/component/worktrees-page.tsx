@@ -1,20 +1,3 @@
-/**
- * WorktreesPage — the standalone `kobe worktrees` page. Lists every git
- * worktree across all locally-saved projects (kobe-managed or not — see
- * `worktree.list`'s handler), each row flagging whether kobe manages it,
- * its age, uncommitted-changes state, and whether its branch has reached
- * `origin`. Modeled on `tui/settings/host.tsx` (standalone full-window
- * surface, same close-key contract) and the new-task dialog's Adopt tab
- * (cursor-navigable worktree list — see `new-task-dialog/dialog.tsx`'s
- * adopt tab body for the row-grammar this extends with badges).
- *
- * Delete flow mirrors the daemon's own safety gate
- * (`GitWorktreeManager.remove`): a clean worktree deletes on a single
- * confirm; a dirty one fails the first attempt and surfaces a SECOND,
- * more severe confirm before retrying with `force: true` — no client-side
- * dirty check duplicates the backend's.
- */
-
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
@@ -25,8 +8,6 @@ import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
-/** Compact relative age ("3m", "2h", "4d") — mirrors `tui/history/host.tsx`'s
- *  `relativeTime`, an epoch-ms variant since worktree timestamps aren't ISO. */
 function relativeAge(ms: number): string {
   if (!ms) return ""
   const secs = Math.max(0, Math.floor((Date.now() - ms) / 1000))

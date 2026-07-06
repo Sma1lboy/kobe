@@ -1,17 +1,3 @@
-/**
- * PTY server — the node half of the web terminal (node-pty doesn't work under
- * bun, so the live terminals run here as a separate node process).
- *
- * Model: each web PTY tab is identified by a client-generated `tab` id. Its
- * PTY is spawned lazily on first attach (launch spec fetched from daemon web
- * transport by taskId + mode) and kept alive across WebSocket reconnects, so a
- * page refresh re-attaches to the same process. Closing a tab (POST
- * /pty/close) kills its PTY.
- *
- *   ws  /pty?tab=<id>&taskId=<id>&mode=engine|shell&cols=<n>&rows=<n>
- *   POST /pty/close   { tab }                          kill the tab process
- *   POST /pty/send    { tab, taskId, text }            paste text + Enter into the tab's engine
- */
 
 import { createServer } from "node:http"
 import { spawn } from "node-pty"
@@ -22,7 +8,7 @@ import { createPtySessionManager } from "./pty-session-lifecycle.mjs"
 
 const PORT = Number.parseInt(process.env.KOBE_PTY_PORT ?? "5175", 10)
 const DAEMON_WEB_PORT = Number.parseInt(process.env.KOBE_DAEMON_WEB_PORT ?? "5174", 10)
-const SCROLLBACK_CAP = 256 * 1024 // bytes of recent output replayed on (re)attach
+const SCROLLBACK_CAP = 256 * 1024
 const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
 const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
@@ -30,18 +16,12 @@ const ALLOWED_HOST = allowedHostForBindHost(HOST)
 
 function ptyEnv() {
   const { NO_COLOR: _noColor, ...env } = process.env
-  // Codex/CI shells often set NO_COLOR=1. The browser PTY is a real terminal
-  // surface, so don't let the launcher process accidentally turn off colors in
-  // Claude, Codex, shells, or common CLI tools.
   env.CLICOLOR = env.CLICOLOR ?? "1"
   env.COLORTERM = env.COLORTERM || "truecolor"
   return env
 }
 
 async function fetchSpec(taskId, mode) {
-  // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
-  // the PTY instead of resolving a task's engine via the daemon — so a Playwright
-  // test can drive the real TUI through the web terminal with no daemon or task.
   if (process.env.KOBE_PTY_DEV_COMMAND) {
     return {
       cwd: process.env.KOBE_PTY_DEV_CWD ?? process.cwd(),
@@ -52,7 +32,7 @@ async function fetchSpec(taskId, mode) {
   const res = await fetch(`http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error ?? `engine-spec failed (${res.status})`)
-  return json // { cwd, command: string[] }
+  return json
 }
 
 const ptySessions = createPtySessionManager({
@@ -80,9 +60,6 @@ const server = createServer((req, res) => {
     return
   }
   if (req.method === "POST" && url.pathname === "/pty/send") {
-    // Sending text DRIVES the engine like a keyboard, so unlike /pty/close
-    // (best-effort kill) this holds the same origin policy as the WS attach:
-    // localhost pages or non-browser clients only.
     if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
       res.writeHead(403)
       res.end()
@@ -99,7 +76,6 @@ const server = createServer((req, res) => {
       try {
         ;({ tab, taskId, text } = JSON.parse(body || "{}"))
       } catch {
-        /* ignore */
       }
       const respond = (status, payload) => {
         res.writeHead(status, {
@@ -114,8 +90,6 @@ const server = createServer((req, res) => {
       }
       let result
       try {
-        // Spawn-on-send: a board action can fire without the terminal ever
-        // opening — output lands in the scrollback ring for the next attach.
         result = await ptySessions.sendText({
           tabId: tab,
           taskId: typeof taskId === "string" && taskId ? taskId : null,
@@ -134,10 +108,6 @@ const server = createServer((req, res) => {
     return
   }
   if (req.method === "POST" && url.pathname === "/pty/close") {
-    // Killing a tab is a side effect a cross-origin local page could abuse to
-    // DoS the session (tab ids are client-generated/observable), so hold the
-    // same origin policy as /pty/send and the WS attach: localhost pages or
-    // non-browser clients (no Origin) only.
     if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
       res.writeHead(403)
       res.end()
@@ -152,7 +122,6 @@ const server = createServer((req, res) => {
       try {
         tab = JSON.parse(body || "{}").tab
       } catch {
-        /* ignore */
       }
       const ok = tab ? ptySessions.closeSession(tab) : false
       res.writeHead(200, {
@@ -167,11 +136,6 @@ const server = createServer((req, res) => {
   res.end()
 })
 
-// A PTY WS is arbitrary command exec in the worktree, so reject cross-origin
-// upgrades: a browser sends an Origin header, and only loopback pages (or the
-// deliberately configured LAN host) may attach. This defends a malicious local
-// page / DNS-rebinding even on the loopback bind. Non-browser clients (no
-// Origin) are allowed — there's no browser to forge their request.
 const wss = new WebSocketServer({
   server,
   path: "/pty",
@@ -193,7 +157,6 @@ wss.on("connection", (ws, req) => {
 
   void (async () => {
     try {
-      // Single-flight spawn: concurrent attaches for this tab share one PTY.
       await ptySessions.attachSocket({ ws, tabId, taskId, mode, cols, rows })
     } catch (err) {
       if (ws.readyState === ws.OPEN) {
@@ -205,8 +168,6 @@ wss.on("connection", (ws, req) => {
   })()
 })
 
-// Bind loopback by default — a PTY is an arbitrary shell/engine in the
-// worktree, so it must never listen on all interfaces. KOBE_WEB_HOST overrides.
 server.listen(PORT, HOST, () => {
   process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (daemon-web :${DAEMON_WEB_PORT})\n`)
 })

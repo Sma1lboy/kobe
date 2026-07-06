@@ -1,14 +1,3 @@
-/**
- * Unit tests for daemon socket / pid path resolution.
- *
- * Load-bearing rule: an explicit `KOBE_HOME_DIR` (env var or argument)
- * MUST win over `XDG_RUNTIME_DIR`. Linux desktops set the runtime dir
- * unconditionally, and the previous resolver placed the socket there
- * regardless — which made `dev:sandbox` / any isolated-state daemon
- * share a socket with the production daemon. Same socket = collisions
- * + cross-contamination.
- */
-
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -79,8 +68,6 @@ describe("defaultDaemonSocketPath", () => {
   })
 
   test("two isolated home dirs produce disjoint socket paths", () => {
-    // The whole point of the fix: dev:sandbox and prod must not
-    // collide. Even with XDG set, the two explicit homes diverge.
     process.env.XDG_RUNTIME_DIR = "/run/user/1000"
     const prod = defaultDaemonSocketPath("/Users/me")
     const sandbox = defaultDaemonSocketPath("/Users/me/.dev-sandbox/home")
@@ -122,10 +109,6 @@ describe("defaultDaemonLogPath", () => {
 })
 
 describe("fitSocketPath — sun_path length fallback", () => {
-  // The kernel's struct sockaddr_un.sun_path is 104 bytes on macOS,
-  // 108 on Linux. Worktree-based dev:sandbox paths can easily blow
-  // past that; without the fallback `listen()` fails silently.
-
   test("returns the natural path when it's short enough", () => {
     const natural = "/tmp/short-home/.kobe/daemon.sock"
     expect(fitSocketPath(natural, "/tmp/short-home", "daemon")).toBe(natural)
@@ -172,7 +155,6 @@ describe("fitSocketPath — sun_path length fallback", () => {
   test("shortHomeTag is a stable 8-char hex tag", () => {
     const tag = shortHomeTag("/some/home")
     expect(tag).toMatch(/^[0-9a-f]{8}$/)
-    // determinism
     expect(shortHomeTag("/some/home")).toBe(tag)
   })
 })

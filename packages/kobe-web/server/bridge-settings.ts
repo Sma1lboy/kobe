@@ -1,8 +1,3 @@
-/**
- * GET/PATCH /api/settings for the transitional bridge — split out of
- * bridge.ts verbatim (file-size cap). Same route contract as the
- * daemon-hosted web-settings.ts; dies with the bridge per ADR 0003.
- */
 
 import {
   defaultEngineCommand,

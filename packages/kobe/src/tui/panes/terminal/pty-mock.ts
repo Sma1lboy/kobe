@@ -17,7 +17,6 @@ export class MockTaskPty implements TaskPtyLike {
   private writes: string[] = []
   private _killed = false
   private readonly exitListeners = new Set<() => void>()
-  /** Pasted payloads, observable by tests. */
   readonly pastes: string[] = []
   private _cols: number
   private _rows: number
@@ -49,9 +48,7 @@ export class MockTaskPty implements TaskPtyLike {
     for (const cb of this.listeners) {
       try {
         cb(rows, this._cursor)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
   }
 
@@ -65,9 +62,7 @@ export class MockTaskPty implements TaskPtyLike {
     if (this.buffer !== "") {
       try {
         cb(this.capture(), this._cursor)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
     return () => {
       this.listeners.delete(cb)
@@ -81,8 +76,6 @@ export class MockTaskPty implements TaskPtyLike {
   }
 
   capture(): readonly TerminalRow[] {
-    // Tests `feed()` raw ANSI/text; expose it as the same parsed rows
-    // the production backends emit.
     return parseAnsiSnapshot(this.buffer)
   }
 

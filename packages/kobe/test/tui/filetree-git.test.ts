@@ -1,20 +1,3 @@
-/**
- * Unit tests for the file tree's git wrappers (`filetree/git.ts`).
- *
- * Focus: `parseNumstat` rename handling. `git diff --numstat` renders a
- * rename with ` => ` (NOT porcelain's ` -> `) and brace-compacts the
- * unchanged path segments. The Changes tab merges these counts onto the
- * porcelain `R` row by PATH, so the parser must resolve the numstat field
- * to the same canonical post-rename path porcelain reports — otherwise a
- * renamed file silently shows no +/- line counts.
- *
- * Also covers `parsePorcelain` (headline collapsing), `buildTree` (dir/file
- * grouping), and the `listFiles`/`statusFiles` git-invoking wrappers, whose
- * only seam is `runWorktreeGit`/`readWorktreeFile` from `worktree/content.ts` —
- * mocked below (spreading the real module so any export the code path touches
- * that we didn't stub still resolves, per the mocking gotcha).
- */
-
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 vi.mock("../../src/worktree/content", async (importOriginal) => {
@@ -57,22 +40,15 @@ describe("parseNumstat", () => {
     expect(parseNumstat("\n3\t1\ta.ts\nnotatabline\n")).toEqual([{ path: "a.ts", added: 3, deleted: 1 }])
   })
 
-  // ── Rename forms (the bug this file pins) ────────────────────────────────
-  // git outputs ` => ` with brace-compaction; the canonical NEW path must
-  // match what `git status --porcelain` reports as the `R` row's path.
-
   test("resolves a same-directory rename to the new path", () => {
-    // git: `0\t0\tsrc/{old.txt => new.txt}`  (porcelain row: `src/new.txt`)
     expect(parseNumstat("0\t0\tsrc/{old.txt => new.txt}")).toEqual([{ path: "src/new.txt", added: 0, deleted: 0 }])
   })
 
   test("resolves a cross-directory rename (brace on the leading segment)", () => {
-    // git: `0\t0\t{dir => other}/x.txt`  (porcelain row: `other/x.txt`)
     expect(parseNumstat("0\t0\t{dir => other}/x.txt")).toEqual([{ path: "other/x.txt", added: 0, deleted: 0 }])
   })
 
   test("resolves a root-level rename with no common segment (no braces)", () => {
-    // git: `0\t0\troot1.txt => root2.txt`  (porcelain row: `root2.txt`)
     expect(parseNumstat("0\t0\troot1.txt => root2.txt")).toEqual([{ path: "root2.txt", added: 0, deleted: 0 }])
   })
 
@@ -81,7 +57,6 @@ describe("parseNumstat", () => {
   })
 
   test("does not mangle a normal path that merely contains a brace", () => {
-    // No ` => ` inside the braces → not a rename → returned verbatim.
     expect(parseNumstat("1\t0\tsrc/{shared}/util.ts")).toEqual([{ path: "src/{shared}/util.ts", added: 1, deleted: 0 }])
   })
 })
@@ -103,8 +78,6 @@ describe("parsePorcelain", () => {
   })
 
   test("skips a row whose collapsed status is unrecognized", () => {
-    // "!" is git's ignored-file marker in porcelain v2 extensions; v1 never
-    // emits it, so this exercises the "skip rather than display garbage" branch.
     expect(parsePorcelain("!! ignored.txt\n")).toEqual([])
   })
 

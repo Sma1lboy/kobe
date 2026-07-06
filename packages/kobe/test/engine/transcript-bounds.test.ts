@@ -7,18 +7,9 @@ import {
 } from "../../src/engine/codex-local/history.ts"
 import { MAX_JSONL_LINE_CHARS } from "../../src/engine/file-bounds.ts"
 
-/**
- * These cover fix K's defensive bounds: a pathological mega-line must be
- * skipped before JSON.parse (so it can't hang the parser), and the codex
- * rollout traversal must cap how many paths it collects (so a corrupt date
- * tree can't grow the array unbounded). All best-effort — the readers degrade,
- * never crash.
- */
 describe("claude parseJsonl mega-line bound", () => {
   it("skips a JSONL line longer than the cap while keeping normal records", () => {
     const huge = "a".repeat(MAX_JSONL_LINE_CHARS + 1)
-    // A VALID claude user record whose content blows past the line cap — proof
-    // the length guard (not the parse-catch) is what drops it.
     const megaLine = JSON.stringify({
       type: "user",
       message: { role: "user", content: huge },

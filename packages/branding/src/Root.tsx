@@ -21,7 +21,7 @@ export const RemotionRoot: React.FC = () => {
         width={1280}
         height={720}
       />
-      {/* Landing-page cut: content at 4x, camera easing still in output time. */}
+      { }
       <Composition
         id="quicklook-replay-4x"
         component={QuickLookReplay}

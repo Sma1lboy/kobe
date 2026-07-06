@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { consumePendingPrompt, setPendingPrompt } from "../src/lib/tabs.ts"
 
-/**
- * New Task can seed a first prompt that lands in the engine composer once the
- * tab mounts. The handoff is a consume-ONCE Map: the prompt is read exactly
- * once (so a remount / re-render can't re-seed it) and is keyed per task (so
- * one task's seed never leaks into another). Distinct taskIds per test keep
- * the module-level Map from bleeding across cases.
- */
 
 describe("pending prompt handoff", () => {
   it("returns null when nothing was set", () => {
@@ -27,9 +20,6 @@ describe("pending prompt handoff", () => {
   })
 
   it("treats an explicitly-set empty prompt as a value, not absence", () => {
-    // `=== undefined` guard, not falsy: a deliberate "" is consumed as "",
-    // distinct from never-set (null). Locks the contract against a `!prompt`
-    // refactor that would silently collapse the two.
     setPendingPrompt("p4", "")
     expect(consumePendingPrompt("p4")).toBe("")
     expect(consumePendingPrompt("p4")).toBeNull()

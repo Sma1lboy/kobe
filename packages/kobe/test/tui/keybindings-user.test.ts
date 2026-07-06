@@ -1,14 +1,3 @@
-/**
- * Behavioral tests for the user-keybindings loader
- * (`src/tui/context/keybindings-user.ts`): the once-per-process apply, the
- * caching, the tmux.* / keymap partition, and the reload-from-clean-slate
- * path. The file READER (`state/keybindings-file.ts`) is mocked — it needs
- * `Bun.YAML`, unavailable under vitest's node VM, and its parse behavior
- * isn't what this module owns. What IS asserted: the parsed doc lands as
- * real chord mutations on `KobeKeymap` and as an accurate applied/warnings
- * report, and a reload restores defaults for removed overrides.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const fileState = vi.hoisted(() => ({
@@ -33,7 +22,7 @@ vi.mock("../../src/state/keybindings-file", () => ({
 const { KobeKeymap, findBinding, resetKeymapToDefaults } = await import("../../src/tui/context/keybindings")
 const userKb = await import("../../src/tui/context/keybindings-user")
 
-const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
+const ID = "sidebar.rename"
 
 let warnSpy: MockInstance
 
@@ -43,14 +32,12 @@ beforeEach(() => {
   fileState.warnings = []
   fileState.resetCalls = 0
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
-  // Each test starts from pristine defaults + an empty loader cache.
   userKb.reloadUserKeybindings()
   resetKeymapToDefaults()
 })
 
 afterEach(() => {
   warnSpy.mockRestore()
-  // Leave the shared keymap pristine for sibling test files.
   fileState.doc = null
   userKb.reloadUserKeybindings()
   resetKeymapToDefaults()
@@ -106,7 +93,6 @@ describe("applyUserKeybindings", () => {
     expect(applied).toBeDefined()
     expect(applied?.keys).toEqual(["ctrl+g"])
     expect(applied?.defaultKeys).toEqual(["ctrl+t"])
-    // The KobeKeymap display row's hint tracks the resolved tmux chord.
     const row = KobeKeymap.find((r) => r.id === "tmux.tab.new")
     if (row?.hint) expect(row.hint.keys).toBe("ctrl+g")
   })
@@ -119,7 +105,7 @@ describe("reloadUserKeybindings", () => {
     userKb.reloadUserKeybindings()
     expect([...(findBinding(ID)?.keys ?? [])]).toEqual(["ctrl+r"])
 
-    fileState.doc = null // the user deleted the override
+    fileState.doc = null
     userKb.reloadUserKeybindings()
     expect([...(findBinding(ID)?.keys ?? [])]).toEqual(defaultKeys)
   })

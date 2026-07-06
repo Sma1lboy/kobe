@@ -11,8 +11,6 @@ export const Route = createRootRoute({
   component: RootComponent,
 })
 
-/** Keep the tab title's "(N)" attention badge live on every route. Lives at
- *  the root so it tracks tasks regardless of which view is open. */
 function useAttentionTitle(): void {
   const { tasks, engineStates } = useAppState()
   useEffect(() => {

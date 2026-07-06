@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { formatError } from "../src/lib/toast.ts"
 
-/**
- * Every failed mutation (rename/archive/create/delete) routes through
- * reportError → formatError for its toast text. Lock the `label: cause` shape
- * so a thrown Error shows its message (not "[object Object]") and a non-Error
- * still produces readable text instead of swallowing the failure.
- */
 
 describe("formatError", () => {
   it("uses an Error's message as the cause", () => {
@@ -20,7 +14,6 @@ describe("formatError", () => {
   })
 
   it("stringifies a non-Error object rather than dropping it", () => {
-    // Not ideal copy, but never silent — the failure is still visible.
     expect(formatError("Create failed", { code: 500 })).toBe(
       "Create failed: [object Object]",
     )

@@ -47,10 +47,6 @@ describe("createEngineTurnDetector", () => {
   })
 })
 
-// The mtime gate matters because the Ops pane calls latestCompletion from a
-// 1.5s poll for the whole pane lifetime: without it every poll re-read and
-// re-parsed multi-MB session JSONLs that hadn't changed. The cache must be
-// invisible (same markers as a fresh parse) and keyed strictly on mtime.
 describe("ClaudeTurnDetector mtime gating", () => {
   const record = (ts: string) =>
     JSON.stringify({ type: "assistant", timestamp: ts, message: { role: "assistant", content: [] } })
@@ -68,10 +64,10 @@ describe("ClaudeTurnDetector mtime gating", () => {
 
     const first = await detector.latestCompletion("/wt")
     const second = await detector.latestCompletion("/wt")
-    expect(reads).toHaveLength(1) // second poll served from the mtime memo
+    expect(reads).toHaveLength(1)
     expect(second).toEqual(first)
 
-    mtime = 2000 // the engine appended — mtime advanced, must re-read
+    mtime = 2000
     await detector.latestCompletion("/wt")
     expect(reads).toHaveLength(2)
   })

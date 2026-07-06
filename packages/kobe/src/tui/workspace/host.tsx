@@ -1,13 +1,3 @@
-/**
- * Experimental native opentui workspace (`KOBE_TUI=1`).
- *
- * Single-process app: Sidebar | engine Terminal | Files. The center column
- * is the terminal-in-the-middle seam (issue #16) — an in-process PTY
- * running the task's real interactive engine CLI (claude/codex), so kobe
- * wraps the engine's own TUI instead of re-rendering its stream. The
- * default product path stays the tmux handover while this proves out.
- */
-
 import { join } from "node:path"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -83,11 +73,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     ),
   )
 
-  // PTY lifecycle (issue #16): archiving/deleting a task must end every
-  // engine session it owns — its tab PTYs are keyed `taskId::tabId` in the
-  // default registry, invisible to the pane once unmounted. Watch the task
-  // snapshot and release the corpses; the pane never kills (registry docs),
-  // so this is the one place tab shells die with their task.
   let liveTaskIds = new Set<string>()
   createEffect(() => {
     const list = tasks()
@@ -121,12 +106,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focus.setFocused("workspace")
   }
 
-  /**
-   * Restore the terminal BEFORE exiting — a bare process.exit leaves mouse
-   * tracking / kitty keyboard on, spraying `35;66;18M`-style junk into the
-   * user's shell. destroy() also runs the render options' onDestroy
-   * (orchestrator dispose). Same shape as settings-dialog/actions.ts.
-   */
   function exitApp(): void {
     try {
       renderer?.destroy()
@@ -147,27 +126,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     if (ok) exitApp()
   }
 
-  // Imperative handle from the currently-mounted TerminalTabs (issue #16
-  // editor-tab flow) — a plain ref, not a signal: FileTree's "open" action
-  // only ever READS it at click time, and TerminalTabs re-hands it on every
-  // mount (task/worktree switch), so there's nothing to react to here.
   let openEditorTabFn: ((command: readonly string[], label: string) => void) | null = null
 
-  /**
-   * FileTree's Enter action (issue #16 editor-tab flow) — the puretui
-   * equivalent of tmux's Ops-pane `openInEditor`: resolve the user's real
-   * editor (with the nvim/vim diff-mode upgrade when the file differs from
-   * HEAD) via the SAME tmux-agnostic command builder
-   * (`tmux/editor-launch.ts`'s `resolveEditorLaunch`), then run it in a new
-   * embedded terminal tab instead of a tmux window. Falls back to the
-   * host-OS opener (same as the FileTree `o` key) when no editor is
-   * configured/installed — there's no in-TUI read-only preview here (tmux's
-   * `kobe ops --preview` full CLI subcommand is out of scope for this pass).
-   *
-   * Deliberately does NOT move focus to the workspace pane — opening a file
-   * is a content swap, not a navigation (rejected twice previously when it
-   * pulled focus; see KOB-25).
-   */
   async function openFileInEditor(relPath: string): Promise<void> {
     const wt = worktree()
     if (!wt) return
@@ -180,13 +140,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openEditorTabFn?.(["sh", "-c", launch.command], launch.label)
   }
 
-  // Full-page swap — like the tmux `chattab` surface opening a dedicated
-  // `kobe settings` window, not an overlay dialog stacked over the 3-pane
-  // row. This single process has no tmux window to spawn into, so the
-  // page swap happens in place: `settingsOpen` replaces the whole layout,
-  // same as tmux switching to the settings window. Theme/transparent/focus
-  // accent changes apply centrally via host-boot's UiPrefsSync, so there's
-  // no workspace-pane refresh to trigger on close.
   const [settingsOpen, setSettingsOpen] = createSignal(false)
   function openSettings(): void {
     setSettingsOpen(true)
@@ -216,9 +169,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   useBindings(() => ({
     enabled: dialog.stack.length === 0 && !settingsOpen() && focus.is("sidebar")(),
     bindings: bindByIds({
-      // Slot dispatch (SLOT_CONTRACTS): slot 0 = quit confirm, slot 1 =
-      // hard exit — so user rebinds keep both verbs without inspecting
-      // the event's modifiers.
       "app.quit": (_evt, slot) => {
         if (slot === 1) {
           exitApp()
@@ -229,10 +179,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       "settings.open.sidebar": () => openSettings(),
     }),
   }))
-  // Page-level close keys for the settings swap — mirrors settings/host.tsx's
-  // standalone page (no enclosing dialog stack to own esc/Ctrl+C, so the
-  // page binds them itself; gated on an empty dialog stack so a sub-dialog,
-  // e.g. the engine-command editor, keeps esc/typing for itself).
   useBindings(() => ({
     enabled: settingsOpen() && dialog.stack.length === 0,
     bindings: [
@@ -264,9 +210,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onMouseUp={() => focus.setFocused("sidebar")}
         >
           <Sidebar
-            // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
-            // without this, Sidebar's imperative self-width (32) overflows the
-            // inner 30 and the cursor row's background paints over the border.
             width={() => SIDEBAR_WIDTH - 2}
             tasks={tasks}
             selectedId={selectedId}
@@ -335,11 +278,6 @@ function ShowWorkspace(props: {
       keyed
     >
       {(path) => (
-        // The terminal-in-the-middle seam (issue #16): the center column IS
-        // the engine — an in-process PTY (Bun.spawn terminal) running the
-        // real interactive CLI, so kobe never re-renders the engine's own
-        // TUI. `keyed` remounts per worktree, giving each task its own
-        // registry-backed PTY (acquire reuses a live one on switch-back).
         <TerminalTabs
           taskId={props.task?.id ?? path}
           worktree={path}
@@ -378,9 +316,6 @@ export async function startWorkspaceHost(): Promise<void> {
         root: () => <WorkspaceRoot orchestrator={orchestrator} />,
         onDestroy: () => {
           orchestrator.dispose()
-          // End every embedded engine/shell PTY with the app — the exit
-          // backstop only covers the host process; the PTY children are
-          // process-group members that must be killed explicitly.
           getDefaultPtyRegistry().releaseAll()
         },
       }

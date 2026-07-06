@@ -1,15 +1,3 @@
-/**
- * `worktree.list` / `worktree.remove` — the standalone worktree-management
- * page's daemon handlers (`packages/kobe-daemon/src/daemon/handlers-worktree.ts`).
- * Unlike the mock-based `handlers.test.ts` suite, these two handlers bypass
- * `ctx.orch` entirely (they compose `GitWorktreeManager` + `getSavedRepos()`
- * directly — see the handler file's doc comment), so a fake Orchestrator
- * can't observe them. Real temp git repos + a sandboxed `KOBE_HOME_DIR`
- * (same convention as `worktree-manager-edges.test.ts`) exercise the actual
- * composition: saved-repo discovery, the new `createdAtMs`/`branchOnRemote`
- * fields, and the dirty-refusal → force-delete safety gate.
- */
-
 import { execSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -70,12 +58,10 @@ describe("worktree.list", () => {
     expect(project?.worktrees).toHaveLength(1)
     const row = project?.worktrees[0]
     expect(row?.branch).toBe("feature/demo")
-    // Created via plain `git worktree add`, not kobe's convention root.
     expect(row?.kobeManaged).toBe(false)
     expect(row?.dirty).toBe(false)
     expect(typeof row?.createdAtMs).toBe("number")
     expect(row?.createdAtMs as number).toBeGreaterThan(0)
-    // No `origin` configured on this throwaway repo — unreachable, not "not pushed".
     expect(row?.branchOnRemote).toBeNull()
   })
 

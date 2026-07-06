@@ -1,19 +1,3 @@
-/**
- * Integration tests for `GitWorktreeManager` (Stream B).
- *
- * These tests intentionally use a real git binary against a real
- * fixture repo on disk — no mocking. The whole point of the worktree
- * manager is to deal with git's actual surface area: `git worktree
- * list --porcelain` formatting, dirty detection via `status
- * --porcelain`, branch lifecycle. Mocking that out would just test our
- * mock.
- *
- * Each test gets a fresh tmp repo built by
- * `test/behavior/fixtures/repo-init.sh`. We tear it down explicitly so
- * macOS's `/var/folders` doesn't fill up with stale test worktrees
- * trees if a run is interrupted.
- */
-
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -47,13 +31,9 @@ beforeEach(() => {
 afterEach(() => {
   if (prevHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = prevHome
-  // Best-effort cleanup. We don't fail the test if the rm trips —
-  // some platforms leave file handles momentarily after git operations.
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
 describe("GitWorktreeManager.create", () => {
@@ -83,7 +63,6 @@ describe("GitWorktreeManager.create", () => {
   })
 
   test("reuses an existing branch instead of erroring", async () => {
-    // Pre-create a branch on the repo (without a worktree).
     spawnSync("git", ["branch", "feature/x"], { cwd: repo })
     const mgr = new GitWorktreeManager()
     const target = worktreePathFor(repo, "task-2")
@@ -105,7 +84,6 @@ describe("GitWorktreeManager.list", () => {
     await mgr.create(repo, "kobe/a", worktreePathFor(repo, "a"))
     await mgr.create(repo, "kobe/b", worktreePathFor(repo, "b"))
 
-    // Add a non-kobe worktree outside the .kobe root — should be filtered.
     spawnSync("git", ["worktree", "add", path.join(tmpRoot, "external"), "-b", "external"], { cwd: repo })
 
     const list = await mgr.list(repo)
@@ -183,7 +161,6 @@ describe("GitWorktreeManager.remove", () => {
     fs.writeFileSync(path.join(target, "wip.txt"), "wip\n")
 
     await expect(mgr.remove(target)).rejects.toThrow(/dirty/i)
-    // Defensive: make sure we didn't delete it anyway.
     expect(fs.existsSync(target)).toBe(true)
   })
 
@@ -205,17 +182,12 @@ describe("GitWorktreeManager.remove", () => {
 
     expect(fs.existsSync(target)).toBe(false)
 
-    // No .git/worktrees/<task-rt>/ left behind.
     const metadataDir = path.join(repo, ".git", "worktrees", "task-rt")
     expect(fs.existsSync(metadataDir)).toBe(false)
 
-    // Worktree no longer in `git worktree list`.
     const list = spawnSync("git", ["worktree", "list", "--porcelain"], { cwd: repo, encoding: "utf8" })
     expect(list.stdout).not.toContain(target)
 
-    // The branch ref *is* preserved (per interface contract — caller
-    // owns branch lifecycle). This is asserted positively: we don't
-    // want a future "fix" to start deleting branches.
     const ref = spawnSync("git", ["show-ref", "--verify", "refs/heads/kobe/task-rt"], { cwd: repo })
     expect(ref.status).toBe(0)
   })
@@ -230,16 +202,6 @@ describe("createForTask helper", () => {
   })
 
   test("creates the new branch rooted at the explicit baseRef", async () => {
-    // Stage a non-main base branch with a distinct commit, then
-    // assert that creating a new worktree with `baseRef: "side-base"`
-    // descends from that commit (not from `main`).
-    //
-    // This is the load-bearing assertion for the new-task dialog's
-    // "from branch" feature: when the user picks a non-default base
-    // we must thread it all the way through to
-    // `git worktree add -b <new> <path> <baseRef>`. Without that,
-    // every task silently branches off whatever happens to be
-    // checked out in the source repo.
     spawnSync("git", ["checkout", "-b", "side-base"], { cwd: repo })
     fs.writeFileSync(path.join(repo, "SIDE.md"), "side\n")
     spawnSync("git", ["add", "SIDE.md"], { cwd: repo })
@@ -248,9 +210,6 @@ describe("createForTask helper", () => {
       cwd: repo,
       encoding: "utf8",
     }).stdout.trim()
-    // Move HEAD back to main so `baseRef: "side-base"` actually
-    // matters — without baseRef, the new worktree would inherit
-    // main's HEAD instead.
     spawnSync("git", ["checkout", "main"], { cwd: repo })
 
     const mgr = new GitWorktreeManager()
@@ -261,14 +220,11 @@ describe("createForTask helper", () => {
       baseRef: "side-base",
     })
 
-    // Worktree's HEAD must be descended from side-base's SHA.
     const ancestry = spawnSync("git", ["merge-base", "--is-ancestor", sideSha, "HEAD"], {
       cwd: info.path,
     })
     expect(ancestry.status).toBe(0)
-    // And the side-base file must be checked out in the worktree.
     expect(fs.existsSync(path.join(info.path, "SIDE.md"))).toBe(true)
-    // Branch name is the requested one (NOT side-base).
     expect(info.branch).toBe("kobe/from-side")
   })
 })
@@ -276,9 +232,7 @@ describe("createForTask helper", () => {
 describe("GitWorktreeManager.listAll (KOB-256)", () => {
   test("includes external worktrees + excludes main checkout, with kobeManaged flags", async () => {
     const mgr = new GitWorktreeManager()
-    // kobe-managed worktree under KOBE_HOME_DIR/.kobe/worktrees/
     const managed = await mgr.createForTask({ repo, slug: "managed-wt", branch: "kobe/managed" })
-    // external worktree created by the user OUTSIDE the convention root
     const extPath = path.join(tmpRoot, "external-wt")
     const r = spawnSync("git", ["worktree", "add", "-b", "ext-branch", extPath], { cwd: repo, encoding: "utf8" })
     expect(r.status).toBe(0)
@@ -286,15 +240,11 @@ describe("GitWorktreeManager.listAll (KOB-256)", () => {
     const all = await mgr.listAll(repo)
     const byBranch = new Map(all.map((w) => [w.branch, w]))
 
-    // both worktrees show up
     expect(byBranch.has("kobe/managed")).toBe(true)
     expect(byBranch.has("ext-branch")).toBe(true)
-    // main checkout (the repo root branch) is excluded
     for (const w of all) expect(fs.realpathSync(w.path)).not.toBe(fs.realpathSync(repo))
-    // kobeManaged flag distinguishes origin
     expect(byBranch.get("kobe/managed")?.kobeManaged).toBe(true)
     expect(byBranch.get("ext-branch")?.kobeManaged).toBe(false)
-    // list() still only returns the managed one
     const managedOnly = await mgr.list(repo)
     expect(managedOnly.some((w) => w.branch === "kobe/managed")).toBe(true)
     expect(managedOnly.some((w) => w.branch === "ext-branch")).toBe(false)

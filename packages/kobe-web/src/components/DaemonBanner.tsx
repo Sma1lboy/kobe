@@ -1,11 +1,3 @@
-/**
- * Daemon-offline banner — shown when the SSE stream is up but the daemon
- * behind the web transport is down (panes go read-only / stale until it
- * recovers).
- * Extracted from AppShell so the /board and /issues routes can render it
- * standalone (those routes don't mount the full shell).
- */
-
 import { X } from "lucide-react"
 import { useState } from "react"
 import { useAppState } from "../lib/store.ts"

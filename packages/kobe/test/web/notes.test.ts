@@ -4,14 +4,6 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { handleNotesRequest } from "../../src/web/notes.ts"
 
-/**
- * The notes route turns a user-supplied taskId into a filesystem path under
- * <KOBE_HOME>/.kobe/notes/<taskId>.md, so `isSafeTaskId` IS the security
- * boundary: a crafted taskId (path separators, `..`, empty) must be rejected
- * BEFORE any read/write, and non-notes paths must fall through (null) so the
- * bridge's route chain keeps working. Mirrors web/history.test.ts.
- */
-
 function get(path: string): { req: Request; url: URL } {
   const url = new URL(`http://localhost${path}`)
   return { req: new Request(url), url }
@@ -82,8 +74,6 @@ describe("handleNotesRequest — happy path (hermetic temp home)", () => {
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "kobe-notes-test-"))
-    // stubEnv restores the prior value (or unsets it) on unstub — correct even
-    // when KOBE_HOME_DIR was originally absent, without the `delete` operator.
     vi.stubEnv("KOBE_HOME_DIR", dir)
   })
 

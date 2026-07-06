@@ -2,11 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { fetchMessages, fetchSessions } from "../src/lib/history.ts"
 import { fetchNotes, saveNotes } from "../src/lib/notes.ts"
 
-/**
- * The notes + history clients are thin fetch wrappers, but the request shape
- * (encoded params, method/body) and error handling are a contract with the
- * bridge routes. Lock them.
- */
 
 interface Resp {
   ok: boolean

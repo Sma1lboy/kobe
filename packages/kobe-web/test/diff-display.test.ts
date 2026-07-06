@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { rowClass, statusBadge } from "../src/lib/diff-display.ts"
 
-/**
- * Presentation mappers for the diff file list + rows. statusBadge pairs with
- * the diff route's human status strings (added/modified/...); a regression
- * would mis-color or mis-letter a file's status. The default branch is the
- * load-bearing edge: an unknown status shows its uppercased first letter, and
- * an empty status shows '?', never a blank badge.
- */
 
 describe("statusBadge", () => {
   it("maps each known status to its letter + color", () => {

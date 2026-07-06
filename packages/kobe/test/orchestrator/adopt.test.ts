@@ -1,9 +1,3 @@
-/**
- * Adopt-existing-worktree flow (KOB-256). Real git + real store on disk —
- * the discovery path shells `git worktree list`, so mocking would only
- * test the mock. Mirrors the harness in `worktree.test.ts`.
- */
-
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -32,9 +26,7 @@ beforeEach(async () => {
 afterEach(() => {
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
 function addExternalWorktree(branch: string): string {
@@ -70,7 +62,6 @@ describe("adoptWorktree", () => {
     expect(task.branch).toBe("featC")
     expect(task.title).toBe("my-feat")
     expect(fs.realpathSync(task.worktreePath)).toBe(fs.realpathSync(ext))
-    // ensureWorktree must short-circuit (path already set) — returns same path.
     expect(await orch.ensureWorktree(task.id)).toBe(task.worktreePath)
   })
 

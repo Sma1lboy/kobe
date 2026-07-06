@@ -1,17 +1,3 @@
-/**
- * Client side of the `transcript.activity` channel (perf — deduplicate
- * per-Ops-pane polling). Mirrors the `worktree.changes` coverage:
- *
- *   - The pure parse/equality helpers (`parseTranscriptActivityPayload`,
- *     `sameTranscriptActivityMap`) accept a well-formed map, reject malformed
- *     entries to `null` (never clobber a good map), and gate re-renders.
- *   - The `RemoteOrchestrator` reflects pushes wholesale (absent keys drop),
- *     keeps the same map ref on an unchanged replay, and logs+drops garbage.
- *   - Capability gating in `init()`: a capable daemon seeds an EMPTY map
- *     (trust pushes → the Ops pane stops local polling), an old daemon leaves
- *     the signal null (the pane's local mtime/completion probes engage).
- */
-
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { describe, expect, it, vi } from "vitest"
 import {
@@ -63,9 +49,7 @@ describe("transcript.activity pure helpers", () => {
     expect(parseTranscriptActivityPayload({ activity: {} })?.size).toBe(0)
     expect(parseTranscriptActivityPayload(undefined)).toBeNull()
     expect(parseTranscriptActivityPayload({ activity: [] })).toBeNull()
-    // missing/non-number mtimeMs
     expect(parseTranscriptActivityPayload({ activity: { "/wt": { completionId: null, completionAt: 0 } } })).toBeNull()
-    // completionId neither string nor null
     expect(
       parseTranscriptActivityPayload({ activity: { "/wt": { mtimeMs: 1, completionId: 7, completionAt: 0 } } }),
     ).toBeNull()

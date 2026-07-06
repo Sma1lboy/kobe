@@ -1,13 +1,3 @@
-/**
- * keybindings channel — daemon → client round-trip (KOB — live keybinding
- * propagation). The watcher unit test exercises the file→bus half in
- * isolation; this one wires the WHOLE pipe a pane actually uses: a real
- * daemon server (which starts the keybindings watcher from its homeDir) →
- * the Unix socket → a `KobeDaemonClient` subscribed to the `keybindings`
- * channel. It pins the two things inspection can't: the server actually
- * installs the watcher, and a file edit reaches a subscriber as a rev bump.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -77,12 +67,9 @@ describe("keybindings channel (daemon → client round-trip)", () => {
     client.onChannel("keybindings", (payload) => revs.push(payload.rev))
     await client.subscribe()
 
-    // The watcher's start-time publish seeds the bus last-value, so the
-    // subscribe replay hands the late client the current rev.
     await waitFor(() => revs.length >= 1)
     expect(revs[0]).toBe(0)
 
-    // A real file edit → watcher bumps → the subscribed client sees it.
     writeFileSync(kbFile, "bindings:\n  sidebar.rename: ctrl+r\n", "utf8")
     await waitFor(() => revs.length >= 2)
     expect(revs.at(-1)).toBe(1)

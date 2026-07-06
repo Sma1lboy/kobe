@@ -1,11 +1,6 @@
 import type { CursorPos } from "./pty"
 import { ATTR, type Chunk } from "./sgr"
 
-/**
- * Heuristic: is this acquire-error message about the user's shell
- * being absent / unreachable? Used to swap a plain-English hint in for
- * the raw error tail.
- */
 export function isShellMissing(message: string): boolean {
   const m = message.toLowerCase()
   return m.includes("enoent") || m.includes("not found")

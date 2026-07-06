@@ -1,18 +1,9 @@
-/**
- * Parse a unified-diff patch into rows with computed old/new line numbers,
- * so the diff view can render a proper line-number gutter instead of raw
- * `+`/`-` lines. Pure + tested; the hunk-header math is the load-bearing bit.
- */
-
 export type DiffRowKind = "add" | "del" | "ctx" | "hunk" | "meta"
 
 export interface DiffRow {
   kind: DiffRowKind
-  /** Old-file line number, or null (added / hunk / meta rows). */
   oldLn: number | null
-  /** New-file line number, or null (removed / hunk / meta rows). */
   newLn: number | null
-  /** The raw line text (including its leading +/-/space marker). */
   text: string
 }
 
@@ -36,8 +27,6 @@ function isMeta(line: string): boolean {
   return META_PREFIXES.some((p) => line.startsWith(p))
 }
 
-/** Count added/removed lines in a unified-diff patch (excludes the `+++`/`---`
- *  file-header lines, which a naive `+`/`-` count would wrongly include). */
 export function diffStat(patch: string): { added: number; deleted: number } {
   let added = 0
   let deleted = 0
@@ -64,17 +53,7 @@ export function parseDiffRows(patch: string): DiffRow[] {
       rows.push({ kind: "hunk", oldLn: null, newLn: null, text: line })
       continue
     }
-    // A new file header (`diff --git`) ends the previous file's hunk body —
-    // without this, a concatenated staged+unstaged patch would still be
-    // "inHunk" and mis-tag the next file's `--- a/…` / `+++ b/…` lines as
-    // del/add rows (wrong gutter + over-counted diffStat).
     if (line.startsWith("diff --git")) inHunk = false
-    // Meta lines (file headers) only appear OUTSIDE a hunk body; a "---"/"+++"
-    // inside a hunk would be content, so gate isMeta on inHunk to avoid
-    // mis-tagging a real "+++" content line. A bare "" is always meta, even
-    // inside a hunk: real in-hunk context is " " (space-prefixed), so a
-    // zero-length line is never legitimate hunk content — counting it as a
-    // context line would advance both gutters and offset every following line.
     if (line === "" || (!inHunk && isMeta(line))) {
       rows.push({ kind: "meta", oldLn: null, newLn: null, text: line })
       continue
@@ -87,10 +66,8 @@ export function parseDiffRows(patch: string): DiffRow[] {
       rows.push({ kind: "del", oldLn, newLn: null, text: line })
       oldLn++
     } else if (isMeta(line)) {
-      // A meta line that slipped in mid-stream (e.g. "\ No newline").
       rows.push({ kind: "meta", oldLn: null, newLn: null, text: line })
     } else {
-      // Context line (leading space) or a bare line — advances both sides.
       rows.push({ kind: "ctx", oldLn, newLn, text: line })
       oldLn++
       newLn++

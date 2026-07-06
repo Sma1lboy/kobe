@@ -1,17 +1,3 @@
-/**
- * `kobe web` — launch the local web UI.
- *
- * Serves the kobe web dashboard through the daemon-hosted local HTTP/SSE
- * transport. Browser routes backed by daemon state come from the daemon
- * directly; this command only ensures the daemon is reachable and starts the
- * PTY sidecar.
- *
- *   kobe web                 serve the built SPA on :5174
- *   kobe web --port 5180     bind a different port
- *   kobe web --routes-only   start only the daemon web routes
- *   kobe web --no-takeover   fail instead of replacing a prior kobe-web
- */
-
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
@@ -21,9 +7,6 @@ import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-proce
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
 
-/** Which daemon home this `kobe web` is wired to — production `~/.kobe` unless
- *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
- *  so it's never a mystery which task index the dashboard is showing. */
 function homeLabel(): string {
   const explicit = process.env.KOBE_HOME_DIR?.trim()
   return explicit ? `sandbox: ${explicit}` : `${homedir()}/.kobe (production)`
@@ -42,17 +25,9 @@ Options:
   -h, --help        Show this help.
 `
 
-/**
- * Resolve the built SPA directory. Source checkouts can serve
- * packages/kobe-web/dist after a web build; packaged installs serve the copy
- * emitted into dist/web-ui by the kobe build.
- */
 function resolveStaticDir(): string | undefined {
   const here = fileURLToPath(import.meta.url)
-  const candidates = [
-    resolve(here, "../../../../kobe-web/dist"), // dev: packages/kobe-web/dist
-    resolve(here, "../../web-ui"), // packaged: dist/web-ui (copied at build)
-  ]
+  const candidates = [resolve(here, "../../../../kobe-web/dist"), resolve(here, "../../web-ui")]
   for (const dir of candidates) {
     if (existsSync(`${dir}/index.html`)) return dir
   }
@@ -62,8 +37,8 @@ function resolveStaticDir(): string | undefined {
 function resolvePtyServer(): string | undefined {
   const here = fileURLToPath(import.meta.url)
   const candidates = [
-    resolve(here, "../../../../kobe-web/pty-server.mjs"), // dev: packages/kobe-web/pty-server.mjs
-    resolve(here, "../../web-ui/pty-server.mjs"), // packaged: dist/web-ui/pty-server.mjs
+    resolve(here, "../../../../kobe-web/pty-server.mjs"),
+    resolve(here, "../../web-ui/pty-server.mjs"),
   ]
   for (const file of candidates) {
     if (existsSync(file)) return file
@@ -104,9 +79,7 @@ async function takeoverPtyPort(port: number): Promise<void> {
   for (const pid of pids) {
     try {
       process.kill(pid, "SIGTERM")
-    } catch {
-      /* already gone */
-    }
+    } catch {}
   }
   const deadline = Date.now() + 2000
   while (Date.now() < deadline) {

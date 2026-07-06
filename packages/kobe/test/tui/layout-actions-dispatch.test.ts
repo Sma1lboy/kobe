@@ -1,14 +1,3 @@
-/**
- * Behavioral tests for the tmux-driving decisions in layout-actions.ts —
- * `runLayoutAction`'s per-action dispatch, zen mode enter/exit, and
- * `engineTabExit`. The pure builders (parseLayoutPaneRows, planWorkspaceSplit,
- * resolveShellPane, expandedTerminalHeightPercent) are covered separately in
- * layout-actions.test.ts; this file exercises the async orchestration that
- * decides WHICH tmux commands get issued for a given pane layout, by
- * replacing `@/tmux/client` with an in-memory fake (same technique as
- * perf-budgets.test.ts) so no real tmux process is ever spawned.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 type FakeRow = { paneId: string; role: string; active: boolean }
@@ -155,7 +144,6 @@ describe("workspace-split / workspace-close / workspace-reset", () => {
     const splits = state.capturingCalls.filter((c) => c[0] === "split-window")
     expect(splits).toHaveLength(1)
     expect(splits[0]).toEqual(expect.arrayContaining(["-h", "-t", "%1"]))
-    // the new pane is tagged workspace_aux and selected
     expect(callsWith("set-option")).toEqual(
       expect.arrayContaining([["set-option", "-p", "-t", "%99", "@kobe_role", "workspace_aux"]]),
     )
@@ -220,7 +208,6 @@ describe("tasks-toggle / tasks-restore", () => {
       { paneId: "%1", role: "claude", active: true },
       { paneId: "%2", role: "tasks", active: false },
     ]
-    // hideTasksPane first ensures the hidden helper session exists
     state.existingSessions = new Set(["kobe-t1", "kobe-hidden-kobe-t1"])
     await runLayoutAction("kobe-t1", "tasks-toggle")
     expect(state.capturingCalls.some((c) => c[0] === "break-pane" && c.includes("%2"))).toBe(true)
@@ -292,7 +279,6 @@ describe("ops-toggle / terminal-toggle", () => {
     await runLayoutAction("kobe-t1", "terminal-toggle")
     const join = callsWith("join-pane")[0]
     expect(join).toEqual(expect.arrayContaining(["-v", "-s", "%h1", "-t", "%2"]))
-    // the restored pane is re-tagged shell and the window option cleared
     expect(callsWith("set-option")).toEqual(
       expect.arrayContaining([["set-option", "-p", "-t", "%h1", "@kobe_role", "shell"]]),
     )
@@ -307,7 +293,7 @@ describe("ops-toggle / terminal-toggle", () => {
       { paneId: "%2", role: "ops", active: false },
     ]
     state.windowOptions["@1"] = { "@kobe_hidden_shell_pane": "%gone" }
-    state.existingPaneIds = new Set() // hidden pane no longer exists
+    state.existingPaneIds = new Set()
     await runLayoutAction("kobe-t1", "terminal-toggle")
     expect(callsWith("join-pane")).toEqual([])
     const split = state.capturingCalls.find((c) => c[0] === "split-window")
@@ -367,7 +353,6 @@ describe("zen-toggle", () => {
     state.rows = [{ paneId: "%1", role: "claude", active: true }]
     await runLayoutAction("kobe-t1", "zen-toggle")
     expect(zen.setZenActive).toHaveBeenCalledWith(false)
-    // ops wasn't present, so exitZenMode's ops branch re-adds it via toggleOpsPane
     expect(state.capturingCalls.some((c) => c[0] === "split-window")).toBe(true)
   })
 })
@@ -451,7 +436,6 @@ describe("engineTabExit", () => {
     state.activeWindowIdValue = "@1"
     await engineTabExit("kobe-t1")
     expect(chattabMock.newChatTab).toHaveBeenCalledWith("kobe-t1")
-    // the mock newChatTab flips activeWindowIdValue to @2, so the old @1 gets killed
     expect(callsWith("kill-window")).toEqual([["kill-window", "-t", "@1"]])
   })
 })

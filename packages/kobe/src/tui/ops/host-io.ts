@@ -1,12 +1,3 @@
-/**
- * Real-world side of the Ops pane, extracted from `tui/ops/host.tsx` so the
- * Solid AND React hosts (issue #15, G3) share it verbatim: the user-facing
- * shell actions (open file / preview / @mention / create PR / zen toggle)
- * plus the concrete IO sets the framework-free poll loops in
- * `./activity-monitor` consume. No Solid, no React — plain functions over
- * tmux + git.
- */
-
 import { kobeCliInvocation } from "@/cli/invocation"
 import { latestTranscriptMtime } from "@/monitor/activity"
 import {
@@ -31,7 +22,6 @@ export function basename(p: string): string {
   return i >= 0 ? p.slice(i + 1) : p
 }
 
-/** The launcher-provided identity of one Ops pane (see `OpsHostArgs`). */
 export interface OpsShellContext {
   readonly taskId: string
   readonly worktree: string
@@ -39,22 +29,13 @@ export interface OpsShellContext {
 }
 
 export interface OpsActions {
-  /** enter on a file → editor window, falling back to the opentui preview. */
   readonly openFile: (rel: string) => void
-  /** `a` — inject `@<path> ` into the engine pane (no Enter; KOB-232). */
   readonly injectMention: (rel: string) => void
-  /** `p` — send the PR prompt to the engine pane and submit it. */
   readonly createPR: () => Promise<void>
-  /** Zen chip — toggle zen layout via tmux `run-shell -b` (survives this pane's death). */
   readonly toggleZen: () => void
 }
 
-/** Build the Ops pane's shell actions. Same guards as the original host:
- * a standalone `kobe ops` (no task id / target pane) degrades gracefully. */
 export function makeOpsActions(ctx: OpsShellContext): OpsActions {
-  // Open the file's diff/content in a full-width preview window of the
-  // task's tmux session (`kobe-<taskId>`). Without a task id there is no
-  // session to target — bail rather than fire at a phantom (KOB-244).
   function openPreview(rel: string): void {
     if (!ctx.taskId) return
     void newWindow(tmuxSessionName(ctx.taskId), {
@@ -65,12 +46,6 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
   }
 
   return {
-    // One-key "just open it": the user's nvim/vim in a fresh tmux window
-    // (side-by-side `nvim -d` diff vs HEAD when changed, plain open
-    // otherwise); only when no editor can launch do we fall back to the
-    // read-only opentui preview — enter is never a dead key. A standalone
-    // `kobe ops` (no task id) has no session for an editor window, so it
-    // just previews.
     openFile(rel: string): void {
       if (!ctx.taskId) {
         openPreview(rel)
@@ -81,9 +56,6 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
         if (!launched) openPreview(rel)
       })
     },
-    // Literal send (`sendKeys` uses `-l`), trailing space, NO Enter — the
-    // user decides when to submit and can queue several mentions. No-op
-    // without a target pane (standalone invocation).
     injectMention(rel: string): void {
       if (!ctx.targetPane) return
       void sendKeys(ctx.targetPane, `@${rel} `)
@@ -94,10 +66,6 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
       await sendKeys(ctx.targetPane, prompt)
       await sendKeyName(ctx.targetPane, "Enter")
     },
-    // Entering zen kills THIS pane, so the action must not run in-process —
-    // SIGHUP would abort it half-done. tmux `run-shell -b` runs it detached
-    // from any pane (same path as the prefix-space chord), surviving this
-    // pane's death. A standalone `kobe ops` has no session to act on.
     toggleZen(): void {
       if (!ctx.taskId) return
       const session = tmuxSessionName(ctx.taskId)
@@ -108,7 +76,6 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
   }
 }
 
-/** The real IO set for `startLocalBadgePoll` — attach gate + engine-owned mtime probe. */
 export function badgePollIo(vendor: VendorId, worktree: string): BadgePollIo {
   return {
     sessionAttached,
@@ -116,7 +83,6 @@ export function badgePollIo(vendor: VendorId, worktree: string): BadgePollIo {
   }
 }
 
-/** The real IO set for `startTurnStatusPoll` against the paired engine pane. */
 export function turnStatusIo(targetPane: string): TurnStatusIo {
   return {
     sessionAttached,

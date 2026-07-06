@@ -1,14 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * React `kobe ops --preview <rel>` — the `src/tui/ops/preview.tsx`
- * counterpart (issue #15, G3), behind `KOBE_REACT=1`. Data + syntax-style
- * mapping are the shared `tui/ops/preview-core.ts` / `preview-syntax.ts`.
- * The Solid host's single `createResource` follows THE ASYNC CANON
- * (`src/tui-react/history/host.tsx`): `useState` + a dependency-keyed
- * `useEffect` whose stale completions are dropped by an effect-local
- * `disposed` flag. The read is one-shot (the preview window is immutable
- * for its lifetime), so there's no refresh tick.
- */
 
 import { useEffect, useMemo, useState } from "react"
 import { type PreviewData, filetypeOf, loadPreviewData } from "../../tui/ops/preview-core"
@@ -36,10 +26,7 @@ function PreviewScreen(props: OpsPreviewArgs) {
       .then((d) => {
         if (!disposed) setData(d)
       })
-      .catch(() => {
-        // Same boundary as the Solid resource: a failed read (worktree torn
-        // down mid-open) leaves the loading placeholder rather than crashing.
-      })
+      .catch(() => {})
     return () => {
       disposed = true
     }
@@ -74,8 +61,6 @@ function PreviewScreen(props: OpsPreviewArgs) {
 }
 
 export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
-  // Same minimal provider set as the Ops pane host (and same
-  // no-log-context delta as the Solid preview entrypoint — preserved).
   await bootPaneHost({
     providers: { kv: false, focus: false },
     setup: () => ({ root: () => <PreviewScreen {...args} /> }),

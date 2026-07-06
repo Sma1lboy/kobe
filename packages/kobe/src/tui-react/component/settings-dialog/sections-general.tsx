@@ -1,12 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Settings sections (React, issue #15 G3) — sidebar + General. Port of the
- * corresponding views in `src/tui/component/settings-dialog/sections.tsx`;
- * row indices come from the shared framework-free row registry (`model.ts`),
- * so keyboard navigation and click targets stay in lockstep with the Solid
- * dialog. Accessor props became plain values/callbacks (React re-renders
- * through the provider on every kv/theme change).
- */
 
 import { TextAttributes } from "@opentui/core"
 import { useMemo } from "react"
@@ -92,8 +84,6 @@ export function GeneralSettingsSection(
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const t = useT()
-  // Row registry for this section — a row's body index is its position in
-  // the list, so every index below is an id lookup, not arithmetic.
   const rows = useMemo(
     () => generalRows({ themeNames: props.themeNames, focusAccentSlots: FOCUS_ACCENT_SLOTS }),
     [props.themeNames],
@@ -121,8 +111,7 @@ export function GeneralSettingsSection(
 
   return (
     <box flexDirection="column" gap={1}>
-      {/* First block matches the Solid layout: title/hint/rows are direct
-          children of the outer gap-1 box (one blank line between each). */}
+      {}
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
         {t("settings.general.theme")}
       </text>

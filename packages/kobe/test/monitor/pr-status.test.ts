@@ -154,7 +154,6 @@ describe("classifyGhFailure", () => {
 })
 
 describe("nextPrPoll", () => {
-  // rand 0.5 cancels the jitter so the delays are exact + assertable.
   const noJitter = (): number => 0.5
   const cfg: PrBackoffConfig = {
     tickMs: 30_000,
@@ -191,10 +190,9 @@ describe("nextPrPoll", () => {
       failures: 2,
     })
     expect(nextPrPoll({ kind: "error", error: "missing-binary" }, 4, 0, cfg, noJitter)).toEqual({
-      nextAllowedAt: 480_000, // 30s · 2^4
+      nextAllowedAt: 480_000,
       failures: 5,
     })
-    // Deep into the streak the backoff is clamped to the cap.
     expect(nextPrPoll({ kind: "error", error: "missing-binary" }, 20, 0, cfg, noJitter).nextAllowedAt).toBe(900_000)
   })
 

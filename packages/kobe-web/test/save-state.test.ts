@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { type SaveState, saveStatusLabel } from "../src/lib/save-state.ts"
 
-/**
- * The notes autosave chip text. idle renders nothing (the chip is hidden until
- * a save is attempted); the other states each get their own label.
- */
 
 describe("saveStatusLabel", () => {
   it("renders nothing for idle (chip hidden)", () => {

@@ -1,14 +1,7 @@
 import { WEB_RPC_ALLOWLIST, WEB_RPC_ALLOWSET } from "@sma1lboy/kobe-daemon/daemon/web-rpc-allowlist"
 import { describe, expect, it } from "vitest"
 
-/**
- * POST /api/rpc forwards ONLY allowlisted daemon verbs. This test pins the
- * security contract: connection-scoped verbs, the daemon kill switch, and
- * the hook-ingest paths must never be browser-reachable, and a new daemon
- * verb is NOT web-exposed until someone adds it here deliberately.
- */
 
-// Verbs that must never cross the web boundary, whatever the daemon grows.
 const FORBIDDEN = [
   "hello",
   "subscribe",
@@ -17,8 +10,6 @@ const FORBIDDEN = [
   "worktree.reconcile",
 ] as const
 
-// The mutation surface the SPA actually uses (ToolsPanel, NewTaskDialog,
-// TaskRail) — kept here so removing one from the allowlist fails loudly.
 const REQUIRED = [
   "task.list",
   "task.get",

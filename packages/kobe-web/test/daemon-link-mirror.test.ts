@@ -1,22 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { DaemonLink } from "../server/daemon-link.ts"
 
-/**
- * The bridge keeps a local mirror of daemon channel state so a late browser
- * hydrates in one SSE `snapshot` frame. `onFrame` is the reducer that keeps
- * that mirror current; it's private, so we drive it through a cast and observe
- * via the public `snapshot()`. A fresh DaemonLink is inert until `start()`
- * (no constructor socket work), so this never touches a real daemon.
- *
- * Coverage targets:
- *  - the round-2 engineStates prune on task.snapshot (the mirror grew forever
- *    before the fix — a deleted task's trailing idle frame never swept).
- *  - the task.jobs reducer (running tracks; terminal phase clears).
- *  - the SSE forward filter (only SPA channels reach sinks; daemon.stopping is
- *    a lifecycle signal and must NOT forward).
- */
 
-// onFrame is private; this is the test-only seam to drive it.
 type FrameDriver = { onFrame(name: string, payload: unknown): void }
 const drive = (link: DaemonLink): FrameDriver =>
   link as unknown as FrameDriver

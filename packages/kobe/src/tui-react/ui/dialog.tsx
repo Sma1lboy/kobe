@@ -1,19 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Dialog stack (React port of `src/tui/ui/dialog.tsx`, issue #15 G2).
- * Public API preserved: `useDialog` → `{ replace, push, pop, clear, stack,
- * size, setSize }`, dialog bodies passed as THUNKS. The thunk contract
- * matters less in React (elements are plain objects, safe to create in key
- * handlers), but keeping it means Solid call sites port unchanged and the
- * body is created fresh per render of the provider.
- *
- * Same behaviors as the Solid original: overlay is an absolutely-positioned
- * box at the provider tail (no portal machinery), escape/ctrl+c pop the top
- * dialog unless a text selection is active, the renderable that held native
- * focus when the first dialog opened is refocused after the stack empties
- * (deferred 1ms, cancelled on unmount), and the card stays opaque even in
- * transparent mode.
- */
 
 import { RGBA, type Renderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
@@ -33,14 +18,8 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
   const renderer = useRenderer()
 
   const dismissRef = useRef(false)
-  // Default-medium = 80 cols; small (50) is for tight yes/no prompts;
-  // large/xlarge get proportional bumps. Same rationale as the Solid
-  // original (wide help/settings cards need headroom, narrow PTYs cap
-  // at width-2 via maxWidth below).
   const width = props.size === "xlarge" ? 140 : props.size === "large" ? 110 : props.size === "small" ? 50 : 80
 
-  // Vertical headroom around the card so it never lands flush against
-  // the terminal's top/bottom edge.
   const VERTICAL_MARGIN = 2
   const maxCardHeight = Math.max(8, dimensions.height - VERTICAL_MARGIN * 2)
 
@@ -59,8 +38,6 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
       width={dimensions.width}
       height={dimensions.height}
       alignItems="center"
-      // Center short cards; tall cards clip to maxCardHeight instead of
-      // overflowing (children that need scrolling wrap their own scrollbox).
       justifyContent="center"
       position="absolute"
       zIndex={3000}
@@ -77,12 +54,7 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
         maxWidth={dimensions.width - 2}
         maxHeight={maxCardHeight}
         flexShrink={1}
-        // Content-sized + maxHeight is the contract: short cards float as a
-        // tight block, tall cards hit the cap and clip.
         flexGrow={0}
-        // The card is ALWAYS opaque — even in transparent mode (where only
-        // the backdrop lightens). A translucent card lets pane content bleed
-        // through the dialog text and becomes unreadable.
         backgroundColor={theme.backgroundDialog}
         paddingTop={1}
       >
@@ -96,11 +68,6 @@ type StackEntry = { element: () => ReactNode; onClose?: () => void }
 
 export type DialogContext = {
   clear(): void
-  /**
-   * Replace the current dialog (if any) with a new one. The body stays a
-   * thunk for Solid-API parity; it is evaluated inside the provider's
-   * render, so hooks/contexts resolve normally.
-   */
   replace(thunk: () => ReactNode, onClose?: () => void): void
   push(thunk: () => ReactNode, onClose?: () => void): void
   pop(): void
@@ -118,9 +85,6 @@ export function DialogProvider(props: { children?: ReactNode }) {
 
   const focusRef = useRef<Renderable | null>(null)
   const refocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Cancel a pending deferred refocus on unmount so `.focus()` can't land
-  // on a renderable destroyed in the same tick (the Solid version used an
-  // owner-scoped managed timeout for this).
   useEffect(
     () => () => {
       if (refocusTimer.current) clearTimeout(refocusTimer.current)
@@ -147,8 +111,6 @@ export function DialogProvider(props: { children?: ReactNode }) {
     }, 1)
   }, [renderer])
 
-  // Latest stack for callbacks (kept in a ref so replace/push/pop/clear can
-  // stay identity-stable while reading current state).
   const stackRef = useRef(stack)
   stackRef.current = stack
 
@@ -159,7 +121,6 @@ export function DialogProvider(props: { children?: ReactNode }) {
     }
   }, [renderer])
 
-  // escape and ctrl+c both dismiss the top dialog identically.
   const dismissTop = useCallback(() => {
     if (renderer?.getSelection()) renderer.clearSelection()
     const current = stackRef.current.at(-1)

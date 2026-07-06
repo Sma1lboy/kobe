@@ -61,7 +61,6 @@ describe("shouldNotify", () => {
   })
 
   it("does NOT fire when already in an attention state (no rising edge)", () => {
-    // waiting_permission → error is not a fresh rising edge.
     expect(shouldNotify({ ...base, prev: "waiting_permission", next: "error" })).toBe(false)
   })
 

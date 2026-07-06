@@ -1,15 +1,3 @@
-/**
- * Unit tests for the user-theme disk loader.
- *
- * The loader runs at boot, before the ThemeProvider mounts. The bar
- * is "never crash kobe": a corrupt JSON or a schema-mismatched theme
- * file must not propagate; instead the loader emits a `console.warn`
- * (so a power user piping kobe through `2>` can find it) and continues.
- *
- * We use `KOBE_HOME_DIR` to point the loader at a tmpdir so the tests
- * never touch the developer's real `~/.kobe/`.
- */
-
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -22,8 +10,6 @@ let prevHome: string | undefined
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-theme-loader-"))
   prevHome = process.env.KOBE_HOME_DIR
-  // env.ts: kobeStateDir() = join(KOBE_HOME_DIR ?? homedir(), ".kobe").
-  // Point at the tmp root so the loader looks under tmpRoot/.kobe/themes/.
   process.env.KOBE_HOME_DIR = tmpRoot
 })
 
@@ -33,9 +19,7 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = prevHome
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   vi.restoreAllMocks()
 })
 
@@ -59,22 +43,16 @@ describe("loadUserThemes", () => {
       defs: { brand: "#ffaa00" },
       theme: { primary: "brand", background: { dark: "#101010", light: "#f8f8f8" } },
     })
-    // Schema-invalid: missing `theme` key.
     writeTheme("broken.json", { defs: { x: "#000" } })
-    // Non-JSON: ensures the JSON.parse failure path also `console.warn`s
-    // and skips rather than throws.
     writeTheme("garbage.json", "{ not json")
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const out = loadUserThemes()
     const names = out.map((t) => t.name).sort()
     expect(names).toEqual(["nyx", "solar"])
-    // Confirm the structure round-trips: solar's `defs` survives.
     const solar = out.find((t) => t.name === "solar")
     expect(solar?.theme.defs?.brand).toBe("#ffaa00")
-    expect(warn).toHaveBeenCalledTimes(2) // one for broken.json, one for garbage.json
-    // Both warn calls should mention the file's basename so users can
-    // find the offending file.
+    expect(warn).toHaveBeenCalledTimes(2)
     const messages = warn.mock.calls.map((c) => String(c[0]))
     expect(messages.some((m) => m.includes("broken.json"))).toBe(true)
     expect(messages.some((m) => m.includes("garbage.json"))).toBe(true)

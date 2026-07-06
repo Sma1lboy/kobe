@@ -1,17 +1,3 @@
-/**
- * ChatTranscript — a structured, read-only view of a task's persisted engine
- * session: real message rows (user / assistant / thinking) and tool calls
- * paired with their results by callId, instead of raw PTY bytes. Data comes
- * from the bridge's /api/history routes (engine-neutral Message[]); a light
- * mtime poll keeps it live while the engine works.
- *
- * Rendering notes (mirroring Claude Code's stream grammar, simplified):
- *  - tool_result blocks are NEVER rendered standalone — they attach to their
- *    tool_call row. Codex emits results on role:"user" records, so grouping
- *    by role would mis-render; pairing by callId is the contract.
- *  - thinking and tool output bodies are collapsed by default.
- */
-
 import { ChevronDown, ChevronRight, RotateCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -39,7 +25,6 @@ const OUTPUT_PREVIEW_CHARS = 600
 type ToolResult = Extract<ContentBlock, { type: "tool_result" }>
 type ToolCall = Extract<ContentBlock, { type: "tool_call" }>
 
-/** One-line, human-scannable summary of a tool's input (per-tool narrowing). */
 function ToolRow({
   call,
   result,
@@ -136,9 +121,6 @@ function MessageRow({
   hideTools: boolean
 }) {
   const rows: React.ReactNode[] = []
-  // Relative time of this turn ("3m", "2h", "2d"), anchored once on the user
-  // prompt so a long session reads with periodic time markers. Empty/unparseable
-  // timestamps render nothing.
   const stamp = relativeTime(message.timestamp)
   let stamped = false
   message.blocks.forEach((block, index) => {
@@ -194,7 +176,6 @@ function MessageRow({
         rows.push(<ThinkingRow key={key} text={block.text} />)
       return
     }
-    // tool_result: rendered inline under its tool_call row — never standalone.
   })
   if (rows.length === 0) return null
   return <>{rows}</>
@@ -206,12 +187,8 @@ export function ChatTranscript({
 }: {
   worktreePath: string | null
   vendor: string
-  /** Accepted for caller compatibility; not rendered in this pane. */
   title?: string
 }) {
-  // The transcript is served by daemon web transport; if it is down a fetch can
-  // only fail, so the error view points at the outage instead of offering a
-  // Retry that can't succeed.
   const { daemonConnected, streamConnected } = useAppState()
   const offline = isWebTransportOffline({ daemonConnected, streamConnected })
   const [sessions, setSessions] = useState<string[]>([])
@@ -226,14 +203,7 @@ export function ChatTranscript({
   const mtimeRef = useRef(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
-  // Out-of-order guard (mirrors ChangesList): a fast session pick / poll
-  // overlap means a late response for a no-longer-selected session could
-  // clobber the displayed messages. Only the most recent request may write.
   const seqRef = useRef(0)
-  // Live mirrors of followLatest/selected so an in-flight refresh (whose
-  // closure captured the OLD values) recomputes its target against the CURRENT
-  // selection after its await — otherwise a poll that overlaps a session pick
-  // would write `latest` and snap the user off the session they just picked.
   const followLatestRef = useRef(true)
   const selectedRef = useRef<string | null>(null)
   useEffect(() => {
@@ -244,8 +214,6 @@ export function ChatTranscript({
   const refresh = useCallback(
     async (force = false): Promise<void> => {
       if (!worktreePath) return
-      // Bump the guard only once this refresh commits to a write (after the
-      // mtime gate), so a no-op poll tick never invalidates an in-flight pick.
       let seq = seqRef.current
       try {
         const result = await fetchSessions(worktreePath, vendor)
@@ -253,14 +221,11 @@ export function ChatTranscript({
         if (!changed && !force) return
         mtimeRef.current = result.latestMtime
         const latest = result.sessions.at(-1) ?? null
-        // Read the LIVE selection (refs), not the captured closure, so a pick
-        // that landed during the await is honoured instead of snapped to latest.
         const target = followLatestRef.current
           ? latest
           : (selectedRef.current ?? latest)
         seq = ++seqRef.current
         const next = target ? await fetchMessages(vendor, target) : []
-        // A newer pick/poll superseded this fetch — drop its result.
         if (seq !== seqRef.current) return
         setSessions(result.sessions)
         setMessages(next)
@@ -276,28 +241,17 @@ export function ChatTranscript({
     [worktreePath, vendor],
   )
 
-  // The poll must call the CURRENT refresh (which captures followLatest/
-  // selected), not the one from when the interval was armed — otherwise
-  // picking an older session snaps back to latest every tick. Keep refresh in
-  // a ref so the timer reads the live closure without re-arming on every
-  // session pick.
   const refreshRef = useRef(refresh)
   useEffect(() => {
     refreshRef.current = refresh
   }, [refresh])
 
-  // Initial load + light poll; mtime gate means idle ticks cost one stat-ish
-  // request and zero message fetches. Hidden tabs skip work entirely. Re-armed
-  // only on task/vendor switch (not on every session pick).
   // biome-ignore lint/correctness/useExhaustiveDependencies: worktreePath/vendor are the deliberate re-arm triggers (reset on task/vendor switch); the body reaches the live closure via refreshRef, so they aren't read directly.
   useEffect(() => {
     mtimeRef.current = -1
     setLoaded(false)
     followLatestRef.current = true
     selectedRef.current = null
-    // Reset scroll-follow too: a task switch remounts (different tab.id) and
-    // gets this for free, but an in-place VENDOR switch keeps the same tab.id,
-    // so without this the fresh transcript opens stuck scrolled-up.
     stickToBottomRef.current = true
     setFollowLatest(true)
     setSelected(null)
@@ -313,8 +267,6 @@ export function ChatTranscript({
 
   const pickSession = (sessionId: string): void => {
     const isLatest = sessionId === sessions.at(-1)
-    // Update the live mirrors synchronously so a concurrent in-flight refresh
-    // targets this pick immediately (don't wait for the sync effect).
     followLatestRef.current = isLatest
     selectedRef.current = sessionId
     setFollowLatest(isLatest)
@@ -330,7 +282,6 @@ export function ChatTranscript({
       })
   }
 
-  // Stick to the bottom while the engine streams, unless the user scrolled up.
   // biome-ignore lint/correctness/useExhaustiveDependencies: messages is the scroll trigger, not a read dependency.
   useEffect(() => {
     const el = scrollRef.current
@@ -364,20 +315,12 @@ export function ChatTranscript({
   }, [messages])
 
   const usage = useMemo(() => summarizeUsage(messages), [messages])
-  // Precompute each message's lowercased search text once per messages change,
-  // so a keystroke filters with a cheap substring check instead of re-running
-  // JSON.stringify over every tool result on every key (perceptible lag on a
-  // 359-message transcript).
   const searchIndex = useMemo(
     () => messages.map((m) => messageSearchText(m).toLowerCase()),
     [messages],
   )
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    // Keep only messages that BOTH match the query AND would actually render a
-    // row (messageRendersAnything mirrors MessageRow — drops tool_result-only
-    // and empty text/thinking turns) so the shown/total count, the rendered
-    // rows, and the "no matches" empty state all agree.
     return messages.filter(
       (m, i) =>
         (!q || searchIndex[i].includes(q)) &&

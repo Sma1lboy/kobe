@@ -1,11 +1,3 @@
-/**
- * Why this matters: hostRenderOptions is the render contract EVERY pane host
- * (Solid and React) passes to createCliRenderer — a drifted flag here changes
- * terminal behavior for all panes at once (alt-screen, ctrl+c semantics,
- * passthrough). installPaneExitBackstop is the orphaned-helper fix (KOB —
- * SIGHUP-swallow leak): registration must cover exactly the three signals.
- */
-
 import { afterEach, describe, expect, it } from "vitest"
 import { hostRenderOptions, installPaneExitBackstop } from "../../src/tui/lib/host-render-options"
 

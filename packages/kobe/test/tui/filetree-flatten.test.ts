@@ -1,11 +1,3 @@
-/**
- * The file tree's row-building pures that filetree-rows.test.ts leaves out
- * (`flattenTree` / `statusRows` / `truncatePathTail`) plus the sidebar's
- * `readWorktreeChanges` — the 2s-poll git status reader — against a real
- * temp repo (its contract is exit-code + porcelain parsing; a mocked git
- * would test nothing).
- */
-
 import { execSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

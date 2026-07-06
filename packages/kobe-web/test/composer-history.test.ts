@@ -5,7 +5,6 @@ import {
   pushHistory,
 } from "../src/lib/composer-history.ts"
 
-// jsdom in this setup doesn't expose localStorage, so back it with a Map stub.
 function makeStorage() {
   const m = new Map<string, string>()
   return {
@@ -22,7 +21,7 @@ beforeEach(() => vi.stubGlobal("localStorage", makeStorage()))
 afterEach(() => vi.unstubAllGlobals())
 
 describe("navigateHistory (pure cursor walk)", () => {
-  const hist = ["newest", "mid", "oldest"] // newest-first
+  const hist = ["newest", "mid", "oldest"]
 
   it("walks up through older prompts", () => {
     expect(navigateHistory(hist, -1, "up", "draft")).toEqual({
@@ -92,8 +91,8 @@ describe("loadHistory / pushHistory (localStorage)", () => {
     for (let i = 0; i < 60; i++) pushHistory("t1", `prompt ${i}`)
     const hist = loadHistory("t1")
     expect(hist).toHaveLength(50)
-    expect(hist[0]).toBe("prompt 59") // newest kept
-    expect(hist).not.toContain("prompt 9") // oldest dropped
+    expect(hist[0]).toBe("prompt 59")
+    expect(hist).not.toContain("prompt 9")
   })
 
   it("ignores a non-array stored value", () => {

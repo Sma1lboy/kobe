@@ -1,9 +1,3 @@
-/**
- * Theme picker for Settings — swatch grid over the bridge-served theme
- * palettes. Picking one sets a web-local override (wins over the TUI's
- * ui-prefs); "Follow TUI" clears it so the dashboard tracks the TUI again.
- */
-
 import { Check } from "lucide-react"
 import {
   clearPreferredTheme,
@@ -12,7 +6,6 @@ import {
 } from "../lib/theme.ts"
 
 function Swatch({ palette }: { palette: Record<string, string> }) {
-  // A compact 4-chip preview: surface, primary, accent-ish, success.
   const chips = [
     palette.bg,
     palette.primary,

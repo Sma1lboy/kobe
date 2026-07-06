@@ -1,18 +1,9 @@
-/**
- * Behavioral tests for pane-heal.ts's async orchestration — everything
- * `terminal-pane-heal.test.ts` deliberately leaves out because it needs a
- * live tmux server there. Here `@/tmux/client` is replaced with an
- * in-memory fake (same technique as layout-actions-dispatch.test.ts /
- * chattab.test.ts) so the heal/respawn/capture DECISIONS are exercised
- * without ever spawning tmux.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
   existingSessions: new Set<string>(["kobe-t1"]),
   paneRows: [] as Array<{ windowId: string; paneId: string; role: string; version: string; paneWidth?: number }>,
-  captureRows: [] as string[][], // raw tab-separated lines for captureGlobalLayout / shouldCaptureDrag listings
+  captureRows: [] as string[][],
   geometry: { tasksWidth: 32, rightColumnResizeArgs: [] as readonly string[] },
   sessionOptions: {} as Record<string, string>,
   calls: [] as string[][],
@@ -56,7 +47,6 @@ vi.mock("../../src/tmux/client", async (importOriginal) => {
         return { code: 0, stdout: paneRowsStdout() }
       }
       if (args[0] === "list-panes") {
-        // captureGlobalLayout / captureGlobalLayoutOnDrag listings
         return { code: 0, stdout: state.captureRows.map((r) => r.join("\t")).join("\n") }
       }
       return { code: 0, stdout: "" }
@@ -115,9 +105,8 @@ describe("workspaceLayoutPaneCommands", () => {
   })
 
   test("returns null rows when the session's pane listing fails", async () => {
-    state.existingSessions = new Set() // sessionExists false doesn't matter here — listKobePanes just reads code!==0
+    state.existingSessions = new Set()
     const result = await paneHeal.workspaceLayoutPaneCommands("kobe-ghost")
-    // our fake runTmuxCapturing always returns code:0, so this actually returns rows: []
     expect(result.rows).toEqual([])
   })
 })
@@ -144,8 +133,6 @@ describe("healWorkspaceLayout", () => {
   })
 
   test("no-ops entirely when the pane listing can't be read", async () => {
-    // Force listKobePanes to fail by making runTmuxCapturing report a non-zero code
-    // for the pane-width listing specifically.
     const client = await import("../../src/tmux/client")
     vi.spyOn(client, "runTmuxCapturing").mockResolvedValue({ code: 1, stdout: "" })
     await paneHeal.healWorkspaceLayout("kobe-t1", { cwd: "/wt", taskId: "t1", vendor: "claude" })
@@ -263,9 +250,6 @@ describe("shouldCaptureDrag", () => {
 describe("captureGlobalLayoutOnDrag", () => {
   test("captures when the drag gate passes", async () => {
     state.capturingCalls = []
-    // First runTmuxCapturing call (the drag-gate listing) needs the 4-col shape;
-    // route via a spy since our shared fake's list-panes branch expects the
-    // 8-col captureGlobalLayout shape.
     const client = await import("../../src/tmux/client")
     const spy = vi
       .spyOn(client, "runTmuxCapturing")

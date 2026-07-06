@@ -1,11 +1,3 @@
-/**
- * Why this matters: `createExternalStore` is the reactive backbone of every
- * React infra module (i18n language, theme state, keymap version). A bug in
- * notify/dedupe semantics would silently freeze React panes on stale
- * language/theme — the exact failure `useSyncExternalStore` is supposed to
- * prevent — so the contract is pinned here framework-free.
- */
-
 import { describe, expect, it, vi } from "vitest"
 import { createExternalStore } from "../../src/lib/external-store"
 
