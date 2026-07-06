@@ -2,21 +2,42 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["bun"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsxImportSource": "@opentui/solid",
+    "types": [
+      "bun"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": false,
-    "customConditions": ["browser"],
+    "customConditions": [
+      "browser"
+    ],
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@/*": ["../kobe/src/*"],
-      "@tui/*": ["../kobe/src/tui/*"],
-      "@engine/*": ["../kobe/src/engine/*"],
-      "@orchestrator/*": ["../kobe/src/orchestrator/*"],
-      "@types/*": ["../kobe/src/types/*"]
+      "@/*": [
+        "../kobe/src/*"
+      ],
+      "@tui/*": [
+        "../kobe/src/tui/*"
+      ],
+      "@engine/*": [
+        "../kobe/src/engine/*"
+      ],
+      "@orchestrator/*": [
+        "../kobe/src/orchestrator/*"
+      ],
+      "@types/*": [
+        "../kobe/src/types/*"
+      ]
     }
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }
