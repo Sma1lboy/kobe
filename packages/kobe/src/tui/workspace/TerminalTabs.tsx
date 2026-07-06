@@ -56,6 +56,7 @@ import {
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
+  selectTab,
   setTabAutoTitle,
   setTabSessionId,
   tabPtyKey,
@@ -435,7 +436,7 @@ export function TerminalTabs(props: {
                       ? theme.error
                       : theme.textMuted
               return (
-                <box flexDirection="row" gap={0}>
+                <box flexDirection="row" gap={0} onMouseUp={() => update(selectTab(state(), tab.id))}>
                   {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○,
                       engine tabs only (a command tab has no turns). */}
                   <Show when={tab.kind === "engine"}>
