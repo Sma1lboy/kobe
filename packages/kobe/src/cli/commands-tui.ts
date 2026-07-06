@@ -409,7 +409,10 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
       console.error("kobe history: --worktree <path> is required")
       process.exit(2)
     }
-    const { startHistoryHost } = await import("../tui/history/host.tsx")
+    const { startHistoryHost } =
+      process.env.KOBE_REACT === "1"
+        ? await import("../tui-react/history/host.tsx")
+        : await import("../tui/history/host.tsx")
     await startHistoryHost({
       worktree: flags.worktree,
       vendor: coerceVendorId(flags.vendor),

@@ -1,27 +1,40 @@
+/** @jsxImportSource @opentui/react */
 /**
- * Transcript row rendering for the history pane — extracted from `host.tsx`
- * (500-line cap). One `MessageCard` per message: user turns are tinted cards
- * with a `❯` glyph + relative-time chip, assistant text is plain, tool calls
- * are a colored `⏺` status glyph + bold name + dim summary, and the expanded
- * state reveals tool-output / thinking bodies. `BodyLines`, `bodyText` and
- * `toolInputSummary` are shared with the chat surface (`chat/ChatRow.tsx`,
- * via the `host.tsx` re-export) so both transcripts read identically.
+ * React transcript row rendering for the history pane. The visual grammar
+ * mirrors `src/tui/history/message-card.tsx`; pure formatting helpers live in
+ * `src/tui/history/message-core.ts` so Solid and React cannot drift.
  */
 
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createMemo } from "solid-js"
+import { useMemo } from "react"
+import { type ToolResultBlock, bodyText, relativeTime, toolInputSummary } from "../../tui/history/message-core"
 import { useTheme } from "../context/theme"
-import { t } from "../i18n"
-import { type ToolResultBlock, bodyText, relativeTime, resultsByCallId, toolInputSummary } from "./message-core"
+import { useT } from "../i18n"
 
-export { bodyText, resultsByCallId, toolInputSummary } from "./message-core"
+export { bodyText, toolInputSummary } from "../../tui/history/message-core"
+
+function lineKey(line: string, index: number): string {
+  return `${index}:${line}`
+}
+
+function blockKey(block: ContentBlock, index: number): string {
+  switch (block.type) {
+    case "tool_call":
+    case "tool_result":
+      return `${block.type}:${block.callId}`
+    case "text":
+      return `text:${block.text}:${index}`
+    case "thinking":
+      return `thinking:${block.text}:${index}`
+  }
+}
 
 /** A tool-output / thinking body, one `<text>` per line so +/- diff lines tint. */
 export function BodyLines(props: { text: string; error?: boolean }) {
   const { theme } = useTheme()
-  const lines = () => props.text.replace(/\s+$/, "").split("\n")
+  const lines = useMemo(() => props.text.replace(/\s+$/, "").split("\n"), [props.text])
   const lineColor = (line: string) => {
     if (props.error) return theme.error
     if (line.startsWith("+") && !line.startsWith("+++")) return theme.success
@@ -30,13 +43,11 @@ export function BodyLines(props: { text: string; error?: boolean }) {
   }
   return (
     <box flexDirection="column" paddingLeft={2} marginLeft={2} backgroundColor={theme.backgroundElement}>
-      <For each={lines()}>
-        {(line) => (
-          <text fg={lineColor(line)} wrapMode="word">
-            {line || " "}
-          </text>
-        )}
-      </For>
+      {lines.map((line, i) => (
+        <text key={lineKey(line, i)} fg={lineColor(line)} wrapMode="word">
+          {line || " "}
+        </text>
+      ))}
     </box>
   )
 }
@@ -47,10 +58,10 @@ function BlockView(props: {
   expanded: boolean
 }) {
   const { theme } = useTheme()
+  const t = useT()
   const block = props.block
   switch (block.type) {
     case "text":
-      // user-text is rendered as a card by MessageCard; this path is assistant/system.
       return (
         <text fg={theme.text} wrapMode="word">
           {block.text}
@@ -62,9 +73,7 @@ function BlockView(props: {
           <text fg={theme.textMuted} attributes={TextAttributes.ITALIC} wrapMode="none">
             {`✱ ${t("history.thinking")}${props.expanded ? "" : "…"}`}
           </text>
-          <Show when={props.expanded && block.text.trim()}>
-            <BodyLines text={block.text} />
-          </Show>
+          {props.expanded && block.text.trim() ? <BodyLines text={block.text} /> : null}
         </box>
       )
     case "tool_call": {
@@ -80,25 +89,22 @@ function BlockView(props: {
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
               {block.name}
             </text>
-            <Show when={summary}>
+            {summary ? (
               <text fg={theme.textMuted} wrapMode="none">
                 {summary}
               </text>
-            </Show>
+            ) : null}
           </box>
-          <Show when={props.expanded && body.trim()}>
-            <BodyLines text={body} error={props.result?.isError} />
-          </Show>
+          {props.expanded && body.trim() ? <BodyLines text={body} error={props.result?.isError} /> : null}
         </box>
       )
     }
     case "tool_result":
-      // Attached to its tool_call above — never rendered standalone.
       return null
   }
 }
 
-function roleLabel(role: Message["role"]): string {
+function roleLabel(role: Message["role"], t: ReturnType<typeof useT>): string {
   return role === "assistant"
     ? t("history.role.assistant")
     : role === "system"
@@ -112,50 +118,54 @@ export function MessageCard(props: {
   expanded: boolean
 }) {
   const { theme } = useTheme()
-  const isUser = () => props.msg.role === "user"
-  const stamp = () => relativeTime(props.msg.timestamp)
-  // user text blocks → a tinted card with a ❯ glyph + time chip; everything
-  // else (assistant/system text, tools, thinking) renders flush below.
-  const userText = createMemo(() =>
-    isUser()
-      ? props.msg.blocks
-          .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text" && b.text.trim().length > 0)
-          .map((b) => b.text)
-          .join("\n")
-      : "",
+  const t = useT()
+  const isUser = props.msg.role === "user"
+  const stamp = relativeTime(props.msg.timestamp)
+  const userText = useMemo(
+    () =>
+      isUser
+        ? props.msg.blocks
+            .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text" && b.text.trim().length > 0)
+            .map((b) => b.text)
+            .join("\n")
+        : "",
+    [isUser, props.msg.blocks],
   )
-  const otherBlocks = () => (isUser() ? props.msg.blocks.filter((b) => b.type !== "text") : props.msg.blocks)
+  const otherBlocks = useMemo(
+    () => (isUser ? props.msg.blocks.filter((b) => b.type !== "text") : props.msg.blocks),
+    [isUser, props.msg.blocks],
+  )
+
   return (
     <box flexDirection="column" paddingLeft={1} paddingRight={1} paddingBottom={1} gap={0}>
-      <Show when={isUser() && userText()}>
+      {isUser && userText ? (
         <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
           <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
             ❯
           </text>
           <text fg={theme.text} wrapMode="word" flexGrow={1}>
-            {userText()}
+            {userText}
           </text>
-          <Show when={stamp()}>
+          {stamp ? (
             <text fg={theme.textMuted} wrapMode="none">
-              {stamp()}
+              {stamp}
             </text>
-          </Show>
+          ) : null}
         </box>
-      </Show>
-      <Show when={!isUser()}>
+      ) : null}
+      {!isUser ? (
         <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-          {roleLabel(props.msg.role)}
+          {roleLabel(props.msg.role, t)}
         </text>
-      </Show>
-      <For each={otherBlocks()}>
-        {(block) => (
-          <BlockView
-            block={block}
-            result={block.type === "tool_call" ? props.results.get(block.callId) : undefined}
-            expanded={props.expanded}
-          />
-        )}
-      </For>
+      ) : null}
+      {otherBlocks.map((block, i) => (
+        <BlockView
+          key={blockKey(block, i)}
+          block={block}
+          result={block.type === "tool_call" ? props.results.get(block.callId) : undefined}
+          expanded={props.expanded}
+        />
+      ))}
     </box>
   )
 }
