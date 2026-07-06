@@ -20,8 +20,6 @@ beforeEach(async () => {
   repo = path.join(tmpRoot, "repo")
   const r = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (r.status !== 0) throw new Error(`repo-init.sh failed: ${r.stderr}\n${r.stdout}`)
-  // Isolate the shared state.json (savedRepos) that forgetProject mutates so
-  // tests never touch the developer's real ~/.config/kobe.
   originalHome = process.env.KOBE_HOME_DIR
   process.env.KOBE_HOME_DIR = path.join(tmpRoot, "home")
   const store = new TaskIndexStore({ homeDir: path.join(tmpRoot, "home") })
@@ -35,9 +33,7 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = originalHome
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
 describe("ensureMainTask", () => {
@@ -77,7 +73,6 @@ describe("forgetProject", () => {
 
     expect(getSavedRepos()).not.toContain(repo)
     expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(0)
-    // The repo dir and the real task under it survive — forget is non-destructive.
     expect(orch.getTask(child.id)?.id).toBe(child.id)
     expect(fs.existsSync(repo)).toBe(true)
   })

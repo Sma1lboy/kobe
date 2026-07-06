@@ -1,11 +1,3 @@
-/**
- * `kobe web` (`runWebSubcommand`). ensureDaemonReachable is mocked (it
- * would spawn a real daemon) and `fetch` is stubbed to script the daemon
- * web-transport health probe. The success path never resolves by design
- * (it parks on a forever-promise), so it's asserted via waitFor without
- * awaiting the returned promise.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -80,7 +72,6 @@ describe("runWebSubcommand", () => {
   it("routes-only success: sets the port env, verifies the health marker, prints the URL + home label", async () => {
     fetchMock.mockResolvedValue({ ok: true, text: () => Promise.resolve("kobe-web") })
 
-    // The success path parks on a forever-promise — don't await it.
     void runWebSubcommand(["--routes-only", "--port", "5199"])
 
     await vi.waitFor(() => {
@@ -90,7 +81,6 @@ describe("runWebSubcommand", () => {
     expect(mocks.ensureDaemonReachable).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:5199/__kobe_web", expect.anything())
     expect(out()).toContain("home:")
-    // routes-only never starts the PTY sidecar.
     expect(mocks.bunSpawn).not.toHaveBeenCalled()
   })
 

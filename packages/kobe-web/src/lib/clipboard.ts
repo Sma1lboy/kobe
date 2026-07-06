@@ -1,17 +1,10 @@
-/**
- * Copy text to the clipboard, with a fallback for the rare non-secure context
- * where `navigator.clipboard` is missing. Resolves true on success, false if
- * both paths fail — callers use that to show a "Copied" vs error ack.
- */
 export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
       return true
     }
-  } catch {
-    // Clipboard API rejected (permissions / non-secure context) — fall back.
-  }
+  } catch {}
   try {
     const ta = document.createElement("textarea")
     ta.value = text

@@ -1,22 +1,3 @@
-/**
- * ui-prefs watcher (KOB — live theme propagation). Why these tests matter:
- * the watcher is the daemon half of "a theme switch in one session restyles
- * every pane". Its load-bearing mechanics are easy to regress silently:
- *
- *   - it must watch the state.json DIRECTORY and survive the State Store's
- *     atomic tmp+rename (an fs.watch on the file itself goes dead after the
- *     first write — panes would stop following prefs with no error);
- *   - it must publish ONLY when the visual prefs actually changed, so the
- *     many non-visual keys in state.json (saved repos, engine commands…)
- *     don't make every pane re-apply on unrelated churn;
- *   - it must seed the bus's last-value cache at start so a late subscriber
- *     replays the current prefs.
- *
- * The writes here go through the real State Store (`patchStateFile`), so
- * the test exercises the exact tmp+rename pattern production uses. Isolated
- * via KOBE_HOME_DIR → a temp home (kvStatePath honours it).
- */
-
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -57,12 +38,9 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = savedHomeDir
   try {
     fs.rmSync(tmpHome, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
-/** Poll until `cond` holds or ~2s elapses (fs.watch delivery is async). */
 async function waitFor(cond: () => boolean): Promise<void> {
   const deadline = Date.now() + 2000
   while (!cond() && Date.now() < deadline) {
@@ -141,7 +119,6 @@ describe("readUiPrefsFromStateFile", () => {
   test("mirrors locale verbatim (UI-neutral); empty/missing falls back to en", () => {
     patchStateFile({ locale: "zh" })
     expect(readUiPrefsFromStateFile(statePath).locale).toBe("zh")
-    // The daemon doesn't validate — an unknown id passes through; the TUI rejects it.
     patchStateFile({ locale: "klingon" })
     expect(readUiPrefsFromStateFile(statePath).locale).toBe("klingon")
     patchStateFile({ locale: "" })
@@ -164,16 +141,13 @@ describe("startUiPrefsWatcher", () => {
         projectFilter: null,
       },
     ])
-    // The bus last-value cache is warm — what a `subscribe` replays.
     expect(bus.snapshot().find((e) => e.channel === "ui-prefs")?.payload).toEqual(events[0])
   })
 
   test("a State-Store write (tmp+rename) is seen and published; unchanged values are not re-published", async () => {
     stop = startUiPrefsWatcher(bus, { statePath, debounceMs: 25 })
-    expect(events).toHaveLength(1) // initial defaults
+    expect(events).toHaveLength(1)
 
-    // Real production write path: tmp + rename swaps the inode, which is
-    // exactly the case a file-watch (instead of dir-watch) would go dead on.
     patchStateFile({ activeTheme: "tokyonight", transparentBackground: true })
     await waitFor(() => events.length === 2)
     expect(events[1]).toEqual({
@@ -186,14 +160,11 @@ describe("startUiPrefsWatcher", () => {
       projectFilter: null,
     })
 
-    // A write that doesn't move the visual prefs (an unrelated key, then
-    // the SAME visual values again) publishes nothing.
     patchStateFile({ lastSelectedVendor: "codex" })
     patchStateFile({ activeTheme: "tokyonight", transparentBackground: true })
     await new Promise((r) => setTimeout(r, 250))
     expect(events).toHaveLength(2)
 
-    // A later real change still lands (the watcher is alive after renames).
     patchStateFile({ focusAccent: "success" })
     await waitFor(() => events.length === 3)
     expect(events[2]).toEqual({
@@ -220,6 +191,6 @@ describe("startUiPrefsWatcher", () => {
     stop = null
     patchStateFile({ activeTheme: "nord" })
     await new Promise((r) => setTimeout(r, 250))
-    expect(events).toHaveLength(1) // only the initial publish
+    expect(events).toHaveLength(1)
   })
 })

@@ -1,15 +1,3 @@
-/**
- * ViewToggle — the top-left peer switch between Workspace, Board, and
- * Worktrees. They are PEER views (no back link): a segmented control that
- * reads the current pathname from the router and navigates between the
- * surfaces.
- *
- * "Workspace" routes to the selected task (/task/$taskId from the persisted
- * tab selection) so the toggle lands you on a real task, falling back to the
- * index when nothing is selected. "Board" routes to /board. "Worktrees"
- * routes to /worktrees.
- */
-
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { Columns3, GitBranch, PanelsTopLeft } from "lucide-react"
 import { useTabsState } from "../lib/tabs.ts"

@@ -1,10 +1,3 @@
-/**
- * Pure-builder tests for the tmux session layout (KOB-233).
- *
- * These are the regression net for the quoting / command-shape bugs
- * that previously only surfaced at runtime against a real tmux server.
- */
-
 import { describe, expect, test } from "vitest"
 import {
   CLAUDE_PANE_PERCENT,
@@ -91,8 +84,6 @@ describe("shellQuote", () => {
 
 describe("shellQuoteArgv", () => {
   test("quotes each element so multi-word elements survive a shell re-parse", () => {
-    // The KOB-233 bug: `["sh","-c","echo a b"].join(" ")` lost the
-    // quoting and the pane ran `sh -c echo` with `a`/`b` as $0/$1.
     expect(shellQuoteArgv(["sh", "-c", "echo a b"])).toBe("'sh' '-c' 'echo a b'")
   })
 })
@@ -100,7 +91,6 @@ describe("shellQuoteArgv", () => {
 describe("keepAlive", () => {
   test("appends an exec-shell tail so the pane survives the command", () => {
     const out = keepAlive("claude")
-    // command runs first, then the pane drops to an interactive shell
     expect(out.startsWith("claude; ")).toBe(true)
     expect(out).toContain('exec "${SHELL:-/bin/sh}"')
   })
@@ -117,16 +107,12 @@ describe("keepAlive", () => {
 
   test("with onExit: runs the shell as a child (no exec) then the cleanup", () => {
     const out = keepAlive("claude", "kobe engine-tab-exit --session 'kobe-x'")
-    // No `exec` — the wrapper must survive the shell to run the cleanup after it.
     expect(out).not.toContain("exec ")
     expect(out).toContain("\"${SHELL:-/bin/sh}\"; kobe engine-tab-exit --session 'kobe-x'")
   })
 
   test("engine panes (onExit) guard the wrapper against a startup Ctrl+C", () => {
-    // SIGINT must reach the engine child but NOT kill the wrapper, so a fast
-    // Ctrl+C during startup/init can't close the pane before the fallback shell.
     expect(keepAlive("claude", "kobe engine-tab-exit --session 'kobe-x'").startsWith("trap ':' INT; ")).toBe(true)
-    // Non-engine panes keep their exact prior shape — no guard.
     expect(keepAlive("claude")).not.toContain("trap ':' INT")
   })
 })
@@ -134,10 +120,7 @@ describe("keepAlive", () => {
 describe("historyPaneKeepAlive", () => {
   test("re-launches the command in a loop and never drops to a shell or engine", () => {
     const out = historyPaneKeepAlive("kobe history --worktree /wt --vendor claude")
-    // Persistent like the Ops pane: re-run forever, bounded by a sleep.
     expect(out).toBe("trap '' INT; while :; do kobe history --worktree /wt --vendor claude; sleep 1; done")
-    // The bug being fixed: the archived preview must NOT reach the engine pane's
-    // exit path, which drops to a shell and then spawns a live engine.
     expect(out).not.toContain("${SHELL")
     expect(out).not.toContain("engine-tab-exit")
   })
@@ -179,7 +162,6 @@ describe("opsPaneCommand", () => {
     expect(cmd).toContain("--worktree '/wt'")
     expect(cmd).toContain("--target-pane '%3'")
     expect(cmd).toContain("|| {")
-    // fallback is embedded after the ||
     expect(cmd).toContain("git status --short --branch")
   })
 
@@ -225,9 +207,7 @@ describe("opsPaneCommand", () => {
 describe("previewWindowCommand", () => {
   test("runs `kobe ops --preview <file>` (opentui diff/code) with a pager fallback", () => {
     const cmd = previewWindowCommand({ worktree: "/my wt", relPath: "src/a b.ts", cliInvocation: ["kobe"] })
-    // primary: the syntax-highlighted opentui preview
     expect(cmd).toContain("'kobe' ops --worktree '/my wt' --preview 'src/a b.ts'")
-    // fallback after `||`: the user's own pager
     expect(cmd).toContain("|| {")
     expect(cmd).toContain("git diff HEAD -- 'src/a b.ts'")
     expect(cmd).toContain("delta --paging=always")
@@ -293,27 +273,19 @@ describe("engineLaunchLine", () => {
   })
 
   test("with an init script, the wrapper guards SIGINT from the very front", () => {
-    // A Ctrl+C during the per-repo init must not kill the wrapper before it
-    // reaches the engine + fallback shell — so the guard precedes the init block.
     expect(engineLaunchLine(engine, { initScript: "export FOO=1" }).startsWith("trap ':' INT; ")).toBe(true)
   })
 
   test("init without a marker is watchdog-bounded and runs every launch", () => {
     const line = engineLaunchLine(engine, { initScript: "export FOO=1" })
-    // the init body runs in a backgrounded subshell with stdin from /dev/null
-    // so an interactive `read`/password prompt can't block forever.
     expect(line).toContain("(\nexport FOO=1\n__kobe_init_ec=$?")
     expect(line).toContain(") </dev/null &")
-    // sleep N && TERM-then-KILL watchdog bounds the run (no GNU timeout(1)).
     expect(line).toContain(`sleep ${REPO_INIT_TIMEOUT_SECONDS};`)
     expect(line).toContain('kill -TERM "$__kobe_init_pid"')
     expect(line).toContain('kill -KILL "$__kobe_init_pid"')
     expect(line).toContain('wait "$__kobe_init_pid"')
-    // export contract preserved across the subshell: dump + source so the
-    // engine still sees the init's exports.
     expect(line).toContain('export -p > "$__kobe_init_env"')
     expect(line).toContain('. "$__kobe_init_env"')
-    // engine + keepAlive tail still present, and no marker guard.
     expect(line.endsWith(keepAlive(engine))).toBe(true)
     expect(line).not.toContain("[ ! -f")
   })
@@ -323,10 +295,7 @@ describe("engineLaunchLine", () => {
       initScript: "sh .kobe/init.sh",
       markerPath: "/home/.kobe/worktree-init/ab",
     })
-    // guard: run only when the marker is absent
     expect(line).toContain("if [ ! -f '/home/.kobe/worktree-init/ab' ]; then")
-    // success-gate the touch (watchdog rc, not bare $?: timeout/fail won't
-    // mark the worktree done), and mkdir the parent
     expect(line).toContain(
       "if [ \"$__kobe_init_rc\" -eq 0 ]; then mkdir -p '/home/.kobe/worktree-init' && : > '/home/.kobe/worktree-init/ab'; fi",
     )
@@ -335,7 +304,6 @@ describe("engineLaunchLine", () => {
 
   test("a custom timeout overrides the default budget, clamped to the sane range", () => {
     expect(engineLaunchLine(engine, { initScript: "x", timeoutSeconds: 30 })).toContain("sleep 30;")
-    // below the floor clamps up, above the ceiling clamps down
     expect(engineLaunchLine(engine, { initScript: "x", timeoutSeconds: 1 })).toContain(
       `sleep ${REPO_INIT_TIMEOUT_MIN_SECONDS};`,
     )
@@ -382,7 +350,7 @@ describe("resolveLayoutGeometry", () => {
     const wOnly = resolveLayoutGeometry({ [RIGHT_COLUMN_WIDTH_OPTION]: "35" })
     expect(wOnly.rightColumnWidthPct).toBe(35)
     expect(wOnly.rightColumnResizeArgs).toEqual(["-x", "35%"])
-    expect(wOnly.opsHeightPct).toBe(OPS_PANE_PERCENT) // height untouched → default
+    expect(wOnly.opsHeightPct).toBe(OPS_PANE_PERCENT)
 
     const hOnly = resolveLayoutGeometry({ [OPS_HEIGHT_OPTION]: "70" })
     expect(hOnly.opsHeightPct).toBe(70)

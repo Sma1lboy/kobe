@@ -1,17 +1,3 @@
-/**
- * Bundled pool of animal names used as worktree directory slugs.
- *
- * Single-token, lowercase ASCII, no punctuation. Kept inoffensive and
- * widely recognizable. Order doesn't matter — the allocator filters by
- * "currently occupied" and picks randomly from what's left.
- *
- * Pool size is the soft cap on how many simultaneously-active
- * worktrees can hold distinct base names in a single repo. Beyond that
- * the allocator falls back to `-v2`/`-v3` suffixes.
- *
- * If you add entries, keep them single-token (no hyphens / spaces) and
- * keep the list deduplicated. The allocator does not dedup at runtime.
- */
 export const ANIMAL_NAMES: readonly string[] = [
   "aardvark",
   "addax",

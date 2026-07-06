@@ -1,11 +1,3 @@
-/**
- * ThemeProvider — reactive theme context (src/tui/context/theme.tsx). Pure
- * hex-resolution logic already has vitest coverage (test/tui/theme-hex.test.ts,
- * context/theme/hex.ts has no @opentui import); this covers the piece that
- * DOES import @opentui/solid and so can't run under vitest at all: the
- * live `useTheme()` wiring — default theme, color resolution actually
- * reaching a rendered cell, and the transparentBackground toggle.
- */
 import { describe, expect, it } from "bun:test"
 import { type CapturedFrame, RGBA } from "@opentui/core"
 import { ThemeProvider, useTheme } from "../../src/tui/context/theme"

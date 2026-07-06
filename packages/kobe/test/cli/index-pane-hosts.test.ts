@@ -1,13 +1,3 @@
-/**
- * Behavioral tests for the remaining `src/cli/index.ts` handlers — the
- * in-tmux hook handlers (heal-layout / resync-window / capture-layout) and
- * the pane/page host launches (quick-task / tasks / settings / help-page /
- * new-task / update-page / history / ops). Sibling of
- * index-dispatch.test.ts (same fresh-import + first-exit-throws technique).
- * The .tsx host modules are mocked — what's under test is the ROUTING:
- * required-flag validation, flag parsing, and which host gets which args.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const spies = vi.hoisted(() => ({
@@ -126,7 +116,7 @@ describe("tmux hook handlers", () => {
   })
 
   test("capture-layout skips the capture while a resize is in flight", async () => {
-    spies.genAgeMs.mockReturnValue(10) // fresh resize stamp — inside the guard window
+    spies.genAgeMs.mockReturnValue(10)
     await runCli("capture-layout", "--session", "kobe-t1")
     expect(spies.captureGlobalLayoutOnDrag).not.toHaveBeenCalled()
 

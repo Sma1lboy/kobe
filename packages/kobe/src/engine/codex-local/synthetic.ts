@@ -5,11 +5,6 @@ type CodexTextLikeBlock = {
   readonly text?: string
 }
 
-/**
- * True when every text block in the message is one of Codex's
- * synthetic envelopes. Conservative — anything else mixed in (a user
- * prompt that happens to paste an envelope-shaped string) is preserved.
- */
 export function isSyntheticCodexUserRow(blocks: readonly CodexTextLikeBlock[]): boolean {
   if (blocks.length === 0) return false
   for (const b of blocks) {
@@ -20,11 +15,6 @@ export function isSyntheticCodexUserRow(blocks: readonly CodexTextLikeBlock[]): 
   return true
 }
 
-/**
- * Convert a Codex user-message content payload into visible user text.
- * Synthetic environment/instruction rows return null so callers can
- * keep scanning for the real first user prompt.
- */
 export function visibleCodexUserText(content: unknown): string | null {
   const blocks = normalizeCodexContent(content)
   if (isSyntheticCodexUserRow(blocks)) return null

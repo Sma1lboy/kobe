@@ -1,10 +1,3 @@
-/**
- * Issues API client + pure helpers — talks to the bridge's /api/issues
- * routes, which proxy to the daemon-owned issue store. Also owns quick-start:
- * spawning a kobe task from an issue via the existing task-creation + PTY
- * plumbing.
- */
-
 import { setActiveTaskBestEffort } from "./active-task.ts"
 import { api } from "./api-client.ts"
 import { labelRepo } from "./board.ts"
@@ -22,9 +15,6 @@ export interface Issue {
   status: IssueStatus
   created: string
   body: string
-  /** Task this issue was quick-started into — kept in sync with the web
-   *  Task interface (lib/types.ts). A live task here hides the issue from the
-   *  unified board. */
   taskId?: string
 }
 
@@ -45,15 +35,11 @@ export async function fetchProjects(): Promise<string[]> {
 }
 
 export interface IssueRepoOption {
-  /** Canonical source repo path; worktree checkouts fold into this key. */
   readonly repo: string
-  /** Short display name: path basename, parent/basename on collision. */
   readonly label: string
-  /** Non-archived tasks currently associated with this repo. */
   readonly count: number
 }
 
-/** Load a repo's issues. A missing file is NOT an error: `exists: false`. */
 export async function fetchIssues(repoRoot: string): Promise<RepoIssues> {
   return api.get<RepoIssues>("/api/issues", {
     query: { repoRoot },
@@ -69,7 +55,6 @@ async function postOp(repoRoot: string, op: unknown): Promise<RepoIssues> {
   )
 }
 
-/** Create an issue (id allocated server-side from nextId, status `open`). */
 export async function createIssue(
   repoRoot: string,
   input: { title: string; body?: string },
@@ -93,9 +78,6 @@ export async function updateIssue(
   return postOp(repoRoot, { type: "update", id, ...patch })
 }
 
-/** Link an issue to the task spawned from it — the daemon stamps the issue's
- *  `taskId` (and mirrors the issue to `done` when the task hits done). The
- *  unified board uses this link to dedup the issue against its task card. */
 export async function linkIssue(
   repoRoot: string,
   id: number,
@@ -104,8 +86,6 @@ export async function linkIssue(
   return postOp(repoRoot, { type: "link", id, taskId })
 }
 
-/** Drop an issue↔task link — resurfaces the issue on the board (e.g. its task
- *  was deleted). */
 export async function unlinkIssue(
   repoRoot: string,
   id: number,
@@ -113,9 +93,6 @@ export async function unlinkIssue(
   return postOp(repoRoot, { type: "unlink", id })
 }
 
-/** Remove an issue from the daemon-owned tracker. This deletes ONLY the issue
- *  record — any task, branch, worktree, or engine session it was linked to is
- *  left untouched. */
 export async function deleteIssue(
   repoRoot: string,
   id: number,
@@ -134,9 +111,6 @@ async function fetchKobeApiInvocation(): Promise<string> {
     : "kobe api"
 }
 
-/* ----- pure helpers ------------------------------------------------------- */
-
-/** Column order for the project view. */
 export const ISSUE_STATUSES: readonly IssueStatus[] = [
   "open",
   "doing",
@@ -144,7 +118,6 @@ export const ISSUE_STATUSES: readonly IssueStatus[] = [
   "done",
 ]
 
-/** Status display grammar — title + accent per column, Board-style. */
 export const STATUS_META: Record<
   IssueStatus,
   { title: string; accent: string }
@@ -155,17 +128,10 @@ export const STATUS_META: Record<
   done: { title: "Done", accent: "text-kobe-green" },
 }
 
-/** Quick start spawns a task to work the issue — done issues have nothing
- *  left to start. */
 export function canQuickStart(status: IssueStatus): boolean {
   return status !== "done"
 }
 
-/**
- * Search + status filter. The query matches title and body
- * case-insensitively, plus the `#<id>` reference (so typing "#12" finds
- * issue 12). An empty/undefined statuses list means "all statuses".
- */
 export function filterIssues(
   issues: readonly Issue[],
   q: { query?: string; statuses?: readonly IssueStatus[] },
@@ -180,11 +146,6 @@ export function filterIssues(
   })
 }
 
-/**
- * Bucket issues into the four status columns. Active columns
- * (open/doing/hold) read newest-created first (then id desc as the
- * tiebreak — `created` is day-granular); done is plain id desc.
- */
 export function groupByStatus(
   issues: readonly Issue[],
 ): Record<IssueStatus, Issue[]> {
@@ -206,10 +167,6 @@ export function groupByStatus(
   return groups
 }
 
-/**
- * Cross-project overview rows. `openish` (open+doing+hold) is the
- * "still needs attention" count; rows with the most of it float first.
- */
 export function overviewRows(repos: readonly RepoIssues[]): Array<{
   repoRoot: string
   counts: Record<IssueStatus, number>
@@ -239,12 +196,6 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
     )
 }
 
-/**
- * Distinct source repos for the Issues lens. Unlike the Board, Issues are
- * keyed by the repository's shared daemon store, so task worktrees must fold
- * back into `task.repo` instead of appearing as separate projects. Labels
- * come from the shared {@link labelRepo} helper (board.ts).
- */
 export function issueRepoOptions(
   tasks: readonly Task[],
   projectRepos: readonly string[] = [],
@@ -275,11 +226,6 @@ export function issueRepoOptions(
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
-/**
- * Resolve the current project for issue/board surfaces. A project selection is
- * mandatory whenever projects exist: issue execution creates a worktree under
- * this repo, and follow-up merge instructions target this repo's main branch.
- */
 export function resolveIssueRepoSelection(
   options: readonly IssueRepoOption[],
   current: string | null,
@@ -291,11 +237,6 @@ export function resolveIssueRepoSelection(
   return options[0]?.repo ?? null
 }
 
-/**
- * The engine's first message for a quick-started issue. The caller has
- * already flipped the issue to `doing`; the prompt asks the agent to report
- * completion through the daemon-owned issue API, not by editing repo files.
- */
 export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
   const lines = [`Work on user story #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
@@ -309,11 +250,6 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
   return lines.join("\n")
 }
 
-/**
- * Follow-up prompt for a linked issue after implementation has run in its task
- * worktree. This is intentionally delivered to the task session instead of
- * merging in the web UI: the engine owns the final code/check/conflict work.
- */
 export function issueMergePrompt(issue: Issue, api = "kobe api"): string {
   return [
     `Finish user story #${issue.id}: ${issue.title}`,
@@ -324,26 +260,6 @@ export function issueMergePrompt(issue: Issue, api = "kobe api"): string {
   ].join("\n")
 }
 
-/* ----- quick start (side-effectful) --------------------------------------- */
-
-/**
- * Spawn a kobe task from an issue: create the task (branch derived later by
- * ensureWorktree — KOB-244), then link the issue → new task one-way via
- * {@link linkIssue} (the daemon stamps `Issue.taskId`, flips the issue `doing`,
- * and mirrors it to `done` when the task finishes), then deliver the prompt
- * through the pty sidecar's spawn-on-send path, which materializes the worktree
- * + engine.
- *
- * The task no longer reverse-references the issue: `Task.issueId` was dropped,
- * so `task.create` carries no `issueId` — `Issue.taskId` (set by `linkIssue`)
- * is the only link, and the daemon's done-mirror is a reverse lookup over it.
- *
- * `vendor` is the engine chosen in the drawer; when omitted it falls back to
- * the shared Settings default. `effort` is the engine's reasoning/effort level
- * (engines that expose none pass `undefined`); it rides the create payload
- * under the `effort` key. The link is best-effort: the task already exists, so
- * a write failure must not strand it.
- */
 export async function quickStartIssue(
   repoRoot: string,
   issue: Issue,
@@ -357,12 +273,7 @@ export async function quickStartIssue(
     ...(engine ? { vendor: engine } : {}),
     ...(effort?.trim() ? { effort: effort.trim() } : {}),
   })
-  // Move the daemon's active-task pointer too — every sibling open-task
-  // path pairs selectTask with this (Board/NewTaskDialog), and the
-  // /task/$taskId route effect won't fire it (selectTask runs first).
   setActiveTaskBestEffort(taskId)
-  // Link issue → task: stamps the issue's taskId, flips it `doing`, and arms
-  // the daemon's auto-mirror to `done` when the task completes.
   await linkIssue(repoRoot, issue.id, taskId).catch(() => {})
   const api = await fetchKobeApiInvocation().catch(() => "kobe api")
   const tabId = ensureEngineTab(taskId)
@@ -370,7 +281,6 @@ export async function quickStartIssue(
   return { taskId }
 }
 
-/** Insert the merge/finish follow-up prompt into an issue's linked task. */
 export async function promptIssueMerge(
   taskId: string,
   issue: Issue,

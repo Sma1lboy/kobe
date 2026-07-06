@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
-/*
- * kobe web — claude theme (dark).
- * Palette mirrors packages/kobe/src/tui/context/theme/claude.json so the
- * web UI is visually the same product as the TUI. Do not invent colors here.
- */
+
 @theme {
   --color-bg: #141413;
   --color-surface: #1a1917;
@@ -63,7 +59,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   -webkit-app-region: no-drag;
 }
 
-/* Keep panes scrollable without visible browser chrome. */
+
 * {
   scrollbar-width: none;
 }

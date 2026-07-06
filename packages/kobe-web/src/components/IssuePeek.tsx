@@ -1,29 +1,3 @@
-/**
- * IssuePeek — the unified Board's wide story-detail drawer onto one issue, and
- * the owner-specified START surface for turning a story into a task. It rides
- * the shared {@link SlideOver} chrome in its `wide` two-column shell
- * (right-docked, slide-in, focus-trapped, Esc/backdrop close) and splits into:
- *
- *   - LEFT (primary): the story itself — an always-editable title <input> and a
- *     single-surface {@link RichEditor} description. That one Notion-like surface
- *     edits AND renders at once: typing styles inline and pasted/dropped images
- *     upload and appear inline in the same editor. It loads from and emits
- *     markdown, so the issue body stays stored as markdown (issues.json). A
- *     "Save" affordance lights up when the draft differs from the issue.
- *   - RIGHT (a w-72 detail rail): execution config + metadata — the status chip,
- *     created date, a "running" line for a linked issue, and the engine-owned
- *     {@link EngineEffortPicker}. Its bottom holds the start actions.
- *
- * Start actions (owner-explicit): an un-started, startable issue gets TWO
- * buttons — "Start in background" (spawn + stay on the board) and "Start &
- * watch" (spawn + open the live session). A linked issue swaps both for a single
- * "Open session". A done story has nothing to start.
- *
- * RichEditor only inserts images uploaded through the issue-asset endpoint, and
- * markdown.ts only renders those resolved `/api/issue-assets/<hash>/<file>` urls
- * as images, so the paste/upload + render paths stay XSS-safe by construction.
- */
-
 import { ExternalLink, GitMerge, Play } from "lucide-react"
 import { useState } from "react"
 import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
@@ -43,21 +17,13 @@ export function IssuePeek({
   onPromptMerge,
 }: {
   issue: Issue
-  /** Source repo for asset uploads — the same key the Board peeks under. */
   repoRoot: string
-  /** A save mutation is in flight — the Save affordance disables. */
   busy: boolean
-  /** A start spawn is in flight — both start buttons disable. */
   starting: boolean
   onClose: () => void
-  /** Persist the edited story; resolves true on success so we can clear dirty. */
   onSave: (patch: { title: string; body: string }) => Promise<boolean>
-  /** Start the issue on the chosen engine/effort. `watch` opens the live
-   *  session immediately; otherwise the spawn stays in the background. */
   onStart: (opts: { vendor?: string; effort?: string; watch: boolean }) => void
-  /** Open the running session/workspace for an already-started (linked) issue. */
   onOpenSession?: () => void
-  /** Insert the finish/merge prompt into the linked issue task. */
   onPromptMerge?: () => void
 }) {
   const [draftTitle, setDraftTitle] = useState(issue.title)
@@ -66,8 +32,6 @@ export function IssuePeek({
   const [effort, setEffort] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
-  // The story is already represented by a live task card on the board, so there
-  // is nothing left to start. Done stories likewise have nothing to do.
   const linked = Boolean(issue.taskId)
   const startable = canQuickStart(issue.status) && !linked
   const dirty = draftTitle !== issue.title || draftBody !== issue.body
@@ -97,7 +61,7 @@ export function IssuePeek({
   return (
     <SlideOver open wide onClose={onClose} title={title}>
       <div className="flex h-full min-h-0">
-        {/* LEFT — the editable story. */}
+        {}
         <div className="flex min-w-0 flex-1 flex-col gap-3 border-r border-line p-3">
           <div>
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -120,9 +84,7 @@ export function IssuePeek({
                 paste or drop images
               </span>
             </div>
-            {/* Single Notion-like surface: edits AND renders at once, with
-                pasted/dropped images inline. Remounts per issue so it seeds from
-                this issue's markdown without fighting the cursor mid-edit. */}
+            {}
             <RichEditor
               key={issue.id}
               value={draftBody}
@@ -151,11 +113,9 @@ export function IssuePeek({
           </div>
         </div>
 
-        {/* RIGHT — execution config + metadata, split into labeled sections so
-            future settings/detail each get their own slot (add a sibling
-            <section> between Detail and Engine, or after Engine). */}
+        {}
         <div className="flex w-72 shrink-0 flex-col gap-4 p-3">
-          {/* DETAIL */}
+          {}
           <section className="flex flex-col gap-1.5">
             <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
               Detail
@@ -181,8 +141,7 @@ export function IssuePeek({
             )}
           </section>
 
-          {/* ENGINE — its own section; future settings/detail get sibling
-              sections beside it. */}
+          {}
           <section className="flex flex-col gap-1.5 border-t border-line pt-3">
             <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
               Engine
@@ -198,7 +157,7 @@ export function IssuePeek({
             />
           </section>
 
-          {/* Actions pinned to the rail bottom. */}
+          {}
           <div className="mt-auto flex flex-col gap-2 border-t border-line pt-3">
             {linked ? (
               <>

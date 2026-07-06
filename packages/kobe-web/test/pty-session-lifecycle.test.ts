@@ -286,7 +286,6 @@ describe("createPtySessionManager", () => {
     await manager.ensureSession("a", "task-a", "engine", 80, 24)
     await manager.ensureSession("b", "task-b", "engine", 80, 24)
 
-    // Third tab over the cap of 2: oldest (a, no sockets) is killed + evicted.
     await manager.ensureSession("c", "task-c", "engine", 80, 24)
 
     expect(manager.sessionCount()).toBe(2)
@@ -314,7 +313,6 @@ describe("createPtySessionManager", () => {
     await manager.ensureSession("a", "task-a", "engine", 80, 24)
     await manager.ensureSession("b", "task-b", "engine", 80, 24)
 
-    // ensureSession("a") returns the existing entry — no spawn, no eviction.
     await manager.ensureSession("a", "task-a", "engine", 80, 24)
     expect(manager.sessionCount()).toBe(2)
     expect(manager.closeSession("b")).toBe(true)
@@ -333,15 +331,12 @@ describe("createPtySessionManager", () => {
     expect(ptys[0].paused).toBe(true)
     expect(ptys[0].pauseCount).toBe(1)
 
-    // A second flood while already paused must not re-pause.
     ptys[0].emitData("more")
     expect(ptys[0].pauseCount).toBe(1)
 
-    // Still saturated → no resume on the drain poll.
     vi.advanceTimersByTime(10)
     expect(ptys[0].paused).toBe(true)
 
-    // Drained back under the low-water mark → resume on the next poll.
     ws.bufferedAmount = 0
     vi.advanceTimersByTime(10)
     expect(ptys[0].paused).toBe(false)

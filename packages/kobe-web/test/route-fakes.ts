@@ -1,8 +1,3 @@
-/**
- * Shared fakes for the daemon web route-table tests (bridge-routes +
- * web-state-routes): a FAKE DaemonWebLink (no tmux, no socket) and the
- * request-handler builder around it.
- */
 
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { createDaemonWebRequestHandler, type DaemonWebLink } from "@sma1lboy/kobe-daemon/daemon/web-server"

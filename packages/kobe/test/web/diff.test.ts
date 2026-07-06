@@ -8,7 +8,6 @@ import { handleDiffRequest, mapPool, splitDiffByFile, statusLabel } from "../../
 describe("mapPool", () => {
   it("preserves input → output order regardless of completion order", async () => {
     const items = [50, 10, 30, 0, 20]
-    // Faster items resolve first, but results must still line up by index.
     const out = await mapPool(items, 8, async (ms, i) => {
       await new Promise((r) => setTimeout(r, ms))
       return `${i}:${ms}`
@@ -17,13 +16,6 @@ describe("mapPool", () => {
   })
 
   it("runs exactly `limit` workers concurrently, never more (deterministic gate)", async () => {
-    // Gate every worker on a manually-released promise instead of a
-    // wall-clock sleep: the old `peak > 1` assertion raced the scheduler
-    // (under load all microtasks could settle serially → peak===1 → flaky
-    // red), exactly the "timing never gates CI" rule in docs/HARNESS.md.
-    // Here the concurrency is OBSERVED precisely: after one macrotask the
-    // pool has spawned its initial cohort and parked it, so inFlight is
-    // exactly `limit` — no race, we only wait for already-queued work.
     const release: Array<() => void> = []
     let inFlight = 0
     let peak = 0
@@ -37,8 +29,7 @@ describe("mapPool", () => {
     })
     const drain = () => new Promise((r) => setTimeout(r, 0))
     await drain()
-    expect(inFlight).toBe(8) // exactly `limit` parked — precise, not `> 1`
-    // Release in waves; each wave the pool refills to at most `limit`.
+    expect(inFlight).toBe(8)
     while (release.length > 0) {
       const wave = release.splice(0)
       for (const r of wave) r()
@@ -132,7 +123,6 @@ describe("splitDiffByFile", () => {
     expect([...byFile.keys()].sort()).toEqual(["bar.ts", "foo.ts"])
     expect(byFile.get("foo.ts")).toContain("+new")
     expect(byFile.get("bar.ts")).toContain("+b")
-    // Each stored chunk is newline-terminated.
     expect(byFile.get("foo.ts")?.endsWith("\n")).toBe(true)
   })
 
@@ -153,9 +143,6 @@ describe("splitDiffByFile", () => {
   })
 
   it("keys paths containing spaces by their post-image path", () => {
-    // Git leaves spaces unquoted but appends a TAB after the name in the
-    // `---`/`+++` markers to disambiguate it — that tab is NOT part of the
-    // path and must be stripped, else the key never matches the porcelain row.
     const diff = [
       "diff --git a/has space.ts b/has space.ts",
       "index 111..222 100644",
@@ -172,8 +159,6 @@ describe("splitDiffByFile", () => {
   })
 
   it("decodes a C-quoted non-ASCII post-image path (octal byte escapes)", () => {
-    // Git C-quotes a path with non-ASCII bytes, octal-escaping each UTF-8 byte
-    // and wrapping the whole `b/…` in quotes: `+++ "b/\303\274.txt"` (ü.txt).
     const diff = [
       'diff --git "a/\\303\\274.txt" "b/\\303\\274.txt"',
       "index 111..222 100644",
@@ -190,8 +175,6 @@ describe("splitDiffByFile", () => {
   })
 
   it("decodes a C-quoted path with a control char (tab in the name)", () => {
-    // A genuine tab inside a name forces C-quoting (`"b/a\tb.txt"`); the decoded
-    // key carries the literal tab, matching the raw porcelain `-z` path.
     const diff = [
       'diff --git "a/a\\tb.txt" "b/a\\tb.txt"',
       "index 111..222 100644",
@@ -224,12 +207,6 @@ describe("splitDiffByFile", () => {
   })
 })
 
-/**
- * worktreePath is the route's only user input and it feeds `git -C <path>`, so
- * the input guards ARE the security boundary. These cases all return BEFORE any
- * git spawn, so they need no repo. (The happy path needs a real worktree and is
- * exercised end-to-end via the bridge, not here.)
- */
 describe("handleDiffRequest — input guards", () => {
   const req = (path: string, method = "GET") => {
     const url = new URL(`http://localhost${path}`)
@@ -270,13 +247,6 @@ describe("handleDiffRequest — input guards", () => {
   })
 })
 
-/**
- * End-to-end happy-path coverage against a REAL git repo — this route's whole
- * job is slicing real `git status`/`git diff` output, so a real repo exercises
- * the actual porcelain -z parsing, staged/unstaged merge, and untracked-file
- * synthesized-patch path that the input-guard tests above (by design) never
- * reach.
- */
 describe("handleDiffRequest — real repo", () => {
   let dir: string
 

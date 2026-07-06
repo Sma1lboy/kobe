@@ -94,8 +94,6 @@ export function GeneralSettingsSection(
 ) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
-  // Row registry for this section — a row's body index is its position
-  // in the list, so every index below is an id lookup, not arithmetic.
   const rows = () => generalRows({ themeNames: props.themeNames(), focusAccentSlots: FOCUS_ACCENT_SLOTS })
   const rowIdx = (id: string) => rowIndex(rows(), id)
   const transparentRow = () => rowIdx("transparent")
@@ -523,28 +521,18 @@ export function EngineSettingsSection(
     level: Accessor<NavLevel>
     bodyRow: Accessor<number>
     vendors: readonly VendorId[]
-    /** Display label for a vendor — custom name override, else VENDOR_LABEL. */
     displayName: (vendor: VendorId) => string
-    /** Current launch command shown for a vendor (override or default). */
     commandText: (vendor: VendorId) => string
-    /** Whether the engine is fully at its built-in default (dims it). */
     isDefault: (vendor: VendorId) => boolean
-    /** Open the editor for a vendor's launch command (`enter`). */
     editEngine: (vendor: VendorId) => void
-    /** Edit a vendor's custom display name (`r`). */
     renameEngine: (vendor: VendorId) => void
-    /** Reset a built-in (or remove a custom) engine (`x`). */
     resetEngine: (vendor: VendorId) => void
-    /** True for a user-added engine (shown with a `(custom)` tag; `x` removes it). */
     isCustom: (vendor: VendorId) => boolean
-    /** True for the DEFAULT engine for new tasks (the ● marker; set with `d`). */
     isDefaultEngine: (vendor: VendorId) => boolean
-    /** Register a new custom engine — the trailing "+ Add engine" row. */
     onAddEngine: () => void
   },
 ) {
   const { theme } = useTheme()
-  // The "+ Add engine" row sits right after the last engine, at index = count.
   const addRowIndex = () => props.vendors.length
   return (
     <box flexDirection="column" gap={1}>
@@ -571,8 +559,7 @@ export function EngineSettingsSection(
                   props.editEngine(vendor)
                 }}
               >
-                {/* ● marks the DEFAULT engine for new tasks (radio-style, like
-                    the theme list); a space holds the column on the others. */}
+                {}
                 <text
                   fg={isCursor() ? theme.selectedListItemText : theme.accent}
                   attributes={TextAttributes.BOLD}
@@ -604,7 +591,7 @@ export function EngineSettingsSection(
             )
           }}
         </For>
-        {/* Trailing "+ Add engine" row. */}
+        {}
         <box
           flexDirection="row"
           paddingLeft={1}
@@ -630,7 +617,6 @@ export function EngineSettingsSection(
   )
 }
 
-/** Read-only "is this engine installed + logged in" view (KOB-249). */
 export function AccountsSettingsSection(props: {
   claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
   codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>
@@ -759,26 +745,6 @@ export function AccountsSettingsSection(props: {
   )
 }
 
-/**
- * Feedback section — a conventional inline form, not a row list. Enter
- * (or l / click) from the sidebar focuses the `title` input; Tab walks
- * title → body → Send → back to the sidebar. Enter advances title → body;
- * the body is a multi-line `<textarea>`, so Enter there inserts a newline
- * (a bug report wants paragraphs), and the user Tabs to Send to commit.
- * The parent owns the Tab / Send-Enter bindings and suppresses its own
- * j/k/h/l nav while this form is focused so the inputs receive raw
- * keystrokes (the Send-row Enter binding is gated to bodyRow 2, so it
- * never steals the body textarea's Enter).
- *
- * The body uses `<textarea>` rather than `<input>` deliberately:
- * opentui's `<input>` (InputRenderable) strips newlines inside the native
- * widget on paste AND insert, so a multi-line pasted description was
- * silently collapsed to one line — pure data loss. `<textarea>` keeps the
- * newlines. It's an uncontrolled edit buffer (no reactive `value`/`onInput`
- * like `<input>`): we seed it once via `initialValue`, mirror edits back
- * into the signal through `onContentChange` (reading `plainText`), and
- * clear the buffer directly when the form resets after a send.
- */
 export function FeedbackSettingsSection(
   props: CursorSetters & {
     level: Accessor<NavLevel>
@@ -800,11 +766,6 @@ export function FeedbackSettingsSection(
   const labelFg = (focused: boolean) => (focused ? theme.primary : theme.textMuted)
   const labelAttrs = (focused: boolean) => (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
 
-  // The body is an uncontrolled <textarea>, so an external reset (the
-  // parent clears `feedbackBody` after a successful send) won't empty the
-  // widget on its own. Clear the edit buffer when the signal goes blank
-  // while the widget still holds text; the resulting onContentChange sets
-  // the signal to "" too, so the guard makes this a one-shot (no loop).
   let bodyEl: TextareaRenderable | undefined
   createEffect(() => {
     if (props.body() === "" && bodyEl && bodyEl.plainText !== "") {
@@ -1056,18 +1017,8 @@ export function DevSettingsSection(
   )
 }
 
-/**
- * Keybindings section — read-only view of the user keybinding overrides
- * loaded at boot from `~/.kobe/settings/keybindings.yaml` (see
- * `src/tui/context/keybindings-user.ts`). Editing happens in the YAML
- * file, not here; the section's job is to make the config discoverable,
- * show which overrides actually landed, and surface every load warning
- * that otherwise only reaches the pane's console log.
- */
 export function KeybindingsSettingsSection() {
   const { theme } = useTheme()
-  // Boot-time snapshot — overrides only change on restart, so a plain
-  // (non-reactive) read is correct here.
   const report = userKeybindingsReport()
   const fixedIds = Object.keys(FIXED_BINDING_IDS).sort()
   return (

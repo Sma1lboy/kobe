@@ -1,15 +1,3 @@
-/**
- * Unit tests for `dispatchKeyEvent` — the pure dispatch core of
- * `useBindings`. Regression coverage for KOB-?? where an Enter that
- * fired `sidebar.select` (and pulled focus to the workspace) then
- * leaked into the freshly-focused composer's textarea `onSubmit`,
- * auto-sending the user's saved draft.
- *
- * The fix: on a binding hit, `dispatchKeyEvent` calls
- * `evt.preventDefault()` so native opentui widgets (textarea, etc.)
- * don't also receive the key in the same tick.
- */
-
 import { describe, expect, test } from "vitest"
 import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 
@@ -49,7 +37,7 @@ describe("dispatchKeyEvent", () => {
         fired = true
       }),
     ]
-    const evt = makeEvt("return") // "return" should alias to "enter"
+    const evt = makeEvt("return")
 
     const handled = dispatchKeyEvent(stack, evt)
 
@@ -71,8 +59,8 @@ describe("dispatchKeyEvent", () => {
   test("walks the stack top-down (LIFO) — topmost binding wins", () => {
     const fired: number[] = []
     const stack: RegisteredBinding[] = [
-      makeReg(1, "enter", () => fired.push(1)), // bottom
-      makeReg(2, "enter", () => fired.push(2)), // top
+      makeReg(1, "enter", () => fired.push(1)),
+      makeReg(2, "enter", () => fired.push(2)),
     ]
     const evt = makeEvt("return")
 
@@ -88,7 +76,7 @@ describe("dispatchKeyEvent", () => {
       makeReg(1, "enter", () => {
         bottomFired = true
       }),
-      makeReg(2, "enter", () => {}, /* enabled */ false),
+      makeReg(2, "enter", () => {}, false),
     ]
     const evt = makeEvt("return")
 
@@ -99,11 +87,6 @@ describe("dispatchKeyEvent", () => {
   })
 
   test("a disabled matching group lets the key fall through (the settings `{file}` l-eaten fix)", () => {
-    // Repro of the bug: the standalone Settings page kept `l`=enterBody
-    // active under an open text input, swallowing the `l` in `{file}`.
-    // The fix disables that nav group while a sub-dialog is open; with it
-    // disabled and no other group binding `l`, dispatch must return false
-    // so the native <input> receives the keystroke.
     let navFired = false
     const stack: RegisteredBinding[] = [
       makeReg(
@@ -112,9 +95,9 @@ describe("dispatchKeyEvent", () => {
         () => {
           navFired = true
         },
-        /* enabled */ false,
-      ), // settings nav, suspended while the input dialog is open
-      makeReg(2, "escape", () => {}), // the input dialog only binds escape
+        false,
+      ),
+      makeReg(2, "escape", () => {}),
     ]
     const evt = makeEvt("l")
 
@@ -133,7 +116,7 @@ describe("dispatchKeyEvent", () => {
       }),
     ]
     const evt = makeEvt("return")
-    evt.preventDefault() // simulate a higher-priority handler having already consumed
+    evt.preventDefault()
 
     const handled = dispatchKeyEvent(stack, evt)
 
@@ -142,10 +125,6 @@ describe("dispatchKeyEvent", () => {
   })
 
   test("regression: Enter that triggers sidebar.select must not leak to textarea.onSubmit", () => {
-    // Simulates the production race: useBindings has a sidebar.select
-    // binding registered, the user presses Enter, the handler fires and
-    // pulls focus elsewhere. Native widgets reading `defaultPrevented`
-    // should see `true` and stay quiet.
     let sidebarFired = false
     const stack: RegisteredBinding[] = [
       makeReg(1, "enter", () => {
@@ -157,8 +136,6 @@ describe("dispatchKeyEvent", () => {
     dispatchKeyEvent(stack, evt)
 
     expect(sidebarFired).toBe(true)
-    // If a downstream native widget were to check this before firing
-    // its own onSubmit, it would correctly bail.
     expect(evt.defaultPrevented).toBe(true)
   })
 
@@ -184,18 +161,13 @@ describe("dispatchKeyEvent", () => {
         fired = true
       }),
     ]
-    const evt = makeEvt("k") // no ctrl
+    const evt = makeEvt("k")
 
     dispatchKeyEvent(stack, evt)
 
     expect(fired).toBe(false)
     expect(evt.defaultPrevented).toBe(false)
   })
-
-  // ─── Slot threading (direction-multiplexed bindings) ─────────────────
-  // `bindByIds` registers one Binding per chord with `slot` = the chord's
-  // index in the id's keys array; the dispatcher must hand that slot to
-  // the handler so it can map slot → direction without reading evt.name.
 
   test("passes the matched binding's slot to the handler", () => {
     const seen: Array<number | undefined> = []
@@ -206,7 +178,6 @@ describe("dispatchKeyEvent", () => {
       {
         id: 1,
         config: () => ({
-          // bindByIds shape for sidebar.nav defaults [j, k, down, up].
           bindings: [
             { key: "j", cmd, slot: 0 },
             { key: "k", cmd, slot: 1 },
@@ -247,13 +218,6 @@ describe("dispatchKeyEvent", () => {
     expect(seen).toBeUndefined()
   })
 
-  // ─── Snapshot / re-entrancy stability ───────────────────────────────
-  // A matched handler's `cmd()` can synchronously mount/unmount components
-  // (Solid effects), which push/remove entries on the live binding stack
-  // mid-dispatch. The scan must run over a snapshot taken at entry so those
-  // mutations can't skip or double-visit the in-flight scan, and the matched
-  // binding must still fire exactly once.
-
   test("a handler that mutates the stack during cmd() does not break dispatch", () => {
     let topFires = 0
     let bottomFires = 0
@@ -263,8 +227,6 @@ describe("dispatchKeyEvent", () => {
     })
     const top = makeReg(2, "enter", () => {
       topFires++
-      // Mutate the live stack the way a mount/unmount would: remove a
-      // lower (already-relevant) entry and push a brand-new binding.
       const idx = stack.findIndex((r) => r.id === 1)
       if (idx >= 0) stack.splice(idx, 1)
       stack.push(makeReg(3, "enter", () => bottomFires++))
@@ -274,9 +236,6 @@ describe("dispatchKeyEvent", () => {
     const evt = makeEvt("return")
     const handled = dispatchKeyEvent(stack, evt)
 
-    // Topmost binding won and fired exactly once; the lower binding it
-    // removed never fired, and the binding it pushed mid-scan was NOT
-    // visited in this dispatch (snapshot was frozen before the mutation).
     expect(handled).toBe(true)
     expect(topFires).toBe(1)
     expect(bottomFires).toBe(0)
@@ -287,14 +246,11 @@ describe("dispatchKeyEvent", () => {
     let outerFires = 0
     let innerFires = 0
     const stack: RegisteredBinding[] = []
-    // A lower binding that, if a nested dispatch ran the same key against
-    // the stack, would also fire. It must stay quiet.
     const inner = makeReg(1, "enter", () => {
       innerFires++
     })
     const outer = makeReg(2, "enter", () => {
       outerFires++
-      // Handler synchronously triggers another dispatch of the same event.
       dispatchKeyEvent(stack, makeEvt("return"))
     })
     stack.push(inner, outer)
@@ -304,13 +260,11 @@ describe("dispatchKeyEvent", () => {
 
     expect(handled).toBe(true)
     expect(outerFires).toBe(1)
-    expect(innerFires).toBe(0) // nested dispatch guarded out
+    expect(innerFires).toBe(0)
     expect(evt.defaultPrevented).toBe(true)
   })
 
   test("the re-entrancy guard resets between independent dispatches", () => {
-    // Ensure the guard's flag is cleared via finally even after a hit, so a
-    // later, unrelated dispatch still works.
     let fires = 0
     const stack: RegisteredBinding[] = [
       makeReg(1, "enter", () => {
@@ -323,13 +277,6 @@ describe("dispatchKeyEvent", () => {
 
     expect(fires).toBe(2)
   })
-
-  // ─── Legacy C0 fallback (issue #192) ─────────────────────────────────
-  // Non-kitty terminals (macOS Terminal.app) deliver ctrl+h as raw 0x08 →
-  // parsed {name:"backspace", raw:"\b"} and ctrl+j as 0x0a →
-  // {name:"linefeed"}. matchKey aliases those back to the ctrl chords so
-  // pane focus works on the legacy key path; the real Backspace key (0x7f)
-  // must NOT alias.
 
   test("legacy ctrl+h (raw 0x08 backspace) fires a ctrl+h binding", () => {
     let fired = false
@@ -387,9 +334,6 @@ describe("dispatchKeyEvent", () => {
   })
 
   test("a legacy-aliased event still matches a plain backspace binding (candidates coexist)", () => {
-    // A pane that binds "backspace" (no ctrl+h binding anywhere) must keep
-    // receiving the 0x08 byte — the alias adds a candidate, it doesn't
-    // replace the original name.
     let fired = false
     const stack: RegisteredBinding[] = [
       makeReg(1, "backspace", () => {
@@ -412,7 +356,7 @@ describe("dispatchKeyEvent", () => {
         config: () => ({
           bindings: [
             { key: "w", cmd, slot: 0 },
-            { key: "w", cmd, slot: 1 }, // user wrote the same chord twice
+            { key: "w", cmd, slot: 1 },
           ],
         }),
       },

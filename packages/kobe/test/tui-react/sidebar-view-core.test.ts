@@ -1,12 +1,3 @@
-/**
- * Unit tests for `src/tui/panes/sidebar/view-core.ts` — the framework-free
- * view logic extracted for the React sidebar port (issue #15, G3) and
- * consumed by BOTH renderers. These pin the shared derivations (tab cycle,
- * budgets, empty-state key selection, the `/`-search keystroke reducer, and
- * the small row helpers) so the Solid original and the React port cannot
- * drift: a behavior change here is a behavior change in two shipped panes.
- */
-
 import { describe, expect, it } from "vitest"
 import type { ChatRunState } from "../../src/tui/panes/sidebar/types"
 import {
@@ -45,19 +36,14 @@ describe("line budgets", () => {
   it("reserves 9 cells for the title line and 16 for the subtitle, floored at 6", () => {
     expect(titleBudgetFor(32)).toBe(23)
     expect(subtitleBudgetFor(32)).toBe(16)
-    // A collapsed pane never produces a <=0 budget.
     expect(titleBudgetFor(4)).toBe(6)
     expect(subtitleBudgetFor(10)).toBe(6)
   })
 
   it("caps the PROJECTS scroll region and shrinks it to real content", () => {
-    // Tall terminal, many projects: hits the 10-cell rail cap.
     expect(projectScrollMaxHeightFor(60, 12)).toBe(10)
-    // One project (2-line card): reserves only its own height.
     expect(projectScrollMaxHeightFor(60, 1)).toBe(2)
-    // Short terminal: the 25%-of-cells cap wins over content.
     expect(projectScrollMaxHeightFor(16, 5)).toBe(4)
-    // Degenerate terminal still yields the 2-cell floor.
     expect(projectScrollMaxHeightFor(3, 5)).toBe(2)
   })
 })
@@ -102,10 +88,8 @@ describe("searchQueryKeystroke", () => {
     expect(searchQueryKeystroke("k", key({ sequence: "p", ctrl: true }))).toBeNull()
     expect(searchQueryKeystroke("k", key({ sequence: "p", meta: true }))).toBeNull()
     expect(searchQueryKeystroke("k", key({ sequence: "p", option: true }))).toBeNull()
-    // esc / arrows: multi-byte sequences or empty
     expect(searchQueryKeystroke("k", key({ name: "escape", sequence: "" }))).toBeNull()
     expect(searchQueryKeystroke("k", key({ name: "up", sequence: "[A" }))).toBeNull()
-    // control chars and DEL are not printable
     expect(searchQueryKeystroke("k", key({ sequence: "" }))).toBeNull()
     expect(searchQueryKeystroke("k", key({ sequence: "" }))).toBeNull()
     expect(searchQueryKeystroke("k", key({ sequence: undefined }))).toBeNull()
@@ -128,7 +112,6 @@ describe("row helpers", () => {
     expect(taskIsLive("a", map)).toBe(true)
     expect(taskIsLive("c", map)).toBe(false)
     expect(taskIsLive("a", undefined)).toBe(false)
-    // Prefix discipline: "a" must not match a task id "ab".
     const tricky = new Map<string, ChatRunState>([["ab:tab1", "running"]])
     expect(taskIsLive("a", tricky)).toBe(false)
   })

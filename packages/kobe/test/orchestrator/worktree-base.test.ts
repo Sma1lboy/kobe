@@ -1,13 +1,3 @@
-/**
- * Unit tests for the global worktree base-path override.
- *
- * The override relocates the `<home>/.kobe/worktrees` root wholesale
- * while keeping the per-repo `<repo>-<hash>` subfolder. We assert both
- * the pure normalizer and its effect on the path helpers, plus that the
- * default root stays recognized (so worktrees created before the
- * override are still discoverable).
- */
-
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -45,9 +35,7 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = prevHome
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
 describe("normalizeWorktreeBase", () => {
@@ -108,10 +96,8 @@ describe("worktree paths honor the override", () => {
     expect(getWorktreeBaseOverride()).toBeNull()
     const root = worktreeRootFor(repo)
     expect(root.startsWith(path.join(home, ".kobe", "worktrees"))).toBe(true)
-    // No override → only the default root (+ repo-local legacy roots).
     const roots = managedWorktreeRootsFor(repo)
     expect(roots[0]).toBe(root)
-    // The default root is not duplicated as a separate fallback.
     expect(roots.filter((r) => r === root)).toHaveLength(1)
   })
 
@@ -121,7 +107,7 @@ describe("worktree paths honor the override", () => {
 
     expect(getWorktreeBaseOverride()).toBe(base)
     const root = worktreeRootFor(repo)
-    expect(path.dirname(root)).toBe(base) // <base>/<repo>-<hash>
+    expect(path.dirname(root)).toBe(base)
     expect(path.basename(root)).toMatch(/^repo-[0-9a-f]{12}$/)
   })
 
@@ -132,12 +118,10 @@ describe("worktree paths honor the override", () => {
     expect(path.dirname(root)).toBe(path.resolve(repo, "../kobe-wt"))
     expect(path.basename(root)).toMatch(/^repo-[0-9a-f]{12}$/)
 
-    // A second repo in another parent dir gets its own resolved base.
     const otherRepo = path.join(tmpRoot, "nested", "other")
     fs.mkdirSync(otherRepo, { recursive: true })
     expect(path.dirname(worktreeRootFor(otherRepo))).toBe(path.resolve(otherRepo, "../kobe-wt"))
 
-    // The default root stays recognized so pre-override tasks keep listing.
     const roots = managedWorktreeRootsFor(repo)
     expect(roots[0]).toBe(root)
     expect(roots).toContain(path.join(home, ".kobe", "worktrees", path.basename(root)))

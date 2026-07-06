@@ -1,14 +1,3 @@
-/**
- * Shared poll-scheduling core (`src/lib/poll-scheduling.ts`) — extracted
- * from the TUI's background-poll so the daemon's worktree-changes
- * collector reuses the EXACT guards behind the 30GB-repo-freeze fix.
- * The pure cadence math (computeNextAllowedAt / shouldPoll) keeps its
- * original coverage via the worktree-changes-poller tests (re-exported
- * API); this file pins the run wrapper the two bindings share:
- * in-flight dedupe, the timeout → hard-backoff path, and the
- * "failures never deliver a value" contract.
- */
-
 import { describe, expect, test } from "vitest"
 import { applyJitter, exponentialBackoff, maybeStartScheduledRun } from "../../src/lib/poll-scheduling.ts"
 
@@ -70,8 +59,6 @@ describe("maybeStartScheduledRun", () => {
     const state = { inFlight: false, nextAllowedAt: 0 }
     const before = Date.now()
     const values: number[] = []
-    // A run that only settles when its AbortSignal fires — the spawnCapture
-    // contract (the child is SIGKILLed and the promise resolves on close).
     maybeStartScheduledRun(
       state,
       CFG,
@@ -79,9 +66,8 @@ describe("maybeStartScheduledRun", () => {
       (v) => values.push(v),
     )
     await settle(CFG.timeoutMs + 20)
-    expect(values).toEqual([]) // a timed-out value is never delivered
+    expect(values).toEqual([])
     expect(state.inFlight).toBe(false)
-    // Hard backoff from the START time, not the adaptive cadence.
     expect(state.nextAllowedAt).toBeGreaterThanOrEqual(before + CFG.slowRetryMs)
   })
 
@@ -107,8 +93,8 @@ describe("applyJitter", () => {
     expect(applyJitter(1000, 0.2, () => 0.5)).toBe(1000)
   })
   test("rand 0 / 1 hit the ± bounds of the ratio band", () => {
-    expect(applyJitter(1000, 0.2, () => 0)).toBe(800) // -20%
-    expect(applyJitter(1000, 0.2, () => 1)).toBe(1200) // +20%
+    expect(applyJitter(1000, 0.2, () => 0)).toBe(800)
+    expect(applyJitter(1000, 0.2, () => 1)).toBe(1200)
   })
   test("stays within [delay·(1−r), delay·(1+r)] across the rand range", () => {
     for (const r of [0, 0.13, 0.5, 0.87, 1]) {
@@ -118,8 +104,8 @@ describe("applyJitter", () => {
     }
   })
   test("ratio is clamped to [0,1] and the result is never negative", () => {
-    expect(applyJitter(1000, 0, () => 0)).toBe(1000) // no jitter
-    expect(applyJitter(1000, 5, () => 0)).toBe(0) // clamp to ratio 1 → max(0, -1000) extreme
+    expect(applyJitter(1000, 0, () => 0)).toBe(1000)
+    expect(applyJitter(1000, 5, () => 0)).toBe(0)
   })
 })
 

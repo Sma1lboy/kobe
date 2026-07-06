@@ -1,18 +1,3 @@
-/**
- * Postinstall-style check for the preview pane's optional system
- * binaries. Runs after `bun install` and prints a coloured warning
- * (never blocks) listing anything missing along with the per-platform
- * install command.
- *
- *   chafa          required — image preview (sixel + character grid)
- *   ffmpeg/ffprobe required — animated GIF frame extraction
- *   rsvg-convert   optional — SVG → image preview (falls back to XML
- *                  syntax highlight when missing)
- *
- * Skipped on CI (CI env var set) and when KOBE_SKIP_DEP_CHECK=1, so
- * automated jobs don't spam logs with install hints we can't follow.
- */
-
 import { spawn } from "node:child_process"
 import { platform } from "node:os"
 
@@ -25,7 +10,6 @@ type Dep = {
   bin: string
   description: string
   required: boolean
-  /** Some binaries use single-dash flags (ffmpeg) and reject `--version` with exit 1. */
   versionArg: string
 }
 

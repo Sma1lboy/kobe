@@ -1,19 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Help dialog (React port of `src/tui/component/help-dialog.tsx`, issue
- * #15 G3) — kobe's global keybindings, grouped by category via the shared
- * framework-free `src/tui/lib/help-groups.ts`. Each row prints the
- * canonical chord (macOS glyphs via `formatChord`) plus the description;
- * alternate chords in a lighter color. Pane-local bindings are
- * intentionally not listed — this is the global-bindings registry only.
- * Full rationale (what was dropped in v0.6, why esc isn't re-bound here)
- * lives in the Solid header.
- *
- * React deltas: the keymap table is mutated in place on keybindings.yaml
- * reloads, invisible to React — `useKeymapVersion()` subscribes this
- * component and invalidates the grouped rows; `useT()` subscribes it to
- * language changes so the non-reactive `tKeys` lookups re-run.
- */
 
 import { TextAttributes } from "@opentui/core"
 import { useEffect, useMemo, useState } from "react"
@@ -33,13 +18,8 @@ export function HelpDialog(props: { onClose?: () => void }) {
   const keymapVersion = useKeymapVersion()
   // biome-ignore lint/correctness/useExhaustiveDependencies: keymapVersion is the invalidation key — the table is mutated in place.
   const grouped = useMemo(() => groupBindings(KobeKeymap), [keymapVersion])
-  // Standalone full-window page (`kobe help-page`) passes its own exit;
-  // the in-pane overlay closes by clearing the dialog stack.
   const close = () => (props.onClose ? props.onClose() : dialog.clear())
 
-  // Resolve the user's real tmux prefix so `prefix f` shows as e.g. `⌃B F`
-  // (their actual prefix, not a guess). Falls back to the `⌃B` default when
-  // there's no kobe tmux server (e.g. the dev outer monitor).
   const [prefixGlyph, setPrefixGlyph] = useState("⌃B")
   useEffect(() => {
     let disposed = false
@@ -53,8 +33,6 @@ export function HelpDialog(props: { onClose?: () => void }) {
     }
   }, [])
 
-  // Press `?` again to dismiss (ergonomic mirror of vim/tmux help). esc
-  // is handled by the DialogProvider's own binding stack — don't re-bind.
   useBindings(() => ({
     bindings: [{ key: "?", cmd: close }],
   }))
@@ -69,8 +47,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
           {t("help.esc")}
         </text>
       </box>
-      {/* Long-content dialogs handle their own overflow: flexShrink={1}
-          fits the dialog's maxHeight, the scrollbox owns the scrolling. */}
+      {}
       <scrollbox
         flexShrink={1}
         flexGrow={1}
@@ -86,10 +63,6 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 {tKeys("category", group.category)}
               </text>
               {group.rows.map((row) => {
-                // Prefer hint.keys (the user-facing chord label, e.g. "j/k")
-                // when present; fall back to the first registered chord.
-                // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
-                // so the help matches the footer.
                 const rawPrimary = row.hint?.keys ?? row.keys[0] ?? "—"
                 const primary = rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph)
                 const aliases = (row.hint ? row.keys : row.keys.slice(1)).map((k) => formatChord(k, prefixGlyph))
@@ -117,10 +90,6 @@ export function HelpDialog(props: { onClose?: () => void }) {
   )
 }
 
-/**
- * Convenience opener — pushes the help dialog onto the dialog stack.
- * Used by the global `?` binding. Static for parity with the Solid original.
- */
 HelpDialog.show = (dialog: DialogContext): void => {
   dialog.replace(() => <HelpDialog />)
 }

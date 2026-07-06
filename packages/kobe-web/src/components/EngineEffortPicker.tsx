@@ -1,30 +1,13 @@
-/**
- * EngineEffortPicker — the engine-owned vendor picker plus a reasoning/effort
- * control, shared by the Board's issue-start surfaces. The engine chip grid is
- * lifted from IssuePeek's footer (the same useEngines list every vendor picker
- * reads — CLAUDE.md: engine-owned UI data, never hard-coded vendor strings).
- *
- * Some engines expose discrete effort levels (`/api/engines` carries
- * `effortLevels` from the registry — codex maps a level to
- * `-c model_reasoning_effort=<level>`; claude has none). When the SELECTED
- * engine has levels we render a segmented control under the grid; engines
- * without levels hide it entirely. Controlled via { vendor, effort, onChange }.
- */
-
 import { useEffect, useState } from "react"
 import { type EngineOption, useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
 import { engineLabel } from "../lib/vendor.ts"
 
-/** The engine's effort levels off the shared EngineOption (it carries them
- *  natively from /api/engines), defaulting to an empty list. */
 function effortLevelsOf(engine: EngineOption | undefined): readonly string[] {
   const levels = engine?.effortLevels
   return Array.isArray(levels) ? levels : []
 }
 
-/** A sensible default level for a freshly-picked engine: prefer "medium" when
- *  offered, else the middle of the list, else the first. */
 function defaultEffort(levels: readonly string[]): string | undefined {
   if (levels.length === 0) return undefined
   if (levels.includes("medium")) return "medium"
@@ -45,8 +28,6 @@ export function EngineEffortPicker({
   const engines = useEngines()
   const [seeded, setSeeded] = useState(false)
 
-  // Seed the vendor from the user's detected default (same source as
-  // NewTaskDialog / IssuePeek) once, unless the caller already picked one.
   useEffect(() => {
     if (vendor || seeded) return
     let cancelled = false
@@ -72,7 +53,6 @@ export function EngineEffortPicker({
 
   const pickVendor = (id: string): void => {
     const nextLevels = effortLevelsOf(engines.find((e) => e.id === id))
-    // Keep the current effort if the new engine still offers it; otherwise seed.
     const nextEffort =
       effort && nextLevels.includes(effort) ? effort : defaultEffort(nextLevels)
     onChange({ vendor: id, effort: nextEffort })

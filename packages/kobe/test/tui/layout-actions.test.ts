@@ -1,10 +1,3 @@
-/**
- * Pure tests for the tmux layout action policy. The live actions shell out to
- * tmux, but their safety hinges on small deterministic choices: which pane gets
- * split for the 2/3/4-pane templates, how old untagged shell panes are found,
- * and how hidden pane helper sessions/slots are named.
- */
-
 import { describe, expect, test } from "vitest"
 import { hiddenTerminalSessionName, hiddenTerminalWindowIndex } from "../../src/tmux/session-layout"
 import {

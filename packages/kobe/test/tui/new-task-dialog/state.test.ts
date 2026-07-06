@@ -1,25 +1,3 @@
-/**
- * Unit tests for new-task-dialog pure helpers (`src/tui/component/
- * new-task-dialog/state.ts`).
- *
- * Why these matter: state.ts is the dialog's reducer layer — it must
- * stay pure (no Solid, no fs, no subprocess; the render-path sync guard
- * counts on that) so every behavior here is pinnable without standing
- * up opentui. Focus areas:
- *   - the picker mode logic the first-run flow leans on (KOB-250):
- *     with no saved repos the dialog defaults to the cwd — saved mode
- *     preselects it, and typing a `/` flips the picker into browse mode.
- *   - `computeRepoOptions` always surfaces the cwd even with no saved
- *     repos, so the first-run picker is never empty.
- *   - field cycling (`nextField` / `firstFieldFor`) per sub-tab — a
- *     wrong cycle strands keyboard users with no path to the Create
- *     button.
- *   - picker windowing/clamping (`windowAround` / `clampCursor`) — the
- *     80-branch-repo case must scroll, not push the dialog off-screen.
- *   - `resolveBaseRef` — highlighted branch wins over typed text;
- *     free text only kicks in when the filter matched nothing.
- */
-
 import {
   clampCursor,
   computeRepoOptions,
@@ -133,14 +111,12 @@ describe("nextField / firstFieldFor (per-tab field cycling)", () => {
   })
 
   it("threads the shared selectors + Create through every tab in the same order", () => {
-    // confirm → tabs → engine → <first input> is shared trailer logic.
     expect(nextField("confirm", "existing")).toBe("tabs")
     expect(nextField("tabs", "clone")).toBe("engine")
     expect(nextField("engine", "adopt")).toBe("adoptFilter")
   })
 
   it("recovers a stale cross-tab field by restarting the cycle", () => {
-    // e.g. field left on a clone field while existing tab is active.
     expect(nextField("cloneUrl", "existing")).toBe("repo")
     expect(nextField("repo", "clone")).toBe("cloneUrl")
   })
@@ -162,7 +138,7 @@ describe("windowAround / clampCursor (picker windowing)", () => {
 
   it("keeps the cursor in view by scrolling the window", () => {
     const w = windowAround(list, 10, 8)
-    expect(w.start).toBe(6) // cursor - floor(cap/2)
+    expect(w.start).toBe(6)
     expect(w.items).toHaveLength(8)
     expect(w.items[10 - w.start]).toBe("branch-10")
     expect(w.total).toBe(20)
@@ -218,23 +194,19 @@ describe("stripNewlines (opentui input sanitizer)", () => {
 
 describe("isBlankText (empty required-field guard)", () => {
   it("treats no-non-whitespace strings as blank, including CJK whitespace", () => {
-    // The bug this guards: a prompt/title of only a full-width space `　`
-    // (U+3000) — emitted constantly by Chinese IMEs — must NOT pass the
-    // submit guard. `.trim()` does not strip U+3000, so `!value.trim()`
-    // wrongly accepted it; `isBlankText` (via `\S`) correctly rejects it.
     expect(isBlankText("")).toBe(true)
     expect(isBlankText(" ")).toBe(true)
     expect(isBlankText("\t  \n")).toBe(true)
-    expect(isBlankText("　")).toBe(true) // U+3000 full-width / ideographic space
+    expect(isBlankText("　")).toBe(true)
     expect(isBlankText("　　")).toBe(true)
-    expect(isBlankText("　\t")).toBe(true) // full-width space + ASCII tab
-    expect(isBlankText(" ")).toBe(true) // no-break space
+    expect(isBlankText("　\t")).toBe(true)
+    expect(isBlankText(" ")).toBe(true)
   })
 
   it("treats any non-whitespace content as non-blank", () => {
     expect(isBlankText("hi")).toBe(false)
-    expect(isBlankText(" 中文 ")).toBe(false) // CJK content with ASCII padding
-    expect(isBlankText("　中文　")).toBe(false) // CJK content padded with full-width spaces
+    expect(isBlankText(" 中文 ")).toBe(false)
+    expect(isBlankText("　中文　")).toBe(false)
     expect(isBlankText(".")).toBe(false)
   })
 })

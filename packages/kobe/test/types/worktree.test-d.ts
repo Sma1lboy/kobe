@@ -1,6 +1,3 @@
-/**
- * Type-level tests for src/types/worktree.ts.
- */
 import { describe, expectTypeOf, it } from "vitest"
 import type { WorktreeInfo, WorktreeManager } from "../../src/types/worktree.ts"
 
@@ -27,10 +24,6 @@ describe("WorktreeManager", () => {
   })
 
   it("create returns Promise<WorktreeInfo>", () => {
-    // 4th param `baseRef?: string` lets the orchestrator root a new
-    // branch at a non-HEAD ref (the new-task dialog "from branch"
-    // field). When omitted the impl falls back to current HEAD —
-    // pre-baseRef behavior unchanged.
     expectTypeOf<WorktreeManager["create"]>().parameters.toEqualTypeOf<[string, string, string, string?]>()
     expectTypeOf<WorktreeManager["create"]>().returns.toEqualTypeOf<Promise<WorktreeInfo>>()
   })

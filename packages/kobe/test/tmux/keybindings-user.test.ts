@@ -1,17 +1,3 @@
-/**
- * Tests for the impure half of `src/tmux/keybindings.ts`:
- * `resolveUserTmuxKeys` (file read → extract → resolve → cache) plus
- * `tmuxChordOptsFor` and `resetTmuxKeysCache`.
- *
- * Why these matter: this is the exact path `ensureSession` runs at session
- * build to decide which REAL tmux server bindings to install. The cache
- * contract (one read per process, reset = re-derive) is what the
- * live-reload path (`reloadUserKeybindings`) leans on, and the
- * shift+letter allowance for `tmux.*` ids is what lets `ctrl+shift+e`
- * style chords through the shared extractor. The YAML file is real
- * (temp `KOBE_HOME_DIR`); `Bun.YAML` is stubbed since vitest runs on Node.
- */
-
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -23,9 +9,6 @@ let tmpHome: string
 let originalHome: string | undefined
 let warnSpy: ReturnType<typeof vi.spyOn>
 
-// JSON is a strict subset of YAML, so the on-disk file stays a legitimate
-// keybindings.yaml while the Bun.YAML stub can parse it with JSON.parse
-// (no `yaml` dependency in this package).
 function writeConfig(bindings: Record<string, unknown>): void {
   const dir = path.join(tmpHome, ".kobe", "settings")
   fs.mkdirSync(dir, { recursive: true })
@@ -73,7 +56,6 @@ describe("resolveUserTmuxKeys", () => {
     expect(res.binds["tmux.tab.new"]).toEqual({ chord: "ctrl+y", key: "C-y" })
     expect(res.binds["tmux.tab.chooseEngine"]).toEqual({ chord: "ctrl+shift+e", key: "C-S-E" })
     expect(res.overridden.has("tmux.tab.new")).toBe(true)
-    // The opentui-layer id is someone else's business — no warning for it.
     expect(res.warnings).toEqual([])
   })
 

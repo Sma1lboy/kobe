@@ -1,10 +1,3 @@
-/**
- * `kobe completions <shell>` — asserts each generated script actually
- * carries every top-level subcommand in that shell's grammar (a completion
- * script that misses a subcommand is silently useless), plus the usage /
- * unknown-shell error surface.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { runCompletionsSubcommand } from "../../src/cli/completions-cmd.ts"
 import { TOP_LEVEL_SUBCOMMANDS } from "../../src/cli/subcommands.ts"

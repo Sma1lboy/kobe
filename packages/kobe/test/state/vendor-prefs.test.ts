@@ -1,11 +1,3 @@
-/**
- * Vendor-preference layering: per-repo last-active → global default →
- * legacy `lastSelectedVendor` → claude, with each layer validated
- * independently (a corrupt repo entry must fall through to the global
- * default, not straight to the built-in fallback). Isolated state.json
- * via `KOBE_HOME_DIR`.
- */
-
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"

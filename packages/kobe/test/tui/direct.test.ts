@@ -1,22 +1,3 @@
-/**
- * Unit tests for `src/tui/direct.ts` — the v0.6 direct-tmux entrypoint.
- *
- * `chooseInitialTask` is pure and was already covered. The rest of the file
- * (`startDirectTmux`) is the actual boot sequence: connect to the daemon,
- * pick/attach a tmux session, and fall back to the kobe-home session when
- * there are zero tasks. Every dependency is a module-level import (daemon
- * client, tmux helpers, engine command, state.json), so full coverage means
- * mocking each seam — done below, spreading nothing since we replace every
- * export each module needs (per the mocking gotcha: a stub that's missing an
- * export used by the code path becomes `undefined()` and a catch can eat it
- * silently).
- *
- * `Bun.spawn` (the actual tmux attach spawn) is a Bun-runtime global that
- * vitest's node-environment sandbox does not provide at all — confirmed by
- * `ReferenceError: Bun is not defined` when referencing it unset. We inject
- * a fake `globalThis.Bun.spawn` per test instead of `vi.spyOn`.
- */
-
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { PLACEHOLDER_TASK_TITLE } from "../../src/orchestrator/core"
 import { type Task, toTaskId } from "../../src/types/task"
@@ -140,8 +121,6 @@ describe("chooseInitialTask", () => {
   })
 })
 
-// ── startDirectTmux ─────────────────────────────────────────────────────────
-
 type FakeOrch = {
   init: ReturnType<typeof vi.fn>
   listTasks: ReturnType<typeof vi.fn>
@@ -251,7 +230,6 @@ describe("startDirectTmux — ensureRepos", () => {
     await startDirectTmux()
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("ensureMainTask failed"), expect.any(Error))
-    // Still reaches the fallback-session attach — boot isn't aborted.
     expect(mocks.ensureFallbackSession).toHaveBeenCalledTimes(1)
   })
 })

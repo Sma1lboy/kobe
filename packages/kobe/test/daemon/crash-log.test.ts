@@ -1,17 +1,3 @@
-/**
- * Tests for the daemon crash net.
- *
- * Regression target: the daemon used to "die easily" — it ran with no
- * `unhandledRejection` / `uncaughtException` handler, so a single stray
- * rejected promise from one of its fire-and-forget `void someAsync()`
- * calls terminated the whole process (Node/Bun's default). Registering
- * the handlers flips that default to "log and keep serving."
- *
- * These tests invoke the registered listener functions directly rather
- * than `process.emit(...)`, so the vitest runner's own process-level
- * listeners are never triggered.
- */
-
 import {
   formatCrashEntry,
   formatDaemonError,
@@ -108,9 +94,6 @@ describe("installDaemonCrashHandlers", () => {
     installDaemonCrashHandlers((l) => lines.push(l))
     const added = process.listeners("unhandledRejection").filter((h) => !before.includes(h))
     expect(added).toHaveLength(1)
-
-    // Invoke our handler directly — proves a stray rejection becomes a
-    // logged line instead of a process kill.
     ;(added[0] as (reason: unknown) => void)(new Error("stray rejection"))
     expect(lines.some((l) => l.includes("unhandledRejection") && l.includes("stray rejection"))).toBe(true)
   })

@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { tailPath } from "../src/lib/path-format.ts"
 
-/**
- * tailPath fits a path into a fixed-width slot by keeping the END (the
- * filename) and prefixing an ellipsis. Shared by the rail and the diff file
- * list, so the truncation must be exact: result ≤ max, the tail preserved.
- */
 
 describe("tailPath", () => {
   it("returns a path within budget unchanged", () => {

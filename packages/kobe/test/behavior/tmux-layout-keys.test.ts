@@ -1,34 +1,3 @@
-/**
- * Prefix-table layout chord pins (`docs/KEYBINDINGS.md` "Direct-tmux handover
- * keys": `prefix a/o/z/space`) — one boot, one send-keys per toggle, reusing
- * the same session across assertions (`docs/HARNESS.md` budget).
- *
- * The prefix itself is NOT hardcoded to tmux's built-in `C-b`: the `-L kobe`
- * socket still loads the operator's own `~/.tmux.conf` (see the header
- * comment on `ensureSession` in `src/tui/panes/terminal/tmux.ts`), and a
- * config that rebinds the primary `prefix` (common — e.g. screen-style
- * `C-a` setups) would otherwise silently no-op every assertion below. This
- * suite resolves the live prefix via `show-options -g prefix` instead, so it
- * is correct both on a bare CI runner (tmux's built-in `C-b`) and on a
- * developer machine with a customized one.
- *
- * Claims pinned (`session-layout.ts`/`layout-actions.ts`'s hide/restore
- * contract, quoting `docs/KEYBINDINGS.md` rows 112-115):
- *   - `prefix a` hides/restores the Tasks rail by moving it to a background
- *     tmux window (`break-pane` into a hidden helper session), so its
- *     process is preserved, not killed.
- *   - `prefix o` toggles the Ops pane — but "hiding it closes only the
- *     kobe-owned Ops pane; showing it rebuilds that pane": unlike Tasks and
- *     the terminal, this is a real kill + respawn, so its pid changes.
- *   - `prefix z` hides/restores the terminal (shell) pane the same
- *     process-preserving way as Tasks.
- *   - `prefix space` (zen) collapses every pane except Tasks + the engine
- *     pane (default `zen.keepTasks: true`, `src/state/zen.ts`), and restores
- *     the full 4-pane workspace on a second press — preserving the
- *     hidden-session panes' processes (Ops still rebuilds, per its own
- *     toggle contract).
- */
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import {
   type BehaviorEnv,
@@ -56,7 +25,6 @@ function taskSessionName(env: BehaviorEnv): string {
   return name
 }
 
-/** Panes of the session's CURRENT window (mirrors the running ChatTab's visible workspace). */
 function currentPanes(env: BehaviorEnv, session: string): PaneRow[] {
   return tmuxInner(env, "list-panes", "-t", `=${session}`, "-F", "#{pane_id}\t#{@kobe_role}\t#{pane_pid}")
     .stdout.split("\n")
@@ -75,7 +43,6 @@ function pidOf(rows: readonly PaneRow[], role: string): number | undefined {
   return rows.find((r) => r.role === role)?.pid
 }
 
-/** ESRCH -> gone, EPERM -> alive but owned elsewhere (same probe pane-cleanup.test.ts uses). */
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -118,7 +85,6 @@ describe.skipIf(!tmuxAvailable())("tmux prefix-table layout chords (behavior)", 
     await env.dispose()
   })
 
-  /** Send one prefix chord (`prefix a`, `prefix space`, ...) as a single ordered send-keys call. */
   function sendPrefixChord(letter: string): void {
     tmux(env, "send-keys", "-t", SESSION, prefixKey, letter)
   }
@@ -132,7 +98,6 @@ describe.skipIf(!tmuxAvailable())("tmux prefix-table layout chords (behavior)", 
     const hidden = await waitUntil(() => !roleSet(currentPanes(env, session)).has("tasks"))
     expect(hidden).toBe(true)
     expect(roleSet(currentPanes(env, session))).toEqual(new Set(["claude", "ops", "shell"]))
-    // Hidden, not killed: break-pane into the helper session keeps it running.
     expect(isAlive(tasksPid)).toBe(true)
 
     sendPrefixChord("a")
@@ -151,8 +116,6 @@ describe.skipIf(!tmuxAvailable())("tmux prefix-table layout chords (behavior)", 
     const hidden = await waitUntil(() => !roleSet(currentPanes(env, session)).has("ops"))
     expect(hidden).toBe(true)
     expect(roleSet(currentPanes(env, session))).toEqual(new Set(["tasks", "claude", "shell"]))
-    // Unlike Tasks/terminal, kobe explicitly kills the Ops pane on hide (docs/KEYBINDINGS.md):
-    // its old pid must be gone, not parked in a hidden session.
     const killed = await waitUntil(() => !isAlive(opsPidBefore))
     expect(killed).toBe(true)
 
@@ -190,7 +153,6 @@ describe.skipIf(!tmuxAvailable())("tmux prefix-table layout chords (behavior)", 
     sendPrefixChord("Space")
     const zenned = await waitUntil(() => roleSet(currentPanes(env, session)).size === 2)
     expect(zenned).toBe(true)
-    // Default zen.keepTasks: true (src/state/zen.ts) — Tasks survives, Ops + terminal hide.
     expect(roleSet(currentPanes(env, session))).toEqual(new Set(["tasks", "claude"]))
 
     sendPrefixChord("Space")
@@ -198,9 +160,6 @@ describe.skipIf(!tmuxAvailable())("tmux prefix-table layout chords (behavior)", 
     expect(restored).toBe(true)
     const after = currentPanes(env, session)
     expect(roleSet(after)).toEqual(new Set(["tasks", "claude", "ops", "shell"]))
-    // The terminal pane survived zen hidden, not rebuilt (same pid); Ops is
-    // rebuilt on every restore regardless of the path that hid it (its own
-    // toggle contract, pinned above) so its pid is deliberately NOT asserted here.
     expect(pidOf(after, "shell")).toBe(shellPid)
   }, 20_000)
 })

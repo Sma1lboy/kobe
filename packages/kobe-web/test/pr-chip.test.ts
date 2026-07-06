@@ -2,10 +2,6 @@ import { describe, expect, it } from "vitest"
 import { prChipView } from "../src/lib/pr-chip.ts"
 import type { TaskPRStatus } from "../src/lib/types.ts"
 
-// Why this matters: the chip is the rail's AND the Overview's only PR signal.
-// The precedence contract — a terminal lifecycle (merged/closed) wins over
-// any check state, an open PR is colored by its checks — must hold in both
-// surfaces, so it lives in one pure function locked here.
 
 const pr = (over: Partial<TaskPRStatus>): TaskPRStatus => ({
   provider: "github",

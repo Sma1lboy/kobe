@@ -1,13 +1,3 @@
-/**
- * Unit tests for the per-repo init resolution (state/repo-init.ts) and the
- * state.json override accessors (state/repos.ts).
- *
- * Priority is the load-bearing rule: in-repo `.kobe/` files WIN over the
- * per-user state.json override, resolved PER FIELD. The override is the
- * fallback default. Paths used here are plain tmpdirs (not git repos), so
- * `resolveRepoRoot` returns them verbatim — no git shelling, deterministic.
- */
-
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -85,7 +75,6 @@ describe("resolveRepoInit (files win over override, per field)", () => {
     })
     setRepoInitOverride(wt, { initScript: "make setup", initPrompt: "ignored" })
     const r = resolveRepoInit(wt, wt)
-    // script runs the committed file by relative path (cwd is the worktree)
     expect(r.initScript).toBe("sh .kobe/init.sh")
     expect(r.initPrompt).toBe("start by reading the docs")
   })

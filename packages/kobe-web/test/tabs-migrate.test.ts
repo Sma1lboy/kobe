@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { migrateStoredTab } from "../src/lib/tabs.ts"
 
-/**
- * Stale localStorage from older builds can carry retired tab kinds. The
- * migration must coerce them to current kinds so the SPA never renders an
- * unknown tab (or crashes) on load.
- */
 
 describe("migrateStoredTab", () => {
   it("migrates the retired 'notes' kind to an empty chooser tab", () => {
@@ -25,8 +20,6 @@ describe("migrateStoredTab", () => {
   })
 
   it("degrades a present-but-unrecognized kind to 'vendor' (never passes it through)", () => {
-    // A forward-version / removed / corrupted kind must not survive migration —
-    // an unknown kind crashes tabHasPty(kind) on the live SSE prune path.
     expect(migrateStoredTab({ id: "u", kind: "diff", title: "?" }).kind).toBe("vendor")
     expect(migrateStoredTab({ id: "u2", kind: "notes2" }).kind).toBe("vendor")
   })

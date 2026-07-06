@@ -1,20 +1,3 @@
-/**
- * Shared task-action flows — the ONE implementation behind the hosts
- * that expose task mutations. Today that's the in-session Tasks pane
- * (`tui/tasks-pane/host.tsx`); the deprecated outer monitor (`app.tsx`)
- * was the second host until its retirement (docs/design/app-retirement.md)
- * — consolidating here is what made that a pure deletion, not a port.
- * Host differences (e.g. the Tasks pane lives INSIDE the tmux client it
- * may kill) are an explicit option or hook on {@link TaskActionContext},
- * never a second copy.
- *
- * Testability rule: NO `@opentui` imports here. Modal UI (DialogConfirm /
- * RenameTaskDialog / NewTaskDialog) reaches this module only as
- * context-provided adapter callbacks (`confirm`, `promptText`,
- * `promptNewTask`), so the flows run under plain vitest with mocks
- * (`test/tui/task-actions.test.ts`).
- */
-
 import type { KobeOrchestrator } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
 import { engineDisplayName } from "@/engine/interactive-command"
@@ -30,11 +13,6 @@ export interface TaskActionLogger {
   error(message?: unknown, ...optionalParams: unknown[]): void
 }
 
-/**
- * Confirm-modal copy for {@link TaskActionContext.confirm}. The COPY lives
- * in the flows (single source for both hosts); only the rendering is
- * host-provided — each host implements `confirm` with `DialogConfirm.show`.
- */
 export interface ConfirmPrompt {
   readonly title: string
   readonly body: string
@@ -42,113 +20,38 @@ export interface ConfirmPrompt {
   readonly confirmLabel: string
 }
 
-/** Optional labels for {@link TaskActionContext.promptText} (RenameTaskDialog reuses). */
 export interface TextPromptOpts {
   readonly dialogTitle?: string
   readonly fieldLabel?: string
 }
 
-/**
- * Host-agnostic context bag the lifted flows run against. Required members
- * are what BOTH hosts provide; every optional member is a documented
- * host divergence — modeled here as an option/hook so neither host keeps
- * its own copy of a flow.
- */
 export interface TaskActionContext {
-  /**
-   * Daemon-backed mutation surface. `null` only in the Tasks pane's
-   * degraded no-daemon fallback, where mutations are unavailable — flows
-   * no-op (or log, matching the pane's old behavior).
-   */
   readonly orch: KobeOrchestrator | null
-  /** Live task list accessor (orchestrator signal or file-poll fallback). */
   readonly tasks: () => readonly Task[]
-  /** Confirm-modal adapter — host implements with `DialogConfirm.show(dialog, …) === true`. */
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>
-  /** Text-input adapter — host implements with `RenameTaskDialog.show(dialog, …)`. */
   readonly promptText: (initial: string, opts?: TextPromptOpts) => Promise<string | undefined>
   readonly logger: TaskActionLogger
-  /** Forensic log tag — `[kobe]` (outer monitor) vs `[kobe tasks]` (Tasks pane). */
   readonly logPrefix: string
-  /**
-   * DIVERGENCE — on-screen failure toast. The Tasks pane surfaces failures
-   * as red toasts (under tmux's alternate screen a bare console.error is
-   * invisible); the outer monitor has no toast wiring for task actions, so
-   * it omits this and failures stay log-only, as before.
-   */
   readonly notifyError?: (message: string) => void
-  /** DIVERGENCE — neutral "this happened" toast. Same split as `notifyError`. */
   readonly notifyInfo?: (message: string) => void
-  /**
-   * DIVERGENCE — force an immediate tasks.json re-read after a mutation.
-   * The Tasks pane needs it for its poll fallback; the outer monitor is
-   * signal-driven and omits it.
-   */
   readonly reload?: () => Promise<void>
-  /**
-   * DIVERGENCE — the Tasks pane runs INSIDE the tmux client whose session
-   * a delete may kill, so it must `switch-client` away first or the kill
-   * yanks the user's terminal out from under them. The outer monitor sits
-   * outside tmux and omits this.
-   */
   readonly switchBeforeKill?: boolean
-  /**
-   * DIVERGENCE — publish the shared active-task focus after archive/delete
-   * (KOB-247). The Tasks pane sets this; the outer monitor historically
-   * didn't and keeps that behavior.
-   */
   readonly updateActiveTask?: boolean
-  /**
-   * DIVERGENCE — selection is host-owned signal state, so the post-delete
-   * cursor move stays a hook: the Tasks pane prefers the flow-computed
-   * `nextTask`, the outer monitor recomputes from the remaining list.
-   */
   readonly onTaskDeleted?: (taskId: string, nextTask: Task | undefined) => void
 }
 
-/**
- * Extra hooks the create flow needs on top of {@link TaskActionContext}.
- * Hosts build ONE object satisfying this and pass it to every flow.
- */
 export interface CreateTaskContext extends TaskActionContext {
-  /** New-task dialog adapter — host implements with `NewTaskDialog.show(dialog, …)`. */
   readonly promptNewTask: (
     defaultRepo: string,
     repos: readonly string[],
     opts: NewTaskDialogOptions,
   ) => Promise<NewTaskInput | undefined>
-  /**
-   * DIVERGENCE — the "spawn a sibling" default repo: the outer monitor
-   * uses the active task's repo; the Tasks pane uses the cursor row's
-   * (falling back to the first listed task). The flow falls back to
-   * `savedRepos[0]` then `process.cwd()` for both.
-   */
   readonly cursorRepo: () => string | undefined
-  /** Repo-scoped vendor preference — see state/vendor-prefs.ts. */
   readonly lastVendor: (repo: string) => VendorId | undefined
   readonly rememberVendor: (repo: string, vendor: VendorId) => void
-  /**
-   * DIVERGENCE — after `addSavedRepo`, the outer monitor mirrors the fresh
-   * list into its kv store so the debounced whole-store flush doesn't
-   * clobber the disk write. The Tasks pane is disk-only and omits this.
-   */
   readonly onRepoSaved?: () => void
-  /**
-   * DIVERGENCE — the Tasks pane's chattab surface preference can route the
-   * new-task flow to a dedicated tmux tab instead of the in-pane dialog.
-   * Return `true` when handled elsewhere (flow stops). The outer monitor
-   * has no tmux session to open a tab in and omits this.
-   */
   readonly openCreateSurface?: (defaultRepo: string) => Promise<boolean>
-  /** Land the host's cursor/selection on the created (or last adopted) task. */
   readonly selectTask?: (id: string) => void
-  /**
-   * Enter (switch into) the created (or last adopted) task right after
-   * creation — so `n` drops the user in the engine pane ready to type the
-   * first prompt, instead of just landing the cursor. The Tasks pane wires
-   * this to its `switchTo`; the chattab surface does its own jump and never
-   * reaches here.
-   */
   readonly enterTask?: (id: string) => void | Promise<void>
 }
 
@@ -156,15 +59,6 @@ export function nextActiveTask(tasks: readonly Task[], excludeId: string): Task 
   return tasks.find((t) => t.id !== excludeId && !t.archived)
 }
 
-/**
- * True when `taskId` is the CURRENTLY active task, so archive/delete should
- * hand the shared active-task focus to the next task. Archiving/deleting a
- * BACKGROUND task must not steal focus from whatever is active — the old
- * unconditional `setActiveTask(nextTask)` did exactly that (bug #6). Both real
- * orchestrators expose `activeTaskSignal()`; when it's absent (a bare test
- * mock) we fall back to `true` to preserve the pre-guard behavior rather than
- * throw — real usage always resolves the active id and gets the guard.
- */
 function removedTaskIsActive(orch: KobeOrchestrator, taskId: string): boolean {
   const read = (orch as { activeTaskSignal?: () => () => string | null }).activeTaskSignal
   if (typeof read !== "function") return true
@@ -190,14 +84,6 @@ export async function toggleTaskArchivedFlow(opts: {
   }
   if (!archived) return { archived }
 
-  // Archiving STOPS the task's running engine: switch the client away, clear
-  // active-task focus, then kill its tmux session so an archived task doesn't
-  // keep a live engine subprocess burning resources/tokens. Non-destructive to
-  // DATA — the worktree, branch, and chat history stay on disk and the session
-  // is rebuilt fresh on unarchive / next enter. Gated behind a confirm at the
-  // call site (it ends a running session). Mirrors finishDeletedTaskFlow's
-  // teardown; the difference from delete is purely that the task record + its
-  // worktree survive.
   const sessionName = tmuxSessionName(opts.taskId)
   const nextTask = nextActiveTask(opts.tasks, opts.taskId)
   await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
@@ -205,10 +91,6 @@ export async function toggleTaskArchivedFlow(opts: {
       opts.logger.error(`${opts.logPrefix} switch-client failed:`, err)
     },
   )
-  // Only re-point the shared active-task focus when the archived task WAS the
-  // active one. Archiving a background task must not yank every surface's focus
-  // onto some other task (mirrors switchClientBeforeKill's current!=target
-  // guard). The active-task channel keeps pointing where it did.
   if (opts.updateActiveTask && removedTaskIsActive(opts.orch, opts.taskId)) {
     await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
   }
@@ -236,9 +118,6 @@ export async function finishDeletedTaskFlow(opts: {
       },
     )
   }
-  // Only re-point shared active-task focus when the DELETED task was the active
-  // one — deleting a background task must leave the current focus alone (same
-  // guard as the archive flow above).
   if (opts.updateActiveTask && opts.orch && removedTaskIsActive(opts.orch, opts.taskId)) {
     await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
   }
@@ -248,12 +127,6 @@ export async function finishDeletedTaskFlow(opts: {
   return { nextTask }
 }
 
-/**
- * Archive (or unarchive) a task. Unarchive is harmless — brings the task
- * back, no confirm. Archiving STOPS the task's running engine session, so
- * it confirms first, then runs the shared stop-and-kill teardown
- * ({@link toggleTaskArchivedFlow}).
- */
 export async function archiveTaskFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
   if (!ctx.orch) return
   const task = ctx.tasks().find((t) => t.id === taskId)
@@ -279,24 +152,10 @@ export async function archiveTaskFlow(ctx: TaskActionContext, taskId: string): P
   await ctx.reload?.()
 }
 
-/**
- * Delete a task: confirm → non-force delete → on DIRTY_WORKTREE re-prompt
- * for an explicit force-delete → tear down the tmux session → host
- * selection hook. The first attempt is deliberately non-force: the
- * orchestrator refuses to destroy a worktree with uncommitted/untracked
- * work and throws a DIRTY_WORKTREE error instead, so the user can't lose
- * unsaved work silently (KOB-244). A failed/declined delete leaves
- * everything in place — no session kill, no selection move.
- */
 export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
   if (!ctx.orch) return
   const task = ctx.tasks().find((t) => t.id === taskId)
   if (!task) return
-  // A "project" row is a synthetic `kind: "main"` task projecting a saved
-  // repo. It has no worktree of its own to destroy, and `deleteTask` refuses
-  // it (CannotDeleteMainTaskError) — pressing `d` on it used to just error.
-  // Route it to forget-project instead: un-save the repo + drop the main row,
-  // leaving the repo and any real tasks under it on disk.
   if (task.kind === "main") {
     const ok = await ctx.confirm({
       title: `Remove project "${task.title}"?`,
@@ -349,8 +208,6 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
       ctx.notifyError?.(`Couldn't delete: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
-  // Only tear down the session + move selection if the task was actually
-  // removed — a failed/declined delete must leave everything in place.
   if (!deleted) return
   const { nextTask } = await finishDeletedTaskFlow({
     orch: ctx.orch,
@@ -365,11 +222,6 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   ctx.onTaskDeleted?.(taskId, nextTask)
 }
 
-/**
- * Rename a task's title via `task.rename` (same RPC from both hosts). The
- * branch follows the title for not-yet-materialised tasks (autoBranch
- * derives from it); a worktree that already exists keeps its git branch.
- */
 export async function renameTaskFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
   const task = ctx.tasks().find((t) => t.id === taskId)
   if (!task) return
@@ -385,14 +237,6 @@ export async function renameTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   await ctx.reload?.()
 }
 
-/**
- * Rename a task's branch via `task.setBranch`. For a materialised worktree
- * the daemon runs `git branch -m` (HEAD moves on the checked-out worktree,
- * a running session keeps streaming); otherwise it just records the name
- * for the eventual `ensureWorktree`. No-op on `main` rows — the project
- * root's branch isn't kobe's to rename. Tasks-pane-only today (`b`), but
- * host-agnostic so the outer monitor could wire it without a port.
- */
 export async function renameBranchFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
   const task = ctx.tasks().find((t) => t.id === taskId)
   if (!task || task.kind === "main") return
@@ -408,17 +252,6 @@ export async function renameBranchFlow(ctx: TaskActionContext, taskId: string): 
   await ctx.reload?.()
 }
 
-/**
- * Cycle the task's engine vendor (claude ↔ codex ↔ …) via `task.setVendor`.
- * Takes effect on the task's next enter: `ensureSession` rebuilds a session
- * whose `@kobe_vendor` tag no longer matches, launching the new engine.
- *
- * Cycle over the SAME detected-built-ins + custom set the new-task dialog
- * offers (`availableEngineIds()` + `nextVendorWithin`), not the built-ins
- * alone: a task on a user-added custom engine must be able to cycle back to
- * it instead of jumping to a built-in and getting stranded. Tasks-pane-only
- * today (`v`), lifted host-agnostic like {@link renameBranchFlow}.
- */
 export async function cycleVendorFlow(ctx: TaskActionContext, taskId: string): Promise<void> {
   const task = ctx.tasks().find((t) => t.id === taskId)
   if (!task || !ctx.orch) return
@@ -431,35 +264,16 @@ export async function cycleVendorFlow(ctx: TaskActionContext, taskId: string): P
     ctx.notifyError?.(`Couldn't switch engine: ${err instanceof Error ? err.message : String(err)}`)
     return
   }
-  // The new vendor only takes effect on the task's NEXT enter (ensureSession
-  // rebuilds the pane when its `@kobe_vendor` tag no longer matches), so a
-  // bare `v` press looks like a no-op. Surface the deferred-rebuild contract.
   ctx.notifyInfo?.(`Engine → ${engineDisplayName(next)} (applies on reopen)`)
   await ctx.reload?.()
 }
 
-/**
- * Create (or adopt) a task through the shared NewTaskDialog flow: default
- * repo → optional surface redirect (Tasks pane chattab tab) → dialog →
- * persist vendor + repo choices → `task.create` / `adoptWorktree` → land
- * the host cursor on the result. The repo auto-save keeps `kobe add`
- * optional: `addSavedRepo` normalizes to the git root + dedupes on disk.
- */
 export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   const repos = getSavedRepos()
-  // First run (no saved repos): default the dialog to the cwd so the user
-  // picks a path in-TUI instead of being sent to a shell for `kobe add`
-  // (saved mode preselects it; typing `/` flips to the directory browser).
-  // Otherwise default to the host's cursor/active task's repo — the
-  // "spawn a sibling" default.
   const defaultRepo = ctx.cursorRepo() ?? repos[0] ?? process.cwd()
   if (ctx.openCreateSurface && (await ctx.openCreateSurface(defaultRepo))) return
   const defaultVendor = ctx.lastVendor(defaultRepo) ?? DEFAULT_TASK_VENDOR
   const availableVendors = await availableEngineIds()
-  // First-run guard (#24): no built-in engine detected AND no custom engine
-  // configured. The dialog would still let the user pick a vendor, then the
-  // missing binary surfaces only as a raw shell error inside the pane. Warn
-  // up front but still allow proceeding (they may install it after picking).
   if (availableVendors.length === 0) {
     ctx.notifyInfo?.("No engine CLI detected — install claude or codex, or add one in Settings → Engines")
   }
@@ -471,26 +285,15 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   })
   if (!result) return
   ctx.rememberVendor(result.repo, result.vendor)
-  // Auto-save the chosen repo so the saved list self-populates and
-  // `kobe add` stays optional.
   addSavedRepo(result.repo)
   ctx.onRepoSaved?.()
   if (!orch) {
     ctx.logger.error(`${ctx.logPrefix} no daemon; cannot create task`)
     return
   }
-  // The create/adopt awaits a real git-worktree operation with no other
-  // feedback — the dialog just vanishes. Surface a transient "working" toast
-  // so the wait reads as progress; failure replaces it with the error toast
-  // raised in the catch below.
   ctx.notifyInfo?.("Creating task…")
   let createdId: string | undefined
   if (result.mode === "adopt") {
-    // Adopt: import one or more existing worktrees as tasks, focusing the last
-    // success (KOB-256). Each adopt is independent — collect per-item results
-    // so a later failure can't bury the ones that DID persist behind a generic
-    // "couldn't create" toast (they'd be silently invisible). Surface a real
-    // N/M summary instead.
     const total = result.adopt.length
     let adopted = 0
     let firstError: string | undefined
@@ -530,9 +333,6 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
     }
   }
   await ctx.reload?.()
-  // Land the cursor on the new task, then enter it — `n` should drop the user
-  // straight into the engine pane ready to type, not just move the selection.
-  // (Hosts without `enterTask` fall back to cursor-only.)
   if (createdId) {
     ctx.selectTask?.(createdId)
     await ctx.enterTask?.(createdId)

@@ -5,8 +5,6 @@ import { join } from "node:path"
 import { testDaemonResponds } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { afterEach, describe, expect, it } from "vitest"
 
-// Short paths: macOS caps unix-socket paths at ~104 chars, and tmpdir() can
-// be long, so anchor under /tmp where available.
 const SOCK_DIR = process.platform === "darwin" ? "/tmp" : tmpdir()
 const servers: Server[] = []
 const openSockets = new Set<import("node:net").Socket>()
@@ -16,11 +14,7 @@ function listen(handler?: (sock: import("node:net").Socket) => void): Promise<st
   const path = join(SOCK_DIR, `kobe-dpr-${process.pid}-${servers.length}.sock`)
   try {
     unlinkSync(path)
-  } catch {
-    /* no stale socket — fine */
-  }
-  // Track server-side connections so afterEach can destroy them — a wedged
-  // server never closes its socket, so `server.close()` would otherwise hang.
+  } catch {}
   const server = createServer((sock) => {
     openSockets.add(sock)
     sock.on("close", () => openSockets.delete(sock))
@@ -55,9 +49,7 @@ describe("testDaemonResponds", () => {
   })
 
   it("is false for a wedged daemon — accepts the socket but never replies", async () => {
-    const path = await listen(() => {
-      /* accept the connection and ignore it: the wedge we must detect */
-    })
+    const path = await listen(() => {})
     expect(await testDaemonResponds(path, 300)).toBe(false)
   })
 

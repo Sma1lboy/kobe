@@ -24,7 +24,6 @@ describe("nextVendorWithin", () => {
   })
 
   it("starts from the first entry when current is not in the subset", () => {
-    // codex was filtered out (not detected); cycling from it lands on the first.
     expect(nextVendorWithin(["claude", "copilot"], "codex")).toBe("claude")
   })
 
@@ -81,9 +80,8 @@ describe("resolvePersistedVendor", () => {
   })
 
   it("falls back to claude for an unregistered / typo'd value", () => {
-    // garbage that is neither a built-in nor a known custom id
     expect(resolvePersistedVendor("clade")).toBe("claude")
-    expect(resolvePersistedVendor("aider")).toBe("claude") // not in the (empty) custom registry
+    expect(resolvePersistedVendor("aider")).toBe("claude")
     expect(resolvePersistedVendor("aider", ["other-engine"])).toBe("claude")
   })
 

@@ -1,7 +1,3 @@
-/**
- * Daemon-hosted local HTTP/SSE transport for kobe web and desktop.
- */
-
 import { existsSync } from "node:fs"
 import { join, normalize } from "node:path"
 import { availableEngineIds } from "@/engine/account-detect"
@@ -77,11 +73,6 @@ export interface DaemonWebServer {
 function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSignal): Response {
   let unregister: (() => void) | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null
-  // Teardown must not depend on Bun calling cancel(): a half-open disconnect
-  // (sleep, dropped Wi-Fi, killed browser) can skip it, leaving a phantom
-  // client that pins guiCount > 0 and keeps every collector polling forever.
-  // Idempotent cleanup, reachable from cancel(), the request's abort signal,
-  // AND a failed heartbeat write — whichever fires first.
   let done = false
   const cleanup = () => {
     if (done) return
@@ -95,9 +86,7 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
       const send: SseSend = (type, data) => {
         try {
           controller.enqueue(enc.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`))
-        } catch {
-          /* stream already closed — the next heartbeat tears down */
-        }
+        } catch {}
       }
       unregister = register(send)
       heartbeat = setInterval(() => {
@@ -369,9 +358,7 @@ export async function takeoverWebPort(port: number, healthPath: string = DAEMON_
   for (const pid of pids) {
     try {
       process.kill(pid, "SIGTERM")
-    } catch {
-      /* already gone */
-    }
+    } catch {}
   }
   const deadline = Date.now() + 2000
   while (Date.now() < deadline) {

@@ -1,11 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Settings sections (React, issue #15 G3) — Engines + Accounts. Port of
- * the corresponding views in `src/tui/component/settings-dialog/
- * sections.tsx`; Accessor props became plain values, and the status
- * accessors of the Accounts section are plain nullable values resolved by
- * the dialog's probe effect.
- */
 
 import { TextAttributes } from "@opentui/core"
 import type { ReactNode } from "react"
@@ -18,25 +11,17 @@ import type { SectionCursorProps } from "./rows"
 export function EngineSettingsSection(
   props: SectionCursorProps & {
     vendors: readonly VendorId[]
-    /** Display label for a vendor — custom name override, else VENDOR_LABEL. */
     displayName: (vendor: VendorId) => string
-    /** Current launch command shown for a vendor (override or default). */
     commandText: (vendor: VendorId) => string
-    /** Whether the engine is fully at its built-in default (dims it). */
     isDefault: (vendor: VendorId) => boolean
-    /** True for a user-added engine (shown with a `(custom)` tag; `x` removes it). */
     isCustom: (vendor: VendorId) => boolean
-    /** True for the DEFAULT engine for new tasks (the ● marker; set with `d`). */
     isDefaultEngine: (vendor: VendorId) => boolean
-    /** Open the editor for a vendor's launch command (`enter`). */
     editEngine: (vendor: VendorId) => void
-    /** Register a new custom engine — the trailing "+ Add engine" row. */
     onAddEngine: () => void
   },
 ) {
   const { theme } = useTheme()
   const t = useT()
-  // The "+ Add engine" row sits right after the last engine, at index = count.
   const addRowIndex = props.vendors.length
   const isBodyCursor = (row: number) => props.level === "body" && props.bodyRow === row
   return (
@@ -64,8 +49,7 @@ export function EngineSettingsSection(
                 props.editEngine(vendor)
               }}
             >
-              {/* ● marks the DEFAULT engine for new tasks (radio-style, like
-                  the theme list); a space holds the column on the others. */}
+              {}
               <text
                 fg={isCursor ? theme.selectedListItemText : theme.accent}
                 attributes={TextAttributes.BOLD}
@@ -94,7 +78,7 @@ export function EngineSettingsSection(
             </box>
           )
         })}
-        {/* Trailing "+ Add engine" row. */}
+        {}
         <box
           flexDirection="row"
           paddingLeft={1}
@@ -115,11 +99,9 @@ export function EngineSettingsSection(
   )
 }
 
-/** One engine's binary + login lines, shared by the three account blocks. */
 function AccountBlock(props: {
   name: string
   status: EngineAccountStatus<unknown> | null
-  /** Renders the resolved account line for this engine's account union. */
   accountLine: (status: EngineAccountStatus<unknown>) => ReactNode
 }) {
   const { theme } = useTheme()
@@ -151,7 +133,6 @@ function AccountBlock(props: {
   )
 }
 
-/** Read-only "is this engine installed + logged in" view (KOB-249). */
 export function AccountsSettingsSection(props: {
   claudeStatus: EngineAccountStatus<ClaudeAccount> | null
   codexStatus: EngineAccountStatus<CodexAccount> | null

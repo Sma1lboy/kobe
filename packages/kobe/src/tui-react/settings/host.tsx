@@ -1,18 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * `kobe settings` — React port of `src/tui/settings/host.tsx` (issue #15,
- * G3), behind `KOBE_REACT=1` in `src/cli/commands-tui.ts`. Same contract:
- * the Settings page rendered as a standalone full-window surface, reusing
- * the SAME SettingsDialog component the overlay surface uses, in its own
- * process inside a tmux window. Closing (q / esc / Ctrl+C) flushes kv,
- * refreshes workspace panes when visual prefs changed, and exits.
- *
- * Daemon connect is NON-spawning (`connectIfRunning`): a settings window
- * must never resurrect an idle-stopped daemon (it would never idle-stop
- * again — no gui holds it). With no daemon up, "Restart backend" is simply
- * disabled and the page degrades the same way it already does when the
- * daemon is unreachable.
- */
 
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useRef } from "react"
@@ -32,10 +18,6 @@ export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null })
   const visualPrefsChanged = useRef(false)
   const exiting = useRef(false)
 
-  // Visual prefs (theme / transparent / focus accent) are applied
-  // centrally — boot + live `ui-prefs` pushes — by host-boot's
-  // UiPrefsSync; this page no longer re-applies them itself.
-
   async function exit(): Promise<void> {
     if (exiting.current) return
     exiting.current = true
@@ -52,11 +34,6 @@ export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null })
     }
   }
 
-  // Page-level close keys. In the dialog (`taskpanel`) surface the dialog
-  // stack owns esc/Ctrl+C; here there's no enclosing stack, so the page
-  // binds them itself — `q` too, since the full-window page is not a text
-  // input at rest. Gated on an empty dialog stack so a sub-dialog (e.g.
-  // the engine-command editor) keeps esc/typing for itself.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
@@ -67,9 +44,6 @@ export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null })
   }))
 
   return (
-    // Scroll, don't compress — same rationale as the Solid page: the
-    // full-window page has no fixed-height card, so a scrollbox gives the
-    // content its natural height and scrolls the overflow.
     <scrollbox
       flexGrow={1}
       backgroundColor={theme.background}
@@ -95,8 +69,6 @@ export async function startSettingsHost(): Promise<void> {
     setup: async () => {
       let orch: RemoteOrchestrator | null = null
       try {
-        // NON-spawning: connect ONLY to a daemon that's already running.
-        // `null` → no daemon up → Restart backend disabled.
         const client = await connectIfRunning()
         if (client) {
           const remote = new RemoteOrchestrator(client)

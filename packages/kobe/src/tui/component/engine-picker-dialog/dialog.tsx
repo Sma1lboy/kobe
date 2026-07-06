@@ -1,11 +1,3 @@
-/**
- * Engine-picker dialog for a new chat tab (`chat.tab.chooseEngine`, ctrl+e) —
- * the pure-tui equivalent of tmux's `ctrl+shift+t` / `prefix T` command-prompt
- * flow (`chattab.ts`'s `CHAT_TAB_ENGINE_PROMPT`). Left/right cycles the
- * highlighted vendor (mirrors the new-task dialog's own engine selector),
- * enter confirms, esc cancels.
- */
-
 import { t } from "@/tui/i18n"
 import { ALL_VENDORS, type VendorId, nextVendorWithin, prevVendorWithin } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"

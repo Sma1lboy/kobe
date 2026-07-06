@@ -1,12 +1,3 @@
-/**
- * `cloneRepo` + the collision-suffix loop of `findAvailableFolderName` —
- * the halves clone.test.ts leaves out. cloneRepo drives a REAL `git clone`
- * against a local fixture repo (a mocked spawn would prove nothing about
- * the exit-code/stderr contract the dialog renders); failure comes from a
- * guaranteed-invalid source path, with GIT_TERMINAL_PROMPT=0 keeping it
- * non-interactive.
- */
-
 import { execSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"

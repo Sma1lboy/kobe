@@ -1,14 +1,3 @@
-/**
- * Command palette (Cmd/Ctrl+K) — a keyboard-first launcher over the same
- * daemon state the rail shows. Fuzzy-matches tasks (jump + set active) and
- * a few global actions (new task, settings). Arrow keys move, Enter runs,
- * Escape closes; opening focuses the query. kobe's TUI is keyboard-first,
- * so its web counterpart gets the same muscle memory.
- *
- * Mounted once by AppShell, which owns the open state and the new-task /
- * settings callbacks (so a "New task" command opens the real dialog).
- */
-
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
@@ -34,9 +23,6 @@ interface Command {
   label: string
   hint?: string
   icon: "task" | "new" | "settings" | "board" | "workspace"
-  /** Set for task rows — lets the row render a LIVE engine-activity dot
-   *  (read at render, not baked into the memo, so it stays current without
-   *  rebuilding the command list on every engine-state push). */
   taskId?: string
   run: () => void
 }
@@ -69,14 +55,8 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  // Always-mounted + returns null while closed, so the dialog element only
-  // exists once `open` is true — gate the trap on `open` so the effect re-runs
-  // (and finds the ref) when the palette opens.
   useFocusTrap(dialogRef, open)
 
-  // Keep the keyboard-highlighted row visible — focus stays in the input, so
-  // the browser won't auto-scroll the active button into view (mirrors the
-  // rail's j/k scroll-into-view).
   useEffect(() => {
     listRef.current
       ?.querySelector(`[data-index="${cursor}"]`)
@@ -87,14 +67,11 @@ export function CommandPalette({
     if (open) {
       setQuery("")
       setCursor(0)
-      // Focus after the overlay paints.
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
 
   const commands = useMemo<Command[]>(() => {
-    // Task rows ordered by recency + live activity (orderTasksForPalette) so
-    // the most-recently-touched tasks float to the top of the palette.
     const taskCmds: Command[] = orderTasksForPalette(tasks as Task[]).map(
       (t) => ({
         id: `task:${t.id}`,
@@ -177,7 +154,6 @@ export function CommandPalette({
       .map((m) => m.cmd)
   }, [commands, query])
 
-  // Keep the cursor in range as the match list shrinks.
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, matches.length - 1)))
   }, [matches.length])
@@ -253,8 +229,6 @@ export function CommandPalette({
                 }`}
               >
                 {cmd.taskId ? (
-                  // Live engine-activity dot — read here (not in the memo) so
-                  // it tracks engine-state pushes without rebuilding the list.
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(
                       engineStates[cmd.taskId]?.state,

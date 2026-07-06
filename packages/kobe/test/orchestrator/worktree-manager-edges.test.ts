@@ -1,12 +1,3 @@
-/**
- * GitWorktreeManager error/edge branches that worktree.test.ts's happy
- * paths never provoke: the cwd guard, the stale-directory conflict on
- * create, remove() on a non-worktree, detached-HEAD currentBranch, the
- * gone-directory remove (metadata prune path), and the absolute-path
- * argument guards. Real temp git repos, same conventions as the sibling
- * suite.
- */
-
 import { execSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -46,7 +37,6 @@ describe("create() conflicts", () => {
     await expect(manager.create(repo, "kobe/stale", stale)).rejects.toThrow(
       /exists but is not a registered git worktree/,
     )
-    // the user's files were NOT nuked
     expect(() => execSync(`ls ${JSON.stringify(join(stale, "user-file.txt"))}`)).not.toThrow()
   })
 
@@ -66,12 +56,7 @@ describe("remove() / currentBranch() edges", () => {
   it("remove() of an already-deleted worktree dir resolves quietly (best-effort prune)", async () => {
     const wt = join(root, "wt-gone")
     await manager.create(repo, "kobe/gone", wt)
-    rmSync(wt, { recursive: true, force: true }) // the dir vanishes out-of-band
-    // The gone-dir path must never throw — deleting an already-deleted
-    // worktree is a no-op from the caller's perspective. (Metadata pruning
-    // is best-effort: with the dir gone, the owning repo may not be
-    // resolvable from the path at all, so a stale `.git/worktrees/` entry
-    // is allowed to linger for git's own gc.)
+    rmSync(wt, { recursive: true, force: true })
     await expect(manager.remove(wt)).resolves.toBeUndefined()
   })
 

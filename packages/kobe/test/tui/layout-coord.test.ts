@@ -1,15 +1,3 @@
-/**
- * Tests for the geometry-hook coordination primitives
- * (`src/tui/panes/terminal/layout-coord.ts`) and the drag gate
- * (`pane-heal.ts` `shouldCaptureDrag`).
- *
- * These guard the two behaviours the live hooks depend on:
- *   - a burst of `window-resized` / `window-layout-changed` firings collapses
- *     to ONE run (trailing debounce, last firing wins);
- *   - a `window-layout-changed` is captured as a drag only when it is safe to
- *     (not zoomed, full role set) — the resize-recency half is the caller's.
- */
-
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -37,15 +25,15 @@ describe("recordGen / isLatestGen", () => {
     const first = recordGen("kobe-a", "heal")
     expect(isLatestGen("kobe-a", "heal", first)).toBe(true)
     const second = recordGen("kobe-a", "heal")
-    expect(isLatestGen("kobe-a", "heal", first)).toBe(false) // first superseded
+    expect(isLatestGen("kobe-a", "heal", first)).toBe(false)
     expect(isLatestGen("kobe-a", "heal", second)).toBe(true)
   })
 
   test("session and kind are isolated", async () => {
     const { recordGen, isLatestGen } = await import("../../src/tui/panes/terminal/layout-coord")
     const a = recordGen("kobe-a", "heal")
-    recordGen("kobe-b", "heal") // different session
-    recordGen("kobe-a", "capture") // different kind
+    recordGen("kobe-b", "heal")
+    recordGen("kobe-a", "capture")
     expect(isLatestGen("kobe-a", "heal", a)).toBe(true)
   })
 
@@ -90,7 +78,6 @@ describe("coalesceLayoutWork", () => {
   test("a superseded firing does no work (trailing debounce)", async () => {
     const { coalesceLayoutWork, recordGen } = await import("../../src/tui/panes/terminal/layout-coord")
     let ran = 0
-    // Start a firing with a real debounce window, then supersede it mid-wait.
     const inflight = coalesceLayoutWork(
       "kobe-s",
       "heal",
@@ -99,7 +86,7 @@ describe("coalesceLayoutWork", () => {
       },
       40,
     )
-    recordGen("kobe-s", "heal") // a later firing stamps over the inflight one
+    recordGen("kobe-s", "heal")
     await inflight
     expect(ran).toBe(0)
   })
@@ -119,10 +106,6 @@ describe("shouldCaptureDrag", () => {
   })
 
   test("skips when the shell pane has closed via `exit` (Ops now fills the right column)", () => {
-    // tasks + ops + engine present, but the bottom-right shell pane is gone and
-    // NO hidden-state flag is set (a real `exit`, not a toggle). Capturing here
-    // would persist Ops at ~100% height into the global, squashing the terminal
-    // for every task — the regression this guard prevents.
     expect(shouldCaptureDrag("tasks\t0\nclaude\t0\nops\t0\n")).toBe(false)
   })
 

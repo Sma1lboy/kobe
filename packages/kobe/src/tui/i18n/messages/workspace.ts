@@ -1,9 +1,3 @@
-/**
- * `workspace.*` messages — the native opentui workspace host (`KOBE_TUI=1`):
- * the quit-confirm dialog and the "no task selected" empty state. English is
- * the source of truth; `zh: typeof en` keeps the shapes locked together.
- */
-
 export const en = {
   quit: {
     confirmTitle: "Quit kobe?",

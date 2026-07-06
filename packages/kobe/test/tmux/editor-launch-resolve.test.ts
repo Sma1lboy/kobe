@@ -1,20 +1,9 @@
-/**
- * Behavioral tests for the IO half of editor-launch.ts that
- * `editor-launch.test.ts` leaves out (that file only covers the pure
- * command builders). `Bun.spawn` is stubbed with a tiny fake that only
- * needs to answer `.exited` — both `binaryAvailable` (a `command -v` probe)
- * and `fileHasDiff` (`git diff --quiet`) only ever read the exit code, never
- * stdout/stderr — so this is a much smaller surface to fake than the tmux
- * client's spawns. `getPersistedString` (state/repos) is mocked so
- * `resolveEditorCommand` doesn't touch a real state.json.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
   persisted: {} as Record<string, string | undefined>,
-  binaryExitCode: 0, // `sh -c "command -v …"` exit code
-  diffExitCode: 1, // `git diff --quiet` exit code (1 = has a diff)
+  binaryExitCode: 0,
+  diffExitCode: 1,
   newWindowCalls: [] as Array<{ session: string; opts: Record<string, unknown> }>,
 }))
 
@@ -131,7 +120,7 @@ describe("resolveEditorCommand", () => {
 
   test("auto with no env falls back to probing AUTO_EDITOR_CANDIDATES in order", async () => {
     state.persisted["editor.kind"] = "auto"
-    state.binaryExitCode = 0 // every candidate "found" — first one (nvim) wins
+    state.binaryExitCode = 0
     await expect(editorLaunch.resolveEditorCommand("/wt/a.ts")).resolves.toEqual({
       bin: "nvim",
       command: "nvim '/wt/a.ts'",
@@ -164,7 +153,7 @@ describe("openInEditor", () => {
 
   test("returns false when the resolved editor's binary isn't actually on PATH", async () => {
     state.persisted["editor.kind"] = "vim"
-    state.binaryExitCode = 1 // resolveEditorCommand doesn't probe for "vim" kind, but openInEditor's own pre-flight does
+    state.binaryExitCode = 1
     await expect(editorLaunch.openInEditor("kobe-t1", "/wt", "/wt/a.ts")).resolves.toBe(false)
     expect(state.newWindowCalls).toEqual([])
   })
@@ -192,7 +181,7 @@ describe("openInEditor", () => {
   test("does not upgrade to diff mode for a file outside the worktree or with no diff", async () => {
     state.persisted["editor.kind"] = "nvim"
     state.binaryExitCode = 0
-    state.diffExitCode = 0 // no diff from HEAD
+    state.diffExitCode = 0
     await editorLaunch.openInEditor("kobe-t1", "/wt", "/wt/src/a.ts")
     expect(state.newWindowCalls[0]?.opts.command).toBe("nvim '/wt/src/a.ts'")
   })

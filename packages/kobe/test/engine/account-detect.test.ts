@@ -8,7 +8,6 @@ import {
   resetAvailableVendorsCache,
 } from "../../src/engine/account-detect.ts"
 
-/** A DetectDeps with every binary found and no files/env, overridable per test. */
 function deps(over: Partial<DetectDeps> = {}): DetectDeps {
   return {
     readFile: () => null,
@@ -21,7 +20,6 @@ function deps(over: Partial<DetectDeps> = {}): DetectDeps {
   }
 }
 
-// A JWT (header.payload.signature) with a payload we control; signature unverified.
 function jwt(payload: Record<string, unknown>): string {
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url")
   return `${b64({ alg: "none" })}.${b64(payload)}.sig`
@@ -96,14 +94,6 @@ describe("detectAvailableVendors", () => {
   })
 })
 
-/**
- * Memoization contract (perf): the built-in binary probe is three blocking
- * `spawnSync('which')` calls that re-ran on every engine-cycle keypress /
- * dialog-open / Ctrl+T for an effectively-constant value (installed CLIs don't
- * change mid-session). The default-deps path is now memoized per process; a
- * caller injecting custom deps must still re-probe so tests + an explicit
- * rescan stay honest. We assert the seam observably via cached PROMISE identity.
- */
 describe("detectAvailableVendors caching", () => {
   afterEach(() => resetAvailableVendorsCache())
 
@@ -111,20 +101,20 @@ describe("detectAvailableVendors caching", () => {
     resetAvailableVendorsCache()
     const a = detectAvailableVendors()
     const b = detectAvailableVendors()
-    expect(a).toBe(b) // cached promise shared → the `which` probe runs once
+    expect(a).toBe(b)
   })
 
   it("re-probes after resetAvailableVendorsCache()", () => {
     const a = detectAvailableVendors()
     resetAvailableVendorsCache()
     const b = detectAvailableVendors()
-    expect(a).not.toBe(b) // cache cleared → a fresh probe promise
+    expect(a).not.toBe(b)
   })
 
   it("never caches custom-deps calls (each returns a fresh probe)", () => {
     const a = detectAvailableVendors(deps())
     const b = detectAvailableVendors(deps())
-    expect(a).not.toBe(b) // custom deps bypass the memo entirely
+    expect(a).not.toBe(b)
   })
 })
 

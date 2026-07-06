@@ -1,27 +1,3 @@
-/**
- * Daemon worktree-changes collector (issue #6) — the single `git status`
- * collector that replaces per-pane polling. What matters here:
- *
- *   - **Exclusions**: archived tasks and remote (`ssh://`) projects are
- *     never collected — the Archives view paying git-status for shelved
- *     worktrees was the original 30GB-repo freeze trigger, and a remote
- *     project's worktree isn't on this filesystem at all.
- *   - **Publish-on-change only**: a status pass that round-trips to the
- *     same counts publishes nothing — subscribed panes must not re-render
- *     rows on unchanged ticks (DESIGN §5.5, daemon side).
- *   - **Pruning**: a task deleted/archived between ticks drops its entry
- *     from the published map (with a republish), and a status run that
- *     completes AFTER its entry was pruned must not resurrect it.
- *   - **In-flight dedupe**: ticks landing while a worktree's status is
- *     still running start nothing — the guard that keeps a slow repo at
- *     one background child, not one per tick.
- *
- * The runner is injected (no real git / worktrees); the cadence floor is
- * zeroed so successive ticks are immediately eligible. The pure timing
- * math (adaptive cadence, hard backoff) is covered by the shared
- * poll-scheduling tests — this file pins the collector's pass logic.
- */
-
 import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { WorktreeChangesPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { WorktreeChangesCollector, trackedWorktreePaths } from "@sma1lboy/kobe-daemon/daemon/worktree-changes-collector"
@@ -29,7 +5,6 @@ import { describe, expect, test } from "vitest"
 import type { WorktreeChanges } from "../../src/tui/panes/sidebar/worktree-changes.ts"
 import { type Task, toTaskId } from "../../src/types/task.ts"
 
-/** Minimal Task — only the fields the collector reads. */
 function task(over: Omit<Partial<Task>, "id"> & { id: string }): Task {
   const { id, ...rest } = over
   return {
@@ -46,10 +21,8 @@ function task(over: Omit<Partial<Task>, "id"> & { id: string }): Task {
   } as Task
 }
 
-/** Cadence with a zero floor so every tick is immediately eligible. */
 const FAST = { timeoutMs: 1_000, slowRetryMs: 1_000, minIntervalMs: 0 }
 
-/** Let the collector's fire-and-forget run completions settle. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
 }
@@ -84,7 +57,6 @@ describe("trackedWorktreePaths", () => {
       task({ id: "arch", archived: true }),
       task({ id: "remote", repo: "ssh://dev@build-box", worktreePath: "/remote/wt/remote" }),
       task({ id: "backlog", worktreePath: "" }),
-      // Two main rows of the same repo share worktreePath = repo root.
       task({ id: "main1", kind: "main", repo: "/repo", worktreePath: "/repo" }),
       task({ id: "main2", kind: "main", repo: "/repo", worktreePath: "/repo" }),
     ]
@@ -99,7 +71,6 @@ describe("WorktreeChangesCollector", () => {
     })
     collector.tick()
     await settle()
-    // The archived task's worktree was never even attempted.
     expect(runs).toEqual(["/wt/a"])
     expect(published.at(-1)).toEqual({ changes: { "/wt/a": { added: 2, deleted: 1 } } })
   })
@@ -110,12 +81,10 @@ describe("WorktreeChangesCollector", () => {
     await settle()
     expect(published.length).toBe(1)
 
-    // Same counts again → no publish (panes must not re-render on noise).
     collector.tick()
     await settle()
     expect(published.length).toBe(1)
 
-    // Changed counts → publish.
     counts["/wt/a"] = { added: 3, deleted: 0 }
     collector.tick()
     await settle()
@@ -129,7 +98,6 @@ describe("WorktreeChangesCollector", () => {
     await settle()
     expect(published.length).toBe(1)
 
-    // Worktree vanished / git failed → the entry's value survives untouched.
     counts["/wt/a"] = undefined as unknown as WorktreeChanges
     collector.tick()
     await settle()
@@ -145,7 +113,6 @@ describe("WorktreeChangesCollector", () => {
     await settle()
     expect(Object.keys(published.at(-1)?.changes ?? {}).sort()).toEqual(["/wt/a", "/wt/b"])
 
-    // b archived → its entry drops and the pruned map is republished.
     setTasks([task({ id: "a" }), task({ id: "b", archived: true })])
     collector.tick()
     await settle()
@@ -188,9 +155,9 @@ describe("WorktreeChangesCollector", () => {
           release = r
         }),
     })
-    collector.tick() // starts the run
-    tasks.current = [] // task deleted while git status runs
-    collector.tick() // prunes the (valueless) entry
+    collector.tick()
+    tasks.current = []
+    collector.tick()
     release?.({ added: 5, deleted: 5 })
     await settle()
     expect(published).toEqual([])
@@ -213,14 +180,11 @@ describe("WorktreeChangesCollector", () => {
       },
     })
 
-    // Zero subscribers (gui-less daemon) → the tick spawns no git, publishes
-    // nothing: no consumer-less disk/CPU churn.
     collector.tick()
     await settle()
     expect(runs).toEqual([])
     expect(published).toEqual([])
 
-    // A pane subscribes → the next tick repopulates and publishes.
     subscribed = true
     collector.tick()
     await settle()

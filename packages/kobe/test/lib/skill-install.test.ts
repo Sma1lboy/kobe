@@ -90,7 +90,6 @@ describe("skill version / staleness", () => {
   })
 
   it("the repo SKILL.md marker is in lockstep with KOBE_SKILL_VERSION", () => {
-    // The whole staleness mechanism hinges on these two agreeing — guard it.
     const repoSkill = join(dirname(fileURLToPath(import.meta.url)), "../../../../.agents/skills/kobe/SKILL.md")
     expect(parseSkillVersion(readFileSync(repoSkill, "utf8"))).toBe(KOBE_SKILL_VERSION)
   })

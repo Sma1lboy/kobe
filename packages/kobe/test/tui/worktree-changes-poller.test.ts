@@ -1,16 +1,3 @@
-/**
- * Unit tests for the sidebar's async worktree-changes poller — the fix
- * for the 30GB-repo freeze (a synchronous per-row `git status` on the
- * 2s tick blocked the event loop for the whole status walk; the
- * Archives view listing such a repo hard-froze the Tasks pane).
- *
- * The scheduling math is what keeps the fix honest: in-flight dedupe
- * and the adaptive/backoff cadence are why a slow repo costs one
- * background process occasionally, instead of a process per tick. The
- * end-to-end test runs a REAL `git status` against a tiny temp repo to
- * pin the async path (spawn → parse → signal) actually produces counts.
- */
-
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -43,14 +30,10 @@ describe("shouldPoll", () => {
 
 describe("nextAllowedAt", () => {
   test("fast repos keep the tick cadence (floor = MIN_POLL_INTERVAL_MS)", () => {
-    // 50ms status → next allowed 1.5s after completion, i.e. the ~2s
-    // branchTick drives the cadence, not the floor.
     expect(nextAllowedAt(10_000, 10_050, false)).toBe(10_050 + MIN_POLL_INTERVAL_MS)
   })
 
   test("slow-but-finishing repos self-thin at 5× their own duration", () => {
-    // A 3s status re-runs at most every 15s — the poller adapts without
-    // a per-repo special case.
     expect(nextAllowedAt(10_000, 13_000, false)).toBe(13_000 + 15_000)
   })
 
@@ -78,8 +61,8 @@ describe("pollWorktreeChanges end-to-end", () => {
     const repo = makeRepo()
     writeFileSync(join(repo, "a.txt"), "hello")
     writeFileSync(join(repo, "b.txt"), "world")
-    expect(worktreeChanges(repo)).toEqual({ added: 0, deleted: 0 }) // nothing until a poll lands
-    pollWorktreeChanges(repo) // returns immediately — fire and forget
+    expect(worktreeChanges(repo)).toEqual({ added: 0, deleted: 0 })
+    pollWorktreeChanges(repo)
     await waitFor(() => worktreeChanges(repo).added === 2)
     expect(worktreeChanges(repo)).toEqual({ added: 2, deleted: 0 })
   })
@@ -87,7 +70,6 @@ describe("pollWorktreeChanges end-to-end", () => {
   test("a failing path keeps the last value instead of erroring", async () => {
     const missing = join(tmpdir(), "kobe-poller-definitely-missing")
     pollWorktreeChanges(missing)
-    // Give the spawn error a moment to settle; the value must stay zeros.
     await new Promise((r) => setTimeout(r, 150))
     expect(worktreeChanges(missing)).toEqual({ added: 0, deleted: 0 })
   })

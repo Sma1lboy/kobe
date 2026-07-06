@@ -1,19 +1,3 @@
-/**
- * IssueIntakePanel — the Board's Backlog "New" intake, a SlideOver-based panel
- * for capturing a user story (title + WYSIWYG markdown acceptance/context) and
- * either banking it or starting its kobe session on the spot. Two actions:
- *
- *   - "Save"          creates the story only (status `open`).
- *   - "Start session" creates the story, then quick-starts it on the chosen
- *                     engine/effort (spawn task + first prompt + link via
- *                     Issue.taskId).
- *
- * The description is a single {@link RichEditor} surface: one Notion-like editor
- * that styles markdown inline as you type and shows pasted/dropped images inline
- * (no separate preview pane, no plain textarea). It loads from and emits
- * markdown, which is what the issue store persists.
- */
-
 import { useState } from "react"
 import { createIssue, type Issue, quickStartIssue } from "../lib/issues.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
@@ -29,8 +13,6 @@ export function IssueIntakePanel({
   repoRoot: string
   open: boolean
   onClose: () => void
-  /** Fired after a successful create (Save or Execute). For Execute the new
-   *  issue is passed so the caller can react to the spawned task. */
   onCreated: (issue: Issue, started: boolean) => void
 }) {
   const [title, setTitle] = useState("")
@@ -58,7 +40,6 @@ export function IssueIntakePanel({
           await quickStartIssue(repoRoot, created, vendor, effort)
         }
         if (created) onCreated(created, execute)
-        // Reset for the next capture, then close.
         setTitle("")
         setBody("")
         onClose()

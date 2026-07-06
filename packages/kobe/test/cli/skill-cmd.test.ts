@@ -1,10 +1,3 @@
-/**
- * `kobe skill <install|status|command>` (`runSkillSubcommand`). The pure
- * helpers from lib/skill-install stay real (npxSkillsArgv/Command are
- * deterministic); only the state probe is stubbed per-test and Bun.spawn is
- * stubbed so `install` never really runs npx.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({

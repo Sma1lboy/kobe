@@ -4,15 +4,6 @@ import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 
-/**
- * Web-board `position` persistence (`task.reorder`, docs/design/web-kanban.md
- * M3). The load-bearing rules: a reorder must NOT bump `updatedAt` (it's
- * cosmetic placement — bumping would shuffle the TUI's `recent` sort from a
- * web-only move), a batch is one save + ONE listener notification (one
- * task.snapshot push), a missing id fails the whole batch with the cache
- * untouched, and `position` must survive the load coercion — without that,
- * every daemon restart silently forgets the user's column order.
- */
 describe("TaskIndexStore.reorder", () => {
   let home: string
 
@@ -54,7 +45,7 @@ describe("TaskIndexStore.reorder", () => {
     store.subscribe(() => {
       notifications += 1
     })
-    notifications = 0 // subscribe fires once eagerly; count only the reorder
+    notifications = 0
 
     await store.reorder([
       { id: "a", position: 1000 },

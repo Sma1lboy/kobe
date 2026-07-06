@@ -1,29 +1,3 @@
-/**
- * Daemon transcript-activity collector (perf — deduplicate per-Ops-pane
- * polling) — the single filesystem collector that replaces every Ops pane
- * stat'ing + parsing the transcript store on its own timers. What matters:
- *
- *   - **Scope + vendor pick**: archived tasks and remote (`ssh://`) projects
- *     are never collected; tasks sharing a worktree path collapse to one
- *     slot and the FIRST task in list order picks the vendor (completion
- *     markers are vendor-specific).
- *   - **Publish-on-change only**: a probe round-tripping to the same facts
- *     publishes nothing — subscribed Ops panes must not re-run effects on
- *     unchanged ticks.
- *   - **Pruning**: a task deleted/archived between ticks drops its entry
- *     (with a republish), and a probe completing AFTER its entry was pruned
- *     must not resurrect it.
- *   - **In-flight dedupe + subscriber gate**: ticks landing mid-probe start
- *     nothing; a gui-less daemon (no subscribers) does no work at all.
- *
- * The probe is injected (no real transcripts / fs); the cadence floor is
- * zeroed so successive ticks are immediately eligible. The pure timing math
- * is covered by the shared poll-scheduling tests — this file pins the
- * collector's pass logic. The per-window capture-pane → @kobe_tab_state chip
- * stays MANUAL (it needs a real tmux pane and lives in `ops/host.tsx`, never
- * daemon-side).
- */
-
 import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { TranscriptActivityPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
@@ -35,7 +9,6 @@ import {
 import { describe, expect, test } from "vitest"
 import { type Task, type VendorId, toTaskId } from "../../src/types/task.ts"
 
-/** Minimal Task — only the fields the collector reads. */
 function task(over: Omit<Partial<Task>, "id"> & { id: string }): Task {
   const { id, ...rest } = over
   return {
@@ -53,10 +26,8 @@ function task(over: Omit<Partial<Task>, "id"> & { id: string }): Task {
   } as Task
 }
 
-/** Cadence with a zero floor so every tick is immediately eligible. */
 const FAST = { timeoutMs: 1_000, slowRetryMs: 1_000, minIntervalMs: 0 }
 
-/** Let the collector's fire-and-forget probe completions settle. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
 }
@@ -97,14 +68,12 @@ describe("trackedWorktrees", () => {
       task({ id: "arch", archived: true }),
       task({ id: "remote", repo: "ssh://dev@build-box", worktreePath: "/remote/wt/remote" }),
       task({ id: "backlog", worktreePath: "" }),
-      // Two rows sharing a worktree path — the first in list order wins.
       task({ id: "main1", kind: "main", repo: "/repo", worktreePath: "/repo", vendor: "claude" }),
       task({ id: "main2", kind: "main", repo: "/repo", worktreePath: "/repo", vendor: "codex" }),
     ]
     const map = trackedWorktrees(tasks)
     expect([...map.keys()].sort()).toEqual(["/repo", "/wt/a"])
     expect(map.get("/wt/a")).toBe("codex")
-    // First task at the shared path (main1, vendor claude) picks the vendor.
     expect(map.get("/repo")).toBe("claude")
   })
 
@@ -141,12 +110,10 @@ describe("TranscriptActivityCollector", () => {
     await settle()
     expect(published.length).toBe(1)
 
-    // Same facts again → no publish (panes must not re-run effects on noise).
     collector.tick()
     await settle()
     expect(published.length).toBe(1)
 
-    // mtime advanced → publish.
     facts["/wt/a"] = entry(20, "c1", 18)
     collector.tick()
     await settle()
@@ -217,9 +184,9 @@ describe("TranscriptActivityCollector", () => {
           release = r
         }),
     })
-    collector.tick() // starts the probe
-    tasks.current = [] // task deleted while the probe runs
-    collector.tick() // prunes the (valueless) entry
+    collector.tick()
+    tasks.current = []
+    collector.tick()
     release?.(entry(50, "c", 50))
     await settle()
     expect(published).toEqual([])

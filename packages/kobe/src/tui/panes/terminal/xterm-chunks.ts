@@ -36,12 +36,6 @@ type RenderStyle = {
 
 const DEFAULT_RENDER_STYLE: RenderStyle = Object.freeze({ fg: "", bg: "", attrs: 0 })
 
-/**
- * Convert one of `colorKey`'s opaque keys (`""` / `rgb:<packed>` /
- * `pal:<index>`) to an RGB triple for a `Chunk`. The key is only an
- * in-process comparison token for run-coalescing; this resolves it to
- * the real color without any ANSI text in between.
- */
 function colorKeyToRGB(key: string): RGB | undefined {
   if (key === "") return undefined
   const sep = key.indexOf(":")
@@ -101,16 +95,6 @@ function isVisibleCell(cell: XtermCellLike): boolean {
   return !cell.isAttributeDefault() || !cell.isFgDefault() || !cell.isBgDefault()
 }
 
-/**
- * Map one xterm buffer line to a list of opentui-ready style runs.
- *
- * This is the direct cell→chunk path: we read xterm's authoritative
- * cells (chars + fg/bg/attrs) and coalesce contiguous same-style cells
- * into one `Chunk`, resolving colors straight to RGB. No ANSI is
- * produced or re-parsed. `minLast` keeps the cursor column visible even
- * when the trailing cells are blank, mirroring the snapshot the cursor
- * overlay is computed against.
- */
 export function xtermLineToChunks(
   line: { length: number; getCell(index: number): XtermCellLike | undefined },
   minLast = -1,

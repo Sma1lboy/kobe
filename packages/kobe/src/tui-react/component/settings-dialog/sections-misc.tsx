@@ -1,12 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Settings sections (React, issue #15 G3) — Feedback + Dev + Keybindings.
- * Port of the corresponding views in `src/tui/component/settings-dialog/
- * sections.tsx` (see that file for the feedback-form design notes: the
- * body is an UNCONTROLLED `<textarea>` so pasted newlines survive; edits
- * mirror back through `onContentChange`, and an external reset clears the
- * edit buffer through the ref).
- */
 
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { useEffect, useRef } from "react"
@@ -38,11 +30,6 @@ export function FeedbackSettingsSection(
   const labelFg = (focused: boolean) => (focused ? theme.primary : theme.textMuted)
   const labelAttrs = (focused: boolean) => (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
 
-  // The body is an uncontrolled <textarea>, so an external reset (the
-  // parent clears `feedbackBody` after a successful send) won't empty the
-  // widget on its own. Clear the edit buffer when the value goes blank
-  // while the widget still holds text; the resulting onContentChange sets
-  // the value to "" too, so the guard makes this a one-shot (no loop).
   const bodyEl = useRef<TextareaRenderable | null>(null)
   useEffect(() => {
     if (props.body === "" && bodyEl.current && bodyEl.current.plainText !== "") {
@@ -238,18 +225,9 @@ export function DevSettingsSection(
   )
 }
 
-/**
- * Keybindings section — read-only view of the user keybinding overrides
- * loaded at boot from `~/.kobe/settings/keybindings.yaml`. Editing happens
- * in the YAML file, not here; the section's job is to make the config
- * discoverable, show which overrides actually landed, and surface every
- * load warning that otherwise only reaches the pane's console log.
- */
 export function KeybindingsSettingsSection() {
   const { theme } = useTheme()
   const t = useT()
-  // Boot-time snapshot — overrides only change on restart, so a plain
-  // (non-reactive) read is correct here.
   const report = userKeybindingsReport()
   const fixedIds = Object.keys(FIXED_BINDING_IDS).sort()
   return (

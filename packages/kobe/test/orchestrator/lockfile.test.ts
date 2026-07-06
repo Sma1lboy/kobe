@@ -38,23 +38,22 @@ describe("acquire / release", () => {
     await acquire(lock)
     expect((await readFile(lock, "utf8")).trim()).toBe(String(process.pid))
     await release(lock)
-    // A second release of an already-gone lock must not throw.
     await expect(release(lock)).resolves.toBeUndefined()
   })
 
   it("rejects with LockfileError when held by a live process", async () => {
-    await acquire(lock) // held by us — alive
+    await acquire(lock)
     await expect(acquire(lock)).rejects.toBeInstanceOf(LockfileError)
   })
 
   it("steals a stale lockfile whose holder is gone", async () => {
-    await writeFile(lock, "999999") // a pid that does not exist
+    await writeFile(lock, "999999")
     await expect(acquire(lock)).resolves.toBeUndefined()
     expect((await readFile(lock, "utf8")).trim()).toBe(String(process.pid))
   })
 
   it("forceTakeover steals from a live holder", async () => {
-    await acquire(lock) // held by us — alive
+    await acquire(lock)
     await expect(acquire(lock, { forceTakeover: true })).resolves.toBeUndefined()
     expect((await readFile(lock, "utf8")).trim()).toBe(String(process.pid))
   })

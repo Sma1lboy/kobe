@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { resolveEffectiveTheme } from "../src/lib/theme.ts"
 
-/**
- * Theme precedence: a web-local override (Settings picker) wins over the TUI's
- * pushed theme (ui-prefs), which wins over the fallback. This is the rule the
- * Settings "Follow TUI" affordance depends on.
- */
 
 describe("resolveEffectiveTheme", () => {
   it("prefers the web-local override over everything", () => {

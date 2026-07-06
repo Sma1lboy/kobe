@@ -1,18 +1,8 @@
-/**
- * `resetKeymapToDefaults` (KOB — live keybinding propagation). The
- * load-bearing half of the live-reload path: on a keybindings.yaml edit the
- * pane resets `KobeKeymap` to its boot-time defaults THEN re-applies the
- * re-read file, so a REMOVED override returns to its default instead of the
- * stale chord sticking around. `applyKeymapOverrides` mutates in place and
- * is additive — without a reset, "defaults + every override ever applied"
- * would pile up. These tests pin the reset (keys AND the cosmetic hint).
- */
-
 import { describe, expect, test } from "vitest"
 import { KobeKeymap, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
 import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 
-const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
+const ID = "sidebar.rename"
 
 describe("resetKeymapToDefaults", () => {
   test("app quit defaults include native two-stage ctrl+q", () => {
@@ -40,11 +30,8 @@ describe("resetKeymapToDefaults", () => {
     applyKeymapOverrides(KobeKeymap, [{ id: ID, keys: ["ctrl+r"] }])
     resetKeymapToDefaults()
     applyKeymapOverrides(KobeKeymap, [{ id: ID, keys: ["ctrl+e"] }])
-    // Only the latest override survives — the first didn't accumulate.
     expect([...findBinding(ID)!.keys]).toEqual(["ctrl+e"])
 
-    // And resetting with NO re-apply returns to the pristine default —
-    // the "removed override" case the live reload depends on.
     resetKeymapToDefaults()
     expect([...findBinding(ID)!.keys]).toEqual(defaultKeys)
   })

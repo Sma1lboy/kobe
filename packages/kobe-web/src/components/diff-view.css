@@ -1,17 +1,7 @@
-/*
- * Diff line coloring for the web CHANGES pane. Colors mirror the kobe TUI
- * theme (packages/kobe/src/tui/context/theme/claude.json):
- *   added   fg #9aca86  bg #1f2a1f
- *   removed fg #d47563  bg #2a1f1c
- * Scoped to .kobe-diff so this never touches global styles.css.
- */
-
 .kobe-diff {
   tab-size: 2;
 }
 
-/* Each row: two right-aligned line-number gutters + the content. The grid
- * keeps numbers aligned regardless of digit count; content keeps `pre`. */
 .kobe-diff-row {
   display: grid;
   grid-template-columns: 3.5ch 3.5ch 1fr;
@@ -32,7 +22,6 @@
   padding-right: 0.75rem;
 }
 
-/* `wrap` toggle: soft-wrap long lines instead of horizontal scrolling. */
 .kobe-diff-wrap .kobe-diff-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -48,26 +37,22 @@
   background: #2a1f1c;
 }
 
-/* hunk @@ headers — muted/structural, like the TUI's context color */
 .kobe-diff-hunk {
   color: #61aaf2;
   background: transparent;
 }
 
-/* hunk + meta rows span the gutters too (no per-side line numbers) */
 .kobe-diff-hunk .kobe-diff-text,
 .kobe-diff-meta .kobe-diff-text {
   grid-column: 1 / -1;
   padding-left: 0.75rem;
 }
 
-/* file headers inside a raw patch (diff --git, index, ---, +++) */
 .kobe-diff-meta {
   color: #6b665f;
   background: transparent;
 }
 
-/* unchanged context lines */
 .kobe-diff-ctx {
   color: #a9a39a;
   background: transparent;

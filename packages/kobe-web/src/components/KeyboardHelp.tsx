@@ -1,9 +1,3 @@
-/**
- * Keyboard help overlay — the web counterpart of the TUI's F1 help. Opened
- * with `?` (when not typing in a field) or a top-bar button; lists the
- * shortcuts and the main affordances so they're discoverable. Esc closes.
- */
-
 import { useEffect, useRef } from "react"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
 

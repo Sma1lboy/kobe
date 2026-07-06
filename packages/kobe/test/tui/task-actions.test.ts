@@ -1,24 +1,3 @@
-/**
- * Shared task-action flow tests (`src/tui/lib/task-actions.ts`).
- *
- * Why these matter: the flows are the ONE implementation behind both the
- * deprecated outer monitor (app.tsx) and the Tasks pane (tasks-pane/host.tsx),
- * so a regression here breaks task lifecycle in every host at once. The two
- * load-bearing branches under test:
- *
- *   - delete's DIRTY_WORKTREE re-prompt — the guard that keeps a worktree
- *     with uncommitted work from being destroyed without an explicit
- *     force-confirm (KOB-244). A failed/declined delete must leave the tmux
- *     session and selection untouched.
- *   - archive's session teardown — archiving stops the running engine
- *     (switch-client away, optionally clear active-task focus, kill the tmux
- *     session) while unarchive touches nothing.
- *
- * The module deliberately has no `@opentui` imports: modal UI arrives as
- * context adapters (`confirm`, `promptText`), so the flows run here with
- * plain mocks. Only the tmux session ops are module-mocked.
- */
-
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { DIRTY_WORKTREE_CODE } from "../../src/orchestrator/errors"
 import { killSession, switchClientBeforeKill } from "../../src/tui/panes/terminal/tmux"
@@ -28,8 +7,6 @@ vi.mock("../../src/tui/panes/terminal/tmux", () => ({
   killSession: vi.fn(async () => {}),
   switchClientBeforeKill: vi.fn(async () => {}),
 }))
-// Rename/branch/vendor flows live in task-actions-rename.test.ts (file split
-// to stay under the ~500-line cap).
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
 import { type TaskActionContext, archiveTaskFlow, deleteTaskFlow, nextActiveTask } from "../../src/tui/lib/task-actions"
@@ -136,8 +113,6 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
 
     await deleteTaskFlow(ctx, "t1")
 
-    // Two confirms: the normal delete prompt, then the force re-prompt with
-    // the uncommitted-changes copy — the copy is the contract both hosts share.
     expect(confirm).toHaveBeenCalledTimes(2)
     expect(confirm.mock.calls[1]?.[0]).toMatchObject({
       title: `"dirty" has uncommitted changes`,
@@ -145,7 +120,6 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
     })
     expect(orch.deleteTask).toHaveBeenNthCalledWith(1, "t1")
     expect(orch.deleteTask).toHaveBeenNthCalledWith(2, "t1", { force: true })
-    // Successful force-delete proceeds to teardown + host selection hook.
     expect(killSession).toHaveBeenCalledWith("kobe-t1")
     expect(reload).toHaveBeenCalledTimes(1)
     expect(onTaskDeleted).toHaveBeenCalledWith("t1", expect.objectContaining({ id: "t2" }))
@@ -178,7 +152,6 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
 
     await deleteTaskFlow(ctx, "t1")
 
-    // No force re-prompt for a non-DIRTY error.
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(notifyError).toHaveBeenCalledWith("Couldn't delete: daemon exploded")
     expect(killSession).not.toHaveBeenCalled()
@@ -208,10 +181,8 @@ describe("deleteTaskFlow — project (main) row", () => {
 
     await deleteTaskFlow(ctx, "m1")
 
-    // Project-specific copy (the "remove" verb, not "delete").
     expect(confirm.mock.calls[0]?.[0]).toMatchObject({ title: `Remove project "alpha"?`, confirmLabel: "remove" })
     expect(orch.forgetProject).toHaveBeenCalledWith("/repos/alpha")
-    // Never routes to deleteTask (which refuses main rows) or kills a session.
     expect(orch.deleteTask).not.toHaveBeenCalled()
     expect(killSession).not.toHaveBeenCalled()
     expect(reload).toHaveBeenCalledTimes(1)
@@ -253,8 +224,6 @@ describe("archiveTaskFlow — session teardown", () => {
 
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: `Archive "busy"?`, confirmLabel: "archive" }))
     expect(orch.setArchived).toHaveBeenCalledWith("t1", true)
-    // Archive STOPS the running engine: switch away, hand focus to the next
-    // active task, kill the session. Data (worktree/branch/history) survives.
     expect(switchClientBeforeKill).toHaveBeenCalledWith("kobe-t1", "kobe-t2")
     expect(orch.setActiveTask).toHaveBeenCalledWith("t2")
     expect(killSession).toHaveBeenCalledWith("kobe-t1")

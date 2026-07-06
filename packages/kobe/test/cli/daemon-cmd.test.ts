@@ -1,10 +1,3 @@
-/**
- * `kobe daemon <status|start|stop|restart>` (`runDaemonSubcommand`).
- * Daemon client / lifecycle / server / core are all mocked — a real one
- * would dial sockets and spawn a daemon. paths resolve off a KOBE_HOME_DIR
- * tempdir so readPidFile (kept real) reads a real pidfile.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

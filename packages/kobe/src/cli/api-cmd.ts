@@ -1,44 +1,3 @@
-/**
- * `kobe api <verb>` — the scriptable control surface for agents driving
- * kobe from a shell (Bash tool / cron / arbitrary scripts).
- *
- * Each invocation is a short-lived process: connect to (or auto-start) the
- * daemon, do the work, print a JSON object to stdout, exit. Designed for
- * fan-out AND full task lifecycle control — it exposes (almost) everything
- * the daemon can do, so an agent never has to drop into the TUI for a
- * scripted operation.
- *
- * ## Self-describing (so an agent can EXPLORE the surface)
- *
- * The verb table {@link VERBS} is the single source of truth: each entry
- * binds one verb's spec (name, summary, flags) to its handler, and the spec
- * half drives the `schema` verb (machine-readable JSON of every verb +
- * flag), per-verb `--help`, and flag validation (required / enum /
- * unknown-flag rejection). An agent runs `kobe api schema` once and knows
- * the whole API — names, types, which flags are required, allowed enum
- * values — without parsing prose. Add a verb to {@link VERBS} and its help,
- * schema entry, and validation all come for free.
- *
- * ## Handler seam (so verbs are unit-testable)
- *
- * Handlers receive a {@link VerbContext}: spec-typed flag access
- * ({@link VerbArgs}, derived from the verb's own FlagSpecs — no ad hoc
- * re-validation inside handlers), the narrow daemon RPC surface
- * ({@link DaemonRpc} — a fake that records requests stands in for the
- * socket in tests), and the side-effect seam ({@link ApiRuntime} — tmux /
- * git / repo-init). Daemon connect/close lives in `./daemon-session.ts`.
- *
- * ## Output contract
- *   - success → one JSON object to stdout, `\n` terminated, exit 0
- *   - error   → `{ "error": { "message", "code" } }` to stderr, exit ≠ 0
- *   - `--pretty` → indent stdout JSON (humans only)
- *   - `--help`   → render that verb's usage to stdout, exit 0
- *
- * The daemon is auto-started if it is not already running, so an agent
- * script does not have to babysit it (read-only verbs like `schema` skip
- * the daemon entirely).
- */
-
 import { resolve } from "node:path"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
@@ -53,13 +12,10 @@ import { ALL_VENDORS, type VendorId } from "../types/vendor.ts"
 import { CURRENT_VERSION } from "../version.ts"
 import { type DaemonRpc, type DaemonSession, openDaemonSession } from "./daemon-session.ts"
 
-/** Bumped when the verb/flag shape changes incompatibly. Agents can gate on it. */
 export const API_SCHEMA_VERSION = 2
 
-/** Safety cap on a single fan-out so a typo can't spawn a runaway fleet. */
 export const FANOUT_CAP = 10
 
-/** Allowed `--status` values, mirrored from {@link TaskStatus}. */
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 const ISSUE_STATUSES = ["open", "doing", "hold", "done"] as const
 type IssueStatus = (typeof ISSUE_STATUSES)[number]
@@ -81,8 +37,6 @@ class ApiError extends Error {
   }
 }
 
-// ── Declarative verb + flag specs (single source of truth) ───────────────────
-
 type FlagType = "string" | "int" | "bool" | "enum" | "csv"
 
 interface FlagSpec {
@@ -90,27 +44,14 @@ interface FlagSpec {
   readonly type: FlagType
   readonly required?: boolean
   readonly description: string
-  /** Allowed values when `type === "enum"`. */
   readonly values?: readonly string[]
-  /** Default shown in schema/help (informational; not auto-applied). */
   readonly default?: string
-  /** Metavar for help/schema, e.g. PATH / ID / TEXT. */
   readonly placeholder?: string
 }
 
-/**
- * What a verb handler runs against. Everything here is injectable so a
- * handler's LOGIC is unit-testable without a daemon socket or a tmux
- * server: `client` accepts any {@link DaemonRpc} (tests pass a fake that
- * records requests), `runtime` carries the side-effecting operations
- * (tmux liveness, prompt delivery, git worktree reads).
- */
 interface VerbContext {
-  /** Spec-typed flag access — coercion + requiredness derived from the verb's own {@link FlagSpec}s. */
   readonly args: VerbArgs
-  /** Daemon RPC surface; `null` only for `offline` verbs (guard with {@link daemonOf}). */
   readonly client: DaemonRpc | null
-  /** Side-effect seam (tmux / git / repo-init) — swapped for a fake in unit tests. */
   readonly runtime: ApiRuntime
 }
 
@@ -120,12 +61,10 @@ interface VerbSpec {
   readonly name: string
   readonly summary: string
   readonly flags: readonly FlagSpec[]
-  /** Verbs that don't need the daemon (e.g. `schema`). */
   readonly offline?: boolean
   readonly handler: VerbHandler
 }
 
-// Reusable flag fragments.
 const F = {
   repo: (required = true): FlagSpec => ({
     name: "repo",
@@ -158,14 +97,8 @@ const F = {
   }),
 }
 
-/** Output the alias → canonical map so callers (and the schema) stay in sync. */
 const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
 
-/**
- * Verb groups for LEVELED exploration. An agent reads the compact index
- * (groups + verb summaries), then drills into one verb or one group —
- * instead of slurping every flag of every verb and polluting its context.
- */
 const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
   read: ["list", "get-task", "collect"],
@@ -185,13 +118,6 @@ function groupOf(verbName: string): string {
   return "other"
 }
 
-/**
- * The `schema` handler — LEVELED so it never dumps everything by default:
- *   - no flags  → compact index (groups + verb names + summaries, NO flags)
- *   - --verb N  → one verb's full flag detail
- *   - --group G → the verbs in one group (compact)
- *   - --all     → the complete spec (every verb AND every flag)
- */
 async function handleSchema(ctx: VerbContext): Promise<unknown> {
   const verbName = ctx.args.str("verb")
   if (verbName) {
@@ -205,10 +131,6 @@ async function handleSchema(ctx: VerbContext): Promise<unknown> {
   return schemaIndex()
 }
 
-// VERBS — ordered for help readability: discovery, reads, create, drive, edit,
-// lifecycle, worktree. Every entry binds ONE verb's spec to its handler; the
-// spec half feeds schema + --help + validation, the handler half runs against
-// the injected VerbContext.
 const VERBS: readonly VerbSpec[] = [
   {
     name: "schema",
@@ -489,7 +411,6 @@ const VERBS: readonly VerbSpec[] = [
   },
 ]
 
-/** Verb names in canonical order (schema/help/tests). */
 export const API_VERBS = VERBS.map((v) => v.name)
 
 function findVerb(name: string): VerbSpec | undefined {
@@ -497,14 +418,6 @@ function findVerb(name: string): VerbSpec | undefined {
   return VERBS.find((v) => v.name === canonical)
 }
 
-// ── Flag parsing + spec-driven validation ────────────────────────────────────
-
-/**
- * Parse argv into a flag map + `--pretty` / `--help` booleans. Accepts both
- * `--key=value` and `--key value`. `booleanFlags` (from the verb spec) may be
- * given as standalone presence flags (`--force` ⇒ "true"); without it, only
- * `--pretty` / `--help` are standalone. Unknown forms throw BAD_FLAG.
- */
 export function parseFlags(argv: readonly string[], booleanFlags: ReadonlySet<string> = new Set()): ParsedArgs {
   const flags = new Map<string, string>()
   let pretty = false
@@ -536,7 +449,6 @@ export function parseFlags(argv: readonly string[], booleanFlags: ReadonlySet<st
       help = true
       continue
     }
-    // A boolean verb flag with no value is a presence flag (`--force`).
     if (booleanFlags.has(key)) {
       flags.set(key, "true")
       continue
@@ -551,7 +463,6 @@ export function parseFlags(argv: readonly string[], booleanFlags: ReadonlySet<st
   return { flags, pretty, help }
 }
 
-/** Reject flags not declared on the verb spec, and required flags that are missing. */
 function validateAgainstSpec(verb: VerbSpec, flags: Flags): void {
   const known = new Set(verb.flags.map((f) => f.name))
   for (const key of flags.keys()) {
@@ -578,13 +489,6 @@ function validateAgainstSpec(verb: VerbSpec, flags: Flags): void {
   }
 }
 
-/**
- * Spec-typed flag access, built ONCE per invocation after
- * {@link validateAgainstSpec}. Each accessor derives its coercion from the
- * verb's own {@link FlagSpec} (enum values, bool/int shapes), so handlers
- * never re-declare what the spec already knows — and a handler reading a
- * flag its spec never declared is a programming error, caught loudly.
- */
 class VerbArgs {
   constructor(
     private readonly verb: VerbSpec,
@@ -597,21 +501,18 @@ class VerbArgs {
     return f
   }
 
-  /** Optional string value; an empty string counts as absent. */
   str(name: string): string | undefined {
     this.spec(name)
     const v = this.flags.get(name)
     return v && v.length > 0 ? v : undefined
   }
 
-  /** Required string value (MISSING_FLAG when absent). */
   require(name: string): string {
     const v = this.str(name)
     if (v === undefined) throw new ApiError(`--${name} is required`, "MISSING_FLAG")
     return v
   }
 
-  /** Enum value, validated against the SPEC's declared `values`. */
   enumOf<T extends string>(name: string): T | undefined {
     const f = this.spec(name)
     const v = this.str(name)
@@ -622,18 +523,15 @@ class VerbArgs {
     return v as T
   }
 
-  /** Required enum value. */
   requireEnum<T extends string>(name: string): T {
     this.require(name)
     return this.enumOf<T>(name) as T
   }
 
-  /** The shared `--vendor` flag, typed. */
   vendor(): VendorId | undefined {
     return this.enumOf<VendorId>("vendor")
   }
 
-  /** Boolean flag (`true/1/yes` / `false/0/no`); undefined when absent. */
   bool(name: string): boolean | undefined {
     this.spec(name)
     const raw = this.str(name)
@@ -643,7 +541,6 @@ class VerbArgs {
     throw new ApiError(`--${name} must be a boolean (true/false)`, "BAD_FLAG")
   }
 
-  /** Positive-integer flag; undefined when absent. */
   int(name: string): number | undefined {
     this.spec(name)
     const raw = this.str(name)
@@ -653,22 +550,16 @@ class VerbArgs {
     return n
   }
 
-  /** Optional PATH flag resolved against $PWD (with a leading `~` expanded first). */
   path(name: string): string | undefined {
     const v = this.str(name)
     return v === undefined ? undefined : resolve(process.cwd(), expandTilde(v))
   }
 
-  /** Required PATH flag resolved against $PWD (with a leading `~` expanded first). */
   requirePath(name: string): string {
     return resolve(process.cwd(), expandTilde(this.require(name)))
   }
 }
 
-/**
- * Parse a fan-out spec like `claude:2,codex:1` into a flat list with one
- * vendor entry per task to spawn (`[claude, claude, codex]`).
- */
 export function parseAgentsSpec(spec: string): VendorId[] {
   const out: VendorId[] = []
   for (const part of spec.split(",")) {
@@ -684,9 +575,6 @@ export function parseAgentsSpec(spec: string): VendorId[] {
     if (!Number.isInteger(count) || count <= 0) {
       throw new ApiError(`--agents count for "${vendor}" must be a positive integer`, "BAD_FLAG")
     }
-    // Reject against the fanout cap BEFORE materializing the array — otherwise
-    // `--agents claude:1000000000` allocates a billion-element array (OOM) only
-    // to be rejected by the post-build `plan.length > FANOUT_CAP` check.
     if (out.length + count > FANOUT_CAP) {
       throw new ApiError(`--agents requests ${out.length + count} agents, exceeds the cap of ${FANOUT_CAP}`, "BAD_FLAG")
     }
@@ -696,21 +584,12 @@ export function parseAgentsSpec(spec: string): VendorId[] {
   return out
 }
 
-/**
- * Build the fan-out plan for the `--count` form (`--count N`, all one vendor):
- * N copies of `vendor`. Rejects against the fanout cap BEFORE allocating —
- * symmetric to {@link parseAgentsSpec}, so `--count 1000000000` fails fast
- * instead of materializing a billion-element array (OOM) only to be caught by
- * the post-build `plan.length > FANOUT_CAP` check.
- */
 export function buildCountPlan(count: number, vendor: VendorId): VendorId[] {
   if (count > FANOUT_CAP) {
     throw new ApiError(`fan-out of ${count} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
   }
   return new Array<VendorId>(count).fill(vendor)
 }
-
-// ── Schema (LEVELED) + help (all derived from VERBS) ─────────────────────────
 
 const GLOBAL_FLAGS = [
   { name: "pretty", type: "bool", description: "Pretty-print stdout JSON." },
@@ -729,7 +608,6 @@ function flagJson(f: FlagSpec): unknown {
   }
 }
 
-/** ONE verb, full detail (flags + types). The drill-in level. */
 function verbSchema(v: VerbSpec): unknown {
   return {
     name: v.name,
@@ -740,8 +618,6 @@ function verbSchema(v: VerbSpec): unknown {
   }
 }
 
-/** The COMPACT index: groups + verb names + summaries, but NO flags — so an
- *  agent can survey the surface cheaply, then drill in with --verb. */
 function schemaIndex(): unknown {
   return {
     apiVersion: API_SCHEMA_VERSION,
@@ -754,7 +630,6 @@ function schemaIndex(): unknown {
   }
 }
 
-/** The verbs in ONE group (compact). */
 function groupSchema(group: string): unknown {
   const names = VERB_GROUPS[group]
   if (!names) {
@@ -769,7 +644,6 @@ function groupSchema(group: string): unknown {
   }
 }
 
-/** The COMPLETE spec — every verb AND every flag. Opt-in via --all. */
 function fullSchema(): unknown {
   return {
     apiVersion: API_SCHEMA_VERSION,
@@ -786,7 +660,6 @@ function fullSchema(): unknown {
   }
 }
 
-/** Render one verb's flag signature, e.g. `--repo PATH [--title T] ...`. */
 function flagSignature(verb: VerbSpec): string {
   return verb.flags
     .map((f) => {
@@ -798,7 +671,6 @@ function flagSignature(verb: VerbSpec): string {
     .join(" ")
 }
 
-/** Full `kobe api <verb> --help` text. */
 export function verbHelp(verb: VerbSpec): string {
   const lines = [`kobe api ${verb.name} ${flagSignature(verb)}`.trimEnd(), "", verb.summary, ""]
   const alias = Object.entries(VERB_ALIASES).find(([, canon]) => canon === verb.name)?.[0]
@@ -817,7 +689,6 @@ export function verbHelp(verb: VerbSpec): string {
   return lines.join("\n")
 }
 
-/** One-line-per-verb usage banner for `kobe api` with no/bad verb. */
 export function apiUsage(): string {
   const rows = VERBS.map((v) => `  ${v.name.padEnd(18)} ${v.summary}`)
   return [
@@ -832,8 +703,6 @@ export function apiUsage(): string {
   ].join("\n")
 }
 
-// ── stdout/stderr emit ───────────────────────────────────────────────────────
-
 function emit(value: unknown, pretty: boolean): void {
   const text = pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value)
   process.stdout.write(`${text}\n`)
@@ -843,8 +712,6 @@ function fail(message: string, code: string, exitCode = 1): never {
   process.stderr.write(`${JSON.stringify({ error: { message, code } })}\n`)
   process.exit(exitCode)
 }
-
-// ── Prompt delivery (shared by add / fan-out / send) ─────────────────────────
 
 interface PromptTarget {
   readonly id: string
@@ -860,13 +727,6 @@ interface DeliveredPrompt {
   readonly engineReady: boolean
 }
 
-/**
- * The tmux/engine operations {@link deliverPrompt} performs, injectable so
- * its decision logic (ensure-worktree fallback, fresh-session build,
- * explicit-prompt-wins-over-repo-init-prompt) is unit-testable without a
- * tmux server. The default lazily imports the heavy session builder so a
- * plain `kobe api list` never loads the TUI pane stack.
- */
 interface PromptDeliveryOps {
   sessionExists(session: string): Promise<boolean>
   ensureSession(opts: EnsureSessionOpts): Promise<boolean>
@@ -914,8 +774,6 @@ async function deliverPrompt(
       taskId: target.id,
       vendor: target.vendor,
       repo: target.repo,
-      // The EXPLICIT prompt is delivered below; this contract intentionally
-      // keeps only the init script so a fresh session never gets both pastes.
       launchInit,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
@@ -941,34 +799,12 @@ async function resolveActiveTaskId(client: DaemonRpc): Promise<string | null> {
   return activeId
 }
 
-// ── Runtime (the side-effect seam handlers run against) ─────────────────────
-
-/**
- * Everything a verb handler touches BESIDES the daemon RPC: tmux session
- * liveness, prompt delivery, git worktree reads. The default implementation
- * is the real thing (lazy-importing the heavier modules); unit tests swap
- * in fakes so handler logic runs without a daemon, tmux, or git.
- */
 interface ApiRuntime {
-  /** True iff the task's tmux session is live. */
   isTaskRunning(taskId: string): Promise<boolean>
-  /** Deliver a prompt into a task's engine pane (building the session if needed). */
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
-  /** Canonical source repo for task creation and grouping. */
   resolveRepoRoot(absPath: string): Promise<string>
-  /** Preferred engine for new tasks in `repo`; undefined delegates to daemon defaults. */
   defaultVendor(repo?: string): Promise<VendorId | undefined>
-  /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
-  /**
-   * Stop and kill a task's tmux session (and its engine), mirroring the TUI's
-   * delete/archive teardown. The daemon must NOT touch tmux (it never imports
-   * it), so the CLI process owns this teardown — run only AFTER the matching
-   * `task.delete`/`task.archive` RPC succeeds. `switchClientBeforeKill` no-ops
-   * outside tmux (the CLI is rarely attached); `killSession` no-ops when the
-   * session isn't live. Best-effort: a teardown failure must not fail the
-   * already-committed RPC, so it never throws.
-   */
   tearDownSession(taskId: string): Promise<void>
 }
 
@@ -984,23 +820,16 @@ const defaultApiRuntime: ApiRuntime = {
     (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
   tearDownSession: async (taskId) => {
     const session = tmuxSessionName(taskId)
-    // Switch any attached client away first so a kill doesn't blank a terminal
-    // (no-op when this process isn't on that session), then kill the session +
-    // its engine. Both are swallowed — the task is already gone from the index.
     await switchClientBeforeKill(session).catch(() => {})
     await killSession(session).catch(() => {})
   },
 }
 
-// ── Handlers ─────────────────────────────────────────────────────────────────
-
-/** The daemon RPC surface, or the canonical "daemon required" error for an offline call. */
 function daemonOf(ctx: VerbContext): DaemonRpc {
   if (!ctx.client) throw new ApiError("daemon required", "BAD_DAEMON")
   return ctx.client
 }
 
-/** Fire one daemon RPC and return its raw payload (the generic CRUD shape). */
 async function simpleRpc(ctx: VerbContext, name: string, payload: Record<string, unknown>): Promise<unknown> {
   // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
   return daemonOf(ctx).request(name as any, payload)
@@ -1036,8 +865,6 @@ async function add(ctx: VerbContext): Promise<unknown> {
   const taskId = res.taskId
   await daemon.request("task.setActive", { taskId })
 
-  // status / pin aren't create-time fields on the RPC — apply them as
-  // follow-ups so `add` is the one-stop "make me a task exactly like this".
   const status = args.enumOf<TaskStatus>("status")
   if (status) await daemon.request("task.status", { taskId, status })
   const pin = args.bool("pin")
@@ -1133,13 +960,6 @@ async function archive(ctx: VerbContext): Promise<unknown> {
   const taskId = ctx.args.require("task-id")
   const archived = ctx.args.bool("archived") ?? true
   const res = await daemon.request("task.archive", { taskId, archived })
-  // Archiving STOPS the engine (matching the TUI's archiveTaskFlow + the verb's
-  // own "non-destructive: worktree/branch/history stay" contract): the data
-  // survives, but the live tmux session + engine subprocess must not keep
-  // burning resources. Unarchive is the inverse — it must NOT kill (the session
-  // is rebuilt fresh on next enter), so teardown is gated on `archived === true`.
-  // The daemon never touches tmux, so the kill runs here in the CLI process,
-  // only after the RPC has committed the flag.
   if (archived) await ctx.runtime.tearDownSession(taskId)
   return res
 }
@@ -1149,11 +969,6 @@ async function deleteTask(ctx: VerbContext): Promise<unknown> {
   const taskId = ctx.args.require("task-id")
   const force = ctx.args.bool("force") ?? false
   const res = await daemon.request("task.delete", { taskId, force })
-  // The daemon's task.delete removes the worktree + index entry but never the
-  // tmux session (it doesn't import tmux). Without this, a scripted delete
-  // orphans the `kobe-<id>` session + its engine — invisible to every kobe UI
-  // since the task is gone from tasks.json. Mirror the TUI's finishDeletedTaskFlow
-  // and kill it here, after the delete RPC succeeds.
   await ctx.runtime.tearDownSession(taskId)
   return res
 }
@@ -1266,17 +1081,10 @@ async function feedback(ctx: VerbContext): Promise<unknown> {
   return { ok: true, discussion: result }
 }
 
-// ── Dispatch ─────────────────────────────────────────────────────────────────
-
 function makeContext(verb: VerbSpec, flags: Flags, client: DaemonRpc | null, runtime: ApiRuntime): VerbContext {
   return { args: new VerbArgs(verb, flags), client, runtime }
 }
 
-/**
- * Parse + validate + run ONE verb against an injected client/runtime —
- * the unit-test (and embedding) entry. Throws {@link ApiError} instead of
- * exiting; `runApiSubcommand` keeps the process-exit/JSON-emit wrapper.
- */
 export async function invokeVerb(
   verbName: string,
   argv: readonly string[],
@@ -1345,7 +1153,6 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
   }
 }
 
-// Exported for tests.
 export {
   ApiError,
   VERBS,

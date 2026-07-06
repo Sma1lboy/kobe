@@ -1,21 +1,3 @@
-/**
- * `worktree.*` daemon RPC handlers.
- *
- * The first 4 entries (`discoverAdoptable`/`adopt`/`reconcile`/
- * `archiveRemoved`) are split out of `handlers.ts` (which was over the
- * repo's 500-line file-size cap) purely mechanically — same behavior,
- * moved verbatim.
- *
- * `list`/`remove` are NEW — the standalone worktree-management TUI page
- * (`tui/component/worktrees-page.tsx`). Unlike the other four, they don't
- * need `ctx.orch`: `GitWorktreeManager` and `getSavedRepos()` are already
- * public, orchestrator-independent primitives, so these compose them
- * directly instead of routing through the Orchestrator. Local projects
- * only for v1 — a remote (`ssh://…`) project's worktrees would need
- * `git ls-remote`/`fs.stat` run over its `ExecHost` instead of directly, a
- * real follow-up rather than bundled here.
- */
-
 import { statSync } from "node:fs"
 import { execHostForWorktreePath } from "@/exec/resolve"
 import { GitWorktreeManager } from "@/orchestrator/worktree/manager"
@@ -101,14 +83,6 @@ export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "worktree.reconcile",
     async handle(payload, ctx) {
-      // A `kobe hook worktree-created` (global PostToolUse) reporting that a
-      // `git worktree add` just ran in `cwd`, creating `worktreePath`. Adopt
-      // it the MOMENT it's created — no engine session needed (the
-      // creation-time complement to the `session-start` auto-adopt in
-      // `engine.reportEvent` below). Bounded to repos kobe already tracks
-      // (so a stray worktree in an untracked repo is ignored); `adoptWorktree`
-      // is idempotent + git-validated, so a re-fired hook or a bogus path is a
-      // harmless no-op (the path just fails validation → caught → dropped).
       const cwd = requireString(payload, "cwd")
       const worktreePath = requireString(payload, "worktreePath")
       const repo = matchRepoByCwd(ctx.orch.listTasks(), cwd) ?? matchRepoByCwd(ctx.orch.listTasks(), worktreePath)
@@ -125,16 +99,6 @@ export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "worktree.archiveRemoved",
     async handle(payload, ctx) {
-      // A `kobe hook worktree-created` (global PostToolUse) reporting that a
-      // `git worktree remove <path>` just ran. Archive the task pinned to that
-      // exact worktree — the symmetric complement to `worktree.reconcile`
-      // (add a worktree → adopt a task; remove it → archive that task). We
-      // ARCHIVE, never delete: the task's history/branch survive, it just
-      // leaves the active board (and `setArchived` no-ops a `main` task, so a
-      // repo root can't be archived this way). Exact-path match (not
-      // longest-prefix) so removing an untracked worktree can't archive a
-      // parent main task. Idempotent: an already-archived or unmatched path is
-      // a harmless no-op.
       const worktreePath = requireString(payload, "worktreePath")
       const taskId = matchTaskByWorktreePath(ctx.orch.listTasks(), worktreePath)
       if (!taskId) return { archived: false }

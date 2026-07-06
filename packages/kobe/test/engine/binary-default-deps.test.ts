@@ -1,32 +1,10 @@
-/**
- * Coverage for the REAL `defaultDeps` of the binary-discovery modules
- * (`claude-code-local/binary.ts`, `codex-local/binary.ts`,
- * `copilot-local/binary.ts`).
- *
- * `binary-discovery.test.ts` pins the search-order algorithm through the
- * injectable seam; these tests pin the default wiring that the seam hides —
- * the `which` output parsing (incl. macOS "aliased to" lines), the
- * statSync-based existence probe, env/home resolution, and the nvm-dir
- * scan. That wiring is what actually runs on every real spawn, so a typo
- * there ships even with the algorithm suite fully green. The host FS/PATH
- * must not leak in (dev machines have these binaries installed!), so
- * node:child_process, node:os and node:fs are stubbed with a virtual file
- * set — the modules under test only touch fs through the three calls
- * defaultDeps makes.
- */
-
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// A REAL (empty) temp dir: `claude`'s nvm scan lists it via a module-internal
-// `require("node:fs")` that vi.mock can't intercept, so directory listings
-// must exist on the real disk. File-existence stays virtual (statSync below).
 const HOME = mkdtempSync(path.join(tmpdir(), "kobe-bin-home-"))
-/** Virtual FS: paths that exist as regular files. */
 const files = new Set<string>()
-/** Next `which`/`where` result. */
 let which: { status: number; stdout: string } = { status: 1, stdout: "" }
 
 vi.mock("node:os", async (importOriginal) => {
@@ -114,7 +92,7 @@ describe("findCodexBinary — default deps", () => {
   })
 
   it("ignores a which hit that is not a regular file and falls to the system paths", async () => {
-    which = { status: 0, stdout: "/somewhere/codex\n" } // not in the virtual file set
+    which = { status: 0, stdout: "/somewhere/codex\n" }
     files.add("/usr/local/bin/codex")
     await expect(findCodexBinary()).resolves.toBe("/usr/local/bin/codex")
   })

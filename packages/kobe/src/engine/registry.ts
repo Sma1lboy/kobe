@@ -1,31 +1,3 @@
-/**
- * Engine registry — the ONE place per-vendor wiring lives.
- *
- * CLAUDE.md "Engine-owned UI data": neutral layers (monitor, orchestrator,
- * TUI) must not hard-code vendor strings or pick vendor-specific readers
- * with inline if-ladders. Instead they call {@link engineEntry} with the
- * task's `vendor` and use whatever the entry exposes:
- *
- *   - `history`        — transcript store reader (auto-title, recap).
- *   - `detectAccount`  — read-only login/binary probe (Settings → Accounts).
- *   - `createHookAdapter` — activity-hook installer (claude + codex today).
- *   - `createTurnDetector` — ChatTab turn-completion detection.
- *   - `defaultCommand` / `displayName` — launch + label defaults.
- *
- * Adding an engine = one new entry here (plus its vendor-local modules);
- * removing the vendor if-ladders from neutral code was the point (KOB).
- *
- * Custom (user-registered) engines get {@link customEngineEntry}: an
- * explicit, documented EMPTY entry — no transcript store (auto-title keeps
- * the placeholder rather than mis-reading another vendor's files), no
- * account detection, no hooks, and a `defaultCommand` of the
- * bare id (the real launch command lives in the user's
- * `engineCommand.<id>` override; see `interactive-command.ts`). This
- * preserves the pre-registry behavior for unknown vendor ids exactly.
- *
- * Must stay importable from vitest and MUST NOT import from `src/tui/`.
- */
-
 import type { EngineCapabilities, EngineIdentity, Message } from "@/types/engine"
 import { type VendorId, isBuiltinVendor } from "@/types/vendor"
 import {
@@ -48,82 +20,28 @@ import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
-/**
- * Reader over an engine's on-disk transcript store, in the neutral shape
- * auto-title (and future recap) consumes. Vendor formats stay behind it:
- * claude's per-worktree `~/.claude/projects/*` dirs, codex's global
- * `~/.codex/sessions/**` rollouts, copilot's `~/.copilot/session-state`.
- */
 export interface EngineHistoryReader {
-  /**
-   * Session ids recorded for `worktree`, OLDEST-FIRST (the task's origin
-   * conversation comes first — auto-title depends on this order). `[]`
-   * when the worktree has no transcripts. Never throws.
-   */
   listSessionIdsForWorktree(worktree: string): Promise<readonly string[]>
-  /** Neutral messages for one session id; `[]` when not found. */
   readHistory(sessionId: string): Promise<Message[]>
-  /**
-   * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
-   * has no transcript yet. The Ops pane's activity poll watches this to
-   * light its "new activity" badge (KOB-254). Never throws — readers are
-   * best-effort and the poller treats 0 as "no activity seen".
-   */
   latestTranscriptMtimeForWorktree(worktree: string): Promise<number>
 }
 
-/** Any built-in engine's account shape (each union already has a `none` arm). */
 export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount
 
 export interface EngineRegistryEntry {
   readonly vendor: VendorId
-  /** True for the three first-party engines; false for user-added ids. */
   readonly builtin: boolean
-  /** Built-in human label ("Claude"); a custom engine labels as its id. */
   readonly displayName: string
-  /**
-   * Built-in launch argv before any user `engineCommand.<id>` override.
-   * Custom engines fall back to a bare binary named after the id.
-   */
   readonly defaultCommand: readonly string[]
-  /**
-   * Reasoning/effort levels this engine accepts, lowest→highest. Codex maps
-   * a selected level to `-c model_reasoning_effort=<level>` at launch (see
-   * `interactive-command.ts`). Undefined for engines with no kobe-driveable
-   * effort flag (claude picks reasoning at runtime; copilot/custom have none).
-   */
   readonly effortLevels?: readonly string[]
-  /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
-  /**
-   * Read-only binary + login probe (Settings → Accounts). `deps` is the
-   * injectable fs/env surface from `account-detect.ts`; omit for production.
-   */
   readonly detectAccount: (deps?: DetectDeps) => Promise<EngineAccountStatus<EngineAccount>>
-  /** Activity-hook adapter — a no-op adapter for engines without wired hooks. */
   readonly createHookAdapter: () => EngineHookAdapter
-  /**
-   * Turn-completion detector for ChatTab status (transcript markers +
-   * pane quiescence; see `turn-detector.ts`). Engines without persisted
-   * completion markers (copilot, custom) get an {@link UnknownTurnDetector}
-   * whose `supportsCompletionMarkers()` is false.
-   */
   readonly createTurnDetector: () => EngineTurnDetector
-  /**
-   * Model catalog + permission modes + identity (settings, pickers).
-   * Undefined for engines without a kobe-known catalog (copilot, custom).
-   */
   readonly capabilities?: EngineCapabilities
-  /** Product identity (composer placeholder etc.). Paired with capabilities. */
   readonly identity?: EngineIdentity
 }
 
-/**
- * The documented empty history reader for engines with no on-disk
- * transcript store (custom engines). Auto-title then keeps the placeholder
- * title rather than mis-reading claude's transcripts (the old
- * `else → claude` default would do exactly that for any unknown id).
- */
 export const EMPTY_HISTORY: EngineHistoryReader = {
   async listSessionIdsForWorktree() {
     return []
@@ -131,18 +49,11 @@ export const EMPTY_HISTORY: EngineHistoryReader = {
   async readHistory() {
     return []
   },
-  // No transcript store → no activity signal (the Ops badge stays dark
-  // rather than mis-watching another vendor's files).
   async latestTranscriptMtimeForWorktree() {
     return 0
   },
 }
 
-/**
- * Claude's reader. `listSessionFilesForWorktree` sorts NEWEST-first (the
- * activity callers want that); the registry contract is oldest-first,
- * so re-sort ascending by mtime here — exactly what auto-title did inline.
- */
 const claudeHistoryReader: EngineHistoryReader = {
   async listSessionIdsForWorktree(worktree) {
     const files = await claudeHistory.listSessionFilesForWorktree(worktree)
@@ -152,7 +63,6 @@ const claudeHistoryReader: EngineHistoryReader = {
   latestTranscriptMtimeForWorktree: (worktree) => claudeHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
-/** Codex's reader — `listSessionIdsForWorktree` is already oldest-first. */
 const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
@@ -165,7 +75,6 @@ const copilotHistoryReader: EngineHistoryReader = {
   latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
-/** The three first-party entries — registered here and nowhere else. */
 const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntry> = {
   claude: {
     vendor: "claude",
@@ -184,8 +93,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     builtin: true,
     displayName: "Codex",
     defaultCommand: ["codex"],
-    // Effort levels real `codex exec` accepts (the broken `minimal` is
-    // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
 
@@ -203,12 +110,10 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     history: copilotHistoryReader,
     detectAccount: (deps) => detectCopilotAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("copilot"),
-    // Copilot persists no turn-completion marker kobe can read yet.
     createTurnDetector: () => new UnknownTurnDetector("copilot"),
   },
 }
 
-/** See module doc: the explicit empty entry for a user-registered engine id. */
 function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
   return {
     vendor,
@@ -225,28 +130,14 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
   }
 }
 
-/**
- * Resolve the registry entry for a vendor id. Built-ins return their
- * shared singleton entry; any other id returns a fresh
- * {@link customEngineEntry} (no registration step needed — a custom id is
- * "registered" by existing in the user's `customEngineIds` state, which
- * this module deliberately does not read so it stays state-free).
- */
 export function engineEntry(vendor: VendorId): EngineRegistryEntry {
   return isBuiltinVendor(vendor) ? BUILTIN_ENGINES[vendor] : customEngineEntry(vendor)
 }
 
-/**
- * Capabilities for a vendor, or `undefined` when the engine has none (copilot,
- * custom). Consumed by the native chat composer's model picker +
- * permission-mode cycle; callers must handle the missing case rather than
- * borrow another vendor's catalog + permission modes.
- */
 export function getCapabilities(vendor: VendorId): EngineCapabilities | undefined {
   return engineEntry(vendor).capabilities
 }
 
-/** Flat de-duped list of every model surfaced by every registered vendor. */
 export function allModels(): readonly EngineCapabilities["models"][number][] {
   const seen = new Set<string>()
   const out: EngineCapabilities["models"][number][] = []

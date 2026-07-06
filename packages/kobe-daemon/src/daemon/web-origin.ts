@@ -1,10 +1,3 @@
-/**
- * Shared browser-Origin policy for daemon-hosted web routes and the PTY sidecar.
- *
- * Browser requests carry an Origin. Non-browser clients usually do not; those
- * are allowed because there is no ambient browser credential to forge.
- */
-
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
 
 export function isLoopbackHost(hostname: unknown): boolean {

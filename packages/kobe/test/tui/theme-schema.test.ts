@@ -1,20 +1,3 @@
-/**
- * Unit tests for the theme schema validator.
- *
- * The validator backs two paths users can hit if they author broken
- * JSON: the disk loader (`loader.ts`, called at boot for files under
- * `~/.kobe/themes/`) and the CLI (`kobe theme add` for fetched URLs).
- * If either silently accepts garbage we end up with `RGBA.fromHex`
- * throwing inside the render loop, which would crash kobe at the
- * worst possible moment. These tests pin the contract:
- *
- *   - bare-hex strings, def-name refs, and `{dark,light}` variants are
- *     all valid theme values (the canonical bundled `claude.json`
- *     uses all three forms),
- *   - missing `theme` key, half-formed variants, and non-strings are
- *     rejected with a one-line reason suitable for `console.warn`.
- */
-
 import { describe, expect, test } from "vitest"
 import { isHex, validateTheme } from "../../src/tui/context/theme/schema"
 
@@ -26,8 +9,8 @@ describe("isHex", () => {
   })
   test("rejects malformed strings", () => {
     expect(isHex("abc")).toBe(false)
-    expect(isHex("#abcd")).toBe(false) // 4 digits
-    expect(isHex("#abcdefg")).toBe(false) // non-hex char
+    expect(isHex("#abcd")).toBe(false)
+    expect(isHex("#abcdefg")).toBe(false)
     expect(isHex("")).toBe(false)
   })
 })
