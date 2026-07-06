@@ -4,45 +4,14 @@ import { type BoxRenderable, TextAttributes } from "@opentui/core"
 import type { Accessor, JSX } from "solid-js"
 import { Show, createMemo, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { truncateEnd } from "../../lib/truncate"
 import { currentBranch, pollCurrentBranch } from "./git-head"
 import type { SidebarRow } from "./groups"
 import { spacedTitle } from "./labels"
-import type { SidebarTone } from "./row-view"
 import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "./row-view"
 import type { ChatRunState, SidebarHover } from "./types"
+import { taskIsLive, toneColor, truncateBranchLabel } from "./view-core"
 import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
-
-const BRANCH_LABEL_MAX = 16
-
-function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): string {
-  return truncateEnd(branch, max)
-}
-
-function taskIsLive(taskId: string, map: ReadonlyMap<string, ChatRunState> | undefined): boolean {
-  if (!map) return false
-  const prefix = `${taskId}:`
-  for (const [key, state] of map) {
-    if (state === "running" && key.startsWith(prefix)) return true
-  }
-  return false
-}
-
-function toneColor(theme: ReturnType<typeof useTheme>["theme"], tone: SidebarTone) {
-  switch (tone) {
-    case "success":
-      return theme.success
-    case "warning":
-      return theme.warning
-    case "primary":
-      return theme.primary
-    case "error":
-      return theme.error
-    default:
-      return theme.textMuted
-  }
-}
 
 export type SidebarRowCardSharedProps = {
   readonly selectedId: Accessor<string | null>
