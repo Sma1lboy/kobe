@@ -41,8 +41,11 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
 import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
-import { normalizeClaudeContent } from "./normalize"
-import { isClaudeCommandBreadcrumb, isSyntheticClaudeRecord } from "./synthetic"
+import { isObject, parseSessionRaw } from "./history-parse"
+
+// Parsing (JSONL → Message[], sorting, and the append-aware per-file cache)
+// lives in ./history-parse; re-exported here for existing consumers/tests.
+export { parseJsonl } from "./history-parse"
 
 /** Optional FS injection for tests. */
 export interface HistoryDeps {
@@ -161,6 +164,11 @@ export async function latestTranscriptMtimeForWorktree(worktree: string): Promis
  * Returns `[]` if the session file isn't found or contains no messages.
  * Never throws on parse failure — bad lines are skipped (Claude Code's
  * JSONL evolves over time and old sessions may have unfamiliar shapes).
+ *
+ * Consecutive calls for the same file are append-aware: the unchanged
+ * prefix is served from a per-file parse cache with stable Message object
+ * identities (see ./history-parse), so the polling chat pane doesn't churn
+ * row identity — a rewrite/truncation falls back to a full re-parse.
  */
 export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {
   const root = deps.projectsDir()
@@ -174,7 +182,7 @@ export async function readHistory(sessionId: string, deps: HistoryDeps = default
     } catch {
       continue
     }
-    return sortByTimestamp(parseJsonl(raw, sessionId))
+    return parseSessionRaw(candidate, raw, sessionId)
   }
   return []
 }
@@ -203,108 +211,6 @@ export async function deleteHistory(sessionId: string, deps: HistoryDeps = defau
       throw err
     }
   }
-}
-
-/**
- * Sort messages by their `timestamp` ASC (oldest first → newest last).
- *
- * Claude Code's JSONL is a DAG (records carry `parentUuid` for branching
- * resumes), so file-order is NOT strictly chronological — a resumed
- * session can interleave records from different branches. The chat pane
- * relies on `past[]` being chronological so newest messages render at
- * the bottom; we sort here at the engine boundary so every consumer
- * gets the same shape.
- *
- * Stable sort: ties (same ISO timestamp) keep file-order, which roughly
- * preserves causal ordering even at sub-millisecond ties.
- */
-function sortByTimestamp(messages: Message[]): Message[] {
-  return messages
-    .map((msg, idx) => ({ msg, idx }))
-    .sort((a, b) => {
-      if (a.msg.timestamp < b.msg.timestamp) return -1
-      if (a.msg.timestamp > b.msg.timestamp) return 1
-      return a.idx - b.idx
-    })
-    .map((entry) => entry.msg)
-}
-
-/**
- * Parse a JSONL blob into the subset of records that look like
- * conversation messages (role + content). Exported for unit testing.
- */
-export function parseJsonl(raw: string, sessionId: string): Message[] {
-  const out: Message[] = []
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    // Skip a pathological mega-line before parsing — same outcome as a
-    // malformed line, but without risking a hang in JSON.parse.
-    if (!isJsonlLineWithinBound(trimmed)) continue
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(trimmed)
-    } catch {
-      continue
-    }
-    if (!isObject(parsed)) continue
-    const msg = extractMessage(parsed, sessionId)
-    if (msg) out.push(msg)
-  }
-  return out
-}
-
-function extractMessage(record: Record<string, unknown>, fallbackSessionId: string): Message | null {
-  // The on-disk shape commonly looks like:
-  //   { type: "user"|"assistant", message: { role, content }, timestamp, sessionId }
-  // but older records sometimes have role+content at the top level.
-  // Drop Claude-injected synthetic rows (local-command caveat, compaction
-  // summary) — the flags live on the OUTER record, and Claude's own
-  // human-turn/title paths skip exactly these. Without this, a session that
-  // opens with a slash/bash command auto-titles from the injected boilerplate.
-  if (isSyntheticClaudeRecord(record)) return null
-
-  const inner = isObject(record.message) ? (record.message as Record<string, unknown>) : record
-
-  const role = inner.role
-  if (role !== "user" && role !== "assistant" && role !== "system") return null
-
-  if (!("content" in inner)) return null
-  // Normalize Claude's vendor shape (string OR content-block array) into
-  // the neutral ContentBlock[] surfaced via Message.blocks. Empty arrays
-  // are kept so callers can distinguish "message with no renderable
-  // content" from "no message" (extractMessage returns null for the latter).
-  const blocks = normalizeClaudeContent(inner.content)
-  // A `<command-name>…` breadcrumb is a plain (un-flagged) user record Claude
-  // writes before the real prompt; drop it so it can't become the title.
-  if (role === "user" && isClaudeCommandBreadcrumb(blocks)) return null
-
-  const ts = typeof record.timestamp === "string" ? (record.timestamp as string) : new Date().toISOString()
-  const sid = typeof record.sessionId === "string" ? (record.sessionId as string) : fallbackSessionId
-
-  const usage = extractUsage(inner.usage)
-  return usage
-    ? { role, blocks, timestamp: ts, sessionId: sid, usage }
-    : { role, blocks, timestamp: ts, sessionId: sid }
-}
-
-function extractUsage(v: unknown): Message["usage"] {
-  if (!isObject(v)) return undefined
-  const inTok = typeof v.input_tokens === "number" ? v.input_tokens : undefined
-  const outTok = typeof v.output_tokens === "number" ? v.output_tokens : undefined
-  if (inTok === undefined || outTok === undefined) return undefined
-  const cacheRead = typeof v.cache_read_input_tokens === "number" ? v.cache_read_input_tokens : undefined
-  const cacheCreate = typeof v.cache_creation_input_tokens === "number" ? v.cache_creation_input_tokens : undefined
-  return {
-    input_tokens: inTok,
-    output_tokens: outTok,
-    ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
-    ...(cacheCreate !== undefined ? { cache_creation_input_tokens: cacheCreate } : {}),
-  }
-}
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v)
 }
 
 /**
