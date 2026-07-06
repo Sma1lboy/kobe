@@ -332,7 +332,10 @@ carry the tab vocabulary (F2 rename). Costs accepted and documented:
   `ctrl+h`/`ctrl+j` aliases in `lib/keymap-dispatch.ts`.
 An exited leaf removes itself and its group collapses (tmux behavior); the last leaf's
 exit falls back to the tab-level behavior (engine tab degrades to a shell, command tab
-closes).
+closes). `ctrl+w` is contextual (owner decision 2026-07-06): while split it closes the
+ACTIVE LEAF (`workspace.split.close` — the innermost thing, VS Code/iTerm/Warp
+convention, tmux `prefix x`); unsplit, the entry is disabled and the chord falls through
+the LIFO stack to `chat.tab.close`.
 
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 

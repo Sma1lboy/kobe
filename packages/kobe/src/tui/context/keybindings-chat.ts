@@ -279,6 +279,19 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     description: "Focus next split",
     hint: { keys: "f3", label: "next split", status: false },
   },
+  {
+    // Same chord as chat.tab.close, contextual scope: while the tab is
+    // SPLIT, ctrl+w closes the active leaf (the innermost thing — VS
+    // Code/iTerm/Warp convention, tmux `prefix x`); TerminalSplit only
+    // enables this entry when split, so unsplit tabs fall through the
+    // LIFO stack to the close-tab binding.
+    id: "workspace.split.close",
+    scope: "workspace",
+    keys: ["ctrl+w"],
+    category: "Workspace",
+    description: "Close active split (tab when unsplit)",
+    hint: { keys: "ctrl+w", label: "close split", status: false },
+  },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
   // 1-9 are bare-letter chords by intent: while a picker is showing, the
