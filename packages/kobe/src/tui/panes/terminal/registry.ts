@@ -109,6 +109,16 @@ export class PtyRegistry {
   }
 
   /**
+   * Kill and forget every PTY whose id matches `predicate` — the
+   * task-scoped teardown for tab-keyed PTYs (`taskId::tabId`, issue
+   * #16): archiving a task must end every engine session it owns.
+   */
+  releaseWhere(predicate: (id: string) => boolean): void {
+    const ids = Array.from(this.map.keys()).filter(predicate)
+    for (const id of ids) this.release(id)
+  }
+
+  /**
    * Kill every PTY and forget them all. Called on TUI teardown to
    * leave no orphan shell processes.
    */
