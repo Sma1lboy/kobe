@@ -8,7 +8,10 @@ export const en = {
   noTask: "(no task — press n to create)",
   exited: "process exited — F5 restarts it",
   tab: {
-    defaultTitle: "Terminal {n}",
+    // Content-neutral on purpose (owner, 2026-07-06): tabs will host
+    // more than terminals, so the numbered fallback must not say
+    // "Terminal".
+    defaultTitle: "Tab {n}",
     renameTitle: "Rename tab",
     renameField: "tab title",
     renameSubmit: "rename",
@@ -31,7 +34,7 @@ export const zh: typeof en = {
   noTask: "（无任务 —— 按 n 创建）",
   exited: "进程已退出 —— 按 F5 重启",
   tab: {
-    defaultTitle: "终端 {n}",
+    defaultTitle: "Tab {n}",
     renameTitle: "重命名标签页",
     renameField: "标签页名称",
     renameSubmit: "重命名",
