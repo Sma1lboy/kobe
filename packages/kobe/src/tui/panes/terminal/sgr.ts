@@ -95,23 +95,44 @@ export function ansi256ToRgb(index: number): RGB {
   return [0, 0, 0]
 }
 
+/**
+ * Basic-16 ANSI palette (indices 0-15). Ls/eza color a directory or
+ * symlink with a BARE ANSI code (30-37/90-97), not truecolor — the actual
+ * displayed hue is always "whatever this terminal's theme maps that slot
+ * to," which is why the embedded terminal's picks matter here even though
+ * they'll never byte-match a user's personal terminal profile.
+ *
+ * Previously the textbook xterm defaults (pure blue `#0000EE`, pure
+ * magenta `#CD00CD`, …). Every ANSI slot kept its "expected" hue in
+ * isolation, but real terminal themes commonly cluster several slots
+ * (blue/cyan/bright-magenta) into one accent family — e.g. `ls`'s `di`
+ * (directory, blue) and `ln` (symlink, cyan) read as the same violet in a
+ * themed iTerm2 profile, but as two distinct colors against the stock
+ * palette (KOB, 2026-07-06: reported as "kobe renders these wrong," not a
+ * decode bug — `ansi256ToRgb`/truecolor decode is bit-exact, verified).
+ *
+ * Replaced with Tokyo Night's published terminal ANSI colors (a popular
+ * modern scheme, also one of kobe's own bundled UI themes) so the
+ * embedded terminal's defaults read as one coherent, contemporary palette
+ * instead of xterm's 1990s primaries.
+ */
 const SYSTEM_PALETTE: readonly RGB[] = [
-  [0, 0, 0], // black
-  [205, 0, 0], // red
-  [0, 205, 0], // green
-  [205, 205, 0], // yellow
-  [0, 0, 238], // blue
-  [205, 0, 205], // magenta
-  [0, 205, 205], // cyan
-  [229, 229, 229], // white
-  [127, 127, 127], // bright black
-  [255, 0, 0], // bright red
-  [0, 255, 0], // bright green
-  [255, 255, 0], // bright yellow
-  [92, 92, 255], // bright blue
-  [255, 0, 255], // bright magenta
-  [0, 255, 255], // bright cyan
-  [255, 255, 255], // bright white
+  [21, 22, 30], // black       #15161e
+  [247, 118, 142], // red      #f7768e
+  [158, 206, 106], // green    #9ece6a
+  [224, 175, 104], // yellow   #e0af68
+  [122, 162, 247], // blue     #7aa2f7
+  [187, 154, 247], // magenta  #bb9af7
+  [125, 207, 255], // cyan     #7dcfff
+  [169, 177, 214], // white    #a9b1d6
+  [65, 72, 104], // bright black    #414868
+  [255, 137, 157], // bright red    #ff899d
+  [158, 224, 68], // bright green   #9ee044
+  [250, 186, 74], // bright yellow  #faba4a
+  [141, 176, 255], // bright blue   #8db0ff
+  [199, 169, 255], // bright magenta #c7a9ff
+  [164, 218, 255], // bright cyan   #a4daff
+  [192, 202, 245], // bright white  #c0caf5
 ]
 
 /**
