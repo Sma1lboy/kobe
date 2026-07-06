@@ -36,10 +36,11 @@ import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { startTurnStatusPoll } from "../ops/activity-monitor"
-import { Terminal } from "../panes/terminal/Terminal"
+import type { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
 import { useDialog } from "../ui/dialog"
+import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import {
   type EngineTab,
   type TabsState,
@@ -267,7 +268,12 @@ export function TerminalTabs(props: {
    *  banner + F5 recovery path instead. */
   function closeExitedTab(id: string): void {
     const { state: next, closedId } = closeTab(state(), id)
-    if (closedId) getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
+    if (closedId) {
+      // Split leaves first (their keys namespace under the tab key),
+      // then the tab's own PTY.
+      releaseSplitLeaves(tabPtyKey(props.taskId, closedId))
+      getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
+    }
     update(next)
   }
 
@@ -354,10 +360,12 @@ export function TerminalTabs(props: {
           return
         }
         update(next)
-        // Kill the closed tab's PTY — nobody else owns this teardown
-        // (releaseWhere only fires on task archive, releaseAll on app
-        // exit), so dropping closedId here leaked the engine process
-        // until archive — the exact ctrl+w leak class of issue #14.
+        // Kill the closed tab's PTYs — split leaves first (their keys
+        // namespace under the tab key), then the tab's own. Nobody else
+        // owns this teardown (releaseWhere only fires on task archive,
+        // releaseAll on app exit), so dropping closedId here leaked the
+        // engine process until archive — the ctrl+w leak class of #14.
+        releaseSplitLeaves(tabPtyKey(props.taskId, closedId))
         getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
       },
       "chat.tab.rename": requestRename,
@@ -404,13 +412,16 @@ export function TerminalTabs(props: {
           </For>
         </box>
       </Show>
-      {/* One long-lived Terminal, never remounted on an ordinary tab
-          switch — only its `taskId`/`command` change, and its own
-          cwd/taskId effect re-acquires + re-primes in place (see the
-          `resetToken` doc above for the one case that needs a nudge). */}
-      <Terminal
+      {/* One long-lived tab body, never remounted on an ordinary tab
+          switch — only its `tabKey`/`command` change. TerminalSplit
+          renders a single persistent Terminal while the tab is unsplit
+          (its cwd/taskId effect re-acquires + re-primes in place; see
+          the `resetToken` doc above for the one case that needs a
+          nudge) and swaps to the split-tree renderer once ctrl+\ /
+          ctrl+= create leaves. */}
+      <TerminalSplit
+        tabKey={tabPtyKey(props.taskId, active().id)}
         cwd={() => props.worktree}
-        taskId={() => tabPtyKey(props.taskId, active().id)}
         command={activeCommand()}
         onExit={handleActiveExit}
         resetToken={resetToken}
