@@ -18,10 +18,10 @@
  *     signals don't notify outside a reactive-solid runtime.
  *   - Error boundary is a small class component (React's only boundary
  *     primitive); crash logging + themed fallback match the Solid host.
- *   - Provider flags: `focus` and `notifications` are portable today.
- *     `kv` has no React port yet — requesting it throws loudly at boot
- *     rather than silently skipping a provider a pane depends on. It
- *     lands with the settings slice (issue #15 G3).
+ *   - Provider flags: `kv`, `focus`, and `notifications` are all portable
+ *     now. Unlike the Solid host, `kv` defaults to FALSE here: every
+ *     existing React pane opted in explicitly, so mounting KV implicitly
+ *     would silently change them.
  */
 
 import { createCliRenderer } from "@opentui/core"
@@ -42,6 +42,7 @@ import { sessionAttached } from "../../tui/lib/attach-gate"
 import { hostRenderOptions, installPaneExitBackstop } from "../../tui/lib/host-render-options"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../../tui/lib/persisted-ui-prefs"
 import { FocusProvider } from "../context/focus"
+import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
 import {
   ThemeProvider,
@@ -63,7 +64,7 @@ const FALLBACK_THEME = "claude"
 
 /** Same flag surface as the Solid host; see header for the un-ported one. */
 export interface HostProviderFlags {
-  /** KVProvider — NOT PORTED yet; `true` throws at boot. */
+  /** KVProvider (persisted UI state). Default false — see header. */
   readonly kv?: boolean
   /** FocusProvider, initial pane "sidebar". Default true. */
   readonly focus?: boolean
@@ -236,7 +237,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   })
   setLocaleLang(prefs.locale)
 
-  if (opts.providers?.kv) throw new Error("bootPaneHost(react): KVProvider is not ported yet (issue #15 G3)")
+  const kv = opts.providers?.kv ?? false
   const focus = opts.providers?.focus ?? true
   const notifications = opts.providers?.notifications ?? false
 
@@ -250,14 +251,15 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
       <PaneErrorBoundary>{screen.root()}</PaneErrorBoundary>
     </>
   )
-  // Same nesting ORDER as the Solid host (Theme > Focus > Dialog >
-  // Notifications) — only membership varies.
-  const dialogTree = (
-    <DialogProvider>{notifications ? <NotificationsProvider>{body}</NotificationsProvider> : body}</DialogProvider>
-  )
+  // Same fixed nesting order as the Solid host:
+  // Theme > KV > Focus > Dialog > Notifications; only membership varies.
+  const withNotifications = notifications ? <NotificationsProvider>{body}</NotificationsProvider> : body
+  const withDialog = <DialogProvider>{withNotifications}</DialogProvider>
+  const withFocus = focus ? <FocusProvider initial="sidebar">{withDialog}</FocusProvider> : withDialog
+  const withKv = kv ? <KVProvider>{withFocus}</KVProvider> : withFocus
   createRoot(renderer).render(
     <ThemeProvider mode="dark" theme={prefs.theme}>
-      {focus ? <FocusProvider initial="sidebar">{dialogTree}</FocusProvider> : dialogTree}
+      {withKv}
     </ThemeProvider>,
   )
   installPaneExitBackstop()
