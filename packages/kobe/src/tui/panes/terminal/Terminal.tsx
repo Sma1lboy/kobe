@@ -104,15 +104,6 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Scroll offset: 0 = follow bottom; positive = N lines back into history.
   const [scrollOffset, setScrollOffset] = createSignal(0)
 
-  // Shared by the ctrl+pgup/pgdn chords and the mouse wheel. Contract:
-  // positive `lines` moves toward newer output (offset shrinks back to
-  // follow-bottom), negative moves up into history — tests assert this.
-  const scrollBy = (lines: number): void => {
-    setScrollOffset((cur) => Math.max(0, cur - lines))
-  }
-  /** Wheel rows per tick — matches common terminal emulator defaults. */
-  const WHEEL_SCROLL_LINES = 3
-
   const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const [bodyRows, setBodyRows] = createSignal(4)
   const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
@@ -129,6 +120,18 @@ export function Terminal(props: TerminalProps): JSXElement {
     bodyGeometry,
     onFreshPty: () => setScrollOffset(0),
   })
+
+  // Shared by the ctrl+pgup/pgdn chords and the mouse wheel. Contract:
+  // positive `lines` moves toward newer output (offset shrinks back to
+  // follow-bottom), negative moves up into history — tests assert this.
+  // Clamped to the real history depth: an unbounded offset kept growing
+  // past the top, so scrolling back down first had to "spin" through the
+  // phantom distance before anything moved (the overshoot half of the
+  // owner's wheel report).
+  const scrollBy = (lines: number): void => {
+    const max = Math.max(0, snapshot().length - bodyRows())
+    setScrollOffset((cur) => Math.min(max, Math.max(0, cur - lines)))
+  }
 
   /* --------- bindings ---------- */
 
@@ -345,7 +348,11 @@ export function Terminal(props: TerminalProps): JSXElement {
           const row = Math.max(1, (e.y ?? 0) - body.screenY + 1)
           if (handle.wheel(scroll.direction, col, row)) return
         }
-        const step = Math.max(1, scroll.delta || 1) * WHEEL_SCROLL_LINES
+        // One line per event: opentui's parser emits delta:1 per wheel
+        // tick and the host terminal already granulates trackpad flicks
+        // into a stream of ticks — multiplying here compounded to 3x
+        // speed and overshot the target ("滑过", owner report).
+        const step = Math.max(1, scroll.delta || 1)
         scrollBy(scroll.direction === "up" ? -step : step)
       }}
     >
