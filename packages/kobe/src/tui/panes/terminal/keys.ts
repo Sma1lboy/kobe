@@ -61,6 +61,8 @@ export type TerminalBindingsOpts = {
   focused: Accessor<boolean>
   /** Forward a byte sequence to the underlying PTY. */
   write: (data: string) => void
+  /** Deliver pasted text (backend applies bracketed-paste wrapping). */
+  paste: (text: string) => void
   /** Scroll the local scrollback view by N lines (negative = up). */
   scroll: (lines: number) => void
   /** How many lines `ctrl+pgup`/`ctrl+pgdown` move per press. */
@@ -160,7 +162,20 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
     evt.preventDefault()
   }
   renderer.keyInput.on("keypress", forwardUnhandled)
+  // Paste forwarding: opentui parses the host terminal's bracketed paste
+  // into a PasteEvent; re-deliver it to the PTY (the backend re-wraps in
+  // 200~/201~ iff the embedded app negotiated DECSET 2004). Without this,
+  // pasting into the embedded engine CLI silently dropped.
+  const forwardPaste = (evt: { bytes: Uint8Array; defaultPrevented: boolean; preventDefault(): void }) => {
+    if (!opts.focused() || evt.defaultPrevented) return
+    const text = new TextDecoder().decode(evt.bytes)
+    if (text.length === 0) return
+    opts.paste(text)
+    evt.preventDefault()
+  }
+  renderer.keyInput.on("paste", forwardPaste)
   onCleanup(() => {
     renderer.keyInput.off("keypress", forwardUnhandled)
+    renderer.keyInput.off("paste", forwardPaste)
   })
 }

@@ -135,6 +135,17 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }
   }
 
+  paste(text: string): void {
+    if (this._killed || text.length === 0) return
+    let bracketed = false
+    try {
+      bracketed = this.term.modes.bracketedPasteMode === true
+    } catch {
+      /* mode probe is best-effort */
+    }
+    this.write(bracketed ? `\x1b[200~${text}\x1b[201~` : text)
+  }
+
   onData(cb: DataListener): () => void {
     this.listeners.add(cb)
     if (this.snapshot.length > 0) {

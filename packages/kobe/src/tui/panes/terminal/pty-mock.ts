@@ -17,6 +17,8 @@ export class MockTaskPty implements TaskPtyLike {
   private writes: string[] = []
   private _killed = false
   private readonly exitListeners = new Set<() => void>()
+  /** Pasted payloads, observable by tests. */
+  readonly pastes: string[] = []
   private _cols: number
   private _rows: number
   private _cursor: CursorPos | null = null
@@ -100,6 +102,11 @@ export class MockTaskPty implements TaskPtyLike {
     const exitCbs = [...this.exitListeners]
     this.exitListeners.clear()
     for (const cb of exitCbs) cb()
+  }
+
+  paste(text: string): void {
+    if (this._killed) return
+    this.pastes.push(text)
   }
 
   onExit(cb: () => void): () => void {

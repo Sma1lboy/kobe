@@ -39,6 +39,13 @@ export interface TaskPtyLike {
   readonly killed: boolean
 
   write(data: string): void
+  /**
+   * Deliver pasted text. Backends that can see the app's DECSET 2004
+   * state wrap it in bracketed-paste markers when (and only when) the
+   * app asked for them — pasting a multiline prompt into an engine CLI
+   * must not execute line-by-line.
+   */
+  paste(text: string): void
   onData(cb: DataListener): () => void
   /**
    * Notify once when the underlying process ends for ANY reason (its own
