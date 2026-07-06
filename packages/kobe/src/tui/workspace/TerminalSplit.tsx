@@ -99,22 +99,28 @@ export function TerminalSplit(props: {
 
   const isSplit = () => leaves(state().root).length > 1
 
-  function onLeafExit(id: string): void {
+  /** Remove `id` from the tree and kill its PTY. False when `id` is the
+   *  last leaf (nothing removed). State first (the re-render detaches the
+   *  leaf's subscribers), then release — same ordering as TerminalTabs'
+   *  degrade path. */
+  function removeAndRelease(id: string): boolean {
     const next = removeLeaf(state(), id)
-    if (next === null) {
-      // Last leaf — reset the layout (releasing any dead non-leaf-1
-      // registry entry it still names) and hand the exit to the tab's
-      // own behavior (engine → degrade to shell, command tab → close).
-      releaseSplitLeaves(props.tabKey)
-      setState(initialSplit(null))
-      props.onExit?.()
-      return
+    if (next === null) return false
+    if (next !== state()) {
+      update(next)
+      getDefaultPtyRegistry().release(splitLeafPtyKey(props.tabKey, id))
     }
-    if (next === state()) return
-    // State first (the re-render detaches the dead leaf's subscribers),
-    // then release — same ordering as TerminalTabs' degrade path.
-    update(next)
-    getDefaultPtyRegistry().release(splitLeafPtyKey(props.tabKey, id))
+    return true
+  }
+
+  function onLeafExit(id: string): void {
+    if (removeAndRelease(id)) return
+    // Last leaf — reset the layout (releasing any dead non-leaf-1
+    // registry entry it still names) and hand the exit to the tab's
+    // own behavior (engine → degrade to shell, command tab → close).
+    releaseSplitLeaves(props.tabKey)
+    setState(initialSplit(null))
+    props.onExit?.()
   }
 
   useBindings(() => ({
@@ -123,6 +129,19 @@ export function TerminalSplit(props: {
       "workspace.split.right": () => update(splitActive(state(), "row", [defaultShell()])),
       "workspace.split.down": () => update(splitActive(state(), "column", [defaultShell()])),
       "workspace.split.focus-next": () => update(cycleLeaf(state(), 1)),
+    }),
+  }))
+
+  // ctrl+w closes the ACTIVE LEAF while split — the innermost thing, same
+  // convention as VS Code/iTerm/Warp (and tmux `prefix x`). Gated on
+  // isSplit(): when the tab is unsplit this entry is disabled and the
+  // chord falls through the LIFO stack to TerminalTabs' close-tab
+  // binding. Registered after the parent's bindings (child mounts later),
+  // so it wins the stack whenever enabled.
+  useBindings(() => ({
+    enabled: props.focused() && isSplit(),
+    bindings: bindByIds({
+      "workspace.split.close": () => removeAndRelease(state().activeLeafId),
     }),
   }))
 
