@@ -1,21 +1,11 @@
 /**
  * Embedded terminal pane — the terminal-in-the-middle seam (issue #16).
- * Revived from dormancy: the KOBE_TUI workspace host mounts it as the
- * center column running the task's real interactive engine CLI (its
- * `command` prop), and it remains usable as a plain worktree shell.
- * Bleed containment: the body box clips via opentui 0.4's `overflow`
- * and the viewport slices to the measured row count before render.
+ * The KOBE_TUI workspace host mounts it as the center column running the
+ * task's real interactive engine CLI (its `command` prop); it also works
+ * as a plain worktree shell. Body: a headless xterm screen snapshot fed by
+ * the task PTY, clipped via opentui's `overflow` + viewport slicing.
  *
- * Terminal pane (Stream J) — originally bottom-right of the Conductor layout.
- *
- * Renders an embedded shell scoped to the active task's worktree.
- * Body: a headless xterm screen snapshot fed by the task PTY. The
- * worktree-id label that used to live
- * in an inner header row was removed — it duplicated what the parent
- * PaneHeader already shows, AND it threw off the body's `screenY` by
- * 1 row, parking the cursor on the header instead of the prompt.
- *
- * Lifecycle (per the Stream J brief):
+ * Lifecycle:
  *   - When `cwd` and `taskId` resolve to non-null values, acquire a
  *     `TaskPty` from the registry. `acquire` reuses an existing PTY if
  *     one is already running for the task — that's the "kept alive
@@ -23,39 +13,22 @@
  *   - When `cwd` or `taskId` change to a new task, we DON'T kill the
  *     old PTY (the orchestrator owns archive lifecycle). We just stop
  *     subscribing to its data and start subscribing to the new one's.
- *     This component never calls `registry.release()` — that's the
- *     orchestrator's job (Stream E will wire it on the archive event).
+ *     This component never calls `registry.release()`.
  *   - When `cwd` is null, we render an empty placeholder ("no task
  *     selected"). No PTY is acquired.
  *   - On unmount we drop our subscription but DON'T kill the PTY (same
  *     reason as above; the registry survives the component).
  *
- * Mouse: clicking the pane sets the local `focusedLocal` signal and
- * calls a hypothetical parent `onFocus` (not wired in v1; the parent
- * will own focus once Stream E adds global focus). The brief is
- * explicit: clicking focuses the pane, that's all — no mouse-passthrough
- * to the shell.
+ * Mouse: clicking the pane sets the local `focusedLocal` signal; no
+ * mouse-passthrough to the shell.
  *
- * Output rendering: the backend gives us full snapshots, not deltas,
- * and each snapshot is already one chunk-list per row (the Bun backend
- * builds these straight from xterm's cells; KOB-224). We flatten those
- * rows into a single `StyledText` (with
- * `\n` between rows) and render via ONE `<text>` element — opentui
- * composes the per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
- * per-row `<text>` inside a flex column shifted the body's
- * `screenY` reference, breaking the cursor positioning math
- * (`screenY + cursor.y` → wrong row). The flat layout keeps the
- * body's screenY pinned to the row right under the header, which is
- * what the cursor positioning math assumes.
- *
- * Scrollback / viewport: we keep the latest snapshot rows in a Solid
- * signal and slice to the visible window.
- * `ctrl+pgup`/`ctrl+pgdown` shift a `scrollOffset` signal; when
- * offset is 0 we follow the bottom (so new output is always visible
- * by default).
+ * Scrollback / viewport: the latest snapshot rows live in a Solid signal,
+ * sliced to the visible window. `ctrl+pgup`/`ctrl+pgdown` shift a
+ * `scrollOffset` signal; offset 0 follows the bottom.
  *
  * Cursor: the PTY backend reports cursor coordinates from the headless
- * xterm buffer; this component maps them onto opentui's native cursor.
+ * xterm buffer, mapped onto opentui's native cursor — see the render-site
+ * comment below for why it's inlined into the text instead.
  */
 
 import { type BoxRenderable, StyledText, type TextRenderable } from "@opentui/core"
@@ -90,6 +63,13 @@ export type TerminalProps = {
    * session, so a plain array (not an accessor) is enough.
    */
   command?: readonly string[]
+  /**
+   * Fires once when the PTY reports exit (or is already dead at mount) —
+   * `undefined` for the default "leave the dead shell + exit banner up"
+   * behavior. Used by `TerminalTabs.tsx` to auto-close command tabs
+   * (editor / degraded shell) and to degrade engine tabs to a shell.
+   */
+  onExit?: () => void
   /**
    * Optional registry override (tests inject a mock-backed registry).
    * Production usage relies on a single module-level registry below;
@@ -184,9 +164,21 @@ export function Terminal(props: TerminalProps): JSXElement {
   // accepting input."
   createEffect(() => {
     const handle = pty()
-    setExited(handle ? handle.killed : false)
-    if (!handle || handle.killed) return
-    const unsubscribeExit = handle.onExit(() => setExited(true))
+    const killed = handle ? handle.killed : false
+    setExited(killed)
+    if (!handle) return
+    if (killed) {
+      // Already dead by the time we mounted (e.g. re-selecting a
+      // backgrounded ephemeral editor tab whose process quit while
+      // unfocused) — fire onExit now, there's no live handle to attach
+      // a listener to.
+      props.onExit?.()
+      return
+    }
+    const unsubscribeExit = handle.onExit(() => {
+      setExited(true)
+      props.onExit?.()
+    })
     onCleanup(() => unsubscribeExit())
     const unsubscribe = handle.onData((snap, c) => {
       setSnapshot(snap)

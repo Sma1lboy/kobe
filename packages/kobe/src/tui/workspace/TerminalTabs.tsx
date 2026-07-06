@@ -89,17 +89,17 @@ export function TerminalTabs(props: {
 
   const active = () => state().tabs.find((tab) => tab.id === state().activeId) ?? state().tabs[0]
 
-  /** Remount key for the active tab's Terminal: the id alone, until the tab
-   *  degrades to a shell (`tabToShell`) — the `::sh` suffix then forces the
-   *  keyed Show to remount so a fresh PTY is acquired with the new command.
-   *  Born-with-command tabs (editor flow) never change key. */
+  /** Remount key for the active tab's Terminal: the id, suffixed by kind.
+   *  A tab's kind only changes when it degrades to a shell (`tabToShell`)
+   *  — the suffix flip then forces the keyed Show to remount so a fresh
+   *  PTY is acquired with the new command. */
   const renderKey = () => {
     const tab = active()
-    return tab ? (tab.command && !tab.ephemeral ? `${tab.id}::sh` : tab.id) : undefined
+    return tab ? `${tab.id}::${tab.kind}` : undefined
   }
 
-  /** Auto-close (issue #16): a tab running a one-off command (ephemeral
-   *  editor tab, or an engine tab already degraded to a shell) closes
+  /** Auto-close (issue #16): a command tab (editor tab, or an engine
+   *  tab already degraded to a shell — kind "command" either way) closes
    *  itself when that process exits and releases its PTY — same cleanup
    *  `chat.tab.close` performs for a manual ctrl+w, just self-triggered.
    *  The last tab refuses to close (core guard) and keeps the exit
@@ -117,7 +117,7 @@ export function TerminalTabs(props: {
    *  PTY is released so the remount acquires a fresh shell. */
   function degradeToShell(id: string): void {
     const tab = state().tabs.find((t) => t.id === id)
-    if (!tab || tab.command) return
+    if (tab?.kind !== "engine") return
     update(tabToShell(state(), id, [defaultShell()]))
     getDefaultPtyRegistry().release(tabPtyKey(props.taskId, id))
   }
@@ -201,9 +201,13 @@ export function TerminalTabs(props: {
               cwd={() => props.worktree}
               taskId={() => tabPtyKey(props.taskId, tabId)}
               command={
-                tab.command ?? (tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command)
+                tab.kind === "command"
+                  ? tab.command
+                  : tab.vendor
+                    ? interactiveEngineCommand(tab.vendor, props.modelEffort)
+                    : props.command
               }
-              onExit={tab.command ? () => closeExitedTab(tabId) : () => degradeToShell(tabId)}
+              onExit={tab.kind === "command" ? () => closeExitedTab(tabId) : () => degradeToShell(tabId)}
               focused={props.focused}
             />
           )
