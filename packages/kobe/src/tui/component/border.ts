@@ -5,6 +5,9 @@
  * `EmptyBorder` is the "no chrome" preset; `SplitBorder` draws a solid vertical
  * `┃` between adjacent panes, used everywhere a pane separator is wanted
  * without the rest of a box border.
+ *
+ * Plain data, no JSX — a `.ts` module so both the Solid and React pane
+ * trees can share it (issue #15 G3).
  */
 
 export const EmptyBorder = {

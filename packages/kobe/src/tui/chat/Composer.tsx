@@ -55,6 +55,7 @@ import { type ComposerModeTone, ComposerView } from "./ComposerView"
 import { makeDropdownWindow } from "./composer/dropdown-window"
 import { getHistory } from "./composer/history"
 import { PromptHistoryNavigator } from "./composer/history-nav"
+import { HistoryPalette } from "./composer/history-palette-controller"
 import { createImageAttach } from "./composer/image-attach"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { createKeyRouter } from "./composer/key-router"
@@ -286,7 +287,9 @@ export function Composer(props: ComposerProps) {
 
   const { handleKeyDown, handleSubmit, handleContentChange } = createKeyRouter({
     props,
-    dialog,
+    // Framework seam: the router is framework-free, so the Solid dialog
+    // context stays here and only the show-palette capability crosses over.
+    showHistoryPalette: (opts) => HistoryPalette.show(dialog, opts),
     getTextarea: () => textareaRef,
     bashMode,
     setBashMode,

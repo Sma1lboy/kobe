@@ -34,14 +34,16 @@
  * keys mid-buffer too, breaking multi-line cursor navigation.
  */
 
-import type { TextareaProps } from "@opentui/solid"
+import type { TextareaOptions } from "@opentui/core"
 
 /**
  * Type alias for the array shape `<textarea keyBindings={...}>` expects.
- * Defined inline so we don't depend on opentui's internal exports — the
- * shape is just `{ name, ctrl?, shift?, meta?, super?, action }`.
+ * Sourced from the framework-neutral core renderable options (both the
+ * Solid and React textarea props extend `TextareaOptions`) so this module
+ * stays framework-free — the shape is just
+ * `{ name, ctrl?, shift?, meta?, super?, action }`.
  */
-type Binding = NonNullable<TextareaProps["keyBindings"]>[number]
+type Binding = NonNullable<TextareaOptions["keyBindings"]>[number]
 
 /**
  * Keybindings the composer pushes into `<textarea keyBindings={...}>`.

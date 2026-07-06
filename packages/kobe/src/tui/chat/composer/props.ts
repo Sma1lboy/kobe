@@ -1,6 +1,12 @@
 import type { PermissionMode } from "@/types/engine"
-import type { Accessor } from "solid-js"
-import type { ComposerQueuedItem } from "../ComposerQueue"
+import type { ComposerQueuedItem } from "./queue-item"
+
+/**
+ * Structural twin of Solid's `Accessor<T>` so this props contract stays
+ * framework-free (issue #15 G3): the Solid composer passes signal getters,
+ * the React composer passes plain closures over its latest render.
+ */
+export type Accessor<T> = () => T
 
 /**
  * Slash entry rendered in the composer's `/` dropdown. `SlashEntry`

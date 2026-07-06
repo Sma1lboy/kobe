@@ -116,12 +116,15 @@ export function ComposerView(props: ComposerViewProps) {
               >
                 <textarea
                   ref={props.onTextareaMount}
-                  placeholder={resolvePlaceholder({
-                    isStreaming: props.isStreaming,
-                    hasTask: props.hasTask,
-                    noTaskMessage: props.noTaskMessage,
-                    inputPlaceholder: props.inputPlaceholder,
-                  })}
+                  placeholder={resolvePlaceholder(
+                    {
+                      isStreaming: props.isStreaming,
+                      hasTask: props.hasTask,
+                      noTaskMessage: props.noTaskMessage,
+                      inputPlaceholder: props.inputPlaceholder,
+                    },
+                    t,
+                  )}
                   placeholderColor={theme.textMuted}
                   textColor={theme.text}
                   backgroundColor={theme.backgroundElement}
