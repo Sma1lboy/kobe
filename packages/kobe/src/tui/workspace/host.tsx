@@ -14,7 +14,6 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { Task } from "../../types/task.ts"
-import { ChatPane } from "../chat/ChatPane"
 import { HelpDialog } from "../component/help-dialog"
 import { type PaneId, useFocus } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
@@ -227,7 +226,13 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
       keyed
     >
       {(path) => (
-        <ChatPane worktree={path} title={props.task?.title} vendor={props.task?.vendor} focused={props.focused} />
+        // Center seam for the embedded-terminal tab (issue #16): the native
+        // chat pane was removed with the AI SDK layer; the in-process PTY
+        // terminal running the real engine CLI mounts here next.
+        <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={1}>
+          <text fg={theme.text}>{props.task?.title ?? path}</text>
+          <text fg={theme.textMuted}>{t("workspace.terminalComing")}</text>
+        </box>
       )}
     </Show>
   )

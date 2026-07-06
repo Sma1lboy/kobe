@@ -15,15 +15,15 @@ afterEach(() => setLocaleLang(DEFAULT_LOCALE))
 describe("react i18n runtime", () => {
   it("resolves a real catalog key identically to the Solid runtime", () => {
     setLocaleLang("en")
-    expect(t("chat.thinking")).toBe(solidT("chat.thinking"))
+    expect(t("workspace.empty.selectTask")).toBe(solidT("workspace.empty.selectTask"))
   })
 
   it("switches language per process and reports it", () => {
     setLocaleLang("en")
-    const en = t("chat.thinking")
+    const en = t("workspace.empty.selectTask")
     setLocaleLang("zh")
     expect(currentLang()).toBe("zh")
-    expect(t("chat.thinking")).not.toBe(en)
+    expect(t("workspace.empty.selectTask")).not.toBe(en)
   })
 
   it("ignores unknown locale ids", () => {

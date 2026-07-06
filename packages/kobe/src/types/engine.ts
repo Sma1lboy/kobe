@@ -23,8 +23,7 @@
  * If a 0.6.x feature needs any of that, restore it deliberately —
  * don't drag the whole port back.
  *
- * Deliberately RESTORED for the experimental native chat backend
- * (KOBE_TUI=1, see tui/chat/): `ModelChoice` / `ModelEffortLevel` /
+ * Shared engine-capability types: `ModelChoice` / `ModelEffortLevel` /
  * `EngineCapabilities` / `EngineIdentity` / `PermissionMode` — the
  * composer's model picker + permission-mode cycle consume these
  * through the engine registry (engine-owned UI data, CLAUDE.md).

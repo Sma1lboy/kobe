@@ -38,8 +38,6 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "./account-detect.ts"
-import type { AiSdkHarnessVendor } from "./ai-sdk/harness-turn.ts"
-import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./claude-code-local/builtin-slashes.ts"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
@@ -77,26 +75,6 @@ export interface EngineHistoryReader {
 /** Any built-in engine's account shape (each union already has a `none` arm). */
 export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount
 
-/**
- * Native-chat backend descriptor — set on engines the AI SDK harness can
- * drive in the KOBE_TUI=1 chat pane. Its presence IS the capability flag
- * ("does this engine have a native-chat backend?"); `harnessVendor` maps the
- * kobe vendor id onto the harness family the pane resolves. Neutral TUI code
- * gates on this instead of comparing vendor-id strings (CLAUDE.md
- * "Engine-owned UI data").
- */
-export interface NativeChatBackend {
-  readonly harnessVendor: AiSdkHarnessVendor
-  /** Engine-owned builtin slash commands shown in the composer (empty = none). */
-  readonly builtinSlashes: readonly BuiltinSlash[]
-  /**
-   * True when this engine defines user slash directories the composer should
-   * scan (claude's `.claude/{commands,skills}/`). Neutral TUI code gates the
-   * user-slash loader on this instead of comparing vendor-id strings.
-   */
-  readonly userSlashes?: boolean
-}
-
 export interface EngineRegistryEntry {
   readonly vendor: VendorId
   /** True for the three first-party engines; false for user-added ids. */
@@ -132,20 +110,12 @@ export interface EngineRegistryEntry {
    */
   readonly createTurnDetector: () => EngineTurnDetector
   /**
-   * Model catalog + permission modes + identity, consumed by the native
-   * chat composer (KOBE_TUI=1). Defined for vendors with a {@link nativeChat}
-   * backend (claude, codex); undefined hides the model picker.
+   * Model catalog + permission modes + identity (settings, pickers).
+   * Undefined for engines without a kobe-known catalog (copilot, custom).
    */
   readonly capabilities?: EngineCapabilities
   /** Product identity (composer placeholder etc.). Paired with capabilities. */
   readonly identity?: EngineIdentity
-  /**
-   * Native-chat (AI SDK harness) backend, when this engine has one. Undefined
-   * for engines the harness can't drive (copilot, custom) — the pane reads
-   * this to decide whether to offer the composer's model controls and which
-   * harness family to resolve, rather than hard-coding vendor ids.
-   */
-  readonly nativeChat?: NativeChatBackend
 }
 
 /**
@@ -208,7 +178,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new ClaudeTurnDetector(),
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
-    nativeChat: { harnessVendor: "claude", builtinSlashes: BUILTIN_CLAUDE_SLASHES, userSlashes: true },
   },
   codex: {
     vendor: "codex",
@@ -225,7 +194,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new CodexTurnDetector(),
     capabilities: codexCapabilities,
     identity: codexIdentity,
-    nativeChat: { harnessVendor: "codex", builtinSlashes: [] },
   },
   copilot: {
     vendor: "copilot",

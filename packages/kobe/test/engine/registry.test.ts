@@ -45,8 +45,6 @@ describe("engineEntry — built-in vendors", () => {
     expect(detector.supportsCompletionMarkers()).toBe(true)
     // Claude is the only engine declaring user-slash directories — the TUI
     // gates its `.claude/{commands,skills}/` loader on this, not a vendor string.
-    expect(entry.nativeChat?.userSlashes).toBe(true)
-    expect(engineEntry("codex").nativeChat?.userSlashes).toBeFalsy()
   })
 
   it("resolves codex/copilot with their identity, history, and hook wiring", () => {
