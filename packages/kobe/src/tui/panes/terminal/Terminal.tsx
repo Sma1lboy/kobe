@@ -71,6 +71,15 @@ export type TerminalProps = {
    */
   onExit?: () => void
   /**
+   * Bump this to force a fresh PTY acquire under the SAME `cwd`/`taskId` —
+   * for a caller whose underlying command changed without the pty key
+   * changing (`TerminalTabs.tsx`'s shell-degrade flow: an engine tab
+   * degrading to a shell while it's the one on screen keeps the same
+   * `taskId`, so the ordinary cwd/taskId-change path never fires). Ignored
+   * on the initial mount.
+   */
+  resetToken?: Accessor<number>
+  /**
    * Optional registry override (tests inject a mock-backed registry).
    * Production usage relies on a single module-level registry below;
    * the orchestrator reaches into it via the exported helper.
@@ -152,16 +161,12 @@ export function Terminal(props: TerminalProps): JSXElement {
     }),
   )
 
-  // Subscribe to whichever PTY is currently active. Lives in its own
-  // effect (keyed on `pty()`) instead of inline with acquire so the
-  // subscription reattaches automatically when the active PTY changes
-  // for any reason — task switch, registry replacement on reset, or
-  // recovery after an externally-killed PTY. The original design only
-  // wired `onData` inside the acquire effect, which meant a `reset()`
-  // (same task, fresh PTY) left the new PTY without a listener —
-  // typed characters reached the shell but its echo never made it
-  // back to the snapshot signal, surfacing as "the terminal stopped
-  // accepting input."
+  // Subscribe to whichever PTY is currently active. Own effect (keyed on
+  // `pty()`) instead of inline with acquire so it reattaches whenever the
+  // active PTY changes for any reason — task switch, reset, or recovery
+  // after an external kill (wiring `onData` only in the acquire effect
+  // left a `reset()`'s fresh PTY without a listener: input echoed to the
+  // shell but never reached the snapshot signal).
   createEffect(() => {
     const handle = pty()
     const killed = handle ? handle.killed : false
@@ -205,6 +210,39 @@ export function Terminal(props: TerminalProps): JSXElement {
     setPty(null)
   })
 
+  // Kill + fresh-acquire under the same `cwd`/`taskId` (shared by the F5
+  // confirm below and the external `resetToken` bump) — reset the render
+  // signals together so a stale snapshot/cursor never survives onto the
+  // new PTY.
+  const forceReacquire = (cwd: string, taskId: string, geometry: { cols: number; rows: number }): void => {
+    try {
+      const fresh = registry().reset(taskId, cwd, { ...geometry, command: props.command })
+      setPty(fresh)
+      setSnapshot([])
+      setCursor(null)
+      setScrollOffset(0)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setAcquireError(message)
+    }
+  }
+
+  // External forced-reacquire (see `resetToken` doc above) — skipped on
+  // the initial mount (`defer: true`) so a fresh Terminal doesn't reset
+  // itself the instant it acquires its first PTY.
+  createEffect(
+    on(
+      () => props.resetToken?.(),
+      () => {
+        const cwd = props.cwd()
+        const taskId = props.taskId()
+        const geometry = bodyGeometry()
+        if (cwd && taskId && geometry) forceReacquire(cwd, taskId, geometry)
+      },
+      { defer: true },
+    ),
+  )
+
   /* --------- bindings ---------- */
 
   // `F5` opens a confirm modal; user confirms → tear down the
@@ -227,20 +265,10 @@ export function Terminal(props: TerminalProps): JSXElement {
     const geometryAtClick = geometry
     void DialogConfirm.show(dialog, t("terminal.reset.title"), t("terminal.reset.body"), "cancel").then((ok) => {
       if (ok !== true) return
-      const reg = registry()
       // Only reset if the user is still on the same task — a
       // mid-confirm switch invalidates the operation.
       if (props.taskId() !== taskIdAtClick || props.cwd() !== cwdAtClick) return
-      try {
-        const fresh = reg.reset(taskIdAtClick, cwdAtClick, { ...geometryAtClick, command: props.command })
-        setPty(fresh)
-        setSnapshot([])
-        setCursor(null)
-        setScrollOffset(0)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        setAcquireError(message)
-      }
+      forceReacquire(cwdAtClick, taskIdAtClick, geometryAtClick)
     })
   }
 
@@ -312,38 +340,22 @@ export function Terminal(props: TerminalProps): JSXElement {
     if (ref) ref.content = styledSnapshot()
   })
 
-  /* --------- cursor handling ----------
-   *
-   * The terminal cursor is rendered inline into the StyledText snapshot
-   * above instead of using opentui's native host cursor. Keeping text
-   * and cursor in one render path avoids the coordinate split that made
-   * typed spaces and cursorX look wrong in the nested terminal pane.
-   * When terminal has focus we explicitly hide the host cursor so it
-   * cannot leave a stale block/bar on top of xterm-rendered text.
-   *
-   * We ALSO push the body's measured (cols, rows) into the backend via
-   * `pty.resize`. The Bun PTY backend translates those into terminal
-   * resize events.
-   */
+  // Cursor is rendered inline into the StyledText snapshot above (not
+  // opentui's native host cursor) — one render path avoids a coordinate
+  // split between typed spaces and cursorX. Focus hides the host cursor so
+  // it can't leave a stale block on top of xterm-rendered text. We also
+  // push the body's measured (cols, rows) to the backend via `pty.resize`.
   const renderer = useRenderer()
   // Reactive terminal dims — when the host window resizes, this changes
   // and re-fires effects that read the body's live `width/height`.
   const dims = useTerminalDimensions()
 
-  // Layout-tick signal — bumped by the body box's real `onSizeChange`
-  // event (opentui fires this once Yoga has actually computed a new
-  // size) so effects that read non-reactive geometry
-  // (`ref.width/height/screenX/screenY`) catch up with layout changes
-  // that don't have their own Solid signal (the splitter drag in
-  // app.tsx mutates pane-size signals, but the *body* box's width is
-  // computed downstream, and Solid doesn't observe it through the
-  // BoxRenderable instance). Previously this polled on a 1s interval;
-  // that meant a remount's first (pre-layout, too-small) `ref.width`
-  // read got pushed to the PTY's `resize()` and stuck for up to a full
-  // second before the poll caught the corrected size — invisible on a
-  // freshly-spawned blank shell, but visibly wrecked an already-running
-  // full-screen engine session's frame on tab-revisit. Reacting to the
-  // real layout event instead of guessing fixes both.
+  // Layout-tick — bumped by the body box's real `onSizeChange` (fires once
+  // Yoga computes a new size) so effects reading non-reactive geometry
+  // (`ref.width/height`) catch up with layout changes that have no Solid
+  // signal of their own (a splitter drag resizes the pane downstream of
+  // the signal it mutates). A prior 1s-poll version left a remount's
+  // first pre-layout `ref.width` read stuck for up to a second.
   const [geomTick, setGeomTick] = createSignal(0)
   const bumpGeomTick = (): void => {
     setGeomTick((n) => (n + 1) & 0xff)
@@ -354,10 +366,9 @@ export function Terminal(props: TerminalProps): JSXElement {
   // is unchanged.
   let lastResize: { cols: number; rows: number } | null = null
 
-  // Measure the rendered body's geometry before spawning the PTY. This
-  // avoids booting shells at the default 80x24 and immediately resizing
-  // them, which makes zsh/starship-style prompts redraw into stray
-  // standalone prompt lines on startup.
+  // Measure the rendered body's geometry before spawning the PTY — avoids
+  // booting at the default 80x24 and immediately resizing, which makes
+  // zsh/starship-style prompts redraw into stray standalone lines.
   createEffect(() => {
     const ref = bodyRef()
     // Read dims + geomTick so this effect re-runs when the host
@@ -469,19 +480,12 @@ export function Terminal(props: TerminalProps): JSXElement {
             </box>
           }
         >
-          {/* Single `<text>` element rendering the whole snapshot.
-              Per-row chunks are flattened into one StyledText with
-              `\n` separators (see `rowsToStyledText`). This shape
-              matters: rendering one <text> per row inside a flex
-              column shifted the body's `screenY` reference such that
-              `screenY + cursor.y` landed one row above the prompt.
-              Keeping a single multi-line `<text>` preserves the
-              original layout assumption that drives the cursor math
-              in the createEffect below. */}
-          {/* opentui 0.4: StyledText is neither a valid JSX child nor honored
-              through the solid binding's `content` prop at runtime (the
-              reconciler stringifies it — "[object Object]"). Assign the
-              TextRenderable's `content` setter directly via ref + effect. */}
+          {/* One multi-line `<text>` for the whole snapshot (rows flattened
+              with `\n`, see `rowsToStyledText`) — one <text> per row inside
+              a flex column shifted body.screenY, landing the cursor a row
+              above the prompt. opentui 0.4 also won't accept StyledText as
+              a JSX child or through the content prop (stringifies it), so
+              content is pushed via the TextRenderable ref + effect above. */}
           <text
             fg={theme.text}
             wrapMode="none"
