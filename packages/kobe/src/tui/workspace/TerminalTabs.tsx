@@ -52,13 +52,13 @@ import {
   closeTab,
   cycleTab,
   initialTabs,
-  markTabSpawned,
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
   selectTab,
   setTabAutoTitle,
   setTabSessionId,
+  setTabSpawned,
   tabPtyKey,
   tabToShell,
 } from "./terminal-tabs-core"
@@ -108,6 +108,13 @@ export function TerminalTabs(props: {
    */
   onEditorTabReady?: (open: (command: readonly string[], label: string) => void) => void
   /**
+   * Hands the parent an imperative "paste this into the active engine tab
+   * and submit" function (same sibling-reach rationale as
+   * `onEditorTabReady`). Powers the FileTree corner Create-PR action —
+   * the PTY-world twin of the Ops pane's tmux `send-keys` + Enter.
+   */
+  onEngineSendReady?: (send: (text: string) => void) => void
+  /**
    * This worktree's slice of the daemon's `transcript.activity` push
    * (issue #24) — feeds the turn-status loops' shared mode (adaptive
    * capture cadence + push-driven completion reads). Omitted/null =
@@ -133,6 +140,10 @@ export function TerminalTabs(props: {
     return setTabSessionId(s, s.activeId, sessionId)
   }
 
+  // Flips true when initState rehydrated from disk — those tabs' `spawned`
+  // flags are up to 5s stale (the naming tick's cadence) and must be
+  // re-verified against the real transcripts before anything spawns.
+  let rehydratedFromDisk = false
   const initState = (): TabsState => {
     const existing = tabsByTask.get(props.taskId)
     if (existing) return existing
@@ -140,7 +151,9 @@ export function TerminalTabs(props: {
     // snapshot (titles/ordinals/sessionIds — command tabs are transient
     // and dropped) before falling back to a fresh single tab.
     const saved = kv.get(persistKey, null) as TabsState | null
-    const fresh = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved) : pinSession(initialTabs(), undefined)
+    const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved) : null
+    rehydratedFromDisk = fromDisk !== null
+    const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
     // Persist immediately so a remount before the first mutation doesn't
     // re-pin a different session id against the already-spawned PTY.
     tabsByTask.set(props.taskId, fresh)
@@ -170,29 +183,66 @@ export function TerminalTabs(props: {
     return [...base, "--session-id", tab.sessionId]
   }
 
-  // Mark the mounted engine tab as spawned (its PTY acquires right after
-  // mount) — the flag flips the restart path above from fresh-session to
-  // resume. Self-terminating: once set, the guard stops further writes.
-  createEffect(() => {
-    const tab = active()
-    if (tab?.kind === "engine" && !tab.spawned) update(markTabSpawned(state(), tab.id))
-  })
+  /* --------- restart resume verification (issue #22) --------------------
+   * `--resume <id>` errors ("no conversation found") when the session has
+   * no transcript — claude writes NOTHING until the first message — and
+   * `--session-id <id>` errors when one already exists. The only correct
+   * predicate is the transcript itself, so on a disk rehydrate we hold the
+   * spawn (the Show gate below) and set each tab's `spawned` from a real
+   * history read before the first PTY starts. Millisecond-scale reads;
+   * failures degrade to fresh-session (never the not-found path). */
+  const [hydrating, setHydrating] = createSignal(rehydratedFromDisk)
+  if (rehydratedFromDisk) {
+    void (async () => {
+      try {
+        await Promise.all(
+          state().tabs.map(async (tab) => {
+            if (tab.kind !== "engine" || !tab.sessionId) return
+            let exists = false
+            try {
+              exists = (await engineEntry(tab.vendor ?? props.vendor).history.readHistory(tab.sessionId)).length > 0
+            } catch {
+              /* unreadable store → treat as absent (fresh session) */
+            }
+            update(setTabSpawned(state(), tab.id, exists))
+          }),
+        )
+      } finally {
+        setHydrating(false)
+      }
+    })()
+  }
 
   props.onEditorTabReady?.((command, label) => update(openEditorTab(state(), command, label)))
 
+  props.onEngineSendReady?.((text) => {
+    // Active tab when it's an engine; else the first engine tab (the PR
+    // prompt must reach a conversation, never a degraded shell/editor).
+    const activeTab = state().tabs.find((tab) => tab.id === state().activeId)
+    const target = activeTab?.kind === "engine" ? activeTab : state().tabs.find((tab) => tab.kind === "engine")
+    if (!target) return
+    const pty = getDefaultPtyRegistry().get(tabPtyKey(props.taskId, target.id))
+    if (!pty || pty.killed) return
+    pty.paste(text)
+    pty.write("\r")
+  })
+
   const active = () => state().tabs.find((tab) => tab.id === state().activeId) ?? state().tabs[0]
 
-  /* --------- auto-naming (tmux runChatTabNamingPass, logic layer) ---------
-   * Every NAMING_POLL_MS, derive a title from each unnamed engine tab's own
+  /* --------- auto-naming + existence tracking (tmux naming pass) ---------
+   * Every NAMING_POLL_MS, derive a title from each engine tab's own
    * transcript (`deriveTitleFromSessionId` — the same tmux-free deriver the
-   * tmux pass used). Self-limiting: once autoTitle lands (or the user
-   * F2-renames) the tab leaves the candidate set; a tab with no prompt yet
-   * derives "" and retries next tick. */
+   * tmux pass used). A non-empty derivation is DUAL-purpose: it proves the
+   * conversation exists on disk (→ `spawned`, the restart resume
+   * predicate) and supplies the display autoTitle. Self-limiting: once
+   * spawned + named (or F2-renamed), the tab leaves the candidate set; a
+   * tab with no prompt yet derives "" and retries next tick. */
   let namingBusy = false
   const namingTimer = setInterval(() => {
     if (namingBusy) return
     const candidates = state().tabs.filter(
-      (tab): tab is EngineTab => tab.kind === "engine" && !!tab.sessionId && !tab.title && !tab.autoTitle,
+      (tab): tab is EngineTab =>
+        tab.kind === "engine" && !!tab.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle)),
     )
     if (candidates.length === 0) return
     namingBusy = true
@@ -201,7 +251,10 @@ export function TerminalTabs(props: {
         for (const tab of candidates) {
           if (!tab.sessionId) continue
           const title = await deriveTitleFromSessionId(tab.vendor ?? props.vendor, tab.sessionId)
-          if (title) update(setTabAutoTitle(state(), tab.id, title))
+          if (!title) continue
+          let next = setTabSpawned(state(), tab.id, true)
+          if (!tab.title && !tab.autoTitle) next = setTabAutoTitle(next, tab.id, title)
+          update(next)
         }
       } finally {
         namingBusy = false
@@ -464,14 +517,27 @@ export function TerminalTabs(props: {
           the `resetToken` doc above for the one case that needs a
           nudge) and swaps to the split-tree renderer once ctrl+\ /
           ctrl+= create leaves. */}
-      <TerminalSplit
-        tabKey={tabPtyKey(props.taskId, active().id)}
-        cwd={() => props.worktree}
-        command={activeCommand()}
-        onExit={handleActiveExit}
-        resetToken={resetToken}
-        focused={props.focused}
-      />
+      {/* Spawn gate: while restart verification runs (millisecond-scale
+          transcript reads), nothing may spawn — the resume/fresh flag
+          decision must land first, or the wrong claude flag errors and
+          degrades the tab. */}
+      <Show
+        when={!hydrating()}
+        fallback={
+          <box flexGrow={1} paddingLeft={1} paddingTop={1}>
+            <text fg={theme.textMuted}>{t("terminal.restoring")}</text>
+          </box>
+        }
+      >
+        <TerminalSplit
+          tabKey={tabPtyKey(props.taskId, active().id)}
+          cwd={() => props.worktree}
+          command={activeCommand()}
+          onExit={handleActiveExit}
+          resetToken={resetToken}
+          focused={props.focused}
+        />
+      </Show>
     </box>
   )
 }

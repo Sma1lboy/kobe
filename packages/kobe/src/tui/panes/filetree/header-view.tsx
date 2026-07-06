@@ -33,7 +33,19 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
       <Show when={props.onZenToggle || props.onCreatePR}>
         <box flexDirection="row" justifyContent="flex-end" gap={2} paddingBottom={1} flexShrink={0}>
           <Show when={props.onZenToggle}>
-            <box flexDirection="row" gap={1} onMouseUp={() => props.onZenToggle?.()}>
+            {/* stopPropagation: the chip click must NOT bubble to the host
+                pane box's own onMouseUp (workspace host focuses the files
+                pane there) — zen would toggle on and instantly exit via
+                the focus-leaves-workspace guard. A chip click is an
+                action, never a background pane click. */}
+            <box
+              flexDirection="row"
+              gap={1}
+              onMouseUp={(e) => {
+                e.stopPropagation()
+                props.onZenToggle?.()
+              }}
+            >
               <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
                 [~]
               </text>
@@ -43,7 +55,14 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
             </box>
           </Show>
           <Show when={props.onCreatePR}>
-            <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
+            <box
+              flexDirection="row"
+              gap={1}
+              onMouseUp={(e) => {
+                e.stopPropagation()
+                props.onCreatePR?.()
+              }}
+            >
               <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
                 [P]
               </text>

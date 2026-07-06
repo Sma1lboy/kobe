@@ -197,12 +197,24 @@ export function setTabAutoTitle(state: TabsState, id: string, autoTitle: string)
   return { ...state, tabs }
 }
 
-/** Mark an engine tab's PTY as having spawned (see `EngineTab.spawned`). */
-export function markTabSpawned(state: TabsState, id: string): TabsState {
+/**
+ * Set an engine tab's spawned flag (see `EngineTab.spawned`). Identity-
+ * stable when the value doesn't change. The `false` direction is the
+ * restart-verification correction: `--session-id` creates NO transcript
+ * until the first message, so a tab that spawned but never conversed
+ * must NOT `--resume` on the next start (claude errors "no conversation
+ * found" and the tab degrades to a shell).
+ */
+export function setTabSpawned(state: TabsState, id: string, spawned: boolean): TabsState {
   const tabs = state.tabs.map(
-    (t): TerminalTab => (t.id === id && t.kind === "engine" && !t.spawned ? { ...t, spawned: true } : t),
+    (t): TerminalTab => (t.id === id && t.kind === "engine" && !t.spawned !== !spawned ? { ...t, spawned } : t),
   )
   return { ...state, tabs }
+}
+
+/** Mark an engine tab's PTY as having spawned (see `EngineTab.spawned`). */
+export function markTabSpawned(state: TabsState, id: string): TabsState {
+  return setTabSpawned(state, id, true)
 }
 
 /**

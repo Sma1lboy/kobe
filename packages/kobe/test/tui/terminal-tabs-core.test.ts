@@ -19,6 +19,7 @@ import {
   selectTab,
   setTabAutoTitle,
   setTabSessionId,
+  setTabSpawned,
   tabPtyKey,
   tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
@@ -148,6 +149,19 @@ describe("terminal tabs state", () => {
     expect(s.tabs[0]).toMatchObject({ kind: "engine", spawned: true })
     const again = markTabSpawned(s, "tab-1")
     expect(again.tabs[0]).toBe(s.tabs[0])
+  })
+
+  // Why: the false direction is the restart-verification correction — a
+  // persisted spawned=true whose session never conversed must be cleared
+  // or the next start `--resume`s a nonexistent conversation (claude
+  // errors "no conversation found" and the tab degrades to a shell).
+  it("setTabSpawned corrects a stale spawned flag in both directions", () => {
+    const up = setTabSpawned(initialTabs(), "tab-1", true)
+    expect(up.tabs[0]).toMatchObject({ spawned: true })
+    const down = setTabSpawned(up, "tab-1", false)
+    expect(down.tabs[0]).toMatchObject({ spawned: false })
+    // No-op keeps tab identity (persistence write-churn guard).
+    expect(setTabSpawned(down, "tab-1", false).tabs[0]).toBe(down.tabs[0])
   })
 
   it("autoTitle fills the display gap under a manual title and survives degradation", () => {
