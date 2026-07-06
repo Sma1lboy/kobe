@@ -103,7 +103,7 @@ export function xtermLineToChunks(
   for (let x = 0; x < line.length; x++) {
     const cell = line.getCell(x)
     if (!cell || cell.getWidth() === 0) continue
-    if (isVisibleCell(cell)) last = x
+    if (isVisibleCell(cell)) last = Math.max(last, x)
   }
   if (last === -1) return []
 
