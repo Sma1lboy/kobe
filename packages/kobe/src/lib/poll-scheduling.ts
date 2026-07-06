@@ -2,8 +2,8 @@
  * Pure scheduling core for subprocess-backed background polling —
  * extracted from `src/tui/lib/background-poll.ts` (issue #6) so the
  * daemon's worktree-changes collector can reuse the EXACT guards that
- * fixed the 30GB-repo freeze without importing solid-js (the TUI poller's
- * signal layer) into daemon code.
+ * keep huge-repo `git status` off the event loop, without importing
+ * solid-js (the TUI poller's signal layer) into daemon code.
  *
  * The three guards live here; the two bindings differ only in where a
  * finished value goes:

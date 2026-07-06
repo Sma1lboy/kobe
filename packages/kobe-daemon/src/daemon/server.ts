@@ -606,7 +606,7 @@ function writeFrame(client: Pick<ClientState, "writer">, frame: DaemonFrame): vo
 
 function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void {
   // Serialize ONCE per publish, not once per subscriber: a task.snapshot
-  // frame is ~8.5KB at 20 tasks, so N subscribed panes used to cost N
+  // frame is ~8.5KB at 20 tasks, so N subscribers would otherwise cost N
   // identical JSON.stringify passes per task mutation. The wire bytes are
   // unchanged — every subscriber receives the exact same line.
   //

@@ -27,10 +27,6 @@
  *     - `isRemote`, `wrapCommand` (pure string building), and `ensureReady`
  *       (ControlMaster bring-up; sync ssh, see caveat below).
  *
- *   (A sync existence probe used to live here, but its only caller —
- *   `worktreeUsable` — short-circuits on `isRemote` and so only ever needs a
- *   LOCAL check; it now calls `fs.existsSync` directly, and no remote sync
- *   existence round-trip exists.)
  *
  *   `ensureReady()` remains sync: it's called from TUI processes
  *   (tmux engine launch) and from `RemoteExecHost.run`'s first call per host

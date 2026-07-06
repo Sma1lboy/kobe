@@ -3,8 +3,8 @@
  * collectors?" policy, extracted from `server.ts` into one testable seam.
  * (Distinct from `lifecycle.ts`, which kills an EXTERNAL daemon process.)
  *
- * Three interdependent rules used to live as loose functions + a shared
- * `stopping` flag scattered across the server closure (`guiCount`,
+ * Three interdependent rules live here instead of as loose functions + a
+ * shared `stopping` flag scattered across the server closure (`guiCount`,
  * `hasSubscribers`, `cancelIdleTimer`, `maybeArmIdleShutdown`, and the timer
  * callback). They are really ONE policy keyed on which front-ends are attached:
  *

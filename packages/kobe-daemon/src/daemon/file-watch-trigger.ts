@@ -9,7 +9,7 @@
  *
  * The watcher is backed by chokidar, which already smooths over the
  * cross-platform fs-event edge cases (macOS rename/inode churn, rapid bursts,
- * atomic saves) that previously needed a hand-rolled polling safety-net.
+ * atomic saves) without a hand-rolled polling safety-net.
  */
 
 import { mkdirSync, statSync } from "node:fs"

@@ -128,7 +128,7 @@ export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNami
   // and the flag can't tell local-off from inherited-off). The global state
   // is probed lazily, at most ONCE per pass — so the steady state (all
   // windows named, global on) costs one list-windows per task and zero
-  // per-window probes, where it used to spawn one probe per window per tick.
+  // per-window probes.
   let globalOff: boolean | null = null
   const manuallyNamed = async (session: string, w: ChatTabWindow): Promise<boolean> => {
     if (w.autoRename === "1") return false

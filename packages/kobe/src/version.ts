@@ -13,8 +13,8 @@
  *     is much smaller than the full package metadata. Anonymous, no
  *     auth, generous rate limit.
  *
- *   - The TUI checks the registry on every launch. We used to cache this
- *     for 6h, but that made the topbar miss freshly published versions.
+ *   - The TUI checks the registry on every launch, uncached (a cache
+ *     makes the topbar miss freshly published versions).
  *     The request is still async and capped at 3s, so startup does not
  *     wait for npm.
  *

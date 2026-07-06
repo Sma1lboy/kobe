@@ -87,8 +87,8 @@ async function drainText(stream: ReadableStream<Uint8Array> | null | undefined):
  * Deleting a task unlinks that worktree, after which `Bun.spawn` fails
  * with `posix_spawn` ENOENT BEFORE the command runs — even though tmux is
  * on PATH — because the kernel can't resolve the inherited (now-gone)
- * cwd. That ENOENT used to throw straight into a pane's opentui loop and
- * crash the whole pane to a bare shell when its task was deleted.
+ * cwd. Unanchored, that ENOENT throws straight into a pane's opentui loop
+ * and crashes the whole pane to a bare shell when its task is deleted.
  * Anchoring to `$HOME` (→ `/` if unset) keeps the helpers spawnable from
  * a pane whose worktree just vanished. Read once — `$HOME` is fixed for
  * the process lifetime.
@@ -224,7 +224,7 @@ export async function windowCount(sessionName: string): Promise<number> {
  * NOTE: `set-option` / `show-options` do NOT accept the `=name`
  * exact-match prefix that most other tmux targets take — tmux 3.5a
  * treats `=name` as a literal session name and reports "no such
- * session", silently dropping the option (this burned a debug cycle
+ * session", silently dropping the option (easy to lose a debug cycle
  * on exactly this). So these two helpers target the bare name. Our
  * session names are `kobe-<taskId>` slugs; a prefix collision between
  * two live tasks is the only theoretical risk and we accept it.

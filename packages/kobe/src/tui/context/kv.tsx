@@ -12,12 +12,10 @@
  *
  * Writes are debounced (250ms) and routed through `src/state/store.ts`,
  * which owns all state.json I/O (atomic tmp+rename — a crash mid-write
- * can't leave a half-written file). History: this provider used to write
- * its ENTIRE in-memory snapshot back on every flush. With several kobe
- * processes alive at once (outer monitor + Tasks pane + Ops pane +
- * settings window, each with its own KVProvider or `setPersisted*`
- * caller), a whole-snapshot flush silently reverted any key another
- * process had written since this one loaded — the classic lost update.
+ * can't leave a half-written file). Writes are per-key, never a whole
+ * in-memory snapshot: with several kobe processes alive at once, a
+ * whole-snapshot flush silently reverts any key another process wrote
+ * since this one loaded — the classic lost update.
  * The fix is dirty-key tracking: we remember which keys THIS process
  * changed since its last successful flush and merge only those into a
  * fresh read of the file (`patchStateFile`). Keys we never touched pass

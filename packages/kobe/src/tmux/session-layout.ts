@@ -7,9 +7,8 @@
  * *policy* it encodes — pane sizes, which shell command each pane
  * runs, the keep-alive wrapper, the Ops-pane fallback — is pure data
  * + string building. Pulling it out here makes that policy unit
- * testable without a real tmux server, which is exactly the surface
- * that bit us before (quoting + targeting bugs that only showed
- * up at runtime).
+ * testable without a real tmux server — exactly the surface where
+ * quoting + targeting bugs only show up at runtime.
  *
  * Everything in this file is pure: same inputs → same strings, no IO.
  */

@@ -10,8 +10,8 @@
  * the pushes and spawn ZERO git processes while daemon-connected; the
  * pane-local poller survives only as the no-daemon fallback.
  *
- * The scheduling guards are the SAME ones that fixed the 30GB-repo freeze
- * (shared via `@/lib/poll-scheduling`, extracted from background-poll so
+ * The scheduling guards are the SAME ones the TUI poller uses against
+ * huge-repo `git status` stalls (shared via `@/lib/poll-scheduling`, extracted from background-poll so
  * the daemon doesn't import the TUI's solid-js signal layer):
  *
  *   - **in-flight dedupe** — one `git status` per worktree at a time;

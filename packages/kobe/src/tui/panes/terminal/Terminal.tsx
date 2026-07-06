@@ -247,10 +247,9 @@ export function Terminal(props: TerminalProps): JSXElement {
   // `\n`s. We render this as a single `<text>` element inside the
   // body so opentui's layout treats the body as a 1:1 cell grid —
   // crucial for the cursor positioning math (`body.screenY + c.y`).
-  // An earlier attempt rendered one `<text>` per row inside a flex
-  // column; opentui's per-row layout didn't keep `screenY` aligned
-  // with pane row indexing, and the cursor landed one row above
-  // the visible prompt.
+  // Per-row `<text>` elements in a flex column don't keep `screenY`
+  // aligned with pane row indexing (the cursor lands one row above
+  // the visible prompt), hence the single element.
   const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(cursorRows())))
   // Imperative content push — see the render-site comment (solid 0.4 content-prop gap).
   const [snapshotTextRef, setSnapshotTextRef] = createSignal<TextRenderable | null>(null)
@@ -273,8 +272,8 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Yoga computes a new size) so effects reading non-reactive geometry
   // (`ref.width/height`) catch up with layout changes that have no Solid
   // signal of their own (a splitter drag resizes the pane downstream of
-  // the signal it mutates). A prior 1s-poll version left a remount's
-  // first pre-layout `ref.width` read stuck for up to a second.
+  // the signal it mutates). Event-driven, not polled — a poll leaves a remount's
+  // first pre-layout `ref.width` read stuck for the poll interval.
   const [geomTick, setGeomTick] = createSignal(0)
   const bumpGeomTick = (): void => {
     setGeomTick((n) => (n + 1) & 0xff)
