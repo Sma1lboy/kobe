@@ -21,7 +21,9 @@
  */
 
 import { disposeAiSdkRuntime, startAiSdkTurn } from "@/engine/ai-sdk/harness-turn"
+import { callAiSdkModelRouter, chooseTurnModel } from "@/engine/ai-sdk/model-router"
 import { engineEntry, getCapabilities } from "@/engine/registry"
+import { nativeChatAutoModelEnabled } from "@/state/native-chat-router"
 import type { PermissionMode } from "@/types/engine"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
 import type { VendorId } from "@/types/vendor"
@@ -37,6 +39,7 @@ import type { ComposerQueuedItem } from "./ComposerQueue"
 import { ModelPicker, type ModelPickerResult } from "./composer/ModelPicker"
 import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
+import { chatItemsToAiSdkHistory } from "./thread-history"
 
 export interface ChatPaneProps {
   readonly worktree: string
@@ -160,13 +163,28 @@ export function ChatPane(props: ChatPaneProps) {
   async function runTurn(prompt: string): Promise<void> {
     setRunning(true)
     setTurnError(null)
+    const history = chatItemsToAiSdkHistory(items())
+    const autoModel = nativeChatAutoModelEnabled()
+    const turnModel = autoModel
+      ? await chooseTurnModel({
+          vendor: vendor(),
+          prompt,
+          history,
+          current: model(),
+          capabilities: capabilities(),
+          autoModelEnabled: true,
+          callSmallModel: (request) => callAiSdkModelRouter({ ...request, worktree: props.worktree }),
+        })
+      : model()
+    if (autoModel) setModel(turnModel)
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     let hasTail = false
     const turn = startAiSdkTurn({
       worktree: props.worktree,
       vendor: vendor(),
-      model: model()?.id,
-      modelEffort: model()?.effort,
+      model: turnModel?.id,
+      modelEffort: turnModel?.effort,
+      history,
       prompt,
       onUpdate: (assistant) => {
         setItems((prev) => {

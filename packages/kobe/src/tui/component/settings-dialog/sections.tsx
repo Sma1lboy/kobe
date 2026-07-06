@@ -894,6 +894,8 @@ export function DevSettingsSection(
     toggleAutoStatus: () => void
     dispatcherEnabled: Accessor<boolean>
     toggleDispatcher: () => void
+    nativeChatAutoModelEnabled: Accessor<boolean>
+    toggleNativeChatAutoModel: () => void
     archivedHistoryEnabled: Accessor<boolean>
     toggleArchivedHistory: () => void
   },
@@ -907,6 +909,8 @@ export function DevSettingsSection(
   const autoStatusIsCursor = () => props.level() === "body" && props.bodyRow() === autoStatusRow()
   const dispatcherRow = () => rowIndex(devRows(props.hasDaemon), "dispatcher")
   const dispatcherIsCursor = () => props.level() === "body" && props.bodyRow() === dispatcherRow()
+  const nativeChatAutoModelRow = () => rowIndex(devRows(props.hasDaemon), "native-chat-auto-model")
+  const nativeChatAutoModelIsCursor = () => props.level() === "body" && props.bodyRow() === nativeChatAutoModelRow()
   const archivedHistoryRow = () => rowIndex(devRows(props.hasDaemon), "archived-history")
   const archivedHistoryIsCursor = () => props.level() === "body" && props.bodyRow() === archivedHistoryRow()
   return (
@@ -1026,6 +1030,29 @@ export function DevSettingsSection(
             attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
           >
             {props.dispatcherEnabled() ? t("settings.dev.dispatcherOn") : t("settings.dev.dispatcherOff")}
+          </text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.dev.nativeChatAutoModelHint")}
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={nativeChatAutoModelIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(nativeChatAutoModelRow())
+            props.toggleNativeChatAutoModel()
+          }}
+        >
+          <text
+            fg={nativeChatAutoModelIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.nativeChatAutoModelEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.nativeChatAutoModelEnabled()
+              ? t("settings.dev.nativeChatAutoModelOn")
+              : t("settings.dev.nativeChatAutoModelOff")}
           </text>
         </box>
         <text fg={theme.textMuted} wrapMode="word">

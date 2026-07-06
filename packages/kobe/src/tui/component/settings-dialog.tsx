@@ -28,6 +28,7 @@ import { submitFeedback } from "../../lib/feedback"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
+import { NATIVE_CHAT_AUTO_MODEL_KEY } from "../../state/native-chat-router"
 import { getGlobalDefaultVendor, setGlobalDefaultVendor } from "../../state/vendor-prefs"
 import {
   PROJECT_DIR_TOKEN,
@@ -273,6 +274,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleDispatcher(): void {
     props.kv.set(DISPATCHER_KEY, !dispatcherOn())
+  }
+
+  // Experimental: same-provider native chat model router (off by default).
+  // When enabled, the composer asks the provider's small/fast model to choose
+  // among that provider's catalog entries before each native-chat turn.
+  function nativeChatAutoModelOn(): boolean {
+    return props.kv.get(NATIVE_CHAT_AUTO_MODEL_KEY, false) === true
+  }
+
+  function toggleNativeChatAutoModel(): void {
+    props.kv.set(NATIVE_CHAT_AUTO_MODEL_KEY, !nativeChatAutoModelOn())
   }
 
   // Experimental (beta): archived-task history preview (off by default) —
@@ -628,6 +640,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     devRemoteProjects: () => toggleRemoteProjects(),
     devAutoStatus: () => toggleAutoStatus(),
     devDispatcher: () => toggleDispatcher(),
+    devNativeChatAutoModel: () => toggleNativeChatAutoModel(),
     devArchivedHistory: () => toggleArchivedHistory(),
   }
 
@@ -824,6 +837,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleAutoStatus={toggleAutoStatus}
               dispatcherEnabled={dispatcherOn}
               toggleDispatcher={toggleDispatcher}
+              nativeChatAutoModelEnabled={nativeChatAutoModelOn}
+              toggleNativeChatAutoModel={toggleNativeChatAutoModel}
               archivedHistoryEnabled={archivedHistoryOn}
               toggleArchivedHistory={toggleArchivedHistory}
             />

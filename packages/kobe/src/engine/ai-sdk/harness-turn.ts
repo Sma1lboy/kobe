@@ -15,11 +15,11 @@
  * tail message on every update (no delta bookkeeping, no mapping layer —
  * the UIMessage parts ARE the render schema on this path).
  *
- * ponytail: turn results are ephemeral — nothing here persists the UIMessage
- * history to claude's on-disk session-record format. That conversion is
- * future work handled by a one-way adapter at the persistence boundary (the
- * UIMessage schema is Vercel-owned; the session record is claude-owned), NOT
- * in this stream path. Don't build it here.
+ * The provider runtime session is an execution cache, not Kobe's source of
+ * truth. When a pane supplies Kobe-owned history, we prepend it to the prompt
+ * so a model/effort rebuild can still see the same semantic conversation.
+ * Persisting UIMessage history to vendor on-disk session-record formats is
+ * still future work at the persistence boundary.
  */
 
 import type { VendorId } from "@/types/vendor"
@@ -31,7 +31,16 @@ import { type UIMessage, readUIMessageStream } from "ai"
 import { createLocalSandbox } from "./local-sandbox"
 
 export type AiSdkHarnessVendor = "claude" | "codex"
+export type AiSdkRuntimePurpose = "chat" | "router"
 type CodexReasoningEffort = NonNullable<CodexHarnessSettings["reasoningEffort"]>
+
+export interface AiSdkConversationMessage {
+  readonly role: "user" | "assistant"
+  readonly text: string
+}
+
+const MAX_HISTORY_MESSAGES = 16
+const MAX_HISTORY_CHARS = 24_000
 
 /**
  * Turn failure surfaced to the pane. `runtimeBusy` is a kobe-authored
@@ -43,6 +52,7 @@ export type AiSdkTurnError = { readonly code: "runtimeBusy" } | { readonly messa
 interface WorktreeRuntime {
   readonly agent: HarnessAgent
   readonly vendor: AiSdkHarnessVendor
+  readonly purpose: AiSdkRuntimePurpose
   readonly worktree: string
   // Settings the agent was built with; a later turn requesting a different
   // model/effort rebuilds the runtime rather than silently serving the old one.
@@ -60,12 +70,51 @@ export function resolveAiSdkHarnessVendor(vendor: VendorId | undefined): AiSdkHa
   return vendor === "codex" ? "codex" : "claude"
 }
 
-export function aiSdkRuntimeKey(vendor: AiSdkHarnessVendor, worktree: string): string {
+export function aiSdkRuntimeKey(
+  vendor: AiSdkHarnessVendor,
+  worktree: string,
+  purpose: AiSdkRuntimePurpose = "chat",
+): string {
+  if (purpose !== "chat") return `${purpose}:${vendor}:${worktree}`
   return `${vendor}:${worktree}`
 }
 
 export function codexReasoningEffort(effort: string | undefined): CodexReasoningEffort | undefined {
   return effort === "low" || effort === "medium" || effort === "high" ? effort : undefined
+}
+
+function normalizeHistoryText(text: string): string {
+  return text.replace(/\r\n?/g, "\n").trim()
+}
+
+function boundedHistory(history: readonly AiSdkConversationMessage[] | undefined): readonly AiSdkConversationMessage[] {
+  if (!history?.length) return []
+  const out: AiSdkConversationMessage[] = []
+  let chars = 0
+  for (const msg of [...history].slice(-MAX_HISTORY_MESSAGES).reverse()) {
+    const text = normalizeHistoryText(msg.text)
+    if (!text) continue
+    const next = { role: msg.role, text }
+    chars += text.length
+    if (chars > MAX_HISTORY_CHARS && out.length > 0) break
+    out.push(next)
+  }
+  return out.reverse()
+}
+
+export function buildPromptWithHistory(
+  prompt: string,
+  history?: readonly AiSdkConversationMessage[] | undefined,
+): string {
+  const prior = boundedHistory(history)
+  if (prior.length === 0) return prompt
+  const lines = ["Previous Kobe conversation:"]
+  for (const msg of prior) {
+    const label = msg.role === "assistant" ? "Assistant" : "User"
+    lines.push(`${label}: ${msg.text}`)
+  }
+  lines.push("", "Current user prompt:", prompt)
+  return lines.join("\n")
 }
 
 function createHarness(opts: {
@@ -87,16 +136,19 @@ function createHarness(opts: {
 
 function ensureRuntime(opts: {
   readonly vendor: AiSdkHarnessVendor
+  readonly purpose?: AiSdkRuntimePurpose
   readonly worktree: string
   readonly model?: string
   readonly modelEffort?: string
 }): WorktreeRuntime {
-  const key = aiSdkRuntimeKey(opts.vendor, opts.worktree)
+  const purpose = opts.purpose ?? "chat"
+  const key = aiSdkRuntimeKey(opts.vendor, opts.worktree, purpose)
   const existing = runtimes.get(key)
   if (existing && existing.model === opts.model && existing.modelEffort === opts.modelEffort) return existing
   if (existing) destroyRuntimeSession(existing)
   const runtime: WorktreeRuntime = {
     vendor: opts.vendor,
+    purpose,
     worktree: opts.worktree,
     model: opts.model,
     modelEffort: opts.modelEffort,
@@ -127,8 +179,10 @@ export function disposeAiSdkRuntime(worktree: string): void {
 export interface AiSdkTurnOpts {
   readonly worktree: string
   readonly vendor?: VendorId
+  readonly purpose?: AiSdkRuntimePurpose
   readonly model?: string
   readonly modelEffort?: string
+  readonly history?: readonly AiSdkConversationMessage[]
   readonly prompt: string
   /** Growing assistant snapshot per stream chunk — replace the tail message. */
   readonly onUpdate: (assistant: UIMessage) => void
@@ -151,6 +205,7 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
     try {
       runtime = ensureRuntime({
         vendor: resolveAiSdkHarnessVendor(opts.vendor),
+        purpose: opts.purpose,
         worktree: opts.worktree,
         model: opts.model,
         modelEffort: opts.modelEffort,
@@ -165,7 +220,7 @@ export function startAiSdkTurn(opts: AiSdkTurnOpts): AiSdkTurn {
       runtime.session ??= await runtime.agent.createSession()
       const result = await runtime.agent.stream({
         session: runtime.session,
-        prompt: opts.prompt,
+        prompt: buildPromptWithHistory(opts.prompt, opts.history),
         abortSignal: controller.signal,
       })
       const uiStream = result.toUIMessageStream({ sendReasoning: true })

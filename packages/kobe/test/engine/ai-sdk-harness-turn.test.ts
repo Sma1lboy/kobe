@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const state: {
   ctorCalls: Array<{ harness: unknown }>
   claudeCalls: Array<{ model?: string }>
+  streamCalls: unknown[]
   createSession: () => Promise<{ destroy: ReturnType<typeof vi.fn> }>
   stream: (args: unknown) => Promise<{ toUIMessageStream: () => unknown }>
   readStream: () => AsyncIterable<unknown>
 } = {
   ctorCalls: [],
   claudeCalls: [],
+  streamCalls: [],
   createSession: async () => ({ destroy: vi.fn().mockResolvedValue(undefined) }),
   stream: async () => ({ toUIMessageStream: () => ({}) }),
   readStream: async function* () {
@@ -28,6 +30,7 @@ vi.mock("@ai-sdk/harness/agent", () => ({
       return state.createSession()
     }
     stream(args: unknown) {
+      state.streamCalls.push(args)
       return state.stream(args)
     }
   },
@@ -44,6 +47,7 @@ vi.mock("ai", () => ({ readUIMessageStream: () => state.readStream() }))
 
 import {
   aiSdkRuntimeKey,
+  buildPromptWithHistory,
   codexReasoningEffort,
   disposeAiSdkRuntime,
   resolveAiSdkHarnessVendor,
@@ -61,6 +65,7 @@ describe("AI SDK harness turn helpers", () => {
   it("keys runtimes by vendor and worktree", () => {
     expect(aiSdkRuntimeKey("claude", "/repo/wt")).toBe("claude:/repo/wt")
     expect(aiSdkRuntimeKey("codex", "/repo/wt")).toBe("codex:/repo/wt")
+    expect(aiSdkRuntimeKey("codex", "/repo/wt", "router")).toBe("router:codex:/repo/wt")
   })
 
   it("passes only Codex harness-supported reasoning efforts", () => {
@@ -70,6 +75,22 @@ describe("AI SDK harness turn helpers", () => {
     expect(codexReasoningEffort("xhigh")).toBeUndefined()
     expect(codexReasoningEffort("none")).toBeUndefined()
     expect(codexReasoningEffort(undefined)).toBeUndefined()
+  })
+
+  it("leaves prompts unchanged when no Kobe history is supplied", () => {
+    expect(buildPromptWithHistory("what changed?", [])).toBe("what changed?")
+    expect(buildPromptWithHistory("what changed?")).toBe("what changed?")
+  })
+
+  it("serializes prior Kobe history before the new prompt", () => {
+    const prompt = buildPromptWithHistory("continue", [
+      { role: "user", text: "first request" },
+      { role: "assistant", text: "first answer" },
+    ])
+    expect(prompt).toContain("Previous Kobe conversation:")
+    expect(prompt).toContain("User: first request")
+    expect(prompt).toContain("Assistant: first answer")
+    expect(prompt).toContain("Current user prompt:\ncontinue")
   })
 })
 
@@ -85,6 +106,7 @@ describe("startAiSdkTurn", () => {
   beforeEach(() => {
     state.ctorCalls = []
     state.claudeCalls = []
+    state.streamCalls = []
     state.createSession = async () => ({ destroy: vi.fn().mockResolvedValue(undefined) })
     state.stream = async () => ({ toUIMessageStream: () => ({}) })
     state.readStream = async function* () {
@@ -152,5 +174,34 @@ describe("startAiSdkTurn", () => {
     await run(worktree, { model: "model-a" }).done
     await run(worktree, { model: "model-a" }).done
     expect(state.ctorCalls).toHaveLength(1)
+  })
+
+  it("passes Kobe history as prompt context even after a model rebuild", async () => {
+    const worktree = nextWorktree()
+    await run(worktree, {
+      model: "model-a",
+      prompt: "second request",
+      history: [
+        { role: "user", text: "first request" },
+        { role: "assistant", text: "first answer" },
+      ],
+    }).done
+
+    await run(worktree, {
+      model: "model-b",
+      prompt: "third request",
+      history: [
+        { role: "user", text: "first request" },
+        { role: "assistant", text: "first answer" },
+        { role: "user", text: "second request" },
+        { role: "assistant", text: "second answer" },
+      ],
+    }).done
+
+    expect(state.ctorCalls).toHaveLength(2)
+    const secondStream = state.streamCalls.at(-1) as { prompt?: string } | undefined
+    expect(secondStream?.prompt).toContain("User: first request")
+    expect(secondStream?.prompt).toContain("Assistant: second answer")
+    expect(secondStream?.prompt).toContain("Current user prompt:\nthird request")
   })
 })

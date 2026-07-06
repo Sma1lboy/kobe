@@ -63,6 +63,7 @@ export type SettingsRow =
   | { id: "remote-projects"; kind: "devRemoteProjects" }
   | { id: "auto-status"; kind: "devAutoStatus" }
   | { id: "dispatcher"; kind: "devDispatcher" }
+  | { id: "native-chat-auto-model"; kind: "devNativeChatAutoModel" }
   | { id: "archived-history"; kind: "devArchivedHistory" }
 
 /** Stable row ids for payload-bearing rows (shared by builders + views). */
@@ -151,6 +152,7 @@ export function devRows(hasDaemon: boolean): SettingsRow[] {
     { id: "remote-projects", kind: "devRemoteProjects" },
     { id: "auto-status", kind: "devAutoStatus" },
     { id: "dispatcher", kind: "devDispatcher" },
+    { id: "native-chat-auto-model", kind: "devNativeChatAutoModel" },
     { id: "archived-history", kind: "devArchivedHistory" },
   ]
 }
