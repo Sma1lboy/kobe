@@ -49,18 +49,27 @@ describe("keyEventToShellBytes", () => {
 })
 
 describe("key routing tables", () => {
-  it("keeps every escape hatch reserved (first-match beats passthrough)", () => {
+  it("reserves ONLY the minimal kobe chords; the engine owns the rest", () => {
     expect(TRAPPED_KEYS).toEqual(["ctrl+pageup", "ctrl+pagedown"])
-    // The primary escape hatches stay reserved — losing any of these traps
-    // the user inside the engine CLI. (F-keys deliberately ALSO appear in
-    // PASSTHROUGH_NAMES: reservation wins by binding order, not disjointness.)
-    for (const chord of ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "ctrl+q", "f1", "f5", "ctrl+p", "shift+tab"]) {
-      expect(RESERVED_GLOBAL_CHORDS).toContain(chord)
+    // Owner decision 2026-07-06: ctrl+q escape hatch + tab management +
+    // reset. Anything beyond this list steals a chord from the engine CLI.
+    expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
+      ["ctrl+[", "ctrl+]", "ctrl+q", "ctrl+t", "ctrl+w", "f2", "f5"].sort(),
+    )
+    // Chords the engine depends on must NOT be reserved (shift+tab is
+    // claude's plan-mode cycle; the rest are its own UI shortcuts).
+    for (const chord of ["shift+tab", "ctrl+h", "ctrl+p", "f1", "ctrl+r"]) {
+      expect(RESERVED_GLOBAL_CHORDS).not.toContain(chord)
     }
     // Plain typing keys must stay forwardable.
     for (const name of ["a", "Z", "0", " ", "return", "escape", "tab"]) {
       expect(PASSTHROUGH_NAMES).toContain(name)
     }
     expect(DEFAULT_PAGE_SIZE).toBeGreaterThan(0)
+  })
+
+  it("synthesizes modifier bytes for synthetic events", () => {
+    expect(keyEventToShellBytes(evt({ name: "tab", shift: true }))).toBe("\x1b[Z")
+    expect(keyEventToShellBytes(evt({ name: "b", option: true } as never))).toBe("\x1bb")
   })
 })

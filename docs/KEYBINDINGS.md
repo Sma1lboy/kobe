@@ -340,3 +340,25 @@ re-derive it.
 need protocol upgrades; modifiers other than ctrl get hijacked by user-space launchers. Pick a single-modifier ctrl+letter chord
 and accept that "this conflicts with shell editor commands" is acceptable when the binding's intent is to MOVE focus AWAY from
 the input that would consume it.
+
+## Embedded terminal passthrough (2026-07-06, issue #16)
+
+The terminal-in-the-middle center column forwards **maximal** input to the
+engine CLI. `RESERVED_GLOBAL_CHORDS`
+([`panes/terminal/keys-pure.ts`](../packages/kobe/src/tui/panes/terminal/keys-pure.ts))
+shrank to the minimum kobe cannot give up while the terminal is focused:
+
+| chord | owner |
+|---|---|
+| `ctrl+q` | THE escape hatch back to the tasks list (KOB-208) |
+| `ctrl+t` / `ctrl+w` / `ctrl+]` / `ctrl+[` / `F2` | terminal tab management (PTY chattab) |
+| `F5` | terminal reset (confirm-gated) |
+| `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
+
+Everything else — `shift+tab` (claude plan-mode cycle), `ctrl+hjkl`, `F1`,
+`ctrl+p`, `ctrl+,`, `ctrl+r`, alt-combos — passes through to the engine.
+The pane registers modifier-variant passthrough bindings (`ctrl+`/`alt+`/
+`shift+` forms) so they WIN the LIFO stack against kobe's global bindings;
+kobe's globals stay reachable from every non-terminal pane. The pane also
+draws no border of its own — the workspace layout wrapper owns the focus
+border.

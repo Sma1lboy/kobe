@@ -25,6 +25,15 @@ export function keyEventToShellBytes(evt: KeyEvent): string | null {
   const name = evt.name
   if (!name) return null
 
+  // Modifier synthesis for synthetic events (real keystrokes carry
+  // `sequence`): shift+tab is the back-tab CSI claude's plan-mode cycle
+  // expects; alt+<key> is ESC-prefixed per xterm convention.
+  if (evt.shift && name === "tab") return "\x1b[Z"
+  if (evt.option || evt.meta) {
+    const inner = keyEventToShellBytes({ ...evt, option: false, meta: false } as KeyEvent)
+    return inner == null ? null : `\x1b${inner}`
+  }
+
   switch (name) {
     case "return":
     case "enter":
@@ -78,11 +87,12 @@ export const DEFAULT_PAGE_SIZE = 10
 export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
 
 /**
- * Chord strings the terminal pane must NEVER passthrough to the shell —
- * these are kobe's global escape hatches and have to win against the
- * pane-local PTY forwarder. Without this list, ctrl+hjkl/shift+tab/F1/
- * palette chords get consumed as shell input and the user is trapped
- * inside the terminal pane with no way back to the tasks list.
+ * Chord strings the terminal pane must NEVER passthrough to the shell.
+ * Deliberately MINIMAL (owner decision 2026-07-06): the engine CLI owns
+ * its own chords (shift+tab plan-mode, ctrl+r history, ctrl+hjkl, F1…),
+ * so kobe keeps only ctrl+q as the escape hatch plus the tab-management
+ * and reset chords. Kobe's other global chords stay reachable from every
+ * non-terminal pane.
  *
  * Notes on what's *not* here:
  *   - bare `escape` and `tab` stay as passthrough so vim and shell tab
@@ -91,43 +101,21 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
  *     same bindings array (scrollback) — first-match-wins handles them.
  */
 export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
-  // Pane focus (focus.numeric) — primary escape hatch out of the terminal.
-  "ctrl+h",
-  "ctrl+j",
-  "ctrl+k",
-  "ctrl+l",
-  // Pane cycle (focus.prev). focus.next is bare `tab` and stays passthrough
-  // so shell completion works; users get out via shift+tab or ctrl+hjkl.
-  "shift+tab",
-  // Workspace → sidebar jump (app-keymap WORKSPACE_SCOPED). When the chat
-  // content pane runs interactive `claude` it is focused as `workspace`,
-  // and `ctrl+q` is the user's way back to the tasks list. Without
-  // reserving it the pane forwarder sent `\x11` (XON) to claude and the
-  // global jump never fired (KOB-208 interactive mode).
+  // THE escape hatch out of the terminal (KOB-208): from anywhere inside
+  // the engine CLI, ctrl+q returns to the tasks list. Everything else the
+  // engine may want (shift+tab plan-mode, ctrl+hjkl, f1, ctrl+p, ctrl+,)
+  // now PASSES THROUGH — owner decision 2026-07-06: kobe must not eat the
+  // engine's own chords; kobe-global chords remain available from every
+  // other pane.
   "ctrl+q",
-  // Terminal tab chords (workspace chattab, issue #16) — the strip must
-  // win these against the engine CLI, same interception the tmux root
-  // key-table performed. ctrl+w costs shells their delete-word and F2 is
-  // rebindable per docs/KEYBINDINGS.md; parity with the tmux chattab wins.
+  // Terminal tab management (the PTY chattab, issue #16) — parity with the
+  // tmux root key-table which also intercepted these.
   "ctrl+t",
   "ctrl+w",
   "ctrl+]",
   "ctrl+[",
   "f2",
-  // Help / palette / settings.
-  "f1",
-  "ctrl+p",
-  "ctrl+,",
-  // Terminal reset — `F5` kills the current shell and respawns at the
-  // worktree. Earlier passes tried `alt+r` (eaten by opentui's native
-  // debug-overlay handler) and `ctrl+shift+r` (Windows Terminal and
-  // most legacy emulators do NOT distinguish `ctrl+shift+letter` from
-  // `ctrl+letter` at the byte level — kobe receives `ctrl+r` and the
-  // shell sees `\x12`, kicking off readline's reverse-i-search).
-  // F-keys are sent as their own escape sequences (`\x1bOP` /
-  // `\x1b[15~` for F5) so they're unambiguous regardless of modifier
-  // distinguishing capability, and the browser-refresh mnemonic
-  // matches the "reset / restart" intent.
+  // Terminal reset (confirm-gated).
   "f5",
 ] as const
 
