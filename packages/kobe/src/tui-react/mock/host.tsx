@@ -72,7 +72,7 @@ function Workbench() {
       <box paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="column" flexGrow={1}>
         <text fg={theme.text} wrapMode="word">
           {/* i18n runtime proof: a real catalog key through the shared lookup. */}
-          {t("chat.thinking")} — theme "{themeCtx.selected}", focused pane: {focus.focused}
+          {t("settings.title")} — theme "{themeCtx.selected}", focused pane: {focus.focused}
         </text>
         <text fg={theme.textMuted} wrapMode="none">
           panes: {PANE_ORDER.map((p) => (p === focus.focused ? `[${p}]` : p)).join(" ")}

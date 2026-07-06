@@ -41,11 +41,10 @@ export function isDev(): boolean {
 
 /**
  * `KOBE_TUI=1` — experimental native opentui workspace. Instead of entering
- * the tmux handover, `kobe` boots a single-process Sidebar / Chat / Files app
- * (no embedded Terminal pane in v1). The chat column drives one AI SDK harness turn per prompt and
- * renders the streamed `UIMessage` natively, so no long-lived engine process
- * idles between prompts. See `src/tui/workspace/host.tsx` and
- * `src/engine/ai-sdk/harness-turn.ts`.
+ * the tmux handover, `kobe` boots a single-process Sidebar / center / Files
+ * app. The center column is the embedded-terminal tab seam (issue #16):
+ * an in-process PTY running the real engine CLI replaces the removed
+ * native chat pane. See `src/tui/workspace/host.tsx`.
  */
 export function nativeChatEnabled(): boolean {
   return process.env.KOBE_TUI === "1"
