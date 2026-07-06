@@ -298,6 +298,20 @@ Landed on `ctrl+f`. The chord is workspace-scoped (only fires when chat owns foc
 doesn't shadow the global focus-numeric set. Decision: KOB-74. See `context/keybindings.ts`
 → `chat.fork.new` for the registration.
 
+### Embedded-terminal engine-choose chord — why `ctrl+e`, not `ctrl+shift+t`
+
+tmux's chattab has a "prompt for engine, then open a tab" flow bound to `ctrl+shift+t`
+(`chattab.ts`'s `chatTabChooseEngineBindings`) — real tmux `bind-key -n` distinguishes the
+shifted chord because it negotiates the terminal's extended-keys protocol directly. The
+pure-tui embedded terminal (`panes/terminal/`) hits the exact same collision KOB-74 already
+hit: the keymap layer drops `shift+` on letter keys (`lib/keymap-dispatch.ts`), so
+`ctrl+shift+t` and `ctrl+t` (`chat.tab.new`) are indistinguishable there. Same fix shape as
+KOB-74: gave the action its own ctrl+letter chord instead of the shifted one. Landed on
+`ctrl+e` — mnemonic ("engine"), free across every scope, and matches the chord the new-task
+dialog already uses to cycle its own engine selector (`ctrl+e` in
+`component/new-task-dialog/dialog.tsx`). Registration: `chat.tab.chooseEngine` in
+`context/keybindings-chat.ts`; reserved from PTY passthrough in `panes/terminal/keys-pure.ts`.
+
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 
 We iterated through three candidates before landing on `ctrl+hjkl`. Recording the journey here so the next agent (or Jackson) doesn't
@@ -352,6 +366,7 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 |---|---|
 | `ctrl+q` | THE escape hatch back to the tasks list (KOB-208) |
 | `ctrl+t` / `ctrl+w` / `ctrl+]` / `ctrl+[` / `F2` | terminal tab management (PTY chattab) |
+| `ctrl+e` | new chat tab with a chosen engine (`chat.tab.chooseEngine`) — see the decision log below for why not `ctrl+shift+t` |
 | `F5` | terminal reset (confirm-gated) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 
