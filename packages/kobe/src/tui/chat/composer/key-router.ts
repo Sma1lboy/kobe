@@ -1,15 +1,29 @@
-import type { DialogContext } from "@/tui/ui/dialog"
 import type { KeyEvent, TextareaRenderable } from "@opentui/core"
-import type { Accessor, Setter } from "solid-js"
 import { isCursorAtFirstLine, isCursorAtLastLine } from "./cursor"
 import { pushHistory } from "./history"
 import type { PromptHistoryNavigator } from "./history-nav"
-import { HistoryPalette } from "./history-palette-controller"
 import type { ImagePasteRegistry } from "./image-paste"
 import { deleteImageTokenBackward, deleteImageTokenForward } from "./image-token-delete"
 import { isPermissionModeCycleKey, isPlainAutocompleteTabKey } from "./keys"
-import type { MentionController } from "./mention-controller"
-import type { ComposerProps, ComposerSlashEntry } from "./props"
+import type { Accessor, ComposerProps, ComposerSlashEntry } from "./props"
+
+/**
+ * Value-or-updater setter — the shape both Solid's `Setter<T>` and React's
+ * `Dispatch<SetStateAction<T>>` satisfy, so the router stays framework-free
+ * (issue #15 G3) and both composers hand their native setters straight in.
+ */
+export type ValueSetter<T> = (value: T | ((prev: T) => T)) => void
+
+/**
+ * Ctrl+R palette seam — the Solid composer wires this to
+ * `HistoryPalette.show(dialog, opts)` and the React composer to its own
+ * dialog stack, keeping the router free of any framework's dialog context.
+ * Resolves with the picked entry's raw stored value, `undefined` on cancel.
+ */
+export type ShowHistoryPalette = (opts: {
+  readonly taskLabelFor: (historyKey: string) => string | undefined
+  readonly currentProject: string | undefined
+}) => Promise<string | undefined>
 
 /**
  * Input-event glue extracted from Composer: the raw-key router
@@ -20,24 +34,25 @@ import type { ComposerProps, ComposerSlashEntry } from "./props"
  */
 export function createKeyRouter(deps: {
   readonly props: ComposerProps
-  readonly dialog: DialogContext
+  readonly showHistoryPalette: ShowHistoryPalette
   readonly getTextarea: () => TextareaRenderable | undefined
   readonly bashMode: Accessor<boolean>
-  readonly setBashMode: Setter<boolean>
+  readonly setBashMode: ValueSetter<boolean>
   readonly bashAvailable: () => boolean
   readonly liveBuffer: Accessor<string>
-  readonly setLiveBuffer: Setter<string>
-  readonly setLiveCursor: Setter<number>
+  readonly setLiveBuffer: ValueSetter<string>
+  readonly setLiveCursor: ValueSetter<number>
   readonly setBuffer: (text: string) => void
   readonly slashOpen: Accessor<boolean>
   readonly slashMatches: Accessor<readonly ComposerSlashEntry[]>
   readonly slashCursor: Accessor<number>
-  readonly setSlashCursor: Setter<number>
-  readonly mention: MentionController
+  readonly setSlashCursor: ValueSetter<number>
+  /** Structural slice of the mention controller — the router only routes keys. */
+  readonly mention: { readonly handleKeyDown: (key: KeyEvent) => boolean }
   readonly historyNav: PromptHistoryNavigator
   readonly imageRegistry: ImagePasteRegistry
   readonly pasteHint: Accessor<string | null>
-  readonly setPasteHint: Setter<string | null>
+  readonly setPasteHint: ValueSetter<string | null>
   readonly applyHistoryRecall: (recalled: string) => void
   readonly tryAttachClipboardImage: () => Promise<void>
 }): {
@@ -47,7 +62,7 @@ export function createKeyRouter(deps: {
 } {
   const {
     props,
-    dialog,
+    showHistoryPalette,
     getTextarea,
     bashMode,
     setBashMode,
@@ -163,7 +178,7 @@ export function createKeyRouter(deps: {
     // the palette, but each row falls back to "no task label".
     if (key.name === "r" && key.ctrl && !key.shift && !key.meta && !key.super) {
       const resolver = props.taskLabelForHistoryKey ?? (() => undefined)
-      void HistoryPalette.show(dialog, {
+      void showHistoryPalette({
         taskLabelFor: resolver,
         currentProject: props.currentProjectRoot?.(),
       }).then((picked) => {

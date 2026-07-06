@@ -4,8 +4,8 @@
  * `handleKeyDown` / `handleSubmit` / `handleContentChange` driven with
  * mock callbacks and a fake textarea (no opentui, no real engine).
  *
- * `./history-palette-controller` is mocked so importing the router does
- * not pull in `@opentui/core` (which fails to load under vitest).
+ * The Ctrl+R palette is an injected seam (`showHistoryPalette`), so the
+ * router is framework-free and imports cleanly under vitest.
  */
 
 import type { KeyEvent } from "@opentui/core"
@@ -13,10 +13,6 @@ import { beforeAll, describe, expect, test, vi } from "vitest"
 
 // Never touch the real ~/.kobe history store from a submit path.
 process.env.KOBE_HISTORY_PERSIST = "false"
-
-vi.mock("../../src/tui/chat/composer/history-palette-controller", () => ({
-  HistoryPalette: { show: vi.fn(async () => undefined) },
-}))
 
 import { createKeyRouter } from "../../src/tui/chat/composer/key-router"
 
@@ -100,7 +96,7 @@ function build(opts: {
 
   const deps = {
     props,
-    dialog: {},
+    showHistoryPalette: vi.fn(async () => undefined),
     getTextarea: () => textarea,
     bashMode,
     setBashMode: vi.fn(setBashMode),
@@ -167,6 +163,22 @@ describe("handleKeyDown", () => {
     const { router, slashCursor } = build({ slashOpen: true, slashMatches: matches, slashCursor: 0 })
     router.handleKeyDown(key({ name: "down" }))
     expect(slashCursor()).toBe(1)
+  })
+
+  test("ctrl+r opens the injected history palette and applies the pick", async () => {
+    // The palette is a framework seam (issue #15 G3): the router only knows
+    // the promise contract, so both the Solid and React composers can wire
+    // their own dialog stacks in.
+    const { router, deps } = build({})
+    ;(deps.showHistoryPalette as ReturnType<typeof vi.fn>).mockResolvedValueOnce("!ls -la")
+    const k = key({ name: "r", ctrl: true })
+    router.handleKeyDown(k)
+    expect(deps.showHistoryPalette).toHaveBeenCalledWith(
+      expect.objectContaining({ currentProject: undefined, taskLabelFor: expect.any(Function) }),
+    )
+    expect(k.preventDefault).toHaveBeenCalled()
+    await new Promise((r) => setTimeout(r, 0)) // let the .then(applyHistoryRecall) hop settle
+    expect(deps.applyHistoryRecall).toHaveBeenCalledWith("!ls -la")
   })
 
   test("up arrow at the first line recalls prior history", () => {
