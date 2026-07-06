@@ -20,6 +20,7 @@ export class PipeTaskPty implements TaskPtyLike {
   private readonly listeners = new Set<DataListener>()
   private buffer = ""
   private _killed = false
+  private readonly exitListeners = new Set<() => void>()
   private cols: number
   private rows: number
 
@@ -141,6 +142,26 @@ export class PipeTaskPty implements TaskPtyLike {
         /* best effort */
       }
     }
+    const exitCbs = [...this.exitListeners]
     this.listeners.clear()
+    this.exitListeners.clear()
+    for (const cb of exitCbs) {
+      try {
+        cb()
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+  }
+
+  onExit(cb: () => void): () => void {
+    if (this._killed) {
+      cb()
+      return () => {}
+    }
+    this.exitListeners.add(cb)
+    return () => {
+      this.exitListeners.delete(cb)
+    }
   }
 }
