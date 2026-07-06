@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest"
-import { createExternalStore } from "../../src/tui-react/lib/external-store"
+import { createExternalStore } from "../../src/lib/external-store"
 
 describe("createExternalStore", () => {
   it("get returns the current snapshot; set replaces it", () => {

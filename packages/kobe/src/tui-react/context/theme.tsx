@@ -19,6 +19,7 @@
 import { RGBA } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react"
+import { createExternalStore } from "../../lib/external-store"
 import {
   BUNDLED_THEMES,
   type FocusAccentSlot,
@@ -27,7 +28,6 @@ import {
   applyDisplayOverlay,
   resolveTheme,
 } from "../../tui/context/theme-core"
-import { createExternalStore } from "../lib/external-store"
 
 export { FOCUS_ACCENT_SLOTS, resolveTheme } from "../../tui/context/theme-core"
 export type { FocusAccentSlot, Theme, ThemeJson } from "../../tui/context/theme-core"
@@ -61,6 +61,42 @@ export function addTheme(name: string, theme: ThemeJson): boolean {
   if (!theme || typeof theme !== "object" || !theme.theme) return false
   store.update((s) => ({ ...s, themes: { ...s.themes, [name]: theme } }))
   return true
+}
+
+// Module-level accessors/setters, mirroring the Solid module's
+// store-outside-the-provider semantics. The React host-boot path (issue #15
+// G3) seeds persisted prefs through these BEFORE the first render (no
+// flash) and applies live daemon ui-prefs pushes without a hook scope; the
+// provider's context methods delegate to the same store.
+
+export function selectedTheme(): string {
+  return store.get().active
+}
+
+export function setTheme(name: string): boolean {
+  if (!hasTheme(name)) return false
+  store.update((s) => ({ ...s, active: name }))
+  return true
+}
+
+export function transparentBackground(): boolean {
+  return store.get().transparentBackground
+}
+
+export function setTransparentBackground(v: boolean): void {
+  store.update((s) => ({ ...s, transparentBackground: v }))
+}
+
+export function focusAccent(): FocusAccentSlot {
+  return store.get().focusAccent
+}
+
+export function setFocusAccent(v: FocusAccentSlot): void {
+  store.update((s) => ({ ...s, focusAccent: v }))
+}
+
+export function setThemeMode(mode: "dark" | "light"): void {
+  store.update((s) => ({ ...s, mode }))
 }
 
 export type ThemeContextValue = {

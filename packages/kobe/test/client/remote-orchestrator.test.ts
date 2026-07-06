@@ -457,3 +457,38 @@ describe("worktree.changes pure helpers", () => {
     expect(sameWorktreeChangesMap(a, new Map())).toBe(false)
   })
 })
+
+describe("framework-free store twins (React hosts, issue #15 G3)", () => {
+  // Why this matters: React panes receive live daemon pushes ONLY through
+  // these stores — solid-js signals are inert under node/vitest and plain
+  // bun (SSR build). If the dual-write drifts or stops notifying, React
+  // panes silently freeze on boot-time prefs. Note the SUBSCRIBE assertions:
+  // in this very environment the Solid accessor would not notify, which is
+  // the reason the stores exist.
+  it("ui-prefs channel lands in uiPrefsStore and notifies subscribers", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+    const store = orch.uiPrefsStore()
+    const seen: Array<string | undefined> = []
+    const unsub = store.subscribe(() => seen.push(store.get()?.theme))
+    emit("ui-prefs", { theme: "nord" })
+    expect(store.get()?.theme).toBe("nord")
+    expect(orch.uiPrefsSignal()()?.theme).toBe("nord")
+    emit("ui-prefs", { theme: "claude" })
+    unsub()
+    emit("ui-prefs", { theme: "dracula" })
+    expect(seen).toEqual(["nord", "claude"])
+    expect(store.get()?.theme).toBe("dracula")
+  })
+
+  it("keybindings channel lands in keybindingsRevStore and notifies", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+    const store = orch.keybindingsRevStore()
+    const seen: Array<number | null> = []
+    store.subscribe(() => seen.push(store.get()))
+    emit("keybindings", { rev: 1 })
+    emit("keybindings", { rev: 2 })
+    expect(seen).toEqual([1, 2])
+  })
+})

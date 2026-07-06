@@ -18,6 +18,7 @@ import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-proce
 import type { ChannelName, SubscribeRole, UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { isDaemonVersionStale } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
+import { type ExternalStore, createExternalStore } from "../lib/external-store.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
@@ -93,6 +94,11 @@ export class RemoteOrchestrator {
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
   private readonly setKeybindingsRevSig: (next: number | null) => void
+  // Framework-free twins of the two signals above (issue #15 G3) — React
+  // hosts need stores because solid-js reactivity is inert outside
+  // reactive-solid runtimes. Setters dual-write; single writer, no drift.
+  private readonly uiPrefsStoreInner = createExternalStore<UiPrefsPayload | null>(null)
+  private readonly keybindingsRevStoreInner = createExternalStore<number | null>(null)
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -139,9 +145,15 @@ export class RemoteOrchestrator {
     this.transcriptActivityAcc = transcriptActivity
     this.setTranscriptActivitySig = (next) => setTranscriptActivity(() => next)
     this.uiPrefsAcc = uiPrefs
-    this.setUiPrefsSig = (next) => setUiPrefs(() => next)
+    this.setUiPrefsSig = (next) => {
+      setUiPrefs(() => next)
+      this.uiPrefsStoreInner.set(next)
+    }
     this.keybindingsRevAcc = keybindingsRev
-    this.setKeybindingsRevSig = (next) => setKeybindingsRev(() => next)
+    this.setKeybindingsRevSig = (next) => {
+      setKeybindingsRev(() => next)
+      this.keybindingsRevStoreInner.set(next)
+    }
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -362,6 +374,15 @@ export class RemoteOrchestrator {
   }
 
   /**
+   * Framework-free twin of {@link uiPrefsSignal} for React hosts: a
+   * subscribe/get pair that notifies in every runtime. Same values,
+   * same nullability, one writer (the setter dual-writes).
+   */
+  uiPrefsStore(): ExternalStore<UiPrefsPayload | null> {
+    return this.uiPrefsStoreInner
+  }
+
+  /**
    * The keybindings-file revision, bumped on the daemon's `keybindings`
    * channel whenever `~/.kobe/settings/keybindings.yaml` changes. An opaque
    * token — a consumer re-reads + re-applies the file on each transition.
@@ -370,6 +391,11 @@ export class RemoteOrchestrator {
    */
   keybindingsRevSignal(): Accessor<number | null> {
     return this.keybindingsRevAcc
+  }
+
+  /** Framework-free twin of {@link keybindingsRevSignal} — see uiPrefsStore. */
+  keybindingsRevStore(): ExternalStore<number | null> {
+    return this.keybindingsRevStoreInner
   }
 
   listTasks(): Task[] {

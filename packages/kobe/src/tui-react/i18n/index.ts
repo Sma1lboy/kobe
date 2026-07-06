@@ -15,9 +15,9 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react"
+import { createExternalStore } from "../../lib/external-store"
 import { CATALOGS, DEFAULT_LOCALE, LOCALES, type LocaleId } from "../../tui/i18n/catalog"
 import { interpolate, lookup, lookupKeys } from "../../tui/i18n/lookup"
-import { createExternalStore } from "../lib/external-store"
 
 export { LOCALES, DEFAULT_LOCALE, isLocaleId } from "../../tui/i18n/catalog"
 export type { LocaleId } from "../../tui/i18n/catalog"
