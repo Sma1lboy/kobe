@@ -196,7 +196,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
   })
 
-  // Channel event bus (KOB-246): the single hub the daemon publishes push
+  // Channel event bus: the single hub the daemon publishes push
   // events to. One sink fans each publish out to subscribed sockets; the
   // bus also caches the last value per channel so a late subscriber gets
   // the current value on connect. `task.snapshot` is channel #1; new
@@ -357,7 +357,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     () => lifetime.hasSubscribers(),
   )
 
-  // PR-status poller (KOB-10): shells `gh pr view` per task with a real branch
+  // PR-status poller: shells `gh pr view` per task with a real branch
   // and writes the result onto Task.prStatus, which rides the same task push as
   // every other field. Gated on subscribers so a gui-less daemon never hits the
   // network for nobody.
@@ -513,7 +513,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       )
       // Replay the current value of every populated channel so a late
       // subscriber hydrates without a separate round trip — generalized
-      // from the old single task.snapshot send (KOB-246). Filtered to the
+      // from the old single task.snapshot send. Filtered to the
       // client's requested channels (null = all). The bus cache is warm
       // (subscribeTasks' eager fire).
       for (const event of bus.snapshot()) {

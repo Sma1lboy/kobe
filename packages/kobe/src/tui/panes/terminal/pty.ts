@@ -11,7 +11,7 @@
  * cells back to ANSI and re-parse them. xterm-headless owns the VT
  * emulation end to end; this file only maps its cells to chunks. (The
  * old cell→ANSI→reparse round-trip was where every render bug lived:
- * true-color SGR mis-parsing, multi-byte glyph corruption. KOB-224.)
+ * true-color SGR mis-parsing, multi-byte glyph corruption.)
  *
  * A pipe backend remains available through `KOBE_TERMINAL_BACKEND=pipe`
  * as a fallback for old Bun builds or unsupported platforms. It has no
@@ -76,7 +76,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     // terminal on startup to detect its type/capabilities and to sync
     // its cursor model. Dropping the replies left claude on a fallback
     // path whose relative cursor-move + erase-to-EOL redraw landed on
-    // the wrong rows, half-erasing its input-box rule (KOB-208).
+    // the wrong rows, half-erasing its input-box rule.
     this.term.onData((data) => {
       if (this._killed) return
       try {
@@ -226,7 +226,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     // boundary is reassembled correctly. Decoding each chunk to a UTF-8
     // string here instead corrupted any glyph straddling a boundary:
     // claude's full-width input-box rule rendered with gaps and its
-    // relative-cursor redraw landed on the wrong row (KOB-208).
+    // relative-cursor redraw landed on the wrong row.
     this.term.write(data, () => this.queueRefresh())
   }
 

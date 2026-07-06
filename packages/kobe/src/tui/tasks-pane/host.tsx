@@ -1,6 +1,6 @@
 /**
  * `kobe tasks` — the experimental Tasks pane on the far left of a task's
- * tmux session (KOB-233). agent-deck-style: keep the task list visible
+ * tmux session. agent-deck-style: keep the task list visible
  * inside a tmux Session so you can jump between tasks without detaching to
  * the outer monitor. Reuses the real `Sidebar`; Enter `switch-client`s to
  * a task's session.
@@ -69,7 +69,7 @@ export function TasksShell(props: {
    * The shared task-state framework: one daemon-backed RemoteOrchestrator
    * used for BOTH the live subscribe (reads) and every mutation (writes),
    * so the Tasks pane goes through the same single source of truth as the
-   * outer monitor — no ad-hoc per-op clients (KOB-244). `null` only in the
+   * outer monitor — no ad-hoc per-op clients. `null` only in the
    * degraded no-daemon fallback, where mutations are unavailable.
    */
   orch: RemoteOrchestrator | null
@@ -159,7 +159,7 @@ export function TasksShell(props: {
   // pane on every resize.
   const dimensions = useTerminalDimensions()
 
-  // Shared active-task focus (`active-task` channel, KOB-247) is followed
+  // Shared active-task focus (`active-task` channel) is followed
   // ONLY by a HOME pane (no initialTaskId) — the navigational surface where
   // selecting a row IS the focus. A pane SPAWNED for a task session pins its
   // highlight to that one task instead: following shared focus made it LIE
@@ -245,7 +245,7 @@ export function TasksShell(props: {
   }
 
   // Rename a task's title via the daemon's `task.rename` RPC (same flow
-  // the outer app's `r` uses). No pane zoom (KOB-244) — the dialog shows
+  // the outer app's `r` uses). No pane zoom — the dialog shows
   // in place; the other panes stay visible.
   async function renameTask(id: string): Promise<void> {
     await renameTaskFlow(taskActions, id)
@@ -463,7 +463,7 @@ export function TasksShell(props: {
           // (new-task / rename) leaks past the input to switchTo and yanks
           // you into a task (the Sidebar's Enter isn't registered through
           // the input's onSubmit, so the keymap falls through to it). Mirrors
-          // the n/b/v gate above (KOB-244).
+          // the n/b/v gate above.
           focused={() => dialog.stack.length === 0}
           onSearchActiveChange={setSearchActive}
           // Track the cursor row so the host-scoped o/b/v chords act on the

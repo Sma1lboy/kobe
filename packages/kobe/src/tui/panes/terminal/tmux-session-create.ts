@@ -33,7 +33,7 @@ import { attachedWindowInfo, tmuxInitialSizeArgs } from "./tmux.ts"
  * surrounding panes. Each pane command is passed as the trailing arg to
  * new-session / split-window — tmux runs it via its own `sh -c`, so we
  * hand it a single shell command STRING and skip send-keys (which
- * re-parses text and mangled the Ops `sh -c` quoting in KOB-233). Pane
+ * re-parses text and mangled the Ops `sh -c` quoting). Pane
  * ids (`%N`) are server-global and immune to `base-index`, so we always
  * target by id.
  */

@@ -75,7 +75,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
   },
   {
     // `a` → inject `@<path>` into the engine (claude/codex) pane via
-    // tmux send-keys (KOB-232). Enter stays the full-width preview; this
+    // tmux send-keys. Enter stays the full-width preview; this
     // is the "add as a mention" action. Plain letter, files-scoped per
     // the keybinding-boundaries rule, so it can't collide elsewhere.
     id: "files.mention",

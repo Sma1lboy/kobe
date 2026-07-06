@@ -150,9 +150,9 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   },
   {
     // tmux's chattab has a "prompt for engine, then open a tab" chord on
-    // `ctrl+shift+t`. Can't reuse that chord here: same KOB-74 collision
+    // `ctrl+shift+t`. Can't reuse that chord here: same shift+letter collision
     // (the keymap layer drops shift+ on letter keys, so ctrl+shift+t and
-    // ctrl+t are indistinguishable) — see docs/KEYBINDINGS.md decision log.
+    // ctrl+t are indistinguishable).
     // `ctrl+e` mirrors the "engine" mnemonic the new-task dialog already
     // uses for its own vendor cycle chord.
     id: "chat.tab.chooseEngine",
@@ -163,7 +163,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+e", label: "choose engine", status: false },
   },
   {
-    // KOB-74. Quick-fork: from a focused chat tab, spin up a child
+    // Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires
     // immediately. `ctrl+t` is taken by `chat.tab.new` (same task,
@@ -174,7 +174,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // Picked `ctrl+f` ("fork") because it's free across the keymap,
     // ctrl+letter has stable C0 byte mappings that work in every
     // terminal, and the workspace scope keeps it from intruding on
-    // other panes. See docs/KEYBINDINGS.md decision log.
+    // other panes.
     id: "chat.fork.new",
     scope: "workspace",
     keys: ["ctrl+f"],
@@ -189,7 +189,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // Selecting an already-open session focuses its tab; otherwise a
     // new tab is opened seeded with that sessionId. Chord chosen for
     // mnemonic "yank from history" — `ctrl+r` belongs to the prompt
-    // history palette (claude-code parity, KOB-154) and `ctrl+h`
+    // history palette (claude-code parity) and `ctrl+h`
     // collides with terminals' backspace byte.
     id: "chat.session.resume",
     scope: "workspace",
@@ -210,8 +210,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // Rename the active chat tab. F2 is the cross-OS / cross-IDE
     // rename convention (file managers on Windows + Linux, IntelliJ,
     // VS Code etc.) — chosen here because `ctrl+r` is owned by the
-    // composer's prompt-history palette (claude-code parity, KOB-154
-    // → KOB-156). F2 has no other binding in kobe and doesn't
+    // composer's prompt-history palette (claude-code parity). F2 has no other binding in kobe and doesn't
     // collide with terminal bytes the way some control chords do.
     id: "chat.tab.rename",
     scope: "workspace",
@@ -269,8 +268,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   },
   {
     // Split-focus cycle in reading order (tmux `prefix o`). F3 because
-    // every useful ctrl+letter is either engine passthrough (owner
-    // decision 2026-07-06) or taken; F-keys already carry the tab
+    // every useful ctrl+letter is either engine passthrough or
+    // taken; F-keys already carry the tab
     // vocabulary here (F2 rename).
     id: "workspace.split.focus-next",
     scope: "workspace",

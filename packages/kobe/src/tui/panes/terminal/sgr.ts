@@ -108,8 +108,8 @@ export function ansi256ToRgb(index: number): RGB {
  * (blue/cyan/bright-magenta) into one accent family — e.g. `ls`'s `di`
  * (directory, blue) and `ln` (symlink, cyan) read as the same violet in a
  * themed iTerm2 profile, but as two distinct colors against the stock
- * palette (KOB, 2026-07-06: reported as "kobe renders these wrong," not a
- * decode bug — `ansi256ToRgb`/truecolor decode is bit-exact, verified).
+ * palette (reported as "kobe renders these wrong" — not a decode bug:
+ * `ansi256ToRgb`/truecolor decode is bit-exact, verified).
  *
  * Replaced with Tokyo Night's published terminal ANSI colors (a popular
  * modern scheme, also one of kobe's own bundled UI themes) so the

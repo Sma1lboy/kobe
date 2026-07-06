@@ -128,8 +128,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // follow-bottom), negative moves up into history — tests assert this.
   // Clamped to the real history depth: an unbounded offset kept growing
   // past the top, so scrolling back down first had to "spin" through the
-  // phantom distance before anything moved (the overshoot half of the
-  // owner's wheel report).
+  // phantom distance before anything moved.
   const scrollBy = (lines: number): void => {
     const max = Math.max(0, snapshot().length - bodyRows())
     setScrollOffset((cur) => Math.min(max, Math.max(0, cur - lines)))
@@ -142,8 +141,8 @@ export function Terminal(props: TerminalProps): JSXElement {
   // copies the cells the highlight showed — dual delivery via
   // clipboard-copy.ts (pbcopy pipe + OSC52). DECLARED BEFORE the render
   // memos: cursorRows reads selection() during its EAGER first
-  // evaluation, and a later declaration is a TDZ crash (pane-crash,
-  // 2026-07-06). cellFromEvent/copySelection only run from event
+  // evaluation, and a later declaration is a TDZ crash.
+  // cellFromEvent/copySelection only run from event
   // handlers, so their later-declared reads (renderer) are safe.
   const [selAnchor, setSelAnchor] = createSignal<CellPoint | null>(null)
   const [selHead, setSelHead] = createSignal<CellPoint | null>(null)
@@ -302,8 +301,8 @@ export function Terminal(props: TerminalProps): JSXElement {
     // wrecked frame until the next real measurement. Skip until the box
     // has actually been laid out; onSizeChange re-fires this effect then.
     if (ref.width <= 0 || ref.height <= 0) return
-    // Flush grid — the body carries no padding (owner feedback 2026-07-06:
-    // the engine CLI owns its own gutters), so the full box width is usable.
+    // Flush grid — the body carries no padding (the engine CLI owns its
+    // own gutters), so the full box width is usable.
     const cols = Math.max(20, ref.width)
     const rows = Math.max(4, ref.height)
     setBodyRows(rows)
@@ -397,7 +396,7 @@ export function Terminal(props: TerminalProps): JSXElement {
         // One line per event: opentui's parser emits delta:1 per wheel
         // tick and the host terminal already granulates trackpad flicks
         // into a stream of ticks — multiplying here compounded to 3x
-        // speed and overshot the target ("滑过", owner report).
+        // speed and overshot the target.
         const step = Math.max(1, scroll.delta || 1)
         scrollBy(scroll.direction === "up" ? -step : step)
       }}

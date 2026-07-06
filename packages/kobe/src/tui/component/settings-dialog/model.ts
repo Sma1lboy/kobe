@@ -2,8 +2,8 @@
  * Pure data + helpers for settings-dialog (v0.6).
  *
  * v0.5 had a Codex (app-server / exec backend) section that depended on
- * engine modules v0.6 deleted, so it's gone. Accounts came back in
- * KOB-249 (read-only claude/codex/copilot login detection) alongside
+ * engine modules v0.6 deleted, so it's gone. Accounts came back
+ * (read-only claude/codex/copilot login detection) alongside
  * the Engines launch-command section.
  *
  * Row registry: each section declares an ORDERED list of row descriptors

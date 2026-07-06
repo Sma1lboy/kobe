@@ -1,5 +1,5 @@
 /**
- * Daemon event bus (KOB-246).
+ * Daemon event bus.
  *
  * One typed pub/sub hub the daemon uses to fan channel events out to
  * subscribed clients. It replaces the inline single-purpose `task.snapshot`

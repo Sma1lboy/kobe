@@ -76,7 +76,7 @@ export const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸
 export const SPINNER_FRAME_MS = 100
 
 /**
- * The right-stuck PR-check chip for a task's subtitle row (KOB-10). The
+ * The right-stuck PR-check chip for a task's subtitle row. The
  * daemon's pr-status poller writes `task.prStatus`; this maps its `checkState`
  * to a single coloured glyph (✓ passing / ✗ failing / • pending). Returns null
  * for tasks with no PR or no checks configured (`none` / `unknown`) so the row

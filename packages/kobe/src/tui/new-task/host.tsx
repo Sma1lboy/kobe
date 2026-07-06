@@ -76,7 +76,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
     try {
       if (result.mode === "adopt") {
         // Adopt one or more existing worktrees; enter the LAST one (mirrors the
-        // Tasks pane's "focus the last adopted" — KOB-256).
+        // Tasks pane's "focus the last adopted").
         for (const w of result.adopt) {
           entered = await orch.adoptWorktree({
             repo: result.repo,

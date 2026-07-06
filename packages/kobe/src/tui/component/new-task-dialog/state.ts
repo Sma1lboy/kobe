@@ -40,7 +40,7 @@ import { DEFAULT_BASE_REF } from "../../lib/git-snapshot"
  * Dialog result. Two shapes, discriminated by `mode`:
  *   - create (default) — make a fresh task on `repo` at `baseRef`.
  *   - adopt — import one or more EXISTING git worktrees as tasks
- *     (KOB-256). `adopt` carries the chosen worktrees; the caller loops
+ *. `adopt` carries the chosen worktrees; the caller loops
  *     `orchestrator.adoptWorktree` over them.
  */
 export type NewTaskInput =
@@ -225,7 +225,7 @@ export function firstFieldFor(tab: DialogTab): Field {
 }
 
 /**
- * Filter adoptable worktrees by a path glob (KOB-256). Empty glob → the
+ * Filter adoptable worktrees by a path glob. Empty glob → the
  * full list. Matches against the absolute path AND the basename, so a
  * bare `feature-*` works without typing the full directory. Uses Bun's
  * built-in `Glob` (zero-dep). An invalid pattern matches nothing rather

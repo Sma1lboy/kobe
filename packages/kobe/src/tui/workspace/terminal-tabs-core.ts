@@ -124,8 +124,8 @@ export function openEditorTab(state: TabsState, command: readonly string[], labe
 
 /**
  * Degrade an engine tab whose CLI exited into a plain shell tab. Exiting
- * the vendor CLI is an allowed action, not an error (owner decision
- * 2026-07-06): the tab keeps its identity (id/title/ordinal) and respawns
+ * the vendor CLI is an allowed action, not an error: the tab keeps
+ * its identity (id/title/ordinal) and respawns
  * as `shell` in the same worktree instead of freezing behind the
  * dead-shell exit banner. No-op if the tab is gone or already a command
  * tab (those close themselves on exit instead — see `TerminalTabs.tsx`).

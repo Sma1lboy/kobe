@@ -1,14 +1,3 @@
-/**
- * Why this matters: the split tree IS the tmux-pane contract inside one
- * workspace surface (issue #16) — same-orientation splits become
- * siblings, cross-orientation splits nest, finished leaves collapse
- * their group, and the tree stays content-agnostic (leaves carry an
- * opaque payload). The terminal adapter's key rule — `leaf-1` keeps the
- * tab-level PTY key so the engine session survives the first split —
- * is pinned here too via `splitLeafPtyKey`. A regression scrambles
- * leaf→resource mapping and kills or orphans live engine processes.
- */
-
 import { describe, expect, it } from "vitest"
 import {
   type SplitGroup,

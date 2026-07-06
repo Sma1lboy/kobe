@@ -20,7 +20,7 @@
  *   - {@link refreshKobeWorkspacePanes} — unconditional Tasks/Ops respawns
  *     after a settings change (`kobe reload`, Settings page exit).
  *   - {@link relaunchEngineInAllWindows} — the vendor-switch engine
- *     respawn (KOB-232), here because it is the same "respawn in place,
+ *     respawn, here because it is the same "respawn in place,
  *     keep pane ids" move aimed at the engine pane instead.
  *
  * The WHICH-panes policy is pure ({@link parseKobePaneRows},
@@ -170,7 +170,7 @@ export type PaneHealTarget =
  *     window with NO claude pane (`claudePaneId: null`) — `opsPaneCommand`
  *     already degrades to its git-status fallback, and skipping it
  *     silently left the pane on stale code after a `kobe reload`.
- *   - `vendorChanged: true` (the vendor-switch heal, KOB-232): respawn
+ *   - `vendorChanged: true` (the vendor-switch heal): respawn
  *     every OPS pane that still has a live claude pane regardless of
  *     version — the Ops pane bakes its `--vendor` flag at spawn time
  *     (`opsPaneCommand`), so on an in-place engine switch a same-version
@@ -319,7 +319,7 @@ export function classifyRelaunchOutcome(enginePaneCount: number, sequenceExitCod
  * `"respawn-failed"` when the batched respawn reported a tmux error (caller
  * leaves the prior `@kobe_vendor` tag rather than falsely claiming the switch).
  * Used to apply a vendor switch to a multi-window session without
- * `kill-session` dropping sibling chat tabs (KOB-232).
+ * `kill-session` dropping sibling chat tabs.
  *
  * Engine identity is re-woven PER WINDOW, exactly like the two fresh launch
  * paths (`ensureSession`'s create branch + `newChatTab`). The pre-fix code
@@ -471,7 +471,7 @@ export async function healWorkspaceLayout(
           force: false,
           // After an in-place vendor switch, force the Ops panes to respawn so
           // their baked `--vendor` flag (and the transcript store the activity
-          // badge / turn detector poll) match the new engine (KOB-232).
+          // badge / turn detector poll) match the new engine.
           vendorChanged: versions.vendorChanged,
         }),
         versions,

@@ -3,7 +3,7 @@
  * terminal emulators select, replacing opentui's text-flow selection
  * which broke over this pane (the snapshot <text> is replaced wholesale
  * on every PTY frame, so flow anchors were invalidated mid-drag:
- * glitchy highlight, empty extraction, owner report 2026-07-06).
+ * glitchy highlight, empty extraction).
  *
  * Everything here is pure and cell-addressed: a selection is an anchor
  * and a head in ABSOLUTE snapshot coordinates (row = index into the

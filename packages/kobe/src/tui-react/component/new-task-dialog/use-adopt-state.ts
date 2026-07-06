@@ -1,6 +1,6 @@
 /**
- * Adopt-tab state hook for the React new-task dialog (issue #15, G3W2 /
- * KOB-256) — split out of `./view-model.ts`: worktree discovery (async
+ * Adopt-tab state hook for the React new-task dialog (issue #15,
+ * G3W2) — split out of `./view-model.ts`: worktree discovery (async
  * canon: useState + dependency-keyed effect with a disposed flag), glob
  * filter, windowed cursor, and the multi-select import commit.
  */

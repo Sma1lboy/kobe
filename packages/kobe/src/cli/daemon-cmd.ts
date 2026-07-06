@@ -1,7 +1,7 @@
 /**
  * `kobe daemon <command>` — daemon lifecycle subcommands.
  *
- * Ported from the now-removed `kobed` bin (KOB-136). The body is the same
+ * Ported from the now-removed `kobed` bin. The body is the same
  * logic with a different argv shape: the dispatcher in `cli/index.ts`
  * passes `rest` already trimmed of the `daemon` verb, so we read the
  * sub-command at `argv[0]` instead of `argv[2]`.
@@ -82,7 +82,7 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
 
   if (command === "restart") {
     // Stop + confirm-dead + unlink socket/pidfile via the shared
-    // escalation helper (KOB-258), then respawn. Spawn the new daemon as
+    // escalation helper, then respawn. Spawn the new daemon as
     // a detached child instead of becoming it ourselves — otherwise
     // `kobe daemon restart` blocks the shell forever and looks "hung" to
     // anyone running it interactively.

@@ -48,7 +48,7 @@ export function wrapEngineLaunch(engineCmd: string, remoteKey: string | undefine
  * restarts. Without this the Tasks pane could read the PRODUCTION
  * `~/.kobe/tasks.json` (KOBE_HOME_DIR missing) or connect to a dead
  * daemon (KOBE_DAEMON_SOCKET_PATH stale) → its task list / clicks
- * desynced from the outer monitor (KOB-244).
+ * desynced from the outer monitor.
  */
 export function inheritedEnvPrefix(): string {
   const parts: string[] = []

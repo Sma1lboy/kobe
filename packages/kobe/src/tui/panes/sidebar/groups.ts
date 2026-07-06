@@ -1,7 +1,7 @@
 /**
  * Pure list-shaping helpers for the sidebar pane.
  *
- * Wave 4.5 dropped repo grouping (Jackson decided "撤销 repo分组也太蠢了").
+ * Wave 4.5 dropped repo grouping.
  * The sidebar is now a flat list of task rows split into two views:
  *
  *   - "Working session" (active) — `task.archived === false`
@@ -69,7 +69,7 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * the renderer can compare against the cursor without recounting.
  *
  * Row order in the active ("Working session") view:
- *   1. Pinned "main" tasks first, ordered by repo basename (KOB-15).
+ *   1. Pinned "main" tasks first, ordered by repo basename.
  *   2. User-pinned regular tasks (`pinned === true`), in input order.
  *   3. Other regular tasks (`kind === "task"`), in input order.
  *

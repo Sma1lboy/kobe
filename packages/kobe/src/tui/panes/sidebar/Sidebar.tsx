@@ -347,8 +347,7 @@ export function Sidebar(props: SidebarProps) {
    * `[` from the leftmost lands on the rightmost and vice versa. Today
    * there are 2 views so both directions toggle, but the cycle shape is
    * preserved so a future third view drops in without a binding rewrite.
-   * (An earlier session briefly switched to clamp on a misread of the
-   * spec — Jackson confirmed loop is the intended behavior; the apparent
+   * (Loop, not clamp, is the intended behavior; the apparent
    * "[ goes right" bug was a pinyin-IME swallow.)
    */
   function cycleView(delta: -1 | 1): void {

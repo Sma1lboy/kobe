@@ -7,7 +7,7 @@
  * whose interactive CLI runs inside the tmux pane and whose on-disk
  * history JSONL the outer monitor reads for the live preview rail and
  * cost dashboard: `"claude"`, `"codex"`, and `"copilot"` (GitHub
- * Copilot CLI, ported into the v0.6 shape in KOB-249).
+ * Copilot CLI, ported into the v0.6 shape).
  *
  * Per-task vendor is still recorded on Task so the monitor knows
  * which history-reader to call.

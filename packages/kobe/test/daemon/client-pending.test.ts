@@ -6,24 +6,6 @@ import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 /**
- * Memory-leak contract for the daemon client's in-flight request map.
- *
- * Why this matters: `request()` parks a `{ resolve, reject }` pair in the
- * `pending` map until a response frame arrives. Both `close()` and
- * `forceDisconnect()` null `this.socket` BEFORE the socket's own close
- * event fires, so `onSocketClose`'s stale-close guard skips the pending
- * sweep for those paths. Without an explicit sweep in close/forceDisconnect,
- * every teardown that raced an in-flight RPC leaked the entry (promise,
- * resolver closures, request payload) for the life of the client — and the
- * TUI's `manualReconnect()` calls `forceDisconnect()` on every user-driven
- * reconnect, so the leak multiplied across a day-long session.
- *
- * The observable contract: tearing the connection down rejects every
- * in-flight request with the same "daemon connection closed" error the
- * passive-drop path uses, and leaves nothing pending.
- */
-
-/**
  * `request()` awaits `connect()` before parking the entry in `pending`, so
  * after firing a request we must yield the event loop once — otherwise a
  * synchronous teardown lands BEFORE the entry exists and the rejection comes

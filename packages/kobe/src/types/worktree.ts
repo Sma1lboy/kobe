@@ -28,7 +28,7 @@ export interface WorktreeInfo {
 
 /**
  * A git worktree discovered on disk that COULD be adopted as a kobe
- * task (KOB-256). Unlike {@link WorktreeInfo} (kobe-managed only), this
+ * task. Unlike {@link WorktreeInfo} (kobe-managed only), this
  * includes worktrees the user created outside kobe-managed worktree roots
  * via plain `git worktree add`. `kobeManaged` marks whether the path
  * lives under the kobe convention root, so the UI can label its origin.
@@ -43,7 +43,7 @@ export interface AdoptableWorktree {
    * Last-activity time (epoch ms) — the worktree HEAD's commit time,
    * falling back to the directory mtime. Discovery sorts by this
    * descending so the most recently-touched worktree leads the list
-   * (KOB-256).
+   *.
    */
   readonly lastActivityMs: number
 }

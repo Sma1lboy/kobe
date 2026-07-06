@@ -1,5 +1,5 @@
 /**
- * Engine-conversation activity probe for the Ops pane (KOB-254).
+ * Engine-conversation activity probe for the Ops pane.
  *
  * v0.6 hands the interactive surface to tmux, so the monitor has no chat
  * stream to learn "the agent finished a turn" from — and parsing the

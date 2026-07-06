@@ -1,5 +1,5 @@
 /**
- * Derive a task title from its session transcript (KOB-233).
+ * Derive a task title from its session transcript.
  *
  * In the v0.6 tmux model kobe never sees the user's prompt directly —
  * the engine runs interactively in a tmux pane — so a task created via

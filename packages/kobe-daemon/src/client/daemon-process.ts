@@ -150,7 +150,7 @@ export async function testDaemonResponds(
  *    to the same bundled entry — bun re-executes itself against it.
  *  - standalone: running a `bun build --compile` binary. `process.execPath`
  *    IS the kobe binary, so we re-exec it directly. After the kobed → kobe
- *    bin merge (KOB-136), no sibling lookup is needed.
+ *    bin merge, no sibling lookup is needed.
  */
 function resolveKobeSpawn(subcommand: readonly string[]): string[] {
   const here = fileURLToPath(import.meta.url)
