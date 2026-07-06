@@ -107,25 +107,21 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   )
 
   const reserved = new Set<string>(RESERVED_GLOBAL_CHORDS)
+  const forward = (evt: KeyEvent): void => {
+    const bytes = keyEventToShellBytes(evt)
+    if (bytes != null) opts.write(bytes)
+  }
   for (const name of PASSTHROUGH_NAMES) {
-    if (!reserved.has(name)) {
-      bindings.push({
-        key: name,
-        cmd: (evt) => {
-          const bytes = keyEventToShellBytes(evt)
-          if (bytes != null) opts.write(bytes)
-        },
-      })
-    }
-    const ctrlChord = `ctrl+${name}`
-    if (!reserved.has(ctrlChord)) {
-      bindings.push({
-        key: ctrlChord,
-        cmd: (evt) => {
-          const bytes = keyEventToShellBytes(evt)
-          if (bytes != null) opts.write(bytes)
-        },
-      })
+    // Register the bare name plus every modifier form the keymap can mint
+    // (ctrl+/alt+/shift+/meta combos) — modifier chords must WIN the LIFO
+    // stack against kobe's global bindings so the engine CLI receives its
+    // own shortcuts (shift+tab plan-mode, alt+enter, ctrl+r history…).
+    // Shift on printable characters never minted a chord (terminals send
+    // the shifted glyph), so shift+ registrations only matter for named keys.
+    for (const prefix of ["", "ctrl+", "alt+", "shift+", "ctrl+shift+", "alt+shift+", "ctrl+alt+"]) {
+      const chord = `${prefix}${name}`
+      if (reserved.has(chord)) continue
+      bindings.push({ key: chord, cmd: forward })
     }
   }
 
