@@ -26,6 +26,7 @@ import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
+import { getDefaultPtyRegistry } from "../panes/terminal/registry"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { TerminalTabs } from "./TerminalTabs"
@@ -77,6 +78,22 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       { defer: false },
     ),
   )
+
+  // PTY lifecycle (issue #16): archiving/deleting a task must end every
+  // engine session it owns — its tab PTYs are keyed `taskId::tabId` in the
+  // default registry, invisible to the pane once unmounted. Watch the task
+  // snapshot and release the corpses; the pane never kills (registry docs),
+  // so this is the one place tab shells die with their task.
+  let liveTaskIds = new Set<string>()
+  createEffect(() => {
+    const list = tasks()
+    const next = new Set<string>(list.filter((task) => !task.archived).map((task) => task.id))
+    const registry = getDefaultPtyRegistry()
+    for (const id of liveTaskIds) {
+      if (!next.has(id)) registry.releaseWhere((key) => key === id || key.startsWith(`${id}::`))
+    }
+    liveTaskIds = next
+  })
 
   function selectTask(id: string): void {
     setSelectedId(id)
@@ -255,7 +272,13 @@ export async function startWorkspaceHost(): Promise<void> {
       process.env.KOBE_DAEMON_SOCKET_PATH = client.socketPath
       return {
         root: () => <WorkspaceRoot orchestrator={orchestrator} />,
-        onDestroy: () => orchestrator.dispose(),
+        onDestroy: () => {
+          orchestrator.dispose()
+          // End every embedded engine/shell PTY with the app — the exit
+          // backstop only covers the host process; the PTY children are
+          // process-group members that must be killed explicitly.
+          getDefaultPtyRegistry().releaseAll()
+        },
       }
     },
   })

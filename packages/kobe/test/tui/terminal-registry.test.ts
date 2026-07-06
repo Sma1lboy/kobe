@@ -106,3 +106,17 @@ describe("TaskPty onExit contract (mock backend)", () => {
     expect(fired).toBe(true)
   })
 })
+
+describe("releaseWhere (task-scoped teardown, issue #16)", () => {
+  it("kills exactly the matching task's tab PTYs and leaves the rest alive", () => {
+    const reg = new PtyRegistry(mockFactory)
+    const a1 = reg.acquire("task-a::tab-1", "/a")
+    const a2 = reg.acquire("task-a::tab-2", "/a")
+    const b1 = reg.acquire("task-b::tab-1", "/b")
+    reg.releaseWhere((id) => id.startsWith("task-a::"))
+    expect(a1.killed).toBe(true)
+    expect(a2.killed).toBe(true)
+    expect(b1.killed).toBe(false)
+    expect(reg.size).toBe(1)
+  })
+})
