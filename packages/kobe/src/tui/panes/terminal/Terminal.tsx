@@ -488,9 +488,9 @@ export function Terminal(props: TerminalProps): JSXElement {
               Keeping a single multi-line `<text>` preserves the
               original layout assumption that drives the cursor math
               in the createEffect below. */}
-          <text fg={theme.text} wrapMode="none">
-            {styledSnapshot()}
-          </text>
+          {/* opentui 0.4: StyledText is no longer a valid JSX child — it goes
+              through the `content` prop (TextRenderable.content). */}
+          <text fg={theme.text} wrapMode="none" content={styledSnapshot()} />
         </Show>
       </box>
     </box>
