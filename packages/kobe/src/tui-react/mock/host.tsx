@@ -10,13 +10,13 @@
  * Keys: q quits · tab cycles pane focus · d opens a dialog (esc closes).
  */
 
-import { TextAttributes, createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
-import { FocusProvider, PANE_ORDER, useFocus } from "../context/focus"
-import { ThemeProvider, useTheme } from "../context/theme"
+import { TextAttributes } from "@opentui/core"
+import { PANE_ORDER, useFocus } from "../context/focus"
+import { useTheme } from "../context/theme"
 import { t } from "../i18n"
+import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { Dialog, DialogProvider, useDialog } from "../ui/dialog"
+import { Dialog, useDialog } from "../ui/dialog"
 
 function DemoDialog() {
   const { theme } = useTheme()
@@ -42,6 +42,7 @@ function Workbench() {
     enabled: true,
     bindings: [
       { key: "q", cmd: () => process.exit(0) },
+      { key: "ctrl+c", cmd: () => process.exit(0) },
       { key: "tab", cmd: () => focus.cycle(1) },
       { key: "d", cmd: () => dialog.replace(() => <DemoDialog />) },
     ],
@@ -81,13 +82,9 @@ function Workbench() {
   )
 }
 
-const renderer = await createCliRenderer({ exitOnCtrlC: true })
-createRoot(renderer).render(
-  <ThemeProvider>
-    <FocusProvider>
-      <DialogProvider>
-        <Workbench />
-      </DialogProvider>
-    </FocusProvider>
-  </ThemeProvider>,
-)
+// Boot through the real React pane host (G3): shared boot steps, persisted
+// prefs seeding, live ui-prefs subscription, crash boundary, exit backstop —
+// this entry IS the live smoke for that path.
+await bootPaneHost({
+  setup: () => ({ root: () => <Workbench /> }),
+})
