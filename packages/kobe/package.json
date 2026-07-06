@@ -26,6 +26,7 @@
   "scripts": {
     "dev": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:mock": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/tui/mock/host.tsx",
+    "dev:mock-terminal": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/tui/mock/terminal-host.tsx",
     "dev:mock-react": "env KOBE_DEV=1 bun ./src/tui-react/mock/host.tsx",
     "dev:mock-react-task-dialogs": "env KOBE_DEV=1 bun ./src/tui-react/component/mock-dialogs-host.tsx",
     "dev:mock-react-history": "env KOBE_DEV=1 bun ./src/tui-react/history/mock-host.tsx",

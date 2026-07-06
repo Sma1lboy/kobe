@@ -1,10 +1,12 @@
 /**
- * DORMANT — not wired into v1. This is the embedded-xterm terminal pane; it
- * has zero importers and does not ship (the rendering bled outside its box).
- * See ./CLAUDE.md for status, why it was parked, and the revival checklist
- * (fix bleed → wire into workspace host → i18n these hardcoded strings → tests).
+ * Embedded terminal pane — the terminal-in-the-middle seam (issue #16).
+ * Revived from dormancy: the KOBE_TUI workspace host mounts it as the
+ * center column running the task's real interactive engine CLI (its
+ * `command` prop), and it remains usable as a plain worktree shell.
+ * Bleed containment: the body box clips via opentui 0.4's `overflow`
+ * and the viewport slices to the measured row count before render.
  *
- * Terminal pane (Stream J) — bottom-right of the Conductor layout.
+ * Terminal pane (Stream J) — originally bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
  * Body: a headless xterm screen snapshot fed by the task PTY. The
@@ -56,10 +58,11 @@
  * xterm buffer; this component maps them onto opentui's native cursor.
  */
 
-import { type BoxRenderable, StyledText } from "@opentui/core"
+import { type BoxRenderable, StyledText, type TextRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { t } from "../../i18n"
 import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
@@ -247,12 +250,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     const cwdAtClick = cwd
     const taskIdAtClick = taskId
     const geometryAtClick = geometry
-    void DialogConfirm.show(
-      dialog,
-      "Reset terminal?",
-      "The running shell will be killed and a fresh one will spawn at the worktree. Any in-flight processes (vim, htop, paused jobs) end immediately.",
-      "cancel",
-    ).then((ok) => {
+    void DialogConfirm.show(dialog, t("terminal.reset.title"), t("terminal.reset.body"), "cancel").then((ok) => {
       if (ok !== true) return
       const reg = registry()
       // Only reset if the user is still on the same task — a
@@ -340,6 +338,12 @@ export function Terminal(props: TerminalProps): JSXElement {
   // with pane row indexing, and the cursor landed one row above
   // the visible prompt.
   const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(cursorRows())))
+  // Imperative content push — see the render-site comment (solid 0.4 content-prop gap).
+  const [snapshotTextRef, setSnapshotTextRef] = createSignal<TextRenderable | null>(null)
+  createEffect(() => {
+    const ref = snapshotTextRef()
+    if (ref) ref.content = styledSnapshot()
+  })
 
   /* --------- cursor handling ----------
    *
@@ -436,6 +440,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     <box
       flexDirection="column"
       flexGrow={1}
+      overflow="hidden"
       borderColor={focused() ? theme.focusAccent : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
@@ -449,7 +454,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       <Show when={scrollOffset() > 0}>
         <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
           <text fg={theme.warning} wrapMode="none">
-            ↑ scrolled {scrollOffset()}L (ctrl+pgdn to follow)
+            {t("terminal.scrolledBack", { lines: scrollOffset() })}
           </text>
         </box>
       </Show>
@@ -459,6 +464,7 @@ export function Terminal(props: TerminalProps): JSXElement {
           setBodyRef(r)
         }}
         flexGrow={1}
+        overflow="hidden"
         paddingLeft={1}
         paddingRight={1}
       >
@@ -467,10 +473,11 @@ export function Terminal(props: TerminalProps): JSXElement {
           when={pty()}
           fallback={
             <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={0}>
-              <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
+              <Show when={acquireError()} fallback={<text fg={theme.textMuted}>{t("terminal.noTask")}</text>}>
                 <text fg={theme.error} wrapMode="word">
-                  terminal unavailable —{" "}
-                  {isShellMissing(acquireError() ?? "") ? "configured shell is not available" : "shell could not start"}
+                  {isShellMissing(acquireError() ?? "")
+                    ? t("terminal.unavailable.shellMissing")
+                    : t("terminal.unavailable.spawnFailed")}
                 </text>
                 <text fg={theme.textMuted} wrapMode="word">
                   {acquireError()}
@@ -488,9 +495,17 @@ export function Terminal(props: TerminalProps): JSXElement {
               Keeping a single multi-line `<text>` preserves the
               original layout assumption that drives the cursor math
               in the createEffect below. */}
-          {/* opentui 0.4: StyledText is no longer a valid JSX child — it goes
-              through the `content` prop (TextRenderable.content). */}
-          <text fg={theme.text} wrapMode="none" content={styledSnapshot()} />
+          {/* opentui 0.4: StyledText is neither a valid JSX child nor honored
+              through the solid binding's `content` prop at runtime (the
+              reconciler stringifies it — "[object Object]"). Assign the
+              TextRenderable's `content` setter directly via ref + effect. */}
+          <text
+            fg={theme.text}
+            wrapMode="none"
+            ref={(r: TextRenderable) => {
+              setSnapshotTextRef(r)
+            }}
+          />
         </Show>
       </box>
     </box>
