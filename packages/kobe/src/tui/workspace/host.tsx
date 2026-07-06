@@ -26,9 +26,9 @@ import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
-import { Terminal } from "../panes/terminal/Terminal"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+import { TerminalTabs } from "./TerminalTabs"
 
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
@@ -233,9 +233,9 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
         // real interactive CLI, so kobe never re-renders the engine's own
         // TUI. `keyed` remounts per worktree, giving each task its own
         // registry-backed PTY (acquire reuses a live one on switch-back).
-        <Terminal
-          cwd={() => path}
-          taskId={() => props.task?.id ?? path}
+        <TerminalTabs
+          taskId={props.task?.id ?? path}
+          worktree={path}
           command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
           focused={props.focused}
         />
