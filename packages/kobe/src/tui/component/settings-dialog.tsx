@@ -65,7 +65,15 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
-import { type NavLevel, SECTIONS, type SectionId, type SettingsRow, rowAt, sectionRows } from "./settings-dialog/model"
+import {
+  type NavLevel,
+  SECTIONS,
+  type SectionId,
+  type SettingsRow,
+  humanizeSlug,
+  rowAt,
+  sectionRows,
+} from "./settings-dialog/model"
 import {
   AccountsSettingsSection,
   DevSettingsSection,
@@ -75,20 +83,6 @@ import {
   KeybindingsSettingsSection,
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
-
-/**
- * Turn a custom-engine slug into a presentable display name: split on `-`/`_`
- * and title-case each word. `my-local-agent` → `My Local Agent`, `aider` →
- * `Aider`. Used so a custom engine added with no name still reads like the
- * title-cased built-ins instead of its raw lowercase-hyphenated id.
- */
-function humanizeSlug(id: string): string {
-  return id
-    .split(/[-_]+/)
-    .filter((word) => word.length > 0)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ")
-}
 
 export type SettingsDialogProps = {
   kv: KVContext

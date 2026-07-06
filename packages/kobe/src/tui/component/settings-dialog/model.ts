@@ -17,7 +17,9 @@
  */
 
 import type { VendorId } from "../../../types/vendor"
-import type { FocusAccentSlot } from "../../context/theme"
+// theme-core (not ../../context/theme): this module is shared with the
+// React port, which must not reference the Solid .tsx even type-only.
+import type { FocusAccentSlot } from "../../context/theme-core"
 import { LOCALES, type LocaleId } from "../../i18n/catalog"
 
 export type NavLevel = "sidebar" | "body"
@@ -187,4 +189,19 @@ export function rowIndex(rows: readonly SettingsRow[], id: string): number {
 /** The row at a body index, or undefined when out of range. */
 export function rowAt(rows: readonly SettingsRow[], index: number): SettingsRow | undefined {
   return rows[index]
+}
+
+/**
+ * Turn a custom-engine slug into a presentable display name: split on
+ * `-`/`_` and title-case each word. `my-local-agent` → `My Local Agent`.
+ * Used so a custom engine added with no name still reads like the
+ * title-cased built-ins instead of its raw lowercase-hyphenated id.
+ * (Shared by the Solid and React settings dialogs.)
+ */
+export function humanizeSlug(id: string): string {
+  return id
+    .split(/[-_]+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
 }

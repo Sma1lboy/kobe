@@ -25,6 +25,7 @@ import {
   feedbackRows,
   focusAccentRowId,
   generalRows,
+  humanizeSlug,
   rowAt,
   rowIndex,
   sectionRows,
@@ -217,5 +218,18 @@ describe("rowIndex / rowAt", () => {
   it("looks a theme row up by id", () => {
     const rows = generalRows({ themeNames: ["claude", "gruvbox"], focusAccentSlots: SLOTS })
     expect(rowIndex(rows, themeRowId("gruvbox"))).toBe(1)
+  })
+})
+
+describe("humanizeSlug", () => {
+  it("title-cases hyphen/underscore-separated words", () => {
+    expect(humanizeSlug("my-local-agent")).toBe("My Local Agent")
+    expect(humanizeSlug("my_local_agent")).toBe("My Local Agent")
+    expect(humanizeSlug("aider")).toBe("Aider")
+  })
+
+  it("drops empty segments from doubled/leading separators", () => {
+    expect(humanizeSlug("--weird--slug-")).toBe("Weird Slug")
+    expect(humanizeSlug("")).toBe("")
   })
 })

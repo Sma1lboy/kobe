@@ -357,7 +357,12 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // `chattab` settings surface). Opened by `openSettingsTab` as a new
     // tmux window; reuses the same SettingsDialog the in-pane overlay
     // uses. Dynamic import keeps opentui off the other subcommands' path.
-    const { startSettingsHost } = await import("../tui/settings/host.tsx")
+    // KOBE_REACT=1 selects the React port (issue #15 G3), same seam as
+    // `kobe history` below.
+    const { startSettingsHost } =
+      process.env.KOBE_REACT === "1"
+        ? await import("../tui-react/settings/host.tsx")
+        : await import("../tui/settings/host.tsx")
     await startSettingsHost()
     return true
   }

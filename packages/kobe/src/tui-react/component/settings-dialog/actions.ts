@@ -1,22 +1,31 @@
-import type { useRenderer } from "@opentui/solid"
+/**
+ * Dev-section actions (React, issue #15 G3) — same flows as the Solid
+ * `src/tui/component/settings-dialog/actions.ts`, sharing the framework-free
+ * pieces (`actions-core.ts`); only the confirm-dialog wiring is React's.
+ */
+
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
+import {
+  type DestroyableRenderer,
+  destroyRendererSafely,
+  hasRestartableDaemon,
+  removeTasksFileForReset,
+} from "../../../tui/component/settings-dialog/actions-core"
 import type { KVContext } from "../../context/kv"
 import type { DialogContext } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
-import { destroyRendererSafely, hasRestartableDaemon, removeTasksFileForReset } from "./actions-core"
 
-export { hasRestartableDaemon } from "./actions-core"
+export { hasRestartableDaemon } from "../../../tui/component/settings-dialog/actions-core"
 
 /**
- * Reset is "wipe + relaunch" rather than "wipe + snap defaults in
- * place": kv.clear() only resets the on-disk KV store, not the live
- * Solid signals (selectedId, pane widths, themeCtx's internal store,
- * tabsByTask, etc.) that app.tsx persists on the next signal change.
+ * Reset is "wipe + relaunch" rather than "wipe + snap defaults in place":
+ * kv.clear() only resets the on-disk KV store, not the live UI state the
+ * running processes persist on their next change.
  */
 export async function confirmResetState(
   dialog: DialogContext,
   kv: KVContext,
-  renderer: ReturnType<typeof useRenderer> | undefined,
+  renderer: DestroyableRenderer | null | undefined,
 ): Promise<void> {
   const ok = await DialogConfirm.show(
     dialog,
@@ -33,13 +42,13 @@ export async function confirmResetState(
 }
 
 /**
- * Stop the kobe daemon and quit kobe. The next relaunch will spawn a
- * fresh daemon from disk, picking up daemon/orchestrator/engine edits.
+ * Stop this kobe window so a relaunch spawns a fresh daemon from disk,
+ * picking up daemon/orchestrator/engine edits.
  */
 export async function confirmRestartDaemon(
   dialog: DialogContext,
   orchestrator: KobeOrchestrator | undefined,
-  renderer: ReturnType<typeof useRenderer> | undefined,
+  renderer: DestroyableRenderer | null | undefined,
 ): Promise<void> {
   if (!hasRestartableDaemon(orchestrator)) return
   const ok = await DialogConfirm.show(
@@ -49,9 +58,6 @@ export async function confirmRestartDaemon(
     "cancel",
   )
   if (ok !== true) return
-  // v0.5's `orchestrator.stopDaemon()` is gone with the rest of the
-  // chat-stream RPCs. The user can `kobe daemon stop` from a shell if
-  // they want to nuke the daemon proper; here we just quit the TUI.
   destroyRendererSafely(renderer, "daemon restart")
   process.stderr.write("kobe: window closed. Relaunch kobe to start fresh.\n")
   process.exit(0)
