@@ -36,6 +36,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { t } from "../../i18n"
+import { copyTextToSystemClipboard } from "../../lib/clipboard-copy"
 import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
@@ -244,7 +245,10 @@ export function Terminal(props: TerminalProps): JSXElement {
   const onSelectionEvent = (sel: { isDragging: boolean; getSelectedText(): string }): void => {
     if (sel.isDragging) return
     const text = sel.getSelectedText()
-    if (text.length > 0) renderer.copyToClipboardOSC52(text)
+    // Dual delivery (see clipboard-copy.ts): pbcopy-style local pipe for
+    // terminals that ship with OSC52 disabled (iTerm2) or unsupported
+    // (Terminal.app), plus OSC52 for SSH/remote sessions.
+    if (text.length > 0) copyTextToSystemClipboard(text, (t) => renderer.copyToClipboardOSC52(t))
   }
   renderer.on("selection", onSelectionEvent)
   onCleanup(() => {
