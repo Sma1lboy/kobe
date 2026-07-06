@@ -338,22 +338,24 @@ export function Terminal(props: TerminalProps): JSXElement {
   // and re-fires effects that read the body's live `width/height`.
   const dims = useTerminalDimensions()
 
-  // Layout-tick signal — bumped on a slow interval so effects that read
-  // non-reactive geometry (`ref.width/height/screenX/screenY`) catch up
-  // with layout changes that don't have their own Solid signal (the
-  // splitter drag in app.tsx mutates pane-size signals, but the *body*
-  // box's width is computed downstream, and Solid doesn't observe it
-  // through the BoxRenderable instance). We deliberately DO NOT use
-  // a per-frame callback here; real PTY backends may turn resizes into
-  // SIGWINCH and prompt-rendering shells can reprint on every resize.
+  // Layout-tick signal — bumped by the body box's real `onSizeChange`
+  // event (opentui fires this once Yoga has actually computed a new
+  // size) so effects that read non-reactive geometry
+  // (`ref.width/height/screenX/screenY`) catch up with layout changes
+  // that don't have their own Solid signal (the splitter drag in
+  // app.tsx mutates pane-size signals, but the *body* box's width is
+  // computed downstream, and Solid doesn't observe it through the
+  // BoxRenderable instance). Previously this polled on a 1s interval;
+  // that meant a remount's first (pre-layout, too-small) `ref.width`
+  // read got pushed to the PTY's `resize()` and stuck for up to a full
+  // second before the poll caught the corrected size — invisible on a
+  // freshly-spawned blank shell, but visibly wrecked an already-running
+  // full-screen engine session's frame on tab-revisit. Reacting to the
+  // real layout event instead of guessing fixes both.
   const [geomTick, setGeomTick] = createSignal(0)
-  // 1 s is plenty for catching splitter drags; the previous 250 ms
-  // tick fired the cursor-positioning effect 4×/sec doing nothing
-  // most of the time, which added measurable CPU floor.
-  const geomTimer = setInterval(() => {
+  const bumpGeomTick = (): void => {
     setGeomTick((n) => (n + 1) & 0xff)
-  }, 1000)
-  onCleanup(() => clearInterval(geomTimer))
+  }
 
   // Track last pushed geometry so we don't fire `pty.resize` on every
   // re-render; real PTY backends may emit SIGWINCH even when geometry
@@ -371,9 +373,15 @@ export function Terminal(props: TerminalProps): JSXElement {
     dims()
     geomTick()
     if (!ref) return
-    // Subtract the body's own paddingLeft/paddingRight (1+1) from the
-    // usable width so the shell doesn't try to write into the padding.
-    const cols = Math.max(20, ref.width - 2)
+    // Pre-layout guard: before Yoga's first pass the box reports 0 (or
+    // junk) — flooring that into a "plausible" 20x4 and pushing it to an
+    // already-running PTY forced the engine CLI to redraw tiny, leaving a
+    // wrecked frame until the next real measurement. Skip until the box
+    // has actually been laid out; onSizeChange re-fires this effect then.
+    if (ref.width <= 0 || ref.height <= 0) return
+    // Flush grid — the body carries no padding (owner feedback 2026-07-06:
+    // the engine CLI owns its own gutters), so the full box width is usable.
+    const cols = Math.max(20, ref.width)
     const rows = Math.max(4, ref.height)
     setBodyRows(rows)
     setBodyGeometry((cur) => (cur && cur.cols === cols && cur.rows === rows ? cur : { cols, rows }))
@@ -414,7 +422,13 @@ export function Terminal(props: TerminalProps): JSXElement {
   return (
     // Borderless by design: the workspace layout wrapper owns the focus
     // border (double borders otherwise); this pane is pure content.
-    <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseUp={() => setFocusedLocal(true)}>
+    <box
+      flexDirection="column"
+      flexGrow={1}
+      overflow="hidden"
+      backgroundColor={theme.background}
+      onMouseUp={() => setFocusedLocal(true)}
+    >
       {/* Scroll affordance — only rendered when the user has scrolled
           back into history. Replaces what used to be a permanent
           worktree-id header row; that row was redundant with the
@@ -441,10 +455,9 @@ export function Terminal(props: TerminalProps): JSXElement {
         ref={(r: BoxRenderable) => {
           setBodyRef(r)
         }}
+        onSizeChange={bumpGeomTick}
         flexGrow={1}
         overflow="hidden"
-        paddingLeft={1}
-        paddingRight={1}
       >
         {/* Body */}
         <Show
