@@ -67,7 +67,7 @@ import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty, TerminalRow } from "./pty"
-import { PtyRegistry } from "./registry"
+import { type PtyRegistry, getDefaultPtyRegistry } from "./registry"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "./terminal-render"
 
@@ -95,33 +95,6 @@ export type TerminalProps = {
    * the orchestrator reaches into it via the exported helper.
    */
   registry?: PtyRegistry
-}
-
-/* --------------------------------------------------------------------- */
-/*  Module-level registry                                                 */
-/* --------------------------------------------------------------------- */
-
-/**
- * Default registry shared by every `<Terminal />` instance in the app.
- * Stream E will reach into it to call `release(taskId)` when a task is
- * archived; until then the registry just keeps PTYs alive.
- *
- * Tests pass their own registry via `props.registry`.
- */
-let defaultRegistry: PtyRegistry | null = null
-
-export function getDefaultPtyRegistry(): PtyRegistry {
-  if (!defaultRegistry) defaultRegistry = new PtyRegistry()
-  return defaultRegistry
-}
-
-/**
- * Reset the module-level registry. Tests use this between cases so a
- * leftover registry doesn't leak shell processes across tests.
- */
-export function _resetDefaultPtyRegistry(): void {
-  if (defaultRegistry) defaultRegistry.releaseAll()
-  defaultRegistry = null
 }
 
 /* --------------------------------------------------------------------- */

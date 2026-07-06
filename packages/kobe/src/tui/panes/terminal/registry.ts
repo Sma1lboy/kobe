@@ -141,3 +141,26 @@ export class PtyRegistry {
     return this.map.size
   }
 }
+
+/**
+ * Default registry shared by every `<Terminal />` instance in the app.
+ * Stream E will reach into it to call `release(taskId)` when a task is
+ * archived; until then the registry just keeps PTYs alive.
+ *
+ * Tests pass their own registry via `props.registry`.
+ */
+let defaultRegistry: PtyRegistry | null = null
+
+export function getDefaultPtyRegistry(): PtyRegistry {
+  if (!defaultRegistry) defaultRegistry = new PtyRegistry()
+  return defaultRegistry
+}
+
+/**
+ * Reset the module-level registry. Tests use this between cases so a
+ * leftover registry doesn't leak shell processes across tests.
+ */
+export function _resetDefaultPtyRegistry(): void {
+  if (defaultRegistry) defaultRegistry.releaseAll()
+  defaultRegistry = null
+}
