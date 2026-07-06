@@ -360,9 +360,23 @@ export function resetKeymapToDefaults(): void {
 const [keymapVersion, setKeymapVersion] = createSignal(0)
 export { keymapVersion }
 
+// Framework-free companion to the Solid signal above: React chord legends
+// subscribe here via useSyncExternalStore (src/tui-react/context/keybindings.ts,
+// issue #15 G2). Solid consumers keep tracking the signal — same bump feeds both.
+const keymapVersionListeners = new Set<() => void>()
+
+/** Subscribe to keymap reloads (React side). Returns the unsubscribe fn. */
+export function subscribeKeymapVersion(listener: () => void): () => void {
+  keymapVersionListeners.add(listener)
+  return () => {
+    keymapVersionListeners.delete(listener)
+  }
+}
+
 /** Increment {@link keymapVersion}, forcing chord legends to re-render. */
 export function bumpKeymapVersion(): void {
   setKeymapVersion((v) => v + 1)
+  for (const listener of [...keymapVersionListeners]) listener()
 }
 
 /**
