@@ -135,6 +135,39 @@ export function Terminal(props: TerminalProps): JSXElement {
     setScrollOffset((cur) => Math.min(max, Math.max(0, cur - lines)))
   }
 
+  // Copy-on-select, GRID-based (tmux convention; see terminal-selection.ts
+  // for why opentui's flow selection can't work over this pane). Anchor
+  // and head live in absolute snapshot coordinates so the highlight
+  // survives every frame refresh and scrollback move; releasing a drag
+  // copies the cells the highlight showed — dual delivery via
+  // clipboard-copy.ts (pbcopy pipe + OSC52). DECLARED BEFORE the render
+  // memos: cursorRows reads selection() during its EAGER first
+  // evaluation, and a later declaration is a TDZ crash (pane-crash,
+  // 2026-07-06). cellFromEvent/copySelection only run from event
+  // handlers, so their later-declared reads (renderer) are safe.
+  const [selAnchor, setSelAnchor] = createSignal<CellPoint | null>(null)
+  const [selHead, setSelHead] = createSignal<CellPoint | null>(null)
+  let selDragging = false
+  const selection = createMemo<SelectionRange | null>(() => {
+    const anchor = selAnchor()
+    const head = selHead()
+    return anchor && head ? { anchor, head } : null
+  })
+  const cellFromEvent = (evt: { x?: number; y?: number }): CellPoint | null => {
+    const body = bodyRef()
+    const geometry = bodyGeometry()
+    if (!body || !geometry) return null
+    const col = Math.min(geometry.cols - 1, Math.max(0, (evt.x ?? 0) - body.screenX))
+    const viewRow = Math.min(bodyRows() - 1, Math.max(0, (evt.y ?? 0) - body.screenY))
+    return { row: visibleRange().start + viewRow, col }
+  }
+  const copySelection = (): void => {
+    const range = selection()
+    if (!range) return
+    const text = extractSelection(snapshot(), range)
+    if (text.trim().length > 0) copyTextToSystemClipboard(text, (t) => renderer.copyToClipboardOSC52(t))
+  }
+
   /* --------- bindings ---------- */
 
   // `F5` opens a confirm modal; user confirms → tear down the
@@ -236,35 +269,6 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Reactive terminal dims — when the host window resizes, this changes
   // and re-fires effects that read the body's live `width/height`.
   const dims = useTerminalDimensions()
-
-  // Copy-on-select, GRID-based (tmux convention; see terminal-selection.ts
-  // for why opentui's flow selection can't work over this pane). Anchor
-  // and head live in absolute snapshot coordinates so the highlight
-  // survives every frame refresh and scrollback move; releasing a drag
-  // copies the cells the highlight showed — dual delivery via
-  // clipboard-copy.ts (pbcopy pipe + OSC52).
-  const [selAnchor, setSelAnchor] = createSignal<CellPoint | null>(null)
-  const [selHead, setSelHead] = createSignal<CellPoint | null>(null)
-  let selDragging = false
-  const selection = createMemo<SelectionRange | null>(() => {
-    const anchor = selAnchor()
-    const head = selHead()
-    return anchor && head ? { anchor, head } : null
-  })
-  const cellFromEvent = (evt: { x?: number; y?: number }): CellPoint | null => {
-    const body = bodyRef()
-    const geometry = bodyGeometry()
-    if (!body || !geometry) return null
-    const col = Math.min(geometry.cols - 1, Math.max(0, (evt.x ?? 0) - body.screenX))
-    const viewRow = Math.min(bodyRows() - 1, Math.max(0, (evt.y ?? 0) - body.screenY))
-    return { row: visibleRange().start + viewRow, col }
-  }
-  const copySelection = (): void => {
-    const range = selection()
-    if (!range) return
-    const text = extractSelection(snapshot(), range)
-    if (text.trim().length > 0) copyTextToSystemClipboard(text, (t) => renderer.copyToClipboardOSC52(t))
-  }
 
   // Layout-tick — bumped by the body box's real `onSizeChange` (fires once
   // Yoga computes a new size) so effects reading non-reactive geometry
