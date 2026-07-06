@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.65
+
+### Patch Changes
+
+- 40261ba: Exiting the engine CLI inside a terminal tab is now an allowed action, not a dead end: the tab degrades in place to your shell in the same worktree (keeping its title and identity) instead of freezing behind the exit banner. A degraded shell tab closes itself on its next exit; the last tab still keeps the banner + F5 recovery. Internally `TerminalTab` became a discriminated union (engine | command) so the illegal tab shapes can't be represented.
+- 40261ba: Fix ctrl+c (and every ctrl-chord) passing into the embedded terminal on kitty-protocol terminals (Ghostty/kitty/WezTerm/iTerm2): the host renderer negotiates the kitty keyboard protocol, so chords arrived CSI-u encoded and were forwarded as garbage — ctrl+c literally typed a `c`. Kitty-encoded keystrokes are now re-encoded to the legacy bytes the embedded CLI expects; ctrl+space maps to NUL and ctrl+punctuation to its classic C0 codes (ctrl+\ SIGQUIT et al).
+- 40261ba: Terminal-tab quality-of-life batch: ctrl+e opens a new tab with a chosen engine (pinned to just that tab); tabs are click-to-switch; switching tabs no longer remounts the terminal (fast cycling stopped flashing stale content); unnamed engine tabs auto-title from their conversation's first prompt and carry a per-tab session id so a restart resumes the conversation; FileTree's Enter opens the file in your real editor as a transient tab (diff-mode when the file differs from HEAD); the numbered fallback title is now the content-neutral "Tab {n}"; and ctrl+, swaps the workspace for a full settings page.
+- 40261ba: tmux-style split panes inside a terminal tab: ctrl+\ splits right, ctrl+= splits down (new panes run your shell in the same worktree), F3 cycles pane focus, and ctrl+w contextually closes the active split (falling back to close-tab when unsplit). Same-orientation splits insert siblings, cross-orientation splits nest groups, and an exited pane collapses its group; the pane that predates the first split keeps its live engine session. Rendering is tmux-flavored — a single divider line on shared edges (focus-accented), no frames, no padding. The split tree (`split-core.ts`) is deliberately content-agnostic: terminals are the first leaf type, not the only one.
+
 ## 0.7.64
 
 ### Patch Changes
