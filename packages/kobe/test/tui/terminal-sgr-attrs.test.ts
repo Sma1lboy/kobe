@@ -57,19 +57,19 @@ describe("per-attribute resets (22-29)", () => {
 describe("background color families", () => {
   test("standard bg (40-47) uses the system palette", () => {
     const { chunks } = parseAnsiLine(`${ESC}41mx${ESC}0m`)
-    expect(chunks[0]?.bg).toEqual([205, 0, 0])
+    expect(chunks[0]?.bg).toEqual([247, 118, 142])
   })
 
   test("bright bg (100-107) uses the bright palette rows", () => {
     const { chunks } = parseAnsiLine(`${ESC}101mx${ESC}0m`)
-    expect(chunks[0]?.bg).toEqual([255, 0, 0])
+    expect(chunks[0]?.bg).toEqual([255, 137, 157])
   })
 
   test("49 resets bg to default while fg persists", () => {
     const { chunks } = parseAnsiLine(`${ESC}31;41ma${ESC}49mb`)
-    expect(chunks[0]?.bg).toEqual([205, 0, 0])
+    expect(chunks[0]?.bg).toEqual([247, 118, 142])
     expect(chunks[1]?.bg).toBeUndefined()
-    expect(chunks[1]?.fg).toEqual([205, 0, 0])
+    expect(chunks[1]?.fg).toEqual([247, 118, 142])
   })
 
   test("48;5;N picks from the 256 palette; 48;2;R;G;B is true-color", () => {
@@ -114,6 +114,6 @@ describe("1-byte CSI introducer (0x9b)", () => {
   test("parses \\x9b-introduced SGR the same as ESC-[", () => {
     const { chunks } = parseAnsiLine("\x9b31mx\x9b0m")
     expect(chunks[0]?.text).toBe("x")
-    expect(chunks[0]?.fg).toEqual([205, 0, 0])
+    expect(chunks[0]?.fg).toEqual([247, 118, 142])
   })
 })
