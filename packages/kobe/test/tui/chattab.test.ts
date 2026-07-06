@@ -1,3 +1,12 @@
+/**
+ * Behavioral tests for the ChatTab lifecycle (`buildPanesAround`,
+ * `newChatTab`, and the dedicated single-page window openers). All tmux
+ * commands are captured against an in-memory fake `@/tmux/client` (same
+ * technique as `layout-actions-dispatch.test.ts` / `perf-budgets.test.ts`)
+ * so no real tmux process is ever spawned; assertions are on WHICH tmux
+ * commands got issued with what args, not on internal call counts.
+ */
+
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
@@ -65,6 +74,7 @@ vi.mock("../../src/tmux/client", async (importOriginal) => {
     },
     runTmuxSequenceCapturing: async (commands: readonly (readonly string[])[]) => {
       for (const c of commands) state.capturingCalls.push([...c])
+      // buildPanesAround expects `name=#{pane_id}` lines for tasks/ops/shell.
       return { code: 0, stdout: "tasks=%51\nops=%52\nshell=%53" }
     },
     newWindow: async (session: string, opts: Record<string, unknown>) => {
@@ -187,6 +197,7 @@ describe("newChatTab", () => {
     await chattab.newChatTab("kobe-t1", "codex")
     expect(state.sessionOptions["@kobe_vendor"]).toBe("codex")
     expect(daemonProcess.connectOrStartDaemon).toHaveBeenCalled()
+    // ... and as the PROJECT's last-active engine, keyed on the repo root.
     expect(vendorPrefs.setRepoLastActiveVendor).toHaveBeenCalledWith("/wt-root", "codex")
   })
 
@@ -204,6 +215,7 @@ describe("newChatTab", () => {
   test("degrades gracefully when new-window returns no pane id", async () => {
     state.newPaneId = ""
     await expect(chattab.newChatTab("kobe-t1")).resolves.toBeUndefined()
+    // buildPanesAround never runs because there's no claude pane to build around.
     expect(callsWith("set-option")).toEqual([])
   })
 

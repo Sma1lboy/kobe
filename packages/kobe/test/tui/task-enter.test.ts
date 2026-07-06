@@ -1,3 +1,12 @@
+/**
+ * Behavioral tests for the Handover owner (`src/tui/lib/task-enter.ts`):
+ * `ensureTaskSession`'s build/preview/materialise branches, `enterTask`'s
+ * heal/zen/supersede sequencing, and the `HandoverError` phases the callers
+ * toast on. Everything IO-shaped (tmux client, terminal/tmux applier, state
+ * gates, engine command) is mocked at the module seams the production code
+ * imports — no tmux, no daemon, no state.json.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import type { Task } from "../../src/types/task"
 import { toTaskId } from "../../src/types/task"
@@ -184,7 +193,7 @@ describe("ensureTaskSession", () => {
 
   test("archived task + beta gate opens the read-only history session without materialising", async () => {
     state.archivedPreviewOn = true
-    state.usableWorktrees = new Set(["/repo"])
+    state.usableWorktrees = new Set(["/repo"]) // recorded worktree GONE, repo usable
     const orch = makeOrch()
     const result = await ensureTaskSession(
       orch as unknown as OrchArg,
@@ -194,6 +203,7 @@ describe("ensureTaskSession", () => {
     )
     expect(result).toBe(false)
     expect(orch.ensureWorktree).not.toHaveBeenCalled()
+    // spawn dir falls back to the repo, history keys by the RECORDED path
     expect(state.ensureSessionCalls[0]).toMatchObject({
       archived: true,
       cwd: "/repo",
@@ -263,7 +273,7 @@ describe("enterTask", () => {
   test("a superseded enter skips setActiveTask + switch but keeps the build", async () => {
     const orch = makeOrch()
     await enterTask(orch as unknown as OrchArg, makeTask(), "/repo", "claude", { isCurrent: () => false })
-    expect(state.ensureSessionCalls).toHaveLength(1)
+    expect(state.ensureSessionCalls).toHaveLength(1) // build happened
     expect(orch.setActiveTask).not.toHaveBeenCalled()
     expect(tmuxApplier.enterWindow).not.toHaveBeenCalled()
   })

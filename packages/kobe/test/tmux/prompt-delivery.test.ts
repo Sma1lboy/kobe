@@ -1,3 +1,15 @@
+/**
+ * Unit tests for `src/tmux/prompt-delivery.ts` — the shared readiness-wait
+ * + bracketed-paste delivery used by `kobe api send`, `spawn-task`, and the
+ * per-repo init prompt.
+ *
+ * Why these matter: this is the only path that turns a scripted prompt into
+ * keystrokes inside an engine pane. Regressions here are silent — the prompt
+ * lands mid-boot, or the submit Enter coalesces into the paste and the text
+ * sits unsent in the composer (CHANGELOG 8f6dd64). The tmux client is mocked
+ * (no live tmux server in CI) and the wait loop runs on fake timers.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const capturePaneById = vi.fn<(paneId: string, lines?: number) => Promise<string>>()
@@ -33,12 +45,16 @@ describe("waitForEnginePane", () => {
   it("returns immediately (ready) for a non-fresh session whose pane exists", async () => {
     claudePaneIdStrict.mockResolvedValue("%7")
     await expect(waitForEnginePane("kobe-x", false)).resolves.toEqual({ pane: "%7", ready: true })
+    // A non-fresh session never needs the paint-stability probe.
     expect(capturePaneById).not.toHaveBeenCalled()
   })
 
   it("for a fresh session, waits until two consecutive captures are identical and non-empty", async () => {
     claudePaneIdStrict.mockResolvedValue("%3")
-    capturePaneById.mockResolvedValueOnce("booting…").mockResolvedValueOnce("prompt >").mockResolvedValue("prompt >")
+    capturePaneById
+      .mockResolvedValueOnce("booting…") // first paint
+      .mockResolvedValueOnce("prompt >") // changed — not stable yet
+      .mockResolvedValue("prompt >") // stable
     const p = waitForEnginePane("kobe-x", true)
     await vi.advanceTimersByTimeAsync(1000)
     await expect(p).resolves.toEqual({ pane: "%3", ready: true })
@@ -47,7 +63,7 @@ describe("waitForEnginePane", () => {
 
   it("an all-empty screen never reads as stable — the budget runs out instead", async () => {
     claudePaneIdStrict.mockResolvedValue("%3")
-    capturePaneById.mockResolvedValue("   ")
+    capturePaneById.mockResolvedValue("   ") // trims to "" forever
     const p = waitForEnginePane("kobe-x", true)
     await vi.advanceTimersByTimeAsync(24 * 250 + 50)
     await expect(p).resolves.toEqual({ pane: "%3", ready: false })
@@ -59,6 +75,7 @@ describe("waitForEnginePane", () => {
     const p = waitForEnginePane("kobe-x", true)
     await vi.advanceTimersByTimeAsync(24 * 250 + 50)
     await expect(p).resolves.toEqual({ pane: "%legacy", ready: false })
+    // 24 polls, then one final strict attempt before the legacy fallback.
     expect(claudePaneIdStrict).toHaveBeenCalledTimes(25)
   })
 })
@@ -67,6 +84,7 @@ describe("pasteAndSubmit", () => {
   it("sets + pastes a bracketed buffer, then submits Enter as a separate delayed read", async () => {
     const p = pasteAndSubmit("%9", "line one\n\nline two")
     await vi.advanceTimersByTimeAsync(149)
+    // Before the 150ms submit delay elapses the Enter must NOT have fired.
     expect(runTmux).toHaveBeenCalledTimes(2)
     expect(sendKeyName).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)

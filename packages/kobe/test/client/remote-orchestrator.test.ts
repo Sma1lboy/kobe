@@ -7,12 +7,21 @@ import {
   sameWorktreeChangesMap,
 } from "../../src/client/remote-orchestrator.ts"
 
+// Spy on the client-side logger so the malformed-event tests can assert the
+// drop is RECORDED (to client.log) instead of silently swallowed. Real
+// implementations of every other export are preserved.
 const { logClientError } = vi.hoisted(() => ({ logClientError: vi.fn() }))
 vi.mock("@sma1lboy/kobe-daemon/client/client-log", async (importActual) => ({
   ...(await importActual<typeof import("@sma1lboy/kobe-daemon/client/client-log")>()),
   logClientError,
 }))
 
+/**
+ * Minimal fake daemon client: RemoteOrchestrator only needs `on("*", …)`
+ * (to receive channel events) and `onLifecycle` (for the close hook) at
+ * construction time. `emit` replays a daemon event frame through the
+ * captured `*` handler, exactly as the real socket layer would.
+ */
 function fakeClient(): { client: KobeDaemonClient; emit: (name: string, payload: unknown) => void } {
   let star: ((frame: { name: string; payload: unknown }) => void) | undefined
   const client = {
@@ -35,6 +44,8 @@ describe("RemoteOrchestrator channel handling", () => {
     emit("update", { info })
     expect(orch.updateSignal()()).toEqual(info)
 
+    // A later null poll (dev/offline) clears the signal; the consuming pane
+    // is what keeps the last-known value sticky, not the orchestrator.
     emit("update", { info: null })
     expect(orch.updateSignal()()).toBeNull()
   })
@@ -72,9 +83,14 @@ describe("RemoteOrchestrator channel handling", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)
 
+    // An older daemon (or any push that predates locale support) omits the
+    // field. Defaulting it to "en" here is what made a stale daemon's echo
+    // yank the just-switched language back to English (the consumer applies
+    // locale only when isLocaleId() passes, and "" fails that → no-op).
     emit("ui-prefs", { theme: "nord" })
     expect(orch.uiPrefsSignal()()?.locale).toBe("")
 
+    // A real locale string from a current daemon still rides through.
     emit("ui-prefs", { theme: "nord", locale: "zh" })
     expect(orch.uiPrefsSignal()()?.locale).toBe("zh")
   })
@@ -86,6 +102,10 @@ describe("RemoteOrchestrator channel handling", () => {
     expect(orch.updateSignal()()).toBeNull()
   })
 
+  // Leak guard: `engine-state` only deletes an entry on an explicit `idle`
+  // event, but a task deleted while non-idle (running / error — the common
+  // delete case) never emits one. Without snapshot reconciliation a
+  // long-lived pane accumulated one stale entry per deleted task, forever.
   it("prunes engine-state entries for tasks absent from a task.snapshot", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)
@@ -110,15 +130,24 @@ describe("RemoteOrchestrator channel handling", () => {
     emit("engine-state", { taskId: "t2", state: "error", at: 11 })
     expect([...orch.engineStateSignal()().keys()].sort()).toEqual(["t1", "t2"])
 
+    // t2 deleted while in `error` — no idle event will ever arrive for it.
     emit("task.snapshot", { tasks: [task("t1")] })
     const after = orch.engineStateSignal()()
     expect([...after.keys()]).toEqual(["t1"])
+    // The surviving entry is untouched (same state, no spurious churn).
     expect(after.get("t1")?.state).toBe("running")
 
+    // A snapshot that changes nothing must not rebuild the map (no
+    // re-render storm on every push) — same reference back.
     emit("task.snapshot", { tasks: [task("t1")] })
     expect(orch.engineStateSignal()()).toBe(after)
   })
 
+  // `task.jobs` — long daemon operations (worktree materialisation). The
+  // map holds only IN-FLIGHT jobs: `running` adds, the terminal phases
+  // remove, so every attached pane can show a "materializing" row while a
+  // minutes-long `git worktree add` runs and drop it the moment the
+  // blocking RPC settles.
   describe("task.jobs channel", () => {
     const snapshotTask = (id: string) => ({
       id,
@@ -148,6 +177,8 @@ describe("RemoteOrchestrator channel handling", () => {
       emit("task.jobs", { taskId: "t1", kind: "ensureWorktree", phase: "done" })
       expect([...orch.taskJobsSignal()().keys()]).toEqual(["t2"])
 
+      // The error terminal phase clears too — the RPC caller gets the real
+      // error; the map only answers "is a job in flight".
       emit("task.jobs", { taskId: "t2", kind: "ensureWorktree", phase: "error", error: "boom" })
       expect(orch.taskJobsSignal()().size).toBe(0)
     })
@@ -156,6 +187,8 @@ describe("RemoteOrchestrator channel handling", () => {
       const { client, emit } = fakeClient()
       const orch = new RemoteOrchestrator(client)
       const before = orch.taskJobsSignal()()
+      // The bus replays its last `task.jobs` value to a late subscriber; a
+      // terminal phase must not rebuild the (empty) map — same ref back.
       emit("task.jobs", { taskId: "t9", kind: "ensureWorktree", phase: "done" })
       expect(orch.taskJobsSignal()()).toBe(before)
     })
@@ -169,6 +202,10 @@ describe("RemoteOrchestrator channel handling", () => {
       expect(orch.taskJobsSignal()().size).toBe(0)
     })
 
+    // Leak guard (same contract as engine-state pruning): a task DELETED
+    // while its job runs — or a dropped terminal frame across a reconnect —
+    // must not pin a phantom "materializing" entry forever. Each
+    // task.snapshot reconciles the map against the authoritative task list.
     it("prunes job entries for tasks absent from a task.snapshot", () => {
       const { client, emit } = fakeClient()
       const orch = new RemoteOrchestrator(client)
@@ -177,15 +214,22 @@ describe("RemoteOrchestrator channel handling", () => {
       emit("task.jobs", { taskId: "t1", kind: "ensureWorktree", phase: "running" })
       emit("task.jobs", { taskId: "t2", kind: "ensureWorktree", phase: "running" })
 
+      // t2 deleted mid-job — no terminal phase will ever arrive for it here.
       emit("task.snapshot", { tasks: [snapshotTask("t1")] })
       const after = orch.taskJobsSignal()()
       expect([...after.keys()]).toEqual(["t1"])
 
+      // A snapshot that changes nothing must not rebuild the map.
       emit("task.snapshot", { tasks: [snapshotTask("t1")] })
       expect(orch.taskJobsSignal()()).toBe(after)
     })
   })
 
+  // `worktree.changes` — the daemon-collected `+N −M` map (issue #6). Each
+  // push REPLACES the whole map (the daemon publishes the full picture and
+  // prunes deleted/archived tasks' entries itself), so unlike engine-state
+  // there's no snapshot reconciliation — but unchanged pushes must still be
+  // identity no-ops or every sidebar row re-renders on bus-replay noise.
   describe("worktree.changes channel", () => {
     it("starts null (no daemon-collected data → local-poller fallback)", () => {
       const { client } = fakeClient()
@@ -204,6 +248,8 @@ describe("RemoteOrchestrator channel handling", () => {
       expect(first?.get("/wt/a")).toEqual({ added: 2, deleted: 1 })
       expect(first?.size).toBe(2)
 
+      // The daemon pruned /wt/b (task archived/deleted) — the replacement
+      // map is authoritative; the stale key is gone without client logic.
       emit("worktree.changes", { changes: { "/wt/a": { added: 2, deleted: 1 } } })
       const second = orch.worktreeChangesSignal()()
       expect(second?.size).toBe(1)
@@ -215,6 +261,7 @@ describe("RemoteOrchestrator channel handling", () => {
       const orch = new RemoteOrchestrator(client)
       emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
       const before = orch.worktreeChangesSignal()()
+      // Bus replay across a reconnect resends the identical last value.
       emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
       expect(orch.worktreeChangesSignal()()).toBe(before)
     })
@@ -231,6 +278,10 @@ describe("RemoteOrchestrator channel handling", () => {
     })
   })
 
+  // Stability fix H: a malformed daemon frame must still be DROPPED (never
+  // acted on), but the drop has to leave a diagnosable trail in client.log
+  // instead of freezing a signal at its last good value with nothing to show
+  // for it. Each guard-failure path logs exactly one tagged line.
   describe("malformed events are logged before being dropped", () => {
     beforeEach(() => logClientError.mockClear())
 
@@ -302,6 +353,11 @@ describe("RemoteOrchestrator channel handling", () => {
   })
 })
 
+// Rolling-upgrade fallback: the client trusts daemon pushes only when the
+// daemon ADVERTISES the channel in hello.capabilities. An old daemon (no
+// capability) leaves the signal null → the sidebar's local poller engages;
+// a capable daemon flips it non-null even before the first publish, so the
+// pane stops spawning git processes the moment it connects.
 describe("worktree.changes capability gating (init)", () => {
   function fakeRpcClient(hello: Record<string, unknown>) {
     let star: ((frame: { name: string; payload: unknown }) => void) | undefined
@@ -327,6 +383,8 @@ describe("worktree.changes capability gating (init)", () => {
   it("a capability-less (old) daemon resets the signal to null — fallback engages", async () => {
     const { client, emit } = fakeRpcClient({ protocolVersion: 3, capabilities: ["task.snapshot"] })
     const orch = new RemoteOrchestrator(client)
+    // A stale map from a previous connection must not survive a reconnect
+    // to a downgraded daemon.
     emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
     await orch.init()
     expect(orch.worktreeChangesSignal()()).toBeNull()
@@ -335,6 +393,8 @@ describe("worktree.changes capability gating (init)", () => {
   it("a replayed map delivered during subscribe is not clobbered by init", async () => {
     const { client, emit } = fakeRpcClient({ protocolVersion: 3, capabilities: ["worktree.changes"] })
     const orch = new RemoteOrchestrator(client)
+    // The daemon replays the channel's last value before the subscribe
+    // response resolves; the capability step must keep it.
     emit("worktree.changes", { changes: { "/wt/a": { added: 4, deleted: 2 } } })
     await orch.init()
     expect(orch.worktreeChangesSignal()()?.get("/wt/a")).toEqual({ added: 4, deleted: 2 })
@@ -349,6 +409,8 @@ describe("decodeUiPrefsPayload — backward-compat defaults", () => {
   })
 
   it("an older daemon's theme-only payload resolves every newer field to its absent-sentinel", () => {
+    // The footgun this owns: locale MUST be "" (skip), not "en"; sortMode
+    // "default"; keysCollapsed false; projectFilter null; transparent off.
     expect(decodeUiPrefsPayload({ theme: "claude" })).toEqual({
       theme: "claude",
       transparentBackground: false,
@@ -372,6 +434,7 @@ describe("decodeUiPrefsPayload — backward-compat defaults", () => {
       keysCollapsed: true,
       projectFilter: null,
     })
+    // empty projectFilter string → null (all projects); unknown sortMode → default
     const d = decodeUiPrefsPayload({ theme: "x", projectFilter: "", sortMode: "weird", focusAccent: "#abc" })
     expect(d?.projectFilter).toBeNull()
     expect(d?.sortMode).toBe("default")
@@ -396,6 +459,12 @@ describe("worktree.changes pure helpers", () => {
 })
 
 describe("framework-free store twins (React hosts, issue #15 G3)", () => {
+  // Why this matters: React panes receive live daemon pushes ONLY through
+  // these stores — solid-js signals are inert under node/vitest and plain
+  // bun (SSR build). If the dual-write drifts or stops notifying, React
+  // panes silently freeze on boot-time prefs. Note the SUBSCRIBE assertions:
+  // in this very environment the Solid accessor would not notify, which is
+  // the reason the stores exist.
   it("ui-prefs channel lands in uiPrefsStore and notifies subscribers", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)

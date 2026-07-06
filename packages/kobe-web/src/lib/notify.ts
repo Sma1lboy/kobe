@@ -1,3 +1,16 @@
+/**
+ * Desktop notifications for attention-needing task transitions — so you can
+ * run many sessions, walk away, and get pinged when one needs you. Fires a
+ * browser Notification only when a task's engine state TRANSITIONS into an
+ * attention state (waiting_permission / error), the feature is enabled, and
+ * the page isn't focused (no point notifying what you're already looking at).
+ *
+ * Opt-in: Settings requests permission and flips the persisted flag. The
+ * store calls `notifyEngineTransition` from its engine-state reducer; the
+ * AppShell registers a navigate callback so a notification click jumps to the
+ * task.
+ */
+
 import { useSyncExternalStore } from "react"
 import type { ActivityState } from "./types.ts"
 
@@ -7,6 +20,8 @@ const ENGINE_KEY = "kobe-web.notify.engine"
 type Navigate = (taskId: string) => void
 let navigate: Navigate | null = null
 let enabled = readEnabled()
+// Engine-attention is the only notification category (PR-transition pings were
+// removed in the web redesign). Read once; defaults ON so an upgrade keeps it.
 const engineEnabled = readEngineEnabled()
 const listeners = new Set<() => void>()
 
@@ -34,6 +49,11 @@ function isAttention(state: ActivityState | undefined): boolean {
   return state === "waiting_permission" || state === "error"
 }
 
+/**
+ * The shared opt-in gate for any notification: the feature is on, permission
+ * granted, the page is hidden, and this event's category is enabled. Pure so
+ * both the engine and PR paths gate identically and it's unit-testable.
+ */
 export function notifyGateOpen(opts: {
   enabled: boolean
   permission: NotificationPermission
@@ -48,6 +68,12 @@ export function notifyGateOpen(opts: {
   )
 }
 
+/**
+ * Pure decision: should an engine transition fire a notification? The shared
+ * gate (incl. the `engine` category) AND a RISING edge into an attention
+ * state. Extracted from {@link notifyEngineTransition} so the edge logic is
+ * unit-tested without the Notification/DOM side effects.
+ */
 export function shouldNotify(opts: {
   prev: ActivityState | undefined
   next: ActivityState | undefined
@@ -65,16 +91,21 @@ export function shouldNotify(opts: {
     })
   )
     return false
+  // Rising edge only: was NOT attention, now IS.
   return !isAttention(opts.prev) && isAttention(opts.next)
 }
 
+/** AppShell registers how to jump to a task when a notification is clicked. */
 export function setNotifyNavigate(fn: Navigate | null): void {
   navigate = fn
 }
 
 export interface NotifyState {
+  /** The browser supports the Notification API. */
   supported: boolean
+  /** "default" | "granted" | "denied" — current browser permission. */
   permission: NotificationPermission
+  /** The user has turned the feature on (and granted permission). */
   enabled: boolean
 }
 
@@ -105,6 +136,7 @@ function getSnapshot(): NotifyState {
   return cached
 }
 
+/** Toggle the feature; turning ON requests permission if needed. */
 export async function setNotificationsEnabled(on: boolean): Promise<void> {
   if (
     on &&
@@ -113,12 +145,16 @@ export async function setNotificationsEnabled(on: boolean): Promise<void> {
   ) {
     try {
       await Notification.requestPermission()
-    } catch {}
+    } catch {
+      /* user dismissed — permission stays default/denied */
+    }
   }
   enabled = on
   try {
     localStorage.setItem(ENABLED_KEY, on ? "1" : "0")
-  } catch {}
+  } catch {
+    /* ignore */
+  }
   notify()
 }
 
@@ -133,6 +169,11 @@ export function useNotifyState(): NotifyState {
   )
 }
 
+/**
+ * Called from the store's engine-state reducer with the prior + next state
+ * for a task. Fires a notification only on a transition INTO an attention
+ * state while the page is hidden.
+ */
 export function notifyEngineTransition(
   taskId: string,
   taskLabel: string,
@@ -169,5 +210,7 @@ function fire(
       navigate?.(taskId)
       n.close()
     }
-  } catch {}
+  } catch {
+    /* construction can throw on some platforms — best-effort */
+  }
 }

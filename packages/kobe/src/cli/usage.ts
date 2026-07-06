@@ -1,5 +1,14 @@
+/**
+ * Top-level `kobe` CLI help text.
+ *
+ * Kept as one tested string so `kobe help` / `kobe --help` and the
+ * unknown-command path in {@link ./index.ts} render the same thing, and
+ * so adding a subcommand updates help in one place.
+ */
+
 import { CURRENT_VERSION } from "../version.ts"
 
+/** The full `kobe help` text (no trailing newline). */
 export function topLevelUsage(): string {
   return [
     `kobe ${CURRENT_VERSION}`,

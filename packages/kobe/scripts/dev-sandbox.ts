@@ -25,6 +25,9 @@ async function sandboxHome(): Promise<string> {
   const explicit = process.env.KOBE_SANDBOX_HOME_DIR?.trim()
   if (explicit) return explicit
 
+  // Share one dev sandbox across git worktrees. `git-common-dir` points at
+  // the primary checkout's `.git`, even when this script runs from a Kobe
+  // task worktree, so native and tmux sandbox runs see the same task store.
   const repoRoot = dirname(await gitCommonDir())
   return join(repoRoot, "packages", "kobe", ".dev-sandbox", "home")
 }

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest"
 import type { DiffFile } from "../src/lib/diff.ts"
 import { filterDiffFiles, matchesPath } from "../src/lib/diff-filter.ts"
 
+/**
+ * The Changes pane file filter. A blank query must return the SAME array (the
+ * memo no-ops when not searching); otherwise it's a case-insensitive substring
+ * match on the path, so typing part of a directory or filename narrows the list.
+ */
 
 const file = (path: string): DiffFile =>
   ({ path, status: "modified", patch: "", staged: false }) as DiffFile
@@ -51,9 +56,11 @@ describe("filterDiffFiles", () => {
       file("src/lib/store.test.ts"),
       file("README.md"),
     ]
+    // *.test.ts → only the test file (anchored, so store.ts is excluded).
     expect(paths(filterDiffFiles(gf, "*.test.ts"))).toEqual([
       "src/lib/store.test.ts",
     ])
+    // src/* → both src files, not README.
     expect(paths(filterDiffFiles(gf, "src/*"))).toEqual([
       "src/lib/store.ts",
       "src/lib/store.test.ts",
@@ -61,10 +68,12 @@ describe("filterDiffFiles", () => {
   })
 
   it("excludes with a leading `!` (negation)", () => {
+    // !*.md → everything that isn't markdown.
     expect(paths(filterDiffFiles(files, "!*.md"))).toEqual([
       "src/lib/store.ts",
       "src/components/DiffView.tsx",
     ])
+    // !substring negates a plain substring too.
     expect(paths(filterDiffFiles(files, "!src/"))).toEqual(["README.md"])
   })
 })
@@ -93,20 +102,27 @@ describe("matchesPath", () => {
   })
 
   it("trims before testing `!`, so leading space still negates", () => {
+    // Regression: negate was once checked before trim, so a leading space
+    // silently dropped negation (inverted the result).
     expect(matchesPath("a.json", " !*.json")).toBe(false)
     expect(matchesPath("a.ts", " !*.json")).toBe(true)
   })
 
   it("collapses runs of `*` (no catastrophic backtracking, `**` == `*`)", () => {
+    // Returning at all proves it didn't hang: a naive `.*.*…` anchored regex
+    // backtracks exponentially on this non-matching path.
     const deep = "src/components/very/deep/generated/file"
     const t0 = performance.now()
     expect(matchesPath(deep, "************x")).toBe(false)
     expect(performance.now() - t0).toBeLessThan(50)
+    // `**` behaves the same as `*` (any-depth).
     expect(matchesPath("a/b/c.json", "**.json")).toBe(true)
     expect(matchesPath("a/b/c.ts", "**.json")).toBe(false)
   })
 
   it("escapes regex metachars in a glob's literal segments", () => {
+    // In the glob `a.*` the dot is literal, not 'any char' — so it must match
+    // "a." exactly, not "ax".
     expect(matchesPath("a.test.ts", "a.*")).toBe(true)
     expect(matchesPath("axtest", "a.*")).toBe(false)
   })

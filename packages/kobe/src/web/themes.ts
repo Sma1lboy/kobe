@@ -1,3 +1,18 @@
+/**
+ * Theme palettes for the web dashboard — the same 7 theme JSONs the TUI
+ * ships (tui/context/theme/*.json), resolved to flat hex palettes in the
+ * web's token vocabulary (the `--color-*` custom properties in
+ * packages/kobe-web/src/styles.css). One source of truth for brand colors:
+ * a TUI theme switch fans out over the daemon's `ui-prefs` channel and the
+ * web applies the matching palette live.
+ *
+ * The def-ref resolution mirrors `tui/context/theme.tsx` `resolveTheme`
+ * (hex / def-name / {dark,light} variant) but emits hex strings instead of
+ * opentui RGBA — the web can't import @opentui/core.
+ *
+ * Route:  GET /api/themes → { themes: Record<name, WebThemePalette> }
+ */
+
 import claude from "../tui/context/theme/claude.json" with { type: "json" }
 import conductor from "../tui/context/theme/conductor.json" with { type: "json" }
 import dracula from "../tui/context/theme/dracula.json" with { type: "json" }
@@ -14,6 +29,7 @@ interface ThemeJson {
   theme: Record<string, ColorValue>
 }
 
+/** The web token vocabulary — keys match styles.css `--color-<key>`. */
 export interface WebThemePalette {
   bg: string
   surface: string
@@ -59,6 +75,8 @@ function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)))
 }
 
+/** Blend `a` toward `b` by `t` (0..1) — for derived slots the theme JSONs
+ *  don't carry (subtle text, hover states). */
 function mix(a: string, b: string, t: number): string {
   const pa = Number.parseInt(a.slice(1), 16)
   const pb = Number.parseInt(b.slice(1), 16)
@@ -88,6 +106,8 @@ function toWebPalette(themeJson: ThemeJson): WebThemePalette | null {
     "line-active": slot("borderActive") ?? mix(line, fg, 0.3),
     fg,
     muted,
+    // No textSubtle slot in the theme schema — derive by sinking muted
+    // toward the background (matches the static claude values closely).
     subtle: mix(muted, bg, 0.35),
     primary,
     "primary-hover": mix(primary, fg, 0.35),
@@ -100,6 +120,7 @@ function toWebPalette(themeJson: ThemeJson): WebThemePalette | null {
   }
 }
 
+/** Resolved once at module load — theme JSONs are static imports. */
 export const WEB_THEMES: Record<string, WebThemePalette> = Object.fromEntries(
   Object.entries(THEME_JSONS)
     .map(([name, json]) => [name, toWebPalette(json)] as const)
@@ -108,6 +129,7 @@ export const WEB_THEMES: Record<string, WebThemePalette> = Object.fromEntries(
 
 const THEMES_ROUTE = "/api/themes"
 
+/** Route handler; `null` when not a themes route so the caller falls through. */
 export function handleThemesRequest(req: Request, url: URL): Response | null {
   if (url.pathname !== THEMES_ROUTE) return null
   if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 })

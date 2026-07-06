@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest"
 import { type StatusRuleOrchestrator, maybeAutoStart } from "../../src/monitor/status-rules.ts"
 import type { Task, TaskStatus } from "../../src/types/task.ts"
 
+/**
+ * Auto-start rule (web-kanban.md M5, judge-free revision). Load-bearing:
+ * the ONLY transition is backlog → in_progress, gated on the opt-in flag;
+ * a task the user placed anywhere else is never touched.
+ */
+
 const task = (over: Partial<Task>): Task =>
   ({
     id: "t1",

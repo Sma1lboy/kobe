@@ -1,3 +1,16 @@
+/**
+ * `kobe add --remote …` — register an SSH-backed project.
+ *
+ * Stores the connection config under `remoteRepos[ssh://user@host:port]` and
+ * adds that synthetic key to `savedRepos`. For password auth the secret is
+ * prompted interactively (never on argv) and written to the OS keychain — only
+ * a `keychainRef` lands in `state.json`. A best-effort connectivity probe runs
+ * after registration so a typo surfaces immediately, but a failed probe does
+ * NOT unregister the project (the host may just be down right now).
+ *
+ * See `docs/design/remote-projects.md`.
+ */
+
 import { createInterface } from "node:readline"
 import { remoteControlSocketPath } from "../env.ts"
 import { RemoteExecHost, type RemoteSpec } from "../exec/exec-host.ts"
@@ -41,6 +54,7 @@ export function parseRemoteFlags(args: readonly string[]): ParsedFlags {
         break
       }
       case "--key": {
+        // Optional path: a following non-flag token is the key path; otherwise ssh-agent.
         const next = args[i + 1]
         if (next && !next.startsWith("-")) {
           f.key = { present: true, path: next }
@@ -70,9 +84,11 @@ function fail(msg: string): never {
   process.exit(2)
 }
 
+/** Read a line from the tty with echo suppressed (for the SSH password). */
 async function promptHidden(prompt: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
   const out = process.stdout as NodeJS.WriteStream & { _writeToOutput?: (s: string) => void }
+  // Mask everything readline would echo after the prompt is printed.
   let muted = false
   const original = out._writeToOutput?.bind(out)
   out._writeToOutput = (s: string) => {
@@ -102,6 +118,7 @@ export async function runAddRemote(args: readonly string[]): Promise<void> {
   if (f.key && f.password) fail("choose ONE of --key or --password, not both")
   if (!f.key && !f.password) fail("an auth method is required: --key [path] or --password")
 
+  // Resolve auth: store the password in the keychain now; persist only a ref.
   let auth: Parameters<typeof addRemoteRepo>[0]["auth"]
   if (f.password) {
     if (!isKeychainSupported()) fail("--password needs the macOS keychain (unsupported on this platform)")
@@ -120,6 +137,7 @@ export async function runAddRemote(args: readonly string[]): Promise<void> {
   await probe(f, auth)
 }
 
+/** Best-effort reachability check: open the control master + list the base path. */
 async function probe(f: ParsedFlags, auth: Parameters<typeof addRemoteRepo>[0]["auth"]): Promise<void> {
   if (auth.kind === "password" && !isKeychainSupported()) return
   const runtimeAuth: RemoteSpec["auth"] =

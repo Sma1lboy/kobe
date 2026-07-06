@@ -6,6 +6,10 @@ import {
 } from "../src/lib/document-title.ts"
 import type { EngineState, Task } from "../src/lib/types.ts"
 
+// Why this matters: this is the "I walked away — which tab needs me?" signal.
+// It must match the Overview's "Needs you" bucket exactly (same triage set),
+// and it must never count rows that aren't sessions (archived, project mains)
+// or a tab badge lies about how much wants your attention.
 
 function task(id: string, over: Partial<Task> = {}): Task {
   return {

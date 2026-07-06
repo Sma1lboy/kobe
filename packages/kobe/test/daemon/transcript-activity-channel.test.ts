@@ -1,3 +1,18 @@
+/**
+ * `transcript.activity` over the real Unix socket (perf — deduplicate
+ * per-Ops-pane polling). Pins the wire contract end-to-end:
+ *
+ *   - the daemon advertises the channel in `hello.capabilities` (so a client
+ *     gates trust-the-pushes on it, the rolling-upgrade signal);
+ *   - the bus replays the channel's last value to a LATE subscriber (so a
+ *     freshly-attached Ops pane gets the current map in one frame);
+ *   - the `hasSubscribers` gate holds: a gui-less daemon with zero
+ *     subscribers publishes nothing, then repopulates once a pane subscribes.
+ *
+ * The per-window capture-pane → @kobe_tab_state chip stays MANUAL — it needs
+ * a real tmux pane and lives in `ops/host.tsx`, never daemon-side.
+ */
+
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +22,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 import { type Task, toTaskId } from "../../src/types/task.ts"
 
+/**
+ * Orchestrator listing ONE local task whose worktree is an empty temp dir:
+ * the collector's real probe finds no transcript → mtime 0, no completion →
+ * publishes `{ <worktree>: { mtimeMs: 0, completionId: null, completionAt: 0 } }`
+ * (a defined first value is still a real change, so it publishes). That's
+ * enough to exercise the replay + gate without faking the fs.
+ */
 function fakeOrchestrator(worktreePath: string): Orchestrator {
   const task: Task = {
     id: toTaskId("t1"),
@@ -93,6 +115,8 @@ describe("transcript.activity channel (daemon → client)", () => {
       transcriptActivityTickMs: 25,
     })
 
+    // First client subscribes as gui → holds the daemon up AND satisfies the
+    // collector's hasSubscribers gate, so it runs and publishes.
     const first = new KobeDaemonClient(socketPath)
     let firstPayload: { activity?: Record<string, unknown> } | undefined
     first.on("transcript.activity", (frame) => {
@@ -102,6 +126,8 @@ describe("transcript.activity channel (daemon → client)", () => {
     await waitFor(() => firstPayload?.activity?.[dir] !== undefined)
     expect(firstPayload?.activity?.[dir]).toEqual({ mtimeMs: 0, completionId: null, completionAt: 0 })
 
+    // A LATE subscriber gets the channel's last value replayed on connect —
+    // a freshly-attached Ops pane learns the current map in one frame.
     const late = new KobeDaemonClient(socketPath)
     let latePayload: { activity?: Record<string, unknown> } | undefined
     late.on("transcript.activity", (frame) => {
@@ -129,6 +155,8 @@ describe("transcript.activity channel (daemon → client)", () => {
       transcriptActivityTickMs: 25,
     })
 
+    // Let several collector ticks elapse with ZERO subscribers — the gate
+    // must keep it idle (no fs probes, no published last-value).
     await new Promise((r) => setTimeout(r, 150))
 
     const client = new KobeDaemonClient(socketPath)
@@ -136,6 +164,8 @@ describe("transcript.activity channel (daemon → client)", () => {
     client.on("transcript.activity", (frame) => {
       payload = frame.payload as { activity?: Record<string, unknown> }
     })
+    // The replay on subscribe carries no last-value yet (gate kept it idle);
+    // the value only appears once OUR subscribe resumes the collector.
     await client.subscribe({ role: "gui" })
     await waitFor(() => payload?.activity?.[dir] !== undefined)
     expect(payload?.activity?.[dir]).toEqual({ mtimeMs: 0, completionId: null, completionAt: 0 })

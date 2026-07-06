@@ -1,3 +1,12 @@
+/**
+ * Discovery for the local `codex` CLI binary.
+ *
+ * Mirrors `claude-code-local/binary.ts` — same search order, just with
+ * the binary name swapped. The first hit wins; throws
+ * {@link CodexBinaryNotFoundError} on miss with the full list of paths
+ * checked.
+ */
+
 import { spawnSync } from "node:child_process"
 import { existsSync, statSync } from "node:fs"
 import { homedir } from "node:os"

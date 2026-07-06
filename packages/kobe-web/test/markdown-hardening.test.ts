@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { renderMarkdown } from "../src/lib/markdown.ts"
 
+/**
+ * Extra invariants on the notes markdown renderer — the highest-risk file in
+ * kobe-web (it feeds dangerouslySetInnerHTML). These lock CURRENT behavior on
+ * the injection-adjacent edges that markdown.test.ts doesn't already cover, so
+ * a future tweak to the link/emphasis passes can't silently open a hole.
+ * No production change — coverage only.
+ */
 
 describe("renderMarkdown — link scheme hardening", () => {
   it("drops data: URLs (a known XSS vector) to inert text", () => {
@@ -18,6 +25,8 @@ describe("renderMarkdown — link scheme hardening", () => {
 
   it("round-trips an & in a safe URL without breaking the href or double-encoding", () => {
     const out = renderMarkdown("[a](https://x.com?a=1&b=2)")
+    // The & is entity-encoded exactly once inside the attribute — not raw
+    // (which could break out) and not double-encoded (&amp;amp;).
     expect(out).toContain('href="https://x.com?a=1&amp;b=2"')
     expect(out).not.toContain("&amp;amp;")
   })
@@ -36,6 +45,8 @@ describe("renderMarkdown — no image/raw-markup vectors", () => {
   it("does NOT emit an <img> for image syntax (the ! survives as text)", () => {
     const out = renderMarkdown("![alt](https://x.com/i.png)")
     expect(out).not.toContain("<img")
+    // Current behavior: the link pass turns the [alt](url) into an anchor and
+    // leaves the leading ! as literal text — never a raw image element.
     expect(out).toContain("!<a ")
   })
 
@@ -61,9 +72,12 @@ describe("renderMarkdown — emphasis edges", () => {
   })
 
   it("does not pair a * inside inline code with a * outside it", () => {
+    // The code-span split means the `*` in `a*b` can't open emphasis that
+    // closes at the trailing `*c*` outside the span.
     const out = renderMarkdown("`a*b` *c*")
     expect(out).toContain("<code")
     expect(out).toContain("<em>c</em>")
+    // the code span content is untouched
     expect(out).toContain("a*b")
   })
 })

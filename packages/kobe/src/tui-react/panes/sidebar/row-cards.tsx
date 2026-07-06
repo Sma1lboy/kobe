@@ -1,4 +1,18 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React sidebar row cards (issue #15, G3) — the
+ * `src/tui/panes/sidebar/row-cards.tsx` counterpart. Row derivation
+ * (`buildSidebarRowView`), the `+N −M` pollers, and the tone/label helpers
+ * are the shared framework-free modules; this file owns only React
+ * rendering.
+ *
+ * Poller contract (async canon): the fire-and-forget `poll*` calls live in
+ * effects keyed on the Sidebar's `branchTick` (never in render), while the
+ * cached `read` side (`worktreeChanges` / `currentBranch`) is a plain
+ * synchronous getter read at render time. A finishing poll surfaces on the
+ * next tick re-render (≤100ms via the spinner tick) instead of notifying —
+ * the Solid signal's push is replaced by the tick's pull.
+ */
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import { type BoxRenderable, TextAttributes } from "@opentui/core"
@@ -35,10 +49,15 @@ export type SidebarRowCardSharedProps = {
   readonly moveMode?: boolean
 }
 
+/**
+ * Per-row `+N −M` counts: daemon-pushed when available, else the local
+ * poller cache (poll scheduled in an effect; archived rows never poll).
+ */
 function useChanges(shared: SidebarRowCardSharedProps, task: SidebarRow["task"]): WorktreeChanges {
   const pushed = pickPushedChanges(shared.worktreeChanges, task.worktreePath)
   const hasPushed = pushed !== null
   useEffect(() => {
+    // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
     void shared.branchTick
     if (hasPushed || task.archived) return
     pollWorktreeChanges(task.worktreePath)
@@ -61,6 +80,7 @@ function RowBody(props: {
       ref={(renderable: BoxRenderable | null) => {
         if (!renderable) return
         shared.rowEls.set(flatIndex, renderable)
+        // React 19 ref cleanup — same "only if still ours" guard as Solid.
         return () => {
           if (shared.rowEls.get(flatIndex) === renderable) shared.rowEls.delete(flatIndex)
         }
@@ -91,6 +111,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
   const isSelected = task.id === shared.selectedId
   const changes = useChanges(shared, task)
   useEffect(() => {
+    // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
     void shared.branchTick
     pollCurrentBranch(task.repo)
   }, [task.repo, shared.branchTick])

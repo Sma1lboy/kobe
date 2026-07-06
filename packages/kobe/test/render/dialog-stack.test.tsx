@@ -1,3 +1,8 @@
+/**
+ * DialogProvider / useDialog — the dialog stack itself (src/tui/ui/dialog.tsx),
+ * independent of any concrete dialog. push/replace/clear + the esc/ctrl+c
+ * dismiss-top binding every *Dialog component relies on.
+ */
 import { describe, expect, it } from "bun:test"
 import { DialogProvider, useDialog } from "../../src/tui/ui/dialog"
 import { renderComponent, settle } from "./harness"

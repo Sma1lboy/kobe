@@ -1,3 +1,18 @@
+/**
+ * Framework-free KV core (src/tui-react/context/kv-core.ts) — the React
+ * KVProvider's persistence half. These tests pin the semantics the Solid
+ * provider fought for and the React port must not regress:
+ *
+ *   - DIRTY-KEY MERGE on flush: only keys THIS core `set()` reach disk; a
+ *     key another process wrote after hydration passes through untouched
+ *     (the multi-process lost-update bug).
+ *   - `seed()` (the signal-default path) is in-memory only — reading a
+ *     default must never persist it.
+ *   - `set(key, undefined)` serializes as a DELETION.
+ *   - `clear()` is the one whole-file write: it wipes even foreign keys.
+ *   - Writes are debounced (250ms) — no disk write before the window.
+ */
+
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -11,6 +26,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Reflect.deleteProperty (not `= undefined`): assigning undefined to a
+  // process.env key stores the string "undefined" under node.
   if (savedHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = savedHome
   vi.useRealTimers()
@@ -55,6 +72,7 @@ describe("createKvCore", () => {
     const home = isolatedHome({ shared: "old", mine: "old" })
     const kv = createKvCore()
     kv.set("mine", "new")
+    // Another kobe process writes a DIFFERENT key after our hydration.
     writeState(home, { shared: "theirs", mine: "old" })
     expect(kv.flush()).toBe(true)
     expect(readState(home)).toEqual({ shared: "theirs", mine: "new" })
@@ -72,10 +90,10 @@ describe("createKvCore", () => {
     const home = isolatedHome({ existing: "x" })
     const kv = createKvCore()
     kv.seed("someDefault", true)
-    kv.seed("existing", "would-clobber")
+    kv.seed("existing", "would-clobber") // no-op: key already set
     expect(kv.get("someDefault")).toBe(true)
     expect(kv.get("existing")).toBe("x")
-    expect(kv.flush()).toBe(true)
+    expect(kv.flush()).toBe(true) // nothing dirty → no write needed
     expect(readState(home)).toEqual({ existing: "x" })
   })
 
@@ -97,6 +115,7 @@ describe("createKvCore", () => {
     kv.clear()
     expect(kv.snapshot()).toEqual({})
     expect(readState(home)).toEqual({})
+    // Pending dirty keys must not survive the wipe via a later flush.
     expect(kv.flush()).toBe(true)
     expect(readState(home)).toEqual({})
   })

@@ -1,3 +1,15 @@
+/**
+ * Compact relative-time formatting for the task rail ("3m", "2h", "5d").
+ * Pure + dependency-free; the rail re-renders on every snapshot so a coarse
+ * bucket is plenty (no per-second ticking).
+ */
+
+/**
+ * Verbose "X ago" relative time from a millisecond epoch — the adopt dialog's
+ * worktree-activity style (vs {@link relativeTime}'s compact rail style). A
+ * falsy/zero timestamp renders empty. `now` is injectable for deterministic
+ * tests.
+ */
 export function relativeTimeAgo(ms: number, now: number = Date.now()): string {
   if (!ms) return ""
   const sec = Math.max(0, Math.round((now - ms) / 1000))

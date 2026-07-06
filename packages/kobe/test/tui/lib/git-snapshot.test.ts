@@ -1,3 +1,21 @@
+/**
+ * Unit tests for `src/tui/lib/git-snapshot.ts` — the one-shot sync git
+ * helpers the new-task dialog and quick-task lean on.
+ *
+ * Why these matter: this module is THE sync-subprocess whitelist entry
+ * for `src/tui/**` (see test/tui/render-path-sync-guard.test.ts), so
+ * its degrade-to-null/[] contract must hold — a thrown error or a
+ * hang here would surface inside a dialog keystroke. We pin behavior
+ * against a throwaway tmpdir git repo (never the working repo, whose
+ * branch set varies):
+ *   - validateRepoPath's three reasons (missing / not a dir / not a
+ *     repo) and the null happy path.
+ *   - getCurrentBranch reads the checked-out branch and degrades to
+ *     null for non-repos.
+ *   - listLocalBranches sorts default branches (main, master, develop)
+ *     first and degrades to [] for non-repos.
+ */
+
 import { spawnSync } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
@@ -37,6 +55,7 @@ describe("validateRepoPath", () => {
     expect(validateRepoPath("")).toBe("repo path is required")
     expect(validateRepoPath(path.join(root, "missing"))).toContain("path does not exist")
     expect(validateRepoPath(plainFile)).toContain("not a directory")
+    // Non-repo: friendly copy that explains the why and hands over the fix.
     const nonRepo = validateRepoPath(notRepo)
     expect(nonRepo).toContain("isn't a git repository")
     expect(nonRepo).toContain("git init")

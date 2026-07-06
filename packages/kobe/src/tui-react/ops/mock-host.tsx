@@ -1,4 +1,13 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React ops mock host (`bun run dev:mock-react-ops`) — the live render
+ * proof for the ported Ops pane. Same fixture recipe as the filetree mock
+ * (a throwaway `git init` repo with deterministic `kobe-fixture-*` names
+ * the smoke greps out of the captured ANSI output), but mounted through
+ * the real `OpsShell`: standalone shape (no task id, no target pane), so
+ * the tmux-bound turn poll stays off and the badge runs the local
+ * fallback probe against the fixture worktree.
+ */
 
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"

@@ -1,3 +1,17 @@
+/**
+ * Unit tests for `kobe api` VERB HANDLER LOGIC — the decisions each handler
+ * makes (task resolution, fan-out planning, prompt-delivery choice,
+ * create/adopt flag interplay) — driven through `invokeVerb` against a
+ * fake daemon client that records requests and a stubbed side-effect
+ * runtime. No daemon socket, no tmux server, no git.
+ *
+ * Why these matter: `kobe api` is scripted against (the kobe skill +
+ * shell aliases), so a handler silently changing which RPCs it fires, in
+ * what order, with what payload — or what JSON it prints — breaks scripts
+ * that never see a type error. These tests pin the REQUEST TRAFFIC and
+ * RESULT SHAPES, which the schema (`kobe api schema`) cannot express.
+ */
+
 import type { ChannelName, ChannelPayloads } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { describe, expect, it } from "vitest"
 import {
@@ -13,10 +27,14 @@ import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 import { tmuxSessionName } from "../../src/tmux/client.ts"
 import type { EnsureSessionOpts } from "../../src/tui/panes/terminal/tmux.ts"
 
+// ── Fakes ─────────────────────────────────────────────────────────────────────
+
 type RpcResponder = (payload: unknown, callIndex: number) => unknown
 
+/** Records every request; answers from a per-RPC responder table. */
 class FakeClient implements DaemonRpc {
   readonly requests: Array<{ name: string; payload: unknown }> = []
+  /** Channel payloads "replayed" when `subscribe()` runs (mirrors the daemon). */
   readonly replay: Array<{ channel: ChannelName; payload: unknown }> = []
   subscribeCount = 0
   private readonly handlers = new Map<string, Set<(payload: unknown) => void>>()
@@ -55,6 +73,7 @@ class FakeClient implements DaemonRpc {
   }
 }
 
+/** A task as the daemon serializes it — only the fields handlers read. */
 function taskFixture(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: "t1",
@@ -69,6 +88,7 @@ function taskFixture(over: Record<string, unknown> = {}): Record<string, unknown
   }
 }
 
+/** Runtime whose every operation is inert (or loudly unexpected). */
 function stubRuntime(overrides: Partial<ApiRuntime> = {}): ApiRuntime {
   return {
     isTaskRunning: async () => false,
@@ -83,6 +103,7 @@ function stubRuntime(overrides: Partial<ApiRuntime> = {}): ApiRuntime {
   }
 }
 
+/** A tearDownSession stub that records the task ids it was asked to kill. */
 function recordingTearDown() {
   const killed: string[] = []
   const tearDownSession: ApiRuntime["tearDownSession"] = async (taskId) => {
@@ -91,6 +112,7 @@ function recordingTearDown() {
   return { killed, tearDownSession }
 }
 
+/** A deliverPrompt that records its calls instead of touching tmux. */
 function recordingDelivery(result: Partial<DeliveredPrompt> = {}) {
   const calls: Array<{ target: PromptTarget; prompt: string }> = []
   const deliver: ApiRuntime["deliverPrompt"] = async (_client, target, prompt) => {
@@ -111,6 +133,8 @@ async function expectApiError(run: () => Promise<unknown>, code: string, message
     else if (message) expect((err as ApiError).message).toMatch(message)
   }
 }
+
+// ── add: create/flag interplay + prompt decision ─────────────────────────────
 
 describe("add handler", () => {
   it("minimal create: one task.create, no follow-ups, started:false", async () => {
@@ -178,6 +202,7 @@ describe("add handler", () => {
     expect(client.requests[1].payload).toEqual({ taskId: "t1" })
     expect(client.requests[2].payload).toEqual({ taskId: "t1", status: "in_progress" })
     expect(client.requests[3].payload).toEqual({ taskId: "t1", pinned: true })
+    // The returned task is the REFRESHED one, not the create-time snapshot.
     expect(result.task).toEqual(fresh)
   })
 
@@ -243,6 +268,8 @@ describe("add handler", () => {
   })
 })
 
+// ── issues: daemon-owned tracker ─────────────────────────────────────────────
+
 describe("issue handlers", () => {
   it("issue-set-status sends a daemon-owned issue mutation", async () => {
     const client = new FakeClient({
@@ -260,6 +287,8 @@ describe("issue handlers", () => {
     ])
   })
 })
+
+// ── send: task resolution (explicit id vs active task) ──────────────────────
 
 describe("send handler task resolution", () => {
   it("uses an explicit --task-id without consulting the active task", async () => {
@@ -296,9 +325,12 @@ describe("send handler task resolution", () => {
       "MISSING_TARGET",
       "no --task-id given and no active task — open a task first or pass --task-id",
     )
+    // It never fired a task.get / delivery for a target it couldn't resolve.
     expect(client.requestNames).toEqual([])
   })
 })
+
+// ── fan-out: plan building, cap, per-task traffic ────────────────────────────
 
 describe("fan-out handler", () => {
   function fanClient(): FakeClient {
@@ -388,6 +420,8 @@ describe("fan-out handler", () => {
   })
 })
 
+// ── collect: id-list vs repo-filter resolution ───────────────────────────────
+
 describe("collect handler task resolution", () => {
   it("--task-ids reads each id verbatim (trimmed) and reports liveness + changes", async () => {
     const client = new FakeClient({
@@ -447,6 +481,8 @@ describe("collect handler task resolution", () => {
   })
 })
 
+// ── small daemon verbs: payload + result shapes ──────────────────────────────
+
 describe("simple verb handlers", () => {
   it("get-task pairs the daemon task with tmux liveness", async () => {
     const task = taskFixture()
@@ -482,6 +518,9 @@ describe("simple verb handlers", () => {
   })
 
   it("archive(true) kills the task's tmux session AFTER the RPC commits", async () => {
+    // Archiving stops the engine (matching the TUI archiveTaskFlow + the verb's
+    // own "worktree/branch/history stay" contract): the live session must not
+    // outlive the archive flag, or it keeps burning resources.
     const order: string[] = []
     const client = new FakeClient({
       "task.archive": () => {
@@ -500,6 +539,7 @@ describe("simple verb handlers", () => {
       }),
     })
     expect(killed).toEqual(["t1"])
+    // The kill runs only after the daemon has committed the archive.
     expect(order).toEqual(["rpc", "kill"])
   })
 
@@ -524,6 +564,9 @@ describe("simple verb handlers", () => {
   })
 
   it("delete kills the orphaned tmux session AFTER the delete RPC commits", async () => {
+    // The daemon's task.delete removes the worktree + index entry but never the
+    // tmux session (it can't — it never imports tmux). The CLI must kill it, or
+    // a scripted delete leaks a live engine invisible to every kobe UI.
     const order: string[] = []
     const client = new FakeClient({
       "task.delete": () => {
@@ -545,6 +588,8 @@ describe("simple verb handlers", () => {
     expect(order).toEqual(["rpc", "kill"])
   })
 })
+
+// ── adopt: flag interplay ────────────────────────────────────────────────────
 
 describe("adopt handler", () => {
   it("sends only repo + worktreePath when optionals are omitted", async () => {
@@ -569,6 +614,8 @@ describe("adopt handler", () => {
     })
   })
 })
+
+// ── deliverPrompt: the delivery decision tree ────────────────────────────────
 
 describe("deliverPrompt", () => {
   function fakeOps(overrides: Partial<PromptDeliveryOps> = {}) {
@@ -623,6 +670,9 @@ describe("deliverPrompt", () => {
   })
 
   it("delivers the EXPLICIT prompt, not the repo's first prompt (init script still runs)", async () => {
+    // CLAUDE.md contract: `kobe api … --prompt` runs the init script but
+    // delivers the explicit prompt INSTEAD of the repo's init-prompt — a
+    // fresh session must never get both pastes.
     const { ops, ensured, pasted } = fakeOps({
       resolveEngineLaunchInit: async () => ({
         initScript: "./setup.sh",

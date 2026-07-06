@@ -1,8 +1,19 @@
+/**
+ * i18n parity gate (runs in CI via `test:fast`).
+ *
+ * English is the source of truth; every other locale must carry the exact
+ * same key set — no missing keys (untranslated UI falls back silently) and
+ * no extra keys (dead translations / typos). Also asserts no empty leaf and
+ * that placeholders (`{name}`) match between en and each locale, since a
+ * dropped placeholder is a silent bug `t()` can't catch.
+ */
+
 import { describe, expect, it } from "vitest"
 import { CATALOGS, LOCALES, en } from "../../src/tui/i18n/catalog"
 
 type Leaf = string
 
+/** Flatten a nested message object into dotted `a.b.c` → value entries. */
 function flatten(obj: unknown, prefix = ""): Record<string, Leaf> {
   const out: Record<string, Leaf> = {}
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {

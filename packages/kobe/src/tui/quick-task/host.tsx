@@ -1,3 +1,30 @@
+/**
+ * `kobe quick-task` — prompt-first fast task creation (`<prefix> f`).
+ *
+ * The quick-create chord opens this as a dedicated full-window page (via
+ * `quickCreate` → `newWindow`, mirroring `openNewTaskTab`). It's prompt-first:
+ * the {@link QuickTaskComposer} focuses a PROMPT field and `enter` creates the
+ * task immediately. Engine and branch are right there (`tab` / `ctrl+e`) but
+ * default from the task the chord fired in, so the common path is type-and-go:
+ *
+ *   - repo    = that task's source repo (its session's `@kobe_task` record),
+ *               falling back to the first saved repo. NOT editable here (use
+ *               the full `n` dialog to pick a different repo).
+ *   - vendor  = the last-selected engine, clamped to a detected one — editable.
+ *   - baseRef = the repo's current branch, else `main` — editable.
+ *   - model   = the engine's own default (kobe has no model field).
+ *
+ * On submit it creates the task, delivers the typed prompt as the first engine
+ * message (the same readiness-wait + bracketed paste `kobe api add --prompt`
+ * uses — `initScript` only, so the repo's init-prompt isn't ALSO pasted), then
+ * JUMPS the attached client into the new task (`switch-client` + setActiveTask)
+ * and exits.
+ *
+ * Fallback: if no repo can be resolved (no current task, no saved repos — the
+ * rare first-run case), it renders the FULL `NewTaskPage` instead, so creation
+ * is never a dead end.
+ */
+
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -20,16 +47,25 @@ import { repoBasename } from "../panes/sidebar/groups"
 import { useDialog } from "../ui/dialog"
 
 export interface QuickTaskHostArgs {
+  /** The task session the chord fired in — its `@kobe_task` repo is the default. */
   readonly session?: string
 }
 
+/** Resolved prompt-first defaults; null when no repo could be found (→ full dialog). */
 interface QuickTaskContext {
   readonly repo: string
   readonly vendor: VendorId
   readonly baseRef: string
+  /** Engines to offer in the composer (detected built-ins + custom). */
   readonly engines: readonly VendorId[]
 }
 
+/**
+ * Derive the prompt-only defaults from the firing task's session. Returns
+ * null when no repo can be resolved, so the caller falls back to the full
+ * new-task dialog. `fallbackRepo` is the best default-repo guess for that
+ * fallback (worktree → cwd).
+ */
 async function resolveQuickTaskContext(
   orch: RemoteOrchestrator | null,
   session: string | undefined,
@@ -45,14 +81,24 @@ async function resolveQuickTaskContext(
   const fallbackRepo = repo ?? worktree ?? process.cwd()
   if (!repo) return { ctx: null, fallbackRepo }
 
+  // Engine: the repo's preferred vendor, clamped to a detected one. With
+  // nothing detected we keep the preference (the dialog-less path can't ask).
   const detected = await availableEngineIds()
   const pref = resolvePreferredVendor(repo)
   const vendor: VendorId = detected.length === 0 || detected.includes(pref) ? pref : (detected[0] ?? pref)
   const baseRef = getCurrentBranch(expandHome(repo)) ?? DEFAULT_BASE_REF
+  // The composer needs at least the chosen vendor to render its chip even when
+  // nothing is detected (offline / PATH miss).
   const engines = detected.length > 0 ? detected : [vendor]
   return { ctx: { repo, vendor, baseRef, engines }, fallbackRepo }
 }
 
+/**
+ * Deliver a freshly-created task's first prompt. Mirrors `kobe api add`'s
+ * deliver path: build the session with the "none" prompt-delivery intent
+ * (`ensureTaskSession`'s default), wait for the engine pane, then
+ * bracketed-paste + submit. Best-effort.
+ */
 async function deliverFirstPromptToTask(
   orch: RemoteOrchestrator,
   task: Task,
@@ -83,7 +129,7 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
       defaultBaseRef: ctx.baseRef,
       engineLabel: engineDisplayName,
     })
-    if (result === undefined) process.exit(0)
+    if (result === undefined) process.exit(0) // esc
 
     setRepoLastActiveVendor(ctx.repo, result.vendor)
     addSavedRepo(ctx.repo)
@@ -96,6 +142,9 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
 
     try {
       const task = await orch.createTask({ repo: ctx.repo, baseRef: result.baseRef, vendor: result.vendor })
+      // The composer requires a non-empty prompt, so always deliver, then jump
+      // the attached client into the new task. Attachment paths ride along as
+      // `images[n]: /path` reference lines — the engine reads the files itself.
       await deliverFirstPromptToTask(
         orch,
         task,
@@ -111,6 +160,8 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
     process.exit(0)
   }
 
+  // The prompt input renders on the DialogProvider overlay; this box is the
+  // transparent page backdrop behind the centered card.
   return <box flexDirection="column" flexGrow={1} backgroundColor={theme.background} />
 }
 

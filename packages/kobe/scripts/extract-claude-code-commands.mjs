@@ -1,4 +1,20 @@
 #!/usr/bin/env bun
+// One-shot extractor: walk refs/claude-code/src/commands/ for visible
+// commands and emit a TS module kobe can ship with.
+//
+// kobe runs `claude -p <prompt>` (non-interactive print mode), so we
+// also pull each command's `type` plus `supportsNonInteractive`
+// (LocalCommand) / `disableNonInteractive` (PromptCommand) and filter
+// out commands that won't work in -p mode. Without the filter, the
+// composer's slash menu surfaces e.g. `/help` (LocalJSXCommand) and the
+// user submits it just to see "/help isn't available in this
+// environment" come back from claude. Match claude's runtime gate
+// rather than re-discover it via error messages.
+//
+// Filter rules (mirror refs/claude-code/src/types/command.ts):
+//   - `local-jsx`              → always exclude (renders React, no -p path)
+//   - `local`                  → include only when supportsNonInteractive=true
+//   - `prompt` (default)       → include unless disableNonInteractive=true
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 

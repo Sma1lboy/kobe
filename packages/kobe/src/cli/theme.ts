@@ -1,9 +1,45 @@
+/**
+ * `kobe theme <action>` — manage user-installed color themes.
+ *
+ * Subcommands:
+ *   - `list`            — print every theme kobe knows about (bundled +
+ *                         user-installed) with a short marker for which
+ *                         is which.
+ *   - `add <source>`    — fetch / read a theme JSON, validate, and write
+ *                         it under `~/.kobe/themes/<name>.json`. Refuses
+ *                         to overwrite without `--force`.
+ *   - `remove <name>`   — delete a user theme file. Refuses if `<name>`
+ *                         matches a bundled theme (those are read-only).
+ *
+ * Late-imported from `cli/index.ts` so the TUI startup graph (opentui /
+ * solid-js) does not load when the user is just managing themes from
+ * the shell.
+ *
+ * Error policy: print a one-line "kobe theme: <reason>" to stderr and
+ * `process.exit(1)`. We do NOT print stack traces — these are
+ * user-facing errors, not bugs in kobe. If a stack would help, the user
+ * can `KOBE_DEBUG=1` (future) or `kobe diagnose`.
+ */
+
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
 import { expandTilde } from "../lib/path-home.ts"
 import { userThemesDir } from "../tui/context/theme/loader"
 import { validateTheme } from "../tui/context/theme/schema"
 
+/**
+ * Filenames in `src/tui/context/theme/` that ship as bundled themes.
+ * Hard-coded rather than read from disk because:
+ *   - In a published binary the JSON files have been bundled into the
+ *     compiled JS via Bun's `with { type: "json" }` import; there is no
+ *     `src/tui/context/theme/` directory next to the running binary.
+ *   - The bundled set is small and changes rarely; touch this list when
+ *     adding a new bundled theme to `src/tui/context/theme.tsx`.
+ *
+ * The single source of truth is `BUNDLED_THEMES` in theme.tsx, but
+ * importing that module here would drag in opentui + solid (it builds
+ * a Solid store at module load). We mirror the names instead.
+ */
 const BUNDLED_NAMES: readonly string[] = [
   "claude",
   "conductor",
@@ -19,12 +55,24 @@ function fail(message: string): never {
   process.exit(1)
 }
 
+/**
+ * A malformed invocation (unknown action/flag, missing or extra args).
+ * Prints the error AND the full usage, then exits with the conventional
+ * usage code (2). Distinct from {@link fail} (runtime/content errors,
+ * exit 1) so an agent driving the CLI always sees the instruction surface
+ * when it guesses the command shape wrong, not a bare one-liner.
+ */
 function failUsage(message: string): never {
   process.stderr.write(`kobe theme: ${message}\n\n`)
   printUsage()
   process.exit(2)
 }
 
+/**
+ * List bundled + user-installed theme names. Bundled themes are tagged
+ * `[built-in]`; user themes show their on-disk path. Sorted within each
+ * group so `kobe theme list` output is deterministic.
+ */
 function listThemes(): void {
   const lines: string[] = []
   lines.push("bundled:")
@@ -38,7 +86,9 @@ function listThemes(): void {
     userFiles = readdirSync(dir)
       .filter((f) => f.endsWith(".json"))
       .sort()
-  } catch {}
+  } catch {
+    // Missing dir is normal — print "(none)" rather than warn.
+  }
   lines.push("")
   lines.push(`user (${dir}):`)
   if (userFiles.length === 0) {
@@ -54,6 +104,12 @@ function listThemes(): void {
   process.stdout.write(`${lines.join("\n")}\n`)
 }
 
+/**
+ * Resolve a `<source>` argument to JSON text. Supports:
+ *   - `http://` / `https://` URLs (fetched via Bun's global `fetch`)
+ *   - everything else interpreted as a local filesystem path,
+ *     resolved against `process.cwd()`.
+ */
 async function readSource(source: string): Promise<{ text: string; defaultName: string }> {
   if (/^https?:\/\//i.test(source)) {
     let res: Response
@@ -66,6 +122,8 @@ async function readSource(source: string): Promise<{ text: string; defaultName: 
       fail(`failed to fetch ${source}: HTTP ${res.status} ${res.statusText}`)
     }
     const text = await res.text()
+    // Use the URL's basename for the default name. Strip query/hash
+    // first so `https://…/foo.json?token=…` becomes `foo`.
     const cleanPath = source.split(/[?#]/)[0] ?? source
     const file = basename(cleanPath) || "theme.json"
     const defaultName = file.endsWith(".json") ? file.slice(0, -".json".length) : file
@@ -146,6 +204,10 @@ async function addTheme(args: string[]): Promise<void> {
   if (existsSync(dest) && !opts.force) {
     fail(`${dest} already exists (pass --force to overwrite)`)
   }
+  // Re-serialise from the parsed object so we strip BOM / weird
+  // whitespace and produce a normalised file. Keep the original `text`
+  // intent intact (no re-ordering of keys beyond what JSON.stringify
+  // does naturally — i.e. insertion order is preserved).
   writeFileSync(dest, `${JSON.stringify(result.theme, null, 2)}\n`, "utf8")
   process.stdout.write(`installed theme "${name}" -> ${dest}\n`)
 }
@@ -183,6 +245,10 @@ function printUsage(): void {
   )
 }
 
+/**
+ * Entry point used by `cli/index.ts`. `args` is whatever followed
+ * `kobe theme` on the command line.
+ */
 export async function runThemeSubcommand(args: string[]): Promise<void> {
   const [action, ...rest] = args
   if (!action || action === "--help" || action === "-h" || action === "help") {

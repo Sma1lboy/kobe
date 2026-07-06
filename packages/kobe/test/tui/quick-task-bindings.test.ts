@@ -1,3 +1,17 @@
+/**
+ * Regression tests for the quick-task composer's field-gated bindings.
+ *
+ * The production bug these pin: the `return` / `left` / `right` chords
+ * were registered unconditionally with the field check INSIDE the
+ * handler. `dispatchKeyEvent` calls `preventDefault()` on every matched
+ * binding, so Enter on the prompt field was consumed by a no-op handler
+ * and the input's `onSubmit` (the actual create path) never fired —
+ * "type a prompt, hit enter" was dead, and ←/→ couldn't move the input
+ * cursor. The fix gates REGISTRATION: those chords exist only while the
+ * engine chip row is focused, so everywhere else the keys fall through
+ * to the focused input.
+ */
+
 import { describe, expect, test } from "vitest"
 import { quickTaskBindings } from "../../src/tui/component/quick-task-bindings"
 import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
@@ -40,7 +54,7 @@ describe("quickTaskBindings field gating", () => {
     const { calls, h } = handlers()
     const e = evt("return")
     const hit = dispatchKeyEvent(stackFor(quickTaskBindings("prompt", h)), e)
-    expect(hit).toBe(false)
+    expect(hit).toBe(false) // no binding consumed it → input gets the key
     expect(e.prevented).toBe(false)
     expect(calls).toEqual([])
   })

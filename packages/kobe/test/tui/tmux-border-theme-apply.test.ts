@@ -1,9 +1,20 @@
+/**
+ * Behavioral tests for the IO half of tmux-border-theme.ts —
+ * `applyTmuxChromeTheme` end-to-end against a temp state.json (via
+ * KOBE_HOME_DIR, the repos.test.ts convention) and a mocked tmux client.
+ * The pure planners (resolve/plan/option-values) are covered by
+ * tmux-border-theme.test.ts; what's pinned here is the read-prefs →
+ * lookup-theme → read-current → plan → apply pipeline and its
+ * disabled/unknown-theme release paths.
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
+  /** show-options answers, keyed by option name. */
   optionValues: {} as Record<string, string>,
   sequences: [] as string[][],
 }))
@@ -52,6 +63,7 @@ describe("applyTmuxChromeTheme", () => {
     writeStateJson({ activeTheme: "claude" })
     await theme.applyTmuxChromeTheme()
     expect(state.sequences.length).toBeGreaterThan(0)
+    // Every planned command is a set-option, and the marker records ownership.
     expect(state.sequences.every((c) => c[0] === "set-option")).toBe(true)
     const marker = state.sequences.find((c) => c.includes("@kobe_border_theme"))
     expect(marker).toBeDefined()
@@ -61,6 +73,7 @@ describe("applyTmuxChromeTheme", () => {
     writeStateJson({ activeTheme: "claude" })
     await theme.applyTmuxChromeTheme()
     const applied = [...state.sequences]
+    // Seed the fake server with exactly what the first apply set.
     for (const cmd of applied) {
       const option = cmd[cmd.length - 2]
       const value = cmd[cmd.length - 1]
@@ -72,11 +85,13 @@ describe("applyTmuxChromeTheme", () => {
   })
 
   test("`tmuxChromeTheme: off` releases previously-owned options instead of styling", async () => {
+    // Server thinks kobe owns some options (marker present), user turned it off.
     writeStateJson({ activeTheme: "claude", tmuxChromeTheme: "off" })
     state.optionValues["@kobe_border_theme"] = "border,active"
     state.optionValues["pane-border-style"] = "fg=#111111"
     state.optionValues["pane-active-border-style"] = "fg=#222222"
     await theme.applyTmuxChromeTheme()
+    // Everything owned is released (unset), including the marker.
     const unsets = state.sequences.filter((c) => c.includes("-gu") || c.includes("-u"))
     expect(unsets.length).toBeGreaterThan(0)
   })
@@ -84,6 +99,7 @@ describe("applyTmuxChromeTheme", () => {
   test("an unknown theme name plans a release, not garbage colors", async () => {
     writeStateJson({ activeTheme: "no-such-theme" })
     await theme.applyTmuxChromeTheme()
+    // With no owned marker on the server, nothing to release → zero commands.
     expect(state.sequences).toEqual([])
   })
 
@@ -92,6 +108,7 @@ describe("applyTmuxChromeTheme", () => {
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, "state.json"), "{not json")
     await expect(theme.applyTmuxChromeTheme()).resolves.toBeUndefined()
+    // Default prefs are enabled+claude → it styles the fresh server.
     expect(state.sequences.length).toBeGreaterThan(0)
   })
 

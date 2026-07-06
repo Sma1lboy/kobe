@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { fetchDiff } from "../src/lib/diff.ts"
 
+/**
+ * The diff client builds the /api/diff query (worktreePath + the namesOnly/path
+ * hints) and normalizes the response. Lock the request shape + error handling.
+ */
 
 function mockFetch(impl: (url: string) => { ok: boolean; body: unknown }) {
   vi.stubGlobal("fetch", (url: string) => {

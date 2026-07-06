@@ -1,3 +1,11 @@
+/**
+ * Rename/branch/vendor flows from `src/tui/lib/task-actions.ts` — split out
+ * of task-actions.test.ts (delete/archive flows) to keep both files under the
+ * ~500-line cap. Same harness shape: modal UI arrives as context adapters, so
+ * the flows run with plain mocks; only tmux + engine detection are
+ * module-mocked (every export the flows touch is stubbed).
+ */
+
 import { describe, expect, test, vi } from "vitest"
 
 vi.mock("../../src/tui/panes/terminal/tmux", () => ({
@@ -5,6 +13,8 @@ vi.mock("../../src/tui/panes/terminal/tmux", () => ({
   killSession: vi.fn(async () => {}),
   switchClientBeforeKill: vi.fn(async () => {}),
 }))
+// cycleVendorFlow calls availableEngineIds() — the real one probes PATH
+// binaries + reads state.json. Stub for hermeticity.
 vi.mock("../../src/engine/account-detect", () => ({
   availableEngineIds: vi.fn(async () => ["claude", "codex"]),
 }))
@@ -182,6 +192,8 @@ describe("cycleVendorFlow", () => {
 
     await cycleVendorFlow(ctx, "t1")
 
+    // account-detect is mocked to ["claude", "codex"] — cycling from claude
+    // lands on codex.
     expect(orch.setVendor).toHaveBeenCalledWith("t1", "codex")
     expect(notifyInfo).toHaveBeenCalledWith(expect.stringContaining("applies on reopen"))
     expect(reload).toHaveBeenCalledTimes(1)

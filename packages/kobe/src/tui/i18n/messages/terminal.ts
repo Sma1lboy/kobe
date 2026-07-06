@@ -1,7 +1,16 @@
+/**
+ * `terminal.*` messages — the embedded terminal pane (issue #16): the
+ * in-process PTY running the task's engine CLI (or a plain worktree
+ * shell). English is the source of truth; `zh: typeof en` locks shapes.
+ */
+
 export const en = {
   noTask: "(no task — press n to create)",
   exited: "process exited — F5 restarts it",
   tab: {
+    // Content-neutral on purpose (owner, 2026-07-06): tabs will host
+    // more than terminals, so the numbered fallback must not say
+    // "Terminal".
     defaultTitle: "Tab {n}",
     renameTitle: "Rename tab",
     renameField: "tab title",

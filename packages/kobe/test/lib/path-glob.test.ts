@@ -16,11 +16,11 @@ describe("globToRegExp", () => {
 
   it("lets an interior `**` match zero intervening directories", () => {
     const re = globToRegExp("src/**/task.ts")
-    expect(re.test("src/task.ts")).toBe(true)
+    expect(re.test("src/task.ts")).toBe(true) // zero directories between
     expect(re.test("src/a/task.ts")).toBe(true)
     expect(re.test("src/a/b/task.ts")).toBe(true)
-    expect(re.test("srctask.ts")).toBe(false)
-    expect(re.test("src/task.tsx")).toBe(false)
+    expect(re.test("srctask.ts")).toBe(false) // separator is still required
+    expect(re.test("src/task.tsx")).toBe(false) // still anchored
   })
 
   it("lets a leading `**/` match zero or more leading directories", () => {
@@ -32,7 +32,7 @@ describe("globToRegExp", () => {
 
   it("keeps loose `**` semantics when it is not its own segment", () => {
     const re = globToRegExp("a**b")
-    expect(re.test("a-x/y-b")).toBe(true)
+    expect(re.test("a-x/y-b")).toBe(true) // still crosses slashes
     expect(re.test("axb")).toBe(true)
   })
 
@@ -75,6 +75,8 @@ describe("matchPathGlob", () => {
   })
 
   it("matches a nested `**` filter against a worktree directly under the prefix", () => {
+    // Regression: `src/**/login` previously failed to match `/work/src/login`
+    // because the globstar required at least one intervening directory.
     expect(matchPathGlob("/work/**/login", "/work/login")).toBe(true)
     expect(matchPathGlob("/work/**/login", "/work/feature/login")).toBe(true)
   })

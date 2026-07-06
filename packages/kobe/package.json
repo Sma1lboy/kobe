@@ -55,6 +55,7 @@
     "postinstall": "bun run scripts/check-preview-deps.ts || true",
     "prepublishOnly": "bun run typecheck && bun run build"
   },
+  "//": "biome.json + bunfig.toml live at the monorepo root since they apply repo-wide; bun.lock also lives at root (workspace-shared).",
   "dependencies": {
     "@ansi-tools/parser": "^1.0.15",
     "@opentui/core": "0.4.3",

@@ -1,3 +1,22 @@
+/**
+ * applyUiPrefs (KOB — live theme propagation). Why these tests matter:
+ * this one function is BOTH the boot-time prefs application for every pane
+ * host and the handler for every live `ui-prefs` daemon push, so its rules
+ * carry two regressions waiting to happen:
+ *
+ *   - **echo loop**: the process that caused a prefs write receives its
+ *     own push back ~half a second later — identical values MUST touch
+ *     nothing, or the settings dialog's own pane re-applies forever;
+ *   - **unknown theme**: a theme installed + selected from ANOTHER process
+ *     after this pane booted isn't in this pane's registry — the apply
+ *     must reload user themes once and only switch when the name resolves,
+ *     never blind-fall back and yank a working pane to the default.
+ *
+ * Tested through an injected fake target — `tui/context/theme.tsx` itself
+ * imports @opentui, which is not importable under node/vitest (the reason
+ * the apply logic lives in the vitest-safe `tui/lib/apply-ui-prefs.ts`).
+ */
+
 import { describe, expect, test } from "vitest"
 import {
   DEFAULT_FOCUS_ACCENT_SLOT,
@@ -9,6 +28,7 @@ import {
 interface FakeState {
   theme: string
   registry: Set<string>
+  /** Themes that become registered when reloadUserThemes() runs. */
   diskThemes: string[]
   transparent: boolean
   accent: string

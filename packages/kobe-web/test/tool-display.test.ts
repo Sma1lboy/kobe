@@ -29,6 +29,7 @@ describe("toolInputSummary — field priority", () => {
   })
 
   it("ignores a non-string field value and picks the next candidate", () => {
+    // command is a number → skip it, fall to file_path.
     expect(toolInputSummary(call({ command: 123, file_path: "/p" }))).toBe("/p")
   })
 
@@ -77,18 +78,24 @@ describe("outputText", () => {
   })
 
   it("falls back to String() for an unserializable value (no throw)", () => {
+    // JSON.stringify throws on a BigInt; outputText must not crash the
+    // transcript render — it falls back to String().
     expect(outputText(BigInt(7))).toBe("7")
   })
 })
 
 describe("toolInputSummary — resilience", () => {
   it("returns '' for an unserializable input instead of throwing", () => {
+    // A BigInt input is not an object (no field pick) and JSON.stringify throws
+    // on it; the catch must yield '' so a pathological tool call can't crash
+    // the transcript.
     expect(toolInputSummary(call(BigInt(7)))).toBe("")
   })
 
   it("returns '' for a circular-reference input", () => {
     const circular: Record<string, unknown> = {}
     circular.self = circular
+    // No recognized string field → JSON.stringify throws on the cycle → ''.
     expect(toolInputSummary(call(circular))).toBe("")
   })
 })

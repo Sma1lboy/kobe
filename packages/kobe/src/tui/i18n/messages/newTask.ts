@@ -1,3 +1,8 @@
+/**
+ * `newTask.*` messages. English is the source of truth; `zh: typeof en` keeps
+ * the shapes locked together. Filled during the TUI i18n migration.
+ */
+
 export const en = {
   title: "New task",
 

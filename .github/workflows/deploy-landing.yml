@@ -1,3 +1,25 @@
+# Landing-page auto-deploy.
+#
+# Deploys the marketing site (`packages/kobe-landing`, a static HTML site)
+# to Vercel production (project `kobe-landing`, kobe.sma1lboy.me) whenever
+# the landing files change on `main`. This exists because the Vercel CLI
+# can't always run from a local machine behind a TLS-intercepting network
+# (node's fetch fails cert verification); a GitHub-hosted runner has a clean
+# network, so CI is the reliable path to ship a merged landing change.
+#
+# Trigger: a push to `main` that touches `packages/kobe-landing/**` (or this
+# workflow), plus a manual `workflow_dispatch` so a change that already
+# landed can be deployed on demand (the first run after this workflow is
+# added won't have an auto-trigger).
+#
+# Required repo secret:
+#   - VERCEL_TOKEN: a Vercel access token (Vercel dashboard → Settings →
+#     Tokens → Create), scoped to the team that owns the `kobe-landing`
+#     project. Add with: `gh secret set VERCEL_TOKEN`.
+#
+# The org/project IDs below are NOT secrets (they're the identifiers from
+# the gitignored `.vercel/project.json`); `vercel pull` uses them to
+# recreate the project link on the runner.
 
 name: Deploy Landing
 
@@ -9,6 +31,8 @@ on:
       - ".github/workflows/deploy-landing.yml"
   workflow_dispatch:
 
+# One production deploy at a time; cancel an older in-flight deploy when a
+# newer landing change lands.
 concurrency:
   group: deploy-landing
   cancel-in-progress: true

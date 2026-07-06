@@ -1,3 +1,7 @@
+/**
+ * Task session + launch-spec routes for daemon-hosted web transport.
+ */
+
 import { interactiveEngineCommand, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
 import { quoteShellArgv } from "@/lib/shell-command"
 import { resolveEngineLaunchInit } from "@/state/repo-init"

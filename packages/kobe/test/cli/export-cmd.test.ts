@@ -64,8 +64,14 @@ describe("renderExport", () => {
   })
 
   it("aligns table columns by terminal display width, not code-unit length (CJK titles)", () => {
+    // Two tasks identical except the title: one ASCII (2 cells), one CJK whose
+    // display width (4 cells) exceeds its code-unit length (2). With true
+    // display-width padding both rows pad the title column to the same cell
+    // width, so every later column lines up and the two rows share one total
+    // display width. Measuring by String.length (the old bug) would under-pad
+    // the CJK row by 2 cells and shove its trailing columns left.
     const asciiTitle = "ab"
-    const cjkTitle = String.fromCodePoint(0x4e2d, 0x6587)
+    const cjkTitle = String.fromCodePoint(0x4e2d, 0x6587) // 中文
     const ascii = renderExport([task({ id: toTaskId("01HZ0000000000000000000001"), title: asciiTitle })], "table")
     const cjk = renderExport([task({ id: toTaskId("01HZ0000000000000000000002"), title: cjkTitle })], "table")
     expect(displayWidth(ascii.split("\n")[1])).toBe(displayWidth(cjk.split("\n")[1]))
@@ -75,18 +81,18 @@ describe("renderExport", () => {
 describe("displayWidth", () => {
   it("counts CJK and fullwidth glyphs as two cells", () => {
     expect(displayWidth("ascii")).toBe(5)
-    expect(displayWidth(String.fromCodePoint(0x4e2d, 0x6587))).toBe(4)
-    expect(displayWidth(String.fromCodePoint(0xff21, 0xff22))).toBe(4)
+    expect(displayWidth(String.fromCodePoint(0x4e2d, 0x6587))).toBe(4) // 中文
+    expect(displayWidth(String.fromCodePoint(0xff21, 0xff22))).toBe(4) // ＡＢ fullwidth latin
   })
 
   it("counts an astral emoji once (two cells), not as two UTF-16 units", () => {
-    const party = String.fromCodePoint(0x1f389)
+    const party = String.fromCodePoint(0x1f389) // 🎉
     expect(party.length).toBe(2)
     expect(displayWidth(party)).toBe(2)
   })
 
   it("ignores zero-width combining marks and variation selectors", () => {
-    expect(displayWidth(`e${String.fromCodePoint(0x0301)}`)).toBe(1)
-    expect(displayWidth(`a${String.fromCodePoint(0xfe0f)}`)).toBe(1)
+    expect(displayWidth(`e${String.fromCodePoint(0x0301)}`)).toBe(1) // e + combining acute
+    expect(displayWidth(`a${String.fromCodePoint(0xfe0f)}`)).toBe(1) // base + variation selector
   })
 })

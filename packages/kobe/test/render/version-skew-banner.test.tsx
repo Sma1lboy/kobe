@@ -1,3 +1,7 @@
+/**
+ * VersionSkewBanner — daemon build-version skew strip (src/tui/component/version-skew-banner.tsx).
+ * Ported from the render-track spike (spike-artifacts/tsx-render.spike.bun.test.tsx).
+ */
 import { describe, expect, it } from "bun:test"
 import { createSignal } from "solid-js"
 import { VersionSkewBanner } from "../../src/tui/component/version-skew-banner"

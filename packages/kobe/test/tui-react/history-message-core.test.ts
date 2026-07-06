@@ -1,3 +1,9 @@
+/**
+ * Pins the framework-free history transcript formatting shared by the Solid and
+ * React panes. Renderer-bound TSX stays out of vitest; this file covers the
+ * extracted pure logic only.
+ */
+
 import { describe, expect, it } from "vitest"
 import { bodyText, relativeTime, resultsByCallId, toolInputSummary } from "../../src/tui/history/message-core"
 import type { Message } from "../../src/types/engine"

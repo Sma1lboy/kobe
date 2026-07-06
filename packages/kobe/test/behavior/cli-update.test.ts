@@ -1,3 +1,14 @@
+/**
+ * `kobe update` black-box behavior + the update.sh package-manager matrix.
+ *
+ * Pins issue #205's class: the update must run through the package manager
+ * that OWNS the `kobe` on PATH, or the new version lands in another prefix
+ * and PATH keeps resolving the stale install. The manager decision lives in
+ * scripts/update.sh (fetched remotely by `kobe update`), so the matrix here
+ * executes that actual script with a fully shimmed PATH — fake `kobe`, `npm`,
+ * `bun` that log their argv — and asserts which manager got the install.
+ */
+
 import { spawnSync } from "node:child_process"
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
@@ -31,12 +42,19 @@ describe("kobe update (behavior)", () => {
   })
 })
 
+/**
+ * Run scripts/update.sh with PATH shims. `kobeBinDir` decides the manager
+ * (a path containing `/.bun/` → bun, else npm). Both managers log to
+ * `calls.log` instead of installing anything.
+ */
 async function runUpdateScript(base: string, kobeBinDir: string): Promise<{ code: number; out: string; log: string }> {
   const shims = join(base, "shims")
   await mkdir(shims, { recursive: true })
   await mkdir(kobeBinDir, { recursive: true })
   const logFile = join(base, "calls.log")
 
+  // Post-install `kobe -v` must match `npm view` output or the script exits 1
+  // (the shadowed-install guard) — keep both at 9.9.9 for the happy path.
   await writeFile(join(kobeBinDir, "kobe"), `#!/bin/sh\necho "kobe 9.9.9"\n`)
   await chmod(join(kobeBinDir, "kobe"), 0o755)
   for (const mgr of ["npm", "bun"]) {
@@ -89,6 +107,7 @@ describe("scripts/update.sh manager detection (issue #205)", () => {
     const bin = join(base, "bin")
     await mkdir(shims, { recursive: true })
     await mkdir(bin, { recursive: true })
+    // kobe stays at 1.0.0 while the registry says 9.9.9 → shadowed install.
     await writeFile(join(bin, "kobe"), `#!/bin/sh\necho "kobe 1.0.0"\n`)
     await chmod(join(bin, "kobe"), 0o755)
     for (const mgr of ["npm", "bun"]) {

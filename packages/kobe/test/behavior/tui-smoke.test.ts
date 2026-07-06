@@ -1,3 +1,18 @@
+/**
+ * TUI boot smoke + pane-focus regression pins — kobe operated exactly the way
+ * the demo-video capture does (packages/branding/scripts/capture-tui.ts):
+ * the dist build launches inside a host tmux pane, the test send-keys real
+ * chords and asserts the captured screen / the inner session's pane state.
+ *
+ * Regression pins carried here:
+ *   - boot renders the workspace (brand header + rail + engine pane) in an
+ *     isolated env with a fake `claude` — a packaging/boot break is visible
+ *     as a black-box failure, not a unit-test blind spot.
+ *   - ctrl+h/ctrl+l move pane focus directionally, and a LEFT-EDGE ctrl+h is
+ *     a no-op instead of tmux's default wrap-around (#192 / focusBindCommand
+ *     edge guard) — and must not wedge the client (run-shell -b).
+ */
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import {
   type BehaviorEnv,
@@ -11,6 +26,7 @@ import {
 
 const SESSION = "smoke"
 
+/** The inner session's active pane role (`@kobe_role`: tasks/claude/…). */
 function activeRole(env: BehaviorEnv): string {
   const rows = tmuxInner(env, "list-panes", "-a", "-F", "#{pane_active}\t#{@kobe_role}").stdout
   const active = rows.split("\n").find((l) => l.startsWith("1\t"))
@@ -55,6 +71,9 @@ describe.skipIf(!tmuxAvailable())("kobe TUI boot + focus chords (behavior)", () 
     tmux(env, "send-keys", "-t", SESSION, "C-h")
     expect(await waitForRole(env, "tasks")).toBe("tasks")
 
+    // Left edge: the pre-#192 default wrapped to the RIGHTMOST pane; the
+    // edge guard must make this a no-op — and run-shell -b must leave the
+    // client responsive (the follow-up ctrl+l below still lands).
     tmux(env, "send-keys", "-t", SESSION, "C-h")
     await new Promise((r) => setTimeout(r, 1_500))
     expect(activeRole(env)).toBe("tasks")

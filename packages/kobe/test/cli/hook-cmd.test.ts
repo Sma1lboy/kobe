@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { parseWorktreeAddPath, parseWorktreeRemovePath, readTextWithTimeout } from "../../src/cli/hook-cmd.ts"
 
+/**
+ * `parseWorktreeAddPath` extracts the worktree path from a Bash command so the
+ * global `PostToolUse` (Bash) hook can adopt a freshly-created worktree. It must
+ * find the path past `git worktree add`'s flags, ignore non-worktree commands,
+ * and never be fooled by a chained command into adopting the wrong token.
+ */
 describe("parseWorktreeAddPath", () => {
   it("returns undefined for commands that aren't a worktree-add", () => {
     expect(parseWorktreeAddPath("git status")).toBeUndefined()
@@ -38,10 +44,17 @@ describe("parseWorktreeAddPath", () => {
   })
 
   it("stops at a shell operator so a chained command can't masquerade as the path", () => {
+    // No positional path before `&&` → not a usable worktree-add target.
     expect(parseWorktreeAddPath("git worktree add -b x && echo done")).toBeUndefined()
   })
 })
 
+/**
+ * `parseWorktreeRemovePath` is the removal-side mirror: the same global hook
+ * archives the task pinned to a worktree the MOMENT `git worktree remove` runs.
+ * It must find the path past `remove`'s (valueless) flags, ignore non-remove
+ * commands, and never be fooled by a chained command.
+ */
 describe("parseWorktreeRemovePath", () => {
   it("returns undefined for commands that aren't a worktree-remove", () => {
     expect(parseWorktreeRemovePath("git status")).toBeUndefined()
@@ -71,6 +84,14 @@ describe("parseWorktreeRemovePath", () => {
   })
 })
 
+/**
+ * `readTextWithTimeout` is the stdin-race helper behind `readStdinPayload`. The
+ * regression it pins (perf): the fallback timer was never cleared, so even when
+ * stdin resolved instantly the process couldn't exit until the 500ms timer
+ * fired — and `kobe hook` runs on every Bash tool call + turn boundary of every
+ * Claude session machine-wide. The contract: when the reader wins the race, the
+ * timer is cleared, so no pending timer is left to keep the event loop alive.
+ */
 describe("readTextWithTimeout timer hygiene", () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
@@ -78,6 +99,8 @@ describe("readTextWithTimeout timer hygiene", () => {
   it("clears the fallback timer once the reader wins, leaving no pending timers", async () => {
     const result = await readTextWithTimeout(async () => "payload", 500)
     expect(result).toBe("payload")
+    // The crux: if the 500ms timer were still pending, the count would be 1 and
+    // the real process would idle-wait ~500ms after the work is done.
     expect(vi.getTimerCount()).toBe(0)
   })
 

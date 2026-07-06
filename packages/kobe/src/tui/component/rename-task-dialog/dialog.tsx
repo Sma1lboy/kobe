@@ -1,3 +1,22 @@
+/**
+ * Single-field rename dialog. Used by the sidebar `r` chord (rename
+ * task) and the chat-tab right-click / rename action (rename chat tab),
+ * dispatched via the `dialogTitle` prop to relabel the header.
+ *
+ * The current title is pre-filled in the input so the user can edit
+ * in place. Enter commits, esc cancels (handled by the dialog stack).
+ *
+ * Trim + empty-string guard: `enter` on an empty/whitespace-only value
+ * is a no-op (we don't dismiss, so the user notices nothing happened
+ * and can either type something or hit esc). The orchestrator's
+ * `setTitle` / `setTabTitle` defend in depth.
+ *
+ * `stripNewlines` is shared with the new-task dialog — opentui's
+ * `<input>` quirk that inserts a literal `\n` on Enter. Imported from
+ * `../new-task-dialog/index` so the two dialogs share a single
+ * sanitiser.
+ */
+
 import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
 import { createSignal } from "solid-js"
@@ -8,9 +27,15 @@ import { isBlankText, stripNewlines } from "../new-task-dialog"
 export function RenameTaskDialogView(props: {
   currentTitle: string
   dialogTitle?: string
+  /** Inner field label. Defaults to `"title"` — OVERRIDE this when the dialog
+   *  is reused for something other than a task title (a branch, a launch
+   *  command, an engine name, a feedback body, …) so it doesn't read "title". */
   fieldLabel?: string
+  /** Footer verb shown after `enter`. Defaults to `"rename"`. */
   submitLabel?: string
+  /** Input placeholder. Defaults to {@link currentTitle}. */
   placeholder?: string
+  /** Allow submitting an empty value (e.g. "blank = default"). Default false. */
   allowEmpty?: boolean
   onSubmit: (value: string) => void
   onCancel: () => void
@@ -21,6 +46,9 @@ export function RenameTaskDialogView(props: {
 
   function commit() {
     const v = value().trim()
+    // `isBlankText` (not `!v`) so a title made only of full-width spaces
+    // `　` (common when typing Chinese) counts as empty — `.trim()` does
+    // not strip `U+3000`, so `!v` would wrongly accept it.
     if (isBlankText(v) && !props.allowEmpty) return
     props.onSubmit(v)
     dialog.clear()

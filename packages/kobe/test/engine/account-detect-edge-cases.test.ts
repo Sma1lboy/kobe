@@ -1,3 +1,18 @@
+/**
+ * Edge-case coverage for `src/engine/account-detect.ts` beyond what
+ * `account-detect.test.ts` already pins (happy-path oauth/JWT/apikey
+ * detection, vendor-list memoization). This file covers:
+ *   - `claudeGlobalConfigPath` / `codexAuthPath` / `copilotConfigPath`'s
+ *     env-override vs default-home resolution.
+ *   - Error paths in `detectClaudeAccount` / `detectCodexAccount` /
+ *     `detectCopilotAccount`: readFile throwing, JSON.parse failing,
+ *     malformed JWT, id_token-with-no-email, non-object oauthAccount,
+ *     non-record parsed config.
+ *   - `availableEngineIds`, which layers `getCustomEngineIds()` (real
+ *     state.json, redirected via `KOBE_HOME_DIR` per the
+ *     `test/state/repos.test.ts` convention) on top of the binary probe.
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"

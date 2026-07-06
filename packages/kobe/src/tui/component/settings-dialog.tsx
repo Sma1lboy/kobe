@@ -1,3 +1,14 @@
+/**
+ * Settings dialog — two-column layout with a left sidebar (sections)
+ * and a right pane (the active section's content).
+ *
+ * Bindings inside the dialog:
+ *   - `↑` / `↓` / `j` / `k` — navigate the current level.
+ *   - `h` / `l`              — switch sidebar/body levels.
+ *   - `enter`                — activate the focused row.
+ *   - `esc`                  — close (handled by the dialog stack).
+ */
+
 import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
@@ -75,9 +86,25 @@ import {
 
 export type SettingsDialogProps = {
   kv: KVContext
+  /**
+   * The active orchestrator. Used to expose the "Restart backend" Dev
+   * button only when we're attached to a daemon (RemoteOrchestrator).
+   */
   orchestrator?: KobeOrchestrator
   onVisualPrefsChange?: () => void
   onClose: () => void
+  /**
+   * True when this dialog is the standalone page surface (`kobe settings`),
+   * rendered OUTSIDE the dialog stack rather than pushed onto it. The page
+   * mounts this component permanently, so when it opens a sub-dialog (the
+   * engine-command / custom-editor text input) this component stays mounted
+   * underneath. Without a guard its `j/k/l/h/t` navigation bindings would
+   * keep firing and swallow those letters from the text input (the `{file}`
+   * "l-is-eaten" bug). When standalone we therefore disable our own key
+   * bindings whenever the dialog stack is non-empty — mirroring the page's
+   * own esc/q guard. In the overlay surface this dialog IS the stack entry
+   * and unmounts when a sub-dialog replaces it, so no guard is needed.
+   */
   standalone?: boolean
 }
 
@@ -102,6 +129,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   )
   const hasDaemon = hasRestartableDaemon(props.orchestrator)
 
+  // Account detection (KOB-249): read-only fs/env probes, lazily run the
+  // first time the Accounts section is opened so a settings open that
+  // never visits it pays nothing.
   const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
   const [copilotStatus, setCopilotStatus] = createSignal<EngineAccountStatus<CopilotAccount> | null>(null)
@@ -114,6 +144,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     void detectCopilotAccount().then(setCopilotStatus)
   })
 
+  /**
+   * The active section's ordered navigable rows (the row registry). A
+   * row's body index is its position here — recomputed per call, like
+   * the old count helpers, so kv-driven changes (custom engines) are
+   * always fresh in key handlers.
+   */
   function bodyRows(): SettingsRow[] {
     return sectionRows(section(), {
       themeNames: themeNames(),
@@ -138,6 +174,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.onVisualPrefsChange?.()
   }
 
+  // UI language. Live within this process (setLocaleLang updates the module
+  // store → every t() re-renders) and persisted so other panes pick it up on
+  // their next boot, mirroring how the theme is applied + persisted.
   function currentLocale(): LocaleId {
     return currentLang()
   }
@@ -187,6 +226,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
+  // Zen mode: whether collapsing to the engine pane keeps the Tasks rail.
+  // Default on — see state/zen.ts.
   function zenKeepsTasks(): boolean {
     return props.kv.get(ZEN_KEEP_TASKS_KEY, true) !== false
   }
@@ -195,6 +236,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
   }
 
+  // Experimental: SSH-backed remote projects (off by default). Gates
+  // `kobe add --remote`; see docs/design/remote-projects.md.
   function remoteProjectsEnabled(): boolean {
     return props.kv.get("experimental.remoteProjects", false) === true
   }
@@ -203,6 +246,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set("experimental.remoteProjects", !remoteProjectsEnabled())
   }
 
+  // Experimental: auto status flow (off by default) — turn-start moves a
+  // backlog task to in_progress, and claude launches get the status
+  // self-report protocol injected. See docs/design/web-kanban.md M5.
   function autoStatusOn(): boolean {
     return props.kv.get(AUTO_STATUS_KEY, false) === true
   }
@@ -211,6 +257,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(AUTO_STATUS_KEY, !autoStatusOn())
   }
 
+  // Experimental: field-notes dispatcher (off by default) — task sessions
+  // file one-line gotchas, the repo's main session (injected with the
+  // dispatcher protocol) relays them to the tasks that benefit. See
+  // docs/design/dispatcher.md.
   function dispatcherOn(): boolean {
     return props.kv.get(DISPATCHER_KEY, false) === true
   }
@@ -219,6 +269,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(DISPATCHER_KEY, !dispatcherOn())
   }
 
+  // Experimental (beta): archived-task history preview (off by default) —
+  // opening an archived task shows a read-only `kobe history` pane in the
+  // engine slot instead of relaunching the engine. Shared with the web
+  // dashboard via the same state.json key.
   function archivedHistoryOn(): boolean {
     return props.kv.get(ARCHIVED_HISTORY_PREVIEW_KEY, false) === true
   }
@@ -227,6 +281,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(ARCHIVED_HISTORY_PREVIEW_KEY, !archivedHistoryOn())
   }
 
+  // Engines section: per-vendor launch command. Stored in the shared
+  // state.json under engineCommandKey via kv (reactive here; read
+  // cross-process by interactiveEngineCommand). Empty override = default.
+  //
+  // The row list is the three built-ins PLUS the user's custom engines
+  // (customEngineIds registry); custom engines reuse the SAME engineCommand.
+  // <id> / engineName.<id> keys as built-ins, so editEngine/renameEngine work
+  // for them unchanged. A trailing "+ Add engine" row (index === engineList
+  // length) registers a new one.
   function customEngines(): string[] {
     const raw = props.kv.get("customEngineIds", [])
     return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : []
@@ -242,8 +305,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
   }
   function engineIsDefault(vendor: VendorId): boolean {
+    // Custom engines have no built-in default, so they never read as "(default)".
     return isBuiltinVendor(vendor) && engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
   }
+  // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL / id.
   function engineNameOverride(vendor: VendorId): string {
     const v = props.kv.get(engineNameKey(vendor), "")
     return typeof v === "string" ? v.trim() : ""
@@ -252,15 +317,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineNameOverride(vendor).length > 0
   }
   function engineName(vendor: VendorId): string {
+    // Built-ins fall back to VENDOR_LABEL; a custom engine falls back to its id.
     return engineNameOverride(vendor) || VENDOR_LABEL[vendor] || vendor
   }
+  // The GLOBAL default engine (the ● marker) — only this dialog writes it;
+  // per-project picks live in their own layer (state/vendor-prefs.ts).
   const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(getGlobalDefaultVendor() ?? DEFAULT_TASK_VENDOR)
   function isDefaultEngine(vendor: VendorId): boolean {
     return defaultEngine() === vendor
   }
   function setEngineDefault(vendor: VendorId): void {
     setGlobalDefaultVendor(vendor)
-    props.kv.set("defaultVendor", vendor)
+    props.kv.set("defaultVendor", vendor) // keep the in-process kv consistent
     setDefaultEngineSig(vendor)
   }
   async function editEngine(vendor: VendorId): Promise<void> {
@@ -268,7 +336,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       dialogTitle: `${engineName(vendor)} launch command`,
       fieldLabel: "command",
       submitLabel: "save",
-      allowEmpty: true,
+      allowEmpty: true, // blank clears the override → built-in default
     })
     if (next === undefined) return
     props.kv.set(engineCommandKey(vendor), next.trim())
@@ -278,11 +346,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
       dialogTitle: `${engineName(vendor)} display name (blank = default)`,
       fieldLabel: "name",
       submitLabel: "save",
-      allowEmpty: true,
+      allowEmpty: true, // blank clears the name override → default label
     })
     if (next === undefined) return
     props.kv.set(engineNameKey(vendor), next.trim())
   }
+  // `x` on an engine row. Built-in → reset its command + name overrides to the
+  // default (clearing the keys; empty = default, no sentinel). Custom → REMOVE
+  // it entirely (drop from the registry + clear its keys). Apply sites pick the
+  // change up automatically (cross-process via the cleared/removed keys).
   function resetEngine(vendor: VendorId): void {
     props.kv.set(engineCommandKey(vendor), "")
     props.kv.set(engineNameKey(vendor), "")
@@ -291,9 +363,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
         "customEngineIds",
         customEngines().filter((id) => id !== vendor),
       )
+      // Keep the cursor in range after the list shrinks.
       setBodyRow((r) => Math.max(0, Math.min(r, engineList().length)))
     }
   }
+  // The "+ Add engine" row: collect id + launch command + display name and
+  // register a new custom engine. Reuses RenameTaskDialog for each field.
   async function addEngineFlow(): Promise<void> {
     const idRaw = await RenameTaskDialog.show(dialog, "", {
       dialogTitle: "Add engine",
@@ -303,7 +378,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     })
     if (idRaw === undefined) return
     const id = idRaw.trim().toLowerCase()
-    if (!id || isBuiltinVendor(id) || customEngines().includes(id)) return
+    if (!id || isBuiltinVendor(id) || customEngines().includes(id)) return // no blank / shadow / dup
     const command = await RenameTaskDialog.show(dialog, "", {
       dialogTitle: `Add engine · ${id}`,
       fieldLabel: "command",
@@ -315,19 +390,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
       dialogTitle: `Add engine · ${id}`,
       fieldLabel: "name",
       submitLabel: "add",
-      allowEmpty: true,
+      allowEmpty: true, // blank = humanized id (e.g. my-local-agent → My Local Agent)
     })
     props.kv.set("customEngineIds", [...customEngines(), id])
     if (command.trim()) props.kv.set(engineCommandKey(id), command.trim())
+    // A typed name wins; otherwise (blank or left as the raw id) seed a
+    // humanized form so the chip reads "My Local Agent", not "my-local-agent".
     const typedName = name?.trim() ?? ""
     props.kv.set(engineNameKey(id), typedName && typedName !== id ? typedName : humanizeSlug(id))
   }
+  /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
   function currentEngineRow(): VendorId | null {
     if (section() !== "engines" || level() !== "body") return null
     const row = rowAt(bodyRows(), bodyRow())
     return row?.kind === "engine" ? row.vendor : null
   }
 
+  // Editor preference: which editor the file tree's `e` key launches.
+  // `editor.kind` cycles auto → vim → nvim → nano → emacs → custom on enter
+  // (auto, the default, follows $VISUAL/$EDITOR then auto-detects); the custom
+  // command is a free-text field (reused RenameTaskDialog) used only when
+  // kind === "custom". Read cross-process by tmux/editor-launch.
   function editorKind(): EditorKind {
     return normalizeEditorKind(props.kv.get(EDITOR_KIND_KEY, DEFAULT_EDITOR_KIND))
   }
@@ -350,9 +433,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (next === undefined) return
     const cmd = next.trim()
     props.kv.set(EDITOR_CUSTOM_KEY, cmd)
+    // If the user bothered to type a command here, they want it used —
+    // flip the kind to `custom` so it actually takes effect. Without this,
+    // a command typed while kind is still `vim` is silently ignored (you'd
+    // set `code -w` / `nano` and still get vim), which reads as a bug.
     if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
   }
 
+  // Worktree location: a global override for where new LOCAL task
+  // worktrees are created (default `~/.kobe/worktrees`). A preset cycle
+  // mirroring the editor rows — default / next to project / custom —
+  // so the common choice ("beside each repo") never requires typing the
+  // $project_dir token; custom is a free-text path that still accepts
+  // it. The daemon's worktree path resolver (state/worktree-base.ts)
+  // reads WORKTREE_BASE_KEY alone; the companion custom key only
+  // remembers the last typed path across cycles.
   function worktreeBasePath(): string {
     const v = props.kv.get(WORKTREE_BASE_KEY, "")
     return typeof v === "string" ? v : ""
@@ -367,6 +462,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   function worktreeCustomPath(): string {
     const v = props.kv.get(WORKTREE_BASE_CUSTOM_KEY, "")
     const remembered = typeof v === "string" ? v.trim() : ""
+    // A custom path saved before the preset cycle existed lives only in
+    // the base key — surface it so the row isn't misleadingly "(unset)".
     return remembered || (worktreeKind() === "custom" ? worktreeBasePath().trim() : "")
   }
   function cycleWorktreeBase(): void {
@@ -374,6 +471,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (kind === "default") {
       props.kv.set(WORKTREE_BASE_KEY, PROJECT_SIBLING_BASE)
     } else if (kind === "nextToProject") {
+      // No remembered custom path → nothing to cycle onto; back to default.
       props.kv.set(WORKTREE_BASE_KEY, worktreeCustomPath())
     } else {
       props.kv.set(WORKTREE_BASE_CUSTOM_KEY, worktreeBasePath().trim())
@@ -390,6 +488,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
     })
     if (next === undefined) return
     const raw = next.trim()
+    // A non-empty override must point at a directory kobe can actually
+    // create worktrees under — otherwise every future `git worktree add`
+    // fails with a raw git error and new-task creation breaks silently.
+    // Validate here (create + writability check) and refuse to save a bad
+    // path, rather than persisting a footgun. Blank clears the override.
+    // A `$project_dir` path resolves per-project at task creation (parents
+    // are mkdirp'd there), so it can't be probed globally — only its shape
+    // is checked: the token must be the leading segment to expand at all.
     if (raw.includes(PROJECT_DIR_TOKEN)) {
       if (!hasProjectDirToken(raw)) {
         await DialogConfirm.show(
@@ -415,6 +521,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return
       }
     }
+    // Persist the trimmed raw entry; the daemon expands ~ / relative /
+    // $project_dir paths the same way when it reads it. Typing a path
+    // here means the user wants it used — flip the preset to custom
+    // (mirrors the editor-custom flow); blank clears the custom choice.
     props.kv.set(WORKTREE_BASE_CUSTOM_KEY, raw)
     if (raw) props.kv.set(WORKTREE_BASE_KEY, raw)
     else if (worktreeKind() === "custom") props.kv.set(WORKTREE_BASE_KEY, "")
@@ -433,8 +543,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   }
 
+  // The Feedback section is an inline form (title → description → Send),
+  // not a row list. While it holds focus we suspend this dialog's own
+  // j/k/h/l/t nav (it'd swallow keystrokes from the inputs — the same
+  // "l-is-eaten" class the standalone guard handles) and drive the form
+  // with a dedicated Tab cycle + a Send-row Enter binding below.
   const editingFeedback = () => section() === "feedback" && level() === "body"
 
+  // Tab walks title → description → Send → back to the sidebar (the
+  // keyboard escape hatch, since left/h are owned by the inputs while
+  // editing); Shift+Tab walks it backwards.
   function feedbackFieldStep(delta: 1 | -1): void {
     const next = bodyRow() + delta
     if (next < 0 || next > 2) {
@@ -476,6 +594,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setLevel("sidebar")
   }
 
+  /**
+   * Activation lookup, keyed by row kind. Payload-bearing rows (theme,
+   * accent slot, engine vendor, surface) carry their payload in the
+   * descriptor, so enter never reverse-engineers it from an index.
+   */
   const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
     theme: (row) => selectTheme(row.name),
     language: (row) => selectLanguage(row.locale),
@@ -490,7 +613,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     worktreeBase: () => cycleWorktreeBase(),
     worktreeCustom: () => void editWorktreeCustom(),
     engine: (row) => void editEngine(row.vendor),
-    engineAdd: () => void addEngineFlow(),
+    engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
     feedbackTitle: () => setBodyRow(0),
     feedbackBody: () => setBodyRow(1),
     feedbackSend: () => void sendFeedback(),
@@ -509,6 +632,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
 
   useBindings(() => ({
+    // On the standalone page, suspend our navigation keys while a
+    // sub-dialog (the engine-command / custom-editor text input) is open
+    // so `l`/`t`/`j`/`k`/`h` reach the input instead of being eaten by
+    // this dialog's nav. The overlay surface unmounts us when covered, so
+    // there it's always enabled.
     enabled: (!props.standalone || dialog.stack.length === 0) && !editingFeedback(),
     bindings: [
       { key: "down", cmd: () => moveCursor(1) },
@@ -535,6 +663,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
         cmd: toggleTransparent,
       },
       {
+        // Engines section only: `r` renames the focused engine's display
+        // label, `x` resets a built-in (or removes a custom) engine. Gated to a
+        // focused engine row (currentEngineRow null on the +Add row / elsewhere).
         key: "r",
         cmd: () => {
           const v = currentEngineRow()
@@ -549,6 +680,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
         },
       },
       {
+        // Engines section: `d` sets the focused engine as the global default
+        // (the ● marker).
         key: "d",
         cmd: () => {
           const v = currentEngineRow()
@@ -558,6 +691,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ],
   }))
 
+  // Feedback-form navigation, live only while that form holds focus.
+  // Tab / Shift+Tab cycle the fields; Enter on the title input is left to
+  // its own onSubmit (advance to body, so it isn't swallowed here); Enter
+  // in the body textarea inserts a newline (no binding intercepts it at
+  // bodyRow 1); and Enter on the focused Send row commits — gated to
+  // bodyRow 2 so it stays out of the dispatch stack while a field is focused.
   useBindings(() => ({
     enabled: editingFeedback(),
     bindings: [

@@ -1,3 +1,10 @@
+/**
+ * Public bootstrap for the kobe "core" — the orchestrator + worktree
+ * manager + task index, wired together with sensible defaults. v0.5
+ * had an engine port (and an MCP bridge that exposed it to spawned
+ * claude); both are gone in v0.6.
+ */
+
 import { homedir } from "node:os"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"

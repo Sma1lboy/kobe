@@ -1,3 +1,14 @@
+/**
+ * Drives the REAL default FS deps of the engine history readers against a
+ * temp `$HOME` (node:os `homedir` is mocked to a mkdtemp dir; all file I/O is
+ * genuine). Round-1 edge-case suites cover the parsers through injected
+ * deps; what was left uncovered is exactly the default-deps wiring — the
+ * `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` directory-layout
+ * knowledge, the tolerate-ENOENT loops, and deleteHistory's non-ENOENT
+ * rethrow. A regression here means the TUI reads/deletes the wrong files on
+ * a real machine while every injected-deps test stays green.
+ */
+
 import {
   existsSync,
   mkdirSync,
@@ -85,6 +96,8 @@ describe("encodeCwd", () => {
 })
 
 describe("fresh HOME — no engine dirs on disk yet", () => {
+  // Runs FIRST (before sibling suites create ~/.claude/projects): the
+  // default readdir must swallow the missing-root ENOENT, not throw.
   it("readHistory degrades to [] when ~/.claude/projects does not exist", async () => {
     await expect(readHistory("preboot-session")).resolves.toEqual([])
   })
@@ -118,6 +131,7 @@ describe("listSessionFilesForWorktree (real default deps)", () => {
     utimesSync(newer, new Date("2026-06-01"), new Date("2026-06-01"))
     const dir = path.join(projectsRoot, encodeCwd(wt))
     writeFileSync(path.join(dir, "notes.txt"), "not a session")
+    // Dangling symlink: readdir lists it, stat fails → kept with mtime 0.
     symlinkSync(path.join(dir, "gone.target"), path.join(dir, "cccc.jsonl"))
 
     const files = await listSessionFilesForWorktree(wt)
@@ -130,11 +144,13 @@ describe("listSessionFilesForWorktree (real default deps)", () => {
 
 describe("readHistory (real default deps)", () => {
   it("scans every project dir for <sessionId>.jsonl and returns timestamp-sorted messages", async () => {
+    // A sibling project dir WITHOUT the session file must be skipped, not fatal.
     mkdirSync(path.join(projectsRoot, encodeCwd("/repo/other")), { recursive: true })
     writeSession("/repo/wt-read", "dddd", [
       userLine("second", "dddd", "2026-01-02T00:00:00Z"),
       "{not json — must be skipped, not fatal",
       userLine("first", "dddd", "2026-01-01T00:00:00Z"),
+      // Same timestamp as "second": the sort is stable, file-order wins the tie.
       JSON.stringify({
         type: "assistant",
         message: { role: "assistant", content: "tied", usage: { input_tokens: 10, output_tokens: 3 } },
@@ -148,6 +164,7 @@ describe("readHistory (real default deps)", () => {
       [{ type: "text", text: "second" }],
       [{ type: "text", text: "tied" }],
     ])
+    // usage survives normalization when both token counts are present.
     expect(messages[2]?.usage).toEqual({ input_tokens: 10, output_tokens: 3 })
   })
 
@@ -161,6 +178,7 @@ describe("deleteHistory (real default deps)", () => {
     const file = writeSession("/repo/wt-del", "eeee", [userLine("bye", "eeee", "2026-01-01T00:00:00Z")])
     await deleteHistory("eeee")
     expect(readdirSync(path.dirname(file))).not.toContain("eeee.jsonl")
+    // Fully-absent session: pure ENOENT loop, resolves silently.
     await expect(deleteHistory("eeee")).resolves.toBeUndefined()
   })
 
@@ -174,6 +192,7 @@ describe("appendInterruptedUserPrompt (real default deps)", () => {
   it("coalesces onto a TOP-LEVEL-role user record (no message wrapper), skipping malformed tail lines", async () => {
     const cwd = "/repo/wt-append"
     const file = writeSession(cwd, "ffff", [
+      // Legacy shape: role+content at the record top level, not under .message.
       JSON.stringify({
         role: "user",
         content: "earlier rescued prompt",
@@ -193,6 +212,8 @@ describe("appendInterruptedUserPrompt (real default deps)", () => {
       message: { content: string }
       parentUuid: string | null
     }
+    // Coalesced text carries the earlier turn forward, chained to its PARENT
+    // (superseding the un-replied sibling, never two back-to-back user rows).
     expect(appended.message.content).toBe("earlier rescued prompt\n\nnewest prompt")
     expect(appended.parentUuid).toBe("p-0")
   })
@@ -220,6 +241,7 @@ describe("codex history (real default deps)", () => {
       rollout,
       `${[
         JSON.stringify({ type: "session_meta", payload: { id: "cccc1111-2222-3333-4444-555566667777", cwd: "/w" } }),
+        // Out of file order on purpose: readHistory must sort by timestamp.
         JSON.stringify({
           type: "response_item",
           timestamp: "2026-01-05T10:00:05Z",
@@ -240,6 +262,7 @@ describe("codex history (real default deps)", () => {
 
     await codexDeleteHistory("cccc1111-2222-3333-4444-555566667777")
     expect(readdirSync(path.dirname(rollout))).toEqual([])
+    // Absent session: no-op, never throws.
     await expect(codexDeleteHistory("cccc1111-2222-3333-4444-555566667777")).resolves.toBeUndefined()
   })
 
@@ -255,6 +278,8 @@ describe("codex history (real default deps)", () => {
   })
 
   it("tolerates an unreadable rollout during the worktree scan (skips, keeps scanning)", async () => {
+    // A DIRECTORY named like a rollout: listed by the tree walk, readFile
+    // explodes with EISDIR — the cwd probe must degrade to "no match".
     const bogus = path.join(
       path.dirname(rollout),
       "rollout-2026-01-05T12-00-00-dddd0000-1111-2222-3333-444455556666.jsonl",
@@ -283,8 +308,10 @@ describe("copilot history (real default deps)", () => {
         process.env.COPILOT_HOME = override
         mkdirSync(path.join(override, "session-state", "s2"), { recursive: true })
         await expect(copilotListSessionDirs()).resolves.toEqual([path.join(override, "session-state", "s2")])
+        // stat default dep: no events.jsonl anywhere → mtime 0.
         await expect(copilotMtimeForWorktree("/nowhere")).resolves.toBe(0)
 
+        // rm default dep: deleteHistory removes the whole session dir.
         await copilotDeleteHistory("s2")
         expect(existsSync(path.join(override, "session-state", "s2"))).toBe(false)
       } finally {

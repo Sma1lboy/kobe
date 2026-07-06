@@ -1,3 +1,10 @@
+/**
+ * `kobe reload` (`runReloadSubcommand`) — surgical Tasks/Ops pane respawn
+ * across every live tmux session, without touching engine panes or
+ * restarting the daemon. tmux + the dynamically-imported pane-heal module
+ * are mocked so no real tmux/opentui graph is touched.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({

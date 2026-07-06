@@ -1,3 +1,11 @@
+/**
+ * Engine-history client — browser mirrors of the engine's neutral history
+ * shapes (packages/kobe/src/types/engine.ts Message / ContentBlock) plus
+ * the fetchers for the bridge's /api/history routes and the usage math the
+ * transcript header renders. Mirrored locally (like types.ts) so no server
+ * code leaks into the client bundle.
+ */
+
 import { api } from "./api-client.ts"
 
 export type ContentBlock =
@@ -22,7 +30,9 @@ export interface HistoryMessage {
 }
 
 export interface SessionsResult {
+  /** Oldest-first (reader contract) — the latest session is the last entry. */
   sessions: string[]
+  /** Newest transcript mtime for the worktree; 0 = none yet. */
   latestMtime: number
 }
 
@@ -51,11 +61,17 @@ export async function fetchMessages(
 }
 
 export interface UsageSummary {
+  /** Sum of fresh input tokens across the session. */
   inputTokens: number
+  /** Sum of output tokens across the session. */
   outputTokens: number
+  /** Last assistant turn's full prompt size — the live context estimate
+   *  (input + cache read + cache creation), ccstatusline's derivation. */
   contextTokens: number
 }
 
+/** Aggregate per-message usage (claude persists it inline; other vendors may
+ *  not — all-zero means "no usage data", render nothing). */
 export function summarizeUsage(
   messages: readonly HistoryMessage[],
 ): UsageSummary {
@@ -75,6 +91,7 @@ export function summarizeUsage(
   return { inputTokens, outputTokens, contextTokens }
 }
 
+/** Compact token formatting: 1234 → "1.2k", 1234567 → "1.2m". */
 export function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`

@@ -1,3 +1,16 @@
+/**
+ * Minimal, SAFE markdown to HTML for the notes preview. Security model: escape
+ * ALL HTML first, then emit only our own tags from the escaped text, so user
+ * input can never inject markup. Link hrefs are scheme-checked (http/https or
+ * a true relative path only; javascript:, data:, and protocol-relative //host
+ * are dropped to plain text). Not a full CommonMark engine, a pragmatic subset
+ * (headings, lists, quotes, code, fences, hr, bold/italic/code/links) that
+ * covers scratchpad notes.
+ *
+ * Output is rendered via dangerouslySetInnerHTML, which is safe ONLY because
+ * every code path here escapes before composing tags. Keep that invariant.
+ */
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -6,6 +19,13 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
+/**
+ * Image sources are far more restricted than links: ONLY the bridge's own
+ * issue-asset route (`/api/issue-assets/<16-hex hash>/<file>.<ext>`) may render
+ * as an `<img>`. Anything else (remote urls, data:, arbitrary paths) falls back
+ * to escaped text — never an image tag. This keeps the escape-first posture and
+ * blocks `![](javascript:…)` / tracking-pixel / off-site fetches outright.
+ */
 const ISSUE_ASSET_SRC =
   /^\/api\/issue-assets\/[a-f0-9]{16}\/[A-Za-z0-9_-]+\.[a-z0-9]+$/
 
@@ -14,6 +34,8 @@ function safeImageSrc(raw: string): string | null {
   return ISSUE_ASSET_SRC.test(url) ? url : null
 }
 
+/** Allow only http(s) and true relative links; everything else renders as
+ *  text. `//host` is protocol-relative (resolves off-site), not relative. */
 function safeHref(raw: string): string | null {
   const url = raw.trim()
   if (/^https?:\/\//i.test(url)) return url
@@ -29,34 +51,56 @@ function safeHref(raw: string): string | null {
   return null
 }
 
+/** Image/link/bold/italic on a NON-code, already-escaped fragment. */
 function transformSpans(s: string): string {
   let out = s
+  // ![alt](src): MUST run before the link rule (`![…]` is a superset of `[…]`),
+  // else the link pass would eat the `[…](…)` and leave a stray `!`. Only the
+  // bridge's own issue-asset route renders as an <img>; anything else falls
+  // back to escaped text. Gated on `]`/`)` for the same backtracking reason.
   if (out.includes("]") && out.includes(")")) {
     out = out.replace(
       /!\[([^\]]*)\]\(([^)]+)\)/g,
       (_m, alt: string, url: string) => {
+        // The url was HTML-escaped; unescape &amp; before the route check.
         const src = safeImageSrc(url.replace(/&amp;/g, "&"))
         if (!src) return `![${alt}](${url})`
         return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" class="kobe-md-img">`
       },
     )
   }
+  // [text](url): url is from escaped text; validate scheme, drop unsafe.
+  // Skip the link regex when there's no `]`/`(` to match: its `[^\]]+`/`[^)]+`
+  // classes backtrack quadratically on a long run of unmatched `[`.
   if (out.includes("]") && out.includes(")")) {
     out = out.replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
       (_m, text: string, url: string) => {
+        // The url was HTML-escaped (e.g. &amp;); unescape &amp; for the scheme
+        // check, then re-escape, so it's HTML-safe inside the href attribute.
         const href = safeHref(url.replace(/&amp;/g, "&"))
         if (!href) return `${text}(${url})`
         return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="kobe-md-link">${text}</a>`
       },
     )
   }
+  // Bold is non-greedy so `**bold *italic* more**` keeps the inner `*…*` for
+  // the italic pass that runs next (and `**a** **b**` stays two spans).
   out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
   return out
 }
 
+/**
+ * Inline spans on ALREADY-ESCAPED text. Split on `code` spans so the
+ * link/bold/italic passes only ever touch the NON-code segments — they can't
+ * rewrite markdown inside a code span, nor pair a `*`/`[` inside a code span
+ * with one outside it. (Trade-off: emphasis can't span across a code span,
+ * which is a rare edge and the safe choice.)
+ */
 function renderInline(escaped: string): string {
+  // The capture group keeps the `code` delimiters in the split result: even
+  // indices are non-code text, odd indices are the matched code spans.
   return escaped
     .split(/(`[^`]+`)/g)
     .map((part, idx) => {
@@ -84,6 +128,7 @@ export function renderMarkdown(md: string): string {
   while (i < lines.length) {
     const line = lines[i]
 
+    // Fenced code block ```…```
     if (/^```/.test(line)) {
       closeList()
       const body: string[] = []
@@ -92,13 +137,14 @@ export function renderMarkdown(md: string): string {
         body.push(escapeHtml(lines[i]))
         i++
       }
-      i++
+      i++ // skip closing fence
       html.push(
         `<pre class="kobe-md-pre"><code>${body.join("\n")}</code></pre>`,
       )
       continue
     }
 
+    // Horizontal rule
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
       closeList()
       html.push('<hr class="kobe-md-hr" />')
@@ -106,6 +152,7 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
+    // Heading
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
     if (heading) {
       closeList()
@@ -117,6 +164,7 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
+    // Blockquote
     if (/^>\s?/.test(line)) {
       closeList()
       html.push(
@@ -126,6 +174,7 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
+    // Unordered list item
     const ul = /^\s*[-*]\s+(.*)$/.exec(line)
     if (ul) {
       if (listType !== "ul") {
@@ -138,6 +187,7 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
+    // Ordered list item
     const ol = /^\s*\d+\.\s+(.*)$/.exec(line)
     if (ol) {
       if (listType !== "ol") {
@@ -150,12 +200,14 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
+    // Blank line: list/paragraph break
     if (line.trim() === "") {
       closeList()
       i++
       continue
     }
 
+    // Paragraph: gather consecutive non-blank, non-block lines.
     closeList()
     const para: string[] = [line]
     i++

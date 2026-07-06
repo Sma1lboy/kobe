@@ -1,4 +1,14 @@
+/**
+ * Preserve row object identity across polled list rebuilds.
+ *
+ * Long-lived opentui panes often rebuild row arrays from fresh data. Solid's
+ * `<For>` keys by object identity, so an all-new row list can churn native
+ * renderables even when nothing visible changed. This helper keeps the previous
+ * row object whenever the caller's key + equality policy says it is unchanged.
+ */
+
 export interface ReconcileStableRowsOptions {
+  /** Reuse only when the row stayed at the same array position. */
   readonly samePosition?: boolean
 }
 

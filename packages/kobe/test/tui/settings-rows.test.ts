@@ -1,3 +1,19 @@
+/**
+ * Settings dialog row registry (settings-dialog/model.ts).
+ *
+ * Why these tests matter: the dialog's keyboard nav (j/k/enter), the
+ * engines-section row-gated keys (r/x/d), and every section view's
+ * cursor highlight all key off "a row's body index is its position in
+ * the section's row list". Before the registry this was hand-chained
+ * offset arithmetic (transparentRowIndex = themeCount, toastRowIndex =
+ * themeCount+1+accentCount, ...) where one insertion shifted every
+ * downstream index. These tests pin (a) the exact on-screen row ORDER
+ * per section, (b) count parity with the old offset formulas for
+ * representative input sizes, and (c) the id-lookup helpers the views
+ * use instead of arithmetic. If a row is added or reordered, the order
+ * test here is the single place that must change with it.
+ */
+
 import { describe, expect, it } from "vitest"
 import {
   SECTIONS,
@@ -21,6 +37,7 @@ import { LOCALES } from "../../src/tui/i18n/catalog.ts"
 import { ALL_VENDORS } from "../../src/types/vendor.ts"
 
 const SLOTS: readonly FocusAccentSlot[] = ["primary", "success", "info"]
+/** Language picker rows sit right after the theme list — count them in the offsets. */
 const LANG = LOCALES.length
 
 function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
@@ -56,6 +73,7 @@ describe("generalRows", () => {
       "worktreeBase",
       "worktreeCustom",
     ])
+    // Payload order matches input order, and the two surfaces are ChatTab then Task panel.
     expect(rows.slice(0, 3).map((r) => (r.kind === "theme" ? r.name : "?"))).toEqual(themes)
     expect(rows.filter((r) => r.kind === "language").map((r) => r.locale)).toEqual(LOCALES.map((l) => l.id))
     expect(
@@ -69,7 +87,9 @@ describe("generalRows", () => {
       const themes = Array.from({ length: themeCount }, (_, i) => `theme-${i}`)
       const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
       expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 9)
+      // transparent sits after the theme list + the language picker.
       expect(rowIndex(rows, "transparent")).toBe(themeCount + LANG)
+      // toastRowIndex / soundRowIndex chain, then the zen toggle, then surfaces + editors.
       expect(rowIndex(rows, "toast")).toBe(themeCount + LANG + 1 + SLOTS.length)
       expect(rowIndex(rows, "sound")).toBe(themeCount + LANG + 1 + SLOTS.length + 1)
       expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + LANG + 1 + SLOTS.length + 2)
@@ -95,11 +115,13 @@ describe("engineRows", () => {
     const list = [...ALL_VENDORS, ...customs]
     const rows = engineRows(list)
     expect(rows.length).toBe(ALL_VENDORS.length + customs.length + 1)
+    // Engine row index === its position in the engine list (the section's <For> order).
     list.forEach((vendor, i) => {
       expect(rowIndex(rows, engineRowId(vendor))).toBe(i)
       const row = rowAt(rows, i)
       expect(row?.kind === "engine" && row.vendor).toBe(vendor)
     })
+    // The add row sits last, at index === engine count (old addRowIndex).
     const last = rowAt(rows, list.length)
     expect(last?.kind).toBe("engineAdd")
   })
@@ -164,10 +186,11 @@ describe("sectionRows / bodyRowCount", () => {
   })
 
   it("matches the old per-section count formulas for a representative input", () => {
+    // 12 themes, 3 accents, 2 custom engines, daemon attached.
     const themes = Array.from({ length: 12 }, (_, i) => `t${i}`)
     const inp = input({ themeNames: themes, engineList: [...ALL_VENDORS, "aider", "goose"], hasDaemon: true })
-    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 9)
-    expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1)
+    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 9) // 12 themes + langs + transparent + 3 accents + 9
+    expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)
     expect(bodyRowCount("feedback", inp)).toBe(3)

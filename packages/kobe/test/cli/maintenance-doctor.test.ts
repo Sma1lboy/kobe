@@ -1,3 +1,11 @@
+/**
+ * `kobe doctor` (`runDoctorSubcommand`) — read-only diagnostic report.
+ * Real filesystem under a per-test KOBE_HOME_DIR tempdir (paths.ts + env.ts
+ * both resolve off that env var), only the daemon socket client, tmux
+ * client, and skill-install state are mocked — those would otherwise dial a
+ * real socket / shell out to tmux / touch the real OS home dir.
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -83,6 +91,9 @@ afterEach(() => {
   if (originalHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = originalHome
   rmSync(home, { recursive: true, force: true })
+  // NOTE: vi.restoreAllMocks() would also reset the vi.fn()-based
+  // KobeDaemonClient class mock's mockImplementation (it's a mock too, set
+  // once in the vi.mock factory above) — restore only the real-global spies.
   logSpy.mockRestore()
   errSpy.mockRestore()
   exitSpy.mockRestore()
@@ -116,6 +127,8 @@ describe("runDoctorSubcommand", () => {
       kobeVersion: "0.0.0-test",
     })
     const { CURRENT_VERSION } = await import("../../src/version.ts")
+    // Force the daemon-reported version to match CURRENT_VERSION so the
+    // "no stale build" branch is exercised.
     mocks.daemonRequest.mockResolvedValue({
       daemonPid: 4242,
       uptimeMs: 65_000,
@@ -156,6 +169,7 @@ describe("runDoctorSubcommand", () => {
 
   it("reports no daemon running with a stale pidfile pointing at a dead pid", async () => {
     mocks.daemonRequest.mockRejectedValue(new Error("ECONNREFUSED"))
+    // A pid vanishingly unlikely to be alive.
     writeFileSync(join(home, ".kobe", "daemon.pid"), "999999", "utf8")
     await runDoctorSubcommand([])
     const out = output()
@@ -243,7 +257,7 @@ describe("runDoctorSubcommand", () => {
   it("formats hour-scale uptime as h/m", async () => {
     mocks.daemonRequest.mockResolvedValue({
       daemonPid: 1,
-      uptimeMs: 3_725_000,
+      uptimeMs: 3_725_000, // 1h 2m 5s
       taskCount: 0,
       attachedClients: 0,
     })
@@ -253,7 +267,9 @@ describe("runDoctorSubcommand", () => {
 
   it("formats file sizes in KB and MB once they outgrow bytes", async () => {
     mocks.daemonRequest.mockRejectedValue(new Error("down"))
+    // ~2 KB tasks.json (unparseable as v3 → no task count suffix, size still shown)
     writeFileSync(join(home, ".kobe", "tasks.json"), "x".repeat(2048), "utf8")
+    // ~1.2 MB daemon.log (small lines so the log tail stays cheap)
     writeFileSync(join(home, ".kobe", "daemon.log"), `${"y".repeat(62)}\n`.repeat(19_972), "utf8")
     await runDoctorSubcommand([])
     const out = output()

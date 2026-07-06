@@ -1,3 +1,14 @@
+/**
+ * Per-channel subscribe filter — daemon → client round-trip (KOB —
+ * per-channel subscribe). The daemon used to write EVERY channel frame to
+ * EVERY subscribed socket; a narrow consumer (host-boot's UiPrefsSync wants
+ * only ui-prefs + keybindings) still received — and parsed — the full
+ * `task.snapshot` fan-out it never reads. The reserved `channels` filter is
+ * now enforced: a filtered subscriber gets ONLY its channels in both the
+ * connect-time replay and later broadcasts; an UNfiltered subscriber still
+ * gets everything (back-compat). Exercised over the real Unix socket.
+ */
+
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -6,6 +17,11 @@ import { type DaemonServer, startDaemonServer } from "@sma1lboy/kobe-daemon/daem
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
+/**
+ * Minimal orchestrator. `subscribeTasks` fires once eagerly, which warms the
+ * bus's `task.snapshot` last-value — the "unwanted" channel a filtered
+ * subscriber must NOT receive.
+ */
 function fakeOrchestrator(): Orchestrator {
   return {
     subscribeTasks: (listener: (snapshot: unknown[]) => void) => {
@@ -63,6 +79,8 @@ describe("per-channel subscribe filter (daemon → client)", () => {
     client.on("*", (frame) => {
       if (frame.name !== "daemon.stopping") channels.push(frame.name)
     })
+    // Filter to keybindings only — task.snapshot (warmed by subscribeTasks'
+    // eager fire) must NOT arrive.
     await client.subscribe({ channels: ["keybindings"] })
 
     await waitFor(() => channels.includes("keybindings"))

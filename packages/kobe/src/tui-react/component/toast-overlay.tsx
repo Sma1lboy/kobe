@@ -1,4 +1,11 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * Toast overlay (React port of `src/tui/component/toast-overlay.tsx`,
+ * issue #15 G3) — bottom-right transient chips, colored by kind
+ * (done→success, needs_input→warning, error→red), newest at the bottom,
+ * up to four visible, click to dismiss early. Auto-dismiss timers stay
+ * owned by the notifications context; full rationale in the Solid header.
+ */
 
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
@@ -18,6 +25,9 @@ export function ToastOverlay() {
   if (notif.toasts.length === 0) return null
   const visibleToasts = notif.toasts.slice(-MAX_VISIBLE)
 
+  // Anchor the stack to the bottom-right corner. Position is absolute so
+  // the overlay sits on top of the layout without taking flow space;
+  // `zIndex` keeps it above the panes but below the dialog backdrop (3000).
   const left = Math.max(0, dims.width - CHIP_WIDTH - RIGHT_MARGIN)
   const top = Math.max(0, dims.height - BOTTOM_MARGIN - MAX_VISIBLE - 1)
 
@@ -25,6 +35,8 @@ export function ToastOverlay() {
     <box position="absolute" zIndex={2500} left={left} top={top} width={CHIP_WIDTH} flexDirection="column" gap={0}>
       {visibleToasts.map((toast) => {
         const bg = toast.kind === "needs_input" ? theme.warning : toast.kind === "error" ? theme.error : theme.success
+        // selectedListItemText is the readable foreground over a saturated
+        // chip background — same slot the active tab chip uses.
         const fg = theme.selectedListItemText
         const prefix = toast.kind === "needs_input" ? "?" : toast.kind === "error" ? "✕" : "✓"
         return (

@@ -1,3 +1,13 @@
+/**
+ * `kobe update-page` — update details as a standalone full-window tmux
+ * surface.
+ *
+ * Direct-tmux startup made the old outer TUI update dialog effectively
+ * stale. This page follows the Settings/New Task pattern: open a
+ * dedicated tmux window, show the update context without cramped footer
+ * copy, and hand off to the shell updater when the user chooses Update.
+ */
+
 import { spawn, spawnSync } from "node:child_process"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
@@ -260,6 +270,8 @@ function UpdatePage() {
 }
 
 export async function startUpdateHost(): Promise<void> {
+  // No teardown and no daemon connection — this page only talks to npm /
+  // GitHub and hands off to the shell updater.
   await bootPaneHost({
     setup: () => ({ root: () => <UpdatePage /> }),
   })

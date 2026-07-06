@@ -1,4 +1,9 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * React sidebar hover tooltip (issue #15, G3) — the
+ * `src/tui/panes/sidebar/hover-tooltip.tsx` counterpart. Line building and
+ * screen-clamped layout are the shared framework-free `hover-layout.ts`.
+ */
 
 import { TextAttributes } from "@opentui/core"
 import { truncateStart } from "../../../tui/lib/truncate"

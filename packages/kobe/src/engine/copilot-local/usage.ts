@@ -1,3 +1,14 @@
+/**
+ * Copilot usage-snapshot derivation (KOB-249).
+ *
+ * The Copilot CLI's `session.shutdown` event carries a `modelMetrics`
+ * map (per-model token tallies) plus a `currentTokens` context figure.
+ * This collapses that into the neutral {@link EngineUsageSnapshot} the
+ * history reader returns, the same way `codex-local/usage.ts` does for
+ * Codex. Extracted from the v0.5 Copilot stream adapter that v0.6
+ * dropped — the live engine runs in tmux now; we only read its history.
+ */
+
 import type { EngineUsageSnapshot } from "@/types/engine"
 
 export function copilotUsageToSnapshot(value: unknown): EngineUsageSnapshot | undefined {

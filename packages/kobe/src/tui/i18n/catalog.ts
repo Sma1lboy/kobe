@@ -1,3 +1,22 @@
+/**
+ * i18n message catalog — the per-namespace message files composed into one
+ * `en` / `zh` tree.
+ *
+ * English (`en`) is the SOURCE OF TRUTH: it defines the `Messages` shape every
+ * other locale must satisfy. `zh` (简体中文) must carry the exact same key set —
+ * `bun run check-i18n` and `test/tui/i18n-catalog.test.ts` (CI) fail on any
+ * missing/extra key or dropped `{placeholder}` so the two never drift.
+ *
+ * Each surface owns its own file under `./messages/` (settings, tasks, files,
+ * …) so translation work parallelizes without colliding. Pure data, zero
+ * runtime deps — safe under node / vitest (the reactive `t()` lives in
+ * `./index.ts`, which pulls solid-js). Values may contain `{name}`
+ * placeholders; `t(key, params)` substitutes them.
+ *
+ * We translate prose; literal config syntax (YAML keys, shell command
+ * examples) is left in the calling code as-is — it isn't language.
+ */
+
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
@@ -30,6 +49,11 @@ export const en = {
   worktrees,
 }
 
+/**
+ * Every locale must structurally match the English source of truth. The
+ * namespace `zh` files are each typed `typeof en`, so the assembled tree is
+ * structurally identical and this annotation just documents the contract.
+ */
 export type Messages = typeof en
 
 export const zh: Messages = {
@@ -49,6 +73,7 @@ export const zh: Messages = {
   worktrees: worktreesZh,
 }
 
+/** Registered locales, in display order. */
 export const LOCALES = [
   { id: "en", label: "English" },
   { id: "zh", label: "中文" },

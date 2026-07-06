@@ -1,3 +1,11 @@
+/**
+ * Why this matters: the keymap table is mutated IN PLACE on live reloads —
+ * invisible to React. Chord legends re-render only through the version
+ * subscription added in G2 (`subscribeKeymapVersion`), which must fire in
+ * lockstep with the Solid signal bump or React panes show stale chords
+ * after a keybindings.json reload.
+ */
+
 import { describe, expect, it } from "vitest"
 import {
   bindByIds,
@@ -25,6 +33,7 @@ describe("keymap version subscription (React side)", () => {
 describe("react keybindings re-exports", () => {
   it("exposes the shared keymap data + lookups (same objects as the Solid module)", () => {
     const anyBinding = findBinding("app.quit") ?? findBinding("sidebar.up")
+    // The table is non-empty and chord lookup goes through the shared map.
     expect(Array.isArray(chordsOf(anyBinding?.id ?? "app.quit"))).toBe(true)
     expect(bindByIds({})).toEqual([])
   })

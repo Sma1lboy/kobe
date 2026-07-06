@@ -1,3 +1,9 @@
+/**
+ * `history.*` messages — the `kobe history` read-only engine-history pane
+ * (beta: shown in the engine pane slot when an archived task is opened).
+ * English is the source of truth; `zh: typeof en` keeps the shapes locked.
+ */
+
 export const en = {
   empty: "No engine history for this task.",
   loading: "loading…",

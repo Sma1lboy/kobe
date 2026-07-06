@@ -3,6 +3,12 @@ exact = true
 
 preload = ["@opentui/solid/preload"]
 
+# `bun test` does NOT read the top-level `preload` above (that only applies
+# to `bun run`/`bun <script>`) — it needs its own [test] table. Without this,
+# opentui/solid's Babel-driven JSX transform never registers and every .tsx
+# render test fails to parse JSX. See test/render/harness.tsx.
 [test]
 preload = ["@opentui/solid/preload"]
+# Keep the coverage report scoped to the components under test — harness.tsx
+# and fixtures.ts are test infra, not the thing being measured.
 coveragePathIgnorePatterns = ["test/render/harness.tsx", "test/render/fixtures.ts"]

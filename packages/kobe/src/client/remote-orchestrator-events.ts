@@ -1,3 +1,12 @@
+/**
+ * Daemon push-channel event handling for `RemoteOrchestrator` — split out
+ * of `remote-orchestrator.ts` (which was over the repo's 500-line
+ * file-size cap) into its own file. Same behavior, moved verbatim:
+ * `handleOrchestratorEvent` is the exact body of the old
+ * `RemoteOrchestrator.handleEvent`, now taking an explicit
+ * {@link OrchestratorSignals} deps bag instead of closing over `this`.
+ */
+
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
@@ -15,6 +24,19 @@ import {
   sameWorktreeChangesMap,
 } from "./remote-orchestrator-payloads.ts"
 
+/**
+ * Drop engine-state entries for tasks that no longer exist (leak guard).
+ * The `engine-state` channel only removes an entry on an explicit `idle`
+ * event for that taskId — a task deleted/pruned while non-idle (running /
+ * permission-needed / error, the common delete case) never gets one, so
+ * in a long-lived pane process the map grew one stale entry per deleted
+ * task, forever. Reconcile against each `task.snapshot` instead: any key
+ * absent from the authoritative task list is dead. Benign race: an
+ * `engine-state` event arriving before the snapshot that introduces its
+ * task would be dropped here — the next engine-state event re-adds it
+ * (and in practice the daemon publishes the create snapshot before the
+ * engine ever starts). No-op (no signal write) when nothing is stale.
+ */
 function pruneEngineState(tasks: readonly SerializedTask[], signals: OrchestratorSignals): void {
   const current = signals.engineStateAcc()
   if (current.size === 0) return
@@ -28,6 +50,14 @@ function pruneEngineState(tasks: readonly SerializedTask[], signals: Orchestrato
   if (next) signals.setEngineStateSig(next)
 }
 
+/**
+ * Drop task-job entries for tasks that no longer exist — the same leak
+ * guard as {@link pruneEngineState}. A `done`/`error` publish normally
+ * clears the entry, but a task DELETED while its job runs (or a dropped
+ * terminal frame across a reconnect) would otherwise pin a phantom
+ * "materializing" row state forever in a long-lived pane process.
+ * No-op (no signal write) when nothing is stale.
+ */
 function pruneTaskJobs(tasks: readonly SerializedTask[], signals: OrchestratorSignals): void {
   const current = signals.taskJobsAcc()
   if (current.size === 0) return
@@ -41,6 +71,7 @@ function pruneTaskJobs(tasks: readonly SerializedTask[], signals: OrchestratorSi
   if (next) signals.setTaskJobsSig(next)
 }
 
+/** The exact body of the old `RemoteOrchestrator.handleEvent`. */
 export function handleOrchestratorEvent(name: string, payload: unknown, signals: OrchestratorSignals): void {
   if (name === "task.snapshot") {
     const value = (payload as { tasks?: SerializedTask[] } | undefined)?.tasks
@@ -49,6 +80,8 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       pruneEngineState(value, signals)
       pruneTaskJobs(value, signals)
     } else {
+      // Dropping this leaves the task list frozen at the last good snapshot;
+      // log the anomaly so a stuck-list incident is diagnosable.
       logClientError("orch", `dropped task.snapshot event: tasks is not an array (got ${describePayload(value)})`)
     }
     return
@@ -72,6 +105,7 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       )
       return
     }
+    // Accumulate per-task into a fresh Map (new ref → Solid re-renders).
     const next = new Map(signals.engineStateAcc())
     if (p.state === "idle") next.delete(p.taskId)
     else next.set(p.taskId, { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 })
@@ -94,6 +128,9 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       signals.setTaskJobsSig(next)
       return
     }
+    // Terminal phases (`done` / `error`) remove the entry. Skip the signal
+    // write when nothing is tracked — a replayed terminal payload to a
+    // late subscriber must be a true no-op, not a map-identity churn.
     if ((p.phase === "done" || p.phase === "error") && current.has(p.taskId)) {
       const next = new Map(current)
       next.delete(p.taskId)
@@ -104,9 +141,13 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
   if (name === "worktree.changes") {
     const next = parseWorktreeChangesPayload(payload)
     if (!next) {
+      // malformed → never clobber a good map, but log the drop.
       logClientError("orch", `dropped worktree.changes event: malformed changes payload (${describePayload(payload)})`)
       return
     }
+    // Value-equality gate: an unchanged republish (bus replay across a
+    // reconnect, or a daemon publish that round-trips to the same counts)
+    // must not swap the map reference and re-render every sidebar row.
     const current = signals.worktreeChangesAcc()
     if (current && sameWorktreeChangesMap(current, next)) return
     signals.setWorktreeChangesSig(next)
@@ -115,12 +156,16 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
   if (name === "transcript.activity") {
     const next = parseTranscriptActivityPayload(payload)
     if (!next) {
+      // malformed → never clobber a good map, but log the drop.
       logClientError(
         "orch",
         `dropped transcript.activity event: malformed activity payload (${describePayload(payload)})`,
       )
       return
     }
+    // Value-equality gate: an unchanged republish (bus replay across a
+    // reconnect, or a daemon publish that round-trips to the same facts)
+    // must not swap the map reference and re-run every Ops pane effect.
     const current = signals.transcriptActivityAcc()
     if (current && sameTranscriptActivityMap(current, next)) return
     signals.setTranscriptActivitySig(next)

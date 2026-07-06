@@ -1,3 +1,11 @@
+/**
+ * `kobe export` end-to-end command path (`runExportSubcommand`) — sibling of
+ * export-cmd.test.ts (which covers the pure renderers). The TaskIndexStore
+ * is mocked (the real one reads ~/.kobe/tasks.json); what's pinned here is
+ * the flag parsing (later flag wins, --format value/= forms, usage errors
+ * exit 2) and the printed output contract per format.
+ */
+
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"

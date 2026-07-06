@@ -1,3 +1,13 @@
+/**
+ * Resource snapshot for `kobe doctor` — issue-triage context for
+ * memory/CPU complaints (#205). Nothing in this repo measures the thing
+ * that actually regressed twice (orphaned pane processes in 0.7.59, idle
+ * poller CPU in 0.7.60) — both were verified by eyeballing `ps aux`, not by
+ * a tool. This gives a structured `ps` snapshot to attach to a report
+ * instead of "eventually had to kill bun manually" (#205). Read-only, like
+ * the rest of doctor.
+ */
+
 import { KOBE_TMUX_SOCKET, runTmuxCapturing, tmuxAvailable } from "../tmux/client.ts"
 
 interface ProcessRow {
@@ -7,6 +17,8 @@ interface ProcessRow {
   comm: string
 }
 
+/** Parse `ps -axo pid,pgid,rss,comm` output — one shape works across BSD
+ *  (macOS) and GNU (Linux CI) `ps`, so no platform branch is needed. */
 export function parsePsRows(psOutput: string): ProcessRow[] {
   const rows: ProcessRow[] = []
   for (const line of psOutput.split("\n").slice(1)) {
@@ -22,6 +34,9 @@ export function parsePsRows(psOutput: string): ProcessRow[] {
   return rows
 }
 
+/** Every process whose group leader is one of kobe's pane pids — the exact
+ *  set `killSession`'s SIGTERM sweep targets (tmux/client.ts termPaneGroups),
+ *  i.e. Tasks/Ops helpers, engine CLIs, and anything they spawned. */
 export function paneProcessGroups(rows: readonly ProcessRow[], panePids: readonly number[]): ProcessRow[] {
   const groups = new Set(panePids)
   return rows.filter((r) => groups.has(r.pgid))
@@ -42,6 +57,8 @@ async function psSnapshot(): Promise<ProcessRow[]> {
   return parsePsRows(text)
 }
 
+/** The `resources:` doctor section: kobe pane-process count + RSS, grouped
+ *  by command, so a memory report comes with hard numbers. */
 export async function resourceDoctorLines(): Promise<string[]> {
   if (!(await tmuxAvailable())) return ["resources: tmux not installed — no kobe sessions to measure"]
   const panePids = await listPanePids()

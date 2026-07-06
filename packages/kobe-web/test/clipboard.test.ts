@@ -2,6 +2,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { copyText } from "../src/lib/clipboard.ts"
 
+/**
+ * copyText backs Copy path / Copy link. The contract: prefer
+ * navigator.clipboard.writeText, fall back to a hidden-textarea execCommand
+ * when the Clipboard API is missing or rejects (non-secure context / denied),
+ * and report true/false so the UI shows a "Copied" ack only on success.
+ * Headless browsers block the real clipboard, so this is where the fallback
+ * paths are actually exercised.
+ */
 
 afterEach(() => {
   vi.restoreAllMocks()

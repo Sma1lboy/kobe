@@ -95,6 +95,13 @@ describe("visibleCodexUserText", () => {
   })
 })
 
+/**
+ * The cwd memo matters because three pollers re-scan the rollout tree on
+ * 1.5–4s intervals: without it every tick re-read up to 12–200 whole rollout
+ * JSONLs just to re-derive each file's immutable first-line session_meta.cwd.
+ * The cache is per-deps (WeakMap), so each test's fresh deps object is
+ * isolated, and `""`/unreadable results are never pinned.
+ */
 describe("rollout cwd caching", () => {
   const meta = (cwd: string) => JSON.stringify({ type: "session_meta", payload: { id: "x", cwd } })
 
@@ -128,9 +135,9 @@ describe("rollout cwd caching", () => {
       "rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl": meta("/wt"),
     })
     expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
-    expect(reads).toHaveLength(2)
+    expect(reads).toHaveLength(2) // newest-first: non-match probed, then the match
     expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
-    expect(reads).toHaveLength(2)
+    expect(reads).toHaveLength(2) // repeat poll: zero file reads, cwds served from the memo
   })
 
   it("shares the memo with listSessionIdsForWorktree and findLatestRolloutForWorktree", async () => {
@@ -152,6 +159,7 @@ describe("rollout cwd caching", () => {
     const { deps, reads } = fakeDeps(files)
     expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(0)
     expect(reads).toHaveLength(1)
+    // The writer finished the first line — the next poll must see it.
     files["rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"] = meta("/wt")
     expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
     expect(reads).toHaveLength(2)
@@ -205,6 +213,8 @@ describe("deriveCodexUsageMetrics", () => {
     JSON.stringify({ type: "turn.completed", ...(timestamp ? { timestamp } : {}), usage: { output_tokens: output } })
 
   it("takes the latest (file-order) turn when records carry no timestamp", () => {
+    // Regression: the old `else if (latestUsage === undefined)` froze on the
+    // FIRST timestamp-less turn, reporting stale first-turn usage.
     const raw = [turn(10), turn(20), turn(30)].join("\n")
     expect(deriveCodexUsageMetrics(raw)).toEqual({ input_tokens: 0, output_tokens: 30 })
   })
@@ -244,6 +254,8 @@ describe("findRolloutFile", () => {
   })
 
   it("does not match a partial id that aligns to an internal UUID '-' boundary", async () => {
+    // The old endsWith(`-${sessionId}.jsonl`) matched a tail like
+    // "3333-444444444444"; the strict full-UUID compare must not.
     expect(await findRolloutFile("3333-444444444444", deps)).toBeUndefined()
   })
 })

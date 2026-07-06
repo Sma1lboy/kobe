@@ -90,6 +90,8 @@ export function pickEvictableTab(
   sessions: Iterable<[string, { sockets: { size: number } }]>,
 ): string | null
 
+/** Only the buffer-state fields are read, so the helpers accept any socket-ish
+ *  object (the live `ws` socket and test doubles both satisfy this). */
 export interface PtyBufferSocket {
   OPEN: number
   readyState: number

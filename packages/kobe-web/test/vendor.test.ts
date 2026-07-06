@@ -9,6 +9,12 @@ import {
   resolveVendor,
 } from "../src/lib/vendor.ts"
 
+/**
+ * Vendor-identity rules: the unset-vendor default, the mixed-workspace
+ * aggregations, and the per-row label rule — all in one place so a vendor
+ * default change touches one line and the rules are testable without rendering
+ * a row. (engineLabel itself is covered by engine-label.test.ts.)
+ */
 
 const task = (over: Partial<Task>): Task =>
   ({ id: over.id ?? "t", kind: "task", pinned: false, title: "", ...over }) as Task

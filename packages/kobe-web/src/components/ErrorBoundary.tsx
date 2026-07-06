@@ -1,3 +1,10 @@
+/**
+ * Root error boundary — a render crash anywhere in the tree shows a themed
+ * recovery card instead of a blank white screen (the React default on an
+ * uncaught render error). Class component because error boundaries have no
+ * hooks equivalent.
+ */
+
 import { Component, type ErrorInfo, type ReactNode } from "react"
 
 interface Props {
@@ -16,6 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Surface to the console for dev; the card shows the user-facing message.
     console.error("[kobe-web] render error:", error, info.componentStack)
   }
 

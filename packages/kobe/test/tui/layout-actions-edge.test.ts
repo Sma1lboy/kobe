@@ -1,3 +1,12 @@
+/**
+ * Edge/recovery branches of layout-actions.ts that the happy paths in
+ * layout-actions-dispatch.test.ts don't reach: vanished hidden panes,
+ * un-restorable layouts (no engine pane), close-tab cleanup of hidden
+ * panes + the empty helper-session sweep, zen without keepTasks, and
+ * zen's nothing-to-hide message. Same in-memory `@/tmux/client` fake as
+ * the sibling file.
+ */
+
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 type FakeRow = { paneId: string; role: string; active: boolean }
@@ -156,6 +165,7 @@ describe("un-restorable layouts", () => {
     state.joinFails = true
     await runLayoutAction("kobe-t1", "tasks-toggle")
     expect(displayed()).toContain("could not restore Tasks pane")
+    // the window option is NOT cleared on failure
     expect(callsWith("set-window-option").some((c) => c.includes("-u"))).toBe(false)
   })
 
@@ -180,7 +190,7 @@ describe("chat-tab-close hidden-pane cleanup", () => {
     }
     state.existingPaneIds = new Set(["%h1", "%h2"])
     state.existingSessions.add("kobe-hidden-kobe-t1")
-    state.hiddenSessionRoles = ["", ""]
+    state.hiddenSessionRoles = ["", ""] // nothing kobe-owned left after the kills
     await runLayoutAction("kobe-t1", "chat-tab-close")
     expect(callsWith("kill-pane")).toEqual(
       expect.arrayContaining([
@@ -197,7 +207,7 @@ describe("chat-tab-close hidden-pane cleanup", () => {
     state.windowOptions["@1"] = { "@kobe_hidden_shell_pane": "%h1" }
     state.existingPaneIds = new Set(["%h1"])
     state.existingSessions.add("kobe-hidden-kobe-t1")
-    state.hiddenSessionRoles = ["shell"]
+    state.hiddenSessionRoles = ["shell"] // some other window's shell still parked
     await runLayoutAction("kobe-t1", "chat-tab-close")
     expect(callsWith("kill-session")).toEqual([])
   })

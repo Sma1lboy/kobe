@@ -1,3 +1,23 @@
+/**
+ * Unit tests for the user-keybinding override logic
+ * (`src/tui/lib/keymap-overrides.ts`) — the pure half of
+ * `~/.kobe/settings/keybindings.yaml` support.
+ *
+ * Why these matter: the override pipeline rewrites `KobeKeymap` in place
+ * at boot, so a normalization bug here doesn't crash anything — it
+ * silently produces chords `matchKey()` can never mint (binding dead) or
+ * bare letters on global scope (binding steals composer typing). The
+ * tests pin the two invariants that make overrides safe:
+ *   1. normalized chords are EXACTLY the candidate strings
+ *      `matchKey()` produces (modifier order ctrl,cmd,alt,shift; no
+ *      shift on single characters);
+ *   2. the boundary rule from docs/KEYBINDINGS.md (plain letters must be
+ *      pane-scoped) is enforced on user input, not just on our defaults.
+ *
+ * The Bun-only loader (file read + Bun.YAML) is intentionally untested
+ * here — vitest runs under node. These tests feed pre-parsed documents.
+ */
+
 import { describe, expect, test } from "vitest"
 import {
   type OverridableBinding,
@@ -16,7 +36,7 @@ describe("normalizeChord", () => {
   test("canonicalizes modifier aliases and order to match matchKey()", () => {
     expect(chordOf("ctrl+t")).toBe("ctrl+t")
     expect(chordOf("Control+T")).toBe("ctrl+t")
-    expect(chordOf("option+meta+x")).toBe("cmd+alt+x")
+    expect(chordOf("option+meta+x")).toBe("cmd+alt+x") // cmd before alt, like matchKey
     expect(chordOf("shift+tab")).toBe("shift+tab")
     expect(chordOf("alt+ctrl+pageup")).toBe("ctrl+alt+pageup")
   })
@@ -83,6 +103,9 @@ describe("extractKeybindingOverrides", () => {
     }
     const mac = extractKeybindingOverrides(doc, "darwin")
     expect(mac.entries).toEqual([{ id: "palette.open", keys: ["cmd+p"] }])
+    // The linux section's invalid chord (shift+p is fine — p is preceded
+    // by shift but "ctrl+shift+p" has a single-char key) → rejected, so
+    // linux keeps the base layer's ctrl+p.
     const linux = extractKeybindingOverrides(doc, "linux")
     expect(linux.entries).toEqual([{ id: "palette.open", keys: ["ctrl+p"] }])
     expect(linux.warnings.length).toBeGreaterThan(0)
@@ -122,8 +145,8 @@ describe("applyKeymapOverrides", () => {
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
       { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k", label: "nav" } },
       { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
-      { id: "sidebar.goto", scope: "sidebar", keys: ["g"] },
-      { id: "chat.send", scope: "workspace", keys: [] },
+      { id: "sidebar.goto", scope: "sidebar", keys: ["g"] }, // FIXED (evt.shift gate)
+      { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
       { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p", label: "create PR" } },
     ]
   }
@@ -150,8 +173,8 @@ describe("applyKeymapOverrides", () => {
     const keymap = makeKeymap()
     const { applied, warnings } = applyKeymapOverrides(keymap, [
       { id: "nope.nothing", keys: ["ctrl+x"] },
-      { id: "sidebar.goto", keys: ["ctrl+n"] },
-      { id: "chat.send", keys: ["ctrl+m"] },
+      { id: "sidebar.goto", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS (evt.shift gate)
+      { id: "chat.send", keys: ["ctrl+m"] }, // doc-only
     ])
     expect(applied).toEqual([])
     expect(warnings).toHaveLength(3)
@@ -164,8 +187,8 @@ describe("applyKeymapOverrides", () => {
   test("boundary rule: bare characters are dropped on workspace/global scope, kept on sidebar/files", () => {
     const keymap = makeKeymap()
     const { applied, warnings } = applyKeymapOverrides(keymap, [
-      { id: "chat.fork.new", keys: ["f"] },
-      { id: "app.quit", keys: ["x"] },
+      { id: "chat.fork.new", keys: ["f"] }, // workspace — must be rejected
+      { id: "app.quit", keys: ["x"] }, // sidebar — fine
     ])
     expect(applied).toEqual([{ id: "app.quit", keys: ["x"], defaultKeys: ["q", "ctrl+q"] }])
     expect(warnings.some((w) => w.includes("steal typed input"))).toBe(true)
@@ -175,10 +198,19 @@ describe("applyKeymapOverrides", () => {
 
   test("conflict with another binding in an overlapping scope warns but still applies", () => {
     const keymap = makeKeymap()
-    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "chat.fork.new", keys: ["ctrl+t"] }])
+    const { applied, warnings } = applyKeymapOverrides(keymap, [
+      { id: "chat.fork.new", keys: ["ctrl+t"] }, // collides with chat.tab.new (same scope)
+    ])
     expect(applied).toHaveLength(1)
     expect(warnings.some((w) => w.includes("also fires chat.tab.new"))).toBe(true)
   })
+
+  // ─── Slot contracts (direction-multiplexed ids) ──────────────────────
+  // sidebar.nav / files.nav / sidebar.search.nav / files.hierarchy /
+  // sidebar.view / files.tab dispatch on the matched chord's SLOT
+  // (index in the keys array), layout = alternating pairs. Overrides
+  // must keep the count even so the slot%2 direction mapping holds —
+  // the tmux.focus exact-count validation is the precedent.
 
   test("slot ids: an even-count override applies (2-chord nav)", () => {
     const keymap = makeKeymap()
@@ -233,6 +265,10 @@ describe("applyKeymapOverrides", () => {
   })
 
   test("slot ids: a partial chord drop (boundary rule) keeps the default instead of shifting slots", () => {
+    // Synthetic: a slot-contract id on a workspace scope so the bare-letter
+    // rule drops one chord. The production slot ids live on sidebar/files
+    // scopes (bare letters fine); this pins the all-or-nothing guard for
+    // any future workspace-scope slot id.
     const keymap: OverridableBinding[] = [{ id: "files.nav", scope: "workspace", keys: ["j", "k", "down", "up"] }]
     const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "files.nav", keys: ["w", "s", "down", "up"] }])
     expect(applied).toEqual([])

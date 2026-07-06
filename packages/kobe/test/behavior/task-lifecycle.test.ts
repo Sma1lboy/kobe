@@ -1,3 +1,25 @@
+/**
+ * `kobe api` black-box task + issue lifecycle — drives the CLI verb surface
+ * the way an agent scripting kobe from a shell would, with no TUI/tmux-outer
+ * session involved. Pins:
+ *
+ *   - `add --prompt` materializes the worktree on disk (`ensure-worktree`'s
+ *     contract) AND starts the task's tmux session (`ensureSession`'s
+ *     four-pane workspace: tasks/claude/ops/shell — `docs/ARCHITECTURE.md`'s
+ *     "Task = worktree + engine session + branch" unit, verified end to end).
+ *   - `archive` tears the session down via `killSession`'s pane-process-group
+ *     SIGTERM (the same #205 cleanup path `pane-cleanup.test.ts` pins for
+ *     `kill-sessions`), and is reflected in `get-task`/`list` (non-destructive:
+ *     the task row survives with `archived: true`).
+ *   - the daemon-owned issue store round-trips create → list → set-status
+ *     (`docs/WORK-TRACKING.md`'s backlog, driven via `kobe api issue-*`).
+ *
+ * One `beforeAll` boot (no tmux-outer session needed here — `kobe api`
+ * commands are piped CLI runs that auto-start the daemon and, for `add
+ * --prompt`, the task's own tmux session on `env.socket`), all assertions
+ * share it per docs/HARNESS.md's "one boot, multiple assertions" budget.
+ */
+
 import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
@@ -25,6 +47,7 @@ interface IssueListResult {
   issues: { id: number; title: string; status: string }[]
 }
 
+/** Same liveness probe `pane-cleanup.test.ts` uses: ESRCH gone, EPERM alive-but-foreign. */
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -73,8 +96,10 @@ describe.skipIf(!tmuxAvailable())("kobe api task + issue lifecycle (behavior)", 
     expect(session).toBe(`kobe-${taskId}`)
     expect(res.task.archived).toBe(false)
 
+    // The worktree the task/orchestrator promised is a real directory on disk.
     expect(existsSync(worktreePath)).toBe(true)
 
+    // The session is alive on kobe's OWN tmux socket with the full workspace.
     const sessions = tmuxInner(env, "list-sessions", "-F", "#{session_name}").stdout
     expect(sessions.split("\n")).toContain(session)
 
@@ -83,6 +108,7 @@ describe.skipIf(!tmuxAvailable())("kobe api task + issue lifecycle (behavior)", 
       .filter(Boolean)
     expect(new Set(paneRows)).toEqual(new Set(["tasks", "claude", "ops", "shell"]))
 
+    // The engine pane is the fake-claude shim, already up (add awaited engineReady).
     const claudePane = tmuxInner(env, "list-panes", "-t", `=${session}`, "-F", "#{pane_id}\t#{@kobe_role}")
       .stdout.split("\n")
       .find((l) => l.endsWith("\tclaude"))
@@ -106,9 +132,11 @@ describe.skipIf(!tmuxAvailable())("kobe api task + issue lifecycle (behavior)", 
     const r = runKobe(["api", "archive", "--task-id", taskId, "--pretty"], env)
     expect(r.code).toBe(0)
 
+    // Session gone from kobe's tmux socket (killSession's SIGTERM-the-group path).
     const sessionGone = await waitUntil(() => tmuxInner(env, "has-session", "-t", `=${session}`).code !== 0, 15_000)
     expect(sessionGone).toBe(true)
 
+    // No pane-group process outlives the archive — the #205 leak class.
     const noStragglers = await waitUntil(() => groupPids.every((pid) => !isAlive(pid)), 15_000)
     expect(noStragglers).toBe(true)
 
@@ -122,6 +150,7 @@ describe.skipIf(!tmuxAvailable())("kobe api task + issue lifecycle (behavior)", 
     const row = listRes.tasks.find((t) => t.id === taskId)
     expect(row?.archived).toBe(true)
 
+    // Non-destructive: the worktree the first assertion found on disk is untouched.
     expect(existsSync(worktreePath)).toBe(true)
   }, 30_000)
 

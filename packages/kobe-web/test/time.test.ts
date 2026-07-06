@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { relativeTime } from "../src/lib/time.ts"
 
-const NOW = 1_000_000_000_000
+const NOW = 1_000_000_000_000 // fixed reference so buckets are deterministic
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
 const SEC = 1000
 const MIN = 60 * SEC
@@ -15,6 +15,8 @@ describe("relativeTime", () => {
   })
 
   it("crosses the 'now' → minutes boundary at 45s (not 60s)", () => {
+    // The cutoff is `sec < 45`; pin it so a `< 60` refactor can't slip past
+    // (the 30s case above wouldn't catch that).
     expect(relativeTime(ago(44 * SEC), NOW)).toBe("now")
     expect(relativeTime(ago(45 * SEC), NOW)).toBe("1m")
   })

@@ -1,3 +1,10 @@
+/**
+ * Platform routing for `openExternally` (filetree `o` key). node:os /
+ * node:fs / node:child_process are mocked so each OS branch is asserted
+ * by WHICH opener binary gets spawned with what args — including the WSL
+ * wslview → explorer.exe fallback chain.
+ */
+
 import { EventEmitter } from "node:events"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
@@ -5,7 +12,9 @@ const fake = vi.hoisted(() => ({
   platform: "darwin" as string,
   wslInteropFile: false,
   spawnCalls: [] as Array<{ cmd: string; args: string[] }>,
+  /** Command names whose spawn should immediately emit "error" (binary missing). */
   failing: new Set<string>(),
+  /** stdout text for the wslpath -w child. */
   wslpathOut: "C:\\Users\\me\\file.pdf",
 }))
 

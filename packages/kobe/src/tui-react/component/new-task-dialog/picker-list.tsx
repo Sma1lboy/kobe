@@ -1,4 +1,12 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * Shared windowed picker list + field-label styling for the React
+ * new-task dialog (issue #15, G3W2). The Solid shell repeats the
+ * "↑ N more / rows / ↓ N more" block four times (repo, branch, clone
+ * parent, adopt); the React port renders all four through this one
+ * component — callers supply the pre-windowed row bodies and pick
+ * handler, the list owns the cursor arrow, bold, and overflow lines.
+ */
 
 import { TextAttributes } from "@opentui/core"
 import type { ReactNode } from "react"
@@ -6,17 +14,21 @@ import type { Field, PickerWindow } from "../../../tui/component/new-task-dialog
 import { type Theme, useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 
+/** One visible picker row — body text plus an accent (selected) flag. */
 export type PickerRow = {
   readonly key: string
   readonly body: string
+  /** Non-cursor rows render accent (selected) instead of muted. */
   readonly accent?: boolean
 }
 
 export function PickerList(props: {
   window: PickerWindow
   cursor: number
+  /** Pre-windowed rows; same length/order as `window.items`. */
   rows: readonly PickerRow[]
   onPick: (absoluteIndex: number) => void
+  /** Extra line under the list (e.g. the adopt "N selected" hint). */
   footer?: ReactNode
   paddingBottom?: number
 }) {
@@ -56,6 +68,7 @@ export function PickerList(props: {
   )
 }
 
+/** Focused field labels go primary + bold + underline; others stay muted. */
 export function labelStyle(theme: Theme, focusedField: Field, f: Field): { fg: Theme["primary"]; attributes?: number } {
   return focusedField === f
     ? { fg: theme.primary, attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE }

@@ -1,3 +1,12 @@
+/**
+ * Pure-helper tests for system-clipboard copy resolution + the tmux config
+ * fragment that wires a pane-aware drag selection to the OS clipboard.
+ *
+ * The real tmux mouse/copy-mode behaviour needs a live terminal and is
+ * verified manually; here we pin the platform→command resolution and the
+ * generated config sequence (set-clipboard + copy-pipe bindings).
+ */
+
 import { describe, expect, test } from "vitest"
 import { clipboardTmuxConfig, resolveClipboardCopyCommand } from "../../src/tmux/clipboard"
 
@@ -62,6 +71,7 @@ describe("clipboardTmuxConfig", () => {
         ])
       }
     }
+    // 2 set-options + 2 tables * 3 triggers = 8 commands.
     expect(config).toHaveLength(8)
   })
 

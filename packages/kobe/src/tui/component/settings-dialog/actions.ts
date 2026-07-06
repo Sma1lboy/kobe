@@ -7,6 +7,12 @@ import { destroyRendererSafely, hasRestartableDaemon, removeTasksFileForReset } 
 
 export { hasRestartableDaemon } from "./actions-core"
 
+/**
+ * Reset is "wipe + relaunch" rather than "wipe + snap defaults in
+ * place": kv.clear() only resets the on-disk KV store, not the live
+ * Solid signals (selectedId, pane widths, themeCtx's internal store,
+ * tabsByTask, etc.) that app.tsx persists on the next signal change.
+ */
 export async function confirmResetState(
   dialog: DialogContext,
   kv: KVContext,
@@ -26,6 +32,10 @@ export async function confirmResetState(
   process.exit(0)
 }
 
+/**
+ * Stop the kobe daemon and quit kobe. The next relaunch will spawn a
+ * fresh daemon from disk, picking up daemon/orchestrator/engine edits.
+ */
 export async function confirmRestartDaemon(
   dialog: DialogContext,
   orchestrator: KobeOrchestrator | undefined,
@@ -39,6 +49,9 @@ export async function confirmRestartDaemon(
     "cancel",
   )
   if (ok !== true) return
+  // v0.5's `orchestrator.stopDaemon()` is gone with the rest of the
+  // chat-stream RPCs. The user can `kobe daemon stop` from a shell if
+  // they want to nuke the daemon proper; here we just quit the TUI.
   destroyRendererSafely(renderer, "daemon restart")
   process.stderr.write("kobe: window closed. Relaunch kobe to start fresh.\n")
   process.exit(0)

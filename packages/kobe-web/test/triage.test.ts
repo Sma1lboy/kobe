@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest"
 import { matchesStatusFilter, triage } from "../src/lib/triage.ts"
 import type { EngineState } from "../src/lib/types.ts"
 
+/**
+ * triage is the Overview's mission-control bucketing — the core "which tasks
+ * want me right now" logic. The PRIORITY ORDER is the load-bearing part:
+ * attention > working > changes > quiet, so a more urgent live signal never
+ * gets hidden behind a lower one (e.g. a running+dirty task is "working", and
+ * an error+dirty task is "attention", not "changes").
+ */
 
 const eng = (state: EngineState["state"]): EngineState =>
   ({ taskId: "t", state, at: 1 }) as EngineState
@@ -68,8 +75,10 @@ describe("matchesStatusFilter (rail status chips)", () => {
   })
 
   it("drops tasks in a different bucket than the filter", () => {
+    // a running task is NOT in the 'changes' or 'attention' filter
     expect(matchesStatusFilter(eng("running"), dirty, "changes")).toBe(false)
     expect(matchesStatusFilter(eng("running"), dirty, "attention")).toBe(false)
+    // an idle clean task is only in 'quiet', so no active-state filter keeps it
     expect(matchesStatusFilter(eng("idle"), clean, "working")).toBe(false)
   })
 })

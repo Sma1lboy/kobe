@@ -1,3 +1,11 @@
+/**
+ * `kobe reset` (`runResetSubcommand`) — daemon + tmux teardown, with an
+ * optional `--hard` wipe of tasks.json/state.json. Never touches git
+ * worktrees. Daemon lifecycle + tmux are mocked (real ones would actually
+ * kill processes / shell out); state lives under a per-test KOBE_HOME_DIR
+ * tempdir so the `--hard` file-deletion behavior is observed for real.
+ */
+
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,9 +21,12 @@ const mocks = vi.hoisted(() => ({
     exited: Promise.resolve(0),
     kill: vi.fn(),
   })),
+  /** What the mocked y/N confirm prompt answers on a TTY. */
   confirmAnswer: "y",
 }))
 
+// confirmTty goes through readline against the real stdin; answer it
+// synchronously so a TTY test never blocks.
 vi.mock("node:readline", () => ({
   createInterface: vi.fn(() => ({
     question: (_q: string, cb: (answer: string) => void) => cb(mocks.confirmAnswer),
@@ -70,6 +81,9 @@ beforeEach(() => {
   exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
     throw new Error(`exit ${code}`)
   }) as never)
+  // Default: non-TTY stdin so the confirmation prompt would hang forever if
+  // reached without --yes — every test below passes --yes unless it's
+  // specifically exercising the non-interactive "no prompt possible" path.
   originalIsTTY = process.stdin.isTTY
   process.stdin.isTTY = false
 })
@@ -195,6 +209,8 @@ describe("runResetSubcommand", () => {
   })
 
   it("--hard reports (but survives) a state file it cannot remove", async () => {
+    // A DIRECTORY at the tasks.json path makes unlink fail with a non-ENOENT
+    // error — the reset must report it and still finish the rest of the wipe.
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
     mkdirSync(join(home, ".kobe", "tasks.json"), { recursive: true })
     await runResetSubcommand(["--hard", "--yes"])

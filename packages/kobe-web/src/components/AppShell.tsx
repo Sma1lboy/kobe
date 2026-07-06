@@ -1,3 +1,10 @@
+/**
+ * kobe web shell — the Conductor 5-region grammar in the claude theme.
+ * Left: task rail. Center: workspace tabs (engine, terminal, notes, files).
+ * Right: task tools / Changes rail (ToolsPanel). Plus a top
+ * brand/status bar and a bottom status bar.
+ */
+
 import { useNavigate } from "@tanstack/react-router"
 import {
   CircleHelp,
@@ -86,6 +93,7 @@ function TaskRow({
   engine?: EngineState
   job?: TaskJob
   changes?: { added: number; deleted: number }
+  /** Engine label to show (mixed-engine workspaces only); null hides it. */
   engineName: string | null
   active: boolean
   onClick: () => void
@@ -146,6 +154,8 @@ function ArchivedRow({
 }: {
   task: Task
   onRestore: () => void
+  /** Beta: open the read-only history preview. Absent → title is plain text
+   *  (the gate is off), so the row keeps its restore-only behavior. */
   onPreview?: () => void
 }) {
   const label = task.title || task.branch
@@ -196,6 +206,9 @@ function TaskRail({
   } = useAppState()
   const { selectedTaskId } = useTabsState()
 
+  // Engine label per row — but ONLY when the workspace runs mixed engines,
+  // else every row would just repeat the same word. Engine-owned label via
+  // the registry (useEngines), gated on the pure isMixedEngineWorkspace.
   const engines = useEngines()
   const mixedEngines = useMemo(
     () => isMixedEngineWorkspace(tasks as Task[]),
@@ -204,10 +217,15 @@ function TaskRail({
   const engineNameFor = (task: Task): string | null =>
     perRowEngineLabel(engines, task, mixedEngines)
 
+  // Module store, not useState — the `/` → /task/$taskId nav remounts AppShell
+  // (different route trees), which used to wipe these on the first task open
+  // (issue #7). In-memory only: survives route nav, resets on full reload.
   const { query, statusFilter, sortMode, showArchived } = useRailState()
   const listRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
 
+  // Keep the selected task visible — j/k can move selection past the fold in a
+  // long list; scroll the active row into view (no-op when already visible).
   useEffect(() => {
     if (!selectedTaskId) return
     listRef.current
@@ -215,6 +233,11 @@ function TaskRail({
       ?.scrollIntoView({ block: "nearest" })
   }, [selectedTaskId])
 
+  // Follow the TUI's sort preference (ui-prefs fan-out): toggling sort in any
+  // kobe session re-sorts this rail too. The local toggle still works between
+  // pref pushes — there's no prefs.set RPC yet, so web-side toggles are local.
+  // applyPrefSort is rising-edge (store-tracked), so a remount replaying the
+  // same pref no longer stomps a local toggle.
   const prefSort = uiPrefs?.sortMode
   useEffect(() => {
     applyPrefSort(prefSort)
@@ -248,9 +271,16 @@ function TaskRail({
   const open = (id: string): void => {
     selectTask(id)
     setActiveTaskBestEffort(id)
+    // Push the deep link so tasks are shareable and back/forward walks the
+    // task-switch history.
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
+  // Keyboard-first task nav: `j`/`k` move between visible tasks (TUI muscle
+  // memory), and ↑/↓ do too BUT only when the rail (or nothing specific) owns
+  // focus — so arrow-scroll still works natively inside the transcript / diff
+  // panes. Suppressed in inputs, with any dialog/palette open, and while the
+  // Settings overlay is open (it's not a role=dialog).
   // biome-ignore lint/correctness/useExhaustiveDependencies: open() closes only over stable refs; re-attaching on visible/selectedTaskId is enough and avoids re-arming every render.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -260,6 +290,7 @@ function TaskRail({
       const down = key === "j" || key === "ArrowDown"
       const up = key === "k" || key === "ArrowUp"
       const focusSearch = key === "/"
+      // Only our keys proceed past here (cheap bail for every other keystroke).
       if (!down && !up && !focusSearch) return
       const t = event.target as HTMLElement | null
       if (
@@ -273,11 +304,16 @@ function TaskRail({
       }
       if (document.querySelector("[role=dialog],[role=alertdialog]")) return
       if (document.querySelector("[data-settings-open]")) return
+      // `/` focuses the task filter (search-focus convention): / → type → Enter
+      // jumps (the filter's own onKeyDown handles Enter/Escape).
       if (focusSearch) {
         event.preventDefault()
         filterRef.current?.focus()
         return
       }
+      // Arrow keys defer to native scrolling unless focus is on the rail or
+      // nowhere specific (document.body) — don't swallow scroll on a focused
+      // transcript/diff pane.
       if (
         isArrow &&
         t &&
@@ -305,6 +341,10 @@ function TaskRail({
     )
   }
 
+  // Beta: archived-history preview gate (Settings → Experimental). Fetched once
+  // on mount — it lives in the per-user settings KV, not the live SSE snapshot —
+  // and the preview entry point stays hidden when off (default). Best-effort: a
+  // failed fetch just leaves the gate closed.
   const [historyPreview, setHistoryPreview] = useState(false)
   const [previewTask, setPreviewTask] = useState<Task | null>(null)
   useEffect(() => {
@@ -375,6 +415,8 @@ function TaskRail({
             value={query}
             onChange={(event) => setRailQuery(event.target.value)}
             onKeyDown={(event) => {
+              // Keyboard-first: Enter jumps to the top match (visible is
+              // already sorted + filtered), Escape clears the query.
               if (event.key === "Enter" && visible.length > 0) {
                 event.preventDefault()
                 open(visible[0].id)
@@ -408,6 +450,11 @@ function TaskRail({
                 label: "Needs",
                 title: "Needs input / errored / rate-limited",
               },
+              // Run (engine running) + Dirty (uncommitted changes) dropped as
+              // low-frequency clutter. All (see everything) + Needs (the
+              // attention spine wired to the tab badge + `n` nav) carry the
+              // value. The "working"/"changes" buckets still exist in triage for
+              // the Board; the rail just no longer offers them as quick filters.
             ] as Array<{ key: Bucket | "all"; label: string; title: string }>
           ).map((c) => (
             <button
@@ -602,7 +649,7 @@ function TopBar({
         >
           <CircleHelp size={15} strokeWidth={1.8} />
         </button>
-        {}
+        {/* Tools rail toggle — only on narrow screens where the rail is a drawer. */}
         <button
           type="button"
           onClick={onToggleTools}
@@ -645,10 +692,16 @@ function StatusBar() {
 export function AppShell() {
   const { settingsOpen } = useGlobalUiState()
   const [adoptOpen, setAdoptOpen] = useState(false)
+  // The right tools rail is a fixed column at lg+, and a slide-in drawer on
+  // narrow windows (where it used to vanish entirely, making rename/changes
+  // unreachable on a phone).
   const [toolsOpen, setToolsOpen] = useState(false)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      // Escape closes the tools drawer — at the window level because focus is
+      // rarely inside the drawer subtree, so a div-scoped onKeyDown wouldn't
+      // see it. (The dialogs handle their own Escape; this is just the drawer.)
       if (event.key === "Escape") setToolsOpen(false)
     }
     window.addEventListener("keydown", onKey)
@@ -673,7 +726,7 @@ export function AppShell() {
         ) : (
           <WorkspaceTabs />
         )}
-        {}
+        {/* lg+: inline column. Narrow: off-canvas drawer toggled from TopBar. */}
         <div className="hidden lg:flex">
           <ToolsPanel />
         </div>

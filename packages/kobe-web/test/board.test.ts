@@ -24,6 +24,13 @@ import {
 } from "../src/lib/board-state.ts"
 import type { Issue, RepoIssues } from "../src/lib/types.ts"
 
+/**
+ * Issues-only kanban column math. The load-bearing rules: the board renders
+ * ISSUES only (no task cards); each issue lands by its OWN lifecycle —
+ * Done = `done`, In progress = linked to a task (`taskId` set), Backlog =
+ * everything else (open / hold / unlinked); within a column newest-created
+ * first; Done is capped.
+ */
 
 const issue = (over: Partial<Issue>): Issue => ({
   id: over.id ?? 1,
@@ -34,9 +41,11 @@ const issue = (over: Partial<Issue>): Issue => ({
   ...over,
 })
 
+/** An issue card for `repo`. */
 const ic = (repo: string, i: Issue): BoardCard => ({ repo, issue: i })
 
 const columnKeys = (cards: BoardCard[]) => buildBoard(cards).map((c) => c.key)
+/** Issue ids in a column, as `#<id>`. */
 const cardId = (c: BoardCard): string => `#${c.issue.id}`
 const columnIds = (cards: BoardCard[], key: string) =>
   buildBoard(cards)
@@ -65,6 +74,7 @@ describe("issueColumnKey — lifecycle placement", () => {
     expect(issueColumnKey(issue({ status: "open" }))).toBe("backlog")
     expect(issueColumnKey(issue({ status: "hold" }))).toBe("backlog")
     expect(issueColumnKey(issue({ status: "doing" }))).toBe("backlog")
+    // An empty-string taskId is not a real link.
     expect(issueColumnKey(issue({ status: "open", taskId: "" }))).toBe(
       "backlog",
     )
@@ -96,10 +106,10 @@ describe("buildBoard — column visibility", () => {
 describe("buildBoard — bucketing by issue lifecycle", () => {
   it("places each issue into its lifecycle column", () => {
     const cards = [
-      ic("/u/k", issue({ id: 1, status: "open" })),
-      ic("/u/k", issue({ id: 2, status: "hold" })),
-      ic("/u/k", issue({ id: 3, status: "open", taskId: "t3" })),
-      ic("/u/k", issue({ id: 4, status: "done" })),
+      ic("/u/k", issue({ id: 1, status: "open" })), // backlog
+      ic("/u/k", issue({ id: 2, status: "hold" })), // backlog
+      ic("/u/k", issue({ id: 3, status: "open", taskId: "t3" })), // in_progress
+      ic("/u/k", issue({ id: 4, status: "done" })), // done
     ]
     expect(columnIds(cards, "backlog")).toEqual(["#2", "#1"])
     expect(columnIds(cards, "in_progress")).toEqual(["#3"])
@@ -170,6 +180,9 @@ describe("buildProjectBoards — one board per project (issues only)", () => {
   })
 
   it("ALWAYS shows a linked issue (no task-card dedup any more)", () => {
+    // The old unified board hid an issue behind its live task card; the
+    // issues-only board never hides it — a linked issue just moves to
+    // In progress and keeps its open-task affordance.
     const boards = buildProjectBoards([
       ic("/u/kobe", issue({ id: 1, status: "open", taskId: "t1" })),
       ic("/u/kobe", issue({ id: 2, status: "open" })),
@@ -213,6 +226,7 @@ describe("labelRepo — shared basename/parent labeler", () => {
   })
 })
 
+/** A loaded RepoIssues state for a repo. */
 const repoState = (
   issues: Issue[],
   over: Partial<RepoIssues> = {},
@@ -335,10 +349,12 @@ describe("buildBoardView — the whole board view-model", () => {
       query: "auth",
       repoFilter: null,
     })
+    // Chips never shrink under a query — both projects still listed.
     expect(view.repoChips.map((c) => c.repo).sort()).toEqual([
       "/u/kobe",
       "/u/web",
     ])
+    // Only issue #1 matches "auth", so one shown card, one project board.
     expect(view.shownCount).toBe(1)
     expect(view.projectBoards.map((b) => b.repo)).toEqual(["/u/kobe"])
     expect(view.hasAnyCard).toBe(true)

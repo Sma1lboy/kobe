@@ -1,3 +1,24 @@
+/**
+ * Behavioral tests for the smaller session-lifecycle helpers in
+ * `panes/terminal/tmux.ts` that sit AROUND `ensureSession`: the pre-attach /
+ * pre-switch fit-and-heal pair, the client-resize resync, and the
+ * session-vendor observer. `ensureSession`/`ensureSessionImpl` itself (the
+ * observe → decide → apply session BUILD) is intentionally left to
+ * `test/tui/perf-budgets.test.ts` (its REUSE-path operation budget) and
+ * interactive verification — building a session fans out through ~12
+ * sibling modules (interactive-command, repo-init, clipboard, keybindings,
+ * prompt-delivery, session-decision, tmux-border-theme, chattab, launch,
+ * layout-coord, pane-heal), and mocking all of them for the create/rebuild
+ * branches would be scaffolding disproportionate to one function — the
+ * existing `terminal-tmux.test.ts` header already scopes this file to
+ * "small deterministic choices", not the live session build.
+ *
+ * `@/tmux/client` is replaced with an in-memory fake (same technique as the
+ * other layout-actions/chattab/pane-heal test files) so no real tmux is
+ * spawned; `KOBE_HOME_DIR` points at a throwaway temp dir because
+ * `recordGen` (layout-coord.ts) persists a small generation-marker file.
+ */
+
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -162,6 +183,7 @@ describe("resyncWindowToClient", () => {
   test("batches the window resize with the layout re-pin in one sequence", async () => {
     state.paneRows = [{ windowId: "@1", paneId: "%1", role: "tasks", version: "0.8.0", paneWidth: 10 }]
     await tmux.resyncWindowToClient("kobe-t1", { size: { columns: 200, rows: 50 }, status: "on" })
+    // resize-window and the rail re-pin land in the SAME runTmuxSequence call.
     expect(callsWith("resize-window")).toEqual([["resize-window", "-t", "=kobe-t1", "-x", "200", "-y", "49"]])
     expect(callsWith("resize-pane")).toEqual([["resize-pane", "-t", "%1", "-x", expect.any(String)]])
   })
@@ -191,6 +213,7 @@ describe("selectTasksPane", () => {
   })
 
   test("selects the window's Tasks pane directly when visible", async () => {
+    // paneIdByRoleInWindow lists panes with the id+role format
     const client = await import("../../src/tmux/client")
     vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
       if (args[0] === "list-panes") return { code: 0, stdout: "%1\tclaude\n%2\ttasks" }
@@ -209,9 +232,11 @@ describe("selectTasksPane", () => {
         const fIdx = args.indexOf("-F")
         const format = fIdx >= 0 ? (args[fIdx + 1] ?? "") : ""
         if (format.includes("@kobe_role") && !format.includes("pane_active") && !format.includes("pane_width")) {
+          // 1st lookup: no tasks pane → triggers restore; 2nd: restored
           listed++
           return { code: 0, stdout: listed === 1 ? "%1\tclaude" : "%1\tclaude\n%7\ttasks" }
         }
+        // runLayoutAction's window listing: engine-only window
         return { code: 0, stdout: "%1\tclaude\t1\t80\t20\t160\t40" }
       }
       if (args[0] === "list-windows") return { code: 0, stdout: "1\t@1" }
@@ -224,6 +249,9 @@ describe("selectTasksPane", () => {
   })
 
   test("no-ops in a full-window tab (no tasks pane, no engine pane) — never grafts a rail", async () => {
+    // A file-preview/editor window has one role-less full-width pane. Ctrl+Q
+    // there must do NOTHING: no tasks-restore split into the preview, no
+    // pane selection. (The workspace-window restore path is the test above.)
     const client = await import("../../src/tmux/client")
     const seen: string[][] = []
     vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
@@ -232,6 +260,7 @@ describe("selectTasksPane", () => {
       return { code: 0, stdout: "" }
     })
     await expect(tmux.selectTasksPane("kobe-t1", { windowId: "@5" })).resolves.toBe("")
+    // Restore was never attempted: no window listing, no split.
     expect(seen.filter((c) => c[0] !== "list-panes")).toEqual([])
     expect(callsWith("select-pane")).toEqual([])
     expect(callsWith("split-window")).toEqual([])
@@ -240,7 +269,7 @@ describe("selectTasksPane", () => {
   test("returns '' when the rail cannot be restored at all", async () => {
     const client = await import("../../src/tmux/client")
     vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
-      if (args[0] === "list-panes") return { code: 0, stdout: "" }
+      if (args[0] === "list-panes") return { code: 0, stdout: "" } // no panes, restore fails too
       if (args[0] === "list-windows") return { code: 0, stdout: "1\t@1" }
       return { code: 0, stdout: "" }
     })

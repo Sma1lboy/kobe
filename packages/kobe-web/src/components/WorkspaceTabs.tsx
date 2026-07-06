@@ -1,3 +1,10 @@
+/**
+ * WorkspaceTabs — the center workspace for the selected task. Tabs can be an
+ * empty chooser, a vendor engine PTY, a plain terminal PTY, or a file preview.
+ * The list is client-owned (persisted in localStorage). Selecting a task with
+ * no tabs opens an empty chooser tab automatically.
+ */
+
 import { Bot, MessagesSquare, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
 import { lazy, Suspense, useState } from "react"
@@ -17,6 +24,9 @@ import { closePtyTab } from "../lib/terminal.ts"
 import { ChatTranscript } from "./ChatTranscript.tsx"
 import { FilePreview } from "./DiffView.tsx"
 
+// xterm (+ addon-fit) is the heaviest dependency in the app and only matters
+// once a vendor/terminal tab opens — lazy-load it so it splits into its own
+// chunk and never bloats the dashboard's first paint.
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
 )
@@ -222,6 +232,9 @@ export function WorkspaceTabs() {
       : undefined
   const vendor = vendorLabel(task?.vendor)
   const taskTitle = task?.title || task?.branch || "Session"
+  // A task whose worktree is still being created (or hasn't materialized yet)
+  // can't open a workspace — say so explicitly instead of the ambiguous
+  // "Opening workspace…".
   const materializing =
     !!task &&
     ((selectedTaskId ? jobs[selectedTaskId]?.phase === "running" : false) ||

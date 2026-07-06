@@ -13,6 +13,8 @@ describe("truncateEnd — keep the prefix", () => {
   })
 
   test("never bisects a surrogate pair — emoji stay intact", () => {
+    // Each 🎉 is one code point but two UTF-16 code units; a `.slice` by
+    // .length would cut mid-emoji and emit a lone surrogate (→ �).
     expect(truncateEnd("🎉🎉🎉🎉-tail", 4)).toBe("🎉🎉🎉…")
   })
 

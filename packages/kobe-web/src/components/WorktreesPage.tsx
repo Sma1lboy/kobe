@@ -1,3 +1,16 @@
+/**
+ * WorktreesPage — the standalone `/worktrees` lens onto every git worktree
+ * kobe can see across all locally-saved projects (not just kobe-managed
+ * ones — see `web-worktrees-route.ts`'s `GitWorktreeManager.listAll`). Lets
+ * Jackson audit and clean up stray worktrees from one page instead of
+ * `cd`-ing into each project.
+ *
+ * Delete flow mirrors the daemon's own safety gate: a clean worktree deletes
+ * on a single confirm; a dirty one (uncommitted/untracked changes) fails the
+ * first attempt and surfaces a SECOND, danger-styled confirm before retrying
+ * with `force: true` — no client-side dirty check duplicates the backend's.
+ */
+
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"

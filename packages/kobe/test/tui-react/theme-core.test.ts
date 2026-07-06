@@ -1,3 +1,13 @@
+/**
+ * Why this matters: `applyDisplayOverlay` encodes two policies both
+ * frameworks must share exactly — the user-picked focus-accent slot (with
+ * primary fallback for themes missing the slot) and transparent mode's
+ * "chrome goes alpha-0, dialog card stays opaque" rule (see
+ * memory/feedback_transparent_default_aggressive.md). The overlay was
+ * extracted from the Solid provider during G2; this pins the extraction
+ * didn't change behavior and the React provider inherits the same rules.
+ */
+
 import { describe, expect, it } from "vitest"
 import { BUNDLED_THEMES, applyDisplayOverlay, resolveTheme } from "../../src/tui/context/theme-core"
 
@@ -22,7 +32,9 @@ describe("applyDisplayOverlay", () => {
     const out = applyDisplayOverlay(base, "primary", true)
     expect(out.background.a).toBe(0)
     expect(out.backgroundPanel.a).toBe(0)
+    // The composer body tint survives so input stays legible…
     expect(out.backgroundElement).toBe(base.backgroundElement)
+    // …and the dialog card stays opaque so overlays stay readable.
     expect(out.backgroundDialog).toBe(base.backgroundDialog)
   })
 

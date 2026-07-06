@@ -1,3 +1,11 @@
+/**
+ * Presentation mappers for the diff view — a file's status → its one-letter
+ * badge + color, and a parsed diff row's kind → its CSS class. Pure; shared out
+ * of DiffView so the mapping is unit-testable (the activity.ts precedent). The
+ * status strings are the human labels the diff route emits (`statusLabel` in
+ * packages/kobe/src/web/diff.ts: added/untracked/modified/deleted/renamed/copied).
+ */
+
 import type { DiffRow } from "./diff-rows.ts"
 
 export function statusBadge(status: string): { label: string; cls: string } {

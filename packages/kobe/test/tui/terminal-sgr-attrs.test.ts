@@ -1,3 +1,12 @@
+/**
+ * SGR parser — the attribute families terminal-sgr.test.ts leaves out:
+ * the remaining toggles (dim/blink/inverse/hidden/strike), every per-attr
+ * RESET code (22-29), the bright/standard bg rows, the grayscale ramp,
+ * malformed extended-color recovery, and the 1-byte CSI introducer.
+ * Same import discipline as the sibling file: nothing here may pull in
+ * @opentui/core.
+ */
+
 import { describe, expect, test } from "vitest"
 import { ATTR, ansi256ToRgb, parseAnsiLine } from "../../src/tui/panes/terminal/sgr"
 
@@ -37,6 +46,7 @@ describe("per-attribute resets (22-29)", () => {
   ]
   for (const [name, set, reset, attr] of resets) {
     test(name, () => {
+      // set attr + bold, then reset only the attr — bold must survive.
       const { chunks } = parseAnsiLine(`${ESC}1;${set}ma${ESC}${reset}mb`)
       expect(chunks[0]?.attributes).toBe(ATTR.BOLD | attr)
       expect(chunks[1]?.attributes).toBe(ATTR.BOLD)
@@ -85,8 +95,11 @@ describe("ansi256ToRgb ramps", () => {
 
 describe("malformed extended-color escapes recover", () => {
   test("a bare 38 with an unknown sub-mode is skipped, later params still apply", () => {
+    // 38;9 is not a valid introducer form; the parser must skip it and
+    // still apply the bold that follows.
     const { chunks } = parseAnsiLine(`${ESC}38;9;1mx${ESC}0m`)
     expect(chunks[0]?.text).toBe("x")
+    // fg untouched by the malformed introducer
     expect(chunks[0]?.fg).toBeUndefined()
   })
 

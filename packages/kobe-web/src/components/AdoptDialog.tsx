@@ -1,3 +1,11 @@
+/**
+ * Adopt-worktree dialog — onboarding for existing git worktrees kobe hasn't
+ * tracked yet. Pick a known repo, the daemon lists adoptable worktrees
+ * (worktree.discoverAdoptable), and one click adopts each into a task
+ * (worktree.adopt). Lets the web dashboard pull in pre-existing worktrees
+ * without dropping to the TUI/CLI.
+ */
+
 import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
@@ -35,6 +43,8 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
     return list.sort()
   }, [tasks])
 
+  // Worktree paths already mapped to a task — adopting them again is a no-op,
+  // so they're shown as "tracked" rather than offered.
   const trackedPaths = useMemo(
     () => new Set((tasks as Task[]).map((t) => t.worktreePath).filter(Boolean)),
     [tasks],
@@ -44,6 +54,9 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
   const [worktrees, setWorktrees] = useState<AdoptableWorktree[] | null>(null)
   const [scanning, setScanning] = useState(false)
   const [adopting, setAdopting] = useState<string | null>(null)
+  // Zero-known-repos is a dead end for adoption (nothing to scan), so the
+  // button swaps this overlay for the real New Task dialog — its onClose closes
+  // the whole flow, same as adopting.
   const [creating, setCreating] = useState(false)
 
   const scan = async (target: string): Promise<void> => {
@@ -84,6 +97,8 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // No repos known yet → adoption can't go anywhere. Hand off to the real New
+  // Task dialog so the user can create a task in a repo and come back.
   if (creating) return <NewTaskDialog onClose={onClose} />
 
   if (repos.length === 0) {

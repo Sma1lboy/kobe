@@ -1,3 +1,11 @@
+/**
+ * `kobe repo <show|set|unset>` (`runRepoSubcommand`) — per-user repo init
+ * override stored in state.json. No mocks: state.json lives under a
+ * per-test KOBE_HOME_DIR tempdir and the repo path is a real scratch git
+ * repo (resolveRepoRoot shells out to `git rev-parse`), so the tests pin
+ * the actual read→merge→write behavior end to end.
+ */
+
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -98,6 +106,7 @@ describe("kobe repo set / show / unset round-trip", () => {
       .split("\n")
       .find((l) => l.includes("override initScript"))
     expect(line).toContain("…")
+    // Multi-line value is collapsed to one line in the preview.
     expect(line).not.toContain("\n")
   })
 

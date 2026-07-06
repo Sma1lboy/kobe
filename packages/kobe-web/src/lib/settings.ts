@@ -23,6 +23,7 @@ export interface WebSettings {
   editorKind: EditorKind
   editorCustomCommand: string
   remoteProjects: boolean
+  /** Beta: open an archived task and preview its read-only engine history. */
   archivedHistoryPreview: boolean
   autoStatus: boolean
   dispatcher: boolean
@@ -49,6 +50,7 @@ export async function fetchSettings(): Promise<WebSettings> {
   return api.get<WebSettings>("/api/settings", { label: "load settings" })
 }
 
+/** Best-effort default engine lookup for task creation entry points. */
 export async function fetchDefaultEngine(): Promise<string | null> {
   try {
     const settings = await fetchSettings()

@@ -1,3 +1,9 @@
+// AUTO-GENERATED from refs/claude-code/src/commands/ — see
+// scripts/extract-claude-code-commands.mjs. Do not hand-edit; rerun the
+// extractor when you sync the refs/ snapshot.
+//
+// Filtered to commands that work in `claude -p` (non-interactive)
+// mode: dropped 52 local-jsx + 9 non-interactive-disabled.
 export type BuiltinSlash = {
   readonly name: string
   readonly description: string

@@ -1,3 +1,10 @@
+/**
+ * Live auto-title poller (KOB). Drives the pass logic against a REAL
+ * Orchestrator + on-disk store, with an injected title-deriver so no real
+ * worktree / transcript is needed — the seam under test is the placeholder
+ * filter, the re-check-before-rename guard, and per-task error isolation.
+ */
+
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -21,9 +28,12 @@ beforeEach(async () => {
 afterEach(() => {
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {}
+  } catch {
+    // ignored
+  }
 })
 
+/** Create a task, then stamp a worktreePath on it (createTask leaves it empty). */
 async function makeTask(opts: { title?: string; worktree?: string }) {
   const task = await orch.createTask({ repo: "/repo", title: opts.title })
   if (opts.worktree !== undefined) await store.update(task.id, { worktreePath: opts.worktree })
@@ -80,6 +90,8 @@ describe("runAutoTitlePass", () => {
   test("does not overwrite a manual rename that lands during the disk read", async () => {
     const id = await makeTask({ worktree: "/wt/a" })
 
+    // Simulate the user renaming mid-read: the deriver (standing in for the
+    // slow transcript read) renames the task before returning its own title.
     const renamed = await runAutoTitlePass(orch, async () => {
       await orch.setTitle(id, "User chose this")
       return "derived-title"

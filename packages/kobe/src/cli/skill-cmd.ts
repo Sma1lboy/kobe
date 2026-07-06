@@ -1,3 +1,17 @@
+/**
+ * `kobe skill <verb>` — install + inspect the kobe agent skill.
+ *
+ * The skill is distributed through the Vercel Labs agent-skills CLI
+ * (`npx skills add Sma1lboy/kobe`). `kobe skill install` is a thin
+ * convenience WRAPPER around that flow so a developer doesn't have to
+ * remember the exact `npx skills add … --skill kobe --agent …` invocation;
+ * it shells out to `npx` with the right args. Verbs:
+ *
+ *   install [--agent NAME]   run the npx skills flow (default agent: claude-code)
+ *   status                   report whether the skill is installed
+ *   command [--agent NAME]   print the underlying npx command (don't run it)
+ */
+
 import {
   DEFAULT_SKILL_AGENT,
   kobeSkillPaths,
@@ -21,6 +35,7 @@ function skillUsage(): string {
   ].join("\n")
 }
 
+/** Parse `--agent NAME` (the only flag these verbs take). */
 function parseAgent(rest: readonly string[]): string {
   let agent = DEFAULT_SKILL_AGENT
   for (let i = 0; i < rest.length; i++) {
@@ -80,6 +95,7 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
     return
   }
 
+  // install — shell out to the agent-skills CLI via npx.
   const agent = parseAgent(rest)
   const args = npxSkillsArgv({ agent })
   process.stdout.write(`kobe skill: running \`npx ${args.join(" ")}\`\n`)

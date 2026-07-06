@@ -1,3 +1,9 @@
+/**
+ * Toast stack — bottom-right, themed like the rest of the shell (no native
+ * alert/confirm styling). Errors stay until dismissed or expired; click ×
+ * (or the toast body) to dismiss early.
+ */
+
 import { X } from "lucide-react"
 import { dismissToast, type Toast, useToasts } from "../lib/toast.ts"
 

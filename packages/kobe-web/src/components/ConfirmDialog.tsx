@@ -1,3 +1,8 @@
+/**
+ * Themed confirm modal — replaces native `window.confirm` (off-theme, blocks
+ * the event loop). One open dialog at a time, rendered by the caller.
+ */
+
 import { useEffect, useRef } from "react"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
 

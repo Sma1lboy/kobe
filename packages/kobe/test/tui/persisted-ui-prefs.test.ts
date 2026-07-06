@@ -1,8 +1,18 @@
+/**
+ * readPersistedUiPrefs — the pane subprocess's read-only view of the outer
+ * TUI's state.json. Pinned: theme names are validated against the registry
+ * (a stale name falls back), the transparent/focus-accent/locale fields
+ * validate independently, and a missing/corrupt file yields full defaults
+ * instead of throwing (a pane must always render).
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
+// `context/theme` transitively imports @opentui/core (whose .scm assets fail
+// under vitest) — stub just the two validators this module consumes.
 vi.mock("../../src/tui/context/theme", () => ({
   FOCUS_ACCENT_SLOTS: ["primary", "success", "info"] as const,
   hasTheme: (name: string) => ["claude", "tokyonight"].includes(name),
@@ -58,7 +68,7 @@ describe("readPersistedUiPrefs", () => {
     writeState(
       JSON.stringify({
         activeTheme: "claude",
-        transparentBackground: "yes",
+        transparentBackground: "yes", // not === true
         focusAccent: "not-a-slot",
         locale: "xx-nope",
       }),
@@ -67,10 +77,11 @@ describe("readPersistedUiPrefs", () => {
     expect(prefs.theme).toBe("claude")
     expect(prefs.transparent).toBe(false)
     expect(prefs.focusAccent).toBeNull()
-    expect(prefs.locale).toBe("en")
+    expect(prefs.locale).toBe("en") // DEFAULT_LOCALE
   })
 
   test("missing or corrupt state.json yields full defaults, never throws", () => {
+    // no file at all
     expect(readPersistedUiPrefs("claude")).toEqual({
       theme: "claude",
       transparent: false,

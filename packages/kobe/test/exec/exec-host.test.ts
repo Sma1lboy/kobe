@@ -26,6 +26,7 @@ const PW_SPEC: RemoteSpec = {
   controlPath: "/tmp/kobe/ssh/box.sock",
 }
 
+/** Records every spawn so a test can assert the exact argv/env without a real ssh. */
 function recordingSpawner(result: ExecResult = { stdout: "", stderr: "", exitCode: 0 }) {
   const calls: Array<{ argv: string[]; env?: Record<string, string> }> = []
   const spawn: Spawner = (argv, env) => {
@@ -41,6 +42,7 @@ describe("shQuote / shJoin", () => {
   })
 
   it("escapes embedded single quotes the POSIX way", () => {
+    // a'b → 'a'\''b'
     expect(shQuote("a'b")).toBe("'a'\\''b'")
   })
 
@@ -104,15 +106,20 @@ describe("RemoteExecHost.run", () => {
 
     await host.run(["git", "status"], { cwd: "/srv/wt" })
 
+    // First call: `-O check` (master probe). It returns exit 0 here, so the
+    // master is considered up and no -fN bring-up happens.
     expect(calls[0]?.argv).toContain("-O")
     expect(calls[0]?.argv).toContain("check")
 
+    // Second call: the actual command over the multiplexed connection.
     const runCall = calls[1]
     expect(runCall?.argv[0]).toBe("ssh")
     expect(runCall?.argv).toContain("BatchMode=yes")
     expect(runCall?.argv.at(-1)).toBe("cd '/srv/wt' && 'git' 'status'")
+    // No sshpass on a per-call command — the master carries the channel.
     expect(runCall?.argv).not.toContain("sshpass")
 
+    // A second run reuses the master: no further `-O check`.
     await host.run(["git", "log"])
     const checks = calls.filter((c) => c.argv.includes("check"))
     expect(checks).toHaveLength(1)
@@ -133,6 +140,7 @@ describe("RemoteExecHost.run", () => {
 
 describe("RemoteExecHost master bring-up (password)", () => {
   it("brings up the master with sshpass -e + SSHPASS env, never -p, when the probe fails", () => {
+    // `-O check` fails (exit 1) → master must be opened.
     let first = true
     const calls: Array<{ argv: string[]; env?: Record<string, string> }> = []
     const spawn: Spawner = (argv, env) => {
@@ -149,9 +157,11 @@ describe("RemoteExecHost master bring-up (password)", () => {
     const bringUp = calls.find((c) => c.argv[0] === "sshpass")
     expect(bringUp).toBeDefined()
     expect(bringUp?.argv).toEqual(expect.arrayContaining(["sshpass", "-e"]))
+    // The password rides in the env, NEVER on argv (-p leaks via ps).
     expect(bringUp?.argv).not.toContain("-p")
     expect(bringUp?.argv).not.toContain("hunter2")
     expect(bringUp?.env?.SSHPASS).toBe("hunter2")
+    // -fN backgrounded master.
     expect(bringUp?.argv).toContain("-fN")
   })
 })
@@ -165,7 +175,9 @@ describe("RemoteExecHost.wrapCommand", () => {
     expect(line.startsWith("ssh ")).toBe(true)
     expect(line).toContain("-tt")
     expect(line).toContain("dev@box.example.com")
+    // The remote half is single-quoted as one arg for the local shell.
     expect(line).toContain("'cd '\\''/srv/wt'\\'' && claude'")
+    // No password, no sshpass — the pane command must never carry a secret.
     expect(line).not.toContain("sshpass")
     expect(line).not.toContain("hunter2")
   })
@@ -177,6 +189,7 @@ describe("RemoteExecHost.wrapCommand", () => {
       auth: { kind: "key", keyPath: "/home/dev/my keys/id_ed25519" },
     }
     const line = new RemoteExecHost(spec, spawn).wrapCommand("claude", { tty: true, cwd: "/srv/wt" })
+    // The space-bearing path is single-quoted as a whole; bare flags stay bare.
     expect(line).toContain("'/home/dev/my keys/id_ed25519'")
     expect(line.startsWith("ssh ")).toBe(true)
     expect(line).toContain("dev@box.example.com")
@@ -230,6 +243,9 @@ describe("LocalExecHost.run (async, non-blocking)", () => {
   })
 
   it("does not block the event loop while the subprocess runs", async () => {
+    // The daemon-freeze regression pin: with the old spawnSync impl a timer
+    // could never fire while a command ran. Start a 300ms subprocess, then
+    // prove a 50ms timer resolves FIRST — i.e. the event loop kept turning.
     const host = new LocalExecHost()
     const order: string[] = []
     const runP = host.run(["sleep", "0.3"]).then((r) => {

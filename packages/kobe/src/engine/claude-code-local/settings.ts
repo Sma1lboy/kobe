@@ -1,3 +1,12 @@
+/**
+ * Read claude-code's user settings file (`~/.claude/settings.json`).
+ *
+ * Vendor-specific helper — lives under `engine/claude-code-local/`
+ * because the file location, schema, and cache invalidation rules are
+ * claude-code's. The neutral surface above (orchestrator + TUI) reaches
+ * this only through {@link claudeCapabilities.defaultModelId}.
+ */
+
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -33,6 +42,11 @@ export function _resetClaudeSettingsCache(): void {
   cached = undefined
 }
 
+/**
+ * Hardcoded fallback when claude-code's settings file says nothing.
+ * Opus 4.7 1M is kobe-preferred default — long-context variant matches
+ * "task = a sustained worktree of work" sessions which tend to grow.
+ */
 export const CLAUDE_FALLBACK_DEFAULT_MODEL_ID = "claude-opus-4-7[1m]"
 
 export function resolveClaudeDefaultModelId(): string {

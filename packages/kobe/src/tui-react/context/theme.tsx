@@ -1,4 +1,20 @@
 /** @jsxImportSource @opentui/react */
+/**
+ * Theme provider for kobe (React) — the `src/tui/context/theme.tsx`
+ * counterpart for React panes (issue #15, G2). All theme SEMANTICS
+ * (bundled registry, resolution, focus-accent + transparent overlay) come
+ * from the shared framework-free `src/tui/context/theme-core.ts`; this file
+ * owns only the React reactivity.
+ *
+ * Differences from the Solid provider, by design:
+ *   - `useTheme().theme` is a PLAIN resolved object, not a Proxy. React
+ *     components re-render via context when the theme changes, so
+ *     per-property reactive reads have no equivalent — and a plain object
+ *     keeps `theme.background` call sites source-compatible.
+ *   - Module-level registry state lives in an external store (subscribed
+ *     via useSyncExternalStore), matching the Solid module-store semantics:
+ *     `addTheme`/`listThemes` work before or outside any provider.
+ */
 
 import { RGBA } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
@@ -47,6 +63,12 @@ export function addTheme(name: string, theme: ThemeJson): boolean {
   return true
 }
 
+// Module-level accessors/setters, mirroring the Solid module's
+// store-outside-the-provider semantics. The React host-boot path (issue #15
+// G3) seeds persisted prefs through these BEFORE the first render (no
+// flash) and applies live daemon ui-prefs pushes without a hook scope; the
+// provider's context methods delegate to the same store.
+
 export function selectedTheme(): string {
   return store.get().active
 }
@@ -78,6 +100,7 @@ export function setThemeMode(mode: "dark" | "light"): void {
 }
 
 export type ThemeContextValue = {
+  /** The resolved palette. Plain object — re-renders arrive via context. */
   theme: Theme
   selected: string
   transparentBackground: boolean
@@ -96,14 +119,19 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 function resolveActive(state: State): Theme {
   const active = state.themes[state.active]
   if (active) return resolveTheme(active, state.mode)
+  // safety net: if active was somehow cleared, fall back to claude
   const fallback = state.themes.claude ?? state.themes.opencode ?? Object.values(state.themes)[0]
   if (!fallback) {
+    // truly empty — synthesize a black theme so the renderer can stand up
     return resolveTheme({ theme: { background: "#000000", text: "#ffffff" } }, state.mode)
   }
   return resolveTheme(fallback, state.mode)
 }
 
 export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "light"; theme?: string }) {
+  // Seed once from props, mirroring the Solid provider's init block. Done
+  // during the first render (not an effect) so the very first paint already
+  // uses the requested theme; the store dedupes identical snapshots.
   // biome-ignore lint/correctness/useExhaustiveDependencies: seed-once semantics, matching Solid's init.
   useMemo(() => {
     store.update((s) => ({
@@ -121,6 +149,8 @@ export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "li
     [state],
   )
 
+  // Push background to the renderer so the terminal background matches
+  // (or shows through, when transparentBackground is on).
   useEffect(() => {
     renderer?.setBackgroundColor(theme.background ?? RGBA.fromInts(0, 0, 0))
   }, [renderer, theme])

@@ -1,3 +1,16 @@
+/**
+ * Behavioral tests for `ensureSession`'s CREATE / REBUILD / RESPAWN-ENGINE
+ * apply paths (`panes/terminal/tmux.ts`). The REUSE path's operation budget
+ * is pinned by perf-budgets.test.ts; this file drives the paths that BUILD:
+ * fresh session creation (engine command weave, session tagging, server
+ * bindings, first-message delivery) and the in-place vendor switch with its
+ * partial-failure tag discipline. All tmux spawns land in an in-memory fake
+ * `@/tmux/client`; `buildPanesAround` is stubbed (its own tmux traffic is
+ * pinned in chattab.test.ts); everything else (session-decision, pane-heal,
+ * session-layout, keybindings resolution against a missing user file) runs
+ * REAL so the woven command strings asserted here are the production ones.
+ */
+
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -128,11 +141,15 @@ describe("ensureSession — fresh create", () => {
       repo: "/repo",
     })
     expect(ok).toBe(true)
+    // new-session carries the session name + the woven engine launch line.
     const newSession = state.calls.find((c) => c[0] === "new-session")
     expect(newSession).toEqual(expect.arrayContaining(["-d", "-s", "kobe-t1", "-c", "/wt"]))
     expect(newSession?.[newSession.length - 1]).toContain("claude")
+    // claude launches get a forced --session-id so the tab can be auto-named…
     expect(newSession?.[newSession.length - 1]).toContain("--session-id")
+    // …and that id is recorded on the window.
     expect(state.calls.some((c) => c[0] === "set-window-option" && c[2] === "@kobe_session_id")).toBe(true)
+    // Session identity tags.
     expect(state.calls).toEqual(
       expect.arrayContaining([
         ["set-option", "-t", "kobe-t1", "@kobe_task", "t1"],
@@ -140,13 +157,16 @@ describe("ensureSession — fresh create", () => {
         ["set-option", "-t", "kobe-t1", "@kobe_vendor", "claude"],
       ]),
     )
+    // Workspace panes built around the engine pane.
     expect(chattab.buildPanesAround).toHaveBeenCalledWith("%0", expect.objectContaining({ cwd: "/wt", taskId: "t1" }))
+    // Server niceties + bindings land (spot-check the load-bearing ones).
     const flat = flatCalls()
     expect(flat).toContain("set-option -g status on")
     expect(flat.some((c) => c.startsWith("set-hook -g window-resized"))).toBe(true)
     expect(flat.some((c) => c.startsWith("set-hook -g client-resized"))).toBe(true)
     expect(flat.some((c) => c.startsWith("set-hook -g pane-exited"))).toBe(true)
     expect(flat.some((c) => c.startsWith("bind-key -n C-t run-shell"))).toBe(true)
+    // First attach lands on the engine pane.
     expect(state.calls[state.calls.length - 1]).toEqual(["select-pane", "-t", "%0"])
   })
 
@@ -210,6 +230,7 @@ describe("ensureSession — rebuild and vendor switch", () => {
     state.healStdout = "@1\t%0\tclaude\t0.0.1\t120"
     const ok = await tmux.ensureSession({ name: "kobe-t1", cwd: "/wt", command: ["codex"], vendor: "codex" })
     expect(ok).toBe(true)
+    // In-place respawn, not a rebuild — sibling tabs survive (KOB-232).
     expect(state.calls.some((c) => c[0] === "killSession")).toBe(false)
     expect(state.calls.some((c) => c[0] === "respawn-pane" && c.includes("%0"))).toBe(true)
     expect(state.sessionOptions).toEqual(expect.arrayContaining([["@kobe_vendor", "codex"]]))
@@ -228,8 +249,8 @@ describe("ensureSession — rebuild and vendor switch", () => {
 
   test("a vendor switch with NO engine pane falls through to a full rebuild", async () => {
     state.existingSessions = new Set(["kobe-t1"])
-    state.observeStdout = "@1\t1\t\t/wt\tclaude"
-    state.healStdout = ""
+    state.observeStdout = "@1\t1\t\t/wt\tclaude" // no claude-role pane alive
+    state.healStdout = "" // relaunch finds no engine panes
     const ok = await tmux.ensureSession({ name: "kobe-t1", cwd: "/wt", command: ["codex"], vendor: "codex" })
     expect(ok).toBe(true)
     expect(state.calls).toEqual(expect.arrayContaining([["killSession", "kobe-t1"]]))
@@ -257,6 +278,7 @@ describe("ensureSession — archived history preview + in-tmux window fit", () =
     expect(paneCmd).toContain("/recorded-wt")
     expect(paneCmd).toContain("My Task")
     expect(paneCmd).not.toContain("--session-id")
+    // no engine session id is recorded on the window
     expect(state.calls.some((c) => c[0] === "set-window-option" && c[2] === "@kobe_session_id")).toBe(false)
   })
 
@@ -277,6 +299,7 @@ describe("ensureSession — archived history preview + in-tmux window fit", () =
 
   test("inside tmux, the fresh window is fit to the attached client BEFORE panes split", async () => {
     process.env.TMUX = "/tmp/tmux-sock,1,0"
+    // attachedWindowInfo reads display-message → route a client-size answer.
     const client = await import("../../src/tmux/client")
     vi.spyOn(client, "runTmuxCapturing").mockImplementation(async (args: string[]) => {
       state.calls.push(args)

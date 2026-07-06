@@ -1,3 +1,24 @@
+/**
+ * Unit tests for `src/state/repos.ts`.
+ *
+ * The module reads/writes the same on-disk KV blob the TUI uses
+ * (`~/.config/kobe/state.json`), so the tests redirect HOME via
+ * `KOBE_HOME_DIR` to a per-test tmpdir. Every state mutation is
+ * scoped to that tmpdir; the real `~/.config/kobe/` is untouched.
+ *
+ * What we pin:
+ *   - `getSavedRepos()` returns `[]` when the file doesn't exist.
+ *   - `getSavedRepos()` returns `[]` when the file is malformed.
+ *   - `addSavedRepo()` creates the file + directory on first write.
+ *   - `addSavedRepo()` is idempotent (re-add returns `added: false`).
+ *   - `addSavedRepo()` preserves any sibling KV keys already in the
+ *     file — this is the load-bearing reason `repos.ts` and `kv.tsx`
+ *     read/write the SAME blob: a `kobe add` from a shell mustn't
+ *     wipe the user's `lastSelectedTaskId` / `activeTheme` / etc.
+ *   - `addSavedRepo()` preserves order of existing entries.
+ *   - The total in `AddResult` matches the post-write list size.
+ */
+
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

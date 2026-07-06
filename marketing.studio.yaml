@@ -1,3 +1,7 @@
+# brand-studio metadata for the kobe repo (skill: .claude/skills/brand-studio).
+# Directory contract: production is scratch under .studio/ (gitignored);
+# user-accepted assets settle into public/assets/ and are recorded in
+# public/assets/accepted.yaml. Brand tokens live in packages/branding/src/colors.ts.
 project:
   id: kobe
   root: .
@@ -17,6 +21,11 @@ campaigns:
   promo: marketing/campaigns/promo
 
 skills:
+  # Capability -> producer skill (installed at project scope). Producers may
+  # live in their own GitHub repos wired as submodules (like brand-studio
+  # itself) — the invariant is a recursive clone brings everything.
+  # brand-video is the single video producer: script/reference analysis,
+  # replay capture (absorbed remotion-ref-replay), composition, audio slots.
   image: gpt-image
   video: brand-video
 

@@ -1,3 +1,11 @@
+/**
+ * `RemoteOrchestrator`'s write surface — each function forwards one daemon
+ * RPC. Split out of `remote-orchestrator.ts` (which was over the repo's
+ * 500-line file-size cap) into its own file; same behavior, moved
+ * verbatim. The class keeps its public method names/signatures — each is
+ * now a 1-line delegate to the matching function here.
+ */
+
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
@@ -15,6 +23,9 @@ export async function createTaskOp(
     modelEffort?: string
   },
 ): Promise<Task> {
+  // The daemon's `task.create` payload spells effort as `effort`; the task
+  // field is `modelEffort` — remap on the wire so the daemon's
+  // `optionalString(payload, "effort")` picks it up.
   const { modelEffort, ...rest } = input
   const res = await client.request<{ task: SerializedTask }>("task.create", {
     ...rest,
@@ -95,15 +106,25 @@ export async function adoptWorktreeOp(
   return deserializeTask(res.task)
 }
 
+/** Every worktree of every local saved project — the standalone
+ *  worktree-management TUI page (`worktree.list`). */
 export async function listWorktreesOp(client: KobeDaemonClient): Promise<readonly WorktreeProject[]> {
   const res = await client.request<{ projects: WorktreeProject[] }>("worktree.list", {})
   return res.projects
 }
 
+/** Remove a worktree (`worktree.remove`); refuses a dirty one unless
+ *  `force` is true — same safety property `GitWorktreeManager.remove`
+ *  always had. */
 export async function removeWorktreeOp(client: KobeDaemonClient, path: string, force?: boolean): Promise<void> {
   await client.request("worktree.remove", { path, force })
 }
 
+/**
+ * Mark a task as the active focus (the session just switched/entered).
+ * The daemon publishes it on the `active-task` channel so every Tasks
+ * pane + the outer monitor highlight the same task (KOB-247).
+ */
 export async function setActiveTaskOp(client: KobeDaemonClient, id: TaskId | string | null): Promise<void> {
   await client.request("task.setActive", { taskId: id === null ? null : String(id) })
 }

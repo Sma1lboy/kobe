@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ptyUrl } from "../src/lib/terminal.ts"
 
+/**
+ * ptyUrl builds the PTY WebSocket URL — a bug here breaks every terminal tab.
+ * The load-bearing bits: the `port + 2` sidecar convention, ws/wss by scheme,
+ * and the query params xterm sends. Drive it by stubbing `location`.
+ */
 
 function withLocation(loc: Partial<Location>): void {
   vi.stubGlobal("location", {
@@ -39,6 +44,7 @@ describe("ptyUrl", () => {
 
   it("falls back to 5175 when the port is unparseable", () => {
     withLocation({ port: "" })
+    // empty port → defaults to 5173 → +2 = 5175
     expect(ptyUrl("t", "k", "shell", 80, 24)).toContain(":5175/")
   })
 })

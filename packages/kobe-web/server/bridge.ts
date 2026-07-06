@@ -1,3 +1,27 @@
+/**
+ * kobe web bridge — transitional HTTP/SSE adapter in front of the daemon.
+ *
+ * This process currently owns the browser-facing port and talks to the kobe
+ * daemon over the socket protocol (see daemon-link.ts). ADR 0003 makes this a
+ * migration layer: daemon-backed browser routes should move into a daemon
+ * hosted local HTTP/SSE interface, leaving this adapter only for compatibility
+ * until each route is deleted.
+ *
+ * Routes:
+ *   GET  /__kobe_web          health marker (port-takeover handshake)
+ *   GET  /events              SSE: `snapshot` on connect, then `channel` pushes
+ *   POST /api/rpc             forward an ALLOWLISTED daemon RPC by name
+ *   POST /api/session         ensure a task's tmux session exists
+ *   GET  /api/engine-spec     PTY launch spec for a task's engine tab
+ *   GET  /api/terminal-spec   PTY launch spec for a task's shell tab
+ *   GET  /api/engines         engine-owned vendor list (id + label + effort)
+ *   GET  /api/projects        saved project repos from state.json
+ *   GET/PATCH /api/settings   shared TUI/web settings backed by state.json
+ *   *    /api/notes, /api/diff       bridge-local filesystem routes
+ *   *    /api/issue-assets           bridge-local issue-attachment store
+ *   *    /api/issues                 daemon-owned issue tracker proxy
+ *   *                         static SPA fallthrough when `staticDir` is set
+ */
 
 import { existsSync } from "node:fs"
 import { join, normalize } from "node:path"
@@ -35,21 +59,37 @@ export interface BridgeServer {
 
 type SseSend = (type: string, data: unknown) => void
 
+/**
+ * The slice of {@link DaemonLink} the request handler needs — extracted so
+ * the route table can be tested against a fake link (no socket, no daemon).
+ */
 export interface BridgeLink extends DaemonRpcClient {
   snapshot(): unknown
 }
 
+/** Dependencies for {@link createRequestHandler} — all injectable so the
+ *  full route table is unit-testable. */
 export interface RequestHandlerDeps {
   link: BridgeLink
+  /** Open SSE sinks; /events registers into this set, the fan-out reads it. */
   sseSends: Set<SseSend>
   staticDir?: string
+  /** tmux teardown after a committed archive/delete (default: real tmux). */
   tearDownSession?: (taskId: string) => void
+  /** The non-loopback host the server is deliberately bound to (KOBE_WEB_HOST),
+   *  if any. Requests whose Origin is this host are allowed through the
+   *  cross-origin guard so the documented LAN-exposure override keeps working;
+   *  undefined for the default loopback bind. */
   allowedHost?: string
 }
 
 function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSignal): Response {
   let unregister: (() => void) | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null
+  // Teardown must not depend on Bun calling cancel(): a half-open disconnect
+  // (sleep, dropped Wi-Fi, killed browser) can skip it, leaving a phantom
+  // sink the bus fans every event into. Idempotent cleanup, reachable from
+  // cancel(), the request's abort signal, AND a failed heartbeat write.
   let done = false
   const cleanup = () => {
     if (done) return
@@ -64,6 +104,7 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
         try {
           controller.enqueue(enc.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`))
         } catch {
+          /* stream already closed — the next heartbeat tears down */
         }
       }
       unregister = register(send)
@@ -102,6 +143,11 @@ async function rpcResponse(
       return Response.json({ error: `rpc ${name} is not exposed to the web UI` }, { status: 403 })
     }
     const result = await link.request(name, payload)
+    // The daemon never touches tmux: after a committed archive/delete, the
+    // session (and the engine inside it) must be torn down by the front-end
+    // that asked — same contract as the TUI flows and `kobe api`. Delete
+    // always kills; archive kills only when actually archiving (un-archive
+    // passes `archived: false` and must leave a live session alone).
     const taskId = (payload as { taskId?: unknown } | undefined)?.taskId
     if (typeof taskId === "string") {
       const archiving =
@@ -110,6 +156,9 @@ async function rpcResponse(
     }
     return Response.json({ result })
   } catch (err) {
+    // Forward the daemon's error NAME alongside the message so the SPA can
+    // branch on typed failures (e.g. IllegalTransitionError → board rollback
+    // toast) without string-matching.
     const name = err instanceof Error && err.name !== "Error" ? err.name : undefined
     return Response.json(
       { error: err instanceof Error ? err.message : String(err), ...(name ? { name } : {}) },
@@ -118,6 +167,12 @@ async function rpcResponse(
   }
 }
 
+/** Engine-owned vendor list: detected built-ins + user-registered custom
+ *  engines, labeled with their (possibly user-overridden) display names and
+ *  carrying each engine's reasoning/effort levels from the registry — so the
+ *  SPA never hard-codes vendor strings or effort options (CLAUDE.md:
+ *  engine-owned UI data). Falls back to the always-shippable claude entry on
+ *  probe failure (claude has no kobe-driveable effort flag → no levels). */
 async function enginesResponse(): Promise<Response> {
   try {
     const ids = await availableEngineIds()
@@ -164,6 +219,13 @@ async function specResponse(
   }
 }
 
+/**
+ * The bridge's full HTTP route table as one (req) → Response function,
+ * decoupled from `Bun.serve` and the live socket so the whole surface — the
+ * RPC allowlist + teardown hook, the SSE snapshot/fan-out, the spec/engine/
+ * theme/history routes, and the static fallthrough — is unit-testable against
+ * a fake link. `createBridgeServer` wraps this; tests call it directly.
+ */
 export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) => Promise<Response> {
   const { link, sseSends, staticDir } = deps
   const tearDown = deps.tearDownSession ?? ((taskId: string) => void tearDownTaskSession(taskId))
@@ -211,6 +273,9 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
   }
 }
 
+/** state.json keys for the board quick-action prompt TEMPLATES (the
+ *  user-editable half — kobe's clauses are appended client-side and are
+ *  not stored). Host-side so the TUI and any future surface share them. */
 const QUICK_PROMPT_KEYS = {
   review: "boardPrompt.review",
   pr: "boardPrompt.pr",
@@ -279,6 +344,7 @@ export async function takeoverPort(port: number, healthPath: string = WEB_HEALTH
     try {
       process.kill(pid, "SIGTERM")
     } catch {
+      /* already gone */
     }
   }
   const deadline = Date.now() + 2000
@@ -291,11 +357,18 @@ export async function takeoverPort(port: number, healthPath: string = WEB_HEALTH
 export async function createBridgeServer(opts: BridgeServerOptions = {}): Promise<BridgeServer> {
   const port = opts.port ?? 5173
   const staticDir = opts.staticDir ? normalize(opts.staticDir) : undefined
+  // Free the port BEFORE dialing the daemon: on an upgrade path the previous
+  // holder can be an old daemon-hosted kobe-web (the pre-bridge layout) —
+  // killing it first means the daemon spawned below is already the new build.
   if (opts.takeover !== false) await takeoverPort(port)
 
   const link = new DaemonLink()
   await link.start()
 
+  // One bridge-level fan-out: every open SSE stream gets channel pushes, and
+  // a daemon connect/disconnect transition re-sends the full snapshot (the
+  // SPA reads `connected` from it — that's how the dashboard shows "daemon
+  // down" while the bridge itself stays up).
   const sseSends = new Set<SseSend>()
   link.onEvent((event) => {
     for (const send of sseSends) send("channel", event)
@@ -304,7 +377,14 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
     for (const send of sseSends) send("snapshot", link.snapshot())
   })
 
+  // Bind loopback by default so the dashboard is never exposed on all
+  // interfaces (Bun.serve defaults to 0.0.0.0). KOBE_WEB_HOST overrides for the
+  // rare deliberate LAN case. localhost browsers + the Vite proxy reach
+  // 127.0.0.1 fine, so this is invisible in normal use.
   const hostname = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
+  // When deliberately bound to a LAN host, that host's Origin must pass the
+  // cross-origin guard too (loopback is always allowed); a loopback bind needs
+  // no extra allowance.
   const allowedHost = allowedHostForBindHost(hostname)
   const handle = createRequestHandler({ link, sseSends, staticDir, allowedHost })
   const server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: handle })
