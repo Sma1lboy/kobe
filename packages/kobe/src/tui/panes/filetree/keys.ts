@@ -4,7 +4,8 @@
  * Bindings (only when `focused()` is true):
  *   - `j` / `down`         next row
  *   - `k` / `up`           previous row
- *   - `1` / `2` / `3`      switch to All / Changes / Checks tab
+ *   - `[` / `]`            cycle All / Changes tab
+ *   - `h` / `l`            collapse / expand hierarchy
  *   - `enter` / `return`   open current file in nvim/vim — `-d` diff vs HEAD
  *                          when changed, plain edit otherwise; falls back to
  *                          our opentui read-only preview (calls `onOpenFile`)
@@ -12,102 +13,34 @@
  *   - `p`                  create PR prompt (Ops host only)
  *   - `r`                  refresh (re-run git commands)
  *
- * The bindings reach into a tiny controller object the parent
- * (`FileTree.tsx`) exposes — same shape as the sidebar's
- * `useSidebarBindings` so anyone reading the codebase recognises the
- * pattern. The controller indirection lets the FileTree component
- * avoid passing 5 separate setters into this hook.
+ * The id → action map itself is the framework-free `keys-core.ts`
+ * (shared with the React port); this file owns only the Solid
+ * registration via `useBindings` — which transitively imports
+ * `@opentui/solid`, hence the split. Tear-down happens automatically via
+ * `useBindings`'s `onCleanup` hook when the host component unmounts.
  *
  * No multi-key chords. The brief explicitly waives vim niceties for v1
  * — adding `g g` etc. would mean lifting `controller.ts`-style chord
  * machinery from the sidebar, and it's not worth the LoC for this
  * pane until we have at least two chords that need it.
- *
- * Why a separate file: keeps `useBindings` (which transitively imports
- * `@opentui/solid` and therefore `@opentui/core`) out of the file tree
- * pane's pure-logic modules (`git.ts`). Tests that exercise parsing
- * import `git.ts` directly; tests that exercise navigation logic
- * exercise the controller from `FileTree.tsx` indirectly via the host.
  */
 
 import type { Accessor } from "solid-js"
-import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
+import { type FileTreeController, fileTreeBindings } from "./keys-core"
 
-/** Tab identifiers — kept here so `keys.ts` doesn't import from the
- * component file (which would create a circular import once `FileTree.tsx`
- * imports the hook from here). */
-export type FileTreeTab = "all" | "changes"
+export { TAB_ORDER } from "./keys-core"
+export type { FileTreeTab } from "./keys-core"
 
-/** Tab order for `[`/`]` cycling. Same source-order as the visible chips. */
-export const TAB_ORDER: readonly FileTreeTab[] = ["all", "changes"]
-
-export type FileTreeBindingsOpts = {
+export type FileTreeBindingsOpts = FileTreeController & {
   /** Whether the pane should respond to keys. Default `() => true`. */
   focused: Accessor<boolean>
-  /** Move the cursor to the next visible row. */
-  moveDown: () => void
-  /** Move the cursor to the previous visible row. */
-  moveUp: () => void
-  /** Switch to a tab (used both by mouse-clicks and the cycle handler below). */
-  setTab: (tab: FileTreeTab) => void
-  /** Returns the currently active tab — the cycle handler reads it to
-   *  know where `[`/`]` should land relative to the current selection. */
-  currentTab: Accessor<FileTreeTab>
-  /** Activate the row under the cursor (calls `onOpenFile` upstream). */
-  openCurrent: () => void
-  /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
-  mentionCurrent?: () => void
-  /** `p` — inject the Create PR prompt into the engine pane (Ops host only). */
-  createPR?: () => void
-  /** Hand the current row off to the OS default app (audio, video, PDF). */
-  openExternal: () => void
-  /** Force a reload of the current tab's data. */
-  refresh: () => void
-  /** `l` — expand current dir / descend into it / open file. */
-  expandOrDescend: () => void
-  /** `h` — collapse current dir or jump to parent. */
-  collapseOrParent: () => void
 }
 
-/**
- * Register the pane's local key bindings. Tear-down happens
- * automatically via `useBindings`'s `onCleanup` hook when the host
- * component unmounts.
- */
+/** Register the pane's local key bindings. */
 export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
   useBindings(() => ({
     enabled: opts.focused(),
-    bindings: bindByIds({
-      // Direction-multiplexed ids dispatch on the matched chord's SLOT
-      // (its index in the id's keys array, threaded through by
-      // bindByIds → dispatchKeyEvent), never on evt.name — that's what
-      // makes them user-rebindable. Layouts live in SLOT_CONTRACTS
-      // (lib/keymap-overrides.ts):
-      //   files.nav        [down, up] pairs       (default j, k, down, up)
-      //   files.hierarchy  [collapse, expand] pairs (default h, l, left, right)
-      //   files.tab        [previous, next] pairs  (default [, ])
-      "files.nav": (_evt, slot) => {
-        if ((slot ?? 0) % 2 === 0) opts.moveDown()
-        else opts.moveUp()
-      },
-      "files.hierarchy": (_evt, slot) => {
-        if ((slot ?? 0) % 2 === 0) opts.collapseOrParent()
-        else opts.expandOrDescend()
-      },
-      "files.tab": (_evt, slot) => {
-        const cur = opts.currentTab()
-        const idx = TAB_ORDER.indexOf(cur)
-        if (idx < 0) return
-        const delta = (slot ?? 0) % 2 === 0 ? -1 : 1
-        const next = TAB_ORDER[(idx + delta + TAB_ORDER.length) % TAB_ORDER.length]
-        if (next) opts.setTab(next)
-      },
-      "files.open": () => opts.openCurrent(),
-      "files.mention": () => opts.mentionCurrent?.(),
-      "files.createPR": () => opts.createPR?.(),
-      "files.openExternal": () => opts.openExternal(),
-      "files.refresh": () => opts.refresh(),
-    }),
+    bindings: fileTreeBindings(opts),
   }))
 }
