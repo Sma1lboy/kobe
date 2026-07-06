@@ -43,6 +43,7 @@ import { useTerminalBindings } from "./keys"
 import { type PtyRegistry, getDefaultPtyRegistry } from "./registry"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "./terminal-render"
+import { type CellPoint, type SelectionRange, extractSelection, overlaySelection } from "./terminal-selection"
 import { useTerminalPty } from "./use-terminal-pty"
 import { computeViewport, viewportCursor } from "./viewport"
 
@@ -205,8 +206,9 @@ export function Terminal(props: TerminalProps): JSXElement {
   const visibleCursor = createMemo(() => viewportCursor(cursor(), scrollOffset(), visibleRange()))
 
   const cursorRows = createMemo(() => {
+    const withSelection = overlaySelection(visibleRows(), selection(), visibleRange().start, bodyGeometry()?.cols ?? 80)
     const c = focused() ? visibleCursor() : null
-    return overlayCursor(visibleRows(), c)
+    return overlayCursor(withSelection, c)
   })
 
   // Flatten every visible row into ONE `StyledText` separated by
@@ -235,25 +237,34 @@ export function Terminal(props: TerminalProps): JSXElement {
   // and re-fires effects that read the body's live `width/height`.
   const dims = useTerminalDimensions()
 
-  // Copy-on-select (tmux convention): the snapshot <text> is `selectable`,
-  // opentui's renderer drives the mouse-drag selection itself, and
-  // `finishSelection` emits "selection" with isDragging=false — at that
-  // moment the selected text goes to the system clipboard via OSC52.
-  // The event is renderer-global; with several panes mounted (splits)
-  // every listener sees the same selection and copies the same string,
-  // so no per-pane gating is needed.
-  const onSelectionEvent = (sel: { isDragging: boolean; getSelectedText(): string }): void => {
-    if (sel.isDragging) return
-    const text = sel.getSelectedText()
-    // Dual delivery (see clipboard-copy.ts): pbcopy-style local pipe for
-    // terminals that ship with OSC52 disabled (iTerm2) or unsupported
-    // (Terminal.app), plus OSC52 for SSH/remote sessions.
-    if (text.length > 0) copyTextToSystemClipboard(text, (t) => renderer.copyToClipboardOSC52(t))
-  }
-  renderer.on("selection", onSelectionEvent)
-  onCleanup(() => {
-    renderer.off("selection", onSelectionEvent)
+  // Copy-on-select, GRID-based (tmux convention; see terminal-selection.ts
+  // for why opentui's flow selection can't work over this pane). Anchor
+  // and head live in absolute snapshot coordinates so the highlight
+  // survives every frame refresh and scrollback move; releasing a drag
+  // copies the cells the highlight showed — dual delivery via
+  // clipboard-copy.ts (pbcopy pipe + OSC52).
+  const [selAnchor, setSelAnchor] = createSignal<CellPoint | null>(null)
+  const [selHead, setSelHead] = createSignal<CellPoint | null>(null)
+  let selDragging = false
+  const selection = createMemo<SelectionRange | null>(() => {
+    const anchor = selAnchor()
+    const head = selHead()
+    return anchor && head ? { anchor, head } : null
   })
+  const cellFromEvent = (evt: { x?: number; y?: number }): CellPoint | null => {
+    const body = bodyRef()
+    const geometry = bodyGeometry()
+    if (!body || !geometry) return null
+    const col = Math.min(geometry.cols - 1, Math.max(0, (evt.x ?? 0) - body.screenX))
+    const viewRow = Math.min(bodyRows() - 1, Math.max(0, (evt.y ?? 0) - body.screenY))
+    return { row: visibleRange().start + viewRow, col }
+  }
+  const copySelection = (): void => {
+    const range = selection()
+    if (!range) return
+    const text = extractSelection(snapshot(), range)
+    if (text.trim().length > 0) copyTextToSystemClipboard(text, (t) => renderer.copyToClipboardOSC52(t))
+  }
 
   // Layout-tick — bumped by the body box's real `onSizeChange` (fires once
   // Yoga computes a new size) so effects reading non-reactive geometry
@@ -335,7 +346,34 @@ export function Terminal(props: TerminalProps): JSXElement {
       flexGrow={1}
       overflow="hidden"
       backgroundColor={theme.background}
-      onMouseUp={() => setFocusedLocal(true)}
+      onMouseDown={(evt) => {
+        if ((evt as { button?: number }).button !== 0) return
+        const cell = cellFromEvent(evt as { x?: number; y?: number })
+        if (!cell) return
+        selDragging = true
+        setSelAnchor(cell)
+        setSelHead(cell)
+      }}
+      onMouseDrag={(evt) => {
+        if (!selDragging) return
+        const cell = cellFromEvent(evt as { x?: number; y?: number })
+        if (cell) setSelHead(cell)
+      }}
+      onMouseUp={() => {
+        setFocusedLocal(true)
+        if (!selDragging) return
+        selDragging = false
+        const anchor = selAnchor()
+        const head = selHead()
+        if (anchor && head && (anchor.row !== head.row || anchor.col !== head.col)) {
+          // Real drag: copy and keep the highlight (cleared on next click).
+          copySelection()
+        } else {
+          // Plain click: clear any previous selection.
+          setSelAnchor(null)
+          setSelHead(null)
+        }
+      }}
       onMouseScroll={(evt) => {
         // Native terminal wheel semantics, in emulator order: the app
         // enabled mouse tracking → forward the wheel (claude/vim scroll
@@ -417,7 +455,6 @@ export function Terminal(props: TerminalProps): JSXElement {
           <text
             fg={theme.text}
             wrapMode="none"
-            selectable={true}
             ref={(r: TextRenderable) => {
               setSnapshotTextRef(r)
             }}
