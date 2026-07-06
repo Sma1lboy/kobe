@@ -14,10 +14,12 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
-import type { Task } from "../../types/task.ts"
+import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import { HelpDialog } from "../component/help-dialog"
+import { SettingsDialog } from "../component/settings-dialog"
 import { type PaneId, useFocus } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
+import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
@@ -50,6 +52,7 @@ function taskWorktree(task: Task | undefined): string | null {
 function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme } = useTheme()
   const dialog = useDialog()
+  const kv = useKV()
   const focus = useFocus()
   const renderer = useRenderer()
   const dims = useTerminalDimensions()
@@ -143,8 +146,23 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     if (ok) exitApp()
   }
 
+  // Full-page swap — like the tmux `chattab` surface opening a dedicated
+  // `kobe settings` window, not an overlay dialog stacked over the 3-pane
+  // row. This single process has no tmux window to spawn into, so the
+  // page swap happens in place: `settingsOpen` replaces the whole layout,
+  // same as tmux switching to the settings window. Theme/transparent/focus
+  // accent changes apply centrally via host-boot's UiPrefsSync, so there's
+  // no workspace-pane refresh to trigger on close.
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
+  function openSettings(): void {
+    setSettingsOpen(true)
+  }
+  function closeSettings(): void {
+    setSettingsOpen(false)
+  }
+
   useBindings(() => ({
-    enabled: dialog.stack.length === 0,
+    enabled: dialog.stack.length === 0 && !settingsOpen(),
     bindings: [
       ...bindByIds({
         "help.open": () => HelpDialog.show(dialog),
@@ -156,13 +174,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     ],
   }))
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !focus.is("sidebar")(),
+    enabled: dialog.stack.length === 0 && !settingsOpen() && !focus.is("sidebar")(),
     bindings: bindByIds({
       "focus.sidebar": () => focus.setFocused("sidebar"),
     }),
   }))
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && focus.is("sidebar")(),
+    enabled: dialog.stack.length === 0 && !settingsOpen() && focus.is("sidebar")(),
     bindings: bindByIds({
       // Slot dispatch (SLOT_CONTRACTS): slot 0 = quit confirm, slot 1 =
       // hard exit — so user rebinds keep both verbs without inspecting
@@ -174,65 +192,102 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         }
         void quit()
       },
+      "settings.open.sidebar": () => openSettings(),
     }),
+  }))
+  // Page-level close keys for the settings swap — mirrors settings/host.tsx's
+  // standalone page (no enclosing dialog stack to own esc/Ctrl+C, so the
+  // page binds them itself; gated on an empty dialog stack so a sub-dialog,
+  // e.g. the engine-command editor, keeps esc/typing for itself).
+  useBindings(() => ({
+    enabled: settingsOpen() && dialog.stack.length === 0,
+    bindings: [
+      { key: "escape", cmd: closeSettings },
+      { key: "q", cmd: closeSettings },
+      { key: "ctrl+c", cmd: closeSettings },
+    ],
   }))
 
   return (
-    <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
-      <box
-        width={SIDEBAR_WIDTH}
-        flexShrink={0}
-        borderColor={focus.is("sidebar")() ? theme.focusAccent : theme.border}
-        onMouseUp={() => focus.setFocused("sidebar")}
-      >
-        <Sidebar
-          // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
-          // without this, Sidebar's imperative self-width (32) overflows the
-          // inner 30 and the cursor row's background paints over the border.
-          width={() => SIDEBAR_WIDTH - 2}
-          tasks={tasks}
-          selectedId={selectedId}
-          onSelect={selectTask}
-          onActivate={(id) => void activateTask(id)}
-          engineState={props.orchestrator.engineStateSignal()}
-          taskJobs={props.orchestrator.taskJobsSignal()}
-          worktreeChanges={props.orchestrator.worktreeChangesSignal()}
-          focused={focus.is("sidebar")}
-          onHoverChange={(hover) => setSidebarHover(hover)}
-        />
-      </box>
+    <Show
+      when={!settingsOpen()}
+      fallback={
+        <scrollbox
+          flexGrow={1}
+          backgroundColor={theme.background}
+          paddingTop={1}
+          verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+        >
+          <SettingsDialog kv={kv} orchestrator={props.orchestrator} standalone={true} onClose={closeSettings} />
+        </scrollbox>
+      }
+    >
+      <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
+        <box
+          width={SIDEBAR_WIDTH}
+          flexShrink={0}
+          borderColor={focus.is("sidebar")() ? theme.focusAccent : theme.border}
+          onMouseUp={() => focus.setFocused("sidebar")}
+        >
+          <Sidebar
+            // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
+            // without this, Sidebar's imperative self-width (32) overflows the
+            // inner 30 and the cursor row's background paints over the border.
+            width={() => SIDEBAR_WIDTH - 2}
+            tasks={tasks}
+            selectedId={selectedId}
+            onSelect={selectTask}
+            onActivate={(id) => void activateTask(id)}
+            engineState={props.orchestrator.engineStateSignal()}
+            taskJobs={props.orchestrator.taskJobsSignal()}
+            worktreeChanges={props.orchestrator.worktreeChangesSignal()}
+            focused={focus.is("sidebar")}
+            onHoverChange={(hover) => setSidebarHover(hover)}
+          />
+        </box>
 
-      <box
-        flexGrow={1}
-        flexShrink={1}
-        borderColor={focus.is("workspace")() ? theme.focusAccent : theme.border}
-        onMouseUp={() => focus.setFocused("workspace")}
-      >
-        <ShowWorkspace task={selectedTask()} worktree={worktree()} focused={focus.is("workspace")} />
-      </box>
+        <box
+          flexGrow={1}
+          flexShrink={1}
+          borderColor={focus.is("workspace")() ? theme.focusAccent : theme.border}
+          onMouseUp={() => focus.setFocused("workspace")}
+        >
+          <ShowWorkspace
+            task={selectedTask()}
+            worktree={worktree()}
+            orchestrator={props.orchestrator}
+            focused={focus.is("workspace")}
+          />
+        </box>
 
-      <box
-        width={worktreeToolsWidth()}
-        flexShrink={0}
-        borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
-        onMouseUp={() => focus.setFocused("files")}
-      >
-        <FileTree
-          worktreePath={worktree}
-          focused={focus.is("files")}
-          onOpenFile={(relPath) => {
-            const root = worktree()
-            if (root) openExternally(join(root, relPath))
-          }}
-        />
-      </box>
+        <box
+          width={worktreeToolsWidth()}
+          flexShrink={0}
+          borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
+          onMouseUp={() => focus.setFocused("files")}
+        >
+          <FileTree
+            worktreePath={worktree}
+            focused={focus.is("files")}
+            onOpenFile={(relPath) => {
+              const root = worktree()
+              if (root) openExternally(join(root, relPath))
+            }}
+          />
+        </box>
 
-      <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
-    </box>
+        <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
+      </box>
+    </Show>
   )
 }
 
-function ShowWorkspace(props: { task: Task | undefined; worktree: string | null; focused: () => boolean }) {
+function ShowWorkspace(props: {
+  task: Task | undefined
+  worktree: string | null
+  orchestrator: RemoteOrchestrator
+  focused: () => boolean
+}) {
   const { theme } = useTheme()
   return (
     <Show
@@ -254,6 +309,19 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
           taskId={props.task?.id ?? path}
           worktree={path}
           command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
+          vendor={props.task?.vendor ?? DEFAULT_TASK_VENDOR}
+          modelEffort={props.task?.modelEffort}
+          onChooseEngine={
+            props.task
+              ? (vendor) => {
+                  const taskId = props.task?.id
+                  if (!taskId) return
+                  void props.orchestrator
+                    .setVendor(taskId, vendor)
+                    .catch((err) => console.error("[kobe workspace] task.setVendor failed:", err))
+                }
+              : undefined
+          }
           focused={props.focused}
         />
       )}
