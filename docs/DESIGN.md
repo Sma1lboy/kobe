@@ -304,16 +304,16 @@ Note: vibe-kanban supports many agents because it has to. We support one because
 
 ## 8. Tech stack — recommendation
 
-**Locked**: TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun (matches opencode).
+**Locked**: TypeScript + `@opentui/core` + Bun. **UI framework: migrating `@opentui/solid`/Solid.js → `@opentui/react`/React 19** (owner decision 2026-07-05, tracked as issue #15).
 
-Rationale: §7.1 alone justifies it — 70% of the TUI shell is reusable from opencode. The user has already written Solid+opentui code for this domain (`dialog-diff.tsx`). Subprocess management is fine in Node, JSONL parsing is trivial.
+The original 2026-05-08 lock chose Solid to reuse opencode's TUI shell (§7.1); that reuse is spent — the shell has long diverged into kobe-owned code. The 2026-07-05 re-litigation picks React for maintainability: the owner's primary framework, the larger ecosystem, and better AI-agent familiarity when generating/reviewing TUI code. `@opentui/react` (0.4.x, React ≥ 19.2) is the official binding; migration runs phased (core 0.2→0.4 bump first, then per-pane framework swap) so every step ships a working product.
 
-Rejected paths:
-- **Go + Bubble Tea**: agent-deck-style. Loses the §7.1 reuse. Cleaner subprocess story but not where the bulk of work lives.
+Rejected paths (unchanged):
+- **Go + Bubble Tea**: agent-deck-style. Cleaner subprocess story but a full rewrite.
 - **Rust + Ratatui**: maximum perf for zero benefit at this scope.
 - **Split front/back (Go TUI + TS backend)**: more complexity, not less — adds IPC seam between two processes that should be one.
 
-Decision is locked; do not re-open.
+Until the migration completes, Solid remains in-tree; new panes follow whichever framework their surrounding slice uses (don't mix inside one pane).
 
 ---
 
