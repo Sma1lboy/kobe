@@ -1,11 +1,11 @@
 /**
  * Experimental native opentui workspace (`KOBE_TUI=1`).
  *
- * This is the v0.5-shaped single-process app: Sidebar | Chat | Files.
- * The default product path stays the tmux handover; this host is intentionally
- * gated behind `KOBE_TUI=1` while the headless chat backend proves out.
- * No embedded Terminal pane in v1 — the @xterm/headless-backed pane's
- * rendering bled outside its box; it returns once that's fixed.
+ * Single-process app: Sidebar | engine Terminal | Files. The center column
+ * is the terminal-in-the-middle seam (issue #16) — an in-process PTY
+ * running the task's real interactive engine CLI (claude/codex), so kobe
+ * wraps the engine's own TUI instead of re-rendering its stream. The
+ * default product path stays the tmux handover while this proves out.
  */
 
 import { join } from "node:path"
@@ -13,6 +13,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import type { Task } from "../../types/task.ts"
 import { HelpDialog } from "../component/help-dialog"
 import { type PaneId, useFocus } from "../context/focus"
@@ -25,6 +26,7 @@ import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
+import { Terminal } from "../panes/terminal/Terminal"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -226,13 +228,17 @@ function ShowWorkspace(props: { task: Task | undefined; worktree: string | null;
       keyed
     >
       {(path) => (
-        // Center seam for the embedded-terminal tab (issue #16): the native
-        // chat pane was removed with the AI SDK layer; the in-process PTY
-        // terminal running the real engine CLI mounts here next.
-        <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={1}>
-          <text fg={theme.text}>{props.task?.title ?? path}</text>
-          <text fg={theme.textMuted}>{t("workspace.terminalComing")}</text>
-        </box>
+        // The terminal-in-the-middle seam (issue #16): the center column IS
+        // the engine — an in-process PTY (Bun.spawn terminal) running the
+        // real interactive CLI, so kobe never re-renders the engine's own
+        // TUI. `keyed` remounts per worktree, giving each task its own
+        // registry-backed PTY (acquire reuses a live one on switch-back).
+        <Terminal
+          cwd={() => path}
+          taskId={() => props.task?.id ?? path}
+          command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
+          focused={props.focused}
+        />
       )}
     </Show>
   )
