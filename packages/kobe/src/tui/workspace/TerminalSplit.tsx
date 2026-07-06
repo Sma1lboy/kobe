@@ -25,6 +25,7 @@
  * over once a split exists.
  */
 
+import type { RGBA } from "@opentui/core"
 import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
@@ -153,13 +154,23 @@ export function TerminalSplit(props: {
    * outer wrapping. The divider a focused LEAF owns lights up in the
    * focus accent (the first leaf owns none; its cursor is the signal). */
 
+  // NOTE: `borderColor` must be ABSENT (not undefined) on divider-less
+  // boxes — opentui's Box coerces `border: false` to `true` (a full
+  // frame) whenever any border styling lands, both in the constructor
+  // and in the `borderColor` setter (`initializeBorder`), and the setter
+  // fires even for undefined because parseColor mints a fresh RGBA every
+  // call. Hence the conditional spread. This coercion is what drew the
+  // phantom frames around the first leaf and the group (owner
+  // screenshot, 2026-07-06).
+  const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
+    divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
+
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
     <box
       flexGrow={1}
       flexShrink={1}
       flexBasis={0}
-      border={divider ? [divider] : false}
-      borderColor={leafFocused(leaf.id) ? theme.focusAccent : theme.border}
+      {...dividerProps(divider, () => (leafFocused(leaf.id) ? theme.focusAccent : theme.border))}
       onMouseUp={() => update(focusLeaf(state(), leaf.id))}
     >
       <Terminal
@@ -182,8 +193,7 @@ export function TerminalSplit(props: {
         flexGrow={1}
         flexShrink={1}
         flexBasis={0}
-        border={divider ? [divider] : false}
-        borderColor={theme.border}
+        {...dividerProps(divider, () => theme.border)}
       >
         <For each={node.children}>
           {(child, i) => renderNode(child, i() > 0 ? (node.orientation === "row" ? "left" : "top") : undefined)}
