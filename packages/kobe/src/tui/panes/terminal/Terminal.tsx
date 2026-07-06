@@ -330,13 +330,23 @@ export function Terminal(props: TerminalProps): JSXElement {
       backgroundColor={theme.background}
       onMouseUp={() => setFocusedLocal(true)}
       onMouseScroll={(evt) => {
-        // Wheel = local scrollback, same channel as ctrl+pgup/pgdn (the
-        // scrollback view is a kobe-rendered widget, not shell input).
-        const scroll = (evt as { scroll?: { direction: string; delta: number } }).scroll
-        if (!scroll) return
+        // Native terminal wheel semantics, in emulator order: the app
+        // enabled mouse tracking → forward the wheel (claude/vim scroll
+        // themselves); fullscreen app without it → arrow-key fallback
+        // (both inside pty.wheel); ONLY otherwise scroll kobe's local
+        // scrollback, like a normal terminal over a plain shell.
+        const e = evt as { x?: number; y?: number; scroll?: { direction: string; delta: number } }
+        const scroll = e.scroll
+        if (!scroll || (scroll.direction !== "up" && scroll.direction !== "down")) return
+        const handle = pty()
+        const body = bodyRef()
+        if (handle && !handle.killed && body) {
+          const col = Math.max(1, (e.x ?? 0) - body.screenX + 1)
+          const row = Math.max(1, (e.y ?? 0) - body.screenY + 1)
+          if (handle.wheel(scroll.direction, col, row)) return
+        }
         const step = Math.max(1, scroll.delta || 1) * WHEEL_SCROLL_LINES
-        if (scroll.direction === "up") scrollBy(-step)
-        else if (scroll.direction === "down") scrollBy(step)
+        scrollBy(scroll.direction === "up" ? -step : step)
       }}
     >
       {/* Scroll affordance — only rendered when the user has scrolled

@@ -19,6 +19,7 @@ export class MockTaskPty implements TaskPtyLike {
   private readonly exitListeners = new Set<() => void>()
   /** Pasted payloads, observable by tests. */
   readonly pastes: string[] = []
+  readonly wheels: { direction: "up" | "down"; col: number; row: number }[] = []
   private _cols: number
   private _rows: number
   private _cursor: CursorPos | null = null
@@ -107,6 +108,12 @@ export class MockTaskPty implements TaskPtyLike {
   paste(text: string): void {
     if (this._killed) return
     this.pastes.push(text)
+  }
+
+  wheel(direction: "up" | "down", col: number, row: number): boolean {
+    if (this._killed) return false
+    this.wheels.push({ direction, col, row })
+    return false
   }
 
   onExit(cb: () => void): () => void {

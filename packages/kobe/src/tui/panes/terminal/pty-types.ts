@@ -55,6 +55,16 @@ export interface TaskPtyLike {
    * on the last snapshot (revival checklist #5).
    */
   onExit(cb: () => void): () => void
+  /**
+   * Route a mouse-wheel tick the way a real terminal emulator would:
+   * the app enabled mouse tracking → encode an SGR wheel event at
+   * (col,row) (1-based, pane-local) and forward it — the app scrolls
+   * itself (claude's transcript, less, vim…); app on the alternate
+   * screen without mouse tracking → 3× arrow-key fallback. Returns
+   * false when the app asked for neither — the CALLER then scrolls its
+   * local scrollback view, exactly like a normal terminal's wheel.
+   */
+  wheel(direction: "up" | "down", col: number, row: number): boolean
   resize(cols: number, rows: number): void
   capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null

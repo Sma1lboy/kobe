@@ -146,6 +146,38 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     this.write(bracketed ? `\x1b[200~${text}\x1b[201~` : text)
   }
 
+  wheel(direction: "up" | "down", col: number, row: number): boolean {
+    if (this._killed) return false
+    try {
+      const modes = this.term.modes
+      if (modes.mouseTrackingMode !== "none") {
+        // SGR (1006) wheel encoding — xterm.js doesn't expose which
+        // encoding the app negotiated, and every current TUI (claude,
+        // vim, less with --mouse) requests SGR, so it's assumed.
+        const btn = direction === "up" ? 64 : 65
+        this.write(`\x1b[<${btn};${Math.max(1, col)};${Math.max(1, row)}M`)
+        return true
+      }
+      if (this.term.buffer.active.type === "alternate") {
+        // Fullscreen app without mouse reporting: the classic emulator
+        // fallback of 3 arrow keys per wheel tick.
+        const arrow =
+          modes.applicationCursorKeysMode === true
+            ? direction === "up"
+              ? "\x1bOA"
+              : "\x1bOB"
+            : direction === "up"
+              ? "\x1b[A"
+              : "\x1b[B"
+        this.write(arrow.repeat(3))
+        return true
+      }
+    } catch {
+      /* mode probe is best-effort */
+    }
+    return false
+  }
+
   onData(cb: DataListener): () => void {
     this.listeners.add(cb)
     if (this.snapshot.length > 0) {
