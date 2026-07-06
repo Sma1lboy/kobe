@@ -243,6 +243,39 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     description: "Previous chat tab",
     hint: { keys: "ctrl+[", label: "prev tab", status: false },
   },
+  {
+    // tmux-style splits inside the active terminal tab (issue #16).
+    // `ctrl+\` reads as a vertical divider → new pane to the RIGHT;
+    // `ctrl+=` reads as horizontal strokes → new pane BELOW. Both need
+    // the kitty keyboard protocol (legacy terminals can't encode
+    // ctrl+=; ctrl+\ would be SIGQUIT) — see docs/KEYBINDINGS.md.
+    id: "chat.pane.split-right",
+    scope: "workspace",
+    keys: ["ctrl+\\"],
+    category: "Workspace",
+    description: "Split pane right (shell)",
+    hint: { keys: "ctrl+\\", label: "split →", status: false },
+  },
+  {
+    id: "chat.pane.split-down",
+    scope: "workspace",
+    keys: ["ctrl+="],
+    category: "Workspace",
+    description: "Split pane down (shell)",
+    hint: { keys: "ctrl+=", label: "split ↓", status: false },
+  },
+  {
+    // Pane-focus cycle in reading order (tmux `prefix o`). F3 because
+    // every useful ctrl+letter is either engine passthrough (owner
+    // decision 2026-07-06) or taken; F-keys already carry the tab
+    // vocabulary here (F2 rename).
+    id: "chat.pane.focus-next",
+    scope: "workspace",
+    keys: ["f3"],
+    category: "Workspace",
+    description: "Focus next split pane",
+    hint: { keys: "f3", label: "next pane", status: false },
+  },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
   // 1-9 are bare-letter chords by intent: while a picker is showing, the

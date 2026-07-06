@@ -154,6 +154,15 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   // ctrl+e instead, since the keymap layer can't distinguish shift+letter
   // from the bare letter; see docs/KEYBINDINGS.md's KOB-74 decision log).
   "ctrl+e",
+  // Split panes inside the tab (tmux % / "): ctrl+\ splits right (the
+  // glyph is a vertical divider), ctrl+= splits down (horizontal strokes),
+  // f3 cycles pane focus (tmux prefix+o). Reserving ctrl+\ costs the
+  // embedded shell SIGQUIT — accepted trade, documented in
+  // docs/KEYBINDINGS.md. Both chords need the kitty keyboard protocol
+  // (legacy terminals cannot encode ctrl+= at all).
+  "ctrl+\\",
+  "ctrl+=",
+  "f3",
   // Terminal reset (confirm-gated).
   "f5",
 ] as const
