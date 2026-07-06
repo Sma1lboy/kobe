@@ -94,12 +94,9 @@ export class RemoteOrchestrator {
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
   private readonly setKeybindingsRevSig: (next: number | null) => void
-  // Framework-free twins of the two signals above (issue #15 G3): React
-  // hosts subscribe via useSyncExternalStore-compatible stores because
-  // solid-js reactivity is DEAD outside browser-conditions/plugin-swapped
-  // runtimes (node/vitest and plain `bun` resolve the SSR server build).
-  // The setter wrappers below dual-write signal + store — single writer,
-  // no drift. Solid consumers keep the accessor facade untouched.
+  // Framework-free twins of the two signals above (issue #15 G3) — React
+  // hosts need stores because solid-js reactivity is inert outside
+  // reactive-solid runtimes. Setters dual-write; single writer, no drift.
   private readonly uiPrefsStoreInner = createExternalStore<UiPrefsPayload | null>(null)
   private readonly keybindingsRevStoreInner = createExternalStore<number | null>(null)
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
@@ -377,10 +374,9 @@ export class RemoteOrchestrator {
   }
 
   /**
-   * Framework-free twin of {@link uiPrefsSignal} for React hosts
-   * (`src/tui-react/lib/host-boot.tsx`): a subscribe/get pair that works in
-   * every runtime, including ones where solid-js resolves to the inert SSR
-   * build. Same values, same nullability, one writer (the setter dual-writes).
+   * Framework-free twin of {@link uiPrefsSignal} for React hosts: a
+   * subscribe/get pair that notifies in every runtime. Same values,
+   * same nullability, one writer (the setter dual-writes).
    */
   uiPrefsStore(): ExternalStore<UiPrefsPayload | null> {
     return this.uiPrefsStoreInner
