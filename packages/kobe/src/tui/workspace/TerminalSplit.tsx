@@ -13,7 +13,7 @@
  * already survive via the registry's acquire-reuse).
  */
 
-import { For, type JSXElement, createSignal } from "solid-js"
+import { For, type JSXElement, createEffect, createSignal, on } from "solid-js"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
@@ -64,6 +64,17 @@ export function TerminalSplit(props: {
 }): JSXElement {
   const { theme } = useTheme()
   const [state, setState] = createSignal<SplitState>(splitsByTab.get(props.tabKey) ?? initialSplit())
+  // Track tab switches: the host renders ONE long-lived body and swaps
+  // props (bcc59e90 killed the remount-per-switch), so `tabKey` changes
+  // in place and the layout must follow it — an init-only read would
+  // freeze every tab on the first tab's layout.
+  createEffect(
+    on(
+      () => props.tabKey,
+      (key) => setState(splitsByTab.get(key) ?? initialSplit()),
+      { defer: true },
+    ),
+  )
   const update = (next: SplitState): void => {
     splitsByTab.set(props.tabKey, next)
     setState(next)
