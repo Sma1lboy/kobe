@@ -3,6 +3,7 @@
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsxImportSource": "@opentui/solid",
     "types": ["bun"],
     "strict": true,
     "noUncheckedIndexedAccess": false,
