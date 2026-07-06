@@ -94,6 +94,8 @@ function mockReader(): EngineHistoryReader {
       timestamp: new Date().toISOString(),
       blocks: [{ type: "text", text: `实时追加的第 ${n} 条消息 —— mtime 前进触发 refetch` }],
     })
+    // Cap the fake transcript so a mock left running for days stays bounded.
+    if (grown.length > 500) grown.splice(0, grown.length - 500)
     mtime += 1
   }, 2500)
   timer.unref?.()
