@@ -312,22 +312,25 @@ dialog already uses to cycle its own engine selector (`ctrl+e` in
 `component/new-task-dialog/dialog.tsx`). Registration: `chat.tab.chooseEngine` in
 `context/keybindings-chat.ts`; reserved from PTY passthrough in `panes/terminal/keys-pure.ts`.
 
-### Terminal split chords — `ctrl+\` / `ctrl+=` / `F3`
+### Workspace split chords — `ctrl+\` / `ctrl+=` / `F3` (`workspace.split.*`)
 
 tmux splits with `prefix %` (side-by-side) and `prefix "` (stacked); kobe has no prefix
-key, so the embedded terminal's splits get direct chords (owner request 2026-07-06):
-`ctrl+\` reads as a vertical divider → new shell pane to the RIGHT; `ctrl+=` reads as
-horizontal strokes → new shell pane BELOW. Groups nest like tmux panes (same-orientation
-splits become siblings; cross-orientation splits nest a group) — model in
-`workspace/terminal-split-core.ts`, renderer in `workspace/TerminalSplit.tsx`. `F3`
-cycles pane focus in reading order (tmux `prefix o`): every useful ctrl+letter is either
-engine passthrough (owner decision 2026-07-06) or taken, and F-keys already carry the
-tab vocabulary (F2 rename). Costs accepted and documented:
+key, so splits get direct chords (owner request 2026-07-06): `ctrl+\` reads as a
+vertical divider → new leaf to the RIGHT; `ctrl+=` reads as horizontal strokes → new
+leaf BELOW. Groups nest like tmux panes (same-orientation splits become siblings;
+cross-orientation splits nest a group). **Naming is deliberately content-neutral**
+(owner emphasis, twice): the split tree (`workspace/split-core.ts`) is generic over
+leaf content ("leaf", never "pane" — that word is taken by the outer TUI panes, see
+CONTEXT.md) — terminals are just the first adapter (`workspace/TerminalSplit.tsx`,
+new leaves run the user's shell); future leaf types plug in without renaming ids.
+`F3` cycles leaf focus in reading order (tmux `prefix o`): every useful ctrl+letter is
+either engine passthrough (owner decision 2026-07-06) or taken, and F-keys already
+carry the tab vocabulary (F2 rename). Costs accepted and documented:
 - reserving `ctrl+\` takes SIGQUIT away from the embedded shell (rarely used; `kill -QUIT` remains);
 - both split chords need the kitty keyboard protocol — legacy terminals cannot encode
   `ctrl+=` at all (there is no C0 byte for it), same dependency class as the
   `ctrl+h`/`ctrl+j` aliases in `lib/keymap-dispatch.ts`.
-An exited pane removes itself and its group collapses (tmux behavior); the last pane's
+An exited leaf removes itself and its group collapses (tmux behavior); the last leaf's
 exit falls back to the tab-level behavior (engine tab degrades to a shell, command tab
 closes).
 
@@ -386,7 +389,7 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 | `ctrl+q` | THE escape hatch back to the tasks list (KOB-208) |
 | `ctrl+t` / `ctrl+w` / `ctrl+]` / `ctrl+[` / `F2` | terminal tab management (PTY chattab) |
 | `ctrl+e` | new chat tab with a chosen engine (`chat.tab.chooseEngine`) — see the decision log below for why not `ctrl+shift+t` |
-| `ctrl+\` / `ctrl+=` / `F3` | split panes inside the tab (`chat.pane.split-right` / `split-down` / `focus-next`) — see the split decision log below |
+| `ctrl+\` / `ctrl+=` / `F3` | workspace splits (`workspace.split.right` / `.down` / `.focus-next`) — see the split decision log below |
 | `F5` | terminal reset (confirm-gated) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 

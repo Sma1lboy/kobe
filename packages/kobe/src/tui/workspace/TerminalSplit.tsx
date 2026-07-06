@@ -1,19 +1,31 @@
 /**
- * Split-pane body of ONE workspace terminal tab (issue #16) — the
- * PTY-world take on tmux panes, rendering `terminal-split-core.ts`'s
- * tree. `ctrl+\` splits right, `ctrl+=` splits down (new panes run the
- * user's shell in the same worktree), `f3` cycles pane focus, and a
- * pane whose process exits removes itself tmux-style (its group
- * collapses). When the LAST pane exits, the tab-level `onExit` fires —
+ * TERMINAL adapter over the content-agnostic split tree (`split-core.ts`)
+ * — the body of one workspace terminal tab (issue #16). Leaf content is
+ * `readonly string[] | null`: null means "the tab's own command" (only
+ * ever `leaf-1`, whose PTY key IS the tab key — `splitLeafPtyKey`), an
+ * argv means a split-created shell. Other leaf content types (non-
+ * terminal surfaces) get their own adapters later; the tree, chords,
+ * and binding ids (`workspace.split.*`) are already content-neutral.
+ *
+ * `ctrl+\` splits right, `ctrl+=` splits down (new leaves run the
+ * user's shell in the same worktree), `f3` cycles leaf focus, and a
+ * leaf whose process exits removes itself tmux-style (its group
+ * collapses). When the LAST leaf exits, the tab-level `onExit` fires —
  * the caller keeps owning the engine-degrade / close-tab decision.
  *
  * Split state lives in a module-level map keyed by the tab's PTY key,
  * mirroring `TerminalTabs.tsx`'s `tabsByTask` pattern, so switching
- * tasks/tabs and back preserves each tab's layout (the pane PTYs
+ * tasks/tabs and back preserves each tab's layout (the leaf PTYs
  * already survive via the registry's acquire-reuse).
+ *
+ * Render fast path: while a tab is UNSPLIT (the overwhelmingly common
+ * case) the body is one long-lived `<Terminal>` whose props swap on tab
+ * switch — preserving bcc59e90's no-remount-per-switch fix. The tree
+ * renderer (which does remount leaves on layout changes) only takes
+ * over once a split exists.
  */
 
-import { For, type JSXElement, createEffect, createSignal, on } from "solid-js"
+import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
@@ -28,27 +40,30 @@ import {
   focusLeaf,
   initialSplit,
   leaves,
-  paneKey,
   removeLeaf,
   splitActive,
-} from "./terminal-split-core"
+} from "./split-core"
+import { splitLeafPtyKey } from "./terminal-tabs-core"
+
+/** What a terminal leaf shows: null = the tab's own command (`leaf-1`). */
+type LeafCommand = readonly string[] | null
 
 /** Per-tab split state, preserved across task/tab switches (see header). */
-const splitsByTab = new Map<string, SplitState>()
+const splitsByTab = new Map<string, SplitState<LeafCommand>>()
 
 /**
- * Release every split-created pane PTY of `tabKey` and forget its
+ * Release every split-created leaf PTY of `tabKey` and forget its
  * layout — the tab-close counterpart of `TerminalTabs.tsx`'s own
- * `release(tabPtyKey(...))` (which only covers `pane-1`). Without this,
- * closing a split tab leaked every extra pane's shell until task
+ * `release(tabPtyKey(...))` (which only covers `leaf-1`). Without this,
+ * closing a split tab leaked every extra leaf's shell until task
  * archive.
  */
-export function releaseSplitPanes(tabKey: string): void {
+export function releaseSplitLeaves(tabKey: string): void {
   const state = splitsByTab.get(tabKey)
   if (!state) return
   splitsByTab.delete(tabKey)
   for (const leaf of leaves(state.root)) {
-    if (leaf.id !== "pane-1") getDefaultPtyRegistry().release(paneKey(tabKey, leaf.id))
+    if (leaf.id !== "leaf-1") getDefaultPtyRegistry().release(splitLeafPtyKey(tabKey, leaf.id))
   }
 }
 
@@ -56,14 +71,16 @@ export function TerminalSplit(props: {
   /** `tabPtyKey(taskId, tabId)` — PTY registry prefix AND layout map key. */
   tabKey: string
   cwd: () => string
-  /** What the tab's ORIGINAL pane (`pane-1`) runs — engine or command. */
+  /** What the tab's ORIGINAL leaf (`leaf-1`) runs — engine or command. */
   command: readonly string[]
-  /** Tab-level exit behavior; fires only when the LAST pane exits. */
+  /** Tab-level exit behavior; fires only when the LAST leaf exits. */
   onExit?: () => void
+  /** Forwarded to `leaf-1`'s Terminal — the shell-degrade reacquire nudge. */
+  resetToken?: Accessor<number>
   focused: () => boolean
 }): JSXElement {
   const { theme } = useTheme()
-  const [state, setState] = createSignal<SplitState>(splitsByTab.get(props.tabKey) ?? initialSplit())
+  const [state, setState] = createSignal<SplitState<LeafCommand>>(splitsByTab.get(props.tabKey) ?? initialSplit(null))
   // Track tab switches: the host renders ONE long-lived body and swaps
   // props (bcc59e90 killed the remount-per-switch), so `tabKey` changes
   // in place and the layout must follow it — an init-only read would
@@ -71,64 +88,67 @@ export function TerminalSplit(props: {
   createEffect(
     on(
       () => props.tabKey,
-      (key) => setState(splitsByTab.get(key) ?? initialSplit()),
+      (key) => setState(splitsByTab.get(key) ?? initialSplit(null)),
       { defer: true },
     ),
   )
-  const update = (next: SplitState): void => {
+  const update = (next: SplitState<LeafCommand>): void => {
     splitsByTab.set(props.tabKey, next)
     setState(next)
   }
 
-  /** Borders only appear once the tab is actually split — a single pane
-   *  stays borderless exactly as before (the workspace wrapper owns the
-   *  pane-level focus border). */
-  const splitLayout = () => leaves(state().root).length > 1
+  const isSplit = () => leaves(state().root).length > 1
 
   function onLeafExit(id: string): void {
     const next = removeLeaf(state(), id)
     if (next === null) {
-      // Last pane — hand the exit to the tab's own behavior
-      // (engine → degrade to shell, command tab → close).
+      // Last leaf — reset the layout (releasing any dead non-leaf-1
+      // registry entry it still names) and hand the exit to the tab's
+      // own behavior (engine → degrade to shell, command tab → close).
+      releaseSplitLeaves(props.tabKey)
+      setState(initialSplit(null))
       props.onExit?.()
       return
     }
     if (next === state()) return
-    // State first (the re-render detaches the dead pane's subscribers),
+    // State first (the re-render detaches the dead leaf's subscribers),
     // then release — same ordering as TerminalTabs' degrade path.
     update(next)
-    getDefaultPtyRegistry().release(paneKey(props.tabKey, id))
+    getDefaultPtyRegistry().release(splitLeafPtyKey(props.tabKey, id))
   }
 
   useBindings(() => ({
     enabled: props.focused(),
     bindings: bindByIds({
-      "chat.pane.split-right": () => update(splitActive(state(), "row", [defaultShell()])),
-      "chat.pane.split-down": () => update(splitActive(state(), "column", [defaultShell()])),
-      "chat.pane.focus-next": () => update(cycleLeaf(state(), 1)),
+      "workspace.split.right": () => update(splitActive(state(), "row", [defaultShell()])),
+      "workspace.split.down": () => update(splitActive(state(), "column", [defaultShell()])),
+      "workspace.split.focus-next": () => update(cycleLeaf(state(), 1)),
     }),
   }))
 
-  const renderLeaf = (leaf: SplitLeaf): JSXElement => (
+  const leafFocused = (id: string) => props.focused() && state().activeLeafId === id
+
+  const renderLeaf = (leaf: SplitLeaf<LeafCommand>): JSXElement => (
     <box
       flexGrow={1}
       flexShrink={1}
       flexBasis={0}
-      border={splitLayout()}
-      borderColor={props.focused() && state().activeLeafId === leaf.id ? theme.focusAccent : theme.border}
+      border={true}
+      borderColor={leafFocused(leaf.id) ? theme.focusAccent : theme.border}
       onMouseUp={() => update(focusLeaf(state(), leaf.id))}
     >
       <Terminal
         cwd={props.cwd}
-        taskId={() => paneKey(props.tabKey, leaf.id)}
-        command={leaf.command ?? props.command}
+        taskId={() => splitLeafPtyKey(props.tabKey, leaf.id)}
+        command={leaf.content ?? props.command}
         onExit={() => onLeafExit(leaf.id)}
-        focused={() => props.focused() && state().activeLeafId === leaf.id}
+        resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
+        focused={() => leafFocused(leaf.id)}
       />
     </box>
   )
 
-  const renderNode = (node: SplitNode): JSXElement =>
+  const renderNode = (node: SplitNode<LeafCommand>): JSXElement =>
     node.kind === "leaf" ? (
       renderLeaf(node)
     ) : (
@@ -138,8 +158,25 @@ export function TerminalSplit(props: {
     )
 
   return (
-    <box flexDirection="column" flexGrow={1} overflow="hidden">
-      {renderNode(state().root)}
-    </box>
+    <Show
+      when={isSplit()}
+      fallback={
+        // Unsplit fast path: one long-lived borderless Terminal, props
+        // swapped in place on tab switch (never remounted while tabs
+        // stay unsplit) — leaf-1's key IS the tab key.
+        <Terminal
+          cwd={props.cwd}
+          taskId={() => props.tabKey}
+          command={props.command}
+          onExit={props.onExit}
+          resetToken={props.resetToken}
+          focused={props.focused}
+        />
+      }
+    >
+      <box flexDirection="column" flexGrow={1} overflow="hidden">
+        {renderNode(state().root)}
+      </box>
+    </Show>
   )
 }
