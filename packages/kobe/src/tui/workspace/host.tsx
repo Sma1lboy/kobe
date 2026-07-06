@@ -11,20 +11,37 @@
 import { join } from "node:path"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { latestTranscriptMtime } from "../../monitor/activity.ts"
+import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import { HelpDialog } from "../component/help-dialog"
+import { NewTaskDialog } from "../component/new-task-dialog"
+import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
+import { WorktreesPage } from "../component/worktrees-page"
 import { type PaneId, useFocus } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
 import { useKV } from "../context/kv"
+import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
+import {
+  type CreateTaskContext,
+  archiveTaskFlow,
+  createTaskFlow,
+  cycleVendorFlow,
+  deleteTaskFlow,
+  renameBranchFlow,
+  renameTaskFlow,
+} from "../lib/task-actions"
+import { startLocalBadgePoll } from "../ops/activity-monitor"
+import { buildPRPrompt } from "../ops/pr-prompt"
 import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
@@ -57,8 +74,26 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const focus = useFocus()
   const renderer = useRenderer()
   const dims = useTerminalDimensions()
+  const notif = useNotifications()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.orchestrator.activeTaskSignal()())
   const [sidebarHover, setSidebarHover] = createSignal<SidebarHover | null>(null)
+  // Task-lifecycle UI state (issue #20 — parity with the tmux Tasks pane):
+  // move mode (m + arrows reorder), the global sort preference (kv-fanned
+  // like theme), the project filter, and the sidebar-search gate that mutes
+  // host letter chords while the user types a query.
+  const [moveMode, setMoveMode] = createSignal(false)
+  const [sortMode, setSortModeSig] = createSignal<"default" | "recent">(
+    kv.get("activeSortMode", "default") === "recent" ? "recent" : "default",
+  )
+  const [projectFilter, setProjectFilter] = createSignal<string | null>(null)
+  const [searchActive, setSearchActive] = createSignal(false)
+
+  function notifyError(message: string): void {
+    notif.notify({ kind: "error", taskId: selectedId() ?? "", tabId: "", title: message })
+  }
+  function notifyInfo(message: string): void {
+    notif.notify({ kind: "done", taskId: selectedId() ?? "", tabId: "", title: message })
+  }
 
   const tasks = props.orchestrator.tasksSignal()
   const worktreeToolsWidth = createMemo(() => {
@@ -70,6 +105,57 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     return id ? tasks().find((task) => task.id === id) : undefined
   })
   const worktree = createMemo(() => taskWorktree(selectedTask()))
+
+  /* --------- files-column activity badge (issue #21) -------------------
+   * The Ops pane's `● new` transcript badge, absorbed into the files
+   * column: baseline seeds at "now's newest" so mounting onto a busy task
+   * doesn't flash stale activity; FileTree's refresh (`r`) is the "I've
+   * looked" ack. Source is the daemon's transcript.activity push, with
+   * the Ops pane's exact local-mtime fallback when no daemon data. */
+  const sharedActivityMap = () => props.orchestrator.transcriptActivitySignal()() ?? null
+  const [badgeBaseline, setBadgeBaseline] = createSignal(0)
+  const [badgeLatest, setBadgeLatest] = createSignal(0)
+  const [badgePrimed, setBadgePrimed] = createSignal(false)
+  createEffect(
+    on(worktree, () => {
+      setBadgePrimed(false)
+      setBadgeBaseline(0)
+      setBadgeLatest(0)
+    }),
+  )
+  createEffect(() => {
+    const wt = worktree()
+    const map = sharedActivityMap()
+    if (!wt || !map) return
+    const mtime = map.get(wt)?.mtimeMs ?? 0
+    if (!badgePrimed() && mtime > 0) {
+      setBadgePrimed(true)
+      setBadgeBaseline(mtime)
+    }
+    setBadgeLatest(mtime)
+  })
+  createEffect(() => {
+    const wt = worktree()
+    if (!wt || sharedActivityMap() !== null) return
+    const vendor = selectedTask()?.vendor ?? DEFAULT_TASK_VENDOR
+    onCleanup(
+      startLocalBadgePoll(
+        // In-process host: no tmux attach gate (the pane is visible iff
+        // the app runs), only the engine-owned transcript mtime probe.
+        { sessionAttached: async () => true, latestMtime: () => latestTranscriptMtime(vendor, wt) },
+        {
+          isPrimed: () => badgePrimed(),
+          prime: (mtime) => {
+            setBadgePrimed(true)
+            setBadgeBaseline(mtime)
+          },
+          setLatest: setBadgeLatest,
+        },
+      ),
+    )
+  })
+  const filesCornerBadge = () =>
+    badgePrimed() && badgeLatest() > badgeBaseline() ? { text: t("ops.badge.newActivity"), active: true } : null
 
   createEffect(
     on(
@@ -121,6 +207,64 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focus.setFocused("workspace")
   }
 
+  // The SAME shared task-action flows the tmux Tasks pane runs
+  // (lib/task-actions — confirm copy, DIRTY_WORKTREE force-delete branch,
+  // error handling live there so hosts can't drift). What's built here is
+  // only this host's genuine divergences: dialog wiring, toast surfacing,
+  // and selection. No `switchBeforeKill` (no tmux client to yank), no
+  // `openCreateSurface` (no tmux tab to open — the in-pane NewTaskDialog
+  // IS the surface), no `reload` (this host is fully signal-driven).
+  const taskActions: CreateTaskContext = {
+    orch: props.orchestrator,
+    tasks: () => tasks(),
+    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
+    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    logger: console,
+    logPrefix: "[kobe workspace]",
+    notifyError,
+    notifyInfo,
+    updateActiveTask: true,
+    onTaskDeleted: (taskId, nextTask) => {
+      if (selectedId() !== taskId) return
+      const remaining = tasks()
+      setSelectedId(nextTask?.id ?? (remaining.find((task) => !task.archived) ?? remaining[0])?.id ?? null)
+    },
+    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    cursorRepo: () => selectedTask()?.repo ?? tasks()[0]?.repo,
+    lastVendor: (repo) => resolvePreferredVendor(repo),
+    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
+    selectTask: (id) => setSelectedId(id),
+    enterTask: (id) => activateTask(id),
+  }
+
+  const createTask = (): Promise<void> => createTaskFlow(taskActions)
+  const archiveTask = (id: string): Promise<void> => archiveTaskFlow(taskActions, id)
+  const deleteTask = (id: string): Promise<void> => deleteTaskFlow(taskActions, id)
+  const renameTask = (id: string): Promise<void> => renameTaskFlow(taskActions, id)
+  const renameBranch = (id: string): Promise<void> => renameBranchFlow(taskActions, id)
+  const cycleVendor = (id: string): Promise<void> => cycleVendorFlow(taskActions, id)
+
+  async function togglePin(id: string): Promise<void> {
+    const task = tasks().find((t) => t.id === id)
+    if (!task) return
+    await props.orchestrator.setPinned(id, !task.pinned).catch((err) => {
+      notifyError(`Couldn't pin: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
+  async function moveTask(id: string, delta: -1 | 1): Promise<void> {
+    await props.orchestrator.moveTask(id, delta).catch((err) => {
+      notifyError(`Couldn't move: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
+  const setSortMode = (next: "default" | "recent"): void => {
+    // Apply locally for instant feedback, then persist — the kv write lands
+    // in state.json and fans out to every other session's Tasks pane.
+    setSortModeSig(next)
+    kv.set("activeSortMode", next)
+  }
+
   /**
    * Restore the terminal BEFORE exiting — a bare process.exit leaves mouse
    * tracking / kitty keyboard on, spraying `35;66;18M`-style junk into the
@@ -152,6 +296,36 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // only ever READS it at click time, and TerminalTabs re-hands it on every
   // mount (task/worktree switch), so there's nothing to react to here.
   let openEditorTabFn: ((command: readonly string[], label: string) => void) | null = null
+  // Same contract for "paste into the active engine tab + submit" — the
+  // FileTree corner Create-PR action (Ops-pane parity).
+  let sendToEngineFn: ((text: string) => void) | null = null
+
+  /** FileTree corner `pr` action — the Ops pane's createPR verbatim, with
+   *  the tmux send-keys half swapped for a PTY paste+submit. */
+  async function createPR(): Promise<void> {
+    const wt = worktree()
+    if (!wt || !sendToEngineFn) return
+    const prompt = await buildPRPrompt(wt)
+    sendToEngineFn(prompt)
+  }
+
+  /* --------- zen mode (issue #18, pure-tui shape) -----------------------
+   * Matches the tmux zen contract (owner 2026-07-06): hide the FILES
+   * column, keep the Tasks sidebar visible (tmux keeps it per the
+   * zenKeepTasks setting — hardcoded keep here for now), terminal takes
+   * the freed width. Entering pulls focus to the terminal; the way out is
+   * the sidebar's ☯ ZEN chip, or focusing the hidden files pane (slot 3)
+   * which auto-exits — a hidden pane must never hold focus. Mouse-driven
+   * for v1; no new chord, so no KEYBINDINGS.md entry needed yet. */
+  const [zen, setZen] = createSignal(false)
+  function toggleZen(): void {
+    const next = !zen()
+    setZen(next)
+    if (next) focus.setFocused("workspace")
+  }
+  createEffect(() => {
+    if (focus.is("files")()) setZen(false)
+  })
 
   /**
    * FileTree's Enter action (issue #16 editor-tab flow) — the puretui
@@ -164,9 +338,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
    * configured/installed — there's no in-TUI read-only preview here (tmux's
    * `kobe ops --preview` full CLI subcommand is out of scope for this pass).
    *
-   * Deliberately does NOT move focus to the workspace pane — opening a file
-   * is a content swap, not a navigation (rejected twice previously when it
-   * pulled focus; see KOB-25).
+   * Focus: opening an INTERACTIVE editor tab pulls focus to the workspace
+   * (owner ask 2026-07-06 — an editor you can't type into is broken), in
+   * deliberate contrast to KOB-25's no-focus-pull rule, which applies to
+   * read-only content swaps (previews), not to spawned editors.
    */
   async function openFileInEditor(relPath: string): Promise<void> {
     const wt = worktree()
@@ -178,6 +353,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       return
     }
     openEditorTabFn?.(["sh", "-c", launch.command], launch.label)
+    focus.setFocused("workspace")
   }
 
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
@@ -194,9 +370,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   function closeSettings(): void {
     setSettingsOpen(false)
   }
+  // Worktrees page (issue #23) — same in-place swap as settings, standing
+  // in for tmux's dedicated `kobe worktrees` window. The page owns its own
+  // close keys (q/esc) via onClose.
+  const [worktreesOpen, setWorktreesOpen] = createSignal(false)
 
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen(),
+    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen(),
     bindings: [
       ...bindByIds({
         "help.open": () => HelpDialog.show(dialog),
@@ -208,13 +388,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     ],
   }))
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen() && !focus.is("sidebar")(),
+    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && !focus.is("sidebar")(),
     bindings: bindByIds({
       "focus.sidebar": () => focus.setFocused("sidebar"),
     }),
   }))
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen() && focus.is("sidebar")(),
+    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && focus.is("sidebar")(),
     bindings: bindByIds({
       // Slot dispatch (SLOT_CONTRACTS): slot 0 = quit confirm, slot 1 =
       // hard exit — so user rebinds keep both verbs without inspecting
@@ -227,6 +407,27 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         void quit()
       },
       "settings.open.sidebar": () => openSettings(),
+      "worktrees.open.sidebar": () => setWorktreesOpen(true),
+    }),
+  }))
+  // Task-lifecycle chords (issue #20 — the tmux Tasks pane's n/b/v set).
+  // d/a/r/pin/move fire from the Sidebar's OWN keys via the Request props
+  // below; these three are host-scoped in both hosts. Gated on sidebar
+  // focus + no dialog + search inactive (typing `n` into the search box
+  // must not open the new-task dialog — same leak class as KOB-244).
+  useBindings(() => ({
+    enabled:
+      dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && focus.is("sidebar")() && !searchActive(),
+    bindings: bindByIds({
+      "task.new": () => void createTask(),
+      "tasks.renameBranch": () => {
+        const id = selectedId()
+        if (id) void renameBranch(id)
+      },
+      "tasks.cycleEngine": () => {
+        const id = selectedId()
+        if (id) void cycleVendor(id)
+      },
     }),
   }))
   // Page-level close keys for the settings swap — mirrors settings/host.tsx's
@@ -244,74 +445,116 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   return (
     <Show
-      when={!settingsOpen()}
-      fallback={
-        <scrollbox
-          flexGrow={1}
-          backgroundColor={theme.background}
-          paddingTop={1}
-          verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
-        >
-          <SettingsDialog kv={kv} orchestrator={props.orchestrator} standalone={true} onClose={closeSettings} />
-        </scrollbox>
-      }
+      when={!worktreesOpen()}
+      fallback={<WorktreesPage orchestrator={props.orchestrator} onClose={() => setWorktreesOpen(false)} />}
     >
-      <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
-        <box
-          width={SIDEBAR_WIDTH}
-          flexShrink={0}
-          borderColor={focus.is("sidebar")() ? theme.focusAccent : theme.border}
-          onMouseUp={() => focus.setFocused("sidebar")}
-        >
-          <Sidebar
-            // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
-            // without this, Sidebar's imperative self-width (32) overflows the
-            // inner 30 and the cursor row's background paints over the border.
-            width={() => SIDEBAR_WIDTH - 2}
-            tasks={tasks}
-            selectedId={selectedId}
-            onSelect={selectTask}
-            onActivate={(id) => void activateTask(id)}
-            engineState={props.orchestrator.engineStateSignal()}
-            taskJobs={props.orchestrator.taskJobsSignal()}
-            worktreeChanges={props.orchestrator.worktreeChangesSignal()}
-            focused={focus.is("sidebar")}
-            onHoverChange={(hover) => setSidebarHover(hover)}
-          />
-        </box>
+      <Show
+        when={!settingsOpen()}
+        fallback={
+          <scrollbox
+            flexGrow={1}
+            backgroundColor={theme.background}
+            paddingTop={1}
+            verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+          >
+            <SettingsDialog kv={kv} orchestrator={props.orchestrator} standalone={true} onClose={closeSettings} />
+          </scrollbox>
+        }
+      >
+        <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
+          {/* Tasks sidebar stays visible in zen (tmux-parity, owner
+              2026-07-06) — its ☯ ZEN chip is also the exit affordance. */}
+          <box
+            width={SIDEBAR_WIDTH}
+            flexShrink={0}
+            borderColor={focus.is("sidebar")() ? theme.focusAccent : theme.border}
+            onMouseUp={() => focus.setFocused("sidebar")}
+          >
+            <Sidebar
+              // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
+              // without this, Sidebar's imperative self-width (32) overflows the
+              // inner 30 and the cursor row's background paints over the border.
+              width={() => SIDEBAR_WIDTH - 2}
+              tasks={tasks}
+              selectedId={selectedId}
+              onSelect={selectTask}
+              onActivate={(id) => void activateTask(id)}
+              engineState={props.orchestrator.engineStateSignal()}
+              taskJobs={props.orchestrator.taskJobsSignal()}
+              worktreeChanges={props.orchestrator.worktreeChangesSignal()}
+              focused={focus.is("sidebar")}
+              onHoverChange={(hover) => setSidebarHover(hover)}
+              // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
+              // fire these; the flows are the shared lib/task-actions bodies.
+              onAddTask={() => void createTask()}
+              onDeleteRequest={(id) => void deleteTask(id)}
+              onArchiveRequest={(id) => void archiveTask(id)}
+              onRenameRequest={(id) => void renameTask(id)}
+              onPinRequest={(id) => void togglePin(id)}
+              moveMode={moveMode}
+              onMoveRequest={(id, delta) => void moveTask(id, delta)}
+              onMoveModeExit={() => setMoveMode(false)}
+              onLocalMergeRequest={(id) => {
+                const task = tasks().find((t) => t.id === id)
+                if (!task || task.kind === "main") return
+                setSelectedId(id)
+                setMoveMode((cur) => !cur)
+              }}
+              sortMode={sortMode}
+              onSortModeToggle={() => setSortMode(sortMode() === "default" ? "recent" : "default")}
+              projectFilter={projectFilter}
+              onProjectFilterChange={setProjectFilter}
+              onSearchActiveChange={setSearchActive}
+              zenActive={zen}
+              onZenClick={toggleZen}
+            />
+          </box>
 
-        <box
-          flexGrow={1}
-          flexShrink={1}
-          borderColor={focus.is("workspace")() ? theme.focusAccent : theme.border}
-          onMouseUp={() => focus.setFocused("workspace")}
-        >
-          <ShowWorkspace
-            task={selectedTask()}
-            worktree={worktree()}
-            orchestrator={props.orchestrator}
-            focused={focus.is("workspace")}
-            onEditorTabReady={(open) => {
-              openEditorTabFn = open
-            }}
-          />
-        </box>
+          <box
+            flexGrow={1}
+            flexShrink={1}
+            borderColor={focus.is("workspace")() ? theme.focusAccent : theme.border}
+            onMouseUp={() => focus.setFocused("workspace")}
+          >
+            <ShowWorkspace
+              task={selectedTask()}
+              worktree={worktree()}
+              orchestrator={props.orchestrator}
+              focused={focus.is("workspace")}
+              onEditorTabReady={(open) => {
+                openEditorTabFn = open
+              }}
+              onEngineSendReady={(send) => {
+                sendToEngineFn = send
+              }}
+            />
+          </box>
 
-        <box
-          width={worktreeToolsWidth()}
-          flexShrink={0}
-          borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
-          onMouseUp={() => focus.setFocused("files")}
-        >
-          <FileTree
-            worktreePath={worktree}
-            focused={focus.is("files")}
-            onOpenFile={(relPath) => void openFileInEditor(relPath)}
-          />
-        </box>
+          <Show when={!zen()}>
+            <box
+              width={worktreeToolsWidth()}
+              flexShrink={0}
+              borderColor={focus.is("files")() ? theme.focusAccent : theme.border}
+              onMouseUp={() => focus.setFocused("files")}
+            >
+              <FileTree
+                worktreePath={worktree}
+                focused={focus.is("files")}
+                onOpenFile={(relPath) => void openFileInEditor(relPath)}
+                // Ops-pane absorption (issue #21): the `● new` transcript badge
+                // + its refresh-as-ack, same contract as ops/host.tsx.
+                cornerBadge={filesCornerBadge}
+                onRefresh={() => setBadgeBaseline(badgeLatest())}
+                // Ops-pane corner actions (owner ask 2026-07-06): zen + PR.
+                onZenToggle={toggleZen}
+                onCreatePR={() => void createPR()}
+              />
+            </box>
+          </Show>
 
-        <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
-      </box>
+          <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
+        </box>
+      </Show>
     </Show>
   )
 }
@@ -322,6 +565,7 @@ function ShowWorkspace(props: {
   orchestrator: RemoteOrchestrator
   focused: () => boolean
   onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
+  onEngineSendReady: (send: (text: string) => void) => void
 }) {
   const { theme } = useTheme()
   return (
@@ -359,6 +603,10 @@ function ShowWorkspace(props: {
           }
           focused={props.focused}
           onEditorTabReady={props.onEditorTabReady}
+          onEngineSendReady={props.onEngineSendReady}
+          // This worktree's slice of the daemon transcript.activity push
+          // (issue #24) — flips the tab turn-status loops to shared mode.
+          sharedActivity={() => props.orchestrator.transcriptActivitySignal()()?.get(path) ?? null}
         />
       )}
     </Show>
