@@ -11,6 +11,8 @@
  * switches (acquire-reuse) until closed.
  */
 
+import type { VendorId } from "@/types/vendor"
+
 export interface TerminalTab {
   /** Stable id — registry key suffix. Never reused within a task. */
   readonly id: string
@@ -18,6 +20,12 @@ export interface TerminalTab {
   readonly title: string | null
   /** 1-based creation ordinal — drives the "Terminal {n}" default. */
   readonly ordinal: number
+  /**
+   * Vendor override for THIS tab only (chosen via `chat.tab.chooseEngine`).
+   * Undefined = inherit the task's current engine, like every plain
+   * `chat.tab.new` tab.
+   */
+  readonly vendor?: VendorId
 }
 
 export interface TabsState {
@@ -32,10 +40,14 @@ export function initialTabs(): TabsState {
   return { tabs: [{ id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
 }
 
-/** Open a new tab after the active one and focus it. */
-export function addTab(state: TabsState): TabsState {
+/**
+ * Open a new tab after the active one and focus it. `vendor` pins that tab
+ * to a specific engine (the `chat.tab.chooseEngine` flow); omitted, it
+ * inherits the task's current engine like every plain `ctrl+t` tab.
+ */
+export function addTab(state: TabsState, vendor?: VendorId): TabsState {
   const ordinal = state.nextOrdinal
-  const tab: TerminalTab = { id: `tab-${ordinal}`, title: null, ordinal }
+  const tab: TerminalTab = { id: `tab-${ordinal}`, title: null, ordinal, vendor }
   const i = state.tabs.findIndex((t) => t.id === state.activeId)
   const tabs = [...state.tabs.slice(0, i + 1), tab, ...state.tabs.slice(i + 1)]
   return { tabs, activeId: tab.id, nextOrdinal: ordinal + 1 }

@@ -77,7 +77,7 @@ describe("key routing tables", () => {
     // Owner decision 2026-07-06: ctrl+q escape hatch + tab management +
     // reset. Anything beyond this list steals a chord from the engine CLI.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
-      ["ctrl+[", "ctrl+]", "ctrl+q", "ctrl+t", "ctrl+w", "f2", "f5"].sort(),
+      ["ctrl+[", "ctrl+]", "ctrl+e", "ctrl+q", "ctrl+t", "ctrl+w", "f2", "f5"].sort(),
     )
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; the rest are its own UI shortcuts).

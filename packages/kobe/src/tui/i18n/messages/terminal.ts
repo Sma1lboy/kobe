@@ -12,6 +12,8 @@ export const en = {
     renameTitle: "Rename tab",
     renameField: "tab title",
     renameSubmit: "rename",
+    chooseEngineTitle: "New tab — choose engine",
+    chooseEngineHint: "←/→ choose, enter confirm, esc cancel",
   },
   scrolledBack: "↑ scrolled {lines}L (ctrl+pgdn to follow)",
   unavailable: {
@@ -32,6 +34,8 @@ export const zh: typeof en = {
     renameTitle: "重命名标签页",
     renameField: "标签页名称",
     renameSubmit: "重命名",
+    chooseEngineTitle: "新建标签页 —— 选择引擎",
+    chooseEngineHint: "←/→ 选择，enter 确认，esc 取消",
   },
   scrolledBack: "↑ 已回滚 {lines} 行（ctrl+pgdn 回到底部）",
   unavailable: {

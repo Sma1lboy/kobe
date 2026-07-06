@@ -150,6 +150,10 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "ctrl+]",
   "ctrl+[",
   "f2",
+  // Engine picker for a new chat tab (tmux's `ctrl+shift+t` equivalent —
+  // ctrl+e instead, since the keymap layer can't distinguish shift+letter
+  // from the bare letter; see docs/KEYBINDINGS.md's KOB-74 decision log).
+  "ctrl+e",
   // Terminal reset (confirm-gated).
   "f5",
 ] as const
