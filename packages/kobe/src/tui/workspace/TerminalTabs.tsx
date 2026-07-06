@@ -4,9 +4,11 @@
  * an interactive engine command in its own PTY (registry key
  * `${taskId}::${tabId}`), so ctrl+t gives a parallel session in the same
  * worktree exactly like the tmux chattab did with windows. Plain ctrl+t
- * inherits the task's current engine; ctrl+e prompts for one instead
- * (`chat.tab.chooseEngine`, tmux's `ctrl+shift+t` equivalent) and pins it
- * to just that tab via `TerminalTab.vendor`.
+ * opens the user's preferred engine (`resolvePreferredVendor`: repo
+ * lastActiveVendor → Settings global default → claude); ctrl+e prompts
+ * for one instead (`chat.tab.chooseEngine`, tmux's `ctrl+shift+t`
+ * equivalent), pins it to just that tab via `TerminalTab.vendor`, and
+ * records the pick as the project's new default.
  *
  * Chords reuse the canonical chattab binding ids (keybindings-chat.ts):
  * ctrl+t new · ctrl+e new-with-engine · ctrl+w close (last tab refuses) ·
@@ -25,7 +27,7 @@ import { engineEntry } from "@/engine/registry"
 import type { ChatTabTurnState } from "@/engine/turn-detector"
 import { deriveTitleFromSessionId } from "@/monitor/auto-title"
 import { resolveMainRepoRoot } from "@/state/repos"
-import { setRepoLastActiveVendor } from "@/state/vendor-prefs"
+import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
@@ -439,10 +441,28 @@ export function TerminalTabs(props: {
     })()
   }
 
+  /** What a plain ctrl+t tab should run (owner decision 2026-07-06): the
+   *  full preference chain — repo lastActiveVendor (ctrl+e / dialog picks
+   *  write it) → Settings global default → claude. Returning undefined
+   *  when the resolution equals the task's engine keeps the tab in
+   *  "inherit" mode so it follows later task vendor switches; the engine
+   *  that opens is identical either way. */
+  const preferredTabVendor = (): VendorId | undefined => {
+    try {
+      const preferred = resolvePreferredVendor(resolveMainRepoRoot(props.worktree))
+      return preferred === props.vendor ? undefined : preferred
+    } catch {
+      return undefined
+    }
+  }
+
   useBindings(() => ({
     enabled: props.focused(),
     bindings: bindByIds({
-      "chat.tab.new": () => update(pinSession(addTab(state()), undefined)),
+      "chat.tab.new": () => {
+        const preferred = preferredTabVendor()
+        update(pinSession(addTab(state(), preferred), preferred))
+      },
       "chat.tab.chooseEngine": requestChooseEngine,
       "chat.tab.close": () => {
         const { state: next, closedId } = closeActiveTab(state())
