@@ -7,6 +7,7 @@
 export const en = {
   empty: "No engine history for this task.",
   loading: "loading…",
+  earlier: "… {count} earlier messages",
   sessionLabel: "Session",
   archivedTag: "ARCHIVED",
   liveTag: "● LIVE",
@@ -23,6 +24,7 @@ export const en = {
 export const zh: typeof en = {
   empty: "此任务没有引擎历史记录。",
   loading: "加载中…",
+  earlier: "… 之前还有 {count} 条消息",
   sessionLabel: "会话",
   archivedTag: "已归档",
   liveTag: "● 实时",
