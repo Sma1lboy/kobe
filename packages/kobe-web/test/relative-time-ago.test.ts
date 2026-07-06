@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { relativeTimeAgo } from "../src/lib/time.ts"
 
-/**
- * relativeTimeAgo is the adopt dialog's verbose "X ago" formatter (distinct
- * from the rail's compact relativeTime). `now` is injected so the buckets are
- * deterministic. A falsy/zero timestamp renders empty (no "just now" for a
- * missing activity time).
- */
 
 const NOW = 1_000_000_000_000
 const ago = (ms: number) => relativeTimeAgo(NOW - ms, NOW)

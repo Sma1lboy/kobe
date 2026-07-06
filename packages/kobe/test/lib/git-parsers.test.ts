@@ -1,22 +1,3 @@
-/**
- * Unit tests for the shared git porcelain/numstat parser
- * (`src/lib/git-parsers.ts`).
- *
- * The hard cases — verified against real `git status --porcelain` /
- * `git diff --numstat` output — are:
- *   - C-string unquoting: git wraps any path with a space (porcelain
- *     renames), a tab/newline/quote, or a non-ASCII byte in a double-quoted,
- *     C-escaped string, and emits non-ASCII as three-digit OCTAL bytes
- *     (`\303\274` = the UTF-8 bytes of `ü`).
- *   - rename resolution: porcelain uses ` -> ` with each side quoted
- *     independently; numstat uses ` => ` and brace-compacts unchanged
- *     segments (`src/{old => new}`) ONLY when neither side needs quoting,
- *     else falls back to independently-quoted `"a\tb" => "a\tc"`.
- *   - the join: porcelain quotes a spaced path (`"a b.txt"`) while numstat
- *     does not (`a b.txt`); unquoting BOTH yields one canonical path so a
- *     renamed/modified spaced file's numstat counts key onto its status row.
- */
-
 import { describe, expect, test } from "vitest"
 import { type NumstatRow, parseNumstatRows, parsePorcelainRows, unquoteGitPath } from "../../src/lib/git-parsers"
 
@@ -51,7 +32,6 @@ describe("unquoteGitPath", () => {
   })
 
   test("decodes a multi-byte octal run mixed with ASCII", () => {
-    // "\303\274n\303\257code.txt" → ü n ï code.txt
     expect(unquoteGitPath('"\\303\\274n\\303\\257code.txt"')).toBe("ünïcode.txt")
   })
 
@@ -159,15 +139,10 @@ describe("parseNumstatRows", () => {
   })
 
   test("resolves a move OUT of a subdirectory (empty new brace side)", () => {
-    // `git mv src/sub/a.txt src/a.txt` — git empties the new side. Naive
-    // concat would double the seam into `src//a.txt`; the new path must be
-    // `src/a.txt` and the old path `src/sub/a.txt`.
     expect(parseNumstatRows("0\t0\tsrc/{sub => }/a.txt")).toEqual([numstat("src/a.txt", 0, 0, "src/sub/a.txt")])
   })
 
   test("resolves a move INTO a subdirectory (empty old brace side)", () => {
-    // `git mv src/a.txt src/sub/a.txt` — git empties the old side. The old
-    // path must collapse to `src/a.txt`, not `src//a.txt`.
     expect(parseNumstatRows("0\t0\tsrc/{ => sub}/a.txt")).toEqual([numstat("src/sub/a.txt", 0, 0, "src/a.txt")])
   })
 
@@ -176,11 +151,6 @@ describe("parseNumstatRows", () => {
   })
 
   test("only collapses at a real directory seam, not any empty side", () => {
-    // Defensive: git only ever empties a WHOLE `/`-bounded component, so a real
-    // seam is always slash-flanked. This synthetic partial-component field
-    // (which git never emits) must NOT collapse, since the suffix (`file.txt`)
-    // is not `/`-led — proving the collapse is scoped to the seam, not any
-    // empty side. Plain concat stands: `src/file.txt` / `src/subfile.txt`.
     expect(parseNumstatRows("0\t0\tsrc/{sub => }file.txt")).toEqual([numstat("src/file.txt", 0, 0, "src/subfile.txt")])
   })
 
@@ -199,9 +169,6 @@ describe("parseNumstatRows", () => {
 
 describe("porcelain ↔ numstat path coherence (the join the bug breaks)", () => {
   test("a spaced rename resolves to the SAME canonical path in both formats", () => {
-    // Porcelain quotes the spaced paths; numstat brace-compacts them WITHOUT
-    // quoting. Both must unquote/resolve to `src/has space2.txt` so the
-    // numstat counts key onto the porcelain `R` row.
     const [p] = parsePorcelainRows('R  "src/has space.txt" -> "src/has space2.txt"')
     const [n] = parseNumstatRows("4\t2\tsrc/{has space.txt => has space2.txt}")
     expect(p?.path).toBe("src/has space2.txt")
@@ -210,7 +177,6 @@ describe("porcelain ↔ numstat path coherence (the join the bug breaks)", () =>
   })
 
   test("a spaced (non-rename) modify resolves identically across formats", () => {
-    // Porcelain quotes `"a b.txt"`; numstat leaves `a b.txt` bare.
     const [p] = parsePorcelainRows(' M "a b.txt"')
     const [n] = parseNumstatRows("1\t0\ta b.txt")
     expect(p?.path).toBe("a b.txt")
@@ -225,9 +191,6 @@ describe("porcelain ↔ numstat path coherence (the join the bug breaks)", () =>
   })
 
   test("a move OUT of a subdirectory keys onto the same porcelain path", () => {
-    // `git mv src/sub/a.txt src/a.txt`. Porcelain reports the full new path;
-    // numstat empties the new brace side (`src/{sub => }/a.txt`). Both must
-    // resolve to `src/a.txt` or the +/- counts orphan from the status row.
     const [p] = parsePorcelainRows("R  src/sub/a.txt -> src/a.txt")
     const [n] = parseNumstatRows("4\t2\tsrc/{sub => }/a.txt")
     expect(p?.path).toBe("src/a.txt")

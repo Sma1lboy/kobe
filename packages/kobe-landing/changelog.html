@@ -19,11 +19,11 @@
   body{background:#141413;}
   ::selection{background:rgba(204,120,92,0.3);color:#eae7df}
   a{color:inherit;}
-  /* language toggle */
+
   .lang{display:inline-flex;border:1px solid #34302a;border-radius:9px;overflow:hidden;background:#1a1917;}
   .lang button{font-family:inherit;font-size:12.5px;cursor:pointer;border:0;background:transparent;color:#8a847a;padding:6px 14px;transition:all .15s;}
   .lang button[aria-pressed="true"]{background:rgba(204,120,92,0.14);color:#e6c1b1;}
-  /* release timeline */
+
   .rel{position:relative;}
   .rel-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
   .rel-tag{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.02em;color:#eae7df;text-decoration:none;}
@@ -34,7 +34,7 @@
   .rel-body{border:1px solid #2c2823;border-radius:13px;background:#171614;padding:8px 26px;}
   .rn-h{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#cc785c;margin:20px 0 4px;}
   .rn-ul{list-style:none;}
-  /* each bullet = one clear, scannable point: [type] summary */
+
   .rn-li{position:relative;display:flex;align-items:baseline;gap:11px;padding:12px 0 12px 24px;font-size:14px;line-height:1.55;color:#d2ccc1;border-top:1px solid #211f1c;}
   .rn-li:first-child{border-top:0;}
   .rn-li::before{content:"";position:absolute;left:3px;top:18px;width:6px;height:6px;border-radius:2px;background:#cc785c;opacity:0.8;transform:rotate(45deg);}
@@ -52,10 +52,10 @@
 <body>
 <div style="background:#141413;color:#d6d0c6;font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden;position:relative;">
 
-  <!-- subtle grid bg -->
+
   <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:64px 64px;pointer-events:none;mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,#000 30%,transparent 80%);"></div>
 
-  <!-- NAV -->
+
   <nav style="position:relative;max-width:1180px;margin:0 auto;padding:26px 40px;display:flex;align-items:center;justify-content:space-between;">
     <a href="/" style="display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-0.01em;text-decoration:none;">
       <span style="color:#cc785c;">[</span>
@@ -78,7 +78,7 @@
     </div>
   </nav>
 
-  <!-- HEADER -->
+
   <header style="position:relative;max-width:880px;margin:0 auto;padding:50px 40px 30px;">
     <span style="color:#cc785c;font-size:13px;">// releases</span>
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:12px 0 16px;">
@@ -91,13 +91,13 @@
     <p id="sub" style="font-size:15.5px;line-height:1.6;color:#a39d92;max-width:56ch;">Every kobe release, pulled live from GitHub. <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#e6c1b1;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 7px;">bun install -g @sma1lboy/kobe</code> to update.</p>
   </header>
 
-  <!-- TIMELINE -->
+
   <main style="position:relative;max-width:880px;margin:0 auto;padding:0 40px 110px;">
     <div id="releases" style="display:flex;flex-direction:column;gap:40px;">
       <div id="loading" style="color:#6b655c;font-size:14px;padding:20px 0;">Loading releases…</div>
     </div>
 
-    <!-- footer -->
+
     <div style="margin-top:70px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;border-top:1px solid #26221d;padding-top:28px;">
       <a href="/" style="display:flex;align-items:center;gap:9px;color:#6b655c;font-size:13px;font-weight:600;text-decoration:none;">
         <span style="color:#cc785c;">[</span><span style="color:#a39d92;">kobe</span><span style="color:#cc785c;">]</span>

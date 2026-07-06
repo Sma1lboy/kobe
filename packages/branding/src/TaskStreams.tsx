@@ -1,10 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "./colors"
 
-// Concept 3 — Task Streams
-// Three parallel "task" lanes flow rightward and converge into the
-// "kobe" wordmark on the right. Sells the multi-task / orchestration
-// value prop: many sessions in flight, one place to drive them.
 
 type Lane = { dot: string; label: string; color: string; offset: number }
 
@@ -33,7 +29,7 @@ export const TaskStreams: React.FC = () => {
         padding: "0 60px",
       }}
     >
-      {/* Streams column (left) */}
+      { }
       <div style={{ flexGrow: 1, flexBasis: "60%", display: "flex", flexDirection: "column", gap: 36 }}>
         {LANES.map((lane) => {
           const slideIn = interpolate(frame, [lane.offset, lane.offset + 18], [-300, 0], {
@@ -73,7 +69,7 @@ export const TaskStreams: React.FC = () => {
         })}
       </div>
 
-      {/* Wordmark (right) */}
+      { }
       <div
         style={{
           flexBasis: "35%",

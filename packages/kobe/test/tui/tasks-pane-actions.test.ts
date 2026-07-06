@@ -1,11 +1,3 @@
-/**
- * `tasks-pane/actions.ts` — the Tasks pane's action bodies, split out of
- * `tasks-pane/host.tsx` into a deps-bag module (mirrors
- * `settings-dialog/actions.ts`). Every function takes an explicit
- * `TasksHostActionsContext` instead of closing over Solid signals, so each
- * is testable here with plain mocks — no opentui rendering, no tmux.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import type { KVContext } from "../../src/tui/context/kv"
 import type { Task } from "../../src/types/task"

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { addTab, openFilePreviewTab } from "../src/lib/tabs.ts"
 
-/**
- * File-preview tabs dedup by path — re-opening the same file from the Changes
- * rail must reuse the existing tab, not spawn a duplicate. Engine tabs, by
- * contrast, are independent each time. Verified via the returned tab ids (no
- * module-state harness needed). Each test uses a unique task id so the shared
- * module state doesn't bleed across cases.
- */
 
 describe("tabs file-preview dedup", () => {
   it("returns the SAME tab id when re-opening the same path", () => {

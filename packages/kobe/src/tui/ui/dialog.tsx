@@ -1,23 +1,3 @@
-/**
- * Dialog stack.
- *
- * Adapted from `refs/opencode/packages/opencode/src/cli/cmd/tui/ui/dialog.tsx`.
- * The shape of the public API (`useDialog`, `replace`, `clear`, `setSize`,
- * `stack`, `size`) is preserved 1:1 so lifted dialogs (DialogConfirm,
- * DialogAlert, DialogDiff) work without modification.
- *
- * Differences from opencode:
- *   - escape/ctrl-c handling uses our local `useBindings` (no
- *     `@opentui/keymap`). Selection-aware behavior is preserved: pressing
- *     escape while text is selected clears the selection rather than the
- *     dialog stack.
- *   - We dropped the right-click "copy on select" plumbing tied to
- *     `OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT` and `useToast`. kobe
- *     doesn't have a toast system yet; can be added in a later stream.
- *   - `refocus` still tracks the renderable that held focus when the dialog
- *     opened so it gets focus back on close.
- */
-
 import { RGBA, type Renderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type JSX, type ParentProps, Show, batch, createContext, useContext } from "solid-js"
@@ -43,18 +23,6 @@ export function Dialog(
   const renderer = useRenderer()
 
   let dismiss = false
-  // Default-medium = 80 cols (was 60). At 60 the F1 help dialog and
-  // settings dialogs felt cramped on wide terminals — descriptions
-  // wrapped early and the right-side hint columns ran out of room.
-  // 80 leaves comfortable headroom on a typical 100+-col terminal
-  // while still capping at `dimensions().width - 2` (see maxWidth
-  // below) for narrow PTY sizes. large + xlarge get proportional
-  // bumps so the relative scale stays the same.
-  //
-  // `small` (50 cols) is for tight yes/no prompts — DialogConfirm,
-  // delete confirms, etc. Otherwise the medium 80-col card looks
-  // grossly oversized for two words and a button row. Callers opt
-  // in via `dialog.setSize("small")` (see DialogConfirm.show).
   const width = () => {
     if (props.size === "xlarge") return 140
     if (props.size === "large") return 110
@@ -62,9 +30,6 @@ export function Dialog(
     return 80
   }
 
-  // Vertical headroom around the card so it never lands flush against
-  // the terminal's top/bottom edge — leaves room for the host shell's
-  // status line, tmux pane labels, etc.
   const VERTICAL_MARGIN = 2
   const maxCardHeight = () => Math.max(8, dimensions().height - VERTICAL_MARGIN * 2)
 
@@ -83,12 +48,6 @@ export function Dialog(
       width={dimensions().width}
       height={dimensions().height}
       alignItems="center"
-      // Vertically center the card. The previous design used
-      // `paddingTop = viewport/4`, which pushed tall cards (the
-      // F1 keybinding help, settings) off the bottom of the terminal.
-      // `justifyContent="center"` lets short cards float at center
-      // and tall cards sit at top with their max-height clipped to
-      // `maxCardHeight()` (see below) so they never overflow.
       justifyContent="center"
       position="absolute"
       zIndex={3000}
@@ -105,18 +64,7 @@ export function Dialog(
         maxWidth={dimensions().width - 2}
         maxHeight={maxCardHeight()}
         flexShrink={1}
-        // `flexGrow=0` is the default but I'm being explicit because
-        // opentui's centering container (alignItems / justifyContent
-        // = center on the overlay) can interact oddly with shrinkable
-        // children — without it the card occasionally stretched to
-        // fill the viewport's centered band. Content-sized + maxHeight
-        // is the contract: short cards float as a tight block, tall
-        // cards hit the cap and clip (children that need scrolling —
-        // F1 help, settings — wrap their own scrollbox).
         flexGrow={0}
-        // The card is ALWAYS opaque — even in transparent mode (where
-        // only the backdrop lightens). A translucent card lets pane
-        // content bleed through the dialog text and becomes unreadable.
         backgroundColor={theme.backgroundDialog}
         paddingTop={1}
       >
@@ -137,9 +85,6 @@ function init() {
 
   const renderer = useRenderer()
   let focus: Renderable | null = null
-  // Deferred refocus is owner-scoped so a provider teardown between the
-  // dialog closing and this 1ms timer cancels it — otherwise `.focus()`
-  // can land on a renderable that was destroyed in the same tick.
   const timeouts = createManagedTimeouts()
 
   function refocus() {
@@ -160,7 +105,6 @@ function init() {
     }, 1)
   }
 
-  // escape and ctrl+c both dismiss the top dialog identically.
   const dismissTop = () => {
     if (renderer?.getSelection()) renderer.clearSelection()
     const current = store.stack.at(-1)
@@ -186,15 +130,6 @@ function init() {
       })
       refocus()
     },
-    /**
-     * Replace the current dialog (if any) with a new one. The dialog body is
-     * passed as a thunk (`() => <Dialog ... />`) so that the JSX is created
-     * **inside the Solid render tree** when the provider renders the new
-     * stack — not at the call site, which is usually a key handler outside
-     * any Solid owner. Calling `useContext` / `useDialog` from a thunk
-     * evaluated inside Solid's reconciler works; calling it from a keypress
-     * handler does not.
-     */
     replace(thunk: () => JSX.Element, onClose?: () => void) {
       if (store.stack.length === 0) {
         focus = renderer?.currentFocusedRenderable ?? null

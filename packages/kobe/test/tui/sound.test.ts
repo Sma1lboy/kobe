@@ -1,16 +1,3 @@
-/**
- * Notification sound (`tui/lib/sound.ts`): player discovery on PATH, the
- * per-player argv table, and the never-throws contract. `pulse()` is
- * best-effort by design — the tests pin that a missing player is a silent
- * no-op (terminal BEL is the fallback) and that the argv actually names the
- * player found on PATH with the volume mapped per player family.
- *
- * The module caches the picked player + copied asset at module scope, so each
- * test re-imports a fresh module (vi.resetModules). Bun's runtime globals
- * (Bun.file / Bun.write / Bun.spawn) are absent under vitest's node env and
- * are faked per test.
- */
-
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -27,7 +14,6 @@ type FakeBun = {
 
 function fakeBun(overrides: Partial<FakeBun> = {}): FakeBun {
   const bun: FakeBun = {
-    // ensureAsset: pretend the cached copy already exists so no real copy runs.
     file: vi.fn((p: string) => ({ exists: async () => true, path: p })),
     write: vi.fn(async () => {}),
     spawn: vi.fn(() => ({ unref: vi.fn() })),
@@ -43,7 +29,6 @@ async function freshPulse(): Promise<(volume?: number) => void> {
   return mod.pulse
 }
 
-/** Drain the ensureAsset().then(...) microtask chain pulse() fires into. */
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
 beforeEach(() => {
@@ -88,7 +73,6 @@ describe("pulse", () => {
   })
 
   test("prefers the first PLAYERS entry present when several are installed", async () => {
-    // ffplay precedes afplay in the PLAYERS priority list.
     writeFileSync(join(pathDir, "afplay"), "")
     writeFileSync(join(pathDir, "ffplay"), "")
     process.env.PATH = pathDir
@@ -102,7 +86,7 @@ describe("pulse", () => {
   })
 
   test("no player on PATH → silent no-op (terminal BEL is the fallback)", async () => {
-    process.env.PATH = pathDir // empty dir
+    process.env.PATH = pathDir
     const bun = fakeBun()
     const pulse = await freshPulse()
 
@@ -123,7 +107,7 @@ describe("pulse", () => {
     const pulse = await freshPulse()
 
     expect(() => pulse()).not.toThrow()
-    await settle() // the rejection path must also stay contained
+    await settle()
   })
 
   test("detaches the player so its lifetime never pins kobe at shutdown", async () => {

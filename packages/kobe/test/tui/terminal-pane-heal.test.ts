@@ -1,15 +1,3 @@
-/**
- * Pure-policy tests for the kobe-owned pane heal machinery
- * (`src/tui/panes/terminal/pane-heal.ts`).
- *
- * Only the WHICH-panes policy is exercised — listing/respawning panes
- * needs a live tmux server and is verified interactively. These tests
- * matter because the heal plan decides which long-lived processes get
- * KILLED and respawned in place: a wrong filter either leaves a pane on
- * stale code after an upgrade (the v0.x "new shortcut is missing" class
- * of bug) or kills the user's engine pane mid-turn.
- */
-
 import { describe, expect, test } from "vitest"
 import {
   type KobePaneRow,
@@ -41,7 +29,6 @@ describe("parseKobePaneRows", () => {
   })
 
   test("drops blank lines and rows without a role tag (user shell panes)", () => {
-    // The shell pane carries no @kobe_role, so its 3rd field is empty.
     expect(parseKobePaneRows("@1\t%3\t\t\n\n@1\t%1\ttasks\t0.7.0")).toEqual([row("@1", "%1", "tasks", "0.7.0")])
   })
 
@@ -50,12 +37,9 @@ describe("parseKobePaneRows", () => {
   })
 
   test("parses the geometry-extended 5th field (pane width) when present", () => {
-    // The combined heal snapshot rides pane_width on the same listing so the
-    // rail-width heal doesn't need its own list-panes spawn.
     expect(parseKobePaneRows("@1\t%1\ttasks\t0.7.0\t18")).toEqual([
       { ...row("@1", "%1", "tasks", "0.7.0"), paneWidth: 18 },
     ])
-    // An unparsable width is OMITTED (compares unequal to any target → heals).
     expect(parseKobePaneRows("@1\t%1\ttasks\t0.7.0\t")).toEqual([row("@1", "%1", "tasks", "0.7.0")])
   })
 })
@@ -121,11 +105,6 @@ describe("planPaneHeals — stale-only (the upgrade heal)", () => {
 })
 
 describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)", () => {
-  // After an in-place vendor switch the Ops pane keeps its spawn-time
-  // `--vendor` flag, so a same-version Ops pane would poll the OLD vendor's
-  // transcript store (dead `● new` badge, wrong tab-bar turn state) unless we
-  // force its respawn. The Tasks rail is vendor-agnostic, so it stays
-  // version-gated.
   const opts = { currentVersion: "0.8.0", force: false, vendorChanged: true }
 
   test("respawns the Ops pane even when its version matches (force the new --vendor)", () => {
@@ -134,7 +113,6 @@ describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)"
       row("@1", "%1", "tasks", "0.8.0"),
       row("@1", "%2", "ops", "0.8.0"),
     ]
-    // Tasks pane is up-to-date → skipped; Ops pane is up-to-date but forced.
     expect(planPaneHeals(rows, opts)).toEqual([{ role: "ops", paneId: "%2", claudePaneId: "%0" }])
   })
 
@@ -152,9 +130,6 @@ describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)"
   })
 
   test("still skips an Ops pane in a window with no live claude pane (nothing to target)", () => {
-    // Unlike `force`, vendorChanged respects the claude-pane gate — after a
-    // successful engine respawn the claude pane is always alive, so this is the
-    // degraded edge case only.
     const rows = [row("@1", "%2", "ops", "0.8.0"), row("@1", "%1", "tasks", "0.8.0")]
     expect(planPaneHeals(rows, opts)).toEqual([])
   })
@@ -172,8 +147,6 @@ describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)"
   })
 
   test("absent vendorChanged behaves exactly like the stale-only heal", () => {
-    // Regression guard: the new knob is opt-in; omitting it preserves the
-    // version-gated upgrade-heal behavior verbatim.
     const rows = [row("@1", "%0", "claude", "0.8.0"), row("@1", "%2", "ops", "0.8.0")]
     expect(planPaneHeals(rows, { currentVersion: "0.8.0", force: false })).toEqual([])
   })
@@ -191,8 +164,6 @@ describe("planPaneHeals — force (the settings refresh)", () => {
   })
 
   test("respawns the Ops pane of a degraded window (no claude pane) with a null target", () => {
-    // A `kobe reload` must not silently leave this Ops pane on stale code;
-    // opsPaneCommand degrades to its git-status fallback for a null target.
     const rows = [row("@1", "%2", "ops", "0.8.0")]
     expect(planPaneHeals(rows, opts)).toEqual([{ role: "ops", paneId: "%2", claudePaneId: null }])
   })
@@ -213,17 +184,11 @@ describe("commandTargetPane", () => {
 
   test("returns null when the command targets no pane (defensive — kept by the filter)", () => {
     expect(commandTargetPane(["refresh-client"])).toBeNull()
-    // A dangling `-t` with no following arg is treated as no target, not a crash.
     expect(commandTargetPane(["resize-pane", "-t"])).toBeNull()
   })
 })
 
 describe("dropCommandsForVanishedPanes", () => {
-  // The bug this guards: list-panes snapshots the pane ids, then ONE batched
-  // `cmd ; cmd …` respawns/resizes them; tmux halts the sequence on the first
-  // failure, so a pane closed (tab close / task delete) between snapshot and exec
-  // would abort the heal of every LATER pane. Filtering to still-present panes
-  // lets the rest heal this tick, preserving the original order + single repaint.
   const tasksHeal = (id: string): (readonly string[])[] => [
     ["respawn-pane", "-k", "-t", id, "-c", "/wt", "cmd"],
     ["set-option", "-p", "-t", id, "@kobe_role", "tasks"],
@@ -236,16 +201,14 @@ describe("dropCommandsForVanishedPanes", () => {
   })
 
   test("drops ALL commands for a vanished pane but keeps the survivors, in order", () => {
-    // %1 closed between snapshot and exec; %5's three-command respawn must still
-    // run (pre-fix, %1's failed respawn-pane aborted the whole tail).
     const commands = [...tasksHeal("%1"), ...tasksHeal("%5")]
     expect(dropCommandsForVanishedPanes(commands, new Set(["%5"]))).toEqual(tasksHeal("%5"))
   })
 
   test("interleaved layout + respawn commands keep their relative order after filtering", () => {
     const commands: (readonly string[])[] = [
-      ["resize-pane", "-t", "%1", "-x", "18"], // tasks rail (present)
-      ["resize-pane", "-t", "%9", "-x", "40%"], // ops of a since-closed window
+      ["resize-pane", "-t", "%1", "-x", "18"],
+      ["resize-pane", "-t", "%9", "-x", "40%"],
       ...tasksHeal("%9"),
       ["set-option", "-p", "-t", "%1", "@kobe_role", "tasks"],
     ]
@@ -266,11 +229,6 @@ describe("dropCommandsForVanishedPanes", () => {
 })
 
 describe("classifyRelaunchOutcome", () => {
-  // The all-or-nothing aggregation that gates the `@kobe_vendor` tag: the tag is
-  // a single session-scoped fact, so it may only advance to the new vendor when
-  // EVERY window's engine pane respawned. tmux halts a batched `cmd ; cmd …`
-  // sequence on the first failure and exits non-zero, so a non-zero aggregate
-  // code means at least one window did not switch — the tag must stay put.
   test("no engine pane found → rebuild signal, regardless of code", () => {
     expect(classifyRelaunchOutcome(0, 0)).toBe("no-engine-pane")
     expect(classifyRelaunchOutcome(0, 1)).toBe("no-engine-pane")
@@ -282,8 +240,6 @@ describe("classifyRelaunchOutcome", () => {
   })
 
   test("a failed respawn in any window → respawn-failed, so the tag is NOT advanced", () => {
-    // One window of three failing surfaces as a non-zero aggregate exit code;
-    // the caller leaves the prior @kobe_vendor tag rather than claim the switch.
     expect(classifyRelaunchOutcome(3, 1)).toBe("respawn-failed")
     expect(classifyRelaunchOutcome(1, 1)).toBe("respawn-failed")
     expect(classifyRelaunchOutcome(2, 127)).toBe("respawn-failed")

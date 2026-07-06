@@ -1,12 +1,3 @@
-/**
- * New Task dialog — web counterpart of the TUI's NewTaskDialog "Existing
- * repo" tab (the same `task.create` RPC with the same fields: repo, title,
- * branch, baseRef, vendor). Repos are offered from the daemon's task index
- * (every `kind: "main"` project row), with a free-path escape hatch for a
- * repo kobe hasn't seen yet — creating under a new path also creates its
- * project row daemon-side, exactly like `kobe api add`.
- */
-
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
@@ -86,8 +77,6 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         payload,
       )
       selectTask(taskId)
-      // With a first prompt, open an engine tab and seed it — the prompt waits
-      // in the composer for the user to send once the engine is ready.
       const prompt = firstPrompt.trim()
       if (prompt) {
         setPendingPrompt(taskId, prompt)

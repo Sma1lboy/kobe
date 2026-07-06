@@ -1,10 +1,6 @@
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion"
 import { colors, monoStack } from "./colors"
 
-// Concept 2 — Pane Grid
-// The literal product. Five panes draw themselves with box-drawing chars,
-// then the wordmark settles into the workspace pane. If kobe's selling
-// point is "Conductor-shaped 5-pane TUI," show the 5-pane TUI.
 
 const ROWS = [
   "┌──────────────────────────────────────────────┐",
@@ -51,7 +47,6 @@ export const PaneGrid: React.FC = () => {
           })
           const visible = line.slice(0, Math.floor(reveal))
 
-          // Highlight the wordmark line once it's drawn enough.
           const isWordmark = line.includes("kobe") && i === 6
           const wordmarkOpacity = isWordmark ? interpolate(frame, [70, 90], [0, 1], { extrapolateRight: "clamp" }) : 1
 

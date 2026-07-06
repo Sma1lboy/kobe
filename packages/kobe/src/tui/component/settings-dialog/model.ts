@@ -1,24 +1,4 @@
-/**
- * Pure data + helpers for settings-dialog (v0.6).
- *
- * v0.5 had a Codex (app-server / exec backend) section that depended on
- * engine modules v0.6 deleted, so it's gone. Accounts came back in
- * KOB-249 (read-only claude/codex/copilot login detection) alongside
- * the Engines launch-command section.
- *
- * Row registry: each section declares an ORDERED list of row descriptors
- * built from the same reactive inputs the dialog already holds (theme
- * names, focus-accent slots, the engine list, hasDaemon). A row's body
- * index IS its position in that list — no offset arithmetic — so adding
- * or reordering a row is a one-line change here, and activation in
- * settings-dialog.tsx becomes a lookup on `row.kind` instead of an
- * index if-chain. This module stays pure (types + data only) so vitest
- * can import it without @opentui.
- */
-
 import type { VendorId } from "../../../types/vendor"
-// theme-core (not ../../context/theme): this module is shared with the
-// React port, which must not reference the Solid .tsx even type-only.
 import type { FocusAccentSlot } from "../../context/theme-core"
 import { LOCALES, type LocaleId } from "../../i18n/catalog"
 
@@ -35,13 +15,6 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "dev", label: "Dev" },
 ]
 
-/**
- * One navigable body row. `id` is unique within its section and stable
- * across renders (used by the section views to find a row's index);
- * `kind` is what the dialog's activation lookup dispatches on. Rows
- * with a payload (theme name, accent slot, engine vendor) carry it so
- * activation never has to reverse-engineer it from an index.
- */
 export type SettingsRow =
   | { id: string; kind: "theme"; name: string }
   | { id: string; kind: "language"; locale: LocaleId }
@@ -67,7 +40,6 @@ export type SettingsRow =
   | { id: "dispatcher"; kind: "devDispatcher" }
   | { id: "archived-history"; kind: "devArchivedHistory" }
 
-/** Stable row ids for payload-bearing rows (shared by builders + views). */
 export function themeRowId(name: string): string {
   return `theme:${name}`
 }
@@ -88,21 +60,13 @@ export function surfaceRowId(surface: "chattab" | "taskpanel"): string {
   return `surface:${surface}`
 }
 
-/** Everything the registry needs to lay out every section's rows. */
 export type SettingsRowsInput = {
   themeNames: readonly string[]
   focusAccentSlots: readonly FocusAccentSlot[]
-  /** Built-ins + user-registered custom engines, in display order. */
   engineList: readonly VendorId[]
   hasDaemon: boolean
 }
 
-/**
- * General section: themes, transparent toggle, focus accents, toast,
- * sound, the zen-mode toggle, the two settings-surface pickers, then the
- * editor pair. Order here IS the on-screen order — sections.tsx renders
- * the same sequence.
- */
 export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focusAccentSlots">): SettingsRow[] {
   return [
     ...input.themeNames.map((name): SettingsRow => ({ id: themeRowId(name), kind: "theme", name })),
@@ -121,11 +85,6 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
   ]
 }
 
-/**
- * Engines section: one row per engine (built-ins + custom), plus the
- * trailing "+ Add engine" row. Engine row index === position in
- * `engineList`, matching the section view's <For> order.
- */
 export function engineRows(engineList: readonly VendorId[]): SettingsRow[] {
   return [
     ...engineList.map((vendor): SettingsRow => ({ id: engineRowId(vendor), kind: "engine", vendor })),
@@ -141,11 +100,6 @@ export function feedbackRows(): SettingsRow[] {
   ]
 }
 
-/**
- * Dev section: Reset (always), Restart (daemon only), then the
- * Experimental remote-projects toggle — kept last so its presence never
- * shifts the rows above it.
- */
 export function devRows(hasDaemon: boolean): SettingsRow[] {
   return [
     { id: "dev-reset", kind: "devReset" },
@@ -157,10 +111,6 @@ export function devRows(hasDaemon: boolean): SettingsRow[] {
   ]
 }
 
-/**
- * The full registry: a section's ordered navigable rows. Accounts and
- * Keybindings are read-only displays — zero navigable rows.
- */
 export function sectionRows(section: SectionId, input: SettingsRowsInput): SettingsRow[] {
   switch (section) {
     case "general":
@@ -181,23 +131,14 @@ export function bodyRowCount(section: SectionId, input: SettingsRowsInput): numb
   return sectionRows(section, input).length
 }
 
-/** Index of a row id within a row list, or -1 when absent. */
 export function rowIndex(rows: readonly SettingsRow[], id: string): number {
   return rows.findIndex((row) => row.id === id)
 }
 
-/** The row at a body index, or undefined when out of range. */
 export function rowAt(rows: readonly SettingsRow[], index: number): SettingsRow | undefined {
   return rows[index]
 }
 
-/**
- * Turn a custom-engine slug into a presentable display name: split on
- * `-`/`_` and title-case each word. `my-local-agent` → `My Local Agent`.
- * Used so a custom engine added with no name still reads like the
- * title-cased built-ins instead of its raw lowercase-hyphenated id.
- * (Shared by the Solid and React settings dialogs.)
- */
 export function humanizeSlug(id: string): string {
   return id
     .split(/[-_]+/)

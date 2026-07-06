@@ -1,19 +1,9 @@
-/**
- * Pure sidebar navigation controller (`panes/sidebar/controller.ts`):
- * cursor clamping, -1 "no selection" semantics, the `g g` chord state
- * machine (arm / complete / timeout / disarm-on-other-nav), and select
- * bounds. The controller is the renderer-free half of the sidebar's key
- * handling — these tests are what let `keys.ts` stay a thin wiring layer.
- */
-
 import { describe, expect, test, vi } from "vitest"
 import { GG_CHORD_TIMEOUT_MS, createSidebarController } from "../../src/tui/panes/sidebar/controller"
 
 function makeCtrl(ids: string[], startCursor = 0) {
   let cursor = startCursor
   const onSelect = vi.fn()
-  // Deterministic chord clock: capture the scheduled callback so tests can
-  // expire the chord without real timers.
   let pendingTimeout: (() => void) | null = null
   const cancel = vi.fn(() => {
     pendingTimeout = null
@@ -48,11 +38,11 @@ describe("movement", () => {
     ctrl.moveDown()
     expect(cursor()).toBe(1)
     ctrl.moveDown()
-    ctrl.moveDown() // clamp at bottom
+    ctrl.moveDown()
     expect(cursor()).toBe(2)
     ctrl.moveUp()
     ctrl.moveUp()
-    ctrl.moveUp() // clamp at top
+    ctrl.moveUp()
     expect(cursor()).toBe(0)
   })
 
@@ -101,9 +91,9 @@ describe("g g chord", () => {
   test("the chord expires after the timeout — a late second g only re-arms", () => {
     const { ctrl, cursor, fireTimeout } = makeCtrl(["a", "b", "c"], 2)
     ctrl.pressG()
-    fireTimeout() // window elapsed
+    fireTimeout()
     expect(ctrl.isChordArmed()).toBe(false)
-    ctrl.pressG() // starts a NEW chord, no jump
+    ctrl.pressG()
     expect(cursor()).toBe(2)
     expect(ctrl.isChordArmed()).toBe(true)
   })

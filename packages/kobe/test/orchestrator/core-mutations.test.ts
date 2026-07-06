@@ -1,17 +1,3 @@
-/**
- * Orchestrator mutation methods not exercised by the flow-specific suites
- * (adopt / ensure-worktree / branch-follow / main-task / active-task):
- * setVendor, setPinned, setArchived, setStatus (incl. the done↔error refusal),
- * setPRStatus (incl. the no-op diff guard), moveTask, reorderTasks, and
- * deleteTask's safety ladder (main-row refusal, dirty-worktree guard, force
- * override, remove-failure keeping the index entry).
- *
- * Uses the house pattern: a REAL TaskIndexStore on a temp KOBE home (these
- * methods are store round-trips — mocking the store would test the mock) and
- * a stubbed worktree manager only where git would be touched (deleteTask),
- * since fabricating real dirty worktrees per case belongs to worktree.test.ts.
- */
-
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -61,8 +47,6 @@ async function makeTask(overrides: { title?: string; worktreePath?: string } = {
 }
 
 async function makeMainTask() {
-  // ensureMainTask resolves the repo root via git; a plain temp dir is not a
-  // repo, so create the main row through the store directly — same shape.
   return store.create({
     repo: "/repo",
     title: "repo",
@@ -81,7 +65,7 @@ describe("setVendor", () => {
     expect(orch.getTask(t.id)?.vendor).toBe("codex")
 
     const before = orch.getTask(t.id)?.updatedAt
-    await orch.setVendor(t.id, "codex") // same → no write
+    await orch.setVendor(t.id, "codex")
     expect(orch.getTask(t.id)?.updatedAt).toBe(before)
   })
 
@@ -153,7 +137,7 @@ describe("setPRStatus", () => {
     expect(orch.getTask(t.id)?.prStatus).toMatchObject({ provider: "github", number: 7 })
 
     const before = orch.getTask(t.id)?.updatedAt
-    await orch.setPRStatus(t.id, { ...pr }) // structurally equal → guarded no-op
+    await orch.setPRStatus(t.id, { ...pr })
     expect(orch.getTask(t.id)?.updatedAt).toBe(before)
 
     await orch.setPRStatus(t.id, null)
@@ -166,9 +150,9 @@ describe("moveTask", () => {
     const a = await makeTask({ title: "a" })
     const b = await makeTask({ title: "b" })
     const c = await makeTask({ title: "c" })
-    await orch.setArchived(b.id, true) // b leaves a+c's partition
+    await orch.setArchived(b.id, true)
 
-    await orch.moveTask(c.id, -1) // c above a (b not in the way)
+    await orch.moveTask(c.id, -1)
     const order = orch
       .listTasks()
       .filter((t) => !t.archived)
@@ -209,7 +193,7 @@ describe("reorderTasks", () => {
     const main = await makeMainTask()
     await expect(orch.reorderTasks([{ taskId: String(main.id), position: 1 }])).rejects.toThrow(/main/)
 
-    await expect(orch.reorderTasks([])).resolves.toBeUndefined() // empty batch no-ops
+    await expect(orch.reorderTasks([])).resolves.toBeUndefined()
   })
 })
 
@@ -259,7 +243,6 @@ describe("deleteTask — safety ladder", () => {
     fakeWorktrees.remove.mockRejectedValue(new Error("locked"))
 
     await expect(orch.deleteTask(t.id)).rejects.toThrow(WorktreeRemoveFailedError)
-    // The entry survives so the orphan stays visible + re-deletable.
     expect(orch.getTask(t.id)).toBeDefined()
   })
 
@@ -283,7 +266,7 @@ describe("signals + subscription surface", () => {
     expect(orch.tasksSignal()()).toHaveLength(1)
     unsub()
     await makeTask({ title: "second" })
-    expect(seen.at(-1)).toBe(1) // unsubscribed — no further notifications
+    expect(seen.at(-1)).toBe(1)
   })
 
   it("setActiveTask publishes to activeTaskSignal and clears with null", async () => {

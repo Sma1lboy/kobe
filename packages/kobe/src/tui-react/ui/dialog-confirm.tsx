@@ -1,11 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Confirm dialog — yes/no prompt with focused buttons (React port of
- * `src/tui/ui/dialog-confirm.tsx`, issue #15 G3). Same contract:
- * left/right switch focus, enter commits, esc cancels via the dialog
- * stack; `DialogConfirm.show(dialog, title, message, label?)` resolves
- * `boolean | undefined` (`undefined` = dismissed without an answer).
- */
 
 import { TextAttributes } from "@opentui/core"
 import { useState } from "react"
@@ -24,11 +17,8 @@ export type DialogConfirmProps = {
   message: string
   onConfirm?: () => void
   onCancel?: () => void
-  /** Custom label for the cancel button (default: `cancel`). Titlecased on render. */
   label?: string
-  /** Custom label for the confirm button (default: `confirm`). Titlecased on render. */
   confirmLabel?: string
-  /** Which button receives initial keyboard focus (default: `confirm`). */
   initialActive?: "confirm" | "cancel"
 }
 
@@ -58,8 +48,6 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
 
-  // Tight vertical layout — same rationale as the Solid original: title
-  // row, message right under it, buttons row right under that.
   return (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={0}>
       <box flexDirection="row" justifyContent="space-between">
@@ -119,8 +107,6 @@ DialogConfirm.show = (
       ),
       () => resolve(undefined),
     )
-    // Confirms are tight yes/no prompts; the narrow `small` width reads
-    // at a glance instead of swallowing half the viewport.
     dialog.setSize("small")
   })
 }

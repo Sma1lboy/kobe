@@ -1,9 +1,3 @@
-/**
- * GET/PATCH /api/settings — the shared TUI/web settings surface backed by
- * state.json, split out of web-server.ts verbatim (file-size cap). Owns the
- * settings snapshot shape and the patch/engine-management validation.
- */
-
 import { defaultEngineCommand, engineCommandKey, engineDisplayName, engineNameKey } from "@/engine/interactive-command"
 import { AUTO_STATUS_KEY } from "@/state/auto-status"
 import { DISPATCHER_KEY } from "@/state/dispatcher"
@@ -58,7 +52,6 @@ export function settingsSnapshot(): Response {
   const state = loadStateFile()
   const custom = customEngineIdsFrom(state)
   const engineIds = [...BUILTIN_VENDORS, ...custom] as VendorId[]
-  // `lastSelectedVendor` is the pre-split legacy key (see kobe's state/vendor-prefs.ts).
   const defaultEngine = stringValue(state.defaultVendor, stringValue(state.lastSelectedVendor, "claude"))
   const focusAccent = stringValue(state.focusAccent, "primary")
   return Response.json({

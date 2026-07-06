@@ -1,18 +1,3 @@
-/**
- * Edge-case coverage for `src/engine/codex-local/history.ts` beyond what
- * `codex-history.test.ts` already pins (rollout listing, cwd memoization,
- * usage-metric derivation). This file covers:
- *   - `parseJsonl` / `normalizeCodexResponseItem`'s per-`response_item`-type
- *     branches (reasoning, function_call, custom_tool_call, tool_search_call,
- *     *_output variants, single-record tools, malformed/dropped lines).
- *   - `rolloutCwd`'s direct parsing contract.
- *   - `readHistoryWithMetrics` / `readHistory` end-to-end (file found/missing,
- *     unreadable file).
- *   - `deleteHistory` against a REAL temp rollout tree (it calls node's
- *     `unlink` directly, not through `HistoryDeps` — so this is exercised
- *     against real files rather than mocked).
- */
-
 import { mkdir, mkdtemp, readFile as readFileReal, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -50,8 +35,6 @@ describe("rolloutCwd", () => {
   })
 
   it("tolerates a malformed FIRST line without throwing, but still stops there (no meta)", () => {
-    // session_meta is only ever the first record; a malformed first line
-    // means "no meta" even if a later line happens to be valid.
     const raw = ["{not json", JSON.stringify({ type: "session_meta", payload: { cwd: "/wt" } })].join("\n")
     expect(rolloutCwd(raw)).toBe("")
   })
@@ -104,7 +87,7 @@ describe("parseJsonl — message records", () => {
       "   ",
       "{not json",
       JSON.stringify({ type: "turn_context" }),
-      JSON.stringify({ type: "response_item" }), // no payload
+      JSON.stringify({ type: "response_item" }),
       meta({ type: "message", role: "user", content: "ok" }),
     ].join("\n")
     expect(parseJsonl(raw, SID)).toHaveLength(1)
@@ -312,7 +295,6 @@ describe("deleteHistory (real temp rollout tree)", () => {
   let tmpRoot: string
 
   afterEach(async () => {
-    // ponytail: best-effort cleanup, not the point of the test
     if (tmpRoot) await import("node:fs/promises").then((fs) => fs.rm(tmpRoot, { recursive: true, force: true }))
   })
 

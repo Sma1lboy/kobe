@@ -1,21 +1,3 @@
-/**
- * Dev launcher — one `bun run dev` brings up the whole web UI:
- *   - the daemon-hosted web transport on KOBE_DAEMON_WEB_PORT (5174)
- *   - the PTY sidecar (node, node-pty) on KOBE_PTY_PORT (5175)
- *   - the Vite dev server (node) on 5173, proxying /api + /events to it
- *
- * Browser-facing daemon data now comes directly from the daemon's local
- * HTTP/SSE transport. There is no bridge process in this dev stack.
- * Ctrl-C tears everything down.
- *
- * Daemon isolation: `bun run dev` connects to whatever the default socket
- * points to — your PRODUCTION `~/.kobe` daemon. `bun run dev:sandbox` sets
- * `KOBE_HOME_DIR` to a throwaway home so the daemon web transport, PTY engines, and
- * tmux all use a sandbox and never touch production `tasks.json`. The banner
- * below always prints which home this session is wired to, so you can never
- * mistake one for the other. (Automated tests — `bun run test` — touch no
- * daemon at all; that isolation is unconditional.)
- */
 
 import { mkdirSync } from "node:fs"
 import { homedir } from "node:os"
@@ -26,9 +8,6 @@ const DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
 const WEB_PORT = process.env.KOBE_WEB_PORT ?? "5173"
 const PTY_PORT = process.env.KOBE_PTY_PORT ?? "5175"
 
-// Resolve KOBE_HOME_DIR to an absolute path so every child agrees on the same
-// home regardless of its cwd, and ensure it exists (the sandbox home may not
-// yet). Unset → production `~/.kobe`.
 const rawHome = process.env.KOBE_HOME_DIR
 const homeDir = rawHome ? resolve(rawHome) : null
 if (homeDir) mkdirSync(homeDir, { recursive: true })
@@ -56,14 +35,11 @@ try {
   )
 }
 
-// node: PTY terminal server — node-pty only works under node, not bun.
-// Needs the daemon web port to fetch each tab's engine launch spec.
 const pty = Bun.spawn(["node", "pty-server.mjs"], {
   stdio: ["inherit", "inherit", "inherit"],
   env: { ...childEnv, KOBE_PTY_PORT: PTY_PORT, KOBE_DAEMON_WEB_PORT: DAEMON_WEB_PORT },
 })
 
-// node (via vite): the SPA, proxying /api + /events + /pty to the above.
 const vite = Bun.spawn(["bun", "run", "vite", "dev", "--port", WEB_PORT, "--strictPort"], {
   stdio: ["inherit", "inherit", "inherit"],
   env: { ...childEnv, KOBE_DAEMON_WEB_PORT: DAEMON_WEB_PORT, KOBE_PTY_PORT: PTY_PORT },
@@ -77,7 +53,6 @@ process.on("SIGINT", shutdown)
 process.on("SIGTERM", shutdown)
 process.on("exit", shutdown)
 
-// If any child exits, bring the whole dev session down.
 void Promise.race([pty.exited, vite.exited]).then(() => {
   shutdown()
   process.exit(0)

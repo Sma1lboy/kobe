@@ -1,24 +1,3 @@
-/**
- * Terminal pane process abstraction.
- *
- * kobe deliberately does NOT use tmux here anymore. The default backend
- * uses Bun's native PTY support (`Bun.spawn(..., { terminal })`) and a
- * headless xterm emulator to turn terminal control bytes into a stable
- * screen buffer for opentui to render.
- *
- * The Bun backend renders xterm's authoritative cell grid DIRECTLY into
- * opentui-ready style runs (`Chunk[]` per row) — we do not re-serialize
- * cells back to ANSI and re-parse them. xterm-headless owns the VT
- * emulation end to end; this file only maps its cells to chunks. (The
- * old cell→ANSI→reparse round-trip was where every render bug lived:
- * true-color SGR mis-parsing, multi-byte glyph corruption. KOB-224.)
- *
- * A pipe backend remains available through `KOBE_TERMINAL_BACKEND=pipe`
- * as a fallback for old Bun builds or unsupported platforms. It has no
- * emulator, so it still parses its raw byte buffer via `sgr.ts` into the
- * same `Chunk[]` rows.
- */
-
 import { Terminal as XtermHeadless } from "@xterm/headless"
 import { MockTaskPty } from "./pty-mock"
 import { PipeTaskPty } from "./pty-pipe"
@@ -38,10 +17,6 @@ import { xtermLineToChunks } from "./xterm-chunks"
 export { MockTaskPty } from "./pty-mock"
 export { PipeTaskPty } from "./pty-pipe"
 export type { CursorPos, DataListener, TaskPtyLike, TaskPtyOpts, TerminalRow } from "./pty-types"
-
-/* --------------------------------------------------------------------- */
-/*  Bun PTY backend                                                       */
-/* --------------------------------------------------------------------- */
 
 export class BunTerminalTaskPty implements TaskPtyLike {
   readonly taskId: string
@@ -69,21 +44,11 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
     })
 
-    // Reply channel: xterm emits responses to the program's terminal
-    // queries (Primary DA `\x1b[c`, cursor-position report `\x1b[6n`,
-    // status DSR, etc.) via `onData`. These MUST flow back to the
-    // child's stdin — an interactive app like `claude` queries the
-    // terminal on startup to detect its type/capabilities and to sync
-    // its cursor model. Dropping the replies left claude on a fallback
-    // path whose relative cursor-move + erase-to-EOL redraw landed on
-    // the wrong rows, half-erasing its input-box rule (KOB-208).
     this.term.onData((data) => {
       if (this._killed) return
       try {
         this.proc.terminal?.write(data)
-      } catch {
-        /* best effort — child may have exited */
-      }
+      } catch {}
     })
 
     this.proc = Bun.spawn(resolveArgv(opts), {
@@ -140,9 +105,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     let bracketed = false
     try {
       bracketed = this.term.modes.bracketedPasteMode === true
-    } catch {
-      /* mode probe is best-effort */
-    }
+    } catch {}
     this.write(bracketed ? `\x1b[200~${text}\x1b[201~` : text)
   }
 
@@ -151,9 +114,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     if (this.snapshot.length > 0) {
       try {
         cb(this.snapshot, this.cursor)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
     return () => {
       this.listeners.delete(cb)
@@ -188,13 +149,6 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   private onTerminalData(data: string | Uint8Array): void {
     if (this._killed) return
-    // Hand raw bytes straight to xterm. Its parser keeps a streaming
-    // UTF-8 decoder across `write` calls, so a multi-byte glyph
-    // (box-drawing `─`, claude's status icons) split across a PTY chunk
-    // boundary is reassembled correctly. Decoding each chunk to a UTF-8
-    // string here instead corrupted any glyph straddling a boundary:
-    // claude's full-width input-box rule rendered with gaps and its
-    // relative-cursor redraw landed on the wrong row (KOB-208).
     this.term.write(data, () => this.queueRefresh())
   }
 
@@ -207,14 +161,6 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }, 16)
   }
 
-  /**
-   * Is xterm currently mid-`?2026` synchronized-output block? Apps that
-   * paint atomically (interactive `claude` opens ~45 of these per
-   * prompt) write a frame in two halves; snapshotting between them
-   * renders a torn intermediate state. We skip the refresh while the
-   * mode is set — the closing `?2026l` is itself a write that re-queues
-   * a refresh once the frame is whole.
-   */
   private inSynchronizedOutput(): boolean {
     try {
       return this.term.modes.synchronizedOutputMode === true
@@ -223,13 +169,6 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }
   }
 
-  /**
-   * Has the app hidden the cursor via `?25l`? Streaming `claude` hides
-   * the cursor while it paints; an unconditional inverse cursor cell on
-   * top of that looks like a stray glyph. xterm tracks this on its
-   * core service — not surfaced through the public typings, hence the
-   * narrow internal reach.
-   */
   private cursorHidden(): boolean {
     try {
       const core = (
@@ -245,7 +184,6 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   private refreshSnapshot(): void {
     if (this._killed) return
-    // Don't snapshot a half-painted frame — wait for the sync block to close.
     if (this.inSynchronizedOutput()) return
     const active = this.term.buffer.active
     const rows: TerminalRow[] = []
@@ -257,16 +195,11 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       rows.push(line ? xtermLineToChunks(line, minLast) : [])
     }
     this.snapshot = rows
-    // A hidden cursor (`?25l`) reports as null so the pane draws no
-    // inverse cursor cell — same contract as a backend that can't
-    // report a cursor at all.
     this.cursor = this.cursorHidden() ? null : { x: active.cursorX, y: active.baseY + active.cursorY - start }
     for (const cb of this.listeners) {
       try {
         cb(this.snapshot, this.cursor)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
   }
 
@@ -276,14 +209,10 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     if (killProcess) {
       try {
         this.proc.terminal?.close()
-      } catch {
-        /* best effort */
-      }
+      } catch {}
       try {
         this.proc.kill("SIGTERM")
-      } catch {
-        /* best effort */
-      }
+      } catch {}
     }
     const exitCbs = [...this.exitListeners]
     this.listeners.clear()
@@ -291,16 +220,10 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     for (const cb of exitCbs) {
       try {
         cb()
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
   }
 }
-
-/* --------------------------------------------------------------------- */
-/*  Backend selection                                                     */
-/* --------------------------------------------------------------------- */
 
 export function createTaskPty(opts: TaskPtyOpts): TaskPtyLike {
   const backend = process.env.KOBE_TERMINAL_BACKEND ?? "bun-pty"

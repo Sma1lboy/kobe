@@ -1,13 +1,3 @@
-/**
- * windowTail (history pane bounded-tail windowing). Why this test matters:
- * opentui's scrollbox culls drawing but keeps every mounted row alive as a
- * native Renderable (Yoga nodes + Zig TextBuffers, off the JS heap), so the
- * history pane leaks unboundedly if the windowing slice ever regresses to
- * rendering the full transcript — a 3.5-day dev:mock run reached 13-22 GB RSS.
- * The slice must keep the NEWEST messages (live tail) and report the exact
- * elided count for the "… N earlier messages" indicator row.
- */
-
 import { describe, expect, test } from "vitest"
 import { RENDER_WINDOW, windowTail } from "../../src/tui/history/window.ts"
 

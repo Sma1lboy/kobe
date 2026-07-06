@@ -1,16 +1,4 @@
 #!/usr/bin/env bun
-// Capture a scripted kobe TUI demo as ANSI keyframes for the Remotion
-// quicklook composition. Storyboard mirrors the original quicklook.mp4:
-//   shell types `kobe` -> workspace with a pre-existing task -> NewTaskDialog
-//   (claude) -> engine boots on camera -> prompt typed char-by-char ->
-//   agent tool stream -> second NewTaskDialog (codex) -> codex boots.
-//
-// Runs the real TUI in an isolated tmux server + throwaway KOBE_HOME, polls
-// `capture-pane -e` and stores changed frames with wall-clock timestamps
-// (so spinners and typing replay at true speed).
-//
-// Usage: bun scripts/capture-tui.ts [--home .capture-home-5] [--seconds 120]
-// Side effect: creates kobe task branches in --repo (one per created task).
 
 import { $ } from "bun"
 
@@ -30,16 +18,11 @@ const SOCKET = "kobe-capture"
 const SESSION = "quicklook"
 const HOME = `${import.meta.dir}/../${arg("home", ".capture-home-5")}`
 
-// The demo must run the LOCAL source (dev:sandbox flavour), not the installed
-// CLI — a shim named `kobe` first in PATH keeps the on-camera command spelled
-// `kobe` while executing this repo's packages/kobe.
 const KOBE_SRC = `${import.meta.dir}/../../kobe`
 const BIN = `${HOME}/bin`
 await $`mkdir -p ${BIN}`.quiet()
 await Bun.write(
   `${BIN}/kobe`,
-  // Preload by absolute path — bare "@opentui/solid/preload" resolves from
-  // the *invocation* cwd (the repo on camera), where it doesn't exist.
   `#!/bin/sh\nexec env KOBE_DEV=1 bun --preload ${KOBE_SRC}/node_modules/@opentui/solid/scripts/preload.ts --conditions=browser ${KOBE_SRC}/src/cli/index.ts "$@"\n`,
 )
 await $`chmod +x ${BIN}/kobe`.quiet()
@@ -59,36 +42,23 @@ const tmux = (...args: string[]) => $`tmux -L ${SOCKET} ${args}`.env(ENV).quiet(
 const key = (k: string) => tmux("send-keys", "-t", SESSION, k)
 const sleep = (ms: number) => Bun.sleep(ms)
 
-/**
- * Kill a socket's pane PROCESSES, then its server. `kill-server` alone only
- * SIGHUPs the panes, and the opentui pane hosts survive SIGHUP — they reparent
- * to init and keep polling forever (the observed leak: 16 orphaned `kobe
- * tasks/ops` processes from dead capture sockets). SIGKILL each pane's process
- * group first so nothing outlives the capture.
- */
 async function killPanesThenServer(socket: string): Promise<void> {
   const out = await $`tmux -L ${socket} list-panes -a -F '#{pane_pid}'`.env(ENV).quiet().nothrow().text()
   for (const line of out.split("\n")) {
     const pid = Number.parseInt(line.trim(), 10)
     if (!Number.isFinite(pid) || pid <= 1) continue
     try {
-      process.kill(-pid, "SIGKILL") // pane's process group
+      process.kill(-pid, "SIGKILL")
     } catch {
       try {
         process.kill(pid, "SIGKILL")
       } catch {
-        /* already gone */
       }
     }
   }
   await $`tmux -L ${socket} kill-server`.env(ENV).quiet().nothrow()
 }
 
-/**
- * Idempotent full teardown — outer capture server, sandbox daemon, inner kobe
- * server. Wired to normal exit AND crash/interrupt paths below: a capture that
- * dies mid-run must never leave engine/pane processes behind (leaks are bugs).
- */
 let torndown = false
 async function teardown(): Promise<void> {
   if (torndown) return
@@ -119,9 +89,6 @@ async function typeText(text: string, msPerChar: number): Promise<void> {
   }
 }
 
-// Engine boot time jitters run to run — typing at a fixed time raced the
-// boot and dropped leading chars. Poll until the screen shows `re` (the
-// composer's placeholder), then it is safe to type.
 async function waitFor(re: RegExp, timeoutMs: number): Promise<void> {
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
@@ -131,38 +98,29 @@ async function waitFor(re: RegExp, timeoutMs: number): Promise<void> {
   }
 }
 
-// Walk the NewTaskDialog. Wait for it to actually open (opening while the
-// UI is busy ate a timed keypress once and the walk derailed into the wrong
-// sub-tab), pick the engine with Ctrl+E (works from ANY field — no bet on
-// where focus is), then Tab through tabs -> engine -> repo -> branch ->
-// Create and commit with Enter (only fires on the confirm field).
 async function createTaskViaDialog(engine: "claude" | "codex"): Promise<void> {
   await key("n")
   await waitFor(/New task/, 8_000)
-  await sleep(1500) // dialog just opened, let it breathe on camera
+  await sleep(1500)
   if (engine === "codex") {
-    await key("C-e") // cycle engine vendor
+    await key("C-e")
     await sleep(900)
   }
   for (let i = 0; i < 4; i++) {
     await key("Tab")
     await sleep(700)
   }
-  await key("Enter") // [ Create ]
+  await key("Enter")
 }
 
 await $`mkdir -p ${HOME}`.quiet()
 await tmux("kill-server").nothrow()
 
-// Pre-existing task so the sidebar isn't empty (no engine, just the row).
 await $`kobe api add --repo ${REPO} --title ${"fix flaky turn-detector test"} --status in_progress`
   .env(ENV)
   .quiet()
   .nothrow()
 
-// Warm-up pass (off camera): boot the TUI once so the pre-seeded task's
-// worktree + bun install settle before we roll — the video must open on a
-// calm kobe workspace, not an install screen.
 await tmux(
   "new-session", "-d", "-s", "warmup", "-x", String(COLS), "-y", String(ROWS),
   "-e", `KOBE_HOME_DIR=${HOME}`, "-e", "KOBE_TMUX_SOCKET=kobe-capture-inner",
@@ -173,7 +131,6 @@ await tmux(
 await sleep(50_000)
 await tmux("kill-session", "-t", "warmup").nothrow()
 
-// Plain shell first — the demo opens on `$ kobe<Enter>` like the original.
 await tmux(
   "new-session", "-d", "-s", SESSION, "-x", String(COLS), "-y", String(ROWS),
   "-e", `KOBE_HOME_DIR=${HOME}`, "-e", "KOBE_TMUX_SOCKET=kobe-capture-inner",
@@ -182,31 +139,16 @@ await tmux(
   "sh",
 )
 
-// Scripted beats: [atSecond, action]. Long-running beats sleep internally;
-// the capture loop keeps polling concurrently.
 const BEATS: Array<[number, () => Promise<unknown>]> = [
   [1.0, () => typeText("kobe", 160)],
   [2.2, () => key("Enter")],
-  [7.0, () => key("C-h")], // sidebar focus
-  [8.0, () => createTaskViaDialog("claude")], // via the real NewTaskDialog
-  // Engine boots ~14-30s (worktree + bun install + claude). Then type the
-  // first prompt into the composer, visibly.
-  // Type, then submit — chained, not a separate timed beat: per-char send-keys
-  // overhead makes typing finish later than nominal, and a timed Enter can
-  // fire mid-prompt and submit a truncated message (it did).
+  [7.0, () => key("C-h")],
+  [8.0, () => createTaskViaDialog("claude")],
   [32.0, () => typeText(CLAUDE_PROMPT, 45).then(() => sleep(500)).then(() => key("Enter"))],
-  // Let the agent stream tool calls + response breathe (~20s on camera),
-  // then create the codex task.
   [60.0, () => key("C-h")],
   [61.0, () => createTaskViaDialog("codex")],
-  // NB: codex rotates its placeholder examples — never match their wording.
-  // The composer prompt char "›" (U+203A) is codex-only (claude uses ❯,
-  // the file tree uses ▸) and appears exactly when the composer is ready.
   [86.0, async () => {
     await waitFor(/›/, 30_000)
-    // Codex may interpose a hooks-trust prompt whose list cursor is ALSO
-    // "›" — typing into it derails the demo. Dismiss with "Trust all and
-    // continue" (option 2), then wait for the real composer.
     const screen = await tmux("capture-pane", "-p", "-t", SESSION).text()
     if (screen.includes("Hooks need review")) {
       await key("Down")
@@ -215,7 +157,7 @@ const BEATS: Array<[number, () => Promise<unknown>]> = [
       await sleep(1500)
       await waitFor(/›/, 20_000)
     }
-    await sleep(1200) // composer just appeared — let it sit a beat
+    await sleep(1200)
     await typeText(CODEX_PROMPT, 45)
     await sleep(500)
     await key("Enter")
@@ -233,8 +175,6 @@ while (elapsed() < SECONDS) {
   for (let b = 0; b < BEATS.length; b++) {
     if (t >= BEATS[b][0] && !fired.has(b)) {
       fired.add(b)
-      // Bun Shell promises are lazy — .catch() forces execution without
-      // stalling the capture loop on slow beats.
       BEATS[b][1]().catch(() => {})
     }
   }

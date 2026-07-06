@@ -1,15 +1,8 @@
-/**
- * ToastOverlay — bottom-right transient toast stack (src/tui/component/toast-overlay.tsx).
- * Exercises the real NotificationsProvider (notify/dismiss), not a mock —
- * this is the actual (kind -> chip) wiring the pane hosts rely on.
- */
 import { describe, expect, it } from "bun:test"
 import { ToastOverlay } from "../../src/tui/component/toast-overlay"
 import { useNotifications } from "../../src/tui/context/notifications"
 import { renderComponent } from "./harness"
 
-// KV writes debounce to disk; point them at a throwaway dir so the test
-// never touches (or depends on) a real ~/.config/kobe/state.json.
 process.env.KOBE_HOME_DIR = process.env.KOBE_HOME_DIR ?? "/tmp/kobe-render-test-home"
 
 function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: string }) {

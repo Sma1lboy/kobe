@@ -1,11 +1,3 @@
-/**
- * Direct tmux entrypoint (v0.6 inner-first).
- *
- * The old opentui "outer monitor" is now a deprecated fallback. The
- * default `kobe` path should put the user straight inside the tmux
- * workspace; task switching, task creation, Ops, and shell live there.
- */
-
 import { resolve } from "node:path"
 import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -42,7 +34,6 @@ export interface InitialTaskChoice {
   readonly cwdRepo?: string
 }
 
-/** Pick the task direct mode should attach first. Exported for unit coverage. */
 export function chooseInitialTask(tasks: readonly Task[], choice: InitialTaskChoice = {}): Task | undefined {
   const byId = (id: string | null | undefined) => (id ? tasks.find((t) => t.id === id) : undefined)
   const active = byId(choice.activeTaskId)
@@ -91,10 +82,6 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
 
 export async function startDirectTmux(): Promise<void> {
   setClientLogContext("gui")
-  // Install kobe's global hooks on launch (activity events + default-on
-  // external-worktree sync) into ~/.claude/settings.json — no-op when already
-  // in place or the user opted out. Fire-and-forget: best-effort config, must
-  // never delay or fail the launch.
   void import("../cli/hook-cmd.ts").then((m) => m.ensureGlobalKobeHooks())
   if (!(await tmuxAvailable())) {
     console.error("kobe: tmux not found on PATH — install tmux to use kobe 0.6 direct mode")
@@ -102,14 +89,7 @@ export async function startDirectTmux(): Promise<void> {
     return
   }
 
-  // Direct mode cannot depend on an outer opentui process staying alive
-  // after detach. Use the stable daemon socket so in-session Tasks/Ops
-  // panes survive `Ctrl+Q` and a later `kobe` relaunch.
   const client = await connectOrStartDaemon()
-  // role: "gui" — this is THE front-end attach. It stays parked on
-  // `tmux attach` for the whole session and disposes on quit, so it is the
-  // correct (and only) signal for the daemon's lazy-shutdown refcount. The
-  // in-tmux Tasks/Ops panes subscribe as "pane" and never hold the daemon.
   const orchestrator = new RemoteOrchestrator(client, { role: "gui" })
   try {
     process.env.KOBE_DAEMON_SOCKET_PATH = client.socketPath
@@ -121,20 +101,9 @@ export async function startDirectTmux(): Promise<void> {
       cwdRepo,
     })
     if (!task) {
-      // Zero tasks to enter: park on the kobe-home Tasks home instead of
-      // bailing to the launching shell. From there the user can create
-      // (`n`) a task and switch straight into it; deleting the last task
-      // lands back here too (switchClientBeforeKill). No task → no
-      // auto-title pass, so we attach and return directly.
       const home = await ensureFallbackSession()
-      // Fallback sessions skip ensureSession's server-nicety block, so
-      // apply the theme-matched tmux chrome here before attaching.
       await applyTmuxChromeTheme()
-      // Reconcile to the global zen intent before the fit so the home session
-      // attaches in the right layout (no-op on windows without an engine pane).
       await syncSessionZen(home)
-      // Fit + heal the window before attaching so the first frame is correct
-      // (no reflow flash on attach — see prepareWindowForAttach).
       await prepareWindowForAttach(home)
       if ((await attachTmux(attachArgv(home))) === null) {
         console.error("kobe: failed to attach to the kobe-home session")
@@ -147,12 +116,6 @@ export async function startDirectTmux(): Promise<void> {
     const name = tmuxSessionName(task.id)
     await orchestrator.setActiveTask(task.id).catch(() => {})
     setPersistedString("lastSelectedTaskId", task.id)
-    // A project's main task must follow the user's default engine, not a vendor
-    // frozen at creation time. Reconcile before launch: adopt the live session's
-    // ACTUAL vendor when one is running (so a daemon restart never respawns a
-    // healthy codex session back to the persisted "claude"), otherwise fall back
-    // to the repo's preferred vendor (so cold-opening an existing project honors it).
-    // Regular tasks keep their explicitly chosen vendor untouched.
     let vendor = task.vendor
     if (task.kind === "main") {
       const live = await observeSessionVendor(name)
@@ -178,18 +141,9 @@ export async function startDirectTmux(): Promise<void> {
       return
     }
 
-    // ensureSession's reuse path skips the server-nicety block where the
-    // create path applies tmux chrome styling, and the user may have switched
-    // themes since the server last saw an apply — refresh before attach.
     await applyTmuxChromeTheme()
 
-    // Reconcile to the global zen intent before the fit, so attaching a project
-    // directly inherits zen (its tmux session was never toggled itself).
     await syncSessionZen(name)
-    // Fit the window to this terminal and heal the layout BEFORE attaching, so
-    // the first painted frame is already correct — no reflow "flash" where the
-    // rail blows up on attach and the window-resized hook snaps it back a beat
-    // later (see prepareWindowForAttach).
     await prepareWindowForAttach(name)
     const exitCode = await attachTmux(attachArgv(name))
     if (exitCode === null) {

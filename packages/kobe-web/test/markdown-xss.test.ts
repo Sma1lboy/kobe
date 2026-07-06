@@ -1,20 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { renderMarkdown } from "../src/lib/markdown.ts"
 
-/**
- * Focused scheme-bypass + structural resistance for the notes renderer (the
- * app's one dangerouslySetInnerHTML sink). The classic XSS bypass is a
- * case-varied or whitespace-padded `javascript:` URL; the scheme allowlist
- * must reject all of them, and a few structural edges must stay inert too.
- */
 
 describe("renderMarkdown — scheme bypass resistance", () => {
   const bypasses = [
     "[x](JavaScript:alert(1))",
     "[x](JAVASCRIPT:alert(1))",
-    "[x](  javascript:alert(1))", // leading whitespace
-    "[x](java\tscript:alert(1))", // embedded tab
-    "[x](DATA:text/html,boom)", // uppercase data:
+    "[x](  javascript:alert(1))",
+    "[x](java\tscript:alert(1))",
+    "[x](DATA:text/html,boom)",
     "[x](vbscript:msgbox)",
   ]
 
@@ -23,7 +17,6 @@ describe("renderMarkdown — scheme bypass resistance", () => {
       const out = renderMarkdown(md)
       expect(out).not.toContain("<a ")
       expect(out).not.toContain("href")
-      // and never emits a raw <script>/on* — the whole thing stays escaped text
       expect(out).not.toContain("<script")
     })
   }
@@ -43,12 +36,9 @@ describe("renderMarkdown — structural inertness", () => {
   })
 
   it("truncates a URL at the first ) without breaking out of the href", () => {
-    // The link regex stops the URL at the first ), so the tail becomes text —
-    // the anchor that IS produced still carries a valid, escaped href.
     const out = renderMarkdown("[x](http://a.com/foo(bar))")
     expect(out).toContain('href="http://a.com/foo(bar"')
     expect(out).not.toContain("javascript")
-    // no unescaped attribute break-out
     expect(out).not.toMatch(/href="[^"]*"[^>]*on\w+=/)
   })
 

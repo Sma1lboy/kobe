@@ -1,21 +1,3 @@
-/**
- * SlideOver — a reusable right-docked drawer, the shared chrome behind the
- * Board's issue surfaces (intake panel, issue detail). The structure is lifted
- * from IssuePeek's drawer: a fixed full-screen backdrop, a right-edge panel
- * with a focus trap, and Escape/backdrop close (Escape leaves text fields
- * alone so it doesn't yank you out of the title input mid-edit).
- *
- * What it adds over the IssuePeek precedent is a slide-in: the panel mounts at
- * translate-x-full, then flips to translate-x-0 on the next layout tick so the
- * browser animates the transform. motion-reduce drops the animation entirely.
- *
- * `wide` opts a panel into a much wider shell (w-[920px] vs the default
- * w-[640px]) so a two-column body — e.g. the redesigned issue detail's
- * ticket/config split — has room without each surface feeling cramped. It only
- * touches the panel width; every other behavior (slide-in, focus trap,
- * Esc/backdrop close, title/footer) is unchanged.
- */
-
 import { X } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -33,16 +15,12 @@ export function SlideOver({
   title?: ReactNode
   children: ReactNode
   footer?: ReactNode
-  /** Render a much wider panel (for a two-column body). Default narrow. */
   wide?: boolean
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  // Drives the slide: mount off-screen, then flip on the next tick so the
-  // transition has two distinct transform values to animate between.
   const [shown, setShown] = useState(false)
   useFocusTrap(panelRef, open)
 
-  // Flip to the on-screen position one layout tick after mount.
   useEffect(() => {
     if (!open) {
       setShown(false)
@@ -52,14 +30,10 @@ export function SlideOver({
     return () => cancelAnimationFrame(raf)
   }, [open])
 
-  // Move focus into the panel on mount so Tab/Esc land in the drawer
-  // immediately (the trap only intercepts keydowns INSIDE the panel).
   useEffect(() => {
     if (open) panelRef.current?.focus()
   }, [open])
 
-  // Esc closes — except while typing in a field, where Esc should leave the
-  // field alone (the IssuePeek/BoardPeek pattern).
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent): void => {

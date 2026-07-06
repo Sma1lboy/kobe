@@ -30,9 +30,6 @@ export class PipeTaskPty implements TaskPtyLike {
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
 
-    // Do not pass `-i`: interactive shells expect a controlling TTY for
-    // job control and can suspend the host TUI when backed only by pipes.
-    // A `command` override (e.g. `["claude"]`) carries its own argv.
     const argv = resolveArgv(opts)
     const exe = argv[0] ?? defaultShell()
     const args = argv.slice(1)
@@ -69,8 +66,6 @@ export class PipeTaskPty implements TaskPtyLike {
     if (this._killed || data.length === 0) return
     const stdin = this.proc.stdin
     if (!stdin || stdin.destroyed) return
-    // Pipes are not terminal line disciplines. Translate Enter's CR
-    // into LF so shells read the command.
     const bytes = data.replace(/\r/g, "\n")
     try {
       stdin.write(bytes)
@@ -84,9 +79,7 @@ export class PipeTaskPty implements TaskPtyLike {
     if (this.buffer !== "") {
       try {
         cb(this.capture(), null)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
     return () => {
       this.listeners.delete(cb)
@@ -97,13 +90,9 @@ export class PipeTaskPty implements TaskPtyLike {
     if (this._killed) return
     this.cols = cols
     this.rows = rows
-    // No PTY means no SIGWINCH-compatible resize channel. Keep the
-    // latest geometry for future process restarts.
   }
 
   capture(): readonly TerminalRow[] {
-    // No emulator on this fallback path: parse the accumulated raw ANSI
-    // into the same `Chunk[]` rows the Bun backend produces from cells.
     return parseAnsiSnapshot(this.buffer)
   }
 
@@ -126,9 +115,7 @@ export class PipeTaskPty implements TaskPtyLike {
     for (const cb of this.listeners) {
       try {
         cb(rows, null)
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
   }
 
@@ -138,9 +125,7 @@ export class PipeTaskPty implements TaskPtyLike {
     if (killProcess) {
       try {
         this.proc.kill("SIGTERM")
-      } catch {
-        /* best effort */
-      }
+      } catch {}
     }
     const exitCbs = [...this.exitListeners]
     this.listeners.clear()
@@ -148,14 +133,11 @@ export class PipeTaskPty implements TaskPtyLike {
     for (const cb of exitCbs) {
       try {
         cb()
-      } catch {
-        /* one listener must not break the others */
-      }
+      } catch {}
     }
   }
 
   paste(text: string): void {
-    // Pipes have no bracketed-paste negotiation — deliver raw.
     this.write(text)
   }
 

@@ -1,43 +1,3 @@
-/**
- * Theme-matched tmux chrome.
- *
- * kobe's opentui panes are fully themed, but the 1-cell separator lines
- * BETWEEN panes and the bottom status/window bar are drawn by tmux with
- * its stock styles — terminal-default foreground for `pane-border-style`,
- * `fg=green` for the active border, and `bg=green,fg=black` for
- * `status-style`. Under dark themes those defaults clash with kobe's
- * panes and make the workspace read as two unrelated UIs. This module
- * derives the tmux-owned chrome from the active kobe theme and injects
- * it as global options on the `-L kobe` socket:
- *
- *   pane-border-style        fg=<theme.border>
- *   pane-active-border-style fg=<theme.focusAccent slot>   (focus signal,
- *                            same slot the in-pane focus indicators use)
- *   status-style             bg=<theme.backgroundPanel> fg=<theme.textMuted>
- *   window-status-*          inactive / current / activity / bell styles
- *   status-left/right-style  bg=<status bg> fg=<theme.textMuted>
- *   message/mode/display-*   tmux prompts, copy-mode, pane-picker overlays
- *
- * PRECEDENCE: kobe owns these options on its own socket. The `-L
- * kobe` socket loads the user's `~/.tmux.conf`, but that config was
- * written for their own tmux — popular setups (e.g. oh-my-tmux's
- * `#303030` border and tmux's stock green status bar) are exactly what
- * makes the kobe workspace look unthemed, so yielding to it would leave
- * the bug in place for the people who hit it. Forcing the option on kobe's
- * socket is the same
- * stance the server-nicety block already takes for `mouse on` and
- * `status-right`; the user's real tmux server is never touched. The
- * escape hatch is `"tmuxChromeTheme": "off"` in `state.json` (or the
- * legacy `"tmuxBorderTheme": "off"`), which
- * releases the options back to whatever the server would otherwise
- * have (tmux stock until the user's conf reloads on the next server).
- *
- * The legacy `@kobe_border_theme` marker records which options kobe wrote so
- * the off-switch (or a theme slot resolving to null) unsets only what
- * kobe set and never clobbers an option it never owned. Pure planning
- * is split from IO so the rules are unit-tested without a tmux server.
- */
-
 import { readFileSync } from "node:fs"
 import { kvStatePath } from "../../env"
 import { runTmuxCapturing, runTmuxSequence } from "../../tmux/client"
@@ -46,36 +6,18 @@ import { BUNDLED_THEME_JSONS } from "../context/theme/bundled"
 import { resolveThemeSlotHex } from "../context/theme/hex"
 import { loadUserThemes } from "../context/theme/loader"
 
-/**
- * Server-global user option recording which tmux chrome options kobe wrote.
- * The old name is intentionally kept so upgrades can release/extend options
- * claimed by the previous pane-border-only implementation.
- */
 export const TMUX_CHROME_THEME_MARKER_OPTION = "@kobe_border_theme"
 
-/** Back-compat alias for older tests/callers. */
 export const BORDER_THEME_MARKER_OPTION = TMUX_CHROME_THEME_MARKER_OPTION
 
-/**
- * Mirror of `FOCUS_ACCENT_SLOTS` in `theme.tsx` — not imported because
- * that module builds a Solid store at load time and this one must stay
- * importable from CLI/session-build code.
- */
 const FOCUS_ACCENT_SLOT_NAMES = ["primary", "success", "info"] as const
 
 interface TmuxChromePrefs {
   readonly themeName: string
   readonly focusAccentSlot: string
-  /** `"tmuxChromeTheme": "off"` in state.json disables the injection. */
   readonly enabled: boolean
 }
 
-/**
- * Raw read of the KV keys this module needs. Deliberately NOT
- * `readPersistedUiPrefs` — that helper validates the theme name against
- * the Solid theme registry (`hasTheme`), which would pull the TUI
- * runtime into every `ensureSession` caller.
- */
 function readTmuxChromePrefs(): TmuxChromePrefs {
   try {
     const parsed = JSON.parse(readFileSync(kvStatePath(), "utf8")) as Record<string, unknown>
@@ -95,18 +37,11 @@ function readTmuxChromePrefs(): TmuxChromePrefs {
   }
 }
 
-/** User themes shadow bundled ones — same precedence as the boot loader. */
 function lookupThemeJson(name: string): ThemeJson | null {
   const user = loadUserThemes().find((t) => t.name === name)
   return user?.theme ?? BUNDLED_THEME_JSONS[name] ?? null
 }
 
-/**
- * The two border colors for a theme. Fallback chains mirror
- * `resolveTheme()`: `border` falls back to `text`; the active border
- * uses the user's focus-accent slot with the same `primary` fallback
- * the in-pane focus indicators apply.
- */
 export function resolveBorderHexes(
   theme: ThemeJson,
   focusAccentSlot: string,
@@ -143,11 +78,6 @@ function firstHex(theme: ThemeJson, ...slots: string[]): string | null {
   return null
 }
 
-/**
- * All colors needed for tmux-owned chrome. The fallback chains mirror
- * `resolveTheme()` where possible, but return null when a whole category
- * cannot be derived so the planner releases instead of painting black.
- */
 export function resolveTmuxChromeHexes(theme: ThemeJson, focusAccentSlot: string): TmuxChromeHexes {
   const text = firstHex(theme, "text")
   const background = firstHex(theme, "background")
@@ -178,24 +108,13 @@ export function resolveTmuxChromeHexes(theme: ThemeJson, focusAccentSlot: string
 }
 
 export interface BorderThemePlanInput {
-  /** Current `@kobe_border_theme` value, `""` when unset. */
   readonly marker: string
-  /** Current global `pane-border-style` value, `""` when unreadable. */
   readonly currentBorder: string
-  /** Current global `pane-active-border-style` value, `""` when unreadable. */
   readonly currentActive: string
   readonly borderHex: string | null
   readonly activeHex: string | null
 }
 
-/**
- * Decide which set-option commands to run. Pure — all tmux reads happen
- * before, all writes after. A non-null hex claims the option (rewriting
- * whatever is there, kobe's socket = kobe's borders); a `null` hex
- * (disabled, or a theme slot that resolves to nothing) releases the
- * option via `-u` — but only when the marker says kobe wrote it, so we
- * never unset a value we never owned.
- */
 export function planBorderTheme(input: BorderThemePlanInput): string[][] {
   const owned = new Set(
     input.marker
@@ -401,7 +320,6 @@ export interface TmuxChromeThemePlanInput {
   readonly hexes: TmuxChromeHexes
 }
 
-/** Plan theme writes for pane borders, status/window bar, prompts, copy-mode, and pane-picker overlays. */
 export function planTmuxChromeTheme(input: TmuxChromeThemePlanInput): string[][] {
   const owned = new Set(
     input.marker
@@ -439,33 +357,17 @@ async function readOption(args: string[]): Promise<string> {
   return code === 0 ? stdout.trim() : ""
 }
 
-/**
- * Resolve the active theme's border colors and apply them to the kobe
- * tmux server. Best-effort and idempotent: no server / no theme / a
- * user-styled border all reduce to a no-op, and failures never block
- * the caller (launch, settings exit).
- */
 export async function applyTmuxPaneBorderTheme(): Promise<void> {
   await applyTmuxChromeTheme()
 }
 
-/**
- * Resolve the active theme's tmux chrome colors and apply them to the kobe
- * tmux server. Best-effort and idempotent: no server / no theme / disabled
- * theme injection all reduce to a no-op or a release, and failures never
- * block the caller (launch, settings exit).
- */
 export async function applyTmuxChromeTheme(): Promise<void> {
   try {
     const prefs = readTmuxChromePrefs()
     const themeJson = prefs.enabled ? lookupThemeJson(prefs.themeName) : null
-    // Disabled or unknown theme → null hexes, which release (never set)
-    // the options below; a marker-less server then plans zero commands.
     const hexes = themeJson
       ? resolveTmuxChromeHexes(themeJson, prefs.focusAccentSlot)
       : resolveTmuxChromeHexes({ theme: {} }, prefs.focusAccentSlot)
-    // `-q` keeps an unset option (notably the marker on a fresh server)
-    // from logging an "invalid option" error line through runTmuxCapturing.
     const options = tmuxChromeOptionValues(hexes)
     const [marker, ...values] = await Promise.all([
       readOption(["show-options", "-gqv", TMUX_CHROME_THEME_MARKER_OPTION]),
@@ -474,7 +376,5 @@ export async function applyTmuxChromeTheme(): Promise<void> {
     const current = Object.fromEntries(options.map((item, i) => [item.key, values[i] ?? ""]))
     const commands = planTmuxChromeTheme({ marker, current, hexes })
     if (commands.length > 0) await runTmuxSequence(commands)
-  } catch {
-    // cosmetic — never surface to the launch / settings flows
-  }
+  } catch {}
 }

@@ -103,8 +103,6 @@ describe("planBorderTheme", () => {
   })
 
   test("overrides a tmux.conf-styled border too — kobe's socket, kobe's borders", () => {
-    // oh-my-tmux's #303030 border is exactly the invisible-border bug;
-    // the user's conf must not block the fix on the kobe socket.
     const commands = planBorderTheme({
       marker: "",
       currentBorder: "fg=#303030,bg=default",
@@ -174,8 +172,6 @@ describe("planBorderTheme", () => {
   })
 
   test("never unsets options kobe does not own", () => {
-    // Disabled on a server where kobe never wrote anything: the user's
-    // (or stock) values must be left untouched, including the marker.
     const commands = planBorderTheme({
       marker: "",
       currentBorder: "fg=#303030,bg=default",

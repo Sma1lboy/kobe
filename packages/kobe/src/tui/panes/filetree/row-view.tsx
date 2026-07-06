@@ -1,16 +1,3 @@
-/**
- * Solid view for a single file tree row — split out of `FileTree.tsx`
- * (issue #15, G3; the component was over the 500-line cap). Pure render:
- * all row math (stat widths, path budget, status→token mapping) comes from
- * the shared framework-free `pane-core.ts`.
- *
- * Cursor row treatment — matches the Sidebar: a left accent ▌
- * (focusAccent) + a subtle `backgroundElement` tint, NOT a solid
- * terracotta fill, so the semantic colours survive instead of being
- * flattened to inverted text. A bare space holds the 1-cell gutter on
- * non-cursor rows so content stays aligned.
- */
-
 import { TextAttributes } from "@opentui/core"
 import { Show } from "solid-js"
 import { useTheme } from "../../context/theme"
@@ -20,13 +7,9 @@ import { truncatePathTail } from "./rows"
 
 export type FileTreeRowProps = {
   row: Row
-  /** Whether the cursor sits on this row. */
   cursor: boolean
-  /** Shared stat column widths (Changes tab). */
   statWidths: StatWidths
-  /** Path cell budget (Changes tab). */
   pathBudget: number
-  /** Mouse activation: sets the cursor here and opens/toggles the row. */
   onActivate: () => void
 }
 
@@ -40,7 +23,6 @@ export function FileTreeRowView(props: FileTreeRowProps) {
   const rowBg = () => (props.cursor ? theme.backgroundElement : undefined)
   const row = props.row
   if (row.kind === "dir") {
-    // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
     const indent = "  ".repeat(row.depth)
     return (
       <box flexDirection="row" gap={0} backgroundColor={rowBg()} onMouseUp={() => props.onActivate()}>
@@ -55,7 +37,6 @@ export function FileTreeRowView(props: FileTreeRowProps) {
   }
   if (row.kind === "file") {
     const indent = "  ".repeat(row.depth)
-    // Two-cell gutter where the dir marker would sit.
     return (
       <box flexDirection="row" gap={0} backgroundColor={rowBg()} onMouseUp={() => props.onActivate()}>
         {bar}
@@ -67,7 +48,6 @@ export function FileTreeRowView(props: FileTreeRowProps) {
       </box>
     )
   }
-  // Changes row: status char + path + +N -N stats.
   const tone = statusToken(row.status)
   const statusColor = () => {
     switch (tone) {

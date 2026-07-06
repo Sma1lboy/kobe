@@ -1,29 +1,3 @@
-/**
- * KV store — disk-backed JSON at `~/.config/kobe/state.json`, or
- * `$KOBE_HOME_DIR/.config/kobe/state.json` in isolated test/dev homes.
- *
- * Surface mirrors opencode's `useKV` (`get`, `set`, `signal`). Reads are
- * synchronous: the file is small (a few keys) and we want hydration done
- * before the first render so consumers can `kv.signal(name, default)` and
- * see the persisted value immediately rather than the default flashing
- * for one frame. Reads are also deliberately snapshot-only — a key another
- * process writes after this provider booted is not picked up until
- * restart. No file watching; that's longstanding, accepted behavior.
- *
- * Writes are debounced (250ms) and routed through `src/state/store.ts`,
- * which owns all state.json I/O (atomic tmp+rename — a crash mid-write
- * can't leave a half-written file). History: this provider used to write
- * its ENTIRE in-memory snapshot back on every flush. With several kobe
- * processes alive at once (outer monitor + Tasks pane + Ops pane +
- * settings window, each with its own KVProvider or `setPersisted*`
- * caller), a whole-snapshot flush silently reverted any key another
- * process had written since this one loaded — the classic lost update.
- * The fix is dirty-key tracking: we remember which keys THIS process
- * changed since its last successful flush and merge only those into a
- * fresh read of the file (`patchStateFile`). Keys we never touched pass
- * through whatever the other processes wrote.
- */
-
 import type { Setter } from "solid-js"
 import { createStore } from "solid-js/store"
 import { loadStateFile, patchStateFile, replaceStateFile } from "../../state/store.ts"
@@ -36,22 +10,12 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
   init: () => {
     const [store, setStore] = createStore<Record<string, unknown>>(loadStateFile())
 
-    /**
-     * Keys this process has `set()` since the last successful flush. Only
-     * these are written back — the rest of the in-memory snapshot is for
-     * reads only and must never reach disk (that's the lost-update bug).
-     * Kept across a failed flush so the change retries on the next one.
-     */
     const dirtyKeys = new Set<string>()
 
     let writeTimer: ReturnType<typeof setTimeout> | null = null
     function writeNow(label: string): boolean {
-      if (dirtyKeys.size === 0) return true // nothing of ours to merge
+      if (dirtyKeys.size === 0) return true
       try {
-        // Read-merge-write: only OUR dirty keys are applied onto a fresh
-        // read of the file. A key set to `undefined` locally serializes
-        // as a deletion, matching the old stringify-drops-undefined
-        // behavior.
         const patch: Record<string, unknown> = {}
         for (const key of dirtyKeys) patch[key] = store[key]
         patchStateFile(patch)
@@ -91,11 +55,6 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
         dirtyKeys.add(key)
         scheduleWrite()
       },
-      /**
-       * Synchronously flush pending state. Standalone pages call this
-       * before process.exit(), where the normal debounced write may not
-       * get a chance to run.
-       */
       flush(): boolean {
         if (writeTimer) {
           clearTimeout(writeTimer)
@@ -103,32 +62,13 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
         }
         return writeNow("flush")
       },
-      /**
-       * Wipe every persisted key and synchronously flush the now-empty
-       * store to disk. Used by the Dev settings panel's "reset UI
-       * state" affordance.
-       *
-       * The write MUST be synchronous (not the usual debounce): the
-       * caller exits the kobe process immediately after — without an
-       * eager flush, the 250ms timer is racy against any stray
-       * `kv.set` from a persistence effect that fires before exit, and
-       * the on-disk file ends up partially repopulated. We also can't
-       * rely on the in-memory Solid signals being reset, since `clear`
-       * only knows about KV keys; the post-reset relaunch is what
-       * brings the rest of the UI back to defaults.
-       *
-       * This is the one legitimate whole-file write (`replaceStateFile`):
-       * "reset UI state" means wipe EVERYTHING, including keys other
-       * processes wrote after we loaded — a dirty-key merge would
-       * preserve exactly the state the user asked to destroy.
-       */
       clear() {
         for (const k of Object.keys(store)) setStore(k, undefined as unknown)
         if (writeTimer) {
           clearTimeout(writeTimer)
           writeTimer = null
         }
-        dirtyKeys.clear() // nothing pending survives a full wipe
+        dirtyKeys.clear()
         try {
           replaceStateFile({})
         } catch (err) {

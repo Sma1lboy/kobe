@@ -1,13 +1,3 @@
-/**
- * Behavioral tests for the `kobe add` / `kobe remove` / `kobe adopt`
- * subcommands in `src/cli/index.ts` — the sibling of
- * `index-dispatch.test.ts` (same fresh-import + first-exit-throws
- * technique; see that file's header). Here the state/orchestrator/daemon
- * seams are stateful fakes so the tests assert real flow decisions:
- * which target `remove` matches, when `add` folds worktrees in, and when
- * `adopt` requires the glob + `--yes` gate.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import type { AdoptableWorktree } from "../../src/types/worktree"
 
@@ -176,7 +166,6 @@ describe("kobe add", () => {
       vendor: "claude",
     })
     expect(close).toHaveBeenCalled()
-    // The in-process orchestrator write path is NOT used when the daemon answers.
     expect(fake.adoptWorktree).not.toHaveBeenCalled()
     expect(logText()).toContain("adopted kobe/a → task d1 (via-daemon)")
   })

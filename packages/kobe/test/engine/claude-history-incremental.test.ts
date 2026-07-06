@@ -2,26 +2,10 @@ import { describe, expect, it } from "vitest"
 import type { HistoryDeps } from "../../src/engine/claude-code-local/history.ts"
 import { readHistory } from "../../src/engine/claude-code-local/history.ts"
 
-/**
- * Why these tests matter: the chat pane polls `readHistory` every ~2.5s and
- * Solid's `<For>` keys rows by object reference. If each poll returns fresh
- * Message objects for unchanged records, every rendered row's native subtree
- * is destroyed and recreated per tick. The append-aware cache must therefore
- * (a) return the SAME object refs for already-seen messages when the file only
- * appended, and (b) still produce output identical to a full re-parse —
- * including on rewrite/truncation (compaction, branch rewrites), where it must
- * fall back rather than serve stale prefix state.
- */
-
 function record(role: "user" | "assistant", text: string, ts: string): string {
   return JSON.stringify({ type: role, message: { role, content: text }, timestamp: ts, sessionId: "sid" })
 }
 
-/**
- * Fake FS where the "file" contents are mutable between reads. Each test uses
- * a unique projectsDir so the module-level cache (keyed by file path) never
- * bleeds state across tests.
- */
 function fakeDeps(name: string, sessionId: string): { deps: HistoryDeps; set: (raw: string) => void } {
   let raw = ""
   const root = `/fake-${name}`
@@ -57,7 +41,6 @@ describe("readHistory append-aware cache", () => {
     const second = await readHistory("s1", deps)
 
     expect(second).toHaveLength(3)
-    // Identity-stable prefix: same refs, not just deep-equal copies.
     expect(second[0]).toBe(first[0])
     expect(second[1]).toBe(first[1])
     expect(second[2]?.blocks).toEqual([{ type: "text", text: "third" }])
@@ -69,8 +52,6 @@ describe("readHistory append-aware cache", () => {
     set(`${late}\n`)
     const first = await readHistory("s2", deps)
 
-    // A resumed-branch record can land in the file AFTER records that carry
-    // an earlier timestamp; output must stay timestamp-sorted.
     const early = record("user", "early", "2026-01-01T00:00:01.000Z")
     set(`${late}\n${early}\n`)
     const second = await readHistory("s2", deps)
@@ -88,7 +69,6 @@ describe("readHistory append-aware cache", () => {
     set(`${l1}\n`)
     await readHistory("s3", deps)
 
-    // Same length or longer doesn't matter — the prefix hash must mismatch.
     const rewritten = record("user", "compacted summary instead", "2026-01-01T00:00:01.000Z")
     const extra = record("assistant", "after rewrite", "2026-01-01T00:00:02.000Z")
     set(`${rewritten}\n${extra}\n`)
@@ -113,8 +93,6 @@ describe("readHistory append-aware cache", () => {
     expect(second).toHaveLength(1)
     expect(second[0]?.blocks).toEqual([{ type: "text", text: "keep" }])
 
-    // And the cache is REPLACED by the truncated state: appending after the
-    // truncation parses from the new baseline, not the stale long prefix.
     const l3 = record("assistant", "fresh reply", "2026-01-01T00:00:03.000Z")
     set(`${l1}\n${l3}\n`)
     const third = await readHistory("s4", deps)
@@ -129,9 +107,6 @@ describe("readHistory append-aware cache", () => {
     const { deps, set } = fakeDeps("partial", "s5")
     const l1 = record("user", "done line", "2026-01-01T00:00:01.000Z")
     const l2 = record("assistant", "mid-flush", "2026-01-01T00:00:02.000Z")
-    // Snapshot taken mid-write: l2 has no trailing newline and is only half
-    // on disk. A naive byte-offset cache would anchor here and later parse
-    // only the REST of l2 — losing the message vs a full parse.
     set(`${l1}\n${l2.slice(0, 20)}`)
     const first = await readHistory("s5", deps)
     expect(first).toHaveLength(1)

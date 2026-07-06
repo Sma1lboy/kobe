@@ -1,25 +1,3 @@
-/**
- * IssuesPage — the standalone `/issues` lens onto the daemon-owned story
- * tracker. It is NOT folded into the Board: it's its own full-screen page in the
- * Board's chrome grammar (back-to-workspace, a BOLD CAPS title, a search filter,
- * project chips, a "New story" action), then the repo's issues laid out in the
- * four status columns (Backlog / In session / Blocked / Done).
- *
- * Data: `useRepoIssues` plumbs the selected repo's issues (an initial GET plus
- * live `issue.snapshot` daemon pushes from any surface — another browser, the
- * TUI, `kobe api issue-*`). Mutations go through the lib/issues.ts helpers, which
- * POST to the bridge; the daemon republishes a snapshot, so the page never
- * optimistically mutates its own cache.
- *
- * Surfaces:
- *   - IssueIntakePanel — the "New story" drawer (title + WYSIWYG acceptance,
- *     paste/drop images, Save or Execute-immediately with engine/effort).
- *   - IssuePeek        — the detail drawer (edit title/body, paste images,
- *     quick-start with engine/effort, open the linked session).
- *   - ConfirmDialog    — gates issue deletion (deletes ONLY the issue record;
- *     a linked task/branch/worktree is untouched).
- */
-
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -70,8 +48,6 @@ export function IssuesPage() {
     [tasks, projectRepos],
   )
   const [repo, setRepo] = useState<string | null>(null)
-  // Settle the selected repo onto the first available one (and snap back if the
-  // selection disappears, e.g. its last task is deleted).
   useEffect(() => {
     if (repos.length === 0) {
       if (repo !== null) setRepo(null)
@@ -102,13 +78,10 @@ export function IssuesPage() {
   const columns = useMemo(() => groupByStatus(filtered), [filtered])
   const total = filtered.length
 
-  // The currently-peeked issue, re-read from live data so a daemon push (e.g.
-  // the link/status flip after a quick-start) reflects in the open drawer.
   const peekIssue = peekId != null ? issues.find((i) => i.id === peekId) : null
   const deleteIssue =
     deleteId != null ? issues.find((i) => i.id === deleteId) : null
 
-  // Close drawers whose issue vanished (deleted elsewhere).
   useEffect(() => {
     if (peekId != null && !issues.some((i) => i.id === peekId)) setPeekId(null)
     if (deleteId != null && !issues.some((i) => i.id === deleteId)) {
@@ -208,9 +181,7 @@ export function IssuesPage() {
             </button>
           )}
         </label>
-        {/* Project selector: always shown when any project exists so the
-            current repo is explicit. Use a select, not chip tabs: workspaces
-            can have many projects. */}
+        {}
         {repos.length > 0 && (
           <label className="flex h-7 min-w-0 max-w-[24rem] items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
             <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -259,9 +230,6 @@ export function IssuesPage() {
             against its repo.
           </p>
         ) : !hydrated || (pending && !repoState) ? (
-          // `pending` is derived from data presence, so it's true on the first
-          // paint — unlike the `loading` flag, which an effect only flips after
-          // the initial render, briefly flashing the "No issues yet" empty copy.
           <p className="text-[12px] text-subtle">Loading…</p>
         ) : repo && failed[repo] ? (
           <p className="text-[12px] text-kobe-red">{failed[repo]}</p>
@@ -336,8 +304,6 @@ export function IssuesPage() {
                 ? () => {
                     const taskId = peekIssue.taskId
                     if (!taskId) return
-                    // Materialize the engine tab so the workspace lands on a live
-                    // session rather than an empty pane.
                     ensureEngineTab(taskId)
                     openTaskWorkspace(taskId)
                   }

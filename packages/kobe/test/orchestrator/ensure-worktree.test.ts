@@ -1,17 +1,3 @@
-/**
- * `Orchestrator.ensureWorktree` idempotency + partial-failure cleanup
- * (stability fix C). Real git + real store on disk, mirroring the harness in
- * `worktree.test.ts` / `adopt.test.ts` — the whole point is git's actual
- * surface (a real `git worktree add` then a real rollback `remove`), so mocking
- * would only test the mock.
- *
- * The store is the one seam we fake: a thin subclass whose `update` can be made
- * to throw once (the write that records `worktreePath`) or to drop the task the
- * instant after a successful write (a concurrent delete). Both are the real
- * failure modes that used to strand an orphan worktree or surface a spurious
- * `TaskNotFoundError`.
- */
-
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -23,10 +9,6 @@ import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 
 const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
 
-/**
- * Store double: lets a test force the `worktreePath` write to fail once, or
- * have the task vanish right after a successful write (concurrent delete).
- */
 class FlakyStore extends TaskIndexStore {
   failNextUpdate = false
   deleteAfterNextUpdate = false
@@ -54,8 +36,6 @@ let orch: Orchestrator
 beforeEach(async () => {
   prevHome = process.env.KOBE_HOME_DIR
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-ensure-wt-"))
-  // The worktree manager computes paths under `$KOBE_HOME_DIR/.kobe/worktrees`,
-  // so isolate it (and the store) to the tmp home.
   const home = path.join(tmpRoot, "home")
   process.env.KOBE_HOME_DIR = home
   repo = path.join(tmpRoot, "repo")
@@ -71,9 +51,7 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = prevHome
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
-  } catch {
-    // ignored
-  }
+  } catch {}
 })
 
 describe("ensureWorktree — happy path", () => {
@@ -84,7 +62,6 @@ describe("ensureWorktree — happy path", () => {
     expect(fs.existsSync(p)).toBe(true)
     expect(orch.getTask(task.id)?.worktreePath).toBe(p)
 
-    // Second call short-circuits on the recorded path — same value, no new dir.
     expect(await orch.ensureWorktree(task.id)).toBe(p)
     expect((await new GitWorktreeManager().list(repo)).length).toBe(1)
   })
@@ -104,10 +81,7 @@ describe("ensureWorktree — partial-failure cleanup (no orphans)", () => {
 
     await expect(orch.ensureWorktree(task.id)).rejects.toThrow(/simulated store write failure/)
 
-    // The task record never got a path (so it stays a lazy, retryable task)...
     expect(orch.getTask(task.id)?.worktreePath).toBe("")
-    // ...and nothing was left on disk: no kobe-managed worktree, no orphan dir
-    // under the worktrees root that a retry would collide with.
     expect(await new GitWorktreeManager().list(repo)).toEqual([])
   })
 
@@ -116,9 +90,6 @@ describe("ensureWorktree — partial-failure cleanup (no orphans)", () => {
     store.failNextUpdate = true
     await expect(orch.ensureWorktree(task.id)).rejects.toThrow()
 
-    // Second attempt: the store is healthy again. The previous attempt left no
-    // debris, so this allocates fresh and persists with no "path exists but is
-    // not a registered git worktree" collision.
     const p = await orch.ensureWorktree(task.id)
     expect(fs.existsSync(p)).toBe(true)
     expect(orch.getTask(task.id)?.worktreePath).toBe(p)
@@ -131,16 +102,11 @@ describe("ensureWorktree — partial-failure cleanup (no orphans)", () => {
 describe("ensureWorktree — concurrent delete after a successful write", () => {
   test("returns the created path instead of throwing TaskNotFound", async () => {
     const task = await orch.createTask({ repo })
-    // The write lands, then the task is dropped (a delete racing in the window
-    // where the lock used to be released before the re-fetch). The old code
-    // re-fetched after the lock and threw TaskNotFoundError; we return the path
-    // computed before releasing the lock.
     store.deleteAfterNextUpdate = true
 
     const p = await orch.ensureWorktree(task.id)
     expect(p).toBeTruthy()
     expect(fs.existsSync(p)).toBe(true)
-    // The task really is gone — proving we did NOT lean on a post-lock re-fetch.
     expect(orch.getTask(task.id)).toBeUndefined()
   })
 })

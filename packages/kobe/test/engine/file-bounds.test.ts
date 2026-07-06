@@ -23,7 +23,6 @@ describe("file-bounds", () => {
     it("degrades an oversize file to '' instead of slurping it", async () => {
       const p = join(dir, "big.jsonl")
       await writeFile(p, "x".repeat(64))
-      // 64 bytes on disk, 16-byte ceiling → degraded, not loaded.
       expect(await readTextFileBounded(p, 16)).toBe("")
     })
 

@@ -5,7 +5,6 @@ import { GitWorktreeManager, type WorktreeExecDeps } from "../../src/orchestrato
 const BASE = "/srv/work"
 const REMOTE_KEY = "ssh://dev@box:2222"
 
-/** A fake ExecHost that scripts git output and records every argv + cwd. */
 function fakeRemote(script: (argv: readonly string[]) => ExecResult) {
   const runs: Array<{ argv: readonly string[]; cwd?: string }> = []
   const exec: ExecHost = {
@@ -24,7 +23,6 @@ function fakeRemote(script: (argv: readonly string[]) => ExecResult) {
   return { exec, runs }
 }
 
-/** Wire the manager so REMOTE_KEY resolves to the fake remote, all else local-ish. */
 function remoteDeps(exec: ExecHost): WorktreeExecDeps {
   return {
     execForRepo: () => exec,
@@ -37,7 +35,6 @@ describe("GitWorktreeManager — remote project", () => {
   it("creates the worktree under <basePath>/.kobe/worktrees on the remote git dir", async () => {
     const ok: ExecResult = { stdout: "", stderr: "", exitCode: 0 }
     const { exec, runs } = fakeRemote((argv) => {
-      // After `worktree add`, tryDescribe lists the porcelain — answer with the entry.
       if (argv.includes("list") && argv.includes("--porcelain")) {
         return {
           stdout: `worktree ${BASE}/.kobe/worktrees/panda\nHEAD abc123\nbranch refs/heads/feat\n\n`,
@@ -45,8 +42,8 @@ describe("GitWorktreeManager — remote project", () => {
           exitCode: 0,
         }
       }
-      if (argv.includes("status")) return ok // isDirty → clean
-      if (argv.includes("show-ref")) return { stdout: "", stderr: "", exitCode: 1 } // branch absent → -b
+      if (argv.includes("status")) return ok
+      if (argv.includes("show-ref")) return { stdout: "", stderr: "", exitCode: 1 }
       return ok
     })
     const mgr = new GitWorktreeManager(remoteDeps(exec))
@@ -55,11 +52,9 @@ describe("GitWorktreeManager — remote project", () => {
     expect(info.path).toBe(`${BASE}/.kobe/worktrees/panda`)
     expect(info.branch).toBe("feat")
 
-    // The `worktree add` ran with cwd = the remote basePath (not the ssh:// key).
     const addRun = runs.find((r) => r.argv.includes("add"))
     expect(addRun?.cwd).toBe(BASE)
     expect(addRun?.argv).toEqual(["git", "worktree", "add", "-b", "feat", `${BASE}/.kobe/worktrees/panda`])
-    // Every command went through the (git) ExecHost, prefixed with git.
     expect(runs.every((r) => r.argv[0] === "git")).toBe(true)
   })
 
@@ -76,7 +71,7 @@ describe("GitWorktreeManager — remote project", () => {
           exitCode: 0,
         }
       }
-      return { stdout: "", stderr: "", exitCode: 0 } // status → clean
+      return { stdout: "", stderr: "", exitCode: 0 }
     })
     const mgr = new GitWorktreeManager(remoteDeps(exec))
     const infos = await mgr.list(REMOTE_KEY)

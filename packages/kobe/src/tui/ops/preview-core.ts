@@ -1,13 +1,5 @@
-/**
- * Framework-free data half of the `kobe ops --preview <rel>` window,
- * extracted from `tui/ops/host.tsx` so the Solid and React previews (issue
- * #15, G3) share it. Vitest-safe: no @opentui imports (the theme-bound
- * SyntaxStyle builder lives in `./preview-syntax`), no framework.
- */
-
 import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 
-/** Map a file extension to an opentui tree-sitter grammar name. */
 export function filetypeOf(relPath: string): string | undefined {
   const ext = relPath.slice(relPath.lastIndexOf(".") + 1).toLowerCase()
   switch (ext) {
@@ -30,12 +22,10 @@ export function filetypeOf(relPath: string): string | undefined {
 }
 
 export interface PreviewData {
-  /** `diff` renders opentui `<diff>` (unified vs HEAD); `code` a plain `<code>` view. */
   readonly kind: "diff" | "code"
   readonly text: string
 }
 
-/** Diff vs HEAD when the file has changes, otherwise its full content. */
 export async function loadPreviewData(worktree: string, relPath: string): Promise<PreviewData> {
   const res = await runWorktreeGit(worktree, ["diff", "HEAD", "--", relPath])
   const diff = res.status === 0 ? res.stdout : ""

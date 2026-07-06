@@ -12,25 +12,6 @@ import { describe, expect, it } from "vitest"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 import type { Task } from "../../src/types/task.ts"
 
-/**
- * RPC dispatch seam tests (registry in `kobe-daemon/src/daemon/handlers.ts`).
- *
- * WHY these matter: the daemon's dispatch used to be a ~275-line switch in
- * `server.ts` with ZERO direct tests — the only proof the RPC surface worked
- * was the end-to-end socket suite. The registry makes the seam testable
- * WITHOUT a socket: build the registry, hand it a fake Orchestrator through
- * the context, dispatch a request, assert the payload. These tests pin the
- * WIRE CONTRACT — success payload shapes (including which calls return `{}`
- * vs an object), validation-error wording (`"repo is required"`), and the
- * unknown-request error — so a future handler edit that drifts the on-wire
- * shape fails here first, not in a client.
- *
- * `subscribe` is deliberately absent from the registry (connection
- * lifecycle — per-socket state + the gui-refcount idle timer + direct
- * channel-replay writes); its behavior is covered end-to-end by
- * `lazy-shutdown.test.ts` over a real socket.
- */
-
 const TASK: Task = {
   id: "t1",
   title: "demo task",
@@ -45,7 +26,6 @@ const TASK: Task = {
   updatedAt: "2026-01-02T00:00:00.000Z",
 } as Task
 
-/** What `serializeTask(TASK)` puts on the wire (pinned literally on purpose). */
 const SERIALIZED_TASK = {
   id: "t1",
   title: "demo task",
@@ -70,7 +50,6 @@ interface Recorded {
   stopped: number
 }
 
-/** Build a handler context around a partial fake Orchestrator — no socket. */
 function fakeCtx(orch: Record<string, unknown> = {}): { ctx: DaemonHandlerContext; rec: Recorded } {
   const rec: Recorded = { published: [], reported: [], issueCalls: [], cleared: [], stopped: 0 }
   const ctx: DaemonHandlerContext = {
@@ -112,8 +91,6 @@ function dispatch(name: string, payload: unknown, ctx: DaemonHandlerContext): Pr
 
 describe("daemon handler registry", () => {
   it("covers every RPC name except subscribe (connection lifecycle stays in server.ts)", () => {
-    // Compile-time: this array must be DaemonRequestNames; runtime: each has
-    // an entry. `subscribe` is the documented special case.
     const rpcNames: DaemonRequestName[] = [
       "hello",
       "daemon.status",
@@ -163,8 +140,6 @@ describe("daemon handler registry", () => {
       })
       const result = await dispatch("task.create", { repo: "/repo", title: "demo task" }, ctx)
       expect(result).toEqual({ taskId: "t1", task: SERIALIZED_TASK })
-      // Absent optionals must arrive as undefined (NOT empty strings) — the
-      // orchestrator treats them as "use default".
       expect(calls).toEqual([
         { repo: "/repo", title: "demo task", branch: undefined, baseRef: undefined, vendor: undefined },
       ])
@@ -296,7 +271,6 @@ describe("daemon handler registry", () => {
           archived.push(id)
         },
       })
-      // An untracked worktree under /repo must NOT archive the main task.
       await expect(
         dispatch("worktree.archiveRemoved", { worktreePath: "/repo/.kobe/worktrees/unknown" }, ctx),
       ).resolves.toEqual({ archived: false })
@@ -317,12 +291,6 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.ensureWorktree", {}, ctx)).rejects.toThrow("taskId is required")
     })
 
-    // Long-operation feedback (issue #5): `git worktree add` is minute-class
-    // on a huge repo and the RPC stays blocking, so the handler must publish
-    // lifecycle progress on `task.jobs` around the call — running before,
-    // and ALWAYS a terminal phase after (done on success, error on throw).
-    // Without the guaranteed terminal publish, the bus's last-value replay
-    // would show late subscribers a stuck "running" forever.
     it("publishes task.jobs running → done around a successful materialisation", async () => {
       let publishedWhenWorkStarted = -1
       const { ctx, rec } = fakeCtx({
@@ -332,7 +300,6 @@ describe("daemon handler registry", () => {
         },
       })
       await dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)
-      // `running` was already on the bus when the orchestrator call started.
       expect(publishedWhenWorkStarted).toBe(1)
       expect(rec.published).toEqual([
         { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "running" } },
@@ -378,7 +345,6 @@ describe("daemon handler registry", () => {
         {
           kind: "awaiting-input",
           cwd: `${TASK.worktreePath}/src/deep`,
-          // `junk` must be dropped; the normalized keys survive.
           detail: { waiting: "permission", junk: 1 },
         },
         ctx,
@@ -437,7 +403,6 @@ describe("daemon handler registry", () => {
         },
       })
       await expect(dispatch("task.setActive", { taskId: "t1" }, ctx)).resolves.toEqual({})
-      // Omitted taskId means "clear focus" — null, not an error.
       await expect(dispatch("task.setActive", {}, ctx)).resolves.toEqual({})
       expect(active).toEqual(["t1", null])
       expect(rec.published).toEqual([
@@ -450,17 +415,13 @@ describe("daemon handler registry", () => {
   describe("error shaping (one place decides the wire error)", () => {
     it("an unknown request keeps the legacy message", async () => {
       const { ctx } = fakeCtx()
-      // e.g. a v2 client's removed `daemon.web.start` must still get this.
       await expect(dispatch("daemon.web.start", {}, ctx)).rejects.toThrow("unknown daemon request: daemon.web.start")
     })
 
     it("shapeDaemonError matches the historical on-the-wire shape exactly", () => {
-      // Error instance → message + name ("Error" serializes onto the wire).
       expect(shapeDaemonError(new Error("boom"))).toEqual({ message: "boom", name: "Error" })
       const typed = new TypeError("bad type")
       expect(shapeDaemonError(typed)).toEqual({ message: "bad type", name: "TypeError" })
-      // Non-Error throw → String() coercion, name undefined (dropped by
-      // JSON.stringify, so the key never appears on the wire — pinned here).
       const shaped = shapeDaemonError("plain string")
       expect(shaped).toEqual({ message: "plain string", name: undefined })
       expect(JSON.stringify(shaped)).toBe('{"message":"plain string"}')

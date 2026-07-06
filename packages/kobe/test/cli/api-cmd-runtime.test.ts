@@ -1,13 +1,3 @@
-/**
- * `defaultApiRuntime` — the real side-effect seam `kobe api` handlers run
- * against in production. Each operation lazily imports (or statically uses)
- * a heavier module; those modules are mocked here so what's asserted is the
- * DELEGATION contract: which underlying function each runtime op calls,
- * with what arguments, and the swallow-semantics of tearDownSession (a
- * teardown failure must never fail the already-committed RPC). Plus the
- * offline `feedback` verb, whose GitHub call is a mocked seam.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -53,9 +43,6 @@ vi.mock("../../src/lib/feedback.ts", () => ({
   submitFeedback: mocks.submitFeedback,
 }))
 
-// The realPromptDeliveryOps seams: the session builder + repo-init are
-// lazy-imported (so `kobe api list` never loads the TUI pane stack); the
-// pane wait / paste and the engine command are static imports.
 vi.mock("../../src/tui/panes/terminal/tmux.ts", () => ({ ensureSession: mocks.ensureSession }))
 vi.mock("../../src/state/repo-init.ts", () => ({ resolveEngineLaunchInit: mocks.resolveEngineLaunchInit }))
 vi.mock("../../src/tmux/prompt-delivery.ts", () => ({
@@ -140,7 +127,6 @@ describe("defaultApiRuntime", () => {
     mocks.switchClientBeforeKill.mockRejectedValue(new Error("no client"))
     mocks.killSession.mockRejectedValue(new Error("no session"))
     await expect(defaultApiRuntime.tearDownSession("t1")).resolves.toBeUndefined()
-    // The kill is still attempted even when the switch failed.
     expect(mocks.killSession).toHaveBeenCalledWith(tmuxSessionName("t1"))
   })
 })
@@ -161,7 +147,6 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
       { id: "t1", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x" },
       "go",
     )
-    // repo-init resolved for the worktree (explicit prompt wins → intent none).
     expect(mocks.resolveEngineLaunchInit).toHaveBeenCalledWith("/repo/x", "/wt/t1", { kind: "none" })
     expect(mocks.interactiveEngineCommand).toHaveBeenCalledWith("claude")
     expect(mocks.ensureSession).toHaveBeenCalledWith(

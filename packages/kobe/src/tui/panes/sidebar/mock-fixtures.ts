@@ -1,16 +1,8 @@
-/**
- * Shared mock task fixtures for the sidebar smoke hosts (issue #15, G3).
- * Framework-free, so the Solid and React mock entries can render the same
- * synthetic task list without a daemon, tasks.json, or real worktrees.
- * Paths point under /mock so the git pollers fail closed (chips hidden).
- */
-
 import type { Task } from "@/types/task"
 import { toTaskId } from "@/types/task"
 
 export const MOCK_SIDEBAR_REPO = "/mock/repos/kobe"
 
-/** A representative task list: project row, running/pinned/backlog/archived. */
 export function seedSidebarTasks(): readonly Task[] {
   const ts = "2026-07-01T00:00:00.000Z"
   const base = {

@@ -1,12 +1,3 @@
-/**
- * settings-dialog/actions.ts — the reset-state / restart-daemon confirm
- * flows. DialogConfirm (the opentui overlay) is mocked to a canned answer;
- * what's pinned is the DESTRUCTIVE sequencing: nothing happens on cancel,
- * and on confirm the KV wipe + tasks.json unlink + renderer teardown +
- * exit(0) all fire in that order. `hasRestartableDaemon` gates on the
- * concrete RemoteOrchestrator class.
- */
-
 import { type MockInstance, afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
 const fake = vi.hoisted(() => ({
@@ -29,7 +20,6 @@ vi.mock("node:fs", async (importOriginal) => {
     },
   }
 })
-// RemoteOrchestrator only needs to be a constructible class for instanceof.
 vi.mock("../../src/client/remote-orchestrator", () => {
   class RemoteOrchestrator {}
   return { RemoteOrchestrator }
@@ -85,7 +75,7 @@ describe("hasRestartableDaemon", () => {
 
 describe("confirmResetState", () => {
   test("cancel leaves everything untouched", async () => {
-    fake.confirmAnswer = undefined // esc / cancel
+    fake.confirmAnswer = undefined
     const kv = makeKv()
     await actions.confirmResetState(dialog, kv, undefined)
     expect(kv.clear).not.toHaveBeenCalled()

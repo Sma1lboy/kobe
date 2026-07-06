@@ -12,19 +12,15 @@ describe("isProtocolCompatible", () => {
   })
 
   it("lets an older client talk to a newer daemon when the min stayed put (rolling upgrade)", () => {
-    // daemon bumped to v3 but still supports v2; client is v2/min2.
     expect(isProtocolCompatible({ localVersion: 2, localMin: 2, remoteVersion: 3, remoteMin: 2 })).toBe(true)
-    // symmetric: newer daemon's view of the older client.
     expect(isProtocolCompatible({ localVersion: 3, localMin: 2, remoteVersion: 2, remoteMin: 2 })).toBe(true)
   })
 
   it("rejects a peer older than our minimum", () => {
-    // remote is v1, but we no longer speak below v2.
     expect(isProtocolCompatible({ localVersion: 2, localMin: 2, remoteVersion: 1, remoteMin: 1 })).toBe(false)
   })
 
   it("rejects when we are older than the remote's minimum", () => {
-    // remote dropped support below v3; we are still v2.
     expect(isProtocolCompatible({ localVersion: 2, localMin: 2, remoteVersion: 3, remoteMin: 3 })).toBe(false)
   })
 
@@ -43,20 +39,14 @@ describe("isDaemonVersionStale", () => {
   })
 
   it("is stale when the daemon is OLDER than the client (the common upgrade case)", () => {
-    // User ran `npm i -g @sma1lboy/kobe@latest` (client v0.7.4) but the
-    // long-lived daemon is still running v0.7.3 in memory.
     expect(isDaemonVersionStale("0.7.3", "0.7.4")).toBe(true)
   })
 
   it("is stale when the daemon is NEWER than the client (mismatched either direction)", () => {
-    // Any difference at all is worth a restart prompt — a plain inequality,
-    // not a semver ordering.
     expect(isDaemonVersionStale("0.8.0", "0.7.4")).toBe(true)
   })
 
   it("is NOT stale when the daemon version is unknown (older daemon omits the field)", () => {
-    // A daemon predating the kobeVersion handshake field reports undefined;
-    // we must never flag that as stale (no false banner).
     expect(isDaemonVersionStale(undefined, "0.7.4")).toBe(false)
   })
 
@@ -72,7 +62,7 @@ describe("isChannelName", () => {
   })
 
   it("rejects unknown / non-string values", () => {
-    expect(isChannelName("daemon.stopping")).toBe(false) // a lifecycle frame, not a channel
+    expect(isChannelName("daemon.stopping")).toBe(false)
     expect(isChannelName("nope")).toBe(false)
     expect(isChannelName(42)).toBe(false)
     expect(isChannelName(undefined)).toBe(false)
@@ -81,7 +71,6 @@ describe("isChannelName", () => {
 
 describe("normalizeChannelFilter", () => {
   it("returns null (deliver-everything) for an omitted / non-array request", () => {
-    // Back-compat: a subscriber that never sent `channels` gets every channel.
     expect(normalizeChannelFilter(undefined)).toBeNull()
     expect(normalizeChannelFilter("ui-prefs")).toBeNull()
     expect(normalizeChannelFilter({})).toBeNull()
@@ -99,8 +88,6 @@ describe("normalizeChannelFilter", () => {
   })
 
   it("returns null when the filter has zero valid channels (deliver-everything)", () => {
-    // An all-garbage / empty list must not silently mute the subscriber —
-    // it falls back to the historical deliver-all behavior.
     expect(normalizeChannelFilter([])).toBeNull()
     expect(normalizeChannelFilter(["bogus", 1])).toBeNull()
   })

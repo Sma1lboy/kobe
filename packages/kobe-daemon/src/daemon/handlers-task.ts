@@ -1,12 +1,3 @@
-/**
- * `task.*` (+ `project.forget`) daemon RPC handlers — split out of
- * `handlers.ts` (which was over the repo's 500-line file-size cap) purely
- * mechanically: same entries, same behavior, moved verbatim. See
- * `handlers.ts`'s doc comment for the registry's wire-compatibility
- * contract (byte-equivalent payloads, key order load-bearing) — unchanged
- * here.
- */
-
 import { isTaskStatus } from "@/types/task"
 import { logDaemonError } from "./crash-log.ts"
 import { optionalBoolean, optionalString, optionalVendor, requireString } from "./handler-validators.ts"
@@ -111,22 +102,9 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
       const taskId = requireString(payload, "taskId")
       const status = requireString(payload, "status")
       if (!isTaskStatus(status)) throw new Error("status must be a TaskStatus")
-      // Capture the task (for repo) AND its prior status BEFORE the
-      // transition so we can mirror a real task→done transition into the
-      // issue store below.
       const linked = status === "done" ? ctx.orch.getTask(taskId) : undefined
       const prevStatus = linked?.status
       await ctx.orch.setStatus(taskId, status)
-      // Done-mirroring: a task reaching `done` flips its source issue to
-      // `done` too, so a unified board stays consistent. The reverse-look-up
-      // (issue owns the link via `Issue.taskId`) and the conditional flip run
-      // atomically inside the issue store under one lock — so a concurrent
-      // reopen from another surface can't be clobbered by a stale read.
-      // Guarded to an ACTUAL →done transition (prevStatus !== "done", so
-      // re-firing done on an already-done task never re-clobbers a
-      // manually-reopened issue); the issue write must never fail the task
-      // update (the status change already committed), so a missing/raced
-      // issue is logged + swallowed.
       if (status === "done" && prevStatus !== "done" && linked) {
         try {
           const next = await ctx.issues.mirrorTaskDone(linked.repo, taskId)
@@ -178,19 +156,6 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     name: "task.ensureWorktree",
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
-      // Long-operation feedback (issue #5): `git worktree add` is
-      // minute-class on a huge repo, and the RPC stays BLOCKING (callers
-      // need the path to build the tmux session) — so publish lifecycle
-      // progress on the `task.jobs` channel around the call. Every
-      // attached Tasks pane shows a "materializing" row state, not just
-      // the initiating client. A terminal phase (`done`/`error`) is
-      // published ALWAYS, including on throw — otherwise the bus's
-      // last-value replay would show late subscribers a stuck `running`
-      // forever. Fast paths (already-materialised worktree, `main`
-      // tasks) publish running→done back-to-back, which clients fold
-      // into a no-op blink at worst. The error message rides along for
-      // UI hints; the RPC error itself still reaches the caller via the
-      // rethrow.
       ctx.bus.publish("task.jobs", { taskId, kind: "ensureWorktree", phase: "running" })
       try {
         const path = await ctx.orch.ensureWorktree(taskId)
@@ -210,11 +175,6 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "task.setActive",
     async handle(payload, ctx) {
-      // UI/session focus lives on the bus, but setting it also touches the
-      // task's updatedAt so "recent" task sorting reflects actual use.
-      // Publishing caches the last value so a late-subscribing Tasks pane
-      // gets the current focus on connect and every pane highlights the
-      // same active task (KOB-247).
       const taskId = optionalString(payload, "taskId") ?? null
       await ctx.orch.setActiveTask(taskId)
       ctx.bus.publish("active-task", { taskId })

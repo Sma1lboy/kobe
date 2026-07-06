@@ -1,36 +1,8 @@
-/**
- * One-shot notification sound. Ported from opencode's
- * `packages/opencode/src/cli/cmd/tui/util/sound.ts` (MIT) and trimmed to
- * a single `pulse()` entry point — kobe only needs a short ding when a
- * background chat tab transitions out of `running`.
- *
- * Strategy:
- *   1. Probe the user's PATH for the first available audio player
- *      (afplay on macOS, ffplay/mpv/play/aplay/etc. elsewhere) and cache
- *      the choice.
- *   2. Copy the bundled `pulse.wav` to `$TMPDIR/kobe-sfx/` on first use
- *      so the asset has a stable filesystem path even when kobe runs
- *      from the bundled `dist/` (Bun's `with { type: "file" }` import
- *      already gives us a real path, but caching in tmp also keeps
- *      repeated spawns cheap and isolates the asset from `dist`
- *      reinstalls).
- *   3. Spawn the player detached with all stdio ignored. Failures are
- *      swallowed — the BEL in `notifications.tsx` is the always-on
- *      fallback; this just adds an audible chime on top.
- *
- * If no player is on PATH (rare on a Mac dev box, common in stripped CI
- * containers), `pulse()` is a no-op and we rely on the terminal bell.
- */
-
 import { existsSync, mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, isAbsolute, join, resolve } from "node:path"
 import pulseAssetRaw from "../asset/pulse.wav" with { type: "file" }
 
-// Bun's `with { type: "file" }` import returns an absolute path in dev
-// and a path relative to the emitting chunk in `bun build` output.
-// Normalise against `import.meta.dir` so both modes resolve to a real
-// file on disk.
 const pulseAsset = isAbsolute(pulseAssetRaw) ? pulseAssetRaw : resolve(import.meta.dir, pulseAssetRaw)
 
 const DIR = join(tmpdir(), "kobe-sfx")
@@ -52,10 +24,6 @@ const PLAYERS = [
 
 type Player = (typeof PLAYERS)[number]
 
-/**
- * Per-player argv. Volume is 0..1; players that take percent get
- * `round(volume * 100)`, ffmpeg-style filter-graphs use the raw float.
- */
 function args(player: Player, file: string, volume: number): string[] {
   if (player === "ffplay") return [player, "-autoexit", "-nodisp", "-af", `volume=${volume}`, file]
   if (player === "mpv")
@@ -91,9 +59,6 @@ async function ensureAsset(): Promise<string> {
   return cachedPath
 }
 
-/**
- * Fire one short ding. Best-effort, never throws.
- */
 export function pulse(volume = 0.4): void {
   const player = pickPlayer()
   if (!player) return
@@ -105,12 +70,8 @@ export function pulse(volume = 0.4): void {
           stdout: "ignore",
           stderr: "ignore",
         })
-        // Detach so the player's lifetime doesn't keep kobe alive at
-        // shutdown. Bun's `unref()` is on the underlying Subprocess.
         proc.unref?.()
-      } catch {
-        /* swallow */
-      }
+      } catch {}
     })
     .catch(() => undefined)
 }

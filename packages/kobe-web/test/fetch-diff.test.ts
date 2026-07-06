@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { fetchDiff } from "../src/lib/diff.ts"
 
-/** Capture the URL fetchDiff builds and return a canned diff payload. */
 function stubFetch(payload: unknown = { files: [] }, ok = true) {
   const calls: string[] = []
   const fetchMock = vi.fn(async (url: string | URL | Request) => {
@@ -45,8 +44,6 @@ describe("fetchDiff query construction", () => {
   })
 
   it("normalizes a partial/forward-compat payload to the full result shape", async () => {
-    // A namesOnly response may omit patches; fetchDiff fills defaults so
-    // callers always get { files }.
     stubFetch({ files: [{ path: "a", status: "added", staged: false, patch: "" }] })
     const result = await fetchDiff("/abs/wt", { namesOnly: true })
     expect(result.files).toHaveLength(1)

@@ -1,24 +1,7 @@
-/**
- * Shared engine-activity presentation — the dot color + human label for a
- * task's transient engine state. Used by the task rail (AppShell), the board
- * peek, and the command palette so the surfaces never drift.
- *
- * Color and label are derived together in ONE switch ({@link activityMeta}) so
- * a new engine state can't get a color without a label (or vice-versa); the
- * `activityColor` / `activityLabel` accessors stay for call sites that need
- * just one (a bare status dot wants only the color).
- *
- * Deliberately NOT merged with triage.ts or notify.ts: those encode different
- * policies over the same enum (see ADR 0002) — `rate_limited` is an attention
- * bucket in the UI but is NOT a desktop-notification trigger.
- */
-
 import type { ActivityState } from "./types.ts"
 
 export interface ActivityMeta {
-  /** Tailwind `bg-*` class for the status dot. */
   readonly color: string
-  /** Human label; empty for an unknown/absent state. */
   readonly label: string
 }
 

@@ -56,8 +56,6 @@ describe("Sidebar", () => {
 
     try {
       const frame = await spans()
-      // The 30-cell rail leaves one cell for scrollbox chrome; the selected row
-      // should fill the 29-cell content area instead of stopping one cell early.
       expect(backgroundWidth(frame, "alpha task", selectedBg)).toBe(29)
     } finally {
       destroy()

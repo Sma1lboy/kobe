@@ -1,9 +1,3 @@
-/*
- * Notes markdown preview styling. Scoped to .kobe-md so it never touches the
- * rest of the app. Colors reference the same CSS custom properties the theme
- * picker drives, so the preview re-themes with everything else.
- */
-
 .kobe-md > *:first-child {
   margin-top: 0;
 }

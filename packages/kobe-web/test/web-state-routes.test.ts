@@ -5,15 +5,8 @@ import { patchStateFile } from "../../kobe/src/state/store.ts"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { build } from "./route-fakes.ts"
 
-/**
- * The state.json-backed web routes (quick-prompts, saved projects, shared
- * settings + custom-engine management), split from bridge-routes.test.ts
- * (file-size cap). Runs against a throwaway KOBE_HOME_DIR.
- */
 
 describe("/api/quick-prompts", () => {
-  // These hit the real state.json helpers, so point KOBE_HOME_DIR at a
-  // throwaway dir for the duration (the other suites never touch it).
   let home: string
   let prevHome: string | undefined
 

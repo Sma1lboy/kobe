@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
 
-// A repo path with no managed worktree roots on disk → listWorktreeDirNames
-// returns [], so "occupied" reduces to active + pending slugs and the
-// allocator's pure logic can be exercised without touching the filesystem.
 const REPO = "/tmp/kobe-slug-test-does-not-exist"
-// random:() => 0 makes `Math.floor(random() * n)` always pick index 0,
-// so allocations are deterministic.
 const FIRST = () => 0
 
 describe("SlugAllocator", () => {

@@ -1,15 +1,3 @@
-/**
- * Companion to `repos.test.ts` covering the repo-root resolution + the
- * cross-process KV accessors that file leaves untouched.
- *
- * Why these matter: `resolveRepoRoot` decides what path a saved repo is
- * KEYED by — a wrong answer makes `kobe add` from a monorepo subdir store
- * the subdir (FileTree then renders rooted at the wrong toplevel), and
- * `resolveMainRepoRoot` is what keeps scripted task creation from nesting
- * a new worktree under another task's worktree. Real `git` repos in temp
- * dirs; the KV blob is isolated via `KOBE_HOME_DIR`.
- */
-
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -39,7 +27,6 @@ function tempDir(prefix: string): string {
   return d
 }
 
-/** git init + one commit (worktree add needs a commit to branch from). */
 function initRepo(dir: string): void {
   const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" }
   const run = (args: string[]) => {
@@ -75,8 +62,6 @@ describe("resolveRepoRoot", () => {
   test("returns the input path when it already IS the toplevel (no realpath rewrite)", () => {
     const repo = tempDir("kobe-root-top-")
     initRepo(repo)
-    // macOS: os.tmpdir() gives /var/… while git prints /private/var/… — the
-    // realpath comparison must keep the user's spelling, not canonicalize it.
     expect(resolveRepoRoot(repo)).toBe(repo)
   })
 
@@ -99,7 +84,6 @@ describe("resolveMainRepoRoot", () => {
     const r = spawnSync("git", ["worktree", "add", wt, "-b", "feature-x"], { cwd: repo, env, encoding: "utf8" })
     expect(r.status).toBe(0)
     expect(fs.realpathSync(resolveMainRepoRoot(wt))).toBe(fs.realpathSync(repo))
-    // git rev-parse --show-toplevel from the worktree would have said wt:
     expect(fs.realpathSync(resolveRepoRoot(wt))).toBe(fs.realpathSync(wt))
   })
 
@@ -135,8 +119,6 @@ describe("normalizeSavedRepos", () => {
     normalizeSavedRepos()
 
     const after = JSON.parse(fs.readFileSync(statePath(), "utf8")) as Record<string, unknown>
-    // Both subdirs collapse to ONE toplevel entry (git's canonical spelling);
-    // the remote key is untouched; sibling keys survive.
     expect(after.savedRepos).toEqual([resolveRepoRoot(subA), "ssh://jc@box"])
     expect(fs.realpathSync(resolveRepoRoot(subA))).toBe(fs.realpathSync(repo))
     expect(after.activeTheme).toBe("claude")

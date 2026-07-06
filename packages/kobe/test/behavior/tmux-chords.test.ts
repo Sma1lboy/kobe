@@ -1,36 +1,3 @@
-/**
- * Direct-tmux handover chord pins — one boot (like tui-smoke.test.ts),
- * multiple send-keys/capture-pane assertions against kobe's OWN tmux socket
- * (`tmuxInner`), driven through the OUTER attached client the same way a
- * real terminal would (`tmux(env, "send-keys", ...)` on the pane running
- * `kobe`). Claims pinned (see `src/tui/panes/terminal/tmux.ts` header comment
- * + `docs/KEYBINDINGS.md` "Direct-tmux handover keys" table):
- *
- *   - `ctrl+t` opens a same-engine ChatTab (new window, same 4-pane layout,
- *     its own live engine pane).
- *   - `ctrl+]` / `ctrl+[` cycle ChatTab windows (tmux `next-window` /
- *     `previous-window` — these WRAP, unlike pane focus).
- *   - `ctrl+w` closes the current ChatTab window, but never the final one
- *     (tmux.ts: "refuses to close the final window... the user intent here
- *     is 'close this ChatTab', not 'destroy the Task handover'").
- *   - `ctrl+j` / `ctrl+k` are silent no-ops from a pane with no vertical
- *     neighbor (the engine pane spans full height) — #192's "random-feeling"
- *     source B, the edge guard in `focusBindCommand`.
- *   - the zoom exemption in `focusBindCommand`: a zoomed pane reports every
- *     `pane_at_*` edge flag as 1, so the `window_zoomed_flag` branch bypasses
- *     the edge guard entirely and falls through to plain `select-pane`,
- *     un-zooming AND moving — the tmux.ts comment's "verified live" claim,
- *     now automated.
- *   - `ctrl+q` two-stage: first press focuses the Tasks pane, second press
- *     (from Tasks) detaches the attached client while the session keeps
- *     running.
- *
- * `ctrl+q`'s second press ends the OUTER attached client (and, since this
- * suite's outer session has no other pane, the outer tmux SERVER itself) —
- * so that test runs last in this file; every other assertion runs before it
- * against the one shared boot.
- */
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import {
   type BehaviorEnv,
@@ -60,7 +27,6 @@ function taskSessionName(env: BehaviorEnv): string {
   return name
 }
 
-/** Every pane across every window of the session (`-s`), with role/active/zoom. */
 function allPanes(env: BehaviorEnv, session: string): PaneRow[] {
   return tmuxInner(
     env,
@@ -90,7 +56,6 @@ function activeWindowId(env: BehaviorEnv, session: string): string {
   return row?.split("\t")[1] ?? ""
 }
 
-/** The active pane's row within the CURRENT window (matches tui-smoke's `activeRole`). */
 function activePane(env: BehaviorEnv, session: string): PaneRow | undefined {
   return allPanes(env, session).find((p) => p.active && p.windowId === activeWindowId(env, session))
 }
@@ -136,10 +101,6 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     const after = windowIds(env, session)
     const newWindow = after.find((w) => !before.has(w))
     expect(newWindow).toBeTruthy()
-    // New window carries the full 4-pane workspace, not a bare shell. The
-    // window itself exists as soon as tmux splits it, but the `@kobe_role`
-    // tags land a beat later (buildPanesAround's follow-up set-option calls),
-    // so poll for the full role set rather than asserting on the first read.
     const rolesInNewWindow = () =>
       new Set(
         allPanes(env, session)
@@ -161,7 +122,7 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
   it("ctrl+] / ctrl+[ cycle the active ChatTab window (wraps, unlike pane focus)", async () => {
     const start = activeWindowId(env, session)
     const all = windowIds(env, session)
-    expect(all.length).toBe(2) // carried over from the ctrl+t test
+    expect(all.length).toBe(2)
 
     tmux(env, "send-keys", "-t", SESSION, "C-]")
     const movedForward = await waitUntil(() => activeWindowId(env, session) !== start)
@@ -175,22 +136,8 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
   }, 15_000)
 
   it("ctrl+w closes the current ChatTab window; the final window is protected", async () => {
-    // Leave the active window on the SECOND (non-@0) window before closing —
-    // closing @0 (the session's very first window) is the same operation but
-    // asserting on "count went from 2 to 1" doesn't care which one dies.
     const before = windowIds(env, session)
     expect(before.length).toBe(2)
-    // `chat-tab-close` runs plain `kill-window` (layout-actions.ts's
-    // `closeChatTab`) — tmux's own SIGHUP-the-pane teardown, NOT the
-    // SIGTERM-the-process-GROUP `killSession` does for a whole-task kill.
-    // The fake `claude` shim traps SIGHUP (same as the real CLI), so its
-    // process survives the window close, reparented to init, invisible to
-    // `list-panes` once the window is gone — the exact #205 leak class
-    // `pane-cleanup.test.ts` pins for `kill-sessions`, but here on the
-    // ChatTab-close path, which was never given the same fix. Genuine
-    // product gap, out of this test-only branch's scope to fix (see the
-    // PR description); the cleanup below only stops THIS test run from
-    // leaving its own orphan behind.
     const beforePids = tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
       .stdout.split("\n")
       .map((l) => Number.parseInt(l.trim(), 10))
@@ -200,15 +147,11 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     const closed = await waitUntil(() => windowIds(env, session).length === 1)
     expect(closed).toBe(true)
 
-    // Final window: ctrl+w must be a no-op, not a session-kill.
     tmux(env, "send-keys", "-t", SESSION, "C-w")
     await new Promise((r) => setTimeout(r, 1_500))
     expect(windowIds(env, session).length).toBe(1)
     expect(tmuxInner(env, "has-session", "-t", `=${session}`).code).toBe(0)
 
-    // Test hygiene: reap the #205-class orphan documented above so this
-    // suite doesn't leave a `sleep 600` fake-claude behind on every run.
-    // `env.dispose()` can't reach it (it's already invisible to tmux).
     const stillOnSession = new Set(
       tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
         .stdout.split("\n")
@@ -218,15 +161,11 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
       if (stillOnSession.has(pid)) continue
       try {
         process.kill(-pid, "SIGKILL")
-      } catch {
-        /* already gone, or not a group leader — best effort */
-      }
+      } catch {}
     }
   }, 15_000)
 
   it("ctrl+j / ctrl+k are silent no-ops from the engine pane (no vertical neighbor)", async () => {
-    // Pin a known starting pane directly (not via send-keys) so this test
-    // doesn't depend on what the window/close tests above left focused.
     const claudePane = paneByRole(env, session, "claude")
     expect(claudePane).toBeTruthy()
     tmuxInner(env, "select-pane", "-t", claudePane?.paneId as string)
@@ -241,10 +180,6 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
   }, 15_000)
 
   it("zoom exemption: resize-pane -Z then ctrl+h un-zooms AND moves focus", async () => {
-    // Zoom the Tasks pane (the true left edge) — without the exemption,
-    // ctrl+h there is normally a guarded no-op (see tui-smoke.test.ts); a
-    // ZOOMED pane reports every pane_at_* edge as 1, so this is the one
-    // state where the guard would turn ctrl+h into a dead key without it.
     const tasksPane = paneByRole(env, session, "tasks")
     expect(tasksPane).toBeTruthy()
     tmuxInner(env, "select-pane", "-t", tasksPane?.paneId as string)
@@ -275,9 +210,6 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     expect(focusedTasks).toBe(true)
 
     tmux(env, "send-keys", "-t", SESSION, "C-q")
-    // The client detaches — the session's attached-client count is the
-    // observable signal (the harness never truly "attaches" a client, so we
-    // assert on this rather than an unattached outer TTY's screen content).
     const detached = await waitUntil(() => {
       const row = tmuxInner(env, "list-sessions", "-F", "#{session_name}\t#{session_attached}")
         .stdout.split("\n")
@@ -285,7 +217,6 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
       return row === `${session}\t0`
     }, 10_000)
     expect(detached).toBe(true)
-    // Detach, not destroy: the task's tmux session keeps running.
     expect(tmuxInner(env, "has-session", "-t", `=${session}`).code).toBe(0)
   }, 20_000)
 })

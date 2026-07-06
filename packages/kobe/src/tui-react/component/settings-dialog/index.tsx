@@ -1,24 +1,4 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Settings dialog — React port of `src/tui/component/settings-dialog.tsx`
- * (issue #15 G3). Two-column layout: left sidebar (sections), right pane
- * (the active section). Row order/indices come from the shared
- * framework-free registry (`../../../tui/component/settings-dialog/model`),
- * so keyboard nav stays in lockstep with the Solid dialog; the kv-backed
- * helper closures live in `./use-settings-prefs` / `./use-engine-settings`
- * (file-size cap split).
- *
- * Bindings inside the dialog:
- *   - `↑` / `↓` / `j` / `k` — navigate the current level.
- *   - `h` / `l`              — switch sidebar/body levels.
- *   - `enter`                — activate the focused row.
- *   - `esc`                  — close (handled by the dialog stack / page).
- *
- * Deliberate deltas from the Solid dialog (no behavior change):
- *   - the write-only theme-cursor signal was dead state — dropped;
- *   - `SettingsDialog.show` (the overlay `taskpanel` surface) has no React
- *     caller yet — it lands with the React workspace/tasks-pane port.
- */
 
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
@@ -59,21 +39,9 @@ import { useSettingsPrefs } from "./use-settings-prefs"
 
 export type SettingsDialogProps = {
   kv: KVContext
-  /**
-   * The active orchestrator. Used to expose the "Restart backend" Dev
-   * button only when we're attached to a daemon (RemoteOrchestrator).
-   */
   orchestrator?: KobeOrchestrator
   onVisualPrefsChange?: () => void
   onClose: () => void
-  /**
-   * True when this dialog is the standalone page surface (`kobe settings`),
-   * rendered OUTSIDE the dialog stack. The page mounts this component
-   * permanently, so when a sub-dialog (engine-command / custom-editor text
-   * input) is open we disable our own key bindings — otherwise the
-   * `j/k/l/h/t` nav would swallow those letters from the text input (the
-   * `{file}` "l-is-eaten" bug).
-   */
   standalone?: boolean
 }
 
@@ -96,9 +64,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const prefs = useSettingsPrefs(props.kv, dialog)
   const engines = useEngineSettings(props.kv, dialog, (max) => setBodyRow((r) => Math.max(0, Math.min(r, max))))
 
-  // Account detection (KOB-249): read-only fs/env probes, lazily run the
-  // first time the Accounts section is opened so a settings open that
-  // never visits it pays nothing.
   const [claudeStatus, setClaudeStatus] = useState<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = useState<EngineAccountStatus<CodexAccount> | null>(null)
   const [copilotStatus, setCopilotStatus] = useState<EngineAccountStatus<CopilotAccount> | null>(null)
@@ -111,11 +76,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     void detectCopilotAccount().then((s) => setCopilotStatus(s))
   }, [section])
 
-  /**
-   * The active section's ordered navigable rows (the row registry).
-   * Recomputed per call so kv-driven changes (custom engines) are always
-   * fresh in key handlers.
-   */
   function bodyRows(): SettingsRow[] {
     return sectionRows(section, {
       themeNames,
@@ -136,9 +96,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.onVisualPrefsChange?.()
   }
 
-  // UI language. Live within this process (setLocaleLang updates the module
-  // store → useT() consumers re-render) and persisted so other panes pick it
-  // up on their next boot, mirroring how the theme is applied + persisted.
   function selectLanguage(locale: LocaleId): void {
     if (currentLang() === locale) return
     setLocaleLang(locale)
@@ -160,7 +117,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.onVisualPrefsChange?.()
   }
 
-  /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
   function currentEngineRow(): VendorId | null {
     if (section !== "engines" || level !== "body") return null
     const row = rowAt(bodyRows(), bodyRow)
@@ -180,9 +136,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   }
 
-  // The Feedback section is an inline form; while it holds focus we suspend
-  // this dialog's own j/k/h/l/t nav and drive the form with a dedicated Tab
-  // cycle + a Send-row Enter binding below (see the Solid dialog notes).
   const editingFeedback = section === "feedback" && level === "body"
 
   function feedbackFieldStep(delta: 1 | -1): void {
@@ -223,11 +176,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setLevel("sidebar")
   }
 
-  /**
-   * Activation lookup, keyed by row kind. Payload-bearing rows carry their
-   * payload in the descriptor, so enter never reverse-engineers it from an
-   * index.
-   */
   const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
     theme: (row) => selectTheme(row.name),
     language: (row) => selectLanguage(row.locale),
@@ -261,9 +209,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
 
   useBindings(() => ({
-    // On the standalone page, suspend our navigation keys while a
-    // sub-dialog (the engine-command / custom-editor text input) is open
-    // so `l`/`t`/`j`/`k`/`h` reach the input instead of being eaten here.
     enabled: (!props.standalone || dialog.stack.length === 0) && !editingFeedback,
     bindings: [
       { key: "down", cmd: () => moveCursor(1) },
@@ -287,8 +232,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
       },
       { key: "t", cmd: toggleTransparent },
       {
-        // Engines section only: `r` renames the focused engine's display
-        // label, `x` resets a built-in (or removes a custom) engine.
         key: "r",
         cmd: () => {
           const v = currentEngineRow()
@@ -303,7 +246,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
         },
       },
       {
-        // Engines section: `d` sets the focused engine as the global default.
         key: "d",
         cmd: () => {
           const v = currentEngineRow()
@@ -313,8 +255,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ],
   }))
 
-  // Feedback-form navigation, live only while that form holds focus (see
-  // the Solid dialog for the full key-routing rationale).
   useBindings(() => ({
     enabled: editingFeedback,
     bindings: [

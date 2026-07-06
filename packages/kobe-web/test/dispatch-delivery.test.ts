@@ -2,12 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { deliverToSession, shouldDeliver } from "../src/lib/dispatch-delivery.ts"
 import type { SessionDeliver } from "../src/lib/types.ts"
 
-/**
- * session.deliver forwarding (docs/design/dispatcher.md). Load-bearing: `at`
- * is the dedupe identity (SSE replays the last event on every reconnect), a
- * failed send rolls the mark back so the replay retries, and delivery goes
- * through the injected tab/send deps (the review-button path).
- */
 
 const event = (over: Partial<SessionDeliver> = {}): SessionDeliver => ({
   taskId: "t1",
@@ -17,8 +11,6 @@ const event = (over: Partial<SessionDeliver> = {}): SessionDeliver => ({
   ...over,
 })
 
-// Node test env has no localStorage — give the module the real Web Storage
-// shape backed by a Map so marks behave like the browser.
 function fakeStorage(): Storage {
   const map = new Map<string, string>()
   return {

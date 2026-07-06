@@ -4,14 +4,6 @@ import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CodexHookAdapter, KOBE_CODEX_HOOK_EVENTS, codexHooksPath } from "../../src/engine/codex-local/hook-adapter.ts"
 
-// The adapter's install path builds hook commands from `kobeHookInvocation()`
-// (whose dev fallback, `kobeCliInvocation()`, resolves `@opentui/solid/preload`
-// via `import.meta.resolve` and throws when that can't resolve — some test
-// runners). Pin the whole module so the roundtrip exercises the merge/IO, not
-// CLI-path resolution. NOTE: vi.mock replaces EVERY export — a new function
-// added to invocation.ts must be stubbed here too, or json-hooks' default-arg
-// call becomes undefined() and editJsonSettings' best-effort catch silently
-// eats it (that exact gap shipped red CI once).
 vi.mock("../../src/cli/invocation.ts", () => ({
   kobeCliInvocation: () => ["kobe"],
   kobeHookInvocation: () => ["kobe"],
@@ -38,7 +30,6 @@ describe("CodexHookAdapter", () => {
 
   it("owns exactly the three events Codex can deliver safely", () => {
     expect([...KOBE_CODEX_HOOK_EVENTS].sort()).toEqual(["SessionStart", "Stop", "UserPromptSubmit"].sort())
-    // The verbs with no clean Codex signal are NOT installed.
     for (const absent of ["StopFailure", "Notification", "SessionEnd"]) {
       expect(KOBE_CODEX_HOOK_EVENTS).not.toContain(absent)
     }
@@ -63,7 +54,6 @@ describe("CodexHookAdapter install/remove roundtrip (real file)", () => {
   }
 
   it("installs SessionStart/UserPromptSubmit/Stop + the Bash worktree-watch, preserving the user's hooks", async () => {
-    // Seed a user-authored hook that must survive kobe's merge.
     await writeFile(file, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "user-stop" }] }] } }))
 
     await adapter.installActivityHooks(file)
@@ -73,14 +63,11 @@ describe("CodexHookAdapter install/remove roundtrip (real file)", () => {
     expect(hooks.SessionStart).toBeDefined()
     expect(hooks.UserPromptSubmit).toBeDefined()
     expect(hooks.Stop).toBeDefined()
-    // Codex never delivers these → kobe must not install them.
     expect(hooks.StopFailure).toBeUndefined()
     expect(hooks.Notification).toBeUndefined()
     expect(hooks.SessionEnd).toBeUndefined()
-    // kobe's Stop coexists with the user's Stop hook.
     expect(JSON.stringify(hooks.Stop)).toContain("turn-complete")
     expect(JSON.stringify(hooks.Stop)).toContain("user-stop")
-    // Worktree-watch is a PostToolUse(Bash) observer.
     const post = hooks.PostToolUse as Array<{ matcher?: string }>
     expect(post[0].matcher).toBe("Bash")
     expect(JSON.stringify(post)).toContain("worktree-created")

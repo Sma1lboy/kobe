@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { WEB_THEMES, type WebThemePalette, handleThemesRequest } from "../../src/web/themes.ts"
 
-/**
- * The web theme palettes are resolved at module load from the TUI's theme
- * JSONs (def-ref resolution + derived slots). The dashboard restyles by
- * setting `--color-<key>` for every key, so a palette missing a key or
- * carrying a non-hex value would break theming. Lock the contract.
- */
-
-// Every token the web's styles.css `@theme` block declares — the SPA's
-// applyTheme sets `--color-<key>` for each, so each must be present + valid.
 const REQUIRED_KEYS: (keyof WebThemePalette)[] = [
   "bg",
   "surface",
@@ -51,15 +42,12 @@ describe("WEB_THEMES", () => {
   })
 
   it("resolves claude to its canonical dark values (def-ref chain works)", () => {
-    // claude.json: background → darkBg #141413, text → darkText #EAE7DF,
-    // primary → darkPrimary #CC785C. Confirms def-name → hex resolution.
     expect(WEB_THEMES.claude.bg.toLowerCase()).toBe("#141413")
     expect(WEB_THEMES.claude.fg.toLowerCase()).toBe("#eae7df")
     expect(WEB_THEMES.claude.primary.toLowerCase()).toBe("#cc785c")
   })
 
   it("derives distinct surface tones (bg != surface != inset for a layered theme)", () => {
-    // claude has separate raised/inset surfaces — the dark-theme depth rule.
     const p = WEB_THEMES.claude
     expect(p.bg).not.toBe(p.surface)
     expect(p.surface).not.toBe(p.inset)

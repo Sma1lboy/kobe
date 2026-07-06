@@ -1,28 +1,3 @@
-/**
- * Claude Code hook adapter (KOB) — the first real {@link EngineHookAdapter}.
- *
- * Writes kobe's hooks into the user's GLOBAL `~/.claude/settings.json`, so a
- * single install makes EVERY Claude Code session report normalized activity
- * events back to kobe via `kobe hook <verb>`. The hook carries no task id; it
- * reports its `cwd` and the daemon maps that to a task by worktree path (see
- * `daemon/cwd-task.ts`). The read/merge/write I/O and the install/remove
- * methods live in the shared {@link JsonHookAdapter} base; this file adds only
- * what's Claude-specific: the hook event NAMES, the `error_type`/permission
- * detail decoding, and the legacy `WorktreeCreate` cleanup.
- *
- * Why global, not per-worktree: per-task hooks (written into each worktree's
- * `.claude/settings.local.json`) had to be installed at the right moment, only
- * fired after entering a task, didn't reach an already-running engine, and
- * leaked into a project's real repo root. One global block sidesteps all of
- * that and lights up every existing task at once. The cost — kobe's `kobe hook`
- * runs on every Claude session machine-wide — is cheap: it no-ops fast (and
- * never spawns the daemon) when the cwd isn't a kobe task.
- *
- * Don't clobber user hooks: this targets a SHARED file, so each merge tags its
- * own entries (by the kobe command substring) and replaces only those; the
- * user's own hooks for the same events are preserved.
- */
-
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { EngineActivityDetail, EngineActivityKind } from "../hook-events.ts"
@@ -38,8 +13,6 @@ import {
 
 export { buildWorktreeWatchHook, mergeWorktreeWatchHook }
 
-/** Claude Code hook event → normalized kobe verb. The ONE place Claude event
- *  names live. `matcher` narrows which Notification types fire (permission only). */
 const EVENT_MAP: readonly HookEventSpec[] = [
   { event: "SessionStart", verb: "session-start" },
   { event: "UserPromptSubmit", verb: "turn-start" },
@@ -49,20 +22,12 @@ const EVENT_MAP: readonly HookEventSpec[] = [
   { event: "SessionEnd", verb: "session-end" },
 ]
 
-/** The events kobe owns — used to replace only these in a merge. */
 export const KOBE_HOOK_EVENTS: readonly string[] = EVENT_MAP.map((e) => e.event)
 
-/** Normalized kobe verb for a Claude Code hook event name, or undefined for an
- *  event kobe doesn't install — the query side of {@link EVENT_MAP}, so tests
- *  (and future callers) can exercise the adapter's install-time translation
- *  without parsing generated hook commands. */
 export function claudeVerbForHookEvent(event: string): EngineActivityKind | undefined {
   return EVENT_MAP.find((e) => e.event === event)?.verb
 }
 
-/** Map a Claude StopFailure `error_type` to the neutral failure class. Claude
- *  vocabulary (`rate_limit` / `overloaded` / `billing_error` / …) lives here
- *  with the rest of the hook translation, never in `kobe hook`. */
 function failureFromErrorType(errorType: unknown): EngineActivityDetail["failure"] {
   if (typeof errorType !== "string") return "other"
   if (errorType === "rate_limit" || errorType === "overloaded") return "rate_limit"
@@ -70,15 +35,12 @@ function failureFromErrorType(errorType: unknown): EngineActivityDetail["failure
   return "other"
 }
 
-/** Where Claude Code reads user settings (the OS home, NOT kobe's KOBE_HOME_DIR). */
 export function claudeSettingsPath(): string {
   return join(homedir(), ".claude", "settings.json")
 }
 
-/** Substring identifying kobe's WorktreeCreate hook in a shared settings file. */
 const WORKTREE_SYNC_MARKER = "worktree-created"
 
-/** True if a WorktreeCreate hook group is the one kobe installed (by its command). */
 function isKobeWorktreeSyncGroup(group: unknown): boolean {
   if (!isObject(group) || !Array.isArray(group.hooks)) return false
   return group.hooks.some(
@@ -86,14 +48,10 @@ function isKobeWorktreeSyncGroup(group: unknown): boolean {
   )
 }
 
-/** Build kobe's Claude activity hook groups (thin wrapper over the shared core,
- *  bound to Claude's {@link EVENT_MAP}). Exported for tests. */
 export function buildClaudeHooks(inv?: readonly string[]): Record<string, unknown> {
   return inv ? buildActivityHooks(EVENT_MAP, inv) : buildActivityHooks(EVENT_MAP)
 }
 
-/** Add/remove kobe's Claude activity hooks (thin wrapper over the shared core,
- *  bound to Claude's {@link EVENT_MAP}). Exported for tests. */
 export function mergeActivityHooks(
   current: Record<string, unknown>,
   install: boolean,
@@ -104,11 +62,6 @@ export function mergeActivityHooks(
     : mergeActivityHooksCore(current, install, EVENT_MAP)
 }
 
-/**
- * Pure merge: add (or with `command === null`, remove) kobe's WorktreeCreate
- * hook in a settings object, preserving the user's own hooks + other keys.
- * Drops kobe's prior entry first so re-install is idempotent + removal clean.
- */
 export function mergeWorktreeSyncHook(
   current: Record<string, unknown>,
   command: string | null,
@@ -131,13 +84,6 @@ export class ClaudeHookAdapter extends JsonHookAdapter {
     return claudeSettingsPath()
   }
 
-  /**
-   * Fire-time translation: neutral verb + Claude's stdin payload → neutral
-   * detail. Only two verbs carry detail today: `turn-failed` (classify the
-   * StopFailure `error_type`) and `awaiting-input` (the only Notification
-   * matcher kobe installs is `permission_prompt`, so waiting is always
-   * "permission").
-   */
   override activityDetailFromPayload(
     kind: EngineActivityKind,
     payload: Record<string, unknown>,
@@ -147,8 +93,6 @@ export class ClaudeHookAdapter extends JsonHookAdapter {
     return undefined
   }
 
-  /** Claude is the only engine that ever wrote the legacy `WorktreeCreate`
-   *  provider hook, so it's the only one that cleans it up. */
   override supportsWorktreeSync(): boolean {
     return true
   }

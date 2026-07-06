@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { diffStat, parseDiffRows } from "../src/lib/diff-rows.ts"
 
-/**
- * The hunk-header math is the load-bearing bit: old/new line numbers must
- * advance correctly across context/add/del rows so the gutter lines up with
- * the real file. These lock that down.
- */
 
 const PATCH = `diff --git a/foo.ts b/foo.ts
 index 1234567..89abcde 100644
@@ -42,15 +37,10 @@ describe("parseDiffRows", () => {
     const rows = parseDiffRows(PATCH).filter(
       (r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx",
     )
-    // context one: old 10, new 10
     expect(rows[0]).toMatchObject({ kind: "ctx", oldLn: 10, newLn: 10 })
-    // removed line: old 11, new null
     expect(rows[1]).toMatchObject({ kind: "del", oldLn: 11, newLn: null })
-    // added line a: old null, new 11
     expect(rows[2]).toMatchObject({ kind: "add", oldLn: null, newLn: 11 })
-    // added line b: old null, new 12
     expect(rows[3]).toMatchObject({ kind: "add", oldLn: null, newLn: 12 })
-    // context two: old 12, new 13
     expect(rows[4]).toMatchObject({ kind: "ctx", oldLn: 12, newLn: 13 })
   })
 
@@ -76,8 +66,6 @@ describe("parseDiffRows", () => {
   })
 
   it("resets hunk state at a new file header (concatenated patch)", () => {
-    // Two files concatenated (staged + unstaged). The second file's --- / +++
-    // headers must be META, not del/add — the bug was inHunk staying true.
     const patch = `diff --git a/one.ts b/one.ts
 --- a/one.ts
 +++ b/one.ts
@@ -92,21 +80,16 @@ diff --git a/two.ts b/two.ts
 +y
 `
     const rows = parseDiffRows(patch)
-    // The second file's header lines must be meta (not del/add).
     const secondHeaderIdx = rows.findIndex((r) => r.text === "diff --git a/two.ts b/two.ts")
     expect(secondHeaderIdx).toBeGreaterThan(0)
     const secondHeaders = rows.slice(secondHeaderIdx, secondHeaderIdx + 3)
     expect(secondHeaders.every((r) => r.kind === "meta")).toBe(true)
-    // And the stat must count exactly 2 add + 2 del (one per file), not be
-    // inflated by counting the `+++ b/two.ts` / `--- a/two.ts` headers.
     expect(diffStat(patch)).toEqual({ added: 2, deleted: 2 })
   })
 })
 
 describe("diffStat", () => {
   it("counts added/removed lines, excluding +++/--- file headers", () => {
-    // PATCH has 1 removed, 2 added inside the hunk; the `---`/`+++` headers
-    // must NOT count as a del/add.
     expect(diffStat(PATCH)).toEqual({ added: 2, deleted: 1 })
   })
 

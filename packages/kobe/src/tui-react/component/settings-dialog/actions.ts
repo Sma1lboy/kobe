@@ -1,9 +1,3 @@
-/**
- * Dev-section actions (React, issue #15 G3) — same flows as the Solid
- * `src/tui/component/settings-dialog/actions.ts`, sharing the framework-free
- * pieces (`actions-core.ts`); only the confirm-dialog wiring is React's.
- */
-
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
 import {
   type DestroyableRenderer,
@@ -17,11 +11,6 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 
 export { hasRestartableDaemon } from "../../../tui/component/settings-dialog/actions-core"
 
-/**
- * Reset is "wipe + relaunch" rather than "wipe + snap defaults in place":
- * kv.clear() only resets the on-disk KV store, not the live UI state the
- * running processes persist on their next change.
- */
 export async function confirmResetState(
   dialog: DialogContext,
   kv: KVContext,
@@ -41,10 +30,6 @@ export async function confirmResetState(
   process.exit(0)
 }
 
-/**
- * Stop this kobe window so a relaunch spawns a fresh daemon from disk,
- * picking up daemon/orchestrator/engine edits.
- */
 export async function confirmRestartDaemon(
   dialog: DialogContext,
   orchestrator: KobeOrchestrator | undefined,

@@ -1,12 +1,3 @@
-/**
- * LocalExecHost — the local half of the ExecHost contract that
- * exec-host.test.ts (remote/ssh argv shapes) leaves out. Runs REAL
- * processes/fs in a temp dir: this class is the seam everything local
- * routes through, so a mocked spawn would only re-test the mock.
- * Plus the RemoteExecHost branches the sibling file misses: readdir
- * parsing and the password-getter-returning-null fallback to plain ssh.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -104,8 +95,6 @@ describe("RemoteExecHost residual branches", () => {
     const { calls, spawn } = recordingSpawner()
     const host = new RemoteExecHost(spec({ kind: "password", getPassword: () => null }), spawn)
     host.ensureReady()
-    // check (-O check) fails → bring-up; with no password the sshpass prefix
-    // must NOT appear — plain ssh carries the attempt.
     const bringUp = calls[calls.length - 1]
     expect(bringUp?.[0]).toBe("ssh")
     expect(calls.some((c) => c[0] === "sshpass")).toBe(false)

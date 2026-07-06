@@ -1,26 +1,3 @@
-/**
- * Board — the kanban lens over the daemon-owned Issues, grouped into one board
- * per Project (= git repo). It is ISSUES-ONLY: tasks are NOT cards here (they
- * live in the Workspace view). The columns bind to each issue's OWN lifecycle
- * via {@link issueColumnKey}: Backlog = open / hold / unlinked, In progress =
- * linked to a task (started), Done = done.
- *
- * Interaction grammar (one kind of card, no drag):
- *   - Clicking an issue opens the right-side IssuePeek drawer (edit title/body,
- *     pick an engine, Start) — Start spawns a task on the chosen engine via
- *     quickStartIssue and links the two.
- *   - A LINKED issue (its `taskId` set) keeps a small "started — open task"
- *     affordance that jumps to that task's workspace/session. The task itself
- *     is never reverse-displayed as a card.
- *
- * Issues are non-optimistic (the daemon issue.snapshot is truth), with ONE
- * exception: once a quickStart resolves with a taskId we optimistically flip
- * that issue into the In progress column (a local pending-link set) so the
- * board reflects the start before the snapshot's `taskId` link lands. There is
- * NO per-card live engine / worktree / task.snapshot subscription — that was
- * the old unified board's lag source and is gone.
- */
-
 import { useNavigate } from "@tanstack/react-router"
 import { ExternalLink, Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -61,8 +38,6 @@ import {
 } from "./lazy-issue-panels.tsx"
 import { ViewToggle } from "./ViewToggle.tsx"
 
-/** A peek target is repo-scoped: an issue number alone would be ambiguous
- *  across projects. */
 type PeekTarget = { repo: string; id: number }
 
 function ColumnView({
@@ -75,12 +50,9 @@ function ColumnView({
 }: {
   repo: string
   column: BoardColumn
-  /** Backlog only — open the issue-intake panel scoped to this repo. */
   onNewIssue?: () => void
   onPeekIssue: (issue: Issue) => void
-  /** Jump to a linked issue's task workspace/session. */
   onOpenTask: (taskId: string) => void
-  /** Raise a delete request for an issue card — the Board confirms first. */
   onDeleteIssue: (issue: Issue) => void
 }) {
   return (
@@ -127,9 +99,7 @@ function ColumnView({
                   onOpen={() => onPeekIssue(issue)}
                   onDelete={() => onDeleteIssue(issue)}
                 />
-                {/* Linked issue → a "started — open task" affordance that jumps
-                    to the task's workspace. The task is not its own card; this
-                    is the only place a linked task surfaces on the board. */}
+                {}
                 {linkedTaskId && (
                   <button
                     type="button"
@@ -156,7 +126,6 @@ function ColumnView({
   )
 }
 
-/** One project's column row. */
 function ProjectColumns({
   board,
   onNewIssue,
@@ -195,19 +164,12 @@ export function Board() {
   const navigate = useNavigate()
   const filterRef = useRef<HTMLInputElement>(null)
   const [peek, setPeek] = useState<PeekTarget | null>(null)
-  // Issue-intake panel target repo (null = closed).
   const [creatingRepo, setCreatingRepo] = useState<string | null>(null)
   const [issueBusy, setIssueBusy] = useState(false)
   const [quickStartingId, setQuickStartingId] = useState<number | null>(null)
-  // Optimistic link: `${repo}:${issueId}` for issues whose quickStart has
-  // resolved with a taskId but whose issue.snapshot link hasn't landed yet.
-  // Promotes them into In progress for one round-trip; cleared once the daemon
-  // confirms the link (the issue now carries a real taskId).
   const [pendingLinks, setPendingLinks] = useState<
     Map<string, { repo: string; issueId: number; taskId: string }>
   >(new Map())
-  // Issue pending a delete confirmation (null = no dialog). Carries its source
-  // repo so the confirmed delete hits the right daemon store key.
   const [confirmDelete, setConfirmDelete] = useState<{
     repo: string
     issue: Issue
@@ -226,9 +188,6 @@ export function Board() {
     }
   }, [])
 
-  // Issue-snapshot plumbing for every source repo on the board. Project
-  // options come from tasks/main rows, not existing issues, so an empty project
-  // can still be selected and receive its first issue.
   const repoOptions = useMemo(
     () => issueRepoOptions(tasks, projectRepos),
     [tasks, projectRepos],
@@ -247,11 +206,6 @@ export function Board() {
     refresh: refreshIssues,
   } = useRepoIssues(issueRepos)
 
-  // The whole derived view (flat issue list + chips + project boards + counts)
-  // is one pure call into lib/board — the component holds no board-derivation
-  // logic of its own, so that logic is unit-tested via buildBoardView, not the
-  // DOM. `allIssues` is UNfiltered (drives chips + peek lookups + the empty
-  // check); `projectBoards`/`shownCount` are post-filter.
   const { allIssues, repoChips, projectBoards, shownCount, hasAnyCard } =
     useMemo(
       () =>
@@ -265,8 +219,6 @@ export function Board() {
       [issueData, issueRepos, pendingLinks, query, currentRepo],
     )
 
-  // Drop a pending optimistic-link once the daemon confirms it: the issue now
-  // carries a taskId from the snapshot, so the local hint is redundant.
   useEffect(() => {
     setPendingLinks((prev) => {
       if (prev.size === 0) return prev
@@ -283,8 +235,6 @@ export function Board() {
     })
   }, [issueRepos, issueData])
 
-  // Close the peek when its target vanishes (issue removed elsewhere) — a
-  // drawer onto a dead target would error.
   useEffect(() => {
     if (!peek) return
     if (
@@ -294,10 +244,6 @@ export function Board() {
     }
   }, [allIssues, peek])
 
-  // Keyboard-first parity with Overview: `/` focuses the filter, Escape
-  // clears it. Suppressed while typing in another field, and dormant while
-  // a drawer/dialog owns the keyboard — `/` yanking focus to the background
-  // filter would punch through the drawer's focus trap.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (peek || creatingRepo || confirmDelete) return
@@ -321,25 +267,17 @@ export function Board() {
     return () => window.removeEventListener("keydown", onKey)
   }, [query, peek, creatingRepo, confirmDelete])
 
-  // A project selection is required for the kanban. If the current project
-  // disappeared (or the page opened before one was chosen), snap to the first
-  // available project from the task snapshot.
   useEffect(() => {
     if (repoFilter !== currentRepo) setBoardRepo(currentRepo)
   }, [currentRepo, repoFilter])
 
-  // A no-match (chips/query narrowed every issue away) vs the genuinely-empty
-  // board: the empty branch differs (clear-filters vs new-issue affordance).
   const filtered = Boolean(query)
 
-  // Open a linked issue's task workspace/session.
   const openTask = (id: string): void => {
     selectTask(id)
     setActiveTaskBestEffort(id)
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
-
-  /* ----- issue side-effects ------------------------------------------------- */
 
   const doSaveIssue = async (
     repo: string,
@@ -349,9 +287,6 @@ export function Board() {
     setIssueBusy(true)
     try {
       await updateIssue(repo, id, patch)
-      // The daemon also pushes issue.snapshot, but its repoRoot aliasing can
-      // miss the board's repo key — refresh the GET (which caches under the key
-      // the board reads) so the edited title/body lands in the list at once.
       refreshIssues([repo])
       return true
     } catch (err) {
@@ -362,11 +297,6 @@ export function Board() {
     }
   }
 
-  // Remove an issue from the daemon-owned tracker after the user confirms.
-  // This deletes ONLY the issue record — any task, branch, worktree, or engine
-  // session it was linked to is left untouched (the link is one-way). The
-  // daemon also pushes issue.snapshot, but its repoRoot aliasing can miss the
-  // board's repo key — refresh the GET so the card drops from the list at once.
   const doDeleteIssue = async (repo: string, issue: Issue): Promise<void> => {
     setIssueBusy(true)
     try {
@@ -381,10 +311,6 @@ export function Board() {
     }
   }
 
-  // Spawn a task for the issue and RETURN its id so the caller decides whether
-  // to watch (open the live session) or stay on the board. The optimistic
-  // pending-link still happens here — it's a property of the spawn, not of how
-  // the caller reacts. Navigation/peek routing is the caller's job (onStart).
   const doQuickStart = async (
     repo: string,
     issue: Issue,
@@ -395,9 +321,6 @@ export function Board() {
     setQuickStartingId(issue.id)
     try {
       const { taskId } = await quickStartIssue(repo, issue, vendor, effort)
-      // Optimistically promote the issue into In progress (carry the new
-      // taskId) so the start reads at once; the effect over issueData clears
-      // this once the daemon confirms the link.
       setPendingLinks((prev) => {
         const next = new Map(prev)
         next.set(`${repo}:${issue.id}`, { repo, issueId: issue.id, taskId })
@@ -419,9 +342,7 @@ export function Board() {
         className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
       >
         <DesktopWindowControls />
-        {/* Workspace ↔ Board are peer views — the top-left toggle is the only
-            switch between them (no back link). The [kobe] brand mirrors the
-            Workspace header so the logo + toggle sit identically in both. */}
+        {}
         <span className="font-mono text-[13px] font-bold text-primary">
           [kobe]
         </span>
@@ -451,9 +372,7 @@ export function Board() {
             </button>
           )}
         </label>
-        {/* Project selector: issue execution creates a task worktree under the
-            selected project, so there is deliberately no "all projects" mode.
-            Use a select, not chip tabs: workspaces can have many projects. */}
+        {}
         {repoOptions.length > 0 && (
           <label className="flex h-7 min-w-0 max-w-[24rem] items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
             <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -493,16 +412,10 @@ export function Board() {
       <DaemonBanner />
 
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-4">
-        {/* Hold the neutral "Loading…" until the issue GET has actually
-            resolved. `hydrated` only covers the task snapshot — the issues
-            arrive via a separate post-paint fetch, so gating on `hydrated`
-            alone flashed the "No issues yet" empty state for one frame before
-            the GET landed (the load twitch). `&& !hasAnyCard` keeps a later
-            new-repo fetch from blanking a board that already shows cards. */}
+        {}
         {!hydrated || (issuesPending && !hasAnyCard) ? (
           <p className="text-[12px] text-subtle">Loading…</p>
         ) : shownCount === 0 && filtered && hasAnyCard ? (
-          // The text query narrowed every issue away — offer to clear it.
           <div className="text-[12px] leading-relaxed text-subtle">
             <p>No stories match.</p>
             <button
@@ -516,8 +429,6 @@ export function Board() {
             </button>
           </div>
         ) : shownCount === 0 && !daemonConnected ? (
-          // The daemon is down, so the issue list may be partial/stale — say so
-          // rather than implying an empty board.
           <p className="text-[12px] text-subtle">
             Can't reach the daemon — issue list may be incomplete.
           </p>
@@ -550,9 +461,7 @@ export function Board() {
         )}
       </div>
 
-      {/* Floating New-story entry — the board is the story-intake surface, so
-          an always-reachable + FAB opens the intake panel for the current
-          project. */}
+      {}
       {(() => {
         const target = currentRepo ?? projectBoards[0]?.repo ?? issueRepos[0]
         if (!target) return null
@@ -576,8 +485,6 @@ export function Board() {
             open
             onClose={() => setCreatingRepo(null)}
             onCreated={(issue, started) => {
-              // Refresh so the new issue lands in the Backlog at once (the
-              // issue.snapshot push can miss the board's repo key via aliasing).
               if (creatingRepo) refreshIssues([creatingRepo])
               pushToast(
                 "success",
@@ -613,8 +520,6 @@ export function Board() {
                   vendor,
                   effort,
                 )
-                // Watch = drop the user straight into the live session;
-                // otherwise spawn-and-stay closes the drawer back to the board.
                 if (watch && taskId) {
                   setPeek(null)
                   openTask(taskId)

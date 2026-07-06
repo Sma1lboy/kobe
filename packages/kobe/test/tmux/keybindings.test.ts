@@ -1,21 +1,3 @@
-/**
- * Unit tests for the tmux-layer keybinding resolver
- * (`src/tmux/keybindings.ts`) — the `tmux.*` half of
- * `~/.kobe/settings/keybindings.yaml`.
- *
- * Why these matter: the resolver feeds REAL tmux bindings into every task
- * session: no-prefix root-table binds (`bind-key -n`) for navigation and
- * prefix-table binds (`bind-key`) for layout controls. A
- * translation bug here doesn't crash — it either installs a dead key
- * (chord → wrong tmux name) or, far worse, binds a bare letter that
- * shadows typing in the engine/shell panes. The root bare-key rejection,
- * prefix bare-key allowance, and chord→tmux-syntax mapping are the
- * load-bearing invariants.
- *
- * Only the pure half lives here; `resolveUserTmuxKeys` (file read +
- * Bun.YAML + cache) is covered in `keybindings-user.test.ts`.
- */
-
 import { describe, expect, test } from "vitest"
 import {
   TMUX_FOCUS_DEFAULTS,
@@ -108,7 +90,6 @@ describe("resolveTmuxKeyEntries", () => {
     expect(res.binds["tmux.tab.close"]).toBeNull()
     expect(res.overridden.has("tmux.tab.new")).toBe(true)
     expect(res.overridden.has("tmux.tab.close")).toBe(true)
-    // Untouched ids keep defaults and are NOT marked overridden.
     expect(res.overridden.has("tmux.detach")).toBe(false)
   })
 

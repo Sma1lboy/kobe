@@ -1,9 +1,3 @@
-/**
- * `worktrees.*` messages — the standalone worktree-management page
- * (`kobe worktrees`). English is the source of truth; `zh: typeof en` keeps
- * the shapes locked together.
- */
-
 export const en = {
   title: "Worktrees",
   loading: "Loading worktrees…",

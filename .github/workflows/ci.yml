@@ -1,20 +1,3 @@
-# PR / push CI gate.
-#
-# Runs on every push to main and every pull request. Catches typecheck
-# regressions, broken unit tests, and build failures *before* a tag
-# push triggers the release workflow against a broken tree.
-#
-# Behavior tests (test/behavior/) run in their own `behavior` job: they
-# drive the BUILT kobe CLI black-box in a temp home + scratch tmux socket
-# (tmux is apt-installed on the runner; no real engine binary needed — the
-# harness shims a fake `claude`). See docs/HARNESS.md "Behavioral self-test".
-#
-# coverage-cap (PR only) is the coverage sibling of file-size-cap: every
-# packages/kobe/src file a PR touches must meet a line-coverage floor
-# (scripts/coverage-gate.mjs; `coverage-exemption: <reason>` in the PR body
-# opts out with a paper trail). It also runs `test:render` (the bun-test-only
-# .tsx render track, see docs/HARNESS.md "render track") and folds its lcov
-# into the same Codecov upload — not yet per-file gated.
 
 name: CI
 
@@ -24,8 +7,6 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel in-flight CI for older pushes on the same branch — saves
-# minutes when several commits land back-to-back.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -35,9 +16,6 @@ permissions:
 
 jobs:
   file-size-cap:
-    # Hard rule (AGENTS.md "File size cap"): any code file a PR touches must
-    # end up ≤500 lines. Only touched files are gated, so legacy oversized
-    # files stay green until someone edits them — touch it, you shrink it.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -51,9 +29,6 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          # Exemptions are PER FILE: each `file-size-exemption: <path> — <reason>`
-          # line in the PR body exempts only the exact path it names (a bare
-          # reason with no path exempts nothing).
           exempt_paths=$(printf '%s\n' "$PR_BODY" | grep -io 'file-size-exemption:[[:space:]]*[^[:space:]]*' | sed 's/^[^:]*:[[:space:]]*//' || true)
           fail=0
           while IFS= read -r f; do
@@ -92,13 +67,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Lint (monorepo)
-        # Biome runs first because it's the cheapest check (~50ms) — fail
-        # fast on style/format drift before we burn minutes on tsc + tests
-        # + build. Biome at root sees all packages.
         run: bun run lint
 
       - name: Typecheck (kobe package)
-        # Workspaces hoist deps; per-package commands run via `bun --filter`.
         run: bun run typecheck
 
       - name: Unit tests (kobe package)
@@ -109,10 +80,6 @@ jobs:
         run: bun run build
 
   behavior:
-    # Black-box behavior suite: the BUILT CLI in a temp KOBE_HOME + scratch
-    # tmux socket, driven the way the demo-video capture drives kobe
-    # (send-keys / capture-pane). Catches the environment-dependent CLI/TUI
-    # regressions (doctor/update/pane-focus class) unit mocks can't see.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -136,11 +103,6 @@ jobs:
         run: bun run --filter @sma1lboy/kobe test:behavior
 
   coverage-cap:
-    # Per-touched-file coverage floor (the coverage sibling of file-size-cap)
-    # + the Codecov upload that feeds the README badge. Runs on push too so
-    # main's coverage stays current; the touched-file GATE step is PR-only.
-    # No repo-wide % gate — only files a PR touches must clear the bar, so
-    # coverage ratchets up where work actually happens.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -161,11 +123,6 @@ jobs:
         run: bun run coverage
 
       - name: Render-track coverage (kobe package .tsx)
-        # bun test + @opentui/solid's testRender (docs/HARNESS.md "render
-        # track") — the only runner that can execute opentui Solid
-        # components at all. Separate report; not gated per-file (yet), just
-        # folded into the Codecov upload below so the repo-wide badge
-        # reflects .tsx too.
         working-directory: packages/kobe
         run: bun run test:render
 

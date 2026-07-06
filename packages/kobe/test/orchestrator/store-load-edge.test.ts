@@ -1,16 +1,3 @@
-/**
- * TaskIndexStore edges not covered by the concurrency / heal / reorder suites:
- * load() recovery (missing file, corrupt JSON, unsupported version, non-object
- * root, malformed rows), prStatus load coercion, the loaded-guard, update/move
- * error paths, the subscribe contract (eager fire, unsubscribe, throwing
- * listener isolation), and the archive/remove conveniences.
- *
- * Why they matter: load() recovery is the difference between "kobe boots with
- * an empty sidebar and a warning" and "kobe crashes on a half-written
- * tasks.json" — the file is written by multiple processes, so every corrupt
- * shape here is one a real crash can produce.
- */
-
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -35,7 +22,6 @@ async function writeManifest(content: string): Promise<void> {
 }
 
 async function primeDir(): Promise<void> {
-  // Create <home>/.kobe by letting the store write once.
   await store.load()
   await store.create({
     repo: "/r",
@@ -212,7 +198,7 @@ describe("subscribe contract", () => {
     const unsub = store.subscribe((snapshot) => {
       seen.push(snapshot.length)
     })
-    expect(seen).toEqual([0]) // eager fire on subscribe
+    expect(seen).toEqual([0])
     await store.create({
       repo: "/r",
       title: "a",
