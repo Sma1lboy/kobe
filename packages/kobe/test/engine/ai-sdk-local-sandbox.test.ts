@@ -87,4 +87,19 @@ describe("createLocalSandbox (real temp dir)", () => {
   it("restricted() returns a filesystem/exec view", () => {
     expect(typeof session.restricted().run).toBe("function")
   })
+
+  it("reattaches to the same local workRoot by session id", async () => {
+    const provider = createLocalSandbox({ workRoot: root })
+    const first = await provider.createSession({ sessionId: "stable-session" })
+    const p = join(root, "persisted.txt")
+    await first.writeTextFile({ path: p, content: "kept" })
+    await first.stop()
+
+    expect(provider.resumeSession).toBeDefined()
+    const resumed = await provider.resumeSession?.({ sessionId: "stable-session" })
+
+    expect(resumed?.id).toBe("stable-session")
+    expect(await resumed?.readTextFile({ path: p })).toBe("kept")
+    await resumed?.destroy?.()
+  })
 })

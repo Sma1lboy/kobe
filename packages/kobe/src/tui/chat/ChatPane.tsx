@@ -20,7 +20,7 @@
  * at the persistence boundary (see harness-turn.ts), not wired here.
  */
 
-import { disposeAiSdkRuntime, startAiSdkTurn } from "@/engine/ai-sdk/harness-turn"
+import { disposeAiSdkRuntime, historyTokenBudgetForContextWindow, startAiSdkTurn } from "@/engine/ai-sdk/harness-turn"
 import { callAiSdkModelRouter, chooseTurnModel } from "@/engine/ai-sdk/model-router"
 import { engineEntry, getCapabilities } from "@/engine/registry"
 import { nativeChatAutoModelEnabled } from "@/state/native-chat-router"
@@ -155,7 +155,9 @@ export function ChatPane(props: ChatPaneProps) {
 
   let activeInterrupt: (() => void) | undefined
   onCleanup(() => activeInterrupt?.())
-  onCleanup(() => disposeAiSdkRuntime(props.worktree))
+  onCleanup(() => {
+    void disposeAiSdkRuntime(props.worktree)
+  })
 
   // The AI SDK harness drives the local Claude Code runtime (subscription
   // login) and streams growing UIMessage snapshots; the pane replaces the tail
@@ -164,6 +166,7 @@ export function ChatPane(props: ChatPaneProps) {
     setRunning(true)
     setTurnError(null)
     const history = chatItemsToAiSdkHistory(items())
+    const caps = capabilities()
     const autoModel = nativeChatAutoModelEnabled()
     const turnModel = autoModel
       ? await chooseTurnModel({
@@ -171,12 +174,14 @@ export function ChatPane(props: ChatPaneProps) {
           prompt,
           history,
           current: model(),
-          capabilities: capabilities(),
+          capabilities: caps,
           autoModelEnabled: true,
           callSmallModel: (request) => callAiSdkModelRouter({ ...request, worktree: props.worktree }),
         })
       : model()
     if (autoModel) setModel(turnModel)
+    const turnModelId = turnModel?.id ?? caps?.defaultModelId()
+    const contextWindow = turnModelId ? (caps?.contextWindowFor(turnModelId) ?? 0) : 0
     setItems((prev) => [...prev, { kind: "prompt", text: prompt }])
     let hasTail = false
     const turn = startAiSdkTurn({
@@ -185,6 +190,7 @@ export function ChatPane(props: ChatPaneProps) {
       model: turnModel?.id,
       modelEffort: turnModel?.effort,
       history,
+      historyTokenBudget: historyTokenBudgetForContextWindow(contextWindow),
       prompt,
       onUpdate: (assistant) => {
         setItems((prev) => {

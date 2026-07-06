@@ -93,100 +93,110 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 export function createLocalSandbox({ workRoot }: { workRoot: string }): HarnessV1SandboxProvider {
+  async function openSession(
+    options: {
+      sessionId?: string
+      abortSignal?: AbortSignal
+      onFirstCreate?: (session: SandboxSession, opts: { abortSignal?: AbortSignal }) => Promise<void>
+    } = {},
+    runFirstCreate = true,
+  ): Promise<HarnessV1NetworkSandboxSession> {
+    const id = options.sessionId ?? randomUUID()
+    const root = workRoot
+    await mkdir(root, { recursive: true })
+    let ports: number[] = [await freePort()]
+    const procs = new Set<SandboxProcess>()
+
+    const spawnProc: SandboxSession["spawn"] = async ({ command, workingDirectory, env, abortSignal }) => {
+      const child = nodeSpawn("/bin/sh", ["-c", command], {
+        cwd: workingDirectory ?? root,
+        env: { ...process.env, ...env },
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      const proc = toSandboxProcess(child, abortSignal)
+      procs.add(proc)
+      void proc.wait().then(() => procs.delete(proc))
+      return proc
+    }
+
+    const session: HarnessV1NetworkSandboxSession = {
+      id,
+      description: `Local host machine (${os.platform()} ${os.arch()}), working directory ${root}. Commands run as the current user with no isolation.`,
+      defaultWorkingDirectory: root,
+      get ports() {
+        return ports
+      },
+      getPortUrl: async ({ port, protocol = "http" }) => `${protocol}://127.0.0.1:${port}`,
+      setPorts: async (next) => {
+        ports = [...next]
+      },
+
+      readFile: async ({ path: p }) => {
+        const bytes = await readOrNull(p)
+        if (bytes == null) return null
+        return new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new Uint8Array(bytes))
+            c.close()
+          },
+        })
+      },
+      readBinaryFile: async ({ path: p }) => {
+        const bytes = await readOrNull(p)
+        return bytes == null ? null : new Uint8Array(bytes)
+      },
+      readTextFile: async ({ path: p, encoding = "utf-8", startLine, endLine }) => {
+        const bytes = await readOrNull(p)
+        if (bytes == null) return null
+        const text = new TextDecoder(encoding).decode(bytes)
+        if (startLine == null && endLine == null) return text
+        const lines = text.split("\n")
+        return lines.slice((startLine ?? 1) - 1, endLine ?? lines.length).join("\n")
+      },
+      writeFile: async ({ path: p, content }) => {
+        await mkdir(path.dirname(p), { recursive: true })
+        const chunks: Uint8Array[] = []
+        for await (const chunk of content as unknown as AsyncIterable<Uint8Array>) chunks.push(chunk)
+        await writeFile(p, Buffer.concat(chunks))
+      },
+      writeBinaryFile: async ({ path: p, content }) => {
+        await mkdir(path.dirname(p), { recursive: true })
+        await writeFile(p, content)
+      },
+      writeTextFile: async ({ path: p, content }) => {
+        await mkdir(path.dirname(p), { recursive: true })
+        await writeFile(p, content, "utf-8")
+      },
+
+      spawn: spawnProc,
+      run: async (opts) => {
+        const proc = await spawnProc(opts)
+        const [stdout, stderr, { exitCode }] = await Promise.all([
+          collect(proc.stdout),
+          collect(proc.stderr),
+          proc.wait(),
+        ])
+        return { exitCode, stdout, stderr }
+      },
+
+      stop: async () => {
+        await Promise.all([...procs].map((p) => p.kill()))
+      },
+      destroy: async () => {
+        await session.stop()
+      },
+      restricted: () => session,
+    }
+
+    if (runFirstCreate && options.onFirstCreate) await options.onFirstCreate(session, {})
+    return session
+  }
+
   return {
     specificationVersion: "harness-sandbox-v1",
     providerId: "kobe-local-host-sandbox",
 
-    createSession: async (options = {}) => {
-      const id = options.sessionId ?? randomUUID()
-      const root = workRoot
-      await mkdir(root, { recursive: true })
-      let ports: number[] = [await freePort()]
-      const procs = new Set<SandboxProcess>()
-
-      const spawnProc: SandboxSession["spawn"] = async ({ command, workingDirectory, env, abortSignal }) => {
-        const child = nodeSpawn("/bin/sh", ["-c", command], {
-          cwd: workingDirectory ?? root,
-          env: { ...process.env, ...env },
-          stdio: ["ignore", "pipe", "pipe"],
-        })
-        const proc = toSandboxProcess(child, abortSignal)
-        procs.add(proc)
-        void proc.wait().then(() => procs.delete(proc))
-        return proc
-      }
-
-      const session: HarnessV1NetworkSandboxSession = {
-        id,
-        description: `Local host machine (${os.platform()} ${os.arch()}), working directory ${root}. Commands run as the current user with no isolation.`,
-        defaultWorkingDirectory: root,
-        get ports() {
-          return ports
-        },
-        getPortUrl: async ({ port, protocol = "http" }) => `${protocol}://127.0.0.1:${port}`,
-        setPorts: async (next) => {
-          ports = [...next]
-        },
-
-        readFile: async ({ path: p }) => {
-          const bytes = await readOrNull(p)
-          if (bytes == null) return null
-          return new ReadableStream<Uint8Array>({
-            start(c) {
-              c.enqueue(new Uint8Array(bytes))
-              c.close()
-            },
-          })
-        },
-        readBinaryFile: async ({ path: p }) => {
-          const bytes = await readOrNull(p)
-          return bytes == null ? null : new Uint8Array(bytes)
-        },
-        readTextFile: async ({ path: p, encoding = "utf-8", startLine, endLine }) => {
-          const bytes = await readOrNull(p)
-          if (bytes == null) return null
-          const text = new TextDecoder(encoding).decode(bytes)
-          if (startLine == null && endLine == null) return text
-          const lines = text.split("\n")
-          return lines.slice((startLine ?? 1) - 1, endLine ?? lines.length).join("\n")
-        },
-        writeFile: async ({ path: p, content }) => {
-          await mkdir(path.dirname(p), { recursive: true })
-          const chunks: Uint8Array[] = []
-          for await (const chunk of content as unknown as AsyncIterable<Uint8Array>) chunks.push(chunk)
-          await writeFile(p, Buffer.concat(chunks))
-        },
-        writeBinaryFile: async ({ path: p, content }) => {
-          await mkdir(path.dirname(p), { recursive: true })
-          await writeFile(p, content)
-        },
-        writeTextFile: async ({ path: p, content }) => {
-          await mkdir(path.dirname(p), { recursive: true })
-          await writeFile(p, content, "utf-8")
-        },
-
-        spawn: spawnProc,
-        run: async (opts) => {
-          const proc = await spawnProc(opts)
-          const [stdout, stderr, { exitCode }] = await Promise.all([
-            collect(proc.stdout),
-            collect(proc.stderr),
-            proc.wait(),
-          ])
-          return { exitCode, stdout, stderr }
-        },
-
-        stop: async () => {
-          await Promise.all([...procs].map((p) => p.kill()))
-        },
-        destroy: async () => {
-          await session.stop()
-        },
-        restricted: () => session,
-      }
-
-      if (options.onFirstCreate) await options.onFirstCreate(session, {})
-      return session
-    },
+    createSession: (options = {}) => openSession(options, true),
+    resumeSession: (options) => openSession({ sessionId: options.sessionId, abortSignal: options.abortSignal }, false),
   }
 }

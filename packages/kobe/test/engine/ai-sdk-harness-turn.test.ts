@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // --- harness module mocks (hoisted) --------------------------------------
@@ -6,15 +9,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const state: {
   ctorCalls: Array<{ harness: unknown }>
   claudeCalls: Array<{ model?: string }>
+  createSessionCalls: unknown[]
   streamCalls: unknown[]
-  createSession: () => Promise<{ destroy: ReturnType<typeof vi.fn> }>
+  createSession: (opts?: unknown) => Promise<{
+    sessionId?: string
+    isResume?: boolean
+    stop?: ReturnType<typeof vi.fn>
+    destroy: ReturnType<typeof vi.fn>
+  }>
   stream: (args: unknown) => Promise<{ toUIMessageStream: () => unknown }>
   readStream: () => AsyncIterable<unknown>
 } = {
   ctorCalls: [],
   claudeCalls: [],
+  createSessionCalls: [],
   streamCalls: [],
-  createSession: async () => ({ destroy: vi.fn().mockResolvedValue(undefined) }),
+  createSession: async () => ({
+    sessionId: "session-default",
+    stop: vi.fn().mockResolvedValue({
+      type: "resume-session",
+      harnessId: "test-harness",
+      specificationVersion: "harness-v1",
+      data: {},
+    }),
+    destroy: vi.fn().mockResolvedValue(undefined),
+  }),
   stream: async () => ({ toUIMessageStream: () => ({}) }),
   readStream: async function* () {
     yield { role: "assistant", parts: [] }
@@ -26,8 +45,9 @@ vi.mock("@ai-sdk/harness/agent", () => ({
     constructor(opts: { harness: unknown }) {
       state.ctorCalls.push(opts)
     }
-    createSession() {
-      return state.createSession()
+    createSession(opts?: unknown) {
+      state.createSessionCalls.push(opts)
+      return state.createSession(opts)
     }
     stream(args: unknown) {
       state.streamCalls.push(args)
@@ -50,6 +70,7 @@ import {
   buildPromptWithHistory,
   codexReasoningEffort,
   disposeAiSdkRuntime,
+  historyTokenBudgetForContextWindow,
   resolveAiSdkHarnessVendor,
   startAiSdkTurn,
 } from "../../src/engine/ai-sdk/harness-turn"
@@ -92,10 +113,33 @@ describe("AI SDK harness turn helpers", () => {
     expect(prompt).toContain("Assistant: first answer")
     expect(prompt).toContain("Current user prompt:\ncontinue")
   })
+
+  it("uses caller-supplied token budget instead of a tiny fixed history cap", () => {
+    const older = "older ".repeat(3000)
+    const newer = "newer ".repeat(3000)
+    const prompt = buildPromptWithHistory(
+      "continue",
+      [
+        { role: "user", text: older },
+        { role: "assistant", text: newer },
+      ],
+      { historyTokenBudget: 10_000 },
+    )
+    expect(prompt).toContain("User: older older older")
+    expect(prompt).toContain("Assistant: newer newer newer")
+  })
+
+  it("derives a large history budget from the model context window", () => {
+    expect(historyTokenBudgetForContextWindow(200_000)).toBeGreaterThan(100_000)
+    expect(historyTokenBudgetForContextWindow(1_000_000)).toBeGreaterThan(700_000)
+    expect(historyTokenBudgetForContextWindow(0)).toBeGreaterThan(100_000)
+  })
 })
 
 describe("startAiSdkTurn", () => {
   let wt = 0
+  let home: string | undefined
+  let previousHomeEnv: string | undefined
   const nextWorktree = () => `/repo/wt-${++wt}`
   const opened: string[] = []
   const run = (worktree: string, extra: Record<string, unknown> = {}) => {
@@ -104,17 +148,35 @@ describe("startAiSdkTurn", () => {
   }
 
   beforeEach(() => {
+    previousHomeEnv = process.env.KOBE_HOME_DIR
+    home = mkdtempSync(join(tmpdir(), "kobe-ai-sdk-home-"))
+    process.env.KOBE_HOME_DIR = home
     state.ctorCalls = []
     state.claudeCalls = []
+    state.createSessionCalls = []
     state.streamCalls = []
-    state.createSession = async () => ({ destroy: vi.fn().mockResolvedValue(undefined) })
+    state.createSession = async () => ({
+      sessionId: "session-default",
+      stop: vi.fn().mockResolvedValue({
+        type: "resume-session",
+        harnessId: "test-harness",
+        specificationVersion: "harness-v1",
+        data: {},
+      }),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    })
     state.stream = async () => ({ toUIMessageStream: () => ({}) })
     state.readStream = async function* () {
       yield { role: "assistant", parts: [] }
     }
   })
-  afterEach(() => {
-    for (const w of opened.splice(0)) disposeAiSdkRuntime(w)
+  afterEach(async () => {
+    await Promise.all(opened.splice(0).map((w) => disposeAiSdkRuntime(w)))
+    if (previousHomeEnv === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+    else process.env.KOBE_HOME_DIR = previousHomeEnv
+    if (home) rmSync(home, { recursive: true, force: true })
+    home = undefined
+    previousHomeEnv = undefined
   })
 
   it("completes a normal turn, forwarding stream snapshots to onUpdate", async () => {
@@ -146,7 +208,17 @@ describe("startAiSdkTurn", () => {
     let release!: () => void
     state.createSession = () =>
       new Promise((resolve) => {
-        release = () => resolve({ destroy: vi.fn().mockResolvedValue(undefined) })
+        release = () =>
+          resolve({
+            sessionId: "busy-session",
+            stop: vi.fn().mockResolvedValue({
+              type: "resume-session",
+              harnessId: "test-harness",
+              specificationVersion: "harness-v1",
+              data: {},
+            }),
+            destroy: vi.fn().mockResolvedValue(undefined),
+          })
       })
     const first = run(worktree) // suspends on createSession -> busy = true
     const second = await run(worktree).done
@@ -155,10 +227,21 @@ describe("startAiSdkTurn", () => {
     await first.done
   })
 
-  it("rebuilds the runtime (new agent, old session disposed) when the model changes", async () => {
+  it("rebuilds the runtime and resumes the same provider session when the model changes", async () => {
     const worktree = nextWorktree()
-    const destroy = vi.fn().mockResolvedValue(undefined)
-    state.createSession = async () => ({ destroy })
+    const resumeState = {
+      type: "resume-session",
+      harnessId: "test-harness",
+      specificationVersion: "harness-v1",
+      data: { bridge: "kept" },
+    }
+    const stop = vi.fn().mockResolvedValue(resumeState)
+    state.createSession = async (opts?: unknown) => ({
+      sessionId: (opts as { sessionId?: string } | undefined)?.sessionId ?? "same-session",
+      isResume: Boolean((opts as { resumeFrom?: unknown } | undefined)?.resumeFrom),
+      stop,
+      destroy: vi.fn().mockResolvedValue(undefined),
+    })
     await run(worktree, { model: "model-a" }).done
     expect(state.ctorCalls).toHaveLength(1)
     expect(state.claudeCalls.at(-1)).toEqual({ model: "model-a" })
@@ -166,7 +249,11 @@ describe("startAiSdkTurn", () => {
     await run(worktree, { model: "model-b" }).done
     expect(state.ctorCalls).toHaveLength(2)
     expect(state.claudeCalls.at(-1)).toEqual({ model: "model-b" })
-    expect(destroy).toHaveBeenCalled()
+    expect(stop).toHaveBeenCalled()
+    expect(state.createSessionCalls.at(-1)).toEqual({
+      sessionId: "same-session",
+      resumeFrom: resumeState,
+    })
   })
 
   it("reuses the runtime (no rebuild) when the model is unchanged", async () => {
@@ -176,8 +263,19 @@ describe("startAiSdkTurn", () => {
     expect(state.ctorCalls).toHaveLength(1)
   })
 
-  it("passes Kobe history as prompt context even after a model rebuild", async () => {
+  it("does not replay Kobe history when a model rebuild resumes the provider session", async () => {
     const worktree = nextWorktree()
+    const resumeState = {
+      type: "resume-session",
+      harnessId: "test-harness",
+      specificationVersion: "harness-v1",
+      data: { thread: "still-here" },
+    }
+    state.createSession = async (opts?: unknown) => ({
+      sessionId: (opts as { sessionId?: string } | undefined)?.sessionId ?? "resume-session-id",
+      stop: vi.fn().mockResolvedValue(resumeState),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    })
     await run(worktree, {
       model: "model-a",
       prompt: "second request",
@@ -200,8 +298,80 @@ describe("startAiSdkTurn", () => {
 
     expect(state.ctorCalls).toHaveLength(2)
     const secondStream = state.streamCalls.at(-1) as { prompt?: string } | undefined
-    expect(secondStream?.prompt).toContain("User: first request")
-    expect(secondStream?.prompt).toContain("Assistant: second answer")
-    expect(secondStream?.prompt).toContain("Current user prompt:\nthird request")
+    expect(secondStream?.prompt).toBe("third request")
+  })
+
+  it("replays bounded Kobe history only when provider session resume fails", async () => {
+    const worktree = nextWorktree()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const resumeState = {
+      type: "resume-session",
+      harnessId: "test-harness",
+      specificationVersion: "harness-v1",
+      data: { thread: "stale" },
+    }
+    const firstStop = vi.fn().mockResolvedValue(resumeState)
+    let resumedOnce = false
+    state.createSession = async (opts?: unknown) => {
+      const resumeFrom = (opts as { resumeFrom?: unknown } | undefined)?.resumeFrom
+      if (resumeFrom) {
+        resumedOnce = true
+        throw new Error("stale resume state")
+      }
+      return {
+        sessionId: "fallback-session",
+        stop: firstStop,
+        destroy: vi.fn().mockResolvedValue(undefined),
+      }
+    }
+
+    try {
+      await run(worktree, { model: "model-a", prompt: "first request" }).done
+      await disposeAiSdkRuntime(worktree)
+      const res = await run(worktree, {
+        model: "model-a",
+        prompt: "second request",
+        history: [
+          { role: "user", text: "first request" },
+          { role: "assistant", text: "first answer" },
+        ],
+      }).done
+
+      expect(res).toEqual({})
+      expect(resumedOnce).toBe(true)
+      const secondStream = state.streamCalls.at(-1) as { prompt?: string } | undefined
+      expect(secondStream?.prompt).toContain("Previous Kobe conversation:")
+      expect(secondStream?.prompt).toContain("Assistant: first answer")
+      expect(secondStream?.prompt).toContain("Current user prompt:\nsecond request")
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it("persists a stopped provider session on dispose and resumes it next time", async () => {
+    const worktree = nextWorktree()
+    const resumeState = {
+      type: "resume-session",
+      harnessId: "test-harness",
+      specificationVersion: "harness-v1",
+      data: { thread: "parked" },
+    }
+    const stop = vi.fn().mockResolvedValue(resumeState)
+    state.createSession = async (opts?: unknown) => ({
+      sessionId: (opts as { sessionId?: string } | undefined)?.sessionId ?? "parked-session",
+      isResume: Boolean((opts as { resumeFrom?: unknown } | undefined)?.resumeFrom),
+      stop,
+      destroy: vi.fn().mockResolvedValue(undefined),
+    })
+
+    await run(worktree, { model: "model-a" }).done
+    await disposeAiSdkRuntime(worktree)
+    await run(worktree, { model: "model-a" }).done
+
+    expect(stop).toHaveBeenCalled()
+    expect(state.createSessionCalls.at(-1)).toEqual({
+      sessionId: "parked-session",
+      resumeFrom: resumeState,
+    })
   })
 })
