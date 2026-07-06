@@ -16,6 +16,7 @@ export class MockTaskPty implements TaskPtyLike {
   private buffer = ""
   private writes: string[] = []
   private _killed = false
+  private readonly exitListeners = new Set<() => void>()
   private _cols: number
   private _rows: number
   private _cursor: CursorPos | null = null
@@ -96,5 +97,19 @@ export class MockTaskPty implements TaskPtyLike {
     if (this._killed) return
     this._killed = true
     this.listeners.clear()
+    const exitCbs = [...this.exitListeners]
+    this.exitListeners.clear()
+    for (const cb of exitCbs) cb()
+  }
+
+  onExit(cb: () => void): () => void {
+    if (this._killed) {
+      cb()
+      return () => {}
+    }
+    this.exitListeners.add(cb)
+    return () => {
+      this.exitListeners.delete(cb)
+    }
   }
 }

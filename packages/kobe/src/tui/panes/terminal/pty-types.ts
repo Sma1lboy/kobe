@@ -40,6 +40,14 @@ export interface TaskPtyLike {
 
   write(data: string): void
   onData(cb: DataListener): () => void
+  /**
+   * Notify once when the underlying process ends for ANY reason (its own
+   * exit, a write failure, or kill()). Fires immediately if already dead —
+   * a pane subscribing after a fast crash must still see the state. The
+   * pane renders a dead-shell banner off this instead of silently freezing
+   * on the last snapshot (revival checklist #5).
+   */
+  onExit(cb: () => void): () => void
   resize(cols: number, rows: number): void
   capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null

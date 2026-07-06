@@ -49,6 +49,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
   private readonly proc: ReturnType<typeof Bun.spawn>
   private readonly term: XtermHeadless
   private readonly listeners = new Set<DataListener>()
+  private readonly exitListeners = new Set<() => void>()
   private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
   private _killed = false
@@ -120,6 +121,17 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       this.proc.terminal?.write(data)
     } catch {
       this.markDead(false)
+    }
+  }
+
+  onExit(cb: () => void): () => void {
+    if (this._killed) {
+      cb()
+      return () => {}
+    }
+    this.exitListeners.add(cb)
+    return () => {
+      this.exitListeners.delete(cb)
     }
   }
 
@@ -262,7 +274,16 @@ export class BunTerminalTaskPty implements TaskPtyLike {
         /* best effort */
       }
     }
+    const exitCbs = [...this.exitListeners]
     this.listeners.clear()
+    this.exitListeners.clear()
+    for (const cb of exitCbs) {
+      try {
+        cb()
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
   }
 }
 

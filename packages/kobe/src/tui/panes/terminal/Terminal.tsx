@@ -70,6 +70,7 @@ import type { CursorPos, TaskPty, TerminalRow } from "./pty"
 import { type PtyRegistry, getDefaultPtyRegistry } from "./registry"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "./terminal-render"
+import { computeViewport, viewportCursor } from "./viewport"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -126,6 +127,12 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Latest cursor position from the PTY (null when backend can't report).
   const [cursor, setCursor] = createSignal<CursorPos | null>(null)
 
+  // Dead-shell flag (revival checklist #5): flips when the PTY reports
+  // exit for any reason — its own end, a write failure, or an external
+  // kill. The last snapshot stays visible (frozen output has value);
+  // the banner + F5 reset are the recovery path.
+  const [exited, setExited] = createSignal(false)
+
   // Scroll offset: 0 = follow bottom; positive = N lines back into history.
   const [scrollOffset, setScrollOffset] = createSignal(0)
 
@@ -177,7 +184,10 @@ export function Terminal(props: TerminalProps): JSXElement {
   // accepting input."
   createEffect(() => {
     const handle = pty()
+    setExited(handle ? handle.killed : false)
     if (!handle || handle.killed) return
+    const unsubscribeExit = handle.onExit(() => setExited(true))
+    onCleanup(() => unsubscribeExit())
     const unsubscribe = handle.onData((snap, c) => {
       setSnapshot(snap)
       setCursor(c)
@@ -271,14 +281,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // follow-bottom: render only the last body-height rows, not the
   // whole scrollback. Positive offset moves the viewport upward into
   // history.
-  const visibleRange = createMemo(() => {
-    const all = parsedRows()
-    const height = Math.max(1, bodyRows())
-    const offset = Math.max(0, scrollOffset())
-    const end = Math.max(0, all.length - offset)
-    const start = Math.max(0, end - height)
-    return { start, end }
-  })
+  const visibleRange = createMemo(() => computeViewport(parsedRows().length, bodyRows(), scrollOffset()))
 
   const visibleRows = createMemo(() => {
     const all = parsedRows()
@@ -289,13 +292,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Cursor is only meaningful when we're following the bottom of the
   // buffer; once the user scrolls back, the cursor's reported (x,y)
   // refers to the *live* viewport, not what's currently rendered.
-  const visibleCursor = createMemo(() => {
-    const c = cursor()
-    if (!c || scrollOffset() !== 0) return null
-    const range = visibleRange()
-    if (c.y < range.start || c.y >= range.end) return null
-    return { x: c.x, y: c.y - range.start }
-  })
+  const visibleCursor = createMemo(() => viewportCursor(cursor(), scrollOffset(), visibleRange()))
 
   const cursorRows = createMemo(() => {
     const c = focused() ? visibleCursor() : null
@@ -424,6 +421,13 @@ export function Terminal(props: TerminalProps): JSXElement {
           body's `screenY` by 1, parking the cursor on the header
           instead of the prompt. Conditional render means the body's
           screenY equals the pane's content top in the steady state. */}
+      <Show when={exited()}>
+        <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
+          <text fg={theme.error} wrapMode="none">
+            {t("terminal.exited")}
+          </text>
+        </box>
+      </Show>
       <Show when={scrollOffset() > 0}>
         <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
           <text fg={theme.warning} wrapMode="none">
