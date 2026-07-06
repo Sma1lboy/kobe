@@ -407,13 +407,9 @@ export function Terminal(props: TerminalProps): JSXElement {
   })
 
   return (
-    <box
-      flexDirection="column"
-      flexGrow={1}
-      overflow="hidden"
-      borderColor={focused() ? theme.focusAccent : theme.border}
-      onMouseUp={() => setFocusedLocal(true)}
-    >
+    // Borderless by design: the workspace layout wrapper owns the focus
+    // border (double borders otherwise); this pane is pure content.
+    <box flexDirection="column" flexGrow={1} overflow="hidden" onMouseUp={() => setFocusedLocal(true)}>
       {/* Scroll affordance — only rendered when the user has scrolled
           back into history. Replaces what used to be a permanent
           worktree-id header row; that row was redundant with the
