@@ -42,6 +42,29 @@ describe("keyEventToShellBytes", () => {
     expect(keyEventToShellBytes(evt({ name: "q" }))).toBe("q")
   })
 
+  it("re-encodes kitty CSI-u keystrokes instead of trusting sequence", () => {
+    // The host renderer runs with useKittyKeyboard, so on kitty-capable
+    // terminals modifier chords arrive CSI-u encoded. Field shapes below
+    // were measured on the real wire (Bun PTY probe, 2026-07-06): for
+    // ctrl+c opentui puts the LOGICAL key ("c") in `sequence` — forwarding
+    // it verbatim typed a literal "c" instead of interrupting — while for
+    // esc `sequence` carries the raw CSI-u bytes.
+    expect(keyEventToShellBytes(evt({ name: "c", ctrl: true, sequence: "c", raw: "\x1b[99;5u" } as never))).toBe("\x03")
+    expect(keyEventToShellBytes(evt({ name: "escape", sequence: "\x1b[27u", raw: "\x1b[27u" } as never))).toBe("\x1b")
+    expect(keyEventToShellBytes(evt({ name: "space", ctrl: true, sequence: " ", raw: "\x1b[32;5u" } as never))).toBe(
+      "\x00",
+    )
+    expect(keyEventToShellBytes(evt({ name: "\\", ctrl: true, sequence: "\\", raw: "\x1b[92;5u" } as never))).toBe(
+      "\x1c",
+    )
+    // A ctrl chord the synthesizer can't map is dropped — typing a stray
+    // literal into the shell would be worse.
+    expect(keyEventToShellBytes(evt({ name: "pageup", ctrl: true, sequence: "\x1b[57362;5u" } as never))).toBeNull()
+    // Legacy bytes keep forwarding verbatim (raw == sequence, not CSI-u).
+    expect(keyEventToShellBytes(evt({ name: "delete", sequence: "\x1b[3~", raw: "\x1b[3~" } as never))).toBe("\x1b[3~")
+    expect(keyEventToShellBytes(evt({ name: "c", ctrl: true, sequence: "\x03", raw: "\x03" } as never))).toBe("\x03")
+  })
+
   it("returns null for unknown multi-char names and nameless events", () => {
     expect(keyEventToShellBytes(evt({ name: "pageup" }))).toBeNull()
     expect(keyEventToShellBytes(evt({ name: "" }))).toBeNull()
