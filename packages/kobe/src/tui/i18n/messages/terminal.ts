@@ -14,6 +14,7 @@ export const en = {
     renameSubmit: "rename",
     chooseEngineTitle: "New tab — choose engine",
     chooseEngineHint: "←/→ choose, enter confirm, esc cancel",
+    cannotCloseLast: "Cannot close the only tab",
   },
   scrolledBack: "↑ scrolled {lines}L (ctrl+pgdn to follow)",
   unavailable: {
@@ -36,6 +37,7 @@ export const zh: typeof en = {
     renameSubmit: "重命名",
     chooseEngineTitle: "新建标签页 —— 选择引擎",
     chooseEngineHint: "←/→ 选择，enter 确认，esc 取消",
+    cannotCloseLast: "无法关闭唯一的标签页",
   },
   scrolledBack: "↑ 已回滚 {lines} 行（ctrl+pgdn 回到底部）",
   unavailable: {

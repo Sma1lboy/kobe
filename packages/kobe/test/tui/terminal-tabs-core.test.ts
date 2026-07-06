@@ -14,6 +14,8 @@ import {
   initialTabs,
   openEditorTab,
   renameActiveTab,
+  setTabAutoTitle,
+  setTabSessionId,
   tabPtyKey,
   tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
@@ -101,5 +103,29 @@ describe("terminal tabs state", () => {
     expect(after.tabs[1]).toMatchObject({ kind: "command", command: ["sh", "-c", "nvim x"] })
     // Unknown id: state shape unchanged.
     expect(tabToShell(s, "tab-99", ["/bin/zsh"]).tabs).toEqual(s.tabs)
+  })
+
+  // Why: sessionId is the naming/resume anchor (tmux @kobe_session_id) —
+  // it must land on engine tabs only and survive shell degradation is NOT
+  // required (the conversation ended), but autoTitle must survive so a
+  // degraded tab keeps the name of the conversation it hosted.
+  it("setTabSessionId records the pinned id on engine tabs and ignores command tabs", () => {
+    let s = setTabSessionId(initialTabs(), "tab-1", "uuid-1")
+    expect(s.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
+    s = openEditorTab(s, ["sh", "-c", "nvim x"], "x")
+    const after = setTabSessionId(s, "tab-2", "uuid-2")
+    expect(after.tabs[1]).not.toHaveProperty("sessionId", "uuid-2")
+  })
+
+  it("autoTitle fills the display gap under a manual title and survives degradation", () => {
+    let s = setTabAutoTitle(initialTabs(), "tab-1", "fix the resize race")
+    expect(s.tabs[0].autoTitle).toBe("fix the resize race")
+    // Manual rename still wins at display time (title stays independent).
+    s = renameActiveTab(s, "my name")
+    expect(s.tabs[0].title).toBe("my name")
+    expect(s.tabs[0].autoTitle).toBe("fix the resize race")
+    // Degrading to a shell keeps the auto-derived name.
+    const degraded = tabToShell(s, "tab-1", ["/bin/zsh"])
+    expect(degraded.tabs[0].autoTitle).toBe("fix the resize race")
   })
 })

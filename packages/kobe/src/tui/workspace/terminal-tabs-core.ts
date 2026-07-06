@@ -20,6 +20,15 @@ interface TabBase {
   readonly title: string | null
   /** 1-based creation ordinal — drives the "Terminal {n}" default. */
   readonly ordinal: number
+  /**
+   * Auto-derived title (the tab's own engine session's first prompt — the
+   * PTY-world `runChatTabNamingPass`). Display precedence is
+   * `title ?? autoTitle ?? numbered default`: a manual F2 rename always
+   * wins, and clearing one falls back here — tmux's automatic-rename
+   * semantics. On the base so a tab degraded to a shell (`tabToShell`)
+   * keeps the name of the conversation it hosted.
+   */
+  readonly autoTitle?: string | null
 }
 
 /**
@@ -35,6 +44,22 @@ export interface EngineTab extends TabBase {
    * `chat.tab.new` tab.
    */
   readonly vendor?: VendorId
+  /**
+   * Engine session id pinned at spawn (`withClaudeSessionId` — the same
+   * `--session-id` mapping the tmux chattab stashed as
+   * `@kobe_session_id`), so the tab is auto-named from ITS OWN first
+   * prompt and can later be resumed. Null for vendors that can't take a
+   * caller-set id (codex/custom — their origin tab is named from the
+   * worktree instead, matching the tmux fallback).
+   */
+  readonly sessionId?: string | null
+  /**
+   * True once this tab's PTY has actually spawned. Drives the restart
+   * story (issue #22): a persisted engine tab that already ran resumes
+   * its conversation (`--resume <sessionId>`) instead of opening a
+   * blank session under the same id.
+   */
+  readonly spawned?: boolean
 }
 
 /**
@@ -109,7 +134,7 @@ export function tabToShell(state: TabsState, id: string, shell: readonly string[
   const tabs = state.tabs.map(
     (t): TerminalTab =>
       t.id === id && t.kind === "engine"
-        ? { kind: "command", id: t.id, title: t.title, ordinal: t.ordinal, command: shell }
+        ? { kind: "command", id: t.id, title: t.title, ordinal: t.ordinal, autoTitle: t.autoTitle, command: shell }
         : t,
   )
   return { ...state, tabs }
@@ -149,6 +174,51 @@ export function renameActiveTab(state: TabsState, title: string): TabsState {
     t.id === state.activeId ? { ...t, title: trimmed.length > 0 ? trimmed : null } : t,
   )
   return { ...state, tabs }
+}
+
+/**
+ * Record the engine session id pinned at PTY spawn on an engine tab.
+ * Separate transition (not an `addTab` parameter) because the id is
+ * IO-generated (`randomUUID` in `withClaudeSessionId`) — this module
+ * stays pure so vitest can pin every transition.
+ */
+export function setTabSessionId(state: TabsState, id: string, sessionId: string | null): TabsState {
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id && t.kind === "engine" ? { ...t, sessionId } : t))
+  return { ...state, tabs }
+}
+
+/**
+ * Record an auto-derived title. Self-limiting like the tmux naming pass:
+ * callers only derive for tabs with neither a user title nor an
+ * autoTitle, and the display precedence keeps a later F2 rename on top.
+ */
+export function setTabAutoTitle(state: TabsState, id: string, autoTitle: string): TabsState {
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, autoTitle } : t))
+  return { ...state, tabs }
+}
+
+/** Mark an engine tab's PTY as having spawned (see `EngineTab.spawned`). */
+export function markTabSpawned(state: TabsState, id: string): TabsState {
+  const tabs = state.tabs.map(
+    (t): TerminalTab => (t.id === id && t.kind === "engine" && !t.spawned ? { ...t, spawned: true } : t),
+  )
+  return { ...state, tabs }
+}
+
+/**
+ * Rehydrate a persisted tab snapshot (issue #22). Command tabs are
+ * transient by nature (an editor that quit, a degraded shell) — they are
+ * dropped, engine tabs survive with their identity + sessionId so the
+ * host can `--resume` them. Guards against a corrupt/empty snapshot by
+ * falling back to `initialTabs()`; re-anchors `activeId` if it pointed
+ * at a dropped tab.
+ */
+export function rehydrateTabs(persisted: TabsState): TabsState {
+  const tabs = persisted.tabs.filter((t): t is EngineTab => t.kind === "engine")
+  if (tabs.length === 0) return initialTabs()
+  const activeId = tabs.some((t) => t.id === persisted.activeId) ? persisted.activeId : tabs[0].id
+  const maxOrdinal = tabs.reduce((max, t) => Math.max(max, t.ordinal), 0)
+  return { tabs, activeId, nextOrdinal: Math.max(persisted.nextOrdinal, maxOrdinal + 1) }
 }
 
 /** Cycle the active tab by ±1, wrapping at the ends. */
