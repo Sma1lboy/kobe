@@ -73,6 +73,7 @@
     "@vitest/coverage-v8": "2.1.9",
     "knip": "^6.14.2",
     "kobe-web": "workspace:*",
+    "react-devtools-core": "^7.0.1",
     "typescript": "5.8.2",
     "vitest": "2.1.9"
   },
