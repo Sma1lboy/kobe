@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.66
+
+### Patch Changes
+
+- cafc139: The embedded terminal's basic-16 ANSI palette now uses Tokyo Night's published terminal colors instead of xterm's 1990s primaries, so `ls`/`eza` output and other bare-ANSI coloring reads as one coherent modern scheme (truecolor and 256-color output were always bit-exact and are unchanged).
+- 56b6885: Fix the embedded terminal freezing on the last frame during rapid redraws: the snapshot pass skips half-painted frames while a synchronized-output block is open, but under back-to-back redraws a new block could open before the closing write's refresh landed, so the skip never got a follow-up and the screen stopped updating. The skip now reschedules itself.
+- dc42a72: Pure-tui workspace reaches chattab/tasks-pane parity: tab auto-naming from each session's first prompt, per-tab turn-state chips (●/✓/!/○) with background-done toasts, tab persistence across restarts with transcript-verified `--resume`, full Sidebar task lifecycle (n/d/a/r/b/v/pin/move/sort/filter), the Ops-pane `● new` activity badge + zen/Create-PR corner actions on the files column, a worktrees page swap, and last-tab close feedback. Terminal resize no longer trusts pre-layout geometry (the tab-revisit frame-wreck fix), and closing a tab now releases its engine PTY.
+
 ## 0.7.65
 
 ### Patch Changes
