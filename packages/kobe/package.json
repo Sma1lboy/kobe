@@ -32,6 +32,7 @@
     "dev:mock-react-filetree": "env KOBE_DEV=1 bun ./src/tui-react/panes/filetree/mock-host.tsx",
     "dev:mock-react-sidebar": "env KOBE_DEV=1 bun ./src/tui-react/panes/sidebar/mock-host.tsx",
     "dev:mock-react-dialogs": "env KOBE_DEV=1 bun ./src/tui-react/mock/dialogs-host.tsx",
+    "dev:mock-react-ops": "env KOBE_DEV=1 bun ./src/tui-react/ops/mock-host.tsx",
     "dev:sandbox": "bun run scripts/dev-sandbox.ts run",
     "dev:sandbox:reset": "bun run scripts/dev-sandbox.ts reset",
     "dev:version": "bash ../../scripts/dev-version.sh",
