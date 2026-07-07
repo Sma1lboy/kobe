@@ -36,12 +36,12 @@ const HOME = `${import.meta.dir}/../${arg("home", ".capture-home-5")}`
 const KOBE_SRC = `${import.meta.dir}/../../kobe`
 const BIN = `${HOME}/bin`
 await $`mkdir -p ${BIN}`.quiet()
-// Preload by absolute path — bare "@opentui/solid/preload" resolves from
-// the *invocation* cwd (the repo on camera), where it doesn't exist. The
-// shipped artifact's name changes across opentui versions (preload.ts →
-// preload.js), so resolve it through the package export instead of
-// hardcoding a file name.
-const PRELOAD = Bun.resolveSync("@opentui/solid/preload", KOBE_SRC)
+// Preload by absolute path — a relative path resolves from the
+// *invocation* cwd (the repo on camera), where it doesn't exist. kobe's
+// own preload (scripts/jsx-plugin.ts) replaces the bare
+// @opentui/solid/preload: Solid transform everywhere EXCEPT
+// src/tui-react/** (React pragma files), matching kobe's dev scripts.
+const PRELOAD = `${KOBE_SRC}/scripts/jsx-preload.ts`
 await Bun.write(
   `${BIN}/kobe`,
   `#!/bin/sh\nexec env KOBE_DEV=1 bun --preload ${PRELOAD} --conditions=browser ${KOBE_SRC}/src/cli/index.ts "$@"\n`,

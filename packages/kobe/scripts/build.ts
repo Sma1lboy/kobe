@@ -26,7 +26,7 @@
 
 import { existsSync } from "node:fs"
 import { chmod, cp, mkdir, rm } from "node:fs/promises"
-import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+import { kobeJsxPlugins } from "./jsx-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
 const WEB_PACKAGE_DIR = "../kobe-web"
@@ -78,7 +78,7 @@ const result = await Bun.build({
   // Pass the plugin in directly. The "global" registration via
   // `ensureSolidTransformPlugin` is what `--preload` uses for the dev
   // runtime, but Bun.build only honours plugins passed in this list.
-  plugins: [createSolidTransformPlugin()],
+  plugins: kobeJsxPlugins(),
   // Keep native/runtime-resolved packages external. @opentui/core loads
   // @opentui/core-${platform}-${arch} dynamically; bundling core moves
   // that dynamic import into dist/index.js, where Bun can no longer
