@@ -127,21 +127,21 @@ describe("split tree (content-agnostic)", () => {
     s = splitActive(s, "row", SH) // claude | zsh | zsh
     const auto = splitLeafNames(leaves(s.root), ["/usr/local/bin/claude", "--resume"])
     expect(auto.get("leaf-1")).toBe("claude")
-    expect(auto.get("leaf-2")).toBe("zsh")
-    expect(auto.get("leaf-3")).toBe("zsh 2")
+    expect(auto.get("leaf-2")).toBe("shell")
+    expect(auto.get("leaf-3")).toBe("shell 2")
     const renamed = splitLeafNames(leaves(renameLeaf(s, "leaf-2", "logs").root), ["claude"])
     expect(renamed.get("leaf-2")).toBe("logs")
-    // A manual title never joins the dedupe pool — the remaining zsh stays bare.
-    expect(renamed.get("leaf-3")).toBe("zsh")
+    // A manual title never joins the dedupe pool — the remaining shell stays bare.
+    expect(renamed.get("leaf-3")).toBe("shell")
   })
 
   it("splitLeafNames: the engine leaf (null content) uses the first-prompt title when given", () => {
-    const s = splitActive(initialSplit(MAIN), "row", SH) // engine(leaf-1) | zsh(leaf-2)
+    const s = splitActive(initialSplit(MAIN), "row", SH) // engine(leaf-1) | shell(leaf-2)
     // With a first-prompt title, the engine leaf shows it (matching the tab
-    // label); the shell leaf is unaffected.
+    // label); the shell leaf is a generic "shell".
     const named = splitLeafNames(leaves(s.root), ["claude"], "fix the resize race")
     expect(named.get("leaf-1")).toBe("fix the resize race")
-    expect(named.get("leaf-2")).toBe("zsh")
+    expect(named.get("leaf-2")).toBe("shell")
     // No title yet → falls back to the command basename.
     expect(splitLeafNames(leaves(s.root), ["claude"], null).get("leaf-1")).toBe("claude")
   })
