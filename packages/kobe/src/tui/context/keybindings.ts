@@ -238,6 +238,26 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
   },
   {
+    // Pane cycle — walks the workspace host's panes in order
+    // (sidebar → workspace → files → wrap). `f4` ONLY, everywhere:
+    // it sits in RESERVED_GLOBAL_CHORDS (panes/terminal/keys-pure.ts) so
+    // it fires identically from inside the embedded terminal — F2/F3/F5
+    // already carry kobe's rename/split/reset vocabulary, F4 fills the row.
+    // NOT `tab` (tried 2026-07-06, cut same day): the cycle path always
+    // lands on the workspace terminal, which must keep tab as shell /
+    // engine completion — so tab-cycling both trapped there every lap AND
+    // typed a literal \t into the engine composer on arrival. NOT
+    // `shift+tab` reverse either — that's claude's plan-mode chord. One
+    // key, one meaning; forward-only (tmux `prefix o` shape), prev is
+    // just f4 twice.
+    id: "focus.next",
+    scope: "global",
+    keys: ["f4"],
+    category: "Navigation",
+    description: "Focus next pane (sidebar → workspace → files)",
+    hint: { keys: "f4", label: "next pane", status: false },
+  },
+  {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on
     // focused + streaming + no dialog). ESC no longer "detaches" focus
     // back to the sidebar — that pulled focus out from under the user

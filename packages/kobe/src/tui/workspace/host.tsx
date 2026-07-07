@@ -54,7 +54,14 @@ import { TerminalTabs } from "./TerminalTabs"
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
-const PANE_BY_SLOT = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
+// Slot 3 (ctrl+l — "terminal" in the 4-pane model) maps back to workspace:
+// this host is 3-pane and its middle column IS the terminal, so ctrl+l
+// would otherwise be a dead key for anyone with tmux-layer muscle memory.
+const PANE_BY_SLOT = ["sidebar", "workspace", "files", "workspace"] as const satisfies readonly PaneId[]
+// Cycle order for focus.next/prev — the host's real panes, NOT the
+// context's PANE_ORDER: that includes "terminal", which this host never
+// mounts, and cycling focus onto an unmounted pane would strand it.
+const PANE_CYCLE = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
 
 function firstSelectableTask(tasks: readonly Task[], activeId: string | null): Task | undefined {
   const active = activeId ? tasks.find((task) => task.id === activeId && !task.archived) : undefined
@@ -375,6 +382,12 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // close keys (q/esc) via onClose.
   const [worktreesOpen, setWorktreesOpen] = createSignal(false)
 
+  function cyclePane(delta: 1 | -1): void {
+    const idx = PANE_CYCLE.indexOf(focus.focused() as (typeof PANE_CYCLE)[number])
+    const next = (idx + delta + PANE_CYCLE.length) % PANE_CYCLE.length
+    focus.setFocused(PANE_CYCLE[next] as PaneId)
+  }
+
   useBindings(() => ({
     enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen(),
     bindings: [
@@ -384,6 +397,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           const pane = PANE_BY_SLOT[slot ?? 0]
           if (pane) focus.setFocused(pane)
         },
+        // f4 — reserved from terminal passthrough, so the cycle behaves
+        // identically from every pane including inside the terminal.
+        // Deliberately not tab/shift+tab (engine completion / plan-mode);
+        // see the keymap row comment. Forward-only.
+        "focus.next": () => cyclePane(1),
       }),
     ],
   }))
@@ -428,6 +446,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         const id = selectedId()
         if (id) void cycleVendor(id)
       },
+      // Right arrow — the tmux Tasks pane's "go right into the engine"
+      // gesture (tasks.focusEngine), same row, pure-TUI equivalent: focus
+      // the workspace terminal. Gated on search-inactive (this group), so
+      // Right while typing a query keeps moving the input cursor.
+      "tasks.focusEngine": () => focus.setFocused("workspace"),
     }),
   }))
   // Page-level close keys for the settings swap — mirrors settings/host.tsx's

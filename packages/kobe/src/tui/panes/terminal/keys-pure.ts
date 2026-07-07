@@ -163,6 +163,11 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "ctrl+\\",
   "ctrl+=",
   "f3",
+  // Pane cycle (`focus.next`): the one cross-pane chord besides ctrl+q
+  // that works from inside the terminal — without it, workspace → files
+  // always costs two hops (ctrl+q, then ctrl+k). `tab` itself stays
+  // passthrough (shell completion); F4 fills the F2/F3/F5 row.
+  "f4",
   // Terminal reset (confirm-gated).
   "f5",
 ] as const
