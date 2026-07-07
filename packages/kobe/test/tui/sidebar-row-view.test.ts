@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { IN_PROGRESS_SPINNER, buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view.ts"
+import { CLAUDE_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
+import { sweepBar } from "../../src/tui/lib/progress-bar.ts"
+import { buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -109,10 +111,12 @@ describe("buildSidebarRowView", () => {
       truncateBranch: (b) => b,
     })
     expect(v).toMatchObject({
+      // Claude-vendor task → the engine-owned star frames (frame 0 = "·").
       loading: true,
-      stateGlyph: "⠋",
+      stateGlyph: CLAUDE_SPINNER_FRAMES[0],
       tone: "primary",
       subtitleText: "materializing",
+      materializing: true,
     })
   })
 
@@ -188,8 +192,9 @@ describe("withSpinnerFrame", () => {
     const base = loadingView()
     expect(base.loading).toBe(true)
     const out = withSpinnerFrame(base, () => 3)
-    expect(out.stateGlyph).toBe(IN_PROGRESS_SPINNER[3])
-    expect(out.projectGlyph).toBe(IN_PROGRESS_SPINNER[3])
+    // The overlay honours the view's OWN engine frame set (claude stars here).
+    expect(out.stateGlyph).toBe(base.spinnerFrames[3])
+    expect(out.projectGlyph).toBe(base.spinnerFrames[3])
     // Everything else is untouched — exactly what buildSidebarRowView
     // would have produced with spinnerFrame: 3.
     const direct = buildSidebarRowView({
@@ -211,7 +216,37 @@ describe("withSpinnerFrame", () => {
 
   it("wraps out-of-range frames into the spinner cycle", () => {
     const base = loadingView()
-    const out = withSpinnerFrame(base, () => IN_PROGRESS_SPINNER.length + 2)
-    expect(out.stateGlyph).toBe(IN_PROGRESS_SPINNER[2])
+    const out = withSpinnerFrame(base, () => base.spinnerFrames.length + 2)
+    expect(out.stateGlyph).toBe(base.spinnerFrames[2])
+  })
+
+  it("reduced motion swaps every engine's frames for the pulsing dot", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "backlog" }),
+      activity: { state: "running", at: 1 },
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+      reducedMotion: true,
+    })
+    expect(v.spinnerFrames).toBe(REDUCED_MOTION_SPINNER_FRAMES)
+    expect(v.stateGlyph).toBe("●")
+    // Second phase of the 2s cycle (frames 10-19) is the small dot.
+    expect(withSpinnerFrame(v, () => 15).stateGlyph).toBe("·")
+  })
+})
+
+// Chrome-animation helper — pure string math, pinned so a refactor can't
+// silently break the sweep geometry.
+describe("sweepBar", () => {
+  it("sweepBar always renders exactly `width` cells and the comet crosses the track", () => {
+    for (let frame = 0; frame < 30; frame++) {
+      expect(sweepBar(frame, 8)).toHaveLength(8)
+    }
+    expect(sweepBar(0, 8)).toBe("█       ")
+    expect(sweepBar(2, 8)).toBe("▍▋█     ")
+    // Head has run off the end: comet fully exited before the wrap.
+    expect(sweepBar(10, 8)).toBe("        ")
   })
 })

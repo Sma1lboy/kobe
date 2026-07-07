@@ -4,10 +4,11 @@ import { type BoxRenderable, TextAttributes } from "@opentui/core"
 import type { Accessor, JSX } from "solid-js"
 import { Show, createMemo, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { sweepBar } from "../../lib/progress-bar"
 import { currentBranch, pollCurrentBranch } from "./git-head"
 import type { SidebarRow } from "./groups"
 import { spacedTitle } from "./labels"
-import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "./row-view"
+import { type SidebarRowView, buildSidebarRowView, prCheckChip, withSpinnerFrame } from "./row-view"
 import type { ChatRunState, SidebarHover } from "./types"
 import { taskIsLive, toneColor, truncateBranchLabel } from "./view-core"
 import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
@@ -48,6 +49,37 @@ function useChanges(props: SidebarRowCardSharedProps, task: SidebarRow["task"]) 
   )
 }
 
+/**
+ * Subtitle line of a row card. Plain muted text, except a materialising
+ * row (worktree add in flight), which renders the indeterminate sweep bar
+ * ahead of the word. Frame is read only in that branch, so ordinary rows
+ * never subscribe to the 10Hz signal (same conditional-dependency contract
+ * as `withSpinnerFrame`).
+ */
+function SubtitleText(props: { readonly view: () => SidebarRowView; readonly frame: Accessor<number> }) {
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
+  return (
+    <Show
+      when={props.view().materializing && !themeCtx.reducedMotion}
+      fallback={
+        <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+          {props.view().subtitleText}
+        </text>
+      }
+    >
+      <box flexDirection="row" gap={1} flexGrow={1}>
+        <text fg={theme.primary} wrapMode="none">
+          {sweepBar(props.frame())}
+        </text>
+        <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+          {props.view().subtitleText}
+        </text>
+      </box>
+    </Show>
+  )
+}
+
 function RowBody(props: {
   readonly row: SidebarRow
   readonly shared: SidebarRowCardSharedProps
@@ -83,7 +115,8 @@ function RowBody(props: {
 }
 
 export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const task = props.row.task
   const flatIndex = props.row.flatIndex
   const isCursor = () => flatIndex === props.shared.cursorIndex()
@@ -104,6 +137,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
       subtitleBudget: props.shared.subtitleBudget(),
       truncateBranch: truncateBranchLabel,
       mainBranch: projectBranch(),
+      reducedMotion: themeCtx.reducedMotion,
     }),
   )
   const rowView = createMemo(() => withSpinnerFrame(baseRowView(), props.shared.spinnerFrame))
@@ -132,9 +166,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
             {barGlyph()}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-              {rowView().subtitleText}
-            </text>
+            <SubtitleText view={rowView} frame={props.shared.spinnerFrame} />
             <Show when={changes().added > 0}>
               <text fg={theme.success} wrapMode="none">
                 +{changes().added}
@@ -153,7 +185,8 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
 }
 
 export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const task = props.row.task
   const flatIndex = props.row.flatIndex
   const isCursor = () => flatIndex === props.shared.cursorIndex()
@@ -169,6 +202,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
       subtitleBudget: props.shared.subtitleBudget(),
       truncateBranch: truncateBranchLabel,
       mainBranch: "",
+      reducedMotion: themeCtx.reducedMotion,
     }),
   )
   const rowView = createMemo(() => withSpinnerFrame(baseRowView(), props.shared.spinnerFrame))
@@ -207,9 +241,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
             {barGlyph()}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-              {rowView().subtitleText}
-            </text>
+            <SubtitleText view={rowView} frame={props.shared.spinnerFrame} />
             <Show when={task.pinned === true}>
               <text fg={theme.warning} wrapMode="none">
                 ▴

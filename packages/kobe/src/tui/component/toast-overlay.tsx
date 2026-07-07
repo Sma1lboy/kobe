@@ -18,7 +18,7 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
-import { For, Show } from "solid-js"
+import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 
@@ -26,19 +26,47 @@ const MAX_VISIBLE = 4
 const CHIP_WIDTH = 40
 const RIGHT_MARGIN = 2
 const BOTTOM_MARGIN = 2
+/** Slide-in: cells the stack starts shifted right by, and the step cadence. */
+const SLIDE_CELLS = 6
+const SLIDE_STEP_MS = 40
 
 export function ToastOverlay() {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const dims = useTerminalDimensions()
   const notif = useNotifications()
 
   const visibleToasts = () => notif.toasts().slice(-MAX_VISIBLE)
 
+  /* Slide-in on arrival: a NEW newest toast shifts the whole stack
+   * SLIDE_CELLS right of its anchor, then steps back to rest over a few
+   * frames — the overshoot clips at the screen edge, reading as a slide
+   * in from the right. Dismissals don't retrigger (newest id unchanged
+   * or the stack empties). */
+  const [slide, setSlide] = createSignal(0)
+  let lastNewest: string | number | null = null
+  createEffect(() => {
+    const list = notif.toasts()
+    const newest = list.length > 0 ? list[list.length - 1]?.id : null
+    if (newest === lastNewest) return
+    lastNewest = newest
+    if (!newest || themeCtx.reducedMotion) return
+    setSlide(SLIDE_CELLS)
+    const timer = setInterval(() => {
+      setSlide((cur) => {
+        const next = Math.max(0, cur - 2)
+        if (next === 0) clearInterval(timer)
+        return next
+      })
+    }, SLIDE_STEP_MS)
+    onCleanup(() => clearInterval(timer))
+  })
+
   // Anchor the stack to the bottom-right corner. Position is absolute
   // so the overlay sits on top of the Shell layout without taking flow
   // space; `zIndex` keeps it above the panes but below the dialog
   // backdrop (dialogs use 3000).
-  const left = () => Math.max(0, dims().width - CHIP_WIDTH - RIGHT_MARGIN)
+  const left = () => Math.max(0, dims().width - CHIP_WIDTH - RIGHT_MARGIN) + slide()
   const top = () => Math.max(0, dims().height - BOTTOM_MARGIN - MAX_VISIBLE - 1)
 
   return (

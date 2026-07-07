@@ -1,7 +1,9 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
+import { engineEntry } from "@/engine/registry"
+import { DEFAULT_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { t } from "@/tui/i18n"
-import type { Task, TaskStatus } from "@/types/task"
+import { DEFAULT_TASK_VENDOR, type Task, type TaskStatus } from "@/types/task"
 import { isBuiltinVendor } from "@/types/vendor"
 import { repoBasename } from "./groups"
 
@@ -15,6 +17,17 @@ export interface SidebarRowView {
   readonly stateGlyph: string
   readonly projectGlyph: string
   readonly tone: SidebarTone
+  /**
+   * The engine-owned frame set this row animates with while loading
+   * (registry `spinnerFrames`, braille fallback). Carried on the view so
+   * `withSpinnerFrame` needs no extra caller wiring.
+   */
+  readonly spinnerFrames: readonly string[]
+  /**
+   * A daemon job (worktree add) is materialising this task — the subtitle
+   * renders the indeterminate sweep bar instead of the shimmer.
+   */
+  readonly materializing: boolean
 }
 
 const STATUS_BADGE: Record<TaskStatus, { glyph: string; tone: SidebarTone }> = {
@@ -71,9 +84,19 @@ function activityLabelFor(state: TaskActivityState | undefined): { text: string;
   }
 }
 
-export const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+/** Neutral fallback frames — kept under the historical name for existing consumers/tests. */
+export const IN_PROGRESS_SPINNER: readonly string[] = DEFAULT_SPINNER_FRAMES
 
 export const SPINNER_FRAME_MS = 100
+
+/**
+ * Cycle length for the shared 10Hz frame counter. Engine frame sets have
+ * different lengths (braille 10, claude's star oscillation 12); the counter
+ * ticks over a common multiple and each row reduces modulo its own set, so
+ * every set loops seamlessly. 600 covers every divisor we'd plausibly ship
+ * (8/10/12/15/20/24/25).
+ */
+export const SPINNER_TICK_CYCLE = 600
 
 /**
  * The right-stuck PR-check chip for a task's subtitle row. The
@@ -158,6 +181,8 @@ export function buildSidebarRowView(opts: {
    * `main` / `feat/x` on line 2 like a task does.
    */
   readonly mainBranch?: string
+  /** Accessibility: swap the engine spinner for the slow pulsing dot. */
+  readonly reducedMotion?: boolean
 }): SidebarRowView {
   const { task } = opts
   const isMain = task.kind === "main"
@@ -185,7 +210,12 @@ export function buildSidebarRowView(opts: {
     materializing ||
     (!untrackedCustomEngine &&
       (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
-  const spinner = IN_PROGRESS_SPINNER[opts.spinnerFrame] ?? IN_PROGRESS_SPINNER[0]
+  // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
+  // reduced motion replaces every set with the slow pulsing dot.
+  const spinnerFrames = opts.reducedMotion
+    ? REDUCED_MOTION_SPINNER_FRAMES
+    : (engineEntry(task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES)
+  const spinner = spinnerFrames[opts.spinnerFrame % spinnerFrames.length] ?? spinnerFrames[0]
   const tone = materializing
     ? "primary"
     : untrackedCustomEngine
@@ -217,6 +247,8 @@ export function buildSidebarRowView(opts: {
     stateGlyph: loading ? spinner : restGlyph,
     projectGlyph: loading ? spinner : restProjectGlyph,
     tone,
+    spinnerFrames,
+    materializing,
   }
 }
 
@@ -232,7 +264,8 @@ export function buildSidebarRowView(opts: {
  */
 export function withSpinnerFrame(view: SidebarRowView, frame: () => number): SidebarRowView {
   if (!view.loading) return view
-  const spinner = IN_PROGRESS_SPINNER[frame() % IN_PROGRESS_SPINNER.length] ?? "⠋"
+  const frames = view.spinnerFrames
+  const spinner = frames[frame() % frames.length] ?? frames[0] ?? "⠋"
   if (spinner === view.stateGlyph && spinner === view.projectGlyph) return view
   return { ...view, stateGlyph: spinner, projectGlyph: spinner }
 }

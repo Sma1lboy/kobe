@@ -276,6 +276,8 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
     setTransparentBackground: (v) => themeCtx.setTransparentBackground(v),
     focusAccent: () => themeCtx.focusAccent,
     setFocusAccent: (slot) => themeCtx.setFocusAccent(slot),
+    reducedMotion: () => themeCtx.reducedMotion,
+    setReducedMotion: (v) => themeCtx.setReducedMotion(v),
   }
 
   // Boot application, during this component's render — the sibling host
@@ -286,6 +288,7 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
     theme: props.boot.theme,
     transparentBackground: props.boot.transparent,
     focusAccent: props.boot.focusAccent,
+    reducedMotion: props.boot.reducedMotion,
   })
   // Language is a module-global reactive value (not part of the theme
   // target), so it's seeded directly rather than through applyUiPrefs.

@@ -91,7 +91,10 @@ export function computePathBudget(paneWidth: number, w: StatWidths): number {
 /** Render a `+N` / `-N` stat cell padded to the column width; a missing
  * count renders as blanks so the columns stay aligned. */
 export function statCell(value: number | null | undefined, width: number, sign: "+" | "-"): string {
-  return value == null ? " ".repeat(width) : `${sign}${value}`.padStart(width)
+  // Deletions render the typographic minus (U+2212) — same glyph as the
+  // sidebar's −N counter, same 1-cell width as ASCII "-".
+  const glyph = sign === "-" ? "−" : sign
+  return value == null ? " ".repeat(width) : `${glyph}${value}`.padStart(width)
 }
 
 /** Toggle a directory path in the expansion set (immutably). */

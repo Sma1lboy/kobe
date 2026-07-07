@@ -114,6 +114,7 @@ export function decodeUiPrefsPayload(payload: unknown): UiPrefsPayload | null {
     sortMode: p.sortMode === "recent" ? "recent" : "default",
     keysCollapsed: p.keysCollapsed === true,
     projectFilter: typeof p.projectFilter === "string" && p.projectFilter.length > 0 ? p.projectFilter : null,
+    reducedMotion: p.reducedMotion === true,
   }
 }
 

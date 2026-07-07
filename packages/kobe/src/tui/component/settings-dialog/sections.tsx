@@ -73,6 +73,7 @@ export function GeneralSettingsSection(
     selectLanguage: (locale: LocaleId) => void
     toggleTransparent: () => void
     selectFocusAccent: (slot: (typeof FOCUS_ACCENT_SLOTS)[number]) => void
+    toggleReducedMotion: () => void
     toastEnabled: Accessor<boolean>
     soundEnabled: Accessor<boolean>
     toggleToast: () => void
@@ -99,6 +100,7 @@ export function GeneralSettingsSection(
   const rows = () => generalRows({ themeNames: props.themeNames(), focusAccentSlots: FOCUS_ACCENT_SLOTS })
   const rowIdx = (id: string) => rowIndex(rows(), id)
   const transparentRow = () => rowIdx("transparent")
+  const reducedMotionRow = () => rowIdx("reduced-motion")
   const toastRow = () => rowIdx("toast")
   const soundRow = () => rowIdx("sound")
   const zenKeepTasksRow = () => rowIdx("zen-keep-tasks")
@@ -109,6 +111,7 @@ export function GeneralSettingsSection(
   const worktreeBaseRow = () => rowIdx("worktree-base")
   const worktreeCustomRow = () => rowIdx("worktree-custom")
   const isTransparentRow = () => props.bodyRow() === transparentRow()
+  const isReducedMotionRow = () => props.bodyRow() === reducedMotionRow()
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
   const isZenKeepTasksRow = () => props.bodyRow() === zenKeepTasksRow()
@@ -265,6 +268,39 @@ export function GeneralSettingsSection(
             )
           }}
         </For>
+      </box>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {t("settings.general.reducedMotion")}
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.general.reducedMotionHint")}
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isReducedMotionRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(reducedMotionRow())
+            props.toggleReducedMotion()
+          }}
+        >
+          <text
+            fg={
+              isReducedMotionRow()
+                ? theme.selectedListItemText
+                : themeCtx.reducedMotion
+                  ? theme.accent
+                  : theme.textMuted
+            }
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            {themeCtx.reducedMotion ? t("settings.general.on") : t("settings.general.off")}
+          </text>
+        </box>
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>

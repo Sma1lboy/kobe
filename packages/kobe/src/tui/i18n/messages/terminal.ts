@@ -20,6 +20,11 @@ export const en = {
     chooseEngineHint: "←/→ choose, enter confirm, esc cancel",
     cannotCloseLast: "Cannot close the only tab",
   },
+  split: {
+    // Corner tag on each pane while a tab is split — panes have no other
+    // identity ("group" is the owner's vocabulary for a split pane).
+    name: "group {n}",
+  },
   scrolledBack: "↑ scrolled {lines}L (ctrl+pgdn to follow)",
   unavailable: {
     shellMissing: "terminal unavailable — configured shell is not available",
@@ -43,6 +48,9 @@ export const zh: typeof en = {
     chooseEngineTitle: "新建标签页 —— 选择引擎",
     chooseEngineHint: "←/→ 选择，enter 确认，esc 取消",
     cannotCloseLast: "无法关闭唯一的标签页",
+  },
+  split: {
+    name: "group {n}",
   },
   scrolledBack: "↑ 已回滚 {lines} 行（ctrl+pgdn 回到底部）",
   unavailable: {

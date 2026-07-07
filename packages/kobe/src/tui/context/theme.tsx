@@ -39,6 +39,13 @@ type State = {
    */
   transparentBackground: boolean
   focusAccent: FocusAccentSlot
+  /**
+   * Accessibility toggle: chrome animations (spinner sweep, shimmer,
+   * toast slide, tab pulse) degrade to their calm forms. Persisted via
+   * KV + fanned over the daemon `ui-prefs` channel like the other
+   * display prefs.
+   */
+  reducedMotion: boolean
 }
 
 const [store, setStore] = createStore<State>({
@@ -47,6 +54,7 @@ const [store, setStore] = createStore<State>({
   mode: "dark",
   transparentBackground: false,
   focusAccent: "primary",
+  reducedMotion: false,
 })
 
 export function listThemes(): string[] {
@@ -112,6 +120,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       get focusAccent() {
         return store.focusAccent
       },
+      get reducedMotion() {
+        return store.reducedMotion
+      },
       mode() {
         return store.mode
       },
@@ -128,6 +139,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       },
       setFocusAccent(v: FocusAccentSlot): void {
         setStore("focusAccent", v)
+      },
+      setReducedMotion(v: boolean): void {
+        setStore("reducedMotion", v)
       },
       all(): string[] {
         return listThemes()
