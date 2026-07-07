@@ -115,11 +115,16 @@ export function xtermLineToChunks(
   line: { length: number; getCell(index: number): XtermCellLike | undefined },
   minLast = -1,
 ): Chunk[] {
+  // `Math.max` is load-bearing: the `minLast` seed (cursor column) must
+  // survive the visible-cell scan. A plain `last = x` let the FIRST
+  // visible cell clobber the seed, so trailing BLANK cells (typed spaces
+  // echo as default-style blanks) were never emitted and the cursor
+  // overlay stuck at end-of-text — "cursor doesn't move on space".
   let last = Math.min(line.length - 1, minLast)
   for (let x = 0; x < line.length; x++) {
     const cell = line.getCell(x)
     if (!cell || cell.getWidth() === 0) continue
-    if (isVisibleCell(cell)) last = x
+    if (isVisibleCell(cell)) last = Math.max(last, x)
   }
   if (last === -1) return []
 
