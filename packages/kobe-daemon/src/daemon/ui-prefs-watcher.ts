@@ -109,7 +109,8 @@ export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
   // file; the TUI validates it against its registered locales (defaulting
   // to English on anything unknown). Empty/missing → "en".
   const locale = typeof parsed.locale === "string" && parsed.locale.length > 0 ? parsed.locale : "en"
-  return { theme, transparentBackground, focusAccent, locale, sortMode, keysCollapsed, projectFilter }
+  const reducedMotion = parsed.reducedMotion === true
+  return { theme, transparentBackground, focusAccent, locale, sortMode, keysCollapsed, projectFilter, reducedMotion }
 }
 
 function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
@@ -120,7 +121,8 @@ function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
     a.locale === b.locale &&
     a.sortMode === b.sortMode &&
     a.keysCollapsed === b.keysCollapsed &&
-    a.projectFilter === b.projectFilter
+    a.projectFilter === b.projectFilter &&
+    a.reducedMotion === b.reducedMotion
   )
 }
 

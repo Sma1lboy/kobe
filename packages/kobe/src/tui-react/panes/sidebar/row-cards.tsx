@@ -17,10 +17,16 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import { type BoxRenderable, TextAttributes } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
+import { sweepBar } from "../../../tui/lib/progress-bar"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import type { SidebarRow } from "../../../tui/panes/sidebar/groups"
 import { spacedTitle } from "../../../tui/panes/sidebar/labels"
-import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
+import {
+  type SidebarRowView,
+  buildSidebarRowView,
+  prCheckChip,
+  withSpinnerFrame,
+} from "../../../tui/panes/sidebar/row-view"
 import { taskIsLive, toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
@@ -65,6 +71,33 @@ function useChanges(shared: SidebarRowCardSharedProps, task: SidebarRow["task"])
   return pushed ?? worktreeChanges(task.worktreePath)
 }
 
+/**
+ * Subtitle line of a row card — Solid `SubtitleText`'s React counterpart.
+ * Plain muted text, except a materialising row, which renders the
+ * indeterminate sweep bar ahead of the word.
+ */
+function SubtitleText(props: { readonly view: SidebarRowView; readonly frame: number }) {
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
+  if (!props.view.materializing || themeCtx.reducedMotion) {
+    return (
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+        {props.view.subtitleText}
+      </text>
+    )
+  }
+  return (
+    <box flexDirection="row" gap={1} flexGrow={1}>
+      <text fg={theme.primary} wrapMode="none">
+        {sweepBar(props.frame)}
+      </text>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+        {props.view.subtitleText}
+      </text>
+    </box>
+  )
+}
+
 function RowBody(props: {
   readonly row: SidebarRow
   readonly shared: SidebarRowCardSharedProps
@@ -103,7 +136,8 @@ function RowBody(props: {
 }
 
 export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const shared = props.shared
   const task = props.row.task
   const flatIndex = props.row.flatIndex
@@ -125,6 +159,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
       subtitleBudget: shared.subtitleBudget,
       truncateBranch: truncateBranchLabel,
       mainBranch: currentBranch(task.repo),
+      reducedMotion: themeCtx.reducedMotion,
     }),
     () => shared.spinnerFrame,
   )
@@ -153,9 +188,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
             {barGlyph}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-              {rowView.subtitleText}
-            </text>
+            <SubtitleText view={rowView} frame={shared.spinnerFrame} />
             {changes.added > 0 ? (
               <text fg={theme.success} wrapMode="none">
                 +{changes.added}
@@ -174,7 +207,8 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
 }
 
 export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const t = useT()
   const shared = props.shared
   const task = props.row.task
@@ -192,6 +226,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
       subtitleBudget: shared.subtitleBudget,
       truncateBranch: truncateBranchLabel,
       mainBranch: "",
+      reducedMotion: themeCtx.reducedMotion,
     }),
     () => shared.spinnerFrame,
   )
@@ -231,9 +266,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
             {barGlyph}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-              {rowView.subtitleText}
-            </text>
+            <SubtitleText view={rowView} frame={shared.spinnerFrame} />
             {task.pinned === true ? (
               <text fg={theme.warning} wrapMode="none">
                 ▴

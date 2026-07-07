@@ -19,7 +19,7 @@ import {
 import { useSidebarBindings } from "./keys"
 import { SidebarPanel } from "./panel"
 import type { SidebarRowCardSharedProps } from "./row-cards"
-import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS } from "./row-view"
+import { SPINNER_FRAME_MS, SPINNER_TICK_CYCLE } from "./row-view"
 import type { SidebarHover, SidebarProps } from "./types"
 import {
   MAIN_BRANCH_POLL_MS,
@@ -129,7 +129,9 @@ export function Sidebar(props: SidebarProps) {
   // the rows whose badge derivation actually reads `spinnerFrame()`.
   const [spinnerFrame, setSpinnerFrame] = createSignal(0)
   const spinnerInterval = setInterval(
-    () => setSpinnerFrame((n) => (n + 1) % IN_PROGRESS_SPINNER.length),
+    // Common-multiple cycle, not one set's length — each row reduces modulo
+    // its own engine frame set (row-view SPINNER_TICK_CYCLE doc).
+    () => setSpinnerFrame((n) => (n + 1) % SPINNER_TICK_CYCLE),
     SPINNER_FRAME_MS,
   )
   onCleanup(() => clearInterval(spinnerInterval))

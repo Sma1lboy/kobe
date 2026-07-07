@@ -34,6 +34,9 @@ export const en = {
     accentPrimary: "Primary (brand accent)",
     accentSuccess: "Success (legacy green)",
     accentInfo: "Info (cool blue)",
+    reducedMotion: "Reduced motion",
+    reducedMotionHint:
+      "Calms chrome animations: the running-task spinner becomes a slow pulsing dot, and the toast slide-in, materializing sweep, and tab-complete flash turn off.",
     notifications: "Notifications",
     notificationsHint:
       "Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound = terminal bell + chime. Tab-chip unread dot is always on.",
@@ -163,6 +166,9 @@ export const zh: typeof en = {
     accentPrimary: "主色（品牌强调色）",
     accentSuccess: "成功色（传统绿）",
     accentInfo: "信息色（冷蓝）",
+    reducedMotion: "减弱动效",
+    reducedMotionHint:
+      "让界面动效安静下来：运行中任务的 spinner 变为缓慢明暗脉冲点，Toast 滑入、worktree 创建扫动条和标签完成闪烁全部关闭。",
     notifications: "通知",
     notificationsHint:
       "后台聊天页完成或在审批处暂停时触发。Toast = 右下角弹窗；Sound = 终端响铃 + 提示音。标签上的未读圆点始终开启。",

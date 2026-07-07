@@ -24,13 +24,11 @@ import type { TranscriptActivity } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { engineEntry } from "@/engine/registry"
-import type { ChatTabTurnState } from "@/engine/turn-detector"
 import { deriveTitleFromSessionId } from "@/monitor/auto-title"
 import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
-import { TextAttributes } from "@opentui/core"
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
+import { Show, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { EnginePickerDialog } from "../component/engine-picker-dialog/index"
 import { RenameTaskDialog } from "../component/rename-task-dialog/index"
 import { bindByIds } from "../context/keybindings"
@@ -39,16 +37,15 @@ import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { startTurnStatusPoll } from "../ops/activity-monitor"
 import type { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
+import { TabStrip, tabTitle } from "./tab-strip"
 import {
   type EngineTab,
   type TabsState,
-  type TerminalTab,
   addTab,
   closeActiveTab,
   closeTab,
@@ -64,29 +61,13 @@ import {
   tabPtyKey,
   tabToShell,
 } from "./terminal-tabs-core"
+import { createTurnPolls } from "./turn-polls"
 
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
 
 /** Cadence of the tab auto-naming pass (tmux ran its pass on the monitor tick). */
 const NAMING_POLL_MS = 5000
-/** Cadence of the lazy turn-poll attach retry (a tab's PTY spawns after mount). */
-const TURN_POLL_ATTACH_MS = 2000
-
-/** Same glyph vocabulary as tmux's `CHAT_TAB_STATUS_FORMAT` (`@kobe_tab_state`). */
-const TURN_GLYPHS: Record<ChatTabTurnState, string> = {
-  running: "●",
-  done: "✓",
-  error: "!",
-  unknown: "?",
-  idle: "○",
-}
-
-function tabTitle(tab: TerminalTab): string {
-  // Manual rename wins; the auto-derived first-prompt title is the
-  // fallback; the numbered default is last — tmux automatic-rename order.
-  return tab.title ?? tab.autoTitle ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
-}
 
 export function TerminalTabs(props: {
   taskId: string
@@ -266,80 +247,18 @@ export function TerminalTabs(props: {
   onCleanup(() => clearInterval(namingTimer))
 
   /* --------- per-tab turn state (tmux @kobe_tab_state, logic layer) -------
-   * The SAME `startTurnStatusPoll` loop the Ops pane runs, with PTY IO in
-   * place of tmux capture-pane — the in-process snapshot IS the pane
-   * capture. Shared mode when the host passes the daemon's
-   * transcript.activity slice (`sharedActivity`), local fixed-cadence
-   * fallback otherwise. Polls attach lazily (a tab's PTY spawns after
-   * its Terminal mounts and measures), retried on a slow tick. */
-  const [turnStates, setTurnStates] = createSignal<ReadonlyMap<string, ChatTabTurnState>>(new Map())
-  const turnPolls = new Map<string, () => void>()
-  const [pollTick, setPollTick] = createSignal(0)
-  const pollAttachTimer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)
-  onCleanup(() => clearInterval(pollAttachTimer))
-  createEffect(() => {
-    pollTick()
-    const reg = getDefaultPtyRegistry()
-    const engineIds = new Set<string>()
-    for (const tab of state().tabs) {
-      if (tab.kind !== "engine") continue
-      engineIds.add(tab.id)
-      if (turnPolls.has(tab.id)) continue
-      const key = tabPtyKey(props.taskId, tab.id)
-      // Attach only once the PTY exists so the loop's prime() hashes a
-      // real first capture (the Ops pane's prime-before-poll contract).
-      if (!reg.has(key)) continue
-      const tabId = tab.id
-      const detector = engineEntry(tab.vendor ?? props.vendor).createTurnDetector()
-      const dispose = startTurnStatusPoll(
-        {
-          worktree: props.worktree,
-          detector,
-          // Shared mode (issue #24): the daemon's transcript.activity push
-          // supplies completion reads + drives the adaptive capture
-          // cadence; null (no daemon data) falls back to fixed-cadence
-          // local polling — the Ops pane's exact contract.
-          usingShared: () => (props.sharedActivity?.() ?? null) !== null,
-          sharedEntry: () => props.sharedActivity?.() ?? null,
-        },
-        {
-          sessionAttached: async () => true,
-          capturePane: async () => {
-            const pty = getDefaultPtyRegistry().get(key)
-            if (!pty) throw new Error("pty gone")
-            return pty
-              .capture()
-              .map((row) => row.map((chunk) => chunk.text).join(""))
-              .join("\n")
-          },
-          setTurnState: async (turn) => {
-            setTurnStates((prev) => new Map(prev).set(tabId, turn))
-            // Background completion rides the standard notification path
-            // (unread + toast) — the PTY-world version of noticing a ✓
-            // land on an unfocused tmux window.
-            if (turn === "done" && state().activeId !== tabId) {
-              const current = state().tabs.find((t) => t.id === tabId)
-              if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current) })
-            }
-          },
-        },
-      )
-      turnPolls.set(tabId, dispose)
-    }
-    // Tabs that closed or degraded to a shell stop polling.
-    for (const [id, dispose] of turnPolls) {
-      if (engineIds.has(id)) continue
-      dispose()
-      turnPolls.delete(id)
-      setTurnStates((prev) => {
-        const next = new Map(prev)
-        next.delete(id)
-        return next
-      })
-    }
-  })
-  onCleanup(() => {
-    for (const dispose of turnPolls.values()) dispose()
+   * Extracted to `turn-polls.ts` — the Ops-pane poll loop with PTY IO,
+   * shared/local cadence per the sharedActivity contract. */
+  const { turnStates } = createTurnPolls({
+    taskId: props.taskId,
+    worktree: props.worktree,
+    vendor: () => props.vendor,
+    state,
+    sharedActivity: props.sharedActivity,
+    onBackgroundDone: (tabId) => {
+      const current = state().tabs.find((t) => t.id === tabId)
+      if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current) })
+    },
   })
 
   // Visiting a tab clears its unread mark (toast already auto-dismisses).
@@ -494,41 +413,15 @@ export function TerminalTabs(props: {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      {/* Tab strip — flush to the pane edge, dense, hidden for one tab. */}
+      {/* Tab strip — flush to the pane edge, dense, hidden for one tab.
+          View + turn-complete pulse live in tab-strip.tsx. */}
       <Show when={state().tabs.length > 1}>
-        <box flexDirection="row" gap={1} flexShrink={0} paddingLeft={1} backgroundColor={theme.backgroundElement}>
-          <For each={state().tabs}>
-            {(tab) => {
-              const turn = () => turnStates().get(tab.id) ?? "idle"
-              const turnColor = () =>
-                turn() === "running"
-                  ? theme.focusAccent
-                  : turn() === "done"
-                    ? theme.success
-                    : turn() === "error"
-                      ? theme.error
-                      : theme.textMuted
-              return (
-                <box flexDirection="row" gap={0} onMouseUp={() => update(selectTab(state(), tab.id))}>
-                  {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○,
-                      engine tabs only (a command tab has no turns). */}
-                  <Show when={tab.kind === "engine"}>
-                    <text fg={turnColor()} wrapMode="none">
-                      {`${TURN_GLYPHS[turn()]} `}
-                    </text>
-                  </Show>
-                  <text
-                    fg={tab.id === state().activeId ? theme.focusAccent : theme.textMuted}
-                    attributes={tab.id === state().activeId ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
-                    {tabTitle(tab)}
-                  </text>
-                </box>
-              )
-            }}
-          </For>
-        </box>
+        <TabStrip
+          tabs={() => state().tabs}
+          activeId={() => state().activeId}
+          turnStates={turnStates}
+          onSelect={(tabId) => update(selectTab(state(), tabId))}
+        />
       </Show>
       {/* One long-lived tab body, never remounted on an ordinary tab
           switch — only its `tabKey`/`command` change. TerminalSplit

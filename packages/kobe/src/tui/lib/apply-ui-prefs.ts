@@ -38,6 +38,7 @@ export interface UiPrefsSnapshot {
   readonly theme?: unknown
   readonly transparentBackground?: unknown
   readonly focusAccent?: unknown
+  readonly reducedMotion?: unknown
 }
 
 /**
@@ -60,6 +61,8 @@ export interface UiPrefsTarget {
   setTransparentBackground(v: boolean): void
   focusAccent(): string
   setFocusAccent(slot: UiPrefsFocusAccentSlot): void
+  reducedMotion(): boolean
+  setReducedMotion(v: boolean): void
 }
 
 /**
@@ -95,6 +98,10 @@ export function applyUiPrefs(target: UiPrefsTarget, prefs: UiPrefsSnapshot): voi
   if (prefs.focusAccent === null || typeof prefs.focusAccent === "string") {
     const slot = normalizeFocusAccent(prefs.focusAccent)
     if (slot && slot !== target.focusAccent()) target.setFocusAccent(slot)
+  }
+
+  if (typeof prefs.reducedMotion === "boolean" && prefs.reducedMotion !== target.reducedMotion()) {
+    target.setReducedMotion(prefs.reducedMotion)
   }
 }
 
