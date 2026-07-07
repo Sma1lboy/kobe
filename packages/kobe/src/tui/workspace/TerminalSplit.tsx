@@ -31,7 +31,7 @@
  */
 
 import { type RGBA, TextAttributes } from "@opentui/core"
-import { type Accessor, For, type JSXElement, Show } from "solid-js"
+import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
@@ -46,7 +46,6 @@ import {
   type SplitNode,
   type SplitState,
   cycleLeaf,
-  focusLeaf,
   initialSplit,
   leaves,
   removeLeaf,
@@ -104,17 +103,34 @@ export function TerminalSplit(props: {
   // Derived, not a local signal: the layout lives on the tab (parent),
   // so a tab switch (props.splitTree changes) restores that tab's layout
   // reactively — bcc59e90's no-remount body still swaps props in place.
+  // STRUCTURE (persisted): the tree shape. Its `activeLeafId` is only the
+  // restart/tab-switch seed for focus — the live focus lives in the local
+  // signal below.
   const state = (): PersistedSplit => props.splitTree() ?? UNSPLIT
-  // Persist through the parent; clearing to a single leaf drops the tree
-  // so an unsplit tab returns to the fast path (and stops persisting one).
+
+  // FOCUS (local, ephemeral): which leaf has focus. Kept OUT of the
+  // persisted tree on purpose — routing every leaf switch through
+  // onSplitChange → setTabSplit → setState + a state.json write re-invoked
+  // renderNode and reflowed the whole split tree (the whole-page twitch when
+  // switching between leaves). A local signal makes a switch update only the
+  // reactive border-color / name-tag / Terminal-focused attributes,
+  // granularly. Seeded from the persisted `activeLeafId` and re-seeded
+  // whenever the persisted tree changes (tab switch or a structural edit).
+  const [activeLeaf, setActiveLeaf] = createSignal<string>(state().activeLeafId)
+  createEffect(
+    on(
+      () => props.splitTree(),
+      (tree) => setActiveLeaf(tree?.activeLeafId ?? "leaf-1"),
+    ),
+  )
+  /** Full SplitState for the structural transitions that read the active
+   *  leaf (split / remove / cycle operate relative to it). */
+  const fullState = (): PersistedSplit => ({ ...state(), activeLeafId: activeLeaf() })
+
+  // Persist a STRUCTURAL change through the parent; clearing to a single
+  // leaf drops the tree so an unsplit tab returns to the fast path. Focus
+  // changes do NOT come here — they use `setActiveLeaf` (local).
   const update = (next: SplitState<LeafCommand>): void => {
-    // No-op guard: the pure transitions return the SAME state reference when
-    // nothing changed (e.g. `focusLeaf` on the already-active leaf — every
-    // click inside a focused split leaf). Without this, that click still
-    // round-tripped through onSplitChange → setTabSplit → a new TabsState →
-    // setState + a state.json write, re-rendering the whole split tree —
-    // the whole-page twitch on click that only showed up once a tab had
-    // multiple leaves.
     if (next === state()) return
     props.onSplitChange(leaves(next.root).length > 1 ? next : null)
   }
@@ -126,9 +142,10 @@ export function TerminalSplit(props: {
    *  leaf's subscribers), then release — same ordering as TerminalTabs'
    *  degrade path. */
   function removeAndRelease(id: string): boolean {
-    const next = removeLeaf(state(), id)
+    const cur = fullState()
+    const next = removeLeaf(cur, id)
     if (next === null) return false
-    if (next !== state()) {
+    if (next !== cur) {
       update(next)
       getDefaultPtyRegistry().release(splitLeafPtyKey(props.tabKey, id))
     }
@@ -149,9 +166,10 @@ export function TerminalSplit(props: {
   useBindings(() => ({
     enabled: props.focused(),
     bindings: bindByIds({
-      "workspace.split.right": () => update(splitActive(state(), "row", [defaultShell()])),
-      "workspace.split.down": () => update(splitActive(state(), "column", [defaultShell()])),
-      "workspace.split.focus-next": () => update(cycleLeaf(state(), 1)),
+      "workspace.split.right": () => update(splitActive(fullState(), "row", [defaultShell()])),
+      "workspace.split.down": () => update(splitActive(fullState(), "column", [defaultShell()])),
+      // Focus cycle is LOCAL — no persist, no whole-tree re-render.
+      "workspace.split.focus-next": () => setActiveLeaf(cycleLeaf(fullState(), 1).activeLeafId),
     }),
   }))
 
@@ -165,9 +183,9 @@ export function TerminalSplit(props: {
   useBindings(() => ({
     enabled: props.focused() && isSplit(),
     bindings: bindByIds({
-      "workspace.split.close": () => removeAndRelease(state().activeLeafId),
+      "workspace.split.close": () => removeAndRelease(activeLeaf()),
       "workspace.split.rename": () => {
-        const id = state().activeLeafId
+        const id = activeLeaf()
         void RenameTaskDialog.show(dialog, leafNames().get(id) ?? "", {
           dialogTitle: t("terminal.split.renameTitle"),
           fieldLabel: t("terminal.split.renameField"),
@@ -175,13 +193,13 @@ export function TerminalSplit(props: {
           allowEmpty: true,
         }).then((title) => {
           if (title === undefined) return
-          update(renameLeaf(state(), id, title))
+          update(renameLeaf(fullState(), id, title))
         })
       },
     }),
   }))
 
-  const leafFocused = (id: string) => props.focused() && state().activeLeafId === id
+  const leafFocused = (id: string) => props.focused() && activeLeaf() === id
 
   /* Dividers, not frames: a node draws ONLY
    * the single edge it shares with its previous sibling (`left` in a row,
@@ -206,44 +224,66 @@ export function TerminalSplit(props: {
    *  so vitest pins it. */
   const leafNames = () => splitLeafNames(leaves(state().root), props.command)
 
-  const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
-    <box
-      flexGrow={1}
-      flexShrink={1}
-      flexBasis={0}
-      {...dividerProps(divider, () => (leafFocused(leaf.id) ? theme.focusAccent : theme.border))}
-      onMouseUp={() => update(focusLeaf(state(), leaf.id))}
-    >
-      <Terminal
-        cwd={props.cwd}
-        taskId={() => splitLeafPtyKey(props.tabKey, leaf.id)}
-        command={leaf.content ?? props.command}
-        onExit={() => onLeafExit(leaf.id)}
-        resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
-        focused={() => leafFocused(leaf.id)}
-        onRequestFocus={() => {
-          // Click a split leaf → focus the workspace pane globally AND make
-          // this the active leaf (the wrapper box's onMouseUp can't, since
-          // the Terminal consumes the click before it bubbles).
-          props.onRequestFocus?.()
-          update(focusLeaf(state(), leaf.id))
-        }}
-      />
-      {/* Corner name tag — the leaf's OWN name (see leafNames above);
-          the focused leaf's tag lights in the focus accent; overlays the
-          terminal's top-right cell row (tmux-pane-number style, but
-          always on since it's the leaf's only label). */}
-      <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
-        <text
-          fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
-          attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
-          wrapMode="none"
-        >
-          {` ${leafNames().get(leaf.id) ?? ""} `}
-        </text>
+  const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => {
+    // Focus is LOCAL: a plain setActiveLeaf, so a click updates only the
+    // reactive borderColor / name-tag / Terminal.focused attributes below —
+    // it never re-invokes renderNode (which reflowed the whole tree). Click
+    // a split leaf → focus the workspace pane globally AND make this leaf
+    // active (the wrapper box's onMouseUp can't, since the Terminal consumes
+    // the click before it bubbles).
+    const focusThis = (): void => {
+      setActiveLeaf(leaf.id)
+    }
+    const body = (): JSXElement => (
+      <>
+        <Terminal
+          cwd={props.cwd}
+          taskId={() => splitLeafPtyKey(props.tabKey, leaf.id)}
+          command={leaf.content ?? props.command}
+          onExit={() => onLeafExit(leaf.id)}
+          resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
+          focused={() => leafFocused(leaf.id)}
+          onRequestFocus={() => {
+            props.onRequestFocus?.()
+            focusThis()
+          }}
+        />
+        {/* Corner name tag — the leaf's OWN name; the focused leaf's tag
+            lights in the focus accent (reactive JSX attrs, so a local focus
+            change repaints it without a tree re-render). */}
+        <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
+          <text
+            fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
+            attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
+            wrapMode="none"
+          >
+            {` ${leafNames().get(leaf.id) ?? ""} `}
+          </text>
+        </box>
+      </>
+    )
+    // borderColor must be a REACTIVE JSX attribute (not a pre-computed spread
+    // value, which froze the color and forced a whole-tree re-render to
+    // repaint) so a local focus change repaints just this divider. It must
+    // also be ABSENT on divider-less boxes (opentui coerces border:false →
+    // full frame if any border styling lands), hence the two variants.
+    return divider ? (
+      <box
+        flexGrow={1}
+        flexShrink={1}
+        flexBasis={0}
+        border={[divider]}
+        borderColor={leafFocused(leaf.id) ? theme.focusAccent : theme.border}
+        onMouseUp={focusThis}
+      >
+        {body()}
       </box>
-    </box>
-  )
+    ) : (
+      <box flexGrow={1} flexShrink={1} flexBasis={0} border={false} onMouseUp={focusThis}>
+        {body()}
+      </box>
+    )
+  }
 
   const renderNode = (node: SplitNode<LeafCommand>, divider?: "left" | "top"): JSXElement =>
     node.kind === "leaf" ? (
