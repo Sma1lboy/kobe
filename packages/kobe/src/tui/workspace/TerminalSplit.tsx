@@ -25,10 +25,11 @@
  * over once a split exists.
  */
 
-import type { RGBA } from "@opentui/core"
+import { type RGBA, TextAttributes } from "@opentui/core"
 import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
@@ -164,6 +165,12 @@ export function TerminalSplit(props: {
   const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
     divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
 
+  /** 1-based position of a leaf in reading order — the pane's default name
+   *  (`group {n}`, owner ask 2026-07-06: tabs have names, panes had none).
+   *  Positional on purpose: closing a middle pane renumbers the rest, the
+   *  same zero-state convention as tmux pane numbers. */
+  const leafOrdinal = (id: string) => leaves(state().root).findIndex((leaf) => leaf.id === id) + 1
+
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
     <box
       flexGrow={1}
@@ -180,6 +187,19 @@ export function TerminalSplit(props: {
         resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
         focused={() => leafFocused(leaf.id)}
       />
+      {/* Corner name tag — panes have no other identity while split. The
+          focused pane's tag lights in the focus accent; overlays the
+          terminal's top-right cell row (tmux-pane-number style, but
+          always on since it's the pane's only label). */}
+      <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
+        <text
+          fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
+          attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
+          wrapMode="none"
+        >
+          {` ${t("terminal.split.name", { n: leafOrdinal(leaf.id) })} `}
+        </text>
+      </box>
     </box>
   )
 
