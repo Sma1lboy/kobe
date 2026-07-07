@@ -12,6 +12,7 @@ import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
+import { leaves } from "./split-core"
 import type { TerminalTab } from "./terminal-tabs-core"
 
 /** Same glyph vocabulary as tmux's `CHAT_TAB_STATUS_FORMAT` (`@kobe_tab_state`). */
@@ -27,9 +28,13 @@ export const TURN_GLYPHS: Record<ChatTabTurnState, string> = {
 const DONE_PULSE_MS = 600
 
 export function tabTitle(tab: TerminalTab): string {
-  // Manual rename wins; the auto-derived first-prompt title is the
-  // fallback; the numbered default is last — tmux automatic-rename order.
-  return tab.title ?? tab.autoTitle ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
+  // Manual rename always wins. Otherwise a NORMAL (single) tab is named by
+  // its first-prompt title, falling back to "tab N"; a SPLIT tab is a
+  // "group N" (its leaves carry the individual names — see splitLeafNames).
+  if (tab.title) return tab.title
+  const isGroup = !!tab.splitTree && leaves(tab.splitTree.root).length > 1
+  if (isGroup) return t("terminal.tab.groupTitle", { n: tab.ordinal })
+  return tab.autoTitle ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
 }
 
 export function TabStrip(props: {
