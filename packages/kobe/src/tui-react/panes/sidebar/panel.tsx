@@ -296,7 +296,13 @@ export function SidebarPanel(props: {
             fg={theme.accent}
             attributes={TextAttributes.BOLD}
             wrapMode="none"
-            onMouseUp={() => props.onZenClick?.()}
+            onMouseUp={(e: { stopPropagation(): void }) => {
+              // Don't bubble to the pane box's focus-grab (workspace host):
+              // zen entry moves focus to the terminal; a bubbled sidebar
+              // focus would instantly exit zen via the focus guard.
+              e.stopPropagation()
+              props.onZenClick?.()
+            }}
           >
             ☯ ZEN
           </text>
