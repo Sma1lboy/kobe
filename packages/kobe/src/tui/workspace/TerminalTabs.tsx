@@ -54,6 +54,7 @@ import {
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
+  seedTabsFromSessions,
   selectTab,
   setTabAutoTitle,
   setTabSessionId,
@@ -127,6 +128,11 @@ export function TerminalTabs(props: {
   // flags are up to 5s stale (the naming tick's cadence) and must be
   // re-verified against the real transcripts before anything spawns.
   let rehydratedFromDisk = false
+  // Flips true when the task has NO persisted snapshot at all — its first
+  // open in this host. The engine's own transcript store may still hold
+  // conversations for the worktree (created by the tmux flavour, or a
+  // prior install): the seed pass below adopts the newest one.
+  let needsDiskSeed = false
   const initState = (): TabsState => {
     const existing = tabsByTask.get(props.taskId)
     if (existing) return existing
@@ -136,6 +142,7 @@ export function TerminalTabs(props: {
     const saved = kv.get(persistKey, null) as TabsState | null
     const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved) : null
     rehydratedFromDisk = fromDisk !== null
+    needsDiskSeed = fromDisk === null
     const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
     // Persist immediately so a remount before the first mutation doesn't
     // re-pin a different session id against the already-spawned PTY.
@@ -162,7 +169,18 @@ export function TerminalTabs(props: {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
     if (!tab.sessionId) return base
     const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
-    if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
+    if (tab.spawned && !live) {
+      // Engine-owned resume argv (registry `resumeCommand`): claude appends
+      // `--resume <id>`, codex the `resume <id>` subcommand. Engines
+      // without the hook start fresh.
+      const resume = engineEntry(tab.vendor ?? props.vendor).resumeCommand
+      return resume ? resume(base, tab.sessionId) : base
+    }
+    // Fresh session under a pre-pinned id is claude's `--session-id`
+    // contract only (`withClaudeSessionId` never pins other vendors). A
+    // non-claude tab can land here when its ADOPTED session's transcript
+    // vanished (restart-verify flipped spawned off) — start it fresh.
+    if ((tab.vendor ?? props.vendor) !== "claude") return base
     return [...base, "--session-id", tab.sessionId]
   }
 
@@ -174,7 +192,7 @@ export function TerminalTabs(props: {
    * spawn (the Show gate below) and set each tab's `spawned` from a real
    * history read before the first PTY starts. Millisecond-scale reads;
    * failures degrade to fresh-session (never the not-found path). */
-  const [hydrating, setHydrating] = createSignal(rehydratedFromDisk)
+  const [hydrating, setHydrating] = createSignal(rehydratedFromDisk || needsDiskSeed)
   if (rehydratedFromDisk) {
     void (async () => {
       try {
@@ -190,6 +208,30 @@ export function TerminalTabs(props: {
             update(setTabSpawned(state(), tab.id, exists))
           }),
         )
+      } finally {
+        setHydrating(false)
+      }
+    })()
+  }
+
+  /* --------- cross-mode session adoption ---------------------------------
+   * First-ever open of this task in the pure-TUI host: the engine's own
+   * transcript store is the ONE place both kobe flavours record
+   * conversations (DESIGN.md §2.5 — state lives where it already lives),
+   * so a task driven under the tmux flavour has its sessions on disk even
+   * though this host has no snapshot. Hold the spawn behind the same
+   * hydrating gate, list the store (claude ~ms, codex ≤ a few hundred ms,
+   * capped), and adopt the newest conversation as the initial tab — it
+   * resumes via the engine-owned `resumeCommand` instead of opening blank.
+   * Empty/unreadable store → the fresh session already pinned in initState. */
+  if (needsDiskSeed) {
+    void (async () => {
+      try {
+        const ids = await engineEntry(props.vendor).history.listSessionIdsForWorktree(props.worktree)
+        const seeded = seedTabsFromSessions(ids)
+        if (seeded) update(seeded)
+      } catch {
+        /* unreadable store → keep the fresh session */
       } finally {
         setHydrating(false)
       }
