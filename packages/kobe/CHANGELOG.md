@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.72
+
+### Patch Changes
+
+- 1abdc5f: Embedded terminal sessions now survive quitting kobe AND `kobe daemon restart`. A standalone `kobe pty-host` process (kobe's tmux-server analog, spawned on demand, idle-exits at zero sessions) owns the raw PTYs with a per-session scrollback ring buffer; the TUI keeps VT emulation local and reattaches on next boot with a full replay (protocol v4: `pty.*` requests + targeted `pty.data`/`pty.exit` frames). Quitting the TUI detaches instead of killing; closing a tab, resetting, or archiving a task still ends its session, and `kobe reset` now also stops the pty host. `KOBE_TERMINAL_BACKEND=bun-pty` restores the old local-child backend.
+- 435e213: The React TUI is now the default implementation for every surface (workspace, settings, help, history, ops, worktrees) — `KOBE_SOLID=1` keeps the retiring Solid implementation as an escape hatch, selected in one place (`uiFramework()` in env.ts). Fixes the silent exit-1 boot crash after the flip: the upstream @opentui/solid preload compiled the React files as Solid JSX; kobe now ships its own JSX loader rule (`scripts/jsx-plugin.ts`) — Solid transform everywhere except `src/tui-react/**`, whose per-file React pragmas are honored — shared by the dev preload, bunfig, and the production build.
+- 3b21da4: Ports the workspace cluster (three-column Sidebar | TerminalTabs | FileTree layout, split-pane terminal, tab strip, turn-status polling, files activity badge) to React under `src/tui-react/workspace/`, the final piece of the Solid→React migration (issue #16). React is now the default runtime for the native workspace, settings, help, history, and ops surfaces — set `KOBE_SOLID=1` to fall back to the legacy Solid host during the transition window. The worktree-management page overlay isn't ported yet and shows a placeholder until it lands.
+- 43ab11c: Terminal tabs now follow one model: every tab is a shell, an engine is just a process running in it. Tab default names are "$process $ordinal" ("claude 3", "shell 5") instead of "tab N"; split shell leaves and tab labels track the live foreground process via OSC window titles ("vim", "htop"), with engine titles normalized to one vocabulary ("✳ Claude Code" → "claude"). Typing `claude` inside a plain shell now attaches the same turn-status chip (●/✓) as a kobe-launched engine tab, and it detaches when the process exits. Fixes: a tab degraded to a shell no longer reopens as a fresh claude after restart; closing the engine leaf inside a split no longer leaves a stale turn chip flapping against a dead PTY; the corner name tag hides when a single leaf survives (the tab label already says it).
+
 ## 0.7.71
 
 ### Patch Changes
