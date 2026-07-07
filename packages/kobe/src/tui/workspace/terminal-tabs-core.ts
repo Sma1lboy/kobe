@@ -12,6 +12,15 @@
  */
 
 import type { VendorId } from "@/types/vendor"
+import type { SplitState } from "./split-core"
+
+/**
+ * A tab's frozen split layout — the content-agnostic tree (`split-core`)
+ * with terminal-flavored leaf payloads: `null` = the tab's own engine
+ * command (only `leaf-1`), an argv = a split-created shell. JSON-safe, so
+ * it rides the persisted tab straight into state.json.
+ */
+export type PersistedSplit = SplitState<readonly string[] | null>
 
 interface TabBase {
   /** Stable id — registry key suffix. Never reused within a task. */
@@ -29,6 +38,17 @@ interface TabBase {
    * keeps the name of the conversation it hosted.
    */
   readonly autoTitle?: string | null
+  /**
+   * Frozen split layout for this tab (the "group"). Absent/null = unsplit
+   * (the tab's own engine fills the whole body). Persisted WITH the tab so
+   * the layout survives restart (owner ask 2026-07-06): `leaf-1` is the
+   * tab's engine and resumes via the tab's sessionId exactly like an
+   * unsplit tab; the other leaves are shells that respawn fresh. We freeze
+   * the LAYOUT only — a shell the user ran `claude` inside comes back as a
+   * shell, not a tracked/resumed session. Owned by `TerminalSplit`, mutated
+   * through `setTabSplit`.
+   */
+  readonly splitTree?: PersistedSplit | null
 }
 
 /**
@@ -245,6 +265,19 @@ export function cycleTab(state: TabsState, delta: 1 | -1): TabsState {
 /** Switch directly to `id` (the tab strip's click target) — no-op if it isn't present. */
 export function selectTab(state: TabsState, id: string): TabsState {
   return state.tabs.some((t) => t.id === id) ? { ...state, activeId: id } : state
+}
+
+/**
+ * Set (or clear, with `null`) a tab's frozen split layout. Pure so vitest
+ * pins the persistence round-trip; `TerminalSplit` calls it through the
+ * component's `update` (which writes state.json), so every split / rename
+ * / close inside the tree lands on disk and survives restart. Unknown ids
+ * no-op.
+ */
+export function setTabSplit(state: TabsState, id: string, tree: PersistedSplit | null): TabsState {
+  if (!state.tabs.some((t) => t.id === id)) return state
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, splitTree: tree } : t))
+  return { ...state, tabs }
 }
 
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */

@@ -58,6 +58,7 @@ import {
   setTabAutoTitle,
   setTabSessionId,
   setTabSpawned,
+  setTabSplit,
   tabPtyKey,
   tabToShell,
 } from "./terminal-tabs-core"
@@ -286,11 +287,13 @@ export function TerminalTabs(props: {
    *  The last tab refuses to close (core guard) and keeps the exit
    *  banner + F5 recovery path instead. */
   function closeExitedTab(id: string): void {
+    const closing = state().tabs.find((t) => t.id === id)
     const { state: next, closedId } = closeTab(state(), id)
     if (closedId) {
       // Split leaves first (their keys namespace under the tab key),
-      // then the tab's own PTY.
-      releaseSplitLeaves(tabPtyKey(props.taskId, closedId))
+      // then the tab's own PTY. The tree comes off the closing tab (it
+      // lives on the persisted tab now, not a module map).
+      releaseSplitLeaves(tabPtyKey(props.taskId, closedId), closing?.splitTree ?? null)
       getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
     }
     update(next)
@@ -384,6 +387,7 @@ export function TerminalTabs(props: {
       },
       "chat.tab.chooseEngine": requestChooseEngine,
       "chat.tab.close": () => {
+        const closing = state().tabs.find((t) => t.id === state().activeId)
         const { state: next, closedId } = closeActiveTab(state())
         if (!closedId) {
           // tmux surfaced `display-message 'Cannot close the only ChatTab'`;
@@ -402,7 +406,7 @@ export function TerminalTabs(props: {
         // owns this teardown (releaseWhere only fires on task archive,
         // releaseAll on app exit), so dropping closedId here leaked the
         // engine process until archive — the ctrl+w leak class of #14.
-        releaseSplitLeaves(tabPtyKey(props.taskId, closedId))
+        releaseSplitLeaves(tabPtyKey(props.taskId, closedId), closing?.splitTree ?? null)
         getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
       },
       "chat.tab.rename": requestRename,
@@ -446,6 +450,8 @@ export function TerminalTabs(props: {
           tabKey={tabPtyKey(props.taskId, active().id)}
           cwd={() => props.worktree}
           command={activeCommand()}
+          splitTree={() => active().splitTree ?? null}
+          onSplitChange={(next) => update(setTabSplit(state(), active().id, next))}
           onExit={handleActiveExit}
           resetToken={resetToken}
           focused={props.focused}

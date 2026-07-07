@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { initialSplit, splitActive } from "../../src/tui/workspace/split-core"
 import {
   addTab,
   closeActiveTab,
@@ -12,6 +13,7 @@ import {
   setTabAutoTitle,
   setTabSessionId,
   setTabSpawned,
+  setTabSplit,
   tabPtyKey,
   tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
@@ -134,6 +136,27 @@ describe("terminal tabs state", () => {
     // All-command snapshot (everything degraded) → fresh initial state.
     const allCommand = rehydrateTabs(tabToShell(initialTabs(), "tab-1", ["/bin/zsh"]))
     expect(allCommand).toEqual(initialTabs())
+  })
+
+  // Why: the frozen split layout (owner ask 2026-07-06) must survive the
+  // persist → rehydrate round-trip so a `claude | shell` group reopens
+  // after restart. setTabSplit stores/clears the tree; rehydrateTabs keeps
+  // it on the surviving engine tab. leaf-1 (null content = the tab's
+  // engine) resumes via the tab's sessionId; the shell leaf respawns.
+  it("setTabSplit persists a tab's split tree across rehydrate; null clears it", () => {
+    const tree = splitActive(initialSplit(null), "row", ["/bin/zsh"]) // leaf-1 engine | leaf-2 shell
+    let s = setTabSessionId(initialTabs(), "tab-1", "uuid-1")
+    s = setTabSplit(s, "tab-1", tree)
+    expect(s.tabs[0].splitTree).toEqual(tree)
+    // Round-trip through JSON (state.json) then rehydrate — the layout
+    // comes back intact on the resumable engine tab.
+    const back = rehydrateTabs(JSON.parse(JSON.stringify(s)))
+    expect(back.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
+    expect(back.tabs[0].splitTree).toEqual(tree)
+    // Clearing (collapse to a single leaf) drops the tree → unsplit tab.
+    expect(setTabSplit(s, "tab-1", null).tabs[0].splitTree).toBeNull()
+    // Unknown id is a no-op (keeps state identity — write-churn guard).
+    expect(setTabSplit(s, "tab-99", null)).toBe(s)
   })
 
   it("markTabSpawned flips once on engine tabs and is identity-stable after", () => {
