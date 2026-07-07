@@ -23,7 +23,7 @@ import { addSavedRepo, getSavedRepos } from "@/state/repos"
 import { t } from "@/tui/i18n"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "@/types/task"
 import { nextVendorWithin } from "@/types/vendor"
-import type { NewTaskDialogOptions, NewTaskInput } from "../component/new-task-dialog"
+import type { NewTaskDialogOptions, NewTaskInput } from "../component/new-task-dialog/state"
 import { killSession, switchClientBeforeKill, tmuxSessionName } from "../panes/terminal/tmux"
 
 export interface TaskActionLogger {

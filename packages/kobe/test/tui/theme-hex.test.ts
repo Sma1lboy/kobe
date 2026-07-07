@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import type { ThemeJson } from "../../src/tui/context/theme"
+import type { ThemeJson } from "../../src/tui/context/theme-core"
 import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
 import { normalizeHex, resolveThemeSlotHex } from "../../src/tui/context/theme/hex"
 

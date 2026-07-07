@@ -34,7 +34,7 @@
 import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { kobeStateDir } from "../../../env"
-import type { ThemeJson } from "../theme"
+import type { ThemeJson } from "../theme-core"
 import { validateTheme } from "./schema"
 
 /** Directory under the kobe state root where user themes live. */

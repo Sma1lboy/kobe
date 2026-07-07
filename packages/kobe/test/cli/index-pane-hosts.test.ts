@@ -1,10 +1,10 @@
 /**
  * Behavioral tests for the remaining `src/cli/index.ts` handlers — the
  * in-tmux hook handlers (heal-layout / resync-window / capture-layout) and
- * the pane/page host launches (quick-task / tasks / settings / help-page /
- * new-task / update-page / history / ops). Sibling of
- * index-dispatch.test.ts (same fresh-import + first-exit-throws technique).
- * The .tsx host modules are mocked — what's under test is the ROUTING:
+ * the pane/page host launches (settings / help-page / history / ops).
+ * Sibling of index-dispatch.test.ts (same fresh-import + first-exit-throws
+ * technique). React is the only runtime, so the host modules under
+ * `src/tui-react/**` are mocked — what's under test is the ROUTING:
  * required-flag validation, flag parsing, and which host gets which args.
  */
 
@@ -18,13 +18,8 @@ const spies = vi.hoisted(() => ({
     await fn()
   }),
   genAgeMs: vi.fn(() => 999_999),
-  startQuickTaskHost: vi.fn(async () => {}),
-  startTasksPane: vi.fn(async () => {}),
   startSettingsHost: vi.fn(async () => {}),
-  startSettingsHostSolid: vi.fn(async () => {}),
   startHelpHost: vi.fn(async () => {}),
-  startNewTaskHost: vi.fn(async () => {}),
-  startUpdateHost: vi.fn(async () => {}),
   startHistoryHost: vi.fn(async () => {}),
   startOpsHost: vi.fn(async () => {}),
   startOpsPreview: vi.fn(async () => {}),
@@ -40,21 +35,6 @@ vi.mock("../../src/tui/panes/terminal/layout-coord.ts", () => ({
   genAgeMs: spies.genAgeMs,
   RESIZE_GUARD_MS: 500,
 }))
-vi.mock("../../src/tui/quick-task/host.tsx", () => ({ startQuickTaskHost: spies.startQuickTaskHost }))
-vi.mock("../../src/tui/tasks-pane/host.tsx", () => ({ startTasksPane: spies.startTasksPane }))
-vi.mock("../../src/tui/settings/host.tsx", () => ({ startSettingsHost: spies.startSettingsHostSolid }))
-vi.mock("../../src/tui/help/host.tsx", () => ({ startHelpHost: spies.startHelpHost }))
-vi.mock("../../src/tui/new-task/host.tsx", () => ({ startNewTaskHost: spies.startNewTaskHost }))
-vi.mock("../../src/tui/update/host.tsx", () => ({ startUpdateHost: spies.startUpdateHost }))
-vi.mock("../../src/tui/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
-vi.mock("../../src/tui/ops/host.tsx", () => ({ startOpsHost: spies.startOpsHost }))
-vi.mock("../../src/tui/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
-// React is the default runtime (issue #16, `uiFramework()` in src/env.ts) for
-// settings/help/history/ops — mock the React modules onto the SAME spies
-// (help/history/ops) so those routing/flag-parsing tests don't care which
-// runtime actually won. `settings` gets its OWN distinct pair of spies
-// (`startSettingsHostSolid` above, `startSettingsHost` below) so one test
-// can prove the KOBE_SOLID=1 escape hatch actually flips which module loads.
 vi.mock("../../src/tui-react/settings/host.tsx", () => ({ startSettingsHost: spies.startSettingsHost }))
 vi.mock("../../src/tui-react/help/host.tsx", () => ({ startHelpHost: spies.startHelpHost }))
 vi.mock("../../src/tui-react/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
@@ -62,7 +42,6 @@ vi.mock("../../src/tui-react/ops/host.tsx", () => ({ startOpsHost: spies.startOp
 vi.mock("../../src/tui-react/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
 
 let originalArgv: string[]
-let originalKobeSolid: string | undefined
 let exitSpy: ReturnType<typeof vi.fn>
 let errorSpy: MockInstance
 
@@ -75,10 +54,6 @@ async function runCli(...args: string[]): Promise<void> {
 
 beforeEach(() => {
   originalArgv = process.argv
-  originalKobeSolid = process.env.KOBE_SOLID
-  // Deterministic default (react) unless a test opts into the escape hatch.
-  // biome-ignore lint/performance/noDelete: env cleanup must fully unset (assigning undefined leaves it as the string "undefined"). Same pattern as test/state/repos.test.ts.
-  delete process.env.KOBE_SOLID
   let exited = false
   exitSpy = vi.fn((code?: number) => {
     if (!exited) {
@@ -92,9 +67,6 @@ beforeEach(() => {
 
 afterEach(() => {
   process.argv = originalArgv
-  // biome-ignore lint/performance/noDelete: env cleanup must fully unset when the var was unset before the test (assigning undefined leaves it as the string "undefined"). Same pattern as test/state/repos.test.ts.
-  if (originalKobeSolid === undefined) delete process.env.KOBE_SOLID
-  else process.env.KOBE_SOLID = originalKobeSolid
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -158,36 +130,11 @@ describe("tmux hook handlers", () => {
 })
 
 describe("pane / page host launches", () => {
-  test("quick-task forwards the session for default resolution", async () => {
-    await runCli("quick-task", "--session", "kobe-t1")
-    expect(spies.startQuickTaskHost).toHaveBeenCalledWith({ session: "kobe-t1" })
-  })
-
-  test("tasks forwards the initial row selection", async () => {
-    await runCli("tasks", "--initial-task-id", "t42")
-    expect(spies.startTasksPane).toHaveBeenCalledWith({ initialTaskId: "t42" })
-  })
-
-  test("settings / help-page / update-page launch their full-window surfaces", async () => {
+  test("settings / help-page launch their full-window surfaces", async () => {
     await runCli("settings")
     expect(spies.startSettingsHost).toHaveBeenCalled()
-    expect(spies.startSettingsHostSolid).not.toHaveBeenCalled()
     await runCli("help-page")
     expect(spies.startHelpHost).toHaveBeenCalled()
-    await runCli("update-page")
-    expect(spies.startUpdateHost).toHaveBeenCalled()
-  })
-
-  test("KOBE_SOLID=1 is the legacy escape hatch back to the Solid settings host", async () => {
-    process.env.KOBE_SOLID = "1"
-    await runCli("settings")
-    expect(spies.startSettingsHostSolid).toHaveBeenCalled()
-    expect(spies.startSettingsHost).not.toHaveBeenCalled()
-  })
-
-  test("new-task pre-selects the repo picker from --repo", async () => {
-    await runCli("new-task", "--repo", "/repo")
-    expect(spies.startNewTaskHost).toHaveBeenCalledWith({ defaultRepo: "/repo" })
   })
 
   test("history requires --worktree and passes vendor/title/--live through", async () => {

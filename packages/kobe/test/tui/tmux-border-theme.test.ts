@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import type { ThemeJson } from "../../src/tui/context/theme"
+import type { ThemeJson } from "../../src/tui/context/theme-core"
 import {
   BORDER_THEME_MARKER_OPTION,
   TMUX_CHROME_THEME_MARKER_OPTION,

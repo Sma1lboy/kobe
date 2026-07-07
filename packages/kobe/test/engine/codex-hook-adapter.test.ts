@@ -5,10 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CodexHookAdapter, KOBE_CODEX_HOOK_EVENTS, codexHooksPath } from "../../src/engine/codex-local/hook-adapter.ts"
 
 // The adapter's install path builds hook commands from `kobeHookInvocation()`
-// (whose dev fallback, `kobeCliInvocation()`, resolves `@opentui/solid/preload`
-// via `import.meta.resolve` and throws when that can't resolve — some test
-// runners). Pin the whole module so the roundtrip exercises the merge/IO, not
-// CLI-path resolution. NOTE: vi.mock replaces EVERY export — a new function
+// (whose dev fallback is `kobeCliInvocation()`). Pin the whole module so the
+// roundtrip exercises the merge/IO, not CLI-path resolution. NOTE: vi.mock
+// replaces EVERY export — a new function
 // added to invocation.ts must be stubbed here too, or json-hooks' default-arg
 // call becomes undefined() and editJsonSettings' best-effort catch silently
 // eats it (that exact gap shipped red CI once).

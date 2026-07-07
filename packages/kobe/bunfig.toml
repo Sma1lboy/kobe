@@ -1,19 +1,2 @@
 [install]
 exact = true
-
-# kobe's own preload (scripts/jsx-plugin.ts): Solid transform everywhere
-# EXCEPT src/tui-react/** which stays on Bun's default transpiler so the
-# per-file `@jsxImportSource @opentui/react` pragmas are honoured — the
-# upstream @opentui/solid/preload solid-compiled the React files too,
-# which corrupted them into non-components (silent exit-1 boot crash).
-preload = ["./scripts/jsx-preload.ts"]
-
-# `bun test` does NOT read the top-level `preload` above (that only applies
-# to `bun run`/`bun <script>`) — it needs its own [test] table. Without this,
-# opentui/solid's Babel-driven JSX transform never registers and every .tsx
-# render test fails to parse JSX. See test/render/harness.tsx.
-[test]
-preload = ["./scripts/jsx-preload.ts"]
-# Keep the coverage report scoped to the components under test — harness.tsx
-# and fixtures.ts are test infra, not the thing being measured.
-coveragePathIgnorePatterns = ["test/render/harness.tsx", "test/render/fixtures.ts"]

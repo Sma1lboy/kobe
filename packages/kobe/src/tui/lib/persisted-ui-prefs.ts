@@ -14,7 +14,7 @@
 
 import { readFileSync } from "node:fs"
 import { kvStatePath } from "../../env.ts"
-import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, hasTheme } from "../context/theme"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, hasTheme } from "../context/theme-core"
 import { DEFAULT_LOCALE, type LocaleId, isLocaleId } from "../i18n/catalog"
 
 /** state.json key holding the persisted UI language. */

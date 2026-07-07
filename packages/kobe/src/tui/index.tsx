@@ -8,7 +8,7 @@
  * `kobe reset`, not a daemon-less in-process Orchestrator.
  */
 
-import { nativeChatEnabled, uiFramework } from "../env.ts"
+import { nativeChatEnabled } from "../env.ts"
 import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 
 export async function startTui(): Promise<void> {
@@ -18,11 +18,8 @@ export async function startTui(): Promise<void> {
   maybeHintSkillInstall()
 
   if (nativeChatEnabled()) {
-    // React is the default runtime for the native workspace (issue #16);
-    // `uiFramework()` (env.ts) is the ONE place that decides — same seam
-    // as the settings/help/history/ops subcommands in commands-tui.ts.
-    const { startWorkspaceHost } =
-      uiFramework() === "solid" ? await import("./workspace/host") : await import("../tui-react/workspace/host.tsx")
+    // The native workspace is React-only (issue #16 — the Solid host was removed).
+    const { startWorkspaceHost } = await import("../tui-react/workspace/host.tsx")
     await startWorkspaceHost()
     return
   }

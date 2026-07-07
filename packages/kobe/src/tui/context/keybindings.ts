@@ -65,8 +65,7 @@
  * quit-confirm shortcut.
  */
 
-import { createSignal } from "solid-js"
-import type { Binding } from "../lib/keymap"
+import type { Binding } from "../lib/keymap-dispatch.ts"
 import { CHAT_BINDINGS } from "./keybindings-chat.ts"
 import { FILES_BINDINGS } from "./keybindings-files.ts"
 import { SIDEBAR_BINDINGS } from "./keybindings-sidebar.ts"
@@ -370,22 +369,25 @@ export function resetKeymapToDefaults(): void {
 }
 
 /**
- * A bump-only reactive token: every live keymap reload increments it. The
- * chord LEGENDS (Tasks-pane footer, status bar) read it so they re-render
- * after a reload — the keymap array itself isn't a Solid store, so a
- * mutation is otherwise invisible to the renderer. Behaviour doesn't need
- * it (the dispatcher re-reads chords on every keypress); this is purely the
- * display nudge.
+ * A bump-only version token: every live keymap reload increments it. The
+ * chord LEGENDS (status bar, help dialog) read it so they re-render after a
+ * reload — the keymap array is mutated in place, so a mutation is otherwise
+ * invisible to the renderer. Behaviour doesn't need it (the dispatcher
+ * re-reads chords on every keypress); this is purely the display nudge.
+ *
+ * React consumers subscribe via `useSyncExternalStore(subscribeKeymapVersion,
+ * keymapVersion)` (src/tui-react/context/keybindings.ts) — `keymapVersion()`
+ * is the getSnapshot getter, `subscribeKeymapVersion` the store subscription.
  */
-const [keymapVersion, setKeymapVersion] = createSignal(0)
-export { keymapVersion }
-
-// Framework-free companion to the Solid signal above: React chord legends
-// subscribe here via useSyncExternalStore (src/tui-react/context/keybindings.ts,
-// issue #15 G2). Solid consumers keep tracking the signal — same bump feeds both.
+let keymapVersionValue = 0
 const keymapVersionListeners = new Set<() => void>()
 
-/** Subscribe to keymap reloads (React side). Returns the unsubscribe fn. */
+/** Current keymap version (getSnapshot for `useSyncExternalStore`). */
+export function keymapVersion(): number {
+  return keymapVersionValue
+}
+
+/** Subscribe to keymap reloads. Returns the unsubscribe fn. */
 export function subscribeKeymapVersion(listener: () => void): () => void {
   keymapVersionListeners.add(listener)
   return () => {
@@ -395,7 +397,7 @@ export function subscribeKeymapVersion(listener: () => void): () => void {
 
 /** Increment {@link keymapVersion}, forcing chord legends to re-render. */
 export function bumpKeymapVersion(): void {
-  setKeymapVersion((v) => v + 1)
+  keymapVersionValue += 1
   for (const listener of [...keymapVersionListeners]) listener()
 }
 

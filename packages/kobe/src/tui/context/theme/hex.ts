@@ -14,7 +14,7 @@
  * "skip the option" beats "paint it black".
  */
 
-import type { ThemeJson } from "../theme"
+import type { ThemeJson } from "../theme-core"
 
 type Variant = { dark: string; light: string }
 type ColorValue = string | Variant

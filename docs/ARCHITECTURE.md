@@ -35,8 +35,8 @@ nothing about higher.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  TUI clients + panes  (Solid + @opentui/solid + @opentui/core) │
-│   src/tui/{direct.ts, tasks-pane/, ops/, panes/, context/}    │
+│  TUI clients + panes  (React + @opentui/react + @opentui/core) │
+│   src/tui-react/** (UI) + src/tui/{direct.ts, ops/, panes/}    │
 ├────────────────────────────────────────────────────────────────┤
 │  RemoteOrchestrator  (client facade over daemon RPC + channels)│
 │   src/client/remote-orchestrator.ts                            │
@@ -446,7 +446,7 @@ capture a failing screen, fix the narrow cause, then rerun once or twice.
 
 ## Pointers
 
-- Run dev: `bun run dev` (preloads `@opentui/solid/preload`).
+- Run dev: `bun run dev` (React JSX via per-file `@opentui/react` pragmas; no preload).
 - Run unit + type tests: `bun run test`.
 - Run behavior tests: `bun run test:behavior`.
 - Lint: `bun run lint` (biome).

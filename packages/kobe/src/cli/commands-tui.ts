@@ -7,7 +7,6 @@
  * as new tmux windows — never meant for direct user invocation.
  */
 
-import { uiFramework } from "../env.ts"
 import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 
 interface OpsFlags {
@@ -335,35 +334,12 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     })
     return true
   }
-  if (subcommand === "quick-task") {
-    // The prompt-only quick-create page, opened in its own window by
-    // `quickCreate` (the `<prefix> f` / `kobe quick-create` handler). Asks
-    // for only a prompt and fills the rest from the firing task's defaults.
-    // Reads `--session` to resolve those defaults.
-    const flags = parseOpsFlags(rest)
-    const { startQuickTaskHost } = await import("../tui/quick-task/host.tsx")
-    await startQuickTaskHost({ session: flags.session })
-    return true
-  }
-  if (subcommand === "tasks") {
-    // Experimental Tasks pane (left side of a task's tmux session) —
-    // a read-only task list that `switch-client`s between sessions.
-    const flags = parseOpsFlags(rest)
-    const { startTasksPane } = await import("../tui/tasks-pane/host.tsx")
-    await startTasksPane({ initialTaskId: flags.initialTaskId })
-    return true
-  }
   if (subcommand === "settings") {
     // The Settings page as a standalone full-window surface (the default
     // `chattab` settings surface). Opened by `openSettingsTab` as a new
     // tmux window; reuses the same SettingsDialog the in-pane overlay
     // uses. Dynamic import keeps opentui off the other subcommands' path.
-    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is
-    // the ONE place that decides — same seam as `kobe history` below.
-    const { startSettingsHost } =
-      uiFramework() === "solid"
-        ? await import("../tui/settings/host.tsx")
-        : await import("../tui-react/settings/host.tsx")
+    const { startSettingsHost } = await import("../tui-react/settings/host.tsx")
     await startSettingsHost()
     return true
   }
@@ -372,11 +348,7 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // (mirrors `settings`). Opened by `openWorktreesTab` as a new tmux
     // window. Internal — not typed by users, only ever spawned by the
     // tab opener.
-    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
-    const { startWorktreesHost } =
-      uiFramework() === "solid"
-        ? await import("../tui/worktrees/host.tsx")
-        : await import("../tui-react/worktrees/host.tsx")
+    const { startWorktreesHost } = await import("../tui-react/worktrees/host.tsx")
     await startWorktreesHost()
     return true
   }
@@ -385,28 +357,8 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // (distinct from `kobe help`, which prints CLI usage). Opened by
     // `openHelpTab` as a new tmux window; reuses the same HelpDialog
     // the in-pane overlay uses.
-    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
-    const { startHelpHost } =
-      uiFramework() === "solid" ? await import("../tui/help/host.tsx") : await import("../tui-react/help/host.tsx")
+    const { startHelpHost } = await import("../tui-react/help/host.tsx")
     await startHelpHost()
-    return true
-  }
-  if (subcommand === "new-task") {
-    // The new-task flow as a standalone full-window page (the default
-    // `chattab` settings surface). Opened by `openNewTaskTab`; reuses the
-    // same NewTaskDialog the in-pane overlay uses and performs the
-    // create/adopt against its own daemon connection before exiting.
-    const flags = parseOpsFlags(rest)
-    const { startNewTaskHost } = await import("../tui/new-task/host.tsx")
-    await startNewTaskHost({ defaultRepo: flags.repo })
-    return true
-  }
-  if (subcommand === "update-page") {
-    // Internal full-window update surface opened from the tmux-native
-    // Tasks pane. `kobe update` remains the shell updater; this page
-    // presents the version/release context and hands off to that updater.
-    const { startUpdateHost } = await import("../tui/update/host.tsx")
-    await startUpdateHost()
     return true
   }
   if (subcommand === "history") {
@@ -421,11 +373,7 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
       console.error("kobe history: --worktree <path> is required")
       process.exit(2)
     }
-    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
-    const { startHistoryHost } =
-      uiFramework() === "solid"
-        ? await import("../tui/history/host.tsx")
-        : await import("../tui-react/history/host.tsx")
+    const { startHistoryHost } = await import("../tui-react/history/host.tsx")
     await startHistoryHost({
       worktree: flags.worktree,
       vendor: coerceVendorId(flags.vendor),
@@ -448,17 +396,12 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     }
     // `--preview <rel>` → full-width syntax-highlighted file/diff view
     // (opentui `<diff>` / `<code>`). Otherwise the FileTree browser.
-    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
     if (flags.preview) {
-      const { startOpsPreview } =
-        uiFramework() === "solid"
-          ? await import("../tui/ops/preview.tsx")
-          : await import("../tui-react/ops/preview.tsx")
+      const { startOpsPreview } = await import("../tui-react/ops/preview.tsx")
       await startOpsPreview({ worktree: flags.worktree, relPath: flags.preview })
       return true
     }
-    const { startOpsHost } =
-      uiFramework() === "solid" ? await import("../tui/ops/host.tsx") : await import("../tui-react/ops/host.tsx")
+    const { startOpsHost } = await import("../tui-react/ops/host.tsx")
     await startOpsHost({
       taskId: flags.taskId ?? "",
       worktree: flags.worktree,

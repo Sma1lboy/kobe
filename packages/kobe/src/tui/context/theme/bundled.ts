@@ -10,7 +10,7 @@
  * `BUNDLED_THEMES` in `theme.tsx` and `BUNDLED_NAMES` in `cli/theme.ts`.
  */
 
-import type { ThemeJson } from "../theme"
+import type { ThemeJson } from "../theme-core"
 
 import claude from "./claude.json" with { type: "json" }
 import conductor from "./conductor.json" with { type: "json" }

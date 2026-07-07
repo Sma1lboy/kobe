@@ -11,9 +11,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 
-// `context/theme` transitively imports @opentui/core (whose .scm assets fail
-// under vitest) — stub just the two validators this module consumes.
-vi.mock("../../src/tui/context/theme", () => ({
+// Stub the theme registry to a controlled set so the fallback assertions
+// don't depend on the full bundled-theme list.
+vi.mock("../../src/tui/context/theme-core", () => ({
   FOCUS_ACCENT_SLOTS: ["primary", "success", "info"] as const,
   hasTheme: (name: string) => ["claude", "tokyonight"].includes(name),
 }))
