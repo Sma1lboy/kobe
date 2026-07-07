@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.71
+
+### Patch Changes
+
+- d43a7ba: Fix the whole-page twitch when clicking or switching panes in a split terminal group. Several causes: a plain click set a zero-width text selection that pushed new render content (then cleared it); clicking/switching a split leaf routed leaf focus through the persisted split tree (a state.json write + a full tree re-render), with the divider colour computed eagerly so the whole tree re-rendered to repaint it; and clicking an already-active tab or already-selected task re-created state / re-hit the daemon. Leaf focus is now a local signal with reactive border attributes, zero-width selections render nothing, and the no-op transitions (`selectTab`, task select) short-circuit.
+- d43a7ba: Fix closing the engine leaf in a split respawning Claude instead of keeping the surviving shell. The split now collapses back to the single-engine fast path only when the sole survivor is the engine leaf; a surviving shell keeps rendering as itself, and the tab label follows (it shows the shell's name, not the stale engine conversation title).
+- d43a7ba: Clearer terminal tab / split naming. A normal (single) tab is "tab N"; only a tab split into multiple leaves is a "group N". In a split, the engine leaf shows the conversation's first-prompt title (matching the group label) instead of a static "claude", and split shell leaves are named "shell" (deduped: "shell", "shell 2"). `F2` while split renames the active leaf.
+- a6b35eb: Fix: clicking the embedded terminal now focuses it. opentui mouse events don't bubble to the workspace wrapper, and the terminal's own selection handlers consume the click, so a bare click inside the terminal never reached the global focus setter — you had to tab/arrow over from the task list. The pane now requests focus on click (and, when split, also selects the clicked leaf).
+- c06121b: Fix the embedded-terminal cursor drifting away from the text when typing CJK / wide characters. Two causes: (1) the inline cursor cell counted code points instead of terminal cells, so every wide glyph before the cursor shifted it a column — now it walks by display width (shared `charWidth`/`displayWidth` moved to `lib/display-width.ts`); (2) the real host cursor was parked invisibly at (0,0), so the OS IME / pinyin candidate window had nothing to anchor to — it now tracks the embedded cursor's screen cell (still invisible; the inverse cell stays the visible cursor).
+
 ## 0.7.70
 
 ### Patch Changes
