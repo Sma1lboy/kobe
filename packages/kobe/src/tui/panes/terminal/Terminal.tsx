@@ -158,7 +158,16 @@ export function Terminal(props: TerminalProps): JSXElement {
   const selection = createMemo<SelectionRange | null>(() => {
     const anchor = selAnchor()
     const head = selHead()
-    return anchor && head ? { anchor, head } : null
+    if (!anchor || !head) return null
+    // A ZERO-WIDTH selection (a plain click, before any drag) renders no
+    // highlight. Returning null keeps the memo value null → null across a
+    // click, so `cursorRows` / the snapshot content are NOT re-pushed — a
+    // plain click on the terminal used to inject then clear a single-cell
+    // highlight, and each content push repainted the pane (the whole-page
+    // twitch on click). The highlight appears only once a drag makes
+    // anchor ≠ head.
+    if (anchor.row === head.row && anchor.col === head.col) return null
+    return { anchor, head }
   })
   const cellFromEvent = (evt: { x?: number; y?: number }): CellPoint | null => {
     const body = bodyRef()
