@@ -47,6 +47,7 @@ export type SettingsRow =
   | { id: string; kind: "language"; locale: LocaleId }
   | { id: "transparent"; kind: "transparent" }
   | { id: string; kind: "focusAccent"; slot: FocusAccentSlot }
+  | { id: "reduced-motion"; kind: "reducedMotion" }
   | { id: "toast"; kind: "toast" }
   | { id: "sound"; kind: "sound" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
@@ -109,6 +110,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     ...LOCALES.map((l): SettingsRow => ({ id: languageRowId(l.id), kind: "language", locale: l.id })),
     { id: "transparent", kind: "transparent" },
     ...input.focusAccentSlots.map((slot): SettingsRow => ({ id: focusAccentRowId(slot), kind: "focusAccent", slot })),
+    { id: "reduced-motion", kind: "reducedMotion" },
     { id: "toast", kind: "toast" },
     { id: "sound", kind: "sound" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },

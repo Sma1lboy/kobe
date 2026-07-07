@@ -56,6 +56,7 @@ describe("readPersistedUiPrefs", () => {
       transparent: true,
       focusAccent: "success",
       locale: "en",
+      reducedMotion: false,
     })
   })
 
@@ -87,6 +88,7 @@ describe("readPersistedUiPrefs", () => {
       transparent: false,
       focusAccent: null,
       locale: "en",
+      reducedMotion: false,
     })
     writeState("{corrupt")
     expect(readPersistedUiPrefs("claude").theme).toBe("claude")

@@ -38,7 +38,7 @@ import { describe, expect, test, vi } from "vitest"
 import { computeNextAllowedAt, shouldPoll } from "../../src/lib/poll-scheduling"
 import { TASKS_PANE_WIDTH } from "../../src/tmux/session-layout"
 import { type Binding, type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
-import { IN_PROGRESS_SPINNER, buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view"
+import { buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view"
 import {
   MIN_POLL_INTERVAL_MS,
   POLL_TIMEOUT_MS,
@@ -338,8 +338,9 @@ describe("idle sidebar tick — frame-accessor read budget (7a4aba5)", () => {
     expect(out[0]).toBe(views[0])
     expect(out[2]).toBe(views[2])
     expect(out[4]).toBe(views[4])
-    expect(out[1]?.stateGlyph).toBe(IN_PROGRESS_SPINNER[3])
-    expect(out[3]?.stateGlyph).toBe(IN_PROGRESS_SPINNER[3])
+    // Glyphs come from each view's OWN engine frame set (claude stars here).
+    expect(out[1]?.stateGlyph).toBe(views[1]?.spinnerFrames[3])
+    expect(out[3]?.stateGlyph).toBe(views[3]?.spinnerFrames[3])
   })
 })
 

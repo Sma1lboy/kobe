@@ -35,7 +35,7 @@ import {
   sidebarProjectKey,
   splitSidebarRows,
 } from "../../../tui/panes/sidebar/groups"
-import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS } from "../../../tui/panes/sidebar/row-view"
+import { SPINNER_FRAME_MS, SPINNER_TICK_CYCLE } from "../../../tui/panes/sidebar/row-view"
 import {
   MAIN_BRANCH_POLL_MS,
   SIDEBAR_WIDTH,
@@ -112,7 +112,8 @@ export function Sidebar(props: SidebarProps) {
   }, [])
   const [spinnerFrame, setSpinnerFrame] = useState(0)
   useEffect(() => {
-    const timer = setInterval(() => setSpinnerFrame((n) => (n + 1) % IN_PROGRESS_SPINNER.length), SPINNER_FRAME_MS)
+    // Common-multiple cycle — rows reduce modulo their own engine frame set.
+    const timer = setInterval(() => setSpinnerFrame((n) => (n + 1) % SPINNER_TICK_CYCLE), SPINNER_FRAME_MS)
     return () => clearInterval(timer)
   }, [])
 

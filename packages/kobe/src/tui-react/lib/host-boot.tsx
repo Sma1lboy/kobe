@@ -49,8 +49,10 @@ import {
   addTheme,
   focusAccent,
   hasTheme,
+  reducedMotion,
   selectedTheme,
   setFocusAccent,
+  setReducedMotion,
   setTheme,
   setTransparentBackground,
   transparentBackground,
@@ -98,6 +100,8 @@ const themeTarget: UiPrefsTarget = {
   setTransparentBackground,
   focusAccent,
   setFocusAccent,
+  reducedMotion,
+  setReducedMotion,
 }
 
 /** Detached fps while the pane's session has no attached client. */
@@ -234,6 +238,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
     theme: prefs.theme,
     transparentBackground: prefs.transparent,
     focusAccent: prefs.focusAccent,
+    reducedMotion: prefs.reducedMotion,
   })
   setLocaleLang(prefs.locale)
 

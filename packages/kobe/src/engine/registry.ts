@@ -46,6 +46,7 @@ import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
+import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -116,6 +117,12 @@ export interface EngineRegistryEntry {
   readonly capabilities?: EngineCapabilities
   /** Product identity (composer placeholder etc.). Paired with capabilities. */
   readonly identity?: EngineIdentity
+  /**
+   * Brand spinner frame set for this engine's running rows (sidebar badge).
+   * Omit for engines without one — consumers fall back to the neutral
+   * braille set (`spinner-frames.ts` `DEFAULT_SPINNER_FRAMES`).
+   */
+  readonly spinnerFrames?: readonly string[]
 }
 
 /**
@@ -178,6 +185,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new ClaudeTurnDetector(),
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
+    spinnerFrames: CLAUDE_SPINNER_FRAMES,
   },
   codex: {
     vendor: "codex",

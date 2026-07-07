@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest"
 import type { TaskEngineState } from "../../src/client/remote-orchestrator.ts"
 import { ClaudeHookAdapter, claudeVerbForHookEvent } from "../../src/engine/claude-code-local/hook-adapter.ts"
 import { isEngineActivityKind } from "../../src/engine/hook-events.ts"
-import { IN_PROGRESS_SPINNER, buildSidebarRowView } from "../../src/tui/panes/sidebar/row-view.ts"
+import { buildSidebarRowView } from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -87,7 +87,7 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
   it("turn running: UserPromptSubmit spins the row", () => {
     const row = rowAfterClaudeHook("UserPromptSubmit", { cwd: "/repo/kobe/worktrees/sidebar" })
     expect(row.loading).toBe(true)
-    expect(row.stateGlyph).toBe(IN_PROGRESS_SPINNER[0])
+    expect(row.stateGlyph).toBe(row.spinnerFrames[0])
     expect(row.tone).toBe("primary")
     expect(row.subtitleText).toBe("feature/sidebar") // running keeps the branch
   })

@@ -69,6 +69,7 @@ export function GeneralSettingsSection(
     currentLocale: LocaleId
     selectLanguage: (locale: LocaleId) => void
     toggleTransparent: () => void
+    toggleReducedMotion: () => void
     selectFocusAccent: (slot: FocusAccentSlot) => void
     toastEnabled: boolean
     soundEnabled: boolean
@@ -109,6 +110,7 @@ export function GeneralSettingsSection(
   const check = (on: boolean) => (on ? "[x]" : "[ ]")
 
   const transparentRow = rowIdx("transparent")
+  const reducedMotionRow = rowIdx("reduced-motion")
   const toastRow = rowIdx("toast")
   const soundRow = rowIdx("sound")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
@@ -186,6 +188,16 @@ export function GeneralSettingsSection(
             </Row>
           )
         })}
+      </SubSection>
+      <SubSection title={t("settings.general.reducedMotion")} hint={t("settings.general.reducedMotionHint")}>
+        <Row
+          cursor={isBodyCursor(reducedMotionRow)}
+          onMouseUp={activate(reducedMotionRow, props.toggleReducedMotion)}
+          fg={themeCtx.reducedMotion ? theme.accent : theme.textMuted}
+          bold={true}
+        >
+          {onOff(themeCtx.reducedMotion)}
+        </Row>
       </SubSection>
       <SubSection title={t("settings.general.notifications")} hint={t("settings.general.notificationsHint")}>
         <Row

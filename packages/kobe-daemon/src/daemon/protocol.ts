@@ -239,6 +239,8 @@ export interface ChannelPayloads {
     sortMode: "default" | "recent"
     keysCollapsed: boolean
     projectFilter: string | null
+    /** Accessibility: chrome animations degrade to calm forms. */
+    reducedMotion: boolean
   }
   /**
    * "Re-read your keybindings" ping (KOB — live keybinding propagation).
