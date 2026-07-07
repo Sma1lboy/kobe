@@ -7,6 +7,7 @@
  * as new tmux windows — never meant for direct user invocation.
  */
 
+import { uiFramework } from "../env.ts"
 import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 
 interface OpsFlags {
@@ -357,12 +358,12 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // `chattab` settings surface). Opened by `openSettingsTab` as a new
     // tmux window; reuses the same SettingsDialog the in-pane overlay
     // uses. Dynamic import keeps opentui off the other subcommands' path.
-    // KOBE_REACT=1 selects the React port (issue #15 G3), same seam as
-    // `kobe history` below.
+    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is
+    // the ONE place that decides — same seam as `kobe history` below.
     const { startSettingsHost } =
-      process.env.KOBE_REACT === "1"
-        ? await import("../tui-react/settings/host.tsx")
-        : await import("../tui/settings/host.tsx")
+      uiFramework() === "solid"
+        ? await import("../tui/settings/host.tsx")
+        : await import("../tui-react/settings/host.tsx")
     await startSettingsHost()
     return true
   }
@@ -380,8 +381,9 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // (distinct from `kobe help`, which prints CLI usage). Opened by
     // `openHelpTab` as a new tmux window; reuses the same HelpDialog
     // the in-pane overlay uses.
+    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
     const { startHelpHost } =
-      process.env.KOBE_REACT === "1" ? await import("../tui-react/help/host.tsx") : await import("../tui/help/host.tsx")
+      uiFramework() === "solid" ? await import("../tui/help/host.tsx") : await import("../tui-react/help/host.tsx")
     await startHelpHost()
     return true
   }
@@ -415,10 +417,11 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
       console.error("kobe history: --worktree <path> is required")
       process.exit(2)
     }
+    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
     const { startHistoryHost } =
-      process.env.KOBE_REACT === "1"
-        ? await import("../tui-react/history/host.tsx")
-        : await import("../tui/history/host.tsx")
+      uiFramework() === "solid"
+        ? await import("../tui/history/host.tsx")
+        : await import("../tui-react/history/host.tsx")
     await startHistoryHost({
       worktree: flags.worktree,
       vendor: coerceVendorId(flags.vendor),
@@ -441,16 +444,17 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     }
     // `--preview <rel>` → full-width syntax-highlighted file/diff view
     // (opentui `<diff>` / `<code>`). Otherwise the FileTree browser.
+    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
     if (flags.preview) {
       const { startOpsPreview } =
-        process.env.KOBE_REACT === "1"
-          ? await import("../tui-react/ops/preview.tsx")
-          : await import("../tui/ops/preview.tsx")
+        uiFramework() === "solid"
+          ? await import("../tui/ops/preview.tsx")
+          : await import("../tui-react/ops/preview.tsx")
       await startOpsPreview({ worktree: flags.worktree, relPath: flags.preview })
       return true
     }
     const { startOpsHost } =
-      process.env.KOBE_REACT === "1" ? await import("../tui-react/ops/host.tsx") : await import("../tui/ops/host.tsx")
+      uiFramework() === "solid" ? await import("../tui/ops/host.tsx") : await import("../tui-react/ops/host.tsx")
     await startOpsHost({
       taskId: flags.taskId ?? "",
       worktree: flags.worktree,

@@ -1,77 +1,101 @@
 /**
- * Per-tab turn-state polling for the workspace terminal tabs (split out of
- * `TerminalTabs.tsx`, which was over the 500-line cap). The SAME
+ * Per-tab turn-state polling for the workspace terminal tabs — React port
+ * of `tui/workspace/turn-polls.ts` (issue #16 React migration). Same
  * `startTurnStatusPoll` loop the Ops pane runs, with PTY IO in place of
- * tmux capture-pane — the in-process snapshot IS the pane capture. Shared
- * mode when the host passes the daemon's transcript.activity slice,
- * local fixed-cadence fallback otherwise. Polls attach lazily (a tab's PTY
- * spawns after its Terminal mounts and measures), retried on a slow tick.
+ * tmux capture-pane; shared mode when the host passes the daemon's
+ * transcript.activity slice, local fixed-cadence fallback otherwise.
  *
  * Unified process-identity model (owner 2026-07-07): every tab is a shell;
- * an engine is just a process running in it. A tab therefore gets a turn
- * detector attached whenever its foreground process IS an engine —
- * whether kobe launched it (an engine tab with a live engine leaf) or the
- * user typed `claude` into a plain shell. The latter is detected from the
- * PTY's OSC window title (`vendorFromTerminalTitle`), and detaches again
- * the moment the title stops matching (the engine exited back to the
- * shell prompt). The same title stream feeds `liveTitles` — the tab
+ * an engine is just a process running in it. A tab gets a turn detector
+ * attached whenever its foreground process IS an engine — kobe-launched
+ * (an engine tab with a live engine leaf) OR user-typed (`claude` in a
+ * plain shell, detected from the PTY's OSC window title via
+ * `vendorFromTerminalTitle`), detaching again the moment the title stops
+ * matching. `targetFor`/`soloKey` (identity resolution) are the shared
+ * framework-free `turn-target.ts` — the Solid original and this hook use
+ * the exact same rule. The same title stream feeds `liveTitles` — the tab
  * strip's dynamic "$process $ordinal" default names.
  *
- * Must be called from a Solid component body (owns effects + onCleanup).
+ * Solid→React deltas: the reconcile pass is a `useEffect` keyed on
+ * `[taskId, worktree, state, pollTick]` (Solid's fine-grained `createEffect`
+ * re-ran on every read of `deps.state()`/`pollTick()`; `state` — the tabs
+ * snapshot — becoming a plain dependency gives the same "re-run whenever
+ * tabs change" behavior). Values only needed inside long-lived detector
+ * closures (`sharedActivity`, `onBackgroundDone`, the latest `state` for
+ * the active-tab check) ride refs refreshed every render — the closures
+ * are created once per attach and must not go stale between renders,
+ * mirroring `ops/host.tsx`'s `sharedMapRef` convention. The mutable Maps
+ * (`turnPolls`/`titles`/`titleSubs`) live in refs so they persist across
+ * renders without becoming React state churn.
  */
 
-import type { TranscriptActivity } from "@/client/remote-orchestrator"
-import { engineEntry, titleDisplayName } from "@/engine/registry"
-import type { ChatTabTurnState } from "@/engine/turn-detector"
-import type { VendorId } from "@/types/vendor"
-import { createEffect, createSignal, onCleanup } from "solid-js"
-import { startTurnStatusPoll } from "../ops/activity-monitor"
-import type { TaskPtyLike } from "../panes/terminal/pty-types"
-import { getDefaultPtyRegistry } from "../panes/terminal/registry"
-import type { TabsState } from "./terminal-tabs-core"
-import { soloKey, targetFor } from "./turn-target"
+import { useEffect, useRef, useState } from "react"
+import type { TranscriptActivity } from "../../client/remote-orchestrator"
+import { engineEntry, titleDisplayName } from "../../engine/registry"
+import type { ChatTabTurnState } from "../../engine/turn-detector"
+import { startTurnStatusPoll } from "../../tui/ops/activity-monitor"
+import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
+import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import type { TabsState } from "../../tui/workspace/terminal-tabs-core"
+import { soloKey, targetFor } from "../../tui/workspace/turn-target"
+import type { VendorId } from "../../types/vendor"
 
 /** Cadence of the lazy attach retry (a tab's PTY spawns after mount). */
 const TURN_POLL_ATTACH_MS = 2000
 
-export function createTurnPolls(deps: {
+export function useTurnPolls(deps: {
   taskId: string
   worktree: string
   /** Task-level engine — the fallback for tabs without a pinned vendor. */
-  vendor: () => VendorId
-  state: () => TabsState
-  sharedActivity?: () => TranscriptActivity | null
+  vendor: VendorId
+  state: TabsState
+  sharedActivity?: TranscriptActivity | null
   /** A background tab's turn just landed ✓ — notification hook. */
   onBackgroundDone: (tabId: string) => void
 }): {
-  turnStates: () => ReadonlyMap<string, ChatTabTurnState>
+  turnStates: ReadonlyMap<string, ChatTabTurnState>
   /** tabId → live foreground-process display name (engine binary when the
    *  title matches a vendor, else the raw OSC title). Feeds the tab
    *  strip's dynamic default names. */
-  liveTitles: () => ReadonlyMap<string, string>
+  liveTitles: ReadonlyMap<string, string>
 } {
-  const [turnStates, setTurnStates] = createSignal<ReadonlyMap<string, ChatTabTurnState>>(new Map())
-  const [liveTitles, setLiveTitles] = createSignal<ReadonlyMap<string, string>>(new Map())
-  const turnPolls = new Map<string, { dispose: () => void; vendor: VendorId; key: string }>()
+  const [turnStates, setTurnStates] = useState<ReadonlyMap<string, ChatTabTurnState>>(new Map())
+  const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
+  const turnPollsRef = useRef(new Map<string, { dispose: () => void; vendor: VendorId; key: string }>())
   /** ptyKey → raw OSC title. Cleared when the PTY instance at that key
    *  changes (release + respawn), so a dead claude's title can't keep a
    *  detector attached to the fresh shell that replaced it. */
-  const titles = new Map<string, string>()
-  const titleSubs = new Map<string, { pty: TaskPtyLike; unsub: () => void }>()
-  const [pollTick, setPollTick] = createSignal(0)
-  const pollAttachTimer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)
-  onCleanup(() => clearInterval(pollAttachTimer))
+  const titlesRef = useRef(new Map<string, string>())
+  const titleSubsRef = useRef(new Map<string, { pty: TaskPtyLike; unsub: () => void }>())
+  const [pollTick, setPollTick] = useState(0)
 
-  createEffect(() => {
-    pollTick()
+  // Latest-render mirrors for the long-lived detector closures (created
+  // once per attach, must never go stale between renders).
+  const sharedActivityRef = useRef(deps.sharedActivity)
+  sharedActivityRef.current = deps.sharedActivity
+  const onBackgroundDoneRef = useRef(deps.onBackgroundDone)
+  onBackgroundDoneRef.current = deps.onBackgroundDone
+  const stateRef = useRef(deps.state)
+  stateRef.current = deps.state
+
+  useEffect(() => {
+    const timer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    void pollTick
     const reg = getDefaultPtyRegistry()
     const attached = new Set<string>()
+    const turnPolls = turnPollsRef.current
+    const titles = titlesRef.current
+    const titleSubs = titleSubsRef.current
 
     // Pass 1 — reconcile title subscriptions on every tab's solo PTY.
     // Instance-compared: release + respawn at the same key (shell degrade)
     // must drop the dead PTY's stale title before targets are computed.
     const soloKeys = new Map<string, string>() // ptyKey → tabId
-    for (const tab of deps.state().tabs) {
+    for (const tab of deps.state.tabs) {
       const key = soloKey(deps.taskId, tab)
       if (key) soloKeys.set(key, tab.id)
     }
@@ -97,7 +121,7 @@ export function createTurnPolls(deps: {
       titleSubs.set(key, { pty, unsub })
     }
     setLiveTitles((prev) => {
-      const alive = new Set(deps.state().tabs.map((t) => t.id))
+      const alive = new Set(deps.state.tabs.map((t) => t.id))
       if (![...prev.keys()].some((id) => !alive.has(id))) return prev
       const next = new Map(prev)
       for (const id of next.keys()) if (!alive.has(id)) next.delete(id)
@@ -105,8 +129,8 @@ export function createTurnPolls(deps: {
     })
 
     // Pass 2 — attach/detach detectors per the tab's process identity.
-    for (const tab of deps.state().tabs) {
-      const target = targetFor(deps.taskId, tab, deps.vendor(), (key) => titles.get(key))
+    for (const tab of deps.state.tabs) {
+      const target = targetFor(deps.taskId, tab, deps.vendor, (key) => titles.get(key))
       if (!target) continue
       const existing = turnPolls.get(tab.id)
       if (existing && existing.vendor === target.vendor && existing.key === target.key) {
@@ -130,8 +154,8 @@ export function createTurnPolls(deps: {
           // supplies completion reads + drives the adaptive capture
           // cadence; null (no daemon data) falls back to fixed-cadence
           // local polling — the Ops pane's exact contract.
-          usingShared: () => (deps.sharedActivity?.() ?? null) !== null,
-          sharedEntry: () => deps.sharedActivity?.() ?? null,
+          usingShared: () => (sharedActivityRef.current ?? null) !== null,
+          sharedEntry: () => sharedActivityRef.current ?? null,
         },
         {
           sessionAttached: async () => true,
@@ -148,7 +172,7 @@ export function createTurnPolls(deps: {
             // Background completion rides the standard notification path
             // (unread + toast) — the PTY-world version of noticing a ✓
             // land on an unfocused tmux window.
-            if (turn === "done" && deps.state().activeId !== tabId) deps.onBackgroundDone(tabId)
+            if (turn === "done" && stateRef.current.activeId !== tabId) onBackgroundDoneRef.current(tabId)
           },
         },
       )
@@ -168,10 +192,15 @@ export function createTurnPolls(deps: {
         return next
       })
     }
-  })
-  onCleanup(() => {
-    for (const poll of turnPolls.values()) poll.dispose()
-    for (const sub of titleSubs.values()) sub.unsub()
-  })
+  }, [deps.taskId, deps.worktree, deps.vendor, deps.state, pollTick])
+
+  // Final teardown on unmount only.
+  useEffect(() => {
+    return () => {
+      for (const poll of turnPollsRef.current.values()) poll.dispose()
+      for (const sub of titleSubsRef.current.values()) sub.unsub()
+    }
+  }, [])
+
   return { turnStates, liveTitles }
 }

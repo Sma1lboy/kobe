@@ -1,7 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
  * `kobe settings` — React port of `src/tui/settings/host.tsx` (issue #15,
- * G3), behind `KOBE_REACT=1` in `src/cli/commands-tui.ts`. Same contract:
+ * G3). React is the default runtime since 2026-07-07 (`uiFramework()` in
+ * `src/env.ts`); `KOBE_SOLID=1` is the legacy escape hatch back to the
+ * Solid host in `src/cli/commands-tui.ts`. Same contract:
  * the Settings page rendered as a standalone full-window surface, reusing
  * the SAME SettingsDialog component the overlay surface uses, in its own
  * process inside a tmux window. Closing (q / esc / Ctrl+C) flushes kv,

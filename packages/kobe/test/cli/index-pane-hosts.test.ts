@@ -21,6 +21,7 @@ const spies = vi.hoisted(() => ({
   startQuickTaskHost: vi.fn(async () => {}),
   startTasksPane: vi.fn(async () => {}),
   startSettingsHost: vi.fn(async () => {}),
+  startSettingsHostSolid: vi.fn(async () => {}),
   startHelpHost: vi.fn(async () => {}),
   startNewTaskHost: vi.fn(async () => {}),
   startUpdateHost: vi.fn(async () => {}),
@@ -41,15 +42,27 @@ vi.mock("../../src/tui/panes/terminal/layout-coord.ts", () => ({
 }))
 vi.mock("../../src/tui/quick-task/host.tsx", () => ({ startQuickTaskHost: spies.startQuickTaskHost }))
 vi.mock("../../src/tui/tasks-pane/host.tsx", () => ({ startTasksPane: spies.startTasksPane }))
-vi.mock("../../src/tui/settings/host.tsx", () => ({ startSettingsHost: spies.startSettingsHost }))
+vi.mock("../../src/tui/settings/host.tsx", () => ({ startSettingsHost: spies.startSettingsHostSolid }))
 vi.mock("../../src/tui/help/host.tsx", () => ({ startHelpHost: spies.startHelpHost }))
 vi.mock("../../src/tui/new-task/host.tsx", () => ({ startNewTaskHost: spies.startNewTaskHost }))
 vi.mock("../../src/tui/update/host.tsx", () => ({ startUpdateHost: spies.startUpdateHost }))
 vi.mock("../../src/tui/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
 vi.mock("../../src/tui/ops/host.tsx", () => ({ startOpsHost: spies.startOpsHost }))
 vi.mock("../../src/tui/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
+// React is the default runtime (issue #16, `uiFramework()` in src/env.ts) for
+// settings/help/history/ops — mock the React modules onto the SAME spies
+// (help/history/ops) so those routing/flag-parsing tests don't care which
+// runtime actually won. `settings` gets its OWN distinct pair of spies
+// (`startSettingsHostSolid` above, `startSettingsHost` below) so one test
+// can prove the KOBE_SOLID=1 escape hatch actually flips which module loads.
+vi.mock("../../src/tui-react/settings/host.tsx", () => ({ startSettingsHost: spies.startSettingsHost }))
+vi.mock("../../src/tui-react/help/host.tsx", () => ({ startHelpHost: spies.startHelpHost }))
+vi.mock("../../src/tui-react/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
+vi.mock("../../src/tui-react/ops/host.tsx", () => ({ startOpsHost: spies.startOpsHost }))
+vi.mock("../../src/tui-react/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
 
 let originalArgv: string[]
+let originalKobeSolid: string | undefined
 let exitSpy: ReturnType<typeof vi.fn>
 let errorSpy: MockInstance
 
@@ -62,6 +75,10 @@ async function runCli(...args: string[]): Promise<void> {
 
 beforeEach(() => {
   originalArgv = process.argv
+  originalKobeSolid = process.env.KOBE_SOLID
+  // Deterministic default (react) unless a test opts into the escape hatch.
+  // biome-ignore lint/performance/noDelete: env cleanup must fully unset (assigning undefined leaves it as the string "undefined"). Same pattern as test/state/repos.test.ts.
+  delete process.env.KOBE_SOLID
   let exited = false
   exitSpy = vi.fn((code?: number) => {
     if (!exited) {
@@ -75,6 +92,9 @@ beforeEach(() => {
 
 afterEach(() => {
   process.argv = originalArgv
+  // biome-ignore lint/performance/noDelete: env cleanup must fully unset when the var was unset before the test (assigning undefined leaves it as the string "undefined"). Same pattern as test/state/repos.test.ts.
+  if (originalKobeSolid === undefined) delete process.env.KOBE_SOLID
+  else process.env.KOBE_SOLID = originalKobeSolid
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -151,10 +171,18 @@ describe("pane / page host launches", () => {
   test("settings / help-page / update-page launch their full-window surfaces", async () => {
     await runCli("settings")
     expect(spies.startSettingsHost).toHaveBeenCalled()
+    expect(spies.startSettingsHostSolid).not.toHaveBeenCalled()
     await runCli("help-page")
     expect(spies.startHelpHost).toHaveBeenCalled()
     await runCli("update-page")
     expect(spies.startUpdateHost).toHaveBeenCalled()
+  })
+
+  test("KOBE_SOLID=1 is the legacy escape hatch back to the Solid settings host", async () => {
+    process.env.KOBE_SOLID = "1"
+    await runCli("settings")
+    expect(spies.startSettingsHostSolid).toHaveBeenCalled()
+    expect(spies.startSettingsHost).not.toHaveBeenCalled()
   })
 
   test("new-task pre-selects the repo picker from --repo", async () => {
