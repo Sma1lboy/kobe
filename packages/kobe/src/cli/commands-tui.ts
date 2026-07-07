@@ -372,7 +372,11 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     // (mirrors `settings`). Opened by `openWorktreesTab` as a new tmux
     // window. Internal — not typed by users, only ever spawned by the
     // tab opener.
-    const { startWorktreesHost } = await import("../tui/worktrees/host.tsx")
+    // React is the default runtime (issue #16); `uiFramework()` (env.ts) is the ONE place that decides.
+    const { startWorktreesHost } =
+      uiFramework() === "solid"
+        ? await import("../tui/worktrees/host.tsx")
+        : await import("../tui-react/worktrees/host.tsx")
     await startWorktreesHost()
     return true
   }
