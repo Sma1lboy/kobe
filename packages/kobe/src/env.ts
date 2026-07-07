@@ -51,6 +51,20 @@ export function nativeChatEnabled(): boolean {
 }
 
 /**
+ * Which UI implementation to mount for the panes that have a React port
+ * (workspace/settings/help/history/ops). React is the default since
+ * 2026-07-07 (Solid is being retired) — `KOBE_SOLID=1` is the legacy
+ * escape hatch back to the Solid host, for the transition window while
+ * both runtimes still exist. Every `cli/commands-tui.ts` / `tui/index.tsx`
+ * seam MUST call this instead of reading `KOBE_SOLID`/`KOBE_REACT` off
+ * `process.env` directly — one place to flip the default when Solid is
+ * finally deleted.
+ */
+export function uiFramework(): "react" | "solid" {
+  return process.env.KOBE_SOLID === "1" ? "solid" : "react"
+}
+
+/**
  * `KOBE_HOME_DIR` — overrides `os.homedir()` for everything kobe
  * persists (state file, task index). Tests point this at a temp dir
  * so they don't trample the real `~/.kobe/`.

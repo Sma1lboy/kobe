@@ -1,7 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
  * React `kobe ops` host — the `src/tui/ops/host.tsx` counterpart (issue
- * #15, G3), behind `KOBE_REACT=1` in `cli/commands-tui.ts`. Same pane, same
+ * #15, G3). React is the default runtime since 2026-07-07 (`uiFramework()`
+ * in `src/env.ts`); `KOBE_SOLID=1` is the legacy escape hatch in
+ * `cli/commands-tui.ts`. Same pane, same
  * shared framework-free pieces: the poll-loop bodies
  * (`tui/ops/activity-monitor.ts`), the shell actions + concrete IO
  * (`tui/ops/host-io.ts`), and the already-ported React FileTree. This file

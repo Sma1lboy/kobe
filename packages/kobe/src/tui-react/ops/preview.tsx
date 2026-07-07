@@ -1,7 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
  * React `kobe ops --preview <rel>` — the `src/tui/ops/preview.tsx`
- * counterpart (issue #15, G3), behind `KOBE_REACT=1`. Data + syntax-style
+ * counterpart (issue #15, G3). React is the default runtime since
+ * 2026-07-07 (`uiFramework()` in `src/env.ts`); `KOBE_SOLID=1` is the
+ * legacy escape hatch. Data + syntax-style
  * mapping are the shared `tui/ops/preview-core.ts` / `preview-syntax.ts`.
  * The Solid host's single `createResource` follows THE ASYNC CANON
  * (`src/tui-react/history/host.tsx`): `useState` + a dependency-keyed
