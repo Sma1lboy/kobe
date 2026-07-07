@@ -135,10 +135,24 @@ export function TerminalSplit(props: {
   // changes do NOT come here — they use `setActiveLeaf` (local).
   const update = (next: SplitState<LeafCommand>): void => {
     if (next === state()) return
-    props.onSplitChange(leaves(next.root).length > 1 ? next : null)
+    const ls = leaves(next.root)
+    // Collapse to the unsplit fast path (null) ONLY when the sole survivor
+    // is leaf-1 — the tab's own engine at `tabKey`. A sole surviving SHELL
+    // leaf (you closed the engine leaf) must KEEP the tree so the tree
+    // renderer shows the shell at `tabKey::leaf-N`; the fast path would
+    // respawn the engine (`props.command` at `tabKey`) instead.
+    const collapsesToEngine = ls.length === 1 && ls[0]?.id === "leaf-1"
+    props.onSplitChange(collapsesToEngine ? null : next)
   }
 
   const isSplit = () => leaves(state().root).length > 1
+  // Render via the split tree (not the single-engine fast path) whenever
+  // there are multiple leaves OR a single NON-leaf-1 leaf survives (engine
+  // closed, shell kept). Only the pristine leaf-1 engine uses the fast path.
+  const renderViaTree = () => {
+    const ls = leaves(state().root)
+    return ls.length > 1 || ls[0]?.id !== "leaf-1"
+  }
 
   /** Remove `id` from the tree and kill its PTY. False when `id` is the
    *  last leaf (nothing removed). State first (the re-render detaches the
@@ -307,7 +321,7 @@ export function TerminalSplit(props: {
 
   return (
     <Show
-      when={isSplit()}
+      when={renderViaTree()}
       fallback={
         // Unsplit fast path: one long-lived borderless Terminal, props
         // swapped in place on tab switch (never remounted while tabs

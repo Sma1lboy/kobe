@@ -13,7 +13,7 @@ import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { leaves } from "./split-core"
-import type { TerminalTab } from "./terminal-tabs-core"
+import { SHELL_LEAF_NAME, type TerminalTab } from "./terminal-tabs-core"
 
 /** Same glyph vocabulary as tmux's `CHAT_TAB_STATUS_FORMAT` (`@kobe_tab_state`). */
 export const TURN_GLYPHS: Record<ChatTabTurnState, string> = {
@@ -32,8 +32,13 @@ export function tabTitle(tab: TerminalTab): string {
   // its first-prompt title, falling back to "tab N"; a SPLIT tab is a
   // "group N" (its leaves carry the individual names — see splitLeafNames).
   if (tab.title) return tab.title
-  const isGroup = !!tab.splitTree && leaves(tab.splitTree.root).length > 1
-  if (isGroup) return t("terminal.tab.groupTitle", { n: tab.ordinal })
+  const ls = tab.splitTree ? leaves(tab.splitTree.root) : []
+  if (ls.length > 1) return t("terminal.tab.groupTitle", { n: tab.ordinal })
+  // Collapsed to a single NON-engine leaf (you closed the engine leaf and a
+  // shell survives) → show that leaf's own name, not the stale engine
+  // conversation title.
+  const sole = ls.length === 1 ? ls[0] : undefined
+  if (sole && sole.id !== "leaf-1") return sole.title ?? SHELL_LEAF_NAME
   return tab.autoTitle ?? t("terminal.tab.defaultTitle", { n: tab.ordinal })
 }
 

@@ -314,6 +314,11 @@ export function splitLeafPtyKey(tabKey: string, leafId: string): string {
  * order occurrence suffix ("shell", "shell 2") so two shells stay tellable
  * apart. Manual titles (F2 rename) always win and are never suffixed.
  */
+/** Generic default name for a split-created shell leaf (a bare shell has no
+ *  meaningful program name). Shared so the corner tag and a collapsed tab's
+ *  label agree. */
+export const SHELL_LEAF_NAME = "shell"
+
 export function splitLeafNames(
   leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
   tabCommand: readonly string[],
@@ -333,7 +338,7 @@ export function splitLeafNames(
     }
     // Engine leaf → first-prompt title (else vendor basename); split shell
     // leaf → generic "shell". Both dedupe by reading order.
-    const name = leaf.content === null ? engineTitle || basename(leaf.content) : "shell"
+    const name = leaf.content === null ? engineTitle || basename(leaf.content) : SHELL_LEAF_NAME
     const n = (seen.get(name) ?? 0) + 1
     seen.set(name, n)
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)
