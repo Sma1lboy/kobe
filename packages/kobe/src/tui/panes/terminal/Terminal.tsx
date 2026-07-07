@@ -373,9 +373,11 @@ export function Terminal(props: TerminalProps): JSXElement {
       backgroundColor={theme.background}
       onMouseDown={(evt) => {
         if ((evt as { button?: number }).button !== 0) return
-        // Focus on press — clicking anywhere in the terminal focuses the
-        // pane, even if the click isn't a text-selection drag.
-        props.onRequestFocus?.()
+        // Focus on press — but ONLY when not already focused, so clicking
+        // inside a focused terminal is a pure no-op (re-focusing churns the
+        // focus signal and flickered the pane). A text-selection drag still
+        // works regardless.
+        if (!focused()) props.onRequestFocus?.()
         const cell = cellFromEvent(evt as { x?: number; y?: number })
         if (!cell) return
         selDragging = true
@@ -389,7 +391,6 @@ export function Terminal(props: TerminalProps): JSXElement {
       }}
       onMouseUp={() => {
         setFocusedLocal(true)
-        props.onRequestFocus?.()
         if (!selDragging) return
         selDragging = false
         const anchor = selAnchor()
