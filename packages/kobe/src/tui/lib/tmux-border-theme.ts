@@ -41,7 +41,7 @@
 import { readFileSync } from "node:fs"
 import { kvStatePath } from "../../env"
 import { runTmuxCapturing, runTmuxSequence } from "../../tmux/client"
-import type { ThemeJson } from "../context/theme"
+import type { ThemeJson } from "../context/theme-core"
 import { BUNDLED_THEME_JSONS } from "../context/theme/bundled"
 import { resolveThemeSlotHex } from "../context/theme/hex"
 import { loadUserThemes } from "../context/theme/loader"

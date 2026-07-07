@@ -1,7 +1,9 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
-import type { Accessor } from "solid-js"
 import type { WorktreeChanges } from "./worktree-changes"
+
+/** Reactive getter — `SidebarProps` is a Solid-era shape; `() => T` matches `Accessor<T>`. */
+type Accessor<T> = () => T
 
 /**
  * Legacy chat-run-state shape kept as an inert type so older callers don't

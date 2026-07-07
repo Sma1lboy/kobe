@@ -2,7 +2,7 @@
 
 > Read [`DESIGN.md`](./DESIGN.md) first. This document operationalizes it: what to build, in what order, by whom, with what dependencies.
 >
-> **Stack** (locked): TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun.
+> **Stack** (locked): TypeScript + `@opentui/core` + `@opentui/react` + React 19 + Bun. (Solid TUI removed 2026-07-07; `solid-js` kept only as reactive-signals primitives in the orchestrator/client core.)
 >
 > Plan model: **streams** that run in parallel, converging at named **integration points** where everything must land for a demoable milestone. Each stream is sized for one Claude Code agent in one focused session (~600–1500 LoC).
 

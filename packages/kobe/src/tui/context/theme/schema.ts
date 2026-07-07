@@ -32,7 +32,7 @@
  *     pointer is purely for editor autocomplete, not runtime semantics.
  */
 
-import type { ThemeJson } from "../theme"
+import type { ThemeJson } from "../theme-core"
 
 /** Hex strings: 3, 6, or 8 hex digits after `#`. */
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/

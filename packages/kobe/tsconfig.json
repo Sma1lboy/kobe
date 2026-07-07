@@ -3,7 +3,7 @@
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
+    "jsxImportSource": "@opentui/react",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun", "node"],
     "strict": true,

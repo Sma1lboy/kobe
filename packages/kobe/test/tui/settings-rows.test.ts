@@ -32,7 +32,7 @@ import {
   surfaceRowId,
   themeRowId,
 } from "../../src/tui/component/settings-dialog/model.ts"
-import type { FocusAccentSlot } from "../../src/tui/context/theme.tsx"
+import type { FocusAccentSlot } from "../../src/tui/context/theme-core.ts"
 import { LOCALES } from "../../src/tui/i18n/catalog.ts"
 import { ALL_VENDORS } from "../../src/types/vendor.ts"
 

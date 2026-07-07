@@ -304,7 +304,7 @@ Note: vibe-kanban supports many agents because it has to. We support one because
 
 ## 8. Tech stack — recommendation
 
-**Locked**: TypeScript + `@opentui/core` + Bun. **UI framework: migrating `@opentui/solid`/Solid.js → `@opentui/react`/React 19** (owner decision 2026-07-05, tracked as issue #15).
+**Locked**: TypeScript + `@opentui/core` + Bun. **UI framework: `@opentui/react`/React 19** (owner decision 2026-07-05, issue #15; the Solid TUI was removed 2026-07-07). `solid-js` remains a dependency only for its reactive-signals primitives in the orchestrator/client core, not for any UI.
 
 The original 2026-05-08 lock chose Solid to reuse opencode's TUI shell (§7.1); that reuse is spent — the shell has long diverged into kobe-owned code. The 2026-07-05 re-litigation picks React for maintainability: the owner's primary framework, the larger ecosystem, and better AI-agent familiarity when generating/reviewing TUI code. `@opentui/react` (0.4.x, React ≥ 19.2) is the official binding; migration runs phased (core 0.2→0.4 bump first, then per-pane framework swap) so every step ships a working product.
 

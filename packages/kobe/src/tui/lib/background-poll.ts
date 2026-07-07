@@ -27,16 +27,16 @@
  * The guards themselves (the pure scheduling math + the abort/timeout run
  * wrapper + `spawnCapture`) live in the dependency-free
  * `src/lib/poll-scheduling.ts`, shared with the DAEMON's worktree-changes
- * collector (issue #6) — this module is the solid-js binding: per-key
- * signals so reads are reactive. The re-exports below keep this module's
- * public API exactly what it was before the extraction.
+ * collector (issue #6) — this module holds a per-key value cell that `poll`
+ * writes and `read` returns. Callers (the React panes) read imperatively on
+ * their own render cadence; the re-exports below keep this module's public
+ * API exactly what it was before the extraction.
  *
  * Failure contract: a run that throws, is aborted, or resolves after the
  * timeout never writes — `read` keeps returning the last good value (or
  * `initial`), so the UI goes stale or stays hidden rather than erroring.
  */
 
-import { createSignal } from "solid-js"
 import { type PollScheduleState, maybeStartScheduledRun } from "../../lib/poll-scheduling.ts"
 
 export {
@@ -60,8 +60,8 @@ export interface BackgroundPollerConfig<T> {
   /** Floor between successful runs — typically the caller's tick cadence. */
   readonly minIntervalMs: number
   /**
-   * Value equality for the signal — a run returning an equal value does
-   * not re-render readers. Defaults to Solid's `===`.
+   * Value equality for the cell — a run returning an equal value is not
+   * written back. Defaults to `===`.
    */
   readonly equals?: (a: T, b: T) => boolean
   /** Value returned by `read` before the first run lands (and for empty keys). */
@@ -89,25 +89,26 @@ interface PollEntry<T> extends PollScheduleState {
 
 export function createBackgroundPoller<T>(cfg: BackgroundPollerConfig<T>): BackgroundPoller<T> {
   // DELIBERATELY no eviction (memory-audit decision, 2026-06): the map
-  // gains one entry (~a Solid signal + key string + a small T) per distinct
+  // gains one entry (~a value cell + key string + a small T) per distinct
   // key ever read/polled and never drops it, so a long-lived pane process
   // retains entries for deleted tasks' worktrees. That growth is bounded by
   // "distinct worktree paths this process ever rendered" — hundreds of
-  // entries ≈ tens of KB — while eviction has a real correctness hazard:
-  // `read(key)` hands a memo the entry's SIGNAL, so evicting an entry a
-  // live memo still tracks splits reader from writer (the memo keeps the
-  // dead signal; later polls write a fresh one and the reader never updates
-  // again). Archived sidebar rows read() without ever poll()ing, so even a
-  // "not polled recently" heuristic would evict live-tracked entries. If a
-  // caller ever keys this by something higher-churn than worktree paths,
-  // revisit; until then `reset()` (tests) is the only teardown.
+  // entries ≈ tens of KB. `reset()` (tests) is the only teardown.
   const entries = new Map<string, PollEntry<T>>()
+  const equals = cfg.equals ?? ((a, b) => a === b)
 
   function entryFor(key: string): PollEntry<T> {
     let entry = entries.get(key)
     if (!entry) {
-      const [read, set] = createSignal<T>(cfg.initial, cfg.equals ? { equals: cfg.equals } : undefined)
-      entry = { read, write: (next) => set(() => next), inFlight: false, nextAllowedAt: 0 }
+      let current = cfg.initial
+      entry = {
+        read: () => current,
+        write: (next) => {
+          if (!equals(current, next)) current = next
+        },
+        inFlight: false,
+        nextAllowedAt: 0,
+      }
       entries.set(key, entry)
     }
     return entry

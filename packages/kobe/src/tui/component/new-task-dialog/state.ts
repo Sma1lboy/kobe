@@ -22,6 +22,7 @@
 
 import { matchPathGlob } from "@/lib/path-glob"
 import type { VendorId } from "@/types/vendor"
+import type { AdoptableWorktree } from "@/types/worktree"
 import { DEFAULT_BASE_REF } from "../../lib/git-snapshot"
 
 /* --------------------------------------------------------------------- */
@@ -67,6 +68,24 @@ export type NewTaskInput =
  * Switched via Ctrl+[ / Ctrl+] while the dialog is open. With only two
  * tabs the chord pair behaves as a toggle.
  */
+/**
+ * Caller-supplied options for opening the new-task dialog. Framework-free
+ * so the shared create flow (`lib/task-actions.ts`) can type its
+ * `promptNewTask` adapter without importing a JSX shell. The React dialog
+ * (`src/tui-react/component/new-task-dialog`) implements `show(...)` against
+ * this shape.
+ */
+export type NewTaskDialogOptions = {
+  /** Default parent dir for the Clone tab (kv `lastClonedRepoParent`); falls back to `~/`. */
+  defaultCloneParent?: string
+  /** Engine to pre-select (kv `lastSelectedVendor`); falls back to claude. */
+  defaultVendor?: VendorId
+  /** Vendors detected on this machine; the selector lists only these. Omit/empty → all vendors. */
+  availableVendors?: readonly VendorId[]
+  /** Adopt-tab discovery of unlinked worktrees on `repo`; omit to disable adoption. */
+  discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
+}
+
 export type DialogTab = "existing" | "clone" | "adopt"
 
 /** Cycle helper for the tab strip: existing → clone → adopt → existing. */

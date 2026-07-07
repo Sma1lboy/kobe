@@ -88,6 +88,17 @@ export const BUNDLED_THEMES: Record<string, ThemeJson> = {
 }
 
 /**
+ * Is `name` a known theme? Framework-free check against the bundled set —
+ * the live provider (`src/tui-react/context/theme.tsx`) keeps its own
+ * mutable registry for user-added themes; this bundled-only check is what
+ * off-render callers (e.g. `readPersistedUiPrefs` in a pane subprocess)
+ * use to validate a persisted theme name before applying it.
+ */
+export function hasTheme(name: string): boolean {
+  return Boolean(BUNDLED_THEMES[name])
+}
+
+/**
  * Which theme slot drives the "focused pane" indicator. Default is
  * `primary` — under the Claude palette that's terracotta, which doubles
  * as the brand hue. `success` keeps the older green-focus look

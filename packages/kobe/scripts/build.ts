@@ -1,12 +1,10 @@
 /**
  * Production build entry.
  *
- * `bun build` over the CLI alone can't resolve `@opentui/solid`'s JSX
- * runtime — the package's `./jsx-runtime` export points at a `.d.ts`
- * stub on disk, with the real Babel-driven transform installed at
- * runtime by `@opentui/solid/preload`. CLI `bun build` doesn't accept
- * plugins via flags, so we drive the build from a script that
- * registers the same Solid transform plugin first.
+ * Driven from a script (rather than a bare `bun build` CLI call) so the web
+ * dashboard build + dist copy can run alongside the CLI bundle. The React TUI
+ * uses `@opentui/react`'s per-file `@jsxImportSource` pragmas, which Bun's
+ * default transpiler honours — no build plugin required.
  *
  * Output: `dist/cli/index.js` with `#!/usr/bin/env bun` shebang and 755
  * perms so `npm install -g` produces a runnable `kobe` binary. After
@@ -26,7 +24,6 @@
 
 import { existsSync } from "node:fs"
 import { chmod, cp, mkdir, rm } from "node:fs/promises"
-import { kobeJsxPlugins } from "./jsx-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
 const WEB_PACKAGE_DIR = "../kobe-web"
@@ -75,10 +72,6 @@ const result = await Bun.build({
   root: "./src",
   target: "bun",
   conditions: ["browser"],
-  // Pass the plugin in directly. The "global" registration via
-  // `ensureSolidTransformPlugin` is what `--preload` uses for the dev
-  // runtime, but Bun.build only honours plugins passed in this list.
-  plugins: kobeJsxPlugins(),
   // Keep native/runtime-resolved packages external. @opentui/core loads
   // @opentui/core-${platform}-${arch} dynamically; bundling core moves
   // that dynamic import into dist/index.js, where Bun can no longer
