@@ -30,8 +30,13 @@ import type { RepoIssues } from "./issues-store.ts"
  * socket RPC that starts/stops routes. A v2 client's `kobe web` gets a clear
  * "unknown daemon request" error; everything else still interoperates, so MIN
  * stays 2.
+ *
+ * v4: daemon-hosted PTYs (`pty.*` requests + targeted `pty.data`/`pty.exit`
+ * event frames). Additive — an older client never sends `pty.*`, a newer
+ * client against an older daemon gets "unknown daemon request" and falls back
+ * to a local PTY — so MIN stays 2.
  */
-export const DAEMON_PROTOCOL_VERSION = 3
+export const DAEMON_PROTOCOL_VERSION = 4
 
 /** Oldest protocol version this build can still interoperate with. */
 export const MIN_COMPATIBLE_PROTOCOL_VERSION = 2
@@ -142,6 +147,20 @@ export type DaemonRequestName =
   // one-line resolved gotcha; the daemon forwards it to the repo's
   // dispatcher seat (the main session) over `session.deliver`.
   | "note.file"
+  // Daemon-hosted PTYs (v4) — the tmux-persistence replacement for the
+  // embedded terminal. The daemon owns the raw PTY child + a byte ring
+  // buffer per session key; the TUI keeps VT emulation (xterm-headless)
+  // local and talks to the child through these requests. `pty.open`
+  // attaches the calling CONNECTION (spawning on first open, replaying the
+  // ring buffer on reattach); output streams back as targeted `pty.data`
+  // event frames written only to attached connections — NOT bus channels
+  // (no last-value cache, no fan-out to unrelated subscribers).
+  | "pty.open"
+  | "pty.write"
+  | "pty.resize"
+  | "pty.kill"
+  | "pty.detach"
+  | "pty.list"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -409,9 +428,34 @@ export function normalizeChannelFilter(value: unknown): ReadonlySet<ChannelName>
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a
  * lifecycle signal that is deliberately NOT a channel (it has no last-value
- * and must never be replayed to a late subscriber as if current).
+ * and must never be replayed to a late subscriber as if current) — plus the
+ * targeted PTY stream frames (`pty.data` / `pty.exit`, v4). PTY frames are
+ * also NOT channels: they are written only to connections attached to that
+ * PTY session, carry an ordered byte stream (dropping or replaying one
+ * corrupts the client's VT state), and never pass through the event bus.
  */
-export type DaemonEventName = ChannelName | "daemon.stopping"
+export type DaemonEventName = ChannelName | "daemon.stopping" | "pty.data" | "pty.exit"
+
+/** Targeted `pty.data` event payload — one ordered chunk of PTY output. */
+export interface PtyDataEventPayload {
+  /** The PTY session key (the TUI's registry key, e.g. `taskId::tabId`). */
+  readonly key: string
+  /** Raw child output bytes, base64-encoded (JSON-lines wire). */
+  readonly data: string
+}
+
+/** Targeted `pty.exit` event payload — the session's child ended. */
+export interface PtyExitEventPayload {
+  readonly key: string
+}
+
+/** `pty.open` response — attach result for one session key. */
+export interface PtyOpenResult {
+  /** Ring-buffer replay (base64) — everything the child wrote, capped. */
+  readonly replay: string
+  /** False when the session exists but its child already exited. */
+  readonly alive: boolean
+}
 
 export interface DaemonError {
   readonly message: string

@@ -457,10 +457,11 @@ export async function startWorkspaceHost(): Promise<void> {
         root: () => <WorkspaceRoot orchestrator={orchestrator} />,
         onDestroy: () => {
           orchestrator.dispose()
-          // End every embedded engine/shell PTY with the app — the exit
-          // backstop only covers the host process; the PTY children are
-          // process-group members that must be killed explicitly.
-          getDefaultPtyRegistry().releaseAll()
+          // Detach, don't kill: daemon-hosted PTYs keep their engine
+          // sessions RUNNING in the background and reattach on next boot.
+          // Local-backend PTYs (no detach()) are still killed — a child of
+          // this process can't outlive it usefully.
+          getDefaultPtyRegistry().detachAll()
         },
       }
     },

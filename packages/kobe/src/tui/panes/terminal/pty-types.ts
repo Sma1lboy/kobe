@@ -79,6 +79,13 @@ export interface TaskPtyLike {
   capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null
   kill(): void
+  /**
+   * Drop this handle WITHOUT ending the session, when the backend can
+   * persist it (the daemon backend leaves its child running for a later
+   * reattach). Backends without persistence omit it — callers fall back
+   * to kill(). App teardown calls this via `registry.detachAll()`.
+   */
+  detach?(): void
 }
 
 export const DEFAULT_COLS = 80
