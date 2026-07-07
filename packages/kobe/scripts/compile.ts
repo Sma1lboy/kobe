@@ -29,7 +29,7 @@
  */
 
 import { mkdirSync } from "node:fs"
-import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+import { kobeJsxPlugins } from "./jsx-plugin"
 
 const OUT_DIR = "./release-bin"
 mkdirSync(OUT_DIR, { recursive: true })
@@ -38,7 +38,7 @@ const outfile = `${OUT_DIR}/kobe`
 const result = await Bun.build({
   entrypoints: ["./src/cli/index.ts"],
   conditions: ["browser"],
-  plugins: [createSolidTransformPlugin()],
+  plugins: kobeJsxPlugins(),
   external: ["node-pty"],
   minify: true,
   compile: { outfile },

@@ -22,21 +22,21 @@ import { fileURLToPath } from "node:url"
  * "--preload", <abs opentui preload>, "--conditions=browser",
  * <cli entry>]`.
  *
- * Why the dev branch is fiddly: a child kobe must boot opentui/solid
- * the way the dev script does (JSX preload + the `browser` export
- * condition) or it crashes with "Export named 'jsxDEV' not found".
- * The preload must be an ABSOLUTE path — a spawned subcommand may run
- * with an arbitrary cwd (e.g. the Ops pane's cwd is the worktree,
- * whose node_modules has no opentui), so a bare `@opentui/solid/preload`
- * specifier wouldn't resolve. `import.meta.resolve` resolves against
- * THIS module (inside the kobe package), so it always finds kobe's
- * own copy.
+ * Why the dev branch is fiddly: a child kobe must boot the JSX
+ * transforms the way the dev script does (kobe's own preload — Solid
+ * transform everywhere except `src/tui-react/**`, see
+ * `scripts/jsx-plugin.ts` — plus the `browser` export condition) or it
+ * crashes with "Export named 'jsxDEV' not found". The preload must be
+ * an ABSOLUTE path — a spawned subcommand may run with an arbitrary cwd
+ * (e.g. the Ops pane's cwd is the worktree), so a relative path
+ * wouldn't resolve. `import.meta.url` anchors to THIS module (inside
+ * the kobe package), so it always finds kobe's own copy.
  */
 export function kobeCliInvocation(): string[] {
   const isBuilt = import.meta.url.endsWith(".js")
   if (isBuilt) return ["kobe"]
   const entry = fileURLToPath(new URL("./index.ts", import.meta.url))
-  const preload = fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
+  const preload = fileURLToPath(new URL("../../scripts/jsx-preload.ts", import.meta.url))
   return [process.execPath, "--preload", preload, "--conditions=browser", entry]
 }
 

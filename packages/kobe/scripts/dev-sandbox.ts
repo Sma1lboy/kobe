@@ -53,7 +53,7 @@ const env = {
 const args =
   mode === "reset"
     ? [process.execPath, "./src/cli/index.ts", "kill-sessions"]
-    : [process.execPath, "--preload", "@opentui/solid/preload", "--conditions=browser", "./src/cli/index.ts"]
+    : [process.execPath, "--preload", "./scripts/jsx-preload.ts", "--conditions=browser", "./src/cli/index.ts"]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),
