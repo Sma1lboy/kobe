@@ -107,6 +107,8 @@ export function TerminalTabs(props: {
    */
   sharedActivity?: () => TranscriptActivity | null
   focused: () => boolean
+  /** Ask the host to focus the workspace pane (terminal click). */
+  onRequestFocus?: () => void
 }): ReturnType<typeof Terminal> {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -455,6 +457,7 @@ export function TerminalTabs(props: {
           onExit={handleActiveExit}
           resetToken={resetToken}
           focused={props.focused}
+          onRequestFocus={props.onRequestFocus}
         />
       </Show>
     </box>

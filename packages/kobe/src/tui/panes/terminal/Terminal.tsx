@@ -58,6 +58,14 @@ export type TerminalProps = {
   taskId: Accessor<string | null>
   focused?: Accessor<boolean>
   /**
+   * Ask the host to focus this pane (mouse click). Needed because opentui
+   * mouse events don't bubble to the workspace wrapper's `onMouseUp`, and
+   * this pane's own selection handlers consume the click — so a bare click
+   * inside the terminal would never reach the global focus setter. The host
+   * wires this to `focus.setFocused("workspace")`.
+   */
+  onRequestFocus?: () => void
+  /**
    * Override the embedded process argv. When set the pane runs this
    * command instead of an interactive shell — e.g. `["claude"]` to
    * make this a PTY view of an interactive Claude Code session (the
@@ -323,11 +331,26 @@ export function Terminal(props: TerminalProps): JSXElement {
     }
   })
 
-  // Hide the native host cursor while this pane owns focus; the visible
-  // cursor is the inline inverse cell in `cursorRows`.
+  // Keep the native host cursor INVISIBLE (the visible cursor is the inline
+  // inverse cell in `cursorRows`) but ANCHOR it to the embedded cursor's
+  // screen cell. The OS IME / composition window (macOS pinyin candidate
+  // popup, etc.) follows the real terminal cursor — parking it at (0,0) left
+  // the candidate window detached from the text the user was typing. Reading
+  // visibleCursor()/geomTick()/dims() re-runs this as the cursor moves or the
+  // pane resizes; screenX/screenY are read imperatively (non-reactive
+  // geometry, same as the resize effect). Falls back to origin when the
+  // cursor is scrolled out of view or the body isn't laid out yet.
   createEffect(() => {
     if (!focused()) return
-    renderer.setCursorPosition(0, 0, false)
+    const body = bodyRef()
+    const c = visibleCursor()
+    geomTick()
+    dims()
+    if (body && c && body.width > 0) {
+      renderer.setCursorPosition(body.screenX + c.x, body.screenY + c.y, false)
+    } else {
+      renderer.setCursorPosition(0, 0, false)
+    }
   })
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
@@ -350,6 +373,9 @@ export function Terminal(props: TerminalProps): JSXElement {
       backgroundColor={theme.background}
       onMouseDown={(evt) => {
         if ((evt as { button?: number }).button !== 0) return
+        // Focus on press — clicking anywhere in the terminal focuses the
+        // pane, even if the click isn't a text-selection drag.
+        props.onRequestFocus?.()
         const cell = cellFromEvent(evt as { x?: number; y?: number })
         if (!cell) return
         selDragging = true
@@ -363,6 +389,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       }}
       onMouseUp={() => {
         setFocusedLocal(true)
+        props.onRequestFocus?.()
         if (!selDragging) return
         selDragging = false
         const anchor = selAnchor()
