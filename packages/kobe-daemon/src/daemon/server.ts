@@ -30,6 +30,7 @@ import {
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
   objectPayload,
+  requireString,
   shapeDaemonError,
 } from "./handlers.ts"
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
@@ -42,6 +43,7 @@ import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
 import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
+import { PtyHost } from "./pty-host.ts"
 import {
   DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
   startTranscriptActivityCollector,
@@ -191,9 +193,22 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     clients: function* () {
       yield* clients
       yield* webClients
+      // Daemon-hosted PTYs (v4): a LIVE background engine session holds the
+      // daemon alive like an attached GUI — that persistence is the feature.
+      // When its child exits, ptys' onSessionEnd below re-arms the grace.
+      yield* ptys.lifetimeHolders()
     },
     idleGraceMs: resolveIdleGraceMs(),
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
+  })
+
+  // Daemon-hosted PTY sessions (protocol v4) — the embedded terminal's
+  // persistence layer. Requests are handled in `dispatch` below (they bind
+  // the calling CONNECTION, which the handler registry can't express).
+  const ptys = new PtyHost({
+    onSessionStart: () => lifetime.guiAttached(),
+    onSessionEnd: () => lifetime.clientDisconnected(true),
+    log: logDaemonInfo,
   })
 
   // Channel event bus: the single hub the daemon publishes push
@@ -255,6 +270,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     socket.on("error", () => {})
     socket.on("close", () => {
       clients.delete(client)
+      // Drop this connection's PTY attachments — the CHILDREN keep running
+      // (that's the persistence feature); only the output fan-out stops.
+      ptys.detachClient(client)
       if (client.subscribed) {
         logDaemonInfo(
           "conn",
@@ -278,6 +296,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // current tasks (no cold cache).
   const unsubscribeStore = orch.subscribeTasks((snapshot) => {
     bus.publish("task.snapshot", { tasks: snapshot.map(serializeTask) })
+    // Archive sweep for daemon-hosted PTYs: a task that is archived or gone
+    // must not leave a background engine running forever with no owner —
+    // this covers headless archives (`kobe api`) where no TUI sends pty.kill.
+    ptys.sweepTasks(new Set(snapshot.filter((t) => !t.archived).map((t) => t.id)))
   })
 
   // Daemon-owned update check (KOB): poll npm once on start + on an interval
@@ -387,6 +409,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       stopWorktreeChangesCollector()
       stopTranscriptActivityCollector()
       activity.close()
+      // Daemon-hosted PTY children die with the daemon — it IS their
+      // lifetime, exactly as the tmux server was. A `daemon restart`
+      // therefore ends background engine sessions; live TUIs see pty.exit.
+      ptys.killAll()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
       // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
@@ -536,6 +562,53 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       return {}
     }
+    // PTY requests live here, not in the handler registry, for the same
+    // reason `subscribe` does: they bind the calling CONNECTION (attach =
+    // "stream pty.data frames to THIS socket"), which the registry's
+    // payload→result shape can't express.
+    if (req.name === "pty.open") {
+      const payload = objectPayload(req.payload)
+      const key = requireString(payload, "key")
+      const cwd = requireString(payload, "cwd")
+      const command = Array.isArray(payload.command) ? payload.command.filter((c) => typeof c === "string") : undefined
+      return ptys.open(
+        key,
+        {
+          cwd,
+          command,
+          shell: typeof payload.shell === "string" ? payload.shell : undefined,
+          cols: typeof payload.cols === "number" ? payload.cols : 80,
+          rows: typeof payload.rows === "number" ? payload.rows : 24,
+        },
+        client,
+        (frame) => writeFrame(client, frame),
+      )
+    }
+    if (req.name === "pty.write") {
+      const payload = objectPayload(req.payload)
+      ptys.write(requireString(payload, "key"), typeof payload.data === "string" ? payload.data : "")
+      return {}
+    }
+    if (req.name === "pty.resize") {
+      const payload = objectPayload(req.payload)
+      ptys.resize(
+        requireString(payload, "key"),
+        typeof payload.cols === "number" ? payload.cols : 80,
+        typeof payload.rows === "number" ? payload.rows : 24,
+      )
+      return {}
+    }
+    if (req.name === "pty.kill") {
+      ptys.kill(requireString(objectPayload(req.payload), "key"))
+      return {}
+    }
+    if (req.name === "pty.detach") {
+      ptys.detach(requireString(objectPayload(req.payload), "key"), client)
+      return {}
+    }
+    if (req.name === "pty.list") {
+      return { sessions: ptys.list() }
+    }
     return dispatchDaemonRequest(handlers, req.name, req.payload, handlerContext(client.id))
   }
 
@@ -596,7 +669,11 @@ export async function readPidFile(pidPath: string): Promise<number | null> {
  * next publish.
  */
 function isCriticalFrame(frame: DaemonFrame): boolean {
-  if (frame.type === "event") return frame.name === "daemon.stopping"
+  // PTY frames are an ORDERED BYTE STREAM — dropping one corrupts the
+  // client's VT state (unlike channel frames, which are last-value-
+  // coalesced). They ride the critical path; the ring-buffer cap bounds
+  // how much a single session can ever queue.
+  if (frame.type === "event") return frame.name === "daemon.stopping" || frame.name.startsWith("pty.")
   return true
 }
 

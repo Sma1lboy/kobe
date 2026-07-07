@@ -128,6 +128,26 @@ export class PtyRegistry {
   }
 
   /**
+   * Detach every PTY and forget them all — the app-exit counterpart of
+   * `releaseAll()` for persistent backends: a daemon-hosted session keeps
+   * RUNNING in the background and reattaches on the next boot. Backends
+   * without `detach()` (local child — nothing to persist) are killed,
+   * exactly as before.
+   */
+  detachAll(): void {
+    const ptys = Array.from(this.map.values())
+    this.map.clear()
+    for (const pty of ptys) {
+      try {
+        if (pty.detach) pty.detach()
+        else pty.kill()
+      } catch {
+        /* already dead */
+      }
+    }
+  }
+
+  /**
    * Kill the PTY for `taskId` (if any) and immediately spawn a fresh
    * one with the same `cwd` / `opts`. Returns the new instance.
    *
