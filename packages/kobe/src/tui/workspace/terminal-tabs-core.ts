@@ -45,12 +45,12 @@ export interface EngineTab extends TabBase {
    */
   readonly vendor?: VendorId
   /**
-   * Engine session id pinned at spawn (`withClaudeSessionId` — the same
+   * Engine session id: pinned at spawn (`withClaudeSessionId` — the same
    * `--session-id` mapping the tmux chattab stashed as
-   * `@kobe_session_id`), so the tab is auto-named from ITS OWN first
-   * prompt and can later be resumed. Null for vendors that can't take a
-   * caller-set id (codex/custom — their origin tab is named from the
-   * worktree instead, matching the tmux fallback).
+   * `@kobe_session_id`), or ADOPTED from the engine's on-disk store
+   * (`seedTabsFromSessions` — how a codex tab, whose id can't be
+   * caller-set, still gets one). Null for a fresh non-claude tab (named
+   * from the worktree instead, matching the tmux fallback).
    */
   readonly sessionId?: string | null
   /**
@@ -215,6 +215,26 @@ export function setTabSpawned(state: TabsState, id: string, spawned: boolean): T
 /** Mark an engine tab's PTY as having spawned (see `EngineTab.spawned`). */
 export function markTabSpawned(state: TabsState, id: string): TabsState {
   return setTabSpawned(state, id, true)
+}
+
+/**
+ * Seed a task's FIRST-EVER tab state (no persisted snapshot) from the
+ * engine's on-disk session store — the cross-mode sync: conversations
+ * created by the tmux flavour (or any prior kobe run) live in the
+ * engine's OWN transcript store, so the pure-TUI host adopts the newest
+ * one as its initial tab and resumes it instead of opening a blank
+ * session. `sessionIds` follows the registry reader contract
+ * (OLDEST-first → the last entry is the newest conversation). Returns
+ * null when there is nothing to adopt. `spawned: true` by construction:
+ * the id came from a transcript that exists on disk, which is exactly
+ * what the restart-verify pass would conclude.
+ */
+export function seedTabsFromSessions(sessionIds: readonly string[]): TabsState | null {
+  const newest = sessionIds.at(-1)
+  if (!newest) return null
+  const base = initialTabs()
+  const tabs = base.tabs.map((t): TerminalTab => (t.kind === "engine" ? { ...t, sessionId: newest, spawned: true } : t))
+  return { ...base, tabs }
 }
 
 /**

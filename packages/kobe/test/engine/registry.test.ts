@@ -77,6 +77,20 @@ describe("engineEntry — built-in vendors", () => {
     expect(entry.capabilities?.permissionModes).toEqual([])
   })
 
+  // Why: the resume argv is engine-owned (CLAUDE.md "Engine-owned UI
+  // data") — the pure-TUI tab host resumes cross-mode sessions through
+  // this hook, so the vendor flag shapes must never drift: claude is a
+  // FLAG on the base argv, codex a SUBCOMMAND (its global `-c` config
+  // flags parse before subcommands), copilot/custom have none.
+  it("builds each vendor's resume argv shape (claude flag, codex subcommand, none elsewhere)", () => {
+    const base = ["claude", "--permission-mode", "plan"]
+    expect(engineEntry("claude").resumeCommand?.(base, "sid-1")).toEqual([...base, "--resume", "sid-1"])
+    const codexBase = ["codex", "-c", "model_reasoning_effort=high"]
+    expect(engineEntry("codex").resumeCommand?.(codexBase, "sid-2")).toEqual([...codexBase, "resume", "sid-2"])
+    expect(engineEntry("copilot").resumeCommand).toBeUndefined()
+    expect(engineEntry("my-custom").resumeCommand).toBeUndefined()
+  })
+
   it("routes detectAccount to the vendor's own detector (claude oauth)", async () => {
     const status = await engineEntry("claude").detectAccount(
       deps({
