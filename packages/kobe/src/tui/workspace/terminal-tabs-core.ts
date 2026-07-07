@@ -309,9 +309,10 @@ export function splitLeafPtyKey(tabKey: string, leafId: string): string {
  * conversation's first-prompt title (`engineTitle` — the tab's own
  * title/autoTitle, the same string the group/tab label shows), falling back
  * to the command basename ("claude"/"codex") before the first prompt lands.
- * Split SHELL leaves read the basename of the argv they run ("zsh"); same-
- * named defaults get a reading-order occurrence suffix ("zsh", "zsh 2") so
- * two shells stay tellable apart. Manual titles are never suffixed.
+ * Split SHELL leaves read a generic "shell" (owner ask 2026-07-06 — a bare
+ * shell has no meaningful program name); same-named defaults get a reading-
+ * order occurrence suffix ("shell", "shell 2") so two shells stay tellable
+ * apart. Manual titles (F2 rename) always win and are never suffixed.
  */
 export function splitLeafNames(
   leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
@@ -330,7 +331,9 @@ export function splitLeafNames(
       out.set(leaf.id, leaf.title)
       continue
     }
-    const name = leaf.content === null && engineTitle ? engineTitle : basename(leaf.content)
+    // Engine leaf → first-prompt title (else vendor basename); split shell
+    // leaf → generic "shell". Both dedupe by reading order.
+    const name = leaf.content === null ? engineTitle || basename(leaf.content) : "shell"
     const n = (seen.get(name) ?? 0) + 1
     seen.set(name, n)
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)

@@ -340,8 +340,10 @@ the LIFO stack to `chat.tab.close`.
 **Naming (owner correction 2026-07-06):** the TAB is the "group" — its default title is
 `group {n}` (`terminal.tab.defaultTitle`, still overridden by the auto first-prompt title
 and F2 rename per the tab naming flow). Each split leaf carries its OWN name in its corner
-tag, same flow shape: manual rename wins, default is the basename of what the leaf runs
-("claude", "zsh"; duplicate defaults get a reading-order suffix — "zsh 2"). `F2` is
+tag, same flow shape: manual rename wins; the ENGINE leaf's default is the conversation's
+first-prompt title (the tab's title/autoTitle, so it matches the group label — falling back
+to the vendor basename "claude" before the first prompt), and a split SHELL leaf's default
+is a generic "shell". Duplicate defaults get a reading-order suffix ("shell 2"). `F2` is
 contextual exactly like `ctrl+w`: while split it renames the ACTIVE LEAF
 (`workspace.split.rename`); unsplit it falls through to `chat.tab.rename`. The original
 shipped shape (every leaf tagged `group {n}`) misread the vocabulary — "group" names the
