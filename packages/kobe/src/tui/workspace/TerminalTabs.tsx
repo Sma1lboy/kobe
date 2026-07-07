@@ -368,16 +368,17 @@ export function TerminalTabs(props: {
 
   /** What a plain ctrl+t tab should run: the
    *  full preference chain — repo lastActiveVendor (ctrl+e / dialog picks
-   *  write it) → Settings global default → claude. Returning undefined
-   *  when the resolution equals the task's engine keeps the tab in
-   *  "inherit" mode so it follows later task vendor switches; the engine
-   *  that opens is identical either way. */
-  const preferredTabVendor = (): VendorId | undefined => {
+   *  write it) → Settings global default → claude. Always CONCRETE: the
+   *  tab pins the vendor it actually spawns. The old "inherit" mode
+   *  (undefined when equal to the task engine) let a later task-vendor
+   *  switch relabel and re-target every earlier tab — including resuming
+   *  a claude session with the codex CLI after restart. A tab's engine is
+   *  whatever it was born with; only the TASK's default moves. */
+  const preferredTabVendor = (): VendorId => {
     try {
-      const preferred = resolvePreferredVendor(resolveMainRepoRoot(props.worktree))
-      return preferred === props.vendor ? undefined : preferred
+      return resolvePreferredVendor(resolveMainRepoRoot(props.worktree))
     } catch {
-      return undefined
+      return props.vendor
     }
   }
 
