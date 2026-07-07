@@ -126,6 +126,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
 
   function selectTask(id: string): void {
+    // Already the selected task → skip the daemon round-trip. Clicking the
+    // already-selected sidebar row used to re-touch active-task recency on
+    // every click (the one genuine no-op-side-effect the reactive audit
+    // turned up beyond selectTab).
+    if (selectedId() === id) return
     setSelectedId(id)
     void props.orchestrator.setActiveTask(id).catch((err) => {
       console.error("[kobe workspace] setActiveTask failed:", err)
