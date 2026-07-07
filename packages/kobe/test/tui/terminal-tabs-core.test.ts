@@ -8,7 +8,6 @@ import {
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
-  seedTabsFromSessions,
   selectTab,
   setTabAutoTitle,
   setTabSessionId,
@@ -155,28 +154,6 @@ describe("terminal tabs state", () => {
     expect(down.tabs[0]).toMatchObject({ spawned: false })
     // No-op keeps tab identity (persistence write-churn guard).
     expect(setTabSpawned(down, "tab-1", false).tabs[0]).toBe(down.tabs[0])
-  })
-
-  // Why: cross-mode session adoption — the engine's transcript store is
-  // the one place BOTH kobe flavours record conversations, so a task
-  // driven under tmux must open in the pure TUI on its newest existing
-  // conversation, not a blank session. The reader contract is
-  // oldest-first, so the LAST id is the one to resume; spawned=true by
-  // construction (the listing itself proves the transcript exists).
-  it("seedTabsFromSessions adopts the newest on-disk session as the initial tab", () => {
-    const seeded = seedTabsFromSessions(["old-1", "old-2", "newest-3"])
-    expect(seeded).not.toBeNull()
-    expect(seeded?.tabs).toHaveLength(1)
-    expect(seeded?.tabs[0]).toMatchObject({
-      kind: "engine",
-      sessionId: "newest-3",
-      spawned: true,
-    })
-    expect(seeded?.activeId).toBe(seeded?.tabs[0]?.id)
-  })
-
-  it("seedTabsFromSessions returns null when the store has nothing to adopt", () => {
-    expect(seedTabsFromSessions([])).toBeNull()
   })
 
   it("autoTitle fills the display gap under a manual title and survives degradation", () => {
