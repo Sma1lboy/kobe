@@ -42,8 +42,16 @@ describe("tabTitle", () => {
     expect(tabTitle(baseTab({ splitTree: renamedSolo }), "claude", "vim")).toBe("logs")
   })
 
-  it("the pristine engine tab ignores the live name — its process is known by construction", () => {
-    expect(tabTitle(baseTab({ autoTitle: "fix the resize race" }), "claude", "vim")).toBe("fix the resize race")
-    expect(tabTitle(baseTab(), "claude", "vim")).toBe("claude 1")
+  // Why: the RUNNING process names the tab (live OSC title, normalized to
+  // the engine binary); vendor derivation is only the pre-title fallback.
+  // Deriving from the task's CURRENT vendor relabelled every inherit-mode
+  // tab the moment a new tab switched the task engine (owner bug report
+  // 2026-07-07), while their PTYs kept running the old engine.
+  it("the engine tab prefers its live process name; vendor derivation is the pre-title fallback", () => {
+    expect(tabTitle(baseTab({ autoTitle: "fix the resize race" }), "claude", "claude")).toBe("fix the resize race")
+    // Task vendor flipped to codex, but this tab's PTY still runs claude.
+    expect(tabTitle(baseTab(), "codex", "claude")).toBe("claude 1")
+    // No live title landed yet → vendor fallback.
+    expect(tabTitle(baseTab(), "claude")).toBe("claude 1")
   })
 })

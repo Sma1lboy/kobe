@@ -333,13 +333,15 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     })()
   }
 
-  /** What a plain ctrl+t tab should run — the full preference chain. */
-  const preferredTabVendor = (): VendorId | undefined => {
+  /** What a plain ctrl+t tab should run — the full preference chain.
+   *  Always CONCRETE: the tab pins the vendor it actually spawns. The old
+   *  "inherit" mode (undefined when equal to the task engine) let a later
+   *  task-vendor switch relabel and re-target every earlier tab. */
+  const preferredTabVendor = (): VendorId => {
     try {
-      const preferred = resolvePreferredVendor(resolveMainRepoRoot(props.worktree))
-      return preferred === props.vendor ? undefined : preferred
+      return resolvePreferredVendor(resolveMainRepoRoot(props.worktree))
     } catch {
-      return undefined
+      return props.vendor
     }
   }
 
