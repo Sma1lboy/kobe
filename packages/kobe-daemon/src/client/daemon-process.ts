@@ -26,7 +26,12 @@ const DAEMON_HELLO_TIMEOUT_MS = 3000
  * The parent closes its copy of the fd after the fork; the child keeps
  * its own.
  */
-function spawnDetachedDaemon(command: string, args: readonly string[], env: NodeJS.ProcessEnv, logPath: string): void {
+export function spawnDetachedDaemon(
+  command: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  logPath: string,
+): void {
   let stdio: StdioOptions = "ignore"
   let logFd: number | undefined
   try {
@@ -152,7 +157,7 @@ export async function testDaemonResponds(
  *    IS the kobe binary, so we re-exec it directly. After the kobed → kobe
  *    bin merge, no sibling lookup is needed.
  */
-function resolveKobeSpawn(subcommand: readonly string[]): string[] {
+export function resolveKobeSpawn(subcommand: readonly string[]): string[] {
   const here = fileURLToPath(import.meta.url)
   if (here.startsWith("/$bunfs") || here.startsWith("B:\\~BUN")) {
     return [process.execPath, ...subcommand]

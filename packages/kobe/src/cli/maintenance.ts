@@ -29,7 +29,13 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
-import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
+import {
+  defaultDaemonLogPath,
+  defaultDaemonPidPath,
+  defaultDaemonSocketPath,
+  defaultPtyHostPidPath,
+  defaultPtyHostSocketPath,
+} from "@sma1lboy/kobe-daemon/daemon/paths"
 import { readPidFile } from "@sma1lboy/kobe-daemon/daemon/server"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
@@ -329,6 +335,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   console.log("kobe reset will:")
   console.log("  • stop the kobe daemon (graceful → SIGTERM → SIGKILL)")
   console.log(`  • remove its socket + pidfile (${socketPath})`)
+  console.log("  • stop the pty host — ends every background terminal/engine session")
   console.log(`  • kill all kobe tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`)
   if (hard) {
     const count = taskCount(tasksPath)
@@ -365,7 +372,20 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
       : `  daemon: stopped via ${method}${pid ? ` (pid ${pid})` : ""}`,
   )
 
-  // 2. tmux: kill the whole kobe server (all task sessions at once).
+  // 2. PTY host: the standalone process owning background terminal/engine
+  // sessions. Deliberately untouched by `kobe daemon restart` (tmux-server
+  // analog) — reset is its one teardown path besides idle-exit. The shared
+  // stop primitive works unchanged: the pty host answers `daemon.stop`.
+  {
+    const ptyStop = await stopDaemonProcess(defaultPtyHostSocketPath(), defaultPtyHostPidPath())
+    console.log(
+      ptyStop.method === "absent"
+        ? "  pty host: was not running (cleared any stale socket/pidfile)"
+        : `  pty host: stopped via ${ptyStop.method}${ptyStop.pid ? ` (pid ${ptyStop.pid})` : ""} — background sessions ended`,
+    )
+  }
+
+  // 3. tmux: kill the whole kobe server (all task sessions at once).
   // TERM pane groups first — engines/helpers catch tmux's HUP without
   // exiting, so a bare kill-server leaked every pane process to launchd.
   if (await tmuxAvailable()) {
@@ -380,7 +400,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     console.log("  tmux: not installed — no sessions to kill")
   }
 
-  // 3. Hard wipe: task index + UI state (still NOT worktrees).
+  // 4. Hard wipe: task index + UI state (still NOT worktrees).
   if (hard) {
     await removeStateFile(tasksPath, "task index")
     await removeStateFile(statePath, "UI state")

@@ -457,10 +457,10 @@ export async function startWorkspaceHost(): Promise<void> {
         root: () => <WorkspaceRoot orchestrator={orchestrator} />,
         onDestroy: () => {
           orchestrator.dispose()
-          // Detach, don't kill: daemon-hosted PTYs keep their engine
-          // sessions RUNNING in the background and reattach on next boot.
-          // Local-backend PTYs (no detach()) are still killed — a child of
-          // this process can't outlive it usefully.
+          // Detach, don't kill: hosted PTYs (the `kobe pty-host` process)
+          // keep their engine sessions RUNNING in the background and
+          // reattach on next boot. Local-backend PTYs (no detach()) are
+          // still killed — a child of this process can't outlive it usefully.
           getDefaultPtyRegistry().detachAll()
         },
       }

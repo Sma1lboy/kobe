@@ -147,20 +147,24 @@ export type DaemonRequestName =
   // one-line resolved gotcha; the daemon forwards it to the repo's
   // dispatcher seat (the main session) over `session.deliver`.
   | "note.file"
-  // Daemon-hosted PTYs (v4) — the tmux-persistence replacement for the
-  // embedded terminal. The daemon owns the raw PTY child + a byte ring
-  // buffer per session key; the TUI keeps VT emulation (xterm-headless)
-  // local and talks to the child through these requests. `pty.open`
-  // attaches the calling CONNECTION (spawning on first open, replaying the
-  // ring buffer on reattach); output streams back as targeted `pty.data`
-  // event frames written only to attached connections — NOT bus channels
-  // (no last-value cache, no fan-out to unrelated subscribers).
+  // Hosted PTYs (v4) — the tmux-persistence replacement for the embedded
+  // terminal. Served by the standalone PTY HOST process (`kobe pty-host`,
+  // its own socket — see `pty-server.ts`), NOT by the daemon: the daemon
+  // restarts routinely, the pty host must outlive it like the tmux server
+  // did. Same frame grammar, so the same client class speaks both. The
+  // host owns the raw PTY child + a byte ring buffer per session key; the
+  // TUI keeps VT emulation (xterm-headless) local. `pty.open` attaches
+  // the calling CONNECTION (spawning on first open, replaying the ring
+  // buffer on reattach); output streams back as targeted `pty.data` event
+  // frames written only to attached connections. `pty.sweep` is the
+  // daemon→host janitor call: kill sessions whose task got archived.
   | "pty.open"
   | "pty.write"
   | "pty.resize"
   | "pty.kill"
   | "pty.detach"
   | "pty.list"
+  | "pty.sweep"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's

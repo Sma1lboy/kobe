@@ -196,7 +196,9 @@ describe("runResetSubcommand", () => {
     ;(process.stdin as unknown as { isTTY: boolean }).isTTY = true
     mocks.confirmAnswer = "y"
     await runResetSubcommand([])
-    expect(mocks.stopDaemonProcess).toHaveBeenCalledTimes(1)
+    // Once for the daemon, once for the standalone pty host — reset is the
+    // pty host's one teardown path besides idle-exit.
+    expect(mocks.stopDaemonProcess).toHaveBeenCalledTimes(2)
     expect(output()).toContain("reset complete")
   })
 

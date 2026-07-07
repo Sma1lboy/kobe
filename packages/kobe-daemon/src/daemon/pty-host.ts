@@ -14,15 +14,16 @@
  * (a lost chunk corrupts the client's VT state) — server.ts marks them
  * critical for the ClientWriter.
  *
- * Lifecycle: a session with a LIVE child holds the daemon alive (that is
- * the whole feature — see `lifetimeHolders()`); an exited session is kept,
- * scrollback intact, so a reattach can still show how the child died. It
- * is removed by an explicit `kill` or the task-archive sweep
- * (`sweepTasks`). `kobe daemon stop/restart` kills every child — the
- * daemon is the sessions' lifetime, exactly as the tmux server was.
+ * Lifecycle: hosted by the standalone `kobe pty-host` process
+ * (`pty-server.ts`), NOT the daemon — so `kobe daemon restart` (routine
+ * after code changes) never touches running sessions, exactly like the
+ * tmux server outliving everything. An exited session is kept, scrollback
+ * intact, so a reattach can still show how the child died; it is removed
+ * by an explicit `kill` or the task-archive sweep (`sweepTasks`). Only
+ * the host process ending (idle-exit at zero live sessions, or
+ * `kobe reset`) ends the children.
  */
 
-import type { LifetimeClient } from "./lifetime.ts"
 import type { DaemonFrame } from "./protocol.ts"
 
 /** Everything `pty.open` needs to spawn a session's child on first open. */
@@ -164,17 +165,12 @@ export class PtyHost {
     for (const key of Array.from(this.sessions.keys())) this.kill(key)
   }
 
-  /**
-   * Live sessions as lifetime holders: while an engine runs in the
-   * background the daemon must NOT lazy-stop, so each live child counts
-   * like an attached GUI in DaemonLifetime's scan. `subscribed: false`
-   * keeps the pane-feeding collectors paused when no real front-end is
-   * attached.
-   */
-  *lifetimeHolders(): Iterable<LifetimeClient> {
-    for (const session of this.sessions.values()) {
-      if (session.alive) yield { subscribed: false, holdsLifetime: true }
-    }
+  /** Sessions whose child is still running — the host process's reason
+   *  to stay alive (`pty-server.ts` idle-exits at zero, like tmux). */
+  liveCount(): number {
+    let n = 0
+    for (const session of this.sessions.values()) if (session.alive) n++
+    return n
   }
 
   private spawn(key: string, spec: PtySpawnSpec): PtySessionState {

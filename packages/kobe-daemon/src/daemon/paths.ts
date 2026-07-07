@@ -114,3 +114,37 @@ export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? home
 export function defaultClientLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "client.log")
 }
+
+/**
+ * Unix-socket path for the standalone PTY HOST process (`kobe pty-host`)
+ * — the tmux-server analog that owns embedded-terminal children so they
+ * survive both TUI exits AND `kobe daemon restart`. Deliberately a
+ * separate process + socket from the daemon: the daemon restarts
+ * routinely (it holds all the fast-moving code), while the pty host is
+ * tiny and stable and must keep running. Same resolution/fitting rules
+ * as {@link defaultDaemonSocketPath}.
+ */
+export function defaultPtyHostSocketPath(homeDir?: string): string {
+  const override = process.env.KOBE_PTY_SOCKET_PATH
+  if (override && override.length > 0) return override
+  const explicit = homeDir ?? process.env.KOBE_HOME_DIR
+  if (explicit && explicit.length > 0) {
+    return fitSocketPath(join(explicit, ".kobe", "pty.sock"), explicit, "pty")
+  }
+  const runtimeDir = process.env.XDG_RUNTIME_DIR
+  if (runtimeDir && runtimeDir.length > 0) {
+    return fitSocketPath(join(runtimeDir, "kobe-pty.sock"), runtimeDir, "pty")
+  }
+  const home = homedir()
+  return fitSocketPath(join(home, ".kobe", "pty.sock"), home, "pty")
+}
+
+export function defaultPtyHostPidPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  const override = process.env.KOBE_PTY_PID_PATH
+  if (override && override.length > 0) return override
+  return join(homeDir, ".kobe", "pty.pid")
+}
+
+export function defaultPtyHostLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".kobe", "pty.log")
+}
