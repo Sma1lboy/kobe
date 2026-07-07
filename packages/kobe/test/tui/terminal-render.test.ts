@@ -45,4 +45,15 @@ describe("overlayCursor — cell-column aware", () => {
     expect(cursorCell(out, 0)).toBeUndefined()
     expect(cursorCell(out, 1)?.text).toBe("好")
   })
+
+  it("cursor beyond the rendered tail pads to the REAL column (typed spaces)", () => {
+    // Typing spaces echoes blank cells a backend may not emit: row renders
+    // "ab" while xterm's cursor sits at x=4 (two spaces typed). The overlay
+    // must pad to column 4 — appending straight after the text froze the
+    // visual cursor at column 2 no matter how many spaces were typed.
+    const rows = [[{ text: "ab" } as Chunk]]
+    const out = overlayCursor(rows, { x: 4, y: 0 })[0]
+    expect(out.map((c) => c.text).join("")).toBe("ab   ")
+    expect(out.at(-1)).toEqual({ text: " ", attributes: ATTR.INVERSE })
+  })
 })

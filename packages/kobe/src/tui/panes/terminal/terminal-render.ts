@@ -72,6 +72,11 @@ function overlayCursorRow(row: readonly Chunk[], x: number): Chunk[] {
   }
 
   if (!inserted) {
+    // Cursor sits past the row's rendered cells (blank tail a backend
+    // didn't emit). Pad to the REAL column before drawing — appending at
+    // end-of-text instead is how the cursor visually froze while xterm's
+    // cursor kept advancing over typed spaces.
+    if (x > col) out.push({ text: " ".repeat(x - col) })
     out.push({ text: " ", attributes: ATTR.INVERSE })
   }
   return out
