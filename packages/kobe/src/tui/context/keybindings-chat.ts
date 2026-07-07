@@ -291,6 +291,19 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     description: "Close active split (tab when unsplit)",
     hint: { keys: "ctrl+w", label: "close split", status: false },
   },
+  {
+    // Same chord as chat.tab.rename, contextual like workspace.split.close:
+    // while SPLIT, F2 renames the ACTIVE LEAF (owner semantics 2026-07-06 —
+    // the tab is the "group", each leaf has its own name: rename wins over
+    // the default basename of what it runs); unsplit tabs fall through the
+    // LIFO stack to rename-tab.
+    id: "workspace.split.rename",
+    scope: "workspace",
+    keys: ["f2"],
+    category: "Workspace",
+    description: "Rename active split (tab when unsplit)",
+    hint: { keys: "f2", label: "rename split", status: false },
+  },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
   // 1-9 are bare-letter chords by intent: while a picker is showing, the

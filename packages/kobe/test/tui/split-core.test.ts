@@ -6,9 +6,10 @@ import {
   initialSplit,
   leaves,
   removeLeaf,
+  renameLeaf,
   splitActive,
 } from "../../src/tui/workspace/split-core"
-import { splitLeafPtyKey } from "../../src/tui/workspace/terminal-tabs-core"
+import { splitLeafNames, splitLeafPtyKey } from "../../src/tui/workspace/terminal-tabs-core"
 
 /** Terminal-flavored payload in these tests; the tree never inspects it. */
 const MAIN = null
@@ -106,5 +107,31 @@ describe("split tree (content-agnostic)", () => {
   it("splitLeafPtyKey: leaf-1 keeps the TAB-level PTY key; later leaves namespace under it", () => {
     expect(splitLeafPtyKey("task::tab-1", "leaf-1")).toBe("task::tab-1")
     expect(splitLeafPtyKey("task::tab-1", "leaf-2")).toBe("task::tab-1::leaf-2")
+  })
+
+  // Owner semantics 2026-07-06: the TAB is the "group"; each leaf carries
+  // its OWN name — F2 rename wins, default = basename of what it runs,
+  // duplicate defaults get a reading-order suffix so they stay tellable
+  // apart. This pins the derivation the corner tags render from.
+  it("renameLeaf sets a title, trims empty back to default, ignores unknown ids", () => {
+    const s = splitActive(initialSplit(MAIN), "row", SH)
+    const named = renameLeaf(s, "leaf-2", " logs ")
+    expect(leaves(named.root).find((l) => l.id === "leaf-2")?.title).toBe("logs")
+    const cleared = renameLeaf(named, "leaf-2", "   ")
+    expect(leaves(cleared.root).find((l) => l.id === "leaf-2")?.title).toBeNull()
+    expect(renameLeaf(s, "leaf-99", "x")).toBe(s)
+  })
+
+  it("splitLeafNames: rename wins; null content uses the tab command; duplicates get suffixes", () => {
+    let s = splitActive(initialSplit(MAIN), "row", SH) // claude | zsh
+    s = splitActive(s, "row", SH) // claude | zsh | zsh
+    const auto = splitLeafNames(leaves(s.root), ["/usr/local/bin/claude", "--resume"])
+    expect(auto.get("leaf-1")).toBe("claude")
+    expect(auto.get("leaf-2")).toBe("zsh")
+    expect(auto.get("leaf-3")).toBe("zsh 2")
+    const renamed = splitLeafNames(leaves(renameLeaf(s, "leaf-2", "logs").root), ["claude"])
+    expect(renamed.get("leaf-2")).toBe("logs")
+    // A manual title never joins the dedupe pool — the remaining zsh stays bare.
+    expect(renamed.get("leaf-3")).toBe("zsh")
   })
 })

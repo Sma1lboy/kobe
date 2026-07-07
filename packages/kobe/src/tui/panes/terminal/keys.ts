@@ -10,12 +10,13 @@
  *
  *   - `ctrl+pgup`   — scroll the local scrollback up by one page
  *   - `ctrl+pgdown` — scroll the local scrollback down by one page
- *   - `RESERVED_GLOBAL_CHORDS` (in `./keys-pure.ts`) — chords that must
- *     stay reachable as kobe-global escape hatches when the terminal is
- *     focused: `ctrl+h/j/k/l` (pane focus), `shift+tab` (pane cycle prev),
- *     `f1` / `ctrl+p` / `ctrl+,` (help, palette, settings). Without
- *     skipping these, the user is trapped inside the terminal pane with
- *     no way back to the tasks list.
+ *   - `RESERVED_GLOBAL_CHORDS` (in `./keys-pure.ts`) — the minimal set of
+ *     chords that stay kobe-owned while the terminal is focused: `ctrl+q`
+ *     (escape hatch to the tasks list), `f4` (pane cycle — `focus.next`),
+ *     tab management (`ctrl+t/w/]/[`, `f2`, `ctrl+e`), splits
+ *     (`ctrl+\` / `ctrl+=` / `f3`), and `f5` (reset). Everything else —
+ *     `ctrl+hjkl`, `shift+tab`, `f1`, `ctrl+p`, `ctrl+,` — passes through
+ *     to the engine CLI, which owns its own chords.
  *
  * Rationale for the exception: the scrollback view is a kobe-rendered
  * widget, not the live shell PTY content. Scrolling is a UI gesture,

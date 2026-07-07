@@ -67,9 +67,11 @@ describe("key routing tables", () => {
   it("reserves ONLY the minimal kobe chords; the engine owns the rest", () => {
     expect(TRAPPED_KEYS).toEqual(["ctrl+pageup", "ctrl+pagedown"])
     // Owner decision 2026-07-06: ctrl+q escape hatch + tab management +
-    // reset. Anything beyond this list steals a chord from the engine CLI.
+    // splits + reset, plus f4 (focus.next pane cycle — the one cross-pane
+    // chord besides ctrl+q reachable from inside the terminal). Anything
+    // beyond this list steals a chord from the engine CLI.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
-      ["ctrl+[", "ctrl+]", "ctrl+e", "ctrl+q", "ctrl+t", "ctrl+w", "ctrl+\\", "ctrl+=", "f2", "f3", "f5"].sort(),
+      ["ctrl+[", "ctrl+]", "ctrl+e", "ctrl+q", "ctrl+t", "ctrl+w", "ctrl+\\", "ctrl+=", "f2", "f3", "f4", "f5"].sort(),
     )
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; the rest are its own UI shortcuts).
