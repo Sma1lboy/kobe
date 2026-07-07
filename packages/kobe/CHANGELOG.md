@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.70
+
+### Patch Changes
+
+- 4de9a6b: Split layouts now persist across restart. A group (tab) split into `claude | shell` — or a shell where you ran `claude` yourself — comes back with the same layout when you reopen kobe: `leaf-1` resumes the tab's engine session as before, and the other leaves respawn their shells fresh. The split tree is frozen onto the tab and stored in `state.json` (previously it lived only in memory and vanished on restart). Internally this replaces the module-level `splitsByTab` map with a single source of truth on the tab object.
+- 4de9a6b: Pure-TUI pane navigation: `F4` cycles pane focus (sidebar → workspace → files, forward-only) and is reserved from terminal passthrough, so it behaves identically from every pane including inside the embedded engine terminal — closing the workspace → files two-hop gap. `ctrl+l` (dead slot in the 3-pane host) now focuses the workspace terminal, and `Right` from the sidebar jumps into the engine, matching the tmux Tasks pane. `tab`/`shift+tab` stay with the shell and claude (completion, plan-mode) — deliberately not bound to the cycle.
+- 4de9a6b: Split naming semantics fixed: the whole tab is the "group" (default tab title is now `group {n}`), and each split pane carries its own corner-tag name — default is the basename of what it runs ("claude", "zsh", with a suffix for duplicates), and `F2` while split renames the active pane (falling through to rename-tab when unsplit, same contextual shape as `ctrl+w`). Previously every pane was mislabeled `group {n}`.
+
 ## 0.7.69
 
 ### Patch Changes
