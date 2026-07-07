@@ -46,6 +46,7 @@ import { isLocaleId, setLocaleLang, t } from "../i18n"
 import { DialogProvider } from "../ui/dialog"
 import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
 import { sessionAttached } from "./attach-gate"
+import { installCjkWordBoundaries } from "./cjk-word-patch.ts"
 import { hostRenderOptions, installPaneExitBackstop } from "./host-render-options"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
 
@@ -127,6 +128,7 @@ function applyHostBootSteps(logContext?: string): void {
   // (mirrors the daemon's `installDaemonCrashHandlers`). The render tree's
   // own throws are caught separately by the <ErrorBoundary> in bootPaneHost.
   installClientCrashHandlers()
+  installCjkWordBoundaries()
   applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
