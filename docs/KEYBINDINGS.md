@@ -337,9 +337,10 @@ ACTIVE LEAF (`workspace.split.close` — the innermost thing, VS Code/iTerm/Warp
 convention, tmux `prefix x`); unsplit, the entry is disabled and the chord falls through
 the LIFO stack to `chat.tab.close`.
 
-**Naming (owner correction 2026-07-06):** the TAB is the "group" — its default title is
-`group {n}` (`terminal.tab.defaultTitle`, still overridden by the auto first-prompt title
-and F2 rename per the tab naming flow). Each split leaf carries its OWN name in its corner
+**Naming (owner corrections 2026-07-06):** a NORMAL (single) tab is `tab {n}`
+(`terminal.tab.defaultTitle`, overridden by the auto first-prompt title and F2 rename); only
+a SPLIT tab is a `group {n}` (`terminal.tab.groupTitle`) — the "group" is the tab that groups
+several leaves. Each split leaf carries its OWN name in its corner
 tag, same flow shape: manual rename wins; the ENGINE leaf's default is the conversation's
 first-prompt title (the tab's title/autoTitle, so it matches the group label — falling back
 to the vendor basename "claude" before the first prompt), and a split SHELL leaf's default

@@ -9,11 +9,13 @@ export const en = {
   exited: "process exited — F5 restarts it",
   restoring: "restoring session…",
   tab: {
-    // "group" is the owner's vocabulary for a whole tab (2026-07-06
-    // correction: the TAB is the group; the leaves inside carry their
-    // own names). Content-neutral on purpose: tabs host more than
+    // A NORMAL (single) tab is just "tab N"; only a SPLIT tab is a "group"
+    // (see groupTitle) — the tab that groups several leaves, each carrying
+    // its own name. Content-neutral on purpose: tabs host more than
     // terminals, so the numbered fallback must not say "Terminal".
-    defaultTitle: "group {n}",
+    defaultTitle: "tab {n}",
+    // A split tab's label — the "group" of leaves.
+    groupTitle: "group {n}",
     renameTitle: "Rename tab",
     renameField: "tab title",
     renameSubmit: "rename",
@@ -43,7 +45,8 @@ export const zh: typeof en = {
   exited: "进程已退出 —— 按 F5 重启",
   restoring: "正在恢复会话…",
   tab: {
-    defaultTitle: "group {n}",
+    defaultTitle: "tab {n}",
+    groupTitle: "group {n}",
     renameTitle: "重命名标签页",
     renameField: "标签页名称",
     renameSubmit: "重命名",
