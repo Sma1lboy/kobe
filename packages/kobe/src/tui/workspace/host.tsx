@@ -9,38 +9,21 @@
  */
 
 import { join } from "node:path"
-import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { useTerminalDimensions } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
-import { latestTranscriptMtime } from "../../monitor/activity.ts"
-import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
-import { HelpDialog } from "../component/help-dialog"
-import { NewTaskDialog } from "../component/new-task-dialog"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import { WorktreesPage } from "../component/worktrees-page"
-import { type PaneId, useFocus } from "../context/focus"
-import { bindByIds } from "../context/keybindings"
+import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
-import {
-  type CreateTaskContext,
-  archiveTaskFlow,
-  createTaskFlow,
-  cycleVendorFlow,
-  deleteTaskFlow,
-  renameBranchFlow,
-  renameTaskFlow,
-} from "../lib/task-actions"
-import { startLocalBadgePoll } from "../ops/activity-monitor"
 import { buildPRPrompt } from "../ops/pr-prompt"
 import { FileTree } from "../panes/filetree/FileTree"
 import { openExternally } from "../panes/filetree/open-external"
@@ -48,20 +31,14 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
 import { useDialog } from "../ui/dialog"
-import { DialogConfirm } from "../ui/dialog-confirm"
 import { TerminalTabs } from "./TerminalTabs"
+import { useFilesBadge } from "./files-badge"
+import { useWorkspaceKeybindings } from "./host-keybindings"
+import { useWorkspaceTaskActions } from "./host-task-actions"
 
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
-// Slot 3 (ctrl+l — "terminal" in the 4-pane model) maps back to workspace:
-// this host is 3-pane and its middle column IS the terminal, so ctrl+l
-// would otherwise be a dead key for anyone with tmux-layer muscle memory.
-const PANE_BY_SLOT = ["sidebar", "workspace", "files", "workspace"] as const satisfies readonly PaneId[]
-// Cycle order for focus.next/prev — the host's real panes, NOT the
-// context's PANE_ORDER: that includes "terminal", which this host never
-// mounts, and cycling focus onto an unmounted pane would strand it.
-const PANE_CYCLE = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
 
 function firstSelectableTask(tasks: readonly Task[], activeId: string | null): Task | undefined {
   const active = activeId ? tasks.find((task) => task.id === activeId && !task.archived) : undefined
@@ -79,7 +56,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const dialog = useDialog()
   const kv = useKV()
   const focus = useFocus()
-  const renderer = useRenderer()
   const dims = useTerminalDimensions()
   const notif = useNotifications()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.orchestrator.activeTaskSignal()())
@@ -113,56 +89,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
   const worktree = createMemo(() => taskWorktree(selectedTask()))
 
-  /* --------- files-column activity badge (issue #21) -------------------
-   * The Ops pane's `● new` transcript badge, absorbed into the files
-   * column: baseline seeds at "now's newest" so mounting onto a busy task
-   * doesn't flash stale activity; FileTree's refresh (`r`) is the "I've
-   * looked" ack. Source is the daemon's transcript.activity push, with
-   * the Ops pane's exact local-mtime fallback when no daemon data. */
-  const sharedActivityMap = () => props.orchestrator.transcriptActivitySignal()() ?? null
-  const [badgeBaseline, setBadgeBaseline] = createSignal(0)
-  const [badgeLatest, setBadgeLatest] = createSignal(0)
-  const [badgePrimed, setBadgePrimed] = createSignal(false)
-  createEffect(
-    on(worktree, () => {
-      setBadgePrimed(false)
-      setBadgeBaseline(0)
-      setBadgeLatest(0)
-    }),
-  )
-  createEffect(() => {
-    const wt = worktree()
-    const map = sharedActivityMap()
-    if (!wt || !map) return
-    const mtime = map.get(wt)?.mtimeMs ?? 0
-    if (!badgePrimed() && mtime > 0) {
-      setBadgePrimed(true)
-      setBadgeBaseline(mtime)
-    }
-    setBadgeLatest(mtime)
+  // Files-column activity badge (issue #21) — the `● new` transcript badge
+  // + its refresh-as-ack, extracted to `files-badge.ts` (file-size cap).
+  const { cornerBadge: filesCornerBadge, ackRefresh: ackFilesBadge } = useFilesBadge({
+    worktree,
+    vendor: () => selectedTask()?.vendor ?? DEFAULT_TASK_VENDOR,
+    activityMap: () => props.orchestrator.transcriptActivitySignal()() ?? null,
   })
-  createEffect(() => {
-    const wt = worktree()
-    if (!wt || sharedActivityMap() !== null) return
-    const vendor = selectedTask()?.vendor ?? DEFAULT_TASK_VENDOR
-    onCleanup(
-      startLocalBadgePoll(
-        // In-process host: no tmux attach gate (the pane is visible iff
-        // the app runs), only the engine-owned transcript mtime probe.
-        { sessionAttached: async () => true, latestMtime: () => latestTranscriptMtime(vendor, wt) },
-        {
-          isPrimed: () => badgePrimed(),
-          prime: (mtime) => {
-            setBadgePrimed(true)
-            setBadgeBaseline(mtime)
-          },
-          setLatest: setBadgeLatest,
-        },
-      ),
-    )
-  })
-  const filesCornerBadge = () =>
-    badgePrimed() && badgeLatest() > badgeBaseline() ? { text: t("ops.badge.newActivity"), active: true } : null
 
   createEffect(
     on(
@@ -214,88 +147,27 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focus.setFocused("workspace")
   }
 
-  // The SAME shared task-action flows the tmux Tasks pane runs
-  // (lib/task-actions — confirm copy, DIRTY_WORKTREE force-delete branch,
-  // error handling live there so hosts can't drift). What's built here is
-  // only this host's genuine divergences: dialog wiring, toast surfacing,
-  // and selection. No `switchBeforeKill` (no tmux client to yank), no
-  // `openCreateSurface` (no tmux tab to open — the in-pane NewTaskDialog
-  // IS the surface), no `reload` (this host is fully signal-driven).
-  const taskActions: CreateTaskContext = {
-    orch: props.orchestrator,
-    tasks: () => tasks(),
-    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
-    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
-    logger: console,
-    logPrefix: "[kobe workspace]",
-    notifyError,
-    notifyInfo,
-    updateActiveTask: true,
-    onTaskDeleted: (taskId, nextTask) => {
-      if (selectedId() !== taskId) return
-      const remaining = tasks()
-      setSelectedId(nextTask?.id ?? (remaining.find((task) => !task.archived) ?? remaining[0])?.id ?? null)
-    },
-    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
-    cursorRepo: () => selectedTask()?.repo ?? tasks()[0]?.repo,
-    lastVendor: (repo) => resolvePreferredVendor(repo),
-    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
-    selectTask: (id) => setSelectedId(id),
-    enterTask: (id) => activateTask(id),
-  }
-
-  const createTask = (): Promise<void> => createTaskFlow(taskActions)
-  const archiveTask = (id: string): Promise<void> => archiveTaskFlow(taskActions, id)
-  const deleteTask = (id: string): Promise<void> => deleteTaskFlow(taskActions, id)
-  const renameTask = (id: string): Promise<void> => renameTaskFlow(taskActions, id)
-  const renameBranch = (id: string): Promise<void> => renameBranchFlow(taskActions, id)
-  const cycleVendor = (id: string): Promise<void> => cycleVendorFlow(taskActions, id)
-
-  async function togglePin(id: string): Promise<void> {
-    const task = tasks().find((t) => t.id === id)
-    if (!task) return
-    await props.orchestrator.setPinned(id, !task.pinned).catch((err) => {
-      notifyError(`Couldn't pin: ${err instanceof Error ? err.message : String(err)}`)
+  // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
+  // — the CreateTaskContext + shared lib/task-actions flows live in
+  // host-task-actions.ts (file-size cap).
+  const { createTask, archiveTask, deleteTask, renameTask, renameBranch, cycleVendor, togglePin, moveTask } =
+    useWorkspaceTaskActions({
+      orchestrator: props.orchestrator,
+      tasks: () => tasks(),
+      dialog,
+      notifyError,
+      notifyInfo,
+      selectedId,
+      setSelectedId,
+      selectedTask,
+      activateTask,
     })
-  }
-
-  async function moveTask(id: string, delta: -1 | 1): Promise<void> {
-    await props.orchestrator.moveTask(id, delta).catch((err) => {
-      notifyError(`Couldn't move: ${err instanceof Error ? err.message : String(err)}`)
-    })
-  }
 
   const setSortMode = (next: "default" | "recent"): void => {
     // Apply locally for instant feedback, then persist — the kv write lands
     // in state.json and fans out to every other session's Tasks pane.
     setSortModeSig(next)
     kv.set("activeSortMode", next)
-  }
-
-  /**
-   * Restore the terminal BEFORE exiting — a bare process.exit leaves mouse
-   * tracking / kitty keyboard on, spraying `35;66;18M`-style junk into the
-   * user's shell. destroy() also runs the render options' onDestroy
-   * (orchestrator dispose). Same shape as settings-dialog/actions.ts.
-   */
-  function exitApp(): void {
-    try {
-      renderer?.destroy()
-    } catch (err) {
-      console.error("kobe: renderer.destroy() failed during quit:", err)
-    }
-    process.exit(0)
-  }
-
-  async function quit(): Promise<void> {
-    const ok = await DialogConfirm.show(
-      dialog,
-      t("workspace.quit.confirmTitle"),
-      t("workspace.quit.confirmBody"),
-      t("common.cancel"),
-      t("workspace.quit.confirmLabel"),
-    )
-    if (ok) exitApp()
   }
 
   // Imperative handle from the currently-mounted TerminalTabs (issue #16
@@ -382,89 +254,23 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // close keys (q/esc) via onClose.
   const [worktreesOpen, setWorktreesOpen] = createSignal(false)
 
-  function cyclePane(delta: 1 | -1): void {
-    const idx = PANE_CYCLE.indexOf(focus.focused() as (typeof PANE_CYCLE)[number])
-    const next = (idx + delta + PANE_CYCLE.length) % PANE_CYCLE.length
-    focus.setFocused(PANE_CYCLE[next] as PaneId)
-  }
-
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen(),
-    bindings: [
-      ...bindByIds({
-        "help.open": () => HelpDialog.show(dialog),
-        "focus.numeric": (_evt, slot) => {
-          const pane = PANE_BY_SLOT[slot ?? 0]
-          if (pane) focus.setFocused(pane)
-        },
-        // f4 — reserved from terminal passthrough, so the cycle behaves
-        // identically from every pane including inside the terminal.
-        // Deliberately not tab/shift+tab (engine completion / plan-mode);
-        // see the keymap row comment. Forward-only.
-        "focus.next": () => cyclePane(1),
-      }),
-    ],
-  }))
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && !focus.is("sidebar")(),
-    bindings: bindByIds({
-      "focus.sidebar": () => focus.setFocused("sidebar"),
-    }),
-  }))
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && focus.is("sidebar")(),
-    bindings: bindByIds({
-      // Slot dispatch (SLOT_CONTRACTS): slot 0 = quit confirm, slot 1 =
-      // hard exit — so user rebinds keep both verbs without inspecting
-      // the event's modifiers.
-      "app.quit": (_evt, slot) => {
-        if (slot === 1) {
-          exitApp()
-          return
-        }
-        void quit()
-      },
-      "settings.open.sidebar": () => openSettings(),
-      "worktrees.open.sidebar": () => setWorktreesOpen(true),
-    }),
-  }))
-  // Task-lifecycle chords (issue #20 — the tmux Tasks pane's n/b/v set).
-  // d/a/r/pin/move fire from the Sidebar's OWN keys via the Request props
-  // below; these three are host-scoped in both hosts. Gated on sidebar
-  // focus + no dialog + search inactive (typing `n` into the search box
-  // must not open the new-task dialog — same chord-leak class).
-  useBindings(() => ({
-    enabled:
-      dialog.stack.length === 0 && !settingsOpen() && !worktreesOpen() && focus.is("sidebar")() && !searchActive(),
-    bindings: bindByIds({
-      "task.new": () => void createTask(),
-      "tasks.renameBranch": () => {
-        const id = selectedId()
-        if (id) void renameBranch(id)
-      },
-      "tasks.cycleEngine": () => {
-        const id = selectedId()
-        if (id) void cycleVendor(id)
-      },
-      // Right arrow — the tmux Tasks pane's "go right into the engine"
-      // gesture (tasks.focusEngine), same row, pure-TUI equivalent: focus
-      // the workspace terminal. Gated on search-inactive (this group), so
-      // Right while typing a query keeps moving the input cursor.
-      "tasks.focusEngine": () => focus.setFocused("workspace"),
-    }),
-  }))
-  // Page-level close keys for the settings swap — mirrors settings/host.tsx's
-  // standalone page (no enclosing dialog stack to own esc/Ctrl+C, so the
-  // page binds them itself; gated on an empty dialog stack so a sub-dialog,
-  // e.g. the engine-command editor, keeps esc/typing for itself).
-  useBindings(() => ({
-    enabled: settingsOpen() && dialog.stack.length === 0,
-    bindings: [
-      { key: "escape", cmd: closeSettings },
-      { key: "q", cmd: closeSettings },
-      { key: "ctrl+c", cmd: closeSettings },
-    ],
-  }))
+  // Pane focus, quit/exit, task-lifecycle chords, and the settings-page
+  // close keys — the four useBindings blocks live in host-keybindings.ts
+  // (file-size cap); every handler is a host closure passed through.
+  useWorkspaceKeybindings({
+    focus,
+    dialog,
+    settingsOpen,
+    worktreesOpen,
+    openWorktrees: () => setWorktreesOpen(true),
+    searchActive,
+    selectedId,
+    openSettings,
+    closeSettings,
+    createTask: () => void createTask(),
+    renameBranch: (id) => void renameBranch(id),
+    cycleVendor: (id) => void cycleVendor(id),
+  })
 
   return (
     <Show
@@ -567,7 +373,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
                 // Ops-pane absorption (issue #21): the `● new` transcript badge
                 // + its refresh-as-ack, same contract as ops/host.tsx.
                 cornerBadge={filesCornerBadge}
-                onRefresh={() => setBadgeBaseline(badgeLatest())}
+                onRefresh={ackFilesBadge}
                 // Ops-pane corner actions: zen + PR.
                 onZenToggle={toggleZen}
                 onCreatePR={() => void createPR()}
