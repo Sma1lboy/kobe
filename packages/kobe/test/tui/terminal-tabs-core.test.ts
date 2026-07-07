@@ -65,10 +65,13 @@ describe("terminal tabs state", () => {
     expect(cycleTab(initialTabs(), 1).activeId).toBe("tab-1")
   })
 
-  it("selectTab jumps straight to a clicked tab and ignores an unknown id", () => {
+  it("selectTab jumps straight to a clicked tab, ignores unknown/already-active (no-op churn guard)", () => {
     const s = addTab(addTab(initialTabs())) // [1, 2, 3*]
     expect(selectTab(s, "tab-1").activeId).toBe("tab-1")
     expect(selectTab(s, "tab-99")).toBe(s)
+    // Clicking the already-active tab returns the SAME reference — no new
+    // object → the component skips the state.json write + re-render.
+    expect(selectTab(s, s.activeId)).toBe(s)
   })
 
   it("rename trims; blank clears back to the numbered default", () => {

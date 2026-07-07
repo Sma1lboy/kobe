@@ -458,6 +458,10 @@ export function TerminalTabs(props: {
           resetToken={resetToken}
           focused={props.focused}
           onRequestFocus={props.onRequestFocus}
+          // Engine leaf name = the tab's first-prompt title (title ?? auto),
+          // NOT the "group N" fallback — before the first prompt the split
+          // shows the vendor basename ("claude") instead of "group N".
+          engineTitle={() => active().title ?? active().autoTitle ?? null}
         />
       </Show>
     </box>

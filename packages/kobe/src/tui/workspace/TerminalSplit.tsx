@@ -98,6 +98,9 @@ export function TerminalSplit(props: {
   focused: () => boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
+  /** The tab's first-prompt title (title ?? autoTitle) — the engine leaf's
+   *  name, matching the group/tab label. Null before the first prompt. */
+  engineTitle?: () => string | null
 }): JSXElement {
   const { theme } = useTheme()
   // Derived, not a local signal: the layout lives on the tab (parent),
@@ -222,7 +225,7 @@ export function TerminalSplit(props: {
    *  name: F2 rename wins, default = basename of what it runs
    *  ("claude", "zsh", "zsh 2"…). Derivation is pure (`splitLeafNames`)
    *  so vitest pins it. */
-  const leafNames = () => splitLeafNames(leaves(state().root), props.command)
+  const leafNames = () => splitLeafNames(leaves(state().root), props.command, props.engineTitle?.())
 
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => {
     // Focus is LOCAL: a plain setActiveLeaf, so a click updates only the

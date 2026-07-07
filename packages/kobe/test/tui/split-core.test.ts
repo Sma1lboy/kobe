@@ -134,4 +134,15 @@ describe("split tree (content-agnostic)", () => {
     // A manual title never joins the dedupe pool — the remaining zsh stays bare.
     expect(renamed.get("leaf-3")).toBe("zsh")
   })
+
+  it("splitLeafNames: the engine leaf (null content) uses the first-prompt title when given", () => {
+    const s = splitActive(initialSplit(MAIN), "row", SH) // engine(leaf-1) | zsh(leaf-2)
+    // With a first-prompt title, the engine leaf shows it (matching the tab
+    // label); the shell leaf is unaffected.
+    const named = splitLeafNames(leaves(s.root), ["claude"], "fix the resize race")
+    expect(named.get("leaf-1")).toBe("fix the resize race")
+    expect(named.get("leaf-2")).toBe("zsh")
+    // No title yet → falls back to the command basename.
+    expect(splitLeafNames(leaves(s.root), ["claude"], null).get("leaf-1")).toBe("claude")
+  })
 })
