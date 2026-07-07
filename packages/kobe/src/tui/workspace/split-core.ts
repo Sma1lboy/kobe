@@ -22,6 +22,10 @@ export interface SplitLeaf<T> {
   readonly id: string
   /** Opaque payload — what this leaf displays. Owned by the adapter. */
   readonly content: T
+  /** User-set display name. Absent/null = the adapter's default name
+   *  (owner semantics 2026-07-06: the TAB is the "group"; every leaf
+   *  inside carries its own name, tab-title naming-flow style). */
+  readonly title?: string | null
 }
 
 export interface SplitGroup<T> {
@@ -102,6 +106,23 @@ export function removeLeaf<T>(state: SplitState<T>, id: string): SplitState<T> |
   const fallback = order[Math.max(0, order.indexOf(id) - 1)]
   const activeLeafId = state.activeLeafId === id ? fallback : state.activeLeafId
   return { ...state, root, activeLeafId }
+}
+
+/**
+ * Rename a leaf — empty/whitespace titles clear back to the adapter's
+ * default name, same semantics as `renameActiveTab`. Unknown ids no-op.
+ */
+export function renameLeaf<T>(state: SplitState<T>, id: string, title: string): SplitState<T> {
+  const trimmed = title.trim()
+  const next = trimmed.length > 0 ? trimmed : null
+  const walk = (node: SplitNode<T>): SplitNode<T> =>
+    node.kind === "leaf"
+      ? node.id === id
+        ? { ...node, title: next }
+        : node
+      : { ...node, children: node.children.map(walk) }
+  if (!leaves(state.root).some((l) => l.id === id)) return state
+  return { ...state, root: walk(state.root) }
 }
 
 /** Cycle leaf focus by ±1 in reading order, wrapping (tmux `prefix o`). */

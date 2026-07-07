@@ -261,3 +261,37 @@ export function tabPtyKey(taskId: string, tabId: string): string {
 export function splitLeafPtyKey(tabKey: string, leafId: string): string {
   return leafId === "leaf-1" ? tabKey : `${tabKey}::${leafId}`
 }
+
+/**
+ * Display names for a split tab's leaves, id → name (owner semantics
+ * 2026-07-06: the TAB is the "group"; each leaf carries its OWN name).
+ * Naming flow mirrors tabs: a manual rename (`leaf.title`) always wins;
+ * the default is the basename of the argv the leaf runs (`null` content
+ * = the tab's own command — so the engine leaf reads "claude"/"codex",
+ * split shells read "zsh"). Same-named defaults get a reading-order
+ * occurrence suffix ("zsh", "zsh 2") so two shells stay tellable apart;
+ * manual titles are never suffixed.
+ */
+export function splitLeafNames(
+  leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
+  tabCommand: readonly string[],
+): ReadonlyMap<string, string> {
+  const basename = (argv: readonly string[] | null): string => {
+    const head = (argv ?? tabCommand)[0] ?? ""
+    const name = head.split("/").at(-1) ?? ""
+    return name.length > 0 ? name : "?"
+  }
+  const seen = new Map<string, number>()
+  const out = new Map<string, string>()
+  for (const leaf of leafList) {
+    if (leaf.title) {
+      out.set(leaf.id, leaf.title)
+      continue
+    }
+    const name = basename(leaf.content)
+    const n = (seen.get(name) ?? 0) + 1
+    seen.set(name, n)
+    out.set(leaf.id, n === 1 ? name : `${name} ${n}`)
+  }
+  return out
+}

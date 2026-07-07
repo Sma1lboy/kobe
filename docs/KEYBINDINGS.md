@@ -337,6 +337,16 @@ ACTIVE LEAF (`workspace.split.close` — the innermost thing, VS Code/iTerm/Warp
 convention, tmux `prefix x`); unsplit, the entry is disabled and the chord falls through
 the LIFO stack to `chat.tab.close`.
 
+**Naming (owner correction 2026-07-06):** the TAB is the "group" — its default title is
+`group {n}` (`terminal.tab.defaultTitle`, still overridden by the auto first-prompt title
+and F2 rename per the tab naming flow). Each split leaf carries its OWN name in its corner
+tag, same flow shape: manual rename wins, default is the basename of what the leaf runs
+("claude", "zsh"; duplicate defaults get a reading-order suffix — "zsh 2"). `F2` is
+contextual exactly like `ctrl+w`: while split it renames the ACTIVE LEAF
+(`workspace.split.rename`); unsplit it falls through to `chat.tab.rename`. The original
+shipped shape (every leaf tagged `group {n}`) misread the vocabulary — "group" names the
+whole tab, never a single leaf.
+
 ### Pure-TUI pane navigation (2026-07-06) — cycle, dead slot, Right parity
 
 The `KOBE_TUI` workspace host is 3-pane (sidebar | embedded engine terminal | files) and the

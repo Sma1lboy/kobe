@@ -27,6 +27,7 @@
 
 import { type RGBA, TextAttributes } from "@opentui/core"
 import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
+import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
@@ -34,6 +35,7 @@ import { useBindings } from "../lib/keymap"
 import { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
+import { useDialog } from "../ui/dialog"
 import {
   type SplitLeaf,
   type SplitNode,
@@ -43,9 +45,10 @@ import {
   initialSplit,
   leaves,
   removeLeaf,
+  renameLeaf,
   splitActive,
 } from "./split-core"
-import { splitLeafPtyKey } from "./terminal-tabs-core"
+import { splitLeafNames, splitLeafPtyKey } from "./terminal-tabs-core"
 
 /** What a terminal leaf shows: null = the tab's own command (`leaf-1`). */
 type LeafCommand = readonly string[] | null
@@ -134,16 +137,29 @@ export function TerminalSplit(props: {
     }),
   }))
 
-  // ctrl+w closes the ACTIVE LEAF while split — the innermost thing, same
-  // convention as VS Code/iTerm/Warp (and tmux `prefix x`). Gated on
-  // isSplit(): when the tab is unsplit this entry is disabled and the
-  // chord falls through the LIFO stack to TerminalTabs' close-tab
-  // binding. Registered after the parent's bindings (child mounts later),
-  // so it wins the stack whenever enabled.
+  // ctrl+w closes / F2 renames the ACTIVE LEAF while split — the
+  // innermost thing, same convention as VS Code/iTerm/Warp (and tmux
+  // `prefix x`). Gated on isSplit(): when the tab is unsplit these
+  // entries are disabled and the chords fall through the LIFO stack to
+  // TerminalTabs' close-tab / rename-tab bindings. Registered after the
+  // parent's bindings (child mounts later), so they win when enabled.
+  const dialog = useDialog()
   useBindings(() => ({
     enabled: props.focused() && isSplit(),
     bindings: bindByIds({
       "workspace.split.close": () => removeAndRelease(state().activeLeafId),
+      "workspace.split.rename": () => {
+        const id = state().activeLeafId
+        void RenameTaskDialog.show(dialog, leafNames().get(id) ?? "", {
+          dialogTitle: t("terminal.split.renameTitle"),
+          fieldLabel: t("terminal.split.renameField"),
+          submitLabel: t("terminal.tab.renameSubmit"),
+          allowEmpty: true,
+        }).then((title) => {
+          if (title === undefined) return
+          update(renameLeaf(state(), id, title))
+        })
+      },
     }),
   }))
 
@@ -165,11 +181,12 @@ export function TerminalSplit(props: {
   const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
     divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
 
-  /** 1-based position of a leaf in reading order — the pane's default name
-   *  (`group {n}`, owner ask 2026-07-06: tabs have names, panes had none).
-   *  Positional on purpose: closing a middle pane renumbers the rest, the
-   *  same zero-state convention as tmux pane numbers. */
-  const leafOrdinal = (id: string) => leaves(state().root).findIndex((leaf) => leaf.id === id) + 1
+  /** id → display name. Owner correction 2026-07-06: the TAB is the
+   *  "group" (its default title says so) — each leaf carries its OWN
+   *  name: F2 rename wins, default = basename of what it runs
+   *  ("claude", "zsh", "zsh 2"…). Derivation is pure (`splitLeafNames`)
+   *  so vitest pins it. */
+  const leafNames = () => splitLeafNames(leaves(state().root), props.command)
 
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
     <box
@@ -187,17 +204,17 @@ export function TerminalSplit(props: {
         resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
         focused={() => leafFocused(leaf.id)}
       />
-      {/* Corner name tag — panes have no other identity while split. The
-          focused pane's tag lights in the focus accent; overlays the
+      {/* Corner name tag — the leaf's OWN name (see leafNames above);
+          the focused leaf's tag lights in the focus accent; overlays the
           terminal's top-right cell row (tmux-pane-number style, but
-          always on since it's the pane's only label). */}
+          always on since it's the leaf's only label). */}
       <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
         <text
           fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
           attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
           wrapMode="none"
         >
-          {` ${t("terminal.split.name", { n: leafOrdinal(leaf.id) })} `}
+          {` ${leafNames().get(leaf.id) ?? ""} `}
         </text>
       </box>
     </box>
