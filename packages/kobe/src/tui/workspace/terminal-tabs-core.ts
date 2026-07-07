@@ -262,9 +262,14 @@ export function cycleTab(state: TabsState, delta: 1 | -1): TabsState {
   return { ...state, activeId: next.id }
 }
 
-/** Switch directly to `id` (the tab strip's click target) — no-op if it isn't present. */
+/** Switch directly to `id` (the tab strip's click target) — no-op if it
+ *  isn't present OR is already active. The already-active guard matters:
+ *  without it, clicking the current tab returned a NEW state object, which
+ *  the component persisted (state.json write) and re-rendered — the same
+ *  no-op-churn class as `focusLeaf`/`setTabSplit`. */
 export function selectTab(state: TabsState, id: string): TabsState {
-  return state.tabs.some((t) => t.id === id) ? { ...state, activeId: id } : state
+  if (state.activeId === id || !state.tabs.some((t) => t.id === id)) return state
+  return { ...state, activeId: id }
 }
 
 /**
@@ -298,16 +303,20 @@ export function splitLeafPtyKey(tabKey: string, leafId: string): string {
 /**
  * Display names for a split tab's leaves, id → name (owner semantics
  * 2026-07-06: the TAB is the "group"; each leaf carries its OWN name).
- * Naming flow mirrors tabs: a manual rename (`leaf.title`) always wins;
- * the default is the basename of the argv the leaf runs (`null` content
- * = the tab's own command — so the engine leaf reads "claude"/"codex",
- * split shells read "zsh"). Same-named defaults get a reading-order
- * occurrence suffix ("zsh", "zsh 2") so two shells stay tellable apart;
- * manual titles are never suffixed.
+ * Naming flow mirrors tabs: a manual rename (`leaf.title`) always wins.
+ *
+ * The ENGINE leaf (`null` content = the tab's own command) reads the
+ * conversation's first-prompt title (`engineTitle` — the tab's own
+ * title/autoTitle, the same string the group/tab label shows), falling back
+ * to the command basename ("claude"/"codex") before the first prompt lands.
+ * Split SHELL leaves read the basename of the argv they run ("zsh"); same-
+ * named defaults get a reading-order occurrence suffix ("zsh", "zsh 2") so
+ * two shells stay tellable apart. Manual titles are never suffixed.
  */
 export function splitLeafNames(
   leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
   tabCommand: readonly string[],
+  engineTitle?: string | null,
 ): ReadonlyMap<string, string> {
   const basename = (argv: readonly string[] | null): string => {
     const head = (argv ?? tabCommand)[0] ?? ""
@@ -321,7 +330,7 @@ export function splitLeafNames(
       out.set(leaf.id, leaf.title)
       continue
     }
-    const name = basename(leaf.content)
+    const name = leaf.content === null && engineTitle ? engineTitle : basename(leaf.content)
     const n = (seen.get(name) ?? 0) + 1
     seen.set(name, n)
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)
