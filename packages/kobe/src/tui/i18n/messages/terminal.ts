@@ -9,10 +9,11 @@ export const en = {
   exited: "process exited — F5 restarts it",
   restoring: "restoring session…",
   tab: {
-    // Content-neutral on purpose: tabs will host
-    // more than terminals, so the numbered fallback must not say
-    // "Terminal".
-    defaultTitle: "Tab {n}",
+    // "group" is the owner's vocabulary for a whole tab (2026-07-06
+    // correction: the TAB is the group; the leaves inside carry their
+    // own names). Content-neutral on purpose: tabs host more than
+    // terminals, so the numbered fallback must not say "Terminal".
+    defaultTitle: "group {n}",
     renameTitle: "Rename tab",
     renameField: "tab title",
     renameSubmit: "rename",
@@ -21,9 +22,10 @@ export const en = {
     cannotCloseLast: "Cannot close the only tab",
   },
   split: {
-    // Corner tag on each pane while a tab is split — panes have no other
-    // identity ("group" is the owner's vocabulary for a split pane).
-    name: "group {n}",
+    // F2-while-split rename dialog (each leaf's own name — the corner
+    // tag defaults to the basename of what the leaf runs).
+    renameTitle: "Rename split",
+    renameField: "split name",
   },
   scrolledBack: "↑ scrolled {lines}L (ctrl+pgdn to follow)",
   unavailable: {
@@ -41,7 +43,7 @@ export const zh: typeof en = {
   exited: "进程已退出 —— 按 F5 重启",
   restoring: "正在恢复会话…",
   tab: {
-    defaultTitle: "Tab {n}",
+    defaultTitle: "group {n}",
     renameTitle: "重命名标签页",
     renameField: "标签页名称",
     renameSubmit: "重命名",
@@ -50,7 +52,8 @@ export const zh: typeof en = {
     cannotCloseLast: "无法关闭唯一的标签页",
   },
   split: {
-    name: "group {n}",
+    renameTitle: "重命名分屏",
+    renameField: "分屏名称",
   },
   scrolledBack: "↑ 已回滚 {lines} 行（ctrl+pgdn 回到底部）",
   unavailable: {

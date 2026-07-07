@@ -13,10 +13,15 @@
  * collapses). When the LAST leaf exits, the tab-level `onExit` fires —
  * the caller keeps owning the engine-degrade / close-tab decision.
  *
- * Split state lives in a module-level map keyed by the tab's PTY key,
- * mirroring `TerminalTabs.tsx`'s `tabsByTask` pattern, so switching
- * tasks/tabs and back preserves each tab's layout (the leaf PTYs
- * already survive via the registry's acquire-reuse).
+ * Split state lives ON the tab (`TerminalTab.splitTree`, owned by
+ * `TerminalTabs.tsx` and persisted to state.json), passed down as the
+ * `splitTree` prop and mutated back through `onSplitChange`. That single
+ * source of truth means switching tabs restores each tab's layout AND the
+ * layout survives restart (owner ask 2026-07-06): on reopen `leaf-1`
+ * resumes the tab's engine via its sessionId, the other leaves respawn
+ * their shells fresh (the LAYOUT is frozen — a shell the user ran `claude`
+ * in comes back as a shell, we don't track the inner session). Leaf PTYs
+ * survive in-session via the registry's acquire-reuse.
  *
  * Render fast path: while a tab is UNSPLIT (the overwhelmingly common
  * case) the body is one long-lived `<Terminal>` whose props swap on tab
@@ -26,7 +31,8 @@
  */
 
 import { type RGBA, TextAttributes } from "@opentui/core"
-import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
+import { type Accessor, For, type JSXElement, Show } from "solid-js"
+import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
@@ -34,6 +40,7 @@ import { useBindings } from "../lib/keymap"
 import { Terminal } from "../panes/terminal/Terminal"
 import { defaultShell } from "../panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../panes/terminal/registry"
+import { useDialog } from "../ui/dialog"
 import {
   type SplitLeaf,
   type SplitNode,
@@ -43,38 +50,48 @@ import {
   initialSplit,
   leaves,
   removeLeaf,
+  renameLeaf,
   splitActive,
 } from "./split-core"
-import { splitLeafPtyKey } from "./terminal-tabs-core"
+import { type PersistedSplit, splitLeafNames, splitLeafPtyKey } from "./terminal-tabs-core"
 
 /** What a terminal leaf shows: null = the tab's own command (`leaf-1`). */
 type LeafCommand = readonly string[] | null
 
-/** Per-tab split state, preserved across task/tab switches (see header). */
-const splitsByTab = new Map<string, SplitState<LeafCommand>>()
+/** The unsplit sentinel — a stable single-leaf tree so a `null` splitTree
+ *  renders the fast path without minting a fresh object per read. */
+const UNSPLIT: PersistedSplit = initialSplit(null)
 
 /**
- * Release every split-created leaf PTY of `tabKey` and forget its
- * layout — the tab-close counterpart of `TerminalTabs.tsx`'s own
- * `release(tabPtyKey(...))` (which only covers `leaf-1`). Without this,
- * closing a split tab leaked every extra leaf's shell until task
- * archive.
+ * Release every split-created leaf PTY of `tabKey` — the tab-close
+ * counterpart of `TerminalTabs.tsx`'s own `release(tabPtyKey(...))`
+ * (which only covers `leaf-1`). Without this, closing a split tab leaked
+ * every extra leaf's shell until task archive. Takes the tree explicitly
+ * (it lives on the persisted tab now, not a module map); null/unsplit
+ * trees release nothing.
  */
-export function releaseSplitLeaves(tabKey: string): void {
-  const state = splitsByTab.get(tabKey)
-  if (!state) return
-  splitsByTab.delete(tabKey)
-  for (const leaf of leaves(state.root)) {
+export function releaseSplitLeaves(tabKey: string, tree: PersistedSplit | null): void {
+  if (!tree) return
+  for (const leaf of leaves(tree.root)) {
     if (leaf.id !== "leaf-1") getDefaultPtyRegistry().release(splitLeafPtyKey(tabKey, leaf.id))
   }
 }
 
 export function TerminalSplit(props: {
-  /** `tabPtyKey(taskId, tabId)` — PTY registry prefix AND layout map key. */
+  /** `tabPtyKey(taskId, tabId)` — PTY registry prefix for this tab's leaves. */
   tabKey: string
   cwd: () => string
   /** What the tab's ORIGINAL leaf (`leaf-1`) runs — engine or command. */
   command: readonly string[]
+  /**
+   * The active tab's frozen split layout (null = unsplit). Owned by the
+   * parent (`TerminalTabs` stores it on the tab, persisted to state.json),
+   * so switching tabs swaps this prop and the layout follows — no local
+   * per-tab map, and the layout survives restart for free.
+   */
+  splitTree: () => PersistedSplit | null
+  /** Persist a changed layout (null clears back to the unsplit fast path). */
+  onSplitChange: (next: PersistedSplit | null) => void
   /** Tab-level exit behavior; fires only when the LAST leaf exits. */
   onExit?: () => void
   /** Forwarded to `leaf-1`'s Terminal — the shell-degrade reacquire nudge. */
@@ -82,21 +99,14 @@ export function TerminalSplit(props: {
   focused: () => boolean
 }): JSXElement {
   const { theme } = useTheme()
-  const [state, setState] = createSignal<SplitState<LeafCommand>>(splitsByTab.get(props.tabKey) ?? initialSplit(null))
-  // Track tab switches: the host renders ONE long-lived body and swaps
-  // props (bcc59e90 killed the remount-per-switch), so `tabKey` changes
-  // in place and the layout must follow it — an init-only read would
-  // freeze every tab on the first tab's layout.
-  createEffect(
-    on(
-      () => props.tabKey,
-      (key) => setState(splitsByTab.get(key) ?? initialSplit(null)),
-      { defer: true },
-    ),
-  )
+  // Derived, not a local signal: the layout lives on the tab (parent),
+  // so a tab switch (props.splitTree changes) restores that tab's layout
+  // reactively — bcc59e90's no-remount body still swaps props in place.
+  const state = (): PersistedSplit => props.splitTree() ?? UNSPLIT
+  // Persist through the parent; clearing to a single leaf drops the tree
+  // so an unsplit tab returns to the fast path (and stops persisting one).
   const update = (next: SplitState<LeafCommand>): void => {
-    splitsByTab.set(props.tabKey, next)
-    setState(next)
+    props.onSplitChange(leaves(next.root).length > 1 ? next : null)
   }
 
   const isSplit = () => leaves(state().root).length > 1
@@ -117,11 +127,12 @@ export function TerminalSplit(props: {
 
   function onLeafExit(id: string): void {
     if (removeAndRelease(id)) return
-    // Last leaf — reset the layout (releasing any dead non-leaf-1
-    // registry entry it still names) and hand the exit to the tab's
-    // own behavior (engine → degrade to shell, command tab → close).
-    releaseSplitLeaves(props.tabKey)
-    setState(initialSplit(null))
+    // Last leaf — release any dead non-leaf-1 registry entry the tree
+    // still names, clear the layout (back to the unsplit fast path), and
+    // hand the exit to the tab's own behavior (engine → degrade to shell,
+    // command tab → close).
+    releaseSplitLeaves(props.tabKey, state())
+    props.onSplitChange(null)
     props.onExit?.()
   }
 
@@ -134,16 +145,29 @@ export function TerminalSplit(props: {
     }),
   }))
 
-  // ctrl+w closes the ACTIVE LEAF while split — the innermost thing, same
-  // convention as VS Code/iTerm/Warp (and tmux `prefix x`). Gated on
-  // isSplit(): when the tab is unsplit this entry is disabled and the
-  // chord falls through the LIFO stack to TerminalTabs' close-tab
-  // binding. Registered after the parent's bindings (child mounts later),
-  // so it wins the stack whenever enabled.
+  // ctrl+w closes / F2 renames the ACTIVE LEAF while split — the
+  // innermost thing, same convention as VS Code/iTerm/Warp (and tmux
+  // `prefix x`). Gated on isSplit(): when the tab is unsplit these
+  // entries are disabled and the chords fall through the LIFO stack to
+  // TerminalTabs' close-tab / rename-tab bindings. Registered after the
+  // parent's bindings (child mounts later), so they win when enabled.
+  const dialog = useDialog()
   useBindings(() => ({
     enabled: props.focused() && isSplit(),
     bindings: bindByIds({
       "workspace.split.close": () => removeAndRelease(state().activeLeafId),
+      "workspace.split.rename": () => {
+        const id = state().activeLeafId
+        void RenameTaskDialog.show(dialog, leafNames().get(id) ?? "", {
+          dialogTitle: t("terminal.split.renameTitle"),
+          fieldLabel: t("terminal.split.renameField"),
+          submitLabel: t("terminal.tab.renameSubmit"),
+          allowEmpty: true,
+        }).then((title) => {
+          if (title === undefined) return
+          update(renameLeaf(state(), id, title))
+        })
+      },
     }),
   }))
 
@@ -165,11 +189,12 @@ export function TerminalSplit(props: {
   const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
     divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
 
-  /** 1-based position of a leaf in reading order — the pane's default name
-   *  (`group {n}`, owner ask 2026-07-06: tabs have names, panes had none).
-   *  Positional on purpose: closing a middle pane renumbers the rest, the
-   *  same zero-state convention as tmux pane numbers. */
-  const leafOrdinal = (id: string) => leaves(state().root).findIndex((leaf) => leaf.id === id) + 1
+  /** id → display name. Owner correction 2026-07-06: the TAB is the
+   *  "group" (its default title says so) — each leaf carries its OWN
+   *  name: F2 rename wins, default = basename of what it runs
+   *  ("claude", "zsh", "zsh 2"…). Derivation is pure (`splitLeafNames`)
+   *  so vitest pins it. */
+  const leafNames = () => splitLeafNames(leaves(state().root), props.command)
 
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => (
     <box
@@ -187,17 +212,17 @@ export function TerminalSplit(props: {
         resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
         focused={() => leafFocused(leaf.id)}
       />
-      {/* Corner name tag — panes have no other identity while split. The
-          focused pane's tag lights in the focus accent; overlays the
+      {/* Corner name tag — the leaf's OWN name (see leafNames above);
+          the focused leaf's tag lights in the focus accent; overlays the
           terminal's top-right cell row (tmux-pane-number style, but
-          always on since it's the pane's only label). */}
+          always on since it's the leaf's only label). */}
       <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
         <text
           fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
           attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
           wrapMode="none"
         >
-          {` ${t("terminal.split.name", { n: leafOrdinal(leaf.id) })} `}
+          {` ${leafNames().get(leaf.id) ?? ""} `}
         </text>
       </box>
     </box>

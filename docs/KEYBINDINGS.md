@@ -3,7 +3,7 @@
 Single source of truth for "what keys do what, where, and why."
 Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
-> **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
+> **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now; **`focus.next` revived 2026-07-06** for the pure TUI, on `f4`, forward-only — see the pure-TUI navigation decision log), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
 
 Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings installed by [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts). Their DEFAULT chords live in [`packages/kobe/src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) (`TMUX_SINGLE_BINDING_DEFAULTS` / `TMUX_FOCUS_DEFAULTS`, user-overridable via `tmux.*` ids — see "User customization" below), and the in-session Tasks pane footer ([`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx)) renders from the same resolved set. Change a handover default in the defaults table, not at the install site.
 
@@ -60,7 +60,7 @@ site — they should agree.
 | `esc`            | dialog dismiss vs chat interrupt        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog and chat focused while streaming, `chat.interrupt` cancels the turn. Idle ESC is a no-op so the composer doesn't lose focus mid-edit. |
 | `ctrl+c`         | copy selection vs double-tap quit       | RETIRED with the outer monitor (`app.copy_or_quit` + `useKobeKeybindings` are gone). In pane hosts `ctrl+c` is host-local (Ops/settings hosts exit); inside a Handover the terminal/tmux own it. |
 | `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
-| `tab`            | pane cycle vs textarea focus actions    | RETIRED — `focus.next`/`focus.prev` were removed with the outer monitor; `tab` reaches the focused renderable untouched.                                                      |
+| `tab`            | pane cycle vs shell completion          | `tab` stays UNBOUND at the pane level — it reaches the focused renderable untouched. Pane cycling is `focus.next` on `f4` only (pure TUI, 2026-07-06, see decision log). `tab` and `shift+tab` were both tried for the cycle that day and cut the same day: the cycle path always lands on the workspace terminal, which must keep tab as shell/engine completion (so tab-cycling trapped there every lap and typed a `\t` into the engine composer on arrival), and shift+tab is claude's plan-mode chord. |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
 | `ctrl+[` / `ctrl+]` | outer dialog sub-tab cycle vs tmux ChatTab cycle | In the outer TUI, the New Task dialog owns `ctrl+[` / `ctrl+]` locally to switch its sub-tabs. Inside a Handover, the same chords are tmux no-prefix bindings on the dedicated `-L kobe` socket: previous / next ChatTab window. The old self-rendered chat-tab handler is stale; ChatTabs are tmux windows now. |
 | `ctrl+w` | readline delete-word vs tmux ChatTab close | Inside a Handover, kobe restores the v0.5 close-tab chord as a tmux no-prefix binding. It closes the current ChatTab window only when another window remains; the final window is protected so `ctrl+w` cannot accidentally destroy the whole Task tmux Session. |
@@ -337,6 +337,46 @@ ACTIVE LEAF (`workspace.split.close` — the innermost thing, VS Code/iTerm/Warp
 convention, tmux `prefix x`); unsplit, the entry is disabled and the chord falls through
 the LIFO stack to `chat.tab.close`.
 
+**Naming (owner correction 2026-07-06):** the TAB is the "group" — its default title is
+`group {n}` (`terminal.tab.defaultTitle`, still overridden by the auto first-prompt title
+and F2 rename per the tab naming flow). Each split leaf carries its OWN name in its corner
+tag, same flow shape: manual rename wins, default is the basename of what the leaf runs
+("claude", "zsh"; duplicate defaults get a reading-order suffix — "zsh 2"). `F2` is
+contextual exactly like `ctrl+w`: while split it renames the ACTIVE LEAF
+(`workspace.split.rename`); unsplit it falls through to `chat.tab.rename`. The original
+shipped shape (every leaf tagged `group {n}`) misread the vocabulary — "group" names the
+whole tab, never a single leaf.
+
+### Pure-TUI pane navigation (2026-07-06) — cycle, dead slot, Right parity
+
+The `KOBE_TUI` workspace host is 3-pane (sidebar | embedded engine terminal | files) and the
+embedded terminal passes `ctrl+hjkl` through to the engine — so the navigation matrix had a
+hole: workspace → files always cost two hops (`ctrl+q` to sidebar, then `ctrl+k`). Fixes,
+all in this pass:
+
+- **`focus.next` (`f4`)** — pane cycle through the host's real panes
+  (sidebar → workspace → files → wrap), finally wiring the `cycle()` that
+  `context/focus.tsx` designed for this. `f4` is in `RESERVED_GLOBAL_CHORDS`, so the
+  chord behaves IDENTICALLY from every pane, including inside the embedded terminal —
+  closing the workspace → files hole (it's the one cross-pane chord besides `ctrl+q`
+  reachable there). F-key chosen because F2/F3/F5 already carry kobe's
+  rename/split/reset vocabulary in the terminal; engines don't use F4.
+  **Why not `tab`** (tried first, cut same-day after owner testing): the cycle path
+  always lands on the workspace terminal, which must keep `tab` as shell/engine
+  completion — so a tab-cycle trapped there every lap ("tab stops working"), and worse,
+  the arrival keystroke typed a literal `\t` into the engine composer. A chord that
+  half-works is worse than absent; one key, one meaning. **Why not `shift+tab`
+  reverse**: claude's plan-mode chord — cycling panes in one pane and toggling
+  plan-mode in another reads as a conflict. Forward-only (tmux `prefix o` shape);
+  with 3 panes, prev is just `f4` twice.
+- **`ctrl+l` dead slot** — `focus.numeric` has 4 chords but the host had 3 slot targets,
+  so `ctrl+l` was a no-op. It now maps to workspace: the middle column IS the terminal
+  in this host, so tmux-layer muscle memory ("l = terminal") lands somewhere sensible.
+- **Sidebar `Right` → workspace** — the tmux Tasks pane's `tasks.focusEngine` row,
+  registered by the pure-TUI host too (gated on `/`-search inactive, same as tmux).
+  The host cycles over its own pane list, not `PANE_ORDER` — that includes `"terminal"`,
+  which this host never mounts, and focus must never land on an unmounted pane.
+
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 
 We iterated through three candidates before landing on `ctrl+hjkl`. Recording the journey here so the next agent (or Jackson) doesn't
@@ -393,6 +433,7 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 | `ctrl+t` / `ctrl+w` / `ctrl+]` / `ctrl+[` / `F2` | terminal tab management (PTY chattab) |
 | `ctrl+e` | new chat tab with a chosen engine (`chat.tab.chooseEngine`) — see the decision log below for why not `ctrl+shift+t` |
 | `ctrl+\` / `ctrl+=` / `F3` | workspace splits (`workspace.split.right` / `.down` / `.focus-next`) — see the split decision log below |
+| `F4` | pane cycle (`focus.next`) — the one cross-pane chord besides `ctrl+q` that works from inside the terminal (see the pure-TUI navigation decision log below) |
 | `F5` | terminal reset (confirm-gated) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 

@@ -12,6 +12,15 @@
  */
 
 import type { VendorId } from "@/types/vendor"
+import type { SplitState } from "./split-core"
+
+/**
+ * A tab's frozen split layout — the content-agnostic tree (`split-core`)
+ * with terminal-flavored leaf payloads: `null` = the tab's own engine
+ * command (only `leaf-1`), an argv = a split-created shell. JSON-safe, so
+ * it rides the persisted tab straight into state.json.
+ */
+export type PersistedSplit = SplitState<readonly string[] | null>
 
 interface TabBase {
   /** Stable id — registry key suffix. Never reused within a task. */
@@ -29,6 +38,17 @@ interface TabBase {
    * keeps the name of the conversation it hosted.
    */
   readonly autoTitle?: string | null
+  /**
+   * Frozen split layout for this tab (the "group"). Absent/null = unsplit
+   * (the tab's own engine fills the whole body). Persisted WITH the tab so
+   * the layout survives restart (owner ask 2026-07-06): `leaf-1` is the
+   * tab's engine and resumes via the tab's sessionId exactly like an
+   * unsplit tab; the other leaves are shells that respawn fresh. We freeze
+   * the LAYOUT only — a shell the user ran `claude` inside comes back as a
+   * shell, not a tracked/resumed session. Owned by `TerminalSplit`, mutated
+   * through `setTabSplit`.
+   */
+  readonly splitTree?: PersistedSplit | null
 }
 
 /**
@@ -247,6 +267,19 @@ export function selectTab(state: TabsState, id: string): TabsState {
   return state.tabs.some((t) => t.id === id) ? { ...state, activeId: id } : state
 }
 
+/**
+ * Set (or clear, with `null`) a tab's frozen split layout. Pure so vitest
+ * pins the persistence round-trip; `TerminalSplit` calls it through the
+ * component's `update` (which writes state.json), so every split / rename
+ * / close inside the tree lands on disk and survives restart. Unknown ids
+ * no-op.
+ */
+export function setTabSplit(state: TabsState, id: string, tree: PersistedSplit | null): TabsState {
+  if (!state.tabs.some((t) => t.id === id)) return state
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, splitTree: tree } : t))
+  return { ...state, tabs }
+}
+
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */
 export function tabPtyKey(taskId: string, tabId: string): string {
   return `${taskId}::${tabId}`
@@ -260,4 +293,38 @@ export function tabPtyKey(taskId: string, tabId: string): string {
  */
 export function splitLeafPtyKey(tabKey: string, leafId: string): string {
   return leafId === "leaf-1" ? tabKey : `${tabKey}::${leafId}`
+}
+
+/**
+ * Display names for a split tab's leaves, id → name (owner semantics
+ * 2026-07-06: the TAB is the "group"; each leaf carries its OWN name).
+ * Naming flow mirrors tabs: a manual rename (`leaf.title`) always wins;
+ * the default is the basename of the argv the leaf runs (`null` content
+ * = the tab's own command — so the engine leaf reads "claude"/"codex",
+ * split shells read "zsh"). Same-named defaults get a reading-order
+ * occurrence suffix ("zsh", "zsh 2") so two shells stay tellable apart;
+ * manual titles are never suffixed.
+ */
+export function splitLeafNames(
+  leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
+  tabCommand: readonly string[],
+): ReadonlyMap<string, string> {
+  const basename = (argv: readonly string[] | null): string => {
+    const head = (argv ?? tabCommand)[0] ?? ""
+    const name = head.split("/").at(-1) ?? ""
+    return name.length > 0 ? name : "?"
+  }
+  const seen = new Map<string, number>()
+  const out = new Map<string, string>()
+  for (const leaf of leafList) {
+    if (leaf.title) {
+      out.set(leaf.id, leaf.title)
+      continue
+    }
+    const name = basename(leaf.content)
+    const n = (seen.get(name) ?? 0) + 1
+    seen.set(name, n)
+    out.set(leaf.id, n === 1 ? name : `${name} ${n}`)
+  }
+  return out
 }
