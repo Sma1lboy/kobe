@@ -12,7 +12,7 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import type { SplitState } from "./split-core"
+import { type SplitState, leaves } from "./split-core"
 
 /**
  * A tab's frozen split layout — the content-agnostic tree (`split-core`)
@@ -238,15 +238,19 @@ export function markTabSpawned(state: TabsState, id: string): TabsState {
 }
 
 /**
- * Rehydrate a persisted tab snapshot (issue #22). Command tabs are
- * transient by nature (an editor that quit, a degraded shell) — they are
- * dropped, engine tabs survive with their identity + sessionId so the
- * host can `--resume` them. Guards against a corrupt/empty snapshot by
- * falling back to `initialTabs()`; re-anchors `activeId` if it pointed
- * at a dropped tab.
+ * Rehydrate a persisted tab snapshot (issue #22). A tab is a TERMINAL
+ * (owner model 2026-07-07): claude/an editor are just processes that ran
+ * in it, so EVERY tab survives restart. Engine tabs keep their identity
+ * + sessionId so the host can `--resume` the conversation; command tabs
+ * (an engine degraded to a shell, a dead editor) come back running
+ * `shell` — their old process is gone, and resurrecting a fresh engine
+ * in its place was the "closed shell reopens as claude" bug. Same
+ * freeze-the-layout rule splitTree restore follows. Guards against a
+ * corrupt/empty snapshot by falling back to `initialTabs()`; re-anchors
+ * `activeId` if it pointed at a tab that no longer exists.
  */
-export function rehydrateTabs(persisted: TabsState): TabsState {
-  const tabs = persisted.tabs.filter((t): t is EngineTab => t.kind === "engine")
+export function rehydrateTabs(persisted: TabsState, shell: readonly string[]): TabsState {
+  const tabs = persisted.tabs.map((t): TerminalTab => (t.kind === "command" ? { ...t, command: shell } : t))
   if (tabs.length === 0) return initialTabs()
   const activeId = tabs.some((t) => t.id === persisted.activeId) ? persisted.activeId : tabs[0].id
   const maxOrdinal = tabs.reduce((max, t) => Math.max(max, t.ordinal), 0)
@@ -285,6 +289,18 @@ export function setTabSplit(state: TabsState, id: string, tree: PersistedSplit |
   return { ...state, tabs }
 }
 
+/**
+ * Whether a tab still runs its own engine leaf (`leaf-1`) — false once
+ * you've closed it inside a split and only split-created shells survive
+ * (57e3a20a). Unsplit (no tree) always counts as having it. Callers that
+ * treat an engine tab as having live turn activity (the turn-poll loop,
+ * the tab-strip's turn chip) must gate on this too, or a closed engine
+ * leaf leaves a stale poll flapping against its released PTY.
+ */
+export function hasEngineLeaf(tree: PersistedSplit | null | undefined): boolean {
+  return !tree || leaves(tree.root).some((l) => l.id === "leaf-1")
+}
+
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */
 export function tabPtyKey(taskId: string, tabId: string): string {
   return `${taskId}::${tabId}`
@@ -309,10 +325,13 @@ export function splitLeafPtyKey(tabKey: string, leafId: string): string {
  * conversation's first-prompt title (`engineTitle` — the tab's own
  * title/autoTitle, the same string the group/tab label shows), falling back
  * to the command basename ("claude"/"codex") before the first prompt lands.
- * Split SHELL leaves read a generic "shell" (owner ask 2026-07-06 — a bare
- * shell has no meaningful program name); same-named defaults get a reading-
- * order occurrence suffix ("shell", "shell 2") so two shells stay tellable
- * apart. Manual titles (F2 rename) always win and are never suffixed.
+ * Split SHELL leaves read their live foreground-process title (`liveTitles`
+ * — the OSC 0/2 window-title escape the shell/program sets, same mechanism
+ * a real terminal tab uses: "zsh" idle, "vim"/"htop" once you run one),
+ * falling back to the generic "shell" before any title has landed yet.
+ * Same-named defaults get a reading-order occurrence suffix ("shell",
+ * "shell 2") so two untitled shells stay tellable apart. Manual titles (F2
+ * rename) always win and are never suffixed.
  */
 /** Generic default name for a split-created shell leaf (a bare shell has no
  *  meaningful program name). Shared so the corner tag and a collapsed tab's
@@ -323,6 +342,7 @@ export function splitLeafNames(
   leafList: readonly { id: string; title?: string | null; content: readonly string[] | null }[],
   tabCommand: readonly string[],
   engineTitle?: string | null,
+  liveTitles?: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, string> {
   const basename = (argv: readonly string[] | null): string => {
     const head = (argv ?? tabCommand)[0] ?? ""
@@ -337,8 +357,10 @@ export function splitLeafNames(
       continue
     }
     // Engine leaf → first-prompt title (else vendor basename); split shell
-    // leaf → generic "shell". Both dedupe by reading order.
-    const name = leaf.content === null ? engineTitle || basename(leaf.content) : SHELL_LEAF_NAME
+    // leaf → its live foreground-process title, else generic "shell".
+    // Both dedupe by reading order.
+    const name =
+      leaf.content === null ? engineTitle || basename(leaf.content) : liveTitles?.get(leaf.id) || SHELL_LEAF_NAME
     const n = (seen.get(name) ?? 0) + 1
     seen.set(name, n)
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)

@@ -1,3 +1,4 @@
+import { parse } from "@ansi-tools/parser"
 import type { Chunk } from "./sgr"
 
 /** One rendered row: a list of opentui-ready style runs. */
@@ -56,6 +57,15 @@ export interface TaskPtyLike {
    */
   onExit(cb: () => void): () => void
   /**
+   * Notify when the foreground command's window title changes — the
+   * same OSC 0/2 mechanism a real terminal emulator uses to show "vim"
+   * or "htop" in a tab instead of a static "shell" (real terminals track
+   * this per-pane). Fires immediately with the latest known title on
+   * subscribe, same replay contract as `onData`. Never fires if the
+   * shell/program never sets one.
+   */
+  onTitleChange(cb: (title: string) => void): () => void
+  /**
    * Route a mouse-wheel tick the way a real terminal emulator would:
    * the app enabled mouse tracking → encode an SGR wheel event at
    * (col,row) (1-based, pane-local) and forward it — the app scrolls
@@ -78,6 +88,25 @@ export const VISIBLE_SCROLLBACK_MARGIN_ROWS = 200
 
 export function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
+}
+
+/**
+ * Extract the last OSC 0/2 (icon+title / title) escape's payload from a
+ * chunk of raw terminal output — `\x1b]0;name\x07` or `\x1b]2;name\x07`,
+ * the window-title mechanism shells/programs (vim, htop, ssh, npm…) use
+ * to name themselves. Backends without a full emulator (`PipeTaskPty`,
+ * `MockTaskPty`) call this per chunk; `BunTerminalTaskPty` gets it for
+ * free from `@xterm/headless`'s own `onTitleChange`. Returns null if the
+ * chunk carries no title escape.
+ */
+export function extractOscTitle(chunk: string): string | null {
+  let title: string | null = null
+  for (const code of parse(chunk)) {
+    if (code.type === "OSC" && (code.command === "0" || code.command === "2") && code.params[0]) {
+      title = code.params[0]
+    }
+  }
+  return title
 }
 
 /**

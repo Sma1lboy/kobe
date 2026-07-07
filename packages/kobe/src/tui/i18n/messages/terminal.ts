@@ -9,12 +9,9 @@ export const en = {
   exited: "process exited — F5 restarts it",
   restoring: "restoring session…",
   tab: {
-    // A NORMAL (single) tab is just "tab N"; only a SPLIT tab is a "group"
-    // (see groupTitle) — the tab that groups several leaves, each carrying
-    // its own name. Content-neutral on purpose: tabs host more than
-    // terminals, so the numbered fallback must not say "Terminal".
-    defaultTitle: "tab {n}",
-    // A split tab's label — the "group" of leaves.
+    // A NORMAL (single) tab's default name is "$process $ordinal" —
+    // built in code from the live process identity ("claude 3",
+    // "shell 5"), not translated. Only the SPLIT label lives here.
     groupTitle: "group {n}",
     renameTitle: "Rename tab",
     renameField: "tab title",
@@ -45,7 +42,6 @@ export const zh: typeof en = {
   exited: "进程已退出 —— 按 F5 重启",
   restoring: "正在恢复会话…",
   tab: {
-    defaultTitle: "tab {n}",
     groupTitle: "group {n}",
     renameTitle: "重命名标签页",
     renameField: "标签页名称",

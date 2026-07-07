@@ -50,8 +50,10 @@ export class BunTerminalTaskPty implements TaskPtyLike {
   private readonly term: XtermHeadless
   private readonly listeners = new Set<DataListener>()
   private readonly exitListeners = new Set<() => void>()
+  private readonly titleListeners = new Set<(title: string) => void>()
   private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
+  private _title: string | null = null
   private _killed = false
   private cols: number
   private rows: number
@@ -83,6 +85,22 @@ export class BunTerminalTaskPty implements TaskPtyLike {
         this.proc.terminal?.write(data)
       } catch {
         /* best effort — child may have exited */
+      }
+    })
+
+    // Window-title tracking (OSC 0/2) — xterm-headless already parses
+    // these escapes internally, so the split-leaf corner tag can show
+    // "vim"/"htop"/whatever's actually running instead of a static
+    // "shell" (see `terminal-tabs-core.ts`'s `splitLeafNames`).
+    this.term.onTitleChange((title) => {
+      if (!title || title === this._title) return
+      this._title = title
+      for (const cb of this.titleListeners) {
+        try {
+          cb(title)
+        } catch {
+          /* one listener must not break the others */
+        }
       }
     })
 
@@ -132,6 +150,20 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     this.exitListeners.add(cb)
     return () => {
       this.exitListeners.delete(cb)
+    }
+  }
+
+  onTitleChange(cb: (title: string) => void): () => void {
+    this.titleListeners.add(cb)
+    if (this._title) {
+      try {
+        cb(this._title)
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+    return () => {
+      this.titleListeners.delete(cb)
     }
   }
 
