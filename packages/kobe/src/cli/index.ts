@@ -397,6 +397,14 @@ async function main(): Promise<void> {
     await runDaemonSubcommand(rest)
     return
   }
+  if (subcommand === "pty-host") {
+    // Internal (spawned detached by the terminal pane's
+    // ensurePtyHostReachable): the standalone process that owns embedded
+    // terminal PTYs so they survive TUI exits and daemon restarts.
+    const { runPtyHostSubcommand } = await import("./pty-host-cmd.ts")
+    await runPtyHostSubcommand(rest)
+    return
+  }
   if (subcommand === "doctor") {
     const { runDoctorSubcommand } = await import("./maintenance.ts")
     await runDoctorSubcommand(rest)

@@ -97,8 +97,8 @@ describe("PtyHost", () => {
     await until(() => frames.some((f) => f.type === "event" && f.name === "pty.exit"))
     expect(host.list()).toEqual([])
     expect(ended).toBe(1)
-    // A live session holds the daemon's lifetime; none left now.
-    expect([...host.lifetimeHolders()]).toEqual([])
+    // A live session is the host process's reason to stay up; none left.
+    expect(host.liveCount()).toBe(0)
   })
 
   test("sweepTasks kills sessions whose task is archived/gone", async () => {
@@ -109,12 +109,12 @@ describe("PtyHost", () => {
     expect(host.list()).toEqual([{ key: "live-task::tab1", alive: true }])
   })
 
-  test("live sessions hold the daemon lifetime, exited ones don't", async () => {
+  test("live sessions count toward liveCount, exited ones don't", async () => {
     const host = makeHost()
     const { frames, sink } = collector()
     host.open("t1::tab1", { ...SPEC, command: ["/bin/sh", "-c", "exit 0"] }, {}, sink)
     await until(() => frames.some((f) => f.type === "event" && f.name === "pty.exit"))
-    expect([...host.lifetimeHolders()]).toEqual([])
+    expect(host.liveCount()).toBe(0)
     // The exited session is KEPT (scrollback for a reattach) until killed.
     expect(host.list()).toEqual([{ key: "t1::tab1", alive: false }])
   })

@@ -2,10 +2,11 @@
  * Terminal pane process abstraction.
  *
  * kobe deliberately does NOT use tmux here anymore. The default backend
- * (`DaemonTaskPty`, `pty-daemon.ts`) hosts the raw PTY in the kobe daemon
- * so an engine session survives TUI exits and reattaches with scrollback;
- * `BunTerminalTaskPty` below is the local fallback using Bun's native PTY
- * support (`Bun.spawn(..., { terminal })`) directly in the TUI process.
+ * (`HostedTaskPty`, `pty-hosted.ts`) keeps the raw PTY in the standalone
+ * `kobe pty-host` process so an engine session survives TUI exits AND
+ * daemon restarts, reattaching with scrollback; `BunTerminalTaskPty`
+ * below is the local fallback using Bun's native PTY support
+ * (`Bun.spawn(..., { terminal })`) directly in the TUI process.
  *
  * Both feed a headless xterm emulator that turns terminal control bytes
  * into a stable screen buffer for opentui to render — that shared half
@@ -20,7 +21,7 @@
  * same `Chunk[]` rows.
  */
 
-import { DaemonTaskPty } from "./pty-daemon"
+import { HostedTaskPty } from "./pty-hosted"
 import { MockTaskPty } from "./pty-mock"
 import { PipeTaskPty } from "./pty-pipe"
 import { type TaskPtyLike, type TaskPtyOpts, resolveArgv } from "./pty-types"
@@ -28,7 +29,7 @@ import { XtermTaskPty } from "./pty-xterm-base"
 
 export { MockTaskPty } from "./pty-mock"
 export { PipeTaskPty } from "./pty-pipe"
-export { DaemonTaskPty } from "./pty-daemon"
+export { HostedTaskPty } from "./pty-hosted"
 export type { CursorPos, DataListener, TaskPtyLike, TaskPtyOpts, TerminalRow } from "./pty-types"
 
 /* --------------------------------------------------------------------- */
@@ -92,11 +93,11 @@ export class BunTerminalTaskPty extends XtermTaskPty {
 /* --------------------------------------------------------------------- */
 
 export function createTaskPty(opts: TaskPtyOpts): TaskPtyLike {
-  const backend = process.env.KOBE_TERMINAL_BACKEND ?? "daemon"
+  const backend = process.env.KOBE_TERMINAL_BACKEND ?? "hosted"
   if (backend === "mock") return new MockTaskPty(opts)
   if (backend === "pipe") return new PipeTaskPty(opts)
   if (backend === "bun-pty") return new BunTerminalTaskPty(opts)
-  if (backend === "daemon") return new DaemonTaskPty(opts)
+  if (backend === "hosted") return new HostedTaskPty(opts)
   throw new Error(`unknown terminal backend: ${backend}`)
 }
 

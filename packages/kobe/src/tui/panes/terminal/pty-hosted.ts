@@ -1,13 +1,16 @@
 /**
- * DaemonTaskPty — the daemon-hosted PTY backend (protocol v4) and the
- * DEFAULT terminal backend.
+ * HostedTaskPty — the pty-host-backed terminal backend (protocol v4) and
+ * the DEFAULT backend.
  *
- * The raw PTY child lives in the kobe daemon (`kobe-daemon/daemon/
- * pty-host.ts`), so quitting the TUI leaves the engine session RUNNING in
- * the background; reopening kobe reattaches and replays the daemon's byte
- * ring buffer into a fresh local xterm — the tmux-persistence behavior
- * without tmux. VT emulation stays in this process (`pty-xterm-base.ts`);
- * only raw bytes cross the socket (`pty.data` frames, base64).
+ * The raw PTY child lives in the standalone `kobe pty-host` process
+ * (kobe's tmux-server analog, `kobe-daemon/daemon/pty-server.ts`) — NOT
+ * in the daemon and NOT in this TUI process. So an engine session
+ * survives BOTH quitting the TUI and `kobe daemon restart`; reopening
+ * kobe reattaches and replays the host's byte ring buffer into a fresh
+ * local xterm. Only `kobe reset` (or the host idle-exiting at zero live
+ * sessions) ends the children. VT emulation stays in this process
+ * (`pty-xterm-base.ts`); only raw bytes cross the socket (`pty.data`
+ * frames, base64).
  *
  * Lifecycle mapping onto {@link TaskPtyLike}:
  *   - `kill()`  → `pty.kill` — ends the REMOTE child (tab close, archive,
@@ -22,25 +25,23 @@
 
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
-import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { TaskPtyOpts } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
 
 /**
- * One shared daemon connection for every DaemonTaskPty in this process.
- * Deliberately NOT `subscribe`d: pty frames are written directly to the
- * attached connection by the daemon, and this connection must not count
- * as a GUI (the PTY sessions themselves hold the daemon's lifetime).
- * Spawns the daemon if none is running — the terminal pane is the
- * product; it may resurrect an idle-stopped daemon.
+ * One shared pty-host connection for every HostedTaskPty in this process
+ * (the host speaks the daemon frame grammar, so the same client class
+ * works). Spawns the host if none is running — the terminal pane is the
+ * product; it may resurrect an idle-exited host.
  */
 let shared: Promise<KobeDaemonClient> | null = null
 
 function getSharedPtyClient(): Promise<KobeDaemonClient> {
   if (shared) return shared
   const p = (async () => {
-    const socketPath = await ensureDaemonReachable()
+    const socketPath = await ensurePtyHostReachable()
     const client = new KobeDaemonClient(socketPath)
     await client.connect()
     client.onLifecycle("close", () => {
@@ -55,7 +56,7 @@ function getSharedPtyClient(): Promise<KobeDaemonClient> {
   return p
 }
 
-export class DaemonTaskPty extends XtermTaskPty {
+export class HostedTaskPty extends XtermTaskPty {
   private client: KobeDaemonClient | null = null
   private opened = false
   private pendingInput: string[] = []
@@ -81,7 +82,7 @@ export class DaemonTaskPty extends XtermTaskPty {
           const payload = frame.payload as PtyExitEventPayload
           if (payload.key === this.taskId) this.remoteGone()
         }),
-        // Daemon died / socket dropped: the pane shows its dead-shell
+        // Host died / socket dropped: the pane shows its dead-shell
         // banner; the user reopens the tab (or reset) to reattach.
         client.onLifecycle("close", () => this.remoteGone()),
       )
@@ -106,7 +107,7 @@ export class DaemonTaskPty extends XtermTaskPty {
       for (const data of this.pendingInput.splice(0)) this.sendInput(data)
       if (!res.alive) this.remoteGone()
     } catch (err) {
-      logClientError("pty-daemon", err)
+      logClientError("pty-hosted", err)
       this.remoteGone()
     }
   }
@@ -135,7 +136,7 @@ export class DaemonTaskPty extends XtermTaskPty {
   }
 
   /**
-   * Drop this handle, leave the child running in the daemon — the whole
+   * Drop this handle, leave the child running in the pty host — the whole
    * point of the backend. Called by `registry.detachAll()` on app exit.
    */
   detach(): void {
@@ -153,7 +154,7 @@ export class DaemonTaskPty extends XtermTaskPty {
     void this.client?.request("pty.resize", { key: this.taskId, cols, rows }).catch(() => {})
   }
 
-  /** The remote child (or the daemon itself) is gone — dead-shell banner. */
+  /** The remote child (or the host itself) is gone — dead-shell banner. */
   private remoteGone(): void {
     this.cleanup()
     this.markDead(false)
