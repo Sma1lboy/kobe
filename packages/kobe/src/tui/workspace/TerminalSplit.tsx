@@ -108,6 +108,14 @@ export function TerminalSplit(props: {
   // Persist through the parent; clearing to a single leaf drops the tree
   // so an unsplit tab returns to the fast path (and stops persisting one).
   const update = (next: SplitState<LeafCommand>): void => {
+    // No-op guard: the pure transitions return the SAME state reference when
+    // nothing changed (e.g. `focusLeaf` on the already-active leaf — every
+    // click inside a focused split leaf). Without this, that click still
+    // round-tripped through onSplitChange → setTabSplit → a new TabsState →
+    // setState + a state.json write, re-rendering the whole split tree —
+    // the whole-page twitch on click that only showed up once a tab had
+    // multiple leaves.
+    if (next === state()) return
     props.onSplitChange(leaves(next.root).length > 1 ? next : null)
   }
 
