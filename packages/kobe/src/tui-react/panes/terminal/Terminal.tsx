@@ -162,7 +162,12 @@ export function Terminal(props: TerminalProps) {
       visibleRange.start,
       bodyGeometry?.cols ?? 80,
     )
-    return overlayCursor(withSelection, focused ? visibleCursor : null)
+    // While a selection is active, the synthetic cursor cell is hidden
+    // (tmux copy-mode behavior): cursor and selection share the same
+    // inverse styling, so a cursor sitting just past the selection read
+    // as the highlight overrunning by one blinking cell.
+    const cursorWhileUnselected = focused && !selection.selection ? visibleCursor : null
+    return overlayCursor(withSelection, cursorWhileUnselected)
   }, [visibleRows, selection.selection, visibleRange.start, bodyGeometry, focused, visibleCursor])
 
   // Flatten every visible row into ONE `StyledText` — see the Solid
