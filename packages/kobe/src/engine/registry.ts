@@ -123,18 +123,6 @@ export interface EngineRegistryEntry {
    * braille set (`spinner-frames.ts` `DEFAULT_SPINNER_FRAMES`).
    */
   readonly spinnerFrames?: readonly string[]
-  /**
-   * Build the argv that RESUMES an existing session id on top of the
-   * already-built launch command `base` (engine defaults + user override +
-   * effort flags — see `interactive-command.ts`). Engine-owned so neutral
-   * layers never hard-code vendor flags:
-   *   - claude: `claude … --resume <id>`
-   *   - codex:  `codex … resume <id>` (the `-c` config flags are global
-   *     and parse before the subcommand — verified against codex CLI)
-   * Omit for engines that can't resume by id (copilot, custom); callers
-   * fall back to `base` (a fresh session).
-   */
-  readonly resumeCommand?: (base: readonly string[], sessionId: string) => readonly string[]
 }
 
 /**
@@ -198,7 +186,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
-    resumeCommand: (base, sessionId) => [...base, "--resume", sessionId],
   },
   codex: {
     vendor: "codex",
@@ -215,7 +202,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new CodexTurnDetector(),
     capabilities: codexCapabilities,
     identity: codexIdentity,
-    resumeCommand: (base, sessionId) => [...base, "resume", sessionId],
   },
   copilot: {
     vendor: "copilot",
