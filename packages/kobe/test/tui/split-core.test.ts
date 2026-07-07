@@ -145,4 +145,20 @@ describe("split tree (content-agnostic)", () => {
     // No title yet → falls back to the command basename.
     expect(splitLeafNames(leaves(s.root), ["claude"], null).get("leaf-1")).toBe("claude")
   })
+
+  // Why: a split shell leaf's label was hard-coded "shell" forever, unlike
+  // a real terminal tab that tracks the foreground process (OSC 0/2 title
+  // escape) — "zsh" idle, "vim"/"htop" once you run one. `liveTitles` is
+  // the shell leaf's counterpart to the engine leaf's `engineTitle`.
+  it("splitLeafNames: a shell leaf's live foreground title wins over the generic default", () => {
+    const s = splitActive(initialSplit(MAIN), "row", SH) // engine(leaf-1) | shell(leaf-2)
+    const live = new Map([["leaf-2", "vim"]])
+    const named = splitLeafNames(leaves(s.root), ["claude"], "fix the resize race", live)
+    expect(named.get("leaf-2")).toBe("vim")
+    // No live title yet → the generic default, same as before this existed.
+    expect(splitLeafNames(leaves(s.root), ["claude"], "fix the resize race").get("leaf-2")).toBe("shell")
+    // A manual rename still wins over a live title.
+    const renamed = splitLeafNames(leaves(renameLeaf(s, "leaf-2", "logs").root), ["claude"], null, live)
+    expect(renamed.get("leaf-2")).toBe("logs")
+  })
 })

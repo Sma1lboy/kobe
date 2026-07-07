@@ -30,8 +30,9 @@
  * over once a split exists.
  */
 
+import { titleDisplayName } from "@/engine/registry"
 import { type RGBA, TextAttributes } from "@opentui/core"
-import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on } from "solid-js"
+import { type Accessor, For, type JSXElement, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useTheme } from "../context/theme"
@@ -234,12 +235,61 @@ export function TerminalSplit(props: {
   const dividerProps = (divider: "left" | "top" | undefined, color: () => RGBA) =>
     divider ? { border: [divider] as ("left" | "top")[], borderColor: color() } : { border: false as const }
 
+  // Live foreground-process titles for split-created SHELL leaves (real
+  // terminals track this via the OSC 0/2 window-title escape: "zsh" idle,
+  // "vim"/"htop" once you run one — see `TaskPtyLike.onTitleChange`).
+  // Engine leaves keep their own conversation-title naming (`engineTitle`),
+  // untouched here. Lazy-attach + retry: a leaf's PTY spawns asynchronously
+  // after its Terminal mounts, same contract as `turn-polls.ts`'s poll
+  // attach. Ephemeral (not persisted) — a fresh mount re-derives it as soon
+  // as the shell's next title escape lands.
+  const TITLE_ATTACH_MS = 2000
+  const [liveTitles, setLiveTitles] = createSignal<ReadonlyMap<string, string>>(new Map())
+  const titleSubs = new Map<string, () => void>()
+  const [titleTick, setTitleTick] = createSignal(0)
+  const titleAttachTimer = setInterval(() => setTitleTick((n) => n + 1), TITLE_ATTACH_MS)
+  onCleanup(() => clearInterval(titleAttachTimer))
+  createEffect(() => {
+    titleTick()
+    const reg = getDefaultPtyRegistry()
+    const shellLeafIds = new Set(
+      leaves(state().root)
+        .filter((l) => l.content !== null)
+        .map((l) => l.id),
+    )
+    for (const id of shellLeafIds) {
+      if (titleSubs.has(id)) continue
+      const pty = reg.get(splitLeafPtyKey(props.tabKey, id))
+      if (!pty) continue
+      // Normalize through the registry so an engine's decorated title
+      // ("✳ Claude Code") reads as its binary ("claude") — one vocabulary
+      // across corner tags and tab labels, however the process started.
+      titleSubs.set(
+        id,
+        pty.onTitleChange((title) => setLiveTitles((prev) => new Map(prev).set(id, titleDisplayName(title)))),
+      )
+    }
+    for (const [id, dispose] of titleSubs) {
+      if (shellLeafIds.has(id)) continue
+      dispose()
+      titleSubs.delete(id)
+      setLiveTitles((prev) => {
+        const next = new Map(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  })
+  onCleanup(() => {
+    for (const dispose of titleSubs.values()) dispose()
+  })
+
   /** id → display name. Owner correction 2026-07-06: the TAB is the
    *  "group" (its default title says so) — each leaf carries its OWN
    *  name: F2 rename wins, default = basename of what it runs
    *  ("claude", "zsh", "zsh 2"…). Derivation is pure (`splitLeafNames`)
    *  so vitest pins it. */
-  const leafNames = () => splitLeafNames(leaves(state().root), props.command, props.engineTitle?.())
+  const leafNames = () => splitLeafNames(leaves(state().root), props.command, props.engineTitle?.(), liveTitles())
 
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): JSXElement => {
     // Focus is LOCAL: a plain setActiveLeaf, so a click updates only the
@@ -265,18 +315,25 @@ export function TerminalSplit(props: {
             focusThis()
           }}
         />
-        {/* Corner name tag — the leaf's OWN name; the focused leaf's tag
+        {/* Corner name tag — ONLY while there's more than one leaf to tell
+            apart. A single surviving leaf (engine closed, one shell left —
+            or the reverse) has nothing to disambiguate: the tab-strip label
+            above already shows this exact same name (`tabTitle`'s solo-leaf
+            branch reads the identical live/derived name), so a second copy
+            pinned to the corner is pure duplication. The focused leaf's tag
             lights in the focus accent (reactive JSX attrs, so a local focus
             change repaints it without a tree re-render). */}
-        <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
-          <text
-            fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
-            attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
-            wrapMode="none"
-          >
-            {` ${leafNames().get(leaf.id) ?? ""} `}
-          </text>
-        </box>
+        <Show when={isSplit()}>
+          <box position="absolute" right={0} top={0} zIndex={10} backgroundColor={theme.backgroundElement}>
+            <text
+              fg={leafFocused(leaf.id) ? theme.focusAccent : theme.textMuted}
+              attributes={leafFocused(leaf.id) ? TextAttributes.BOLD : TextAttributes.DIM}
+              wrapMode="none"
+            >
+              {` ${leafNames().get(leaf.id) ?? ""} `}
+            </text>
+          </box>
+        </Show>
       </>
     )
     // borderColor must be a REACTIVE JSX attribute (not a pre-computed spread

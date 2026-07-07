@@ -6,6 +6,7 @@ import {
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
+  extractOscTitle,
 } from "./pty-types"
 import { parseAnsiSnapshot } from "./sgr"
 
@@ -16,7 +17,9 @@ export class MockTaskPty implements TaskPtyLike {
   private buffer = ""
   private writes: string[] = []
   private _killed = false
+  private _title: string | null = null
   private readonly exitListeners = new Set<() => void>()
+  private readonly titleListeners = new Set<(title: string) => void>()
   /** Pasted payloads, observable by tests. */
   readonly pastes: string[] = []
   readonly wheels: { direction: "up" | "down"; col: number; row: number }[] = []
@@ -46,6 +49,17 @@ export class MockTaskPty implements TaskPtyLike {
   feed(data: string): void {
     if (this._killed) return
     this.buffer += data
+    const title = extractOscTitle(data)
+    if (title && title !== this._title) {
+      this._title = title
+      for (const cb of this.titleListeners) {
+        try {
+          cb(title)
+        } catch {
+          /* one listener must not break the others */
+        }
+      }
+    }
     const rows = this.capture()
     for (const cb of this.listeners) {
       try {
@@ -124,6 +138,20 @@ export class MockTaskPty implements TaskPtyLike {
     this.exitListeners.add(cb)
     return () => {
       this.exitListeners.delete(cb)
+    }
+  }
+
+  onTitleChange(cb: (title: string) => void): () => void {
+    this.titleListeners.add(cb)
+    if (this._title) {
+      try {
+        cb(this._title)
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+    return () => {
+      this.titleListeners.delete(cb)
     }
   }
 }

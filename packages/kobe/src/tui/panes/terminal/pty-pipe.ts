@@ -9,6 +9,7 @@ import {
   type TaskPtyOpts,
   type TerminalRow,
   defaultShell,
+  extractOscTitle,
   resolveArgv,
 } from "./pty-types"
 import { parseAnsiSnapshot } from "./sgr"
@@ -20,7 +21,9 @@ export class PipeTaskPty implements TaskPtyLike {
   private readonly listeners = new Set<DataListener>()
   private buffer = ""
   private _killed = false
+  private _title: string | null = null
   private readonly exitListeners = new Set<() => void>()
+  private readonly titleListeners = new Set<(title: string) => void>()
   private cols: number
   private rows: number
 
@@ -122,6 +125,19 @@ export class PipeTaskPty implements TaskPtyLike {
     if (this.buffer.length > PIPE_SCROLLBACK_LIMIT) {
       this.buffer = this.buffer.slice(this.buffer.length - PIPE_SCROLLBACK_LIMIT)
     }
+    // No emulator on this fallback path — extract OSC 0/2 title escapes
+    // by hand (the Bun/xterm backend gets this from `onTitleChange`).
+    const title = extractOscTitle(chunk)
+    if (title && title !== this._title) {
+      this._title = title
+      for (const cb of this.titleListeners) {
+        try {
+          cb(title)
+        } catch {
+          /* one listener must not break the others */
+        }
+      }
+    }
     const rows = this.capture()
     for (const cb of this.listeners) {
       try {
@@ -172,6 +188,20 @@ export class PipeTaskPty implements TaskPtyLike {
     this.exitListeners.add(cb)
     return () => {
       this.exitListeners.delete(cb)
+    }
+  }
+
+  onTitleChange(cb: (title: string) => void): () => void {
+    this.titleListeners.add(cb)
+    if (this._title) {
+      try {
+        cb(this._title)
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+    return () => {
+      this.titleListeners.delete(cb)
     }
   }
 }

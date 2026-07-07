@@ -245,6 +245,41 @@ export function engineEntry(vendor: VendorId): EngineRegistryEntry {
 }
 
 /**
+ * Match a live terminal window title (OSC 0/2 — `TaskPtyLike.onTitleChange`)
+ * to the engine whose CLI set it. This is how a shell tab where the USER
+ * typed `claude` joins the same turn-status management as a kobe-launched
+ * engine tab (owner model 2026-07-07: every tab is a shell; an engine is
+ * just a process running in it). Two engine-owned signals, checked per
+ * built-in entry so neutral layers never hard-code vendor strings:
+ *   - the product name anywhere in the title  (claude sets "✳ Claude Code")
+ *   - the launch binary as a whole word       (zsh-preexec-style "claude")
+ * Custom engines aren't matched — kobe knows nothing about their titles.
+ */
+export function vendorFromTerminalTitle(title: string | null | undefined): VendorId | null {
+  if (!title) return null
+  const lower = title.toLowerCase()
+  for (const entry of Object.values(BUILTIN_ENGINES)) {
+    if (entry.identity && lower.includes(entry.identity.productName.toLowerCase())) return entry.vendor
+    const bin = entry.defaultCommand[0]?.toLowerCase()
+    if (bin && new RegExp(`(^|\\s)${bin}(\\s|$)`).test(lower)) return entry.vendor
+  }
+  return null
+}
+
+/**
+ * Display name for a live terminal title: an engine's own title collapses
+ * to its launch binary ("✳ Claude Code" → "claude", codex's likewise) so
+ * every kobe surface (tab labels, split corner tags) speaks ONE vocabulary
+ * for a process no matter how it was started or what decoration the CLI
+ * put in its title. Non-engine titles pass through raw (vim, htop, a
+ * cwd-titling shell) — that's the dynamic real-terminal behavior.
+ */
+export function titleDisplayName(title: string): string {
+  const vendor = vendorFromTerminalTitle(title)
+  return vendor ? (engineEntry(vendor).defaultCommand[0] ?? vendor) : title
+}
+
+/**
  * Capabilities for a vendor, or `undefined` when the engine has none (copilot,
  * custom). Consumed by the native chat composer's model picker +
  * permission-mode cycle; callers must handle the missing case rather than

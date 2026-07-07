@@ -133,11 +133,12 @@ export function TerminalTabs(props: {
   const initState = (): TabsState => {
     const existing = tabsByTask.get(props.taskId)
     if (existing) return existing
-    // Restart survival (issue #22): rehydrate the persisted engine-tab
-    // snapshot (titles/ordinals/sessionIds — command tabs are transient
-    // and dropped) before falling back to a fresh single tab.
+    // Restart survival (issue #22): rehydrate the persisted tab snapshot
+    // (titles/ordinals/sessionIds; engine tabs resume their conversation,
+    // command tabs — degraded shells, dead editors — respawn as shells)
+    // before falling back to a fresh single tab.
     const saved = kv.get(persistKey, null) as TabsState | null
-    const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved) : null
+    const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved, [defaultShell()]) : null
     rehydratedFromDisk = fromDisk !== null
     const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
     // Persist immediately so a remount before the first mutation doesn't
@@ -252,7 +253,7 @@ export function TerminalTabs(props: {
   /* --------- per-tab turn state (tmux @kobe_tab_state, logic layer) -------
    * Extracted to `turn-polls.ts` — the Ops-pane poll loop with PTY IO,
    * shared/local cadence per the sharedActivity contract. */
-  const { turnStates } = createTurnPolls({
+  const { turnStates, liveTitles } = createTurnPolls({
     taskId: props.taskId,
     worktree: props.worktree,
     vendor: () => props.vendor,
@@ -260,7 +261,7 @@ export function TerminalTabs(props: {
     sharedActivity: props.sharedActivity,
     onBackgroundDone: (tabId) => {
       const current = state().tabs.find((t) => t.id === tabId)
-      if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current) })
+      if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current, props.vendor) })
     },
   })
 
@@ -337,7 +338,7 @@ export function TerminalTabs(props: {
   const requestRename = (): void => {
     const tab = active()
     if (!tab) return
-    void RenameTaskDialog.show(dialog, tabTitle(tab), {
+    void RenameTaskDialog.show(dialog, tabTitle(tab, props.vendor, liveTitles().get(tab.id)), {
       dialogTitle: t("terminal.tab.renameTitle"),
       fieldLabel: t("terminal.tab.renameField"),
       submitLabel: t("terminal.tab.renameSubmit"),
@@ -427,6 +428,8 @@ export function TerminalTabs(props: {
           activeId={() => state().activeId}
           turnStates={turnStates}
           onSelect={(tabId) => update(selectTab(state(), tabId))}
+          vendor={() => props.vendor}
+          liveTitles={liveTitles}
         />
       </Show>
       {/* One long-lived tab body, never remounted on an ordinary tab

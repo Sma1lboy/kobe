@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { initialSplit, splitActive } from "../../src/tui/workspace/split-core"
+import { initialSplit, removeLeaf, splitActive } from "../../src/tui/workspace/split-core"
 import {
   addTab,
   closeActiveTab,
   cycleTab,
+  hasEngineLeaf,
   initialTabs,
   markTabSpawned,
   openEditorTab,
@@ -124,21 +125,30 @@ describe("terminal tabs state", () => {
     expect(after.tabs[1]).not.toHaveProperty("sessionId", "uuid-2")
   })
 
-  // Why: rehydrateTabs is the restart contract (issue #22) — engine tabs
-  // come back resumable, transient command tabs (dead editors, degraded
-  // shells) must NOT respawn, and a stale activeId can't strand the UI.
-  it("rehydrateTabs keeps engine tabs, drops command tabs, re-anchors activeId", () => {
+  // Why: rehydrateTabs is the restart contract (issue #22, revised
+  // 2026-07-07) — a tab is a TERMINAL, so every tab survives: engine tabs
+  // come back resumable, command tabs (a degraded shell, a dead editor)
+  // come back as plain shells. Dropping command tabs was the "closed
+  // shell reopens as claude" bug: a lone degraded tab fell through to
+  // initialTabs(), resurrecting a fresh engine in the terminal's place.
+  it("rehydrateTabs keeps every tab; command tabs respawn as shells", () => {
     let s = addTab(initialTabs(), "codex") // [1, 2*(codex)]
     s = setTabSessionId(s, "tab-1", "uuid-1")
     s = openEditorTab(s, ["sh", "-c", "nvim x"], "x") // [1, 2, 3*(editor)]
-    const back = rehydrateTabs(s) // active was the editor tab → dropped
-    expect(back.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-2"])
-    expect(back.activeId).toBe("tab-1")
+    const back = rehydrateTabs(s, ["/bin/zsh"])
+    expect(back.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-2", "tab-3"])
+    expect(back.activeId).toBe("tab-3")
     expect(back.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
+    // The editor's process is gone — its terminal comes back as a shell.
+    expect(back.tabs[2]).toMatchObject({ kind: "command", command: ["/bin/zsh"] })
     expect(back.nextOrdinal).toBe(s.nextOrdinal)
-    // All-command snapshot (everything degraded) → fresh initial state.
-    const allCommand = rehydrateTabs(tabToShell(initialTabs(), "tab-1", ["/bin/zsh"]))
-    expect(allCommand).toEqual(initialTabs())
+    // THE reported bug: a single tab whose engine exited (degraded to a
+    // shell) must reopen as that shell, NOT as a fresh engine tab.
+    const degraded = rehydrateTabs(tabToShell(initialTabs(), "tab-1", ["/bin/zsh"]), ["/bin/zsh"])
+    expect(degraded.tabs).toHaveLength(1)
+    expect(degraded.tabs[0]).toMatchObject({ kind: "command", id: "tab-1", command: ["/bin/zsh"] })
+    // Corrupt/empty snapshot still falls back to a fresh initial state.
+    expect(rehydrateTabs({ tabs: [], activeId: "tab-1", nextOrdinal: 1 }, ["/bin/zsh"])).toEqual(initialTabs())
   })
 
   // Why: the frozen split layout (owner ask 2026-07-06) must survive the
@@ -153,7 +163,7 @@ describe("terminal tabs state", () => {
     expect(s.tabs[0].splitTree).toEqual(tree)
     // Round-trip through JSON (state.json) then rehydrate — the layout
     // comes back intact on the resumable engine tab.
-    const back = rehydrateTabs(JSON.parse(JSON.stringify(s)))
+    const back = rehydrateTabs(JSON.parse(JSON.stringify(s)), ["/bin/zsh"])
     expect(back.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
     expect(back.tabs[0].splitTree).toEqual(tree)
     // Clearing (collapse to a single leaf) drops the tree → unsplit tab.
@@ -192,5 +202,20 @@ describe("terminal tabs state", () => {
     // Degrading to a shell keeps the auto-derived name.
     const degraded = tabToShell(s, "tab-1", ["/bin/zsh"])
     expect(degraded.tabs[0].autoTitle).toBe("fix the resize race")
+  })
+
+  // Why: closing the engine leaf (`leaf-1`) inside a split keeps `kind:
+  // "engine"` (57e3a20a — a surviving shell must not respawn the engine),
+  // but its PTY is gone. Turn polling and the tab-strip chip must stop
+  // treating this tab as a live engine, or the chip flaps against a dead
+  // PTY — this predicate is the shared guard for both call sites.
+  it("hasEngineLeaf tracks whether leaf-1 survives a split", () => {
+    expect(hasEngineLeaf(null)).toBe(true)
+    expect(hasEngineLeaf(undefined)).toBe(true)
+    const split = splitActive(initialSplit(null), "row", ["/bin/zsh"])
+    expect(hasEngineLeaf(split)).toBe(true) // leaf-1 (engine) + leaf-2 (shell)
+    const engineClosed = removeLeaf(split, "leaf-1")
+    expect(engineClosed).not.toBeNull()
+    expect(hasEngineLeaf(engineClosed)).toBe(false) // only the shell survives
   })
 })
