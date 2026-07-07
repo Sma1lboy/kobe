@@ -25,12 +25,10 @@
  *   - The `keyed Show` that gave each worktree its own `TerminalTabs`
  *     instance becomes a React `key={path}` on `<TerminalTabs>`.
  *
- * GAP (surfaced, not silently dropped): `tui/component/worktrees-page.tsx`
- * (217 lines, the in-process worktree-management page swap) has no React
- * port yet — out of this port's declared slice (workspace cluster: host /
- * TerminalTabs / TerminalSplit / tab-strip / turn-polls / files-badge).
- * The `worktrees.open.sidebar` chord still works; until that page is
- * ported it swaps to a small inline placeholder instead of the real page.
+ *   - The in-process worktree-management page swap
+ *     (`tui/component/worktrees-page.tsx`) is `component/worktrees-page.tsx`
+ *     here — same `WorktreesPage` contract, wired below behind the
+ *     `worktrees.open.sidebar` chord exactly like the Solid host's `Show`.
  */
 
 import { join } from "node:path"
@@ -45,13 +43,13 @@ import { openExternally } from "../../tui/panes/filetree/open-external"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import { SettingsDialog } from "../component/settings-dialog"
+import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree/FileTree"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
@@ -275,7 +273,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
 
   if (worktreesOpen) {
-    return <WorktreesPlaceholder onClose={() => setWorktreesOpen(false)} />
+    return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
   }
 
   if (settingsOpen) {
@@ -382,26 +380,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       ) : null}
 
       <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
-    </box>
-  )
-}
-
-/** Placeholder for the not-yet-ported worktrees page — see the file
- *  header GAP note. Owns its own close keys (q/esc), same as the real page
- *  would. */
-function WorktreesPlaceholder(props: { onClose: () => void }): ReactNode {
-  const { theme } = useTheme()
-  const t = useT()
-  useBindings(() => ({
-    bindings: [
-      { key: "escape", cmd: props.onClose },
-      { key: "q", cmd: props.onClose },
-      { key: "ctrl+c", cmd: props.onClose },
-    ],
-  }))
-  return (
-    <box flexGrow={1} alignItems="center" justifyContent="center" backgroundColor={theme.background}>
-      <text fg={theme.textMuted}>{t("workspace.worktreesPage.notPorted")}</text>
     </box>
   )
 }

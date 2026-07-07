@@ -14,9 +14,6 @@ export const en = {
     selectTask: "Select a task with a worktree",
   },
   terminalComing: "Embedded terminal tab lands here (issue #16) — use the tmux path meanwhile.",
-  worktreesPage: {
-    notPorted: "The worktrees page isn't available in the React workspace yet — press q/esc to go back.",
-  },
 }
 
 export const zh: typeof en = {
@@ -29,7 +26,4 @@ export const zh: typeof en = {
     selectTask: "请选择一个带 worktree 的任务",
   },
   terminalComing: "嵌入终端标签页即将落位（issue #16）——期间请走 tmux 路径。",
-  worktreesPage: {
-    notPorted: "worktree 管理页面尚未适配到 React 工作区——按 q/esc 返回。",
-  },
 }
