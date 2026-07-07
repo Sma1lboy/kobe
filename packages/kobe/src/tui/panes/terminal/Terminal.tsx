@@ -42,7 +42,7 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
 import { type PtyRegistry, getDefaultPtyRegistry } from "./registry"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
-import { isShellMissing } from "./terminal-render"
+import { isShellMissing, overlayCursor } from "./terminal-render"
 import { type CellPoint, type SelectionRange, extractSelection, overlaySelection } from "./terminal-selection"
 import { useTerminalPty } from "./use-terminal-pty"
 import { computeViewport, viewportCursor } from "./viewport"
@@ -245,12 +245,11 @@ export function Terminal(props: TerminalProps): JSXElement {
   // refers to the *live* viewport, not what's currently rendered.
   const visibleCursor = createMemo(() => viewportCursor(cursor(), scrollOffset(), visibleRange()))
 
-  // No inline inverse-cell cursor anymore — the visible cursor is the real
-  // host cursor positioned in the focus effect above. We still overlay the
-  // drag SELECTION highlight.
-  const cursorRows = createMemo(() =>
-    overlaySelection(visibleRows(), selection(), visibleRange().start, bodyGeometry()?.cols ?? 80),
-  )
+  const cursorRows = createMemo(() => {
+    const withSelection = overlaySelection(visibleRows(), selection(), visibleRange().start, bodyGeometry()?.cols ?? 80)
+    const c = focused() ? visibleCursor() : null
+    return overlayCursor(withSelection, c)
+  })
 
   // Flatten every visible row into ONE `StyledText` separated by
   // `\n`s. We render this as a single `<text>` element inside the
@@ -332,24 +331,23 @@ export function Terminal(props: TerminalProps): JSXElement {
     }
   })
 
-  // Show the native host cursor at the embedded cursor's SCREEN CELL — one
-  // real cursor, matching native claude/codex. This replaces the inline
-  // inverse-cell block (`cursorRows` no longer injects one): during CJK / IME
-  // composition the OS candidate window anchors to the real cursor and the
-  // preedit extends from it, so there's no second block cursor drifting
-  // behind the text the user is typing. `cursor.x` is a CELL column, so
-  // `screenX + cursor.x` is inherently wide-char correct. Reading
+  // Keep the native host cursor INVISIBLE (the visible cursor is the inline
+  // inverse cell in `cursorRows`) but ANCHOR it to the embedded cursor's
+  // screen cell. The OS IME / composition window (macOS pinyin candidate
+  // popup, etc.) follows the real terminal cursor — parking it at (0,0) left
+  // the candidate window detached from the text the user was typing. Reading
   // visibleCursor()/geomTick()/dims() re-runs this as the cursor moves or the
   // pane resizes; screenX/screenY are read imperatively (non-reactive
-  // geometry, same as the resize effect). Hidden when unfocused or the cursor
-  // is scrolled out of view, so it can't leak onto another pane.
+  // geometry, same as the resize effect). Falls back to origin when the
+  // cursor is scrolled out of view or the body isn't laid out yet.
   createEffect(() => {
+    if (!focused()) return
     const body = bodyRef()
-    const c = focused() ? visibleCursor() : null
+    const c = visibleCursor()
     geomTick()
     dims()
-    if (c && body && body.width > 0) {
-      renderer.setCursorPosition(body.screenX + c.x, body.screenY + c.y, true)
+    if (body && c && body.width > 0) {
+      renderer.setCursorPosition(body.screenX + c.x, body.screenY + c.y, false)
     } else {
       renderer.setCursorPosition(0, 0, false)
     }
