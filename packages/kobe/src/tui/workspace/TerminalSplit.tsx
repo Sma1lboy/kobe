@@ -97,6 +97,8 @@ export function TerminalSplit(props: {
   /** Forwarded to `leaf-1`'s Terminal — the shell-degrade reacquire nudge. */
   resetToken?: Accessor<number>
   focused: () => boolean
+  /** Ask the host to focus the workspace pane (terminal click). */
+  onRequestFocus?: () => void
 }): JSXElement {
   const { theme } = useTheme()
   // Derived, not a local signal: the layout lives on the tab (parent),
@@ -211,6 +213,13 @@ export function TerminalSplit(props: {
         onExit={() => onLeafExit(leaf.id)}
         resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
         focused={() => leafFocused(leaf.id)}
+        onRequestFocus={() => {
+          // Click a split leaf → focus the workspace pane globally AND make
+          // this the active leaf (the wrapper box's onMouseUp can't, since
+          // the Terminal consumes the click before it bubbles).
+          props.onRequestFocus?.()
+          update(focusLeaf(state(), leaf.id))
+        }}
       />
       {/* Corner name tag — the leaf's OWN name (see leafNames above);
           the focused leaf's tag lights in the focus accent; overlays the
@@ -259,6 +268,7 @@ export function TerminalSplit(props: {
           onExit={props.onExit}
           resetToken={props.resetToken}
           focused={props.focused}
+          onRequestFocus={props.onRequestFocus}
         />
       }
     >

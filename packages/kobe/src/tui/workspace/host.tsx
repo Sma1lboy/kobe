@@ -350,6 +350,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
               worktree={worktree()}
               orchestrator={props.orchestrator}
               focused={focus.is("workspace")}
+              onRequestFocus={() => focus.setFocused("workspace")}
               onEditorTabReady={(open) => {
                 openEditorTabFn = open
               }}
@@ -393,6 +394,7 @@ function ShowWorkspace(props: {
   worktree: string | null
   orchestrator: RemoteOrchestrator
   focused: () => boolean
+  onRequestFocus: () => void
   onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
   onEngineSendReady: (send: (text: string) => void) => void
 }) {
@@ -431,6 +433,7 @@ function ShowWorkspace(props: {
               : undefined
           }
           focused={props.focused}
+          onRequestFocus={props.onRequestFocus}
           onEditorTabReady={props.onEditorTabReady}
           onEngineSendReady={props.onEngineSendReady}
           // This worktree's slice of the daemon transcript.activity push
