@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.79
+
+### Patch Changes
+
+- e8595af: fix: the daemon socket client left post-connect socket errors unhandled — an EPIPE while writing to a peer that was mid-exit (the pty-host sweep race) crashed the process instead of rejecting the pending request. Errors now route through the close path so callers' own catch blocks handle them.
+- a384442: fix: esc could go permanently dead on open dialogs — a stale text-selection highlight (kept after a copy until the next click) disabled the dismiss binding entirely. First esc now clears the selection, the next closes the dialog; the engine picker's clickable esc label actually closes the card too.
+- c35e524: fix: an open dialog now structurally blocks every key from reaching the UI behind it — the keymap gained a modal barrier that cuts off all bindings registered before the dialog opened (the dialog's own keys and its text inputs keep working). Previously each pane had to gate itself on "no dialog open" and any missed gate (the F1 help card was one) let keys operate the background.
+- 23a2cfd: feat: split panes draw full box frames by default, with a new Settings → General → Appearance section to switch back to the tmux-style single divider line. The focused leaf's frame lights up in the focus accent in either style.
+- b134f0e: feat: the worktrees page judges each worktree with a staleness rubric — dirty tree > open PR > merged PR > 0-commits-ahead-of-main > closed PR > 14-day idle age, strongest signal first with git-only fallbacks when `gh`/GitHub is unavailable. Rows now carry a colored verdict badge (PR open / merged (PR) / in main / PR closed / stale) so it's obvious which worktrees are safe to clean; the badge is advisory and never gates deletion.
+- bb3ad91: fix: the worktrees page paints instantly — local signals (dirty, ahead-of-main, age) render first and the slow network lookups (ls-remote, gh PR states) swap in when they land, so a slow or dead remote can no longer hang the page. feat: `lastActive` — kobe now persists the last-focused task globally (last writer wins, no multi-TUI coordination) and opens on it after a daemon restart or fresh launch instead of falling back to the first task.
+
 ## 0.7.78
 
 ### Patch Changes
