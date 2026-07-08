@@ -29,7 +29,7 @@
 import { deriveTitleFromSession } from "@/monitor/auto-title"
 import type { Orchestrator } from "@/orchestrator/core"
 import { PLACEHOLDER_TASK_TITLE } from "@/orchestrator/core"
-import { runChatTabNamingPass } from "@/tmux/chat-tab-naming"
+import { type ChatTabPollSchedule, runChatTabNamingPass } from "@/tmux/chat-tab-naming"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 import { logDaemonError } from "./crash-log"
 
@@ -95,11 +95,21 @@ export async function runAutoTitlePass(
  * `tmux list-windows` chat-tab naming pass that publish to nobody. The
  * interval keeps running; a pass runs again on the first tick after a pane
  * subscribes. Omit to scan unconditionally (tests).
+ *
+ * `chatTabSchedule` (daemon issue #27) is the ChatTab pass's per-task
+ * dead-session backoff state — held here, OUTSIDE `tick()`, so it survives
+ * across ticks for the life of the poller. Without it every tick would
+ * start from a blank schedule and re-run `list-windows` against a session
+ * that's been gone for hours at full cadence forever (the incident this
+ * poller now guards against: three long-dead sessions, ~1000 failing
+ * `list-windows` calls logged before this fix). Injectable so tests can
+ * assert on the schedule directly.
  */
 export function startAutoTitlePoller(
   orch: Orchestrator,
   intervalMs: number = DEFAULT_AUTO_TITLE_POLL_MS,
   hasSubscribers?: () => boolean,
+  chatTabSchedule: ChatTabPollSchedule = new Map(),
 ): () => void {
   if (intervalMs <= 0) return () => {}
   let running = false
@@ -115,7 +125,7 @@ export function startAutoTitlePoller(
     // first prompt; (2) name still-default ChatTab WINDOWS from each tab's own
     // first prompt. Both are best-effort and self-limiting.
     void runAutoTitlePass(orch)
-      .then(() => runChatTabNamingPass(orch))
+      .then(() => runChatTabNamingPass(orch, undefined, chatTabSchedule))
       .catch((err) => logDaemonError("auto-title-poller", err))
       .finally(() => {
         running = false
