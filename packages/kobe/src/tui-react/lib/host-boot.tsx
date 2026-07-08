@@ -45,7 +45,6 @@ import {
   hostRenderOptions,
   installOrphanExitWatchdog,
   installPaneExitBackstop,
-  syncRendererToTtySize,
 } from "../../tui/lib/host-render-options"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../../tui/lib/persisted-ui-prefs"
 import { FocusProvider } from "../context/focus"
@@ -255,7 +254,6 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
 
   const screen = await opts.setup(prefs)
   const renderer = await createCliRenderer(hostRenderOptions(screen.onDestroy))
-  await syncRendererToTtySize(renderer)
 
   const body = (
     <>
