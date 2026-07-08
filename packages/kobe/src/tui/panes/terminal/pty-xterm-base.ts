@@ -13,7 +13,7 @@
  * `markDead`, matching the old Bun backend's behavior.
  */
 
-import { Terminal as XtermHeadless } from "@xterm/headless"
+import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
 import {
   type CursorPos,
   DEFAULT_COLS,
@@ -41,6 +41,17 @@ export abstract class XtermTaskPty implements TaskPtyLike {
    * their full grid+scrollback at output cadence for a consumer (the
    * 1.5s turn poll) that only reads via capture(). */
   private snapshotDirty = false
+  /** Frozen-scrollback conversion cache: absolute line id → converted row.
+   * A line above `baseY` can never change again (apps can only address the
+   * live grid), so re-converting the full 200-row scrollback margin on
+   * every refresh was ~80% wasted work under streaming. Absolute ids ride
+   * `anchor` — an xterm marker whose `.line` tracks buffer trimming, so an
+   * id keeps naming the same physical line across scrollback trim shifts.
+   * Wiped on resize (reflow rewrites history) and whenever the anchor dies
+   * (buffer reset trims it). */
+  private readonly scrollbackCache = new Map<number, TerminalRow>()
+  private anchor: IMarker | undefined
+  private anchorId = 0
   private _title: string | null = null
   private _killed = false
   protected cols: number
@@ -205,11 +216,20 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.rows = rows
     try {
       this.term.resize(cols, rows)
+      // Reflow rewraps history — every cached scrollback row is stale.
+      this.invalidateScrollbackCache()
       this.transportResize(cols, rows)
       this.refreshSnapshot()
     } catch {
       this.markDead(false)
     }
+  }
+
+  private invalidateScrollbackCache(): void {
+    this.scrollbackCache.clear()
+    this.anchor?.dispose()
+    this.anchor = undefined
+    this.anchorId = 0
   }
 
   capture(): readonly TerminalRow[] {
@@ -307,13 +327,58 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       return
     }
     const active = this.term.buffer.active
+    // Alt screen has no scrollback (baseY 0) — every row is live, nothing
+    // to cache. The normal buffer's anchor/cache are left untouched so
+    // they're still valid when the fullscreen app exits.
+    const alt = active.type === "alternate"
+    if (!alt && (this.anchor === undefined || this.anchor.isDisposed)) {
+      // Fresh epoch (first refresh, or the anchor was trimmed by a buffer
+      // reset): wipe the stale mapping and anchor BEFORE converting, so
+      // this very pass already populates the cache.
+      this.scrollbackCache.clear()
+      const fresh = this.term.registerMarker(0)
+      if (fresh) {
+        this.anchor = fresh
+        this.anchorId = fresh.line
+      }
+    }
+    const anchorAlive = !alt && this.anchor !== undefined && !this.anchor.isDisposed
+    // Absolute id of buffer line y — only meaningful while the anchor lives.
+    const absBase = anchorAlive ? this.anchorId - (this.anchor as IMarker).line : 0
+    const cache = this.scrollbackCache
     const rows: TerminalRow[] = []
     const cursorY = active.baseY + active.cursorY
     const start = Math.max(0, active.length - (this.rows + VISIBLE_SCROLLBACK_MARGIN_ROWS))
     for (let y = start; y < active.length; y++) {
+      const frozen = anchorAlive && y < active.baseY
+      if (frozen) {
+        const cached = cache.get(absBase + y)
+        if (cached) {
+          rows.push(cached)
+          continue
+        }
+      }
       const line = active.getLine(y)
       const minLast = y === cursorY ? active.cursorX - 1 : -1
-      rows.push(line ? xtermLineToChunks(line, minLast) : [])
+      const row: TerminalRow = line ? xtermLineToChunks(line, minLast) : []
+      rows.push(row)
+      if (frozen) cache.set(absBase + y, row)
+    }
+    if (anchorAlive) {
+      // Drop ids that scrolled past the window so the map stays ≤ margin.
+      const min = absBase + start
+      for (const id of cache.keys()) if (id < min) cache.delete(id)
+    }
+    if (!alt) {
+      // Re-anchor at the cursor line: it survives until it trims through
+      // the whole margin, and every refresh renews it long before that.
+      const next = this.term.registerMarker(0)
+      if (next) {
+        this.anchorId = anchorAlive ? absBase + next.line : 0
+        this.anchor?.dispose()
+        this.anchor = next
+      }
+      // registerMarker can return undefined — keep the old anchor then.
     }
     this.snapshot = rows
     this.snapshotDirty = false
