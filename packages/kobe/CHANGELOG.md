@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.78
+
+### Patch Changes
+
+- 857d78d: perf: background engine PTYs no longer rebuild their full screen snapshot at output cadence — with no pane subscribed, the grid+scrollback conversion is deferred until the turn poll's next `capture()` (or a resubscribe), cutting per-session CPU roughly to the 1.5s poll rate while output streams unwatched.
+- c0e82ea: perf: the embedded terminal's refresh now reuses converted scrollback rows instead of re-converting the full 200-row margin on every frame — scrollback lines are frozen once they leave the live grid, so per-refresh conversion work drops to roughly the visible grid while an engine streams.
+
 ## 0.7.77
 
 ### Patch Changes
