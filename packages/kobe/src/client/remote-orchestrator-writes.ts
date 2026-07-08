@@ -107,9 +107,16 @@ export async function adoptWorktreeOp(
 }
 
 /** Every worktree of every local saved project — the standalone
- *  worktree-management TUI page (`worktree.list`). */
-export async function listWorktreesOp(client: KobeDaemonClient): Promise<readonly WorktreeProject[]> {
-  const res = await client.request<{ projects: WorktreeProject[] }>("worktree.list", {})
+ *  worktree-management TUI page (`worktree.list`). `network: false` skips
+ *  the slow forge lookups (ls-remote, gh PR states) for an instant first
+ *  paint; the page re-requests with them on for the full picture. */
+export async function listWorktreesOp(
+  client: KobeDaemonClient,
+  opts?: { network?: boolean },
+): Promise<readonly WorktreeProject[]> {
+  const res = await client.request<{ projects: WorktreeProject[] }>("worktree.list", {
+    network: opts?.network !== false,
+  })
   return res.projects
 }
 

@@ -66,21 +66,36 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
   const [reloadTick, setReloadTick] = useState(0)
   const refetch = (): void => setReloadTick((tick) => tick + 1)
 
+  // Two-phase load: the local-signals pass paints instantly, the full pass
+  // (ls-remote + gh PR states, seconds when a remote is slow) swaps in when
+  // it lands. `fullLanded` guards the rare inversion where the full pass
+  // returns before the fast one — richer rows must not be overwritten.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadTick is a TRIGGER (the effect body doesn't read it) — matching the Solid refetch() re-run guard.
   useEffect(() => {
     let disposed = false
-    if (!props.orchestrator) {
+    let fullLanded = false
+    const orch = props.orchestrator
+    if (!orch) {
       setProjects([])
       return
     }
-    void props.orchestrator
+    void orch
+      .listWorktrees({ network: false })
+      .then((rows) => {
+        if (!disposed && !fullLanded) setProjects(rows)
+      })
+      .catch(() => {
+        /* fast pass is best-effort; the full pass below still runs */
+      })
+    void orch
       .listWorktrees()
       .then((rows) => {
+        fullLanded = true
         if (!disposed) setProjects(rows)
       })
       .catch(() => {
         // Same boundary as the Solid resource: a failed read leaves the
-        // loading placeholder rather than crashing the page.
+        // fast-pass rows (or the loading placeholder) rather than crashing.
       })
     return () => {
       disposed = true
