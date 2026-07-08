@@ -13,6 +13,8 @@
  * place.
  */
 
+import type { WorktreeVerdict, WorktreeVerdictReason } from "../orchestrator/worktree/staleness"
+
 /**
  * Snapshot of a worktree on disk.
  *
@@ -64,6 +66,12 @@ export interface WorktreeAuditRow extends AdoptableWorktree {
   /** Whether `branch` exists on `origin`. `null` = no origin / unreachable /
    *  timed out — rendered as "unknown", never a delete-blocker. */
   readonly branchOnRemote: boolean | null
+  /** Staleness rubric result (`orchestrator/worktree/staleness.ts`):
+   *  dirty > PR open > PR merged > 0-ahead-of-main > PR closed > idle age.
+   *  Advisory badge only — never a delete-gate. */
+  readonly verdict: WorktreeVerdict
+  /** WHY the verdict fired — i18n suffix under `worktrees.verdict.*`. */
+  readonly verdictReason: WorktreeVerdictReason
 }
 
 /** One local project's worktree audit rows (`worktree.list` response shape). */
