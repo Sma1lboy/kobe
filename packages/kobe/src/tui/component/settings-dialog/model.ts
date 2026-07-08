@@ -16,6 +16,7 @@
  * can import it without @opentui.
  */
 
+import { SPLIT_STYLES, type SplitStyle } from "../../../state/split-style"
 import type { VendorId } from "../../../types/vendor"
 // theme-core (not ../../context/theme): this module is shared with the
 // React port, which must not reference the Solid .tsx even type-only.
@@ -48,6 +49,7 @@ export type SettingsRow =
   | { id: "transparent"; kind: "transparent" }
   | { id: string; kind: "focusAccent"; slot: FocusAccentSlot }
   | { id: "reduced-motion"; kind: "reducedMotion" }
+  | { id: string; kind: "splitStyle"; style: SplitStyle }
   | { id: "toast"; kind: "toast" }
   | { id: "sound"; kind: "sound" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
@@ -89,6 +91,10 @@ export function surfaceRowId(surface: "chattab" | "taskpanel"): string {
   return `surface:${surface}`
 }
 
+export function splitStyleRowId(style: SplitStyle): string {
+  return `split-style:${style}`
+}
+
 /** Everything the registry needs to lay out every section's rows. */
 export type SettingsRowsInput = {
   themeNames: readonly string[]
@@ -111,6 +117,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "transparent", kind: "transparent" },
     ...input.focusAccentSlots.map((slot): SettingsRow => ({ id: focusAccentRowId(slot), kind: "focusAccent", slot })),
     { id: "reduced-motion", kind: "reducedMotion" },
+    ...SPLIT_STYLES.map((style): SettingsRow => ({ id: splitStyleRowId(style), kind: "splitStyle", style })),
     { id: "toast", kind: "toast" },
     { id: "sound", kind: "sound" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },

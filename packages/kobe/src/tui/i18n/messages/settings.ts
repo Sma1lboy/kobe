@@ -37,6 +37,11 @@ export const en = {
     reducedMotion: "Reduced motion",
     reducedMotionHint:
       "Calms chrome animations: the running-task spinner becomes a slow pulsing dot, and the toast slide-in, materializing sweep, and tab-complete flash turn off.",
+    appearance: "Appearance",
+    appearanceHint:
+      "How split panes draw: a full box frame around every pane, or a single tmux-style divider line between neighbors.",
+    splitBox: "Box frames",
+    splitLine: "Divider line",
     notifications: "Notifications",
     notificationsHint:
       "Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound = terminal bell + chime. Tab-chip unread dot is always on.",
@@ -166,6 +171,10 @@ export const zh: typeof en = {
     accentPrimary: "主色（品牌强调色）",
     accentSuccess: "成功色（传统绿）",
     accentInfo: "信息色（冷蓝）",
+    appearance: "外观",
+    appearanceHint: "分屏面板的描边方式:每个面板一个完整方框,或 tmux 风格的单线分隔。",
+    splitBox: "方框边框",
+    splitLine: "单线分隔",
     reducedMotion: "减弱动效",
     reducedMotionHint:
       "让界面动效安静下来：运行中任务的 spinner 变为缓慢明暗脉冲点，Toast 滑入、worktree 创建扫动条和标签完成闪烁全部关闭。",
