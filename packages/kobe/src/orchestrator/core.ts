@@ -27,6 +27,7 @@ import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
 import { samePrStatus } from "../monitor/pr-status.ts"
+import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-active.ts"
 import {
   getRemoteRepoConfig,
   getSavedRepos,
@@ -131,7 +132,14 @@ export class Orchestrator {
     const [tasks, setTasks] = createSignal<Task[]>(this.store.list())
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
-    const [activeTask, setActiveTask] = createSignal<string | null>(null)
+    // Seed focus from the persisted `lastActive` record (state/last-active
+    // .ts) so a daemon restart or fresh TUI opens on the last-focused task
+    // instead of "first in the list". Dropped silently when the task is
+    // gone (deleted since) — the UI's own fallback picks a survivor.
+    const persistedFocus = readLastActiveTaskId()
+    const [activeTask, setActiveTask] = createSignal<string | null>(
+      persistedFocus && this.store.get(persistedFocus) ? persistedFocus : null,
+    )
     this.activeTaskAcc = activeTask
     this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.unsubscribeStore = this.store.subscribe((snapshot) => {
@@ -164,6 +172,8 @@ export class Orchestrator {
     const next = id === null ? null : String(id)
     this.setActiveTaskSig(next)
     if (next && this.store.get(next)) {
+      // Global last-writer-wins focus record — see state/last-active.ts.
+      writeLastActiveTaskId(next)
       await this.store.update(next, {})
     }
   }

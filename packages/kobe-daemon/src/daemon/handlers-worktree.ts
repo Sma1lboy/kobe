@@ -129,7 +129,13 @@ async function aheadOfDefault(worktreePath: string, defaultRef: string | null): 
   }
 }
 
-async function listLocalProjects(): Promise<WorktreeProject[]> {
+/**
+ * `network: false` is the page's instant first paint — every forge/network
+ * lookup (ls-remote per worktree, `gh pr list` per repo) is skipped and its
+ * signal reads unknown; verdicts still fire from the local git signals
+ * (dirty / ahead-of-default / age). The page re-requests with network on.
+ */
+async function listLocalProjects(network: boolean): Promise<WorktreeProject[]> {
   const localRepos = getSavedRepos().filter((repo) => !getRemoteRepoConfig(repo))
   const now = Date.now()
   return Promise.all(
@@ -138,13 +144,13 @@ async function listLocalProjects(): Promise<WorktreeProject[]> {
       // default-branch ref are shared by every row below.
       const [worktrees, prStates, defaultRef] = await Promise.all([
         worktreeManager.listAll(repo),
-        prStatesForRepo(repo),
+        network ? prStatesForRepo(repo) : null,
         defaultBranchRef(repo),
       ])
       const rows = await Promise.all(
         worktrees.map(async (wt): Promise<WorktreeAuditRow> => {
           const [remote, ahead] = await Promise.all([
-            branchOnRemote(wt.path, wt.branch),
+            network ? branchOnRemote(wt.path, wt.branch) : null,
             aheadOfDefault(wt.path, defaultRef),
           ])
           const judgement = judgeWorktree(
@@ -245,8 +251,8 @@ export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "worktree.list",
-    async handle() {
-      return { projects: await listLocalProjects() }
+    async handle(payload) {
+      return { projects: await listLocalProjects(payload.network !== false) }
     },
   },
   {
