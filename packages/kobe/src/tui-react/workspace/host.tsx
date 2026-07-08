@@ -270,6 +270,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     createTask: () => void createTask(),
     renameBranch: (id) => void renameBranch(id),
     cycleVendor: (id) => void cycleVendor(id),
+    toggleZen,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus
