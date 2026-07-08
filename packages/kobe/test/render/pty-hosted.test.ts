@@ -88,4 +88,31 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     await until(() => text(c).includes("fresh") && !text(c).includes("persist-me"), "fresh session after kill")
     c.kill()
   })
+
+  test("kill() on a self-exited session forgets the host record — reopen spawns fresh", async () => {
+    // The engine-degrade path: the child exits on its own (claude/codex
+    // quit), so the handle is already dead when the registry release()s it.
+    const a = new HostedTaskPty({
+      taskId: "smoke::t2",
+      cwd: dir,
+      command: ["/bin/sh", "-c", "echo engine-died"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => a.killed, "self-exited child marks the handle dead")
+    a.kill()
+
+    // The degraded tab reopens the SAME key with a different command (the
+    // user's shell). The host must spawn it — not hand back the corpse.
+    const b = new HostedTaskPty({
+      taskId: "smoke::t2",
+      cwd: dir,
+      command: ["/bin/sh", "-c", "echo fresh-shell; sleep 30"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => text(b).includes("fresh-shell"), "reopen after dead-handle kill spawns the new command")
+    expect(b.killed).toBe(false)
+    b.kill()
+  })
 })
