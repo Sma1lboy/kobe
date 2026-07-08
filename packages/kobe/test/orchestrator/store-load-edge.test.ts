@@ -11,9 +11,9 @@
  * shape here is one a real crash can produce.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 
@@ -55,13 +55,47 @@ describe("load() recovery", () => {
     expect(store.list()).toEqual([])
   })
 
-  it("corrupt JSON recovers empty with a warning, leaving the file in place", async () => {
+  it("corrupt JSON recovers empty with a warning, backing the original bytes up", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     await primeDir()
     await writeManifest("{ not json !!!")
     const index = await store.load()
     expect(index.tasks).toEqual([])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("corrupted"))
+
+    // The raw bytes must survive somewhere: a sibling `tasks.json.corrupt-*`
+    // backup, so the next save() overwriting tasks.json doesn't lose them.
+    const dir = dirname(store.filePath)
+    const base = basename(store.filePath)
+    const backups = (await readdir(dir)).filter((f) => f.startsWith(`${base}.corrupt-`))
+    expect(backups).toHaveLength(1)
+    expect(await readFile(join(dir, backups[0] as string), "utf8")).toBe("{ not json !!!")
+    warn.mockRestore()
+  })
+
+  it("a corrupt manifest that gets clobbered by the next save is still recoverable from the backup", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    await primeDir()
+    await writeManifest("}{ half-written garbage")
+    await store.load() // recovers empty + writes the backup
+
+    // A create triggers a save(): readDiskTasks() reads the corrupt file as [],
+    // so tasks.json is rewritten from empty — the original rows are gone from
+    // the live manifest but preserved in the backup.
+    await store.create({
+      repo: "/r",
+      title: "after-corruption",
+      branch: "",
+      worktreePath: "",
+      status: "backlog",
+      kind: "task",
+      vendor: "claude",
+    })
+    const dir = dirname(store.filePath)
+    const base = basename(store.filePath)
+    const backups = (await readdir(dir)).filter((f) => f.startsWith(`${base}.corrupt-`))
+    expect(backups).toHaveLength(1)
+    expect(await readFile(join(dir, backups[0] as string), "utf8")).toBe("}{ half-written garbage")
     warn.mockRestore()
   })
 

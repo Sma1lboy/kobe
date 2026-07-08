@@ -19,13 +19,13 @@
  *   - **Change notification.** Listeners fire after every mutation.
  */
 
-import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { Task, TaskId, TaskIndex, TaskPRStatus, TaskStatus } from "../../types/task.ts"
+import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
-import { coerceVendorId } from "../../types/vendor.ts"
 import { LockfileError, acquire, release } from "./lockfile.ts"
+import { CURRENT_VERSION, backupCorruptManifest, normalizeIndex } from "./normalize.ts"
 import { ulid } from "./ulid.ts"
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -70,10 +70,6 @@ export interface TaskIndexStoreOptions {
 export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt" | "archived"> & {
   readonly archived?: boolean
 }
-
-const CURRENT_VERSION = 3 as const
-const EMPTY_INDEX: TaskIndex = { version: CURRENT_VERSION, tasks: [] } as const
-void EMPTY_INDEX
 
 export type TaskIndexListener = (snapshot: readonly Task[]) => void
 export type TaskIndexUnsubscribe = () => void
@@ -160,8 +156,15 @@ export class TaskIndexStore {
     try {
       parsed = JSON.parse(raw)
     } catch (err) {
+      // Recovering to an empty index isn't enough: the next save() reads this
+      // corrupt file as `[]` too and rewrites tasks.json from that empty base,
+      // losing the user's rows for good. Copy the raw bytes aside FIRST.
+      const backup = await backupCorruptManifest(this.path, raw)
+      const recovery = backup
+        ? `The original bytes were backed up to ${backup} so your tasks can be recovered.`
+        : "The stale file is left in place."
       console.warn(
-        `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index. The stale file is left in place.`,
+        `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index. ${recovery}`,
       )
       this.cache = { version: CURRENT_VERSION, tasks: [] }
       this.loaded = true
@@ -494,147 +497,4 @@ export class TaskIndexStore {
       }
     }
   }
-}
-
-/**
- * Normalize an arbitrary JSON value into a v3 cache. Migrates v1 / v2
- * manifests by stripping the dropped fields (`tabs`, `activeTabId`,
- * `sessionId`, `model`, `modelEffort`, `permissionMode`). The first
- * save after load persists the v3 shape.
- */
-function normalizeIndex(parsed: unknown, source: string): { version: typeof CURRENT_VERSION; tasks: Task[] } {
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    console.warn(`[kobe] tasks.json at ${source} is not an object; recovering with empty index.`)
-    return { version: CURRENT_VERSION, tasks: [] }
-  }
-
-  const obj = parsed as { version?: unknown; tasks?: unknown }
-  const version = obj.version
-  if (version !== undefined && version !== 1 && version !== 2 && version !== 3) {
-    console.warn(
-      `[kobe] tasks.json at ${source} has unsupported version=${String(version)}; recovering with empty index.`,
-    )
-    return { version: CURRENT_VERSION, tasks: [] }
-  }
-
-  const rawTasks = Array.isArray(obj.tasks) ? obj.tasks : []
-  const tasks: Task[] = []
-  for (const entry of rawTasks) {
-    const task = coerceTask(entry)
-    if (task) tasks.push(task)
-    else {
-      console.warn(`[kobe] dropping malformed task entry from ${source}: ${JSON.stringify(entry)}`)
-    }
-  }
-  return { version: CURRENT_VERSION, tasks }
-}
-
-/**
- * Coerce one persisted task entry into a v3 {@link Task}. Tolerant of
- * v1 / v2 shapes — silently drops the dropped fields.
- */
-function coerceTask(value: unknown): Task | null {
-  if (!value || typeof value !== "object") return null
-  const v = value as Record<string, unknown>
-  if (
-    typeof v.id !== "string" ||
-    typeof v.title !== "string" ||
-    typeof v.repo !== "string" ||
-    typeof v.branch !== "string" ||
-    typeof v.worktreePath !== "string" ||
-    typeof v.status !== "string" ||
-    typeof v.createdAt !== "string" ||
-    typeof v.updatedAt !== "string"
-  ) {
-    return null
-  }
-  if (!isTaskStatus(v.status)) return null
-
-  // Self-heal pre-fix rows. Old kobe builds auto-flipped status to "done"
-  // on every clean turn end, leaving the active sidebar full of `done`
-  // tasks whose `archived` was still false. `done` is now reserved for
-  // user-driven archive — heal those rows back to `in_progress` on load
-  // so the sidebar's ✓ glyph only ever means "user archived this as
-  // complete." Archived `done` rows are left alone.
-  const archived = typeof v.archived === "boolean" ? v.archived : false
-  const kind: Task["kind"] = v.kind === "main" ? "main" : "task"
-  // A `main` (project root) task has NO session lifecycle that maintains
-  // its status — nothing ever flips it to in_progress on a turn start or
-  // back to backlog on a turn end. So a persisted in_progress/done on a
-  // main row is junk (it came from the old auto-done flip, then the
-  // done→in_progress heal below, leaving the project permanently stuck
-  // showing the "working" chip). Reset a main row to a neutral backlog so
-  // the project's liveness comes ONLY from a real live engine handle.
-  const healedStatus: TaskStatus =
-    kind === "main"
-      ? v.status === "in_progress" || v.status === "done"
-        ? "backlog"
-        : v.status
-      : v.status === "done" && !archived
-        ? "in_progress"
-        : v.status
-
-  return {
-    id: toTaskId(v.id),
-    title: v.title,
-    repo: v.repo,
-    branch: v.branch,
-    worktreePath: v.worktreePath,
-    status: healedStatus,
-    archived,
-    pinned: typeof v.pinned === "boolean" ? v.pinned : false,
-    kind,
-    vendor: coerceVendorId(typeof v.vendor === "string" ? v.vendor : undefined),
-    prStatus: coercePRStatus(v.prStatus),
-    // Web-board ordering key — must survive the load coercion or every
-    // daemon restart silently forgets the user's column order.
-    ...(typeof v.position === "number" && Number.isFinite(v.position) ? { position: v.position } : {}),
-    // Engine reasoning/effort level — must survive the load coercion or the
-    // task forgets its effort on every daemon restart.
-    ...(typeof v.modelEffort === "string" && v.modelEffort.length > 0 ? { modelEffort: v.modelEffort } : {}),
-    createdAt: v.createdAt,
-    updatedAt: v.updatedAt,
-  }
-}
-
-function coercePRStatus(value: unknown): TaskPRStatus | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-  const v = value as Record<string, unknown>
-  if (!isPRProviderId(v.provider) || !isPRLifecycleState(v.lifecycle) || !isPRCheckState(v.checkState)) {
-    return undefined
-  }
-  return {
-    provider: v.provider,
-    lifecycle: v.lifecycle,
-    checkState: v.checkState,
-    ...(typeof v.number === "number" && Number.isFinite(v.number) ? { number: v.number } : {}),
-    ...(typeof v.url === "string" ? { url: v.url } : {}),
-    ...(typeof v.title === "string" ? { title: v.title } : {}),
-    ...(typeof v.baseRef === "string" ? { baseRef: v.baseRef } : {}),
-    ...(typeof v.headRef === "string" ? { headRef: v.headRef } : {}),
-    ...(typeof v.reviewDecision === "string" ? { reviewDecision: v.reviewDecision } : {}),
-    ...(typeof v.mergeable === "string" ? { mergeable: v.mergeable } : {}),
-    ...(typeof v.lastCheckedAt === "string" ? { lastCheckedAt: v.lastCheckedAt } : {}),
-    ...(typeof v.lastError === "string" ? { lastError: v.lastError } : {}),
-  }
-}
-
-function isPRProviderId(v: unknown): v is TaskPRStatus["provider"] {
-  return v === "github" || v === "gitlab" || v === "bitbucket" || v === "unknown"
-}
-
-function isPRLifecycleState(v: unknown): v is TaskPRStatus["lifecycle"] {
-  return (
-    v === "creating" || v === "open" || v === "ready_to_merge" || v === "merged" || v === "closed" || v === "unknown"
-  )
-}
-
-function isPRCheckState(v: unknown): v is TaskPRStatus["checkState"] {
-  return v === "none" || v === "pending" || v === "passing" || v === "failing" || v === "unknown"
-}
-
-function isTaskStatus(s: string): s is TaskStatus {
-  return (
-    s === "backlog" || s === "in_progress" || s === "in_review" || s === "done" || s === "canceled" || s === "error"
-  )
 }
