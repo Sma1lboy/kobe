@@ -380,6 +380,20 @@ all in this pass:
   The host cycles over its own pane list, not `PANE_ORDER` — that includes `"terminal"`,
   which this host never mounts, and focus must never land on an unmounted pane.
 
+### Zen toggle chord (issue #18) — why `F6`
+
+Zen mode itself (the pure-TUI host hiding its Files column, `useState` in `tui-react/workspace/
+host.tsx`) already shipped — the sidebar's `☯ ZEN` chip toggles it on click, and stays visible
+by design as the exit affordance (tmux parity). The only gap was keyboard: no chord, mouse-only.
+`F6` fills it: `workspace.zenToggle` continues the F2 (rename) / F3 (split) / F4 (pane cycle) /
+F5 (reset) row and was unclaimed at the time of writing — the embedded-terminal cluster only
+reserves through `f5`, and no other pure-TUI row uses an F-key past that point. Registered in
+`RESERVED_GLOBAL_CHORDS` (`panes/terminal/keys-pure.ts`) so it fires identically from inside the
+embedded terminal, same tier as `focus.next` in `host-keybindings.ts`'s first `useBindings` block
+(gated only on `pagesClosed`, provably reachable from every pane). Deliberately NOT
+`tmux.layout.zenToggle` (`space`, `keybindings-chat.ts`) — that row is the tmux-layer's own
+display toggle, a separate contract the pure-TUI host doesn't touch.
+
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 
 We iterated through three candidates before landing on `ctrl+hjkl`. Recording the journey here so the next agent (or Jackson) doesn't
@@ -438,6 +452,7 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 | `ctrl+\` / `ctrl+=` / `F3` | workspace splits (`workspace.split.right` / `.down` / `.focus-next`) — see the split decision log below |
 | `F4` | pane cycle (`focus.next`) — the one cross-pane chord besides `ctrl+q` that works from inside the terminal (see the pure-TUI navigation decision log below) |
 | `F5` | terminal reset (confirm-gated) |
+| `F6` | zen toggle (`workspace.zenToggle`) — hides the files column from inside the terminal too (see the zen-toggle decision log below) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 
 Everything else — `shift+tab` (claude plan-mode cycle), `ctrl+hjkl`, `F1`,

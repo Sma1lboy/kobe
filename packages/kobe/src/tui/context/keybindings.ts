@@ -257,6 +257,21 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "f4", label: "next pane", status: false },
   },
   {
+    // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
+    // the sidebar's ☯ ZEN chip is the click-based exit affordance, this is
+    // the keyboard one. `f6` sits in RESERVED_GLOBAL_CHORDS (panes/terminal/
+    // keys-pure.ts) so it fires identically from inside the embedded
+    // terminal, continuing the F2 (rename) / F3 (split) / F4 (pane cycle) /
+    // F5 (reset) row. NOT `tmux.layout.zenToggle` (space) — that's the
+    // tmux-layer's separate display row, unrelated contract.
+    id: "workspace.zenToggle",
+    scope: "global",
+    keys: ["f6"],
+    category: "Navigation",
+    description: "Toggle zen mode (hide the files column)",
+    hint: { keys: "f6", label: "zen", status: false },
+  },
+  {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on
     // focused + streaming + no dialog). ESC no longer "detaches" focus
     // back to the sidebar — that pulled focus out from under the user
