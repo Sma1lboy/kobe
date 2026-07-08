@@ -19,6 +19,7 @@
 import { statSync } from "node:fs"
 import { execHostForWorktreePath } from "@/exec/resolve"
 import { GitWorktreeManager } from "@/orchestrator/worktree/manager"
+import { type PrState, judgeWorktree, parseGhPrList } from "@/orchestrator/worktree/staleness"
 import { getRemoteRepoConfig, getSavedRepos } from "@/state/repos"
 import type { WorktreeAuditRow, WorktreeProject } from "@/types/worktree"
 import { logDaemonError } from "./crash-log.ts"
@@ -55,20 +56,115 @@ async function branchOnRemote(worktreePath: string, branch: string): Promise<boo
   }
 }
 
+/** `origin/<default>` ref for ahead-count checks; null when unresolvable. */
+async function defaultBranchRef(repo: string): Promise<string | null> {
+  const exec = execHostForWorktreePath(repo)
+  try {
+    const out = await exec.run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
+      cwd: repo,
+      signal: AbortSignal.timeout(REMOTE_CHECK_TIMEOUT_MS),
+    })
+    const ref = out.stdout.trim()
+    if (out.exitCode === 0 && ref) return ref
+  } catch {
+    /* fall through to the guesses */
+  }
+  // origin/HEAD is often unset on old clones — try the two conventional names.
+  for (const guess of ["origin/main", "origin/master"]) {
+    try {
+      const out = await exec.run(["git", "rev-parse", "--verify", "--quiet", guess], {
+        cwd: repo,
+        signal: AbortSignal.timeout(REMOTE_CHECK_TIMEOUT_MS),
+      })
+      if (out.exitCode === 0) return guess
+    } catch {
+      /* keep guessing */
+    }
+  }
+  return null
+}
+
+/**
+ * Branch → PR state for the whole repo in ONE `gh pr list` call (per-branch
+ * `gh pr view`s would be N network round-trips). GitHub-only by origin-URL
+ * check; null (no data, verdicts fall back to git-only signals) on any
+ * failure — `gh` missing, unauthenticated, offline, non-GitHub forge.
+ */
+async function prStatesForRepo(repo: string): Promise<ReadonlyMap<string, PrState> | null> {
+  const exec = execHostForWorktreePath(repo)
+  try {
+    const origin = await exec.run(["git", "remote", "get-url", "origin"], {
+      cwd: repo,
+      signal: AbortSignal.timeout(REMOTE_CHECK_TIMEOUT_MS),
+    })
+    if (origin.exitCode !== 0 || !origin.stdout.includes("github.com")) return null
+    const out = await exec.run(
+      ["gh", "pr", "list", "--state", "all", "--limit", "200", "--json", "headRefName,state"],
+      {
+        cwd: repo,
+        signal: AbortSignal.timeout(REMOTE_CHECK_TIMEOUT_MS),
+      },
+    )
+    if (out.exitCode !== 0) return null
+    return parseGhPrList(out.stdout)
+  } catch {
+    return null
+  }
+}
+
+/** `git rev-list --count <defaultRef>..HEAD` — 0 means main already has everything. */
+async function aheadOfDefault(worktreePath: string, defaultRef: string | null): Promise<number | null> {
+  if (!defaultRef) return null
+  try {
+    const exec = execHostForWorktreePath(worktreePath)
+    const out = await exec.run(["git", "rev-list", "--count", `${defaultRef}..HEAD`], {
+      cwd: worktreePath,
+      signal: AbortSignal.timeout(REMOTE_CHECK_TIMEOUT_MS),
+    })
+    if (out.exitCode !== 0) return null
+    const n = Number.parseInt(out.stdout.trim(), 10)
+    return Number.isNaN(n) ? null : n
+  } catch {
+    return null
+  }
+}
+
 async function listLocalProjects(): Promise<WorktreeProject[]> {
   const localRepos = getSavedRepos().filter((repo) => !getRemoteRepoConfig(repo))
+  const now = Date.now()
   return Promise.all(
     localRepos.map(async (repo) => {
-      const worktrees = await worktreeManager.listAll(repo)
+      // Repo-level signals once, not per worktree: the PR map and the
+      // default-branch ref are shared by every row below.
+      const [worktrees, prStates, defaultRef] = await Promise.all([
+        worktreeManager.listAll(repo),
+        prStatesForRepo(repo),
+        defaultBranchRef(repo),
+      ])
       const rows = await Promise.all(
-        worktrees.map(
-          async (wt): Promise<WorktreeAuditRow> => ({
+        worktrees.map(async (wt): Promise<WorktreeAuditRow> => {
+          const [remote, ahead] = await Promise.all([
+            branchOnRemote(wt.path, wt.branch),
+            aheadOfDefault(wt.path, defaultRef),
+          ])
+          const judgement = judgeWorktree(
+            {
+              dirty: wt.dirty,
+              prState: prStates?.get(wt.branch) ?? null,
+              aheadOfDefault: ahead,
+              lastActivityMs: wt.lastActivityMs,
+            },
+            now,
+          )
+          return {
             ...wt,
             repo,
             createdAtMs: createdAtMs(wt.path),
-            branchOnRemote: await branchOnRemote(wt.path, wt.branch),
-          }),
-        ),
+            branchOnRemote: remote,
+            verdict: judgement.verdict,
+            verdictReason: judgement.reason,
+          }
+        }),
       )
       return { repo, worktrees: rows }
     }),
