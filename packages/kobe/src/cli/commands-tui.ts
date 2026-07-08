@@ -334,6 +334,44 @@ export async function dispatchTuiCommand(subcommand: string | undefined, rest: r
     })
     return true
   }
+  if (subcommand === "tasks") {
+    // The Tasks pane (left side of a task's tmux session) — a task list
+    // that `switch-client`s between sessions. Restored after the Solid
+    // removal (7a5b878d) dropped it without a React port: the tmux
+    // product path spawns `kobe tasks` in every session's rail.
+    const flags = parseOpsFlags(rest)
+    const { startTasksPane } = await import("../tui-react/tasks-pane/host.tsx")
+    await startTasksPane({ initialTaskId: flags.initialTaskId })
+    return true
+  }
+  if (subcommand === "new-task") {
+    // The new-task flow as a standalone full-window page (the default
+    // `chattab` settings surface). Opened by `openNewTaskTab`; reuses the
+    // same NewTaskDialog the in-pane overlay uses and performs the
+    // create/adopt against its own daemon connection before exiting.
+    const flags = parseOpsFlags(rest)
+    const { startNewTaskHost } = await import("../tui-react/new-task/host.tsx")
+    await startNewTaskHost({ defaultRepo: flags.repo })
+    return true
+  }
+  if (subcommand === "quick-task") {
+    // The prompt-only quick-create page, opened in its own window by
+    // `quickCreate` (the `<prefix> f` / `kobe quick-create` handler). Asks
+    // for only a prompt and fills the rest from the firing task's defaults.
+    // Reads `--session` to resolve those defaults.
+    const flags = parseOpsFlags(rest)
+    const { startQuickTaskHost } = await import("../tui-react/quick-task/host.tsx")
+    await startQuickTaskHost({ session: flags.session })
+    return true
+  }
+  if (subcommand === "update-page") {
+    // Internal full-window update surface opened from the tmux-native
+    // Tasks pane. `kobe update` remains the shell updater; this page
+    // presents the version/release context and hands off to that updater.
+    const { startUpdateHost } = await import("../tui-react/update/host.tsx")
+    await startUpdateHost()
+    return true
+  }
   if (subcommand === "settings") {
     // The Settings page as a standalone full-window surface (the default
     // `chattab` settings surface). Opened by `openSettingsTab` as a new

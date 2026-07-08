@@ -49,7 +49,7 @@ import type { KVContext } from "../../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../context/theme"
 import { type LocaleId, currentLang, setLocaleLang, useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
-import { useDialog } from "../../ui/dialog"
+import { type DialogContext, useDialog } from "../../ui/dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./actions"
 import { AccountsSettingsSection, EngineSettingsSection } from "./sections-engines"
 import { GeneralSettingsSection, SettingsSectionSidebar } from "./sections-general"
@@ -440,4 +440,33 @@ export function SettingsDialog(props: SettingsDialogProps) {
       </box>
     </box>
   )
+}
+
+/**
+ * Overlay (`taskpanel`) surface — push the dialog onto the stack and resolve
+ * once it closes, reporting whether any visual pref changed so the caller can
+ * refresh workspace panes. The React counterpart of the Solid
+ * `SettingsDialog.show`; the in-pane Tasks/Settings surfaces are its callers.
+ */
+SettingsDialog.show = (
+  dialog: DialogContext,
+  kv: KVContext,
+  orchestrator?: KobeOrchestrator,
+): Promise<{ visualPrefsChanged: boolean }> => {
+  let visualPrefsChanged = false
+  return new Promise<{ visualPrefsChanged: boolean }>((resolve) => {
+    dialog.replace(
+      () => (
+        <SettingsDialog
+          kv={kv}
+          orchestrator={orchestrator}
+          onVisualPrefsChange={() => {
+            visualPrefsChanged = true
+          }}
+          onClose={() => resolve({ visualPrefsChanged })}
+        />
+      ),
+      () => resolve({ visualPrefsChanged }),
+    )
+  })
 }
