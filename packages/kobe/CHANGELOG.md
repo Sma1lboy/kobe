@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.73
+
+### Patch Changes
+
+- 8703b91: Embedded terminal: the drawn cursor now follows typed spaces. Trailing blank cells were dropped from the snapshot (the cursor-column seed was clobbered by the visible-cell scan), so the inverse-cell cursor froze at end-of-text while the real cursor advanced; the overlay also pads to the true cursor column as a backstop for backends that trim blank tails.
+- b8604d1: Fix two task-pane issues while a dialog is open. Typing into a dialog's text input (e.g. the set-branch field) no longer fires the sidebar's plain-letter shortcuts underneath it — those keys were both triggering actions like delete/archive and being swallowed before the input could read them, because pane keybindings stayed live while a dialog overlaid them. The set-branch flow (sidebar `b`) now lists the repo's local branches with filter-as-you-type — matching the new-task dialog's branch picker — while still letting you type a new name to rename the branch to.
+- 7a5b878: Remove the Solid.js TUI — React is now the only UI implementation. The `KOBE_SOLID=1` escape hatch back to the Solid host is gone, and the build/test toolchain no longer registers a Solid JSX transform (React JSX is handled by `@opentui/react`'s per-file pragmas). The tmux-era Solid-only surfaces (`quick-task` / `new-task` window / `update-page` / `tasks-pane`) are retired.
+- 98c459e: Embedded terminal: the synthetic cursor cell is hidden while a mouse selection is active (tmux copy-mode behavior). Cursor and selection share the same inverse styling, so a cursor sitting just past the selection read as the highlight overrunning by one blinking cell.
+
 ## 0.7.72
 
 ### Patch Changes
