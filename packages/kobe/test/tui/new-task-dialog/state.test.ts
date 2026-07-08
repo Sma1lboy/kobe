@@ -208,6 +208,34 @@ describe("resolveBaseRef (picker highlight vs typed text)", () => {
   })
 })
 
+// The set-branch dialog (component/branch-picker-dialog.tsx) chains these
+// two helpers exactly as the new-task baseRef picker does: filter the repo's
+// local branches by the typed text, then resolve on Enter. These cases pin
+// the re-branch contract — a brand-new name renames verbatim; a typed exact
+// existing name keeps it; arrowing picks the highlighted row.
+describe("filterBranches → resolveBaseRef (set-branch dialog composition)", () => {
+  const branches = ["main", "master", "feature/login"]
+  const resolveTyped = (typed: string, cursor = 0): string => {
+    const filtered = filterBranches(branches, typed)
+    return resolveBaseRef(typed, filtered, cursor)
+  }
+
+  it("passes a brand-new name through verbatim (no branch matches it)", () => {
+    // "release-2" matches nothing → filtered is empty → typed text renames.
+    expect(resolveTyped("release-2")).toBe("release-2")
+  })
+
+  it("keeps a typed exact existing name", () => {
+    // "main" filters to ["main"] and the exact-match rule returns it verbatim.
+    expect(resolveTyped("main")).toBe("main")
+  })
+
+  it("resolves to the highlighted row when the typed text only substring-matches", () => {
+    const filtered = filterBranches(branches, "feat") // ["feature/login"]
+    expect(resolveBaseRef("feat", filtered, 0)).toBe("feature/login")
+  })
+})
+
 describe("stripNewlines (opentui input sanitizer)", () => {
   it("strips CR and LF anywhere in the value", () => {
     expect(stripNewlines("foo\n")).toBe("foo")

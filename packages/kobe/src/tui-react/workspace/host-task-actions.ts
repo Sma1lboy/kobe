@@ -28,10 +28,10 @@ import {
   createTaskFlow,
   cycleVendorFlow,
   deleteTaskFlow,
-  renameBranchFlow,
   renameTaskFlow,
 } from "../../tui/lib/task-actions"
 import type { Task } from "../../types/task.ts"
+import { BranchPickerDialog } from "../component/branch-picker-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import type { DialogContext } from "../ui/dialog"
@@ -100,12 +100,26 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     })
   }
 
+  // Set-branch (`b`): pick from the repo's local branches (filter-as-you-type)
+  // or type a new name — the shared `renameBranchFlow`'s bare text prompt
+  // replaced by the branch-listing dialog (issue #10). `setBranch` no-ops on
+  // an unchanged name and rejects a main row, so we only guard/notify here.
+  async function renameBranch(id: string): Promise<void> {
+    const task = tasks().find((t) => t.id === id)
+    if (!task || task.kind === "main") return
+    const next = await BranchPickerDialog.show(dialog, { currentBranch: task.branch, repo: task.repo })
+    if (!next) return
+    await orchestrator.setBranch(id, next).catch((err) => {
+      notifyError(`Couldn't rename branch: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
   return {
     createTask: () => createTaskFlow(taskActions),
     archiveTask: (id) => archiveTaskFlow(taskActions, id),
     deleteTask: (id) => deleteTaskFlow(taskActions, id),
     renameTask: (id) => renameTaskFlow(taskActions, id),
-    renameBranch: (id) => renameBranchFlow(taskActions, id),
+    renameBranch,
     cycleVendor: (id) => cycleVendorFlow(taskActions, id),
     togglePin,
     moveTask,

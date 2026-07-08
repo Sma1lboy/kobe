@@ -81,6 +81,15 @@ export const en = {
     reorder: "reorder",
     done: "done",
   },
+  /** Set-branch (re-branch) dialog — lists the repo's local branches with
+      filter-as-you-type; typing a new name renames the task's branch. */
+  reBranch: {
+    title: "Set branch",
+    fieldLabel: "branch",
+    hintNoBranches: "(no local branches — type a new name)",
+    hintNoMatch: "(no match — enter renames to this branch)",
+    footer: "↑↓ pick · enter set · esc cancel",
+  },
   /** Toast / error messages */
   toast: {
     noDaemonWorktree: "No daemon running — can't create the worktree",
@@ -157,6 +166,13 @@ export const zh: typeof en = {
     panes: "面板",
     reorder: "重新排序",
     done: "完成",
+  },
+  reBranch: {
+    title: "设置分支",
+    fieldLabel: "分支",
+    hintNoBranches: "（没有本地分支——输入新名称）",
+    hintNoMatch: "（无匹配——回车将分支重命名为此名）",
+    footer: "↑↓ 选择 · enter 设置 · esc 取消",
   },
   toast: {
     noDaemonWorktree: "守护进程未运行——无法创建 worktree",
