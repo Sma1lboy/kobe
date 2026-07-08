@@ -180,17 +180,12 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     // asserting on "count went from 2 to 1" doesn't care which one dies.
     const before = windowIds(env, session)
     expect(before.length).toBe(2)
-    // `chat-tab-close` runs plain `kill-window` (layout-actions.ts's
-    // `closeChatTab`) — tmux's own SIGHUP-the-pane teardown, NOT the
-    // SIGTERM-the-process-GROUP `killSession` does for a whole-task kill.
-    // The fake `claude` shim traps SIGHUP (same as the real CLI), so its
-    // process survives the window close, reparented to init, invisible to
-    // `list-panes` once the window is gone — the exact #205 leak class
-    // `pane-cleanup.test.ts` pins for `kill-sessions`, but here on the
-    // ChatTab-close path, which was never given the same fix. Genuine
-    // product gap, out of this test-only branch's scope to fix (see the
-    // PR description); the cleanup below only stops THIS test run from
-    // leaving its own orphan behind.
+    // Regression pin (issue #14, incident 2026-07-07): `closeChatTab` must
+    // SIGTERM the window's pane process GROUPS before `kill-window`
+    // (`termWindowPaneGroups`) — tmux's own teardown only SIGHUPs, which the
+    // fake `claude` shim traps (same as the real CLI). Before the fix the
+    // shim survived reparented to init (#205 leak class); now its whole
+    // group must be gone shortly after the close, no self-reaping needed.
     const beforePids = tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
       .stdout.split("\n")
       .map((l) => Number.parseInt(l.trim(), 10))
@@ -200,28 +195,31 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     const closed = await waitUntil(() => windowIds(env, session).length === 1)
     expect(closed).toBe(true)
 
+    const survivors = new Set(
+      tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
+        .stdout.split("\n")
+        .map((l) => Number.parseInt(l.trim(), 10)),
+    )
+    const departed = beforePids.filter((pid) => !survivors.has(pid))
+    expect(departed.length).toBeGreaterThan(0)
+    // Signal 0 to the process GROUP: succeeds while ANY member (the
+    // HUP-trapping shim included) is alive, ESRCH once the group is empty.
+    const groupEmpty = (pid: number) => {
+      try {
+        process.kill(-pid, 0)
+        return false
+      } catch {
+        return true
+      }
+    }
+    const reaped = await waitUntil(() => departed.every(groupEmpty))
+    expect(reaped).toBe(true)
+
     // Final window: ctrl+w must be a no-op, not a session-kill.
     tmux(env, "send-keys", "-t", SESSION, "C-w")
     await new Promise((r) => setTimeout(r, 1_500))
     expect(windowIds(env, session).length).toBe(1)
     expect(tmuxInner(env, "has-session", "-t", `=${session}`).code).toBe(0)
-
-    // Test hygiene: reap the #205-class orphan documented above so this
-    // suite doesn't leave a `sleep 600` fake-claude behind on every run.
-    // `env.dispose()` can't reach it (it's already invisible to tmux).
-    const stillOnSession = new Set(
-      tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
-        .stdout.split("\n")
-        .map((l) => Number.parseInt(l.trim(), 10)),
-    )
-    for (const pid of beforePids) {
-      if (stillOnSession.has(pid)) continue
-      try {
-        process.kill(-pid, "SIGKILL")
-      } catch {
-        /* already gone, or not a group leader — best effort */
-      }
-    }
   }, 15_000)
 
   it("ctrl+j / ctrl+k are silent no-ops from the engine pane (no vertical neighbor)", async () => {
