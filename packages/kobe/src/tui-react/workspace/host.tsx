@@ -272,6 +272,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     cycleVendor: (id) => void cycleVendor(id),
   })
 
+  // Keybinding focus is suppressed while a dialog overlay is up: pane focus
+  // state (sidebar/workspace/files) does NOT change when a dialog opens, so
+  // without this the pane's plain-letter bindings keep firing and — because
+  // a matched binding calls preventDefault — swallow the keystroke before the
+  // dialog's focused <input> can read it (opentui only routes a key to a
+  // focused renderable when !defaultPrevented). Border colors keep using the
+  // live `focus.focused` so the pane frame stays lit under the dim backdrop.
+  const dialogOpen = dialog.stack.length > 0
+  const activePane = dialogOpen ? null : focus.focused
+
   if (worktreesOpen) {
     return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
   }
@@ -311,7 +321,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           engineState={engineState}
           taskJobs={taskJobs}
           worktreeChanges={worktreeChanges}
-          focused={focus.focused === "sidebar"}
+          focused={activePane === "sidebar"}
           onHoverChange={(hover) => setSidebarHover(hover)}
           // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
           // fire these; the flows are the shared lib/task-actions bodies.
@@ -349,7 +359,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           task={selectedTask}
           worktree={worktree}
           orchestrator={orch}
-          focused={focus.focused === "workspace"}
+          focused={activePane === "workspace"}
           onRequestFocus={() => focus.setFocused("workspace")}
           onEditorTabReady={(open) => {
             openEditorTabFn.current = open
@@ -369,7 +379,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         >
           <FileTree
             worktreePath={worktree}
-            focused={focus.focused === "files"}
+            focused={activePane === "files"}
             onOpenFile={(relPath) => void openFileInEditor(relPath)}
             cornerBadge={filesCornerBadge}
             onRefresh={ackFilesBadge}
