@@ -39,6 +39,7 @@ import { applyUserKeybindings, reloadUserKeybindings } from "../../tui/context/k
 import { loadUserThemes } from "../../tui/context/theme/loader"
 import { type UiPrefsTarget, applyUiPrefs } from "../../tui/lib/apply-ui-prefs"
 import { sessionAttached } from "../../tui/lib/attach-gate"
+import { installEventLoopStallTelemetry } from "../../tui/lib/event-loop-stall"
 import {
   hostRenderOptions,
   installOrphanExitWatchdog,
@@ -273,4 +274,5 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   )
   installPaneExitBackstop()
   installOrphanExitWatchdog()
+  installEventLoopStallTelemetry()
 }
