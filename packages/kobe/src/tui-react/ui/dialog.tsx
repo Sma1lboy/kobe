@@ -176,14 +176,6 @@ export function DialogProvider(props: { children?: ReactNode }) {
     refocus()
   }, [renderer, refocus])
 
-  useBindings(() => ({
-    enabled: stackRef.current.length > 0,
-    bindings: [
-      { key: "escape", cmd: dismissTop },
-      { key: "ctrl+c", cmd: dismissTop },
-    ],
-  }))
-
   const value = useMemo<DialogContext>(
     () => ({
       clear() {
@@ -225,13 +217,40 @@ export function DialogProvider(props: { children?: ReactNode }) {
       {props.children}
       <box position="absolute" zIndex={3000}>
         {top ? (
-          <Dialog onClose={() => value.clear()} size={size}>
-            {top.element()}
-          </Dialog>
+          <>
+            {/* Sibling ORDER is load-bearing: React commits effects
+                depth-first in tree order, so the barrier registers BEFORE
+                the dialog body's own useBindings — body keys sit above the
+                barrier (reachable), every pane registered earlier sits
+                below it (cut off). */}
+            <ModalBarrier dismissTop={dismissTop} />
+            <Dialog onClose={() => value.clear()} size={size}>
+              {top.element()}
+            </Dialog>
+          </>
         ) : null}
       </box>
     </ctx.Provider>
   )
+}
+
+/**
+ * Mounted exactly while a dialog is up. Owns the esc/ctrl+c dismiss keys
+ * AND the modal cut-off (`modal: true` — see keymap-dispatch.ts): any key
+ * neither the dialog body nor this entry handles stops here instead of
+ * reaching the panes behind the dialog. Structural fix for the "dialog is
+ * open but keys still operate the background" bug class — background
+ * bindings no longer rely on their own `dialog.stack.length === 0` gates.
+ */
+function ModalBarrier(props: { dismissTop: () => void }) {
+  useBindings(() => ({
+    modal: true,
+    bindings: [
+      { key: "escape", cmd: props.dismissTop },
+      { key: "ctrl+c", cmd: props.dismissTop },
+    ],
+  }))
+  return null
 }
 
 export function useDialog(): DialogContext {

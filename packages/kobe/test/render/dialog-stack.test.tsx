@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "bun:test"
 import { useEffect } from "react"
+import { useBindings } from "../../src/tui-react/lib/keymap"
 import { DialogProvider, useDialog } from "../../src/tui-react/ui/dialog"
 import { act, renderComponent, settle } from "./harness"
 
@@ -119,6 +120,54 @@ describe("DialogProvider", () => {
     await settle()
     expect(await frame()).not.toContain("dialog A")
     expect(dialogRef.current?.stack.length).toBe(0)
+  })
+
+  // Structural modal guarantee (owner mandate 2026-07-08): while ANY
+  // dialog is up, bindings registered by the UI behind it must be
+  // unreachable — no per-pane `dialog.stack.length === 0` gate required.
+  it("blocks background bindings while a dialog is open, restores them after", async () => {
+    let background = 0
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    function Background() {
+      useBindings(() => ({
+        bindings: [
+          {
+            key: "j",
+            cmd: () => {
+              background++
+            },
+          },
+        ],
+      }))
+      return <text>bg</text>
+    }
+    const { frame, mockInput } = await renderComponent(
+      <DialogProvider>
+        <Background />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+          }}
+        />
+      </DialogProvider>,
+    )
+    await frame()
+    act(() => mockInput.pressKey("j"))
+    await settle()
+    expect(background).toBe(1)
+
+    act(() => dialogRef.current?.push(() => <text>dialog A</text>))
+    expect(await frame()).toContain("dialog A")
+    act(() => mockInput.pressKey("j")) // must hit the modal barrier, not the pane
+    await settle()
+    expect(background).toBe(1)
+
+    act(() => mockInput.pressEscape())
+    await settle()
+    expect(await frame()).not.toContain("dialog A")
+    act(() => mockInput.pressKey("j"))
+    await settle()
+    expect(background).toBe(2)
   })
 
   it("clear empties the whole stack at once", async () => {

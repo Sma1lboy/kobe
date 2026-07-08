@@ -422,4 +422,79 @@ describe("dispatchKeyEvent", () => {
 
     expect(seen).toEqual([0])
   })
+
+  // The modal barrier (owner mandate 2026-07-08): a dialog must make the
+  // WHOLE background unreachable structurally, not via per-pane gates.
+  describe("modal barrier", () => {
+    test("cuts off every binding below it without consuming the event", () => {
+      let background = 0
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "j", () => {
+          background++
+        }),
+        // The dialog's barrier, registered when it opened (above the panes).
+        { id: 2, config: () => ({ modal: true, bindings: [{ key: "escape", cmd: () => {} }] }) },
+      ]
+      const evt = makeEvt("j")
+      expect(dispatchKeyEvent(stack, evt)).toBe(false)
+      expect(background).toBe(0)
+      // No preventDefault — opentui must still route the key to the
+      // dialog's own focused input (typing into a rename field).
+      expect(evt.defaultPrevented).toBe(false)
+    })
+
+    test("bindings registered above the barrier (the dialog body) still fire", () => {
+      let body = 0
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "j", () => {
+          throw new Error("background must be unreachable")
+        }),
+        { id: 2, config: () => ({ modal: true, bindings: [{ key: "escape", cmd: () => {} }] }) },
+        makeReg(3, "j", () => {
+          body++
+        }),
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("j"))).toBe(true)
+      expect(body).toBe(1)
+    })
+
+    test("the barrier's own keys (esc) fire and consume", () => {
+      let dismissed = 0
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "escape", () => {
+          throw new Error("background esc must not fire")
+        }),
+        {
+          id: 2,
+          config: () => ({
+            modal: true,
+            bindings: [
+              {
+                key: "escape",
+                cmd: () => {
+                  dismissed++
+                },
+              },
+            ],
+          }),
+        },
+      ]
+      const evt = makeEvt("escape")
+      expect(dispatchKeyEvent(stack, evt)).toBe(true)
+      expect(dismissed).toBe(1)
+      expect(evt.defaultPrevented).toBe(true)
+    })
+
+    test("a disabled modal entry does not block (dialog closed)", () => {
+      let background = 0
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "j", () => {
+          background++
+        }),
+        { id: 2, config: () => ({ enabled: false, modal: true, bindings: [] }) },
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("j"))).toBe(true)
+      expect(background).toBe(1)
+    })
+  })
 })
