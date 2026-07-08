@@ -81,6 +81,13 @@ export function releaseSplitLeaves(tabKey: string, tree: PersistedSplit | null):
 /** Live foreground-process titles for split-created SHELL leaves — retry cadence. */
 const TITLE_ATTACH_MS = 2000
 
+/** Split-pulse cadence: a just-created leaf blinks its divider in the
+ *  focus accent (accent↔border, two blinks, ~0.5s) then settles. Chrome-
+ *  only by design — the split GEOMETRY never animates: every intermediate
+ *  width would SIGWINCH the child into a reflow storm. */
+const PULSE_TICK_MS = 130
+const PULSE_TICKS = 4
+
 export function TerminalSplit(props: {
   /** `tabPtyKey(taskId, tabId)` — PTY registry prefix for this tab's leaves. */
   tabKey: string
@@ -208,6 +215,38 @@ export function TerminalSplit(props: {
 
   const leafFocused = (id: string) => props.focused && activeLeaf === id
 
+  /* Split-pulse (owner request 2026-07-08): announce a NEW leaf by
+   * blinking its divider. Leaf-id diff is guarded by tabKey — switching
+   * tabs swaps the splitTree prop on this same component instance, and
+   * the other tab's leaves must not read as "new". First sight of a tab
+   * (including mount) primes silently. */
+  const prevLeafIdsRef = useRef<{ key: string; ids: ReadonlySet<string> } | null>(null)
+  const [pulse, setPulse] = useState<{ ids: ReadonlySet<string>; tick: number } | null>(null)
+  useEffect(() => {
+    const ids: ReadonlySet<string> = new Set(leaves(state.root).map((l) => l.id))
+    const prev = prevLeafIdsRef.current
+    prevLeafIdsRef.current = { key: props.tabKey, ids }
+    if (!prev || prev.key !== props.tabKey) return
+    const fresh = [...ids].filter((id) => !prev.ids.has(id))
+    if (fresh.length > 0) setPulse({ ids: new Set(fresh), tick: 0 })
+  }, [props.tabKey, state])
+  useEffect(() => {
+    if (!pulse) return
+    if (pulse.tick >= PULSE_TICKS) {
+      setPulse(null)
+      return
+    }
+    const timer = setTimeout(() => setPulse((p) => (p ? { ...p, tick: p.tick + 1 } : null)), PULSE_TICK_MS)
+    return () => clearTimeout(timer)
+  }, [pulse])
+
+  /** Divider color for a leaf: pulse overrides (even ticks = accent) while
+   *  it runs, then the steady focused/unfocused pair. */
+  const leafDividerColor = (id: string, focused: boolean): RGBA => {
+    if (pulse?.ids.has(id)) return pulse.tick % 2 === 0 ? theme.focusAccent : theme.border
+    return focused ? theme.focusAccent : theme.border
+  }
+
   // Live foreground-process titles for split-created SHELL leaves (real
   // terminals track this via the OSC 0/2 window-title escape: "zsh" idle,
   // "vim"/"htop" once you run one — see `TaskPtyLike.onTitleChange`).
@@ -323,7 +362,7 @@ export function TerminalSplit(props: {
         flexShrink={1}
         flexBasis={0}
         border={[divider]}
-        borderColor={focused ? theme.focusAccent : theme.border}
+        borderColor={leafDividerColor(leaf.id, focused)}
         onMouseUp={focusThis}
       >
         {body}
