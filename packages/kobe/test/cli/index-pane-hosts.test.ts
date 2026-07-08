@@ -23,6 +23,10 @@ const spies = vi.hoisted(() => ({
   startHistoryHost: vi.fn(async () => {}),
   startOpsHost: vi.fn(async () => {}),
   startOpsPreview: vi.fn(async () => {}),
+  startTasksPane: vi.fn(async () => {}),
+  startNewTaskHost: vi.fn(async () => {}),
+  startQuickTaskHost: vi.fn(async () => {}),
+  startUpdateHost: vi.fn(async () => {}),
 }))
 
 vi.mock("../../src/tui/panes/terminal/tmux.ts", () => ({
@@ -40,6 +44,10 @@ vi.mock("../../src/tui-react/help/host.tsx", () => ({ startHelpHost: spies.start
 vi.mock("../../src/tui-react/history/host.tsx", () => ({ startHistoryHost: spies.startHistoryHost }))
 vi.mock("../../src/tui-react/ops/host.tsx", () => ({ startOpsHost: spies.startOpsHost }))
 vi.mock("../../src/tui-react/ops/preview.tsx", () => ({ startOpsPreview: spies.startOpsPreview }))
+vi.mock("../../src/tui-react/tasks-pane/host.tsx", () => ({ startTasksPane: spies.startTasksPane }))
+vi.mock("../../src/tui-react/new-task/host.tsx", () => ({ startNewTaskHost: spies.startNewTaskHost }))
+vi.mock("../../src/tui-react/quick-task/host.tsx", () => ({ startQuickTaskHost: spies.startQuickTaskHost }))
+vi.mock("../../src/tui-react/update/host.tsx", () => ({ startUpdateHost: spies.startUpdateHost }))
 
 let originalArgv: string[]
 let exitSpy: ReturnType<typeof vi.fn>
@@ -171,5 +179,33 @@ describe("pane / page host launches", () => {
     await runCli("ops", "--worktree", "/wt", "--preview", "src/a.ts")
     expect(spies.startOpsPreview).toHaveBeenCalledWith({ worktree: "/wt", relPath: "src/a.ts" })
     expect(spies.startOpsHost).not.toHaveBeenCalled()
+  })
+
+  // The tmux product path spawns these four in every task session (Tasks
+  // rail, prefix-f quick create, new-task window, update window). They were
+  // silently dropped when the Solid TUI was removed (7a5b878d) — the rail
+  // printed "unknown command" — so this pins the routing for good.
+  test("tasks launches the Tasks pane, forwarding --initial-task-id", async () => {
+    await runCli("tasks")
+    expect(spies.startTasksPane).toHaveBeenCalledWith({ initialTaskId: undefined })
+
+    vi.clearAllMocks()
+    await runCli("tasks", "--initial-task-id", "t42")
+    expect(spies.startTasksPane).toHaveBeenCalledWith({ initialTaskId: "t42" })
+  })
+
+  test("new-task launches the full-window page, forwarding --repo", async () => {
+    await runCli("new-task", "--repo", "/repo/a")
+    expect(spies.startNewTaskHost).toHaveBeenCalledWith({ defaultRepo: "/repo/a" })
+  })
+
+  test("quick-task launches the prompt-first page, forwarding --session", async () => {
+    await runCli("quick-task", "--session", "kobe-t1")
+    expect(spies.startQuickTaskHost).toHaveBeenCalledWith({ session: "kobe-t1" })
+  })
+
+  test("update-page launches the update surface", async () => {
+    await runCli("update-page")
+    expect(spies.startUpdateHost).toHaveBeenCalled()
   })
 })
