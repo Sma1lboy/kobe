@@ -193,6 +193,12 @@ export class KobeDaemonClient implements DaemonRpcClient {
       this.socket = socket
       const onConnect = () => {
         socket.off("error", onError)
+        // Post-connect socket errors (EPIPE writing to a peer that's mid-
+        // exit, ECONNRESET) must NOT become unhandled 'error' events — an
+        // un-listened 'error' crashes the process. Destroying routes the
+        // failure through the 'close' handler below, which rejects every
+        // pending request; callers' own catch blocks take it from there.
+        socket.on("error", () => socket.destroy())
         resolve()
       }
       const onError = (err: Error) => {
