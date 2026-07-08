@@ -9,6 +9,20 @@
  * stale. This page follows the Settings/New Task pattern: open a
  * dedicated tmux window, show the update context without cramped footer
  * copy, and hand off to the shell updater when the user chooses Update.
+ *
+ * `onClose` seam (daemon issue #23 remainder): `UpdatePage` now takes an
+ * `{ onClose }` prop — same shape as `WorktreesPage` — so the pure-tui
+ * workspace host (`tui-react/workspace/host.tsx`) can mount it as an
+ * in-place swap instead of only living behind the standalone
+ * `kobe update-page` tmux window. The close ("q"/esc/Ctrl+C/[Close] action)
+ * path calls `onClose()` instead of `process.exit(0)`. The post-update
+ * self-replace exit is UNCHANGED: `runUpdater()` still destroys the
+ * renderer and `process.exit(code)`s after the shell updater completes —
+ * an embedded swap can't survive that any more than a standalone window
+ * can, so it stays, with a status line surfaced first so the swap-hosted
+ * case doesn't just vanish without explanation. `startUpdateHost` (the
+ * standalone launch path) passes `onClose: () => process.exit(0)`,
+ * preserving its exact previous behavior.
  */
 
 import { spawn, spawnSync } from "node:child_process"
@@ -73,7 +87,7 @@ function waitForKeypress(): Promise<void> {
   })
 }
 
-function UpdatePage() {
+export function UpdatePage(props: { onClose: () => void }) {
   const { theme } = useTheme()
   const t = useT()
   const renderer = useRenderer()
@@ -118,7 +132,10 @@ function UpdatePage() {
   }
 
   function activate(id: ActionId = selected): void {
-    if (id === "close") process.exit(0)
+    if (id === "close") {
+      props.onClose()
+      return
+    }
     if (id === "release") {
       setStatus(openExternalUrl(releaseUrl) ? t("update.statusReleaseOpened") : t("update.statusReleaseError"))
       return
@@ -269,8 +286,9 @@ function UpdatePage() {
 
 export async function startUpdateHost(): Promise<void> {
   // No teardown and no daemon connection — this page only talks to npm /
-  // GitHub and hands off to the shell updater.
+  // GitHub and hands off to the shell updater. Standalone launch keeps its
+  // exact previous close behavior: exit the process (tmux closes the window).
   await bootPaneHost({
-    setup: () => ({ root: () => <UpdatePage /> }),
+    setup: () => ({ root: () => <UpdatePage onClose={() => process.exit(0)} /> }),
   })
 }
