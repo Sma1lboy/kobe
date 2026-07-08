@@ -76,6 +76,7 @@ describe("key routing tables", () => {
         "ctrl+[",
         "ctrl+]",
         "ctrl+e",
+        "ctrl+f",
         "ctrl+q",
         "ctrl+t",
         "ctrl+w",
