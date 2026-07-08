@@ -21,6 +21,7 @@ import {
   runTmuxSequence,
   sessionExists,
   setSessionOption,
+  termWindowPaneGroups,
 } from "@/tmux/client"
 import {
   ENGINE_PANE_ROLE,
@@ -839,13 +840,23 @@ async function activeSessionWindowCount(session: string): Promise<number> {
   return stdout.split("\n").filter((line) => line.trim().length > 0).length
 }
 
+/**
+ * `kill-window` only SIGHUPs panes; engine CLIs (claude) swallow HUP and
+ * leak to init with a revoked tty (#205 class — issue #14). SIGTERM the
+ * window's pane groups first, the same ladder `killSession` uses.
+ */
+async function killWindowWithPaneGroups(windowId: string): Promise<void> {
+  await termWindowPaneGroups(windowId)
+  await runTmux(["kill-window", "-t", windowId])
+}
+
 async function closeChatTab(session: string, windowId: string): Promise<void> {
   if ((await activeSessionWindowCount(session)) <= 1) {
     await display(windowId, "Cannot close the only ChatTab")
     return
   }
   await cleanupHiddenPanesForWindow(session, windowId)
-  await runTmux(["kill-window", "-t", windowId])
+  await killWindowWithPaneGroups(windowId)
 }
 
 /**
@@ -866,7 +877,7 @@ export async function engineTabExit(session: string): Promise<void> {
   if (!oldWindowId) return
   if ((await activeSessionWindowCount(session)) > 1) {
     await cleanupHiddenPanesForWindow(session, oldWindowId)
-    await runTmux(["kill-window", "-t", oldWindowId])
+    await killWindowWithPaneGroups(oldWindowId)
     return
   }
   // Only tab → replace it. Dynamic import: chattab statically imports this
@@ -877,7 +888,7 @@ export async function engineTabExit(session: string): Promise<void> {
   // otherwise newChatTab failed and we must not kill the task's last window.
   if ((await activeWindowId(session)) !== oldWindowId) {
     await cleanupHiddenPanesForWindow(session, oldWindowId)
-    await runTmux(["kill-window", "-t", oldWindowId])
+    await killWindowWithPaneGroups(oldWindowId)
   }
 }
 

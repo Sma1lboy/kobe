@@ -39,7 +39,11 @@ import { applyUserKeybindings, reloadUserKeybindings } from "../../tui/context/k
 import { loadUserThemes } from "../../tui/context/theme/loader"
 import { type UiPrefsTarget, applyUiPrefs } from "../../tui/lib/apply-ui-prefs"
 import { sessionAttached } from "../../tui/lib/attach-gate"
-import { hostRenderOptions, installPaneExitBackstop } from "../../tui/lib/host-render-options"
+import {
+  hostRenderOptions,
+  installOrphanExitWatchdog,
+  installPaneExitBackstop,
+} from "../../tui/lib/host-render-options"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../../tui/lib/persisted-ui-prefs"
 import { FocusProvider } from "../context/focus"
 import { KVProvider } from "../context/kv"
@@ -268,4 +272,5 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
     </ThemeProvider>,
   )
   installPaneExitBackstop()
+  installOrphanExitWatchdog()
 }
