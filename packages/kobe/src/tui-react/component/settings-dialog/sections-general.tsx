@@ -10,6 +10,7 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useMemo } from "react"
+import { SPLIT_STYLES, type SplitStyle } from "../../../state/split-style"
 import type { WorktreeBaseKind } from "../../../state/worktree-base"
 import {
   type NavLevel,
@@ -19,6 +20,7 @@ import {
   generalRows,
   languageRowId,
   rowIndex,
+  splitStyleRowId,
   surfaceRowId,
 } from "../../../tui/component/settings-dialog/model"
 import { LOCALES, type LocaleId } from "../../../tui/i18n/catalog"
@@ -75,6 +77,8 @@ export function GeneralSettingsSection(
     soundEnabled: boolean
     toggleToast: () => void
     toggleSound: () => void
+    splitStyle: SplitStyle
+    selectSplitStyle: (style: SplitStyle) => void
     zenKeepsTasks: boolean
     toggleZenKeepsTasks: () => void
     settingsSurface: SettingsSurface
@@ -198,6 +202,23 @@ export function GeneralSettingsSection(
         >
           {onOff(themeCtx.reducedMotion)}
         </Row>
+      </SubSection>
+      <SubSection title={t("settings.general.appearance")} hint={t("settings.general.appearanceHint")}>
+        {SPLIT_STYLES.map((style) => {
+          const styleRow = rowIdx(splitStyleRowId(style))
+          const isSelected = props.splitStyle === style
+          return (
+            <Row
+              key={style}
+              cursor={isBodyCursor(styleRow)}
+              onMouseUp={activate(styleRow, () => props.selectSplitStyle(style))}
+              fg={isSelected ? theme.accent : theme.text}
+              bold={isBodyCursor(styleRow) || isSelected}
+            >
+              {`${isSelected ? "● " : "  "}${t(style === "box" ? "settings.general.splitBox" : "settings.general.splitLine")}`}
+            </Row>
+          )
+        })}
       </SubSection>
       <SubSection title={t("settings.general.notifications")} hint={t("settings.general.notificationsHint")}>
         <Row

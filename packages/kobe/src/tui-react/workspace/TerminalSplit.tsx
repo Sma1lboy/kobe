@@ -36,6 +36,7 @@
 import { type RGBA, TextAttributes } from "@opentui/core"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { titleDisplayName } from "../../engine/registry"
+import { SPLIT_STYLE_KEY, normalizeSplitStyle } from "../../state/split-style"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import {
@@ -52,6 +53,7 @@ import {
 import { type PersistedSplit, splitLeafNames, splitLeafPtyKey } from "../../tui/workspace/terminal-tabs-core"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
+import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
@@ -110,8 +112,10 @@ export function TerminalSplit(props: {
    *  name, matching the group/tab label. Null before the first prompt. */
   engineTitle?: string | null
 }): ReactNode {
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const t = useT()
+  const kv = useKV()
   const state = props.splitTree ?? UNSPLIT
 
   // FOCUS (local, ephemeral): which leaf has focus. Kept OUT of the
@@ -146,6 +150,11 @@ export function TerminalSplit(props: {
   }
 
   const isSplit = leaves(state.root).length > 1
+  // Split appearance (Settings → General → Appearance): `box` frames every
+  // leaf, `line` draws only shared-edge dividers. Frames apply only while
+  // ACTUALLY split — a lone surviving leaf inside the already-bordered
+  // workspace column must not double-frame.
+  const useBoxFrames = normalizeSplitStyle(kv.get(SPLIT_STYLE_KEY)) === "box" && isSplit
   // Render via the split tree (not the single-engine fast path) whenever
   // there are multiple leaves OR a single NON-leaf-1 leaf survives (engine
   // closed, shell kept). Only the pristine leaf-1 engine uses the fast path.
@@ -227,9 +236,11 @@ export function TerminalSplit(props: {
     const prev = prevLeafIdsRef.current
     prevLeafIdsRef.current = { key: props.tabKey, ids }
     if (!prev || prev.key !== props.tabKey) return
+    // Reduced motion calms chrome animations — the split pulse is one.
+    if (themeCtx.reducedMotion) return
     const fresh = [...ids].filter((id) => !prev.ids.has(id))
     if (fresh.length > 0) setPulse({ ids: new Set(fresh), tick: 0 })
-  }, [props.tabKey, state])
+  }, [props.tabKey, state, themeCtx.reducedMotion])
   useEffect(() => {
     if (!pulse) return
     if (pulse.tick >= PULSE_TICKS) {
@@ -355,6 +366,23 @@ export function TerminalSplit(props: {
         ) : null}
       </>
     )
+    if (useBoxFrames) {
+      // Box style: every leaf is its own frame (the workspace-column card
+      // look); the shared-edge divider logic doesn't apply.
+      return (
+        <box
+          key={leaf.id}
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          border={true}
+          borderColor={leafDividerColor(leaf.id, focused)}
+          onMouseUp={focusThis}
+        >
+          {body}
+        </box>
+      )
+    }
     return divider ? (
       <box
         key={leaf.id}
@@ -390,7 +418,7 @@ export function TerminalSplit(props: {
         flexGrow={1}
         flexShrink={1}
         flexBasis={0}
-        {...dividerProps(divider, theme.border)}
+        {...dividerProps(useBoxFrames ? undefined : divider, theme.border)}
       >
         {node.children.map((child, i) =>
           renderNode(

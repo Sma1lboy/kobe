@@ -243,6 +243,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     reducedMotion: () => toggleReducedMotion(),
     toast: () => prefs.toggleToast(),
     sound: () => prefs.toggleSound(),
+    splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),
     surface: (row) => prefs.selectSurface(row.surface),
     editorKind: () => prefs.cycleEditorKind(),
@@ -363,6 +364,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               soundEnabled={prefs.soundEnabled()}
               toggleToast={prefs.toggleToast}
               toggleSound={prefs.toggleSound}
+              splitStyle={prefs.splitStyle()}
+              selectSplitStyle={prefs.selectSplitStyle}
               zenKeepsTasks={prefs.zenKeepsTasks()}
               toggleZenKeepsTasks={prefs.toggleZenKeepsTasks}
               settingsSurface={prefs.settingsSurface()}
