@@ -252,6 +252,26 @@ export interface OrchestratorSignals {
   readonly setConnectionState: (next: DaemonConnectionState) => void
 }
 
+/**
+ * How many failed attempts the pane reconnect loop keeps logging
+ * (`orch-reconnect`) before it goes quiet. Issue #26: a daemon that stays
+ * down for days with dozens of orphan panes each retrying forever was
+ * still unbounded spam even at "attempt 1 and every 10th" — that decays
+ * the RATE but never stops. A hard ceiling actually bounds it.
+ */
+export const RECONNECT_LOG_ATTEMPT_CEILING = 100
+
+/**
+ * Pure decision: should this failed reconnect attempt be logged? Attempt 1
+ * and every 10th up to {@link RECONNECT_LOG_ATTEMPT_CEILING}; silent after
+ * that until a successful reconnect resets the caller's attempt counter
+ * back to 0. Exported for unit tests.
+ */
+export function shouldLogReconnectAttempt(attempt: number): boolean {
+  if (attempt > RECONNECT_LOG_ATTEMPT_CEILING) return false
+  return attempt === 1 || attempt % 10 === 0
+}
+
 export function deserializeTask(s: SerializedTask): Task {
   return {
     id: toTaskId(s.id),
