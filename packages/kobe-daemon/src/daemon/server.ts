@@ -282,8 +282,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     // Janitor call to the standalone pty host: a task that is archived or
     // gone must not leave a background engine running forever with no owner
     // — covers headless archives (`kobe api`) where no TUI sends pty.kill.
-    // Fire-and-forget; never spawns a host, never throws.
-    void sweepPtyHostSessions(snapshot.filter((t) => !t.archived).map((t) => t.id))
+    // Fire-and-forget; never spawns a host, never throws. MUST pass this
+    // server's homeDir (like every other path above): a temp-home daemon
+    // resolving the ambient default sweeps the REAL pty-host with its own
+    // task list — the 2026-07-07/08 "every test run killed my running
+    // engines" incident.
+    void sweepPtyHostSessions(
+      snapshot.filter((t) => !t.archived).map((t) => t.id),
+      options.homeDir,
+    )
   })
 
   // Daemon-owned update check (KOB): poll npm once on start + on an interval

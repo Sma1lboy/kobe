@@ -41,9 +41,16 @@ export async function ensurePtyHostReachable(): Promise<string> {
  * whose task is archived/gone. NEVER spawns a host (nothing to sweep if
  * none is running) and never throws — the task snapshot path must not
  * fail on pty-host hiccups.
+ *
+ * `homeDir` MUST be the calling daemon's own home. A daemon that resolves
+ * the ambient default while running against a non-default home (the
+ * test:socket suite's temp-home daemons) sweeps the REAL user pty-host
+ * with ITS task list — a fake orchestrator's empty snapshot then kills
+ * every live engine session on the machine (incident 2026-07-07/08: every
+ * `bun run test` wiped the user's running claude tabs).
  */
-export async function sweepPtyHostSessions(liveTaskIds: readonly string[]): Promise<void> {
-  const socketPath = defaultPtyHostSocketPath()
+export async function sweepPtyHostSessions(liveTaskIds: readonly string[], homeDir?: string): Promise<void> {
+  const socketPath = defaultPtyHostSocketPath(homeDir)
   const client = new KobeDaemonClient(socketPath)
   try {
     await client.connect()

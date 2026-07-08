@@ -65,6 +65,7 @@ describe("daemon refcounted lazy shutdown", () => {
     server = await startDaemonServer(fakeOrchestrator(), {
       socketPath,
       pidPath,
+      homeDir: dir,
       updatePollMs: 0,
     })
     const client = new KobeDaemonClient(socketPath)
@@ -83,6 +84,7 @@ describe("daemon refcounted lazy shutdown", () => {
     server = await startDaemonServer(fakeOrchestrator(), {
       socketPath,
       pidPath,
+      homeDir: dir,
       updatePollMs: 0,
     })
     const poke = new KobeDaemonClient(socketPath)
@@ -96,7 +98,7 @@ describe("daemon refcounted lazy shutdown", () => {
   })
 
   it("stays up for a transient, never-subscribed connection (default subscribe is pane)", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, updatePollMs: 0 })
+    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, homeDir: dir, updatePollMs: 0 })
     // A bare subscribe() (no role) is a "pane": it must NOT keep the daemon
     // alive. This is the bug — N ChatTab Tasks panes subscribed and the count
     // never hit 0 on quit, so the daemon never idle-stopped.
@@ -111,7 +113,7 @@ describe("daemon refcounted lazy shutdown", () => {
   })
 
   it("panes never hold the daemon alive after the gui quits", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, updatePollMs: 0 })
+    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, homeDir: dir, updatePollMs: 0 })
     // The real-world shape: one gui front-end + several in-tmux Tasks panes.
     const gui = new KobeDaemonClient(socketPath)
     const pane1 = new KobeDaemonClient(socketPath)
@@ -129,7 +131,7 @@ describe("daemon refcounted lazy shutdown", () => {
   })
 
   it("a pane subscribing during the grace window does NOT cancel shutdown", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, updatePollMs: 0 })
+    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, homeDir: dir, updatePollMs: 0 })
     const gui = new KobeDaemonClient(socketPath)
     await gui.subscribe({ role: "gui" })
     gui.close() // arms the grace timer
@@ -146,6 +148,7 @@ describe("daemon refcounted lazy shutdown", () => {
     server = await startDaemonServer(fakeOrchestrator(), {
       socketPath,
       pidPath,
+      homeDir: dir,
       updatePollMs: 0,
     })
     const a = new KobeDaemonClient(socketPath)
@@ -167,6 +170,7 @@ describe("daemon refcounted lazy shutdown", () => {
     server = await startDaemonServer(fakeOrchestrator(), {
       socketPath,
       pidPath,
+      homeDir: dir,
       updatePollMs: 0,
     })
     const first = new KobeDaemonClient(socketPath)
