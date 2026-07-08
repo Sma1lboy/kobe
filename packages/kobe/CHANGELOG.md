@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.76
+
+### Patch Changes
+
+- 6d7538e: fix: the daemon's ChatTab auto-naming pass no longer hammers `tmux list-windows` against a task whose session doesn't exist (never entered yet, or its session was killed). A task whose session misses 3 consecutive polls now backs off exponentially (capped at 30s) instead of retrying every tick forever — this had flooded `daemon.log` to hundreds of megabytes and burned CPU for tasks with a long-dead session. Archiving or deleting a task now also proactively drops it from the poll set. A session that reappears (the user re-enters the task) resets straight back to full cadence.
+- db35c08: feat: pane hosts log event-loop stall telemetry — a 1s heartbeat that, after any multi-second freeze, records the stall duration plus rss/heap to client.log, so "the TUI froze" reports can distinguish OS paging from an in-process block.
+- 7f73b9e: fix: cap `client.log` and `daemon.log` at 10MB with single-generation rotation, and hard-throttle the pane reconnect-failure log after 100 attempts until a successful reconnect resets it. Neither log had a size cap before — an incident with dozens of orphan panes spamming reconnect errors grew `client.log` to 736MB and `daemon.log` to 345MB; no long-lived process can grow either file unboundedly now.
+- f13334e: feat: quick-fork (ctrl+f) opens the quick-task composer from a focused chat tab, seeded with the active task's repo/branch/engine, and creates a child task on submit. The `chat.fork.new` chord (KOB-74) was previously declared in the keymap with no registration — it now actually fires.
+- 46911cc: Internal: split `cli/api-cmd.ts` (was ~1362 lines, over the file-size cap) into `cli/api/{types,flags,schema,runtime,handler-helpers,handlers-tasks,handlers-fanout,verbs}.ts`, with `api-cmd.ts` kept as the dispatcher + stable re-export barrel. Pure mechanical refactor — `kobe api schema --all` output is byte-identical before/after, and all existing tests keep importing from `./api-cmd.ts` unchanged.
+- b80b4e8: feat: the pure-tui workspace host now opens the update page (`u`) as an in-place swap, same shape as the worktrees page, instead of leaving it unreachable there. `UpdatePage` gained an `onClose` seam so its close path no longer exits the whole process; the post-update self-replace still hands off to the shell updater and exits, but now shows a status line first.
+- f26285c: Add F6 as the keyboard chord to toggle zen mode in the pure-TUI workspace host — previously mouse-click only.
+
 ## 0.7.75
 
 ### Patch Changes
