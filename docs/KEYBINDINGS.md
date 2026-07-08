@@ -379,6 +379,19 @@ all in this pass:
   registered by the pure-TUI host too (gated on `/`-search inactive, same as tmux).
   The host cycles over its own pane list, not `PANE_ORDER` — that includes `"terminal"`,
   which this host never mounts, and focus must never land on an unmounted pane.
+- **`worktrees.open.sidebar` (`x`) / `tasks.update` (`u`) → in-place page swaps, not
+  tmux windows** (daemon issue #23). In the tmux Tasks pane these chords spawn a
+  standalone `kobe worktrees` / `kobe update-page` tmux window. The pure-TUI
+  workspace host reuses the SAME ids/chords, gated the same way (sidebar focus, no
+  dialog, no search), but swaps `WorktreesPage` / `UpdatePage` in as the host's own
+  root — same shape as `settingsOpen`. `UpdatePage` needed an `onClose` seam for
+  this: its close path used to call `process.exit(0)` directly (fine for a
+  standalone tmux window; fatal for an in-process host). The post-update
+  self-replace exit (`runUpdater()`'s `renderer?.destroy()` + `process.exit(code)`
+  after the shell updater runs) is UNCHANGED in both hosts — an embedded swap can't
+  survive replacing the running binary any more than a standalone window can — but
+  it now surfaces a status line (`update.statusRunningUpdater`) before tearing the
+  renderer down instead of exiting silently.
 
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 

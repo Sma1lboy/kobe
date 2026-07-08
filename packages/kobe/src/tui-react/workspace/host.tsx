@@ -29,6 +29,13 @@
  *     (`tui/component/worktrees-page.tsx`) is `component/worktrees-page.tsx`
  *     here — same `WorktreesPage` contract, wired below behind the
  *     `worktrees.open.sidebar` chord exactly like the Solid host's `Show`.
+ *   - The update page (`update/host.tsx`'s `UpdatePage`, daemon issue #23
+ *     remainder) is the same in-place swap shape, behind the `tasks.update`
+ *     chord (`u`, sidebar-scoped — already the tmux Tasks pane's chord for
+ *     opening a standalone `kobe update-page` window; this host reuses the
+ *     same id/chord for its own embedded swap instead). `UpdatePage` took an
+ *     `onClose` seam for this: its close path used to call `process.exit(0)`
+ *     directly, which would have killed this whole host on close.
  */
 
 import { join } from "node:path"
@@ -54,6 +61,7 @@ import { FileTree } from "../panes/filetree/FileTree"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useDialog } from "../ui/dialog"
+import { UpdatePage } from "../update/host.tsx"
 import { TerminalTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
@@ -256,6 +264,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
   // Worktrees page (issue #23) — placeholder swap, see file header GAP note.
   const [worktreesOpen, setWorktreesOpen] = useState(false)
+  // Update page (issue #23 remainder) — same in-place swap shape as
+  // WorktreesPage; UpdatePage's onClose seam makes this safe (it no longer
+  // process.exit(0)s on close — only the post-update self-replace does).
+  const [updateOpen, setUpdateOpen] = useState(false)
 
   useWorkspaceKeybindings({
     focus,
@@ -263,6 +275,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     settingsOpen,
     worktreesOpen,
     openWorktrees: () => setWorktreesOpen(true),
+    updateOpen,
+    openUpdate: () => setUpdateOpen(true),
     searchActive,
     selectedId,
     openSettings,
@@ -284,6 +298,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   if (worktreesOpen) {
     return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
+  }
+
+  if (updateOpen) {
+    return <UpdatePage onClose={() => setUpdateOpen(false)} />
   }
 
   if (settingsOpen) {
