@@ -35,6 +35,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   private readonly titleListeners = new Set<(title: string) => void>()
   private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
+  /** Output arrived while nobody was subscribed — snapshot is stale and
+   * will be rebuilt lazily on the next capture()/subscribe. Keeps the N
+   * background sessions of a multi-task workspace from re-converting
+   * their full grid+scrollback at output cadence for a consumer (the
+   * 1.5s turn poll) that only reads via capture(). */
+  private snapshotDirty = false
   private _title: string | null = null
   private _killed = false
   protected cols: number
@@ -176,6 +182,10 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   }
 
   onData(cb: DataListener): () => void {
+    // Refresh BEFORE registering so a lazily-deferred snapshot doesn't
+    // double-notify the new subscriber (once from the rebuild's listener
+    // loop, once from the prime below).
+    this.ensureFreshSnapshot()
     this.listeners.add(cb)
     if (this.snapshot.length > 0) {
       try {
@@ -203,11 +213,22 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   }
 
   capture(): readonly TerminalRow[] {
+    this.ensureFreshSnapshot()
     return this.snapshot
   }
 
   captureCursor(): CursorPos | null {
+    this.ensureFreshSnapshot()
     return this.cursor
+  }
+
+  /** Rebuild a lazily-deferred snapshot before handing it out. Mid-
+   * synchronized-output the rebuild is skipped (same torn-frame rule as
+   * the live path) — the snapshot stays dirty and the caller gets the
+   * last whole frame. */
+  private ensureFreshSnapshot(): void {
+    if (!this.snapshotDirty || this._killed) return
+    this.refreshSnapshot()
   }
 
   kill(): void {
@@ -226,6 +247,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   }
 
   private queueRefresh(): void {
+    // No subscriber → don't pay the full grid+scrollback conversion at
+    // output cadence; mark stale and rebuild on capture()/subscribe.
+    if (this.listeners.size === 0) {
+      this.snapshotDirty = true
+      return
+    }
     if (this.refreshQueued) return
     this.refreshQueued = true
     setTimeout(() => {
@@ -289,6 +316,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       rows.push(line ? xtermLineToChunks(line, minLast) : [])
     }
     this.snapshot = rows
+    this.snapshotDirty = false
     // A hidden cursor (`?25l`) reports as null so the pane draws no
     // inverse cursor cell — same contract as a backend that can't
     // report a cursor at all.
