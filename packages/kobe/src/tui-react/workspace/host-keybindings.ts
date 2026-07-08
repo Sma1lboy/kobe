@@ -47,6 +47,7 @@ export type WorkspaceKeybindingDeps = {
   createTask: () => void
   renameBranch: (id: string) => void
   cycleVendor: (id: string) => void
+  toggleZen: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -100,6 +101,10 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.
         "focus.next": () => cyclePane(1),
+        // f6 — reserved from terminal passthrough (keys-pure.ts), same
+        // tier as focus.next so it fires from every pane including inside
+        // the embedded terminal.
+        "workspace.zenToggle": () => deps.toggleZen(),
       }),
     ],
   }))
