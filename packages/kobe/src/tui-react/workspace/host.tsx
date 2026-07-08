@@ -49,6 +49,7 @@ import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
+import type { QuickTaskResult } from "../component/quick-task-composer"
 import { SettingsDialog } from "../component/settings-dialog"
 import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
@@ -65,6 +66,7 @@ import { UpdatePage } from "../update/host.tsx"
 import { TerminalTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
+import { useQuickFork } from "./quick-fork"
 import { useAccessor } from "./use-accessor"
 import { useFilesBadge } from "./use-files-badge"
 
@@ -220,6 +222,12 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     const prompt = await buildPRPrompt(wt)
     sendToEngineFn.current(prompt)
   }
+
+  // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
+  // prompt to the new task's TerminalTabs mount (phase 2). Wiring lives in
+  // `quick-fork.ts` — the create/enter/pending-prompt shape is identical
+  // regardless of host, and this component is already near the file-size cap.
+  const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
 
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const [zen, setZen] = useState(false)
@@ -386,6 +394,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onEngineSendReady={(send) => {
             sendToEngineFn.current = send
           }}
+          onQuickFork={quickFork.onQuickFork}
+          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
       </box>
 
@@ -421,6 +431,8 @@ function ShowWorkspace(props: {
   onRequestFocus: () => void
   onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
   onEngineSendReady: (send: (text: string) => void) => void
+  onQuickFork: (repo: string, result: QuickTaskResult) => void
+  initialPrompt?: string
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
@@ -466,6 +478,8 @@ function ShowWorkspace(props: {
       onRequestFocus={props.onRequestFocus}
       onEditorTabReady={props.onEditorTabReady}
       onEngineSendReady={props.onEngineSendReady}
+      onQuickFork={props.onQuickFork}
+      initialPrompt={props.initialPrompt}
       // This worktree's slice of the daemon transcript.activity push
       // (issue #24) — flips the tab turn-status loops to shared mode.
       sharedActivity={transcriptActivity?.get(path) ?? null}

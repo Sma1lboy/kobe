@@ -154,6 +154,11 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   // ctrl+e instead, since the keymap layer can't distinguish shift+letter
   // from the bare letter).
   "ctrl+e",
+  // Quick-fork (chat.fork.new, KOB-74/issue #17): opens the quick-task
+  // composer seeded from the active task. Same reservation shape as ctrl+e —
+  // without it the embedded terminal forwards ctrl+f to the engine CLI
+  // (emacs-style forward-char) and the binding never fires.
+  "ctrl+f",
   // Split panes inside the tab (tmux % / "): ctrl+\ splits right (the
   // glyph is a vertical divider), ctrl+= splits down (horizontal strokes),
   // f3 cycles pane focus (tmux prefix+o). Reserving ctrl+\ costs the
