@@ -21,6 +21,7 @@ import {
   runTmuxSequence,
   sessionExists,
   setSessionOption,
+  termWindowPaneGroups,
 } from "@/tmux/client"
 import {
   ENGINE_PANE_ROLE,
@@ -845,6 +846,10 @@ async function closeChatTab(session: string, windowId: string): Promise<void> {
     return
   }
   await cleanupHiddenPanesForWindow(session, windowId)
+  // SIGTERM the window's pane groups first — plain `kill-window` only
+  // SIGHUPs, which an engine CLI that ignores HUP survives as an orphan
+  // (see `termWindowPaneGroups`, the same ladder `killSession` uses).
+  await termWindowPaneGroups(windowId)
   await runTmux(["kill-window", "-t", windowId])
 }
 
@@ -866,6 +871,7 @@ export async function engineTabExit(session: string): Promise<void> {
   if (!oldWindowId) return
   if ((await activeSessionWindowCount(session)) > 1) {
     await cleanupHiddenPanesForWindow(session, oldWindowId)
+    await termWindowPaneGroups(oldWindowId)
     await runTmux(["kill-window", "-t", oldWindowId])
     return
   }
@@ -877,6 +883,7 @@ export async function engineTabExit(session: string): Promise<void> {
   // otherwise newChatTab failed and we must not kill the task's last window.
   if ((await activeWindowId(session)) !== oldWindowId) {
     await cleanupHiddenPanesForWindow(session, oldWindowId)
+    await termWindowPaneGroups(oldWindowId)
     await runTmux(["kill-window", "-t", oldWindowId])
   }
 }

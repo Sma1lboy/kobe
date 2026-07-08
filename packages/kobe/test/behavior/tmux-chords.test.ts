@@ -180,17 +180,13 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     // asserting on "count went from 2 to 1" doesn't care which one dies.
     const before = windowIds(env, session)
     expect(before.length).toBe(2)
-    // `chat-tab-close` runs plain `kill-window` (layout-actions.ts's
-    // `closeChatTab`) — tmux's own SIGHUP-the-pane teardown, NOT the
-    // SIGTERM-the-process-GROUP `killSession` does for a whole-task kill.
-    // The fake `claude` shim traps SIGHUP (same as the real CLI), so its
-    // process survives the window close, reparented to init, invisible to
-    // `list-panes` once the window is gone — the exact #205 leak class
-    // `pane-cleanup.test.ts` pins for `kill-sessions`, but here on the
-    // ChatTab-close path, which was never given the same fix. Genuine
-    // product gap, out of this test-only branch's scope to fix (see the
-    // PR description); the cleanup below only stops THIS test run from
-    // leaving its own orphan behind.
+    // `chat-tab-close` (layout-actions.ts's `closeChatTab`) now SIGTERMs the
+    // window's pane groups (`termWindowPaneGroups`, the same ladder
+    // `killSession` uses) before `kill-window` — regression pin for the #205
+    // leak class: tmux's own teardown only SIGHUPs panes, and the fake
+    // `claude` shim traps SIGHUP (same as the real CLI), so without the
+    // SIGTERM ladder its process would survive the window close, reparented
+    // to init, invisible to `list-panes` once the window is gone.
     const beforePids = tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
       .stdout.split("\n")
       .map((l) => Number.parseInt(l.trim(), 10))
@@ -200,28 +196,32 @@ describe.skipIf(!tmuxAvailable())("tmux direct-handover chords (behavior)", () =
     const closed = await waitUntil(() => windowIds(env, session).length === 1)
     expect(closed).toBe(true)
 
-    // Final window: ctrl+w must be a no-op, not a session-kill.
-    tmux(env, "send-keys", "-t", SESSION, "C-w")
-    await new Promise((r) => setTimeout(r, 1_500))
-    expect(windowIds(env, session).length).toBe(1)
-    expect(tmuxInner(env, "has-session", "-t", `=${session}`).code).toBe(0)
-
-    // Test hygiene: reap the #205-class orphan documented above so this
-    // suite doesn't leave a `sleep 600` fake-claude behind on every run.
-    // `env.dispose()` can't reach it (it's already invisible to tmux).
+    // No orphan left behind: every pid that was on the closed window's panes
+    // is actually dead, not just detached from `list-panes`.
     const stillOnSession = new Set(
       tmuxInner(env, "list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_pid}")
         .stdout.split("\n")
         .map((l) => Number.parseInt(l.trim(), 10)),
     )
-    for (const pid of beforePids) {
-      if (stillOnSession.has(pid)) continue
-      try {
-        process.kill(-pid, "SIGKILL")
-      } catch {
-        /* already gone, or not a group leader — best effort */
-      }
-    }
+    const closedPids = beforePids.filter((pid) => !stillOnSession.has(pid))
+    expect(closedPids.length).toBeGreaterThan(0)
+    const allDead = await waitUntil(() => {
+      return closedPids.every((pid) => {
+        try {
+          process.kill(pid, 0)
+          return false
+        } catch {
+          return true
+        }
+      })
+    }, 5_000)
+    expect(allDead).toBe(true)
+
+    // Final window: ctrl+w must be a no-op, not a session-kill.
+    tmux(env, "send-keys", "-t", SESSION, "C-w")
+    await new Promise((r) => setTimeout(r, 1_500))
+    expect(windowIds(env, session).length).toBe(1)
+    expect(tmuxInner(env, "has-session", "-t", `=${session}`).code).toBe(0)
   }, 15_000)
 
   it("ctrl+j / ctrl+k are silent no-ops from the engine pane (no vertical neighbor)", async () => {

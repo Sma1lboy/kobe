@@ -533,6 +533,18 @@ export async function termAllPaneGroups(): Promise<void> {
   await termPaneGroups(["-a"])
 }
 
+/**
+ * SIGTERM every pane group in a single window — the same ladder as
+ * {@link killSession}, scoped to one ChatTab window instead of a whole
+ * session. Window-teardown paths that go straight to `kill-window` hit the
+ * identical #205 leak class killSession was fixed for: tmux's own teardown
+ * only SIGHUPs panes, and an engine CLI that ignores HUP (real `claude`
+ * does) survives as an orphan reparented to init.
+ */
+export async function termWindowPaneGroups(windowId: string): Promise<void> {
+  await termPaneGroups(["-t", windowId])
+}
+
 /** Kill a session (if any). */
 export async function killSession(name: string): Promise<void> {
   if (!name.startsWith("kobe-hidden-")) {
