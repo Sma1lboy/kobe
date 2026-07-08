@@ -12,6 +12,7 @@ import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
+import { SPLIT_STYLE_KEY, type SplitStyle, normalizeSplitStyle } from "../../../state/split-style"
 import {
   PROJECT_DIR_TOKEN,
   PROJECT_SIBLING_BASE,
@@ -64,6 +65,14 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   function toggleSound(): void {
     kv.set("notifications.sound.enabled", !soundEnabled())
+  }
+
+  // Appearance: how split leaves draw — full box frames or single dividers.
+  function splitStyle(): SplitStyle {
+    return normalizeSplitStyle(kv.get(SPLIT_STYLE_KEY))
+  }
+  function selectSplitStyle(style: SplitStyle): void {
+    kv.set(SPLIT_STYLE_KEY, style)
   }
 
   // Zen mode: whether collapsing to the engine pane keeps the Tasks rail.
@@ -208,6 +217,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleToast,
     soundEnabled,
     toggleSound,
+    splitStyle,
+    selectSplitStyle,
     zenKeepsTasks,
     toggleZenKeepsTasks,
     remoteProjectsEnabled,
