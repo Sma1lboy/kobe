@@ -35,6 +35,9 @@ export const en = {
     title: "Reset terminal?",
     body: "The running shell will be killed and a fresh one will spawn at the worktree. Any in-flight processes (vim, htop, paused jobs) end immediately.",
   },
+  quickFork: {
+    deliveryFailed: "Fork created, but the prompt wasn't delivered — the engine never started",
+  },
 }
 
 export const zh: typeof en = {
@@ -62,5 +65,8 @@ export const zh: typeof en = {
   reset: {
     title: "重置终端？",
     body: "正在运行的 shell 会被杀掉并在 worktree 重新启动，进行中的进程（vim、htop、暂停的任务）会立即结束。",
+  },
+  quickFork: {
+    deliveryFailed: "任务已创建，但提示词未送达 —— 引擎没有启动",
   },
 }

@@ -50,6 +50,7 @@ import type { VendorId } from "@/types/vendor"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
 import {
   type EngineTab,
   type TabsState,
@@ -109,6 +110,12 @@ export interface TerminalTabsProps {
   /** Quick-fork (issue #17): the composer submitted — parent creates the
    *  child task (in `repo`, the source task's main repo root) and jumps in. */
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
+  /** Quick-fork phase 2: a prompt to auto-deliver into this task's first
+   *  engine tab once its PTY produces its first output chunk. Consumed
+   *  ONCE on mount (see the delivery effect below) — a later prop change
+   *  does nothing, matching `onEditorTabReady`/`onEngineSendReady`'s
+   *  mount-once handoff shape. */
+  initialPrompt?: string
   /** This worktree's slice of the daemon's `transcript.activity` push. */
   sharedActivity?: TranscriptActivity | null
   focused: boolean
@@ -223,6 +230,38 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       pty.paste(text)
       pty.write("\r")
     })
+  }, [])
+
+  // Quick-fork phase 2: deliver `initialPrompt` into the first engine tab's
+  // PTY once it produces its first output chunk (the engine banner) — see
+  // `quick-fork-delivery.ts` for the readiness contract. Mount-once (like
+  // the two handoffs above); a ref guard covers React StrictMode's double
+  // effect-fire. The 5s-timeout fallback surfaces an error toast instead of
+  // silently dropping the prompt.
+  const initialPromptSentRef = useRef(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once delivery; reads propsRef/stateRef for freshness.
+  useEffect(() => {
+    const prompt = propsRef.current.initialPrompt
+    if (!prompt || initialPromptSentRef.current) return
+    initialPromptSentRef.current = true
+    const controller = new AbortController()
+    const target = stateRef.current.tabs.find((tab) => tab.kind === "engine")
+    if (!target) return
+    void waitAndDeliverInitialPrompt(
+      () => getDefaultPtyRegistry().get(tabPtyKey(propsRef.current.taskId, target.id)),
+      prompt,
+      undefined,
+      controller.signal,
+    ).then((result) => {
+      if (result.delivered) return
+      notif.notify({
+        kind: "error",
+        taskId: propsRef.current.taskId,
+        tabId: target.id,
+        title: t("terminal.quickFork.deliveryFailed"),
+      })
+    })
+    return () => controller.abort()
   }, [])
 
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]

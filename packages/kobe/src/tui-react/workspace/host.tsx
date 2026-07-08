@@ -58,7 +58,7 @@ import { useDialog } from "../ui/dialog"
 import { TerminalTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
-import { runQuickFork } from "./quick-fork"
+import { useQuickFork } from "./quick-fork"
 import { useAccessor } from "./use-accessor"
 import { useFilesBadge } from "./use-files-badge"
 
@@ -215,11 +215,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     sendToEngineFn.current(prompt)
   }
 
-  /** Quick-fork (issue #17, ctrl+f): the composer already resolved
-   *  repo/baseRef/vendor from the active task — create the child task with
-   *  the same side effects `n`'s `createTaskFlow` applies, then jump in. */
-  const quickFork = (repo: string, result: QuickTaskResult): Promise<void> =>
-    runQuickFork(orch, repo, result, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
+  // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
+  // prompt to the new task's TerminalTabs mount (phase 2). Wiring lives in
+  // `quick-fork.ts` — the create/enter/pending-prompt shape is identical
+  // regardless of host, and this component is already near the file-size cap.
+  const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
 
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const [zen, setZen] = useState(false)
@@ -375,7 +375,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onEngineSendReady={(send) => {
             sendToEngineFn.current = send
           }}
-          onQuickFork={(repo, r) => void quickFork(repo, r)}
+          onQuickFork={quickFork.onQuickFork}
+          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
       </box>
 
@@ -412,6 +413,7 @@ function ShowWorkspace(props: {
   onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
   onEngineSendReady: (send: (text: string) => void) => void
   onQuickFork: (repo: string, result: QuickTaskResult) => void
+  initialPrompt?: string
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
@@ -458,6 +460,7 @@ function ShowWorkspace(props: {
       onEditorTabReady={props.onEditorTabReady}
       onEngineSendReady={props.onEngineSendReady}
       onQuickFork={props.onQuickFork}
+      initialPrompt={props.initialPrompt}
       // This worktree's slice of the daemon transcript.activity push
       // (issue #24) — flips the tab turn-status loops to shared mode.
       sharedActivity={transcriptActivity?.get(path) ?? null}
