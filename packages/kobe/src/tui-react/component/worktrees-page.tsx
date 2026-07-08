@@ -162,6 +162,15 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
     return <text fg={theme.textMuted}> {t("worktrees.badge.remoteUnknown")}</text>
   }
 
+  /** Staleness-rubric badge (see `orchestrator/worktree/staleness.ts`).
+   *  `dirty` already has its own badge and `fresh` is the quiet default —
+   *  neither repeats here. */
+  function verdictBadge(row: WorktreeAuditRow): ReactNode {
+    if (row.verdictReason === "dirty" || row.verdictReason === "fresh") return null
+    const fg = row.verdict === "merged" ? theme.success : row.verdict === "stale" ? theme.warning : theme.accent
+    return <text fg={fg}> {t(`worktrees.verdict.${row.verdictReason}`)}</text>
+  }
+
   const loading = projects === null
   let rowBase = 0
 
@@ -217,6 +226,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
                         {row.kobeManaged ? <text fg={theme.textMuted}> {t("worktrees.badge.kobeManaged")}</text> : null}
                         {row.dirty ? <text fg={theme.warning}> {t("worktrees.badge.dirty")}</text> : null}
                         {remoteBadge(row.branchOnRemote)}
+                        {verdictBadge(row)}
                         {busyPath === row.path ? <text fg={theme.textMuted}> …</text> : null}
                       </box>
                       <box flexDirection="row" justifyContent="space-between" paddingLeft={2}>

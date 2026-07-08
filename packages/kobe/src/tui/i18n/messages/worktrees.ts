@@ -18,6 +18,14 @@ export const en = {
     remoteUnknown: "remote unknown",
   },
 
+  verdict: {
+    prOpen: "PR open",
+    prMerged: "merged (PR)",
+    inMain: "in main",
+    prClosed: "PR closed",
+    idle: "stale",
+  },
+
   row: {
     detached: "(detached)",
     created: "created {age} ago",
@@ -50,6 +58,14 @@ export const zh: typeof en = {
     remoteOn: "已推送",
     remoteOff: "未推送",
     remoteUnknown: "远端未知",
+  },
+
+  verdict: {
+    prOpen: "PR 评审中",
+    prMerged: "已合入 (PR)",
+    inMain: "已在主分支",
+    prClosed: "PR 已关闭",
+    idle: "陈旧",
   },
 
   row: {
