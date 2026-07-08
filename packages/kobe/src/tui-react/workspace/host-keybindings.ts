@@ -40,6 +40,8 @@ export type WorkspaceKeybindingDeps = {
   settingsOpen: boolean
   worktreesOpen: boolean
   openWorktrees: () => void
+  updateOpen: boolean
+  openUpdate: () => void
   searchActive: boolean
   selectedId: string | null
   openSettings: () => void
@@ -87,7 +89,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     focus.setFocused(PANE_CYCLE[next] as PaneId)
   }
 
-  const pagesClosed = deps.dialog.stack.length === 0 && !deps.settingsOpen && !deps.worktreesOpen
+  const pagesClosed = deps.dialog.stack.length === 0 && !deps.settingsOpen && !deps.worktreesOpen && !deps.updateOpen
 
   useBindings(() => ({
     enabled: pagesClosed,
@@ -129,6 +131,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
       },
       "settings.open.sidebar": () => deps.openSettings(),
       "worktrees.open.sidebar": () => deps.openWorktrees(),
+      "tasks.update": () => deps.openUpdate(),
     }),
   }))
   // Task-lifecycle chords (issue #20 — the tmux Tasks pane's n/b/v set).
