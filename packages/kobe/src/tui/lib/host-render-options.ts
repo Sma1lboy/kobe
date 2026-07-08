@@ -24,54 +24,6 @@ export function hostRenderOptions(onDestroy?: () => void): Record<string, unknow
   return onDestroy ? { ...base, onDestroy } : base
 }
 
-export type TtySize = {
-  readonly width: number
-  readonly height: number
-}
-
-export type ResizableRenderer = {
-  readonly terminalWidth: number
-  readonly terminalHeight: number
-  resize(width: number, height: number): void
-}
-
-export function parseSttySize(output: string): TtySize | null {
-  const match = output.trim().match(/^(\d+)\s+(\d+)$/)
-  if (!match) return null
-  const height = Number(match[1])
-  const width = Number(match[2])
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
-  return { width, height }
-}
-
-export async function readControllingTtySize(): Promise<TtySize | null> {
-  if (!process.stdin.isTTY) return null
-  try {
-    const proc = Bun.spawn(["stty", "size"], {
-      stdin: "inherit",
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const output = await new Response(proc.stdout).text()
-    const code = await proc.exited
-    if (code !== 0) return null
-    return parseSttySize(output)
-  } catch {
-    return null
-  }
-}
-
-export async function syncRendererToTtySize(
-  renderer: ResizableRenderer,
-  readSize: () => Promise<TtySize | null> = readControllingTtySize,
-): Promise<boolean> {
-  const size = await readSize()
-  if (!size) return false
-  if (renderer.terminalWidth === size.width && renderer.terminalHeight === size.height) return false
-  renderer.resize(size.width, size.height)
-  return true
-}
-
 /**
  * Exit-signal backstop (orphaned-helper leak): opentui's own exit handler
  * for SIGHUP/SIGTERM only destroys the renderer — it never calls
