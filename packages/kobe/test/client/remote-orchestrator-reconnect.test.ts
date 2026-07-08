@@ -3,7 +3,43 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import {
+  RECONNECT_LOG_ATTEMPT_CEILING,
+  shouldLogReconnectAttempt,
+} from "../../src/client/remote-orchestrator-payloads.ts"
 import { RemoteOrchestrator } from "../../src/client/remote-orchestrator.ts"
+
+/**
+ * Issue #26: with many long-lived orphan panes each retrying forever, even
+ * "log attempt 1 and every 10th" is unbounded spam over days (client.log
+ * hit 736MB). `shouldLogReconnectAttempt` adds a hard ceiling — silent
+ * after `RECONNECT_LOG_ATTEMPT_CEILING`, until a successful reconnect
+ * resets the caller's attempt counter back to 0.
+ */
+describe("shouldLogReconnectAttempt", () => {
+  it("logs attempt 1", () => {
+    expect(shouldLogReconnectAttempt(1)).toBe(true)
+  })
+
+  it("logs every 10th attempt", () => {
+    expect(shouldLogReconnectAttempt(10)).toBe(true)
+    expect(shouldLogReconnectAttempt(20)).toBe(true)
+    expect(shouldLogReconnectAttempt(100)).toBe(true)
+  })
+
+  it("stays silent on non-1st, non-10th attempts", () => {
+    expect(shouldLogReconnectAttempt(2)).toBe(false)
+    expect(shouldLogReconnectAttempt(11)).toBe(false)
+    expect(shouldLogReconnectAttempt(99)).toBe(false)
+  })
+
+  it("goes silent for every attempt past the ceiling, even a would-be 10th", () => {
+    expect(shouldLogReconnectAttempt(RECONNECT_LOG_ATTEMPT_CEILING)).toBe(true) // last one logged
+    expect(shouldLogReconnectAttempt(RECONNECT_LOG_ATTEMPT_CEILING + 1)).toBe(false)
+    expect(shouldLogReconnectAttempt(RECONNECT_LOG_ATTEMPT_CEILING + 10)).toBe(false) // would be a 10th, still silent
+    expect(shouldLogReconnectAttempt(100_000)).toBe(false)
+  })
+})
 
 /**
  * Auto-reconnect is the permanent fix for the Tasks-pane create/delete sync

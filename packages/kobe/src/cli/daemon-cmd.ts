@@ -11,7 +11,8 @@ import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
-import { defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
+import { rotateLogIfNeeded } from "@sma1lboy/kobe-daemon/daemon/log-rotate"
+import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { createKobeCore } from "../core/index.ts"
 
@@ -99,11 +100,17 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     process.exit(2)
   }
 
-  // We ARE the daemon process from here on. Install the crash net
-  // before doing any work so a stray rejection during startup (or any
-  // time after) is logged to daemon.log instead of silently killing
-  // the daemon. Safe here because this branch only runs in the spawned
-  // daemon process, never in the TUI or tests.
+  // We ARE the daemon process from here on. `daemon.log` is stdout/stderr
+  // inherited from the parent's `spawnDetachedDaemon` open (an append fd,
+  // not routed through any in-process writer here) — the only rotation
+  // point that can cover it is boot, before the daemon writes a single
+  // byte. One generation kept (`daemon.log.old`); see log-rotate.ts.
+  rotateLogIfNeeded(defaultDaemonLogPath())
+
+  // Install the crash net before doing any work so a stray rejection
+  // during startup (or any time after) is logged to daemon.log instead of
+  // silently killing the daemon. Safe here because this branch only runs
+  // in the spawned daemon process, never in the TUI or tests.
   installDaemonCrashHandlers()
 
   const core = await createKobeCore()
