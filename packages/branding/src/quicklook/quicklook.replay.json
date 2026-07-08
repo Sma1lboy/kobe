@@ -48,6 +48,7 @@
   "flows": {
     "createTask": {
       "openKey": "n",
+      "focusPaneBeforeOpen": "leftmost",
       "dialogWait": "newTaskDialog",
       "dialogSettleMs": 1500,
       "codexEngineCycleKey": "C-e",
@@ -86,7 +87,22 @@
       "textRef": "claudePrompt",
       "msPerChar": 45,
       "submit": true,
-      "submitDelayMs": 500
+      "submitDelayMs": 500,
+      "dismissIfText": [
+        {
+          "includes": "Claude in Chrome extension detected",
+          "steps": [
+            {
+              "action": "key",
+              "key": "Escape"
+            },
+            {
+              "action": "sleep",
+              "ms": 800
+            }
+          ]
+        }
+      ]
     },
     {
       "at": 60,
@@ -109,6 +125,27 @@
       "submit": true,
       "submitDelayMs": 500,
       "dismissIfText": [
+        {
+          "includes": "Update available!",
+          "steps": [
+            {
+              "action": "key",
+              "key": "Down"
+            },
+            {
+              "action": "sleep",
+              "ms": 400
+            },
+            {
+              "action": "key",
+              "key": "Enter"
+            },
+            {
+              "action": "sleep",
+              "ms": 1500
+            }
+          ]
+        },
         {
           "includes": "Hooks need review",
           "steps": [
@@ -204,14 +241,24 @@
       "region": "input"
     },
     {
-      "name": "agent",
+      "name": "prompt-wide",
       "from": 39,
+      "to": 40
+    },
+    {
+      "name": "agent",
+      "from": 40,
       "to": 60,
       "region": "agent"
     },
     {
-      "name": "dialog-codex",
+      "name": "agent-wide",
       "from": 60,
+      "to": 61
+    },
+    {
+      "name": "dialog-codex",
+      "from": 61,
       "to": 68,
       "region": "dialog"
     },
@@ -227,8 +274,13 @@
       "region": "inputCodex"
     },
     {
-      "name": "agent-2",
+      "name": "codex-wide",
       "from": 95,
+      "to": 96
+    },
+    {
+      "name": "agent-2",
+      "from": 96,
       "to": "capture-end",
       "region": "agent"
     },

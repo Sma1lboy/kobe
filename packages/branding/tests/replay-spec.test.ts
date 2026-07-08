@@ -86,5 +86,15 @@ describe("replay spec", () => {
         capture,
       ),
     ).toThrow(/regions.dialog.hash/)
+
+    expect(() =>
+      resolveReplaySpec(
+        {
+          ...baseSpec,
+          flows: { createTask: { dialogWait: "newTaskDialog", focusPaneBeforeOpen: "rightmost" } },
+        },
+        capture,
+      ),
+    ).toThrow(/focusPaneBeforeOpen/)
   })
 })

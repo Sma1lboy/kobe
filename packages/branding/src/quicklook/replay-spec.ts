@@ -88,6 +88,7 @@ export type ResolvedCameraSpec = Required<CameraSpec>
 
 export type CreateTaskFlowSpec = {
   openKey?: string
+  focusPaneBeforeOpen?: "leftmost"
   dialogWait: string
   dialogSettleMs?: number
   codexEngineCycleKey?: string
@@ -281,7 +282,13 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
     }
   }
 
-  if (spec.flows?.createTask) assertWaitRef(spec.waits, spec.flows.createTask.dialogWait, "flow createTask")
+  if (spec.flows?.createTask) {
+    assertWaitRef(spec.waits, spec.flows.createTask.dialogWait, "flow createTask")
+    const focusPane = spec.flows.createTask.focusPaneBeforeOpen
+    if (focusPane !== undefined && focusPane !== "leftmost") {
+      throw new Error('flow createTask.focusPaneBeforeOpen must be "leftmost" when set')
+    }
+  }
 
   const captureEnd = lastCaptureTime(capture)
   const stages = spec.stages.map((stage, i) => {

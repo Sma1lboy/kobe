@@ -14,7 +14,13 @@
 
 import { $ } from "bun"
 import replaySpecJson from "../src/quicklook/quicklook.replay.json"
-import { resolveReplaySpec, type ReplayBeat, type ReplayStep } from "../src/quicklook/replay-spec"
+import {
+  resolveReplaySpec,
+  type CreateTaskFlowSpec,
+  type DismissRule,
+  type ReplayBeat,
+  type ReplayStep,
+} from "../src/quicklook/replay-spec"
 
 const spec = resolveReplaySpec(replaySpecJson, {
   cols: replaySpecJson.viewport.cols,
@@ -46,15 +52,9 @@ const HOME = homeArg.startsWith("/") ? homeArg : `${import.meta.dir}/../${homeAr
 const KOBE_SRC = `${import.meta.dir}/../../kobe`
 const BIN = `${HOME}/bin`
 await $`mkdir -p ${BIN}`.quiet()
-// Preload by absolute path — a relative path resolves from the
-// *invocation* cwd (the repo on camera), where it doesn't exist. kobe's
-// own preload (scripts/jsx-plugin.ts) replaces the bare
-// @opentui/solid/preload: Solid transform everywhere EXCEPT
-// src/tui-react/** (React pragma files), matching kobe's dev scripts.
-const PRELOAD = `${KOBE_SRC}/scripts/jsx-preload.ts`
 await Bun.write(
   `${BIN}/kobe`,
-  `#!/bin/sh\nexec env KOBE_DEV=1 bun --preload ${PRELOAD} --conditions=browser ${KOBE_SRC}/src/cli/index.ts "$@"\n`,
+  `#!/bin/sh\nexec env KOBE_DEV=1 bun --conditions=browser ${KOBE_SRC}/src/cli/index.ts "$@"\n`,
 )
 await $`chmod +x ${BIN}/kobe`.quiet()
 const PATH = `${BIN}:${process.env.PATH}`
@@ -67,6 +67,7 @@ const ENV = {
 }
 
 const tmux = (...args: string[]) => $`tmux -L ${SOCKET} ${args}`.env(ENV).quiet()
+const innerTmux = (...args: string[]) => $`tmux -L ${INNER_SOCKET} ${args}`.env(ENV).quiet()
 const key = (k: string) => tmux("send-keys", "-t", SESSION, k)
 const sleep = (ms: number) => Bun.sleep(ms)
 const screenText = () => tmux("capture-pane", "-p", "-t", SESSION).text()
@@ -150,6 +151,71 @@ async function waitForNamed(name: string): Promise<void> {
   await waitFor(new RegExp(wait.pattern), wait.timeoutMs)
 }
 
+type InnerPane = {
+  id: string
+  sessionAttached: number
+  windowActive: number
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+async function activeInnerWindowPanes(): Promise<InnerPane[]> {
+  const out = await innerTmux(
+    "list-panes",
+    "-a",
+    "-F",
+    "#{pane_id}\t#{session_attached}\t#{window_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}",
+  )
+    .nothrow()
+    .text()
+  return out
+    .split("\n")
+    .map((line): InnerPane | null => {
+      const [id, sessionAttached, windowActive, left, top, width, height] = line.trim().split("\t")
+      if (!id) return null
+      return {
+        id,
+        sessionAttached: Number(sessionAttached),
+        windowActive: Number(windowActive),
+        left: Number(left),
+        top: Number(top),
+        width: Number(width),
+        height: Number(height),
+      }
+    })
+    .filter((pane): pane is InnerPane =>
+      Boolean(
+        pane &&
+          Number.isFinite(pane.sessionAttached) &&
+          Number.isFinite(pane.windowActive) &&
+          Number.isFinite(pane.left) &&
+          Number.isFinite(pane.top) &&
+          Number.isFinite(pane.width) &&
+          Number.isFinite(pane.height),
+      ),
+    )
+    .filter((pane) => pane.sessionAttached > 0 && pane.windowActive === 1)
+}
+
+async function focusPaneBeforeOpen(target: CreateTaskFlowSpec["focusPaneBeforeOpen"]): Promise<void> {
+  if (!target) return
+  if (target !== "leftmost") throw new Error(`unknown replay focus pane target "${target}"`)
+  const panes = await activeInnerWindowPanes()
+  if (panes.length === 0) throw new Error("inner tmux active window has no panes to focus")
+  const leftmost = panes.toSorted((a, b) => a.left - b.left || a.top - b.top || b.height - a.height)[0]
+  await innerTmux("select-pane", "-t", leftmost.id)
+  await sleep(200)
+}
+
+async function dismissMatchingRules(rules: readonly DismissRule[] | undefined): Promise<void> {
+  for (const rule of rules ?? []) {
+    const screen = await screenText()
+    if (screen.includes(rule.includes)) for (const step of rule.steps) await runStep(step)
+  }
+}
+
 // Walk the NewTaskDialog. Wait for it to actually open (opening while the
 // UI is busy ate a timed keypress once and the walk derailed into the wrong
 // sub-tab), pick the engine with Ctrl+E (works from ANY field — no bet on
@@ -158,6 +224,7 @@ async function waitForNamed(name: string): Promise<void> {
 async function createTaskViaDialog(engine: string): Promise<void> {
   const flow = spec.flows?.createTask
   if (!flow) throw new Error('missing replay flow "createTask"')
+  await focusPaneBeforeOpen(flow.focusPaneBeforeOpen)
   await key(flow.openKey ?? "n")
   await waitForNamed(flow.dialogWait)
   await sleep(flow.dialogSettleMs ?? 1500) // dialog just opened, let it breathe on camera
@@ -179,6 +246,7 @@ function textForBeat(beat: ReplayBeat): string {
 }
 
 async function typeAndMaybeSubmit(beat: ReplayBeat): Promise<void> {
+  await dismissMatchingRules(beat.dismissIfText)
   await typeText(textForBeat(beat), beat.msPerChar ?? 45)
   if (beat.submit) {
     await sleep(beat.submitDelayMs ?? 500)
@@ -199,11 +267,8 @@ async function runBeat(beat: ReplayBeat): Promise<void> {
       return
     case "typeTextWhenReady":
       if (!beat.waitFor) throw new Error(`replay beat at ${beat.at}s is missing waitFor`)
+      await dismissMatchingRules(beat.dismissIfText)
       await waitForNamed(beat.waitFor)
-      for (const rule of beat.dismissIfText ?? []) {
-        const screen = await screenText()
-        if (screen.includes(rule.includes)) for (const step of rule.steps) await runStep(step)
-      }
       if (beat.settleMs) await sleep(beat.settleMs)
       await typeAndMaybeSubmit(beat)
       return
