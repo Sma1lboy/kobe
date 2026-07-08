@@ -72,7 +72,21 @@ describe("key routing tables", () => {
     // beyond this list steals a chord from the engine CLI. f6 (issue #18,
     // workspace.zenToggle) added 2026-07-07 for the same reason as f4.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
-      ["ctrl+[", "ctrl+]", "ctrl+e", "ctrl+q", "ctrl+t", "ctrl+w", "ctrl+\\", "ctrl+=", "f2", "f3", "f4", "f5", "f6"].sort(),
+      [
+        "ctrl+[",
+        "ctrl+]",
+        "ctrl+e",
+        "ctrl+q",
+        "ctrl+t",
+        "ctrl+w",
+        "ctrl+\\",
+        "ctrl+=",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+      ].sort(),
     )
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; the rest are its own UI shortcuts).
