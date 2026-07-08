@@ -7,13 +7,18 @@ import { colors, monoStack } from "../colors"
 loadFont("normal", { weights: ["400", "700"] })
 import { parseAnsiLine, type Span } from "./ansi"
 import capture from "./frames.json"
+import replaySpecJson from "./quicklook.replay.json"
+import { resolveReplaySpec, type Region } from "./replay-spec"
 
 // Replays a captured kobe TUI session (scripts/capture-tui.ts output) as the
 // landing-page quicklook video. UI iterates -> re-run capture -> re-render;
 // no manual screen recording.
 
-const CELL_W = 1280 / capture.cols
-const LINE_H = 720 / capture.rows
+const replaySpec = resolveReplaySpec(replaySpecJson, capture)
+const VIEW_W = replaySpec.viewport.width
+const VIEW_H = replaySpec.viewport.height
+const CELL_W = VIEW_W / capture.cols
+const LINE_H = VIEW_H / capture.rows
 
 function frameAt(t: number) {
   let current = capture.frames[0]
@@ -68,41 +73,11 @@ const stripLine = (l: string) =>
   l.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)?/g, "").replace(/\x1b\[[0-9;]*m/g, "")
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const END = capture.frames[capture.frames.length - 1].t + 4 // + tail hold (matches Root.tsx)
-
-// Grid rect a stage is allowed to look at — the pane the story is about.
-// Chrome (composer/status/footer) and unrelated panes stay out of frame.
-type Region = { c0: number; c1: number; r0: number; r1: number }
-const FULL: Region = { c0: 0, c1: capture.cols - 1, r0: 0, r1: capture.rows - 1 }
-const CHAT: Region = { c0: 33, c1: 107, r0: 3, r1: 36 } // workspace conversation area
-// Agent-streaming shots start below the engine banner/promo block — its
-// one-off repaints otherwise drag the frame up to the pane's top.
-const AGENT: Region = { c0: 33, c1: 107, r0: 11, r1: 36 }
-const DIALOG: Region = { c0: 30, c1: 130, r0: 6, r1: 38 } // centered NewTaskDialog card
-const INPUT: Region = { c0: 33, c1: 110, r0: 37, r1: 44 } // composer at the chat pane's bottom
-// Codex's composer row drifts with what it printed above — give it the lower
-// half of the pane and let the change mask find the typing.
-const INPUT_CODEX: Region = { c0: 33, c1: 110, r0: 22, r1: 40 }
-
-// Stage boundaries mirror the capture script's beats.
-// No region = wide shot (boot repaints everything; wrap pulls out).
-const STAGES: Array<{ name: string; from: number; to: number; region?: Region }> = [
-  { name: "shell", from: 0, to: 2.7, region: FULL }, // $ kobe typed
-  { name: "boot", from: 2.7, to: 8 }, // TUI paints — full shot, sidebar has a task
-  { name: "dialog", from: 8, to: 15, region: DIALOG }, // NewTaskDialog: claude
-  { name: "engine-boot", from: 15, to: 31 }, // worktree + bun install + claude — wide
-  { name: "type-prompt", from: 31, to: 39, region: INPUT }, // prompt typed into the composer
-  { name: "agent", from: 39, to: 60, region: AGENT }, // tool stream + response
-  { name: "dialog-codex", from: 60, to: 68, region: DIALOG }, // second task: codex
-  { name: "codex-boot", from: 68, to: 85 }, // codex boots — wide
-  { name: "type-codex", from: 85, to: 95, region: INPUT_CODEX }, // codex prompt typed
-  { name: "agent-2", from: 95, to: END - 4, region: AGENT },
-  { name: "wrap", from: END - 4, to: END }, // pull back out
-]
+const STAGES = replaySpec.stages
 
 // A shot is a scale + the content point (px) to center in the viewport.
 type Shot = { scale: number; cx: number; cy: number }
-const WIDE: Shot = { scale: 1, cx: 640, cy: 360 }
+const WIDE: Shot = { scale: 1, cx: VIEW_W / 2, cy: VIEW_H / 2 }
 
 // Frame a stage: mark every cell inside the stage's region that changed at
 // least once (binary — a spinner redrawing 50 times counts once), cluster
@@ -126,14 +101,15 @@ function frameStage(from: number, to: number, region: Region): Shot {
       }
     }
   }
-  if (total < 10) return WIDE
+  if (total < replaySpec.camera.minChangedCells) return WIDE
   const rowW = heat.map((row) => row.reduce((a, b) => a + b, 0))
   // Biggest row band.
-  let best: { w: number; r0: number; r1: number } | null = null
-  let band: typeof best = null
+  type Band = { w: number; r0: number; r1: number }
+  let best: Band | null = null
+  let band: Band | null = null
   for (let r = region.r0; r <= region.r1; r++) {
     if (!rowW[r]) continue
-    if (band && r - band.r1 <= 3) {
+    if (band && r - band.r1 <= replaySpec.camera.rowGap) {
       band.w += rowW[r]
       band.r1 = r
     } else {
@@ -142,30 +118,35 @@ function frameStage(from: number, to: number, region: Region): Shot {
     if (!best || band.w > best.w) best = band
   }
   if (!best) return WIDE
-  // Column span: 5–95% weight quantiles within the winning band.
+  // Column span: configured weight quantiles within the winning band.
   const colW = new Array(capture.cols).fill(0)
   for (let r = best.r0; r <= best.r1; r++) for (let c = region.c0; c <= region.c1; c++) colW[c] += heat[r][c]
   const sum = colW.reduce((a: number, b: number) => a + b, 0)
   let acc = 0
   let c0 = region.c0
   let c1 = region.c1
+  const [q0, q1] = replaySpec.camera.colQuantiles
   for (let c = region.c0; c <= region.c1; c++) {
     acc += colW[c]
-    if (acc < sum * 0.05) c0 = c + 1
-    if (acc <= sum * 0.95) c1 = c
+    if (acc < sum * q0) c0 = c + 1
+    if (acc <= sum * q1) c1 = c
   }
   c1 = Math.max(c0, c1)
   const w = (c1 - c0 + 1) * CELL_W
   const h = (best.r1 - best.r0 + 1) * LINE_H
-  // Fit the band into ~80% of the viewport, capped so text stays crisp.
-  const scale = clamp(Math.min((1280 * 0.8) / w, (720 * 0.8) / h), 1, 1.6)
+  // Fit the band into the configured portion of the viewport, capped so text stays crisp.
+  const scale = clamp(
+    Math.min((VIEW_W * replaySpec.camera.fit) / w, (VIEW_H * replaySpec.camera.fit) / h),
+    replaySpec.camera.minScale,
+    replaySpec.camera.maxScale,
+  )
   return { scale, cx: ((c0 + c1 + 1) / 2) * CELL_W, cy: ((best.r0 + best.r1 + 1) / 2) * LINE_H }
 }
 
 const SHOTS: Shot[] = STAGES.map((s) => (s.region ? frameStage(s.from, s.to, s.region) : WIDE))
 
 const easeInOut = (p: number) => p * p * (3 - 2 * p)
-const TRANSITION = 1.2 // seconds of OUTPUT time to move between stage shots
+const TRANSITION = replaySpec.camera.transitionSeconds // seconds of OUTPUT time to move between stage shots
 
 // `t` is capture time; `speed` is the content playback rate. Camera easing
 // runs in OUTPUT time — a sped-up render must not speed up the zooms too —
@@ -208,15 +189,15 @@ export const QuickLookReplay: React.FC<{ speed?: number }> = ({ speed = 1 }) => 
   const cam = cameraAt(t, speed)
   // Center the shot's target point, clamped so the viewport never leaves the
   // content — a target near an edge sticks to that edge instead of cropping.
-  const tx = clamp(640 - cam.cx * cam.scale, 1280 * (1 - cam.scale), 0)
-  const ty = clamp(360 - cam.cy * cam.scale, 720 * (1 - cam.scale), 0)
+  const tx = clamp(VIEW_W / 2 - cam.cx * cam.scale, VIEW_W * (1 - cam.scale), 0)
+  const ty = clamp(VIEW_H / 2 - cam.cy * cam.scale, VIEW_H * (1 - cam.scale), 0)
 
   return (
     <AbsoluteFill style={{ backgroundColor: colors.bg, fontFamily: monoStack }}>
       <div
         style={{
-          width: 1280,
-          height: 720,
+          width: VIEW_W,
+          height: VIEW_H,
           fontSize: CELL_W / 0.6,
           lineHeight: `${LINE_H}px`,
           transform: `translate(${tx}px, ${ty}px) scale(${cam.scale})`,
