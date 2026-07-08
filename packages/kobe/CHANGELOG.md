@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.75
+
+### Patch Changes
+
+- cfe1a29: fix: chat-tab close and engine-tab exit now SIGTERM the window's pane process groups before `kill-window` (the same ladder whole-task kills use), so HUP-swallowing engines and pane hosts no longer leak to init. The sweep skips the caller's own group — `kobe engine-tab-exit` runs inside a pane of the window it closes.
+- cfe1a29: fix: every pane host now runs an orphan watchdog — if the process is reparented to init (its tmux pane / terminal is gone and no teardown signal ever arrived, e.g. the parent chain was SIGKILLed), it exits within seconds instead of living forever with a revoked tty. Complements the existing exit-signal backstop, which only fires when a signal is actually delivered.
+
 ## 0.7.74
 
 ### Patch Changes
