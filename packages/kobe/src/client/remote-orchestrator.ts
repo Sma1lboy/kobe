@@ -440,9 +440,10 @@ export class RemoteOrchestrator {
   }
 
   /** Every worktree of every local saved project — the standalone
-   *  worktree-management TUI page (`worktree.list`). */
-  listWorktrees(): Promise<readonly WorktreeProject[]> {
-    return listWorktreesOp(this.client)
+   *  worktree-management TUI page (`worktree.list`). `network: false` =
+   *  local-signals-only fast pass. */
+  listWorktrees(opts?: { network?: boolean }): Promise<readonly WorktreeProject[]> {
+    return listWorktreesOp(this.client, opts)
   }
 
   /** Remove a worktree (`worktree.remove`); refuses a dirty one unless
