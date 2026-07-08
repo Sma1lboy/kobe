@@ -50,7 +50,15 @@ export function EnginePickerDialogView(props: {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.dialogTitle ?? t("terminal.tab.chooseEngineTitle")}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
+        <text
+          fg={theme.textMuted}
+          onMouseUp={() => {
+            // Cancel must also CLOSE — resolving the promise alone left the
+            // card on screen with its onClose already spent.
+            props.onCancel()
+            dialog.clear()
+          }}
+        >
           esc
         </text>
       </box>

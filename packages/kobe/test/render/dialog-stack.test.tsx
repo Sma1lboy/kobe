@@ -82,6 +82,45 @@ describe("DialogProvider", () => {
     expect(dialogRef.current?.stack.length).toBe(0)
   })
 
+  // Regression (owner report 2026-07-08): a stale text selection — the
+  // terminal keeps the highlight after a copy until the next click — used
+  // to DISABLE the esc/ctrl+c binding entirely, leaving esc dead while a
+  // dialog was up. Contract now: first esc clears the selection (dialog
+  // stays), second esc closes.
+  it("esc clears a stale selection first, then closes on the next press", async () => {
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    const { frame, mockInput, renderer } = await renderComponent(
+      <DialogProvider>
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+            dialog.push(() => <text>dialog A</text>)
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("dialog A")
+
+    const patched = renderer as unknown as {
+      getSelection: () => { getSelectedText: () => string } | null
+      clearSelection: () => void
+    }
+    patched.getSelection = () => ({ getSelectedText: () => "stale copy highlight" })
+    patched.clearSelection = () => {
+      patched.getSelection = () => null
+    }
+
+    mockInput.pressEscape() // clears the selection; the dialog must survive
+    await settle()
+    expect(await frame()).toContain("dialog A")
+    expect(patched.getSelection()).toBeNull()
+
+    mockInput.pressEscape() // no selection left — now it closes
+    await settle()
+    expect(await frame()).not.toContain("dialog A")
+    expect(dialogRef.current?.stack.length).toBe(0)
+  })
+
   it("clear empties the whole stack at once", async () => {
     const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
     const { frame } = await renderComponent(
