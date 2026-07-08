@@ -14,9 +14,14 @@ import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import {
+  CHAT_TAB_LIVE_POLL_MS,
+  CHAT_TAB_MISS_CAP_MS,
+  CHAT_TAB_MISS_THRESHOLD,
   type ChatTabNamingDeps,
+  type ChatTabPollSchedule,
   type TmuxRunner,
   listChatTabWindows,
+  nextChatTabPoll,
   runChatTabNamingPass,
 } from "../../src/tmux/chat-tab-naming.ts"
 
@@ -121,7 +126,7 @@ describe("listChatTabWindows", () => {
     ])
   })
 
-  it("returns [] when the session is gone", async () => {
+  it("returns null when the session is gone (a miss, not an empty listing)", async () => {
     const runner: TmuxRunner = {
       async capture() {
         return { code: 1, stdout: "" }
@@ -130,7 +135,7 @@ describe("listChatTabWindows", () => {
         return 0
       },
     }
-    expect(await listChatTabWindows("kobe-x", runner)).toEqual([])
+    expect(await listChatTabWindows("kobe-x", runner)).toBeNull()
   })
 })
 
@@ -218,5 +223,157 @@ describe("runChatTabNamingPass", () => {
     const { deps, renames } = fakeDeps({ windows: "1\t1\tsess-1\n", titleFromSessionId: () => "should not run" })
     await runChatTabNamingPass(orch, deps)
     expect(renames).toEqual([])
+  })
+})
+
+/** Cancel jitter (rand 0.5 → no offset) so the scheduled delays are exact. */
+const noJitter = (): number => 0.5
+
+/** A runner whose `list-windows` always fails, like a session that's gone. `calls` counts list-windows spawns. */
+function deadSessionDeps(): { deps: ChatTabNamingDeps; calls: { listWindows: number } } {
+  const calls = { listWindows: 0 }
+  const runner: TmuxRunner = {
+    async capture(args) {
+      if (args[0] === "list-windows") calls.listWindows++
+      return { code: 1, stdout: "" }
+    },
+    async run() {
+      return 0
+    },
+  }
+  return { deps: { runner, titleFromSessionId: async () => "", titleFromWorktree: async () => "" }, calls }
+}
+
+describe("nextChatTabPoll", () => {
+  it("resets the miss streak and schedules full cadence on a found session", () => {
+    const entry = nextChatTabPoll(true, 5, 1_000, noJitter)
+    expect(entry).toEqual({ nextAllowedAt: 1_000 + CHAT_TAB_LIVE_POLL_MS, misses: 0 })
+  })
+
+  it("keeps full cadence for misses under the threshold", () => {
+    expect(nextChatTabPoll(false, 0, 1_000, noJitter).nextAllowedAt).toBe(1_000 + CHAT_TAB_LIVE_POLL_MS)
+    expect(nextChatTabPoll(false, 1, 1_000, noJitter).nextAllowedAt).toBe(1_000 + CHAT_TAB_LIVE_POLL_MS)
+    expect(nextChatTabPoll(false, 0, 1_000, noJitter).misses).toBe(1)
+    expect(nextChatTabPoll(false, 1, 1_000, noJitter).misses).toBe(2)
+  })
+
+  it("backs off once the miss streak reaches the threshold, capped", () => {
+    // prevMisses = THRESHOLD - 1 → this call's streak hits THRESHOLD exactly:
+    // the first backoff step, which equals the base delay (same as live
+    // cadence) — the exponential growth starts on the NEXT miss.
+    const atThreshold = nextChatTabPoll(false, CHAT_TAB_MISS_THRESHOLD - 1, 1_000, noJitter)
+    expect(atThreshold.misses).toBe(CHAT_TAB_MISS_THRESHOLD)
+    expect(atThreshold.nextAllowedAt).toBe(1_000 + CHAT_TAB_LIVE_POLL_MS)
+
+    // One more miss past the threshold: backoff strictly grows beyond cadence.
+    const oneMorePastThreshold = nextChatTabPoll(false, CHAT_TAB_MISS_THRESHOLD, 1_000, noJitter)
+    expect(oneMorePastThreshold.nextAllowedAt).toBeGreaterThan(1_000 + CHAT_TAB_LIVE_POLL_MS)
+
+    // Keeps growing but never exceeds the cap.
+    const wayPastThreshold = nextChatTabPoll(false, CHAT_TAB_MISS_THRESHOLD + 20, 1_000, noJitter)
+    expect(wayPastThreshold.nextAllowedAt).toBe(1_000 + CHAT_TAB_MISS_CAP_MS)
+  })
+
+  it("never evicts permanently — a found session after a long miss streak resets to full cadence", () => {
+    const stillBackedOff = nextChatTabPoll(false, 50, 1_000, noJitter)
+    expect(stillBackedOff.nextAllowedAt).toBe(1_000 + CHAT_TAB_MISS_CAP_MS)
+    const found = nextChatTabPoll(true, stillBackedOff.misses, 2_000, noJitter)
+    expect(found).toEqual({ nextAllowedAt: 2_000 + CHAT_TAB_LIVE_POLL_MS, misses: 0 })
+  })
+})
+
+describe("runChatTabNamingPass — dead-session backoff (daemon issue #27)", () => {
+  it("stops calling list-windows for a task once its miss streak backs off past `now`", async () => {
+    const id = await makeTask("/wt/a")
+    const { deps, calls } = deadSessionDeps()
+    const schedule: ChatTabPollSchedule = new Map()
+    let now = 0
+
+    // First CHAT_TAB_MISS_THRESHOLD + 1 ticks: at full cadence until the
+    // streak crosses the threshold, so each one issues a list-windows call
+    // and grows the streak. The +1 pushes the backoff strictly past cadence
+    // (the threshold-exact step equals cadence itself — see nextChatTabPoll's
+    // own test — so the very next miss is where it first exceeds `now`).
+    const ticks = CHAT_TAB_MISS_THRESHOLD + 1
+    for (let i = 0; i < ticks; i++) {
+      await runChatTabNamingPass(orch, deps, schedule, now, noJitter)
+      now += CHAT_TAB_LIVE_POLL_MS
+    }
+    expect(calls.listWindows).toBe(ticks)
+    expect(schedule.get(id)?.misses).toBe(ticks)
+    const backedOffUntil = schedule.get(id)?.nextAllowedAt ?? 0
+    expect(backedOffUntil).toBeGreaterThan(now)
+
+    // A tick landing before the backoff elapses must NOT call list-windows
+    // again — this is the fix for daemon issue #27's tight per-tick retry
+    // against a session that's been gone for hours.
+    await runChatTabNamingPass(orch, deps, schedule, now, noJitter)
+    expect(calls.listWindows).toBe(ticks)
+  })
+
+  it("evicts by capped backoff, never removes the task from the poll set outright", async () => {
+    const id = await makeTask("/wt/a")
+    const { deps } = deadSessionDeps()
+    const schedule: ChatTabPollSchedule = new Map()
+    let now = 0
+
+    // Drive many ticks — every dead-session tick jumps `now` to the entry's
+    // own nextAllowedAt so each call is a real probe, not a skipped one.
+    for (let i = 0; i < 10; i++) {
+      await runChatTabNamingPass(orch, deps, schedule, now, noJitter)
+      const entry = schedule.get(id)
+      expect(entry).toBeDefined()
+      now = entry?.nextAllowedAt ?? now + CHAT_TAB_LIVE_POLL_MS
+    }
+    const entry = schedule.get(id)
+    // The task is still IN the schedule (not evicted) and its cadence has
+    // settled at the cap, not kept growing or vanishing.
+    expect(entry).toBeDefined()
+    expect(entry?.nextAllowedAt).toBeLessThanOrEqual(now + CHAT_TAB_MISS_CAP_MS)
+  })
+
+  it("resets the miss streak the moment a session reappears", async () => {
+    const id = await makeTask("/wt/a")
+    const dead = deadSessionDeps()
+    const schedule: ChatTabPollSchedule = new Map()
+    let now = 0
+    for (let i = 0; i < CHAT_TAB_MISS_THRESHOLD; i++) {
+      await runChatTabNamingPass(orch, dead.deps, schedule, now, noJitter)
+      now = schedule.get(id)?.nextAllowedAt ?? now + CHAT_TAB_LIVE_POLL_MS
+    }
+    expect(schedule.get(id)?.misses).toBe(CHAT_TAB_MISS_THRESHOLD)
+
+    // The session comes back (user re-entered the task): list-windows now succeeds.
+    const { deps: liveDeps } = fakeDeps({ windows: "1\t1\tsess-1\n", titleFromSessionId: () => "" })
+    await runChatTabNamingPass(orch, liveDeps, schedule, now, noJitter)
+    expect(schedule.get(id)).toEqual({ nextAllowedAt: now + CHAT_TAB_LIVE_POLL_MS, misses: 0 })
+  })
+
+  it("proactively drops an archived task's entry from the schedule (req 2)", async () => {
+    const id = await makeTask("/wt/a")
+    const { deps } = deadSessionDeps()
+    const schedule: ChatTabPollSchedule = new Map()
+    await runChatTabNamingPass(orch, deps, schedule, 0, noJitter)
+    expect(schedule.has(id)).toBe(true)
+
+    await store.update(id, { archived: true })
+    await runChatTabNamingPass(orch, deps, schedule, CHAT_TAB_LIVE_POLL_MS, noJitter)
+    expect(schedule.has(id)).toBe(false)
+  })
+
+  it("proactively drops a deleted task's entry from the schedule (req 2)", async () => {
+    const id = await makeTask("/wt/a")
+    const { deps } = deadSessionDeps()
+    const schedule: ChatTabPollSchedule = new Map()
+    await runChatTabNamingPass(orch, deps, schedule, 0, noJitter)
+    expect(schedule.has(id)).toBe(true)
+
+    // store.remove (not orch.deleteTask) — deletion here only needs the task
+    // gone from orch.listTasks(); the real worktree-removal safety ladder is
+    // core-mutations.test.ts's concern, and this suite's fake worktree paths
+    // aren't real git worktrees for deleteTask to operate on.
+    await store.remove(id)
+    await runChatTabNamingPass(orch, deps, schedule, CHAT_TAB_LIVE_POLL_MS, noJitter)
+    expect(schedule.has(id)).toBe(false)
   })
 })
