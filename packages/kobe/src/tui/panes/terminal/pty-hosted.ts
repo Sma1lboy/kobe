@@ -136,6 +136,24 @@ export class HostedTaskPty extends XtermTaskPty {
   }
 
   /**
+   * kill() must forget the REMOTE session record even when this handle is
+   * already dead: the host keeps an exited session under its key
+   * (post-mortem reattach), and the base kill() early-returns on `_killed`
+   * so `pty.kill` never reached the host. The next `pty.open` under the
+   * same key then reattached the corpse (spawn spec ignored, alive:false)
+   * instead of spawning fresh — which turned "engine exit → degrade to
+   * shell" into the tab closing itself, and made F5 reset of a dead shell
+   * a no-op.
+   */
+  override kill(): void {
+    if (this.killed) {
+      void this.client?.request("pty.kill", { key: this.taskId }).catch(() => {})
+      return
+    }
+    super.kill()
+  }
+
+  /**
    * Drop this handle, leave the child running in the pty host — the whole
    * point of the backend. Called by `registry.detachAll()` on app exit.
    */
