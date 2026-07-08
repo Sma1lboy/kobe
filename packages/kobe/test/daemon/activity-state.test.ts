@@ -49,7 +49,7 @@ describe("daemon activity state", () => {
   })
 
   it("keeps turn-complete visible instead of lapsing it back to idle", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, updatePollMs: 0 })
+    server = await startDaemonServer(fakeOrchestrator(), { socketPath, pidPath, homeDir: dir, updatePollMs: 0 })
     const client = new KobeDaemonClient(socketPath)
     const states: TaskActivityState[] = []
     client.onChannel("engine-state", (payload) => {
