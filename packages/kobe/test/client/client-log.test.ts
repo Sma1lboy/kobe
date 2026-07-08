@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -9,6 +9,7 @@ import {
   resetClientCrashHandlersForTest,
   setClientLogContext,
 } from "@sma1lboy/kobe-daemon/client/client-log"
+import { DEFAULT_LOG_ROTATE_CAP_BYTES } from "@sma1lboy/kobe-daemon/daemon/log-rotate"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 /**
@@ -55,6 +56,30 @@ describe("client-log", () => {
       expect(lines[0]).toContain("client ops [reconnect] ")
       expect(lines[0]).toContain("daemon socket closed")
       expect(lines[1]).toContain("reconnected after 2 attempts")
+    })
+
+    /**
+     * Issue #26: client.log grew to 736MB with no cap — dozens of orphan
+     * panes appending reconnect-failure lines forever. `append()` checks
+     * size before every write and rotates to `.old` when over the 10MB
+     * cap, so no long-lived process can grow this file unboundedly.
+     */
+    it("rotates client.log to .old once it's over the cap, then keeps appending fresh", async () => {
+      const logPath = join(home, ".kobe", "client.log")
+      await mkdir(join(home, ".kobe"), { recursive: true })
+      await writeFile(logPath, "x".repeat(DEFAULT_LOG_ROTATE_CAP_BYTES + 1))
+
+      setClientLogContext("ops")
+      logClient("reconnect", "post-rotation line")
+      await flushClientLog()
+
+      const oldStat = await stat(`${logPath}.old`)
+      expect(oldStat.size).toBe(DEFAULT_LOG_ROTATE_CAP_BYTES + 1)
+
+      const contents = await readFile(logPath, "utf8")
+      expect(contents).toContain("post-rotation line")
+      const freshStat = await stat(logPath)
+      expect(freshStat.size).toBeLessThan(DEFAULT_LOG_ROTATE_CAP_BYTES)
     })
   })
 

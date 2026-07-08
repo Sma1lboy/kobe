@@ -20,8 +20,9 @@
  * no unhandled-rejection net.
  */
 
-import { appendFile, mkdir } from "node:fs/promises"
+import { appendFile, mkdir, rename, stat } from "node:fs/promises"
 import { dirname } from "node:path"
+import { DEFAULT_LOG_ROTATE_CAP_BYTES, shouldRotateLog } from "../daemon/log-rotate.ts"
 import { defaultClientLogPath } from "../daemon/paths.ts"
 
 /**
@@ -72,6 +73,24 @@ function warnOnce(): void {
 let writeChain: Promise<void> = Promise.resolve()
 
 /**
+ * Many `kobe <pane>` processes append to the same `client.log` concurrently
+ * (that's the whole reason it's O_APPEND). Each process independently
+ * checks size on its own writes and rotates when over cap — best-effort,
+ * no cross-process coordination: if two processes race the rename, one
+ * `stat`/`rename` simply loses the race silently (caught below) and the
+ * file is still under cap either way. One generation kept (`.old`).
+ */
+async function rotateClientLogIfNeeded(path: string): Promise<void> {
+  try {
+    const { size } = await stat(path)
+    if (!shouldRotateLog(size, DEFAULT_LOG_ROTATE_CAP_BYTES)) return
+    await rename(path, `${path}.old`)
+  } catch {
+    /* best-effort — ENOENT (nothing written yet) or a lost race; never block a write over it */
+  }
+}
+
+/**
  * Queue a non-blocking append. Returns immediately; the write runs on the
  * chain and every failure is swallowed so nothing escapes into the caller.
  * On the first write of a fresh home the `.kobe/` dir may not exist yet — an
@@ -81,6 +100,7 @@ function append(line: string): void {
   const path = defaultClientLogPath()
   writeChain = writeChain
     .then(async () => {
+      await rotateClientLogIfNeeded(path)
       try {
         await appendFile(path, line)
       } catch (err) {
