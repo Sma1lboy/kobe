@@ -170,6 +170,10 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f4",
   // Terminal reset (confirm-gated).
   "f5",
+  // Zen toggle (`workspace.zenToggle`) — the pure-TUI 3-pane host's
+  // distraction-free view; F6 continues the F2-F5 row (rename/split/
+  // pane-cycle/reset) and was unclaimed.
+  "f6",
 ] as const
 
 /**
