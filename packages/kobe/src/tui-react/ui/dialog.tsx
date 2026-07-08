@@ -159,9 +159,17 @@ export function DialogProvider(props: { children?: ReactNode }) {
     }
   }, [renderer])
 
-  // escape and ctrl+c both dismiss the top dialog identically.
+  // escape and ctrl+c both dismiss the top dialog identically. A live text
+  // selection makes the FIRST press clear it and the next one close — the
+  // old version instead DISABLED the binding while a selection existed,
+  // which left esc permanently dead whenever a stale selection highlight
+  // (kept after a copy, cleared only on the next click) was still around.
   const dismissTop = useCallback(() => {
-    if (renderer?.getSelection()) renderer.clearSelection()
+    const selection = renderer?.getSelection()
+    if (selection) {
+      renderer?.clearSelection()
+      if (selection.getSelectedText()) return
+    }
     const current = stackRef.current.at(-1)
     current?.onClose?.()
     setStack((s) => s.slice(0, -1))
@@ -169,7 +177,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
   }, [renderer, refocus])
 
   useBindings(() => ({
-    enabled: stackRef.current.length > 0 && !renderer?.getSelection()?.getSelectedText(),
+    enabled: stackRef.current.length > 0,
     bindings: [
       { key: "escape", cmd: dismissTop },
       { key: "ctrl+c", cmd: dismissTop },
