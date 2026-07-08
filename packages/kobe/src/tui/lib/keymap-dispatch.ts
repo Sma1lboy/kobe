@@ -35,6 +35,17 @@ export type Binding = {
 
 export type BindingsConfig = {
   enabled?: boolean
+  /**
+   * Modal barrier: when this entry is reached and none of ITS bindings
+   * matched, the walk STOPS — every entry registered below (i.e. before
+   * this one mounted) is unreachable. `preventDefault` is NOT called on
+   * the way out, so opentui's native routing (a dialog's focused text
+   * input) still receives the key. This is the structural guarantee that
+   * an open dialog can never operate the UI behind it — bindings inside
+   * the dialog mount after the barrier and stay reachable; everything
+   * older is cut off wholesale instead of each pane gating itself.
+   */
+  modal?: boolean
   bindings: Binding[]
 }
 
@@ -165,6 +176,9 @@ export function dispatchKeyEvent(
         evt.preventDefault()
         return true
       }
+      // Modal barrier — nothing below may see this key; native routing
+      // (the dialog's own focused input) still does. See BindingsConfig.
+      if (cfg.modal) return false
     }
     return false
   } finally {
