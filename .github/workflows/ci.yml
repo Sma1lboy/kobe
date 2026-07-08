@@ -15,6 +15,15 @@
 # opts out with a paper trail). It also runs `test:render` (the bun-test-only
 # .tsx render track, see docs/HARNESS.md "render track") and folds its lcov
 # into the same Codecov upload — not yet per-file gated.
+#
+# changeset-cap (PR only, KOB-10) is the changeset sibling of file-size-cap:
+# a PR that touches published-package source (packages/kobe/src or
+# packages/kobe-daemon/src, since kobe-daemon ships bundled inside the kobe
+# CLI — see docs/RELEASING.md) must add a `.changeset/*.md` file, so a
+# release can't silently ship undocumented behavior. Pure tooling/docs/CI
+# changes opt out with `bun run changeset -- --empty` (docs/RELEASING.md
+# "add a changeset per user-facing change") — Changesets' own escape hatch,
+# not a bespoke PR-body comment.
 
 name: CI
 
@@ -76,6 +85,47 @@ jobs:
             fi
           done < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD)
           exit $fail
+
+  changeset-cap:
+    # Hard rule sibling (KOB-10, docs/RELEASING.md "add a changeset per
+    # user-facing change"): a PR touching the published package's source
+    # must carry a `.changeset/*.md` file, or a release can silently ship
+    # undocumented behavior. Escape hatch is Changesets' own, not a PR-body
+    # comment: `bun run changeset -- --empty` for tooling/docs/CI-only PRs.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: User-facing PRs must add a changeset
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # "User-facing" == touches published-package source. kobe-daemon
+          # is private/unpublished but ships bundled inside the kobe CLI
+          # (see docs/RELEASING.md), so it counts too; test/docs/config
+          # changes in either package do not.
+          touches_user_facing=0
+          while IFS= read -r f; do
+            case "$f" in
+              packages/kobe/src/*|packages/kobe-daemon/src/*) touches_user_facing=1 ;;
+            esac
+          done < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD)
+
+          if [ "$touches_user_facing" -eq 0 ]; then
+            echo "No published-package source touched — changeset gate is a no-op."
+            exit 0
+          fi
+
+          has_changeset=$(git diff --name-only --diff-filter=A "origin/$BASE_REF"...HEAD -- '.changeset/*.md' | grep -v README.md || true)
+          if [ -z "$has_changeset" ]; then
+            echo "::error::This PR touches packages/kobe/src or packages/kobe-daemon/src but adds no .changeset/*.md. Run 'bun run changeset' to record the user-facing change, or 'bun run changeset -- --empty' if this is tooling-only. See docs/RELEASING.md."
+            exit 1
+          fi
+          echo "ok — changeset(s): $has_changeset"
 
   typecheck-and-test:
     runs-on: ubuntu-latest
