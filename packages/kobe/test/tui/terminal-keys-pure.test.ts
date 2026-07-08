@@ -71,7 +71,21 @@ describe("key routing tables", () => {
     // chord besides ctrl+q reachable from inside the terminal). Anything
     // beyond this list steals a chord from the engine CLI.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
-      ["ctrl+[", "ctrl+]", "ctrl+e", "ctrl+q", "ctrl+t", "ctrl+w", "ctrl+\\", "ctrl+=", "f2", "f3", "f4", "f5"].sort(),
+      [
+        "ctrl+[",
+        "ctrl+]",
+        "ctrl+e",
+        "ctrl+f",
+        "ctrl+q",
+        "ctrl+t",
+        "ctrl+w",
+        "ctrl+\\",
+        "ctrl+=",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+      ].sort(),
     )
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; the rest are its own UI shortcuts).

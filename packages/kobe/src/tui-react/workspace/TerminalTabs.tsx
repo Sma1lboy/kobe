@@ -70,6 +70,7 @@ import {
   tabToShell,
 } from "../../tui/workspace/terminal-tabs-core"
 import { EnginePickerDialog } from "../component/engine-picker-dialog"
+import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useKV } from "../context/kv"
@@ -79,6 +80,7 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
+import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { useTurnPolls } from "./use-turn-polls"
 
@@ -104,6 +106,9 @@ export interface TerminalTabsProps {
   /** Hands the parent an imperative "paste this into the active engine tab
    *  and submit" function, once per mount (see file header). */
   onEngineSendReady?: (send: (text: string) => void) => void
+  /** Quick-fork (issue #17): the composer submitted — parent creates the
+   *  child task (in `repo`, the source task's main repo root) and jumps in. */
+  onQuickFork?: (repo: string, result: QuickTaskResult) => void
   /** This worktree's slice of the daemon's `transcript.activity` push. */
   sharedActivity?: TranscriptActivity | null
   focused: boolean
@@ -345,6 +350,27 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     }
   }
 
+  /** Quick-fork (issue #17, ctrl+f): open the same composer `<prefix> f`
+   *  uses, seeded from THIS task's repo/branch/engine. Repo is fixed (not
+   *  editable here — same constraint quick-task/host.tsx documents); the
+   *  parent creates the child task on submit. */
+  const requestQuickFork = (): void => {
+    void (async () => {
+      let repo: string
+      try {
+        repo = resolveMainRepoRoot(props.worktree)
+      } catch {
+        return
+      }
+      const detected = await availableEngineIds()
+      const defaultVendor = quickForkDefaultVendor(repo, detected)
+      const engines = detected.length > 0 ? detected : [defaultVendor]
+      const result = await QuickTaskComposer.show(dialog, quickForkComposerOptions(repo, engines, defaultVendor))
+      if (result === undefined) return
+      props.onQuickFork?.(repo, result)
+    })()
+  }
+
   useBindings(() => ({
     enabled: props.focused,
     bindings: bindByIds({
@@ -372,6 +398,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       "chat.tab.rename": requestRename,
       "chat.tab.cycle-next": () => update(cycleTab(state, 1)),
       "chat.tab.cycle-prev": () => update(cycleTab(state, -1)),
+      "chat.fork.new": requestQuickFork,
     }),
   }))
 
