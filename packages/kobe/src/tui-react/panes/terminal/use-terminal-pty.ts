@@ -163,7 +163,14 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
         onFreshPtyRef.current()
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
+        // `registry.reset()` kills the old PTY BEFORE the acquire half runs,
+        // so on failure there is no live handle left — clear the pane to the
+        // error state (same shape as the acquire effect's failure path)
+        // instead of leaving a dead snapshot up with the error invisible.
         setAcquireError(message)
+        setPty(null)
+        setSnapshot([])
+        setCursor(null)
       }
     },
     [],

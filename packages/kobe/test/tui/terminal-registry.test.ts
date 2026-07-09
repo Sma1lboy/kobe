@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { MockTaskPty } from "../../src/tui/panes/terminal/pty-mock"
+import { createScriptedPtyRegistry } from "../../src/tui/panes/terminal/pty-scripted"
 import type { TaskPtyOpts } from "../../src/tui/panes/terminal/pty-types"
 import { PtyRegistry, _resetDefaultPtyRegistry, getDefaultPtyRegistry } from "../../src/tui/panes/terminal/registry"
 
@@ -121,5 +122,34 @@ describe("paste contract (mock backend)", () => {
     pty.kill()
     pty.paste("late")
     expect(pty.pastes).toEqual(["multi\nline prompt"])
+  })
+})
+
+describe("createScriptedPtyRegistry (the pane tests' fake)", () => {
+  it("records created ptys in order and last() tracks the newest", () => {
+    const h = createScriptedPtyRegistry()
+    expect(() => h.last()).toThrow(/nothing acquired/)
+    const a = h.registry.acquire("t1", "/a")
+    const b = h.registry.acquire("t2", "/b")
+    expect(h.ptys).toEqual([a, b])
+    expect(h.last()).toBe(b)
+  })
+
+  it("failNextAcquire throws exactly once, then acquires recover", () => {
+    const h = createScriptedPtyRegistry()
+    h.failNextAcquire("spawn EACCES")
+    expect(() => h.registry.acquire("t1", "/wt")).toThrow("spawn EACCES")
+    expect(h.registry.acquire("t1", "/wt").killed).toBe(false)
+    expect(h.ptys.length).toBe(1)
+  })
+
+  it("reset routes through the failure queue AND still kills the old pty first", () => {
+    const h = createScriptedPtyRegistry()
+    const old = h.registry.acquire("t1", "/wt")
+    h.failNextAcquire("boom")
+    expect(() => h.registry.reset("t1", "/wt")).toThrow("boom")
+    // release() half ran before the acquire half threw — no leaked shell.
+    expect(old.killed).toBe(true)
+    expect(h.registry.size).toBe(0)
   })
 })
