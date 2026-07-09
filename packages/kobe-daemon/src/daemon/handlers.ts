@@ -107,7 +107,25 @@ export interface DaemonHandlerContext {
  */
 export interface DaemonRequestHandler {
   readonly name: DaemonRequestName
+  /**
+   * Browser-reachable through POST /api/rpc? Absent/false means socket-only.
+   * This is the ONE place an RPC declares its web exposure — the web
+   * transport derives its allowset from the registry (see
+   * {@link webExposedRpcNames}), so a new verb is not browser-reachable
+   * until its entry says so. Connection-scoped verbs (`hello`), the daemon
+   * kill switch (`daemon.stop`), and hook-ingest paths must stay unexposed.
+   */
+  readonly web?: boolean
   handle(payload: Record<string, unknown>, ctx: DaemonHandlerContext): Promise<unknown> | unknown
+}
+
+/** The registry-derived web-RPC allowset: every entry marked `web: true`. */
+export function webExposedRpcNames(
+  registry: ReadonlyMap<DaemonRequestName, DaemonRequestHandler>,
+): ReadonlySet<DaemonRequestName> {
+  const names = new Set<DaemonRequestName>()
+  for (const entry of registry.values()) if (entry.web === true) names.add(entry.name)
+  return names
 }
 
 /**
@@ -190,6 +208,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     },
     {
       name: "daemon.status",
+      web: true,
       handle(_payload, ctx) {
         return {
           daemonPid: ctx.daemon.pid,

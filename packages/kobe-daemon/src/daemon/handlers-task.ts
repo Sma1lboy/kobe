@@ -16,12 +16,14 @@ import { serializeTask } from "./protocol.ts"
 export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "task.list",
+    web: true,
     handle(_payload, ctx: DaemonHandlerContext) {
       return { tasks: ctx.orch.listTasks().map(serializeTask) }
     },
   },
   {
     name: "task.get",
+    web: true,
     handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const task = ctx.orch.getTask(taskId)
@@ -31,6 +33,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.create",
+    web: true,
     async handle(payload, ctx) {
       const repo = requireString(payload, "repo")
       const task = await ctx.orch.createTask({
@@ -46,6 +49,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.archive",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       await ctx.orch.setArchived(taskId, optionalBoolean(payload, "archived"))
@@ -54,6 +58,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.rename",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       await ctx.orch.setTitle(taskId, requireString(payload, "title"))
@@ -62,6 +67,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.setBranch",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       await ctx.orch.setBranch(taskId, requireString(payload, "branch"))
@@ -70,6 +76,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.setVendor",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const vendor = optionalVendor(payload, "vendor")
@@ -80,6 +87,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.delete",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       await ctx.orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
@@ -89,6 +97,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.pin",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       await ctx.orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
@@ -97,6 +106,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.move",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const direction = requireString(payload, "direction")
@@ -107,6 +117,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.status",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const status = requireString(payload, "status")
@@ -140,6 +151,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.reorder",
+    web: true,
     async handle(payload, ctx) {
       const moves = payload.moves
       if (!Array.isArray(moves) || moves.length === 0) throw new Error("moves must be a non-empty array")
@@ -160,6 +172,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.ensureMain",
+    web: true,
     async handle(payload, ctx) {
       const repo = requireString(payload, "repo")
       const task = await ctx.orch.ensureMainTask(repo)
@@ -176,6 +189,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.ensureWorktree",
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       // Long-operation feedback (issue #5): `git worktree add` is
@@ -209,6 +223,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "task.setActive",
+    web: true,
     async handle(payload, ctx) {
       // UI/session focus lives on the bus, but setting it also touches the
       // task's updatedAt so "recent" task sorting reflects actual use.
