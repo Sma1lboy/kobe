@@ -181,7 +181,11 @@ export function Terminal(props: TerminalProps) {
   // JSX child or through the content prop (stringifies it).
   const [snapshotTextEl, setSnapshotTextEl] = useState<TextRenderable | null>(null)
   useEffect(() => {
-    if (snapshotTextEl) snapshotTextEl.content = styledSnapshot
+    // `isDestroyed` guard: when the pane flips pty→null (failed reset) the
+    // <text> unmounts, but its null ref lands a render AFTER this effect
+    // re-runs with the stale element — writing to it throws "TextBuffer is
+    // destroyed" into the error boundary.
+    if (snapshotTextEl && !snapshotTextEl.isDestroyed) snapshotTextEl.content = styledSnapshot
   }, [snapshotTextEl, styledSnapshot])
 
   /* --------- reset (F5, confirm-gated) ---------- */
