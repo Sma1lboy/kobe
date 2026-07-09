@@ -353,6 +353,36 @@ export class TaskIndexStore {
   }
 
   /**
+   * Bump `updatedAt` to now for recency ONLY — the focus-switch hot path.
+   *
+   * `setActiveTask` is the most frequent action in the TUI (every task/focus
+   * switch). It used to call {@link update} with an empty patch purely to move
+   * `updatedAt` so the sidebar's `recent` sort tracks focus order — but that
+   * paid a full fsync'd read-merge-write ({@link doSave}) on EVERY switch, all
+   * to move one field the default sort never reads.
+   *
+   * This bumps `updatedAt` in the in-memory cache and notifies listeners (so
+   * `recent` reorders LIVE, this session, from the pushed snapshot), then marks
+   * the id dirty so the new value is flushed lazily by the NEXT real mutation's
+   * save — no fsync on the hot path. Durability of the single last-focused id
+   * is already handled separately + eagerly by `state/last-active.ts` (a fresh
+   * orchestrator restores focus from there), so the only thing riding the lazy
+   * flush is the finer-grained `recent` ORDERING across a hard restart, which
+   * is best-effort and re-established as tasks get real writes. No-op on an
+   * unknown id (mirrors the old empty-patch guard in `setActiveTask`).
+   */
+  touchRecency(id: TaskId | string): void {
+    this.assertLoaded()
+    const idx = this.cache.tasks.findIndex((t) => t.id === id)
+    if (idx < 0) return
+    const existing = this.cache.tasks[idx]
+    if (!existing) return
+    this.cache.tasks[idx] = { ...existing, updatedAt: new Date().toISOString() }
+    this.dirtyIds.add(String(id))
+    this.notifyListeners()
+  }
+
+  /**
    * Move a task up/down inside a caller-defined subset of task ids.
    * The subset lets UI ordering rules keep their partitions intact
    * (e.g. regular tasks move among regular tasks, pinned among pinned).
