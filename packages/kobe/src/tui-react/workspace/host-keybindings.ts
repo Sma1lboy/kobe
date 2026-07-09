@@ -24,6 +24,7 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
 
 // Slot 3 (ctrl+l — "terminal" in the 4-pane model) maps back to workspace:
 // this host is 3-pane and its middle column IS the terminal, so ctrl+l
@@ -89,7 +90,16 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     focus.setFocused(PANE_CYCLE[next] as PaneId)
   }
 
-  const pagesClosed = deps.dialog.stack.length === 0 && !deps.settingsOpen && !deps.worktreesOpen && !deps.updateOpen
+  // One named predicate instead of inline `dialog.stack.length === 0 && …`
+  // expressions — the open-page gating contract is unit-tested in
+  // test/tui-react/keybinding-gates.test.ts.
+  const pages: WorkspacePageState = {
+    dialogOpen: deps.dialog.stack.length > 0,
+    settingsOpen: deps.settingsOpen,
+    worktreesOpen: deps.worktreesOpen,
+    updateOpen: deps.updateOpen,
+  }
+  const pagesClosed = workspacePagesClosed(pages)
 
   useBindings(() => ({
     enabled: pagesClosed,
@@ -162,7 +172,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
   // page binds them itself; gated on an empty dialog stack so a sub-dialog,
   // e.g. the engine-command editor, keeps esc/typing for itself).
   useBindings(() => ({
-    enabled: deps.settingsOpen && deps.dialog.stack.length === 0,
+    enabled: settingsCloseKeysEnabled(pages),
     bindings: [
       { key: "escape", cmd: deps.closeSettings },
       { key: "q", cmd: deps.closeSettings },

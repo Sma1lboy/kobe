@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
+import { type RegisteredBinding, dispatchKeyEvent, insertRegistration } from "../../src/tui/lib/keymap-dispatch"
 
 // Silence + capture the shadowed-match warning (several LIFO tests below
 // stack two enabled same-chord bindings on purpose). NOTE: the warning
@@ -490,6 +490,103 @@ describe("dispatchKeyEvent", () => {
       expect(dispatchKeyEvent(stack, evt)).toBe(true)
       expect(dismissed).toBe(1)
       expect(evt.defaultPrevented).toBe(true)
+    })
+
+    // Declared modal scope (insertRegistration): barrier-vs-body precedence
+    // used to be an accident of React committing the barrier's effect before
+    // the body's (sibling tree order). It is now declared data — the barrier
+    // carries `modalOwner`, body entries carry `modalMember`, and
+    // insertRegistration slots the barrier BELOW its members. These tests pin
+    // the invariant under BOTH registration orders.
+    describe("declared scope — order independence", () => {
+      const SCOPE = Symbol("test.modal")
+
+      function barrier(id: number, onEsc: () => void): RegisteredBinding {
+        return {
+          id,
+          modalOwner: SCOPE,
+          config: () => ({ modal: true, bindings: [{ key: "escape", cmd: onEsc }] }),
+        }
+      }
+      function body(id: number, key: string, cmd: () => void): RegisteredBinding {
+        return { id, modalMember: SCOPE, config: () => ({ bindings: [{ key, cmd }] }) }
+      }
+
+      /** Run the barrier/body/background assertions against a built stack. */
+      function assertModalContract(stack: RegisteredBinding[], counts: { body: number; bg: number; esc: number }) {
+        // Body key wins (reachable above the barrier) …
+        expect(dispatchKeyEvent(stack, makeEvt("j"))).toBe(true)
+        expect(counts.body).toBe(1)
+        // … background is cut off wholesale …
+        expect(dispatchKeyEvent(stack, makeEvt("x"))).toBe(false)
+        expect(counts.bg).toBe(0)
+        // … and the barrier's own esc still fires (body doesn't bind it).
+        expect(dispatchKeyEvent(stack, makeEvt("escape"))).toBe(true)
+        expect(counts.esc).toBe(1)
+      }
+
+      test("barrier registered BEFORE the body (today's React commit order)", () => {
+        const counts = { body: 0, bg: 0, esc: 0 }
+        const stack: RegisteredBinding[] = []
+        insertRegistration(
+          stack,
+          makeReg(1, "x", () => counts.bg++),
+        ) // background pane
+        insertRegistration(
+          stack,
+          barrier(2, () => counts.esc++),
+        )
+        insertRegistration(
+          stack,
+          body(3, "j", () => counts.body++),
+        )
+        assertModalContract(stack, counts)
+      })
+
+      test("body registered BEFORE the barrier (the order that used to break)", () => {
+        const counts = { body: 0, bg: 0, esc: 0 }
+        const stack: RegisteredBinding[] = []
+        insertRegistration(
+          stack,
+          makeReg(1, "x", () => counts.bg++),
+        ) // background pane
+        insertRegistration(
+          stack,
+          body(3, "j", () => counts.body++),
+        )
+        insertRegistration(
+          stack,
+          barrier(2, () => counts.esc++),
+        ) // slots BELOW its member
+        assertModalContract(stack, counts)
+      })
+
+      test("body's own esc beats the barrier's esc under both orders", () => {
+        for (const bodyFirst of [true, false]) {
+          let bodyEsc = 0
+          const stack: RegisteredBinding[] = []
+          const regs = [barrier(1, () => {}), body(2, "escape", () => bodyEsc++)]
+          if (bodyFirst) regs.reverse()
+          for (const r of regs) insertRegistration(stack, r)
+          expect(dispatchKeyEvent(stack, makeEvt("escape"))).toBe(true)
+          expect(bodyEsc).toBe(1)
+        }
+      })
+
+      test("plain registrations (no scope) keep pure LIFO push semantics", () => {
+        const fired: number[] = []
+        const stack: RegisteredBinding[] = []
+        insertRegistration(
+          stack,
+          makeReg(1, "enter", () => fired.push(1)),
+        )
+        insertRegistration(
+          stack,
+          makeReg(2, "enter", () => fired.push(2)),
+        )
+        dispatchKeyEvent(stack, makeEvt("return"))
+        expect(fired).toEqual([2])
+      })
     })
 
     test("a disabled modal entry does not block (dialog closed)", () => {

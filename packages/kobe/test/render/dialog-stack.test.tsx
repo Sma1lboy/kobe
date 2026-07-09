@@ -170,6 +170,42 @@ describe("DialogProvider", () => {
     expect(background).toBe(2)
   })
 
+  // The other half of the modal contract: bindings registered BY the dialog
+  // body must stay reachable above the barrier. Precedence is declared
+  // (ModalScopeContext membership + the barrier's modalOwner slot in
+  // insertRegistration), not an effect-commit-order accident — this pins the
+  // context stamping end-to-end through the real provider.
+  it("dialog body bindings fire while the barrier blocks the background", async () => {
+    let body = 0
+    let background = 0
+    function Background() {
+      useBindings(() => ({ bindings: [{ key: "j", cmd: () => background++ }] }))
+      return <text>bg</text>
+    }
+    function Body() {
+      useBindings(() => ({ bindings: [{ key: "j", cmd: () => body++ }] }))
+      return <text>dialog A</text>
+    }
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    const { frame, mockInput } = await renderComponent(
+      <DialogProvider>
+        <Background />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+          }}
+        />
+      </DialogProvider>,
+    )
+    await frame()
+    act(() => dialogRef.current?.push(() => <Body />))
+    expect(await frame()).toContain("dialog A")
+    act(() => mockInput.pressKey("j"))
+    await settle()
+    expect(body).toBe(1)
+    expect(background).toBe(0)
+  })
+
   it("clear empties the whole stack at once", async () => {
     const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
     const { frame } = await renderComponent(
