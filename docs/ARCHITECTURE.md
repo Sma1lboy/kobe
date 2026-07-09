@@ -19,7 +19,7 @@
 
 1. [The layer cake](#1-the-layer-cake)
 2. [Reference projects under `refs/`](#2-reference-projects-under-refs)
-3. [Outer monitor and tmux workspace](#3-outer-monitor-and-tmux-workspace)
+3. [Workspace surfaces: tmux handover + pure-TUI Workspace Host](#3-workspace-surfaces-tmux-handover--pure-tui-workspace-host)
 4. [Daemon ↔ task-session seam](#4-daemon--task-session-seam)
 5. [Test harness](#5-test-harness)
 6. [Persistence: where state lives on disk](#6-persistence-where-state-lives-on-disk)
@@ -184,18 +184,20 @@ read the ref before deciding to deviate further.
 
 ---
 
-## 3. tmux workspace
+## 3. Workspace surfaces: tmux handover + pure-TUI Workspace Host
 
-The product center is the tmux-native workspace reached by Handover:
-`kobe` attaches straight into the active Task's tmux Session
-(`src/tui/direct.ts`). The opentui outer monitor (`app.tsx`, with its
-Live Preview / Cost Dashboard Workspace) was retired in 2026-06 (the
-inventory/decision record `docs/design/app-retirement.md` is in git history). The
-Sidebar component (`src/tui/panes/sidebar/` — Working / Archives split,
-PROJECTS + TASKS sections, default/recent sort, row-view logic in
-`row-view.ts`) lives on inside the Tasks pane.
+`kobe`'s entry gate is `src/tui/index.tsx`. Plain `kobe` attaches into the
+tmux-native workspace by Handover (`src/tui/direct.ts`) — still the default
+path. `KOBE_TUI=1` (`nativeChatEnabled()`, `src/env.ts`) boots the
+single-process React **Workspace Host** instead
+(`src/tui-react/workspace/host.tsx`) — no tmux involved. **Both stacks are
+live product code**; `src/tui/panes/terminal/CLAUDE.md` maps which files in
+that shared directory belong to which. The opentui outer monitor (`app.tsx`)
+was retired in 2026-06; the Solid TUI was removed 2026-07-07 — every
+rendering component lives under `src/tui-react/**`, framework-free cores
+under `src/tui/**`.
 
-### tmux ChatTab layout
+### tmux ChatTab layout (default path)
 
 Each Task owns one tmux Session (`kobe-<task-id>`). Each ChatTab is a tmux
 window with kobe-owned helper panes plus the engine pane:
@@ -208,35 +210,108 @@ window with kobe-owned helper panes plus the engine pane:
 └────────────┴───────────────────────────────────────────────────────┘
 ```
 
-The pure layout policy is `src/tmux/session-layout.ts`; the tmux Adapter and
-session lifecycle helpers are `src/tmux/client.ts` and
-`src/tui/panes/terminal/tmux.ts`. The in-session task list host is
-`src/tui/tasks-pane/host.tsx`; Ops/file browsing lives under
-`src/tui/ops-pane/` and related tmux helpers.
+The pure layout policy is `src/tmux/session-layout.ts` (reuse/respawn policy:
+`src/tmux/session-decision.ts`); the tmux Adapter and session lifecycle
+helpers are `src/tmux/client.ts` and `src/tui/panes/terminal/tmux.ts`. The
+in-session task list host is `src/tui-react/tasks-pane/host.tsx` (rendering
+the shared `Sidebar` component, `src/tui-react/panes/sidebar/`); Ops/file
+browsing is hosted by `src/tui-react/ops/host.tsx` over the framework-free
+logic in `src/tui/ops/`.
+
+### Pure-TUI Workspace Host (`KOBE_TUI=1`)
+
+One React process renders the whole workspace; the center column embeds the
+task's real interactive engine CLI in an in-process PTY (kobe wraps the
+engine's own TUI instead of re-rendering its stream):
+
+```
+┌─────────┬──────────────────────────────────────────────┬─────────┐
+│ Sidebar │ tab strip (Terminal Tabs, ctrl+t/e/w, F2)    │ Files   │
+│ (tasks) ├──────────────────────────────────────────────┤ (tree + │
+│         │ embedded terminal — engine CLI / shell,      │ badge)  │
+│         │ optionally split (ctrl+\ / ctrl+=, F3)       │         │
+└─────────┴──────────────────────────────────────────────┴─────────┘
+```
+
+| Concern | Path |
+|---|---|
+| Workspace host — layout, task selection, zen (F6), page swaps | `src/tui-react/workspace/host.tsx` |
+| Terminal tabs — strip, per-task tab state, degrade/resume | `src/tui-react/workspace/TerminalTabs.tsx` + `src/tui/workspace/terminal-tabs-core.ts` |
+| Splits inside a tab | `src/tui-react/workspace/TerminalSplit.tsx` + `src/tui/workspace/split-core.ts` |
+| Embedded terminal pane — render/input, viewport | `src/tui-react/panes/terminal/Terminal.tsx` + `src/tui/panes/terminal/` |
+| PTY registry — acquire/release/detach + parking sweep | `src/tui/panes/terminal/registry.ts` |
+| Hosted PTY backend (default; VT stays in-process) | `src/tui/panes/terminal/pty-hosted.ts` + `pty-xterm-base.ts` |
+| PTY host process (`kobe pty-host`, tmux-server analog) | `packages/kobe-daemon/src/daemon/pty-server.ts` + `src/cli/pty-host-cmd.ts` |
+
+Engine sessions do NOT live in this process: the raw PTY children belong to
+the standalone `kobe pty-host` process, so they survive quitting the TUI and
+`kobe daemon restart`. Hidden tabs' local xterm instances are parked
+(detached and GC'd) after 2 minutes unwatched; the child keeps running in
+the host, whose byte ring buffer is the authoritative history.
+
+### System flows (verified in code)
+
+**Opening a new terminal tab (ctrl+t):**
+
+```mermaid
+sequenceDiagram
+  participant U as user
+  participant TT as TerminalTabs
+  participant T as Terminal pane
+  participant R as PtyRegistry
+  participant H as kobe pty-host
+
+  U->>TT: ctrl+t (chat.tab.new)
+  TT->>TT: add tab (terminal-tabs-core) — vendor via resolvePreferredVendor, argv via interactiveEngineCommand
+  TT->>T: mount active tab (registry key taskId::tabId)
+  T->>R: acquire(key, cwd, command)
+  R->>H: HostedTaskPty → ensurePtyHostReachable() → pty.open
+  H-->>T: spawn child — or reattach + ring-buffer replay
+```
+
+**Engine exit inside a tab:** the child exits in the pty host → a `pty.exit`
+frame reaches the backend's `onExit`. A split leaf collapses tmux-style
+(`TerminalSplit`); when the LAST leaf exits, the tab-level `onExit` fires in
+`TerminalTabs`: an engine tab degrades in place to a shell tab
+(`degradeToShell` — its conversation stays resumable), a shell/command tab
+closes itself.
+
+**TUI quit → next boot:** quit runs `registry.detachAll()` (children keep
+running in the pty host). The next boot rehydrates per-task tab state,
+re-verifies stale `spawned` flags against the real transcripts
+(`src/tui-react/workspace/use-tab-lifecycle.ts` — a dead engine tab relaunches
+with `--resume <sessionId>`, once), then each visible tab re-`acquire`s its
+key and replays the host's ring buffer.
 
 ### Focus + keymap routing
 
-Focus is a single signal: `src/tui/context/focus.tsx`. `useFocus()` exposes
-`focused()`, `setFocused(pane)`, `is(pane)`, `cycle(±1)`. The four pane ids
-are `"sidebar" | "workspace" | "files" | "terminal"`.
+Focus is a single provider: `src/tui-react/context/focus.tsx`. `useFocus()`
+exposes `focused`, `setFocused(pane)`, `is(pane)`, `cycle(±1)`. The four pane
+ids are `"sidebar" | "workspace" | "files" | "terminal"`; `ctrl+h/j/k/l` jump
+directly, F4 cycles, `ctrl+q` returns to the sidebar. Full chord rules:
+[`KEYBINDINGS.md`](./KEYBINDINGS.md).
 
 Three rules govern key handling:
 
-1. **Modifier-prefixed keys (`ctrl+1`..`ctrl+4`, `ctrl+n`, `ctrl+k`,
-   `ctrl+q`) are always-on** — they never collide with composer typing.
-   See `src/tui/context/keybindings.ts`.
-2. **Single-letter global shortcuts (`?`, `q`, `tab`) are gated on
-   "no input is focused"** — `useKobeKeybindings({ inputFocused })`
-   reads the focus signal and omits these registrations whenever the
-   workspace pane has an active input/modal surface.
-3. **Pane-local bindings (`j/k` in sidebar, `enter` in launchers/lists)
-   register inside the pane component** via
-   `useBindings()` from `src/tui/lib/keymap.tsx`, scoped to that
-   component's lifetime. The pane gates them on `useFocus().is(...)`.
+1. **Modifier-prefixed chords are always-on** — they never collide with
+   typing. The canonical chord table is `KobeKeymap` in
+   `src/tui/context/keybindings.ts` (React re-export:
+   `src/tui-react/context/keybindings.ts`).
+2. **Plain-letter chords are pane-scoped** — gated at the registration site
+   on `useFocus().is(...)` (the boundary rule in `KEYBINDINGS.md`).
+3. **Pane-local bindings register inside the pane component** via
+   `useBindings()` from `src/tui-react/lib/keymap.ts`, scoped to that
+   component's lifetime.
 
-The keybinding registry itself is a stack — dialogs push their own group on
-top so `escape` / `enter` apply to the dialog while it's open, not the
-underlying pane. See `src/tui/ui/dialog.tsx` for the dialog stack.
+The runtime registry is a module-global LIFO **binding stack**; the
+framework-free dispatcher (chord matching, preventDefault-on-first-hit,
+slot-based multiplexed ids) is `src/tui/lib/keymap-dispatch.ts`. An open
+dialog (`src/tui-react/ui/dialog.tsx`) pushes a **modal barrier** entry that
+structurally cuts off every binding registered before it — the dialog's own
+keys and text inputs keep working, panes never gate themselves on "dialog
+open". One React-specific caveat: React mounts ancestors on top of the stack
+(the inverse of Solid), so a parent and child sharing a chord must resolve by
+gating, not stack order.
 
 ---
 
