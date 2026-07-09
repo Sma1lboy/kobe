@@ -9,72 +9,30 @@
  * gets everything (back-compat). Exercised over the real Unix socket.
  */
 
-import { mkdtempSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { type DaemonServer, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { Orchestrator } from "../../src/orchestrator/core.ts"
-
-/**
- * Minimal orchestrator. `subscribeTasks` fires once eagerly, which warms the
- * bus's `task.snapshot` last-value — the "unwanted" channel a filtered
- * subscriber must NOT receive.
- */
-function fakeOrchestrator(): Orchestrator {
-  return {
-    subscribeTasks: (listener: (snapshot: unknown[]) => void) => {
-      listener([])
-      return () => {}
-    },
-    listTasks: () => [],
-  } as unknown as Orchestrator
-}
-
-async function waitFor(cond: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2000
-  while (!cond() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 20))
-  }
-}
+import { afterEach, describe, expect, it } from "vitest"
+import { type DaemonHarness, bootDaemonHarness, waitFor } from "./harness.ts"
 
 describe("per-channel subscribe filter (daemon → client)", () => {
-  let dir: string
-  let socketPath: string
-  let pidPath: string
-  let server: DaemonServer | null
-  let savedHome: string | undefined
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "kobe-chan-filter-"))
-    socketPath = join(dir, "daemon.sock")
-    pidPath = join(dir, "daemon.pid")
-    savedHome = process.env.KOBE_HOME_DIR
-    process.env.KOBE_HOME_DIR = dir
-    server = null
-  })
+  let h: DaemonHarness
 
   afterEach(async () => {
-    if (savedHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
-    else process.env.KOBE_HOME_DIR = savedHome
-    await server?.close().catch(() => {})
-    rmSync(dir, { recursive: true, force: true })
+    await h.close()
   })
 
-  it("a filtered subscriber receives only its channels in the replay", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), {
-      socketPath,
-      pidPath,
-      homeDir: dir,
-      updatePollMs: 0,
-      autoTitlePollMs: 0,
-      uiPrefsDebounceMs: 0,
-      keybindingsDebounceMs: 25,
-      worktreeChangesTickMs: 0,
-    })
+  /**
+   * Boot with a live keybindings watcher (its debounce fires an initial
+   * `keybindings` rev) — that channel is the "wanted" one; `task.snapshot`
+   * (warmed by the fake orchestrator's eager subscribeTasks fire) is the
+   * "unwanted" one a filtered subscriber must NOT receive.
+   */
+  function boot(): Promise<DaemonHarness> {
+    return bootDaemonHarness({ server: { keybindingsDebounceMs: 25 } })
+  }
 
-    const client = new KobeDaemonClient(socketPath)
+  it("a filtered subscriber receives only its channels in the replay", async () => {
+    h = await boot()
+
+    const client = h.client()
     const channels: string[] = []
     client.on("*", (frame) => {
       if (frame.name !== "daemon.stopping") channels.push(frame.name)
@@ -91,18 +49,9 @@ describe("per-channel subscribe filter (daemon → client)", () => {
   })
 
   it("an unfiltered subscriber still receives every channel (back-compat)", async () => {
-    server = await startDaemonServer(fakeOrchestrator(), {
-      socketPath,
-      pidPath,
-      homeDir: dir,
-      updatePollMs: 0,
-      autoTitlePollMs: 0,
-      uiPrefsDebounceMs: 0,
-      keybindingsDebounceMs: 25,
-      worktreeChangesTickMs: 0,
-    })
+    h = await boot()
 
-    const client = new KobeDaemonClient(socketPath)
+    const client = h.client()
     const channels: string[] = []
     client.on("*", (frame) => {
       if (frame.name !== "daemon.stopping") channels.push(frame.name)
