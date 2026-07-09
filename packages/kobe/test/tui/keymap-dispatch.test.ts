@@ -10,8 +10,15 @@
  * don't also receive the key in the same tick.
  */
 
-import { describe, expect, test } from "vitest"
+import { beforeEach, describe, expect, test, vi } from "vitest"
 import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
+
+// Silence + capture the shadowed-match warning (several LIFO tests below
+// stack two enabled same-chord bindings on purpose). NOTE: the warning
+// dedupes per chord per PROCESS — assertions about it must each use a
+// chord no other test in this file dispatches.
+const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+beforeEach(() => consoleError.mockClear())
 
 function makeEvt(
   name: string,
@@ -495,6 +502,62 @@ describe("dispatchKeyEvent", () => {
       ]
       expect(dispatchKeyEvent(stack, makeEvt("j"))).toBe(true)
       expect(background).toBe(1)
+    })
+  })
+
+  // Why: the ctrl+w split-close bug — two ENABLED entries sharing a chord
+  // resolve by LIFO order, which React inverted vs Solid (ancestors on
+  // top), silently flipping the winner. The contract is mutual gating;
+  // dispatch (dev mode, KOBE_DEV=1) flags a second enabled match so the
+  // violation is loud. Production skips the scan — it would break the
+  // read-one-config-on-hit budget (perf-budgets.test.ts).
+  describe("shadowed-match warning (dev only)", () => {
+    beforeEach(() => {
+      process.env.KOBE_DEV = "1"
+      return () => {
+        Reflect.deleteProperty(process.env, "KOBE_DEV")
+      }
+    })
+
+    test("warns ONCE when two enabled entries match the same chord", () => {
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "ctrl+w", () => {}), // shadowed
+        makeReg(2, "ctrl+w", () => {}), // wins (top)
+      ]
+      dispatchKeyEvent(stack, makeEvt("w", { ctrl: true }))
+      expect(consoleError).toHaveBeenCalledTimes(1)
+      expect(String(consoleError.mock.calls[0]?.[0])).toContain("ctrl+w")
+      // Dedupe: the same stuck violation must not spam every keypress.
+      dispatchKeyEvent(stack, makeEvt("w", { ctrl: true }))
+      expect(consoleError).toHaveBeenCalledTimes(1)
+    })
+
+    test("a gated-off (disabled) lower entry is fall-through, not a shadow", () => {
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "ctrl+b", () => {}, /* enabled */ false),
+        makeReg(2, "ctrl+b", () => {}),
+      ]
+      dispatchKeyEvent(stack, makeEvt("b", { ctrl: true }))
+      expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    test("a modal hit never warns — everything below is cut off by design", () => {
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "ctrl+d", () => {}),
+        { id: 2, config: () => ({ enabled: true, modal: true, bindings: [{ key: "ctrl+d", cmd: () => {} }] }) },
+      ]
+      dispatchKeyEvent(stack, makeEvt("d", { ctrl: true }))
+      expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    test("a modal barrier between hit and lower match stops the shadow scan", () => {
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "ctrl+g", () => {}), // below the barrier: unreachable, not shadowed
+        { id: 2, config: () => ({ enabled: true, modal: true, bindings: [] }) },
+        makeReg(3, "ctrl+g", () => {}),
+      ]
+      dispatchKeyEvent(stack, makeEvt("g", { ctrl: true }))
+      expect(consoleError).not.toHaveBeenCalled()
     })
   })
 })
