@@ -171,7 +171,9 @@ describe("moveTask", () => {
     await orch.moveTask(c.id, -1) // c above a (b not in the way)
     const order = orch
       .listTasks()
-      .filter((t) => !t.archived)
+      // createTask auto-ensures the repo's main row now — not part of the
+      // move partition under test.
+      .filter((t) => !t.archived && t.kind !== "main")
       .map((t) => t.title)
     expect(order).toEqual(["c", "a"])
   })
@@ -279,11 +281,13 @@ describe("signals + subscription surface", () => {
       seen.push(snapshot.length)
     })
     await makeTask()
-    expect(seen.at(-1)).toBe(1)
-    expect(orch.tasksSignal()()).toHaveLength(1)
+    // createTask auto-ensures the repo's main row, so the first create
+    // lands TWO tasks (main + task).
+    expect(seen.at(-1)).toBe(2)
+    expect(orch.tasksSignal()()).toHaveLength(2)
     unsub()
     await makeTask({ title: "second" })
-    expect(seen.at(-1)).toBe(1) // unsubscribed — no further notifications
+    expect(seen.at(-1)).toBe(2) // unsubscribed — no further notifications
   })
 
   it("setActiveTask publishes to activeTaskSignal and clears with null", async () => {
