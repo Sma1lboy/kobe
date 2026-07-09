@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest"
 import { initialSplit, removeLeaf, splitActive } from "../../src/tui/workspace/split-core"
 import {
+  type EngineTab,
   addTab,
   closeActiveTab,
+  collapseSplit,
   cycleTab,
+  engineTabArgv,
   hasEngineLeaf,
   initialTabs,
+  isTabSplit,
   markTabSpawned,
   openEditorTab,
   rehydrateTabs,
@@ -15,6 +19,7 @@ import {
   setTabSessionId,
   setTabSpawned,
   setTabSplit,
+  tabExitAction,
   tabPtyKey,
   tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
@@ -226,5 +231,69 @@ describe("terminal tabs state", () => {
     const engineClosed = removeLeaf(split, "leaf-1")
     expect(engineClosed).not.toBeNull()
     expect(hasEngineLeaf(engineClosed)).toBe(false) // only the shell survives
+  })
+
+  // Why: this argv decision IS the restart-survival contract (issue #22) —
+  // `--resume` must fire ONLY for a tab that already conversed and has no
+  // live PTY; a live PTY (re-render churn) or a never-spawned tab must
+  // keep pinning the fresh id, or claude errors "no conversation found".
+  it("engineTabArgv: pin fresh, resume dead spawned sessions, bare when unpinnable", () => {
+    const tab = (over: Partial<EngineTab>): EngineTab => ({
+      kind: "engine",
+      id: "tab-1",
+      title: null,
+      ordinal: 1,
+      ...over,
+    })
+    const base = ["claude"] as const
+    // No session id (codex/custom vendors) → the bare command, always.
+    expect(engineTabArgv(tab({ sessionId: null }), base, false)).toEqual(["claude"])
+    // Fresh tab (never spawned) → pin the id.
+    expect(engineTabArgv(tab({ sessionId: "u1" }), base, false)).toEqual(["claude", "--session-id", "u1"])
+    // Spawned + PTY still live (ordinary re-render) → keep pinning.
+    expect(engineTabArgv(tab({ sessionId: "u1", spawned: true }), base, true)).toEqual(["claude", "--session-id", "u1"])
+    // Spawned + PTY gone (host restart / degrade re-acquire) → resume.
+    expect(engineTabArgv(tab({ sessionId: "u1", spawned: true }), base, false)).toEqual(["claude", "--resume", "u1"])
+  })
+
+  // Why: the exit policy decides between three irreversible side-effect
+  // paths (close tab / one-shot resume / degrade to shell). The one-shot
+  // guard is load-bearing: without it a `--resume` that itself dies
+  // respawns forever.
+  it("tabExitAction: command closes; dead-on-attach resumes once; everything else degrades", () => {
+    const engine: EngineTab = { kind: "engine", id: "tab-1", title: null, ordinal: 1, sessionId: "u1", spawned: true }
+    expect(
+      tabExitAction({ kind: "command", id: "tab-2", title: null, ordinal: 2, command: ["zsh"] }, true, false),
+    ).toBe("close")
+    expect(tabExitAction(engine, true, false)).toBe("resume")
+    expect(tabExitAction(engine, true, true)).toBe("degrade") // resume already tried once
+    expect(tabExitAction(engine, false, false)).toBe("degrade") // live exit (user quit the CLI)
+    expect(tabExitAction({ ...engine, sessionId: null }, true, false)).toBe("degrade") // nothing to resume
+    expect(tabExitAction({ ...engine, spawned: undefined }, true, false)).toBe("degrade") // never conversed
+  })
+
+  // Why: collapse decides persistence (null = unsplit fast path) AND the
+  // render path. Folding a sole surviving SHELL leaf would respawn the
+  // engine over it — the tree must survive; only a pristine leaf-1 folds.
+  it("collapseSplit folds only a sole-survivor leaf-1; isTabSplit gates the chord fall-through", () => {
+    const unsplit = initialSplit<readonly string[] | null>(null)
+    expect(collapseSplit(unsplit)).toBeNull()
+    expect(isTabSplit(null)).toBe(false)
+    expect(isTabSplit(unsplit)).toBe(false)
+    const split = splitActive(unsplit, "row", ["/bin/zsh"]) // leaf-1 | leaf-2
+    expect(collapseSplit(split)).toBe(split) // still split → keep the tree
+    expect(isTabSplit(split)).toBe(true)
+    // Close the shell leaf → back to the pristine engine → fold to null.
+    const shellClosed = removeLeaf(split, "leaf-2")
+    expect(shellClosed).not.toBeNull()
+    if (shellClosed) expect(collapseSplit(shellClosed)).toBeNull()
+    // Close the ENGINE leaf → the sole shell survivor keeps the tree, and
+    // tab-level ctrl+w / F2 apply again (not split anymore).
+    const engineClosed = removeLeaf(split, "leaf-1")
+    expect(engineClosed).not.toBeNull()
+    if (engineClosed) {
+      expect(collapseSplit(engineClosed)).toBe(engineClosed)
+      expect(isTabSplit(engineClosed)).toBe(false)
+    }
   })
 })

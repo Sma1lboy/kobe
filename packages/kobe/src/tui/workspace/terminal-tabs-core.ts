@@ -239,6 +239,38 @@ export function markTabSpawned(state: TabsState, id: string): TabsState {
 }
 
 /**
+ * Argv for an engine tab's PTY spawn. `base` is the tab's engine command
+ * (vendor-pinned or the task's); `live` is whether the tab's PTY currently
+ * exists in the registry. No pinned session id → the bare command (codex/
+ * custom vendors). A tab that already spawned but has NO live PTY (host
+ * restart, degrade re-acquire) resumes its conversation; otherwise the id
+ * is pinned fresh — the flag shapes ride `withClaudeSessionId`'s existing
+ * per-vendor contract, verbatim from the component it was extracted from.
+ */
+export function engineTabArgv(tab: EngineTab, base: readonly string[], live: boolean): readonly string[] {
+  if (!tab.sessionId) return base
+  if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
+  return [...base, "--session-id", tab.sessionId]
+}
+
+export type TabExitAction = "close" | "resume" | "degrade"
+
+/**
+ * Policy for the ACTIVE tab's process exiting. Command tabs close
+ * themselves (editor quit, degraded shell exit). An engine tab found dead
+ * ON ATTACH (host restart / park-sweep corpse) with a resumable session
+ * gets ONE resume attempt — `resumeTried` is the per-tab one-shot guard,
+ * so a `--resume` that itself dies degrades normally instead of
+ * respawning forever. Every other engine exit degrades the tab to a
+ * plain shell in place (exiting the vendor CLI is allowed, not an error).
+ */
+export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTried: boolean): TabExitAction {
+  if (tab.kind === "command") return "close"
+  if (deadOnAttach && !!tab.sessionId && tab.spawned && !resumeTried) return "resume"
+  return "degrade"
+}
+
+/**
  * Rehydrate a persisted tab snapshot (issue #22). A tab is a TERMINAL
  * (owner model 2026-07-07): claude/an editor are just processes that ran
  * in it, so EVERY tab survives restart. Engine tabs keep their identity
@@ -300,6 +332,30 @@ export function setTabSplit(state: TabsState, id: string, tree: PersistedSplit |
  */
 export function hasEngineLeaf(tree: PersistedSplit | null | undefined): boolean {
   return !tree || leaves(tree.root).some((l) => l.id === "leaf-1")
+}
+
+/**
+ * Whether a tab's frozen layout is ACTUALLY split (>1 leaf). Gates the
+ * ctrl+w / F2 chord fall-through between `TerminalTabs` and
+ * `TerminalSplit`: while split, the tab-level close/rename bindings
+ * disable so the chords reach the leaf-level ones, and vice versa. A
+ * single surviving non-leaf-1 shell is NOT split — tab-level chords apply.
+ */
+export function isTabSplit(tree: PersistedSplit | null | undefined): boolean {
+  return tree ? leaves(tree.root).length > 1 : false
+}
+
+/**
+ * Collapse rule for a structural split edit: a tree whose SOLE survivor
+ * is `leaf-1` (the tab's own engine at the tab key) folds back to `null`
+ * — the unsplit fast path. A sole surviving SHELL leaf must KEEP the
+ * tree: the fast path would respawn the engine (`props.command` at the
+ * tab key) over it. Doubles as the render predicate — a non-null result
+ * means the tab renders via the tree, not the single-engine fast path.
+ */
+export function collapseSplit(next: PersistedSplit): PersistedSplit | null {
+  const ls = leaves(next.root)
+  return ls.length === 1 && ls[0]?.id === "leaf-1" ? null : next
 }
 
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */
