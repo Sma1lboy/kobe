@@ -50,7 +50,13 @@ import {
   renameLeaf,
   splitActive,
 } from "../../tui/workspace/split-core"
-import { type PersistedSplit, splitLeafNames, splitLeafPtyKey } from "../../tui/workspace/terminal-tabs-core"
+import {
+  type PersistedSplit,
+  collapseSplit,
+  isTabSplit,
+  splitLeafNames,
+  splitLeafPtyKey,
+} from "../../tui/workspace/terminal-tabs-core"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { bindByIds } from "../context/keybindings"
 import { useKV } from "../context/kv"
@@ -128,22 +134,16 @@ export function TerminalSplit(props: {
    *  leaf (split / remove / cycle operate relative to it). */
   const fullState = (): PersistedSplit => ({ ...state, activeLeafId: activeLeaf })
 
-  // Persist a STRUCTURAL change through the parent; clearing to a single
-  // leaf drops the tree so an unsplit tab returns to the fast path. Focus
+  // Persist a STRUCTURAL change through the parent; the collapse-to-null
+  // rule (sole survivor is leaf-1 → back to the unsplit fast path, a sole
+  // surviving SHELL leaf keeps the tree) is pure — `collapseSplit`. Focus
   // changes do NOT come here — they use `setActiveLeaf` (local).
   const update = (next: SplitState<LeafCommand>): void => {
     if (next === state) return
-    const ls = leaves(next.root)
-    // Collapse to the unsplit fast path (null) ONLY when the sole survivor
-    // is leaf-1 — the tab's own engine at `tabKey`. A sole surviving SHELL
-    // leaf (you closed the engine leaf) must KEEP the tree so the tree
-    // renderer shows the shell at `tabKey::leaf-N`; the fast path would
-    // respawn the engine (`props.command` at `tabKey`) instead.
-    const collapsesToEngine = ls.length === 1 && ls[0]?.id === "leaf-1"
-    props.onSplitChange(collapsesToEngine ? null : next)
+    props.onSplitChange(collapseSplit(next))
   }
 
-  const isSplit = leaves(state.root).length > 1
+  const isSplit = isTabSplit(state)
   // Split appearance (Settings → General → Appearance): `box` frames every
   // leaf, `line` draws only shared-edge dividers. Frames apply only while
   // ACTUALLY split — a lone surviving leaf inside the already-bordered
@@ -151,9 +151,9 @@ export function TerminalSplit(props: {
   const useBoxFrames = normalizeSplitStyle(kv.get(SPLIT_STYLE_KEY)) === "box" && isSplit
   // Render via the split tree (not the single-engine fast path) whenever
   // there are multiple leaves OR a single NON-leaf-1 leaf survives (engine
-  // closed, shell kept). Only the pristine leaf-1 engine uses the fast path.
-  const stateLeaves = leaves(state.root)
-  const renderViaTree = stateLeaves.length > 1 || stateLeaves[0]?.id !== "leaf-1"
+  // closed, shell kept). Only the pristine leaf-1 engine uses the fast
+  // path — exactly the trees `collapseSplit` would fold to null.
+  const renderViaTree = collapseSplit(state) !== null
 
   /** Remove `id` from the tree and kill its PTY. False when `id` is the
    *  last leaf (nothing removed). State first (the re-render detaches the
