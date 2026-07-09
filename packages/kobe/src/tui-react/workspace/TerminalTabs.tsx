@@ -42,8 +42,6 @@
 import type { TranscriptActivity } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
-import { engineEntry } from "@/engine/registry"
-import { deriveTitleFromSessionId } from "@/monitor/auto-title"
 import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
@@ -64,9 +62,7 @@ import {
   rehydrateTabs,
   renameActiveTab,
   selectTab,
-  setTabAutoTitle,
   setTabSessionId,
-  setTabSpawned,
   setTabSplit,
   tabPtyKey,
   tabToShell,
@@ -84,13 +80,11 @@ import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
+import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
 import { useTurnPolls } from "./use-turn-polls"
 
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
-
-/** Cadence of the tab auto-naming pass (tmux ran its pass on the monitor tick). */
-const NAMING_POLL_MS = 5000
 
 export interface TerminalTabsProps {
   taskId: string
@@ -188,35 +182,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   engineTabCommandRef.current = engineTabCommand
 
   /* --------- restart resume verification (issue #22) — mount-only ------- */
-  const [hydrating, setHydrating] = useState(() => rehydratedRef.current)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once verification pass; reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    if (!rehydratedRef.current) return
-    let cancelled = false
-    void (async () => {
-      try {
-        await Promise.all(
-          stateRef.current.tabs.map(async (tab) => {
-            if (tab.kind !== "engine" || !tab.sessionId) return
-            let exists = false
-            try {
-              exists =
-                (await engineEntry(tab.vendor ?? propsRef.current.vendor).history.readHistory(tab.sessionId)).length > 0
-            } catch {
-              /* unreadable store → treat as absent (fresh session) */
-            }
-            if (cancelled) return
-            update(setTabSpawned(stateRef.current, tab.id, exists))
-          }),
-        )
-      } finally {
-        if (!cancelled) setHydrating(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
 
   // Hand the parent the editor-tab / engine-send imperative handles once
   // per mount — remounting on task/worktree switch re-fires it.
@@ -285,34 +251,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]
 
   /* --------- auto-naming + existence tracking (tmux naming pass), mount-only --- */
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once interval; reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    let namingBusy = false
-    const timer = setInterval(() => {
-      if (namingBusy) return
-      const candidates = stateRef.current.tabs.filter(
-        (tab): tab is EngineTab =>
-          tab.kind === "engine" && !!tab.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle)),
-      )
-      if (candidates.length === 0) return
-      namingBusy = true
-      void (async () => {
-        try {
-          for (const tab of candidates) {
-            if (!tab.sessionId) continue
-            const title = await deriveTitleFromSessionId(tab.vendor ?? propsRef.current.vendor, tab.sessionId)
-            if (!title) continue
-            let next = setTabSpawned(stateRef.current, tab.id, true)
-            if (!tab.title && !tab.autoTitle) next = setTabAutoTitle(next, tab.id, title)
-            update(next)
-          }
-        } finally {
-          namingBusy = false
-        }
-      })()
-    }, NAMING_POLL_MS)
-    return () => clearInterval(timer)
-  }, [])
+  useTabNaming({ stateRef, propsRef, update })
 
   /* --------- per-tab turn state --------- */
   const { turnStates, liveTitles } = useTurnPolls({
@@ -362,9 +301,28 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
 
   const activeCommand = (): readonly string[] => (active.kind === "command" ? active.command : engineTabCommand(active))
 
-  function handleActiveExit(): void {
-    if (active.kind === "command") closeExitedTab(active.id)
-    else degradeToShell(active.id)
+  /** Engine tabs whose dead-on-attach resume was already attempted — one
+   *  shot per tab, so a `--resume` that itself dies degrades normally
+   *  instead of respawning forever. */
+  const resumeTriedRef = useRef(new Set<string>())
+
+  function handleActiveExit(info?: { deadOnAttach?: boolean }): void {
+    if (active.kind === "command") {
+      closeExitedTab(active.id)
+      return
+    }
+    // Reattach found a corpse (the engine died while no TUI was attached
+    // — host restart, park-sweep window, machine reboot): resume the
+    // conversation instead of silently degrading. Releasing the dead
+    // handle makes `engineTabCommand` build `--resume <sessionId>` on the
+    // re-acquire (`spawned && !live`) — the restart-survival path.
+    if (info?.deadOnAttach && active.sessionId && active.spawned && !resumeTriedRef.current.has(active.id)) {
+      resumeTriedRef.current.add(active.id)
+      getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
+      setResetToken((n) => n + 1)
+      return
+    }
+    degradeToShell(active.id)
   }
 
   const requestRename = (): void => {

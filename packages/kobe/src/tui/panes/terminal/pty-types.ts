@@ -94,6 +94,13 @@ export interface TaskPtyLike {
    * pane subscribes — so "unwatched for N ms" means "hidden for N ms".
    */
   unwatchedSinceMs?(): number | null
+  /**
+   * True when this handle attached to a session whose child had ALREADY
+   * exited — the engine died while no TUI was attached. Lets the tab
+   * layer resume the conversation (`--resume <sessionId>`) instead of
+   * treating it like a live engine exit (which degrades to a shell).
+   */
+  deadOnAttach?: boolean
 }
 
 export const DEFAULT_COLS = 80
