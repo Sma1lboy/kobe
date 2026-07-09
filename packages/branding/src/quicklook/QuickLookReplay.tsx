@@ -1,11 +1,11 @@
 import { loadFont } from "@remotion/google-fonts/JetBrainsMono"
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion"
-import { colors, monoStack } from "../colors"
+import { monoStack } from "../colors"
 
 // Bundle the real font: the fallback mono has a different advance width, so
 // the 160-col grid wouldn't fill 1280px and the frame shows bg "black bars".
 loadFont("normal", { weights: ["400", "700"] })
-import { parseAnsiLine, type Span } from "./ansi"
+import { DEFAULT_TERMINAL_THEME, normalizeTerminalLine, renderTextPresentation, terminalThemeFrom, type TerminalLine } from "./ansi"
 import capture from "./frames.json"
 import replaySpecJson from "./quicklook.replay.json"
 import { resolveReplaySpec, type Region } from "./replay-spec"
@@ -19,6 +19,10 @@ const VIEW_W = replaySpec.viewport.width
 const VIEW_H = replaySpec.viewport.height
 const CELL_W = VIEW_W / capture.cols
 const LINE_H = VIEW_H / capture.rows
+const captureTheme = terminalThemeFrom(
+  (capture as { meta?: { theme?: unknown } }).meta?.theme,
+  replaySpec.theme ?? DEFAULT_TERMINAL_THEME,
+)
 
 function frameAt(t: number) {
   let current = capture.frames[0]
@@ -29,37 +33,57 @@ function frameAt(t: number) {
   return current
 }
 
-// Spans are pinned to their grid column, not flowed: glyphs missing from
-// JetBrains Mono (nerd-font icons, braille spinners) fall back to a font
-// with a different advance width, and flowed layout lets that drift shift
-// everything after them — pane borders stopped lining up.
-const Line: React.FC<{ spans: Span[] }> = ({ spans }) => {
-  let col = 0
+const terminalStack =
+  '"JetBrains Mono", "JetBrainsMono Nerd Font", "Symbols Nerd Font", "Apple Color Emoji", ' + monoStack
+
+type CaptureLine = string | TerminalLine
+
+function positionedLine(line: CaptureLine | undefined): TerminalLine {
+  return normalizeTerminalLine(line, capture.cols, captureTheme)
+}
+
+const rawLine = (line: CaptureLine | undefined): string => (typeof line === "string" ? line : line?.rawAnsi ?? "")
+
+// Render positioned runs resolved from raw ANSI and the editable capture theme.
+// V2 JSON keeps cached runs for inspection, but rawAnsi is the source of truth
+// so changing meta.theme/defaultFg does not require recapturing frames.
+const Line: React.FC<{ line: TerminalLine }> = ({ line }) => {
   return (
     <div style={{ height: LINE_H, position: "relative" }}>
-      {spans.map((s, i) => {
-        const at = col
-        col += [...s.text].length
-        return (
-          <span
-            key={i}
-            style={{
-              position: "absolute",
-              left: at * CELL_W,
-              top: 0,
-              whiteSpace: "pre",
-              color: s.fg ?? colors.fg,
-              backgroundColor: s.bg,
-              fontWeight: s.bold ? 700 : 400,
-              opacity: s.dim ? 0.6 : 1,
-              fontStyle: s.italic ? "italic" : undefined,
-              textDecoration: s.underline ? "underline" : undefined,
-            }}
-          >
-            {s.text}
-          </span>
-        )
-      })}
+      {line.backgrounds.map((run, i) => (
+        <span
+          key={`bg-${i}`}
+          style={{
+            position: "absolute",
+            left: run.c * CELL_W,
+            top: 0,
+            width: run.w * CELL_W,
+            height: LINE_H,
+            backgroundColor: run.bg,
+          }}
+        />
+      ))}
+      {line.runs.map((run, i) => (
+        <span
+          key={`fg-${i}-${run.c}`}
+          style={{
+            position: "absolute",
+            left: run.c * CELL_W,
+            top: 0,
+            width: run.w * CELL_W,
+            height: LINE_H,
+            whiteSpace: "pre",
+            overflow: "visible",
+            color: run.fg ?? captureTheme.defaultFg,
+            fontWeight: run.bold ? 700 : 400,
+            opacity: run.dim ? 0.6 : 1,
+            fontStyle: run.italic ? "italic" : undefined,
+            textDecoration: run.underline ? "underline" : undefined,
+          }}
+        >
+          {renderTextPresentation(run.text)}
+        </span>
+      ))}
     </div>
   )
 }
@@ -87,8 +111,8 @@ function frameStage(from: number, to: number, region: Region): Shot {
   let total = 0
   for (let i = 1; i < capture.frames.length; i++) {
     if (capture.frames[i].t < from || capture.frames[i].t >= to) continue
-    const prev = capture.frames[i - 1].lines.map(stripLine)
-    const cur = capture.frames[i].lines.map(stripLine)
+    const prev = capture.frames[i - 1].lines.map((line: CaptureLine) => stripLine(rawLine(line)))
+    const cur = capture.frames[i].lines.map((line: CaptureLine) => stripLine(rawLine(line)))
     for (let r = region.r0; r <= Math.min(region.r1, cur.length - 1); r++) {
       const a = prev[r] ?? ""
       const b = cur[r]
@@ -182,9 +206,9 @@ export const QuickLookReplay: React.FC<{ speed?: number }> = ({ speed = 1 }) => 
 
   const snapshot = frameAt(t)
   // Each capture-pane line is self-contained (leading unstyled cells mean
-  // DEFAULT bg) — carrying SGR state across lines painted a stray trailing
-  // bg color onto the next line's leading spaces (black band left of dialogs).
-  const lines = snapshot.lines.map((line) => parseAnsiLine(line).spans)
+  // DEFAULT bg). V2 captures already carry positioned runs; legacy string
+  // captures are normalized once through the same run builder.
+  const lines = Array.from({ length: capture.rows }, (_, i) => positionedLine(snapshot.lines[i] as CaptureLine | undefined))
 
   const cam = cameraAt(t, speed)
   // Center the shot's target point, clamped so the viewport never leaves the
@@ -193,19 +217,21 @@ export const QuickLookReplay: React.FC<{ speed?: number }> = ({ speed = 1 }) => 
   const ty = clamp(VIEW_H / 2 - cam.cy * cam.scale, VIEW_H * (1 - cam.scale), 0)
 
   return (
-    <AbsoluteFill style={{ backgroundColor: colors.bg, fontFamily: monoStack }}>
+    <AbsoluteFill style={{ backgroundColor: captureTheme.defaultBg, fontFamily: terminalStack }}>
       <div
         style={{
           width: VIEW_W,
           height: VIEW_H,
           fontSize: CELL_W / 0.6,
           lineHeight: `${LINE_H}px`,
+          fontVariantLigatures: "none",
+          fontKerning: "none",
           transform: `translate(${tx}px, ${ty}px) scale(${cam.scale})`,
           transformOrigin: "0 0",
         }}
       >
-        {lines.map((spans, i) => (
-          <Line key={i} spans={spans} />
+        {lines.map((line, i) => (
+          <Line key={i} line={line} />
         ))}
       </div>
     </AbsoluteFill>

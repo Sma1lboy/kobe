@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import quicklookSpec from "../src/quicklook/quicklook.replay.json"
 import { regionCoordinateHash, resolveReplaySpec, replayDurationSeconds } from "../src/quicklook/replay-spec"
 
 const capture = {
@@ -96,5 +97,37 @@ describe("replay spec", () => {
         capture,
       ),
     ).toThrow(/focusPaneBeforeOpen/)
+
+    expect(() =>
+      resolveReplaySpec(
+        {
+          ...baseSpec,
+          theme: { defaultFg: "#fff", defaultBg: "#000", ansi16: ["#000"] },
+        },
+        capture,
+      ),
+    ).toThrow(/theme.ansi16/)
+
+    expect(() =>
+      resolveReplaySpec(
+        {
+          ...baseSpec,
+          theme: {
+            defaultFg: "#fff",
+            defaultBg: "#000",
+            ansi16: [
+              "#000", "#000", "#000", "#000", "#000", "#000", "#000", "#000",
+              "#000", "#000", "#000", "#000", "#000", "#000", "#000", "#000",
+            ],
+            runOverrides: [],
+          },
+        },
+        capture,
+      ),
+    ).toThrow(/theme.runOverrides/)
+  })
+
+  test("keeps quicklook theme limited to terminal state", () => {
+    expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
   })
 })

@@ -1,9 +1,23 @@
+import type { TerminalTheme } from "./ansi"
+
 export type RegionBounds = { c0: number; c1: number; r0: number; r1: number }
 export type Region = RegionBounds & { hash: string }
 export type RawRegion = RegionBounds & { hash?: string }
 
-export type CaptureFrame = { t: number; lines: string[] }
-export type CaptureMeta = { cols: number; rows: number; frames: CaptureFrame[] }
+export type PositionedLine = {
+  rawAnsi: string
+  runs?: unknown[]
+  backgrounds?: unknown[]
+}
+export type CaptureLine = string | PositionedLine
+export type CaptureFrame = { t: number; lines: CaptureLine[] }
+export type CaptureMeta = {
+  cols: number
+  rows: number
+  frames: CaptureFrame[]
+  schemaVersion?: number
+  meta?: { theme?: unknown }
+}
 
 export type ViewportSpec = {
   cols: number
@@ -128,6 +142,7 @@ export type RawReplaySpec = {
   regions: Record<string, RawRegion>
   stages: RawStage[]
   camera: CameraSpec
+  theme?: TerminalTheme
   delivery?: DeliverySpec
 }
 
@@ -162,6 +177,24 @@ const assertString = (value: unknown, name: string): string => {
     throw new Error(`replay spec ${name} must be a non-empty string`)
   }
   return value
+}
+
+const assertTheme = (value: unknown, name: string): TerminalTheme => {
+  const theme = assertObject(value, name)
+  for (const key of Object.keys(theme)) {
+    if (!["defaultFg", "defaultBg", "ansi16"].includes(key)) {
+      throw new Error(`replay spec ${name}.${key} is not supported`)
+    }
+  }
+  const defaultFg = assertString(theme.defaultFg, `${name}.defaultFg`)
+  const defaultBg = assertString(theme.defaultBg, `${name}.defaultBg`)
+  const ansi16 = assertArray(theme.ansi16, `${name}.ansi16`)
+  if (ansi16.length !== 16) throw new Error(`replay spec ${name}.ansi16 must contain exactly 16 colors`)
+  return {
+    defaultFg,
+    defaultBg,
+    ansi16: ansi16.map((entry, i) => assertString(entry, `${name}.ansi16[${i}]`)),
+  }
 }
 
 const lastCaptureTime = (capture: CaptureMeta): number => capture.frames.at(-1)?.t ?? 0
@@ -254,6 +287,7 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
   }
 
   const camera = resolveCamera(spec.camera)
+  const theme = spec.theme === undefined ? undefined : assertTheme(spec.theme, "theme")
   const rawRegions: Record<string, RawRegion> = {
     ...spec.regions,
     full: { c0: 0, c1: capture.cols - 1, r0: 0, r1: capture.rows - 1 },
@@ -302,5 +336,5 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
     return { name: stage.name, from, to, region }
   })
 
-  return { ...spec, camera, regions, stages }
+  return { ...spec, camera, theme, regions, stages }
 }

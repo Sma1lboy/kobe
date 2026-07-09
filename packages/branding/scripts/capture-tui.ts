@@ -13,7 +13,17 @@
 // Side effect: creates kobe task branches in --repo (one per created task).
 
 import { $ } from "bun"
+import { createHash } from "node:crypto"
 import replaySpecJson from "../src/quicklook/quicklook.replay.json"
+import { DEFAULT_TERMINAL_THEME, terminalLineFromAnsi } from "../src/quicklook/ansi"
+import {
+  STARSHIP_PROMPT_CONFIG,
+  captureEnv,
+  isolatedPromptEnv,
+  promptDefaultCommand,
+  promptEnvEntries,
+  promptEnvTmuxArgs,
+} from "../src/quicklook/capture-env"
 import {
   resolveReplaySpec,
   type CreateTaskFlowSpec,
@@ -27,6 +37,7 @@ const spec = resolveReplaySpec(replaySpecJson, {
   rows: replaySpecJson.viewport.rows,
   frames: [{ t: replaySpecJson.capture.seconds, lines: [] }],
 })
+const CAPTURE_THEME = spec.theme ?? DEFAULT_TERMINAL_THEME
 
 const arg = (name: string, fallback: string) => {
   const i = process.argv.indexOf(`--${name}`)
@@ -43,34 +54,90 @@ const ROWS = spec.viewport.rows
 const SOCKET = spec.capture.socket ?? `${spec.id}-capture`
 const INNER_SOCKET = spec.capture.innerSocket ?? `${SOCKET}-inner`
 const SESSION = spec.capture.session ?? spec.id
+const INNER_ENV_SESSION = `${spec.id}-capture-env`
 const homeArg = arg("home", spec.capture.home)
 const HOME = homeArg.startsWith("/") ? homeArg : `${import.meta.dir}/../${homeArg}`
+const PROMPT_ENV = isolatedPromptEnv(HOME)
+const WIDTH_TABLE_PATH = new URL("../../kobe/src/lib/display-width.ts", import.meta.url)
 
 // The demo must run the LOCAL source (dev:sandbox flavour), not the installed
 // CLI — a shim named `kobe` first in PATH keeps the on-camera command spelled
 // `kobe` while executing this repo's packages/kobe.
 const KOBE_SRC = `${import.meta.dir}/../../kobe`
 const BIN = `${HOME}/bin`
-await $`mkdir -p ${BIN}`.quiet()
+const KOBE_SHIM = `${BIN}/kobe`
+await $`mkdir -p ${BIN} ${PROMPT_ENV.ZDOTDIR} ${PROMPT_ENV.STARSHIP_CACHE}`.quiet()
+await Bun.write(PROMPT_ENV.STARSHIP_CONFIG, STARSHIP_PROMPT_CONFIG)
 await Bun.write(
-  `${BIN}/kobe`,
+  KOBE_SHIM,
   `#!/bin/sh\nexec env KOBE_DEV=1 bun --conditions=browser ${KOBE_SRC}/src/cli/index.ts "$@"\n`,
 )
-await $`chmod +x ${BIN}/kobe`.quiet()
+await $`chmod +x ${KOBE_SHIM}`.quiet()
 const PATH = `${BIN}:${process.env.PATH}`
+const OUT_PATH = OUT.startsWith("/") ? OUT : new URL(`../${OUT}`, import.meta.url)
 
-const ENV = {
-  ...process.env,
-  PATH,
-  KOBE_HOME_DIR: HOME,
-  KOBE_TMUX_SOCKET: INNER_SOCKET,
-}
+const ENV = captureEnv({
+  promptEnv: PROMPT_ENV,
+  path: PATH,
+  home: HOME,
+  innerSocket: INNER_SOCKET,
+  seconds: SECONDS,
+  warmupSeconds: spec.capture.warmupSeconds ?? 50,
+}) as NodeJS.ProcessEnv
 
 const tmux = (...args: string[]) => $`tmux -L ${SOCKET} ${args}`.env(ENV).quiet()
 const innerTmux = (...args: string[]) => $`tmux -L ${INNER_SOCKET} ${args}`.env(ENV).quiet()
 const key = (k: string) => tmux("send-keys", "-t", SESSION, k)
 const sleep = (ms: number) => Bun.sleep(ms)
 const screenText = () => tmux("capture-pane", "-p", "-t", SESSION).text()
+
+async function seedInnerTmuxEnvironment(): Promise<void> {
+  await innerTmux("kill-server").nothrow()
+  await innerTmux(
+    "new-session", "-d", "-s", INNER_ENV_SESSION, "-x", "1", "-y", "1",
+    "-e", `PATH=${PATH}`, ...promptEnvTmuxArgs(PROMPT_ENV),
+    "sleep 3600",
+  )
+  await innerTmux("set-option", "-g", "default-shell", PROMPT_ENV.SHELL)
+  await innerTmux(
+    "set-option", "-g", "default-command",
+    promptDefaultCommand(PROMPT_ENV, { home: HOME, path: PATH }),
+  )
+  for (const [key, value] of [
+    ["PATH", PATH],
+    ["KOBE_HOME_DIR", HOME],
+    ["KOBE_TMUX_SOCKET", INNER_SOCKET],
+    ...promptEnvEntries(PROMPT_ENV),
+  ] as Array<[string, string]>) {
+    await innerTmux("set-environment", "-g", key, value)
+  }
+}
+
+async function sha256File(path: URL): Promise<string> {
+  const bytes = await Bun.file(path).arrayBuffer()
+  return createHash("sha256").update(Buffer.from(bytes)).digest("hex")
+}
+
+async function captureMetadata() {
+  const tmuxVersion = await $`tmux -V`.quiet().nothrow().text()
+  const repoSha = await $`git -C ${REPO} rev-parse HEAD`.quiet().nothrow().text()
+  return {
+    tmuxVersion: tmuxVersion.trim() || "unknown",
+    widthTable: "packages/kobe/src/lib/display-width.ts",
+    widthTableHash: await sha256File(WIDTH_TABLE_PATH),
+    repo: REPO,
+    repoSha: repoSha.trim() || "unknown",
+    lang: ENV.LANG ?? "",
+    lcCtype: ENV.LC_CTYPE ?? "",
+    term: ENV.TERM ?? "",
+    colorterm: ENV.COLORTERM ?? "",
+    noColor: ENV.NO_COLOR ?? "",
+    clicolor: ENV.CLICOLOR ?? "",
+    clicolorForce: ENV.CLICOLOR_FORCE ?? "",
+    forceColor: ENV.FORCE_COLOR ?? "",
+    theme: CAPTURE_THEME,
+  }
+}
 
 /**
  * Kill a socket's pane PROCESSES, then its server. `kill-server` alone only
@@ -107,7 +174,7 @@ async function teardown(): Promise<void> {
   if (torndown) return
   torndown = true
   await killPanesThenServer(SOCKET)
-  await $`kobe daemon stop`.env(ENV).quiet().nothrow()
+  await $`${KOBE_SHIM} daemon stop`.env(ENV).quiet().nothrow()
   await killPanesThenServer(INNER_SOCKET)
 }
 
@@ -290,10 +357,12 @@ async function runBeat(beat: ReplayBeat): Promise<void> {
 
 await $`mkdir -p ${HOME}`.quiet()
 await tmux("kill-server").nothrow()
+await seedInnerTmuxEnvironment()
+await $`${KOBE_SHIM} daemon restart`.env(ENV).quiet()
 
 // Pre-existing tasks so the sidebar isn't empty (no engine, just the row).
 for (const task of spec.setup?.seedTasks ?? []) {
-  await $`kobe api add --repo ${REPO} --title ${task.title} --status ${task.status}`
+  await $`${KOBE_SHIM} api add --repo ${REPO} --title ${task.title} --status ${task.status}`
     .env(ENV)
     .quiet()
     .nothrow()
@@ -305,7 +374,7 @@ for (const task of spec.setup?.seedTasks ?? []) {
 await tmux(
   "new-session", "-d", "-s", "warmup", "-x", String(COLS), "-y", String(ROWS),
   "-e", `KOBE_HOME_DIR=${HOME}`, "-e", `KOBE_TMUX_SOCKET=${INNER_SOCKET}`,
-  "-e", `PATH=${PATH}`,
+  "-e", `PATH=${PATH}`, ...promptEnvTmuxArgs(PROMPT_ENV),
   "-c", REPO,
   "kobe",
 )
@@ -316,7 +385,7 @@ await tmux("kill-session", "-t", "warmup").nothrow()
 await tmux(
   "new-session", "-d", "-s", SESSION, "-x", String(COLS), "-y", String(ROWS),
   "-e", `KOBE_HOME_DIR=${HOME}`, "-e", `KOBE_TMUX_SOCKET=${INNER_SOCKET}`,
-  "-e", `PATH=${PATH}`, "-e", `PS1=${spec.capture.shellPrompt}`,
+  "-e", `PATH=${PATH}`, ...promptEnvTmuxArgs(PROMPT_ENV), "-e", `PS1=${spec.capture.shellPrompt}`,
   "-c", REPO,
   "sh",
 )
@@ -352,7 +421,18 @@ while (elapsed() < SECONDS) {
 await teardown()
 
 await Bun.write(
-  new URL(`../${OUT}`, import.meta.url),
-  JSON.stringify({ cols: COLS, rows: ROWS, fps: FPS, seconds: SECONDS, frames }),
+  OUT_PATH,
+  JSON.stringify({
+    schemaVersion: 2,
+    cols: COLS,
+    rows: ROWS,
+    fps: FPS,
+    seconds: SECONDS,
+    meta: await captureMetadata(),
+    frames: frames.map((frame) => ({
+      t: frame.t,
+      lines: frame.lines.map((line) => terminalLineFromAnsi(line, COLS, CAPTURE_THEME)),
+    })),
+  }),
 )
 console.log(`captured ${frames.length} keyframes -> ${OUT}`)

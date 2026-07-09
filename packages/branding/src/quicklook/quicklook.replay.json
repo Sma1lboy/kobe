@@ -300,6 +300,28 @@
     "rowGap": 3,
     "colQuantiles": [0.05, 0.95]
   },
+  "theme": {
+    "defaultFg": "#FFFFFF",
+    "defaultBg": "#141413",
+    "ansi16": [
+      "#141413",
+      "#D47563",
+      "#9ACA86",
+      "#E8C96B",
+      "#CC785C",
+      "#9B87F5",
+      "#D4967E",
+      "#EAE7DF",
+      "#3A3835",
+      "#E08A76",
+      "#B0DCA0",
+      "#F2DA8C",
+      "#D4967E",
+      "#B3A3F8",
+      "#E2B39F",
+      "#FFFFFF"
+    ]
+  },
   "delivery": {
     "speedCuts": [1, 4],
     "posterAt": 3.2
