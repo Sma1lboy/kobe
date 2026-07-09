@@ -49,7 +49,6 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
-import { leaves } from "../../tui/workspace/split-core"
 import {
   type EngineTab,
   type TabsState,
@@ -57,13 +56,16 @@ import {
   closeActiveTab,
   closeTab,
   cycleTab,
+  engineTabArgv,
   initialTabs,
+  isTabSplit,
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
   selectTab,
   setTabSessionId,
   setTabSplit,
+  tabExitAction,
   tabPtyKey,
   tabToShell,
 } from "../../tui/workspace/terminal-tabs-core"
@@ -168,13 +170,11 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     kv.set(persistKey, next)
   }
 
-  /** Engine-tab argv: the tab's pinned session id rides the base command. */
+  /** Engine-tab argv: the tab's pinned session id rides the base command
+   *  (resume-vs-pin decision is pure — `engineTabArgv`). */
   const engineTabCommand = (tab: EngineTab): readonly string[] => {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
-    if (!tab.sessionId) return base
-    const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
-    if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
-    return [...base, "--session-id", tab.sessionId]
+    return engineTabArgv(tab, base, getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id)))
   }
   // Latest-render mirror for the mount-once engine-send closure below —
   // same freshness convention as propsRef/stateRef (file header).
@@ -307,16 +307,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const resumeTriedRef = useRef(new Set<string>())
 
   function handleActiveExit(info?: { deadOnAttach?: boolean }): void {
-    if (active.kind === "command") {
+    // Policy is pure (`tabExitAction`): command tabs close; a corpse found
+    // on reattach (host restart, park-sweep window, machine reboot) gets
+    // ONE resume — releasing the dead handle makes `engineTabCommand`
+    // build `--resume <sessionId>` on the re-acquire (`spawned && !live`),
+    // the restart-survival path; everything else degrades to a shell.
+    const action = tabExitAction(active, info?.deadOnAttach === true, resumeTriedRef.current.has(active.id))
+    if (action === "close") {
       closeExitedTab(active.id)
       return
     }
-    // Reattach found a corpse (the engine died while no TUI was attached
-    // — host restart, park-sweep window, machine reboot): resume the
-    // conversation instead of silently degrading. Releasing the dead
-    // handle makes `engineTabCommand` build `--resume <sessionId>` on the
-    // re-acquire (`spawned && !live`) — the restart-survival path.
-    if (info?.deadOnAttach && active.sessionId && active.spawned && !resumeTriedRef.current.has(active.id)) {
+    if (action === "resume") {
       resumeTriedRef.current.add(active.id)
       getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
       setResetToken((n) => n + 1)
@@ -414,7 +415,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // actually split (>1 leaf) so the chords fall through the LIFO stack to
   // the leaf bindings — the Solid-era precedence, restored by gating
   // instead of ordering.
-  const activeIsSplit = active.splitTree ? leaves(active.splitTree.root).length > 1 : false
+  const activeIsSplit = isTabSplit(active.splitTree)
   useBindings(() => ({
     enabled: props.focused && !activeIsSplit,
     bindings: bindByIds({
