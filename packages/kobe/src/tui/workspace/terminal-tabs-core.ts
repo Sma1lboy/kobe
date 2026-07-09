@@ -130,14 +130,15 @@ export function addTab(state: TabsState, vendor?: VendorId): TabsState {
 }
 
 /**
- * Open a one-off editor tab after the active tab and focus it — the
+ * Open a one-off command tab after the active tab and focus it — the
  * PTY-world equivalent of tmux's `openInEditor` transient window
  * (`tmux/editor-launch.ts`): runs the already-resolved `command` (e.g.
- * `["sh", "-c", "nvim -d ..."]`), labeled `label` (the file's basename),
- * and closes itself when the process exits (kind "command", consumed by
- * `TerminalTabs.tsx`'s `onExit` wiring).
+ * `["sh", "-c", "nvim -d ..."]`), labeled `label` (the file's basename;
+ * null lets the live foreground-process title name the tab — the ctrl+e
+ * "shell" pick), and closes itself when the process exits (kind
+ * "command", consumed by `TerminalTabs.tsx`'s `onExit` wiring).
  */
-export function openEditorTab(state: TabsState, command: readonly string[], label: string): TabsState {
+export function openEditorTab(state: TabsState, command: readonly string[], label: string | null): TabsState {
   const ordinal = state.nextOrdinal
   return insertAfterActive(state, { kind: "command", id: `tab-${ordinal}`, title: label, ordinal, command })
 }

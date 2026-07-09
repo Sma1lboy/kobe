@@ -159,7 +159,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     scope: "workspace",
     keys: ["ctrl+e"],
     category: "Workspace",
-    description: "New chat tab with a chosen engine",
+    description: "New tab with a chosen engine or a plain shell",
     hint: { keys: "ctrl+e", label: "choose engine", status: false },
   },
   {
