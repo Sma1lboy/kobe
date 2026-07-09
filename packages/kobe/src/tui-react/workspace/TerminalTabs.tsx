@@ -182,6 +182,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
     return [...base, "--session-id", tab.sessionId]
   }
+  // Latest-render mirror for the mount-once engine-send closure below —
+  // same freshness convention as propsRef/stateRef (file header).
+  const engineTabCommandRef = useRef(engineTabCommand)
+  engineTabCommandRef.current = engineTabCommand
 
   /* --------- restart resume verification (issue #22) — mount-only ------- */
   const [hydrating, setHydrating] = useState(() => rehydratedRef.current)
@@ -226,7 +230,20 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       const activeTab = stateRef.current.tabs.find((tab) => tab.id === stateRef.current.activeId)
       const target = activeTab?.kind === "engine" ? activeTab : stateRef.current.tabs.find((t) => t.kind === "engine")
       if (!target) return
-      const pty = getDefaultPtyRegistry().get(tabPtyKey(propsRef.current.taskId, target.id))
+      const reg = getDefaultPtyRegistry()
+      const key = tabPtyKey(propsRef.current.taskId, target.id)
+      let pty = reg.get(key)
+      if (!pty && target.kind === "engine") {
+        // Parked background tab (issue #28): the host still runs the
+        // session — re-acquire reattaches + replays, then the paste lands.
+        // Default geometry until the tab is next mounted; the engine
+        // rewraps on the real resize like any terminal.
+        try {
+          pty = reg.acquire(key, propsRef.current.worktree, { command: engineTabCommandRef.current(target) })
+        } catch {
+          return
+        }
+      }
       if (!pty || pty.killed) return
       pty.paste(text)
       pty.write("\r")
