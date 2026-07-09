@@ -53,17 +53,18 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // a shell survives) → that leaf's rename, else its live process name.
   const sole = ls.length === 1 ? ls[0] : undefined
   if (sole && sole.id !== "leaf-1") return sole.title ?? `${liveName ?? SHELL_LEAF_NAME} ${tab.ordinal}`
-  if (tab.autoTitle) return tab.autoTitle
   // The RUNNING process names the tab first (liveName — the OSC title
-  // stream); vendor derivation is only the pre-title fallback. Deriving
-  // from the task's CURRENT vendor relabelled every inherit-mode tab the
-  // moment a new tab switched the task engine, while their PTYs kept
-  // running the old one.
+  // stream, owner order 2026-07-09: rename > live process > first-prompt >
+  // vendor default). The first-prompt autoTitle and vendor derivation are
+  // only the pre-title fallback. Deriving from the task's CURRENT vendor
+  // relabelled every inherit-mode tab the moment a new tab switched the
+  // task engine, while their PTYs kept running the old one.
+  if (liveName) return `${liveName} ${tab.ordinal}`
+  if (tab.autoTitle) return tab.autoTitle
   const name =
-    liveName ??
-    (tab.kind === "engine"
+    tab.kind === "engine"
       ? (engineEntry(tab.vendor ?? taskVendor).defaultCommand[0] ?? SHELL_LEAF_NAME)
-      : SHELL_LEAF_NAME)
+      : SHELL_LEAF_NAME
   return `${name} ${tab.ordinal}`
 }
 

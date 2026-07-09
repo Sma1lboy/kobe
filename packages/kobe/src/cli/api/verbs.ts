@@ -40,6 +40,28 @@ import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./type
  * module that itself imports `VERBS` back from here would still be
  * `undefined` at that point (load-order circular-import hazard).
  */
+/**
+ * `pty-list` — inventory of the standalone pty host's sessions (key, pid,
+ * command, live OSC window title — the same "实时进程名" stream the TUI tab
+ * strip shows). Talks to the PTY HOST socket, not the daemon (offline verb),
+ * and never spawns a host: no host running simply means no sessions.
+ */
+async function handlePtyList(): Promise<unknown> {
+  const [{ KobeDaemonClient }, { defaultPtyHostSocketPath }] = await Promise.all([
+    import("@sma1lboy/kobe-daemon/client"),
+    import("@sma1lboy/kobe-daemon/daemon/paths"),
+  ])
+  const client = new KobeDaemonClient(defaultPtyHostSocketPath())
+  try {
+    await client.connect()
+    return await client.request("pty.list", {})
+  } catch {
+    return { sessions: [] }
+  } finally {
+    client.close()
+  }
+}
+
 async function handleSchema(ctx: VerbContext): Promise<unknown> {
   const verbName = ctx.args.str("verb")
   if (verbName) {
@@ -101,7 +123,7 @@ export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "a
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
-  read: ["list", "get-task", "collect"],
+  read: ["list", "get-task", "collect", "pty-list"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
@@ -278,6 +300,14 @@ export const VERBS: readonly VerbSpec[] = [
       { name: "body", type: "string", placeholder: "TEXT", description: "New body." },
     ],
     handler: issueUpdate,
+  },
+  {
+    name: "pty-list",
+    summary:
+      "List hosted PTY sessions (key, alive, pid, command, live OSC window title). Empty when no pty host runs. Returns { sessions }.",
+    flags: [],
+    offline: true,
+    handler: handlePtyList,
   },
   {
     name: "collect",

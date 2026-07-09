@@ -24,6 +24,7 @@
  * `kobe reset`) ends the children.
  */
 
+import { StringDecoder } from "node:string_decoder"
 import type { DaemonFrame } from "./protocol.ts"
 
 /** Everything `pty.open` needs to spawn a session's child on first open. */
@@ -59,6 +60,17 @@ export interface PtyHostOptions {
 /** Per-session scrollback cap — same order as the web PTY sidecar's 256KB. */
 export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
 
+/** One session's inventory row — what `pty.list` reports. */
+export interface PtySessionInfo {
+  readonly key: string
+  readonly alive: boolean
+  readonly pid: number | null
+  readonly command: readonly string[]
+  /** Last OSC 0/2 window title the child set ("" until it sets one) —
+   *  the live foreground-process name, same stream the TUI tab strip reads. */
+  readonly title: string
+}
+
 interface PtySessionState {
   readonly key: string
   proc: ReturnType<typeof Bun.spawn> | null
@@ -67,9 +79,21 @@ interface PtySessionState {
   bytes: number
   cols: number
   rows: number
+  readonly command: readonly string[]
+  title: string
+  /** Unterminated escape tail carried between chunks for the title scan. */
+  titleCarry: string
+  /** UTF-8 decoder for the title scan (a multibyte title may split across chunks). */
+  readonly titleDecoder: StringDecoder
   /** Attached connections, keyed by connection identity (the server's ClientState). */
   readonly sinks: Map<object, PtySink>
 }
+
+/** A complete OSC 0/2 window-title sequence (BEL- or ST-terminated). */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the raw ESC/BEL title wire encoding is the whole point
+const OSC_TITLE_RE = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g
+/** Titles are short — a longer carry isn't an in-progress title sequence. */
+const TITLE_CARRY_CAP = 1024
 
 export class PtyHost {
   private readonly sessions = new Map<string, PtySessionState>()
@@ -143,8 +167,14 @@ export class PtyHost {
   }
 
   /** Session inventory — lets a fresh TUI discover background sessions. */
-  list(): { key: string; alive: boolean }[] {
-    return Array.from(this.sessions.values(), (s) => ({ key: s.key, alive: s.alive }))
+  list(): PtySessionInfo[] {
+    return Array.from(this.sessions.values(), (s) => ({
+      key: s.key,
+      alive: s.alive,
+      pid: s.proc?.pid ?? null,
+      command: s.command,
+      title: s.title,
+    }))
   }
 
   /**
@@ -174,6 +204,8 @@ export class PtyHost {
   }
 
   private spawn(key: string, spec: PtySpawnSpec): PtySessionState {
+    const argv =
+      spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? process.env.SHELL ?? "/bin/bash"]
     const session: PtySessionState = {
       key,
       proc: null,
@@ -182,10 +214,12 @@ export class PtyHost {
       bytes: 0,
       cols: spec.cols,
       rows: spec.rows,
+      command: argv,
+      title: "",
+      titleCarry: "",
+      titleDecoder: new StringDecoder("utf8"),
       sinks: new Map(),
     }
-    const argv =
-      spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? process.env.SHELL ?? "/bin/bash"]
     try {
       session.proc = Bun.spawn(argv, {
         cwd: spec.cwd,
@@ -218,8 +252,30 @@ export class PtyHost {
     return session
   }
 
+  /**
+   * Keep the LAST complete OSC 0/2 title per session — the one VT fact the
+   * host tracks (a plain string scan, not escape-code emulation), so
+   * `pty.list` can report each child's live process name without a TUI
+   * attached. An unterminated tail is carried into the next chunk (capped).
+   */
+  private scanTitle(session: PtySessionState, buf: Buffer): void {
+    const text = session.titleCarry + session.titleDecoder.write(buf)
+    let last: string | null = null
+    let end = 0
+    OSC_TITLE_RE.lastIndex = 0
+    for (let m = OSC_TITLE_RE.exec(text); m; m = OSC_TITLE_RE.exec(text)) {
+      last = m[1] ?? ""
+      end = m.index + m[0].length
+    }
+    if (last !== null) session.title = last
+    const rest = text.slice(end)
+    const esc = rest.lastIndexOf("\x1b")
+    session.titleCarry = esc === -1 ? "" : rest.slice(esc, esc + TITLE_CARRY_CAP)
+  }
+
   private onData(session: PtySessionState, data: string | Uint8Array): void {
     const buf = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data)
+    this.scanTitle(session, buf)
     session.chunks.push(buf)
     session.bytes += buf.byteLength
     // ponytail: O(chunks) front-trim like the web sidecar; a chunk may

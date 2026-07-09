@@ -76,7 +76,7 @@ describe("PtyHost", () => {
 
     // Every client detaches — the "TUI quit" moment. Child must keep running.
     host.detachClient(tokenA)
-    expect(host.list()).toEqual([{ key: "t1::tab1", alive: true }])
+    expect(host.list()).toMatchObject([{ key: "t1::tab1", alive: true }])
 
     // Fresh client reattaches: replay carries the earlier output, and the
     // live stream still works.
@@ -106,7 +106,7 @@ describe("PtyHost", () => {
     host.open("live-task::tab1", SPEC, {}, collector().sink)
     host.open("dead-task::tab1", SPEC, {}, collector().sink)
     host.sweepTasks(new Set(["live-task"]))
-    expect(host.list()).toEqual([{ key: "live-task::tab1", alive: true }])
+    expect(host.list()).toMatchObject([{ key: "live-task::tab1", alive: true }])
   })
 
   test("live sessions count toward liveCount, exited ones don't", async () => {
@@ -116,6 +116,25 @@ describe("PtyHost", () => {
     await until(() => frames.some((f) => f.type === "event" && f.name === "pty.exit"))
     expect(host.liveCount()).toBe(0)
     // The exited session is KEPT (scrollback for a reattach) until killed.
-    expect(host.list()).toEqual([{ key: "t1::tab1", alive: false }])
+    expect(host.list()).toMatchObject([{ key: "t1::tab1", alive: false }])
+  })
+
+  // Why this matters: pty.list's `title` is how headless surfaces
+  // (`kobe api pty-list`) see each child's live process name without a TUI
+  // attached — the same OSC 0/2 stream the tab strip renders. Last title
+  // wins, and pid/command ride along for inventory.
+  test("tracks the child's last OSC window title in list()", async () => {
+    const host = makeHost()
+    host.open(
+      "t1::tab1",
+      { ...SPEC, command: ["/bin/sh", "-c", `printf '\\033]2;first\\007'; printf '\\033]0;实时进程\\007'; cat`] },
+      {},
+      collector().sink,
+    )
+    await until(() => host.list()[0]?.title === "实时进程")
+    const row = host.list()[0]
+    expect(row).toMatchObject({ key: "t1::tab1", alive: true, title: "实时进程" })
+    expect(typeof row?.pid).toBe("number")
+    expect(row?.command[0]).toBe("/bin/sh")
   })
 })
