@@ -16,7 +16,10 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import type { DaemonFrame } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { PtyHost } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import { PtyHost, scanOscTitle } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+
+const ESC = "\x1b"
+const BEL = "\x07"
 
 const hosts: PtyHost[] = []
 
@@ -136,5 +139,59 @@ describe("PtyHost", () => {
     expect(row).toMatchObject({ key: "t1::tab1", alive: true, title: "实时进程" })
     expect(typeof row?.pid).toBe("number")
     expect(row?.command[0]).toBe("/bin/sh")
+  })
+})
+
+// The pure title/carry fold behind scanTitle. Driving this directly (instead
+// of through a real PTY) is the only way to pin CROSS-CHUNK carry, because a
+// real child's writes don't split at attacker-chosen byte boundaries — yet a
+// PTY read boundary can fall anywhere, including inside a title's terminator.
+describe("scanOscTitle", () => {
+  test("captures a BEL- and an ST-terminated title in one chunk", () => {
+    expect(scanOscTitle("", `${ESC}]0;bel${BEL}`)).toEqual({ title: "bel", carry: "" })
+    expect(scanOscTitle("", `${ESC}]2;st${ESC}\\`)).toEqual({ title: "st", carry: "" })
+  })
+
+  test("last title in the chunk wins", () => {
+    const r = scanOscTitle("", `${ESC}]2;first${BEL}output${ESC}]0;second${BEL}`)
+    expect(r).toEqual({ title: "second", carry: "" })
+  })
+
+  test("no title closed → null title, so the caller keeps the old one", () => {
+    expect(scanOscTitle("", "plain output, no escapes").title).toBeNull()
+    // A color reset must not be mistaken for (or strand) a title.
+    expect(scanOscTitle("", `text ${ESC}[0m more`)).toEqual({ title: null, carry: "" })
+  })
+
+  test("a title split mid-body across chunks completes on the next chunk", () => {
+    const first = scanOscTitle("", `${ESC}]0;my-ti`)
+    expect(first.title).toBeNull()
+    expect(first.carry).toBe(`${ESC}]0;my-ti`)
+    expect(scanOscTitle(first.carry, `tle${BEL}`)).toEqual({ title: "my-title", carry: "" })
+  })
+
+  // Regression: the ST terminator (ESC "\") can split across a PTY read
+  // boundary. The pre-fix carry used lastIndexOf(ESC), which returned the
+  // terminator's lone ESC and dropped the whole `ESC ]0;title` introducer —
+  // the title was lost. The carry must anchor on the introducer instead.
+  test("a title whose ST terminator splits across chunks is still captured", () => {
+    const first = scanOscTitle("", `${ESC}]0;split-st${ESC}`)
+    expect(first.title).toBeNull()
+    expect(first.carry).toBe(`${ESC}]0;split-st${ESC}`)
+    expect(scanOscTitle(first.carry, "\\")).toEqual({ title: "split-st", carry: "" })
+  })
+
+  test("a title whose introducer splits across chunks is still captured", () => {
+    const first = scanOscTitle("", `done${ESC}`)
+    expect(first).toEqual({ title: null, carry: ESC })
+    expect(scanOscTitle(first.carry, `]2;boot${BEL}`)).toEqual({ title: "boot", carry: "" })
+  })
+
+  test("carry anchors on the introducer, not a later bare ESC", () => {
+    // An in-progress title with the ST terminator's ESC arrived: the carry must
+    // keep the whole `ESC ]0;…` introducer, not just the trailing lone ESC that
+    // lastIndexOf(ESC) would have stranded.
+    const { carry } = scanOscTitle("", `${ESC}]0;anchored${ESC}`)
+    expect(carry).toBe(`${ESC}]0;anchored${ESC}`)
   })
 })
