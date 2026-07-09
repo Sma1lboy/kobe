@@ -10,6 +10,7 @@
  */
 
 import type { KeyEvent } from "@opentui/core"
+import { isDev } from "../../env.ts"
 
 export type Binding = {
   key: string
@@ -124,6 +125,43 @@ export function matchKey(evt: KeyEvent): string[] {
  */
 let dispatching = false
 
+/** Chords already flagged by the shadowed-match warning (once per process
+ *  per chord — a stuck contract violation must not spam every keypress). */
+const shadowWarned = new Set<string>()
+
+/**
+ * Contract check behind the ctrl+w-class bug (split-close vs tab-close):
+ * two ENABLED entries matching the same chord means LIFO order — which
+ * React INVERTED relative to Solid (ancestors on top, see
+ * tui-react/lib/keymap.ts) — silently picks the winner. The rule is
+ * mutual GATING (exactly one enabled at a time); a second enabled match
+ * is a latent bug, so surface it. Runs on the pre-`cmd` snapshot (the
+ * handler may re-gate the loser) and respects modal barriers: everything
+ * below a modal entry is deliberately unreachable, not shadowed.
+ *
+ * DEV-ONLY (`isDev()` — KOBE_DEV=1, set by every dev/dev:sandbox/dev:mock
+ * script): the scan reads every lower group config, which would break
+ * dispatch's read-one-config-on-hit budget on the per-keypress hot path
+ * (test/tui/perf-budgets.test.ts).
+ */
+function warnShadowedMatch(snapshot: readonly RegisteredBinding[], hitIndex: number, candidates: string[]): void {
+  for (let j = hitIndex - 1; j >= 0; j--) {
+    const cfg = snapshot[j]?.config()
+    if (!cfg || cfg.enabled === false) continue
+    const shadowed = cfg.bindings.find((b) => candidates.includes(b.key))
+    if (shadowed) {
+      if (!shadowWarned.has(shadowed.key)) {
+        shadowWarned.add(shadowed.key)
+        console.error(
+          `[kobe keymap] "${shadowed.key}" matched two ENABLED bindings — the lower one is shadowed by LIFO order. Gate one of them off (see tui-react/lib/keymap.ts header).`,
+        )
+      }
+      return
+    }
+    if (cfg.modal) return
+  }
+}
+
 /**
  * Walk the binding stack top-down and fire the first matching binding.
  * Returns true if a binding was fired (caller can inspect this; the
@@ -167,6 +205,10 @@ export function dispatchKeyEvent(
       if (cfg.enabled === false) continue
       const hit = cfg.bindings.find((b) => candidates.includes(b.key))
       if (hit) {
+        // Shadow check BEFORE cmd: the handler can re-gate the shadowed
+        // entry (close-split collapses the tree → tab-close re-enables),
+        // which would mask the violation.
+        if (!cfg.modal && isDev()) warnShadowedMatch(snapshot, i, candidates)
         hit.cmd(evt as KeyEvent, hit.slot)
         // Consume the event so native widgets (e.g. opentui's textarea
         // onSubmit) don't also receive it in the same tick. Without this,
