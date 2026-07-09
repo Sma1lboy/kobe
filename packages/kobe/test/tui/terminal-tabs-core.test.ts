@@ -113,6 +113,15 @@ describe("terminal tabs state", () => {
     expect(tabToShell(s, "tab-99", ["/bin/zsh"]).tabs).toEqual(s.tabs)
   })
 
+  // Why: the ctrl+e "shell" pick opens a plain terminal tab through
+  // openEditorTab with a NULL label — the tab must stay unnamed so the
+  // live foreground-process title (tabTitle's liveName path) names it.
+  it("openEditorTab with a null label leaves the tab unnamed (live title names it)", () => {
+    const s = openEditorTab(initialTabs(), ["/bin/zsh"], null)
+    expect(s.tabs[1]).toMatchObject({ kind: "command", title: null, command: ["/bin/zsh"] })
+    expect(s.activeId).toBe("tab-2")
+  })
+
   // Why: sessionId is the naming/resume anchor (tmux @kobe_session_id) —
   // it must land on engine tabs only and survive shell degradation is NOT
   // required (the conversation ended), but autoTitle must survive so a

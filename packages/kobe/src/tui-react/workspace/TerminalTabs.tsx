@@ -366,8 +366,15 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const requestChooseEngine = (): void => {
     void (async () => {
       const available = await availableEngineIds()
-      const picked = await EnginePickerDialog.show(dialog, available, props.vendor)
+      const picked = await EnginePickerDialog.show(dialog, available, props.vendor, { allowShell: true })
       if (picked === undefined) return
+      // "shell" = a plain terminal tab (kind "command"): no session pin, no
+      // vendor preference write, closes itself on exit. Null label so the
+      // tab is named by its live foreground process ("zsh", "vim"…).
+      if (picked === "shell") {
+        update(openEditorTab(state, [defaultShell()], null))
+        return
+      }
       update(pinSession(addTab(state, picked), picked))
       props.onChooseEngine?.(picked)
       try {
