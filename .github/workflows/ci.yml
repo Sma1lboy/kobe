@@ -211,11 +211,16 @@ jobs:
         run: bun run coverage
 
       - name: Render-track coverage (kobe package .tsx)
-        # bun test + @opentui/solid's testRender (docs/HARNESS.md "render
-        # track") — the only runner that can execute opentui Solid
-        # components at all. Separate report; not gated per-file (yet), just
-        # folded into the Codecov upload below so the repo-wide badge
-        # reflects .tsx too.
+        # bun test + @opentui/react's testRender (docs/HARNESS.md "render
+        # track") — the only runner that can execute opentui components at
+        # all. Separate report; not gated per-file (yet), just folded into
+        # the Codecov upload below so the repo-wide badge reflects .tsx too.
+        # Non-fatal: Bun 1.3.13's coverage instrumentation SIGILLs on the
+        # opentui native path on the current ubuntu runner (test:render is
+        # green locally). Since this track is informational — the .ts
+        # per-file gate below is the real one — a crash here must not block
+        # the gate. Drop continue-on-error once a Bun bump stops the crash.
+        continue-on-error: true
         working-directory: packages/kobe
         run: bun run test:render
 
