@@ -36,6 +36,19 @@ export interface TurnCompletionMarker {
   readonly source: VendorId
 }
 
+/**
+ * The two fs-derived facts a single transcript-dir scan yields: the newest
+ * completion marker AND the newest transcript mtime. The daemon collector
+ * wants both per probe, and finding the completion already walks the dir
+ * and stats its files — so one scan surfaces both instead of two callers
+ * each doing their own readdir (the perf win). `mtimeMs` is `0` when the
+ * worktree has no transcript yet (or the detector has no store to read).
+ */
+export interface TranscriptScan {
+  readonly marker: TurnCompletionMarker | null
+  readonly mtimeMs: number
+}
+
 export abstract class EngineTurnDetector {
   abstract readonly vendor: VendorId
 
@@ -44,8 +57,17 @@ export abstract class EngineTurnDetector {
     return true
   }
 
+  /**
+   * Newest completion marker AND newest transcript mtime for `worktree`
+   * from ONE directory scan. Callers that want both (the daemon's activity
+   * collector) use this so the transcript dir is listed once, not twice.
+   */
+  abstract latestActivity(worktree: string): Promise<TranscriptScan>
+
   /** Newest persisted completion marker for `worktree`, or null when absent. */
-  abstract latestCompletion(worktree: string): Promise<TurnCompletionMarker | null>
+  async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
+    return (await this.latestActivity(worktree)).marker
+  }
 }
 
 /**
@@ -93,8 +115,13 @@ export class ClaudeTurnDetector extends EngineTurnDetector {
     super()
   }
 
-  async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
+  async latestActivity(worktree: string): Promise<TranscriptScan> {
     const files = await this.deps.listSessionFiles(worktree)
+    // `listSessionFiles` sorts newest-first, so `files[0]` is the newest
+    // transcript overall — the same value `latestTranscriptMtimeForWorktree`
+    // returns. Surfacing it here lets the daemon collector skip its own
+    // second directory scan for the mtime.
+    const mtimeMs = files[0]?.mtimeMs ?? 0
     let latest: TurnCompletionMarker | null = null
     const next = new Map<string, { mtimeMs: number; marker: TurnCompletionMarker | null }>()
     for (const file of files.slice(0, 4)) {
@@ -111,7 +138,7 @@ export class ClaudeTurnDetector extends EngineTurnDetector {
       if (marker && (!latest || marker.timestampMs > latest.timestampMs)) latest = marker
     }
     this.cache = next
-    return latest
+    return { marker: latest, mtimeMs }
   }
 }
 
@@ -143,18 +170,21 @@ export class CodexTurnDetector extends EngineTurnDetector {
     super()
   }
 
-  async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
-    if (!worktree) return null
+  async latestActivity(worktree: string): Promise<TranscriptScan> {
+    if (!worktree) return { marker: null, mtimeMs: 0 }
     const found = await this.deps.findLatestRollout(worktree)
-    if (!found) return null
+    if (!found) return { marker: null, mtimeMs: 0 }
+    // `found.mtimeMs` is the newest matching rollout's mtime — identical to
+    // what `latestTranscriptMtimeForWorktree` returns — so surface it even
+    // when the marker parse below yields null (no `turn.completed` yet).
     if (this.cache && this.cache.path === found.path && found.mtimeMs > 0 && this.cache.mtimeMs === found.mtimeMs) {
-      return this.cache.marker
+      return { marker: this.cache.marker, mtimeMs: found.mtimeMs }
     }
     const raw = await this.deps.readFile(found.path).catch(() => "")
-    if (!raw) return null
+    if (!raw) return { marker: null, mtimeMs: found.mtimeMs }
     const marker = latestCodexCompletionMarkerFromJsonl(raw, found.path)
     this.cache = { path: found.path, mtimeMs: found.mtimeMs, marker }
-    return marker
+    return { marker, mtimeMs: found.mtimeMs }
   }
 }
 
@@ -168,8 +198,11 @@ export class UnknownTurnDetector extends EngineTurnDetector {
     return false
   }
 
-  async latestCompletion(): Promise<TurnCompletionMarker | null> {
-    return null
+  // No transcript store this detector can read — no marker, no mtime. The
+  // daemon collector falls back to the vendor's own `latestTranscriptMtime`
+  // (e.g. copilot's) when `supportsCompletionMarkers()` is false.
+  async latestActivity(): Promise<TranscriptScan> {
+    return { marker: null, mtimeMs: 0 }
   }
 }
 
