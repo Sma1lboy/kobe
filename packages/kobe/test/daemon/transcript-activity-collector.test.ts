@@ -29,10 +29,17 @@ import type { TranscriptActivityPayload } from "@sma1lboy/kobe-daemon/daemon/pro
 import {
   TranscriptActivityCollector,
   type TranscriptActivityEntry,
+  runTranscriptActivity,
   sameTranscriptActivityEntry,
   trackedWorktrees,
 } from "@sma1lboy/kobe-daemon/daemon/transcript-activity-collector"
 import { describe, expect, test } from "vitest"
+import {
+  type HistoryDeps as CodexHistoryDeps,
+  findLatestRolloutForWorktree,
+  latestTranscriptMtimeForWorktree,
+} from "../../src/engine/codex-local/history.ts"
+import { CodexTurnDetector } from "../../src/engine/turn-detector.ts"
 import { type Task, type VendorId, toTaskId } from "../../src/types/task.ts"
 
 /** Minimal Task — only the fields the collector reads. */
@@ -274,5 +281,83 @@ describe("TranscriptActivityCollector", () => {
     collector.tick()
     await settle()
     expect(published).toEqual([])
+  })
+})
+
+/**
+ * The perf fix this suite guards: `runTranscriptActivity` used to make TWO
+ * independent walks of the same codex `sessions` date-tree per probe —
+ * `latestTranscriptMtime` (a full tree readdir) then `detector.latestCompletion`
+ * (another full tree readdir + a stat). The detector already computes the
+ * newest mtime while finding the completion, so one `detector.latestActivity`
+ * call now yields both — ONE tree walk, HALF the stats. This is a deterministic
+ * call-count assertion (readdir/stat spies), not a wall-clock benchmark; a
+ * regression that re-introduces the second walk fails the readdir count.
+ */
+describe("runTranscriptActivity — single codex tree walk", () => {
+  const WT = "/wt"
+  // One rollout under a single day dir, matching the worktree cwd, with a
+  // turn.completed marker so the returned entry carries a completionId.
+  const ROLLOUT = "rollout-2026-05-29T02-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+  const RAW = JSON.stringify({ type: "turn.completed", timestamp: "2026-05-29T02:00:03.000Z", usage: {} })
+
+  /** Codex `HistoryDeps` that counts every readdir/readFile/stat. */
+  function countingDeps() {
+    const counts = { readdir: 0, readFile: 0, stat: 0, treeReaddir: 0 }
+    const deps: CodexHistoryDeps = {
+      sessionsDir: () => "/sessions",
+      readdir: async (p) => {
+        counts.readdir++
+        // A full tree walk touches exactly these four dirs, in order.
+        if (p === "/sessions") return ["2026"]
+        if (p === "/sessions/2026") return ["05"]
+        if (p === "/sessions/2026/05") return ["29"]
+        if (p === "/sessions/2026/05/29") {
+          counts.treeReaddir++
+          return [ROLLOUT]
+        }
+        return []
+      },
+      readFile: async () => {
+        counts.readFile++
+        return `${JSON.stringify({ type: "session_meta", payload: { cwd: WT } })}\n${RAW}`
+      },
+      stat: async () => {
+        counts.stat++
+        return { mtimeMs: 2000 }
+      },
+    }
+    // The detector's deps (findLatestRollout / readFile) delegate into the
+    // SAME counting HistoryDeps, so a detector probe drives (and counts) a
+    // real codex date-tree walk exactly as production does.
+    const detector = new CodexTurnDetector({
+      findLatestRollout: (wt) => findLatestRolloutForWorktree(wt, deps),
+      readFile: (p) => deps.readFile(p),
+    })
+    return { deps, counts, detector }
+  }
+
+  test("probes the date-tree once and returns byte-identical facts to the old two-walk path", async () => {
+    // Correctness pin: recompute the OLD path's result (mtime from the
+    // standalone reader + marker from the detector) over an INDEPENDENT deps
+    // instance, then assert the fused single-walk probe matches it exactly.
+    const oldSide = countingDeps()
+    const oldMtime = await latestTranscriptMtimeForWorktree(WT, oldSide.deps)
+    const oldMarker = await oldSide.detector.latestCompletion(WT)
+    const expected: TranscriptActivityEntry = {
+      mtimeMs: oldMtime,
+      completionId: oldMarker?.id ?? null,
+      completionAt: oldMarker?.timestampMs ?? 0,
+    }
+    // The old path walked the day dir TWICE (once per reader).
+    expect(oldSide.counts.treeReaddir).toBe(2)
+
+    const newSide = countingDeps()
+    const got = await runTranscriptActivity(WT, "codex", newSide.detector, new AbortController().signal)
+
+    expect(got).toEqual(expected)
+    // AFTER the fix: exactly ONE day-dir readdir, and half the stats.
+    expect(newSide.counts.treeReaddir).toBe(1)
+    expect(newSide.counts.stat).toBe(oldSide.counts.stat / 2)
   })
 })
