@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto"
+import { readFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { type EngineTitleGenerator, parseGeneratedTitleJson } from "@/engine/title-generator"
-import { codexCapabilities } from "./capabilities"
 
 const DEFAULT_TIMEOUT_MS = 20_000
 
 const SESSION_TITLE_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding task. The title should be clear enough that the user recognizes the task in a list. Use sentence case: capitalize only the first word and proper nouns.
 
 Return only JSON with a single "title" field.
+Do not inspect files, run commands, or use tools. Reply directly from the task conversation.
 
 Good examples:
 {"title": "Fix mobile login button"}
@@ -22,25 +26,31 @@ Task conversation:
 
 export interface TitleCommand {
   readonly argv: readonly string[]
+  readonly outputPath: string
 }
 
-export function buildCodexTitleCommand(modelId: string | undefined, description: string): TitleCommand {
+export function buildCodexTitleCommand(
+  modelId: string | undefined,
+  description: string,
+  outputPath: string,
+): TitleCommand {
   const argv = [
     "codex",
     "exec",
     "--ephemeral",
     "--ignore-rules",
+    "--ignore-user-config",
     "--skip-git-repo-check",
     "--sandbox",
     "read-only",
-    "--ask-for-approval",
-    "never",
+    "--output-last-message",
+    outputPath,
     "--color",
     "never",
   ]
   if (modelId) argv.push("--model", modelId)
   argv.push(`${SESSION_TITLE_PROMPT}${description}`)
-  return { argv }
+  return { argv, outputPath }
 }
 
 export interface SpawnResult {
@@ -52,6 +62,8 @@ export interface SpawnResult {
 export interface CodexTitleGeneratorDeps {
   readonly modelId: () => string | undefined
   readonly cwd: () => string
+  readonly outputPath: () => string
+  readonly readFile: (path: string) => Promise<string>
   readonly spawn: (
     argv: readonly string[],
     opts: { readonly cwd: string; readonly signal?: AbortSignal },
@@ -59,8 +71,10 @@ export interface CodexTitleGeneratorDeps {
 }
 
 const defaultDeps: CodexTitleGeneratorDeps = {
-  modelId: () => codexCapabilities.defaultModelId?.(),
+  modelId: () => undefined,
   cwd: () => process.env.HOME || process.cwd(),
+  outputPath: () => join(tmpdir(), `kobe-codex-title-${randomUUID()}.json`),
+  readFile: (path) => readFile(path, "utf8"),
   spawn: spawnCapture,
 }
 
@@ -78,10 +92,11 @@ export async function generateCodexTitle(
   const description = input.trim()
   if (!description) return null
   try {
-    const command = buildCodexTitleCommand(deps.modelId(), description)
+    const command = buildCodexTitleCommand(deps.modelId(), description, deps.outputPath())
     const result = await deps.spawn(command.argv, { cwd: deps.cwd(), signal: options.signal })
     if (result.exitCode !== 0) return null
-    return parseGeneratedTitleJson(result.stdout)
+    const finalMessage = await deps.readFile(command.outputPath).catch(() => "")
+    return parseGeneratedTitleJson(finalMessage) ?? parseGeneratedTitleJson(result.stdout)
   } catch {
     return null
   }

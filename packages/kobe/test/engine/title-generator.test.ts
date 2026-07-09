@@ -32,16 +32,18 @@ describe("parseGeneratedTitleJson", () => {
 
 describe("buildCodexTitleCommand", () => {
   it("builds an ephemeral read-only exec invocation", () => {
-    const command = buildCodexTitleCommand("gpt-5.3-codex", "Fix the login button")
+    const command = buildCodexTitleCommand("gpt-5.3-codex", "Fix the login button", "/tmp/kobe-title.json")
 
     expect(command.argv.slice(0, 2)).toEqual(["codex", "exec"])
     expect(command.argv).toContain("--ephemeral")
     expect(command.argv).toContain("--ignore-rules")
+    expect(command.argv).toContain("--ignore-user-config")
     expect(command.argv).toContain("--skip-git-repo-check")
     expect(command.argv).toContain("--sandbox")
     expect(command.argv).toContain("read-only")
-    expect(command.argv).toContain("--ask-for-approval")
-    expect(command.argv).toContain("never")
+    expect(command.argv).not.toContain("--ask-for-approval")
+    expect(command.argv).toContain("--output-last-message")
+    expect(command.argv).toContain("/tmp/kobe-title.json")
     expect(command.argv).toContain("--model")
     expect(command.argv).toContain("gpt-5.3-codex")
     expect(command.argv.at(-1)).toContain("Fix the login button")
@@ -49,13 +51,20 @@ describe("buildCodexTitleCommand", () => {
 })
 
 describe("generateCodexTitle", () => {
-  it("returns the parsed title from injected command output", async () => {
+  it("returns the parsed title from the Codex last-message output file", async () => {
     const title = await generateCodexTitle("Fix the login button", {
       modelId: () => "gpt-5.3-codex",
       cwd: () => "/tmp",
+      outputPath: () => "/tmp/kobe-title.json",
+      readFile: async (path) => {
+        expect(path).toBe("/tmp/kobe-title.json")
+        return '{"title":"Fix login button"}'
+      },
       spawn: async (argv) => {
         expect(argv).toContain("--ephemeral")
-        return { exitCode: 0, stdout: '{"title":"Fix login button"}', stderr: "" }
+        expect(argv).toContain("--output-last-message")
+        expect(argv).toContain("/tmp/kobe-title.json")
+        return { exitCode: 0, stdout: "OpenAI Codex transcript noise", stderr: "" }
       },
     })
 
@@ -67,6 +76,8 @@ describe("generateCodexTitle", () => {
       generateCodexTitle("Fix the login button", {
         modelId: () => "gpt-5.3-codex",
         cwd: () => "/tmp",
+        outputPath: () => "/tmp/kobe-title.json",
+        readFile: async () => '{"title":"Fix login button"}',
         spawn: async () => ({ exitCode: 1, stdout: "", stderr: "boom" }),
       }),
     ).resolves.toBeNull()
@@ -75,6 +86,8 @@ describe("generateCodexTitle", () => {
       generateCodexTitle("Fix the login button", {
         modelId: () => "gpt-5.3-codex",
         cwd: () => "/tmp",
+        outputPath: () => "/tmp/kobe-title.json",
+        readFile: async () => "not json",
         spawn: async () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
       }),
     ).resolves.toBeNull()
