@@ -41,12 +41,14 @@ import {
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
+import { claudeTitleGenerator } from "./claude-code-local/title-generator.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
+import { type EngineTitleGenerator, NOOP_TITLE_GENERATOR } from "./title-generator.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -110,6 +112,8 @@ export interface EngineRegistryEntry {
    * whose `supportsCompletionMarkers()` is false.
    */
   readonly createTurnDetector: () => EngineTurnDetector
+  /** Optional AI task-title generator. No-op for unsupported engines. */
+  readonly titleGenerator: EngineTitleGenerator
   /**
    * Model catalog + permission modes + identity (settings, pickers).
    * Undefined for engines without a kobe-known catalog (copilot, custom).
@@ -183,6 +187,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     detectAccount: (deps) => detectClaudeAccount(deps),
     createHookAdapter: () => new ClaudeHookAdapter(),
     createTurnDetector: () => new ClaudeTurnDetector(),
+    titleGenerator: claudeTitleGenerator,
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
@@ -200,6 +205,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new CodexHookAdapter(),
     createTurnDetector: () => new CodexTurnDetector(),
+    titleGenerator: NOOP_TITLE_GENERATOR,
     capabilities: codexCapabilities,
     identity: codexIdentity,
   },
@@ -213,6 +219,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createHookAdapter: () => new NoopHookAdapter("copilot"),
     // Copilot persists no turn-completion marker kobe can read yet.
     createTurnDetector: () => new UnknownTurnDetector("copilot"),
+    titleGenerator: NOOP_TITLE_GENERATOR,
   },
 }
 
@@ -230,6 +237,7 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
     }),
     createHookAdapter: () => new NoopHookAdapter(vendor),
     createTurnDetector: () => new UnknownTurnDetector(vendor),
+    titleGenerator: NOOP_TITLE_GENERATOR,
   }
 }
 

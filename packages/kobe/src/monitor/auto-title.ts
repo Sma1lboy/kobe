@@ -26,23 +26,59 @@ import type { Message } from "@/types/engine"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
+const MAX_TITLE_INPUT_CHARS = 1000
 
-/** First user message's text, truncated to a title, or `""` if none yet. */
-function titleFromMessages(messages: Message[]): string {
-  const firstUser = messages.find((m) => m.role === "user")
-  if (!firstUser) return ""
-  const text = firstUser.blocks
+export interface TaskTitleInput {
+  readonly text: string
+  readonly fallbackTitle: string
+}
+
+function textBlocks(message: Message): string {
+  return message.blocks
     .filter((b): b is { type: "text"; text: string } => b.type === "text")
     .map((b) => b.text)
     .join(" ")
-  const title = deriveTitleFromPrompt(text)
+}
+
+function copyString(value: string): string {
+  return value.length > 0 ? Buffer.from(value, "utf8").toString("utf8") : value
+}
+
+function fallbackTitleFromPrompt(prompt: string): string {
+  const collapsed = prompt.replace(/\s+/g, " ").trim()
+  if (!collapsed) return ""
+  // First sentence is usually the task intent; details after it are often
+  // reproduction notes or constraints that make poor sidebar labels.
+  const firstSentence = /^(.*?[.!?])\s/.exec(collapsed)?.[1] ?? collapsed
+  return deriveTitleFromPrompt(firstSentence)
+}
+
+/** Title-generation input from messages, or `null` if no user text exists yet. */
+function titleInputFromMessages(messages: Message[]): TaskTitleInput | null {
+  const firstUser = messages.find((m) => m.role === "user")
+  if (!firstUser) return null
+  const firstUserText = textBlocks(firstUser)
+  const fallbackTitle = fallbackTitleFromPrompt(firstUserText)
+  if (!fallbackTitle) return null
+
+  const text = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map(textBlocks)
+    .filter(Boolean)
+    .join("\n")
+  const capped = text.length > MAX_TITLE_INPUT_CHARS ? text.slice(-MAX_TITLE_INPUT_CHARS) : text
   // Force-copy before the title escapes into long-lived state (the task
   // store in the daemon process, via orch.setTitle). `deriveTitleFromPrompt`
   // truncates with `.slice(...)`, and in JSC (Bun) a slice SHARES the parent
   // string's backing buffer — so a 40-char title would otherwise pin the
   // user's entire (possibly pasted-huge) first prompt in memory for the life
   // of the daemon. Buffer round-trip allocates an independent string.
-  return title.length > 0 ? Buffer.from(title, "utf8").toString("utf8") : title
+  return { text: copyString(capped), fallbackTitle: copyString(fallbackTitle) }
+}
+
+/** First user message's fallback title, or `""` if none yet. */
+function titleFromMessages(messages: Message[]): string {
+  return titleInputFromMessages(messages)?.fallbackTitle ?? ""
 }
 
 /**
@@ -55,7 +91,18 @@ export async function deriveTitleFromSession(
   worktree: string,
   vendor: VendorId = DEFAULT_TASK_VENDOR,
 ): Promise<string> {
-  if (!worktree) return ""
+  return (await deriveTitleInputFromSession(worktree, vendor))?.fallbackTitle ?? ""
+}
+
+/**
+ * Bounded text input + deterministic fallback title for AI task naming.
+ * Returns `null` when there is no usable human prompt yet.
+ */
+export async function deriveTitleInputFromSession(
+  worktree: string,
+  vendor: VendorId = DEFAULT_TASK_VENDOR,
+): Promise<TaskTitleInput | null> {
+  if (!worktree) return null
   const { history } = engineEntry(vendor)
   const ids = await history.listSessionIdsForWorktree(worktree)
   // Walk sessions oldest-first (the task's origin conversation comes
@@ -65,10 +112,10 @@ export async function deriveTitleFromSession(
   // give an empty title. Capped so a busy worktree doesn't read dozens
   // of transcripts.
   for (const sessionId of ids.slice(0, MAX_SESSIONS_SCANNED)) {
-    const title = titleFromMessages(await history.readHistory(sessionId))
-    if (title) return title
+    const input = titleInputFromMessages(await history.readHistory(sessionId))
+    if (input) return input
   }
-  return ""
+  return null
 }
 
 /**

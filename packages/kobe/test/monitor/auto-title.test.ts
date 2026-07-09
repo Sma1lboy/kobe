@@ -20,7 +20,11 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { encodeCwd } from "../../src/engine/claude-code-local/history.ts"
-import { deriveTitleFromSession, deriveTitleFromSessionId } from "../../src/monitor/auto-title.ts"
+import {
+  deriveTitleFromSession,
+  deriveTitleFromSessionId,
+  deriveTitleInputFromSession,
+} from "../../src/monitor/auto-title.ts"
 
 const WORKTREE = "/work/tree"
 
@@ -56,6 +60,15 @@ function userLine(sessionId: string, text: string): string {
   })
 }
 
+function assistantLine(sessionId: string, text: string): string {
+  return JSON.stringify({
+    type: "assistant",
+    message: { role: "assistant", content: text },
+    timestamp: "2026-06-09T00:00:01.000Z",
+    sessionId,
+  })
+}
+
 describe("deriveTitleFromSession (claude, through the registry)", () => {
   it("returns the first user prompt of the worktree's session", async () => {
     await writeSession("aaaa-1111", [userLine("aaaa-1111", "Fix the flaky login test")], 1_000)
@@ -87,6 +100,39 @@ describe("deriveTitleFromSession (claude, through the registry)", () => {
 
   it("returns '' when the worktree has no transcripts", async () => {
     await expect(deriveTitleFromSession(WORKTREE, "claude")).resolves.toBe("")
+  })
+
+  it("returns bounded title input plus a first-sentence fallback", async () => {
+    await writeSession(
+      "aaaa-1111",
+      [
+        userLine(
+          "aaaa-1111",
+          "Fix login button. The reproduction details are long and should not all become the fallback.",
+        ),
+        assistantLine("aaaa-1111", "I will inspect the auth form and update the mobile handler."),
+      ],
+      1_000,
+    )
+
+    const input = await deriveTitleInputFromSession(WORKTREE, "claude")
+
+    expect(input?.fallbackTitle).toBe("Fix login button.")
+    expect(input?.text).toContain("Fix login button")
+    expect(input?.text).toContain("inspect the auth form")
+    expect(input?.text.length).toBeLessThanOrEqual(1000)
+  })
+
+  it("tail-caps title input to the latest 1000 characters", async () => {
+    const older = `older-${"a".repeat(1100)}`
+    const recent = `recent-${"b".repeat(80)}`
+    await writeSession("aaaa-1111", [userLine("aaaa-1111", older), assistantLine("aaaa-1111", recent)], 1_000)
+
+    const input = await deriveTitleInputFromSession(WORKTREE, "claude")
+
+    expect(input?.text.length).toBe(1000)
+    expect(input?.text).not.toContain("older-")
+    expect(input?.text).toContain("recent-")
   })
 })
 
