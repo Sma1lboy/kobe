@@ -79,13 +79,18 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
     const added = addSavedRepo(resolve(process.cwd()))
     repos = [added.path]
   }
-  for (const repo of repos) {
-    try {
-      await orchestrator.ensureMainTask(repo)
-    } catch (err) {
-      console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
-    }
-  }
+  // Issue every repo's main-task ensure at once: the daemon transport pipelines
+  // id-correlated requests and the store's saveChain/file-lock serialize the
+  // writes, so N concurrent calls collapse N latency-bound RTTs into ~1 wall
+  // time. Per-repo catch keeps the old log-and-continue semantics — one bad
+  // repo can't reject the whole batch.
+  await Promise.all(
+    repos.map((repo) =>
+      orchestrator.ensureMainTask(repo).catch((err) => {
+        console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
+      }),
+    ),
+  )
   return repos[0] ?? resolve(process.cwd())
 }
 
