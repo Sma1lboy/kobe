@@ -65,6 +65,26 @@ const SUBPROCESS_ONLY_EXCLUSIONS = new Set([
   "packages/kobe/src/cli/pty-host-cmd.ts",
 ])
 
+// tui-react React-integration files (hooks + wiring that import react or
+// @opentui/react at runtime) can only execute under the RENDER track (bun
+// test + @opentui/react's testRender, docs/HARNESS.md) — vitest's node env
+// never imports/runs them, so v8 reports 0% here. This is the .ts analog of
+// excluding .tsx: their coverage is reported to Codecov by the render track,
+// not gated per-file here. Scoped to tui-react/ so a pure-logic file living
+// there (e.g. workspace/keybinding-gates.ts — no react import) stays gated;
+// a VALUE import is the signal, since `import type … from "react"` is erased
+// at compile time and does not block vitest from executing the module.
+const RENDER_VALUE_IMPORT =
+  /^\s*import\s+(?!type\b)[^;]*?\bfrom\s+["'](?:react|@opentui\/react)["']/m
+function isRenderTrackOnly(file) {
+  if (!file.startsWith("packages/kobe/src/tui-react/")) return false
+  try {
+    return RENDER_VALUE_IMPORT.test(readFileSync(file, "utf8"))
+  } catch {
+    return false
+  }
+}
+
 const summaryPath = resolve("packages/kobe/coverage/coverage-summary.json")
 const summary = JSON.parse(readFileSync(summaryPath, "utf8"))
 
@@ -96,6 +116,10 @@ let fail = 0
 for (const file of touched) {
   if (SUBPROCESS_ONLY_EXCLUSIONS.has(file)) {
     console.log(`::notice file=${file}::${file} is subprocess-only (behavior suite spawns the dist CLI) — excluded from the coverage gate.`)
+    continue
+  }
+  if (isRenderTrackOnly(file)) {
+    console.log(`::notice file=${file}::${file} imports react/@opentui/react — render-track-only (the .ts analog of .tsx), covered by test:render, not gated per-file here.`)
     continue
   }
   const entry = byRelative.get(file)
