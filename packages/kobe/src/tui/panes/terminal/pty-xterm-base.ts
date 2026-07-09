@@ -53,6 +53,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   private anchor: IMarker | undefined
   private anchorId = 0
   private _title: string | null = null
+  /** Since when the pty has had zero data subscribers (epoch ms), null
+   * while watched. Fresh instances start "unwatched now" — the mounting
+   * pane subscribes within a tick; a handle that never gets a subscriber
+   * (defensive acquire) should age toward the park sweep, not hide from
+   * it. See `TaskPtyLike.unwatchedSinceMs`. */
+  private _unwatchedSince: number | null = Date.now()
   private _killed = false
   protected cols: number
   protected rows: number
@@ -198,6 +204,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     // loop, once from the prime below).
     this.ensureFreshSnapshot()
     this.listeners.add(cb)
+    this._unwatchedSince = null
     if (this.snapshot.length > 0) {
       try {
         cb(this.snapshot, this.cursor)
@@ -207,7 +214,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     }
     return () => {
       this.listeners.delete(cb)
+      if (this.listeners.size === 0 && this._unwatchedSince === null) this._unwatchedSince = Date.now()
     }
+  }
+
+  unwatchedSinceMs(): number | null {
+    return this._unwatchedSince
   }
 
   resize(cols: number, rows: number): void {

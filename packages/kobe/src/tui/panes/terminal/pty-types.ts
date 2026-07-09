@@ -83,9 +83,17 @@ export interface TaskPtyLike {
    * Drop this handle WITHOUT ending the session, when the backend can
    * persist it (the daemon backend leaves its child running for a later
    * reattach). Backends without persistence omit it — callers fall back
-   * to kill(). App teardown calls this via `registry.detachAll()`.
+   * to kill(). App teardown calls this via `registry.detachAll()`; the
+   * registry's park sweep detaches idle unwatched handles the same way.
    */
   detach?(): void
+  /**
+   * Epoch ms since the last data subscriber left, null while anyone is
+   * subscribed. The park sweep's idle signal (`registry.parkIdle`): a
+   * BACKGROUND tab's PTY has no `onData` subscriber — only the mounted
+   * pane subscribes — so "unwatched for N ms" means "hidden for N ms".
+   */
+  unwatchedSinceMs?(): number | null
 }
 
 export const DEFAULT_COLS = 80
