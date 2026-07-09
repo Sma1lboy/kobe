@@ -38,12 +38,48 @@ import { XtermTaskPty } from "./pty-xterm-base"
  */
 let shared: Promise<KobeDaemonClient> | null = null
 
+/**
+ * Key → live handle, for O(1) inbound routing. The client's `emit()` walks
+ * its whole `pty.data`/`pty.exit` handler Set per frame, so one `on()` per
+ * open tab made every interactive `claude` chunk cost N handler calls +
+ * N key-compares (N-1 pure rejections) on the busiest path. Instead we
+ * install ONE dispatcher per shared client (see `installDispatch`) that
+ * does a single map lookup. Each handle `set`s itself here on open and the
+ * `cleanup()` teardown route (`detach`/`kill`/`park`/socket-close all pass
+ * through it) `delete`s it — so a dead tab never receives a stray chunk.
+ */
+const hostedByKey = new Map<string, HostedTaskPty>()
+
+/** Guards the one-time dispatcher install per client instance. */
+const dispatchInstalled = new WeakSet<KobeDaemonClient>()
+
+/**
+ * Install the single per-frame router on a shared client. Both `pty.data`
+ * and `pty.exit` fan out to exactly one map lookup; unknown keys (a dead
+ * handle's late frame, a key from another process) drop silently — the same
+ * behavior the old per-handle `payload.key === this.taskId` guard gave, but
+ * O(1) instead of O(open-tabs).
+ */
+function installDispatch(client: KobeDaemonClient): void {
+  if (dispatchInstalled.has(client)) return
+  dispatchInstalled.add(client)
+  client.on("pty.data", (frame) => {
+    const payload = frame.payload as PtyDataEventPayload
+    hostedByKey.get(payload.key)?.feedFrame(payload.data)
+  })
+  client.on("pty.exit", (frame) => {
+    const payload = frame.payload as PtyExitEventPayload
+    hostedByKey.get(payload.key)?.remoteGone()
+  })
+}
+
 function getSharedPtyClient(): Promise<KobeDaemonClient> {
   if (shared) return shared
   const p = (async () => {
     const socketPath = await ensurePtyHostReachable()
     const client = new KobeDaemonClient(socketPath)
     await client.connect()
+    installDispatch(client)
     client.onLifecycle("close", () => {
       if (shared === p) shared = null
     })
@@ -77,15 +113,11 @@ export class HostedTaskPty extends XtermTaskPty {
       const client = await getSharedPtyClient()
       if (this.killed) return
       this.client = client
+      // Route inbound frames through the shared O(1) dispatcher (installed
+      // on the client in getSharedPtyClient) instead of a per-handle
+      // `on("pty.data")` that the client would walk for every tab per chunk.
+      hostedByKey.set(this.taskId, this)
       this.unsubs.push(
-        client.on("pty.data", (frame) => {
-          const payload = frame.payload as PtyDataEventPayload
-          if (payload.key === this.taskId) this.feed(Buffer.from(payload.data, "base64"))
-        }),
-        client.on("pty.exit", (frame) => {
-          const payload = frame.payload as PtyExitEventPayload
-          if (payload.key === this.taskId) this.remoteGone()
-        }),
         // Host died / socket dropped: the pane shows its dead-shell
         // banner; the user reopens the tab (or reset) to reattach.
         client.onLifecycle("close", () => this.remoteGone()),
@@ -190,13 +222,29 @@ export class HostedTaskPty extends XtermTaskPty {
     void this.client?.request("pty.resize", { key: this.taskId, cols, rows }).catch(() => {})
   }
 
-  /** The remote child (or the host itself) is gone — dead-shell banner. */
-  private remoteGone(): void {
+  /**
+   * Decode + feed one inbound `pty.data` frame. Public so the module-level
+   * dispatcher (getSharedPtyClient) can route by key; not for outside use.
+   */
+  feedFrame(dataB64: string): void {
+    this.feed(Buffer.from(dataB64, "base64"))
+  }
+
+  /**
+   * The remote child (or the host itself) is gone — dead-shell banner.
+   * Public for the shared dispatcher's `pty.exit` route; also the local
+   * lifecycle-close reaction.
+   */
+  remoteGone(): void {
     this.cleanup()
     this.markDead(false)
   }
 
   private cleanup(): void {
+    // Drop our map entry FIRST so no in-flight frame can reach a torn-down
+    // handle — every teardown route (detach/kill/park/socket-close) lands
+    // here, so this is the single place the registration is undone.
+    if (hostedByKey.get(this.taskId) === this) hostedByKey.delete(this.taskId)
     for (const unsub of this.unsubs.splice(0)) {
       try {
         unsub()
