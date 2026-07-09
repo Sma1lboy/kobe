@@ -1,17 +1,17 @@
-# AI Task Title Implementation Plan
+# Codex Task Title Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace prompt-truncation task titles with a Claude Code-style fallback-plus-async-AI title flow.
+**Goal:** Add a Codex-only fallback-plus-async-AI title flow while leaving other engines on the existing fallback behavior.
 
-**Architecture:** Keep transcript reading in `monitor/auto-title.ts`, add an engine-owned title generator contract on `engine/registry.ts`, and let the daemon auto-title pass coordinate fallback then AI replacement. Manual titles are protected by re-reading the live task title before every async write: fallback only writes over `(new task)`, and AI only writes over the exact fallback this pass produced. Claude gets a real generator through `claude -p --json-schema --no-session-persistence`; Codex gets one through `codex exec --ephemeral`; unsupported engines may return `null` and keep fallback.
+**Architecture:** Keep transcript reading in `monitor/auto-title.ts`, add an engine-owned title generator contract on `engine/registry.ts`, and let the daemon auto-title pass coordinate fallback then AI replacement. Manual titles are protected by re-reading the live task title before every async write: fallback only writes over `(new task)`, and AI only writes over the exact fallback this pass produced. Codex gets a real generator through `codex exec --ephemeral`; Claude, Copilot, custom, and unsupported engines return `null` and keep fallback.
 
 **Tech Stack:** TypeScript, Bun, Vitest, existing engine registry, existing daemon auto-title poller, existing task index store.
 
 ## Global Constraints
 
 - No raw model SDK dependencies; use installed engine CLIs.
-- Neutral layers must not hard-code Claude/Codex behavior; engine-specific title generation lives behind the engine registry.
+- Neutral layers must not hard-code provider behavior; engine-specific title generation lives behind the engine registry.
 - Manual task renames always win.
 - Title generation must be best effort and must not crash the daemon.
 - Tests must inject fake title generators and must not call real model APIs.
@@ -71,7 +71,7 @@ Expected: PASS.
 Add tests proving:
 
 ```ts
-const input = await deriveTitleInputFromSession(WORKTREE, "claude")
+const input = await deriveTitleInputFromSession(WORKTREE, "codex")
 expect(input?.fallbackTitle).toBe("Fix login button.")
 expect(input?.text).toContain("Fix login button")
 expect(input?.text.length).toBeLessThanOrEqual(1000)
@@ -98,14 +98,14 @@ Expected: PASS.
 **Files:**
 - Modify: `packages/kobe/src/engine/registry.ts`
 - Create: `packages/kobe/src/engine/title-generator.ts`
-- Create: `packages/kobe/src/engine/claude-code-local/title-generator.ts`
+- Create: `packages/kobe/src/engine/codex-local/title-generator.ts`
 - Test: `packages/kobe/test/engine/title-generator.test.ts`
 
 **Interfaces:**
 - Produces: `EngineTitleGenerator.generateTitle(input, options?): Promise<string | null>`.
 - Adds: `EngineRegistryEntry.titleGenerator`.
-- Claude implementation builds a `claude -p` argv using `--output-format json`, `--json-schema`, `--no-session-persistence`, and the engine's small fast model.
 - Codex implementation builds a `codex exec` argv using `--ephemeral`, `--ignore-rules`, `--skip-git-repo-check`, read-only sandboxing, and the engine's default model.
+- Non-Codex engines use `NOOP_TITLE_GENERATOR` in this PR.
 
 - [x] **Step 1: Write failing tests**
 
@@ -115,15 +115,15 @@ Add tests for:
 expect(parseGeneratedTitleJson('{"title":"Fix login button"}')).toBe("Fix login button")
 expect(parseGeneratedTitleJson('{"result":"{\\"title\\":\\"Fix login button\\"}"}')).toBe("Fix login button")
 expect(parseGeneratedTitleJson('{"title":""}')).toBeNull()
-expect(buildClaudeTitleCommand("claude-haiku", "desc").argv).toContain("--no-session-persistence")
+expect(buildCodexTitleCommand("gpt-5.3-codex", "desc").argv).toContain("--ephemeral")
 ```
 
 Run: `cd packages/kobe && bunx vitest run test/engine/title-generator.test.ts`
 Expected: FAIL because the modules do not exist.
 
-- [x] **Step 2: Implement parser and Claude generator**
+- [x] **Step 2: Implement parser and Codex generator**
 
-Implement robust JSON parsing, single-line title cleanup, caps, injected spawn deps for tests, Claude/Codex generators, and default `null` generator for custom/unsupported engines.
+Implement robust JSON parsing, single-line title cleanup, caps, injected spawn deps for tests, the Codex generator, and default `null` generator for non-Codex/custom/unsupported engines.
 
 - [x] **Step 3: Verify**
 

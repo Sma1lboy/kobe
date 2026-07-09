@@ -1,8 +1,8 @@
-# AI Task Title Generation
+# Codex Task Title Generation
 
 ## Goal
 
-Replace kobe's current "first user prompt truncated to 40 characters" auto-title with a Claude Code-style AI-generated task title.
+Add Codex-only AI refinement on top of kobe's current "first user prompt truncated to 40 characters" auto-title behavior.
 
 The title should be concise, recognizable in the sidebar, and generated in the background without blocking the engine session. Manual task renames must always win.
 
@@ -12,21 +12,23 @@ Fresh tasks start with `(new task)`. The daemon auto-title poller reads engine t
 
 This is cheap and robust, but poor for pasted briefs, multi-step prompts, and non-English prompts with lots of setup before the actual task.
 
-## Claude Code Pattern To Follow
+## Pattern To Reuse
 
-Claude Code uses a layered strategy:
+The desired product shape is a layered strategy:
 
-- Generate a short session title asynchronously with Haiku.
+- Generate a short session title asynchronously with a small model.
 - Prompt the model for a 3-7 word sentence-case title returned as JSON.
 - Feed a bounded text window, not an unlimited transcript.
 - Use a fast text-derived fallback while AI is unavailable or still running.
 - Distinguish AI titles from user custom titles so user titles are never overwritten.
 
-kobe should copy the product shape, not the exact Anthropic-specific implementation.
+kobe should copy the product shape for Codex tasks in this PR. Claude, Copilot, and custom engines keep the existing fallback-only behavior.
 
 ## Design
 
-Add an engine-owned title generation contract, with a default implementation that can return `null` when the engine cannot generate titles. The daemon auto-title pass remains the coordinator.
+Add an engine-owned title generation contract, with a default implementation that can return `null` when the engine should not generate titles. The daemon auto-title pass remains the coordinator.
+
+Codex is the only engine with a real title generator in this PR. Claude, Copilot, and custom engines use the default no-op generator and therefore keep their fallback title.
 
 Auto-title remains a daemon-coordinated best-effort flow. kobe does not need a new persisted task field for title provenance: each async write re-reads the live task title and only proceeds if the title is still at the value that this pass last wrote.
 
