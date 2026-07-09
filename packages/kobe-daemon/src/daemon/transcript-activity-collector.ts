@@ -103,10 +103,19 @@ export type TranscriptActivityRunner = (
 ) => Promise<TranscriptActivityEntry>
 
 /**
- * The real probe: newest transcript mtime (the engine's fs-only history
- * reader) + the engine-owned latest completion marker. Both are best-effort
- * and FILESYSTEM-only — no tmux, no subprocess. The detector's internal
- * memo skips the JSONL re-parse when the file's mtime hasn't moved.
+ * The real probe: the engine-owned latest completion marker AND the newest
+ * transcript mtime — from ONE directory scan via `detector.latestActivity`.
+ * Before this the probe made TWO independent walks of the same transcript
+ * dir per tick (`latestTranscriptMtime` then `latestCompletion`), each doing
+ * its own readdir (+ stats / a codex date-tree walk). The detector already
+ * stats the newest file while finding the completion, so it surfaces that
+ * mtime for free — one listing per probe.
+ *
+ * Vendors whose detector can't read a transcript store (copilot/custom →
+ * `UnknownTurnDetector`) yield no mtime, so we fall back to the vendor's own
+ * `latestTranscriptMtime` for them (copilot has a real store the detector
+ * doesn't read) — a SINGLE walk, exactly as before for those vendors.
+ * Best-effort and FILESYSTEM-only — no tmux, no subprocess.
  */
 export async function runTranscriptActivity(
   worktreePath: string,
@@ -114,9 +123,11 @@ export async function runTranscriptActivity(
   detector: EngineTurnDetector,
   _signal: AbortSignal,
 ): Promise<TranscriptActivityEntry> {
-  const mtimeMs = await latestTranscriptMtime(vendor, worktreePath)
-  const marker = await detector.latestCompletion(worktreePath)
-  return { mtimeMs, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
+  const { marker, mtimeMs } = await detector.latestActivity(worktreePath)
+  const resolvedMtime = detector.supportsCompletionMarkers()
+    ? mtimeMs
+    : await latestTranscriptMtime(vendor, worktreePath)
+  return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
 }
 
 /**
