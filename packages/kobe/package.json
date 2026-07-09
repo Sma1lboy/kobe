@@ -4,7 +4,7 @@
   "version": "0.7.85",
   "description": "TUI orchestrator for Claude Code (codename)",
   "type": "module",
-  "packageManager": "bun@1.3.13",
+  "packageManager": "bun@1.3.14",
   "bin": {
     "kobe": "dist/cli/index.js"
   },
