@@ -102,6 +102,44 @@ function isVisibleCell(cell: XtermCellLike): boolean {
 }
 
 /**
+ * One reusable scratch cell, shared across every line conversion.
+ *
+ * `@xterm/headless`'s `line.getCell(x)` allocates a fresh cell object on
+ * every call; `getCell(x, cell)` instead loads the data into `cell` and
+ * returns that same reference (xterm's documented "avoid recreating cell
+ * objects" fast path). On the terminal render hot path this fires for
+ * every cell of every converted line, so the no-arg form was the dominant
+ * per-cell allocation.
+ *
+ * There is no public `CellData` constructor in `@xterm/headless` (it
+ * exports only `Terminal`), and `getNullCell()` needs a live buffer this
+ * function never sees. So we seed the scratch lazily from the first
+ * `getCell` call we ever make (a fresh cell obtained without the scratch
+ * arg) and reuse it forever after — a single program-wide allocation
+ * amortized to zero per line.
+ *
+ * Reuse is safe ONLY because nothing here retains a cell reference across
+ * iterations: each pass reads the cell's chars + attributes immediately
+ * (`cellStyle` copies every attribute out into a fresh `RenderStyle`,
+ * `getChars()` extracts the text) and moves on. Stashing the cell object
+ * itself would see it clobbered on the next `getCell`.
+ */
+let scratchCell: XtermCellLike | undefined
+
+function getCellReusing(
+  line: { getCell(index: number, cell?: XtermCellLike): XtermCellLike | undefined },
+  x: number,
+): XtermCellLike | undefined {
+  if (scratchCell === undefined) {
+    // First-ever call: no scratch yet, so this one fresh cell becomes it.
+    const seeded = line.getCell(x)
+    if (seeded) scratchCell = seeded
+    return seeded
+  }
+  return line.getCell(x, scratchCell)
+}
+
+/**
  * Map one xterm buffer line to a list of opentui-ready style runs.
  *
  * This is the direct cell→chunk path: we read xterm's authoritative
@@ -112,7 +150,7 @@ function isVisibleCell(cell: XtermCellLike): boolean {
  * overlay is computed against.
  */
 export function xtermLineToChunks(
-  line: { length: number; getCell(index: number): XtermCellLike | undefined },
+  line: { length: number; getCell(index: number, cell?: XtermCellLike): XtermCellLike | undefined },
   minLast = -1,
 ): Chunk[] {
   // `Math.max` is load-bearing: the `minLast` seed (cursor column) must
@@ -122,7 +160,7 @@ export function xtermLineToChunks(
   // overlay stuck at end-of-text — "cursor doesn't move on space".
   let last = Math.min(line.length - 1, minLast)
   for (let x = 0; x < line.length; x++) {
-    const cell = line.getCell(x)
+    const cell = getCellReusing(line, x)
     if (!cell || cell.getWidth() === 0) continue
     if (isVisibleCell(cell)) last = Math.max(last, x)
   }
@@ -137,7 +175,7 @@ export function xtermLineToChunks(
     buf = ""
   }
   for (let x = 0; x <= last; x++) {
-    const cell = line.getCell(x)
+    const cell = getCellReusing(line, x)
     if (!cell || cell.getWidth() === 0) continue
     const next = cellStyle(cell)
     if (!styleEquals(active, next)) {
