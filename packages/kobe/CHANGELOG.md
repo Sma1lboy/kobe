@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.85
+
+### Patch Changes
+
+- d5cbbd3: Tab titles follow the live process, and `kobe api pty-list` exposes it headlessly.
+
+  The tab strip's naming precedence is now manual rename > live OSC window title > first-prompt auto-title > vendor default — so a claude session's own dynamic title ("✳ …" conversation summary) names its tab while it runs, instead of only surfacing when no auto-title existed. The pty host now tracks each session's last OSC 0/2 title (plain string scan with a cross-chunk carry — still no VT emulation) plus pid and command, `pty.list` reports them, and a new read-group verb `kobe api pty-list` lists hosted sessions without a TUI attached; it never spawns a host (no host → empty `sessions`). Note: a pty host started before this release keeps serving the old `{ key, alive }` shape until it naturally turns over.
+
+- c6d0641: fix: reattached terminal sessions repaint, dead engine tabs resume
+
+  A same-size reattach (TUI restart, park-sweep wake) raised no SIGWINCH, so nothing repainted the ring-buffer replay and the engine's UI came back as a garbled/stale screen until a manual window resize — the hosted backend now wiggles one row and back after a live reattach, tmux's attach behavior. An engine tab whose child died while the TUI was away now resumes its conversation (`--resume <sessionId>`, one attempt) instead of silently degrading to an empty shell.
+
 ## 0.7.84
 
 ### Patch Changes
