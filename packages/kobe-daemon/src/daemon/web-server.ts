@@ -16,13 +16,18 @@ import { handleThemesRequest } from "@/web/themes"
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
-import { type DaemonHandlerContext, createDaemonHandlerRegistry, dispatchDaemonRequest } from "./handlers.ts"
+import {
+  type DaemonHandlerContext,
+  createDaemonHandlerRegistry,
+  dispatchDaemonRequest,
+  shapeDaemonError,
+  webExposedRpcNames,
+} from "./handlers.ts"
 import type { ChannelName, ChannelPayloads, DaemonRequestName, SerializedTask } from "./protocol.ts"
 import { serializeTask } from "./protocol.ts"
 import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
 import { handleIssuesRequest } from "./web-issues-route.ts"
 import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
-import { WEB_RPC_ALLOWSET } from "./web-rpc-allowlist.ts"
 import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./web-session.ts"
 import { settingsPatch, settingsSnapshot } from "./web-settings.ts"
 import { handleWorktreesRequest } from "./web-worktrees-route.ts"
@@ -123,11 +128,38 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
   })
 }
 
+// Exposure policy comes FROM the handler registry (`web: true` per entry) —
+// no separately maintained allowlist to drift. Registry construction is
+// stateless/cheap, so deriving the set once at module load is fine.
+// Re-exported: this module is the web-exposure seam, and `server.ts` (the
+// usual re-export spot) is over the file-size cap.
+export { webExposedRpcNames } from "./handlers.ts"
+const WEB_EXPOSED_RPCS = webExposedRpcNames(createDaemonHandlerRegistry())
+
+/**
+ * Map a thrown error to the HTTP error envelope. The error POLICY (message
+ * wording, name propagation) is {@link shapeDaemonError} — the same shaping
+ * the socket transport puts in its response frames — so the two transports
+ * carry identical fields. Two deliberate HTTP-side differences, both pinned
+ * by tests: the message travels under `error` (the SPA's api-client parses
+ * `error`, not `message` — packages/kobe-web/src/lib/api-client.ts), and a
+ * plain anonymous Error's `name: "Error"` stays off the wire (historical
+ * shape, pinned by kobe-web's bridge-routes test).
+ */
+export function webRpcErrorBody(err: unknown): { error: string; name?: string } {
+  const { message, name } = shapeDaemonError(err)
+  return { error: message, ...(name !== undefined && name !== "Error" ? { name } : {}) }
+}
+
+function webRpcErrorResponse(err: unknown, status: number): Response {
+  return Response.json(webRpcErrorBody(err), { status })
+}
+
 async function rpcResponse(req: Request, link: DaemonWebLink, tearDown: (taskId: string) => void): Promise<Response> {
   try {
     const { name, payload } = (await req.json()) as { name?: DaemonRequestName; payload?: unknown }
     if (!name) return Response.json({ error: "missing rpc name" }, { status: 400 })
-    if (!WEB_RPC_ALLOWSET.has(name)) {
+    if (!WEB_EXPOSED_RPCS.has(name)) {
       return Response.json({ error: `rpc ${name} is not exposed to the web UI` }, { status: 403 })
     }
     const result = await link.request(name, payload)
@@ -138,11 +170,7 @@ async function rpcResponse(req: Request, link: DaemonWebLink, tearDown: (taskId:
     }
     return Response.json({ result })
   } catch (err) {
-    const name = err instanceof Error && err.name !== "Error" ? err.name : undefined
-    return Response.json(
-      { error: err instanceof Error ? err.message : String(err), ...(name ? { name } : {}) },
-      { status: 500 },
-    )
+    return webRpcErrorResponse(err, 500)
   }
 }
 
@@ -156,7 +184,7 @@ async function enginesResponse(): Promise<Response> {
     }))
     return Response.json({ engines: engines.length > 0 ? engines : [{ id: "claude", label: "Claude" }] })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return webRpcErrorResponse(err, 500)
   }
 }
 
@@ -174,7 +202,7 @@ async function sessionResponse(req: Request, link: DaemonWebLink): Promise<Respo
     if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
     return Response.json(await ensureTaskSession(link, taskId))
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return webRpcErrorResponse(err, 500)
   }
 }
 
@@ -188,7 +216,7 @@ async function specResponse(
     if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
     return Response.json(await spec(link, taskId))
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return webRpcErrorResponse(err, 500)
   }
 }
 
@@ -211,7 +239,7 @@ async function quickPromptsPut(req: Request): Promise<Response> {
     if (typeof body.pr === "string") setPersistedString(QUICK_PROMPT_KEYS.pr, body.pr)
     return quickPromptsGet()
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+    return webRpcErrorResponse(err, 400)
   }
 }
 

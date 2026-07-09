@@ -180,6 +180,7 @@ async function listLocalProjects(network: boolean): Promise<WorktreeProject[]> {
 export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "worktree.discoverAdoptable",
+    web: true,
     async handle(payload, ctx) {
       const repo = requireString(payload, "repo")
       const worktrees = await ctx.orch.discoverAdoptableWorktrees(repo)
@@ -188,6 +189,7 @@ export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "worktree.adopt",
+    web: true,
     async handle(payload, ctx) {
       const task = await ctx.orch.adoptWorktree({
         repo: requireString(payload, "repo"),
