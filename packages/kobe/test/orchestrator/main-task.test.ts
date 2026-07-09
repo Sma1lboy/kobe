@@ -41,6 +41,21 @@ afterEach(() => {
 })
 
 describe("ensureMainTask", () => {
+  test("createTask auto-creates the repo's main row (the sidebar PROJECTS entry)", async () => {
+    // Regression: `kobe add` / the new-task dialog on a brand-new repo used
+    // to create only the task — no `kind:"main"` row, so the sidebar never
+    // grew a PROJECTS entry for the repo (the tmux-era boot provisioned
+    // mains; the daemon world must do it on every creation path).
+    const task = await orch.createTask({ repo, title: "t" })
+    const mains = orch.listTasks().filter((t) => t.kind === "main")
+    expect(task.kind).toBe("task")
+    expect(mains).toHaveLength(1)
+    expect(mains[0]?.repo).toBe(repo)
+    // Idempotent: a second create in the same repo adds no second main.
+    await orch.createTask({ repo, title: "t2" })
+    expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(1)
+  })
+
   test("dedupes repo-root and subdirectory inputs to one main task", async () => {
     const subdir = path.join(repo, "packages", "kobe")
     fs.mkdirSync(subdir, { recursive: true })

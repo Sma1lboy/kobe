@@ -222,6 +222,12 @@ export class Orchestrator {
    */
   async createTask(input: CreateTaskInput): Promise<Task> {
     if (!input.repo) throw new Error("createTask: repo is required")
+    // A task whose repo has no `kind:"main"` task is unrenderable state:
+    // the sidebar's PROJECTS rows ARE the main tasks (sidebar/groups.ts),
+    // so a task created for a brand-new repo would float with no project
+    // row. The tmux-era boot ensured mains per saved repo (direct.ts:84);
+    // in the daemon world every creation path guarantees its own project.
+    await this.ensureMainTask(input.repo)
     const title = (input.title ?? PLACEHOLDER_TASK_TITLE).trim() || PLACEHOLDER_TASK_TITLE
     // Leave the branch EMPTY for a lazily-allocated task (unless the caller
     // gave an explicit one): {@link ensureWorktree} derives a unique
@@ -692,6 +698,9 @@ export class Orchestrator {
     }
     const branch = input.branch?.trim() || match.branch
     const title = (input.title ?? basename(match.path)).trim() || PLACEHOLDER_TASK_TITLE
+    // Same guarantee as createTask: an adopted task brings its project's
+    // main task (= the sidebar PROJECTS row) into existence with it.
+    await this.ensureMainTask(input.repo)
     return this.store.create({
       repo: input.repo,
       title,

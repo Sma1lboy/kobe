@@ -84,10 +84,35 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
   } else {
     console.log(`already saved: ${result.path}`)
   }
+  // The sidebar's PROJECTS row IS the repo's `kind:"main"` task — create
+  // it now (idempotent), via the daemon when one runs so a live TUI shows
+  // the project immediately instead of only after a restart.
+  await ensureProjectMainTask(result.path)
   // Fold in the repo's existing git worktrees: scan + adopt the ones not
   // yet linked to a task, most-recently-active first. A plain
   // repo with no extra worktrees imports nothing.
   await adoptAllWorktrees(result.path)
+}
+
+/** Ensure `repo`'s main task exists — over daemon RPC when running (the
+ *  broadcast updates a live TUI's PROJECTS list), else through the
+ *  one-shot local orchestrator. Best-effort: a failure must not block the
+ *  add (worktree adoption below still runs). */
+async function ensureProjectMainTask(repo: string): Promise<void> {
+  const { connectIfRunning } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
+  const client = await connectIfRunning()
+  try {
+    if (client) {
+      await client.request("task.ensureMain", { repo })
+      return
+    }
+    const orch = await openLocalOrchestrator()
+    await orch.ensureMainTask(repo)
+  } catch (err) {
+    console.error(`(skipped project main-task setup: ${err instanceof Error ? err.message : String(err)})`)
+  } finally {
+    client?.close()
+  }
 }
 
 const REMOVE_USAGE =
