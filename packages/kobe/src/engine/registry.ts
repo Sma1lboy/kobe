@@ -45,6 +45,7 @@ import { claudeTitleGenerator } from "./claude-code-local/title-generator.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
+import { codexTitleGenerator } from "./codex-local/title-generator.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
@@ -205,7 +206,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new CodexHookAdapter(),
     createTurnDetector: () => new CodexTurnDetector(),
-    titleGenerator: NOOP_TITLE_GENERATOR,
+    titleGenerator: codexTitleGenerator,
     capabilities: codexCapabilities,
     identity: codexIdentity,
   },

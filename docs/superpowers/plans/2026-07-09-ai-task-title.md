@@ -4,7 +4,7 @@
 
 **Goal:** Replace prompt-truncation task titles with a Claude Code-style fallback-plus-async-AI title flow.
 
-**Architecture:** Keep transcript reading in `monitor/auto-title.ts`, add an engine-owned title generator contract on `engine/registry.ts`, and let the daemon auto-title pass coordinate fallback then AI replacement. Manual titles are protected by re-reading the live task title before every async write: fallback only writes over `(new task)`, and AI only writes over the exact fallback this pass produced. Claude gets a real generator through `claude -p --json-schema --no-session-persistence`; other engines may return `null` and keep fallback.
+**Architecture:** Keep transcript reading in `monitor/auto-title.ts`, add an engine-owned title generator contract on `engine/registry.ts`, and let the daemon auto-title pass coordinate fallback then AI replacement. Manual titles are protected by re-reading the live task title before every async write: fallback only writes over `(new task)`, and AI only writes over the exact fallback this pass produced. Claude gets a real generator through `claude -p --json-schema --no-session-persistence`; Codex gets one through `codex exec --ephemeral`; unsupported engines may return `null` and keep fallback.
 
 **Tech Stack:** TypeScript, Bun, Vitest, existing engine registry, existing daemon auto-title poller, existing task index store.
 
@@ -105,6 +105,7 @@ Expected: PASS.
 - Produces: `EngineTitleGenerator.generateTitle(input, options?): Promise<string | null>`.
 - Adds: `EngineRegistryEntry.titleGenerator`.
 - Claude implementation builds a `claude -p` argv using `--output-format json`, `--json-schema`, `--no-session-persistence`, and the engine's small fast model.
+- Codex implementation builds a `codex exec` argv using `--ephemeral`, `--ignore-rules`, `--skip-git-repo-check`, read-only sandboxing, and the engine's default model.
 
 - [x] **Step 1: Write failing tests**
 
@@ -122,7 +123,7 @@ Expected: FAIL because the modules do not exist.
 
 - [x] **Step 2: Implement parser and Claude generator**
 
-Implement robust JSON parsing, single-line title cleanup, caps, injected spawn deps for tests, and default `null` generator for custom/unsupported engines.
+Implement robust JSON parsing, single-line title cleanup, caps, injected spawn deps for tests, Claude/Codex generators, and default `null` generator for custom/unsupported engines.
 
 - [x] **Step 3: Verify**
 
