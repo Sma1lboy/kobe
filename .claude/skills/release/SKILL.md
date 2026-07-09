@@ -92,7 +92,7 @@ bun run lint
 bun run typecheck
 bun run test            # fast Vitest + unix-socket daemon/bridge suite
 bun run build
-cd packages/kobe && bun run perf:golden   # golden perf doctor (~25s, sandbox pty-host; docs/HARNESS.md §Performance contracts)
+cd packages/kobe && bun run perf:golden   # golden perf doctor (~90s incl. binary compile smoke; docs/HARNESS.md §Performance contracts)
 ```
 
 `perf:golden` ceilings are 2-3× the reference numbers, so a FAIL means a real
