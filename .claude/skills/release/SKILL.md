@@ -85,14 +85,19 @@ applied with the detected bump) so you can verify it later.
 The push-triggered CI gate is typecheck + unit tests + build, and **does not run
 lint** (release.yml comment + RELEASING.md both say so). So run lint locally — a
 lint regression won't block publish on its own, but it'll redden `ci.yml` and rot
-main. Run all four; abort the release on any failure:
+main. Run all five; abort the release on any failure:
 
 ```bash
 bun run lint
 bun run typecheck
 bun run test            # fast Vitest + unix-socket daemon/bridge suite
 bun run build
+cd packages/kobe && bun run perf:golden   # golden perf doctor (~25s, sandbox pty-host; docs/HARNESS.md §Performance contracts)
 ```
+
+`perf:golden` ceilings are 2-3× the reference numbers, so a FAIL means a real
+structural regression (startup, PTY spawn/wake, per-tab memory, park reclaim)
+— treat it like a red test, not jitter; rerun once to confirm before digging.
 
 Do **not** run `bun run test:behavior` as a release gate — it needs tmux + node-pty
 + a real `claude` binary and is intentionally excluded from CI. Only run it if the
