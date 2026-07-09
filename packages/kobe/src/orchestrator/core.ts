@@ -22,35 +22,25 @@
  * actually enters the task.)
  */
 
-import { realpathSync } from "node:fs"
-import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
-import { samePrStatus } from "../monitor/pr-status.ts"
 import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-active.ts"
-import {
-  getRemoteRepoConfig,
-  getSavedRepos,
-  isRemoteRepoKey,
-  removeSavedRepo,
-  resolveRepoRoot,
-} from "../state/repos.ts"
+import { getRemoteRepoConfig, getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
-import type { AdoptableWorktree, WorktreeInfo } from "../types/worktree.ts"
+import type { AdoptableWorktree } from "../types/worktree.ts"
+import { canonPath, normalizeMainRepo, titleFromRepo } from "./core-helpers.ts"
 import {
   CannotDeleteMainTaskError,
   DirtyWorktreeError,
-  IllegalTransitionError,
   TaskNotFoundError,
   WorktreeRemoveFailedError,
 } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
-import { autoBranch } from "./title.ts"
+import { TaskEditor } from "./task-editor.ts"
+import { WorktreeCoordinator } from "./worktree-coordinator.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
-import { worktreePathFor } from "./worktree/paths.ts"
-import { SlugAllocator } from "./worktree/slug-allocator.ts"
 
 /**
  * The on-disk working dir a project key resolves to: the local repo path, or a
@@ -99,36 +89,25 @@ export const PLACEHOLDER_TASK_TITLE = "(new task)"
 export class Orchestrator {
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
-  private readonly slugs: SlugAllocator
+  /** Owns git-worktree side-effects (allocate / materialise / adopt) + their locks. */
+  private readonly worktreeCoordinator: WorktreeCoordinator
+  /** Owns in-place task-field edits (title / branch / vendor / status / …). */
+  private readonly editor: TaskEditor
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
   private readonly activeTaskAcc: Accessor<string | null>
   private readonly setActiveTaskSig: (next: string | null) => void
   private readonly unsubscribeStore: TaskIndexUnsubscribe
-  /**
-   * Per-task lock so concurrent `ensureWorktree` calls don't race. The
-   * resolved value is the created worktree path, so a waiter reads the result
-   * from the shared promise instead of re-fetching the task after the lock —
-   * which would throw {@link TaskNotFoundError} if a concurrent delete landed
-   * in that window even though the worktree was created fine.
-   */
-  private readonly worktreeLocks = new Map<TaskId, Promise<string>>()
   /** Lock for `ensureMainTask` so concurrent calls don't double-create. */
   private readonly mainTaskLocks = new Map<string, Promise<Task>>()
 
   constructor(deps: OrchestratorDeps) {
     this.store = deps.store
     this.worktrees = deps.worktrees
-    this.slugs = new SlugAllocator((repo) =>
-      this.store
-        .list()
-        .filter((t) => t.repo === repo && t.kind !== "main")
-        .map((t) => {
-          const slug = t.worktreePath.match(/([^/\\]+)[/\\]*$/)?.[1] ?? ""
-          return slug
-        })
-        .filter((s) => s.length > 0),
+    this.worktreeCoordinator = new WorktreeCoordinator(this.store, this.worktrees, canonPath, (repo) =>
+      this.ensureMainTask(repo),
     )
+    this.editor = new TaskEditor(this.store, this.worktrees)
     const [tasks, setTasks] = createSignal<Task[]>(this.store.list())
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
@@ -259,7 +238,7 @@ export class Orchestrator {
     // Remember the optional baseRef on a side-map so `ensureWorktree`
     // can use it. Not on the Task itself: base-ref is one-shot input
     // to the worktree create, not durable state.
-    if (input.baseRef) this.pendingBaseRefs.set(task.id, input.baseRef)
+    if (input.baseRef) this.worktreeCoordinator.setPendingBaseRef(task.id, input.baseRef)
     return task
   }
 
@@ -310,233 +289,59 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.kind === "main") return repoWorkingDir(task.repo)
     if (task.worktreePath) return task.worktreePath
-    // A concurrent caller already in flight: await ITS result (the created
-    // path) rather than re-reading the store afterwards. Returning the shared
-    // promise both dedupes the work and is delete-safe — see worktreeLocks.
-    const inflight = this.worktreeLocks.get(task.id)
-    if (inflight) return inflight
-    const work = this.createWorktree(task)
-    this.worktreeLocks.set(task.id, work)
-    try {
-      return await work
-    } finally {
-      this.worktreeLocks.delete(task.id)
-    }
+    // Lazy materialisation + its dedupe/rollback machinery lives in the
+    // coordinator; the short-circuits above (main root, already-materialised)
+    // stay here because they read the task index, not the worktree side.
+    return this.worktreeCoordinator.ensure(task)
   }
 
-  /**
-   * Allocate a slug, create the worktree, persist the path/branch. Self-cleaning
-   * and safe to retry: every partial-failure path rolls back so we never leave
-   * an orphan (a worktree on disk + a committed slug + a task whose
-   * `worktreePath` stayed empty, which would force a manual `rm` on the next
-   * attempt).
-   *
-   * Ordering is load-bearing: the slug is committed ONLY after `store.update`
-   * succeeds. Until then any failure — git error, or the task being deleted out
-   * from under us so the write throws — removes the just-created worktree and
-   * frees the slug. Returns the created path directly (not a store re-read) so
-   * a delete that lands the instant after creation can't turn a success into a
-   * spurious {@link TaskNotFoundError}.
-   */
-  private async createWorktree(task: Task): Promise<string> {
-    const slug = await this.slugs.allocate(task.repo)
-    const branch = task.branch || autoBranch(task.title, task.id)
-    const baseRef = this.pendingBaseRefs.get(task.id)
-    let info: WorktreeInfo
-    try {
-      info = await this.worktrees.createForTask({ repo: task.repo, slug, branch, baseRef })
-    } catch (err) {
-      // Nothing persisted yet — just free the slug for the next attempt.
-      this.slugs.cancel(task.repo, slug)
-      throw err
-    }
-    // The worktree now exists on disk. Persist its path BEFORE committing the
-    // slug; if the write fails (or the task was deleted concurrently, so the
-    // delete flow saw an empty `worktreePath` and skipped cleanup) we must roll
-    // the worktree back ourselves, or it becomes invisible on-disk debris.
-    try {
-      await this.store.update(task.id, { worktreePath: info.path, branch })
-    } catch (err) {
-      await this.rollbackWorktree(info.path)
-      this.slugs.cancel(task.repo, slug)
-      throw err
-    }
-    this.slugs.commit(task.repo, slug)
-    this.pendingBaseRefs.delete(task.id)
-    return info.path
-  }
-
-  /**
-   * Best-effort removal of a worktree we just created but couldn't persist.
-   * `force` because it's a brand-new checkout with no user work to protect, and
-   * a clean rollback matters more than the dirty-guard here. A failure is
-   * logged, not thrown — the caller already has the real (persist) error and we
-   * don't want to mask it.
-   */
-  private async rollbackWorktree(worktreePath: string): Promise<void> {
-    try {
-      await this.worktrees.remove(worktreePath, { force: true })
-    } catch (err) {
-      console.error(`[kobe] ensureWorktree rollback failed for ${worktreePath}:`, err)
-    }
-  }
+  // In-place task-field edits (title / branch / vendor / pinned / archived /
+  // status / PR-status / move / reorder) live in the TaskEditor collaborator;
+  // these are thin delegators so the public interface is unchanged.
 
   /** Rename a task. Empty / whitespace-only titles are rejected. */
   async setTitle(id: TaskId | string, title: string): Promise<void> {
-    const trimmed = title.trim()
-    if (!trimmed) throw new Error("setTitle: title is required (empty or whitespace-only rejected)")
-    const task = this.requireTask(id)
-    if (task.title === trimmed) return
-    await this.store.update(task.id, { title: trimmed })
-    await this.followBranchToTitle(task, trimmed)
+    return this.editor.setTitle(id, title)
   }
 
-  /**
-   * Keep a materialised task's branch in lockstep with its title WHILE the
-   * branch is still the placeholder-derived default (`kobe/new-task-<id>`).
-   * This is what lets a task auto-named from its first prompt also pick up a
-   * meaningful branch instead of staying `kobe/new-task-…`. It fires at most
-   * once: after the first rename the branch no longer matches the placeholder
-   * derivation, so a later title change (or a manual `setBranch`) is never
-   * clobbered. Skipped for `main` (no branch) and for not-yet-materialised
-   * tasks (their branch is derived fresh from the title in {@link ensureWorktree},
-   * so no rename is needed). Best-effort: a git rename failure is logged, not
-   * thrown — the title update already committed and must stand.
-   */
-  private async followBranchToTitle(taskBefore: Task, newTitle: string): Promise<void> {
-    if (taskBefore.kind === "main" || !taskBefore.worktreePath) return
-    if (taskBefore.branch !== autoBranch(PLACEHOLDER_TASK_TITLE, taskBefore.id)) return
-    const nextBranch = autoBranch(newTitle, taskBefore.id)
-    if (nextBranch === taskBefore.branch) return
-    try {
-      await this.setBranch(taskBefore.id, nextBranch)
-    } catch (err) {
-      console.error(`[kobe] follow-branch-to-title failed for ${taskBefore.id}:`, err)
-    }
-  }
-
-  /**
-   * Rename a task's branch. For a materialised worktree this renames
-   * the real git branch (`git branch -m`, which also moves HEAD on the
-   * checked-out worktree so a running session keeps streaming); for a
-   * not-yet-materialised task it just records the name, which
-   * {@link ensureWorktree} then uses instead of the title-derived
-   * default. Rejected for `kind: "main"` (it tracks the repo's own
-   * branch — rename that with git directly, not through kobe).
-   */
+  /** Rename a task's branch (git branch -m for a materialised worktree). Rejected for `main`. */
   async setBranch(id: TaskId | string, branch: string): Promise<void> {
-    const trimmed = branch.trim()
-    if (!trimmed) throw new Error("setBranch: branch is required (empty or whitespace-only rejected)")
-    const task = this.requireTask(id)
-    if (task.kind === "main") {
-      throw new Error("setBranch: a main task tracks the repo's own branch; rename it with git directly")
-    }
-    if (task.branch === trimmed) return
-    if (task.worktreePath) {
-      await this.worktrees.renameBranch(task.worktreePath, task.branch, trimmed)
-    }
-    await this.store.update(task.id, { branch: trimmed })
+    return this.editor.setBranch(id, branch)
   }
 
-  /**
-   * Change a task's engine vendor. Pure metadata — no git / tmux side
-   * effects here. The change takes effect on the task's next enter:
-   * `ensureSession` rebuilds a session whose `@kobe_vendor` tag no
-   * longer matches, so the new tmux pane launches the new engine.
-   */
+  /** Change a task's engine vendor. Pure metadata; takes effect on next enter. */
   async setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
-    const task = this.requireTask(id)
-    if (task.vendor === vendor) return
-    await this.store.update(task.id, { vendor })
+    return this.editor.setVendor(id, vendor)
   }
 
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
-    const task = this.requireTask(id)
-    if (task.kind === "main") return
-    const next = pinned ?? !task.pinned
-    if ((task.pinned ?? false) === next) return
-    await this.store.update(task.id, { pinned: next })
+    return this.editor.setPinned(id, pinned)
   }
 
-  /**
-   * Move a regular task up/down within its visible ordering partition.
-   * Main project rows stay sorted by repo name and are not manually moved.
-   */
+  /** Move a regular task up/down within its visible ordering partition. */
   async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
-    const task = this.requireTask(id)
-    if (task.kind === "main") return
-    const groupIds = this.store
-      .list()
-      .filter(
-        (t) =>
-          (t.kind ?? "task") !== "main" &&
-          t.archived === task.archived &&
-          (t.pinned ?? false) === (task.pinned ?? false),
-      )
-      .map((t) => String(t.id))
-    await this.store.move(task.id, delta, groupIds)
+    return this.editor.moveTask(id, delta)
   }
 
-  /**
-   * Toggle / set the `archived` flag. No-op for `kind: "main"`: a main
-   * task is a saved repo's root, removed by un-saving the repo, not by
-   * archiving — mirrors `deleteTask`'s main-row guard so the sidebar's
-   * `a` chord can't silently archive (and kill the session of) a whole
-   * repo entry from the default cursor row.
-   */
+  /** Toggle / set the `archived` flag. No-op for `kind: "main"`. */
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
-    const task = this.requireTask(id)
-    if (task.kind === "main") return
-    const next = archived ?? !task.archived
-    if (task.archived === next) return
-    await this.store.update(task.id, { archived: next })
+    return this.editor.setArchived(id, archived)
   }
 
-  /**
-   * Batch-assign web-board positions (docs/design/web-kanban.md M3).
-   * Positions are fractional ordering keys consumed ONLY by the web
-   * board's per-status columns; the TUI sidebar never reads them. Main
-   * rows are never board cards, so they're refused like moveTask.
-   * Validation is all-or-nothing: one bad entry fails the whole batch
-   * before anything persists.
-   */
+  /** Batch-assign web-board `position` keys (all-or-nothing validation). Refuses main rows. */
   async reorderTasks(moves: ReadonlyArray<{ readonly taskId: string; readonly position: number }>): Promise<void> {
-    if (moves.length === 0) return
-    for (const move of moves) {
-      const task = this.requireTask(move.taskId)
-      if (task.kind === "main") throw new Error(`cannot reorder a main task: ${move.taskId}`)
-      if (!Number.isFinite(move.position)) throw new Error(`position must be a finite number: ${move.taskId}`)
-    }
-    await this.store.reorder(moves.map((move) => ({ id: move.taskId, position: move.position })))
+    return this.editor.reorderTasks(moves)
   }
 
-  /**
-   * Move a task between status states. The transitions are not
-   * machine-enforced in v0.6 (the user does it from the sidebar) but
-   * we still refuse `done` ↔ `error` flip-flops to surface bad code.
-   */
+  /** Move a task between status states. Refuses `done` ↔ `error` flip-flops. */
   async setStatus(id: TaskId | string, status: TaskStatus): Promise<void> {
-    const task = this.requireTask(id)
-    if (task.status === status) return
-    if ((task.status === "done" && status === "error") || (task.status === "error" && status === "done")) {
-      throw new IllegalTransitionError(task.status, status, task.id)
-    }
-    await this.store.update(task.id, { status })
+    return this.editor.setStatus(id, status)
   }
 
-  /**
-   * Set (or clear, with `null`) a task's PR status — driven by the daemon's
-   * `pr-status-collector`. Persisting it on the Task means the snapshot push
-   * already fans the change to every pane + the web board (no new channel),
-   * and it survives a daemon restart. No-op when nothing the UI renders
-   * changed (the collector also pre-diffs, but guard here too so a redundant
-   * call never churns a write + broadcast).
-   */
+  /** Set (or clear, with `null`) a task's PR status — driven by the daemon's collector. */
   async setPRStatus(id: TaskId | string, prStatus: TaskPRStatus | null): Promise<void> {
-    const task = this.requireTask(id)
-    if (samePrStatus(task.prStatus, prStatus ?? undefined)) return
-    await this.store.update(task.id, { prStatus: prStatus ?? undefined })
+    return this.editor.setPRStatus(id, prStatus)
   }
 
   /**
@@ -581,8 +386,7 @@ export class Orchestrator {
       }
     }
     await this.store.remove(task.id)
-    this.pendingBaseRefs.delete(task.id)
-    this.worktreeLocks.delete(task.id)
+    this.worktreeCoordinator.forget(task.id)
   }
 
   /**
@@ -619,8 +423,7 @@ export class Orchestrator {
       if (task.kind !== "main") continue
       if (normalizeMainRepo(task.repo).key !== key) continue
       await this.store.remove(task.id)
-      this.pendingBaseRefs.delete(task.id)
-      this.worktreeLocks.delete(task.id)
+      this.worktreeCoordinator.forget(task.id)
     }
   }
 
@@ -633,14 +436,7 @@ export class Orchestrator {
    */
   async discoverAdoptableWorktrees(repo: string): Promise<readonly AdoptableWorktree[]> {
     if (!repo) throw new Error("discoverAdoptableWorktrees: repo is required")
-    const all = await this.worktrees.listAll(repo)
-    const linked = new Set(
-      this.store
-        .list()
-        .filter((t) => t.worktreePath)
-        .map((t) => canonPath(t.worktreePath)),
-    )
-    return all.filter((wt) => !linked.has(canonPath(wt.path)))
+    return this.worktreeCoordinator.discoverAdoptable(repo)
   }
 
   /**
@@ -648,7 +444,8 @@ export class Orchestrator {
    * already exists on disk, so we record the task with its real path +
    * branch directly — `ensureWorktree` then short-circuits (non-empty
    * `worktreePath`) and never touches the filesystem. Validates the path
-   * is a real worktree of `repo` and isn't already a task.
+   * is a real worktree of `repo` and isn't already a task. The dedupe lock +
+   * validation + main-task provisioning live in the coordinator.
    */
   async adoptWorktree(input: {
     readonly repo: string
@@ -666,100 +463,15 @@ export class Orchestrator {
   }): Promise<Task> {
     if (!input.repo) throw new Error("adoptWorktree: repo is required")
     if (!input.worktreePath) throw new Error("adoptWorktree: worktreePath is required")
-    const target = canonPath(input.worktreePath)
-    // Serialize concurrent adopts of the SAME worktree path. Without this, two
-    // WorktreeCreate hooks firing for one path could both pass the "already a
-    // task?" check (it awaits `listAll` before `create`) and create duplicate
-    // tasks. The lock dedupes: the second caller awaits the first's result.
-    const inflight = this.adoptLocks.get(target)
-    if (inflight) return inflight
-    const work = this.adoptWorktreeLocked(input, target)
-    this.adoptLocks.set(target, work)
-    try {
-      return await work
-    } finally {
-      this.adoptLocks.delete(target)
-    }
-  }
-
-  private async adoptWorktreeLocked(
-    input: {
-      readonly repo: string
-      readonly worktreePath: string
-      readonly branch?: string
-      readonly vendor?: VendorId
-      readonly title?: string
-      readonly ifExists?: "error" | "return"
-    },
-    target: string,
-  ): Promise<Task> {
-    const existing = this.store.list().find((t) => t.worktreePath && canonPath(t.worktreePath) === target)
-    if (existing) {
-      if (input.ifExists === "return") return existing
-      throw new Error(`adoptWorktree: ${input.worktreePath} is already adopted as a task`)
-    }
-    const candidates = await this.worktrees.listAll(input.repo)
-    const match = candidates.find((wt) => canonPath(wt.path) === target)
-    if (!match) {
-      throw new Error(
-        `adoptWorktree: ${input.worktreePath} is not an adoptable git worktree of ${input.repo} (unknown, detached, or the main checkout)`,
-      )
-    }
-    const branch = input.branch?.trim() || match.branch
-    const title = (input.title ?? basename(match.path)).trim() || PLACEHOLDER_TASK_TITLE
-    // Same guarantee as createTask: an adopted task brings its project's
-    // main task (= the sidebar PROJECTS row) into existence with it.
-    await this.ensureMainTask(input.repo)
-    return this.store.create({
-      repo: input.repo,
-      title,
-      branch,
-      worktreePath: match.path,
-      status: "backlog",
-      kind: "task",
-      vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
-    })
+    return this.worktreeCoordinator.adopt(input)
   }
 
   // --- internals ---
-
-  /** Optional base-ref per task — consumed once by `ensureWorktree`. */
-  private readonly pendingBaseRefs = new Map<TaskId, string>()
-
-  /** In-flight `adoptWorktree` per canonical worktree path — dedupes concurrent adopts. */
-  private readonly adoptLocks = new Map<string, Promise<Task>>()
 
   private requireTask(id: TaskId | string): Task {
     const task = this.store.get(id)
     if (!task) throw new TaskNotFoundError(String(id))
     return task
-  }
-}
-
-function titleFromRepo(repo: string): string {
-  const segs = repo.split(/[/\\]/).filter(Boolean)
-  return segs.length > 0 ? (segs[segs.length - 1] ?? repo) : repo
-}
-
-function normalizeMainRepo(repo: string): { repo: string; key: string } {
-  const normalized = resolveRepoRoot(repo)
-  return {
-    repo: normalized,
-    key: isRemoteRepoKey(normalized) ? normalized : canonPath(normalized),
-  }
-}
-
-/**
- * Resolve symlinks so two strings naming the same node compare equal
- * (macOS `/var` → `/private/var`). Falls back to `resolve` when the path
- * doesn't exist. Used to de-dupe discovered worktrees against task paths,
- * which may be stored in different (caller vs git) forms.
- */
-function canonPath(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return resolve(p)
   }
 }
 
