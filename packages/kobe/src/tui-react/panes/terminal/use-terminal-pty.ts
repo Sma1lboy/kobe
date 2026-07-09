@@ -30,7 +30,9 @@ export interface UseTerminalPtyOpts {
   /** Read at acquire/reset time via a ref — see file header. */
   command: readonly string[] | undefined
   resetToken?: number
-  onExit?: () => void
+  /** `deadOnAttach`: the exit was discovered on reattach (engine died
+   *  while the TUI was away), not observed live — see `TaskPtyLike`. */
+  onExit?: (info?: { deadOnAttach?: boolean }) => void
   registry: PtyRegistry
   bodyGeometry: { cols: number; rows: number } | null
   /** Fires whenever a (re)acquire lands a fresh PTY — the pane resets its scrollback view. */
@@ -120,12 +122,12 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     if (killed) {
       // Already dead by the time we mounted — fire onExit now, there's no
       // live handle to attach a listener to.
-      onExitRef.current?.()
+      onExitRef.current?.({ deadOnAttach: pty.deadOnAttach === true })
       return
     }
     const unsubscribeExit = pty.onExit(() => {
       setExited(true)
-      onExitRef.current?.()
+      onExitRef.current?.({ deadOnAttach: pty.deadOnAttach === true })
     })
     const unsubscribe = pty.onData((snap, c) => {
       setSnapshot(snap)

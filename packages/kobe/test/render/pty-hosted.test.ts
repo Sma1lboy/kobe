@@ -89,6 +89,63 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     c.kill()
   })
 
+  test("same-size reattach to a live session forces a repaint wiggle (SIGWINCH)", async () => {
+    // A full-screen app repaints only on SIGWINCH; a same-size reattach
+    // used to raise none, leaving the replayed screen stale forever (the
+    // restart / park-wake "UI is gone" bug). The trap stands in for the
+    // app's repaint handler.
+    const cmd = ["/bin/sh", "-c", 'trap "echo REPAINT" WINCH; echo ready; while :; do sleep 0.1; done']
+    const a = new HostedTaskPty({ taskId: "smoke::t3", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => text(a).includes("ready"), "first attach sees output")
+    // Fresh spawn (empty replay) must NOT wiggle — nothing to repaint.
+    expect(text(a).includes("REPAINT")).toBe(false)
+    a.detach()
+
+    const b = new HostedTaskPty({ taskId: "smoke::t3", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => text(b).includes("REPAINT"), "same-size reattach wiggles a SIGWINCH out of the child")
+    expect(b.deadOnAttach).toBe(false)
+    b.kill()
+  })
+
+  test("attaching to an already-exited session flags deadOnAttach", async () => {
+    // Engine died while no TUI was attached — the host keeps the corpse.
+    const a = new HostedTaskPty({
+      taskId: "smoke::t4",
+      cwd: dir,
+      command: ["/bin/sh", "-c", "echo bye"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => a.killed, "self-exited child marks the handle dead")
+    // A LIVE-observed exit is not a corpse attach.
+    expect(a.deadOnAttach).toBe(false)
+
+    // Reattach (fresh TUI): dead session + non-empty replay → corpse.
+    const b = new HostedTaskPty({
+      taskId: "smoke::t4",
+      cwd: dir,
+      command: ["/bin/sh", "-c", "echo bye"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => b.killed, "corpse reattach marks the handle dead")
+    expect(b.deadOnAttach).toBe(true)
+    b.kill()
+
+    // A FAILED fresh spawn (empty replay) is not a corpse either — the
+    // tab layer must degrade, not loop resume attempts on it.
+    const c = new HostedTaskPty({
+      taskId: "smoke::t5",
+      cwd: dir,
+      command: ["/nonexistent-kobe-binary"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => c.killed, "failed spawn marks the handle dead")
+    expect(c.deadOnAttach).toBe(false)
+    c.kill()
+  })
+
   test("kill() on a self-exited session forgets the host record — reopen spawns fresh", async () => {
     // The engine-degrade path: the child exits on its own (claude/codex
     // quit), so the handle is already dead when the registry release()s it.

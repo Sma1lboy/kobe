@@ -94,8 +94,10 @@ export function TerminalSplit(props: {
   splitTree: PersistedSplit | null
   /** Persist a changed layout (null clears back to the unsplit fast path). */
   onSplitChange: (next: PersistedSplit | null) => void
-  /** Tab-level exit behavior; fires only when the LAST leaf exits. */
-  onExit?: () => void
+  /** Tab-level exit behavior; fires only when the LAST leaf exits.
+   *  `info.deadOnAttach` rides through from the unsplit fast path only —
+   *  a split tab's last-leaf exit is always treated as a live exit. */
+  onExit?: (info?: { deadOnAttach?: boolean }) => void
   /** Forwarded to `leaf-1`'s Terminal — the shell-degrade reacquire nudge. */
   resetToken?: number
   focused: boolean

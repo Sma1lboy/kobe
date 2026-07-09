@@ -78,9 +78,11 @@ export type TerminalProps = {
    * Fires once when the PTY reports exit (or is already dead at mount) —
    * `undefined` for the default "leave the dead shell + exit banner up"
    * behavior. Used by `TerminalTabs.tsx` to auto-close command tabs and
-   * to degrade engine tabs to a shell.
+   * to degrade engine tabs to a shell. `info.deadOnAttach` marks an exit
+   * discovered on reattach (engine died while the TUI was away) so the
+   * tab layer can resume instead of degrading.
    */
-  onExit?: () => void
+  onExit?: (info?: { deadOnAttach?: boolean }) => void
   /**
    * Bump this to force a fresh PTY acquire under the SAME `cwd`/`taskId`
    * — for a caller whose underlying command changed without the pty key

@@ -62,6 +62,10 @@ export class HostedTaskPty extends XtermTaskPty {
   private pendingInput: string[] = []
   private pendingResize: { cols: number; rows: number } | null = null
   private unsubs: (() => void)[] = []
+  /** See {@link TaskPtyLike.deadOnAttach} — set when `pty.open` handed us
+   *  a session whose child had already exited (non-empty replay tells a
+   *  corpse apart from a failed fresh spawn). */
+  deadOnAttach = false
 
   constructor(opts: TaskPtyOpts) {
     super(opts)
@@ -105,7 +109,21 @@ export class HostedTaskPty extends XtermTaskPty {
         this.sendResize(cols, rows)
       }
       for (const data of this.pendingInput.splice(0)) this.sendInput(data)
-      if (!res.alive) this.remoteGone()
+      if (!res.alive) {
+        this.deadOnAttach = res.replay.length > 0
+        this.remoteGone()
+      } else if (res.replay.length > 0) {
+        // Reattach to a LIVE session (TUI restart, park-sweep wake): when
+        // our geometry matches the host's, no SIGWINCH ever fires and
+        // nothing tells the app to repaint what the replay painted — a
+        // long session's ring-buffer tail starts mid-stream, so the
+        // replayed screen is garbage until the next full redraw. Wiggle
+        // one row and back to force it (tmux repaints on attach the same
+        // way); a same-size TIOCSWINSZ raises no signal, it must move.
+        // ponytail: a 1-row-tall pane can't wiggle — never real.
+        this.sendResize(this.cols, Math.max(1, this.rows - 1))
+        this.sendResize(this.cols, this.rows)
+      }
     } catch (err) {
       logClientError("pty-hosted", err)
       this.remoteGone()
