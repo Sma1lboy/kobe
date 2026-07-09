@@ -95,7 +95,7 @@ describe("schema drill-ins", () => {
       verbs: Array<{ name: string; summary: string }>
     }
     expect(result.group).toBe("read")
-    expect(result.verbs.map((v) => v.name)).toEqual(["list", "get-task", "collect"])
+    expect(result.verbs.map((v) => v.name)).toEqual(["list", "get-task", "collect", "pty-list"])
     for (const v of result.verbs) expect(v.summary.length).toBeGreaterThan(0)
   })
 
