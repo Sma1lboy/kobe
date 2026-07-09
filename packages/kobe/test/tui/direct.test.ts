@@ -256,6 +256,89 @@ describe("startDirectTmux — ensureRepos", () => {
   })
 })
 
+describe("startDirectTmux — ensureRepos concurrency", () => {
+  // A controllable `ensureMainTask` double: each call parks unresolved and is
+  // settled by hand. `maxInFlight` records peak concurrency, so the serial loop
+  // peaks at 1 while Promise.all peaks at N. `settleAll(failAt)` rejects the one
+  // repo at `failAt` (error-isolation pin) and resolves the rest.
+  function deferredEnsure() {
+    const state = { pending: 0, maxInFlight: 0 } // `pending` == calls issued but not yet settled
+    const settlers: Array<(err?: Error) => void> = []
+    const fn = vi.fn((_repo: string) => {
+      state.maxInFlight = Math.max(state.maxInFlight, ++state.pending)
+      return new Promise((resolve, reject) => {
+        settlers.push((err) => {
+          state.pending--
+          if (err) reject(err)
+          else resolve(undefined)
+        })
+      })
+    })
+    const settleAll = (failAt?: number) =>
+      settlers.forEach((s, i) => s(i === failAt ? new Error("git error") : undefined))
+    return { fn, state, settleAll }
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0)) // drain the queue; every concurrent call has started
+
+  test("all N saved repos are in flight before any response resolves (peak concurrency == N)", async () => {
+    const repos = ["/repo/a", "/repo/b", "/repo/c", "/repo/d"]
+    mocks.getSavedRepos.mockReturnValue(repos)
+    const orch = makeOrch({ tasks: [] })
+    const gate = deferredEnsure()
+    orch.ensureMainTask = gate.fn
+    mocks.RemoteOrchestrator.mockImplementation(() => orch)
+
+    const done = startDirectTmux()
+    await flush()
+    // Concurrent shape: all four requests are in flight at once, none resolved.
+    expect(gate.state.pending).toBe(repos.length)
+    expect(gate.state.maxInFlight).toBe(repos.length)
+
+    gate.settleAll()
+    await done
+    expect(gate.fn).toHaveBeenCalledTimes(repos.length)
+    for (const repo of repos) expect(gate.fn).toHaveBeenCalledWith(repo)
+  })
+
+  test("a single repo peaks at 1 in flight (concurrency is a ceiling, not a floor)", async () => {
+    mocks.getSavedRepos.mockReturnValue(["/only"])
+    const orch = makeOrch({ tasks: [] })
+    const gate = deferredEnsure()
+    orch.ensureMainTask = gate.fn
+    mocks.RemoteOrchestrator.mockImplementation(() => orch)
+
+    const done = startDirectTmux()
+    await flush()
+    expect(gate.state.maxInFlight).toBe(1)
+    gate.settleAll()
+    await done
+  })
+
+  test("one failing repo still lets the others complete and boot proceeds", async () => {
+    const repos = ["/repo/a", "/repo/bad", "/repo/c"]
+    mocks.getSavedRepos.mockReturnValue(repos)
+    const orch = makeOrch({ tasks: [] })
+    const gate = deferredEnsure()
+    orch.ensureMainTask = gate.fn
+    mocks.RemoteOrchestrator.mockImplementation(() => orch)
+
+    const done = startDirectTmux()
+    await flush()
+    expect(gate.state.maxInFlight).toBe(repos.length) // all issued concurrently
+    gate.settleAll(1) // reject the middle repo, resolve the rest
+    await done
+    // The failure is logged, not thrown — Promise.all did not reject.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ensureMainTask failed for /repo/bad"),
+      expect.any(Error),
+    )
+    // Boot still reached the fallback-session attach (no tasks path).
+    expect(mocks.ensureFallbackSession).toHaveBeenCalledTimes(1)
+    expect(process.exitCode).toBeUndefined()
+  })
+})
+
 describe("startDirectTmux — task chosen, full attach flow", () => {
   function chosenTask(over: Partial<Omit<Task, "id">> = {}): Task {
     return task({ id: "t1", worktreePath: "/wt/t1", vendor: "claude", ...over })
