@@ -8,6 +8,10 @@
  * request traffic; these pin RPC names + payloads scripts depend on.
  */
 
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { runAutoTitlePass } from "@sma1lboy/kobe-daemon/daemon/auto-title-poller"
 import { describe, expect, it } from "vitest"
 import {
   API_SCHEMA_VERSION,
@@ -19,6 +23,9 @@ import {
   verbSchema,
 } from "../../src/cli/api-cmd.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
+import { Orchestrator } from "../../src/orchestrator/core.ts"
+import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
+import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 
 /** Records every request; answers from a per-RPC responder table. */
 class FakeClient implements DaemonRpc {
@@ -122,6 +129,46 @@ describe("edit verbs — RPC name + payload", () => {
     const client = new FakeClient({ "task.rename": () => ({}) })
     await invokeVerb("rename", ["--task-id", "t1", "--title", "New"], { client, runtime: stubRuntime() })
     expect(client.requests).toEqual([{ name: "task.rename", payload: { taskId: "t1", title: "New" } }])
+  })
+
+  it("CLI rename wins over an in-flight AI task title", async () => {
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-cli-rename-title-"))
+    const store = new TaskIndexStore({ homeDir: path.join(tmpRoot, "home") })
+    let orch: Orchestrator | undefined
+    try {
+      await store.load()
+      orch = new Orchestrator({ store, worktrees: new GitWorktreeManager() })
+      const task = await orch.createTask({ repo: "/repo" })
+      await store.update(task.id, { worktreePath: "/wt/a" })
+      const client = new FakeClient({
+        "task.rename": async (payload) => {
+          const rename = payload as { readonly taskId: string; readonly title: string }
+          await orch?.setTitle(rename.taskId, rename.title)
+          return {}
+        },
+      })
+
+      const renamed = await runAutoTitlePass(
+        orch,
+        async () => ({ text: "conversation for fallback", fallbackTitle: "Fallback title" }),
+        async () => {
+          await invokeVerb("rename", ["--task-id", task.id, "--title", "CLI title"], {
+            client,
+            runtime: stubRuntime(),
+          })
+          return "AI title"
+        },
+      )
+
+      expect(client.requests).toEqual([{ name: "task.rename", payload: { taskId: task.id, title: "CLI title" } }])
+      expect(renamed.map((r) => ({ title: r.title, source: r.source }))).toEqual([
+        { title: "Fallback title", source: "fallback" },
+      ])
+      expect(orch.getTask(task.id)?.title).toBe("CLI title")
+    } finally {
+      orch?.dispose()
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    }
   })
 
   it("set-branch → task.setBranch", async () => {
