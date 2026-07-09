@@ -14,9 +14,12 @@
  * Known ordering difference (documented, accepted for the migration): Solid
  * registers during component SETUP (parents before children → children end
  * up on top); React registers in mount EFFECTS (children before parents →
- * ancestors end up on top). The only cross-level competitor today is the
- * dialog provider's escape/ctrl+c pair, which gates itself on the dialog
- * stack being non-empty — modal-on-top is the desired behavior anyway.
+ * ancestors end up on top). Consequence: a parent and child sharing a chord
+ * must resolve by GATING, not stack order — the parent's entry disables
+ * itself when the child should win. Cases today: the dialog provider's
+ * escape/ctrl+c pair (gates on the dialog stack being non-empty) and
+ * TerminalTabs' ctrl+w/F2 (gate off while the active tab is split so
+ * TerminalSplit's leaf-level close/rename fire).
  */
 
 import type { KeyEvent, KeyHandler } from "@opentui/core"

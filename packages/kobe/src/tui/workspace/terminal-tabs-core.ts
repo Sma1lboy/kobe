@@ -356,11 +356,15 @@ export function splitLeafNames(
       out.set(leaf.id, leaf.title)
       continue
     }
-    // Engine leaf → first-prompt title (else vendor basename); split shell
-    // leaf → its live foreground-process title, else generic "shell".
-    // Both dedupe by reading order.
+    // Engine leaf → first-prompt title, else its live foreground-process
+    // title (a shell tab's leaf-1 runs zsh and can enter claude/vim — the
+    // static command basename would freeze on "zsh"), else vendor basename;
+    // split shell leaf → live title, else generic "shell". Both dedupe by
+    // reading order.
     const name =
-      leaf.content === null ? engineTitle || basename(leaf.content) : liveTitles?.get(leaf.id) || SHELL_LEAF_NAME
+      leaf.content === null
+        ? engineTitle || liveTitles?.get(leaf.id) || basename(leaf.content)
+        : liveTitles?.get(leaf.id) || SHELL_LEAF_NAME
     const n = (seen.get(name) ?? 0) + 1
     seen.set(name, n)
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)

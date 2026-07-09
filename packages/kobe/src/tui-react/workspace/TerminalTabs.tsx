@@ -51,6 +51,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
+import { leaves } from "../../tui/workspace/split-core"
 import {
   type EngineTab,
   type TabsState,
@@ -418,6 +419,23 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         update(pinSession(addTab(state, preferred), preferred))
       },
       "chat.tab.chooseEngine": requestChooseEngine,
+      "chat.tab.cycle-next": () => update(cycleTab(state, 1)),
+      "chat.tab.cycle-prev": () => update(cycleTab(state, -1)),
+      "chat.fork.new": requestQuickFork,
+    }),
+  }))
+
+  // ctrl+w / F2 share their chords with TerminalSplit's leaf-level close/
+  // rename. In React the keymap stack puts ANCESTORS on top (mount effects
+  // run children-first — see keymap.ts), so these tab-level entries would
+  // always shadow the split ones. Gate them off while the active tab is
+  // actually split (>1 leaf) so the chords fall through the LIFO stack to
+  // the leaf bindings — the Solid-era precedence, restored by gating
+  // instead of ordering.
+  const activeIsSplit = active.splitTree ? leaves(active.splitTree.root).length > 1 : false
+  useBindings(() => ({
+    enabled: props.focused && !activeIsSplit,
+    bindings: bindByIds({
       "chat.tab.close": () => {
         const closing = state.tabs.find((tb) => tb.id === state.activeId)
         const { state: next, closedId } = closeActiveTab(state)
@@ -435,9 +453,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
       },
       "chat.tab.rename": requestRename,
-      "chat.tab.cycle-next": () => update(cycleTab(state, 1)),
-      "chat.tab.cycle-prev": () => update(cycleTab(state, -1)),
-      "chat.fork.new": requestQuickFork,
     }),
   }))
 

@@ -161,4 +161,19 @@ describe("split tree (content-agnostic)", () => {
     const renamed = splitLeafNames(leaves(renameLeaf(s, "leaf-2", "logs").root), ["claude"], null, live)
     expect(renamed.get("leaf-2")).toBe("logs")
   })
+
+  // Why: a SHELL tab's own leaf (leaf-1, null content) runs zsh and can
+  // enter claude/vim — the static command basename froze its corner tag
+  // on "zsh" forever. Live title fills in when there's no engine title;
+  // an engine tab's conversation title still wins.
+  it("splitLeafNames: leaf-1 uses its live title when there is no engine title", () => {
+    const s = splitActive(initialSplit(MAIN), "row", SH) // leaf-1 | shell(leaf-2)
+    const live = new Map([["leaf-1", "claude"]])
+    // Shell tab (no engine title): the live foreground process wins over "zsh".
+    expect(splitLeafNames(leaves(s.root), ["/bin/zsh"], null, live).get("leaf-1")).toBe("claude")
+    // Engine tab: the first-prompt title still outranks the live title.
+    expect(splitLeafNames(leaves(s.root), ["claude"], "fix the resize race", live).get("leaf-1")).toBe(
+      "fix the resize race",
+    )
+  })
 })
