@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
+import { buildRows } from "../../src/tui/panes/sidebar/groups.ts"
 
 describe("Orchestrator active task recency", () => {
   let home: string
@@ -41,6 +42,35 @@ describe("Orchestrator active task recency", () => {
     await orch.setActiveTask(task.id)
 
     expect(orch.getTask(task.id)?.updatedAt).toBe("2026-01-02T00:00:00.000Z")
+  })
+
+  // CORRECTNESS PIN for the perf fix (store.touchRecency): dropping the
+  // fsync'd `store.update(id, {})` from the focus path must NOT drop the
+  // `recent` ordering it fed. After a sequence of setActive calls the sidebar's
+  // `recent` sort must still order tasks most-recently-focused first — the bump
+  // now lives in-cache, but it must still change `updatedAt` that `buildRows`
+  // reads. `active-task`/`lastActive` track ONE id; this pins the full ORDER.
+  it("`recent` sort still orders by focus recency after a sequence of setActive calls", async () => {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"))
+    const a = await orch.createTask({ repo: "/repo", title: "a", branch: "a", vendor: "claude" })
+    const b = await orch.createTask({ repo: "/repo", title: "b", branch: "b", vendor: "claude" })
+    const c = await orch.createTask({ repo: "/repo", title: "c", branch: "c", vendor: "claude" })
+
+    // Focus a, then c, then b — each at a distinct instant so recency is total.
+    vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"))
+    await orch.setActiveTask(a.id)
+    vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"))
+    await orch.setActiveTask(c.id)
+    vi.setSystemTime(new Date("2026-01-01T00:00:03.000Z"))
+    await orch.setActiveTask(b.id)
+
+    const rows = buildRows(orch.listTasks(), "active", "", "recent")
+    // createTask auto-provisions the repo's `kind:"main"` project row
+    // (orchestrator/core.ts) — unfocused noise for this pin, so assert the
+    // RELATIVE recency order of just the three focused tasks.
+    // Most-recently-focused first: b (t=3) > c (t=2) > a (t=1).
+    const focusedOrder = rows.map((r) => r.task.id).filter((id) => id === a.id || id === b.id || id === c.id)
+    expect(focusedOrder).toEqual([b.id, c.id, a.id])
   })
 
   // The `lastActive` contract (state/last-active.ts): whoever focused last

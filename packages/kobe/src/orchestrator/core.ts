@@ -172,9 +172,18 @@ export class Orchestrator {
     const next = id === null ? null : String(id)
     this.setActiveTaskSig(next)
     if (next && this.store.get(next)) {
-      // Global last-writer-wins focus record — see state/last-active.ts.
+      // Global last-writer-wins focus record — see state/last-active.ts. This
+      // eagerly persists the ONE last-focused id, so a daemon/TUI restart
+      // reopens on it regardless of the lazy recency flush below.
       writeLastActiveTaskId(next)
-      await this.store.update(next, {})
+      // Recency bump for the sidebar's `recent` sort ONLY. Deliberately NOT a
+      // `store.update(next, {})`: that empty patch still ran a full fsync'd
+      // read-merge-write on every focus switch (the single most frequent
+      // action) to move `updatedAt`, which the DEFAULT sort never reads.
+      // `touchRecency` bumps `updatedAt` in-cache + notifies listeners (so
+      // `recent` reorders live) but flushes lazily on the next real mutation —
+      // dropping the per-switch fsync'd disk rewrite + full-list broadcast churn.
+      this.store.touchRecency(next)
     }
   }
 

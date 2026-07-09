@@ -445,6 +445,19 @@ describe("daemon handler registry", () => {
         { channel: "active-task", payload: { taskId: null } },
       ])
     })
+
+    // Perf-fix op-count pin (paired with orchestrator/set-active-perf.test.ts):
+    // the store's fsync'd doSave was dropped from the focus path, but the
+    // `active-task` frame the UI needs must STILL publish 1:1 per switch. Over
+    // 10 switches → exactly 10 frames (the win removes disk writes, not frames).
+    it("publishes one active-task frame per switch — 10 switches → 10 frames", async () => {
+      const { ctx, rec } = fakeCtx({ setActiveTask: async () => {} })
+      for (let i = 0; i < 10; i++) {
+        await dispatch("task.setActive", { taskId: `t${i % 5}` }, ctx)
+      }
+      const frames = rec.published.filter((p) => p.channel === "active-task")
+      expect(frames).toHaveLength(10)
+    })
   })
 
   describe("error shaping (one place decides the wire error)", () => {
