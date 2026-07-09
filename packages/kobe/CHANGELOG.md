@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.80
+
+### Patch Changes
+
+- d1ff9ff: Quitting claude/codex inside an engine tab now degrades the tab to a shell again instead of closing it. The hosted PTY backend's `kill()` early-returned once the child had already exited, so the pty host kept the dead session record under the tab's key; the degraded shell's `pty.open` then reattached that corpse (spawn spec ignored, `alive: false`) and died instantly, which routed the exit through the command-tab close path. A kill on an already-dead handle now still tells the host to forget the session, which also un-breaks F5 reset of a dead shell and stops dead session records leaking in the host on tab close.
+- 1f8190a: Fix ctrl+w/F2 not reaching split leaves, and split leaf-1's corner tag freezing on "zsh".
+
+  While a workspace tab was split, ctrl+w and F2 were always captured by the tab-level close/rename bindings (React mounts ancestors on top of the keymap stack, inverting the Solid-era precedence), so a split leaf could never be closed or renamed — on a single tab ctrl+w just toasted "cannot close last tab". The tab-level entries now gate themselves off while the active tab is split. Also, a shell tab's own leaf (leaf-1) now tracks its live foreground-process title, so entering claude/vim from the shell updates the split corner tag instead of freezing on "zsh"; engine tabs keep their conversation title.
+
 ## 0.7.79
 
 ### Patch Changes
