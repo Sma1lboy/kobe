@@ -16,19 +16,35 @@
  * up on top); React registers in mount EFFECTS (children before parents →
  * ancestors end up on top). Consequence: a parent and child sharing a chord
  * must resolve by GATING, not stack order — the parent's entry disables
- * itself when the child should win. Cases today: the dialog provider's
- * escape/ctrl+c pair (gates on the dialog stack being non-empty) and
- * TerminalTabs' ctrl+w/F2 (gate off while the active tab is split so
- * TerminalSplit's leaf-level close/rename fire).
+ * itself when the child should win. Case today: TerminalTabs' ctrl+w/F2
+ * (gate off while the active tab is split so TerminalSplit's leaf-level
+ * close/rename fire). Modal barrier vs dialog body is NOT resolved by
+ * order anymore — it's declared via `ModalScopeContext` + `modalOwner`
+ * below and settled by `insertRegistration`.
  */
 
 import type { KeyEvent, KeyHandler } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { useEffect, useRef } from "react"
-import { type BindingsConfig, type RegisteredBinding, dispatchKeyEvent } from "../../tui/lib/keymap-dispatch"
+import { createContext, useContext, useEffect, useRef } from "react"
+import {
+  type BindingsConfig,
+  type RegisteredBinding,
+  dispatchKeyEvent,
+  insertRegistration,
+} from "../../tui/lib/keymap-dispatch"
 
 export type { Binding, BindingsConfig, RegisteredBinding } from "../../tui/lib/keymap-dispatch"
 export { dispatchKeyEvent } from "../../tui/lib/keymap-dispatch"
+
+/**
+ * Modal-scope context: a provider (the dialog overlay) sets a scope token;
+ * every `useBindings` mounted inside is stamped as a MEMBER of that scope,
+ * and the barrier declares OWNERSHIP via `useBindings`'s `modalOwner`
+ * option. `insertRegistration` (keymap-dispatch.ts) then places the barrier
+ * below its members no matter which effect committed first — the explicit
+ * replacement for the old "sibling order is load-bearing" contract.
+ */
+export const ModalScopeContext = createContext<symbol | null>(null)
 
 let nextId = 1
 const stack: RegisteredBinding[] = []
@@ -73,17 +89,31 @@ function ensureInstalled(renderer: ReturnType<typeof useRenderer>): void {
  * Register a set of bindings for the lifetime of the calling component.
  * The `config` function is re-evaluated on every keypress via a ref, so
  * `enabled` flags computed from the latest render stay correct.
+ *
+ * Modal semantics are declared, not positional: a component inside a
+ * `ModalScopeContext` provider registers as a member of that scope; the
+ * barrier passes `modalOwner` and is slotted below its members by
+ * `insertRegistration`. Both tokens are read at mount (the scope symbol is
+ * stable for the provider's lifetime), matching the mount-once effect.
  */
-export function useBindings(config: () => BindingsConfig): void {
+export function useBindings(config: () => BindingsConfig, opts?: { modalOwner?: symbol }): void {
   const renderer = useRenderer()
   ensureInstalled(renderer)
 
   const configRef = useRef(config)
   configRef.current = config
+  const scope = useContext(ModalScopeContext)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once registration; scope/owner tokens are stable for the component's lifetime.
   useEffect(() => {
-    const reg: RegisteredBinding = { config: () => configRef.current(), id: nextId++ }
-    stack.push(reg)
+    const reg: RegisteredBinding = {
+      config: () => configRef.current(),
+      id: nextId++,
+      modalOwner: opts?.modalOwner,
+      // The owner of a scope is not a member of it — it must sit below.
+      modalMember: opts?.modalOwner === undefined ? (scope ?? undefined) : undefined,
+    }
+    insertRegistration(stack, reg)
     return () => {
       const i = stack.findIndex((r) => r.id === reg.id)
       if (i >= 0) stack.splice(i, 1)

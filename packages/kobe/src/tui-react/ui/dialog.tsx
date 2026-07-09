@@ -19,7 +19,7 @@ import { RGBA, type Renderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { useTheme } from "../context/theme"
-import { useBindings } from "../lib/keymap"
+import { ModalScopeContext, useBindings } from "../lib/keymap"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
@@ -217,22 +217,26 @@ export function DialogProvider(props: { children?: ReactNode }) {
       {props.children}
       <box position="absolute" zIndex={3000}>
         {top ? (
-          <>
-            {/* Sibling ORDER is load-bearing: React commits effects
-                depth-first in tree order, so the barrier registers BEFORE
-                the dialog body's own useBindings — body keys sit above the
-                barrier (reachable), every pane registered earlier sits
-                below it (cut off). */}
+          // Modal precedence is DECLARED, not positional: everything inside
+          // this ModalScopeContext (the dialog body's useBindings) registers
+          // as a member of MODAL_SCOPE; the barrier declares ownership of it
+          // and insertRegistration (keymap-dispatch.ts) slots the barrier
+          // below its members — body keys win, panes registered earlier are
+          // cut off — regardless of effect-commit order.
+          <ModalScopeContext value={MODAL_SCOPE}>
             <ModalBarrier dismissTop={dismissTop} />
             <Dialog onClose={() => value.clear()} size={size}>
               {top.element()}
             </Dialog>
-          </>
+          </ModalScopeContext>
         ) : null}
       </box>
     </ctx.Provider>
   )
 }
+
+/** One process, one dialog overlay → one scope token (module-stable). */
+const MODAL_SCOPE = Symbol("kobe.dialog.modal")
 
 /**
  * Mounted exactly while a dialog is up. Owns the esc/ctrl+c dismiss keys
@@ -241,15 +245,22 @@ export function DialogProvider(props: { children?: ReactNode }) {
  * reaching the panes behind the dialog. Structural fix for the "dialog is
  * open but keys still operate the background" bug class — background
  * bindings no longer rely on their own `dialog.stack.length === 0` gates.
+ *
+ * `modalOwner` (stack position: below the body's member registrations) and
+ * `modal: true` (dispatch cut-off) together are the explicit contract —
+ * see RegisteredBinding in keymap-dispatch.ts.
  */
 function ModalBarrier(props: { dismissTop: () => void }) {
-  useBindings(() => ({
-    modal: true,
-    bindings: [
-      { key: "escape", cmd: props.dismissTop },
-      { key: "ctrl+c", cmd: props.dismissTop },
-    ],
-  }))
+  useBindings(
+    () => ({
+      modal: true,
+      bindings: [
+        { key: "escape", cmd: props.dismissTop },
+        { key: "ctrl+c", cmd: props.dismissTop },
+      ],
+    }),
+    { modalOwner: MODAL_SCOPE },
+  )
   return null
 }
 

@@ -53,6 +53,40 @@ export type BindingsConfig = {
 export type RegisteredBinding = {
   config: () => BindingsConfig
   id: number
+  /**
+   * Modal-scope declaration (static, set at registration — unlike `config`,
+   * never re-read per keypress). Together with {@link insertRegistration}
+   * this makes barrier-vs-body precedence a function of DECLARED DATA
+   * instead of registration (React effect-commit) order:
+   *   - `modalOwner`: this entry IS the modal barrier for that scope token.
+   *     Its `config()` should also return `modal: true` — the owner field
+   *     governs stack POSITION, `config.modal` governs the dispatch cut-off.
+   *   - `modalMember`: this entry belongs INSIDE that scope (a dialog
+   *     body's bindings) and must stay reachable above the barrier.
+   */
+  modalOwner?: symbol
+  modalMember?: symbol
+}
+
+/**
+ * Insert a registration into the live binding stack. Plain entries push
+ * (LIFO, unchanged). A modal OWNER (barrier) is inserted BELOW the lowest
+ * already-registered MEMBER of its scope, so members win over the barrier
+ * and the barrier still cuts off everything older — regardless of whether
+ * React committed the body's effects before or after the barrier's. This
+ * is the explicit contract that used to be an effect-commit-order accident
+ * (see tui-react/ui/dialog.tsx). O(n) only at mount/unmount, never on the
+ * per-keypress dispatch path.
+ */
+export function insertRegistration(stack: RegisteredBinding[], reg: RegisteredBinding): void {
+  if (reg.modalOwner !== undefined) {
+    const firstMember = stack.findIndex((r) => r.modalMember === reg.modalOwner)
+    if (firstMember >= 0) {
+      stack.splice(firstMember, 0, reg)
+      return
+    }
+  }
+  stack.push(reg)
 }
 
 /**
