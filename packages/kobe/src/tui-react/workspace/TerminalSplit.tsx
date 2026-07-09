@@ -216,14 +216,16 @@ export function TerminalSplit(props: {
 
   const leafFocused = (id: string) => props.focused && activeLeaf === id
 
-  // Live foreground-process titles for split-created SHELL leaves (real
-  // terminals track this via the OSC 0/2 window-title escape: "zsh" idle,
-  // "vim"/"htop" once you run one — see `TaskPtyLike.onTitleChange`).
-  // Engine leaves keep their own conversation-title naming (`engineTitle`),
-  // untouched here. Lazy-attach + retry: a leaf's PTY spawns asynchronously
-  // after its Terminal mounts, same contract as `use-turn-polls.ts`'s poll
-  // attach. Ephemeral (not persisted) — a fresh mount re-derives it as soon
-  // as the shell's next title escape lands.
+  // Live foreground-process titles for EVERY leaf (real terminals track
+  // this via the OSC 0/2 window-title escape: "zsh" idle, "vim"/"htop"
+  // once you run one — see `TaskPtyLike.onTitleChange`). leaf-1 is
+  // included: a SHELL tab's own leaf runs zsh and can enter claude/vim,
+  // and its static command basename would freeze on "zsh". Engine leaves
+  // still prefer their conversation title (`engineTitle` wins in
+  // `splitLeafNames`). Lazy-attach + retry: a leaf's PTY spawns
+  // asynchronously after its Terminal mounts, same contract as
+  // `use-turn-polls.ts`'s poll attach. Ephemeral (not persisted) — a fresh
+  // mount re-derives it as soon as the shell's next title escape lands.
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
   const titleSubsRef = useRef(new Map<string, () => void>())
   const [titleTick, setTitleTick] = useState(0)
@@ -235,12 +237,8 @@ export function TerminalSplit(props: {
     void titleTick
     const reg = getDefaultPtyRegistry()
     const titleSubs = titleSubsRef.current
-    const shellLeafIds = new Set(
-      leaves(state.root)
-        .filter((l) => l.content !== null)
-        .map((l) => l.id),
-    )
-    for (const id of shellLeafIds) {
+    const leafIds = new Set(leaves(state.root).map((l) => l.id))
+    for (const id of leafIds) {
       if (titleSubs.has(id)) continue
       const pty = reg.get(splitLeafPtyKey(props.tabKey, id))
       if (!pty) continue
@@ -253,7 +251,7 @@ export function TerminalSplit(props: {
       )
     }
     for (const [id, dispose] of titleSubs) {
-      if (shellLeafIds.has(id)) continue
+      if (leafIds.has(id)) continue
       dispose()
       titleSubs.delete(id)
       setLiveTitles((prev) => {

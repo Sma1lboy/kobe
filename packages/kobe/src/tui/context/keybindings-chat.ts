@@ -281,9 +281,10 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     // Same chord as chat.tab.close, contextual scope: while the tab is
     // SPLIT, ctrl+w closes the active leaf (the innermost thing — VS
-    // Code/iTerm/Warp convention, tmux `prefix x`); TerminalSplit only
-    // enables this entry when split, so unsplit tabs fall through the
-    // LIFO stack to the close-tab binding.
+    // Code/iTerm/Warp convention, tmux `prefix x`). Resolution is mutual
+    // gating (React stacks ancestors on top — see tui-react/lib/keymap.ts):
+    // TerminalSplit enables this entry only when split, and TerminalTabs
+    // disables its close-tab entry while split, so exactly one is live.
     id: "workspace.split.close",
     scope: "workspace",
     keys: ["ctrl+w"],
