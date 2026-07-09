@@ -142,7 +142,23 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     activityMap: transcriptActivity,
   })
 
+  // Boot restore: the daemon replays its `active-task` channel (the
+  // persisted last focus) alongside the task snapshot on connect, but the
+  // frames can land across renders — the snapshot alone would already have
+  // picked the top-of-list fallback below, and the early-return would then
+  // pin it forever. Adopt the FIRST restored focus once, unless the user
+  // has already selected a task themselves; later active-task events (a
+  // sibling TUI switching focus) never yank the local selection.
+  const focusRestoredRef = useRef(false)
+  const userPickedRef = useRef(false)
   useEffect(() => {
+    if (!focusRestoredRef.current && activeTaskId && tasks.some((task) => task.id === activeTaskId)) {
+      focusRestoredRef.current = true
+      if (!userPickedRef.current && selectedId !== activeTaskId) {
+        setSelectedId(activeTaskId)
+        return
+      }
+    }
     if (selectedId && tasks.some((task) => task.id === selectedId)) return
     setSelectedId(firstSelectableTask(tasks, activeTaskId)?.id ?? null)
   }, [tasks, activeTaskId, selectedId])
@@ -163,6 +179,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }, [tasks])
 
   function selectTask(id: string): void {
+    userPickedRef.current = true
     // Already the selected task → skip the daemon round-trip.
     if (selectedId === id) return
     setSelectedId(id)

@@ -293,6 +293,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     )
   })
 
+  // Warm the active-task channel with the orchestrator's restored focus
+  // (seeded from the persisted `lastActive` record — state/last-active.ts).
+  // Without this the channel stays cold until the first `task.setActive`,
+  // so every client connecting to a FRESH daemon replays tasks but no
+  // focus and falls back to "first task in the list" instead of the last
+  // focused one. Publishing null is deliberate — a populated channel with
+  // an explicit "no focus" beats a cold one. Optional-chained because test
+  // doubles stub a partial Orchestrator.
+  bus.publish("active-task", { taskId: orch.activeTaskSignal?.()?.() ?? null })
+
   // Daemon-owned update check (KOB): poll npm once on start + on an interval
   // and publish to the `update` channel, so every `kobe tasks` pane subscribes
   // instead of hitting the registry itself. A failure is logged, not fatal;
