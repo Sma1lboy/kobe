@@ -15,7 +15,6 @@ import { existsSync } from "node:fs"
 import { claudePaneIdStrict, currentSessionName, killSession, runTmux, tmuxSessionName } from "@/tmux/client"
 import { t } from "@/tui/i18n"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import {
   DEFAULT_SETTINGS_SURFACE,
   SETTINGS_SURFACE_KEY,
@@ -35,12 +34,10 @@ import {
 import type { Task } from "../../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { HelpDialog } from "../component/help-dialog"
-import { NewTaskDialog } from "../component/new-task-dialog"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import type { KVContext } from "../context/kv"
 import type { DialogContext } from "../ui/dialog"
-import { DialogConfirm } from "../ui/dialog-confirm"
+import { selectNextAfterDelete, taskDialogAdapters, vendorPrefAdapters } from "../ui/task-dialog-adapters"
 
 /** Deps every action below needs, built once per `TasksShell` render. */
 export interface TasksHostActionsContext {
@@ -313,15 +310,13 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
   return {
     orch: deps.orch,
     tasks: () => deps.tasks(),
-    confirm: async (p) =>
-      (await DialogConfirm.show(deps.dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
-    // Dialogs show IN the Tasks pane without zooming it full-window
-    //: the old `resize-pane -Z` hid the claude / ops / shell
-    // panes for the dialog's lifetime, which felt like the whole layout
-    // "popped out". The dialog overlay already caps to the pane width
-    // (`maxWidth = dimensions().width - 2`), so it renders fine in the
-    // ~22%-wide pane — just narrower — and the other panes stay visible.
-    promptText: (initial, opts) => RenameTaskDialog.show(deps.dialog, initial, opts),
+    // Dialogs show IN the Tasks pane without zooming it full-window: the
+    // dialog overlay caps to the pane width (`maxWidth = dimensions().width
+    // - 2`), so it renders fine in the ~22%-wide pane — just narrower — and
+    // the other panes stay visible. Disk-only vendor persistence (no
+    // in-process kv store), so no onRepoSaved kv mirror is needed.
+    ...taskDialogAdapters(deps.dialog),
+    ...vendorPrefAdapters,
     logger: console,
     logPrefix: "[kobe tasks]",
     notifyError: deps.notifyError,
@@ -332,22 +327,13 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
     switchBeforeKill: true,
     // Publish the shared active-task focus so every surface follows.
     updateActiveTask: true,
-    onTaskDeleted: (taskId, nextTask) => {
-      if (deps.selectedId() !== taskId) return
-      const remaining = deps.tasks()
-      deps.setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
-    },
-    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(deps.dialog, defaultRepo, repos, opts),
+    onTaskDeleted: selectNextAfterDelete(deps),
     // "Spawn a sibling" default: the cursor task's repo (fallback: the
     // first listed task's).
     cursorRepo: () => {
       const list = deps.tasks()
       return (list.find((t) => t.id === deps.selectedId()) ?? list[0])?.repo
     },
-    // This pane uses disk-only persistence (no in-process kv store), so the
-    // atomic disk write is sufficient — no onRepoSaved kv mirror needed.
-    lastVendor: (repo) => resolvePreferredVendor(repo),
-    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
     // Same surface preference as Settings (default chattab): open the
     // new-task flow as a dedicated full-window page in a new tmux tab.
     // The page performs the create/adopt itself and the subscribe pushes

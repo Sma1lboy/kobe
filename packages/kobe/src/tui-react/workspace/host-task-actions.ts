@@ -21,15 +21,12 @@
  */
 
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
 import { archiveTaskFlow, cycleVendorFlow, deleteTaskFlow, renameTaskFlow } from "../../tui/lib/task-actions"
 import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
 import type { Task } from "../../types/task.ts"
 import { BranchPickerDialog } from "../component/branch-picker-dialog"
-import { NewTaskDialog } from "../component/new-task-dialog"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
 import type { DialogContext } from "../ui/dialog"
-import { DialogConfirm } from "../ui/dialog-confirm"
+import { selectNextAfterDelete, taskDialogAdapters, vendorPrefAdapters } from "../ui/task-dialog-adapters"
 
 export type WorkspaceTaskActionDeps = {
   orchestrator: RemoteOrchestrator
@@ -60,22 +57,19 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
   const taskActions: CreateTaskContext = {
     orch: orchestrator,
     tasks: () => tasks(),
-    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
-    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    ...taskDialogAdapters(dialog),
+    ...vendorPrefAdapters,
     logger: console,
     logPrefix: "[kobe workspace]",
     notifyError,
     notifyInfo: deps.notifyInfo,
     updateActiveTask: true,
-    onTaskDeleted: (taskId, nextTask) => {
-      if (deps.selectedId() !== taskId) return
-      const remaining = tasks()
-      deps.setSelectedId(nextTask?.id ?? (remaining.find((task) => !task.archived) ?? remaining[0])?.id ?? null)
-    },
-    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    onTaskDeleted: selectNextAfterDelete({
+      tasks,
+      selectedId: deps.selectedId,
+      setSelectedId: deps.setSelectedId,
+    }),
     cursorRepo: () => deps.selectedTask()?.repo ?? tasks()[0]?.repo,
-    lastVendor: (repo) => resolvePreferredVendor(repo),
-    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
     selectTask: (id) => deps.setSelectedId(id),
     enterTask: (id) => deps.activateTask(id),
   }
