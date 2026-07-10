@@ -8,7 +8,6 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { latestTranscriptMtime } from "@/monitor/activity"
 import {
   capturePaneById,
   newWindow,
@@ -21,9 +20,8 @@ import {
 import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
 import { sessionAttached } from "@/tui/lib/attach-gate"
-import type { VendorId } from "@/types/task"
 import { inheritedEnvPrefix } from "../panes/terminal/launch"
-import { type BadgePollIo, CHAT_TAB_STATE_OPTION, type TurnStatusIo } from "./activity-monitor"
+import { CHAT_TAB_STATE_OPTION, type TurnStatusIo } from "./activity-monitor"
 import { buildPRPrompt } from "./pr-prompt"
 
 export function basename(p: string): string {
@@ -105,14 +103,6 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
       const cmd = `${inheritedEnvPrefix()}${shellQuoteArgv(inv)} layout --session ${shellQuote(session)} --action zen-toggle`
       void runTmux(["run-shell", "-b", cmd])
     },
-  }
-}
-
-/** The real IO set for `startLocalBadgePoll` — attach gate + engine-owned mtime probe. */
-export function badgePollIo(vendor: VendorId, worktree: string): BadgePollIo {
-  return {
-    sessionAttached,
-    latestMtime: () => latestTranscriptMtime(vendor, worktree),
   }
 }
 

@@ -4,9 +4,6 @@
  */
 
 export const en = {
-  badge: {
-    newActivity: "● new",
-  },
   preview: {
     diffVsHead: "diff vs HEAD",
     file: "file",
@@ -16,9 +13,6 @@ export const en = {
 }
 
 export const zh: typeof en = {
-  badge: {
-    newActivity: "● 新动态",
-  },
   preview: {
     diffVsHead: "与 HEAD 对比",
     file: "文件",

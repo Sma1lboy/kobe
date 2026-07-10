@@ -123,7 +123,7 @@ describe("planPaneHeals — stale-only (the upgrade heal)", () => {
 describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)", () => {
   // After an in-place vendor switch the Ops pane keeps its spawn-time
   // `--vendor` flag, so a same-version Ops pane would poll the OLD vendor's
-  // transcript store (dead `● new` badge, wrong tab-bar turn state) unless we
+  // transcript store (wrong tab-bar turn state) unless we
   // force its respawn. The Tasks rail is vendor-agnostic, so it stays
   // version-gated.
   const opts = { currentVersion: "0.8.0", force: false, vendorChanged: true }

@@ -125,8 +125,8 @@ export function worktreeChangesSignalOp(s: ReadSignals): Accessor<WorktreeChange
 /**
  * Daemon-collected transcript facts keyed by worktree path, pushed live on
  * the `transcript.activity` channel (perf — deduplicate per-Ops-pane
- * polling): the newest transcript mtime (the `● new` badge source) + the
- * engine-owned latest-completion marker (the ChatTab "done" chip source).
+ * polling): the newest transcript mtime + the engine-owned
+ * latest-completion marker (the ChatTab "done" chip source).
  * `null` = no daemon-collected data (old daemon, or before `init()`): the
  * Ops pane falls back to local probes. Same whole-map-replace semantics as
  * {@link worktreeChangesSignalOp} (no per-snapshot prune needed).

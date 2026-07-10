@@ -1,23 +1,17 @@
 /**
- * Framework-free poll loops for the Ops pane — the badge fallback poll and
- * the per-window turn-status (capture-pane quiescence) poll, extracted from
- * `tui/ops/host.tsx` so the Solid AND React hosts (issue #15, G3) run the
- * SAME loop bodies verbatim. Only types are imported (erased at runtime);
- * all IO — tmux capture-pane / window-option writes, the transcript mtime
- * probe, the attach gate — is injected (`tui/ops/host-io.ts` builds the
- * real set), which is also what makes these loops unit-testable under
- * vitest with fakes. Cadence math stays in `./activity-poll`.
+ * Framework-free poll loop for the Ops pane — the per-window turn-status
+ * (capture-pane quiescence) poll, extracted from `tui/ops/host.tsx` so the
+ * hosts run the SAME loop body verbatim. Only types are imported (erased at
+ * runtime); all IO — tmux capture-pane / window-option writes, the attach
+ * gate — is injected (`tui/ops/host-io.ts` builds the real set), which is
+ * also what makes the loop unit-testable under vitest with fakes. Cadence
+ * math stays in `./activity-poll`.
  */
 
 import { createHash } from "node:crypto"
 import type { ChatTabTurnState } from "@/engine/turn-detector"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
-import {
-  ACTIVITY_POLL_MIN_MS,
-  TURN_STATUS_POLL_MS,
-  nextActivityPollDelay,
-  nextTurnStatusPollDelay,
-} from "./activity-poll"
+import { TURN_STATUS_POLL_MS, nextTurnStatusPollDelay } from "./activity-poll"
 
 /** Consecutive unchanged capture-pane reads before a completion marker counts as "done". */
 export const STABLE_POLLS_FOR_DONE = 2
@@ -26,78 +20,6 @@ export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 
 export function fingerprint(text: string): string {
   return createHash("sha1").update(text).digest("hex")
-}
-
-/* ─── local fallback badge poll ──────────────────────────────────────── */
-
-export interface BadgePollIo {
-  /** Attach gate — a detached (background) session skips the fs sweep. */
-  readonly sessionAttached: () => Promise<boolean>
-  /** Newest transcript mtime for this task's worktree (`latestTranscriptMtime`). */
-  readonly latestMtime: () => Promise<number>
-}
-
-/** Host-side badge state, shared with the daemon-push effect (see host.tsx). */
-export interface BadgePollHooks {
-  readonly isPrimed: () => boolean
-  /** First read seeds the baseline so only post-mount activity flags. */
-  readonly prime: (mtime: number) => void
-  readonly setLatest: (mtime: number) => void
-}
-
-/**
- * The `● new` badge's LOCAL fallback poll — runs only while there's no
- * daemon-collected `transcript.activity` data. Adaptive backoff: fast while
- * the transcript advances, ramping toward the max while idle (the probe
- * readdir+stats an unboundedly growing dir). Transient read failures are
- * swallowed: the worktree can vanish mid-poll during task deletion, and the
- * pane process has no crash net. Returns the dispose function.
- */
-export function startLocalBadgePoll(io: BadgePollIo, hooks: BadgePollHooks): () => void {
-  let disposed = false
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let delayMs = ACTIVITY_POLL_MIN_MS
-  let idleStreak = 0
-  let lastSeenMtime = 0
-  async function poll(): Promise<void> {
-    // Detached (background) session: skip the readdir+stat sweep entirely —
-    // the badge is invisible. Next tick after re-attach resumes.
-    if (!(await io.sessionAttached())) {
-      if (!disposed) timer = setTimeout(() => void poll(), delayMs)
-      return
-    }
-    try {
-      const mtime = await io.latestMtime()
-      if (disposed) return
-      if (!hooks.isPrimed()) {
-        hooks.prime(mtime)
-        lastSeenMtime = mtime
-      }
-      // Snap back to the fast interval the instant the transcript advances;
-      // otherwise ramp the delay so an idle pane stops stat-churning.
-      if (mtime > lastSeenMtime) {
-        lastSeenMtime = mtime
-        idleStreak = 0
-      } else {
-        idleStreak++
-      }
-      hooks.setLatest(mtime)
-    } catch {
-      // A failed read isn't "activity" — let the idle ramp keep climbing and
-      // the next tick retry (or `disposed` stop us).
-      idleStreak++
-    } finally {
-      if (!disposed) {
-        delayMs = nextActivityPollDelay(delayMs, idleStreak)
-        timer = setTimeout(() => void poll(), delayMs)
-      }
-    }
-  }
-  void poll()
-  return () => {
-    disposed = true
-    if (timer) clearTimeout(timer)
-  }
 }
 
 /* ─── per-window turn-status poll ────────────────────────────────────── */

@@ -135,8 +135,8 @@ export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChanges
 /**
  * One worktree's daemon-collected transcript facts (perf — deduplicate
  * per-Ops-pane polling), from the `transcript.activity` channel: the newest
- * engine-transcript mtime (drives the Ops pane's `● new` badge) plus the
- * engine-owned latest-completion marker (drives the ChatTab "done" chip).
+ * engine-transcript mtime plus the engine-owned latest-completion marker
+ * (drives the ChatTab "done" chip).
  * The per-window tmux quiescence check stays in the Ops pane — this is only
  * the shareable filesystem half.
  */

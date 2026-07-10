@@ -175,7 +175,7 @@ export type PaneHealTarget =
  *     version — the Ops pane bakes its `--vendor` flag at spawn time
  *     (`opsPaneCommand`), so on an in-place engine switch a same-version
  *     Ops pane would otherwise keep polling the OLD vendor's transcript
- *     store (dead `● new` badge + wrong tab-bar turn state). Tasks panes
+ *     store (wrong tab-bar turn state). Tasks panes
  *     are version-gated as usual (the Tasks rail is vendor-agnostic).
  */
 export function planPaneHeals(
