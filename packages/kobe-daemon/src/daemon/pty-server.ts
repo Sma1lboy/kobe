@@ -104,7 +104,11 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
-  await unlink(socketPath).catch(() => {})
+  // Never unlink before listen: an already-running host keeps its socket
+  // alive after unlink, so a second host could bind the same pathname,
+  // overwrite the pidfile, and strand the first host's live sessions.
+  // `ensurePtyHostReachable()` clears only a confirmed-stale socket through
+  // stopDaemonProcess before it spawns us.
 
   const server: Server = createServer((socket) => {
     const client: PtyClientState = { socket, writer: new ClientWriter(socket), buffer: "" }
