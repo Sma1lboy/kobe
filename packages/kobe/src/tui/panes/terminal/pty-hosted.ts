@@ -161,8 +161,11 @@ export class HostedTaskPty extends XtermTaskPty {
       })
       if (this.killed) return
       // Replay BEFORE flushing queued input — the ring buffer is the
-      // session's past; queued keystrokes are its future.
-      if (res.replay.length > 0) this.feed(Buffer.from(res.replay, "base64"))
+      // session's past; queued keystrokes are its future. feedReplay, not
+      // feed: the replayed stream contains the child's PAST terminal
+      // queries, and answering them again from this fresh emulator would
+      // inject stray CPR/DA into the child's stdin.
+      if (res.replay.length > 0) this.feedReplay(Buffer.from(res.replay, "base64"))
       this.opened = true
       if (this.pendingResize) {
         const { cols, rows } = this.pendingResize

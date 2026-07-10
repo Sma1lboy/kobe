@@ -60,6 +60,11 @@ export abstract class XtermTaskPty implements TaskPtyLike {
    * it. See `TaskPtyLike.unwatchedSinceMs`. */
   private _unwatchedSince: number | null = Date.now()
   private _killed = false
+  /** True while a ring-buffer replay is being parsed — see the reply
+   * channel in the constructor. Flips back in the replay write's
+   * completion callback, which xterm fires strictly after that chunk's
+   * parse and before any later `feed` chunk's. */
+  private muteReplies = false
   protected cols: number
   protected rows: number
   private refreshQueued = false
@@ -89,7 +94,13 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     // path whose relative cursor-move + erase-to-EOL redraw landed on
     // the wrong rows, half-erasing its input-box rule.
     this.term.onData((data) => {
-      if (this._killed) return
+      // `muteReplies`: replies triggered while parsing a ring-buffer REPLAY
+      // are answers to queries the child asked in the PAST (it already got
+      // them, from whatever emulator was attached then). Sending fresh
+      // answers now injects unsolicited CPR/DA bytes into the child's
+      // stdin — an interactive claude read them as input and scrambled its
+      // renderer. Live queries still flow.
+      if (this._killed || this.muteReplies) return
       try {
         this.transportWrite(data)
       } catch {
@@ -280,6 +291,19 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   protected feed(data: string | Uint8Array): void {
     if (this._killed) return
     this.term.write(data, () => this.queueRefresh())
+  }
+
+  /** Feed a ring-buffer REPLAY: parsed like live output, but the emulator's
+   * auto-replies are muted for exactly this chunk's parse (see the reply
+   * channel). Live chunks fed after this parse in FIFO order, so the
+   * un-mute callback lands between the replay's parse and theirs. */
+  protected feedReplay(data: string | Uint8Array): void {
+    if (this._killed) return
+    this.muteReplies = true
+    this.term.write(data, () => {
+      this.muteReplies = false
+      this.queueRefresh()
+    })
   }
 
   private queueRefresh(): void {
