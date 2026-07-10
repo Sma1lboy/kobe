@@ -90,6 +90,14 @@ _Avoid_: pty daemon, sidecar (that's kobe-web's Node PTY process).
 A terminal-backend handle whose child lives in the **PTY Host** (`HostedTaskPty`, `src/tui/panes/terminal/pty-hosted.ts`) — the DEFAULT backend. VT emulation stays in the TUI process (`pty-xterm-base.ts`); only raw bytes cross the socket. `kill()` ends the remote child; `detach()` drops just this handle and leaves the child running. The local-child backend (`pty.ts`) and pipe fallback (`pty-pipe.ts`) still exist for non-persistent uses; they cannot detach and are never parked.
 _Avoid_: remote pty (that's the SSH/remote-projects sense).
 
+**Terminal Identity Boundary**:
+The environment boundary between a terminal child and the VT parser it immediately talks to. A child inside the **Workspace Host** talks to kobe's xterm parser, not to an outer iTerm2 or Terminal.app, so every spawn path uses `embeddedTerminalEnv`: advertise embedded-terminal capabilities (`TERM=xterm-256color`, `COLORTERM=truecolor`) but strip outer-emulator identity (`TERM_PROGRAM`, `TERM_PROGRAM_VERSION`). This policy covers **Hosted PTY**, local Bun PTY, pipe fallback, and the web PTY sidecar.
+
+SSH appeared correct because it normally forwards `TERM` but not `TERM_PROGRAM` or `TERM_PROGRAM_VERSION`. Remote Neovim therefore stayed on its xterm-compatible color path. Locally, the contradictory pair `TERM=xterm-256color` plus inherited `TERM_PROGRAM=iTerm.app` made Neovim emit iTerm's short colon RGB form (`38:2:R:G:B`); xterm.js follows the fixed T.416 field positions and interpreted the channels differently, producing the yellow/olive cast. Explicitly forwarding the outer identity over SSH can reproduce the same failure.
+
+The identity at each nested-terminal or multiplexer boundary must describe the immediate parser, never an ancestor emulator. Fix the spawn boundary rather than application-specific configuration or user Neovim state.
+_Avoid_: outer terminal passthrough, Neovim color workaround, terminal config mismatch.
+
 **Focus**:
 The single source of truth for which pane has the keyboard (`src/tui-react/context/focus.tsx`): `PaneId = "sidebar" | "workspace" | "files" | "terminal"`, default `sidebar`. Pane wrappers set it on click; `ctrl+h/j/k/l` jump directly (global `focus.numeric`), F4 cycles forward (`focus.next`), `ctrl+q` returns to the sidebar. Pane-scoped plain-letter bindings gate on it — the boundary rule in [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
 _Avoid_: active pane, selection (that's the sidebar's selected task).
