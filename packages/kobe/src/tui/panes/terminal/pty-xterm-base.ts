@@ -14,6 +14,7 @@
  */
 
 import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
+import { persistedScrollbackRows } from "../../../state/scrollback"
 import {
   type CursorPos,
   DEFAULT_COLS,
@@ -22,7 +23,6 @@ import {
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
-  VISIBLE_SCROLLBACK_MARGIN_ROWS,
 } from "./pty-types"
 import { xtermLineToChunks } from "./xterm-chunks"
 
@@ -43,8 +43,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   private snapshotDirty = false
   /** Frozen-scrollback conversion cache: absolute line id → converted row.
    * A line above `baseY` can never change again (apps can only address the
-   * live grid), so re-converting the full 200-row scrollback margin on
-   * every refresh was ~80% wasted work under streaming. Absolute ids ride
+   * live grid), so re-converting the full scrollback margin on every
+   * refresh was ~80% wasted work under streaming. Absolute ids ride
    * `anchor` — an xterm marker whose `.line` tracks buffer trimming, so an
    * id keeps naming the same physical line across scrollback trim shifts.
    * Wiped on resize (reflow rewrites history) and whenever the anchor dies
@@ -63,17 +63,21 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   protected cols: number
   protected rows: number
   private refreshQueued = false
+  /** Scrollback rows resolved from the persisted preference at construction
+   * (Settings → General → Terminal) — fixed for this PTY's lifetime. */
+  private readonly scrollbackRows: number
 
   constructor(opts: TaskPtyOpts) {
     this.taskId = opts.taskId
     this.cwd = opts.cwd
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
+    this.scrollbackRows = opts.scrollback ?? persistedScrollbackRows()
     this.term = new XtermHeadless({
       allowProposedApi: true,
       cols: this.cols,
       rows: this.rows,
-      scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
+      scrollback: this.scrollbackRows,
     })
 
     // Reply channel: xterm emits responses to the program's terminal
@@ -360,7 +364,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     const cache = this.scrollbackCache
     const rows: TerminalRow[] = []
     const cursorY = active.baseY + active.cursorY
-    const start = Math.max(0, active.length - (this.rows + VISIBLE_SCROLLBACK_MARGIN_ROWS))
+    const start = Math.max(0, active.length - (this.rows + this.scrollbackRows))
     for (let y = start; y < active.length; y++) {
       const frozen = anchorAlive && y < active.baseY
       if (frozen) {

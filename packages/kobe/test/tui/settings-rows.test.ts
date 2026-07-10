@@ -76,6 +76,7 @@ describe("generalRows", () => {
       "editorCustom",
       "worktreeBase",
       "worktreeCustom",
+      "scrollbackRows",
     ])
     // Payload order matches input order, and the two surfaces are ChatTab then Task panel.
     expect(rows.slice(0, 3).map((r) => (r.kind === "theme" ? r.name : "?"))).toEqual(themes)
@@ -86,11 +87,11 @@ describe("generalRows", () => {
     expect(rows.filter((r) => r.kind === "surface").map((r) => r.surface)).toEqual(["chattab", "taskpanel"])
   })
 
-  it("matches the offset formula (themeCount + langCount + 1 + accentCount + 12) for representative sizes", () => {
+  it("matches the offset formula (themeCount + langCount + 1 + accentCount + 13) for representative sizes", () => {
     for (const themeCount of [0, 1, 12, 30]) {
       const themes = Array.from({ length: themeCount }, (_, i) => `theme-${i}`)
       const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
-      expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 12)
+      expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 13)
       // transparent sits after the theme list + the language picker.
       expect(rowIndex(rows, "transparent")).toBe(themeCount + LANG)
       // reduced-motion after the accents, then the split-style pair,
@@ -197,7 +198,7 @@ describe("sectionRows / bodyRowCount", () => {
     // 12 themes, 3 accents, 2 custom engines, daemon attached.
     const themes = Array.from({ length: 12 }, (_, i) => `t${i}`)
     const inp = input({ themeNames: themes, engineList: [...ALL_VENDORS, "aider", "goose"], hasDaemon: true })
-    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 12) // 12 themes + langs + transparent + 3 accents + 12 (incl. reduced-motion + split-style pair)
+    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 13) // 12 themes + langs + transparent + 3 accents + 13 (incl. reduced-motion + split-style pair + scrollback)
     expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)

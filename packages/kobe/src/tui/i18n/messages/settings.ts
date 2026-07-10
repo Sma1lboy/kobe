@@ -73,6 +73,14 @@ export const en = {
     worktreeCustomUnset: "(unset — enter to edit)",
     worktreeBaseTitle: "Custom worktree location (blank = default; $project_dir = project root)",
     worktreeBaseField: "path",
+    terminal: "Terminal",
+    terminalHint:
+      "Scrollback: how many rows of history each embedded terminal keeps (100–100000). Applies to terminals opened after the change.",
+    scrollbackRow: "scrollback: {rows} rows  (enter to edit)",
+    scrollbackTitle: "Terminal scrollback rows (100–100000)",
+    scrollbackField: "rows",
+    scrollbackInvalidTitle: "Not a number",
+    scrollbackInvalidBody: "Scrollback must be a number of rows (e.g. 1000). Keeping the previous setting.",
   },
   engines: {
     title: "Launch command",
@@ -209,6 +217,13 @@ export const zh: typeof en = {
     worktreeCustomUnset: "(未设置 — enter 编辑)",
     worktreeBaseTitle: "自定义工作树位置（留空 = 默认；$project_dir = 项目根目录）",
     worktreeBaseField: "路径",
+    terminal: "终端",
+    terminalHint: "回滚缓冲：每个内嵌终端保留多少行历史（100–100000）。对修改后新打开的终端生效。",
+    scrollbackRow: "回滚行数: {rows} 行  (enter 编辑)",
+    scrollbackTitle: "终端回滚行数（100–100000）",
+    scrollbackField: "行数",
+    scrollbackInvalidTitle: "不是数字",
+    scrollbackInvalidBody: "回滚行数必须是数字（如 1000）。保留原设置。",
   },
   engines: {
     title: "启动命令",

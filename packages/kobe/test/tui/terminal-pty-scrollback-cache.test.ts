@@ -42,9 +42,13 @@ function settle(ms = 80): Promise<void> {
 
 const COLS = 40
 const ROWS = 10
+// Injected explicitly: keeps the trimming scenarios (600 lines >> rows +
+// margin) deterministic regardless of the persisted Settings → Terminal
+// scrollback preference the ctor would otherwise read from state.json.
+const SCROLLBACK = 200
 
 function makePty(): FakeTransportPty {
-  return new FakeTransportPty({ taskId: "t1", cwd: "/wt", cols: COLS, rows: ROWS })
+  return new FakeTransportPty({ taskId: "t1", cwd: "/wt", cols: COLS, rows: ROWS, scrollback: SCROLLBACK })
 }
 
 /** Differential check: cached snapshot vs full rebuild after invalidation. */

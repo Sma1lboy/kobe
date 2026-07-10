@@ -79,7 +79,6 @@ describe("i18n key selection", () => {
       "tasks.empty.noArchived",
     )
   })
-
 })
 
 describe("searchQueryKeystroke", () => {

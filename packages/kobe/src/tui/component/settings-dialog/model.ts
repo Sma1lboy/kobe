@@ -58,6 +58,7 @@ export type SettingsRow =
   | { id: "editor-custom"; kind: "editorCustom" }
   | { id: "worktree-base"; kind: "worktreeBase" }
   | { id: "worktree-custom"; kind: "worktreeCustom" }
+  | { id: "scrollback-rows"; kind: "scrollbackRows" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: "feedback-title"; kind: "feedbackTitle" }
@@ -127,6 +128,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "editor-custom", kind: "editorCustom" },
     { id: "worktree-base", kind: "worktreeBase" },
     { id: "worktree-custom", kind: "worktreeCustom" },
+    { id: "scrollback-rows", kind: "scrollbackRows" },
   ]
 }
 
