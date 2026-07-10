@@ -297,7 +297,8 @@ function printResetUsage(out: Pick<typeof process.stderr, "write">): void {
       "Usage: kobe reset [--hard] [--yes]",
       "",
       "Recover a wedged install: stop the daemon (graceful → SIGTERM → SIGKILL),",
-      "remove its socket + pidfile, and kill all kobe tmux sessions.",
+      "stop the standalone pty host, and kill all kobe tmux sessions.",
+      "This ends background terminals; the next launch starts a fresh host.",
       "Never touches your git worktrees.",
       "",
       "Options:",
@@ -335,7 +336,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   console.log("kobe reset will:")
   console.log("  • stop the kobe daemon (graceful → SIGTERM → SIGKILL)")
   console.log(`  • remove its socket + pidfile (${socketPath})`)
-  console.log("  • stop the pty host — ends every background terminal/engine session")
+  console.log("  • stop the standalone pty host — next launch loads current terminal code")
   console.log(`  • kill all kobe tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`)
   if (hard) {
     const count = taskCount(tasksPath)
@@ -381,7 +382,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     console.log(
       ptyStop.method === "absent"
         ? "  pty host: was not running (cleared any stale socket/pidfile)"
-        : `  pty host: stopped via ${ptyStop.method}${ptyStop.pid ? ` (pid ${ptyStop.pid})` : ""} — background sessions ended`,
+        : `  pty host: stopped via ${ptyStop.method}${ptyStop.pid ? ` (pid ${ptyStop.pid})` : ""} — next launch starts a fresh host`,
     )
   }
 
