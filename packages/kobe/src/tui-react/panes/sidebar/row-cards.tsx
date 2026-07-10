@@ -161,21 +161,19 @@ function RowBody(props: {
   )
 }
 
-export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
+/**
+ * Shared per-card derivation — cursor/selection chrome, `+N −M` counts, and
+ * the framework-free row view — identical between the project and task
+ * cards; only `mainBranch` (project rows poll the repo HEAD) differs.
+ */
+function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
-  const shared = props.shared
-  const task = props.row.task
-  const flatIndex = props.row.flatIndex
-  const isCursor = flatIndex === shared.cursorIndex
+  const task = row.task
+  const isCursor = row.flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
   const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
-  useEffect(() => {
-    // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
-    void shared.branchTick
-    pollCurrentBranch(task.repo)
-  }, [task.repo, shared.branchTick])
   const rowView = withSpinnerFrame(
     buildSidebarRowView({
       task,
@@ -185,22 +183,48 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
       spinnerFrame: 0,
       subtitleBudget: shared.subtitleBudget,
       truncateBranch: truncateBranchLabel,
-      mainBranch: currentBranch(task.repo),
+      mainBranch: opts.mainBranch,
       reducedMotion: themeCtx.reducedMotion,
       // Defer to the live terminal when this task's pane is the one on screen.
       isViewed: isSelected,
     }),
     () => shared.spinnerFrame,
   )
+  return { theme, task, isCursor, isSelected, selection, changes, rowView }
+}
+
+/** One marker-prefixed line of a two-line row card. */
+function RowLine(props: {
+  readonly selection: ReturnType<typeof resolveRowSelectionChrome>
+  readonly children: ReactNode
+}) {
+  return (
+    <box flexDirection="row" gap={0}>
+      <text fg={props.selection.markerColor} wrapMode="none">
+        {props.selection.marker}
+      </text>
+      {props.children}
+    </box>
+  )
+}
+
+export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
+  const shared = props.shared
+  const task = props.row.task
+  useEffect(() => {
+    // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
+    void shared.branchTick
+    pollCurrentBranch(task.repo)
+  }, [task.repo, shared.branchTick])
+  const { theme, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
+    mainBranch: currentBranch(task.repo),
+  })
   const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={0}>
       <RowBody row={props.row} shared={shared}>
-        <box flexDirection="row" gap={0}>
-          <text fg={selection.markerColor} wrapMode="none">
-            {selection.marker}
-          </text>
+        <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.projectGlyph}
@@ -209,57 +233,32 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
               {spacedTitle(rowView.titleText, shared.titleBudget)}
             </text>
           </box>
-        </box>
-        <box flexDirection="row" gap={0}>
-          <text fg={selection.markerColor} wrapMode="none">
-            {selection.marker}
-          </text>
+        </RowLine>
+        <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
             <ChangeStats changes={changes} />
           </box>
-        </box>
+        </RowLine>
       </RowBody>
     </box>
   )
 }
 
 export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
   const t = useT()
   const shared = props.shared
   const task = props.row.task
-  const flatIndex = props.row.flatIndex
-  const isCursor = flatIndex === shared.cursorIndex
-  const isSelected = task.id === shared.selectedId
-  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
-  const changes = useChanges(shared, task)
-  const rowView = withSpinnerFrame(
-    buildSidebarRowView({
-      task,
-      activity: shared.engineState?.get(task.id),
-      job: shared.taskJobs?.get(task.id),
-      live: taskIsLive(task.id, shared.chatRunState),
-      spinnerFrame: 0,
-      subtitleBudget: shared.subtitleBudget,
-      truncateBranch: truncateBranchLabel,
-      mainBranch: "",
-      reducedMotion: themeCtx.reducedMotion,
-      isViewed: isSelected,
-    }),
-    () => shared.spinnerFrame,
-  )
+  const { theme, isCursor, isSelected, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
+    mainBranch: "",
+  })
   const stateColor = toneColor(theme, rowView.tone)
   const chip = prCheckChip(task)
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={1}>
       <RowBody row={props.row} shared={shared}>
-        <box flexDirection="row" gap={0}>
-          <text fg={selection.markerColor} wrapMode="none">
-            {selection.marker}
-          </text>
+        <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.stateGlyph}
@@ -278,11 +277,8 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
               </text>
             ) : null}
           </box>
-        </box>
-        <box flexDirection="row" gap={0}>
-          <text fg={selection.markerColor} wrapMode="none">
-            {selection.marker}
-          </text>
+        </RowLine>
+        <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
             {task.pinned === true ? (
@@ -297,7 +293,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
             ) : null}
             <ChangeStats changes={changes} />
           </box>
-        </box>
+        </RowLine>
       </RowBody>
     </box>
   )
