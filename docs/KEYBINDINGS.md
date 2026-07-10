@@ -331,8 +331,10 @@ carry the tab vocabulary (F2 rename). Costs accepted and documented:
   `ctrl+=` at all (there is no C0 byte for it), same dependency class as the
   `ctrl+h`/`ctrl+j` aliases in `lib/keymap-dispatch.ts`.
 An exited leaf removes itself and its group collapses (tmux behavior); the last leaf's
-exit falls back to the tab-level behavior (engine tab degrades to a shell, command tab
-closes). `ctrl+w` is contextual (owner decision 2026-07-06): while split it closes the
+exit falls back to the tab-level behavior: the tab closes (engines run INSIDE the
+user's shell since 2026-07-10 — exiting the vendor lands on the shell prompt, and only
+the shell's own exit ends the tab; the last remaining tab recycles as a fresh engine).
+`ctrl+w` is contextual (owner decision 2026-07-06): while split it closes the
 ACTIVE LEAF (`workspace.split.close` — the innermost thing, VS Code/iTerm/Warp
 convention, tmux `prefix x`); unsplit, the entry is disabled and the chord falls through
 the LIFO stack to `chat.tab.close`.

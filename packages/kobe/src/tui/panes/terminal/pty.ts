@@ -64,6 +64,7 @@ export class BunTerminalTaskPty extends XtermTaskPty {
       () => this.markDead(false),
     )
     this.proc.unref?.()
+    if (opts.initialInput) this.transportWrite(opts.initialInput)
   }
 
   protected transportWrite(data: string): void {
