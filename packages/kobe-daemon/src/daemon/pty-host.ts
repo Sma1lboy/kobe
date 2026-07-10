@@ -26,6 +26,7 @@
 
 import { StringDecoder } from "node:string_decoder"
 import type { DaemonFrame } from "./protocol.ts"
+import { embeddedTerminalEnv } from "./pty-env.js"
 
 /** Everything `pty.open` needs to spawn a session's child on first open. */
 export interface PtySpawnSpec {
@@ -223,14 +224,13 @@ export class PtyHost {
     try {
       session.proc = Bun.spawn(argv, {
         cwd: spec.cwd,
-        env: {
-          ...process.env,
+        env: embeddedTerminalEnv(process.env, {
           TERM: "xterm-256color",
           COLUMNS: String(spec.cols),
           LINES: String(spec.rows),
           BASH_SILENCE_DEPRECATION_WARNING: "1",
           KOBE_TERMINAL_PTY: "1",
-        },
+        }),
         terminal: {
           cols: spec.cols,
           rows: spec.rows,
