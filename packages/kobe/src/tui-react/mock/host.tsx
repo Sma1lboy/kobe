@@ -1,90 +1,87 @@
 /** @jsxImportSource @opentui/react */
 /**
- * React pilot entry (issue #15) — G1 established the isolated runtime;
- * G2 upgraded this host to mount the full React infrastructure stack
- * (Theme → Focus → Dialog providers + useBindings + i18n) so `bun run
- * dev:mock-react` is an end-to-end proof that the ported context layer
- * renders and dispatches keys. Deliberately NOT wired into the CLI entry
- * or compile graph yet.
+ * `dev:mock-react` — THE general mock scene (owner call 2026-07-09: one
+ * bench, stuff everything in). Composes the real app shape without a
+ * daemon/orchestrator: the real Sidebar against the shared synthetic
+ * fixtures (many projects + mixed-status tasks) next to real TerminalTabs
+ * running throwaway shells, on the full provider stack (theme → focus →
+ * kv → notifications → dialog). New UI surfaces that need a visual bench
+ * get ADDED HERE, not a new dev:mock-* entry — per-pane hosts remain only
+ * where a pane needs bespoke seams (history's injectable reader, etc.).
  *
- * Keys: q quits · tab cycles pane focus · d opens a dialog (esc closes).
+ * Keys: q / ctrl+c quit · tab cycles pane focus · sidebar j/k/enter live ·
+ * terminal tabs ctrl+t/w/]/[ + ctrl+\ / ctrl+= splits live.
  */
 
-import { TextAttributes } from "@opentui/core"
-import { PANE_ORDER, useFocus } from "../context/focus"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { useState } from "react"
+import { seedSidebarTasks } from "../../tui/panes/sidebar/mock-fixtures"
+import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
+import { useFocus } from "../context/focus"
 import { useTheme } from "../context/theme"
-import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { Dialog, useDialog } from "../ui/dialog"
+import { Sidebar } from "../panes/sidebar/Sidebar"
+import { TerminalTabs } from "../workspace/TerminalTabs"
 
-function DemoDialog() {
+const cwd = mkdtempSync(join(tmpdir(), "kobe-mock-react-"))
+
+function MockScene() {
   const { theme } = useTheme()
-  const dialog = useDialog()
-  return (
-    <Dialog size="small" onClose={() => dialog.clear()}>
-      <box paddingLeft={2} paddingRight={2} paddingBottom={1}>
-        <text fg={theme.text} wrapMode="word">
-          React dialog stack works — esc closes.
-        </text>
-      </box>
-    </Dialog>
-  )
-}
-
-function Workbench() {
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
   const focus = useFocus()
-  const dialog = useDialog()
+  const [tasks] = useState(seedSidebarTasks)
+  const [selectedId, setSelectedId] = useState<string | null>(tasks.find((t) => t.kind === "task")?.id ?? null)
 
   useBindings(() => ({
-    enabled: true,
     bindings: [
       { key: "q", cmd: () => process.exit(0) },
       { key: "ctrl+c", cmd: () => process.exit(0) },
       { key: "tab", cmd: () => focus.cycle(1) },
-      { key: "d", cmd: () => dialog.replace(() => <DemoDialog />) },
+      { key: "shift+tab", cmd: () => focus.cycle(-1) },
     ],
   }))
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+    <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
       <box
-        flexDirection="row"
-        gap={1}
-        paddingLeft={1}
-        paddingRight={1}
+        width={SIDEBAR_WIDTH}
         flexShrink={0}
-        backgroundColor={theme.backgroundElement}
+        borderColor={focus.focused === "sidebar" ? theme.focusAccent : theme.border}
+        onMouseUp={() => focus.setFocused("sidebar")}
       >
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
-          REACT
-        </text>
-        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-          kobe infra pilot
-        </text>
-        <box flexGrow={1} />
-        <text fg={theme.textMuted} wrapMode="none">
-          q quit · tab focus · d dialog
-        </text>
+        <Sidebar
+          width={SIDEBAR_WIDTH - 2}
+          tasks={tasks}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          focused={focus.focused === "sidebar"}
+          sortMode="default"
+          headerStatus={{ label: "v0.0.0-mock", emphasize: false }}
+        />
       </box>
-      <box paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="column" flexGrow={1}>
-        <text fg={theme.text} wrapMode="word">
-          {/* i18n runtime proof: a real catalog key through the shared lookup. */}
-          {t("settings.title")} — theme "{themeCtx.selected}", focused pane: {focus.focused}
-        </text>
-        <text fg={theme.textMuted} wrapMode="none">
-          panes: {PANE_ORDER.map((p) => (p === focus.focused ? `[${p}]` : p)).join(" ")}
-        </text>
+      <box
+        flexGrow={1}
+        borderColor={focus.focused !== "sidebar" ? theme.focusAccent : theme.border}
+        onMouseUp={() => focus.setFocused("workspace")}
+      >
+        <TerminalTabs
+          taskId="mock-workspace-task"
+          worktree={cwd}
+          command={["sh", "-c", 'echo MOCK-SCENE-OK "(cwd: $PWD)"; exec sh -i']}
+          vendor="claude"
+          focused={focus.focused !== "sidebar"}
+        />
       </box>
     </box>
   )
 }
 
-// Boot through the real React pane host (G3): shared boot steps, persisted
-// prefs seeding, live ui-prefs subscription, crash boundary, exit backstop —
-// this entry IS the live smoke for that path.
+// Boot through the real React pane host: shared boot steps, persisted prefs
+// seeding, live ui-prefs subscription, crash boundary, exit backstop.
 await bootPaneHost({
-  setup: () => ({ root: () => <Workbench /> }),
+  logContext: "mock-scene",
+  providers: { kv: true, focus: true, notifications: true },
+  setup: () => ({ root: () => <MockScene /> }),
 })

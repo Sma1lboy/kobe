@@ -18,7 +18,29 @@ export function seedSidebarTasks(): readonly Task[] {
     createdAt: ts,
     updatedAt: ts,
   }
+  // Enough sibling projects to overflow the PROJECTS scrollbox — the mock
+  // host is the visual bench for project-list tunes (scrollbar, budgets).
+  const extraProjects: Task[] = [
+    "brand-studio",
+    "foxscreen",
+    "mc-launcher",
+    "agent-deck",
+    "tabby",
+    "sma1lboy.me",
+    "foxychat-server",
+  ].map((name) => ({
+    ...base,
+    repo: `/mock/repos/${name}`,
+    id: toTaskId(`mock-main-${name}`),
+    title: name,
+    branch: "",
+    worktreePath: `/mock/repos/${name}`,
+    kind: "main" as const,
+    status: "backlog" as const,
+    archived: false,
+  }))
   return [
+    ...extraProjects,
     {
       ...base,
       id: toTaskId("mock-main"),
@@ -63,6 +85,30 @@ export function seedSidebarTasks(): readonly Task[] {
       title: "调研 tmux 布局持久化",
       branch: "spike/tmux-layout",
       worktreePath: "/mock/worktrees/tmux-layout",
+      kind: "task",
+      status: "backlog",
+      archived: false,
+      vendor: "codex",
+    },
+    {
+      ...base,
+      repo: "/mock/repos/brand-studio",
+      id: toTaskId("mock-brand-logo"),
+      title: "hex-fox logo refresh",
+      branch: "logo/concepts",
+      worktreePath: "/mock/worktrees/brand-logo",
+      kind: "task",
+      status: "in_progress",
+      archived: false,
+      vendor: "claude",
+    },
+    {
+      ...base,
+      repo: "/mock/repos/foxscreen",
+      id: toTaskId("mock-fox-recorder"),
+      title: "add branded recorder overlay",
+      branch: "chore/add-branding",
+      worktreePath: "/mock/worktrees/fox-recorder",
       kind: "task",
       status: "backlog",
       archived: false,
