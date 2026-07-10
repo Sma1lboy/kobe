@@ -97,8 +97,8 @@ function installDispatch(client: KobeDaemonClient): void {
   client.on("pty.exit", (frame) => {
     const payload = frame.payload as PtyExitEventPayload
     const handles = hostedByKey.get(payload.key)
-    // Copy: remoteGone → cleanup mutates the set mid-iteration.
-    if (handles) for (const handle of [...handles]) handle.remoteGone()
+    // Copy: remoteExited → cleanup mutates the set mid-iteration.
+    if (handles) for (const handle of [...handles]) handle.remoteExited(payload.pid)
   })
 }
 
@@ -131,6 +131,15 @@ export class HostedTaskPty extends XtermTaskPty {
    *  a session whose child had already exited (non-empty replay tells a
    *  corpse apart from a failed fresh spawn). */
   deadOnAttach = false
+  /** OUR incarnation's child pid, from the `pty.open` response; undefined
+   *  until that response lands. `pty.exit` frames route by KEY, and a
+   *  kill()→reopen under the same key (editor-tab file swap, F5 reset,
+   *  engine degrade) makes the OLD child's exit frame race the NEW
+   *  handle's open — the pid tells the incarnations apart. */
+  private sessionPid: number | null | undefined = undefined
+  /** A pid-tagged `pty.exit` that arrived before our open response —
+   *  parked, then resolved against the response's pid in `openRemote`. */
+  private pendingExitPid: number | null = null
 
   constructor(opts: TaskPtyOpts) {
     super(opts)
@@ -160,6 +169,7 @@ export class HostedTaskPty extends XtermTaskPty {
         rows: this.rows,
       })
       if (this.killed) return
+      this.sessionPid = res.pid ?? null
       // Replay BEFORE flushing queued input — the ring buffer is the
       // session's past; queued keystrokes are its future. feedReplay, not
       // feed: the replayed stream contains the child's PAST terminal
@@ -173,8 +183,15 @@ export class HostedTaskPty extends XtermTaskPty {
         this.sendResize(cols, rows)
       }
       for (const data of this.pendingInput.splice(0)) this.sendInput(data)
+      // An exit frame that raced the open response: ours only if the pid
+      // matches this session's child — a mismatch is the previous
+      // incarnation of this key dying, which must not kill this handle.
+      const parkedExitPid = this.pendingExitPid
+      this.pendingExitPid = null
       if (!res.alive) {
         this.deadOnAttach = res.replay.length > 0
+        this.remoteGone()
+      } else if (parkedExitPid !== null && parkedExitPid === this.sessionPid) {
         this.remoteGone()
       } else if (res.replay.length > 0) {
         // Reattach to a LIVE session (TUI restart): when our geometry
@@ -291,6 +308,28 @@ export class HostedTaskPty extends XtermTaskPty {
   feedFrame(dataB64: string): void {
     this.dataWaiter?.()
     this.feed(Buffer.from(dataB64, "base64"))
+  }
+
+  /**
+   * The shared dispatcher's `pty.exit` route. Applied only when the exit
+   * belongs to OUR child: a kill()→reopen under the same key sends the
+   * old incarnation's exit frame ahead of our open response (socket
+   * FIFO), and blindly dying here closed the freshly-opened tab (the
+   * "editor tab twitches then exits" bug). Pre-pid hosts (no `pid` in
+   * the frame) keep the old die-on-any-exit behavior.
+   */
+  remoteExited(pid: number | null | undefined): void {
+    if (this.killed) return
+    if (pid === undefined) {
+      this.remoteGone()
+      return
+    }
+    if (this.sessionPid === undefined) {
+      // Our open response hasn't landed — park; openRemote resolves it.
+      this.pendingExitPid = pid
+      return
+    }
+    if (pid !== null && pid === this.sessionPid) this.remoteGone()
   }
 
   /**
