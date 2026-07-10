@@ -250,3 +250,31 @@ describe("sweepBar", () => {
     expect(sweepBar(10, 8)).toBe("        ")
   })
 })
+
+describe("buildSidebarRowView — defer to the live terminal (isViewed)", () => {
+  const base = { live: true, spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
+
+  it("spins for a live task whose terminal is NOT the one on screen", () => {
+    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: false })
+    expect(v.loading).toBe(true)
+  })
+
+  it("suppresses its own spinner when the task's terminal is the one being viewed", () => {
+    // claude/codex draws its OWN zero-latency spinner in the visible pane, so
+    // kobe's derived (laggier) spinner would be a duplicate — the viewed row
+    // defers to the live terminal instead of animating.
+    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: true })
+    expect(v.loading).toBe(false)
+    expect(v.stateGlyph).toBe("")
+  })
+
+  it("still spins a viewed row while its worktree materializes (no terminal yet)", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "in_progress" }),
+      ...base,
+      isViewed: true,
+      job: { kind: "ensureWorktree" },
+    })
+    expect(v.loading).toBe(true)
+  })
+})

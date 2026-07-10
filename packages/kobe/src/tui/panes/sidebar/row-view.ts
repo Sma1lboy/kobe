@@ -183,6 +183,17 @@ export function buildSidebarRowView(opts: {
   readonly mainBranch?: string
   /** Accessibility: swap the engine spinner for the slow pulsing dot. */
   readonly reducedMotion?: boolean
+  /**
+   * This task's terminal is the one currently on screen in the workspace
+   * (task.id === the host's selectedId). When true, the row suppresses its
+   * own engine-activity spinner and defers to the live terminal, where
+   * claude/codex draws its OWN zero-latency spinner — kobe's derived signal
+   * is necessarily a beat behind, so a spinner here is just a laggy duplicate
+   * of one you can already see. `materializing` is exempt (no terminal exists
+   * yet). Other rows are unaffected: their terminal isn't visible, so kobe's
+   * spinner is the only liveness cue they have.
+   */
+  readonly isViewed?: boolean
 }): SidebarRowView {
   const { task } = opts
   const isMain = task.kind === "main"
@@ -208,7 +219,8 @@ export function buildSidebarRowView(opts: {
   const materializing = opts.job !== undefined
   const loading =
     materializing ||
-    (!untrackedCustomEngine &&
+    (!opts.isViewed &&
+      !untrackedCustomEngine &&
       (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
   // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
   // reduced motion replaces every set with the slow pulsing dot.
