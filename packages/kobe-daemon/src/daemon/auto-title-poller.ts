@@ -26,7 +26,8 @@
  * (e.g. a `kobe` started without a live daemon).
  */
 
-import { deriveTitleFromSession } from "@/monitor/auto-title"
+import { engineEntry } from "@/engine/registry"
+import { type TaskTitleInput, deriveTitleInputFromSession } from "@/monitor/auto-title"
 import type { Orchestrator } from "@/orchestrator/core"
 import { PLACEHOLDER_TASK_TITLE } from "@/orchestrator/core"
 import { type ChatTabPollSchedule, runChatTabNamingPass } from "@/tmux/chat-tab-naming"
@@ -41,12 +42,26 @@ export const DEFAULT_AUTO_TITLE_POLL_MS = 4000
  * Injectable so the pass logic (placeholder filter, re-check guard, error
  * isolation) can be tested without a real worktree + transcript on disk.
  */
-export type TitleDeriver = (worktree: string, vendor: VendorId) => Promise<string>
+export type TitleInputDeriver = (worktree: string, vendor: VendorId) => Promise<TaskTitleInput | null>
+
+export type AutoTitleSource = "fallback" | "ai"
+
+export type TitleGenerator = (input: string, vendor: VendorId) => Promise<string | null>
 
 /** A task that this pass renamed, plus the title it was given. */
 export interface AutoTitled {
   readonly id: string
   readonly title: string
+  readonly source: AutoTitleSource
+}
+
+function normalizeTitle(title: string | null | undefined): string | null {
+  const trimmed = title?.trim() ?? ""
+  return trimmed ? trimmed : null
+}
+
+async function defaultGenerateTitle(input: string, vendor: VendorId): Promise<string | null> {
+  return engineEntry(vendor).titleGenerator.generateTitle(input)
 }
 
 /**
@@ -58,7 +73,8 @@ export interface AutoTitled {
  */
 export async function runAutoTitlePass(
   orch: Orchestrator,
-  derive: TitleDeriver = deriveTitleFromSession,
+  derive: TitleInputDeriver = deriveTitleInputFromSession,
+  generateTitle: TitleGenerator = defaultGenerateTitle,
 ): Promise<AutoTitled[]> {
   const renamed: AutoTitled[] = []
   for (const task of orch.listTasks()) {
@@ -68,15 +84,29 @@ export async function runAutoTitlePass(
     // canonical `t.archived` predicate (tui/panes/sidebar/groups.ts).
     if (task.archived || task.title !== PLACEHOLDER_TASK_TITLE || !task.worktreePath) continue
     try {
-      const title = await derive(task.worktreePath, task.vendor ?? DEFAULT_TASK_VENDOR)
-      if (!title) continue
+      const vendor = task.vendor ?? DEFAULT_TASK_VENDOR
+      const input = await derive(task.worktreePath, vendor)
+      const fallbackTitle = normalizeTitle(input?.fallbackTitle)
+      if (!input || !fallbackTitle) continue
       // Re-check under the live store: the user may have manually renamed
       // (or the detach-time path may have named it) between the snapshot
       // above and this await. `setTitle` is also a no-op if unchanged.
       const current = orch.getTask(task.id)
       if (!current || current.title !== PLACEHOLDER_TASK_TITLE) continue
-      await orch.setTitle(task.id, title)
-      renamed.push({ id: task.id, title })
+      await orch.setTitle(task.id, fallbackTitle)
+      const fallbackCurrent = orch.getTask(task.id)
+      if (fallbackCurrent?.title !== fallbackTitle) continue
+      renamed.push({ id: task.id, title: fallbackTitle, source: "fallback" })
+
+      const aiTitle = normalizeTitle(await generateTitle(input.text, vendor))
+      if (!aiTitle) continue
+      const beforeAiSet = orch.getTask(task.id)
+      if (!beforeAiSet || beforeAiSet.title !== fallbackTitle) continue
+      await orch.setTitle(task.id, aiTitle)
+      const aiCurrent = orch.getTask(task.id)
+      if (aiCurrent?.title === aiTitle) {
+        renamed.push({ id: task.id, title: aiTitle, source: "ai" })
+      }
     } catch (err) {
       logDaemonError("auto-title-poller", err)
     }
