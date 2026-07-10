@@ -33,7 +33,6 @@ vi.mock("../../src/tui/panes/terminal/layout-zen", () => ({
   applyZenToNewWindow: vi.fn(async () => {}),
 }))
 vi.mock("../../src/tui/panes/terminal/pane-heal", () => ({
-  PANE_VERSION_OPTION: "@kobe_pane_version",
   globalRightColumnResizeArgs: vi.fn(async () => [] as readonly string[]),
 }))
 vi.mock("../../src/state/repos", async (importOriginal) => {

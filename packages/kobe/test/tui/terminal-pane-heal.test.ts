@@ -19,7 +19,7 @@ import {
   paneIdsByRole,
   parseKobePaneRows,
   planPaneHeals,
-} from "../../src/tui/panes/terminal/pane-heal"
+} from "../../src/tui/panes/terminal/pane-heal-plan"
 
 const row = (windowId: string, paneId: string, role: string, version: string): KobePaneRow => ({
   windowId,
