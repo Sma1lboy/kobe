@@ -107,6 +107,7 @@ function record(metric: keyof typeof GOLDEN, value: number, unit: string): void 
  * on a temp socket, minimal orchestrator (the daemon test double). */
 {
   const { startDaemonServer } = await import("@sma1lboy/kobe-daemon/daemon/server")
+  const { daemonRuntime } = await import("../src/core/daemon-runtime.ts")
   const { KobeDaemonClient } = await import("@sma1lboy/kobe-daemon/client")
   const dir = mkdtempSync(join(tmpdir(), "kobe-perf-daemon-"))
   const orch = {
@@ -118,6 +119,7 @@ function record(metric: keyof typeof GOLDEN, value: number, unit: string): void 
     activeTaskSignal: () => () => null,
   } as unknown as Parameters<typeof startDaemonServer>[0]
   const server = await startDaemonServer(orch, {
+    runtime: daemonRuntime,
     socketPath: join(dir, "daemon.sock"),
     pidPath: join(dir, "daemon.pid"),
     homeDir: dir,

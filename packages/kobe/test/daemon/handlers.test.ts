@@ -9,6 +9,7 @@ import {
   shapeDaemonError,
 } from "@sma1lboy/kobe-daemon/daemon/server"
 import { describe, expect, it } from "vitest"
+import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 import type { Task } from "../../src/types/task.ts"
 
@@ -74,6 +75,7 @@ interface Recorded {
 function fakeCtx(orch: Record<string, unknown> = {}): { ctx: DaemonHandlerContext; rec: Recorded } {
   const rec: Recorded = { published: [], reported: [], issueCalls: [], cleared: [], stopped: 0 }
   const ctx: DaemonHandlerContext = {
+    runtime: daemonRuntime,
     orch: { listTasks: () => [], ...orch } as unknown as Orchestrator,
     bus: {
       publish: (channel: string, payload: unknown) => rec.published.push({ channel, payload }),

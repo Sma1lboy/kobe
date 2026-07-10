@@ -1,11 +1,26 @@
-import {
-  type EngineActivityDetail,
-  type EngineActivityKind,
-  type TaskActivityState,
-  reduceActivity,
-} from "@/engine/hook-events"
+import type { EngineActivityDetail, EngineActivityKind, TaskActivityState } from "./contracts.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import type { ChannelPayloads } from "./protocol.ts"
+
+function reduceActivity(
+  _previous: TaskActivityState | undefined,
+  kind: EngineActivityKind,
+  detail?: EngineActivityDetail,
+): TaskActivityState {
+  switch (kind) {
+    case "session-start":
+    case "session-end":
+      return "idle"
+    case "turn-start":
+      return "running"
+    case "turn-complete":
+      return "turn_complete"
+    case "turn-failed":
+      return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
+    case "awaiting-input":
+      return detail?.waiting === "permission" ? "permission_needed" : "running"
+  }
+}
 
 /** How long a non-idle, non-complete engine-activity state survives with no
  *  follow-up event before lapsing to idle (safety net for a missed Stop/SessionEnd). */

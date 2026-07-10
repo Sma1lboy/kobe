@@ -15,8 +15,8 @@
  */
 
 import type { ChannelName, SerializedTask, SubscribeRole, UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import type { Accessor } from "solid-js"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
+import type { ReadableState } from "../lib/external-store.ts"
 import { type WorktreeChanges, sameWorktreeChanges } from "../tui/panes/sidebar/worktree-changes.ts"
 import type { Task } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
@@ -234,18 +234,18 @@ export interface RemoteOrchestratorOptions {
  * read-signal methods return.
  */
 export interface OrchestratorSignals {
-  readonly tasksAcc: Accessor<Task[]>
+  readonly tasksAcc: ReadableState<Task[]>
   readonly setTasks: (next: Task[]) => void
   readonly setActiveTaskSig: (next: string | null) => void
   readonly setUpdateSig: (next: UpdateInfo | null) => void
   readonly setDaemonVersionSig: (next: string | null) => void
-  readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
+  readonly engineStateAcc: ReadableState<ReadonlyMap<string, TaskEngineState>>
   readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
-  readonly taskJobsAcc: Accessor<ReadonlyMap<string, TaskJobState>>
+  readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
-  readonly worktreeChangesAcc: Accessor<WorktreeChangesMap | null>
+  readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
   readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
-  readonly transcriptActivityAcc: Accessor<TranscriptActivityMap | null>
+  readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   readonly setKeybindingsRevSig: (next: number | null) => void

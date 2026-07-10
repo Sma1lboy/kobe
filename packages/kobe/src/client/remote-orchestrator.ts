@@ -6,7 +6,7 @@
  * File-size-cap split: `performInit`/`handleOrchestratorEvent`
  * (`remote-orchestrator-connect.ts`/`-events.ts`) take an explicit
  * {@link OrchestratorSignals} deps bag — built once in the constructor from
- * the same Solid signals this class's read methods return — instead of
+ * the same framework-free state cells this class's read methods return — instead of
  * closing over `this`. Write methods below are 1-line delegates to
  * `remote-orchestrator-writes.ts`. Wire-payload types/helpers live in
  * `remote-orchestrator-payloads.ts`, re-exported below for existing importers.
@@ -15,13 +15,17 @@
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import type { ChannelName, SubscribeRole, UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { type Accessor, createSignal } from "solid-js"
-import { type ExternalStore, createExternalStore } from "../lib/external-store.ts"
+import {
+  type ChannelName,
+  type SubscribeRole,
+  type UiPrefsPayload,
+  isDaemonVersionStale,
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { type ExternalStore, type ReadableState, createStateCell, mapReadableState } from "../lib/external-store.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
-import type { UpdateInfo } from "../version.ts"
+import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
 import { performInit } from "./remote-orchestrator-connect.ts"
 import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
 import {
@@ -94,34 +98,32 @@ export {
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
 
 export class RemoteOrchestrator {
-  private readonly tasksAcc: Accessor<Task[]>
-  private readonly setTasks: (next: Task[]) => void
-  private readonly activeTaskAcc: Accessor<string | null>
-  private readonly setActiveTaskSig: (next: string | null) => void
-  private readonly updateAcc: Accessor<UpdateInfo | null>
-  private readonly setUpdateSig: (next: UpdateInfo | null) => void
-  private readonly daemonVersionAcc: Accessor<string | null>
-  private readonly setDaemonVersionSig: (next: string | null) => void
-  private readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
-  private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
-  private readonly taskJobsAcc: Accessor<ReadonlyMap<string, TaskJobState>>
-  private readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
-  private readonly worktreeChangesAcc: Accessor<WorktreeChangesMap | null>
-  private readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
-  private readonly transcriptActivityAcc: Accessor<TranscriptActivityMap | null>
-  private readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
-  private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
-  private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
-  private readonly keybindingsRevAcc: Accessor<number | null>
-  private readonly setKeybindingsRevSig: (next: number | null) => void
-  // Framework-free twins of Solid signals (issue #15 G3) — React hosts
-  // need stores because solid-js reactivity is inert outside
-  // reactive-solid runtimes. Setters dual-write; single writer, no drift.
-  private readonly uiPrefsStoreInner = createExternalStore<UiPrefsPayload | null>(null)
-  private readonly keybindingsRevStoreInner = createExternalStore<number | null>(null)
-  private readonly transcriptActivityStoreInner = createExternalStore<TranscriptActivityMap | null>(null)
-  private readonly connectionStateAcc: Accessor<DaemonConnectionState>
-  private readonly setConnectionState: (next: DaemonConnectionState) => void
+  private readonly tasksAcc = createStateCell<Task[]>([])
+  private readonly setTasks = (next: Task[]) => this.tasksAcc.set(next)
+  private readonly activeTaskAcc = createStateCell<string | null>(null)
+  private readonly setActiveTaskSig = (next: string | null) => this.activeTaskAcc.set(next)
+  private readonly updateAcc = createStateCell<UpdateInfo | null>(null)
+  private readonly setUpdateSig = (next: UpdateInfo | null) => this.updateAcc.set(next)
+  private readonly daemonVersionAcc = createStateCell<string | null>(null)
+  private readonly setDaemonVersionSig = (next: string | null) => this.daemonVersionAcc.set(next)
+  private readonly daemonStaleAcc = mapReadableState(this.daemonVersionAcc, (version) =>
+    isDaemonVersionStale(version ?? undefined, CURRENT_VERSION),
+  )
+  private readonly engineStateAcc = createStateCell<ReadonlyMap<string, TaskEngineState>>(new Map())
+  private readonly setEngineStateSig = (next: ReadonlyMap<string, TaskEngineState>) => this.engineStateAcc.set(next)
+  private readonly taskJobsAcc = createStateCell<ReadonlyMap<string, TaskJobState>>(new Map())
+  private readonly setTaskJobsSig = (next: ReadonlyMap<string, TaskJobState>) => this.taskJobsAcc.set(next)
+  private readonly worktreeChangesAcc = createStateCell<WorktreeChangesMap | null>(null)
+  private readonly setWorktreeChangesSig = (next: WorktreeChangesMap | null) => this.worktreeChangesAcc.set(next)
+  private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
+  private readonly setTranscriptActivitySig = (next: TranscriptActivityMap | null) =>
+    this.transcriptActivityAcc.set(next)
+  private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
+  private readonly setUiPrefsSig = (next: UiPrefsPayload | null) => this.uiPrefsAcc.set(next)
+  private readonly keybindingsRevAcc = createStateCell<number | null>(null)
+  private readonly setKeybindingsRevSig = (next: number | null) => this.keybindingsRevAcc.set(next)
+  private readonly connectionStateAcc = createStateCell<DaemonConnectionState>("online")
+  private readonly setConnectionState = (next: DaemonConnectionState) => this.connectionStateAcc.set(next)
   private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
   /** Per-channel subscribe filter; `undefined` = subscribe to all channels. */
@@ -140,48 +142,6 @@ export class RemoteOrchestrator {
     private readonly client: KobeDaemonClient,
     options: RemoteOrchestratorOptions = {},
   ) {
-    const [tasks, setTasks] = createSignal<Task[]>([])
-    const [activeTask, setActiveTask] = createSignal<string | null>(null)
-    const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
-    const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
-    const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
-    const [taskJobs, setTaskJobs] = createSignal<ReadonlyMap<string, TaskJobState>>(new Map())
-    const [worktreeChanges, setWorktreeChanges] = createSignal<WorktreeChangesMap | null>(null)
-    const [transcriptActivity, setTranscriptActivity] = createSignal<TranscriptActivityMap | null>(null)
-    const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
-    const [keybindingsRev, setKeybindingsRev] = createSignal<number | null>(null)
-    const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
-    this.tasksAcc = tasks
-    this.setTasks = (next) => setTasks(() => next)
-    this.activeTaskAcc = activeTask
-    this.setActiveTaskSig = (next) => setActiveTask(() => next)
-    this.updateAcc = update
-    this.setUpdateSig = (next) => setUpdate(() => next)
-    this.daemonVersionAcc = daemonVersion
-    this.setDaemonVersionSig = (next) => setDaemonVersion(() => next)
-    this.engineStateAcc = engineState
-    this.setEngineStateSig = (next) => setEngineState(() => next)
-    this.taskJobsAcc = taskJobs
-    this.setTaskJobsSig = (next) => setTaskJobs(() => next)
-    this.worktreeChangesAcc = worktreeChanges
-    this.setWorktreeChangesSig = (next) => setWorktreeChanges(() => next)
-    this.transcriptActivityAcc = transcriptActivity
-    this.setTranscriptActivitySig = (next) => {
-      setTranscriptActivity(() => next)
-      this.transcriptActivityStoreInner.set(next)
-    }
-    this.uiPrefsAcc = uiPrefs
-    this.setUiPrefsSig = (next) => {
-      setUiPrefs(() => next)
-      this.uiPrefsStoreInner.set(next)
-    }
-    this.keybindingsRevAcc = keybindingsRev
-    this.setKeybindingsRevSig = (next) => {
-      setKeybindingsRev(() => next)
-      this.keybindingsRevStoreInner.set(next)
-    }
-    this.connectionStateAcc = connectionState
-    this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
     this.role = options.role ?? "pane"
     this.channels = options.channels
@@ -209,15 +169,16 @@ export class RemoteOrchestrator {
       activeTaskAcc: this.activeTaskAcc,
       updateAcc: this.updateAcc,
       daemonVersionAcc: this.daemonVersionAcc,
+      daemonStaleAcc: this.daemonStaleAcc,
       engineStateAcc: this.engineStateAcc,
       taskJobsAcc: this.taskJobsAcc,
       worktreeChangesAcc: this.worktreeChangesAcc,
       transcriptActivityAcc: this.transcriptActivityAcc,
-      transcriptActivityStoreInner: this.transcriptActivityStoreInner,
+      transcriptActivityStoreInner: this.transcriptActivityAcc,
       uiPrefsAcc: this.uiPrefsAcc,
-      uiPrefsStoreInner: this.uiPrefsStoreInner,
+      uiPrefsStoreInner: this.uiPrefsAcc,
       keybindingsRevAcc: this.keybindingsRevAcc,
-      keybindingsRevStoreInner: this.keybindingsRevStoreInner,
+      keybindingsRevStoreInner: this.keybindingsRevAcc,
       connectionStateAcc: this.connectionStateAcc,
     }
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
@@ -293,7 +254,7 @@ export class RemoteOrchestrator {
     )
   }
 
-  connectionStateSignal(): Accessor<DaemonConnectionState> {
+  connectionStateSignal(): ReadableState<DaemonConnectionState> {
     return this.connectionStateAcc
   }
 
@@ -313,39 +274,39 @@ export class RemoteOrchestrator {
 
   // --- read --- (each a thin delegate; bodies + docs moved to remote-orchestrator-reads.ts)
 
-  tasksSignal(): Accessor<Task[]> {
+  tasksSignal(): ReadableState<Task[]> {
     return tasksSignalOp(this.reads)
   }
 
-  activeTaskSignal(): Accessor<string | null> {
+  activeTaskSignal(): ReadableState<string | null> {
     return activeTaskSignalOp(this.reads)
   }
 
-  updateSignal(): Accessor<UpdateInfo | null> {
+  updateSignal(): ReadableState<UpdateInfo | null> {
     return updateSignalOp(this.reads)
   }
 
-  daemonVersionSignal(): Accessor<string | null> {
+  daemonVersionSignal(): ReadableState<string | null> {
     return daemonVersionSignalOp(this.reads)
   }
 
-  daemonStaleSignal(): Accessor<boolean> {
+  daemonStaleSignal(): ReadableState<boolean> {
     return daemonStaleSignalOp(this.reads)
   }
 
-  engineStateSignal(): Accessor<ReadonlyMap<string, TaskEngineState>> {
+  engineStateSignal(): ReadableState<ReadonlyMap<string, TaskEngineState>> {
     return engineStateSignalOp(this.reads)
   }
 
-  taskJobsSignal(): Accessor<ReadonlyMap<string, TaskJobState>> {
+  taskJobsSignal(): ReadableState<ReadonlyMap<string, TaskJobState>> {
     return taskJobsSignalOp(this.reads)
   }
 
-  worktreeChangesSignal(): Accessor<WorktreeChangesMap | null> {
+  worktreeChangesSignal(): ReadableState<WorktreeChangesMap | null> {
     return worktreeChangesSignalOp(this.reads)
   }
 
-  transcriptActivitySignal(): Accessor<TranscriptActivityMap | null> {
+  transcriptActivitySignal(): ReadableState<TranscriptActivityMap | null> {
     return transcriptActivitySignalOp(this.reads)
   }
 
@@ -353,7 +314,7 @@ export class RemoteOrchestrator {
     return transcriptActivityStoreOp(this.reads)
   }
 
-  uiPrefsSignal(): Accessor<UiPrefsPayload | null> {
+  uiPrefsSignal(): ReadableState<UiPrefsPayload | null> {
     return uiPrefsSignalOp(this.reads)
   }
 
@@ -361,7 +322,7 @@ export class RemoteOrchestrator {
     return uiPrefsStoreOp(this.reads)
   }
 
-  keybindingsRevSignal(): Accessor<number | null> {
+  keybindingsRevSignal(): ReadableState<number | null> {
     return keybindingsRevSignalOp(this.reads)
   }
 

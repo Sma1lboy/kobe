@@ -1,10 +1,9 @@
 /**
  * Reactive translation runtime.
  *
- * Mirrors the module-level-store pattern in `tui/context/theme.tsx`: a single
- * Solid store holds the active language for the process, and `t()` reads it so
- * any `t("…")` call sitting inside JSX (a tracked scope) re-renders the moment
- * the language changes — no per-call subscription, no context threading.
+ * One framework-free state cell holds the active language for the process.
+ * Framework-free callers read `t()` directly; React subscribes to the same
+ * cell through `useSyncExternalStore` in `tui-react/i18n`.
  *
  * Persistence is handled the same way the theme is: the booter seeds the
  * language from `state.json` (`readPersistedUiPrefs().locale`) via
@@ -16,23 +15,28 @@
  * RESULT in a module-level constant, which would freeze the language.
  */
 
-import { createStore } from "solid-js/store"
+import { type ReadableState, createStateCell } from "../../lib/external-store"
 import { CATALOGS, DEFAULT_LOCALE, LOCALES, type LocaleId } from "./catalog"
 import { interpolate, lookup, lookupKeys } from "./lookup"
 
 export { LOCALES, DEFAULT_LOCALE, isLocaleId } from "./catalog"
 export type { LocaleId } from "./catalog"
 
-const [store, setStore] = createStore<{ lang: LocaleId }>({ lang: DEFAULT_LOCALE })
+const langState = createStateCell<LocaleId>(DEFAULT_LOCALE)
 
 /** Switch the active UI language for THIS process (reactive). No-op on an unknown id. */
 export function setLocaleLang(lang: LocaleId): void {
-  if (CATALOGS[lang]) setStore("lang", lang)
+  if (CATALOGS[lang]) langState.set(lang)
 }
 
-/** The active language id. Reactive — reads inside a tracked scope re-run on change. */
+/** The active language id. */
 export function currentLang(): LocaleId {
-  return store.lang
+  return langState.get()
+}
+
+/** Read-only process locale state for UI adapters. */
+export function localeState(): ReadableState<LocaleId> {
+  return langState
 }
 
 /**
@@ -40,7 +44,7 @@ export function currentLang(): LocaleId {
  * raw key (so a missing string is loud, not blank). Reactive via `store.lang`.
  */
 export function t(key: string, params?: Record<string, string | number>): string {
-  const lang = store.lang
+  const lang = langState.get()
   const resolved = lookup(CATALOGS[lang], key) ?? lookup(CATALOGS.en, key) ?? key
   return interpolate(resolved, params)
 }
@@ -53,6 +57,6 @@ export function t(key: string, params?: Record<string, string | number>): string
  * then the raw key (so an unmapped binding shows its id, never blank).
  */
 export function tKeys(group: "category" | "desc", key: string): string {
-  const lang = store.lang
+  const lang = langState.get()
   return lookupKeys(CATALOGS[lang], group, key) ?? lookupKeys(CATALOGS.en, group, key) ?? key
 }
