@@ -107,6 +107,29 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     b.kill()
   })
 
+  test("a second viewer on the same key doesn't steal the stream, and its detach doesn't starve the first", async () => {
+    // Regression (0.7.86 O(1) dispatch): the key→handle map was single-slot,
+    // so a second attach silently replaced the first handle's route — the
+    // first pane froze on its last frame while the child kept streaming.
+    const OPTS6 = { cwd: dir, command: ["/bin/cat"], cols: 60, rows: 12 }
+    const a = new HostedTaskPty({ taskId: "smoke::t6", ...OPTS6 })
+    a.write("first\n")
+    await until(() => text(a).includes("first"), "A streams")
+
+    const b = new HostedTaskPty({ taskId: "smoke::t6", ...OPTS6 })
+    await until(() => text(b).includes("first"), "B replays the ring buffer")
+    b.write("both-see-this\n")
+    await until(() => text(b).includes("both-see-this"), "B streams")
+    await until(() => text(a).includes("both-see-this"), "A KEEPS streaming after B attached")
+
+    // Parking B must not starve A: a sibling is still attached, so the
+    // shared per-connection host sink has to survive B's detach.
+    b.detach()
+    a.write("after-b-detach\n")
+    await until(() => text(a).includes("after-b-detach"), "A still streams after B detached")
+    a.kill()
+  })
+
   test("attaching to an already-exited session flags deadOnAttach", async () => {
     // Engine died while no TUI was attached — the host keeps the corpse.
     const a = new HostedTaskPty({
