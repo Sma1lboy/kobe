@@ -160,6 +160,8 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
       truncateBranch: truncateBranchLabel,
       mainBranch: currentBranch(task.repo),
       reducedMotion: themeCtx.reducedMotion,
+      // Defer to the live terminal when this task's pane is the one on screen.
+      isViewed: isSelected,
     }),
     () => shared.spinnerFrame,
   )
@@ -227,6 +229,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
       truncateBranch: truncateBranchLabel,
       mainBranch: "",
       reducedMotion: themeCtx.reducedMotion,
+      isViewed: isSelected,
     }),
     () => shared.spinnerFrame,
   )
