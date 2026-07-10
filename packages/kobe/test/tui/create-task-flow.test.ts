@@ -32,7 +32,7 @@ const mockAvailableEngineIds = vi.fn(async () => ["claude"])
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
 import type { NewTaskInput } from "../../src/tui/component/new-task-dialog/state"
-import { type CreateTaskContext, createTaskFlow } from "../../src/tui/lib/task-actions"
+import { type CreateTaskContext, createTaskFlow } from "../../src/tui/lib/task-create-flow"
 
 type AdoptItem = { worktreePath: string; branch: string }
 

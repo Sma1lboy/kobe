@@ -90,12 +90,12 @@ export {
   quickCreate,
 } from "./chattab"
 export {
-  PANE_VERSION_OPTION,
   captureGlobalLayout,
   captureGlobalLayoutOnDrag,
   healSessionLayout,
   refreshKobeWorkspacePanes,
 } from "./pane-heal"
+export { PANE_VERSION_OPTION } from "./pane-heal-plan"
 export { runLayoutAction, type LayoutAction } from "./layout-actions"
 
 export function tmuxInitialSizeArgs(
