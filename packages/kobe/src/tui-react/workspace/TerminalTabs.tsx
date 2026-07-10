@@ -80,6 +80,7 @@ import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
+import { useLatest } from "../lib/use-latest"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
@@ -132,8 +133,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
 
   // Latest-render mirror — read inside the two mount-only forever-lived
   // effects below (see file header).
-  const propsRef = useRef(props)
-  propsRef.current = props
+  const propsRef = useLatest(props)
 
   /** Pin a fresh engine-session id on the just-created active engine tab —
    *  the tmux `@kobe_session_id` stash. */
@@ -162,8 +162,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   }
 
   const [state, setState] = useState<TabsState>(initState)
-  const stateRef = useRef(state)
-  stateRef.current = state
+  const stateRef = useLatest(state)
 
   const update = (next: TabsState): void => {
     tabsByTask.set(propsRef.current.taskId, next)
@@ -180,8 +179,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   }
   // Latest-render mirror for the mount-once engine-send closure below —
   // same freshness convention as propsRef/stateRef (file header).
-  const engineTabCommandRef = useRef(engineTabCommand)
-  engineTabCommandRef.current = engineTabCommand
+  const engineTabCommandRef = useLatest(engineTabCommand)
 
   /** Nudge Terminal to re-acquire under the CURRENTLY visible tab's key —
    *  see the `resetToken` doc on `Terminal.tsx`. */

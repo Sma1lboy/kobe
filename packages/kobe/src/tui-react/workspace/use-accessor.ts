@@ -4,8 +4,8 @@
  * signals — solid-js reactivity is inert outside a reactive-solid runtime —
  * and most of them have no framework-free `ExternalStore` twin yet (only
  * `uiPrefs`/`keybindingsRev`/`transcriptActivity` do, consumed elsewhere via
- * `useSyncExternalStore`). Rather than grow `RemoteOrchestrator` (532 lines,
- * already over the file-size cap) with four more dual-write stores, this
+ * `useSyncExternalStore`). Rather than grow `RemoteOrchestrator`
+ * with four more dual-write stores, this
  * hook subscribes directly via a headless `createRoot`/`createEffect` — the
  * exact technique `RemoteOrchestrator.subscribeTasks` already uses
  * internally to hand Solid signal updates to non-Solid callers.
