@@ -12,7 +12,7 @@
  *                         matches a bundled theme (those are read-only).
  *
  * Late-imported from `cli/index.ts` so the TUI startup graph (opentui /
- * solid-js) does not load when the user is just managing themes from
+ * UI runtime state) does not load when the user is just managing themes from
  * the shell.
  *
  * Error policy: print a one-line "kobe theme: <reason>" to stderr and

@@ -60,6 +60,12 @@ The seams matter:
 - **The Daemon is the task-index writer.** TUI clients and in-tmux panes
   mutate tasks through daemon RPC and hydrate from daemon channels. Direct
   writes to `TaskIndexStore` from UI code are a leak.
+- **The daemon package owns transport, not kobe implementation imports.**
+  `packages/kobe-daemon` declares a consumer-owned `DaemonRuntimeAdapter`;
+  the `packages/kobe` composition root supplies engine, tmux, settings,
+  worktree, and web-feature behavior. Daemon source must not import kobe's
+  `@/` aliases or sibling `../kobe/src` paths. This keeps the package graph
+  one-way while preserving the daemon's RPC/HTTP/SSE ownership (ADR 0003).
 - **The Orchestrator is task lifecycle only.** It owns task metadata,
   worktree allocation, ordering, active-task touch timestamps, and the
   reactive task-list signal. It does not spawn or stream an engine process.
@@ -72,14 +78,14 @@ The seams matter:
   panes use `RemoteOrchestrator`; in-tmux helper panes subscribe as daemon
   `role: "pane"` so they receive task snapshots without pinning daemon
   lifetime.
-- **opentui is infrastructure, not architecture; Solid signals are a
-  shared reactive primitive.** The orchestrator must not depend on
+- **opentui is infrastructure, not architecture; observable state is a
+  framework-free reactive primitive.** The orchestrator must not depend on
   opentui or anything that renders — that's the seam the daemon split
-  hangs on (see [`design/daemon.md`](./design/daemon.md) §9 D0). Solid
-  signals are deliberately allowed inside the orchestrator: they're a
-  pure in-process reactive primitive with no DOM / no opentui coupling,
-  and the TUI consumes the same primitive so panes can subscribe
-  without an adapter layer. Whenever a pane needs to *do* something
+  hangs on (see [`design/daemon.md`](./design/daemon.md) §9 D0). The
+  Orchestrator and RemoteOrchestrator publish stable `get` / `subscribe`
+  state, and React consumes it through `useSyncExternalStore`; there is one
+  state cell per semantic stream, with no UI-framework dependency or dual
+  state. Whenever a pane needs to *do* something
   stateful (run a task, switch tabs, persist), it still goes through
   the orchestrator — signals are wiring, not the source of truth.
 

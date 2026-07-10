@@ -6,9 +6,8 @@
  * shutdown order); each collector's mechanics live in its own module.
  */
 
-import type { Orchestrator } from "@/orchestrator/core"
-import { type UpdateInfo, checkLatestVersion } from "@/version"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
+import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import {
@@ -17,6 +16,7 @@ import {
   startKeybindingsWatcher,
 } from "./keybindings-watcher.ts"
 import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import {
   DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
   startTranscriptActivityCollector,
@@ -77,12 +77,13 @@ export interface DaemonCollectorOptions {
  *     writes the result onto Task.prStatus, which rides the task push.
  */
 export function startDaemonCollectors(
-  orch: Orchestrator,
+  orch: DaemonOrchestrator,
+  runtime: DaemonRuntimeAdapter,
   bus: DaemonEventBus,
   hasSubscribers: () => boolean,
   options: DaemonCollectorOptions,
 ): () => void {
-  const checkUpdate = options.checkUpdate ?? checkLatestVersion
+  const checkUpdate = options.checkUpdate ?? runtime.checkLatestVersion
   const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
   const pollUpdate = (): void => {
     void checkUpdate()
@@ -98,6 +99,7 @@ export function startDaemonCollectors(
 
   const stopAutoTitlePoller = startAutoTitlePoller(
     orch,
+    runtime,
     options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS,
     hasSubscribers,
   )
@@ -114,6 +116,7 @@ export function startDaemonCollectors(
 
   const stopWorktreeChangesCollector = startWorktreeChangesCollector(
     orch,
+    runtime,
     bus,
     options.worktreeChangesTickMs ?? DEFAULT_WORKTREE_CHANGES_TICK_MS,
     hasSubscribers,
@@ -121,6 +124,7 @@ export function startDaemonCollectors(
 
   const stopTranscriptActivityCollector = startTranscriptActivityCollector(
     orch,
+    runtime,
     bus,
     options.transcriptActivityTickMs ?? DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
     hasSubscribers,
@@ -128,6 +132,7 @@ export function startDaemonCollectors(
 
   const stopPrStatusPoller = startPrStatusPoller(
     orch,
+    runtime,
     options.prStatusPollMs ?? DEFAULT_PR_STATUS_POLL_MS,
     hasSubscribers,
   )

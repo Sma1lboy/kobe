@@ -4,7 +4,7 @@ Domain vocabulary for the TUI orchestrator. Every architectural conversation abo
 
 > **v0.6 reshape (KOB-226).** kobe no longer drives `claude` as a stream-json subprocess and no longer renders its own chat. It became a **task launcher**: each **Task** gets a **tmux Session** that runs interactive `claude` natively, and "entering" a task is a **Handover** (attach the real TTY). Terms from the v0.5 chat era — **AI Engine Port**, **SessionPump**, **PendingInputBroker**, **ChatSessionController**, **Bridge** — are listed in the Retired section so old references resolve.
 
-> **Pure-TUI pivot (2026-07, issue #16 — the embedded terminal).** `KOBE_TUI=1` boots the **Workspace Host**: a single-process React app (no tmux) whose center column is an in-process PTY running the task's real interactive engine CLI — kobe wraps the engine's own TUI instead of re-rendering its stream. **Both stacks are live today**: the tmux **Handover** is still the DEFAULT `kobe` launch path (`src/tui/index.tsx` gates on `nativeChatEnabled()`, `src/env.ts`), and the Workspace Host is the opt-in replacement direction. The Solid TUI was removed 2026-07-07 (0.7.73): React under `src/tui-react/**` is the only UI; framework-free cores stay under `src/tui/**`. The briefly-explored AI-SDK native chat pane is **gone** (see Retired).
+> **Pure-TUI pivot (2026-07, issue #16 — the embedded terminal).** `KOBE_TUI=1` boots the **Workspace Host**: a single-process React app (no tmux) whose center column is an in-process PTY running the task's real interactive engine CLI — kobe wraps the engine's own TUI instead of re-rendering its stream. **Both stacks are live today**: the tmux **Handover** is still the DEFAULT `kobe` launch path (`src/tui/index.tsx` gates on `nativeChatEnabled()`, `src/env.ts`), and the Workspace Host is the opt-in replacement direction. The Solid TUI was removed 2026-07-07 (0.7.73): React under `src/tui-react/**` is the only UI; framework-free cores stay under `src/tui/**`, including the observable state used by the Orchestrator and TUI Client. The briefly-explored AI-SDK native chat pane is **gone** (see Retired).
 
 > **Outer monitor retired (2026-06; inventory/decision record `docs/design/app-retirement.md` lives in git history).** The transitional opentui shell (`app.tsx`) and its vocabulary — **Workspace** (capital W), **Live Preview**, **Cost Dashboard**, the `KOBE_NO_DAEMON` daemon-less mode — are **gone**. See the Retired section.
 
@@ -113,7 +113,7 @@ _Avoid_: modal (name the barrier, not the component), popup.
 ### Orchestration
 
 **Orchestrator**:
-Owns **Task** lifecycle + **Worktree** allocation + the reactive task-list snapshot the TUI subscribes to. Lives in `src/orchestrator/core.ts`. It never touches an interactive engine process — those are owned by tmux (**Handover** mode) or the **PTY Host** (**Workspace Host** mode); it's task index + git + a Solid signal. TUI-free so the **Daemon** can host it headless.
+Owns **Task** lifecycle + **Worktree** allocation + the reactive task-list snapshot the TUI subscribes to. Lives in `src/orchestrator/core.ts`. It never touches an interactive engine process — those are owned by tmux (**Handover** mode) or the **PTY Host** (**Workspace Host** mode); it's task index + git + framework-free observable state. TUI-free so the **Daemon** can host it headless.
 _Avoid_: manager, coordinator, controller, service.
 
 **Engine Registry**:
@@ -198,5 +198,5 @@ The transitional opentui shell and its surfaces; kept so old comments/commits re
 
 The pure-TUI pivot's casualties; kept so old comments/commits resolve:
 
-- **Solid TUI** — the `@opentui/solid` implementation of every pane/host and its `KOBE_SOLID=1` escape hatch (removed in 0.7.73, 2026-07-07). React under `src/tui-react/**` is the only UI; `solid-js` survives ONLY as the reactive-signals primitive inside the orchestrator/client core (`RemoteOrchestrator` signals), never for rendering.
+- **Solid TUI** — the `@opentui/solid` implementation of every pane/host and its `KOBE_SOLID=1` escape hatch (removed in 0.7.73, 2026-07-07). React under `src/tui-react/**` is the only UI. The final `solid-js` dependency was removed when Orchestrator/client signals converged on the framework-free observable-state Module.
 - **Native chat pane / Provider Runtime (AI SDK harness)** — the `KOBE_TUI=1` center column briefly rendered its own chat over an AI-SDK harness (`src/engine/ai-sdk/harness-turn.ts`; decision doc [`docs/design/provider-runtime.md`](./docs/design/provider-runtime.md), exploration note [`docs/design/provider-runtime-harness.md`](./docs/design/provider-runtime-harness.md)). Deleted 2026-07-06: the center column now embeds the engine's own TUI in a PTY (**Terminal Tab**), so kobe never re-renders a chat stream. The design docs remain as history.

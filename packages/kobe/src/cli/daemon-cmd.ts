@@ -14,6 +14,7 @@ import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import { rotateLogIfNeeded } from "@sma1lboy/kobe-daemon/daemon/log-rotate"
 import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
+import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
 
 function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
@@ -115,6 +116,7 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
 
   const core = await createKobeCore()
   const server = await startDaemonServer(core.orchestrator, {
+    runtime: daemonRuntime,
     socketPath,
     pidPath,
     homeDir: core.homeDir,

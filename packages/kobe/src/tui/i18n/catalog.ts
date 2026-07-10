@@ -9,8 +9,8 @@
  *
  * Each surface owns its own file under `./messages/` (settings, tasks, files,
  * …) so translation work parallelizes without colliding. Pure data, zero
- * runtime deps — safe under node / vitest (the reactive `t()` lives in
- * `./index.ts`, which pulls solid-js). Values may contain `{name}`
+ * runtime deps — safe under node / vitest (the observable `t()` runtime lives
+ * in `./index.ts`). Values may contain `{name}`
  * placeholders; `t(key, params)` substitutes them.
  *
  * We translate prose; literal config syntax (YAML keys, shell command

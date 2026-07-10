@@ -8,7 +8,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { join, resolve } from "node:path"
-import { issueAssetsDir } from "@/env"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
 
 const ASSETS_ROUTE = "/api/issue-assets"
 const MAX_ASSET_BYTES = 10 * 1024 * 1024
@@ -35,7 +35,7 @@ function repoHashOf(repoRoot: string): string {
 const REPO_HASH_RE = /^[a-f0-9]{16}$/
 const ASSET_FILE_RE = /^[A-Za-z0-9_-]+\.[a-z0-9]+$/
 
-async function handlePost(req: Request): Promise<Response> {
+async function handlePost(runtime: DaemonRuntimeAdapter, req: Request): Promise<Response> {
   const declared = Number.parseInt(req.headers.get("content-length") ?? "", 10)
   if (Number.isFinite(declared) && declared > MAX_ASSET_BYTES) {
     return Response.json({ error: "asset too large" }, { status: 413 })
@@ -64,7 +64,7 @@ async function handlePost(req: Request): Promise<Response> {
 
   try {
     const repoHash = repoHashOf(repoRoot)
-    const dir = join(issueAssetsDir(), repoHash)
+    const dir = join(runtime.issueAssetsDir(), repoHash)
     await mkdir(dir, { recursive: true })
     const assetId = randomUUID()
     const name = `${assetId}.${ext}`
@@ -75,7 +75,7 @@ async function handlePost(req: Request): Promise<Response> {
   }
 }
 
-async function handleGet(pathname: string): Promise<Response> {
+async function handleGet(runtime: DaemonRuntimeAdapter, pathname: string): Promise<Response> {
   const rest = pathname.slice(ASSETS_ROUTE.length + 1)
   const slash = rest.indexOf("/")
   if (slash < 0) return Response.json({ error: "not found" }, { status: 404 })
@@ -86,7 +86,7 @@ async function handleGet(pathname: string): Promise<Response> {
     return Response.json({ error: "invalid asset path" }, { status: 400 })
   }
 
-  const root = issueAssetsDir()
+  const root = runtime.issueAssetsDir()
   const resolved = resolve(root, repoHash, fileSeg)
   if (resolved !== join(root, repoHash, fileSeg) || !resolved.startsWith(`${root}/`)) {
     return Response.json({ error: "invalid asset path" }, { status: 400 })
@@ -108,13 +108,17 @@ async function handleGet(pathname: string): Promise<Response> {
   })
 }
 
-export async function handleIssueAssetsRequest(req: Request, url: URL): Promise<Response | null> {
+export async function handleIssueAssetsRequest(
+  runtime: DaemonRuntimeAdapter,
+  req: Request,
+  url: URL,
+): Promise<Response | null> {
   if (url.pathname === ASSETS_ROUTE) {
-    if (req.method === "POST") return handlePost(req)
+    if (req.method === "POST") return handlePost(runtime, req)
     return Response.json({ error: "method not allowed" }, { status: 405 })
   }
   if (url.pathname.startsWith(`${ASSETS_ROUTE}/`)) {
-    if (req.method === "GET") return handleGet(url.pathname)
+    if (req.method === "GET") return handleGet(runtime, url.pathname)
     return Response.json({ error: "method not allowed" }, { status: 405 })
   }
   return null

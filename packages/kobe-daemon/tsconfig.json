@@ -9,14 +9,7 @@
     "customConditions": ["browser"],
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "paths": {
-      "@/*": ["../kobe/src/*"],
-      "@tui/*": ["../kobe/src/tui/*"],
-      "@engine/*": ["../kobe/src/engine/*"],
-      "@orchestrator/*": ["../kobe/src/orchestrator/*"],
-      "@types/*": ["../kobe/src/types/*"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*"]
 }
