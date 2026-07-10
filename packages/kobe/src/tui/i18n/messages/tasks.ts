@@ -18,13 +18,6 @@ export const en = {
   search: {
     placeholder: "fuzzy filter",
   },
-  /** Sort toggle label */
-  sort: "sort",
-  /** Project filter row */
-  project: {
-    taskSingular: "task",
-    taskPlural: "tasks",
-  },
   /** Inline chip while move/reorder mode is active */
   moveChip: " move",
   /** Empty-state messages */
@@ -116,11 +109,6 @@ export const zh: typeof en = {
   },
   search: {
     placeholder: "模糊搜索",
-  },
-  sort: "排序",
-  project: {
-    taskSingular: "个任务",
-    taskPlural: "个任务",
   },
   moveChip: " 移动",
   empty: {

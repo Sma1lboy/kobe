@@ -15,7 +15,6 @@ import {
   VIEW_TABS,
   cycleViewTarget,
   projectScrollMaxHeightFor,
-  projectTaskCountKey,
   searchQueryKeystroke,
   sidebarEmptyStateKey,
   subtitleBudgetFor,
@@ -81,11 +80,6 @@ describe("i18n key selection", () => {
     )
   })
 
-  it("pluralizes the project task-count label key", () => {
-    expect(projectTaskCountKey(1)).toBe("tasks.project.taskSingular")
-    expect(projectTaskCountKey(0)).toBe("tasks.project.taskPlural")
-    expect(projectTaskCountKey(2)).toBe("tasks.project.taskPlural")
-  })
 })
 
 describe("searchQueryKeystroke", () => {

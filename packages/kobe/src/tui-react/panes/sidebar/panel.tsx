@@ -47,8 +47,6 @@ export function SidebarPanel(props: {
   view: SidebarView
   setView: (view: SidebarView) => void
   sortMode: TaskSortMode
-  hasSortToggle: boolean
-  onSortModeToggle?: () => void
   searchMode: boolean
   searchQuery: string
   flatIds: readonly string[]
@@ -59,7 +57,6 @@ export function SidebarPanel(props: {
   projectOptions: readonly SidebarProjectOption[]
   projectFilterRepo: string | null
   projectFilterLabel: string
-  projectFilterCountLabel: string
   cycleProjectFilter: () => void
   projectScrollMaxHeight: number
   setProjectScrollRef: (renderable: ScrollBoxRenderable | null) => void
@@ -152,43 +149,21 @@ export function SidebarPanel(props: {
         </box>
       ) : null}
 
-      <box
-        flexDirection="row"
-        justifyContent="space-between"
-        gap={1}
-        paddingBottom={1}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <box flexDirection="row" gap={2}>
-          {VIEW_TABS.map((tab) => {
-            const active = props.view === tab.view
-            return (
-              <text
-                key={tab.view}
-                fg={active ? theme.primary : theme.textMuted}
-                attributes={active ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                onMouseUp={() => props.setView(tab.view)}
-              >
-                {t(viewTabLabelKey(tab.view))}
-              </text>
-            )
-          })}
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-            [/]
-          </text>
-        </box>
-        {props.hasSortToggle ? (
-          <text
-            fg={theme.textMuted}
-            attributes={TextAttributes.DIM}
-            wrapMode="none"
-            onMouseUp={() => props.onSortModeToggle?.()}
-          >
-            {t("tasks.sort")}
-          </text>
-        ) : null}
+      <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+        {VIEW_TABS.map((tab) => {
+          const active = props.view === tab.view
+          return (
+            <text
+              key={tab.view}
+              fg={active ? theme.primary : theme.textMuted}
+              attributes={active ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+              onMouseUp={() => props.setView(tab.view)}
+            >
+              {t(viewTabLabelKey(tab.view))}
+            </text>
+          )
+        })}
       </box>
 
       {props.projectRows.length > 0 ? (
@@ -204,6 +179,11 @@ export function SidebarPanel(props: {
             <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
               {t("tasks.header.projects")}
             </text>
+            <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+              {"─".repeat(240)}
+            </text>
+            {/* Project-filter label sits at flex end (owner taste 2026-07-10);
+                the task-count label is gone — not worth the cells. */}
             {props.projectOptions.length > 1 ? (
               <text
                 fg={props.projectFilterRepo ? theme.primary : theme.textMuted}
@@ -212,14 +192,6 @@ export function SidebarPanel(props: {
                 flexShrink={0}
               >
                 {props.projectFilterLabel}
-              </text>
-            ) : null}
-            <text fg={theme.border} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-              {"─".repeat(240)}
-            </text>
-            {props.projectOptions.length > 1 ? (
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
-                {props.projectFilterCountLabel}
               </text>
             ) : null}
           </box>

@@ -70,11 +70,6 @@ export function projectScrollMaxHeightFor(terminalHeight: number, projectRowCoun
   return Math.min(cellCap, contentHeight)
 }
 
-/** i18n key for the project-filter `N task(s)` count label. */
-export function projectTaskCountKey(count: number): string {
-  return count === 1 ? "tasks.project.taskSingular" : "tasks.project.taskPlural"
-}
-
 /**
  * i18n key for the task list's empty-state / scoped-empty placeholder.
  * `searching` wins (no fuzzy match), then a project-scoped empty, then the
