@@ -13,17 +13,24 @@
  */
 
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
-import { type Server, type Socket, createServer } from "node:net"
+import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { latestTranscriptMtime } from "@/monitor/activity"
 import type { Orchestrator } from "@/orchestrator/core"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import { type UpdateInfo, checkLatestVersion } from "@/version"
+import type { UpdateInfo } from "@/version"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
-import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
+import {
+  type ClientState,
+  type DaemonClientConnection,
+  broadcast,
+  drainClientBuffer,
+  writeFrame,
+} from "./client-connection.ts"
 import { ClientWriter } from "./client-writer.ts"
+import { startDaemonCollectors } from "./collectors.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
@@ -34,22 +41,10 @@ import {
   shapeDaemonError,
 } from "./handlers.ts"
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
-import {
-  DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
-  defaultKeybindingsPath,
-  startKeybindingsWatcher,
-} from "./keybindings-watcher.ts"
 import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
-import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
-import {
-  DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
-  startTranscriptActivityCollector,
-} from "./transcript-activity-collector.ts"
-import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
+import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
-import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
 // (tests, the kobe-web bridge) can reach it via the existing
@@ -62,9 +57,7 @@ export {
   type DaemonRequestHandler,
 } from "./handlers.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
-
-/** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
-const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
+export type { DaemonClientConnection } from "./client-connection.ts"
 
 /**
  * Grace before a subscriber-less daemon self-stops (refcounted lazy
@@ -91,17 +84,17 @@ export interface DaemonServerOptions {
   readonly checkUpdate?: () => Promise<UpdateInfo | null>
   /** Re-check interval in ms; `0` disables the poller. Defaults to 6h. */
   readonly updatePollMs?: number
-  /** Auto-title re-scan interval in ms; `0` disables. Defaults to {@link DEFAULT_AUTO_TITLE_POLL_MS}. */
+  /** Auto-title re-scan interval in ms; `0` disables. Defaults to `DEFAULT_AUTO_TITLE_POLL_MS`. */
   readonly autoTitlePollMs?: number
-  /** PR-status (`gh pr view`) poll interval in ms; `0` disables. Defaults to {@link DEFAULT_PR_STATUS_POLL_MS}. */
+  /** PR-status (`gh pr view`) poll interval in ms; `0` disables. Defaults to `DEFAULT_PR_STATUS_POLL_MS`. */
   readonly prStatusPollMs?: number
-  /** UI-prefs watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_UI_PREFS_DEBOUNCE_MS}. */
+  /** UI-prefs watcher debounce in ms; `0` disables. Defaults to `DEFAULT_UI_PREFS_DEBOUNCE_MS`. */
   readonly uiPrefsDebounceMs?: number
-  /** Keybindings watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_KEYBINDINGS_DEBOUNCE_MS}. */
+  /** Keybindings watcher debounce in ms; `0` disables. Defaults to `DEFAULT_KEYBINDINGS_DEBOUNCE_MS`. */
   readonly keybindingsDebounceMs?: number
-  /** Worktree-changes collector tick in ms; `0` disables. Defaults to {@link DEFAULT_WORKTREE_CHANGES_TICK_MS}. */
+  /** Worktree-changes collector tick in ms; `0` disables. Defaults to `DEFAULT_WORKTREE_CHANGES_TICK_MS`. */
   readonly worktreeChangesTickMs?: number
-  /** Transcript-activity collector tick in ms; `0` disables. Defaults to {@link DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS}. */
+  /** Transcript-activity collector tick in ms; `0` disables. Defaults to `DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS`. */
   readonly transcriptActivityTickMs?: number
   /** Optional loopback HTTP/SSE browser transport. Omitted in tests unless explicitly requested. */
   readonly webPort?: number
@@ -118,46 +111,6 @@ export interface DaemonServer {
   readonly webPort?: number
   readonly clients: ReadonlySet<DaemonClientConnection>
   close(): Promise<void>
-}
-
-export interface DaemonClientConnection {
-  readonly id: number
-  readonly connectedAt: Date
-}
-
-type ClientState = DaemonClientConnection & {
-  socket: Socket
-  /**
-   * Backpressure-aware writer for this socket (fix E). Every server→client
-   * frame goes through it so a slow/stalled client buffers in a bounded
-   * per-client queue (oldest droppable frames shed past the high-water mark)
-   * instead of letting Node queue unbounded heap on the long-lived daemon.
-   * Lifecycle/response frames are never dropped. See {@link ClientWriter}.
-   */
-  writer: ClientWriter
-  buffer: string
-  /** True once the client has called `subscribe` (broadcast target). */
-  subscribed: boolean
-  /**
-   * True only when the client subscribed with `role: "gui"` — a real
-   * front-end attach. This is the refcount that gates lazy shutdown; an
-   * in-tmux helper pane (`role: "pane"`) is `subscribed` (gets channels)
-   * but NOT `holdsLifetime`, so closing it never stops the daemon. See
-   * {@link SubscribeRole}.
-   */
-  holdsLifetime: boolean
-  /**
-   * Per-channel subscribe filter (KOB — per-channel subscribe). `null` =
-   * "no filter, deliver every channel" (the historical behavior — what a
-   * subscriber that omits `channels` gets). A non-null set restricts both
-   * the connect-time replay AND every later `broadcast` to the named
-   * channels, so a narrow consumer (e.g. host-boot's UiPrefsSync, which
-   * only wants `ui-prefs` + `keybindings`) no longer receives — and
-   * deserializes — the full `task.snapshot` fan-out it never reads. The
-   * `daemon.stopping` lifecycle frame is NOT a channel and bypasses this
-   * filter (every subscriber must learn the daemon is going down).
-   */
-  channels: ReadonlySet<ChannelName> | null
 }
 
 type EventedServer = Server & {
@@ -251,7 +204,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     const decoder = new StringDecoder("utf8")
     socket.on("data", (chunk) => {
       client.buffer += decoder.write(chunk)
-      drainClientBuffer(client)
+      drainClientBuffer(client, (req, c) => void handleRequest(req, c))
     })
     socket.on("error", () => {})
     socket.on("close", () => {
@@ -303,90 +256,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // doubles stub a partial Orchestrator.
   bus.publish("active-task", { taskId: orch.activeTaskSignal?.()?.() ?? null })
 
-  // Daemon-owned update check (KOB): poll npm once on start + on an interval
-  // and publish to the `update` channel, so every `kobe tasks` pane subscribes
-  // instead of hitting the registry itself. A failure is logged, not fatal;
-  // the bus caches the last value for late subscribers like any other channel.
-  const checkUpdate = options.checkUpdate ?? checkLatestVersion
-  const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
-  const pollUpdate = (): void => {
-    void checkUpdate()
-      .then((info) => bus.publish("update", { info }))
-      .catch((err) => logDaemonError("update-poller", err))
-  }
-  let updateTimer: ReturnType<typeof setInterval> | null = null
-  if (updatePollMs > 0) {
-    pollUpdate()
-    updateTimer = setInterval(pollUpdate, updatePollMs)
-    updateTimer.unref?.()
-  }
-
-  // Live auto-title (KOB): rename still-placeholder tasks from their
-  // engine transcript on an interval, so a name appears WHILE attached —
-  // the detach-time path in tui/direct.ts only fires on
-  // return. The rename broadcasts via the `task.snapshot` channel above,
-  // so every attached Tasks pane updates without a detach.
-  const autoTitlePollMs = options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS
-  const stopAutoTitlePoller = startAutoTitlePoller(orch, autoTitlePollMs, () => lifetime.hasSubscribers())
-
-  // Live visual prefs (KOB — cross-session theme propagation): watch
-  // `state.json` for the theme / transparent / focus-accent keys and
-  // publish them on the `ui-prefs` channel, so every pane in EVERY task
-  // session re-applies a Settings appearance change live instead of
-  // keeping its boot-time read forever. The state path follows the same
-  // homeDir the server was started with, so sandbox/test homes isolate.
-  const stopUiPrefsWatcher = startUiPrefsWatcher(bus, {
-    statePath: defaultUiPrefsStatePath(options.homeDir),
-    debounceMs: options.uiPrefsDebounceMs ?? DEFAULT_UI_PREFS_DEBOUNCE_MS,
-  })
-
-  // Live keybindings (KOB — cross-session keybinding propagation): watch
-  // `~/.kobe/settings/keybindings.yaml` and ping the `keybindings` channel
-  // on change, so every pane re-reads + re-applies the file onto its
-  // KobeKeymap live instead of needing a session rebuild. Same homeDir
-  // isolation as the ui-prefs watcher above.
-  const stopKeybindingsWatcher = startKeybindingsWatcher(bus, {
-    path: defaultKeybindingsPath(options.homeDir),
-    debounceMs: options.keybindingsDebounceMs ?? DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
-  })
-
-  // Single worktree-changes collector (issue #6): the daemon runs the
-  // guarded `git status` polls for every non-archived local worktree and
-  // publishes the full counts map on the `worktree.changes` channel, so
-  // panes render pushes instead of each spawning their own per-row git
-  // polls. Panes detect the channel via `hello.capabilities` and keep
-  // their local poller only as the no-daemon / old-daemon fallback.
-  const stopWorktreeChangesCollector = startWorktreeChangesCollector(
-    orch,
-    bus,
-    options.worktreeChangesTickMs ?? DEFAULT_WORKTREE_CHANGES_TICK_MS,
-    () => lifetime.hasSubscribers(),
-  )
-
-  // Single transcript-activity collector (perf — deduplicate per-Ops-pane
-  // polling): the daemon runs the guarded FILESYSTEM probes (newest
-  // transcript mtime + the engine-owned completion marker) for every
-  // non-archived local worktree and publishes the full map on the
-  // `transcript.activity` channel, so Ops panes render pushes instead of
-  // each stat'ing + parsing the transcript store on their own timers. The
-  // per-window tmux capture-pane quiescence check + @kobe_tab_state write
-  // stay in-process (the daemon never touches tmux). Panes detect the
-  // channel via `hello.capabilities` and keep their local probes only as
-  // the no-daemon / old-daemon fallback.
-  const stopTranscriptActivityCollector = startTranscriptActivityCollector(
-    orch,
-    bus,
-    options.transcriptActivityTickMs ?? DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
-    () => lifetime.hasSubscribers(),
-  )
-
-  // PR-status poller: shells `gh pr view` per task with a real branch
-  // and writes the result onto Task.prStatus, which rides the same task push as
-  // every other field. Gated on subscribers so a gui-less daemon never hits the
-  // network for nobody.
-  const stopPrStatusPoller = startPrStatusPoller(orch, options.prStatusPollMs ?? DEFAULT_PR_STATUS_POLL_MS, () =>
-    lifetime.hasSubscribers(),
-  )
+  // Background collectors/watchers (update poll, auto-title, ui-prefs /
+  // keybindings watchers, worktree-changes / transcript-activity / pr-status)
+  // — wired in collectors.ts; per-tick work is gated on attached subscribers
+  // so a gui-less daemon never polls npm / git / gh for nobody.
+  const stopCollectors = startDaemonCollectors(orch, bus, () => lifetime.hasSubscribers(), options)
 
   let webServer: DaemonWebServer | null = null
   const serverApi: DaemonServer = {
@@ -402,13 +276,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       unsubscribeStore()
       webServer?.close()
       webServer = null
-      if (updateTimer) clearInterval(updateTimer)
-      stopAutoTitlePoller()
-      stopPrStatusPoller()
-      stopUiPrefsWatcher()
-      stopKeybindingsWatcher()
-      stopWorktreeChangesCollector()
-      stopTranscriptActivityCollector()
+      stopCollectors()
       activity.close()
       // Hosted PTYs are deliberately NOT touched here: they live in the
       // standalone `kobe pty-host` process, so `kobe daemon restart` never
@@ -581,28 +449,6 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     }
   }
 
-  function drainClientBuffer(client: ClientState): void {
-    let nl = client.buffer.indexOf("\n")
-    while (nl !== -1) {
-      const line = client.buffer.slice(0, nl)
-      client.buffer = client.buffer.slice(nl + 1)
-      if (line.trim().length > 0) {
-        try {
-          const frame = JSON.parse(line) as DaemonFrame
-          if (frame.type !== "request") throw new Error("daemon only accepts request frames from clients")
-          void handleRequest(frame, client)
-        } catch (err) {
-          writeFrame(client, {
-            type: "response",
-            id: "parse-error",
-            error: { message: err instanceof Error ? err.message : String(err) },
-          })
-        }
-      }
-      nl = client.buffer.indexOf("\n")
-    }
-  }
-
   return serverApi
 }
 
@@ -613,48 +459,5 @@ export async function readPidFile(pidPath: string): Promise<number | null> {
     return Number.isFinite(pid) ? pid : null
   } catch {
     return null
-  }
-}
-
-/**
- * Critical frames are never dropped under backpressure (fix E): the
- * `daemon.stopping` lifecycle signal (every client must learn the daemon is
- * going down) and every RPC `response` (dropping one would hang the client's
- * pending request). Channel `event` frames are droppable — the bus
- * last-value-coalesces them, so a dropped intermediate is superseded by the
- * next publish.
- */
-function isCriticalFrame(frame: DaemonFrame): boolean {
-  if (frame.type === "event") return frame.name === "daemon.stopping"
-  return true
-}
-
-function writeFrame(client: Pick<ClientState, "writer">, frame: DaemonFrame): void {
-  client.writer.write(frameToLine(frame), isCriticalFrame(frame))
-}
-
-function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void {
-  // Serialize ONCE per publish, not once per subscriber: a task.snapshot
-  // frame is ~8.5KB at 20 tasks, so N subscribers would otherwise cost N
-  // identical JSON.stringify passes per task mutation. The wire bytes are
-  // unchanged — every subscriber receives the exact same line.
-  //
-  // Per-channel filter (KOB — per-channel subscribe): a channel event is
-  // skipped for a client whose `channels` filter excludes it, so a narrow
-  // consumer no longer receives (nor parses) fan-out it never reads. The
-  // `daemon.stopping` lifecycle frame is NOT a channel — it bypasses the
-  // filter so every subscriber learns the daemon is going down.
-  const channel = frame.type === "event" && frame.name !== "daemon.stopping" ? (frame.name as ChannelName) : null
-  // Backpressure (fix E): each client's writer obeys its own socket's drain
-  // signal and buffers in a bounded per-client queue, so one slow client can
-  // neither stall the fan-out for healthy clients nor grow the daemon heap
-  // unbounded. Critical-ness is identical for all clients, so compute it once.
-  const critical = isCriticalFrame(frame)
-  let line: string | null = null
-  for (const client of clients) {
-    if (!client.subscribed && frame.type === "event") continue
-    if (channel && client.channels && !client.channels.has(channel)) continue
-    line ??= frameToLine(frame)
-    client.writer.write(line, critical)
   }
 }
