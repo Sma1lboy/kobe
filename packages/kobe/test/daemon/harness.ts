@@ -32,6 +32,7 @@ import {
   type RequestHandlerDeps,
   createDaemonWebRequestHandler,
 } from "@sma1lboy/kobe-daemon/daemon/web-server"
+import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
 /**
@@ -154,6 +155,7 @@ export async function bootDaemonHarness(opts: DaemonHarnessOptions = {}): Promis
   for (const [key, value] of Object.entries(opts.env ?? {})) setEnv(key, value)
 
   const server = await startDaemonServer(opts.orchestrator ?? fakeOrchestrator(), {
+    runtime: daemonRuntime,
     socketPath,
     pidPath,
     homeDir: dir,
@@ -183,6 +185,7 @@ export async function bootDaemonHarness(opts: DaemonHarnessOptions = {}): Promis
     const linkClient = trackClient(new KobeDaemonClient(socketPath))
     const snapshot = webOpts.snapshot ?? emptyWebSnapshot
     const handle = createDaemonWebRequestHandler({
+      runtime: daemonRuntime,
       link: {
         request: <T>(name: Parameters<KobeDaemonClient["request"]>[0], payload?: unknown) =>
           linkClient.request<T>(name, payload),

@@ -33,11 +33,8 @@
  * `packages/kobe/test/daemon/handlers.test.ts`).
  */
 
-import { isEngineActivityKind } from "@/engine/hook-events"
-import { maybeAutoStart } from "@/monitor/status-rules"
-import type { Orchestrator } from "@/orchestrator/core"
-import { CURRENT_VERSION } from "@/version"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
+import type { DaemonOrchestrator } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
@@ -54,6 +51,7 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
 
 // Re-exported for backward compatibility — `server.ts` and (transitively)
 // `packages/kobe/test/daemon/handlers.test.ts` import these from here.
@@ -74,7 +72,9 @@ export {
  */
 export interface DaemonHandlerContext {
   /** Task-lifecycle owner — the single writer for the task index. */
-  readonly orch: Orchestrator
+  readonly orch: DaemonOrchestrator
+  /** Product/runtime behavior supplied by the kobe composition root. */
+  readonly runtime: DaemonRuntimeAdapter
   /** Push-channel hub (`task.setActive` publishes `active-task` here). */
   readonly bus: DaemonEventBus
   /** Transient engine-activity state (`engine.reportEvent`, `task.delete`). */
@@ -198,7 +198,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           // only catches a breaking wire change; this lets the client detect a
           // stale-build daemon after a patch upgrade (same protocol, old code in
           // memory) and surface a non-fatal "restart the daemon" banner (KOB).
-          kobeVersion: CURRENT_VERSION,
+          kobeVersion: ctx.runtime.currentVersion,
           capabilities: [...CHANNEL_NAMES],
           daemonPid: ctx.daemon.pid,
           clientId: ctx.clientId,
@@ -215,7 +215,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           // Build version of the running daemon (package.json) — surfaced in
           // `daemon status` / `kobe doctor` so a stale-build daemon is visible
           // even without a TUI attached (KOB).
-          kobeVersion: CURRENT_VERSION,
+          kobeVersion: ctx.runtime.currentVersion,
           uptimeMs: Date.now() - ctx.daemon.startedAt.getTime(),
           startedAt: ctx.daemon.startedAt.toISOString(),
           // Attached GUIs (role "gui" front-ends) — the refcount that keeps
@@ -320,7 +320,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // adapter, older daemon); an unmatched cwd (an unrelated repo, a
         // project with no kobe task) is silently dropped.
         const kind = requireString(payload, "kind")
-        if (!isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
+        if (!ctx.runtime.isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
         // `taskId` (legacy/direct) wins; otherwise resolve from `cwd`.
         const explicitId = optionalString(payload, "taskId")
         const cwd = optionalString(payload, "cwd")
@@ -351,7 +351,8 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // daemon rule.) Fire-and-forget; gated inside maybeAutoStart
         // (opt-in state.json flag).
         if (kind === "turn-start") {
-          maybeAutoStart(ctx.orch, taskId)
+          ctx.runtime
+            .maybeAutoStart(ctx.orch, taskId)
             .then((result) => {
               if (result === "moved") {
                 console.log(`[status-rules] task ${taskId} auto-moved backlog → in_progress`)

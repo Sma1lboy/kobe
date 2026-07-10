@@ -7,21 +7,14 @@ import {
   sameWorktreeChangesMap,
 } from "../../src/client/remote-orchestrator.ts"
 
-// Spy on the client-side logger so the malformed-event tests can assert the
-// drop is RECORDED (to client.log) instead of silently swallowed. Real
-// implementations of every other export are preserved.
+// Keep malformed-event drops diagnosable while preserving every other real export.
 const { logClientError } = vi.hoisted(() => ({ logClientError: vi.fn() }))
 vi.mock("@sma1lboy/kobe-daemon/client/client-log", async (importActual) => ({
   ...(await importActual<typeof import("@sma1lboy/kobe-daemon/client/client-log")>()),
   logClientError,
 }))
 
-/**
- * Minimal fake daemon client: RemoteOrchestrator only needs `on("*", …)`
- * (to receive channel events) and `onLifecycle` (for the close hook) at
- * construction time. `emit` replays a daemon event frame through the
- * captured `*` handler, exactly as the real socket layer would.
- */
+/** Minimal client whose `emit` replays a daemon event through the captured `*` handler. */
 function fakeClient(): { client: KobeDaemonClient; emit: (name: string, payload: unknown) => void } {
   let star: ((frame: { name: string; payload: unknown }) => void) | undefined
   const client = {
@@ -77,6 +70,23 @@ describe("RemoteOrchestrator channel handling", () => {
 
     emit("ui-prefs", { theme: "nord" })
     expect(orch.uiPrefsSignal()()?.projectFilter).toBeNull()
+  })
+
+  it("publishes ui prefs through one state cell and notifies once per accepted payload", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+    const state = orch.uiPrefsSignal()
+    const listener = vi.fn()
+    const unsubscribe = state.subscribe(listener)
+
+    expect(orch.uiPrefsStore()).toBe(state)
+    emit("ui-prefs", { theme: "nord" })
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(state.get()?.theme).toBe("nord")
+
+    unsubscribe()
+    emit("ui-prefs", { theme: "aura" })
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 
   it("carries an absent `locale` as '' (UNSET), never 'en' — a payload that omits the language must not reset it", () => {

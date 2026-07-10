@@ -7,7 +7,6 @@
  * here.
  */
 
-import { isTaskStatus } from "@/types/task"
 import { logDaemonError } from "./crash-log.ts"
 import { optionalBoolean, optionalString, optionalVendor, requireString } from "./handler-validators.ts"
 import type { DaemonHandlerContext, DaemonRequestHandler } from "./handlers.ts"
@@ -121,7 +120,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const status = requireString(payload, "status")
-      if (!isTaskStatus(status)) throw new Error("status must be a TaskStatus")
+      if (!ctx.runtime.isTaskStatus(status)) throw new Error("status must be a TaskStatus")
       // Capture the task (for repo) AND its prior status BEFORE the
       // transition so we can mirror a real task→done transition into the
       // issue store below.

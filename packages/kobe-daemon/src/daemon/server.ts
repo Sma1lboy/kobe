@@ -16,10 +16,6 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
-import { latestTranscriptMtime } from "@/monitor/activity"
-import type { Orchestrator } from "@/orchestrator/core"
-import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import type { UpdateInfo } from "@/version"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import {
@@ -31,6 +27,7 @@ import {
 } from "./client-connection.ts"
 import { ClientWriter } from "./client-writer.ts"
 import { startDaemonCollectors } from "./collectors.ts"
+import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
@@ -44,6 +41,7 @@ import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
@@ -75,6 +73,8 @@ function resolveIdleGraceMs(): number {
 }
 
 export interface DaemonServerOptions {
+  /** Product/runtime behavior injected by the kobe composition root. */
+  readonly runtime: DaemonRuntimeAdapter
   readonly socketPath?: string
   readonly pidPath?: string
   readonly homeDir?: string
@@ -118,7 +118,8 @@ type EventedServer = Server & {
   removeListener(event: "error", listener: (err: Error) => void): void
 }
 
-export async function startDaemonServer(orch: Orchestrator, options: DaemonServerOptions = {}): Promise<DaemonServer> {
+export async function startDaemonServer(orch: DaemonOrchestrator, options: DaemonServerOptions): Promise<DaemonServer> {
+  const runtime = options.runtime
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
   const startedAt = options.startedAt ?? new Date()
@@ -171,7 +172,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const livenessAt: ActivityLivenessProbe = async (taskId) => {
     const task = orch.getTask(taskId)
     if (!task?.worktreePath) return undefined
-    return latestTranscriptMtime(task.vendor ?? DEFAULT_TASK_VENDOR, task.worktreePath)
+    return runtime.latestTranscriptMtime(task.vendor ?? runtime.defaultTaskVendor, task.worktreePath)
   }
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
 
@@ -260,7 +261,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // keybindings watchers, worktree-changes / transcript-activity / pr-status)
   // — wired in collectors.ts; per-tick work is gated on attached subscribers
   // so a gui-less daemon never polls npm / git / gh for nobody.
-  const stopCollectors = startDaemonCollectors(orch, bus, () => lifetime.hasSubscribers(), options)
+  const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options)
 
   let webServer: DaemonWebServer | null = null
   const serverApi: DaemonServer = {
@@ -326,6 +327,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   function handlerContext(clientId: number): DaemonHandlerContext {
     return {
       orch,
+      runtime,
       bus,
       activity,
       issues,
@@ -349,6 +351,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       ctx: handlerContext,
     })
     webServer = await startDaemonWebServer({
+      runtime,
       port: options.webPort,
       hostname: options.webHost,
       staticDir: options.webStaticDir,

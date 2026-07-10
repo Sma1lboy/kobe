@@ -14,6 +14,7 @@ import { join } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { type DaemonServer, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
 function fakeOrchestrator(): Orchestrator {
@@ -63,6 +64,7 @@ describe("keybindings channel (daemon → client round-trip)", () => {
 
   it("delivers an initial rev, then bumps it when keybindings.yaml changes", async () => {
     server = await startDaemonServer(fakeOrchestrator(), {
+      runtime: daemonRuntime,
       socketPath,
       pidPath,
       homeDir: dir,

@@ -22,8 +22,7 @@
  * actually enters the task.)
  */
 
-import type { Accessor } from "solid-js"
-import { createSignal } from "solid-js"
+import { type ReadableState, type StateCell, createStateCell } from "../lib/external-store.ts"
 import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-active.ts"
 import { getRemoteRepoConfig, getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
@@ -93,10 +92,8 @@ export class Orchestrator {
   private readonly worktreeCoordinator: WorktreeCoordinator
   /** Owns in-place task-field edits (title / branch / vendor / status / …). */
   private readonly editor: TaskEditor
-  private readonly tasksAcc: Accessor<Task[]>
-  private readonly setTasks: (next: Task[]) => void
-  private readonly activeTaskAcc: Accessor<string | null>
-  private readonly setActiveTaskSig: (next: string | null) => void
+  private readonly tasksAcc: StateCell<Task[]>
+  private readonly activeTaskAcc: StateCell<string | null>
   private readonly unsubscribeStore: TaskIndexUnsubscribe
   /** Lock for `ensureMainTask` so concurrent calls don't double-create. */
   private readonly mainTaskLocks = new Map<string, Promise<Task>>()
@@ -108,21 +105,17 @@ export class Orchestrator {
       this.ensureMainTask(repo),
     )
     this.editor = new TaskEditor(this.store, this.worktrees)
-    const [tasks, setTasks] = createSignal<Task[]>(this.store.list())
-    this.tasksAcc = tasks
-    this.setTasks = (next) => setTasks(() => next)
+    this.tasksAcc = createStateCell<Task[]>(this.store.list())
     // Seed focus from the persisted `lastActive` record (state/last-active
     // .ts) so a daemon restart or fresh TUI opens on the last-focused task
     // instead of "first in the list". Dropped silently when the task is
     // gone (deleted since) — the UI's own fallback picks a survivor.
     const persistedFocus = readLastActiveTaskId()
-    const [activeTask, setActiveTask] = createSignal<string | null>(
+    this.activeTaskAcc = createStateCell<string | null>(
       persistedFocus && this.store.get(persistedFocus) ? persistedFocus : null,
     )
-    this.activeTaskAcc = activeTask
-    this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.unsubscribeStore = this.store.subscribe((snapshot) => {
-      this.setTasks(snapshot.slice())
+      this.tasksAcc.set(snapshot.slice())
     })
   }
 
@@ -142,14 +135,14 @@ export class Orchestrator {
    * one API; in this local (no-daemon) mode there are no sibling panes to
    * sync, so it's just an in-process signal.
    */
-  activeTaskSignal(): Accessor<string | null> {
+  activeTaskSignal(): ReadableState<string | null> {
     return this.activeTaskAcc
   }
 
   /** Set the active-task focus and touch recency for task-list sorting. */
   async setActiveTask(id: TaskId | string | null): Promise<void> {
     const next = id === null ? null : String(id)
-    this.setActiveTaskSig(next)
+    this.activeTaskAcc.set(next)
     if (next && this.store.get(next)) {
       // Global last-writer-wins focus record — see state/last-active.ts. This
       // eagerly persists the ONE last-focused id, so a daemon/TUI restart
@@ -167,7 +160,7 @@ export class Orchestrator {
   }
 
   /** Solid signal of the current task list. */
-  tasksSignal(): Accessor<Task[]> {
+  tasksSignal(): ReadableState<Task[]> {
     return this.tasksAcc
   }
 

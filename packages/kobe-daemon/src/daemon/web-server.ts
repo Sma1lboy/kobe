@@ -4,17 +4,9 @@
 
 import { existsSync } from "node:fs"
 import { join, normalize } from "node:path"
-import { availableEngineIds } from "@/engine/account-detect"
-import { engineDisplayName, kobeApiInvocation } from "@/engine/interactive-command"
-import { engineEntry } from "@/engine/registry"
-import type { Orchestrator } from "@/orchestrator/core"
-import { getPersistedString, getSavedRepos, setPersistedString } from "@/state/repos"
-import { handleDiffRequest } from "@/web/diff"
-import { handleHistoryRequest } from "@/web/history"
-import { handleNotesRequest } from "@/web/notes"
-import { handleThemesRequest } from "@/web/themes"
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
+import type { DaemonOrchestrator } from "./contracts.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
 import {
   type DaemonHandlerContext,
@@ -25,6 +17,7 @@ import {
 } from "./handlers.ts"
 import type { ChannelName, ChannelPayloads, DaemonRequestName, SerializedTask } from "./protocol.ts"
 import { serializeTask } from "./protocol.ts"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
 import { handleIssuesRequest } from "./web-issues-route.ts"
 import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
@@ -55,6 +48,7 @@ export interface DaemonWebLink extends DaemonRpcClient {
 }
 
 export interface RequestHandlerDeps {
+  runtime: DaemonRuntimeAdapter
   link: DaemonWebLink
   sseSends: Set<SseSend>
   staticDir?: string
@@ -64,6 +58,7 @@ export interface RequestHandlerDeps {
 }
 
 export interface DaemonWebServerOptions {
+  runtime: DaemonRuntimeAdapter
   port: number
   hostname?: string
   staticDir?: string
@@ -174,13 +169,13 @@ async function rpcResponse(req: Request, link: DaemonWebLink, tearDown: (taskId:
   }
 }
 
-async function enginesResponse(): Promise<Response> {
+async function enginesResponse(runtime: DaemonRuntimeAdapter): Promise<Response> {
   try {
-    const ids = await availableEngineIds()
+    const ids = await runtime.availableEngineIds()
     const engines = ids.map((id) => ({
       id,
-      label: engineDisplayName(id),
-      effortLevels: engineEntry(id).effortLevels,
+      label: runtime.engineDisplayName(id),
+      effortLevels: runtime.engineEntry(id).effortLevels,
     }))
     return Response.json({ engines: engines.length > 0 ? engines : [{ id: "claude", label: "Claude" }] })
   } catch (err) {
@@ -188,19 +183,19 @@ async function enginesResponse(): Promise<Response> {
   }
 }
 
-function cliInvocationResponse(): Response {
-  return Response.json({ api: kobeApiInvocation() })
+function cliInvocationResponse(runtime: DaemonRuntimeAdapter): Response {
+  return Response.json({ api: runtime.kobeApiInvocation() })
 }
 
-function projectsResponse(): Response {
-  return Response.json({ projects: getSavedRepos() })
+function projectsResponse(runtime: DaemonRuntimeAdapter): Response {
+  return Response.json({ projects: runtime.getSavedRepos() })
 }
 
-async function sessionResponse(req: Request, link: DaemonWebLink): Promise<Response> {
+async function sessionResponse(runtime: DaemonRuntimeAdapter, req: Request, link: DaemonWebLink): Promise<Response> {
   try {
     const { taskId } = (await req.json()) as { taskId?: string }
     if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
-    return Response.json(await ensureTaskSession(link, taskId))
+    return Response.json(await ensureTaskSession(runtime, link, taskId))
   } catch (err) {
     return webRpcErrorResponse(err, 500)
   }
@@ -225,19 +220,19 @@ const QUICK_PROMPT_KEYS = {
   pr: "boardPrompt.pr",
 } as const
 
-function quickPromptsGet(): Response {
+function quickPromptsGet(runtime: DaemonRuntimeAdapter): Response {
   return Response.json({
-    review: getPersistedString(QUICK_PROMPT_KEYS.review) ?? null,
-    pr: getPersistedString(QUICK_PROMPT_KEYS.pr) ?? null,
+    review: runtime.getPersistedString(QUICK_PROMPT_KEYS.review) ?? null,
+    pr: runtime.getPersistedString(QUICK_PROMPT_KEYS.pr) ?? null,
   })
 }
 
-async function quickPromptsPut(req: Request): Promise<Response> {
+async function quickPromptsPut(runtime: DaemonRuntimeAdapter, req: Request): Promise<Response> {
   try {
     const body = (await req.json()) as { review?: unknown; pr?: unknown }
-    if (typeof body.review === "string") setPersistedString(QUICK_PROMPT_KEYS.review, body.review)
-    if (typeof body.pr === "string") setPersistedString(QUICK_PROMPT_KEYS.pr, body.pr)
-    return quickPromptsGet()
+    if (typeof body.review === "string") runtime.setPersistedString(QUICK_PROMPT_KEYS.review, body.review)
+    if (typeof body.pr === "string") runtime.setPersistedString(QUICK_PROMPT_KEYS.pr, body.pr)
+    return quickPromptsGet(runtime)
   } catch (err) {
     return webRpcErrorResponse(err, 400)
   }
@@ -255,8 +250,8 @@ async function staticResponse(pathname: string, staticDir: string): Promise<Resp
 }
 
 export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: Request) => Promise<Response> {
-  const { link, sseSends, staticDir } = deps
-  const tearDown = deps.tearDownSession ?? ((taskId: string) => void tearDownTaskSession(taskId))
+  const { link, runtime, sseSends, staticDir } = deps
+  const tearDown = deps.tearDownSession ?? ((taskId: string) => void tearDownTaskSession(runtime, taskId))
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url)
     if (url.pathname === DAEMON_WEB_HEALTH_PATH) return new Response(DAEMON_WEB_HEALTH_MARKER)
@@ -275,31 +270,33 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
       }, req.signal)
     }
     if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link, tearDown)
-    if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(req, link)
-    if (url.pathname === "/api/engine-spec" && req.method === "GET") return specResponse(url, link, engineSpec)
-    if (url.pathname === "/api/terminal-spec" && req.method === "GET") {
-      return specResponse(url, link, terminalSpec)
+    if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(runtime, req, link)
+    if (url.pathname === "/api/engine-spec" && req.method === "GET") {
+      return specResponse(url, link, (l, id) => engineSpec(runtime, l, id))
     }
-    if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
-    if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse()
-    if (url.pathname === "/api/projects" && req.method === "GET") return projectsResponse()
-    if (url.pathname === "/api/settings" && req.method === "GET") return settingsSnapshot()
-    if (url.pathname === "/api/settings" && req.method === "PATCH") return settingsPatch(req)
-    if (url.pathname === "/api/quick-prompts" && req.method === "GET") return quickPromptsGet()
-    if (url.pathname === "/api/quick-prompts" && req.method === "PUT") return quickPromptsPut(req)
-    const notes = await handleNotesRequest(req, url)
+    if (url.pathname === "/api/terminal-spec" && req.method === "GET") {
+      return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id))
+    }
+    if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse(runtime)
+    if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse(runtime)
+    if (url.pathname === "/api/projects" && req.method === "GET") return projectsResponse(runtime)
+    if (url.pathname === "/api/settings" && req.method === "GET") return settingsSnapshot(runtime)
+    if (url.pathname === "/api/settings" && req.method === "PATCH") return settingsPatch(runtime, req)
+    if (url.pathname === "/api/quick-prompts" && req.method === "GET") return quickPromptsGet(runtime)
+    if (url.pathname === "/api/quick-prompts" && req.method === "PUT") return quickPromptsPut(runtime, req)
+    const notes = await runtime.handleNotesRequest(req, url)
     if (notes) return notes
-    const diff = await handleDiffRequest(req, url)
+    const diff = await runtime.handleDiffRequest(req, url)
     if (diff) return diff
-    const history = await handleHistoryRequest(req, url)
+    const history = await runtime.handleHistoryRequest(req, url)
     if (history) return history
     const issues = await handleIssuesRequest(req, url, link)
     if (issues) return issues
-    const issueAssets = await handleIssueAssetsRequest(req, url)
+    const issueAssets = await handleIssueAssetsRequest(runtime, req, url)
     if (issueAssets) return issueAssets
-    const worktrees = await handleWorktreesRequest(req, url)
+    const worktrees = await handleWorktreesRequest(runtime, req, url)
     if (worktrees) return worktrees
-    const themes = handleThemesRequest(req, url)
+    const themes = runtime.handleThemesRequest(req, url)
     if (themes) return themes
     if (staticDir) return staticResponse(url.pathname, staticDir)
     return new Response("not found", { status: 404 })
@@ -330,7 +327,7 @@ function repoSnapshotAliases(tasks: readonly SerializedTask[], repoRoot: string)
 }
 
 export function createDirectWebLink(args: {
-  orch: Orchestrator
+  orch: DaemonOrchestrator
   bus: DaemonEventBus
   activity: DaemonActivityRegistry
   ctx: (clientId: number) => DaemonHandlerContext
@@ -417,6 +414,7 @@ export async function startDaemonWebServer(opts: DaemonWebServerOptions): Promis
   const hostname = opts.hostname?.trim() || process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
   const allowedHost = allowedHostForBindHost(hostname)
   const handle = createDaemonWebRequestHandler({
+    runtime: opts.runtime,
     link: opts.link,
     sseSends,
     staticDir: opts.staticDir ? normalize(opts.staticDir) : undefined,
