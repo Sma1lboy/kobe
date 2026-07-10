@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.7.86
+
+### Patch Changes
+
+- b72130d: fix: `kobe add` (and every task-creation path) now provisions the repo's project row
+
+  The sidebar's PROJECTS entries are the repos' `kind:"main"` tasks, but nothing in the daemon world created them — `kobe add` saved the repo and adopted worktrees (tasks appeared live) while the PROJECTS list never updated. `kobe add` now ensures the main task, via the daemon when one runs so a live TUI shows the project immediately; `createTask`/`adoptWorktree` also self-provision it, so the new-task dialog on a brand-new repo and hook-adopted worktrees get their project row too.
+
+- 65534ee: Modal keybinding precedence is now declared data, not a React effect-order accident.
+
+  The dialog barrier and dialog-body bindings used to resolve their precedence by which effect happened to commit first (sibling tree order) — documented only in a comment and pinned by no test. Registrations now carry an explicit modal scope (`modalOwner` on the barrier, membership stamped via `ModalScopeContext`), and a pure `insertRegistration` slots the barrier below its members under either registration order; dispatch itself is unchanged. Workspace-host dialog/page gating is consolidated into named, framework-free predicates (`workspacePagesClosed` / `settingsCloseKeysEnabled`) with unit tests, including the negative case (open dialog disables workspace chords) and the deliberate settings-close exemption. No chords added, moved, or rebound.
+
+- f5007f3: refactor: split the over-cap orchestrator core + task-index store back under the file-size cap
+
+  `orchestrator/core.ts` and `orchestrator/index/store.ts` were only passing CI via file-size exemptions. Both are now under ~500 lines, behaviour-preserving and with an unchanged public interface: the store's pure lock-retry + on-disk codec moved to `index/store-codec.ts`; the orchestrator's git-worktree side-effects (allocate / materialise / adopt + their locks) moved to a `WorktreeCoordinator` collaborator, its in-place task-field edits to a `TaskEditor` collaborator, and its pure path/repo-key helpers to `core-helpers.ts`. The `Orchestrator` and `TaskIndexStore` classes keep every public method as a thin delegator, so no caller changed.
+
+- 2727624: Boot now issues every saved repo's main-task ensure concurrently instead of one serial daemon round-trip after another.
+
+  `ensureRepos` looped `await orchestrator.ensureMainTask(repo)` per repo, so with N saved repos the pre-first-paint boot paid N latency-bound round-trips back to back. The daemon transport already pipelines id-correlated requests and the store's saveChain/file-lock serialize the writes, so the calls now go out together via `Promise.all` — collapsing N RTTs into ~1 wall time. Per-repo error isolation is unchanged: a failing repo is caught and logged, and no longer blocks (or rejects) the others.
+
+- 74576ca: Inbound pty-frame routing is now O(1) per chunk instead of O(open-tabs).
+
+  Every open terminal tab used to register its own `pty.data`/`pty.exit` handler on the one shared pty-host client, so the client walked N handlers (N-1 pure key-mismatch rejections) for every chunk an interactive engine streamed — on the busiest inbound path. A single keyed dispatcher now installs once per client and does one `Map` lookup per frame; each hosted handle registers/deregisters through its existing teardown so detach/kill/park never leave a stale route. Behavior is identical: a frame still reaches exactly its own tab and unknown keys drop.
+
+- 4577f28: perf: task focus switches no longer fsync a disk rewrite.
+
+  `setActiveTask` (the most frequent action in the TUI — every task/focus switch) used to call `store.update(id, {})` with an empty patch purely to bump `updatedAt` for the sidebar's `recent` sort. That still paid a full fsync'd read-merge-write (flock + read + merge + `handle.sync()` + rename) plus a full-list `task.snapshot` broadcast on every switch, all to move a field the default sort never reads. Recency is now a cheap in-cache `updatedAt` bump (`store.touchRecency`) that notifies listeners so `recent` still reorders live, but flushes lazily on the next real mutation — dropping the per-switch fsync'd disk write. The durable last-focused id is unaffected (it persists eagerly via `state/last-active.ts`).
+
+- 893cafe: Sidebar: the task whose terminal you're currently viewing no longer draws kobe's own engine spinner. The live terminal already shows claude/codex's own zero-latency spinner, so the sidebar row defers to it instead of animating a duplicate that's necessarily a beat behind. Unfocused rows still spin (their terminal isn't on screen, so kobe's signal is the only liveness cue), and a materializing worktree job still spins even on the viewed row since no terminal exists yet.
+- d8a733a: Extract the remaining terminal tab/split decision logic out of the React components into the framework-free `terminal-tabs-core` module — the engine-tab resume-vs-pin argv choice (`engineTabArgv`), the tab exit policy (`tabExitAction`: close / one-shot resume / degrade to shell), the split collapse-to-unsplit rule (`collapseSplit`), and the is-split keybinding gate (`isTabSplit`) — with unit coverage for each. Behavior-invariant; `TerminalTabs`/`TerminalSplit` now only dispatch.
+- e1957c0: A terminal reset whose fresh spawn fails now shows the spawn error instead of a dead snapshot.
+
+  `registry.reset()` kills the old PTY before spawning the replacement, so when the acquire half threw (shell missing, spawn EACCES) the pane kept rendering the dead shell's last screen while the error message sat in state the UI never showed. The failed-reset path now clears the pane to the same "terminal unavailable" error state as a failed first acquire. Also adds a scripted fake PTY registry (`pty-scripted.ts`) so the pane's error/exit paths are covered by fast render tests with zero subprocesses.
+
+- fa06dd8: perf: the daemon's transcript-activity probe walks each worktree's transcript dir once per tick, not twice.
+
+  Each ~1.5s tick used to make two independent directory listings of the same on-disk transcript store per local worktree — `latestTranscriptMtime` (a readdir + stats, or a full `~/.codex/sessions` date-tree walk) then the turn detector's `latestCompletion` (another walk). The detector already finds the newest file's mtime while locating the latest completion, so it now surfaces both from a single scan (`latestActivity`), and the probe drops the redundant mtime call for claude/codex — one listing per probe, half the stats — while copilot/custom engines keep their single existing walk. The published activity facts (mtime/completionId/completionAt) are byte-identical.
+
+- 06dacb9: Web RPC exposure now derives from the daemon handler registry (`web: true` per entry) instead of a hand-maintained allowlist, and the web transport's error envelopes share the socket's `shapeDaemonError` policy.
+- 2d14409: perf: reuse one scratch cell in `xtermLineToChunks` instead of allocating per cell
+
+  `@xterm/headless`'s `line.getCell(x)` allocates a fresh cell object on every call, and the terminal render path called it for every cell of every converted line — the dominant per-cell allocation on that hot path. It now threads one shared scratch cell into `getCell(x, cell)` (xterm's documented reuse fast path), lazily seeded once program-wide, so line conversion allocates zero cells after warmup. Pure allocation change: the two-pass structure and the `minLast` cursor-tail invariant are untouched.
+
 ## 0.7.85
 
 ### Patch Changes
