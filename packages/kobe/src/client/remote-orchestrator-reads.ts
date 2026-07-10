@@ -9,12 +9,11 @@
  * `performInit`/`handleOrchestratorEvent` don't need).
  */
 
-import { type UiPrefsPayload, isDaemonVersionStale } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { type Accessor, createEffect, createRoot } from "solid-js"
-import type { ExternalStore } from "../lib/external-store.ts"
+import type { UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { ExternalStore, ReadableState } from "../lib/external-store.ts"
 import type { Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId } from "../types/task.ts"
-import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
+import type { UpdateInfo } from "../version.ts"
 import type {
   DaemonConnectionState,
   TaskEngineState,
@@ -25,29 +24,30 @@ import type {
 
 /** The fields these read accessors need off `RemoteOrchestrator`. */
 export interface ReadSignals {
-  readonly tasksAcc: Accessor<Task[]>
-  readonly activeTaskAcc: Accessor<string | null>
-  readonly updateAcc: Accessor<UpdateInfo | null>
-  readonly daemonVersionAcc: Accessor<string | null>
-  readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
-  readonly taskJobsAcc: Accessor<ReadonlyMap<string, TaskJobState>>
-  readonly worktreeChangesAcc: Accessor<WorktreeChangesMap | null>
-  readonly transcriptActivityAcc: Accessor<TranscriptActivityMap | null>
+  readonly tasksAcc: ReadableState<Task[]>
+  readonly activeTaskAcc: ReadableState<string | null>
+  readonly updateAcc: ReadableState<UpdateInfo | null>
+  readonly daemonVersionAcc: ReadableState<string | null>
+  readonly daemonStaleAcc: ReadableState<boolean>
+  readonly engineStateAcc: ReadableState<ReadonlyMap<string, TaskEngineState>>
+  readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
+  readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
+  readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly transcriptActivityStoreInner: ExternalStore<TranscriptActivityMap | null>
-  readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
+  readonly uiPrefsAcc: ReadableState<UiPrefsPayload | null>
   readonly uiPrefsStoreInner: ExternalStore<UiPrefsPayload | null>
-  readonly keybindingsRevAcc: Accessor<number | null>
+  readonly keybindingsRevAcc: ReadableState<number | null>
   readonly keybindingsRevStoreInner: ExternalStore<number | null>
-  readonly connectionStateAcc: Accessor<DaemonConnectionState>
+  readonly connectionStateAcc: ReadableState<DaemonConnectionState>
 }
 
-export function tasksSignalOp(s: ReadSignals): Accessor<Task[]> {
+export function tasksSignalOp(s: ReadSignals): ReadableState<Task[]> {
   return s.tasksAcc
 }
 
 /** Shared active task id (session last switched/entered), pushed live on
  *  `active-task` — every surface highlights the SAME focus. */
-export function activeTaskSignalOp(s: ReadSignals): Accessor<string | null> {
+export function activeTaskSignalOp(s: ReadSignals): ReadableState<string | null> {
   return s.activeTaskAcc
 }
 
@@ -57,7 +57,7 @@ export function activeTaskSignalOp(s: ReadSignals): Accessor<string | null> {
  * the registry themselves). `null` until the first check resolves, or when
  * the check is suppressed (dev) / unavailable (offline).
  */
-export function updateSignalOp(s: ReadSignals): Accessor<UpdateInfo | null> {
+export function updateSignalOp(s: ReadSignals): ReadableState<UpdateInfo | null> {
   return s.updateAcc
 }
 
@@ -67,7 +67,7 @@ export function updateSignalOp(s: ReadSignals): Accessor<UpdateInfo | null> {
  * `init()` has resolved. Distinct from {@link updateSignalOp} ("a newer kobe
  * exists on npm") — this is "what version is the daemon I'm talking to".
  */
-export function daemonVersionSignalOp(s: ReadSignals): Accessor<string | null> {
+export function daemonVersionSignalOp(s: ReadSignals): ReadableState<string | null> {
   return s.daemonVersionAcc
 }
 
@@ -79,8 +79,8 @@ export function daemonVersionSignalOp(s: ReadSignals): Accessor<string | null> {
  * pre-handshake or on an old daemon; clears once a restarted daemon
  * reports the matching version.
  */
-export function daemonStaleSignalOp(s: ReadSignals): Accessor<boolean> {
-  return () => isDaemonVersionStale(s.daemonVersionAcc() ?? undefined, CURRENT_VERSION)
+export function daemonStaleSignalOp(s: ReadSignals): ReadableState<boolean> {
+  return s.daemonStaleAcc
 }
 
 /**
@@ -89,7 +89,7 @@ export function daemonStaleSignalOp(s: ReadSignals): Accessor<boolean> {
  * channel from engine hooks. The transient, event-driven counterpart to the
  * lifecycle `tasksSignal()` — the sidebar reads it for real-time badges.
  */
-export function engineStateSignalOp(s: ReadSignals): Accessor<ReadonlyMap<string, TaskEngineState>> {
+export function engineStateSignalOp(s: ReadSignals): ReadableState<ReadonlyMap<string, TaskEngineState>> {
   return s.engineStateAcc
 }
 
@@ -101,7 +101,7 @@ export function engineStateSignalOp(s: ReadSignals): Accessor<ReadonlyMap<string
  * one that initiated it. Entries are removed on the terminal phases and
  * pruned against each `task.snapshot` (same leak guard as engine-state).
  */
-export function taskJobsSignalOp(s: ReadSignals): Accessor<ReadonlyMap<string, TaskJobState>> {
+export function taskJobsSignalOp(s: ReadSignals): ReadableState<ReadonlyMap<string, TaskJobState>> {
   return s.taskJobsAcc
 }
 
@@ -118,7 +118,7 @@ export function taskJobsSignalOp(s: ReadSignals): Accessor<ReadonlyMap<string, T
  * picture and drops deleted/archived tasks' entries itself on its next
  * tick), so stale keys cannot accumulate in a long-lived pane.
  */
-export function worktreeChangesSignalOp(s: ReadSignals): Accessor<WorktreeChangesMap | null> {
+export function worktreeChangesSignalOp(s: ReadSignals): ReadableState<WorktreeChangesMap | null> {
   return s.worktreeChangesAcc
 }
 
@@ -131,7 +131,7 @@ export function worktreeChangesSignalOp(s: ReadSignals): Accessor<WorktreeChange
  * Ops pane falls back to local probes. Same whole-map-replace semantics as
  * {@link worktreeChangesSignalOp} (no per-snapshot prune needed).
  */
-export function transcriptActivitySignalOp(s: ReadSignals): Accessor<TranscriptActivityMap | null> {
+export function transcriptActivitySignalOp(s: ReadSignals): ReadableState<TranscriptActivityMap | null> {
   return s.transcriptActivityAcc
 }
 
@@ -148,7 +148,7 @@ export function transcriptActivityStoreOp(s: ReadSignals): ExternalStore<Transcr
  * Consumed by every pane host's boot sequence (`tui/lib/host-boot.tsx`)
  * to re-apply appearance changes live across all task sessions.
  */
-export function uiPrefsSignalOp(s: ReadSignals): Accessor<UiPrefsPayload | null> {
+export function uiPrefsSignalOp(s: ReadSignals): ReadableState<UiPrefsPayload | null> {
   return s.uiPrefsAcc
 }
 
@@ -168,7 +168,7 @@ export function uiPrefsStoreOp(s: ReadSignals): ExternalStore<UiPrefsPayload | n
  * `null` until the first payload. Consumed by host-boot's `UiPrefsSync`
  * to live-reload keys across every pane.
  */
-export function keybindingsRevSignalOp(s: ReadSignals): Accessor<number | null> {
+export function keybindingsRevSignalOp(s: ReadSignals): ReadableState<number | null> {
   return s.keybindingsRevAcc
 }
 
@@ -191,25 +191,11 @@ export function subscribeTasksOp(s: ReadSignals, listener: (snapshot: readonly T
   } catch (err) {
     console.error("[kobe RemoteOrchestrator] task listener threw on subscribe:", err)
   }
-  // Forward subsequent snapshots reactively off the Solid signal instead
-  // of polling it on a timer. createEffect re-runs whenever tasksAcc()
-  // changes; createRoot gives it an owner so the returned disposer tears
-  // it down. The effect fires once synchronously on creation — skip that
-  // run since we already delivered the current snapshot eagerly above.
-  let first = true
-  return createRoot((dispose) => {
-    createEffect(() => {
-      const current = s.tasksAcc()
-      if (first) {
-        first = false
-        return
-      }
-      try {
-        listener(current)
-      } catch (err) {
-        console.error("[kobe RemoteOrchestrator] task listener threw:", err)
-      }
-    })
-    return dispose
+  return s.tasksAcc.subscribe(() => {
+    try {
+      listener(s.tasksAcc.get())
+    } catch (err) {
+      console.error("[kobe RemoteOrchestrator] task listener threw:", err)
+    }
   })
 }

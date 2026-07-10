@@ -9,8 +9,8 @@
  * task-CRUD + subscribe shape.
  */
 
-import type { Task } from "@/types/task"
 import type { ChannelName } from "./channels.ts"
+import type { DaemonTask } from "./contracts.ts"
 
 export {
   CHANNEL_NAMES,
@@ -246,11 +246,11 @@ export interface SerializedTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind: "main" | "task"
-  readonly status: Task["status"]
+  readonly status: DaemonTask["status"]
   readonly archived: boolean
   readonly pinned: boolean
-  readonly vendor?: Task["vendor"]
-  readonly prStatus?: Task["prStatus"]
+  readonly vendor?: DaemonTask["vendor"]
+  readonly prStatus?: DaemonTask["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
   /** Engine reasoning/effort level, when the vendor supports one. */
@@ -259,7 +259,7 @@ export interface SerializedTask {
   readonly updatedAt: string
 }
 
-export function serializeTask(task: Task): SerializedTask {
+export function serializeTask(task: DaemonTask): SerializedTask {
   return {
     id: task.id,
     title: task.title,

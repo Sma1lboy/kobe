@@ -6,8 +6,7 @@
  * import path for the wire protocol.
  */
 
-import type { EngineActivityDetail, TaskActivityState } from "@/engine/hook-events"
-import type { UpdateInfo } from "@/version"
+import type { EngineActivityDetail, TaskActivityState, UpdateInfo } from "./contracts.ts"
 import type { RepoIssues } from "./issues-store.ts"
 import type { SerializedTask } from "./protocol.ts"
 

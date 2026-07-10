@@ -49,14 +49,47 @@
  * `stop()` clears the timer only — NO tmux, no held filesystem handles.
  */
 
-import { type EngineTurnDetector, createEngineTurnDetector } from "@/engine/turn-detector"
-import { type PollCadenceConfig, type PollScheduleState, maybeStartScheduledRun } from "@/lib/poll-scheduling"
-import { latestTranscriptMtime } from "@/monitor/activity"
-import { isRemoteRepoKey } from "@/state/repos"
-import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "@/types/task"
+import type { DaemonTask as Task, VendorId } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import type { TranscriptActivityPayload } from "./protocol.ts"
+import type {
+  DaemonRuntimeAdapter,
+  EngineTurnDetectorAdapter as EngineTurnDetector,
+  PollCadenceConfig,
+  PollScheduleState,
+} from "./runtime.ts"
+
+function isRemoteRepoKey(value: string): boolean {
+  return value.startsWith("ssh://")
+}
+
+function maybeStartScheduledRun<T>(
+  state: PollScheduleState,
+  cfg: PollCadenceConfig,
+  run: (signal: AbortSignal) => Promise<T>,
+  onValue: (value: T) => void,
+): boolean {
+  const startedAt = Date.now()
+  if (state.inFlight || startedAt < state.nextAllowedAt) return false
+  state.inFlight = true
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs)
+  void run(controller.signal)
+    .then((value) => {
+      if (!controller.signal.aborted) onValue(value)
+    })
+    .catch(() => {})
+    .finally(() => {
+      clearTimeout(timer)
+      const finishedAt = Date.now()
+      state.nextAllowedAt = controller.signal.aborted
+        ? startedAt + cfg.slowRetryMs
+        : finishedAt + Math.max(cfg.minIntervalMs, (finishedAt - startedAt) * 5)
+      state.inFlight = false
+    })
+  return true
+}
 
 /** Tick cadence — matches the Ops pane's 1.5s turn-detector poll (the most responsive consumer). */
 export const DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS = 1_500
@@ -124,9 +157,7 @@ export async function runTranscriptActivity(
   _signal: AbortSignal,
 ): Promise<TranscriptActivityEntry> {
   const { marker, mtimeMs } = await detector.latestActivity(worktreePath)
-  const resolvedMtime = detector.supportsCompletionMarkers()
-    ? mtimeMs
-    : await latestTranscriptMtime(vendor, worktreePath)
+  const resolvedMtime = detector.supportsCompletionMarkers() ? mtimeMs : 0
   return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
 }
 
@@ -140,14 +171,14 @@ export async function runTranscriptActivity(
  * A task with no vendor normalizes to {@link DEFAULT_TASK_VENDOR}. Pure —
  * unit-tested.
  */
-export function trackedWorktrees(tasks: readonly Task[]): Map<string, VendorId> {
+export function trackedWorktrees(tasks: readonly Task[], defaultVendor: VendorId = "claude"): Map<string, VendorId> {
   const map = new Map<string, VendorId>()
   for (const task of tasks) {
     if (task.archived) continue
     if (!task.worktreePath) continue
     if (isRemoteRepoKey(task.repo) || isRemoteRepoKey(task.worktreePath)) continue
     if (map.has(task.worktreePath)) continue
-    map.set(task.worktreePath, task.vendor ?? DEFAULT_TASK_VENDOR)
+    map.set(task.worktreePath, task.vendor ?? defaultVendor)
   }
   return map
 }
@@ -175,6 +206,8 @@ export interface TranscriptActivityCollectorOptions {
    * collect every tick — used by tests that drive `tick()` directly.
    */
   readonly hasSubscribers?: () => boolean
+  readonly createDetector?: (vendor: VendorId) => EngineTurnDetector
+  readonly defaultVendor?: VendorId
 }
 
 /**
@@ -202,7 +235,7 @@ export class TranscriptActivityCollector {
     // publish. The first tick once a pane subscribes repopulates the map.
     if (this.options.hasSubscribers && !this.options.hasSubscribers()) return
     try {
-      const tracked = trackedWorktrees(this.orch.listTasks())
+      const tracked = trackedWorktrees(this.orch.listTasks(), this.options.defaultVendor)
       // Prune first: a task deleted/archived since the last tick drops its
       // entry — and, when it had published facts, triggers a republish so
       // subscribers stop showing it.
@@ -228,13 +261,13 @@ export class TranscriptActivityCollector {
   private maybeCollect(worktreePath: string, vendor: VendorId): void {
     let entry = this.entries.get(worktreePath)
     if (!entry) {
-      entry = { inFlight: false, nextAllowedAt: 0, vendor, detector: createEngineTurnDetector(vendor) }
+      entry = { inFlight: false, nextAllowedAt: 0, vendor, detector: this.createDetector(vendor) }
       this.entries.set(worktreePath, entry)
     } else if (entry.vendor !== vendor) {
       // A task at this path was re-vendored: swap to the new vendor's
       // detector so completion markers come from the right transcript store.
       entry.vendor = vendor
-      entry.detector = createEngineTurnDetector(vendor)
+      entry.detector = this.createDetector(vendor)
     }
     const cadence = this.options.cadence ?? {
       timeoutMs: TRANSCRIPT_ACTIVITY_TIMEOUT_MS,
@@ -269,6 +302,15 @@ export class TranscriptActivityCollector {
     }
     this.bus.publish("transcript.activity", { activity })
   }
+
+  private createDetector(vendor: VendorId): EngineTurnDetector {
+    return (
+      this.options.createDetector?.(vendor) ?? {
+        latestActivity: async () => ({ marker: null, mtimeMs: 0 }),
+        supportsCompletionMarkers: () => false,
+      }
+    )
+  }
 }
 
 /**
@@ -284,12 +326,25 @@ export class TranscriptActivityCollector {
  */
 export function startTranscriptActivityCollector(
   orch: TaskLister,
+  runtime: Pick<DaemonRuntimeAdapter, "createEngineTurnDetector" | "latestTranscriptMtime" | "defaultTaskVendor">,
   bus: DaemonEventBus,
   tickMs: number = DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
   hasSubscribers?: () => boolean,
 ): () => void {
   if (tickMs <= 0) return () => {}
-  const collector = new TranscriptActivityCollector(orch, bus, { hasSubscribers })
+  const collector = new TranscriptActivityCollector(orch, bus, {
+    hasSubscribers,
+    createDetector: runtime.createEngineTurnDetector,
+    defaultVendor: runtime.defaultTaskVendor,
+    run: async (path, vendor, detector, signal) => {
+      const { marker, mtimeMs } = await detector.latestActivity(path)
+      const resolvedMtime = detector.supportsCompletionMarkers()
+        ? mtimeMs
+        : await runtime.latestTranscriptMtime(vendor, path)
+      void signal
+      return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
+    },
+  })
   collector.tick()
   const timer = setInterval(() => collector.tick(), tickMs)
   timer.unref?.()

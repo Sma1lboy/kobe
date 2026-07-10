@@ -6,6 +6,7 @@
 
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { createDaemonWebRequestHandler, type DaemonWebLink } from "@sma1lboy/kobe-daemon/daemon/web-server"
+import { daemonRuntime } from "../../kobe/src/core/daemon-runtime.ts"
 import { vi } from "vitest"
 
 export interface FakeOpts {
@@ -31,7 +32,7 @@ export function build(opts: FakeOpts = {}) {
   const link = fakeLink(opts)
   const tearDown = vi.fn()
   const sseSends = new Set<(type: string, data: unknown) => void>()
-  const handle = createDaemonWebRequestHandler({ link, sseSends, tearDownSession: tearDown })
+  const handle = createDaemonWebRequestHandler({ runtime: daemonRuntime, link, sseSends, tearDownSession: tearDown })
   return { handle, link, tearDown, sseSends }
 }
 

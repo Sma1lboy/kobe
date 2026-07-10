@@ -20,6 +20,7 @@ import {
   dispatchDaemonRequest,
 } from "@sma1lboy/kobe-daemon/daemon/server"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import { addSavedRepo } from "../../src/state/repos.ts"
 
 const gitEnv = {
@@ -30,7 +31,7 @@ const gitEnv = {
   GIT_COMMITTER_EMAIL: "t@t",
 }
 
-const FAKE_CTX = {} as DaemonHandlerContext
+const FAKE_CTX = { runtime: daemonRuntime } as DaemonHandlerContext
 
 function dispatch(name: string, payload: unknown): Promise<unknown> {
   return dispatchDaemonRequest(createDaemonHandlerRegistry(), name, payload, FAKE_CTX)
