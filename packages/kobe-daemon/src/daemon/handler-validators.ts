@@ -10,8 +10,7 @@
  * circular import back into `handlers.ts`, which imports THEM.
  */
 
-import type { EngineActivityDetail } from "@/engine/hook-events"
-import type { VendorId } from "@/types/task"
+import type { EngineActivityDetail, VendorId } from "./contracts.ts"
 
 /** Coerce an unknown request payload into a plain object (`{}` for anything else). */
 export function objectPayload(payload: unknown): Record<string, unknown> {

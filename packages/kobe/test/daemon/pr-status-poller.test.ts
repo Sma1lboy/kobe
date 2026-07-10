@@ -14,17 +14,22 @@ import {
   NO_REMOTE_BACKOFF_MS,
   PR_FAILURE_BASE_MS,
   type PrPollSchedule,
+  type PrStatusPassOptions,
   type PrViewResult,
   type PrViewRunner,
   SETTLED_BACKOFF_MS,
   isPrPollable,
-  runPrStatusPass,
+  runPrStatusPass as runPrStatusPassRaw,
 } from "@sma1lboy/kobe-daemon/daemon/pr-status-collector"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
+import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { type Task, toTaskId } from "../../src/types/task.ts"
+
+const runPrStatusPass = (orchestrator: Orchestrator, options: Omit<PrStatusPassOptions, "runtime">) =>
+  runPrStatusPassRaw(orchestrator, { ...options, runtime: daemonRuntime })
 
 let tmpRoot: string
 let store: TaskIndexStore

@@ -43,19 +43,47 @@
  * value, never throws, never publishes garbage.
  */
 
-import { readOnlyGitProcessEnv } from "@/lib/git-env"
-import {
-  type PollCadenceConfig,
-  type PollScheduleState,
-  maybeStartScheduledRun,
-  spawnCapture,
-} from "@/lib/poll-scheduling"
-import { isRemoteRepoKey } from "@/state/repos"
-import { type WorktreeChanges, parsePorcelain, sameWorktreeChanges } from "@/tui/panes/sidebar/worktree-changes"
-import type { Task } from "@/types/task"
+import { spawn } from "node:child_process"
+import type { DaemonTask as Task, WorktreeChanges } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import type { WorktreeChangesPayload } from "./protocol.ts"
+import type { DaemonRuntimeAdapter, PollCadenceConfig, PollScheduleState } from "./runtime.ts"
+
+function isRemoteRepoKey(value: string): boolean {
+  return value.startsWith("ssh://")
+}
+
+function sameWorktreeChanges(a: WorktreeChanges, b: WorktreeChanges): boolean {
+  return a.added === b.added && a.deleted === b.deleted
+}
+
+function maybeStartScheduledRun<T>(
+  state: PollScheduleState,
+  cfg: PollCadenceConfig,
+  run: (signal: AbortSignal) => Promise<T>,
+  onValue: (value: T) => void,
+): boolean {
+  const startedAt = Date.now()
+  if (state.inFlight || startedAt < state.nextAllowedAt) return false
+  state.inFlight = true
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs)
+  void run(controller.signal)
+    .then((value) => {
+      if (!controller.signal.aborted) onValue(value)
+    })
+    .catch(() => {})
+    .finally(() => {
+      clearTimeout(timer)
+      const finishedAt = Date.now()
+      state.nextAllowedAt = controller.signal.aborted
+        ? startedAt + cfg.slowRetryMs
+        : finishedAt + Math.max(cfg.minIntervalMs, (finishedAt - startedAt) * 5)
+      state.inFlight = false
+    })
+  return true
+}
 
 /** Tick cadence — matches the sidebar's ~2s `branchTick` the pane pollers rode. */
 export const DEFAULT_WORKTREE_CHANGES_TICK_MS = 2_000
@@ -79,16 +107,36 @@ export type WorktreeStatusRunner = (worktreePath: string, signal: AbortSignal) =
 
 /** The real runner: async `git status --porcelain=v1`, lock-free read. */
 export async function runGitStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges> {
-  // Same flags + lock policy as the pane-side poller this replaces:
-  // porcelain v1, and GIT_OPTIONAL_LOCKS=0 so the read never takes
-  // .git/index.lock from under the engine's own commits.
-  const res = await spawnCapture("git", ["status", "--porcelain=v1"], {
-    cwd: worktreePath,
-    env: readOnlyGitProcessEnv(),
-    signal,
+  const output = await new Promise<{ status: number | null; stdout: string }>((resolve) => {
+    let stdout = ""
+    let settled = false
+    const finish = (status: number | null) => {
+      if (settled) return
+      settled = true
+      resolve({ status, stdout })
+    }
+    const child = spawn("git", ["status", "--porcelain=v1"], {
+      cwd: worktreePath,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      signal,
+      killSignal: "SIGKILL",
+    })
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk)
+    })
+    child.on("error", () => finish(null))
+    child.on("close", finish)
   })
-  if (res.status !== 0) throw new Error("git status failed")
-  return parsePorcelain(res.stdout)
+  if (output.status !== 0) throw new Error("git status failed")
+  let added = 0
+  let deleted = 0
+  for (const line of output.stdout.split("\n")) {
+    if (line.length < 3 || line.startsWith("##")) continue
+    if (line[0] === "D" || line[1] === "D") deleted++
+    else added++
+  }
+  return { added, deleted }
 }
 
 /**
@@ -239,12 +287,13 @@ export class WorktreeChangesCollector {
  */
 export function startWorktreeChangesCollector(
   orch: TaskLister,
+  runtime: Pick<DaemonRuntimeAdapter, "runWorktreeStatus">,
   bus: DaemonEventBus,
   tickMs: number = DEFAULT_WORKTREE_CHANGES_TICK_MS,
   hasSubscribers?: () => boolean,
 ): () => void {
   if (tickMs <= 0) return () => {}
-  const collector = new WorktreeChangesCollector(orch, bus, { hasSubscribers })
+  const collector = new WorktreeChangesCollector(orch, bus, { hasSubscribers, run: runtime.runWorktreeStatus })
   collector.tick()
   const timer = setInterval(() => collector.tick(), tickMs)
   timer.unref?.()
