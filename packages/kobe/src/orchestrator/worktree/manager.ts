@@ -28,41 +28,19 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { ExecHost } from "../../exec/exec-host.ts"
-import { execHostForRepo, execHostForWorktreePath } from "../../exec/resolve.ts"
-import { getRemoteRepoConfig } from "../../state/repos.ts"
 import type { AdoptableWorktree, WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
+import { type ExecCtx, type WorktreeExecDeps, defaultExecDeps } from "./exec-deps.ts"
 import { GitCommandError, type GitRunOpts, type GitRunResult } from "./git.ts"
-import { isKobeManagedPath, managedWorktreeRootForPath, remoteWorktreePathFor, worktreePathFor } from "./paths.ts"
-
-/**
- * Resolver seam so a REMOTE project's worktree work runs over SSH while a
- * LOCAL project keeps today's `spawnSync`+`fs` behavior verbatim. Injected so
- * tests can stub remoteness without a real host. See `docs/design/remote-projects.md`.
- */
-export interface WorktreeExecDeps {
-  /** ExecHost for a project KEY (local path or `ssh://…`). */
-  execForRepo(repoKey: string): ExecHost
-  /** ExecHost for a WORKTREE PATH (recovered by basePath match). */
-  execForPath(worktreePath: string): ExecHost
-  /** The remote base path for a project key, or null when the project is local. */
-  remoteBasePath(repoKey: string): string | null
-}
-
-const defaultExecDeps: WorktreeExecDeps = {
-  execForRepo: execHostForRepo,
-  execForPath: execHostForWorktreePath,
-  remoteBasePath(repoKey) {
-    return getRemoteRepoConfig(repoKey)?.basePath ?? null
-  },
-}
-
-/** The git working dir + ExecHost a project key resolves to. */
-interface ExecCtx {
-  readonly exec: ExecHost
-  /** Directory git runs in: the local repo path, or the remote basePath. */
-  readonly dir: string
-  readonly remote: boolean
-}
+import {
+  canonicalize,
+  isKobeManagedPath,
+  managedWorktreeRootForPath,
+  remoteManagedRootForPath,
+  remoteWorktreePathFor,
+  requireAbsolute,
+  worktreePathFor,
+} from "./paths.ts"
+import { parseWorktreeListPorcelain } from "./worktree-list.ts"
 
 export class GitWorktreeManager implements WorktreeManager {
   constructor(private readonly execDeps: WorktreeExecDeps = defaultExecDeps) {}
@@ -269,7 +247,7 @@ export class GitWorktreeManager implements WorktreeManager {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
     const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
-    const all = parsePorcelain(out.stdout)
+    const all = parseWorktreeListPorcelain(out.stdout)
 
     const infos: WorktreeInfo[] = []
     for (const entry of all) {
@@ -318,7 +296,7 @@ export class GitWorktreeManager implements WorktreeManager {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
     const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
-    const all = parsePorcelain(out.stdout)
+    const all = parseWorktreeListPorcelain(out.stdout)
     const canonRepo = ctx.remote ? ctx.dir : canonicalize(ctx.dir)
 
     const infos: AdoptableWorktree[] = []
@@ -437,7 +415,7 @@ export class GitWorktreeManager implements WorktreeManager {
    */
   private async tryDescribe(ctx: ExecCtx, worktreePath: string): Promise<WorktreeInfo | null> {
     const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
-    const entries = parsePorcelain(out.stdout)
+    const entries = parseWorktreeListPorcelain(out.stdout)
     // Remote paths can't be realpath'd locally; compare them verbatim.
     const norm = (p: string) => (ctx.remote ? p : canonicalize(p))
     const target = norm(worktreePath)
@@ -492,84 +470,5 @@ export class GitWorktreeManager implements WorktreeManager {
       if (err instanceof GitCommandError) return null
       throw err
     }
-  }
-}
-
-interface RawWorktree {
-  path?: string
-  head?: string
-  branch?: string
-  detached?: boolean
-  bare?: boolean
-}
-
-/**
- * Parse `git worktree list --porcelain` output into structured
- * entries. Format reference (`man git-worktree`, "PORCELAIN FORMAT"):
- *   worktree <path>
- *   HEAD <sha>
- *   branch refs/heads/<name>     # OR
- *   detached
- *   bare                         # OR
- *   locked [<reason>]
- *   prunable [<reason>]
- *   <blank line separates records>
- */
-function parsePorcelain(out: string): RawWorktree[] {
-  const records: RawWorktree[] = []
-  let current: RawWorktree | null = null
-  for (const rawLine of out.split("\n")) {
-    const line = rawLine.replace(/\r$/, "")
-    if (line === "") {
-      if (current) records.push(current)
-      current = null
-      continue
-    }
-    if (!current) current = {}
-    if (line.startsWith("worktree ")) {
-      current.path = line.slice("worktree ".length)
-    } else if (line.startsWith("HEAD ")) {
-      current.head = line.slice("HEAD ".length)
-    } else if (line.startsWith("branch ")) {
-      const ref = line.slice("branch ".length)
-      current.branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref
-    } else if (line === "detached") {
-      current.detached = true
-    } else if (line === "bare") {
-      current.bare = true
-    }
-  }
-  if (current) records.push(current)
-  return records
-}
-
-/**
- * Remote analogue of {@link managedWorktreeRootForPath}: is `candidate` under
- * `<basePath>/.kobe/worktrees`? Pure string compare on POSIX remote paths (no
- * local realpath possible). Returns the remote root when matched, else null.
- */
-function remoteManagedRootForPath(basePath: string, candidate: string): string | null {
-  const root = `${basePath.replace(/\/+$/, "")}/.kobe/worktrees`
-  return candidate === root || candidate.startsWith(`${root}/`) ? root : null
-}
-
-function requireAbsolute(name: string, value: string): void {
-  if (!value || !path.isAbsolute(value)) {
-    throw new Error(`${name} must be an absolute path, got: ${JSON.stringify(value)}`)
-  }
-}
-
-/**
- * Resolve symlinks on a path so two strings that name the same node
- * compare equal. Necessary on macOS where `/tmp` and `/var/folders/...`
- * are symlinks into `/private/`. Falls back to `path.resolve` if the
- * path doesn't exist (we're sometimes asked about a target that's not
- * yet created).
- */
-function canonicalize(p: string): string {
-  try {
-    return fs.realpathSync(p)
-  } catch {
-    return path.resolve(p)
   }
 }

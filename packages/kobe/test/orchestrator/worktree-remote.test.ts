@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { ExecHost, ExecResult } from "../../src/exec/exec-host.ts"
-import { GitWorktreeManager, type WorktreeExecDeps } from "../../src/orchestrator/worktree/manager.ts"
+import type { WorktreeExecDeps } from "../../src/orchestrator/worktree/exec-deps.ts"
+import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 
 const BASE = "/srv/work"
 const REMOTE_KEY = "ssh://dev@box:2222"
