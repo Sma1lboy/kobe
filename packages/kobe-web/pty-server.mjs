@@ -17,6 +17,7 @@ import { createServer } from "node:http"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
 import { allowedHostForBindHost, originAllowed } from "./origin-policy.mjs"
+import { ptyEnv } from "./pty-env.mjs"
 import { createScrollback } from "./pty-scrollback.mjs"
 import { createPtySessionManager } from "./pty-session-lifecycle.mjs"
 
@@ -27,16 +28,6 @@ const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
 const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
 const ALLOWED_HOST = allowedHostForBindHost(HOST)
-
-function ptyEnv() {
-  const { NO_COLOR: _noColor, ...env } = process.env
-  // Codex/CI shells often set NO_COLOR=1. The browser PTY is a real terminal
-  // surface, so don't let the launcher process accidentally turn off colors in
-  // Claude, Codex, shells, or common CLI tools.
-  env.CLICOLOR = env.CLICOLOR ?? "1"
-  env.COLORTERM = env.COLORTERM || "truecolor"
-  return env
-}
 
 async function fetchSpec(taskId, mode) {
   // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
