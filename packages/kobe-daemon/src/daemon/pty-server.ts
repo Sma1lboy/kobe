@@ -111,7 +111,16 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
   // stopDaemonProcess before it spawns us.
 
   const server: Server = createServer((socket) => {
-    const client: PtyClientState = { socket, writer: new ClientWriter(socket), buffer: "" }
+    const client: PtyClientState = {
+      socket,
+      writer: new ClientWriter(socket, {
+        onOverflow: () => {
+          log("backpressure", "disconnecting PTY client whose critical queue exceeded 8MiB")
+          socket.destroy()
+        },
+      }),
+      buffer: "",
+    }
     clients.add(client)
     const decoder = new StringDecoder("utf8")
     socket.on("data", (chunk) => {
