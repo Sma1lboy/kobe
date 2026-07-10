@@ -48,7 +48,6 @@ import type { VendorId } from "@/types/vendor"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
 import {
   type EngineTab,
   type TabsState,
@@ -57,11 +56,9 @@ import {
   closeTab,
   cycleTab,
   engineTabArgv,
-  findEditorTab,
   initialTabs,
   isTabSplit,
   openCommandTab,
-  openEditorTab,
   rehydrateTabs,
   renameActiveTab,
   selectTab,
@@ -85,6 +82,7 @@ import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
+import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
 import { useTurnPolls } from "./use-turn-polls"
 
@@ -188,79 +186,22 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   /* --------- restart resume verification (issue #22) — mount-only ------- */
   const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
 
-  // Hand the parent the editor-tab / engine-send imperative handles once
-  // per mount — remounting on task/worktree switch re-fires it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    propsRef.current.onEditorTabReady?.((command, label) => {
-      const current = stateRef.current
-      const existing = findEditorTab(current)
-      if (existing) {
-        const key = tabPtyKey(propsRef.current.taskId, existing.id)
-        releaseSplitLeaves(key, existing.splitTree ?? null)
-        getDefaultPtyRegistry().release(key)
-      }
-      update(openEditorTab(current, command, label))
-      if (existing?.id === current.activeId) setResetToken((n) => n + 1)
-    })
-  }, [])
-  useEffect(() => {
-    propsRef.current.onEngineSendReady?.((text) => {
-      // Active tab when it's an engine; else the first engine tab.
-      const activeTab = stateRef.current.tabs.find((tab) => tab.id === stateRef.current.activeId)
-      const target = activeTab?.kind === "engine" ? activeTab : stateRef.current.tabs.find((t) => t.kind === "engine")
-      if (!target) return
-      const reg = getDefaultPtyRegistry()
-      const key = tabPtyKey(propsRef.current.taskId, target.id)
-      let pty = reg.get(key)
-      if (!pty && target.kind === "engine") {
-        // Parked background tab (issue #28): the host still runs the
-        // session — re-acquire reattaches + replays, then the paste lands.
-        // Default geometry until the tab is next mounted; the engine
-        // rewraps on the real resize like any terminal.
-        try {
-          pty = reg.acquire(key, propsRef.current.worktree, { command: engineTabCommandRef.current(target) })
-        } catch {
-          return
-        }
-      }
-      if (!pty || pty.killed) return
-      pty.paste(text)
-      pty.write("\r")
-    })
-  }, [])
-
-  // Quick-fork phase 2: deliver `initialPrompt` into the first engine tab's
-  // PTY once it produces its first output chunk (the engine banner) — see
-  // `quick-fork-delivery.ts` for the readiness contract. Mount-once (like
-  // the two handoffs above); a ref guard covers React StrictMode's double
-  // effect-fire. The 5s-timeout fallback surfaces an error toast instead of
-  // silently dropping the prompt.
-  const initialPromptSentRef = useRef(false)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once delivery; reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    const prompt = propsRef.current.initialPrompt
-    if (!prompt || initialPromptSentRef.current) return
-    initialPromptSentRef.current = true
-    const controller = new AbortController()
-    const target = stateRef.current.tabs.find((tab) => tab.kind === "engine")
-    if (!target) return
-    void waitAndDeliverInitialPrompt(
-      () => getDefaultPtyRegistry().get(tabPtyKey(propsRef.current.taskId, target.id)),
-      prompt,
-      undefined,
-      controller.signal,
-    ).then((result) => {
-      if (result.delivered) return
+  // Parent handoffs + quick-fork initial-prompt delivery — mount-once
+  // effects, extracted to use-tab-handoffs.ts (file-size cap split).
+  useTabHandoffs({
+    stateRef,
+    propsRef,
+    update,
+    engineTabCommandRef,
+    bumpResetToken: () => setResetToken((n) => n + 1),
+    notifyDeliveryFailed: (tabId) =>
       notif.notify({
         kind: "error",
         taskId: propsRef.current.taskId,
-        tabId: target.id,
+        tabId,
         title: t("terminal.quickFork.deliveryFailed"),
-      })
-    })
-    return () => controller.abort()
-  }, [])
+      }),
+  })
 
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]
 
