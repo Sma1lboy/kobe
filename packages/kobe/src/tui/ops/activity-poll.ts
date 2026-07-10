@@ -9,14 +9,14 @@
 import type { ChatTabTurnState } from "@/engine/turn-detector"
 
 /**
- * `● new` badge poll cadence (local fallback only — when no daemon is
- * publishing `transcript.activity`). The probe (`latestTranscriptMtime`) is
- * NOT free: for claude it readdir's the worktree's transcript dir and stats
- * every `.jsonl` in it, and that dir grows unboundedly. So it ADAPTIVELY
- * backs off: poll at {@link ACTIVITY_POLL_MIN_MS} while the engine is
- * writing, and after {@link ACTIVITY_IDLE_RAMP_POLLS} unchanged reads ramp
- * the interval toward {@link ACTIVITY_POLL_MAX_MS} (an idle pane is the
- * common steady state). Any mtime advance snaps it back to the fast interval.
+ * Transcript-probe poll cadence (the History pane's refresh loop). The
+ * probe (`latestTranscriptMtime`) is NOT free: for claude it readdir's the
+ * worktree's transcript dir and stats every `.jsonl` in it, and that dir
+ * grows unboundedly. So it ADAPTIVELY backs off: poll at
+ * {@link ACTIVITY_POLL_MIN_MS} while the engine is writing, and after
+ * {@link ACTIVITY_IDLE_RAMP_POLLS} unchanged reads ramp the interval toward
+ * {@link ACTIVITY_POLL_MAX_MS} (an idle pane is the common steady state).
+ * Any mtime advance snaps it back to the fast interval.
  */
 export const ACTIVITY_POLL_MIN_MS = 2500
 export const ACTIVITY_POLL_MAX_MS = 20000

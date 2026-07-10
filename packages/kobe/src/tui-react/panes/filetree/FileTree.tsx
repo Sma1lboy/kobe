@@ -12,8 +12,8 @@
  *   - the opt-in fs watch bumps a `refreshTick` scalar the data effect
  *     refetches from, instead of owning its own fetch.
  *
- * Solid→React prop delta: `worktreePath` / `focused` / `cornerBadge` are
- * plain values here (React re-renders on prop change), not Accessors.
+ * Solid→React prop delta: `worktreePath` / `focused` are plain values here
+ * (React re-renders on prop change), not Accessors.
  *
  * Fetch-effect shape mirrors the Solid original 1:1 — three effects on
  * worktree change (wipe + reload), tab change (cache-first + cursor
@@ -69,10 +69,6 @@ export type FileTreeProps = {
   onZenToggle?: () => void
   /** Whether the pane has keyboard focus. Defaults to `true`. */
   focused?: boolean
-  /** Right-aligned activity badge; `null`/omit hides it. */
-  cornerBadge?: { text: string; active: boolean } | null
-  /** Fires on explicit `r` refresh — the Ops host's "I've looked" ack. */
-  onRefresh?: () => void
 }
 
 export function FileTree(props: FileTreeProps) {
@@ -275,7 +271,6 @@ export function FileTree(props: FileTreeProps) {
       },
       refresh: () => {
         setRefreshTick((n) => n + 1)
-        props.onRefresh?.()
       },
       expandOrDescend: () => applyNav(expandOrDescendAction(rows, cursorIndex)),
       collapseOrParent: () => {
@@ -301,7 +296,6 @@ export function FileTree(props: FileTreeProps) {
       <FileTreeHeaderView
         tab={tab}
         onSelectTab={setTab}
-        cornerBadge={props.cornerBadge ?? null}
         onZenToggle={props.onZenToggle}
         onCreatePR={props.onCreatePR}
       />

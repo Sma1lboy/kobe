@@ -2,9 +2,9 @@
 /**
  * React view for the file tree pane's header chrome — the `src/tui/panes/
  * filetree/header-view.tsx` counterpart (issue #15, G3): the optional
- * Zen / Create-PR action row, the All / Changes tab chips, the corner
- * activity badge, and the Changes-tab status legend. Pure
- * render — tab state and actions stay in the pane component.
+ * Zen / Create-PR action row, the All / Changes tab chips, and the
+ * Changes-tab status legend. Pure render — tab state and actions stay in
+ * the pane component.
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -17,8 +17,6 @@ export type FileTreeHeaderProps = {
   tab: FileTreeTab
   /** Mouse tab switch. */
   onSelectTab: (tab: FileTreeTab) => void
-  /** Right-aligned activity badge; `null` hides it. */
-  cornerBadge: { text: string; active: boolean } | null
   /** Optional Ops-pane chips (see FileTreeProps). */
   onZenToggle?: () => void
   onCreatePR?: () => void
@@ -27,7 +25,6 @@ export type FileTreeHeaderProps = {
 export function FileTreeHeaderView(props: FileTreeHeaderProps) {
   const { theme } = useTheme()
   const t = useT()
-  const badge = props.cornerBadge
   return (
     <>
       {/* Action row — sits above the All / Changes tabs so it's reachable
@@ -77,34 +74,21 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
       ) : null}
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `[` / `]` cycle from the keyboard. */}
-      <box flexDirection="row" justifyContent="space-between" paddingBottom={0} flexShrink={0}>
-        <box flexDirection="row" gap={2}>
-          {TAB_ORDER.map((tabId) => {
-            const isActive = props.tab === tabId
-            return (
-              <text
-                key={tabId}
-                fg={isActive ? theme.primary : theme.textMuted}
-                attributes={isActive ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                onMouseUp={() => props.onSelectTab(tabId)}
-              >
-                {t(tabLabelKey(tabId))}
-              </text>
-            )
-          })}
-        </box>
-        {/* Right-aligned activity badge. No background fill so
-           it stays clean in transparent mode. */}
-        {badge ? (
-          <text
-            fg={badge.active ? theme.accent : theme.textMuted}
-            attributes={badge.active ? TextAttributes.BOLD : undefined}
-            wrapMode="none"
-          >
-            {badge.text}
-          </text>
-        ) : null}
+      <box flexDirection="row" paddingBottom={0} flexShrink={0} gap={2}>
+        {TAB_ORDER.map((tabId) => {
+          const isActive = props.tab === tabId
+          return (
+            <text
+              key={tabId}
+              fg={isActive ? theme.primary : theme.textMuted}
+              attributes={isActive ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+              onMouseUp={() => props.onSelectTab(tabId)}
+            >
+              {t(tabLabelKey(tabId))}
+            </text>
+          )
+        })}
       </box>
       {/* Status legend — only shown on the Changes tab so users can
          decode single-char git status codes without leaving the TUI. */}

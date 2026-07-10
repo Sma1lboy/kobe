@@ -33,14 +33,7 @@ await bootPaneHost({
   setup: () => {
     const worktree = makeFixtureWorktree()
     return {
-      root: () => (
-        <FileTree
-          worktreePath={worktree}
-          onOpenFile={() => {}}
-          cornerBadge={{ text: "mock", active: true }}
-          onCreatePR={() => {}}
-        />
-      ),
+      root: () => <FileTree worktreePath={worktree} onOpenFile={() => {}} onCreatePR={() => {}} />,
     }
   },
 })

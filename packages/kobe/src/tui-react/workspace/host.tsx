@@ -36,7 +36,6 @@ import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { useAccessor } from "./use-accessor"
-import { useFilesBadge } from "./use-files-badge"
 import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
 
 const SIDEBAR_WIDTH = 32
@@ -57,12 +56,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const engineState = useAccessor(orch.engineStateSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
-  const transcriptActivityStore = orch.transcriptActivityStore()
-  const transcriptActivity = useSyncExternalStore(
-    transcriptActivityStore.subscribe,
-    transcriptActivityStore.get,
-    transcriptActivityStore.get,
-  )
 
   const [selectedId, setSelectedId] = useState<string | null>(() => orch.activeTaskSignal()())
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
@@ -91,14 +84,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   )
   const selectedTask = selectedId ? tasks.find((task) => task.id === selectedId) : undefined
   const worktree = selectedTask?.worktreePath || null
-
-  // Files-column activity badge (issue #21) — the `● new` transcript badge
-  // + its refresh-as-ack, extracted to `use-files-badge.ts` (file-size cap).
-  const { cornerBadge: filesCornerBadge, ackRefresh: ackFilesBadge } = useFilesBadge({
-    worktree,
-    vendor: selectedTask?.vendor ?? DEFAULT_TASK_VENDOR,
-    activityMap: transcriptActivity,
-  })
 
   const focusRestoredRef = useRef(false)
   const userPickedRef = useRef(false)
@@ -375,8 +360,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             worktreePath={worktree}
             focused={activePane === "files"}
             onOpenFile={(relPath) => void openFileInEditor(relPath)}
-            cornerBadge={filesCornerBadge}
-            onRefresh={ackFilesBadge}
             onZenToggle={toggleZen}
             onCreatePR={() => void createPR()}
           />

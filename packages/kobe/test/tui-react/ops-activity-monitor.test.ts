@@ -1,102 +1,23 @@
 /**
- * The Ops pane's framework-free poll loops (`tui/ops/activity-monitor.ts`),
- * extracted from the Solid host so the React port (issue #15, G3) runs the
- * SAME loop bodies. Why these tests matter: the loops were previously
- * component-internal and untestable (host.tsx pulls @opentui render
- * assets); the extraction makes the badge-prime rule ("only post-mount
- * activity flags"), the teardown-race swallow, and the ChatTab done rule
- * ("new completion id + quiescent pane") directly checkable with fake IO
- * and fake timers — regressions here silently break the `● new` badge or
- * report "done" for a sibling window's turn.
+ * The Ops pane's framework-free turn-status poll loop
+ * (`tui/ops/activity-monitor.ts`), extracted from the Solid host so the
+ * React port (issue #15, G3) runs the SAME loop body. Why these tests
+ * matter: the loop was previously component-internal and untestable
+ * (host.tsx pulls @opentui render assets); the extraction makes the
+ * teardown-race swallow and the ChatTab done rule ("new completion id +
+ * quiescent pane") directly checkable with fake IO and fake timers —
+ * regressions here silently report "done" for a sibling window's turn.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { startLocalBadgePoll, startTurnStatusPoll } from "../../src/tui/ops/activity-monitor.ts"
-import { ACTIVITY_POLL_MIN_MS, TURN_STATUS_POLL_MS } from "../../src/tui/ops/activity-poll.ts"
+import { startTurnStatusPoll } from "../../src/tui/ops/activity-monitor.ts"
+import { TURN_STATUS_POLL_MS } from "../../src/tui/ops/activity-poll.ts"
 
 beforeEach(() => {
   vi.useFakeTimers()
 })
 afterEach(() => {
   vi.useRealTimers()
-})
-
-/** Badge-state harness standing in for the host's primed/baseline/latest. */
-function badgeHooks() {
-  const state = { primed: false, baseline: [] as number[], latest: [] as number[] }
-  return {
-    state,
-    hooks: {
-      isPrimed: () => state.primed,
-      prime: (mtime: number) => {
-        state.primed = true
-        state.baseline.push(mtime)
-      },
-      setLatest: (mtime: number) => {
-        state.latest.push(mtime)
-      },
-    },
-  }
-}
-
-describe("startLocalBadgePoll", () => {
-  it("primes on the first read, then reports each subsequent mtime", async () => {
-    const mtimes = [100, 100, 250]
-    let reads = 0
-    const { state, hooks } = badgeHooks()
-    const stop = startLocalBadgePoll(
-      {
-        sessionAttached: async () => true,
-        latestMtime: async () => mtimes[Math.min(reads++, mtimes.length - 1)] as number,
-      },
-      hooks,
-    )
-    await vi.advanceTimersByTimeAsync(0)
-    // First read seeds the baseline — it must NOT count as new activity.
-    expect(state.baseline).toEqual([100])
-    expect(state.latest).toEqual([100])
-    await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS)
-    await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS)
-    expect(state.baseline).toEqual([100])
-    expect(state.latest).toEqual([100, 100, 250])
-    stop()
-  })
-
-  it("skips the probe entirely while the session is detached", async () => {
-    const latestMtime = vi.fn(async () => 1)
-    const { state, hooks } = badgeHooks()
-    const stop = startLocalBadgePoll({ sessionAttached: async () => false, latestMtime }, hooks)
-    await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS * 3)
-    expect(latestMtime).not.toHaveBeenCalled()
-    expect(state.latest).toEqual([])
-    stop()
-  })
-
-  it("swallows probe failures (worktree deleted mid-poll) and keeps ticking", async () => {
-    let reads = 0
-    const { state, hooks } = badgeHooks()
-    const stop = startLocalBadgePoll(
-      {
-        sessionAttached: async () => true,
-        latestMtime: async () => {
-          reads++
-          if (reads === 1) throw new Error("ENOENT")
-          return 42
-        },
-      },
-      hooks,
-    )
-    await vi.advanceTimersByTimeAsync(0)
-    expect(state.latest).toEqual([])
-    await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS)
-    expect(state.baseline).toEqual([42])
-    expect(state.latest).toEqual([42])
-    stop()
-    // Disposed: no further reads regardless of elapsed time.
-    const after = reads
-    await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_MIN_MS * 10)
-    expect(reads).toBe(after)
-  })
 })
 
 describe("startTurnStatusPoll", () => {
