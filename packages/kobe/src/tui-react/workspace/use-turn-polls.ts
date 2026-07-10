@@ -58,9 +58,14 @@ export function useTurnPolls(deps: {
    *  title matches a vendor, else the raw OSC title). Feeds the tab
    *  strip's dynamic default names. */
   liveTitles: ReadonlyMap<string, string>
+  /** tabId → resolved live engine identity — the `targetFor` vendor the
+   *  attached detector tracks, whether kobe-launched or user-typed. The tab
+   *  strip's launch-path-agnostic "does this process own its status" input. */
+  turnVendors: ReadonlyMap<string, VendorId>
 } {
   const [turnStates, setTurnStates] = useState<ReadonlyMap<string, ChatTabTurnState>>(new Map())
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
+  const [turnVendors, setTurnVendors] = useState<ReadonlyMap<string, VendorId>>(new Map())
   const turnPollsRef = useRef(new Map<string, { dispose: () => void; vendor: VendorId; key: string }>())
   /** ptyKey → raw OSC title. Cleared when the PTY instance at that key
    *  changes (release + respawn), so a dead claude's title can't keep a
@@ -192,6 +197,16 @@ export function useTurnPolls(deps: {
         return next
       })
     }
+
+    // Mirror the attach map's resolved identities for render consumers.
+    // Identity-stable: an unchanged map returns `prev` so the 2s attach
+    // tick doesn't churn re-renders.
+    setTurnVendors((prev) => {
+      const next = new Map<string, VendorId>()
+      for (const [id, poll] of turnPolls) next.set(id, poll.vendor)
+      if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
+      return next
+    })
   }, [deps.taskId, deps.worktree, deps.vendor, deps.state, pollTick])
 
   // Final teardown on unmount only.
@@ -202,5 +217,5 @@ export function useTurnPolls(deps: {
     }
   }, [])
 
-  return { turnStates, liveTitles }
+  return { turnStates, liveTitles, turnVendors }
 }

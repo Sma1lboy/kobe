@@ -254,7 +254,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   useTabNaming({ stateRef, propsRef, update })
 
   /* --------- per-tab turn state --------- */
-  const { turnStates, liveTitles } = useTurnPolls({
+  const { turnStates, liveTitles, turnVendors } = useTurnPolls({
     taskId: props.taskId,
     worktree: props.worktree,
     vendor: props.vendor,
@@ -450,6 +450,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           onSelect={(tabId) => update(selectTab(state, tabId))}
           vendor={props.vendor}
           liveTitles={liveTitles}
+          turnVendors={turnVendors}
         />
       ) : null}
       {/* Spawn gate: while restart verification runs (millisecond-scale
