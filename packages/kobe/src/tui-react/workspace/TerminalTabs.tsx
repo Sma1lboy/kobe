@@ -57,8 +57,10 @@ import {
   closeTab,
   cycleTab,
   engineTabArgv,
+  findEditorTab,
   initialTabs,
   isTabSplit,
+  openCommandTab,
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
@@ -98,7 +100,7 @@ export interface TerminalTabsProps {
   modelEffort?: string
   /** Best-effort: persist the picked vendor as the task's new default. */
   onChooseEngine?: (vendor: VendorId) => void
-  /** Hands the parent an imperative "open this file in a new editor tab"
+  /** Hands the parent an imperative "open this file in the editor tab"
    *  function, once per mount (see file header). */
   onEditorTabReady?: (open: (command: readonly string[], label: string) => void) => void
   /** Hands the parent an imperative "paste this into the active engine tab
@@ -181,6 +183,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const engineTabCommandRef = useRef(engineTabCommand)
   engineTabCommandRef.current = engineTabCommand
 
+  /** Nudge Terminal to re-acquire under the CURRENTLY visible tab's key —
+   *  see the `resetToken` doc on `Terminal.tsx`. */
+  const [resetToken, setResetToken] = useState(0)
+
   /* --------- restart resume verification (issue #22) — mount-only ------- */
   const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
 
@@ -188,7 +194,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // per mount — remounting on task/worktree switch re-fires it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
   useEffect(() => {
-    propsRef.current.onEditorTabReady?.((command, label) => update(openEditorTab(stateRef.current, command, label)))
+    propsRef.current.onEditorTabReady?.((command, label) => {
+      const current = stateRef.current
+      const existing = findEditorTab(current)
+      if (existing) {
+        const key = tabPtyKey(propsRef.current.taskId, existing.id)
+        releaseSplitLeaves(key, existing.splitTree ?? null)
+        getDefaultPtyRegistry().release(key)
+      }
+      update(openEditorTab(current, command, label))
+      if (existing?.id === current.activeId) setResetToken((n) => n + 1)
+    })
   }, [])
   useEffect(() => {
     propsRef.current.onEngineSendReady?.((text) => {
@@ -272,10 +288,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     notif.markRead(props.taskId, state.activeId)
   }, [state.activeId])
 
-  /** Nudge Terminal to re-acquire under the CURRENTLY visible tab's key —
-   *  see the `resetToken` doc on `Terminal.tsx`. */
-  const [resetToken, setResetToken] = useState(0)
-
   /** Auto-close (issue #16): a command tab closes itself when that process
    *  exits and releases its PTY. */
   function closeExitedTab(id: string): void {
@@ -348,7 +360,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       // vendor preference write, closes itself on exit. Null label so the
       // tab is named by its live foreground process ("zsh", "vim"…).
       if (picked === "shell") {
-        update(openEditorTab(state, [defaultShell()], null))
+        update(openCommandTab(state, [defaultShell()], null))
         return
       }
       update(pinSession(addTab(state, picked), picked))

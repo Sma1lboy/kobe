@@ -92,6 +92,8 @@ export interface EngineTab extends TabBase {
 export interface CommandTab extends TabBase {
   readonly kind: "command"
   readonly command: readonly string[]
+  /** FileTree-owned singleton slot. Other command tabs remain independent. */
+  readonly purpose?: "editor"
 }
 
 /**
@@ -138,9 +140,38 @@ export function addTab(state: TabsState, vendor?: VendorId): TabsState {
  * "shell" pick), and closes itself when the process exits (kind
  * "command", consumed by `TerminalTabs.tsx`'s `onExit` wiring).
  */
-export function openEditorTab(state: TabsState, command: readonly string[], label: string | null): TabsState {
+export function openCommandTab(state: TabsState, command: readonly string[], label: string | null): TabsState {
   const ordinal = state.nextOrdinal
   return insertAfterActive(state, { kind: "command", id: `tab-${ordinal}`, title: label, ordinal, command })
+}
+
+/** The FileTree-owned command tab, if this task already has one. */
+export function findEditorTab(state: TabsState): CommandTab | undefined {
+  return state.tabs.find((tab): tab is CommandTab => tab.kind === "command" && tab.purpose === "editor")
+}
+
+/**
+ * Open or replace the one FileTree-owned editor tab. Its stable identity and
+ * position make it a reusable File slot; callers restart its PTY when this
+ * transition targets an existing tab.
+ */
+export function openEditorTab(state: TabsState, command: readonly string[], label: string): TabsState {
+  const existing = findEditorTab(state)
+  if (!existing) {
+    const ordinal = state.nextOrdinal
+    return insertAfterActive(state, {
+      kind: "command",
+      id: `tab-${ordinal}`,
+      title: label,
+      ordinal,
+      command,
+      purpose: "editor",
+    })
+  }
+  const tabs = state.tabs.map(
+    (tab): TerminalTab => (tab.id === existing.id ? { ...existing, title: label, command, splitTree: null } : tab),
+  )
+  return { ...state, tabs, activeId: existing.id }
 }
 
 /**
@@ -283,7 +314,9 @@ export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTri
  * `activeId` if it pointed at a tab that no longer exists.
  */
 export function rehydrateTabs(persisted: TabsState, shell: readonly string[]): TabsState {
-  const tabs = persisted.tabs.map((t): TerminalTab => (t.kind === "command" ? { ...t, command: shell } : t))
+  const tabs = persisted.tabs.map(
+    (t): TerminalTab => (t.kind === "command" ? { ...t, command: shell, purpose: undefined } : t),
+  )
   if (tabs.length === 0) return initialTabs()
   const activeId = tabs.some((t) => t.id === persisted.activeId) ? persisted.activeId : tabs[0].id
   const maxOrdinal = tabs.reduce((max, t) => Math.max(max, t.ordinal), 0)
