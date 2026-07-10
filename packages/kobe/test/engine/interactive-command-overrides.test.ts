@@ -20,6 +20,7 @@ import {
   interactiveEngineCommand,
   withClaudeSessionId,
   withEngineEffort,
+  withEngineTerminalTitle,
 } from "../../src/engine/interactive-command.ts"
 import { setPersistedString } from "../../src/state/repos.ts"
 
@@ -67,11 +68,32 @@ describe("interactiveEngineCommand", () => {
 
   it("a whitespace-only override falls back to the built-in default", () => {
     setPersistedString(engineCommandKey("codex"), "   ")
-    expect(interactiveEngineCommand("codex")).toEqual(["codex"])
+    expect(interactiveEngineCommand("codex")).toEqual(["codex", "-c", 'tui.terminal_title=["activity","thread-title"]'])
   })
 
-  it("weaves the codex reasoning-effort flag when a valid effort is passed", () => {
-    expect(interactiveEngineCommand("codex", "high")).toEqual(["codex", "-c", "model_reasoning_effort=high"])
+  it("lets Codex own the tab status and name from its live thread title", () => {
+    expect(interactiveEngineCommand("codex", "high")).toEqual([
+      "codex",
+      "-c",
+      "model_reasoning_effort=high",
+      "-c",
+      'tui.terminal_title=["activity","thread-title"]',
+    ])
+  })
+})
+
+describe("withEngineTerminalTitle", () => {
+  it("asks Codex to emit its native activity plus thread title", () => {
+    expect(withEngineTerminalTitle(["codex"], "codex")).toEqual([
+      "codex",
+      "-c",
+      'tui.terminal_title=["activity","thread-title"]',
+    ])
+  })
+
+  it("leaves engines without a native-title launch policy untouched", () => {
+    expect(withEngineTerminalTitle(["claude"], "claude")).toEqual(["claude"])
+    expect(withEngineTerminalTitle(["aider"], "aider")).toEqual(["aider"])
   })
 })
 

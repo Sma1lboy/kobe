@@ -123,6 +123,17 @@ export interface EngineRegistryEntry {
    * braille set (`spinner-frames.ts` `DEFAULT_SPINNER_FRAMES`).
    */
   readonly spinnerFrames?: readonly string[]
+  /**
+   * Native OSC 0/2 title policy for interactive terminal sessions.
+   * `ownsStatus` means the engine's live title is the status surface while
+   * it is visible, so neutral tab chrome must not prefix a duplicate turn
+   * glyph. `launchArgs` lets an adapter select the engine's own title fields
+   * without teaching the launcher vendor-specific config syntax.
+   */
+  readonly terminalTitle?: {
+    readonly ownsStatus: boolean
+    readonly launchArgs?: readonly string[]
+  }
 }
 
 /**
@@ -186,6 +197,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
+    terminalTitle: { ownsStatus: true },
   },
   codex: {
     vendor: "codex",
@@ -202,6 +214,13 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createTurnDetector: () => new CodexTurnDetector(),
     capabilities: codexCapabilities,
     identity: codexIdentity,
+    // Codex's default is activity + project-name, which makes every tab in
+    // one repo say "kobe". Keep its native activity state, but ask Codex to
+    // pair it with the thread title it already owns in its local store.
+    terminalTitle: {
+      ownsStatus: true,
+      launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
+    },
   },
   copilot: {
     vendor: "copilot",

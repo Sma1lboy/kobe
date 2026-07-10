@@ -107,7 +107,17 @@ export function interactiveEngineCommand(vendor: VendorId | undefined, effort?: 
     }
     return defaultEngineCommand(v)
   })()
-  return withEngineEffort(base, v, effort)
+  return withEngineTerminalTitle(withEngineEffort(base, v, effort), v)
+}
+
+/**
+ * Apply an engine-owned interactive terminal-title policy. The registry
+ * carries the argv because Codex's `-c tui.terminal_title=...` syntax is an
+ * adapter concern; launch sites and tab chrome remain vendor-neutral.
+ */
+export function withEngineTerminalTitle(argv: readonly string[], vendor: VendorId | undefined): readonly string[] {
+  const args = engineEntry(vendor ?? "claude").terminalTitle?.launchArgs
+  return args && args.length > 0 ? [...argv, ...args] : argv
 }
 
 /**
