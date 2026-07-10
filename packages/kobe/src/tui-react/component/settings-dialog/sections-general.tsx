@@ -92,6 +92,8 @@ export function GeneralSettingsSection(
     cycleWorktreeBase: () => void
     worktreeCustomPath: string
     editWorktreeCustom: () => void
+    scrollbackRows: number
+    editScrollbackRows: () => void
   },
 ) {
   const themeCtx = useTheme()
@@ -124,6 +126,7 @@ export function GeneralSettingsSection(
   const editorCustomRow = rowIdx("editor-custom")
   const worktreeBaseRow = rowIdx("worktree-base")
   const worktreeCustomRow = rowIdx("worktree-custom")
+  const scrollbackRow = rowIdx("scrollback-rows")
 
   return (
     <box flexDirection="column" gap={1}>
@@ -302,6 +305,16 @@ export function GeneralSettingsSection(
           {t("settings.general.worktreeCustom", {
             path: props.worktreeCustomPath || t("settings.general.worktreeCustomUnset"),
           })}
+        </Row>
+      </SubSection>
+      <SubSection title={t("settings.general.terminal")} hint={t("settings.general.terminalHint")}>
+        <Row
+          cursor={isBodyCursor(scrollbackRow)}
+          onMouseUp={activate(scrollbackRow, props.editScrollbackRows)}
+          fg={theme.accent}
+          bold={true}
+        >
+          {t("settings.general.scrollbackRow", { rows: String(props.scrollbackRows) })}
         </Row>
       </SubSection>
     </box>

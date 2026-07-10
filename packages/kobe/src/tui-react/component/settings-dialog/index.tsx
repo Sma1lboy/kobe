@@ -250,6 +250,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     editorCustom: () => void prefs.editEditorCustom(),
     worktreeBase: () => prefs.cycleWorktreeBase(),
     worktreeCustom: () => void prefs.editWorktreeCustom(),
+    scrollbackRows: () => void prefs.editScrollbackRows(),
     engine: (row) => void engines.editEngine(row.vendor),
     engineAdd: () => void engines.addEngineFlow(),
     feedbackTitle: () => setBodyRow(0),
@@ -379,6 +380,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               cycleWorktreeBase={prefs.cycleWorktreeBase}
               worktreeCustomPath={prefs.worktreeCustomPath()}
               editWorktreeCustom={() => void prefs.editWorktreeCustom()}
+              scrollbackRows={prefs.scrollbackRows()}
+              editScrollbackRows={() => void prefs.editScrollbackRows()}
             />
           ) : null}
           {section === "engines" ? (

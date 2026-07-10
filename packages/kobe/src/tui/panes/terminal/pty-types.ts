@@ -13,6 +13,10 @@ export type TaskPtyOpts = {
   cols?: number
   /** Initial pane size. Default 80x24. */
   rows?: number
+  /** Scrollback rows for the xterm buffer. Defaults to the persisted
+   *  Settings → Terminal preference (`state/scrollback.ts`); tests inject
+   *  small buffers here to exercise trimming deterministically. */
+  scrollback?: number
   /** Override `$SHELL`. Defaults to `process.env.SHELL` or `/bin/bash`. */
   shell?: string
   /**
@@ -106,7 +110,6 @@ export interface TaskPtyLike {
 export const DEFAULT_COLS = 80
 export const DEFAULT_ROWS = 24
 export const PIPE_SCROLLBACK_LIMIT = 200_000
-export const VISIBLE_SCROLLBACK_MARGIN_ROWS = 200
 
 export function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"

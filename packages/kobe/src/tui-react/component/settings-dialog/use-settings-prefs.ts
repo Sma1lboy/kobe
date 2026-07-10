@@ -12,6 +12,7 @@ import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
+import { DEFAULT_SCROLLBACK_ROWS, SCROLLBACK_ROWS_KEY, normalizeScrollbackRows } from "../../../state/scrollback"
 import { SPLIT_STYLE_KEY, type SplitStyle, normalizeSplitStyle } from "../../../state/split-style"
 import {
   PROJECT_DIR_TOKEN,
@@ -136,6 +137,33 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     if (cmd) kv.set(EDITOR_KIND_KEY, "custom")
   }
 
+  // Terminal scrollback: rows of history each embedded terminal keeps.
+  // Applies to terminals spawned after the change (PTYs resolve it at
+  // construction — see state/scrollback.ts).
+  function scrollbackRows(): number {
+    return normalizeScrollbackRows(kv.get(SCROLLBACK_ROWS_KEY, DEFAULT_SCROLLBACK_ROWS))
+  }
+  async function editScrollbackRows(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, String(scrollbackRows()), {
+      dialogTitle: t("settings.general.scrollbackTitle"),
+      fieldLabel: t("settings.general.scrollbackField"),
+      submitLabel: "save",
+      placeholder: String(DEFAULT_SCROLLBACK_ROWS),
+    })
+    if (next === undefined) return
+    const n = Number.parseInt(next.trim(), 10)
+    if (!Number.isFinite(n)) {
+      await DialogConfirm.show(
+        dialog,
+        t("settings.general.scrollbackInvalidTitle"),
+        t("settings.general.scrollbackInvalidBody"),
+        "cancel",
+      )
+      return
+    }
+    kv.set(SCROLLBACK_ROWS_KEY, normalizeScrollbackRows(n))
+  }
+
   // Worktree location: a global override for where new LOCAL task worktrees
   // are created — same preset cycle + validation as the Solid dialog.
   function worktreeBasePath(): string {
@@ -233,6 +261,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     cycleEditorKind,
     editorCustomCommand,
     editEditorCustom,
+    scrollbackRows,
+    editScrollbackRows,
     worktreeKind,
     worktreeKindLabel,
     worktreeCustomPath,
