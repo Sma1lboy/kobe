@@ -21,8 +21,7 @@ vi.mock("../../src/tui/panes/terminal/tmux", () => ({
 
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
 import { activateWorkspaceTask } from "../../src/tui-react/workspace/use-task-selection"
-import type { CreateTaskContext } from "../../src/tui/lib/task-actions"
-import { createTaskFlow } from "../../src/tui/lib/task-actions"
+import { type CreateTaskContext, createTaskFlow } from "../../src/tui/lib/task-create-flow"
 
 describe("pure-TUI new-task auto-materialization (behavior)", () => {
   test("one dialog submit creates, materializes, selects, and focuses the task before snapshot render", async () => {
