@@ -51,6 +51,7 @@
  *   - `./api/verbs.ts`            — the VERBS table binding specs to handlers
  */
 
+import { errorMessage } from "@/lib/error-message"
 import { VerbArgs, buildCountPlan, parseAgentsSpec, parseFlags, validateAgainstSpec } from "./api/flags.ts"
 import { defaultApiRuntime, deliverPrompt } from "./api/runtime.ts"
 import { API_SCHEMA_VERSION, apiUsage, fullSchema, schemaIndex, verbHelp, verbSchema } from "./api/schema.ts"
@@ -118,7 +119,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     parsed = parseFlags(rest, booleanFlags)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 2)
-    fail(err instanceof Error ? err.message : String(err), "BAD_FLAG", 2)
+    fail(errorMessage(err), "BAD_FLAG", 2)
   }
 
   if (parsed.help) {
@@ -130,7 +131,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     validateAgainstSpec(verb, parsed.flags)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 2)
-    fail(err instanceof Error ? err.message : String(err), "BAD_FLAG", 2)
+    fail(errorMessage(err), "BAD_FLAG", 2)
   }
 
   let session: DaemonSession | null = null
@@ -138,11 +139,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     try {
       session = await openDaemonSession()
     } catch (err) {
-      fail(
-        `could not reach or start the kobe daemon: ${err instanceof Error ? err.message : String(err)}`,
-        "BAD_DAEMON",
-        2,
-      )
+      fail(`could not reach or start the kobe daemon: ${errorMessage(err)}`, "BAD_DAEMON", 2)
     }
   }
 
@@ -151,7 +148,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     emit(result, parsed.pretty)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 1)
-    fail(err instanceof Error ? err.message : String(err), "RPC_ERROR", 1)
+    fail(errorMessage(err), "RPC_ERROR", 1)
   } finally {
     session?.close()
   }

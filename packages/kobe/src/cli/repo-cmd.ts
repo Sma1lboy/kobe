@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { expandTilde } from "../lib/path-home.ts"
 
 const REPO_USAGE = [
@@ -43,7 +44,7 @@ function readArgFile(path: string): string {
   try {
     return readFileSync(resolve(process.cwd(), expandTilde(path)), "utf8")
   } catch (err) {
-    usageError(`cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`)
+    usageError(`cannot read ${path}: ${errorMessage(err)}`)
   }
 }
 

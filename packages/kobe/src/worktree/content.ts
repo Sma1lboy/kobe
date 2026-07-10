@@ -7,6 +7,7 @@
  * local/remote choice stays behind ExecHost.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { ExecResult } from "../exec/exec-host.ts"
 import { execHostForWorktreePath } from "../exec/resolve.ts"
 import { READ_ONLY_GIT_ENV } from "../lib/git-env.ts"
@@ -69,7 +70,7 @@ export async function runWorktreeGit(
     })
   } catch (err) {
     if (timer) clearTimeout(timer)
-    return { stdout: "", stderr: err instanceof Error ? err.message : String(err), status: -1 }
+    return { stdout: "", stderr: errorMessage(err), status: -1 }
   }
   if (timer) clearTimeout(timer)
   if (timedOut && result.exitCode === -1 && !result.stderr) {

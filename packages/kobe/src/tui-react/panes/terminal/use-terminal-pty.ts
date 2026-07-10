@@ -20,6 +20,7 @@
  * `[cwd, taskId, geometryReady]` as the effect's dependency array.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { CursorPos, TaskPty, TerminalRow } from "../../../tui/panes/terminal/pty"
 import type { PtyRegistry } from "../../../tui/panes/terminal/registry"
@@ -98,7 +99,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     try {
       handle = registryRef.current.acquire(taskId, cwd, { ...geometry, command: commandRef.current })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       setAcquireError(message)
       setPty(null)
       setSnapshot([])
@@ -162,7 +163,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
         setCursor(null)
         onFreshPtyRef.current()
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         // `registry.reset()` kills the old PTY BEFORE the acquire half runs,
         // so on failure there is no live handle left — clear the pane to the
         // error state (same shape as the acquire effect's failure path)

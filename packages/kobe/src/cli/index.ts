@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { resolve } from "node:path"
 /**
  * kobe CLI entry point (v0.6).
  *
@@ -38,7 +39,7 @@
  * deleted chat RPCs (see `./api-cmd.ts`). v0.5's `diagnose`, `mcp-bridge`,
  * `skill`, and pane-host test fixtures remain gone.
  */
-import { resolve } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { expandTilde } from "../lib/path-home.ts"
 import { type VendorId, coerceVendorId } from "../types/vendor.ts"
@@ -109,7 +110,7 @@ async function ensureProjectMainTask(repo: string): Promise<void> {
     const orch = await openLocalOrchestrator()
     await orch.ensureMainTask(repo)
   } catch (err) {
-    console.error(`(skipped project main-task setup: ${err instanceof Error ? err.message : String(err)})`)
+    console.error(`(skipped project main-task setup: ${errorMessage(err)})`)
   } finally {
     client?.close()
   }
@@ -204,7 +205,7 @@ async function adoptAllWorktrees(repo: string): Promise<void> {
   try {
     candidates = await orch.discoverAdoptableWorktrees(repo)
   } catch (err) {
-    console.error(`(skipped worktree scan: ${err instanceof Error ? err.message : String(err)})`)
+    console.error(`(skipped worktree scan: ${errorMessage(err)})`)
     return
   }
   if (candidates.length === 0) return

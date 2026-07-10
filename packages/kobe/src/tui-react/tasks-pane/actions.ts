@@ -12,6 +12,7 @@
  */
 
 import { existsSync } from "node:fs"
+import { errorMessage } from "@/lib/error-message"
 import { claudePaneIdStrict, currentSessionName, killSession, runTmux, tmuxSessionName } from "@/tmux/client"
 import { t } from "@/tui/i18n"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -61,7 +62,7 @@ export interface TasksHostActionsContext {
  * (non-git roots are a planned follow-up) — instead of leaking git's stderr.
  */
 export function worktreeErrorToast(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
+  const raw = errorMessage(err)
   if (/not a git repository/i.test(raw)) {
     return t("tasks.toast.worktreeErrorNotGit")
   }
@@ -194,7 +195,7 @@ export async function moveTaskAction(ctx: TasksHostActionsContext, id: string, d
     await ctx.orch.moveTask(id, delta)
   } catch (err) {
     console.error("[kobe tasks] task.move failed:", err)
-    ctx.notifyError(t("tasks.toast.moveTaskFailed", { message: err instanceof Error ? err.message : String(err) }))
+    ctx.notifyError(t("tasks.toast.moveTaskFailed", { message: errorMessage(err) }))
     return
   }
   ctx.setSelectedId(id)

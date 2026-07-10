@@ -41,6 +41,7 @@
 
 import { homedir } from "node:os"
 import path from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { getCustomEngineIds } from "@/state/repos"
 import type { VendorId } from "@/types/vendor"
 import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local/binary"
@@ -164,7 +165,7 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
     ) {
       return { found: false, error: "not found on PATH" }
     }
-    return { found: false, error: err instanceof Error ? err.message : String(err) }
+    return { found: false, error: errorMessage(err) }
   }
 }
 
@@ -258,7 +259,7 @@ export async function detectClaudeAccount(deps: DetectDeps = defaultDeps): Promi
     return {
       binary,
       account: { kind: "none" },
-      accountError: `read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `read ${configPath}: ${errorMessage(err)}`,
     }
   }
   if (raw === null) return { binary, account: { kind: "none" } }
@@ -269,7 +270,7 @@ export async function detectClaudeAccount(deps: DetectDeps = defaultDeps): Promi
     return {
       binary,
       account: { kind: "none" },
-      accountError: `parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `parse ${configPath}: ${errorMessage(err)}`,
     }
   }
   const oauth = (parsed as { oauthAccount?: unknown } | null)?.oauthAccount
@@ -299,7 +300,7 @@ export async function detectCodexAccount(deps: DetectDeps = defaultDeps): Promis
     return {
       binary,
       account: { kind: "none" },
-      accountError: `read ${authPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `read ${authPath}: ${errorMessage(err)}`,
     }
   }
   if (raw === null) return { binary, account: { kind: "none" } }
@@ -310,7 +311,7 @@ export async function detectCodexAccount(deps: DetectDeps = defaultDeps): Promis
     return {
       binary,
       account: { kind: "none" },
-      accountError: `parse ${authPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `parse ${authPath}: ${errorMessage(err)}`,
     }
   }
   const obj = (parsed ?? {}) as Record<string, unknown>
@@ -362,7 +363,7 @@ export async function detectCopilotAccount(
     return {
       binary,
       account: { kind: "none" },
-      accountError: `read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `read ${configPath}: ${errorMessage(err)}`,
     }
   }
   if (raw === null) return { binary, account: { kind: "none" } }
@@ -374,7 +375,7 @@ export async function detectCopilotAccount(
     return {
       binary,
       account: { kind: "none" },
-      accountError: `parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+      accountError: `parse ${configPath}: ${errorMessage(err)}`,
     }
   }
 

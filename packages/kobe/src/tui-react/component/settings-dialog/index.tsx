@@ -20,6 +20,7 @@
  *     caller yet — it lands with the React workspace/tasks-pane port.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -183,7 +184,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       setFeedbackBody("")
       setBodyRow(0)
     } catch (err) {
-      setFeedbackStatus(`error: ${err instanceof Error ? err.message : String(err)}`)
+      setFeedbackStatus(`error: ${errorMessage(err)}`)
     }
   }
 

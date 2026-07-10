@@ -8,6 +8,7 @@
  */
 
 import { availableEngineIds } from "@/engine/account-detect"
+import { errorMessage } from "@/lib/error-message"
 import { addSavedRepo, getSavedRepos } from "@/state/repos"
 import { t } from "@/tui/i18n"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
@@ -127,7 +128,7 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
         createdId = task.id
         adopted++
       } catch (err) {
-        if (firstError === undefined) firstError = err instanceof Error ? err.message : String(err)
+        if (firstError === undefined) firstError = errorMessage(err)
         ctx.logger.error(`${ctx.logPrefix} adoptWorktree failed for ${w.worktreePath}:`, err)
       }
     }
@@ -147,7 +148,7 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
       createdId = task.id
     } catch (err) {
       ctx.logger.error(`${ctx.logPrefix} task.create failed:`, err)
-      ctx.notifyError?.(`Couldn't create task: ${err instanceof Error ? err.message : String(err)}`)
+      ctx.notifyError?.(`Couldn't create task: ${errorMessage(err)}`)
       return
     }
   }

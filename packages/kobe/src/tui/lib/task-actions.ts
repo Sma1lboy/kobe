@@ -18,6 +18,7 @@
 import type { KobeOrchestrator } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
 import { engineDisplayName } from "@/engine/interactive-command"
+import { errorMessage } from "@/lib/error-message"
 import { DIRTY_WORKTREE_CODE } from "@/orchestrator/errors"
 import { DEFAULT_TASK_VENDOR, type Task } from "@/types/task"
 import { nextVendorWithin } from "@/types/vendor"
@@ -260,7 +261,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
       await ctx.orch.forgetProject(task.repo)
     } catch (err) {
       ctx.logger.error(`${ctx.logPrefix} forget project failed:`, err)
-      ctx.notifyError?.(`Couldn't remove: ${err instanceof Error ? err.message : String(err)}`)
+      ctx.notifyError?.(`Couldn't remove: ${errorMessage(err)}`)
       return
     }
     await ctx.reload?.()
@@ -278,7 +279,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
     await ctx.orch.deleteTask(taskId)
     deleted = true
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = errorMessage(err)
     if (message.includes(DIRTY_WORKTREE_CODE)) {
       const forceOk = await ctx.confirm({
         title: `"${task.title}" has uncommitted changes`,
@@ -292,12 +293,12 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
           deleted = true
         } catch (forceErr) {
           ctx.logger.error(`${ctx.logPrefix} force delete failed:`, forceErr)
-          ctx.notifyError?.(`Couldn't delete: ${forceErr instanceof Error ? forceErr.message : String(forceErr)}`)
+          ctx.notifyError?.(`Couldn't delete: ${errorMessage(forceErr)}`)
         }
       }
     } else {
       ctx.logger.error(`${ctx.logPrefix} delete failed:`, err)
-      ctx.notifyError?.(`Couldn't delete: ${err instanceof Error ? err.message : String(err)}`)
+      ctx.notifyError?.(`Couldn't delete: ${errorMessage(err)}`)
     }
   }
   // Only tear down the session + move selection if the task was actually
@@ -330,7 +331,7 @@ export async function renameTaskFlow(ctx: TaskActionContext, taskId: string): Pr
     await ctx.orch.setTitle(taskId, next)
   } catch (err) {
     ctx.logger.error(`${ctx.logPrefix} task.rename failed:`, err)
-    ctx.notifyError?.(`Couldn't rename task: ${err instanceof Error ? err.message : String(err)}`)
+    ctx.notifyError?.(`Couldn't rename task: ${errorMessage(err)}`)
     return
   }
   await ctx.reload?.()
@@ -353,7 +354,7 @@ export async function renameBranchFlow(ctx: TaskActionContext, taskId: string): 
     await ctx.orch.setBranch(taskId, next)
   } catch (err) {
     ctx.logger.error(`${ctx.logPrefix} task.setBranch failed:`, err)
-    ctx.notifyError?.(`Couldn't rename branch: ${err instanceof Error ? err.message : String(err)}`)
+    ctx.notifyError?.(`Couldn't rename branch: ${errorMessage(err)}`)
     return
   }
   await ctx.reload?.()
@@ -379,7 +380,7 @@ export async function cycleVendorFlow(ctx: TaskActionContext, taskId: string): P
     await ctx.orch.setVendor(taskId, next)
   } catch (err) {
     ctx.logger.error(`${ctx.logPrefix} task.setVendor failed:`, err)
-    ctx.notifyError?.(`Couldn't switch engine: ${err instanceof Error ? err.message : String(err)}`)
+    ctx.notifyError?.(`Couldn't switch engine: ${errorMessage(err)}`)
     return
   }
   // The new vendor only takes effect on the task's NEXT enter (ensureSession

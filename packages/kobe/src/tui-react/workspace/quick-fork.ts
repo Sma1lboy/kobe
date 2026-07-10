@@ -12,6 +12,7 @@
  * both hosts sit close to the 500-line limit already.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import { useState } from "react"
 import { engineDisplayName } from "../../engine/interactive-command"
 import { addSavedRepo } from "../../state/repos"
@@ -89,7 +90,7 @@ export async function runQuickFork(
     return task.id
   } catch (err) {
     console.error("[kobe workspace] quick-fork task.create failed:", err)
-    hooks.notifyError(`Couldn't fork task: ${err instanceof Error ? err.message : String(err)}`)
+    hooks.notifyError(`Couldn't fork task: ${errorMessage(err)}`)
     return undefined
   }
 }

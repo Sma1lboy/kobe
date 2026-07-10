@@ -27,6 +27,7 @@ import { existsSync, readFileSync, statSync } from "node:fs"
 import { unlink } from "node:fs/promises"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
+import { errorMessage } from "@/lib/error-message"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import {
@@ -275,7 +276,7 @@ async function removeStateFile(path: string, label: string): Promise<void> {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       console.log(`  ${label}: already absent`)
     } else {
-      console.error(`  failed to remove ${label} (${path}): ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`  failed to remove ${label} (${path}): ${errorMessage(err)}`)
     }
   }
 }
@@ -472,7 +473,7 @@ export async function runReloadSubcommand(argv: readonly string[] = []): Promise
       await refreshKobeWorkspacePanes(session)
       reloaded++
     } catch (err) {
-      console.error(`  failed to reload session "${session}": ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`  failed to reload session "${session}": ${errorMessage(err)}`)
     }
   }
   console.log(`kobe: reloaded Tasks/Ops panes in ${reloaded}/${sessions.length} session(s) — engine panes untouched`)
