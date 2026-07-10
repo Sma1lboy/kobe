@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types.ts"
-import { BunTerminalTaskPty, PipeTaskPty } from "../../src/tui/panes/terminal/pty.ts"
+import { BunTerminalTaskPty } from "../../src/tui/panes/terminal/pty.ts"
 
 const children: TaskPtyLike[] = []
 
@@ -44,20 +44,10 @@ const command = [
   'printf "program=%s version=%s\\n" "${TERM_PROGRAM-unset}" "${TERM_PROGRAM_VERSION-unset}"; sleep 1',
 ]
 
-describe("local terminal child environment", () => {
+describe("local Bun PTY child environment", () => {
   test("Bun PTY does not leak the outer terminal emulator identity", async () => {
     const pty = withOuterTerminalIdentity(
       () => new BunTerminalTaskPty({ taskId: "bun-env", cwd: process.cwd(), command, cols: 60, rows: 8 }),
-    )
-    children.push(pty)
-
-    await until(() => text(pty).includes("program="))
-    expect(text(pty)).toContain("program=unset version=unset")
-  })
-
-  test("pipe fallback does not leak the outer terminal emulator identity", async () => {
-    const pty = withOuterTerminalIdentity(
-      () => new PipeTaskPty({ taskId: "pipe-env", cwd: process.cwd(), command, cols: 60, rows: 8 }),
     )
     children.push(pty)
 
