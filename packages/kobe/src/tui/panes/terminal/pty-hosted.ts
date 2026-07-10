@@ -39,16 +39,42 @@ import { XtermTaskPty } from "./pty-xterm-base"
 let shared: Promise<KobeDaemonClient> | null = null
 
 /**
- * Key → live handle, for O(1) inbound routing. The client's `emit()` walks
+ * Key → live handles, for O(1) inbound routing. The client's `emit()` walks
  * its whole `pty.data`/`pty.exit` handler Set per frame, so one `on()` per
  * open tab made every interactive `claude` chunk cost N handler calls +
  * N key-compares (N-1 pure rejections) on the busiest path. Instead we
  * install ONE dispatcher per shared client (see `installDispatch`) that
- * does a single map lookup. Each handle `set`s itself here on open and the
+ * does a single map lookup. Each handle adds itself here on open and the
  * `cleanup()` teardown route (`detach`/`kill`/`park`/socket-close all pass
- * through it) `delete`s it — so a dead tab never receives a stray chunk.
+ * through it) removes it — so a dead tab never receives a stray chunk.
+ *
+ * A SET per key, not a single handle: two live handles for one key are
+ * legal (a second viewer of the same session), and a single-slot map let
+ * the newcomer silently STEAL the route — the first handle froze on its
+ * last frame with the child still streaming (the "UI is gone but it's
+ * still running" bug). Every handle for the key gets every frame; each
+ * keeps its own xterm.
  */
-const hostedByKey = new Map<string, HostedTaskPty>()
+const hostedByKey = new Map<string, Set<HostedTaskPty>>()
+
+/** Register `handle` as a live route for its key. */
+function routeAdd(handle: HostedTaskPty): void {
+  let set = hostedByKey.get(handle.taskId)
+  if (!set) {
+    set = new Set()
+    hostedByKey.set(handle.taskId, set)
+  }
+  set.add(handle)
+}
+
+/** Drop `handle` from the route table. Returns how many siblings remain. */
+function routeRemove(handle: HostedTaskPty): number {
+  const set = hostedByKey.get(handle.taskId)
+  if (!set) return 0
+  set.delete(handle)
+  if (set.size === 0) hostedByKey.delete(handle.taskId)
+  return set.size
+}
 
 /** Guards the one-time dispatcher install per client instance. */
 const dispatchInstalled = new WeakSet<KobeDaemonClient>()
@@ -65,11 +91,14 @@ function installDispatch(client: KobeDaemonClient): void {
   dispatchInstalled.add(client)
   client.on("pty.data", (frame) => {
     const payload = frame.payload as PtyDataEventPayload
-    hostedByKey.get(payload.key)?.feedFrame(payload.data)
+    const handles = hostedByKey.get(payload.key)
+    if (handles) for (const handle of handles) handle.feedFrame(payload.data)
   })
   client.on("pty.exit", (frame) => {
     const payload = frame.payload as PtyExitEventPayload
-    hostedByKey.get(payload.key)?.remoteGone()
+    const handles = hostedByKey.get(payload.key)
+    // Copy: remoteGone → cleanup mutates the set mid-iteration.
+    if (handles) for (const handle of [...handles]) handle.remoteGone()
   })
 }
 
@@ -116,7 +145,7 @@ export class HostedTaskPty extends XtermTaskPty {
       // Route inbound frames through the shared O(1) dispatcher (installed
       // on the client in getSharedPtyClient) instead of a per-handle
       // `on("pty.data")` that the client would walk for every tab per chunk.
-      hostedByKey.set(this.taskId, this)
+      routeAdd(this)
       this.unsubs.push(
         // Host died / socket dropped: the pane shows its dead-shell
         // banner; the user reopens the tab (or reset) to reattach.
@@ -209,8 +238,13 @@ export class HostedTaskPty extends XtermTaskPty {
    */
   detach(): void {
     const client = this.client
-    if (client) void client.request("pty.detach", { key: this.taskId }).catch(() => {})
     this.cleanup()
+    // The host keeps ONE sink per (key, connection) — shared by every local
+    // handle for the key. Detach the host side only when we were the LAST
+    // local viewer; sending it with a sibling still attached would starve
+    // the survivor's stream.
+    const siblings = hostedByKey.get(this.taskId)?.size ?? 0
+    if (client && siblings === 0) void client.request("pty.detach", { key: this.taskId }).catch(() => {})
     this.silentDispose()
   }
 
@@ -241,10 +275,10 @@ export class HostedTaskPty extends XtermTaskPty {
   }
 
   private cleanup(): void {
-    // Drop our map entry FIRST so no in-flight frame can reach a torn-down
+    // Drop our route entry FIRST so no in-flight frame can reach a torn-down
     // handle — every teardown route (detach/kill/park/socket-close) lands
     // here, so this is the single place the registration is undone.
-    if (hostedByKey.get(this.taskId) === this) hostedByKey.delete(this.taskId)
+    routeRemove(this)
     for (const unsub of this.unsubs.splice(0)) {
       try {
         unsub()
