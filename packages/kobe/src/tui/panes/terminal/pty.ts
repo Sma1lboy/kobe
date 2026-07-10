@@ -21,6 +21,7 @@
  * same `Chunk[]` rows.
  */
 
+import { embeddedTerminalEnv } from "@sma1lboy/kobe-daemon/daemon/pty-env"
 import { HostedTaskPty } from "./pty-hosted"
 import { MockTaskPty } from "./pty-mock"
 import { PipeTaskPty } from "./pty-pipe"
@@ -43,14 +44,13 @@ export class BunTerminalTaskPty extends XtermTaskPty {
     super(opts)
     this.proc = Bun.spawn(resolveArgv(opts), {
       cwd: opts.cwd,
-      env: {
-        ...process.env,
+      env: embeddedTerminalEnv(process.env, {
         TERM: "xterm-256color",
         COLUMNS: String(this.cols),
         LINES: String(this.rows),
         BASH_SILENCE_DEPRECATION_WARNING: "1",
         KOBE_TERMINAL_PTY: "1",
-      },
+      }),
       terminal: {
         cols: this.cols,
         rows: this.rows,

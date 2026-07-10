@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { embeddedTerminalEnv } from "@sma1lboy/kobe-daemon/daemon/pty-env"
 import {
   type CursorPos,
   DEFAULT_COLS,
@@ -41,13 +42,12 @@ export class PipeTaskPty implements TaskPtyLike {
     const args = argv.slice(1)
     this.proc = spawn(exe, args, {
       cwd: opts.cwd,
-      env: {
-        ...process.env,
+      env: embeddedTerminalEnv(process.env, {
         TERM: process.env.TERM ?? "xterm-256color",
         COLUMNS: String(this.cols),
         LINES: String(this.rows),
         KOBE_TERMINAL_PIPE: "1",
-      },
+      }),
       stdio: ["pipe", "pipe", "pipe"],
     })
 

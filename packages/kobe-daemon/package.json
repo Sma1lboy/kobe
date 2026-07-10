@@ -27,6 +27,7 @@
     "./daemon/paths": "./src/daemon/paths.ts",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
+    "./daemon/pty-env": "./src/daemon/pty-env.js",
     "./daemon/pty-host": "./src/daemon/pty-host.ts",
     "./daemon/pty-server": "./src/daemon/pty-server.ts",
     "./daemon/server": "./src/daemon/server.ts",

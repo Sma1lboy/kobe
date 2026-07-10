@@ -45,6 +45,21 @@ function dataText(frames: DaemonFrame[]): string {
   return out
 }
 
+function withOuterTerminalIdentity<T>(run: () => T): T {
+  const program = process.env.TERM_PROGRAM
+  const version = process.env.TERM_PROGRAM_VERSION
+  process.env.TERM_PROGRAM = "iTerm.app"
+  process.env.TERM_PROGRAM_VERSION = "3.6.11"
+  try {
+    return run()
+  } finally {
+    if (program === undefined) Reflect.deleteProperty(process.env, "TERM_PROGRAM")
+    else process.env.TERM_PROGRAM = program
+    if (version === undefined) Reflect.deleteProperty(process.env, "TERM_PROGRAM_VERSION")
+    else process.env.TERM_PROGRAM_VERSION = version
+  }
+}
+
 async function until(cond: () => boolean, ms = 3000): Promise<void> {
   const start = Date.now()
   while (!cond()) {
@@ -136,5 +151,28 @@ describe("PtyHost", () => {
     expect(row).toMatchObject({ key: "t1::tab1", alive: true, title: "实时进程" })
     expect(typeof row?.pid).toBe("number")
     expect(row?.command[0]).toBe("/bin/sh")
+  })
+
+  test("does not leak the outer terminal emulator identity to hosted children", async () => {
+    const host = makeHost()
+    const { frames, sink } = collector()
+    withOuterTerminalIdentity(() => {
+      host.open(
+        "t1::env",
+        {
+          ...SPEC,
+          command: [
+            "/bin/sh",
+            "-c",
+            'printf "program=%s version=%s\\n" "${TERM_PROGRAM-unset}" "${TERM_PROGRAM_VERSION-unset}"; sleep 1',
+          ],
+        },
+        {},
+        sink,
+      )
+    })
+
+    await until(() => dataText(frames).includes("program="))
+    expect(dataText(frames)).toContain("program=unset version=unset")
   })
 })
