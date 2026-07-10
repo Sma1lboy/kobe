@@ -43,6 +43,8 @@ export interface PtySpawnSpec {
 export interface PtyAttachResult {
   readonly replay: string
   readonly alive: boolean
+  /** The session child's pid (null when spawn failed) — see `PtyOpenResult.pid`. */
+  readonly pid: number | null
 }
 
 /** Writes one event frame to an attached connection. */
@@ -123,7 +125,11 @@ export class PtyHost {
       this.resize(key, spec.cols, spec.rows)
     }
     session.sinks.set(token, sink)
-    return { replay: Buffer.concat(session.chunks).toString("base64"), alive: session.alive }
+    return {
+      replay: Buffer.concat(session.chunks).toString("base64"),
+      alive: session.alive,
+      pid: session.proc?.pid ?? null,
+    }
   }
 
   /** Forward client input (already UTF-8 text from xterm) to the child. */
@@ -297,7 +303,11 @@ export class PtyHost {
   private markExited(session: PtySessionState): void {
     if (!session.alive) return
     session.alive = false
-    const frame: DaemonFrame = { type: "event", name: "pty.exit", payload: { key: session.key } }
+    const frame: DaemonFrame = {
+      type: "event",
+      name: "pty.exit",
+      payload: { key: session.key, pid: session.proc?.pid ?? null },
+    }
     for (const sink of session.sinks.values()) sink(frame)
     this.opts.log?.("pty", `session ${session.key} exited`)
     this.opts.onSessionEnd?.()
