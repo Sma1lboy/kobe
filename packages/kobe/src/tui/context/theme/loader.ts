@@ -33,6 +33,7 @@
 
 import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { kobeStateDir } from "../../../env"
 import type { ThemeJson } from "../theme-core"
 import { validateTheme } from "./schema"
@@ -73,7 +74,7 @@ export function loadUserThemes(): LoadedTheme[] {
       const text = readFileSync(path, "utf8")
       parsed = JSON.parse(text)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errorMessage(err)
       console.warn(`[kobe] skipping user theme ${path}: invalid JSON — ${msg}`)
       continue
     }

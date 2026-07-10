@@ -9,6 +9,7 @@
  */
 
 import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
+import { errorMessage } from "@/lib/error-message"
 import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
@@ -227,7 +228,7 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
         await DialogConfirm.show(
           dialog,
           "Can't use that worktree location",
-          `${resolved} isn't usable (${err instanceof Error ? err.message : String(err)}). Keeping the previous setting — pick a writable directory.`,
+          `${resolved} isn't usable (${errorMessage(err)}). Keeping the previous setting — pick a writable directory.`,
           "cancel",
         )
         return

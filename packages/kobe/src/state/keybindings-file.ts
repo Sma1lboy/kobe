@@ -17,6 +17,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs"
+import { errorMessage } from "@/lib/error-message"
 import { keybindingsConfigPath } from "../env"
 
 export type KeybindingsFile = {
@@ -65,7 +66,7 @@ export function readKeybindingsFile(): KeybindingsFile {
     const text = readFileSync(found, "utf8")
     doc = Bun.YAML.parse(text)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = errorMessage(err)
     warnings.push(`could not read/parse ${found}: ${msg}`)
   }
   cached = { path: canonical, exists: true, doc, warnings }

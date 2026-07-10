@@ -23,6 +23,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { expandTilde } from "../lib/path-home.ts"
 import { userThemesDir } from "../tui/context/theme/loader"
 import { validateTheme } from "../tui/context/theme/schema"
@@ -116,7 +117,7 @@ async function readSource(source: string): Promise<{ text: string; defaultName: 
     try {
       res = await fetch(source)
     } catch (err) {
-      fail(`failed to fetch ${source}: ${err instanceof Error ? err.message : String(err)}`)
+      fail(`failed to fetch ${source}: ${errorMessage(err)}`)
     }
     if (!res.ok) {
       fail(`failed to fetch ${source}: HTTP ${res.status} ${res.statusText}`)
@@ -134,7 +135,7 @@ async function readSource(source: string): Promise<{ text: string; defaultName: 
   try {
     text = readFileSync(abs, "utf8")
   } catch (err) {
-    fail(`failed to read ${abs}: ${err instanceof Error ? err.message : String(err)}`)
+    fail(`failed to read ${abs}: ${errorMessage(err)}`)
   }
   const file = basename(abs)
   const defaultName = file.endsWith(".json") ? file.slice(0, -".json".length) : file
@@ -186,7 +187,7 @@ async function addTheme(args: string[]): Promise<void> {
   try {
     parsed = JSON.parse(text)
   } catch (err) {
-    fail(`source is not valid JSON: ${err instanceof Error ? err.message : String(err)}`)
+    fail(`source is not valid JSON: ${errorMessage(err)}`)
   }
   const result = validateTheme(parsed)
   if (!result.ok) {

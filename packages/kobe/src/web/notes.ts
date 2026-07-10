@@ -18,6 +18,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { kobeStateDir } from "../env.ts"
 
 const NOTES_ROUTE = "/api/notes"
@@ -55,7 +56,7 @@ async function handleGet(url: URL): Promise<Response> {
     }
     return Response.json({ markdown })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -77,7 +78,7 @@ async function handlePut(req: Request): Promise<Response> {
     await writeFile(noteFilePath(body.taskId), body.markdown, "utf8")
     return Response.json({ ok: true })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 

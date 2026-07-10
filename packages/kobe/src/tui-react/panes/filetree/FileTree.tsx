@@ -23,6 +23,7 @@
  * carries (rows.ts has the memory-leak story).
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -132,7 +133,7 @@ export function FileTree(props: FileTreeProps) {
         // An aborted fetch (tab/worktree changed out from under us) throws
         // via the killed subprocess — swallow it, the next run owns state.
         if (signal?.aborted) return
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         if (seq === fetchSeq.current && pathRef.current === path) setError(message)
       }
     },

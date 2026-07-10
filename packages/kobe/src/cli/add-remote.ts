@@ -12,6 +12,7 @@
  */
 
 import { createInterface } from "node:readline"
+import { errorMessage } from "@/lib/error-message"
 import { remoteControlSocketPath } from "../env.ts"
 import { RemoteExecHost, type RemoteSpec } from "../exec/exec-host.ts"
 import { getKeychainPassword, isKeychainSupported, remoteKeychainRef, setKeychainPassword } from "../exec/keychain.ts"
@@ -158,7 +159,7 @@ async function probe(f: ParsedFlags, auth: Parameters<typeof addRemoteRepo>[0]["
     if (r.exitCode === 0) console.log("ok")
     else console.log(`reachable, but base path "${f.path}" is not a directory (you can create it later)`)
   } catch (err) {
-    console.log(`could not connect (${err instanceof Error ? err.message : String(err)})`)
+    console.log(`could not connect (${errorMessage(err)})`)
     console.log("the project is saved; fix the host/credentials and it will connect on first use.")
   }
 }

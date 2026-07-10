@@ -20,6 +20,7 @@
  * from the Solid original.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { archiveTaskFlow, cycleVendorFlow, deleteTaskFlow, renameTaskFlow } from "../../tui/lib/task-actions"
 import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
@@ -78,13 +79,13 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     const task = tasks().find((t) => t.id === id)
     if (!task) return
     await orchestrator.setPinned(id, !task.pinned).catch((err) => {
-      notifyError(`Couldn't pin: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't pin: ${errorMessage(err)}`)
     })
   }
 
   async function moveTask(id: string, delta: -1 | 1): Promise<void> {
     await orchestrator.moveTask(id, delta).catch((err) => {
-      notifyError(`Couldn't move: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't move: ${errorMessage(err)}`)
     })
   }
 
@@ -98,7 +99,7 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     const next = await BranchPickerDialog.show(dialog, { currentBranch: task.branch, repo: task.repo })
     if (!next) return
     await orchestrator.setBranch(id, next).catch((err) => {
-      notifyError(`Couldn't rename branch: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't rename branch: ${errorMessage(err)}`)
     })
   }
 
