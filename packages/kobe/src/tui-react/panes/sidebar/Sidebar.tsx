@@ -41,7 +41,6 @@ import {
   SIDEBAR_WIDTH,
   cycleViewTarget,
   projectScrollMaxHeightFor,
-  projectTaskCountKey,
   searchQueryKeystroke,
   subtitleBudgetFor,
   titleBudgetFor,
@@ -132,10 +131,6 @@ export function Sidebar(props: SidebarProps) {
   }, [projectFilter, projectOptions])
   const projectFilterRepo = projectFilterOption?.repo ?? null
   const projectFilterLabel = projectFilterOption?.label ?? "all"
-  const projectFilterCount = projectFilterOption
-    ? projectFilterOption.count
-    : projectOptions.reduce((sum, entry) => sum + entry.count, 0)
-  const projectFilterCountLabel = `${projectFilterCount} ${t(projectTaskCountKey(projectFilterCount))}`
 
   // Identity-reconciled row list (docs/DESIGN.md §5.5): keep previous row
   // objects (and the previous ARRAY when nothing changed) so daemon
@@ -380,8 +375,6 @@ export function Sidebar(props: SidebarProps) {
       view={view}
       setView={setView}
       sortMode={sortMode}
-      hasSortToggle={props.sortMode !== undefined}
-      onSortModeToggle={props.onSortModeToggle}
       searchMode={searchMode}
       searchQuery={searchQuery}
       flatIds={flatIds}
@@ -392,7 +385,6 @@ export function Sidebar(props: SidebarProps) {
       projectOptions={projectOptions}
       projectFilterRepo={projectFilterRepo}
       projectFilterLabel={projectFilterLabel}
-      projectFilterCountLabel={projectFilterCountLabel}
       cycleProjectFilter={cycleProjectFilter}
       projectScrollMaxHeight={projectScrollMaxHeight}
       setProjectScrollRef={(r) => {
