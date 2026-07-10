@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.93
+
+### Patch Changes
+
+- 627cdc3: Make the daemon package dependency direction explicit: daemon transport code now consumes a host runtime Adapter instead of importing kobe source aliases, with a CI test pinning the acyclic seam.
+- 627cdc3: Replace the remaining Solid-backed Orchestrator and daemon-client signals with one framework-free observable state interface, eliminating duplicate state and the `solid-js` runtime dependency.
+
 ## 0.7.92
 
 ### Patch Changes
