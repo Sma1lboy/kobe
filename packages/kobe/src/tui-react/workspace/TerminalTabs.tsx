@@ -3,8 +3,9 @@
  * Workspace terminal tabs (issue #16) — React port of `tui/workspace/
  * TerminalTabs.tsx` (issue #16 React migration). The PTY-world chattab: a
  * strip of engine-terminal tabs above the embedded Terminal pane; every tab
- * runs an interactive engine command in its own PTY (registry key
- * `${taskId}::${tabId}`), so ctrl+t gives a parallel session in the same
+ * runs the user's SHELL in its own PTY (registry key `${taskId}::${tabId}`)
+ * with the interactive engine command TYPED into it (`shellSpawn`), so
+ * ctrl+t gives a parallel session in the same
  * worktree exactly like the tmux chattab did with windows. Plain ctrl+t
  * opens the user's preferred engine (`resolvePreferredVendor`); ctrl+e
  * prompts for one instead (`chat.tab.chooseEngine`), pins it to just that
@@ -46,11 +47,12 @@ import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
 import { type ReactNode, useEffect, useRef, useState } from "react"
+import { warmHostedShell } from "../../tui/panes/terminal/pty-hosted"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
 import {
   type EngineTab,
+  type TabSpawn,
   type TabsState,
   addTab,
   closeActiveTab,
@@ -67,9 +69,9 @@ import {
   selectTab,
   setTabSessionId,
   setTabSplit,
+  shellSpawn,
   tabExitAction,
   tabPtyKey,
-  tabToShell,
 } from "../../tui/workspace/terminal-tabs-core"
 import { EnginePickerDialog } from "../component/engine-picker-dialog"
 import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
@@ -109,11 +111,10 @@ export interface TerminalTabsProps {
   /** Quick-fork (issue #17): the composer submitted — parent creates the
    *  child task (in `repo`, the source task's main repo root) and jumps in. */
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
-  /** Quick-fork phase 2: a prompt to auto-deliver into this task's first
-   *  engine tab once its PTY produces its first output chunk. Consumed
-   *  ONCE on mount (see the delivery effect below) — a later prop change
-   *  does nothing, matching `onEditorTabReady`/`onEngineSendReady`'s
-   *  mount-once handoff shape. */
+  /** Quick-fork phase 2: a prompt auto-delivered to this task's first
+   *  engine tab. Rides the engine argv as a positional arg on that tab's
+   *  FIRST spawn (`engineTabSpawn`) — once the session has spawned or
+   *  conversed it never re-applies. */
   initialPrompt?: string
   /** This worktree's slice of the daemon's `transcript.activity` push. */
   sharedActivity?: TranscriptActivity | null
@@ -172,16 +173,25 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     kv.set(persistKey, next)
   }
 
-  /** Engine-tab argv: the tab's pinned session id rides the base command
-   *  (resume-vs-pin decision is pure — `engineTabArgv`). */
-  const engineTabCommand = (tab: EngineTab): readonly string[] => {
+  /** Engine-tab spawn: the PTY runs the user's SHELL and the engine argv
+   *  (pinned session id riding it — resume-vs-pin is pure, `engineTabArgv`)
+   *  is TYPED into it (`shellSpawn`), so exiting the vendor lands on a
+   *  normal prompt with full rc context. The quick-fork initial prompt
+   *  (issue #17) rides the argv as a positional arg on the first engine
+   *  tab's FIRST spawn — pasting it into the PTY raced the shell (typed
+   *  input executed by the shell, not the engine). */
+  const engineTabSpawn = (tab: EngineTab): TabSpawn => {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
-    return engineTabArgv(tab, base, getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id)))
+    const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
+    const prompt = propsRef.current.initialPrompt
+    const firstEngine = stateRef.current.tabs.find((t) => t.kind === "engine")
+    const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
+    return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), defaultShell())
   }
   // Latest-render mirror for the mount-once engine-send closure below —
   // same freshness convention as propsRef/stateRef (file header).
-  const engineTabCommandRef = useRef(engineTabCommand)
-  engineTabCommandRef.current = engineTabCommand
+  const engineTabSpawnRef = useRef(engineTabSpawn)
+  engineTabSpawnRef.current = engineTabSpawn
 
   /** Nudge Terminal to re-acquire under the CURRENTLY visible tab's key —
    *  see the `resetToken` doc on `Terminal.tsx`. */
@@ -221,7 +231,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         // Default geometry until the tab is next mounted; the engine
         // rewraps on the real resize like any terminal.
         try {
-          pty = reg.acquire(key, propsRef.current.worktree, { command: engineTabCommandRef.current(target) })
+          pty = reg.acquire(key, propsRef.current.worktree, { ...engineTabSpawnRef.current(target) })
         } catch {
           return
         }
@@ -232,37 +242,12 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     })
   }, [])
 
-  // Quick-fork phase 2: deliver `initialPrompt` into the first engine tab's
-  // PTY once it produces its first output chunk (the engine banner) — see
-  // `quick-fork-delivery.ts` for the readiness contract. Mount-once (like
-  // the two handoffs above); a ref guard covers React StrictMode's double
-  // effect-fire. The 5s-timeout fallback surfaces an error toast instead of
-  // silently dropping the prompt.
-  const initialPromptSentRef = useRef(false)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once delivery; reads propsRef/stateRef for freshness.
+  // Warm one spare shell for this worktree in the pty host so the next
+  // engine/shell tab adopts an already-initialized shell (rc files done)
+  // instead of paying shell startup. Best-effort fire-and-forget.
   useEffect(() => {
-    const prompt = propsRef.current.initialPrompt
-    if (!prompt || initialPromptSentRef.current) return
-    initialPromptSentRef.current = true
-    const controller = new AbortController()
-    const target = stateRef.current.tabs.find((tab) => tab.kind === "engine")
-    if (!target) return
-    void waitAndDeliverInitialPrompt(
-      () => getDefaultPtyRegistry().get(tabPtyKey(propsRef.current.taskId, target.id)),
-      prompt,
-      undefined,
-      controller.signal,
-    ).then((result) => {
-      if (result.delivered) return
-      notif.notify({
-        kind: "error",
-        taskId: propsRef.current.taskId,
-        tabId: target.id,
-        title: t("terminal.quickFork.deliveryFailed"),
-      })
-    })
-    return () => controller.abort()
-  }, [])
+    warmHostedShell(props.worktree)
+  }, [props.worktree])
 
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]
 
@@ -288,11 +273,13 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     notif.markRead(props.taskId, state.activeId)
   }, [state.activeId])
 
-  /** Auto-close (issue #16): a command tab closes itself when that process
-   *  exits and releases its PTY. */
+  /** Auto-close (issue #16): a tab closes itself when its process exits
+   *  and releases its PTY. Reads the FRESH state (`stateRef`) — exit
+   *  events can arrive from a stale render (see `handleActiveExit`). */
   function closeExitedTab(id: string): void {
-    const closing = state.tabs.find((tb) => tb.id === id)
-    const { state: next, closedId } = closeTab(state, id)
+    const current = stateRef.current
+    const closing = current.tabs.find((tb) => tb.id === id)
+    const { state: next, closedId } = closeTab(current, id)
     if (closedId) {
       releaseSplitLeaves(tabPtyKey(props.taskId, closedId), closing?.splitTree ?? null)
       getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
@@ -300,42 +287,43 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     update(next)
   }
 
-  /** Vendor exit is an allowed case: an engine tab whose CLI exits degrades
-   *  into a plain shell at the same worktree. */
-  function degradeToShell(id: string): void {
-    const tab = state.tabs.find((tb) => tb.id === id)
-    if (tab?.kind !== "engine") return
-    const wasActive = id === state.activeId
-    update(tabToShell(state, id, [defaultShell()]))
-    getDefaultPtyRegistry().release(tabPtyKey(props.taskId, id))
-    if (wasActive) setResetToken((n) => n + 1)
-  }
-
-  const activeCommand = (): readonly string[] => (active.kind === "command" ? active.command : engineTabCommand(active))
+  const activeSpawn = (): TabSpawn => (active.kind === "command" ? { command: active.command } : engineTabSpawn(active))
 
   /** Engine tabs whose dead-on-attach resume was already attempted — one
-   *  shot per tab, so a `--resume` that itself dies degrades normally
+   *  shot per tab, so a `--resume` that itself dies closes normally
    *  instead of respawning forever. */
   const resumeTriedRef = useRef(new Set<string>())
 
   function handleActiveExit(info?: { deadOnAttach?: boolean }): void {
-    // Policy is pure (`tabExitAction`): command tabs close; a corpse found
-    // on reattach (host restart, park-sweep window, machine reboot) gets
-    // ONE resume — releasing the dead handle makes `engineTabCommand`
-    // build `--resume <sessionId>` on the re-acquire (`spawned && !live`),
-    // the restart-survival path; everything else degrades to a shell.
+    // An exit event can be the echo of an intentional ctrl+w: closing kills
+    // the PTY, which fires onExit into THIS (stale) render before React
+    // swaps the Terminal. If the tab is already gone from the fresh state
+    // there is nothing to do — acting on the stale snapshot resurrected
+    // the closed tab (the "ctrl+w needs two presses" bug).
+    if (!stateRef.current.tabs.some((t) => t.id === active.id)) return
+    // Policy is pure (`tabExitAction`): a live exit means the tab's SHELL
+    // ended (engines run inside it — `shellSpawn`), so the tab closes; a
+    // corpse found on reattach (host restart, machine reboot) gets ONE
+    // resume — releasing the dead handle makes `engineTabSpawn` type
+    // `--resume <sessionId>` on the re-acquire (`spawned && !live`).
     const action = tabExitAction(active, info?.deadOnAttach === true, resumeTriedRef.current.has(active.id))
-    if (action === "close") {
-      closeExitedTab(active.id)
-      return
-    }
     if (action === "resume") {
       resumeTriedRef.current.add(active.id)
       getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
       setResetToken((n) => n + 1)
       return
     }
-    degradeToShell(active.id)
+    if (stateRef.current.tabs.length > 1) {
+      closeExitedTab(active.id)
+      return
+    }
+    // Last tab: the strip can never be empty — recycle it in place as a
+    // fresh engine tab (new session) instead of freezing on the exit banner.
+    getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
+    resumeTriedRef.current.clear()
+    const fresh = pinSession(initialTabs(), undefined)
+    update(fresh)
+    if (fresh.activeId === active.id) setResetToken((n) => n + 1)
   }
 
   const requestRename = (): void => {
@@ -428,6 +416,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // the leaf bindings — the Solid-era precedence, restored by gating
   // instead of ordering.
   const activeIsSplit = isTabSplit(active.splitTree)
+  const spawn = activeSpawn()
   useBindings(() => ({
     enabled: props.focused && !activeIsSplit,
     bindings: bindByIds({
@@ -475,7 +464,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         <TerminalSplit
           tabKey={tabPtyKey(props.taskId, active.id)}
           cwd={props.worktree}
-          command={activeCommand()}
+          command={spawn.command}
+          initialInput={spawn.initialInput}
           splitTree={active.splitTree ?? null}
           onSplitChange={(next) => update(setTabSplit(state, active.id, next))}
           onExit={handleActiveExit}

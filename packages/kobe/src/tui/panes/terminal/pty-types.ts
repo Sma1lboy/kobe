@@ -27,6 +27,14 @@ export type TaskPtyOpts = {
    * When unset (or empty) the PTY falls back to the user's shell.
    */
   command?: readonly string[]
+  /**
+   * Bytes typed into the child right after a FRESH spawn — the shell-
+   * wrapped engine launch (`shellSpawn`): the PTY runs the user's
+   * interactive shell and this carries the engine command line + `\r`.
+   * Kernel tty input buffering holds it until the shell reads it.
+   * Backends that reattach to an existing session must NOT resend it.
+   */
+  initialInput?: string
 }
 
 /**

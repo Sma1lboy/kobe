@@ -20,9 +20,10 @@ import {
   setTabSessionId,
   setTabSpawned,
   setTabSplit,
+  shellCommandLine,
+  shellSpawn,
   tabExitAction,
   tabPtyKey,
-  tabToShell,
 } from "../../src/tui/workspace/terminal-tabs-core"
 
 describe("terminal tabs state", () => {
@@ -100,25 +101,6 @@ describe("terminal tabs state", () => {
     expect(withEngine.tabs[1]).toMatchObject({ kind: "engine", vendor: "codex" })
   })
 
-  it("tabToShell degrades an engine tab in place — exiting the vendor CLI is allowed, not an error", () => {
-    const s = renameActiveTab(addTab(initialTabs(), "codex"), "my agent") // [1, 2*(codex, titled)]
-    const degraded = tabToShell(s, "tab-2", ["/bin/zsh"])
-    const tab = degraded.tabs[1]
-    // Same tab identity (id/title/ordinal survive; the PTY key must not
-    // change) — now a command tab running a plain shell, the vendor pin
-    // structurally gone with the kind switch.
-    expect(tab).toEqual({ kind: "command", id: "tab-2", title: "my agent", ordinal: 2, command: ["/bin/zsh"] })
-    expect(degraded.activeId).toBe("tab-2")
-  })
-
-  it("tabToShell never re-degrades command tabs (editor tabs keep their argv)", () => {
-    const s = openEditorTab(initialTabs(), ["sh", "-c", "nvim x"], "x")
-    const after = tabToShell(s, "tab-2", ["/bin/zsh"])
-    expect(after.tabs[1]).toMatchObject({ kind: "command", command: ["sh", "-c", "nvim x"] })
-    // Unknown id: state shape unchanged.
-    expect(tabToShell(s, "tab-99", ["/bin/zsh"]).tabs).toEqual(s.tabs)
-  })
-
   // Why: the ctrl+e "shell" pick opens a plain command tab with a NULL
   // label — the tab must stay unnamed so the
   // live foreground-process title (tabTitle's liveName path) names it.
@@ -190,11 +172,18 @@ describe("terminal tabs state", () => {
     expect(back.tabs[2]).toMatchObject({ kind: "command", command: ["/bin/zsh"] })
     expect(back.tabs[2]).toHaveProperty("purpose", undefined)
     expect(back.nextOrdinal).toBe(s.nextOrdinal)
-    // THE reported bug: a single tab whose engine exited (degraded to a
-    // shell) must reopen as that shell, NOT as a fresh engine tab.
-    const degraded = rehydrateTabs(tabToShell(initialTabs(), "tab-1", ["/bin/zsh"]), ["/bin/zsh"])
-    expect(degraded.tabs).toHaveLength(1)
-    expect(degraded.tabs[0]).toMatchObject({ kind: "command", id: "tab-1", command: ["/bin/zsh"] })
+    // THE reported bug: a single persisted COMMAND tab (a shell pick from
+    // an older snapshot) must reopen as that shell, NOT as a fresh engine.
+    const shellOnly = rehydrateTabs(
+      {
+        tabs: [{ kind: "command", id: "tab-1", title: null, ordinal: 1, command: ["/bin/zsh"] }],
+        activeId: "tab-1",
+        nextOrdinal: 2,
+      },
+      ["/bin/zsh"],
+    )
+    expect(shellOnly.tabs).toHaveLength(1)
+    expect(shellOnly.tabs[0]).toMatchObject({ kind: "command", id: "tab-1", command: ["/bin/zsh"] })
     // Corrupt/empty snapshot still falls back to a fresh initial state.
     expect(rehydrateTabs({ tabs: [], activeId: "tab-1", nextOrdinal: 1 }, ["/bin/zsh"])).toEqual(initialTabs())
   })
@@ -240,16 +229,13 @@ describe("terminal tabs state", () => {
     expect(setTabSpawned(down, "tab-1", false).tabs[0]).toBe(down.tabs[0])
   })
 
-  it("autoTitle fills the display gap under a manual title and survives degradation", () => {
+  it("autoTitle fills the display gap under a manual title", () => {
     let s = setTabAutoTitle(initialTabs(), "tab-1", "fix the resize race")
     expect(s.tabs[0].autoTitle).toBe("fix the resize race")
     // Manual rename still wins at display time (title stays independent).
     s = renameActiveTab(s, "my name")
     expect(s.tabs[0].title).toBe("my name")
     expect(s.tabs[0].autoTitle).toBe("fix the resize race")
-    // Degrading to a shell keeps the auto-derived name.
-    const degraded = tabToShell(s, "tab-1", ["/bin/zsh"])
-    expect(degraded.tabs[0].autoTitle).toBe("fix the resize race")
   })
 
   // Why: closing the engine leaf (`leaf-1`) inside a split keeps `kind:
@@ -290,20 +276,38 @@ describe("terminal tabs state", () => {
     expect(engineTabArgv(tab({ sessionId: "u1", spawned: true }), base, false)).toEqual(["claude", "--resume", "u1"])
   })
 
-  // Why: the exit policy decides between three irreversible side-effect
-  // paths (close tab / one-shot resume / degrade to shell). The one-shot
-  // guard is load-bearing: without it a `--resume` that itself dies
-  // respawns forever.
-  it("tabExitAction: command closes; dead-on-attach resumes once; everything else degrades", () => {
+  // Why: the exit policy decides between two irreversible side-effect
+  // paths (close tab / one-shot resume). Engines run INSIDE the user's
+  // shell (shellSpawn), so a live PTY exit means the shell ended → close;
+  // the one-shot guard is load-bearing: without it a `--resume` that
+  // itself dies respawns forever.
+  it("tabExitAction: dead-on-attach resumes once; every other exit closes the tab", () => {
     const engine: EngineTab = { kind: "engine", id: "tab-1", title: null, ordinal: 1, sessionId: "u1", spawned: true }
     expect(
       tabExitAction({ kind: "command", id: "tab-2", title: null, ordinal: 2, command: ["zsh"] }, true, false),
     ).toBe("close")
     expect(tabExitAction(engine, true, false)).toBe("resume")
-    expect(tabExitAction(engine, true, true)).toBe("degrade") // resume already tried once
-    expect(tabExitAction(engine, false, false)).toBe("degrade") // live exit (user quit the CLI)
-    expect(tabExitAction({ ...engine, sessionId: null }, true, false)).toBe("degrade") // nothing to resume
-    expect(tabExitAction({ ...engine, spawned: undefined }, true, false)).toBe("degrade") // never conversed
+    expect(tabExitAction(engine, true, true)).toBe("close") // resume already tried once
+    expect(tabExitAction(engine, false, false)).toBe("close") // live exit (user quit the shell)
+    expect(tabExitAction({ ...engine, sessionId: null }, true, false)).toBe("close") // nothing to resume
+    expect(tabExitAction({ ...engine, spawned: undefined }, true, false)).toBe("close") // never conversed
+  })
+
+  // Why: shellSpawn is the vendor-launch contract (2026-07-10): the PTY
+  // runs the user's SHELL and the engine command is TYPED into it, so the
+  // session keeps rc-file context and exiting the vendor lands on a
+  // prompt. Quoting must keep an argv with spaces/quotes ONE argument at
+  // an interactive prompt.
+  it("shellSpawn wraps an engine argv in the user's shell with the line typed in", () => {
+    expect(shellSpawn(["claude", "--session-id", "u1"], "/bin/zsh")).toEqual({
+      command: ["/bin/zsh"],
+      initialInput: "claude --session-id u1\r",
+    })
+    expect(shellCommandLine(["claude", "--append-system-prompt", "be terse"])).toBe(
+      "claude --append-system-prompt 'be terse'",
+    )
+    // Embedded single quotes survive POSIX-style ('\'' splice); empty args stay quoted.
+    expect(shellCommandLine(["echo", "it's", ""])).toBe("echo 'it'\\''s' ''")
   })
 
   // Why: collapse decides persistence (null = unsplit fast path) AND the

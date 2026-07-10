@@ -29,6 +29,9 @@ export interface UseTerminalPtyOpts {
   taskId: string | null
   /** Read at acquire/reset time via a ref — see file header. */
   command: readonly string[] | undefined
+  /** Typed into a FRESH spawn (`TaskPtyOpts.initialInput`) — the shell-
+   *  wrapped engine line. Read via a ref like `command`. */
+  initialInput?: string
   resetToken?: number
   /** `deadOnAttach`: the exit was discovered on reattach (engine died
    *  while the TUI was away), not observed live — see `TaskPtyLike`. */
@@ -64,6 +67,8 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   // them (the Solid original's untracked reads inside `on(...)`).
   const commandRef = useRef(opts.command)
   commandRef.current = opts.command
+  const initialInputRef = useRef(opts.initialInput)
+  initialInputRef.current = opts.initialInput
   const bodyGeometryRef = useRef(opts.bodyGeometry)
   bodyGeometryRef.current = opts.bodyGeometry
   const registryRef = useRef(opts.registry)
@@ -96,7 +101,11 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     if (!geometry) return
     let handle: TaskPty
     try {
-      handle = registryRef.current.acquire(taskId, cwd, { ...geometry, command: commandRef.current })
+      handle = registryRef.current.acquire(taskId, cwd, {
+        ...geometry,
+        command: commandRef.current,
+        initialInput: initialInputRef.current,
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setAcquireError(message)
@@ -156,7 +165,11 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   const forceReacquire = useCallback(
     (nextCwd: string, nextTaskId: string, geometry: { cols: number; rows: number }): void => {
       try {
-        const fresh = registryRef.current.reset(nextTaskId, nextCwd, { ...geometry, command: commandRef.current })
+        const fresh = registryRef.current.reset(nextTaskId, nextCwd, {
+          ...geometry,
+          command: commandRef.current,
+          initialInput: initialInputRef.current,
+        })
         setPty(fresh)
         setSnapshot([])
         setCursor(null)

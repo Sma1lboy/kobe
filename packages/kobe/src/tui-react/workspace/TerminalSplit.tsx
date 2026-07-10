@@ -95,6 +95,9 @@ export function TerminalSplit(props: {
   cwd: string
   /** What the tab's ORIGINAL leaf (`leaf-1`) runs — engine or command. */
   command: readonly string[]
+  /** Typed into leaf-1's FRESH spawn — the shell-wrapped engine line
+   *  (`TaskPtyOpts.initialInput`). Split-created shell leaves never get it. */
+  initialInput?: string
   /** The active tab's frozen split layout (null = unsplit). Owned by the
    *  parent, persisted to state.json; switching tabs swaps this prop. */
   splitTree: PersistedSplit | null
@@ -301,6 +304,7 @@ export function TerminalSplit(props: {
           cwd={props.cwd}
           taskId={splitLeafPtyKey(props.tabKey, leaf.id)}
           command={leaf.content ?? props.command}
+          initialInput={leaf.content === null ? props.initialInput : undefined}
           onExit={() => onLeafExit(leaf.id)}
           resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
           focused={focused}
@@ -404,6 +408,7 @@ export function TerminalSplit(props: {
       cwd={props.cwd}
       taskId={props.tabKey}
       command={props.command}
+      initialInput={props.initialInput}
       onExit={props.onExit}
       resetToken={props.resetToken}
       focused={props.focused}
