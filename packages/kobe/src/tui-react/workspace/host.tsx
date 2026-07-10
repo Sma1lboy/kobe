@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 /**
  * Experimental native workspace (`KOBE_TUI=1`): Sidebar | engine Terminal |
- * Files. `useAccessor` bridges daemon Solid signals into React; imperative
+ * Files. `useAccessor` subscribes React to framework-free daemon state; imperative
  * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
  * Settings, worktrees, and update surfaces swap in-process instead of exiting.
  */

@@ -72,14 +72,14 @@ The seams matter:
   panes use `RemoteOrchestrator`; in-tmux helper panes subscribe as daemon
   `role: "pane"` so they receive task snapshots without pinning daemon
   lifetime.
-- **opentui is infrastructure, not architecture; Solid signals are a
-  shared reactive primitive.** The orchestrator must not depend on
+- **opentui is infrastructure, not architecture; observable state is a
+  framework-free reactive primitive.** The orchestrator must not depend on
   opentui or anything that renders — that's the seam the daemon split
-  hangs on (see [`design/daemon.md`](./design/daemon.md) §9 D0). Solid
-  signals are deliberately allowed inside the orchestrator: they're a
-  pure in-process reactive primitive with no DOM / no opentui coupling,
-  and the TUI consumes the same primitive so panes can subscribe
-  without an adapter layer. Whenever a pane needs to *do* something
+  hangs on (see [`design/daemon.md`](./design/daemon.md) §9 D0). The
+  Orchestrator and RemoteOrchestrator publish stable `get` / `subscribe`
+  state, and React consumes it through `useSyncExternalStore`; there is one
+  state cell per semantic stream, with no UI-framework dependency or dual
+  state. Whenever a pane needs to *do* something
   stateful (run a task, switch tabs, persist), it still goes through
   the orchestrator — signals are wiring, not the source of truth.
 

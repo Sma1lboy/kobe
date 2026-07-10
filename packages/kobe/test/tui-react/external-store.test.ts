@@ -5,8 +5,11 @@ describe("createExternalStore", () => {
   it("get returns the current snapshot; set replaces it", () => {
     const store = createExternalStore({ n: 1 })
     expect(store.get()).toEqual({ n: 1 })
+    expect(store()).toEqual({ n: 1 })
+    expect(store.get).toBe(store)
     store.set({ n: 2 })
     expect(store.get()).toEqual({ n: 2 })
+    expect(store()).toEqual({ n: 2 })
   })
 
   it("notifies subscribers on change and stops after unsubscribe", () => {
