@@ -47,6 +47,7 @@ import {
   titleBudgetFor,
 } from "../../../tui/panes/sidebar/view-core"
 import { useT } from "../../i18n"
+import { modalActive } from "../../lib/keymap"
 import { useSidebarBindings } from "./keys"
 import { SidebarPanel } from "./panel"
 import type { SidebarRowCardSharedProps } from "./row-cards"
@@ -95,7 +96,9 @@ export function Sidebar(props: SidebarProps) {
   useEffect(() => {
     if (!searchMode || !renderer) return
     const listener = (evt: KeyEvent): void => {
-      if (!focusedRef.current) return
+      // Raw listener — bypasses dispatch, so it must honor the dialog
+      // overlay's modal barrier itself (same as the terminal catch-all).
+      if (!focusedRef.current || modalActive()) return
       setSearchQuery((q) => searchQueryKeystroke(q, evt) ?? q)
     }
     renderer.keyInput.on("keypress", listener)

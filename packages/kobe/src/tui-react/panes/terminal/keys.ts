@@ -25,7 +25,7 @@ import {
   keyEventToShellBytes,
 } from "../../../tui/panes/terminal/keys-pure"
 import { bindByIds } from "../../context/keybindings"
-import { useBindings } from "../../lib/keymap"
+import { modalActive, useBindings } from "../../lib/keymap"
 
 // Re-export pure helpers so callers can import everything from one path.
 export { DEFAULT_PAGE_SIZE, TRAPPED_KEYS, keyEventToShellBytes }
@@ -95,15 +95,20 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   optsRef.current = opts
   useEffect(() => {
     if (!renderer) return
+    // `modalActive()`: pane focus does NOT change when a dialog opens, so
+    // without it this forwarder eats the keystroke (preventDefault) before
+    // the dialog's focused <input> can — typing into a rename dialog lands
+    // in the PTY instead. The useBindings entries above are already cut off
+    // by the modal barrier; raw listeners must gate themselves.
     const forwardUnhandled = (evt: KeyEvent) => {
-      if (!optsRef.current.focused || evt.defaultPrevented) return
+      if (!optsRef.current.focused || evt.defaultPrevented || modalActive()) return
       const bytes = keyEventToShellBytes(evt)
       if (bytes == null) return
       optsRef.current.write(bytes)
       evt.preventDefault()
     }
     const forwardPaste = (evt: { bytes: Uint8Array; defaultPrevented: boolean; preventDefault(): void }) => {
-      if (!optsRef.current.focused || evt.defaultPrevented) return
+      if (!optsRef.current.focused || evt.defaultPrevented || modalActive()) return
       const text = new TextDecoder().decode(evt.bytes)
       if (text.length === 0) return
       optsRef.current.paste(text)
