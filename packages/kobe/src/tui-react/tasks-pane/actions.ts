@@ -21,7 +21,7 @@ import {
   SETTINGS_SURFACE_KEY,
   normalizeSettingsSurface,
 } from "../../tui/lib/settings-surface"
-import type { CreateTaskContext } from "../../tui/lib/task-actions"
+import type { CreateTaskContext } from "../../tui/lib/task-create-flow"
 import { HandoverError, enterTask } from "../../tui/lib/task-enter"
 import { detectWorktreeOpener, openWorktree } from "../../tui/lib/worktree-opener"
 import {
