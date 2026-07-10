@@ -53,13 +53,13 @@ vi.mock("../../src/tui/panes/terminal/tmux", () => ({
   captureGlobalLayout: vi.fn(async () => {}),
   enterWindow: vi.fn(async () => {}),
 }))
-vi.mock("../../src/tui/panes/terminal/layout-actions", () => ({
+vi.mock("../../src/tui/panes/terminal/layout-zen", () => ({
   syncSessionZen: vi.fn(async () => {}),
 }))
 
 const { HandoverError, ensureTaskSession, enterTask, jumpToTask } = await import("../../src/tui/lib/task-enter")
 const tmuxApplier = await import("../../src/tui/panes/terminal/tmux")
-const layoutActions = await import("../../src/tui/panes/terminal/layout-actions")
+const layoutZen = await import("../../src/tui/panes/terminal/layout-zen")
 const repoInit = await import("../../src/state/repo-init")
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -232,7 +232,7 @@ describe("enterTask", () => {
     const orch = makeOrch()
     await enterTask(orch as unknown as OrchArg, makeTask(), "/repo", "claude")
     expect(state.ensureSessionCalls).toHaveLength(1)
-    expect(layoutActions.syncSessionZen).toHaveBeenCalledWith("kobe-t1")
+    expect(layoutZen.syncSessionZen).toHaveBeenCalledWith("kobe-t1")
     expect(orch.setActiveTask).toHaveBeenCalledWith("t1")
     expect(tmuxApplier.enterWindow).toHaveBeenCalledWith("kobe-t1")
   })

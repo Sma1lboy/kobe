@@ -8,7 +8,10 @@ terminal-in-the-middle pivot, issue #16, revived it — 2026-07-06.)
 
 **LIVE — the tmux session machinery (ships in v1, do NOT treat as dormant):**
 `tmux.ts`, `tmux-session.ts`, `tmux-session-create.ts`, `tmux-session-bindings.ts`,
-`layout-actions.ts`, `layout-coord.ts`, `pane-heal.ts`, `launch.ts`, `chattab.ts`.
+`layout-actions.ts` (dispatcher + workspace splits + tab lifecycle), `layout-plan.ts`
+(pure split/parse policy), `layout-tmux.ts` (shared tmux plumbing + hidden helper
+session), `layout-side-panes.ts` (ops/tasks/terminal hide-restore), `layout-zen.ts`
+(zen mode), `layout-coord.ts`, `pane-heal.ts`, `launch.ts`, `chattab.ts`.
 These are imported all over the codebase (`cli/commands-tui.ts`, `tui/lib/task-enter.ts`,
 `tmux/*`, `settings/host.tsx`, …) and drive the default product path — the tmux
 handover. Nothing below applies to them.

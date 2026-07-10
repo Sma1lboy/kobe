@@ -29,7 +29,7 @@ vi.mock("../../src/engine/interactive-command", () => ({
       : { argv, sessionId: null },
   ),
 }))
-vi.mock("../../src/tui/panes/terminal/layout-actions", () => ({
+vi.mock("../../src/tui/panes/terminal/layout-zen", () => ({
   applyZenToNewWindow: vi.fn(async () => {}),
 }))
 vi.mock("../../src/tui/panes/terminal/pane-heal", () => ({
@@ -220,9 +220,9 @@ describe("newChatTab", () => {
   })
 
   test("collapses the new tab immediately when the session is in zen mode", async () => {
-    const layoutActions = await import("../../src/tui/panes/terminal/layout-actions")
+    const layoutZen = await import("../../src/tui/panes/terminal/layout-zen")
     await chattab.newChatTab("kobe-t1")
-    expect(layoutActions.applyZenToNewWindow).toHaveBeenCalledWith("kobe-t1", "%50")
+    expect(layoutZen.applyZenToNewWindow).toHaveBeenCalledWith("kobe-t1", "%50")
   })
 })
 
