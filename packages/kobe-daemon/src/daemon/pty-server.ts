@@ -134,7 +134,7 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       stopping = true
       cancelIdle()
       // The host process IS the sessions' lifetime — ending it ends them.
-      ptys.killAll()
+      await ptys.killAll()
       for (const client of Array.from(clients)) client.socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await unlink(socketPath).catch(() => {})

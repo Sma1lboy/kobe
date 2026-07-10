@@ -62,6 +62,8 @@ export interface PtyHostOptions {
 
 /** Per-session scrollback cap — same order as the web PTY sidecar's 256KB. */
 export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
+/** Let a cooperative terminal child shut down before escalating to SIGKILL. */
+const TERMINATION_GRACE_MS = 500
 
 /** One session's inventory row — what `pty.list` reports. */
 export interface PtySessionInfo {
@@ -139,7 +141,8 @@ export class PtyHost {
     try {
       session.proc?.terminal?.write(data)
     } catch {
-      this.markExited(session)
+      // A terminal stream error is not proof the subprocess exited. Bun's
+      // `proc.exited` promise below is the single source of truth.
     }
   }
 
@@ -151,16 +154,16 @@ export class PtyHost {
     try {
       session.proc?.terminal?.resize(cols, rows)
     } catch {
-      this.markExited(session)
+      // See write(): wait for `proc.exited`, not the PTY stream state.
     }
   }
 
   /** End the child AND forget the session (explicit close / archive). */
-  kill(key: string): void {
+  kill(key: string): Promise<void> {
     const session = this.sessions.get(key)
-    if (!session) return
+    if (!session) return Promise.resolve()
     this.sessions.delete(key)
-    this.endChild(session)
+    return this.endChild(session)
   }
 
   /** Detach one connection from one session; the child keeps running. */
@@ -198,8 +201,8 @@ export class PtyHost {
   }
 
   /** Kill every session — daemon shutdown owns its children's lifetime. */
-  killAll(): void {
-    for (const key of Array.from(this.sessions.keys())) this.kill(key)
+  async killAll(): Promise<void> {
+    await Promise.all(Array.from(this.sessions.keys(), (key) => this.kill(key)))
   }
 
   /** Sessions whose child is still running — the host process's reason
@@ -242,7 +245,6 @@ export class PtyHost {
           rows: spec.rows,
           name: "xterm-256color",
           data: (_terminal, data) => this.onData(session, data),
-          exit: () => this.markExited(session),
         },
       })
       void session.proc.exited.then(
@@ -303,6 +305,11 @@ export class PtyHost {
   private markExited(session: PtySessionState): void {
     if (!session.alive) return
     session.alive = false
+    try {
+      session.proc?.terminal?.close()
+    } catch {
+      /* already closed */
+    }
     const frame: DaemonFrame = {
       type: "event",
       name: "pty.exit",
@@ -313,19 +320,47 @@ export class PtyHost {
     this.opts.onSessionEnd?.()
   }
 
-  private endChild(session: PtySessionState): void {
-    const wasAlive = session.alive
-    this.markExited(session)
-    if (!wasAlive) return
+  private async endChild(session: PtySessionState): Promise<void> {
+    if (!session.alive) return
+    const proc = session.proc
+    if (!proc) {
+      this.markExited(session)
+      return
+    }
+    this.signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const exited = await Promise.race([
+      proc.exited.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), TERMINATION_GRACE_MS)
+      }),
+    ])
+    if (timer) clearTimeout(timer)
+    if (!exited) this.signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
     try {
-      session.proc?.terminal?.close()
+      await proc.exited
     } catch {
-      /* best effort */
+      /* process exit remains the lifecycle boundary even on a runtime error */
+    }
+    this.markExited(session)
+  }
+
+  private signalProcessGroup(pid: number, signal: NodeJS.Signals, fallback: () => void): void {
+    if (process.platform !== "win32" && pid > 1) {
+      try {
+        process.kill(-pid, signal)
+        return
+      } catch {
+        // Some runtimes do not make the PTY child its own group leader.
+      }
     }
     try {
-      session.proc?.kill("SIGTERM")
+      fallback()
     } catch {
-      /* best effort */
+      /* already gone */
     }
   }
 }

@@ -26,8 +26,8 @@ function makeHost(opts: ConstructorParameters<typeof PtyHost>[0] = {}): PtyHost 
   return host
 }
 
-afterEach(() => {
-  for (const host of hosts.splice(0)) host.killAll()
+afterEach(async () => {
+  await Promise.all(hosts.splice(0).map((host) => host.killAll()))
 })
 
 function collector(): { frames: DaemonFrame[]; sink: (frame: DaemonFrame) => void } {
@@ -65,6 +65,15 @@ async function until(cond: () => boolean, ms = 3000): Promise<void> {
   while (!cond()) {
     if (Date.now() - start > ms) throw new Error("timeout waiting for condition")
     await new Promise((r) => setTimeout(r, 20))
+  }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -114,6 +123,35 @@ describe("PtyHost", () => {
     expect(ended).toBe(1)
     // A live session is the host process's reason to stay up; none left.
     expect(host.liveCount()).toBe(0)
+  })
+
+  test("kill escalates past a PTY child that ignores TERM and HUP", async () => {
+    const host = makeHost()
+    const { frames, sink } = collector()
+    const res = host.open(
+      "t1::stubborn",
+      {
+        ...SPEC,
+        command: ["/bin/sh", "-c", "trap '' HUP TERM; echo ready; while :; do sleep 1; done"],
+      },
+      {},
+      sink,
+    )
+    const pid = res.pid
+    expect(pid).not.toBeNull()
+    if (pid === null) throw new Error("expected PTY child pid")
+    try {
+      await until(() => dataText(frames).includes("ready"))
+      host.kill("t1::stubborn")
+      await until(() => !isAlive(pid), 1500)
+      expect(host.list()).toEqual([])
+    } finally {
+      try {
+        process.kill(-pid, "SIGKILL")
+      } catch {
+        /* already gone */
+      }
+    }
   })
 
   test("sweepTasks kills sessions whose task is archived/gone", async () => {
