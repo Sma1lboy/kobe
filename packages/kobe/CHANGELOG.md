@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.89
+
+### Patch Changes
+
+- 6be0b6d: Dialog backdrops now dim mixed CJK and ASCII text without making wide glyphs disappear.
+- 3e07f0c: Behavior tests now scrub inherited kobe controls and isolate HOME/XDG state so their teardown cannot reset live daemon, PTY, or tmux sessions.
+- 7441188: Codex terminal tabs now use Codex's native activity and thread title without a duplicate kobe status glyph.
+- fde7164: `kobe reset` now states explicitly that it stops the standalone PTY host, so the next launch loads current terminal code instead of reusing a pre-upgrade host.
+- 375082f: Sidebar header declutter: the `[/]` and `sort` chips are gone (search stays on `/`, sort stays on `t` — keyboard-only now), the PROJECTS row's filter label moved to the right end after the divider, and the task-count label was dropped.
+- c0759d4: Terminal scrollback grows from 200 to 1000 rows by default, and is now configurable in Settings → General → Terminal (100–100000 rows). Applies to terminals opened after the change.
+- 26480ca: Give the update script a branded KOBE wordmark, terminal-native tagline, and a thank-you after a successful install.
+
 ## 0.7.88
 
 ### Patch Changes
