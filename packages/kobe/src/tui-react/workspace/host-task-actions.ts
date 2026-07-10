@@ -22,14 +22,8 @@
 
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
-import {
-  type CreateTaskContext,
-  archiveTaskFlow,
-  createTaskFlow,
-  cycleVendorFlow,
-  deleteTaskFlow,
-  renameTaskFlow,
-} from "../../tui/lib/task-actions"
+import { archiveTaskFlow, cycleVendorFlow, deleteTaskFlow, renameTaskFlow } from "../../tui/lib/task-actions"
+import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
 import type { Task } from "../../types/task.ts"
 import { BranchPickerDialog } from "../component/branch-picker-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"

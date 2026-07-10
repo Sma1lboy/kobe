@@ -107,9 +107,8 @@ vi.mock("../../src/tui/panes/terminal/chattab", () => ({
   }),
 }))
 
-const { runLayoutAction, syncSessionZen, applyZenToNewWindow, engineTabExit } = await import(
-  "../../src/tui/panes/terminal/layout-actions"
-)
+const { runLayoutAction, engineTabExit } = await import("../../src/tui/panes/terminal/layout-actions")
+const { syncSessionZen, applyZenToNewWindow } = await import("../../src/tui/panes/terminal/layout-zen")
 const chattabMock = await import("../../src/tui/panes/terminal/chattab")
 
 function resetState(): void {

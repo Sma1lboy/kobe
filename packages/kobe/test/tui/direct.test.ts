@@ -79,7 +79,7 @@ vi.mock("../../src/tmux/client", () => ({
 vi.mock("../../src/tui/lib/tmux-border-theme", () => ({
   applyTmuxChromeTheme: mocks.applyTmuxChromeTheme,
 }))
-vi.mock("../../src/tui/panes/terminal/layout-actions", () => ({
+vi.mock("../../src/tui/panes/terminal/layout-zen", () => ({
   syncSessionZen: mocks.syncSessionZen,
 }))
 vi.mock("../../src/tui/panes/terminal/tmux", () => ({

@@ -15,45 +15,39 @@
  *
  * Issues are non-optimistic (the daemon issue.snapshot is truth), with ONE
  * exception: once a quickStart resolves with a taskId we optimistically flip
- * that issue into the In progress column (a local pending-link set) so the
+ * that issue into the In progress column (lib/use-issue-actions.ts) so the
  * board reflects the start before the snapshot's `taskId` link lands. There is
  * NO per-card live engine / worktree / task.snapshot subscription — that was
- * the old unified board's lag source and is gone.
+ * the old unified board's lag source and is gone. Column rendering lives in
+ * BoardColumns.tsx.
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { ExternalLink, Plus, Search, X } from "lucide-react"
+import { Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
-import {
-  type BoardColumn,
-  buildBoardView,
-  isLinkedIssue,
-  type ProjectBoard,
-} from "../lib/board.ts"
+import { buildBoardView } from "../lib/board.ts"
 import {
   setBoardQuery,
   setBoardRepo,
   useBoardState,
 } from "../lib/board-state.ts"
 import {
-  deleteIssue,
   fetchProjects,
   type Issue,
   issueRepoOptions,
   promptIssueMerge,
-  quickStartIssue,
   resolveIssueRepoSelection,
-  updateIssue,
 } from "../lib/issues.ts"
 import { useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
+import { useIssueActions } from "../lib/use-issue-actions.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
+import { ProjectColumns } from "./BoardColumns.tsx"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
-import { IssueCard } from "./IssueCard.tsx"
 import {
   IssuePanelSuspense,
   LazyIssueIntakePanel,
@@ -65,130 +59,6 @@ import { ViewToggle } from "./ViewToggle.tsx"
  *  across projects. */
 type PeekTarget = { repo: string; id: number }
 
-function ColumnView({
-  repo,
-  column,
-  onNewIssue,
-  onPeekIssue,
-  onOpenTask,
-  onDeleteIssue,
-}: {
-  repo: string
-  column: BoardColumn
-  /** Backlog only — open the issue-intake panel scoped to this repo. */
-  onNewIssue?: () => void
-  onPeekIssue: (issue: Issue) => void
-  /** Jump to a linked issue's task workspace/session. */
-  onOpenTask: (taskId: string) => void
-  /** Raise a delete request for an issue card — the Board confirms first. */
-  onDeleteIssue: (issue: Issue) => void
-}) {
-  return (
-    <section
-      data-column={`${repo}:${column.key}`}
-      className={`flex h-full shrink-0 flex-col border border-transparent ${
-        column.key === "backlog" ? "w-96" : "w-72"
-      }`}
-    >
-      <div className="mb-2 flex items-baseline gap-2">
-        <h2
-          className={`text-[11px] font-bold uppercase tracking-[0.12em] ${column.accent}`}
-        >
-          {column.title}
-        </h2>
-        <span className="font-mono text-[10px] text-subtle">
-          {column.cards.length + column.hiddenCount}
-        </span>
-        {onNewIssue && (
-          <button
-            type="button"
-            onClick={onNewIssue}
-            className="ml-auto flex items-center gap-0.5 text-[10px] text-subtle transition-colors hover:text-fg"
-            title="New story in this project"
-          >
-            <Plus size={11} strokeWidth={2} />
-            <span>New story</span>
-          </button>
-        )}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
-        {column.cards.length === 0 ? (
-          <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
-            none
-          </div>
-        ) : (
-          column.cards.map((card) => {
-            const { issue } = card
-            const linkedTaskId = isLinkedIssue(issue) ? issue.taskId : undefined
-            return (
-              <div key={`issue:${issue.id}`} className="group/wrap relative">
-                <IssueCard
-                  issue={issue}
-                  onOpen={() => onPeekIssue(issue)}
-                  onDelete={() => onDeleteIssue(issue)}
-                />
-                {/* Linked issue → a "started — open task" affordance that jumps
-                    to the task's workspace. The task is not its own card; this
-                    is the only place a linked task surfaces on the board. */}
-                {linkedTaskId && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenTask(linkedTaskId)}
-                    aria-label={`Open task for issue #${issue.id}`}
-                    title="Started — open task"
-                    className="absolute bottom-2 right-2 flex items-center gap-1 border border-line bg-surface px-1.5 py-0.5 text-[10px] text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/wrap:opacity-100"
-                  >
-                    <ExternalLink size={10} strokeWidth={1.8} />
-                    <span>open task</span>
-                  </button>
-                )}
-              </div>
-            )
-          })
-        )}
-        {column.hiddenCount > 0 && (
-          <div className="p-2 text-center text-[10px] text-subtle">
-            +{column.hiddenCount} more — finish stories to thin this column
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-/** One project's column row. */
-function ProjectColumns({
-  board,
-  onNewIssue,
-  onPeekIssue,
-  onOpenTask,
-  onDeleteIssue,
-}: {
-  board: ProjectBoard
-  onNewIssue: (repo: string) => void
-  onPeekIssue: (issue: Issue) => void
-  onOpenTask: (taskId: string) => void
-  onDeleteIssue: (repo: string, issue: Issue) => void
-}) {
-  return (
-    <div className="flex h-full min-w-max gap-4">
-      {board.columns.map((column) => (
-        <ColumnView
-          key={column.key}
-          repo={board.repo}
-          column={column}
-          onNewIssue={
-            column.key === "backlog" ? () => onNewIssue(board.repo) : undefined
-          }
-          onPeekIssue={onPeekIssue}
-          onOpenTask={onOpenTask}
-          onDeleteIssue={(issue) => onDeleteIssue(board.repo, issue)}
-        />
-      ))}
-    </div>
-  )
-}
-
 export function Board() {
   const { tasks, hydrated, daemonConnected } = useAppState()
   const { query, repo: repoFilter } = useBoardState()
@@ -197,15 +67,6 @@ export function Board() {
   const [peek, setPeek] = useState<PeekTarget | null>(null)
   // Issue-intake panel target repo (null = closed).
   const [creatingRepo, setCreatingRepo] = useState<string | null>(null)
-  const [issueBusy, setIssueBusy] = useState(false)
-  const [quickStartingId, setQuickStartingId] = useState<number | null>(null)
-  // Optimistic link: `${repo}:${issueId}` for issues whose quickStart has
-  // resolved with a taskId but whose issue.snapshot link hasn't landed yet.
-  // Promotes them into In progress for one round-trip; cleared once the daemon
-  // confirms the link (the issue now carries a real taskId).
-  const [pendingLinks, setPendingLinks] = useState<
-    Map<string, { repo: string; issueId: number; taskId: string }>
-  >(new Map())
   // Issue pending a delete confirmation (null = no dialog). Carries its source
   // repo so the confirmed delete hits the right daemon store key.
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -246,6 +107,14 @@ export function Board() {
     pending: issuesPending,
     refresh: refreshIssues,
   } = useRepoIssues(issueRepos)
+  const {
+    issueBusy,
+    quickStartingId,
+    pendingLinks,
+    saveIssue,
+    deleteIssueConfirmed,
+    quickStart,
+  } = useIssueActions({ issueRepos, issueData, refreshIssues })
 
   // The whole derived view (flat issue list + chips + project boards + counts)
   // is one pure call into lib/board — the component holds no board-derivation
@@ -264,24 +133,6 @@ export function Board() {
         }),
       [issueData, issueRepos, pendingLinks, query, currentRepo],
     )
-
-  // Drop a pending optimistic-link once the daemon confirms it: the issue now
-  // carries a taskId from the snapshot, so the local hint is redundant.
-  useEffect(() => {
-    setPendingLinks((prev) => {
-      if (prev.size === 0) return prev
-      const next = new Map(prev)
-      let changed = false
-      for (const repo of issueRepos) {
-        const state = issueData[repo]
-        if (!state || !state.exists) continue
-        for (const issue of state.issues) {
-          if (issue.taskId && next.delete(`${repo}:${issue.id}`)) changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [issueRepos, issueData])
 
   // Close the peek when its target vanishes (issue removed elsewhere) — a
   // drawer onto a dead target would error.
@@ -337,79 +188,6 @@ export function Board() {
     selectTask(id)
     setActiveTaskBestEffort(id)
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
-  }
-
-  /* ----- issue side-effects ------------------------------------------------- */
-
-  const doSaveIssue = async (
-    repo: string,
-    id: number,
-    patch: { title: string; body: string },
-  ): Promise<boolean> => {
-    setIssueBusy(true)
-    try {
-      await updateIssue(repo, id, patch)
-      // The daemon also pushes issue.snapshot, but its repoRoot aliasing can
-      // miss the board's repo key — refresh the GET (which caches under the key
-      // the board reads) so the edited title/body lands in the list at once.
-      refreshIssues([repo])
-      return true
-    } catch (err) {
-      reportError("update issue", err)
-      return false
-    } finally {
-      setIssueBusy(false)
-    }
-  }
-
-  // Remove an issue from the daemon-owned tracker after the user confirms.
-  // This deletes ONLY the issue record — any task, branch, worktree, or engine
-  // session it was linked to is left untouched (the link is one-way). The
-  // daemon also pushes issue.snapshot, but its repoRoot aliasing can miss the
-  // board's repo key — refresh the GET so the card drops from the list at once.
-  const doDeleteIssue = async (repo: string, issue: Issue): Promise<void> => {
-    setIssueBusy(true)
-    try {
-      await deleteIssue(repo, issue.id)
-      refreshIssues([repo])
-      setConfirmDelete(null)
-      if (peek?.repo === repo && peek.id === issue.id) setPeek(null)
-    } catch (err) {
-      reportError("delete issue", err)
-    } finally {
-      setIssueBusy(false)
-    }
-  }
-
-  // Spawn a task for the issue and RETURN its id so the caller decides whether
-  // to watch (open the live session) or stay on the board. The optimistic
-  // pending-link still happens here — it's a property of the spawn, not of how
-  // the caller reacts. Navigation/peek routing is the caller's job (onStart).
-  const doQuickStart = async (
-    repo: string,
-    issue: Issue,
-    vendor?: string,
-    effort?: string,
-  ): Promise<string | undefined> => {
-    if (quickStartingId !== null) return undefined
-    setQuickStartingId(issue.id)
-    try {
-      const { taskId } = await quickStartIssue(repo, issue, vendor, effort)
-      // Optimistically promote the issue into In progress (carry the new
-      // taskId) so the start reads at once; the effect over issueData clears
-      // this once the daemon confirms the link.
-      setPendingLinks((prev) => {
-        const next = new Map(prev)
-        next.set(`${repo}:${issue.id}`, { repo, issueId: issue.id, taskId })
-        return next
-      })
-      return taskId
-    } catch (err) {
-      reportError("quick start issue", err)
-      return undefined
-    } finally {
-      setQuickStartingId(null)
-    }
   }
 
   return (
@@ -605,9 +383,9 @@ export function Board() {
               busy={issueBusy}
               starting={quickStartingId === entry.issue.id}
               onClose={() => setPeek(null)}
-              onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
+              onSave={(patch) => saveIssue(entry.repo, entry.issue.id, patch)}
               onStart={async ({ vendor, effort, watch }) => {
-                const taskId = await doQuickStart(
+                const taskId = await quickStart(
                   entry.repo,
                   entry.issue,
                   vendor,
@@ -662,7 +440,19 @@ export function Board() {
           danger
           busy={issueBusy}
           onConfirm={() =>
-            void doDeleteIssue(confirmDelete.repo, confirmDelete.issue)
+            void deleteIssueConfirmed(
+              confirmDelete.repo,
+              confirmDelete.issue,
+            ).then((ok) => {
+              if (!ok) return
+              setConfirmDelete(null)
+              if (
+                peek?.repo === confirmDelete.repo &&
+                peek.id === confirmDelete.issue.id
+              ) {
+                setPeek(null)
+              }
+            })
           }
           onCancel={() => setConfirmDelete(null)}
         />

@@ -30,14 +30,13 @@ import type { UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { useEffect, useRef, useState } from "react"
 import type { RemoteOrchestrator, TaskEngineState, TaskJobState } from "../../client/remote-orchestrator.ts"
 import {
-  type CreateTaskContext,
   archiveTaskFlow,
-  createTaskFlow,
   cycleVendorFlow,
   deleteTaskFlow,
   renameBranchFlow,
   renameTaskFlow,
 } from "../../tui/lib/task-actions"
+import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
 import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
 import type { WorktreeChanges } from "../../tui/panes/sidebar/worktree-changes"
 import { runLayoutAction } from "../../tui/panes/terminal/layout-actions"
