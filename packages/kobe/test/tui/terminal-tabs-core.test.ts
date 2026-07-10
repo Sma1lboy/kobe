@@ -11,6 +11,7 @@ import {
   initialTabs,
   isTabSplit,
   markTabSpawned,
+  openCommandTab,
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
@@ -118,13 +119,45 @@ describe("terminal tabs state", () => {
     expect(tabToShell(s, "tab-99", ["/bin/zsh"]).tabs).toEqual(s.tabs)
   })
 
-  // Why: the ctrl+e "shell" pick opens a plain terminal tab through
-  // openEditorTab with a NULL label — the tab must stay unnamed so the
+  // Why: the ctrl+e "shell" pick opens a plain command tab with a NULL
+  // label — the tab must stay unnamed so the
   // live foreground-process title (tabTitle's liveName path) names it.
-  it("openEditorTab with a null label leaves the tab unnamed (live title names it)", () => {
-    const s = openEditorTab(initialTabs(), ["/bin/zsh"], null)
+  it("openCommandTab with a null label leaves the tab unnamed (live title names it)", () => {
+    const s = openCommandTab(initialTabs(), ["/bin/zsh"], null)
     expect(s.tabs[1]).toMatchObject({ kind: "command", title: null, command: ["/bin/zsh"] })
     expect(s.activeId).toBe("tab-2")
+  })
+
+  // Regression (2026-07-10): FileTree opens share one File tab. Opening a
+  // second file replaces and focuses that slot instead of growing one editor
+  // tab per file forever.
+  it("openEditorTab reuses the single editor slot", () => {
+    let s = openEditorTab(initialTabs(), ["nvim", "a.ts"], "a.ts")
+    const editorId = s.activeId
+    s = openEditorTab(s, ["nvim", "b.ts"], "b.ts")
+
+    expect(s.tabs).toHaveLength(2)
+    expect(s.activeId).toBe(editorId)
+    expect(s.tabs[1]).toMatchObject({
+      kind: "command",
+      id: editorId,
+      title: "b.ts",
+      command: ["nvim", "b.ts"],
+      purpose: "editor",
+    })
+  })
+
+  it("the singleton editor slot does not replace a user-opened shell tab", () => {
+    let s = openCommandTab(initialTabs(), ["/bin/zsh"], null)
+    const shellId = s.activeId
+    s = openEditorTab(s, ["nvim", "a.ts"], "a.ts")
+    s = openEditorTab(s, ["nvim", "b.ts"], "b.ts")
+
+    expect(s.tabs).toHaveLength(3)
+    const shellTab = s.tabs.find((tab) => tab.id === shellId)
+    expect(shellTab).toMatchObject({ kind: "command" })
+    expect(shellTab).not.toHaveProperty("purpose")
+    expect(s.tabs.filter((tab) => tab.kind === "command" && tab.purpose === "editor")).toHaveLength(1)
   })
 
   // Why: sessionId is the naming/resume anchor (tmux @kobe_session_id) —
@@ -155,6 +188,7 @@ describe("terminal tabs state", () => {
     expect(back.tabs[0]).toMatchObject({ kind: "engine", sessionId: "uuid-1" })
     // The editor's process is gone — its terminal comes back as a shell.
     expect(back.tabs[2]).toMatchObject({ kind: "command", command: ["/bin/zsh"] })
+    expect(back.tabs[2]).toHaveProperty("purpose", undefined)
     expect(back.nextOrdinal).toBe(s.nextOrdinal)
     // THE reported bug: a single tab whose engine exited (degraded to a
     // shell) must reopen as that shell, NOT as a fresh engine tab.

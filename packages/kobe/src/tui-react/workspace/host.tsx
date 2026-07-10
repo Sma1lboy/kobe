@@ -193,7 +193,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   /**
    * FileTree's Enter action (issue #16 editor-tab flow): resolve the user's
    * real editor via the tmux-agnostic `resolveEditorLaunch`, then run it in
-   * a new embedded terminal tab. Falls back to the host-OS opener when no
+   * the reusable File tab. Falls back to the host-OS opener when no
    * editor is configured/installed.
    */
   async function openFileInEditor(relPath: string): Promise<void> {
