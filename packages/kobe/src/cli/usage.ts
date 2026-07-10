@@ -32,7 +32,7 @@ export function topLevelUsage(): string {
     "  feedback                Send feedback to GitHub Discussions",
     "  update [target]         Self-update kobe",
     "  doctor                  Diagnose daemon / tmux / state (read-only)",
-    "  reset [--hard]          Recover a wedged install",
+    "  reset [--hard]          Stop daemon, PTY host, and tmux sessions",
     "  reload                  Restart Tasks/Ops panes in place (engine untouched)",
     "  kill-sessions           Tear down kobe's tmux server (dev reset)",
     "",

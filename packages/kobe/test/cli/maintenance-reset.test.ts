@@ -104,10 +104,13 @@ function output(): string {
 }
 
 describe("runResetSubcommand", () => {
-  it("--help prints usage without touching the daemon", async () => {
+  it("--help says reset replaces the standalone pty host without touching it", async () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     await runResetSubcommand(["--help"])
-    expect(writeSpy.mock.calls.join("")).toContain("Usage: kobe reset")
+    const help = writeSpy.mock.calls.join("")
+    expect(help).toContain("Usage: kobe reset")
+    expect(help).toContain("stop the standalone pty host")
+    expect(help).toContain("next launch starts a fresh host")
     expect(mocks.stopDaemonProcess).not.toHaveBeenCalled()
   })
 
