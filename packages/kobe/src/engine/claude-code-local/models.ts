@@ -41,9 +41,9 @@ export const CLAUDE_MODELS: readonly ModelChoice[] = [
   ...opus47EffortChoices("claude-opus-4-7[1m]", "Opus 4.7 1M"),
   { vendor: "claude", id: "claude-opus-4-7", label: "Opus 4.7", hint: "most capable, slowest" },
   ...opus47EffortChoices("claude-opus-4-7", "Opus 4.7"),
-  { vendor: "claude", id: "claude-sonnet-4-6[1m]", label: "sonnet 4.6 (1M)", hint: "long context" },
-  { vendor: "claude", id: "claude-sonnet-4-6", label: "sonnet 4.6" },
-  { vendor: "claude", id: "claude-haiku-4-5-20251001", label: "haiku 4.5", hint: "fastest, cheapest" },
+  { vendor: "claude", id: "claude-sonnet-4-6[1m]", label: "Sonnet 4.6 1M", hint: "long context" },
+  { vendor: "claude", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+  { vendor: "claude", id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", hint: "fastest, cheapest" },
 ] as const
 
 const LONG_CTX = 1_000_000
