@@ -69,14 +69,24 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   return `${name} ${tab.ordinal}`
 }
 
-/** True only when `tabTitle` is visibly rendering an engine-owned title. */
-function visibleNativeStatus(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): boolean {
-  if (!liveName || tab.title || tab.kind !== "engine") return false
-  const ls = tab.splitTree ? leaves(tab.splitTree.root) : []
-  if (ls.length > 1) return false
-  const sole = ls.length === 1 ? ls[0] : undefined
-  if (sole && sole.id !== "leaf-1") return false
-  return engineEntry(tab.vendor ?? taskVendor).terminalTitle?.ownsStatus === true
+/**
+ * True only when `tabTitle` is visibly rendering an engine-owned title.
+ * Launch-path agnostic: `vendor` is the tab's resolved live process identity
+ * (`useTurnPolls().turnVendors` — the same `turn-target.ts` rule that
+ * attaches detectors), so a user-typed `claude` in a shell and a
+ * kobe-launched engine tab get the exact same treatment. The label
+ * comparison replaces structural kind/leaf checks: native status is visible
+ * iff the rendered label IS the live title.
+ */
+function visibleNativeStatus(
+  tab: TerminalTab,
+  taskVendor: VendorId,
+  vendor: VendorId | undefined,
+  liveName?: string | null,
+): boolean {
+  if (!vendor || !liveName) return false
+  if (engineEntry(vendor).terminalTitle?.ownsStatus !== true) return false
+  return tabTitle(tab, taskVendor, liveName) === `${liveName} ${tab.ordinal}`
 }
 
 export function TabStrip(props: {
@@ -88,6 +98,8 @@ export function TabStrip(props: {
   vendor: VendorId
   /** tabId → live process display name (see `useTurnPolls().liveTitles`). */
   liveTitles: ReadonlyMap<string, string>
+  /** tabId → resolved live engine identity (see `useTurnPolls().turnVendors`). */
+  turnVendors: ReadonlyMap<string, VendorId>
 }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
@@ -131,7 +143,7 @@ export function TabStrip(props: {
       {props.tabs.map((tab) => {
         const turn = props.turnStates.get(tab.id) ?? "idle"
         const liveTitle = props.liveTitles.get(tab.id)
-        const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, liveTitle)
+        const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, props.turnVendors.get(tab.id), liveTitle)
         const pulse = pulsing.has(tab.id)
         const turnColor =
           turn === "running"
