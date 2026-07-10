@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  MAX_SPLIT_DEPTH,
   type SplitGroup,
   cycleLeaf,
   focusLeaf,
@@ -41,6 +42,20 @@ describe("split tree (content-agnostic)", () => {
     s = splitActive(s, "row", SH) // [1 | 3* | 2]
     expect(leaves(s.root).map((l) => l.id)).toEqual(["leaf-1", "leaf-3", "leaf-2"])
     expect((s.root as SplitGroup<unknown>).children).toHaveLength(3)
+  })
+
+  it(`splits past MAX_SPLIT_DEPTH (${MAX_SPLIT_DEPTH}) no-op; siblings still allowed`, () => {
+    // Alternate orientations so every split nests one level deeper.
+    let s = initialSplit<string[] | null>(MAIN)
+    for (let i = 0; i < MAX_SPLIT_DEPTH; i++) {
+      s = splitActive(s, i % 2 === 0 ? "row" : "column", SH)
+    }
+    const atCap = s
+    // One more alternating split would nest to depth 5 — refused.
+    expect(splitActive(atCap, MAX_SPLIT_DEPTH % 2 === 0 ? "row" : "column", SH)).toBe(atCap)
+    // A same-orientation split inserts a sibling (no deeper) — allowed.
+    const sibling = splitActive(atCap, MAX_SPLIT_DEPTH % 2 === 0 ? "column" : "row", SH)
+    expect(leaves(sibling.root)).toHaveLength(leaves(atCap.root).length + 1)
   })
 
   it("cross-orientation split nests a group under the active leaf (tmux nesting)", () => {

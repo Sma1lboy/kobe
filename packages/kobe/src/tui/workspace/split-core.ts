@@ -46,6 +46,15 @@ export interface SplitState<T> {
   readonly nextOrdinal: number
 }
 
+/** Max group-nesting depth — a split that would nest deeper no-ops.
+ *  Same-orientation splits insert siblings and never deepen the tree,
+ *  so this only bites on alternating row/column nesting. */
+export const MAX_SPLIT_DEPTH = 4
+
+function depth<T>(node: SplitNode<T>): number {
+  return node.kind === "leaf" ? 0 : 1 + Math.max(...node.children.map(depth))
+}
+
 /** The initial state: a single leaf (`leaf-1`) showing `content`. */
 export function initialSplit<T>(content: T): SplitState<T> {
   return { root: { kind: "leaf", id: "leaf-1", content }, activeLeafId: "leaf-1", nextOrdinal: 2 }
@@ -61,7 +70,8 @@ export function leaves<T>(node: SplitNode<T>): readonly SplitLeaf<T>[] {
  * laid out by `orientation`, and focus the new leaf (tmux focuses the
  * split it just created). Inside a group of the same orientation the
  * new leaf becomes a sibling; otherwise the active leaf is replaced by
- * a nested group of the two — exactly tmux's nesting behavior.
+ * a nested group of the two — exactly tmux's nesting behavior. A split
+ * that would nest past `MAX_SPLIT_DEPTH` is a no-op (returns `state`).
  */
 export function splitActive<T>(state: SplitState<T>, orientation: "row" | "column", content: T): SplitState<T> {
   const leaf: SplitLeaf<T> = { kind: "leaf", id: `leaf-${state.nextOrdinal}`, content }
@@ -79,7 +89,9 @@ export function splitActive<T>(state: SplitState<T>, orientation: "row" | "colum
     }
     return { ...node, children: node.children.map(insert) }
   }
-  return { root: insert(state.root), activeLeafId: leaf.id, nextOrdinal: state.nextOrdinal + 1 }
+  const root = insert(state.root)
+  if (depth(root) > MAX_SPLIT_DEPTH) return state
+  return { root, activeLeafId: leaf.id, nextOrdinal: state.nextOrdinal + 1 }
 }
 
 /**
