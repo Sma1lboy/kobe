@@ -177,16 +177,23 @@ export class HostedTaskPty extends XtermTaskPty {
         this.deadOnAttach = res.replay.length > 0
         this.remoteGone()
       } else if (res.replay.length > 0) {
-        // Reattach to a LIVE session (TUI restart, park-sweep wake): when
-        // our geometry matches the host's, no SIGWINCH ever fires and
-        // nothing tells the app to repaint what the replay painted — a
-        // long session's ring-buffer tail starts mid-stream, so the
-        // replayed screen is garbage until the next full redraw. Wiggle
-        // one row and back to force it (tmux repaints on attach the same
-        // way); a same-size TIOCSWINSZ raises no signal, it must move.
+        // Reattach to a LIVE session (TUI restart): when our geometry
+        // matches the host's, no SIGWINCH ever fires and nothing tells
+        // the app to repaint what the replay painted — a long session's
+        // ring-buffer tail starts mid-stream, so the replayed screen is
+        // garbage until the next full redraw. Wiggle one row and back to
+        // force it (tmux repaints on attach the same way); a same-size
+        // TIOCSWINSZ raises no signal, it must move.
         // ponytail: a 1-row-tall pane can't wiggle — never real.
         this.sendResize(this.cols, Math.max(1, this.rows - 1))
-        this.sendResize(this.cols, this.rows)
+        // Back-to-back resizes COALESCE: the child gets ONE SIGWINCH,
+        // reads the already-restored size, sees "unchanged", and skips
+        // the repaint (measured: 2 zero-gap resizes → 1 signal at the
+        // final size). Wait for the child's shrink repaint to actually
+        // arrive before restoring; the timeout covers children that
+        // don't repaint on WINCH at all (a plain shell).
+        await this.nextDataOrTimeout(200)
+        if (!this.killed) this.sendResize(this.cols, this.rows)
       }
     } catch (err) {
       logClientError("pty-hosted", err)
@@ -259,11 +266,30 @@ export class HostedTaskPty extends XtermTaskPty {
     void this.client?.request("pty.resize", { key: this.taskId, cols, rows }).catch(() => {})
   }
 
+  /** One-shot resolver armed by {@link nextDataOrTimeout}. */
+  private dataWaiter: (() => void) | null = null
+
+  /** Resolve on the next inbound `pty.data` frame, or after `ms`. */
+  private nextDataOrTimeout(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.dataWaiter = null
+        resolve()
+      }, ms)
+      this.dataWaiter = () => {
+        this.dataWaiter = null
+        clearTimeout(timer)
+        resolve()
+      }
+    })
+  }
+
   /**
    * Decode + feed one inbound `pty.data` frame. Public so the module-level
    * dispatcher (getSharedPtyClient) can route by key; not for outside use.
    */
   feedFrame(dataB64: string): void {
+    this.dataWaiter?.()
     this.feed(Buffer.from(dataB64, "base64"))
   }
 
