@@ -230,7 +230,11 @@ export function SidebarPanel(props: {
             minHeight={0}
             maxHeight={props.projectScrollMaxHeight}
             stickyScroll={false}
-            verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+            // Scrollbar fully hidden (owner taste 2026-07-09): the cursor
+            // drives scrolling, the thumb column is pure noise. `visible`
+            // flips the ScrollBar's manual-visibility latch, so overflow
+            // recalculation can't bring it back.
+            verticalScrollbarOptions={{ visible: false }}
           >
             <box flexShrink={0} gap={0}>
               {props.projectRows.map((row) => (
@@ -251,7 +255,7 @@ export function SidebarPanel(props: {
         flexGrow={1}
         minHeight={0}
         stickyScroll={false}
-        verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+        verticalScrollbarOptions={{ visible: false }}
       >
         <box flexShrink={0} gap={0}>
           {props.taskRows.map((row) => (
