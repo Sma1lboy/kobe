@@ -451,6 +451,10 @@ export interface PtyDataEventPayload {
 /** Targeted `pty.exit` event payload — the session's child ended. */
 export interface PtyExitEventPayload {
   readonly key: string
+  /** The dead child's pid (null when spawn failed). Lets a client that
+   *  kill()ed + reopened the same key tell the OLD incarnation's exit
+   *  apart from its new session's — absent from pre-pid hosts. */
+  readonly pid?: number | null
 }
 
 /** `pty.open` response — attach result for one session key. */
@@ -459,6 +463,9 @@ export interface PtyOpenResult {
   readonly replay: string
   /** False when the session exists but its child already exited. */
   readonly alive: boolean
+  /** This session's child pid (null when spawn failed) — the client keys
+   *  `pty.exit` frames against it; absent from pre-pid hosts. */
+  readonly pid?: number | null
 }
 
 export interface DaemonError {
