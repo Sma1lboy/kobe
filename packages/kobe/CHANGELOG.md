@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.88
+
+### Patch Changes
+
+- 2665df9: Embedded terminals no longer leak the outer emulator's identity to child applications, preventing terminal-specific escape sequences from being selected for the wrong parser.
+- 79696b7: Keys typed into an open dialog no longer leak into the pane behind it: raw `keyInput` listeners that bypass the keymap dispatch (the terminal pane's IME/paste catch-all, the sidebar's search capture) now honor the dialog modal barrier via `modalActive()`.
+- 954a946: Fix `KOBE_TUI=1` new-task creation so submitting the dialog immediately materializes and opens the task worktree, without requiring a second Enter after the daemon snapshot arrives.
+- fbf354e: Removed the `● new` transcript-activity badge (Ops pane corner + files-column header) and its local fallback mtime poll. The daemon `transcript.activity` channel and the ChatTab "done" chip it feeds are unchanged.
+- 21a4e08: Sidebar scrollbars (PROJECTS / TASKS lists) are now fully hidden — the cursor drives scrolling and the thumb column was pure noise. Scrolling behavior (j/k follow, mouse wheel) is unchanged.
+- e03b8fa: Terminal splits now cap tmux-style nesting at 4 levels (`MAX_SPLIT_DEPTH`) — a split that would nest deeper is a silent no-op. Same-orientation splits insert siblings and stay unlimited.
+
 ## 0.7.87
 
 ### Patch Changes
