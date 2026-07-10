@@ -58,7 +58,7 @@ import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION } from "@/version"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
-import { applyZenToNewWindow } from "./layout-actions"
+import { applyZenToNewWindow } from "./layout-zen"
 import { PANE_VERSION_OPTION, globalRightColumnResizeArgs } from "./pane-heal"
 
 // ChatTab binding builders. The KEY argument comes from the user-

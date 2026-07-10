@@ -25,7 +25,7 @@ import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
 import { applyTmuxChromeTheme } from "./lib/tmux-border-theme.ts"
-import { syncSessionZen } from "./panes/terminal/layout-actions.ts"
+import { syncSessionZen } from "./panes/terminal/layout-zen.ts"
 import {
   attachArgv,
   ensureSession,

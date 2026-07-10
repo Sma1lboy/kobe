@@ -12,7 +12,7 @@ import {
   parseLayoutPaneRows,
   planWorkspaceSplit,
   resolveShellPane,
-} from "../../src/tui/panes/terminal/layout-actions"
+} from "../../src/tui/panes/terminal/layout-plan"
 
 describe("parseLayoutPaneRows", () => {
   test("parses the active-window tmux listing", () => {
