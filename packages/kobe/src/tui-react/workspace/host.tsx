@@ -1,41 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Experimental native opentui workspace (`KOBE_TUI=1`) — React port of
- * `tui/workspace/host.tsx` (issue #16 React migration). Single-process app:
- * Sidebar | engine Terminal | Files. The center column is the
- * terminal-in-the-middle seam (issue #16) — an in-process PTY running the
- * task's real interactive engine CLI (claude/codex), so kobe wraps the
- * engine's own TUI instead of re-rendering its stream.
- *
- * Solid→React deltas (the load-bearing ones):
- *   - `RemoteOrchestrator`'s live task/engine-state signals are Solid
- *     signals with no framework-free twin for most fields — `useAccessor`
- *     bridges `tasksSignal`/`activeTaskSignal`/`engineStateSignal`/
- *     `taskJobsSignal`/`worktreeChangesSignal` (see its header for why
- *     this reaches for a Solid `createRoot` bridge instead of growing
- *     `RemoteOrchestrator`, already over the file-size cap). `
- *     transcriptActivitySignal` already has an `ExternalStore` twin
- *     (`transcriptActivityStore`), consumed via `useSyncExternalStore`
- *     (same pattern as `tui-react/ops/host.tsx`).
- *   - `openEditorTabFn`/`sendToEngineFn` were plain `let`s in the Solid
- *     component body (which runs once, at setup) — React re-executes the
- *     component every render, so they're `useRef`s here instead; either
- *     side writing/reading through the ref keeps the imperative handoff
- *     correct regardless of which render's closure fired.
- *   - The `keyed Show` that gave each worktree its own `TerminalTabs`
- *     instance becomes a React `key={path}` on `<TerminalTabs>`.
- *
- *   - The in-process worktree-management page swap
- *     (`tui/component/worktrees-page.tsx`) is `component/worktrees-page.tsx`
- *     here — same `WorktreesPage` contract, wired below behind the
- *     `worktrees.open.sidebar` chord exactly like the Solid host's `Show`.
- *   - The update page (`update/host.tsx`'s `UpdatePage`, daemon issue #23
- *     remainder) is the same in-place swap shape, behind the `tasks.update`
- *     chord (`u`, sidebar-scoped — already the tmux Tasks pane's chord for
- *     opening a standalone `kobe update-page` window; this host reuses the
- *     same id/chord for its own embedded swap instead). `UpdatePage` took an
- *     `onClose` seam for this: its close path used to call `process.exit(0)`
- *     directly, which would have killed this whole host on close.
+ * Experimental native workspace (`KOBE_TUI=1`): Sidebar | engine Terminal |
+ * Files. `useAccessor` bridges daemon Solid signals into React; imperative
+ * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
+ * Settings, worktrees, and update surfaces swap in-process instead of exiting.
  */
 
 import { join } from "node:path"
@@ -69,21 +37,11 @@ import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { useAccessor } from "./use-accessor"
 import { useFilesBadge } from "./use-files-badge"
+import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
 
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
-
-function firstSelectableTask(tasks: readonly Task[], activeId: string | null): Task | undefined {
-  const active = activeId ? tasks.find((task) => task.id === activeId && !task.archived) : undefined
-  if (active) return active
-  return tasks.find((task) => !task.archived) ?? tasks[0]
-}
-
-function taskWorktree(task: Task | undefined): string | null {
-  if (!task) return null
-  return task.worktreePath || null
-}
 
 function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme } = useTheme()
@@ -131,8 +89,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     WORKTREE_TOOLS_MIN_WIDTH,
     Math.min(WORKTREE_TOOLS_MAX_WIDTH, Math.floor(available / 3)),
   )
-  const selectedTask: Task | undefined = selectedId ? tasks.find((task) => task.id === selectedId) : undefined
-  const worktree = taskWorktree(selectedTask)
+  const selectedTask = selectedId ? tasks.find((task) => task.id === selectedId) : undefined
+  const worktree = selectedTask?.worktreePath || null
 
   // Files-column activity badge (issue #21) — the `● new` transcript badge
   // + its refresh-as-ack, extracted to `use-files-badge.ts` (file-size cap).
@@ -142,15 +100,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     activityMap: transcriptActivity,
   })
 
-  // Boot restore: the daemon replays its `active-task` channel (the
-  // persisted last focus) alongside the task snapshot on connect, but the
-  // frames can land across renders — the snapshot alone would already have
-  // picked the top-of-list fallback below, and the early-return would then
-  // pin it forever. Adopt the FIRST restored focus once, unless the user
-  // has already selected a task themselves; later active-task events (a
-  // sibling TUI switching focus) never yank the local selection.
   const focusRestoredRef = useRef(false)
   const userPickedRef = useRef(false)
+  // Adopt the daemon's first restored focus, but never let later events from
+  // sibling clients yank a task the local user already selected.
   useEffect(() => {
     if (!focusRestoredRef.current && activeTaskId && tasks.some((task) => task.id === activeTaskId)) {
       focusRestoredRef.current = true
@@ -180,27 +133,22 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   function selectTask(id: string): void {
     userPickedRef.current = true
-    // Already the selected task → skip the daemon round-trip.
     if (selectedId === id) return
     setSelectedId(id)
-    void orch.setActiveTask(id).catch((err) => {
-      console.error("[kobe workspace] setActiveTask failed:", err)
-    })
+    void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
   }
 
   async function activateTask(id: string): Promise<void> {
-    const task = tasks.find((tk) => tk.id === id)
-    if (!task) return
-    if (!task.worktreePath) {
-      try {
-        await orch.ensureWorktree(id)
-      } catch (err) {
-        console.error("[kobe workspace] task.ensureWorktree failed:", err)
-        return
-      }
-    }
-    selectTask(id)
-    focus.setFocused("workspace")
+    await activateWorkspaceTask(
+      {
+        getTask: (taskId) => tasks.find((task) => task.id === taskId),
+        ensureWorktree: (taskId) => orch.ensureWorktree(taskId),
+        selectTask,
+        focusWorkspace: () => focus.setFocused("workspace"),
+        reportError: (error) => console.error("[kobe workspace] task.ensureWorktree failed:", error),
+      },
+      id,
+    )
   }
 
   // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
