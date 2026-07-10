@@ -175,6 +175,10 @@ export type DaemonRequestName =
   | "pty.detach"
   | "pty.list"
   | "pty.sweep"
+  // Pre-spawn one idle shell for a cwd so the next `pty.open` whose spec
+  // is that bare shell adopts it (already rc-initialized) instead of
+  // paying shell startup. Best-effort; older hosts reject the verb.
+  | "pty.warm"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -232,6 +236,10 @@ export interface PtyOpenResult {
   /** This session's child pid (null when spawn failed) — the client keys
    *  `pty.exit` frames against it; absent from pre-pid hosts. */
   readonly pid?: number | null
+  /** True when THIS open brought the session into being (fresh spawn or
+   *  warm-shell adoption) — the client's cue that `initialInput` may be
+   *  typed. False on reattach; absent from pre-warm hosts. */
+  readonly created?: boolean
 }
 
 export interface DaemonError {

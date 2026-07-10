@@ -75,6 +75,12 @@ export type TerminalProps = {
    */
   command?: readonly string[]
   /**
+   * Typed into a FRESH spawn right after `command` starts (`TaskPtyOpts.
+   * initialInput`) — the shell-wrapped engine launch. Reattaches to an
+   * existing session never resend it.
+   */
+  initialInput?: string
+  /**
    * Fires once when the PTY reports exit (or is already dead at mount) —
    * `undefined` for the default "leave the dead shell + exit banner up"
    * behavior. Used by `TerminalTabs.tsx` to auto-close command tabs and
@@ -116,6 +122,7 @@ export function Terminal(props: TerminalProps) {
     cwd: props.cwd,
     taskId: props.taskId,
     command: props.command,
+    initialInput: props.initialInput,
     resetToken: props.resetToken,
     onExit: props.onExit,
     registry,

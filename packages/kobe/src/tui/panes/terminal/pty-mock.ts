@@ -38,6 +38,8 @@ export class MockTaskPty implements TaskPtyLike {
     this.cwd = opts.cwd
     this._cols = opts.cols ?? DEFAULT_COLS
     this._rows = opts.rows ?? DEFAULT_ROWS
+    // Fresh spawn always — surface the typed engine line to tests as a write.
+    if (opts.initialInput) this.writes.push(opts.initialInput)
   }
 
   get killed(): boolean {

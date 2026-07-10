@@ -62,6 +62,7 @@ export class PipeTaskPty implements TaskPtyLike {
     })
     this.proc.on("exit", () => this.markDead(false))
     this.proc.unref?.()
+    if (opts.initialInput) this.write(opts.initialInput)
   }
 
   get killed(): boolean {

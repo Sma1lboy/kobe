@@ -153,6 +153,53 @@ describe("PtyHost", () => {
     expect(row?.command[0]).toBe("/bin/sh")
   })
 
+  // Why: `created` is the client's cue that its typed engine line
+  // (`initialInput`) belongs to this open — resending it on reattach
+  // would run the engine command twice in the same shell.
+  test("open() reports created on fresh spawn, not on reattach", () => {
+    const host = makeHost()
+    expect(host.open("t1::tab1", SPEC, {}, collector().sink).created).toBe(true)
+    expect(host.open("t1::tab1", SPEC, {}, collector().sink).created).toBe(false)
+  })
+
+  // Why: the warm slot is the "pre-initialized shell" ask (2026-07-10) —
+  // an engine tab must adopt the ALREADY-RUNNING spare (same pid) instead
+  // of paying shell startup, a replacement must be warmed right away, and
+  // the spare must never pin the host open (liveCount) or show in list().
+  test("warm shell: adopted by a matching open, invisible otherwise", async () => {
+    let started = 0
+    const host = makeHost({ onSessionStart: () => started++ })
+    host.warm(process.cwd(), "/bin/cat", 40, 10)
+    expect(host.liveCount()).toBe(0)
+    expect(host.list()).toEqual([])
+    expect(started).toBe(0)
+
+    // Matching open (same cwd, bare-shell argv) adopts the spare…
+    const first = host.open("t1::tab1", { ...SPEC, command: ["/bin/cat"] }, {}, collector().sink)
+    expect(first.created).toBe(true)
+    expect(started).toBe(1)
+    // …and a replacement spare exists: the next open adopts a DIFFERENT pid.
+    const second = host.open("t1::tab2", { ...SPEC, command: ["/bin/cat"] }, {}, collector().sink)
+    expect(second.created).toBe(true)
+    expect(second.pid).not.toBe(first.pid)
+
+    // The adopted session behaves like any other: input flows, list shows it.
+    const { frames, sink } = collector()
+    host.open("t1::tab1", { ...SPEC, command: ["/bin/cat"] }, {}, sink)
+    host.write("t1::tab1", "warm-adopt\n")
+    await until(() => dataText(frames).includes("warm-adopt"))
+
+    // A spec that doesn't match the spare (different cwd) spawns fresh.
+    const spareBefore = host.liveCount()
+    const other = host.open("t2::tab1", { ...SPEC, cwd: "/", command: ["/bin/cat"] }, {}, collector().sink)
+    expect(other.created).toBe(true)
+    expect(host.liveCount()).toBe(spareBefore + 1)
+
+    // killAll ends the spare too — nothing survives host shutdown.
+    host.killAll()
+    expect(host.liveCount()).toBe(0)
+  })
+
   test("does not leak the outer terminal emulator identity to hosted children", async () => {
     const host = makeHost()
     const { frames, sink } = collector()
