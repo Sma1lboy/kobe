@@ -21,6 +21,7 @@ import { useRef } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
+import { useLatest } from "../../lib/use-latest"
 
 export type SidebarBindingsOpts = {
   /** Whether the sidebar should respond to keys at all. */
@@ -61,8 +62,7 @@ export type SidebarBindingsOpts = {
  * `src/tui/panes/sidebar/keys.ts` for the full per-binding rationale.
  */
 export function useSidebarBindings(opts: SidebarBindingsOpts): void {
-  const optsRef = useRef(opts)
-  optsRef.current = opts
+  const optsRef = useLatest(opts)
 
   // One controller per mount: it owns the g·g chord timer state. Its
   // callbacks read through optsRef so they never go stale across renders.

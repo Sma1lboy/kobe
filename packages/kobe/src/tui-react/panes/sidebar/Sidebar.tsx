@@ -47,6 +47,7 @@ import {
 } from "../../../tui/panes/sidebar/view-core"
 import { useT } from "../../i18n"
 import { modalActive } from "../../lib/keymap"
+import { useLatest } from "../../lib/use-latest"
 import { useSidebarBindings } from "./keys"
 import { SidebarPanel } from "./panel"
 import type { SidebarRowCardSharedProps } from "./row-cards"
@@ -57,8 +58,7 @@ export type { ChatRunState, SidebarHover, SidebarProps } from "./types"
 export function Sidebar(props: SidebarProps) {
   const t = useT()
   const focused = props.focused ?? true
-  const focusedRef = useRef(focused)
-  focusedRef.current = focused
+  const focusedRef = useLatest(focused)
 
   const [view, setView] = useState<SidebarView>("active")
   const [searchMode, setSearchMode] = useState(false)
@@ -145,10 +145,8 @@ export function Sidebar(props: SidebarProps) {
     return next
   }, [props.tasks, view, searchMode, searchQuery, sortMode, projectFilterRepo])
   const flatIds = useMemo(() => flattenIds(rows), [rows])
-  const flatIdsRef = useRef(flatIds)
-  flatIdsRef.current = flatIds
-  const rowsRef = useRef(rows)
-  rowsRef.current = rows
+  const flatIdsRef = useLatest(flatIds)
+  const rowsRef = useLatest(rows)
   const { projectRows, taskRows } = useMemo(() => splitSidebarRows(rows), [rows])
   // Total unfiltered count for the active view — the "N/total" in search mode.
   const totalRows = useMemo(
@@ -188,10 +186,8 @@ export function Sidebar(props: SidebarProps) {
 
   // Hover tooltip state; mirrored to the host and cleared on unmount.
   const [hover, setLocalHover] = useState<SidebarHover | null>(null)
-  const hoverRef = useRef(hover)
-  hoverRef.current = hover
-  const onHoverChangeRef = useRef(props.onHoverChange)
-  onHoverChangeRef.current = props.onHoverChange
+  const hoverRef = useLatest(hover)
+  const onHoverChangeRef = useLatest(props.onHoverChange)
   const setHover = useCallback((next: SidebarHover | null): void => {
     setLocalHover(next)
     onHoverChangeRef.current?.(next)
@@ -305,12 +301,10 @@ export function Sidebar(props: SidebarProps) {
     const idx = flatIdsRef.current.indexOf(pinned)
     if (idx >= 0) setCursorIndex(idx)
   }
-  const activateRowRef = useRef(activateRow)
-  activateRowRef.current = activateRow
+  const activateRowRef = useLatest(activateRow)
 
   // Surface the cursor row's task id to the host (o/b/v target the cursor).
-  const onCursorChangeRef = useRef(props.onCursorChange)
-  onCursorChangeRef.current = props.onCursorChange
+  const onCursorChangeRef = useLatest(props.onCursorChange)
   useEffect(() => {
     onCursorChangeRef.current?.(
       cursorIndex >= 0 && cursorIndex < flatIds.length ? (flatIds[cursorIndex] ?? null) : null,

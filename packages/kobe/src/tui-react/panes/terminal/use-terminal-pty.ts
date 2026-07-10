@@ -24,6 +24,7 @@ import { errorMessage } from "@/lib/error-message"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { CursorPos, TaskPty, TerminalRow } from "../../../tui/panes/terminal/pty"
 import type { PtyRegistry } from "../../../tui/panes/terminal/registry"
+import { useLatest } from "../../lib/use-latest"
 
 export interface UseTerminalPtyOpts {
   cwd: string | null
@@ -63,23 +64,16 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
 
   // Latest-render mirrors read by effect bodies that must NOT depend on
   // them (the Solid original's untracked reads inside `on(...)`).
-  const commandRef = useRef(opts.command)
-  commandRef.current = opts.command
-  const bodyGeometryRef = useRef(opts.bodyGeometry)
-  bodyGeometryRef.current = opts.bodyGeometry
-  const registryRef = useRef(opts.registry)
-  registryRef.current = opts.registry
-  const onExitRef = useRef(opts.onExit)
-  onExitRef.current = opts.onExit
-  const onFreshPtyRef = useRef(opts.onFreshPty)
-  onFreshPtyRef.current = opts.onFreshPty
+  const commandRef = useLatest(opts.command)
+  const bodyGeometryRef = useLatest(opts.bodyGeometry)
+  const registryRef = useLatest(opts.registry)
+  const onExitRef = useLatest(opts.onExit)
+  const onFreshPtyRef = useLatest(opts.onFreshPty)
   // Read untracked by the resetToken effect below (see file header); the
   // acquire effect intentionally reads the plain `cwd`/`taskId` values
   // instead, since THAT effect is meant to depend on them.
-  const cwdRef = useRef(opts.cwd)
-  cwdRef.current = opts.cwd
-  const taskIdRef = useRef(opts.taskId)
-  taskIdRef.current = opts.taskId
+  const cwdRef = useLatest(opts.cwd)
+  const taskIdRef = useLatest(opts.taskId)
 
   const geometryReady = opts.bodyGeometry !== null
   const cwd = opts.cwd

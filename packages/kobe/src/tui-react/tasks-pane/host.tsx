@@ -49,6 +49,7 @@ import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
+import { useLatest } from "../lib/use-latest"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { useDialog } from "../ui/dialog"
 import {
@@ -188,10 +189,8 @@ export function TasksShell(props: TasksShellProps) {
   // this pane follows them here: a toggle in ANY session pushes and
   // re-applies here too. Changed-only assignment (diff against the live refs)
   // makes our own write's echo a no-op.
-  const sortModeRef = useRef(sortMode)
-  sortModeRef.current = sortMode
-  const projectFilterRef = useRef(projectFilter)
-  projectFilterRef.current = projectFilter
+  const sortModeRef = useLatest(sortMode)
+  const projectFilterRef = useLatest(projectFilter)
   useEffect(() => {
     const payload = props.uiPrefs
     if (!payload) return
@@ -285,8 +284,7 @@ export function TasksShell(props: TasksShellProps) {
   // Follow the broadcast: a `?` toggle in another session re-folds this
   // legend too. Changed-only (diff against the live ref), so our own write's
   // echo is a no-op.
-  const keysCollapsedRef = useRef(keysCollapsed)
-  keysCollapsedRef.current = keysCollapsed
+  const keysCollapsedRef = useLatest(keysCollapsed)
   useEffect(() => {
     const payload = props.uiPrefs
     if (!payload) return
