@@ -47,11 +47,30 @@ export function requireDistBuild(): void {
 
 let envSeq = 0
 
+function behaviorTeardownIsolationError(env: NodeJS.ProcessEnv, home: string, socket: string): string | undefined {
+  if (env.HOME !== home || env.USERPROFILE !== home || env.KOBE_HOME_DIR !== home) {
+    return "HOME/KOBE_HOME_DIR no longer match the disposable home"
+  }
+  if (env.KOBE_TMUX_SOCKET !== socket) return "KOBE_TMUX_SOCKET no longer matches the disposable socket"
+  const unexpectedKobeKeys = Object.keys(env).filter(
+    (key) => key.startsWith("KOBE_") && key !== "KOBE_HOME_DIR" && key !== "KOBE_TMUX_SOCKET",
+  )
+  if (unexpectedKobeKeys.length > 0) return `unexpected controls: ${unexpectedKobeKeys.sort().join(", ")}`
+  return undefined
+}
+
 export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
   requireDistBuild()
   const home = await mkdtemp(join(tmpdir(), "kobe-behavior-"))
   const bin = join(home, "bin")
-  await mkdir(bin, { recursive: true })
+  const xdgConfig = join(home, ".config")
+  const xdgData = join(home, ".local", "share")
+  const xdgState = join(home, ".local", "state")
+  const xdgCache = join(home, ".cache")
+  const xdgRuntime = join(home, ".runtime")
+  await Promise.all(
+    [bin, xdgConfig, xdgData, xdgState, xdgCache, xdgRuntime].map((dir) => mkdir(dir, { recursive: true })),
+  )
   const socket = `kobe-behavior-${process.pid}-${envSeq++}`
   const outerSocket = `${socket}-outer`
 
@@ -66,9 +85,40 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
   await writeFile(join(bin, "claude"), `#!/bin/sh\ntrap '' HUP\necho "fake-claude ready"\nexec sleep 600\n`)
   await chmod(join(bin, "claude"), 0o755)
 
+  // A behavior run is frequently launched FROM the live KOBE_TUI process,
+  // whose environment deliberately points at production sockets and enables
+  // the pure-TUI path. Never pass any ambient KOBE_* control through to a
+  // black-box child: `dispose()` runs `kobe reset --yes`, so one inherited
+  // socket/pid override can stop the user's real daemon or PTY host. HOME and
+  // XDG are isolated too because normal TUI boot installs engine hooks under
+  // ~/.claude and ~/.codex independently of KOBE_HOME_DIR.
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) =>
+        !key.startsWith("KOBE_") &&
+        key !== "HOME" &&
+        key !== "USERPROFILE" &&
+        !key.startsWith("XDG_") &&
+        key !== "TMUX" &&
+        key !== "TMUX_PANE" &&
+        key !== "TERM" &&
+        key !== "TERM_PROGRAM" &&
+        key !== "TERM_PROGRAM_VERSION" &&
+        key !== "COLORTERM",
+    ),
+  )
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PATH: `${bin}:${process.env.PATH}`,
+    ...inherited,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: xdgConfig,
+    XDG_DATA_HOME: xdgData,
+    XDG_STATE_HOME: xdgState,
+    XDG_CACHE_HOME: xdgCache,
+    XDG_RUNTIME_DIR: xdgRuntime,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    PATH: `${bin}:${inherited.PATH ?? ""}`,
     KOBE_HOME_DIR: home,
     KOBE_TMUX_SOCKET: socket,
   }
@@ -86,9 +136,17 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
       // reparented to init).
       killPanesThenServer(outerSocket, env)
       killPanesThenServer(socket, env)
-      // Stop the temp home's daemon so nothing outlives the test run.
-      spawnSync("bun", [DIST_CLI, "reset", "--yes"], { env, timeout: 30_000 })
-      await rm(home, { recursive: true, force: true })
+      try {
+        const isolationError = behaviorTeardownIsolationError(env, home, socket)
+        if (isolationError) {
+          throw new Error(`behavior harness refusing destructive teardown: ${isolationError}`)
+        }
+        // Stop the temp home's daemon so nothing outlives the test run. The
+        // guard above is deliberately adjacent to this destructive command.
+        spawnSync("bun", [DIST_CLI, "reset", "--yes"], { env, timeout: 30_000 })
+      } finally {
+        await rm(home, { recursive: true, force: true })
+      }
     },
   }
 }
