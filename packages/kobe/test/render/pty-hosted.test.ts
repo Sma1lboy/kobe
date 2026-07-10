@@ -89,6 +89,32 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     c.kill()
   })
 
+  test("kill() + immediate same-key reopen survives the old child's exit frame", async () => {
+    // The editor-tab file swap (and F5 reset): release the old vim and
+    // acquire a new PTY under the SAME key in the same tick. The host's
+    // pty.exit for the OLD child races the new handle's open over the
+    // key-routed dispatcher — pre-fix it marked the NEW handle dead, so
+    // the tab closed itself and the file needed a second click.
+    const a = new HostedTaskPty({ taskId: "smoke::t7", ...OPTS })
+    a.write("old-file\n")
+    await until(() => text(a).includes("old-file"), "first session streams")
+    a.kill()
+    // No settle delay — provoking the race is the point.
+    const b = new HostedTaskPty({
+      taskId: "smoke::t7",
+      cwd: dir,
+      command: ["/bin/sh", "-c", "echo new-file; sleep 30"],
+      cols: 60,
+      rows: 12,
+    })
+    await until(() => text(b).includes("new-file"), "respawned session streams")
+    // Let the old incarnation's exit frame land — it must not kill us.
+    await new Promise((r) => setTimeout(r, 300))
+    expect(b.killed).toBe(false)
+    expect(b.deadOnAttach).toBe(false)
+    b.kill()
+  })
+
   test("same-size reattach to a live session forces a repaint wiggle (SIGWINCH)", async () => {
     // A full-screen app repaints only when a SIGWINCH delivers a size that
     // actually CHANGED (claude's behavior) — the trap mimics that. Two
