@@ -32,6 +32,7 @@ import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/side
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 import type { ChatRunState, SidebarHover } from "./types"
 
 export type SidebarRowCardSharedProps = {
@@ -81,19 +82,41 @@ function SubtitleText(props: { readonly view: SidebarRowView; readonly frame: nu
   const { theme } = themeCtx
   if (!props.view.materializing || themeCtx.reducedMotion) {
     return (
-      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+      <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
         {props.view.subtitleText}
       </text>
     )
   }
   return (
-    <box flexDirection="row" gap={1} flexGrow={1}>
+    <box flexDirection="row" gap={1} flexBasis={0} flexGrow={1} flexShrink={1}>
       <text fg={theme.primary} wrapMode="none">
         {sweepBar(props.frame)}
       </text>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         {props.view.subtitleText}
       </text>
+    </box>
+  )
+}
+
+/** Right-edge git metrics stay one non-shrinking cluster while metadata takes
+ * the flexible middle column. This keeps every row scannable at the same
+ * visual anchor even when a branch/title is long. */
+function ChangeStats(props: { readonly changes: WorktreeChanges }) {
+  const { theme } = useTheme()
+  if (props.changes.added <= 0 && props.changes.deleted <= 0) return null
+  return (
+    <box flexDirection="row" gap={1} flexShrink={0}>
+      {props.changes.added > 0 ? (
+        <text fg={theme.success} wrapMode="none" flexShrink={0}>
+          +{props.changes.added}
+        </text>
+      ) : null}
+      {props.changes.deleted > 0 ? (
+        <text fg={theme.error} wrapMode="none" flexShrink={0}>
+          −{props.changes.deleted}
+        </text>
+      ) : null}
     </box>
   )
 }
@@ -107,6 +130,9 @@ function RowBody(props: {
   const task = props.row.task
   const flatIndex = props.row.flatIndex
   const shared = props.shared
+  const isCursor = flatIndex === shared.cursorIndex
+  const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   return (
     // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model; hover is pointer-only while keyboard nav exposes the same row detail by selection.
     <box
@@ -121,7 +147,7 @@ function RowBody(props: {
       width="100%"
       flexDirection="column"
       gap={0}
-      backgroundColor={flatIndex === shared.cursorIndex ? theme.backgroundElement : undefined}
+      backgroundColor={selection.backgroundColor}
       onMouseUp={() => {
         shared.setCursorIndex(flatIndex)
         shared.onSelect(task.id)
@@ -143,6 +169,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
   const flatIndex = props.row.flatIndex
   const isCursor = flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
   useEffect(() => {
     // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
@@ -166,18 +193,16 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
     () => shared.spinnerFrame,
   )
   const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.focusAccent : isSelected ? theme.primary : undefined
-  const barGlyph = isCursor || isSelected ? "▌" : " "
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={0}>
       <RowBody row={props.row} shared={shared}>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none">
+            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.projectGlyph}
             </text>
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
@@ -186,21 +211,12 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
           </box>
         </box>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
-            {changes.added > 0 ? (
-              <text fg={theme.success} wrapMode="none">
-                +{changes.added}
-              </text>
-            ) : null}
-            {changes.deleted > 0 ? (
-              <text fg={theme.error} wrapMode="none">
-                −{changes.deleted}
-              </text>
-            ) : null}
+            <ChangeStats changes={changes} />
           </box>
         </box>
       </RowBody>
@@ -217,6 +233,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
   const flatIndex = props.row.flatIndex
   const isCursor = flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
   const rowView = withSpinnerFrame(
     buildSidebarRowView({
@@ -234,19 +251,17 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
     () => shared.spinnerFrame,
   )
   const stateColor = toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.focusAccent : isSelected ? theme.primary : undefined
-  const barGlyph = isCursor || isSelected ? "▌" : " "
   const chip = prCheckChip(task)
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={1}>
       <RowBody row={props.row} shared={shared}>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none">
+            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.stateGlyph}
             </text>
             <text
@@ -265,8 +280,8 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
           </box>
         </box>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
@@ -280,16 +295,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
                 {chip.glyph}
               </text>
             ) : null}
-            {changes.added > 0 ? (
-              <text fg={theme.success} wrapMode="none">
-                +{changes.added}
-              </text>
-            ) : null}
-            {changes.deleted > 0 ? (
-              <text fg={theme.error} wrapMode="none">
-                −{changes.deleted}
-              </text>
-            ) : null}
+            <ChangeStats changes={changes} />
           </box>
         </box>
       </RowBody>

@@ -32,6 +32,7 @@ export function AdoptTab({ vm }: { vm: NewTaskVm }) {
           value={vm.adoptFilter}
           placeholder={t("newTask.placeholder.adoptFilter")}
           focused={vm.field === "adoptFilter"}
+          onMouseUp={() => vm.setField("adoptFilter")}
           onInput={(v: string) => vm.setAdoptFilterText(v)}
           onSubmit={() => vm.toggleAdoptCursor()}
         />

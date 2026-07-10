@@ -67,6 +67,13 @@ describe.skipIf(!tmuxAvailable())("kobe TUI boot + focus chords (behavior)", () 
     expect(screen).not.toMatch(/Module not found|panic|Unhandled/i)
   }, 50_000)
 
+  it("uses a subtle inactive divider and keeps the accent for the active pane", () => {
+    const border = tmuxInner(env, "show-options", "-gwv", "pane-border-style").stdout.trim()
+    const active = tmuxInner(env, "show-options", "-gwv", "pane-active-border-style").stdout.trim()
+    expect(border.toLowerCase()).toBe("fg=#2b2a27")
+    expect(active.toLowerCase()).toBe("fg=#cc785c")
+  })
+
   it("ctrl+h focuses the Tasks rail; a second (left-edge) ctrl+h does NOT wrap", async () => {
     tmux(env, "send-keys", "-t", SESSION, "C-h")
     expect(await waitForRole(env, "tasks")).toBe("tasks")
