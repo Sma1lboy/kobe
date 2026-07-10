@@ -41,6 +41,40 @@ describe("DialogProvider", () => {
     expect(text).toContain("dialog A")
   })
 
+  // Regression (owner report 2026-07-09): the translucent full-screen
+  // backdrop erased wide glyphs from the pane behind a dialog while leaving
+  // adjacent ASCII visible. Keep mixed CJK/ASCII background text intact so
+  // opening a modal only dims it; it must not punch character-shaped holes.
+  it("keeps wide glyphs in background text while a dialog is open", async () => {
+    const background = "设置 split horizon 和 vertical 深度限制"
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    const { frame, spans } = await renderComponent(
+      <DialogProvider>
+        <text fg="#FFFFFF">{background}</text>
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+          }}
+        />
+      </DialogProvider>,
+      { width: 100, height: 24 },
+    )
+
+    const before = await spans()
+    const beforeText = before.lines.flatMap((line) => line.spans).find((span) => span.text.includes("split horizon"))
+    expect(beforeText).toBeDefined()
+
+    act(() => dialogRef.current?.push(() => <text>dialog A</text>))
+    const text = await frame()
+    expect(text).toContain(background)
+    expect(text).toContain("dialog A")
+
+    const after = await spans()
+    const dimmedText = after.lines.flatMap((line) => line.spans).find((span) => span.text.includes("split horizon"))
+    expect(dimmedText).toBeDefined()
+    expect(dimmedText?.fg.equals(beforeText?.fg)).toBe(false)
+  })
+
   it("replace swaps the top dialog instead of stacking", async () => {
     const { frame } = await renderComponent(
       <DialogProvider>

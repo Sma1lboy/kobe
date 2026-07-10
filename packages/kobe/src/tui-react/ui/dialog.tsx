@@ -7,15 +7,14 @@
  * handlers), but keeping it means Solid call sites port unchanged and the
  * body is created fresh per render of the provider.
  *
- * Same behaviors as the Solid original: overlay is an absolutely-positioned
- * box at the provider tail (no portal machinery), escape/ctrl+c pop the top
- * dialog unless a text selection is active, the renderable that held native
- * focus when the first dialog opened is refocused after the stack empties
- * (deferred 1ms, cancelled on unmount), and the card stays opaque even in
- * transparent mode.
+ * The provider dims its background subtree and puts the pointer-catching
+ * overlay above it. Do not implement the dimmer as a translucent full-screen
+ * box: opentui's alpha box fill replaces wide-glyph cells with spaces. The
+ * renderable that held native focus when the first dialog opened is refocused
+ * after the stack empties, and the card stays opaque in transparent mode.
  */
 
-import { RGBA, type Renderable } from "@opentui/core"
+import type { Renderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { useTheme } from "../context/theme"
@@ -23,13 +22,12 @@ import { ModalScopeContext, useBindings } from "../lib/keymap"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
-const DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 128)
-const TRANSPARENT_DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 64)
+const DIALOG_CONTENT_OPACITY = 0.5
+const TRANSPARENT_DIALOG_CONTENT_OPACITY = 0.75
 
 export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose: () => void }) {
   const dimensions = useTerminalDimensions()
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
+  const { theme } = useTheme()
   const renderer = useRenderer()
 
   const dismissRef = useRef(false)
@@ -66,7 +64,7 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
       zIndex={3000}
       left={0}
       top={0}
-      backgroundColor={themeCtx.transparentBackground ? TRANSPARENT_DIALOG_BACKDROP : DIALOG_BACKDROP}
+      shouldFill={false}
     >
       <box
         onMouseUp={(e: { stopPropagation(): void }) => {
@@ -115,6 +113,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
   const [stack, setStack] = useState<readonly StackEntry[]>([])
   const [size, setSize] = useState<DialogSize>("medium")
   const renderer = useRenderer()
+  const { transparentBackground } = useTheme()
 
   const focusRef = useRef<Renderable | null>(null)
   const refocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -212,9 +211,14 @@ export function DialogProvider(props: { children?: ReactNode }) {
   )
 
   const top = stack.at(-1)
+  const contentOpacity = top ? (transparentBackground ? TRANSPARENT_DIALOG_CONTENT_OPACITY : DIALOG_CONTENT_OPACITY) : 1
   return (
     <ctx.Provider value={value}>
-      {props.children}
+      <box flexGrow={1} backgroundColor={top && !transparentBackground ? "black" : "transparent"}>
+        <box flexGrow={1} opacity={contentOpacity}>
+          {props.children}
+        </box>
+      </box>
       <box position="absolute" zIndex={3000}>
         {top ? (
           // Modal precedence is DECLARED, not positional: everything inside
