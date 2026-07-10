@@ -75,6 +75,10 @@ describe("engineEntry — built-in vendors", () => {
     expect(entry.identity?.inputPlaceholder).toBe("Ask Codex…")
     expect(entry.capabilities?.defaultModelId()).toBe("gpt-5.3-codex")
     expect(entry.capabilities?.permissionModes).toEqual([])
+    expect(entry.terminalTitle).toEqual({
+      ownsStatus: true,
+      launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
+    })
   })
 
   it("routes detectAccount to the vendor's own detector (claude oauth)", async () => {

@@ -5,7 +5,8 @@
  * terminal. Owns the per-tab turn chip and the turn-complete pulse: when a
  * tab's turn flips running→done, the chip and title flash emphasized for a
  * few frames before settling — a landing cue for work that finished while
- * you looked elsewhere.
+ * you looked elsewhere. Engines whose visible OSC title already owns the
+ * activity state omit the duplicate chip.
  *
  * `tabTitle` is a plain (non-hook) helper — used both here and by
  * `TerminalTabs.tsx` outside render (rename dialog prefill, notification
@@ -68,6 +69,16 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   return `${name} ${tab.ordinal}`
 }
 
+/** True only when `tabTitle` is visibly rendering an engine-owned title. */
+function visibleNativeStatus(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): boolean {
+  if (!liveName || tab.title || tab.kind !== "engine") return false
+  const ls = tab.splitTree ? leaves(tab.splitTree.root) : []
+  if (ls.length > 1) return false
+  const sole = ls.length === 1 ? ls[0] : undefined
+  if (sole && sole.id !== "leaf-1") return false
+  return engineEntry(tab.vendor ?? taskVendor).terminalTitle?.ownsStatus === true
+}
+
 export function TabStrip(props: {
   tabs: readonly TerminalTab[]
   activeId: string
@@ -119,6 +130,8 @@ export function TabStrip(props: {
     <box flexDirection="row" gap={1} flexShrink={0} paddingLeft={1} backgroundColor={theme.backgroundElement}>
       {props.tabs.map((tab) => {
         const turn = props.turnStates.get(tab.id) ?? "idle"
+        const liveTitle = props.liveTitles.get(tab.id)
+        const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, liveTitle)
         const pulse = pulsing.has(tab.id)
         const turnColor =
           turn === "running"
@@ -130,13 +143,16 @@ export function TabStrip(props: {
                 : theme.textMuted
         return (
           <box key={tab.id} flexDirection="row" gap={0} onMouseUp={() => props.onSelect(tab.id)}>
-            {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○.
+            {/* Turn chip fallback — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○.
                 Shown when the tab's process IS an engine: kobe-launched
                 (an engine tab whose engine leaf is alive — instant, by
                 construction) or detected (a user-typed `claude` in a
                 shell, which materializes a turnStates entry via the
-                title-matched poll and disappears when it exits). */}
-            {props.turnStates.has(tab.id) || (tab.kind === "engine" && hasEngineLeaf(tab.splitTree)) ? (
+                title-matched poll and disappears when it exits). Hidden
+                while an engine-owned live title is visibly carrying the
+                same status. */}
+            {!nativeStatusVisible &&
+            (props.turnStates.has(tab.id) || (tab.kind === "engine" && hasEngineLeaf(tab.splitTree))) ? (
               <text fg={turnColor} attributes={pulse ? TextAttributes.BOLD : undefined} wrapMode="none">
                 {`${TURN_GLYPHS[turn]} `}
               </text>
@@ -146,7 +162,7 @@ export function TabStrip(props: {
               attributes={pulse || tab.id === props.activeId ? TextAttributes.BOLD : undefined}
               wrapMode="none"
             >
-              {tabTitle(tab, props.vendor, props.liveTitles.get(tab.id))}
+              {tabTitle(tab, props.vendor, liveTitle)}
             </text>
           </box>
         )
