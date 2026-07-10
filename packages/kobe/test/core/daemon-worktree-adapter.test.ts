@@ -70,4 +70,25 @@ describe("daemon worktree adapter", () => {
       ),
     ).resolves.toEqual(expect.objectContaining({ status: 405 }))
   })
+
+  it("validates removals and turns audit failures into HTTP errors", async () => {
+    const url = new URL("http://localhost/api/worktrees")
+    const missingPath = await handleWorktreesRequestAdapter(
+      new Request(url, { method: "DELETE", body: JSON.stringify({}) }),
+      url,
+    )
+    expect(missingPath?.status).toBe(400)
+
+    const removed = await handleWorktreesRequestAdapter(
+      new Request(url, { method: "DELETE", body: JSON.stringify({ path: worktree }) }),
+      url,
+    )
+    expect(removed?.status).toBe(200)
+    const malformed = await handleWorktreesRequestAdapter(new Request(url, { method: "DELETE", body: "not-json" }), url)
+    expect(malformed?.status).toBe(400)
+
+    addSavedRepo(join(root, "missing"))
+    const failedAudit = await handleWorktreesRequestAdapter(new Request(url), url)
+    expect(failedAudit?.status).toBe(500)
+  })
 })

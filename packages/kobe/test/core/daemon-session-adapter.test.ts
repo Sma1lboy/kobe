@@ -79,4 +79,31 @@ describe("daemon session adapter", () => {
     expect(mocks.switchClientBeforeKill).toHaveBeenCalledWith("kobe-task-3")
     expect(mocks.killSession).toHaveBeenCalledWith("kobe-task-3")
   })
+
+  it("reuses materialized worktrees and rejects a failed materialization", async () => {
+    mocks.sessionExists.mockResolvedValueOnce(true)
+    const existing = {
+      request: vi.fn(
+        async <T>() =>
+          ({
+            task: { id: "task-4", repo: "/repo/kobe", vendor: "claude", worktreePath: "/existing" },
+          }) as T,
+      ),
+    } as unknown as DaemonRpcClient
+    await expect(ensureTaskSessionAdapter(existing, "task-4")).resolves.toEqual({
+      session: "kobe-task-4",
+      worktreePath: "/existing",
+    })
+    expect(mocks.ensureSession).not.toHaveBeenCalled()
+
+    const missing = {
+      request: vi.fn(
+        async <T>(name: string) =>
+          (name === "task.get"
+            ? { task: { id: "task-5", repo: "/repo/kobe", vendor: "claude", worktreePath: "" } }
+            : { worktreePath: null }) as T,
+      ),
+    } as unknown as DaemonRpcClient
+    await expect(terminalSpecAdapter(missing, "task-5")).rejects.toThrow("has no worktree")
+  })
 })

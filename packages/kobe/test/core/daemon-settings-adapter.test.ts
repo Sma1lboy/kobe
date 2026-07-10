@@ -70,5 +70,10 @@ describe("daemon settings adapter", () => {
       }),
     )
     expect((await removed.json()).engines).not.toContainEqual(expect.objectContaining({ id: "my-engine" }))
+
+    const malformed = await daemonSettingsPatch(
+      new Request("http://localhost/api/settings", { method: "PATCH", body: "not-json" }),
+    )
+    expect(malformed.status).toBe(400)
   })
 })
