@@ -38,7 +38,7 @@ import {
   windowOption,
   windowPanes,
 } from "./layout-tmux"
-import { PANE_VERSION_OPTION } from "./pane-heal"
+import { PANE_VERSION_OPTION } from "./pane-heal-plan"
 
 // ---------------------------------------------------------------------------
 // Ops (file) pane

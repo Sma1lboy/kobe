@@ -65,6 +65,7 @@ vi.mock("../../src/tmux/client", async (importOriginal) => {
 })
 
 const paneHeal = await import("../../src/tui/panes/terminal/pane-heal")
+const paneHealPlan = await import("../../src/tui/panes/terminal/pane-heal-plan")
 const themeMock = await import("../../src/tui/lib/tmux-border-theme")
 
 function resetState(): void {
@@ -252,11 +253,11 @@ describe("captureGlobalLayout", () => {
 
 describe("shouldCaptureDrag", () => {
   test("true only with the full tasks+ops+shell role set, unzoomed, unhidden", () => {
-    expect(paneHeal.shouldCaptureDrag("tasks\t\t\t\nops\t\t\t\nshell\t\t\t")).toBe(true)
-    expect(paneHeal.shouldCaptureDrag("tasks\t1\t\t\nops\t\t\t\nshell\t\t\t")).toBe(false)
-    expect(paneHeal.shouldCaptureDrag("tasks\t\t%h\t\nops\t\t\t\nshell\t\t\t")).toBe(false)
-    expect(paneHeal.shouldCaptureDrag("tasks\t\t\t\nops\t\t\t")).toBe(false)
-    expect(paneHeal.shouldCaptureDrag("")).toBe(false)
+    expect(paneHealPlan.shouldCaptureDrag("tasks\t\t\t\nops\t\t\t\nshell\t\t\t")).toBe(true)
+    expect(paneHealPlan.shouldCaptureDrag("tasks\t1\t\t\nops\t\t\t\nshell\t\t\t")).toBe(false)
+    expect(paneHealPlan.shouldCaptureDrag("tasks\t\t%h\t\nops\t\t\t\nshell\t\t\t")).toBe(false)
+    expect(paneHealPlan.shouldCaptureDrag("tasks\t\t\t\nops\t\t\t")).toBe(false)
+    expect(paneHealPlan.shouldCaptureDrag("")).toBe(false)
   })
 })
 
