@@ -90,11 +90,18 @@ describe("HostedTaskPty over a real pty-host socket", () => {
   })
 
   test("same-size reattach to a live session forces a repaint wiggle (SIGWINCH)", async () => {
-    // A full-screen app repaints only on SIGWINCH; a same-size reattach
-    // used to raise none, leaving the replayed screen stale forever (the
-    // restart / park-wake "UI is gone" bug). The trap stands in for the
-    // app's repaint handler.
-    const cmd = ["/bin/sh", "-c", 'trap "echo REPAINT" WINCH; echo ready; while :; do sleep 0.1; done']
+    // A full-screen app repaints only when a SIGWINCH delivers a size that
+    // actually CHANGED (claude's behavior) — the trap mimics that. Two
+    // regressions guarded here: a same-size reattach that raises no
+    // SIGWINCH at all (the restart "UI is gone" bug), and a zero-gap
+    // shrink+restore wiggle whose signals COALESCE into one delivery at
+    // the unchanged final size, which such an app ignores (measured: two
+    // back-to-back resizes → one SIGWINCH at the original size).
+    const cmd = [
+      "/bin/sh",
+      "-c",
+      'cur=$(stty size); trap \'new=$(stty size); if [ "$new" != "$cur" ]; then cur=$new; echo REPAINT; fi\' WINCH; echo ready; while :; do sleep 0.1; done',
+    ]
     const a = new HostedTaskPty({ taskId: "smoke::t3", cwd: dir, command: cmd, cols: 60, rows: 12 })
     await until(() => text(a).includes("ready"), "first attach sees output")
     // Fresh spawn (empty replay) must NOT wiggle — nothing to repaint.

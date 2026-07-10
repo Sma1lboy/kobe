@@ -27,21 +27,17 @@
  *     dumb container.
  *   - It does not cap concurrency. PLAN.md §4 caps simultaneous
  *     *running* tasks at 4, but a paused-but-in-progress task may
- *     still hold a live PTY. Memory pressure from idle instances is
- *     handled by the park sweep below (issue #28), not by a cap.
+ *     still hold a live PTY.
  *
- * PTY parking (issue #28): every open tab used to keep a full
- * @xterm/headless instance (live grid + scrollback) resident forever —
- * ~250-300MB with many tabs, the biggest process when memory got tight.
- * A periodic sweep now DETACHES persistent-backend handles that have had
- * no data subscriber for PARK_AFTER_MS (only the mounted pane subscribes,
- * so unwatched == hidden): the child keeps running in the pty host, whose
- * byte ring buffer is the authoritative history; the local xterm instance
- * is dropped and GC'd. Switching back re-`acquire()`s under the same key
- * — the exact TUI-restart reattach path (`pty.open` replay), so revived
- * content is identical to what a restart would show. Backends without
- * `detach()` (local child — dropping the handle would kill the shell)
- * are never parked, and neither is anything with a live subscriber.
+ * PTY parking (issue #28) — MANUAL ONLY since 2026-07-10 (owner call):
+ * the automatic idle sweep parked hidden tabs' xterm instances and
+ * revived them through the reattach replay, but the replay reconstructs
+ * a long session from a byte-capped ring buffer (UI painted before the
+ * window is simply gone), so switching back to a parked tab could come
+ * up without claude's input box. Background tabs now keep their local
+ * xterm resident for the app's lifetime — the memory cost is accepted.
+ * `parkIdle` remains for the perf harness and any future explicit
+ * memory-pressure hook; nothing in the app calls it on a timer.
  *
  * Concurrency: every method is synchronous and JS is single-threaded,
  * so there's no race within a single registry. Two registries pointing
@@ -55,11 +51,6 @@ import { type TaskPty, type TaskPtyOpts, createTaskPty } from "./pty"
 
 export type AcquireOpts = Omit<TaskPtyOpts, "taskId" | "cwd">
 
-/** Hidden (no data subscriber) for this long → park the local handle. */
-export const PARK_AFTER_MS = 120_000
-/** Cadence of the park sweep. */
-const PARK_SWEEP_MS = 30_000
-
 /**
  * Factory for the underlying `TaskPty`. Defaults to `createTaskPty`
  * but is injectable so tests can swap in a `MockTaskPty` without
@@ -70,20 +61,9 @@ export type PtyFactory = (opts: TaskPtyOpts) => TaskPty
 export class PtyRegistry {
   private readonly map = new Map<string, TaskPty>()
   private readonly factory: PtyFactory
-  private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(factory: PtyFactory = createTaskPty) {
     this.factory = factory
-  }
-
-  /** Lazily start the park sweep on first acquire — a registry that never
-   *  holds a PTY (tests, mock hosts) never runs a timer. `unref` so the
-   *  sweep can't keep a wound-down process alive. */
-  private ensureSweeper(): void {
-    if (this.sweepTimer) return
-    const timer = setInterval(() => this.parkIdle(PARK_AFTER_MS), PARK_SWEEP_MS)
-    ;(timer as { unref?: () => void }).unref?.()
-    this.sweepTimer = timer
   }
 
   /**
@@ -92,6 +72,10 @@ export class PtyRegistry {
    * mounted pane subscribes, so unwatched == hidden tab). The child keeps
    * running in the pty host; re-`acquire()` under the same key reattaches
    * and replays the host ring buffer. Returns the parked keys.
+   *
+   * NOT called automatically (see the header): the reattach replay can't
+   * reconstruct a long session's full screen, so parking is reserved for
+   * explicit callers (perf harness) rather than a background sweep.
    */
   parkIdle(idleMs: number, now: number = Date.now()): string[] {
     const parked: string[] = []
@@ -133,7 +117,6 @@ export class PtyRegistry {
 
     const pty = this.factory({ taskId, cwd, ...opts })
     this.map.set(taskId, pty)
-    this.ensureSweeper()
     return pty
   }
 
@@ -185,12 +168,6 @@ export class PtyRegistry {
   releaseAll(): void {
     const ids = Array.from(this.map.keys())
     for (const id of ids) this.release(id)
-    this.stopSweeper()
-  }
-
-  private stopSweeper(): void {
-    if (this.sweepTimer) clearInterval(this.sweepTimer)
-    this.sweepTimer = null
   }
 
   /**
@@ -211,7 +188,6 @@ export class PtyRegistry {
         /* already dead */
       }
     }
-    this.stopSweeper()
   }
 
   /**
