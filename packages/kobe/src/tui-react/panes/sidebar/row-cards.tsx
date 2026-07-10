@@ -81,19 +81,41 @@ function SubtitleText(props: { readonly view: SidebarRowView; readonly frame: nu
   const { theme } = themeCtx
   if (!props.view.materializing || themeCtx.reducedMotion) {
     return (
-      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+      <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
         {props.view.subtitleText}
       </text>
     )
   }
   return (
-    <box flexDirection="row" gap={1} flexGrow={1}>
+    <box flexDirection="row" gap={1} flexBasis={0} flexGrow={1} flexShrink={1}>
       <text fg={theme.primary} wrapMode="none">
         {sweepBar(props.frame)}
       </text>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         {props.view.subtitleText}
       </text>
+    </box>
+  )
+}
+
+/** Right-edge git metrics stay one non-shrinking cluster while metadata takes
+ * the flexible middle column. This keeps every row scannable at the same
+ * visual anchor even when a branch/title is long. */
+function ChangeStats(props: { readonly changes: WorktreeChanges }) {
+  const { theme } = useTheme()
+  if (props.changes.added <= 0 && props.changes.deleted <= 0) return null
+  return (
+    <box flexDirection="row" gap={1} flexShrink={0}>
+      {props.changes.added > 0 ? (
+        <text fg={theme.success} wrapMode="none" flexShrink={0}>
+          +{props.changes.added}
+        </text>
+      ) : null}
+      {props.changes.deleted > 0 ? (
+        <text fg={theme.error} wrapMode="none" flexShrink={0}>
+          −{props.changes.deleted}
+        </text>
+      ) : null}
     </box>
   )
 }
@@ -107,6 +129,8 @@ function RowBody(props: {
   const task = props.row.task
   const flatIndex = props.row.flatIndex
   const shared = props.shared
+  const isCursor = flatIndex === shared.cursorIndex
+  const isSelected = task.id === shared.selectedId
   return (
     // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model; hover is pointer-only while keyboard nav exposes the same row detail by selection.
     <box
@@ -121,7 +145,7 @@ function RowBody(props: {
       width="100%"
       flexDirection="column"
       gap={0}
-      backgroundColor={flatIndex === shared.cursorIndex ? theme.backgroundElement : undefined}
+      backgroundColor={isCursor ? theme.backgroundElement : isSelected ? theme.background : undefined}
       onMouseUp={() => {
         shared.setCursorIndex(flatIndex)
         shared.onSelect(task.id)
@@ -166,7 +190,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
     () => shared.spinnerFrame,
   )
   const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.focusAccent : isSelected ? theme.primary : undefined
+  const barColor = isCursor ? theme.text : isSelected ? theme.borderActive : undefined
   const barGlyph = isCursor || isSelected ? "▌" : " "
 
   return (
@@ -177,7 +201,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
             {barGlyph}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none">
+            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.projectGlyph}
             </text>
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
@@ -191,16 +215,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
-            {changes.added > 0 ? (
-              <text fg={theme.success} wrapMode="none">
-                +{changes.added}
-              </text>
-            ) : null}
-            {changes.deleted > 0 ? (
-              <text fg={theme.error} wrapMode="none">
-                −{changes.deleted}
-              </text>
-            ) : null}
+            <ChangeStats changes={changes} />
           </box>
         </box>
       </RowBody>
@@ -234,7 +249,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
     () => shared.spinnerFrame,
   )
   const stateColor = toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.focusAccent : isSelected ? theme.primary : undefined
+  const barColor = isCursor ? theme.text : isSelected ? theme.borderActive : undefined
   const barGlyph = isCursor || isSelected ? "▌" : " "
   const chip = prCheckChip(task)
 
@@ -246,7 +261,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
             {barGlyph}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none">
+            <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.stateGlyph}
             </text>
             <text
@@ -280,16 +295,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
                 {chip.glyph}
               </text>
             ) : null}
-            {changes.added > 0 ? (
-              <text fg={theme.success} wrapMode="none">
-                +{changes.added}
-              </text>
-            ) : null}
-            {changes.deleted > 0 ? (
-              <text fg={theme.error} wrapMode="none">
-                −{changes.deleted}
-              </text>
-            ) : null}
+            <ChangeStats changes={changes} />
           </box>
         </box>
       </RowBody>

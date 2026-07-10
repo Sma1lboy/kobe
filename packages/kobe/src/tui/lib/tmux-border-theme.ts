@@ -10,7 +10,7 @@
  * derives the tmux-owned chrome from the active kobe theme and injects
  * it as global options on the `-L kobe` socket:
  *
- *   pane-border-style        fg=<theme.border>
+ *   pane-border-style        fg=<theme.borderSubtle>
  *   pane-active-border-style fg=<theme.focusAccent slot>   (focus signal,
  *                            same slot the in-pane focus indicators use)
  *   status-style             bg=<theme.backgroundPanel> fg=<theme.textMuted>
@@ -102,8 +102,8 @@ function lookupThemeJson(name: string): ThemeJson | null {
 }
 
 /**
- * The two border colors for a theme. Fallback chains mirror
- * `resolveTheme()`: `border` falls back to `text`; the active border
+ * The two border colors for a theme. Inactive pane edges deliberately use
+ * the subtle divider slot (then `border` / `text` fallbacks); the active border
  * uses the user's focus-accent slot with the same `primary` fallback
  * the in-pane focus indicators apply.
  */
@@ -159,7 +159,7 @@ export function resolveTmuxChromeHexes(theme: ThemeJson, focusAccentSlot: string
   const primary = firstHex(theme, focusAccentSlot, "primary", "borderActive", "border", "text")
 
   return {
-    border: firstHex(theme, "border", "text"),
+    border: firstHex(theme, "borderSubtle", "border", "text"),
     activeBorder: primary,
     statusBg: backgroundPanel,
     statusFg: textMuted,

@@ -334,7 +334,7 @@ export function TerminalSplit(props: {
           flexShrink={1}
           flexBasis={0}
           border={true}
-          borderColor={focused ? theme.focusAccent : theme.border}
+          borderColor={focused ? theme.focusAccent : theme.borderSubtle}
           onMouseUp={focusThis}
         >
           {body}
@@ -348,7 +348,7 @@ export function TerminalSplit(props: {
         flexShrink={1}
         flexBasis={0}
         border={[divider]}
-        borderColor={focused ? theme.focusAccent : theme.border}
+        borderColor={focused ? theme.focusAccent : theme.borderSubtle}
         onMouseUp={focusThis}
       >
         {body}
@@ -376,7 +376,7 @@ export function TerminalSplit(props: {
         flexGrow={1}
         flexShrink={1}
         flexBasis={0}
-        {...dividerProps(useBoxFrames ? undefined : divider, theme.border)}
+        {...dividerProps(useBoxFrames ? undefined : divider, theme.borderSubtle)}
       >
         {node.children.map((child, i) =>
           renderNode(

@@ -350,7 +350,7 @@ export function TasksShell(props: TasksShellProps) {
   const selectedIsMain = props.tasks.find((t) => t.id === selectedId)?.kind === "main"
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.backgroundPanel}>
       <VersionSkewBanner
         stale={props.daemonStale}
         daemonVersion={props.daemonVersion}

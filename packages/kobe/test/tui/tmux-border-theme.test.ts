@@ -10,12 +10,18 @@ import {
 } from "../../src/tui/lib/tmux-border-theme"
 
 describe("resolveBorderHexes", () => {
-  test("uses border + the focus-accent slot", () => {
+  test("uses the subtle divider + the focus-accent slot", () => {
     const theme: ThemeJson = {
-      theme: { border: "#333333", primary: "#cc5544", info: "#3377cc", text: "#eeeeee" },
+      theme: {
+        borderSubtle: "#222222",
+        border: "#333333",
+        primary: "#cc5544",
+        info: "#3377cc",
+        text: "#eeeeee",
+      },
     }
-    expect(resolveBorderHexes(theme, "primary")).toEqual({ border: "#333333", active: "#cc5544" })
-    expect(resolveBorderHexes(theme, "info")).toEqual({ border: "#333333", active: "#3377cc" })
+    expect(resolveBorderHexes(theme, "primary")).toEqual({ border: "#222222", active: "#cc5544" })
+    expect(resolveBorderHexes(theme, "info")).toEqual({ border: "#222222", active: "#3377cc" })
   })
 
   test("border falls back to text, active falls back to primary", () => {
@@ -32,6 +38,7 @@ describe("resolveTmuxChromeHexes", () => {
   test("derives border, statusbar, prompt, mode, and overlay colors from the active theme", () => {
     const theme: ThemeJson = {
       theme: {
+        borderSubtle: "#222222",
         border: "#333333",
         primary: "#cc5544",
         info: "#3377cc",
@@ -47,7 +54,7 @@ describe("resolveTmuxChromeHexes", () => {
     }
 
     expect(resolveTmuxChromeHexes(theme, "primary")).toEqual({
-      border: "#333333",
+      border: "#222222",
       activeBorder: "#cc5544",
       statusBg: "#181818",
       statusFg: "#999999",

@@ -48,7 +48,8 @@ function MockScene() {
       <box
         width={SIDEBAR_WIDTH}
         flexShrink={0}
-        borderColor={focus.focused === "sidebar" ? theme.focusAccent : theme.border}
+        backgroundColor={theme.backgroundPanel}
+        borderColor={focus.focused === "sidebar" ? theme.focusAccent : theme.borderSubtle}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
@@ -63,7 +64,7 @@ function MockScene() {
       </box>
       <box
         flexGrow={1}
-        borderColor={focus.focused !== "sidebar" ? theme.focusAccent : theme.border}
+        borderColor={focus.focused !== "sidebar" ? theme.focusAccent : theme.borderSubtle}
         onMouseUp={() => focus.setFocused("workspace")}
       >
         <TerminalTabs
