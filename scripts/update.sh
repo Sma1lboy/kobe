@@ -18,13 +18,24 @@ LATEST="$(npm view "${PACKAGE}" version 2>/dev/null || true)"
 
 if [ -t 1 ]; then
   BOLD='\033[1m'
+  ACCENT='\033[38;2;204;120;92m'
   GREEN='\033[32m'
   RED='\033[31m'
   DIM='\033[2m'
   RESET='\033[0m'
 else
-  BOLD='' GREEN='' RED='' DIM='' RESET=''
+  BOLD='' ACCENT='' GREEN='' RED='' DIM='' RESET=''
 fi
+
+printf '%b\n' \
+  "${ACCENT}${BOLD}██╗  ██╗ ██████╗ ██████╗ ███████╗" \
+  "██║ ██╔╝██╔═══██╗██╔══██╗██╔════╝" \
+  "█████╔╝ ██║   ██║██████╔╝█████╗" \
+  "██╔═██╗ ██║   ██║██╔══██╗██╔══╝" \
+  "██║  ██╗╚██████╔╝██████╔╝███████╗" \
+  "╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝${RESET}" \
+  "${DIM}many sessions. one terminal.${RESET}" \
+  ""
 
 if [ -n "$LATEST" ]; then
   printf '%bUpdating %s: %s -> v%s%b (via %s)\n' "$BOLD" "$PACKAGE" "${BEFORE:-not installed}" "$LATEST" "$RESET" "$MANAGER"
@@ -68,3 +79,4 @@ if [ -n "$LATEST" ] && [ "${AFTER##* }" != "$LATEST" ]; then
 fi
 
 printf '%b✓ %s -> %s%b\n' "$GREEN" "${BEFORE:-kobe (not installed)}" "${AFTER:-unknown}" "$RESET"
+printf '%bThanks for using kobe. Happy building.%b\n' "$DIM" "$RESET"
