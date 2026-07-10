@@ -86,6 +86,19 @@ function ensureInstalled(renderer: ReturnType<typeof useRenderer>): void {
 }
 
 /**
+ * True while a modal barrier (the dialog overlay's `ModalBarrier`) is
+ * registered. `dispatchKeyEvent` already cuts bindings off at the barrier,
+ * but raw `renderer.keyInput` listeners (the terminal pane's catch-all
+ * IME/paste forwarder, the sidebar's search capture) bypass dispatch
+ * entirely — they must check this, or keys typed into a dialog also land
+ * in the PTY / search query behind it. One query so every raw listener
+ * honors every dialog, instead of each one re-fixing the bug.
+ */
+export function modalActive(): boolean {
+  return stack.some((r) => r.modalOwner !== undefined)
+}
+
+/**
  * Register a set of bindings for the lifetime of the calling component.
  * The `config` function is re-evaluated on every keypress via a ref, so
  * `enabled` flags computed from the latest render stay correct.
