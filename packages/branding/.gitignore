@@ -3,3 +3,5 @@ out/
 *.log
 .DS_Store
 .capture-home*/
+.capture-probe/
+src/quicklook/frames-probe.json
