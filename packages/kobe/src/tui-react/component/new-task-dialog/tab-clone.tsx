@@ -29,6 +29,7 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           value={vm.cloneUrl}
           placeholder="https://github.com/user/repo.git"
           focused={vm.field === "cloneUrl"}
+          onMouseUp={() => vm.setField("cloneUrl")}
           onInput={(v: string) => vm.setCloneUrlText(v)}
           onSubmit={() => {
             if (!vm.cloneUrl.trim()) return
@@ -42,6 +43,7 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           value={vm.cloneParent}
           placeholder="~/"
           focused={vm.field === "cloneParent"}
+          onMouseUp={() => vm.setField("cloneParent")}
           onInput={(v: string) => vm.setCloneParentText(v)}
           onSubmit={() => vm.onCloneParentSubmit()}
         />
@@ -69,6 +71,7 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           value={vm.cloneFolder}
           placeholder={t("newTask.placeholder.folderName")}
           focused={vm.field === "cloneFolder"}
+          onMouseUp={() => vm.setField("cloneFolder")}
           onInput={(v: string) => vm.setCloneFolderText(v)}
           onSubmit={() => vm.setField("cloneBaseRef")}
         />
@@ -79,6 +82,7 @@ export function CloneTab({ vm }: { vm: NewTaskVm }) {
           value={vm.cloneBaseRef}
           placeholder={DEFAULT_BASE_REF}
           focused={vm.field === "cloneBaseRef"}
+          onMouseUp={() => vm.setField("cloneBaseRef")}
           onInput={(v: string) => vm.setCloneBaseRefText(v)}
           // Last field on the tab — Enter kicks off the clone + create.
           onSubmit={() => void vm.commitClone()}

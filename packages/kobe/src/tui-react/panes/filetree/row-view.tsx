@@ -5,8 +5,8 @@
  * (stat widths, path budget, status→token mapping) comes from the shared
  * framework-free `pane-core.ts`, so the two runtimes render identically.
  *
- * Cursor row treatment — matches the Sidebar: a left accent ▌
- * (focusAccent) + a subtle `backgroundElement` tint, NOT a solid
+ * Cursor row treatment — shares the Sidebar's neutral left marker +
+ * `backgroundElement` tint, NOT the pane-level focus accent or a solid
  * terracotta fill, so the semantic colours survive instead of being
  * flattened to inverted text. A bare space holds the 1-cell gutter on
  * non-cursor rows so content stays aligned.
@@ -16,6 +16,7 @@ import { TextAttributes } from "@opentui/core"
 import { type StatWidths, statCell, statusToken } from "../../../tui/panes/filetree/pane-core"
 import { type Row, truncatePathTail } from "../../../tui/panes/filetree/rows"
 import { useTheme } from "../../context/theme"
+import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 
 export type FileTreeRowProps = {
   row: Row
@@ -31,12 +32,13 @@ export type FileTreeRowProps = {
 
 export function FileTreeRowView(props: FileTreeRowProps) {
   const { theme } = useTheme()
+  const selection = resolveRowSelectionChrome(theme, { cursor: props.cursor })
   const bar = (
-    <text fg={props.cursor ? theme.focusAccent : undefined} wrapMode="none">
-      {props.cursor ? "▌" : " "}
+    <text fg={selection.markerColor} wrapMode="none">
+      {selection.marker}
     </text>
   )
-  const rowBg = props.cursor ? theme.backgroundElement : undefined
+  const rowBg = selection.backgroundColor
   const row = props.row
   if (row.kind === "dir") {
     // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
