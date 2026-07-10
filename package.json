@@ -24,6 +24,7 @@
     "changeset": "changeset",
     "changeset:status": "changeset status",
     "release": "scripts/release.sh",
+    "preview:install": "scripts/preview-install.sh",
     "issues:archive": "node scripts/issues-archive.mjs"
   },
   "devDependencies": {
