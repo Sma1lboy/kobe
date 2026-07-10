@@ -1,5 +1,7 @@
+/// <reference types="vitest/config" />
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
+import { configDefaults } from "vitest/config"
 
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import viteReact from "@vitejs/plugin-react"
@@ -37,6 +39,9 @@ const config = defineConfig({
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     viteReact(),
   ],
+  // `e2e/` is Playwright's (bun run test:e2e) — vitest's default glob would
+  // otherwise collect those specs and fail on the foreign test() runner.
+  test: { exclude: [...configDefaults.exclude, "e2e/**"] },
 })
 
 export default config
