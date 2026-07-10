@@ -32,6 +32,7 @@ import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/side
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 import type { ChatRunState, SidebarHover } from "./types"
 
 export type SidebarRowCardSharedProps = {
@@ -131,6 +132,7 @@ function RowBody(props: {
   const shared = props.shared
   const isCursor = flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   return (
     // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model; hover is pointer-only while keyboard nav exposes the same row detail by selection.
     <box
@@ -145,7 +147,7 @@ function RowBody(props: {
       width="100%"
       flexDirection="column"
       gap={0}
-      backgroundColor={isCursor ? theme.backgroundElement : isSelected ? theme.background : undefined}
+      backgroundColor={selection.backgroundColor}
       onMouseUp={() => {
         shared.setCursorIndex(flatIndex)
         shared.onSelect(task.id)
@@ -167,6 +169,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
   const flatIndex = props.row.flatIndex
   const isCursor = flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
   useEffect(() => {
     // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
@@ -190,15 +193,13 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
     () => shared.spinnerFrame,
   )
   const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.text : isSelected ? theme.borderActive : undefined
-  const barGlyph = isCursor || isSelected ? "▌" : " "
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={0}>
       <RowBody row={props.row} shared={shared}>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
@@ -210,8 +211,8 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
           </box>
         </box>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
@@ -232,6 +233,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
   const flatIndex = props.row.flatIndex
   const isCursor = flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
+  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
   const rowView = withSpinnerFrame(
     buildSidebarRowView({
@@ -249,16 +251,14 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
     () => shared.spinnerFrame,
   )
   const stateColor = toneColor(theme, rowView.tone)
-  const barColor = isCursor ? theme.text : isSelected ? theme.borderActive : undefined
-  const barGlyph = isCursor || isSelected ? "▌" : " "
   const chip = prCheckChip(task)
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={1}>
       <RowBody row={props.row} shared={shared}>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
@@ -280,8 +280,8 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
           </box>
         </box>
         <box flexDirection="row" gap={0}>
-          <text fg={barColor} wrapMode="none">
-            {barGlyph}
+          <text fg={selection.markerColor} wrapMode="none">
+            {selection.marker}
           </text>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
             <SubtitleText view={rowView} frame={shared.spinnerFrame} />
