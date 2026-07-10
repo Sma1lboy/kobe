@@ -113,7 +113,8 @@ export function TerminalSplit(props: {
    *  name, matching the group/tab label. Null before the first prompt. */
   engineTitle?: string | null
 }): ReactNode {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
+  const inactiveBorder = transparentBackground ? theme.border : theme.borderSubtle
   const t = useT()
   const kv = useKV()
   const state = props.splitTree ?? UNSPLIT
@@ -334,7 +335,7 @@ export function TerminalSplit(props: {
           flexShrink={1}
           flexBasis={0}
           border={true}
-          borderColor={focused ? theme.focusAccent : theme.borderSubtle}
+          borderColor={focused ? theme.focusAccent : inactiveBorder}
           onMouseUp={focusThis}
         >
           {body}
@@ -348,7 +349,7 @@ export function TerminalSplit(props: {
         flexShrink={1}
         flexBasis={0}
         border={[divider]}
-        borderColor={focused ? theme.focusAccent : theme.borderSubtle}
+        borderColor={focused ? theme.focusAccent : inactiveBorder}
         onMouseUp={focusThis}
       >
         {body}
@@ -376,7 +377,7 @@ export function TerminalSplit(props: {
         flexGrow={1}
         flexShrink={1}
         flexBasis={0}
-        {...dividerProps(useBoxFrames ? undefined : divider, theme.borderSubtle)}
+        {...dividerProps(useBoxFrames ? undefined : divider, inactiveBorder)}
       >
         {node.children.map((child, i) =>
           renderNode(

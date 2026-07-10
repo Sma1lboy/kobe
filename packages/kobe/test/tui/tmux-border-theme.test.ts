@@ -22,6 +22,7 @@ describe("resolveBorderHexes", () => {
     }
     expect(resolveBorderHexes(theme, "primary")).toEqual({ border: "#222222", active: "#cc5544" })
     expect(resolveBorderHexes(theme, "info")).toEqual({ border: "#222222", active: "#3377cc" })
+    expect(resolveBorderHexes(theme, "primary", true)).toEqual({ border: "#333333", active: "#cc5544" })
   })
 
   test("border falls back to text, active falls back to primary", () => {
@@ -70,6 +71,7 @@ describe("resolveTmuxChromeHexes", () => {
       modeBg: "#cc5544",
       modeFg: "#101010",
     })
+    expect(resolveTmuxChromeHexes(theme, "primary", true).border).toBe("#333333")
   })
 
   test("an empty theme yields nulls so the caller releases owned tmux options", () => {

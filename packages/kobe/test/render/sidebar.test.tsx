@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "bun:test"
 import { type CapturedFrame, RGBA, TextAttributes } from "@opentui/core"
+import { setTransparentBackground } from "../../src/tui-react/context/theme"
 import { Sidebar } from "../../src/tui-react/panes/sidebar/Sidebar"
 import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
 import { resolveThemeSlotHex } from "../../src/tui/context/theme/hex"
@@ -151,6 +152,33 @@ describe("Sidebar", () => {
       expect(backgroundWidth(frame, "beta task", cursorBg)).toBe(30)
     } finally {
       destroy()
+    }
+  })
+
+  it("strengthens section dividers when transparent mode removes panel fills", async () => {
+    const selected = task()
+    const theme = BUNDLED_THEME_JSONS.claude!
+    const border = RGBA.fromHex(resolveThemeSlotHex(theme, "border")!)
+    setTransparentBackground(true)
+    const { destroy, spans } = await renderComponent(
+      <Sidebar
+        width={30}
+        tasks={[selected]}
+        selectedId={selected.id}
+        onSelect={() => {}}
+        focused
+        worktreeChanges={new Map([[selected.worktreePath, { added: 0, deleted: 0 }]])}
+      />,
+      { width: 34, height: 14 },
+    )
+
+    try {
+      const sectionLine = findLine(await spans(), "TASKS")
+      const divider = sectionLine?.spans.find((span) => span.text.includes("─"))
+      expect(divider?.fg.equals(border)).toBe(true)
+    } finally {
+      destroy()
+      setTransparentBackground(false)
     }
   })
 })

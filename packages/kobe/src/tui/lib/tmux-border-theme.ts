@@ -10,7 +10,8 @@
  * derives the tmux-owned chrome from the active kobe theme and injects
  * it as global options on the `-L kobe` socket:
  *
- *   pane-border-style        fg=<theme.borderSubtle>
+ *   pane-border-style        fg=<theme.borderSubtle>, or <theme.border>
+ *                            when transparent mode needs more separation
  *   pane-active-border-style fg=<theme.focusAccent slot>   (focus signal,
  *                            same slot the in-pane focus indicators use)
  *   status-style             bg=<theme.backgroundPanel> fg=<theme.textMuted>
@@ -66,6 +67,7 @@ const FOCUS_ACCENT_SLOT_NAMES = ["primary", "success", "info"] as const
 interface TmuxChromePrefs {
   readonly themeName: string
   readonly focusAccentSlot: string
+  readonly transparentBackground: boolean
   /** `"tmuxChromeTheme": "off"` in state.json disables the injection. */
   readonly enabled: boolean
 }
@@ -88,10 +90,11 @@ function readTmuxChromePrefs(): TmuxChromePrefs {
     return {
       themeName,
       focusAccentSlot,
+      transparentBackground: parsed.transparentBackground === true,
       enabled: parsed.tmuxChromeTheme !== "off" && parsed.tmuxBorderTheme !== "off",
     }
   } catch {
-    return { themeName: "claude", focusAccentSlot: "primary", enabled: true }
+    return { themeName: "claude", focusAccentSlot: "primary", transparentBackground: false, enabled: true }
   }
 }
 
@@ -102,16 +105,17 @@ function lookupThemeJson(name: string): ThemeJson | null {
 }
 
 /**
- * The two border colors for a theme. Inactive pane edges deliberately use
- * the subtle divider slot (then `border` / `text` fallbacks); the active border
- * uses the user's focus-accent slot with the same `primary` fallback
- * the in-pane focus indicators apply.
+ * The two border colors for a theme. Inactive pane edges use the subtle
+ * divider on solid backgrounds, but the regular border in transparent mode
+ * where there is no panel fill to separate adjacent regions. The active edge
+ * keeps the user's focus-accent slot.
  */
 export function resolveBorderHexes(
   theme: ThemeJson,
   focusAccentSlot: string,
+  transparentBackground = false,
 ): { border: string | null; active: string | null } {
-  const hexes = resolveTmuxChromeHexes(theme, focusAccentSlot)
+  const hexes = resolveTmuxChromeHexes(theme, focusAccentSlot, transparentBackground)
   const border = hexes.border
   const active = hexes.activeBorder
   return { border, active }
@@ -148,7 +152,11 @@ function firstHex(theme: ThemeJson, ...slots: string[]): string | null {
  * `resolveTheme()` where possible, but return null when a whole category
  * cannot be derived so the planner releases instead of painting black.
  */
-export function resolveTmuxChromeHexes(theme: ThemeJson, focusAccentSlot: string): TmuxChromeHexes {
+export function resolveTmuxChromeHexes(
+  theme: ThemeJson,
+  focusAccentSlot: string,
+  transparentBackground = false,
+): TmuxChromeHexes {
   const text = firstHex(theme, "text")
   const background = firstHex(theme, "background")
   const textMuted = firstHex(theme, "textMuted", "text")
@@ -159,7 +167,9 @@ export function resolveTmuxChromeHexes(theme: ThemeJson, focusAccentSlot: string
   const primary = firstHex(theme, focusAccentSlot, "primary", "borderActive", "border", "text")
 
   return {
-    border: firstHex(theme, "borderSubtle", "border", "text"),
+    border: transparentBackground
+      ? firstHex(theme, "border", "borderSubtle", "text")
+      : firstHex(theme, "borderSubtle", "border", "text"),
     activeBorder: primary,
     statusBg: backgroundPanel,
     statusFg: textMuted,
@@ -462,7 +472,7 @@ export async function applyTmuxChromeTheme(): Promise<void> {
     // Disabled or unknown theme → null hexes, which release (never set)
     // the options below; a marker-less server then plans zero commands.
     const hexes = themeJson
-      ? resolveTmuxChromeHexes(themeJson, prefs.focusAccentSlot)
+      ? resolveTmuxChromeHexes(themeJson, prefs.focusAccentSlot, prefs.transparentBackground)
       : resolveTmuxChromeHexes({ theme: {} }, prefs.focusAccentSlot)
     // `-q` keeps an unset option (notably the marker on a fresh server)
     // from logging an "invalid option" error line through runTmuxCapturing.

@@ -43,7 +43,8 @@ const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
 
 function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
+  const inactiveBorder = transparentBackground ? theme.border : theme.borderSubtle
   const dialog = useDialog()
   const kv = useKV()
   const focus = useFocus()
@@ -284,7 +285,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         width={SIDEBAR_WIDTH}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
-        borderColor={focus.focused === "sidebar" ? theme.focusAccent : theme.borderSubtle}
+        borderColor={focus.focused === "sidebar" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
@@ -330,7 +331,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       <box
         flexGrow={1}
         flexShrink={1}
-        borderColor={focus.focused === "workspace" ? theme.focusAccent : theme.borderSubtle}
+        borderColor={focus.focused === "workspace" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("workspace")}
       >
         <ShowWorkspace
@@ -354,7 +355,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         <box
           width={worktreeToolsWidth}
           flexShrink={0}
-          borderColor={focus.focused === "files" ? theme.focusAccent : theme.borderSubtle}
+          borderColor={focus.focused === "files" ? theme.focusAccent : inactiveBorder}
           onMouseUp={() => focus.setFocused("files")}
         >
           <FileTree

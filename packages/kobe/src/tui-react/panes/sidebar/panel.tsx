@@ -16,7 +16,8 @@ import { ProjectRowCard, type SidebarRowCardSharedProps, TaskRowCard } from "./r
 import type { SidebarHover, SidebarProps } from "./types"
 
 function SectionHeader(props: { label: string; suffix?: string; topPad?: boolean }) {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
+  const dividerColor = transparentBackground ? theme.border : theme.borderSubtle
   return (
     <box flexDirection="column" flexShrink={0}>
       {props.topPad ? (
@@ -28,7 +29,7 @@ function SectionHeader(props: { label: string; suffix?: string; topPad?: boolean
         <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
           {props.label}
         </text>
-        <text fg={theme.borderSubtle} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+        <text fg={dividerColor} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
           {"─".repeat(240)}
         </text>
         {props.suffix ? (
@@ -71,7 +72,8 @@ export function SidebarPanel(props: {
   dims: { width: number; height: number }
   renderHoverFallback: boolean
 }) {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
+  const dividerColor = transparentBackground ? theme.border : theme.borderSubtle
   const t = useT()
   const status = props.headerStatus ?? null
   return (
@@ -178,7 +180,7 @@ export function SidebarPanel(props: {
             <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
               {t("tasks.header.projects")}
             </text>
-            <text fg={theme.borderSubtle} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+            <text fg={dividerColor} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
               {"─".repeat(240)}
             </text>
             {/* Project-filter label sits at flex end (owner taste 2026-07-10);

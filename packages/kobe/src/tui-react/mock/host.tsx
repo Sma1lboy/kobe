@@ -29,7 +29,8 @@ import { TerminalTabs } from "../workspace/TerminalTabs"
 const cwd = mkdtempSync(join(tmpdir(), "kobe-mock-react-"))
 
 function MockScene() {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
+  const inactiveBorder = transparentBackground ? theme.border : theme.borderSubtle
   const focus = useFocus()
   const [tasks] = useState(seedSidebarTasks)
   const [selectedId, setSelectedId] = useState<string | null>(tasks.find((t) => t.kind === "task")?.id ?? null)
@@ -49,7 +50,7 @@ function MockScene() {
         width={SIDEBAR_WIDTH}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
-        borderColor={focus.focused === "sidebar" ? theme.focusAccent : theme.borderSubtle}
+        borderColor={focus.focused === "sidebar" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
@@ -64,7 +65,7 @@ function MockScene() {
       </box>
       <box
         flexGrow={1}
-        borderColor={focus.focused !== "sidebar" ? theme.focusAccent : theme.borderSubtle}
+        borderColor={focus.focused !== "sidebar" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("workspace")}
       >
         <TerminalTabs
