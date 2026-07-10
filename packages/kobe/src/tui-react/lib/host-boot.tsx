@@ -31,10 +31,11 @@ import {
   logClientError,
   setClientLogContext,
 } from "@sma1lboy/kobe-daemon/client/client-log"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import type { UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { Component, type ReactNode, useEffect } from "react"
 import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
-import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { applyUserKeybindings, reloadUserKeybindings } from "../../tui/context/keybindings-user"
 import { loadUserThemes } from "../../tui/context/theme/loader"
 import { type UiPrefsTarget, applyUiPrefs } from "../../tui/lib/apply-ui-prefs"
@@ -275,4 +276,22 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   installPaneExitBackstop()
   installOrphanExitWatchdog()
   installEventLoopStallTelemetry()
+}
+
+/**
+ * Best-effort daemon connection for a page host (new-task / quick-task):
+ * the page still renders without a daemon — mutations are unavailable and
+ * the failure is log-only. Hosts that REQUIRE the daemon (the workspace
+ * host's gui attach) keep their own throwing connect.
+ */
+export async function connectOrchestratorBestEffort(logContext: string): Promise<RemoteOrchestrator | null> {
+  try {
+    const client = await connectOrStartDaemon()
+    const orch = new RemoteOrchestrator(client)
+    await orch.init()
+    return orch
+  } catch (err) {
+    console.error(`[kobe ${logContext}] daemon unavailable; cannot create task:`, err)
+    return null
+  }
 }

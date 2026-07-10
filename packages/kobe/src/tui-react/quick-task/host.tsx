@@ -28,9 +28,8 @@
  * is never a dead end.
  */
 
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useRef } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
 import { engineDisplayName } from "../../engine/interactive-command.ts"
 import { addSavedRepo, getSavedRepos } from "../../state/repos.ts"
@@ -45,7 +44,7 @@ import { repoBasename } from "../../tui/panes/sidebar/groups.ts"
 import type { Task, VendorId } from "../../types/task.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
-import { bootPaneHost } from "../lib/host-boot"
+import { bootPaneHost, connectOrchestratorBestEffort } from "../lib/host-boot"
 import { NewTaskPage } from "../new-task/host.tsx"
 import { useDialog } from "../ui/dialog"
 
@@ -178,15 +177,7 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
 export async function startQuickTaskHost(args: QuickTaskHostArgs): Promise<void> {
   await bootPaneHost({
     setup: async () => {
-      let orch: RemoteOrchestrator | null = null
-      try {
-        const client = await connectOrStartDaemon()
-        const remote = new RemoteOrchestrator(client)
-        await remote.init()
-        orch = remote
-      } catch (err) {
-        console.error("[kobe quick-task] daemon unavailable; cannot create task:", err)
-      }
+      const orch = await connectOrchestratorBestEffort("quick-task")
 
       const { ctx, fallbackRepo } = await resolveQuickTaskContext(orch, args.session)
 

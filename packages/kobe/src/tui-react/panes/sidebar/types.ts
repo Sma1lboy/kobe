@@ -15,7 +15,28 @@ import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-change
 
 export type { ChatRunState, SidebarHover } from "../../../tui/panes/sidebar/types"
 
-export type SidebarProps = {
+/**
+ * Task-lifecycle callbacks shared VERBATIM by {@link SidebarProps} (host
+ * wiring) and `SidebarBindingsOpts` (the key controller in keys.ts) — one
+ * definition so the two surfaces can't drift.
+ */
+export type SidebarTaskCallbacks = {
+  onDeleteRequest?: (taskId: string) => void
+  onArchiveRequest?: (taskId: string) => void
+  /** Shift+M — lowercase `m` is captured but ignored (shift dropped on letters). */
+  onLocalMergeRequest?: (taskId: string) => void
+  /** Task reorder mode: j/k move the cursor task instead of the cursor. */
+  moveMode?: boolean
+  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
+  onMoveModeExit?: () => void
+  onRenameRequest?: (taskId: string) => void
+  /** Shift+P only — bare `p` is consumed but does nothing (same as Solid). */
+  onPinRequest?: (taskId: string) => void
+  onPreviewToggleRequest?: (taskId: string) => void
+  onSortModeToggle?: () => void
+}
+
+export type SidebarProps = SidebarTaskCallbacks & {
   tasks: readonly Task[]
   selectedId: string | null
   onSelect: (id: string) => void
@@ -26,18 +47,8 @@ export type SidebarProps = {
   /** Keep a task-bound pane visually pinned to its own task after jump-away. */
   pinnedSelection?: boolean
   focused?: boolean
-  onDeleteRequest?: (taskId: string) => void
-  onArchiveRequest?: (taskId: string) => void
-  onLocalMergeRequest?: (taskId: string) => void
-  moveMode?: boolean
-  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
-  onMoveModeExit?: () => void
-  onRenameRequest?: (taskId: string) => void
-  onPinRequest?: (taskId: string) => void
-  onPreviewToggleRequest?: (taskId: string) => void
   /** Presence (non-undefined) turns on the sort toggle, like the Solid accessor. */
   sortMode?: TaskSortMode
-  onSortModeToggle?: () => void
   /** Presence (non-undefined, null = "all") makes the filter host-controlled. */
   projectFilter?: string | null
   onProjectFilterChange?: (repo: string | null) => void
