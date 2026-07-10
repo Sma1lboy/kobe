@@ -77,7 +77,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                   key={v}
                   fg={selected ? theme.primary : theme.textMuted}
                   attributes={selected ? TextAttributes.BOLD : undefined}
-                  onMouseUp={() => vm.setVendor(v)}
+                  onMouseUp={() => {
+                    vm.setVendor(v)
+                    vm.setField("engine")
+                  }}
                 >
                   {selected ? "▸ " : "  "}
                   {v}
