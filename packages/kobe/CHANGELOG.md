@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.90
+
+### Patch Changes
+
+- 4acb89c: Embedded terminals now scrub the outer emulator's entire identity namespace (LC*TERMINAL, ITERM*_, TERM*SESSION_ID, KITTY*_, GHOSTTY*\*, WEZTERM*_, ALACRITTY\__, KONSOLE*\*, VTE_VERSION, WT*\*, TMUX, ZELLIJ, screen markers, \_\_CFBundleIdentifier), not just TERM_PROGRAM. Apps with layered terminal detection (claude-code) no longer fall back to the outer emulator's dialect, which kept causing redraw artifacts inside kobe panes.
+- 26c3a81: Switching back to a background chattab no longer comes up with claude's UI missing. Two changes: hidden tabs' local terminal screens are no longer auto-parked (the reattach replay can't reconstruct a long session's full screen from the byte-capped ring buffer, so revived tabs could lose the input box — screens now stay resident, owner-accepted memory cost); and the TUI-restart reattach repaint wiggle no longer fires its two resizes back-to-back, where the child's SIGWINCHes coalesce into one same-size signal that apps like claude ignore — the restore now waits for the child's shrink repaint (200ms timeout fallback).
+- 5bc74f8: Reattaching to a hosted terminal session no longer re-answers the child's past terminal queries. The ring-buffer replay contains DSR/DA queries the child asked long ago; the fresh emulator answered them again and the stray CPR bytes landed in the child's stdin as phantom input — one source of interactive claude's scrambled/misplaced UI after a TUI restart, tab park-wake, or second viewer attach. Replay parsing now mutes the emulator's auto-replies; live queries are still answered.
+- 09ddd2e: A user-typed engine in a shell tab now gets the same native-title treatment as a kobe-launched one: the tab strip resolves "does this process own its status" from the live process identity instead of the tab's launch path, so no duplicate kobe turn glyph is prefixed either way.
+- 03105d0: FileTree opens now reuse one File tab, replacing its current file instead of growing a new editor tab for every file you browse.
+
 ## 0.7.89
 
 ### Patch Changes
