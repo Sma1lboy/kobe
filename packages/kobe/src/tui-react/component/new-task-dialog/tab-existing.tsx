@@ -42,6 +42,7 @@ export function ExistingTab({ vm }: { vm: NewTaskVm }) {
           value={vm.repo}
           placeholder={vm.defaultRepo}
           focused={vm.field === "repo"}
+          onMouseUp={() => vm.setField("repo")}
           onInput={(v: string) => vm.setRepoText(v)}
           // Every Enter routes through onRepoSubmit — it handles the
           // empty-input pick-first case too.
@@ -57,6 +58,7 @@ export function ExistingTab({ vm }: { vm: NewTaskVm }) {
           value={vm.baseRef}
           placeholder={DEFAULT_BASE_REF}
           focused={vm.field === "baseRef"}
+          onMouseUp={() => vm.setField("baseRef")}
           onInput={(v: string) => vm.setBaseRefText(v)}
           // Last field on the tab — Enter resolves the highlighted branch
           // and creates straight away.
