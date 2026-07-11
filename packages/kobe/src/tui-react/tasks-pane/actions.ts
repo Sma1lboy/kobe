@@ -38,7 +38,7 @@ import { HelpDialog } from "../component/help-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import type { KVContext } from "../context/kv"
 import type { DialogContext } from "../ui/dialog"
-import { selectNextAfterDelete, taskDialogAdapters, vendorPrefAdapters } from "../ui/task-dialog-adapters"
+import { buildBaseCreateTaskContext } from "../ui/task-dialog-adapters"
 
 /** Deps every action below needs, built once per `TasksShell` render. */
 export interface TasksHostActionsContext {
@@ -309,32 +309,16 @@ export interface TaskActionsContextDeps extends TasksHostActionsContext {
  */
 export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTaskContext {
   return {
-    orch: deps.orch,
-    tasks: () => deps.tasks(),
     // Dialogs show IN the Tasks pane without zooming it full-window: the
     // dialog overlay caps to the pane width (`maxWidth = dimensions().width
     // - 2`), so it renders fine in the ~22%-wide pane — just narrower — and
     // the other panes stay visible. Disk-only vendor persistence (no
     // in-process kv store), so no onRepoSaved kv mirror is needed.
-    ...taskDialogAdapters(deps.dialog),
-    ...vendorPrefAdapters,
-    logger: console,
-    logPrefix: "[kobe tasks]",
-    notifyError: deps.notifyError,
-    notifyInfo: deps.notifyInfo,
+    ...buildBaseCreateTaskContext({ ...deps, logPrefix: "[kobe tasks]", enterTask: deps.switchTo }),
     reload: () => deps.reload(),
     // This pane runs INSIDE the tmux client whose session a delete kills —
     // switch away first so the kill doesn't yank the user's terminal.
     switchBeforeKill: true,
-    // Publish the shared active-task focus so every surface follows.
-    updateActiveTask: true,
-    onTaskDeleted: selectNextAfterDelete(deps),
-    // "Spawn a sibling" default: the cursor task's repo (fallback: the
-    // first listed task's).
-    cursorRepo: () => {
-      const list = deps.tasks()
-      return (list.find((t) => t.id === deps.selectedId()) ?? list[0])?.repo
-    },
     // Same surface preference as Settings (default chattab): open the
     // new-task flow as a dedicated full-window page in a new tmux tab.
     // The page performs the create/adopt itself and the subscribe pushes
@@ -348,12 +332,5 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
       await openNewTaskTab(session, defaultRepo)
       return true
     },
-    // Land the cursor on the new task so Enter / click enters it next.
-    // (The daemon subscribe pushes the new task into the list momentarily.)
-    selectTask: (id) => deps.setSelectedId(id),
-    // Then enter it: `n` drops the user straight into the new task's engine
-    // pane (the same enter loop Enter/click runs), ready to type the first
-    // prompt — not just a moved cursor.
-    enterTask: (id) => deps.switchTo(id),
   }
 }
