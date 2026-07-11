@@ -101,13 +101,17 @@ export function HelpDialog(props: { onClose?: () => void }) {
                   pureTuiPrefix.key && row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
                 const rawPrimary = prefixPrimary ?? row.hint?.keys ?? row.keys[0] ?? "—"
                 const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph))
-                const aliases = (row.hint ? row.keys : row.keys.slice(1))
-                  .map((key) => formatChord(key, prefixGlyph))
-                  .concat(
-                    pureTuiPrefix.key
-                      ? (row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
-                      : [],
-                  )
+                // A prefix primary leaves every direct chord as a visible
+                // alias. Without this, a user-configured direct+prefix row
+                // silently lost its first direct chord in F1.
+                const directAliases = (prefixPrimary || row.hint ? row.keys : row.keys.slice(1)).map((key) =>
+                  formatChord(key, prefixGlyph),
+                )
+                const aliases = directAliases.concat(
+                  pureTuiPrefix.key
+                    ? (row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
+                    : [],
+                )
                 return (
                   <box key={row.id} flexDirection="row" gap={2} paddingLeft={1}>
                     <box width={14}>
