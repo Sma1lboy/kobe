@@ -6,7 +6,7 @@
  * rules).
  */
 
-import type { KobeBinding } from "./keybindings.ts"
+import type { KobeBinding } from "./keybindings-table.ts"
 
 export const FILES_BINDINGS: readonly KobeBinding[] = [
   {
