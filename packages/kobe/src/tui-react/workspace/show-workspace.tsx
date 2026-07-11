@@ -6,7 +6,7 @@
  * PTYs). Split from host.tsx (file-size cap).
  */
 
-import { type ReactNode, useSyncExternalStore } from "react"
+import type { ReactNode } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
@@ -14,6 +14,7 @@ import type { QuickTaskResult } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { TerminalTabs } from "./TerminalTabs"
+import { useAccessor } from "./use-accessor"
 
 export function ShowWorkspace(props: {
   task: Task | undefined
@@ -29,12 +30,7 @@ export function ShowWorkspace(props: {
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
-  const transcriptActivityStore = props.orchestrator.transcriptActivityStore()
-  const transcriptActivity = useSyncExternalStore(
-    transcriptActivityStore.subscribe,
-    transcriptActivityStore.get,
-    transcriptActivityStore.get,
-  )
+  const transcriptActivity = useAccessor(props.orchestrator.transcriptActivityStore())
   if (!props.worktree) {
     return (
       <box flexGrow={1} alignItems="center" justifyContent="center">

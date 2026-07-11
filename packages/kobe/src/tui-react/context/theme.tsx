@@ -18,7 +18,7 @@
 
 import { RGBA } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react"
+import { type ReactNode, createContext, useContext, useEffect, useMemo } from "react"
 import { createExternalStore } from "../../lib/external-store"
 import {
   BUNDLED_THEMES,
@@ -28,6 +28,7 @@ import {
   applyDisplayOverlay,
   resolveTheme,
 } from "../../tui/context/theme-core"
+import { useAccessor } from "../workspace/use-accessor"
 
 export { FOCUS_ACCENT_SLOTS, resolveTheme } from "../../tui/context/theme-core"
 export type { FocusAccentSlot, Theme, ThemeJson } from "../../tui/context/theme-core"
@@ -153,7 +154,7 @@ export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "li
     }))
   }, [])
 
-  const state = useSyncExternalStore(store.subscribe, store.get, store.get)
+  const state = useAccessor(store)
   const renderer = useRenderer()
 
   const theme = useMemo(

@@ -10,46 +10,26 @@
  * (`{ k: "n" }`, `{ k: "a/d" }`, …) so an override / unbind in
  * ~/.kobe/settings/keybindings.yaml changed dispatch but NOT the advertised
  * cap — the legend lied. The fix derives each cap from `KobeKeymap` via
- * `legendCap` / `legendRowCap` in tasks-pane/host.tsx.
- *
- * Why this test pins the keymap CONTRACT rather than importing the host's
- * `legendCap`: tasks-pane/host.tsx pulls in `@opentui/core` at module-eval
- * (the Sidebar / dimensions graph), which crashes vitest on a `.scm` asset —
- * pane hosts aren't CI-importable (same reason tasks-focus-engine.test.ts
- * pins the row contract, not the host). So we lock the two things the
- * derivation depends on:
+ * `legendCap` / `legendRowCap`, which live in the framework-free
+ * `src/tui/lib/help-groups.ts` — imported here directly (no opentui in the
+ * module graph), so this file tests the REAL helpers the footer legend
+ * (tasks-pane/shortcut-hints.tsx) and the help dialog run. Two things lock:
  *   1. every binding id the legend reads still EXISTS in KobeKeymap and
  *      resolves to the expected default cap (id drift = a silently-dropped
  *      legend row), and
  *   2. the resolution rule (`hint?.keys ?? keys[0]`, drop on unbind, join
  *      composites with `/`) tracks a real override / unbind through the
  *      live-reload machinery (applyKeymapOverrides + resetKeymapToDefaults).
- *
- * The rule mirror below is the EXACT body of host.tsx's `legendCap` /
- * `legendRowCap`; if you change one, change the other (they can't share a
- * module without dragging opentui into the test).
  */
 
 import { afterEach, describe, expect, test } from "vitest"
 import { KobeKeymap, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
+import { legendCap, legendRowCap } from "../../src/tui/lib/help-groups"
 import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 
-// Mirror of tasks-pane/host.tsx `legendCap`.
-function legendCap(id: string): string | null {
-  const row = findBinding(id)
-  if (!row) return null
-  const cap = row.hint?.keys ?? row.keys[0]
-  return cap && cap.length > 0 ? cap : null
-}
-
-// Mirror of tasks-pane/host.tsx `legendRowCap`.
-function legendRowCap(ids: readonly string[]): string | null {
-  const caps = ids.map(legendCap).filter((c): c is string => c !== null)
-  return caps.length > 0 ? caps.join("/") : null
-}
-
-// The id → expected-default-cap map the legend rows in host.tsx are built
-// from. Keep in sync with `defaultHints` in tasks-pane/host.tsx.
+// The id → expected-default-cap map the legend rows are built from. Keep in
+// sync with `defaultHints` in tasks-pane/shortcut-hints.tsx (footer rows) —
+// the extras here are F1-help rows sharing the same derivation.
 const SINGLE_ROWS: ReadonlyArray<readonly [id: string, cap: string]> = [
   ["sidebar.select", "enter"], // "open"
   ["tasks.focusEngine", "→"], // "focus engine"

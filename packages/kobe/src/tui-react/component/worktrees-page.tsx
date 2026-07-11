@@ -31,7 +31,7 @@ import { relativeAgeMs } from "../../tui/history/message-core"
 import type { WorktreeAuditRow, WorktreeProject } from "../../types/worktree"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -186,9 +186,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
-      { key: "escape", cmd: props.onClose },
-      { key: "q", cmd: props.onClose },
-      { key: "ctrl+c", cmd: props.onClose },
+      ...pageCloseBindings(props.onClose),
       { key: "up", cmd: () => setCursor((c) => clampCursor(c - 1, flatRows.length)) },
       { key: "down", cmd: () => setCursor((c) => clampCursor(c + 1, flatRows.length)) },
       {

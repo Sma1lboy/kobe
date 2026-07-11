@@ -41,7 +41,7 @@ import {
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 
 type ActionId = "update" | "release" | "close"
 
@@ -169,9 +169,7 @@ export function UpdatePage(props: { onClose: () => void }) {
       { key: "return", cmd: () => activate() },
       { key: "u", cmd: () => activate("update") },
       { key: "r", cmd: () => activate("release") },
-      { key: "q", cmd: () => activate("close") },
-      { key: "escape", cmd: () => activate("close") },
-      { key: "ctrl+c", cmd: () => activate("close") },
+      ...pageCloseBindings(() => activate("close")),
     ],
   }))
 
