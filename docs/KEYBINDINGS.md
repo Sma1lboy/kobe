@@ -3,7 +3,7 @@
 Single source of truth for "what keys do what, where, and why."
 Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
-> **PureTUI prefix (2026-07-11).** In the Workspace Host, ChatPane-reachable `KobeKeymap` control-chord rows use the configurable prefix sequence `ctrl+a`, then the old key (for example `ctrl+t` became `ctrl+a t`). Sidebar, Files, and Terminal pane-local Ctrl chords remain direct unless they conflict with common input conventions. The prefix changes only Binding Stack matching; it never crosses a row's existing `enabled` gate or the modal barrier. tmux Handover bindings remain documented as tmux behavior below and are unaffected.
+> **PureTUI prefix (2026-07-11).** In the Workspace Host, the central ChatPane uses the configurable prefix sequence `ctrl+a`, then the old key (for example `ctrl+t` becomes `ctrl+a t`). Tasks and Files keep their direct Ctrl chords; the Terminal pane keeps a Ctrl chord direct only when it does not collide with the child terminal's native input. This is a focus-time Binding Stack choice, so a row can retain both forms without crossing its existing `enabled` gate or the modal barrier. tmux Handover bindings remain documented as tmux behavior below and are unaffected.
 
 > **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now; **`focus.next` revived 2026-07-06** for the pure TUI, on `f4`, forward-only — see the pure-TUI navigation decision log), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
 
@@ -22,14 +22,14 @@ There are four panes:
 | k       | Files       | `"files"`     | `ctrl+k`    |
 | l       | Terminal    | `"terminal"`  | `ctrl+l`    |
 
-`ctrl+hjkl` is **global** (`scope: "global"`, id `focus.numeric`). It fires from any pane, including when the chat composer has the
-keyboard. ctrl+letter chords map to stable C0 control bytes that every terminal sends without protocol negotiation, so the chord
-works without iTerm CSI-u, kitty keyboard, tmux extended-keys, or any per-user setup. The only thing that suppresses it is an
-open dialog — binding registrations include `enabled: dialog.stack.length === 0` so dialog-internal keys
-(esc to dismiss, enter to confirm) win on the dialog stack.
+`ctrl+hjkl` is direct in Tasks and Files (`scope: "global"`, id `focus.numeric`); from ChatPane it is `prefix + h/j/k/l`, and from
+the Terminal pane it stays prefix-gated so readline/engine control bytes remain untouched. ctrl+letter chords map to stable C0
+control bytes that every terminal sends without protocol negotiation. An open dialog suppresses both forms — binding registrations
+include `enabled: dialog.stack.length === 0` so dialog-internal keys (esc to dismiss, enter to confirm) win on the dialog stack.
 
-`ctrl+q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`). In the native workspace, a second `ctrl+q`
-from sidebar focus exits the attached native UI, matching the direct-tmux handover's two-stage detach shape. `esc` is
+`ctrl+q` from Files jumps back to the sidebar (`focus.sidebar`); from ChatPane and the Terminal pane use `prefix + q` so their
+native input remains untouched. In Tasks, `ctrl+q` exits the attached native UI, while plain `q` opens the quit confirmation.
+`esc` is
 **not** a global "back to sidebar" — it would yank focus out of the chat composer mid-edit. ESC is reserved for: closing
 the top dialog (DialogProvider) and interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm)
 and plain `n` (new task).

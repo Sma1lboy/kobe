@@ -15,9 +15,16 @@ import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
 
 describe("resetKeymapToDefaults", () => {
-  test("app quit keeps its direct confirm and moves hard exit behind the prefix", () => {
-    expect(findBinding("app.quit")?.keys).toEqual(["q"])
-    expect(findBinding("app.quit")?.prefixKeys).toEqual(["q"])
+  test("Tasks keeps ctrl+q as its direct hard-exit chord", () => {
+    expect(findBinding("app.quit")?.keys).toEqual(["q", "ctrl+q"])
+    expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
+  })
+
+  test("dual-mode navigation retains direct Ctrl keys plus ChatPane prefix strokes", () => {
+    expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
+    expect(findBinding("focus.sidebar")?.prefixKeys).toEqual(["q"])
+    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"])
+    expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
   })
 
   test("terminal scrollback remains a direct ctrl chord outside the ChatPane", () => {

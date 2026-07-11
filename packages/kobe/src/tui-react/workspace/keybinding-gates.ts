@@ -1,3 +1,5 @@
+import type { PaneId } from "../context/focus"
+
 /**
  * Pure gating predicates for the workspace host's keybindings
  * (host-keybindings.ts). Framework-free on purpose: vitest can import this
@@ -36,4 +38,20 @@ export function workspacePagesClosed(s: WorkspacePageState): boolean {
  */
 export function settingsCloseKeysEnabled(s: WorkspacePageState): boolean {
   return s.settingsOpen && !s.dialogOpen
+}
+
+/**
+ * The central ChatPane must never steal its own editing keys, while the
+ * terminal must retain control chords it forwards to the child process.
+ * Tasks and Files do not have that native-input conflict, so their controls
+ * stay direct. Callers use this to select the direct or prefix half of a
+ * dual-mode keymap row; it never changes the row's normal scope gate.
+ */
+export function bindingModeForPane(pane: PaneId): "direct" | "prefix" {
+  return pane === "workspace" || pane === "terminal" ? "prefix" : "direct"
+}
+
+/** A dual-mode four-pane row receives prefix slots after its direct slots. */
+export function focusSlotIndex(slot: number | undefined): number {
+  return (slot ?? 0) % 4
 }

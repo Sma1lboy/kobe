@@ -154,7 +154,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "task.openEditor",
     scope: "global",
-    keys: [],
+    keys: ["ctrl+o"],
     prefixKeys: ["o"],
     category: "Global",
     description: "Open active task worktree in editor",
@@ -162,7 +162,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "settings.open",
     scope: "global",
-    keys: [],
+    keys: ["ctrl+,"],
     prefixKeys: [","],
     category: "Global",
     description: "Open settings",
@@ -198,22 +198,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // the attached native UI. Pressing q while in the composer just types q.
     id: "app.quit",
     scope: "sidebar",
-    keys: ["q"],
-    prefixKeys: ["q"],
-    prefixSlotOffset: 1,
+    keys: ["q", "ctrl+q"],
     category: "Sidebar",
     description: "Quit (with confirm)",
     hint: { keys: "q", label: "quit", status: false },
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
-    // ctrl+q is the chord-form aliased to sidebar focus, mirroring
-    // esc / ctrl+1 in effect. Scope stays "workspace" for override
-    // validation, but the native workspace enables it from any
-    // non-sidebar pane (files/terminal too).
+    // ctrl+q is direct from Files, while ChatPane and Terminal use the
+    // prefix form so their native input stays intact. Scope stays
+    // "workspace" for override validation; the host's focus-time filter
+    // selects exactly one of the two forms.
     id: "focus.sidebar",
     scope: "workspace",
-    keys: [],
+    keys: ["ctrl+q"],
     prefixKeys: ["q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
@@ -222,25 +220,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // `ctrl+hjkl` — vim-style direct pane focus. Reliable across
-    // every terminal (ctrl+letter maps to stable C0 control bytes,
-    // no CSI-u / kitty keyboard / iTerm quirks). The four chords
-    // map to the four panes by ordinal:
+    // `ctrl+hjkl` — vim-style direct pane focus outside ChatPane and the
+    // terminal. The prefix half retains that navigation where control bytes
+    // belong to the composer/child process. The four chords map to panes by
+    // ordinal:
     //   ctrl+h → 1 = sidebar (TASKS)
     //   ctrl+j → 2 = workspace
     //   ctrl+k → 3 = files
     //   ctrl+l → 4 = terminal
     // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
     // doesn't fully support — ctrl+1 falls through to a bare `1`
-    // byte) and alt+digit gets eaten by macOS launchers like
-    // Raycast. ctrl+letter just works. The conflict with composer
-    // editing chords (ctrl+h=backspace etc.) is OK in practice
-    // because the user's intent when pressing ctrl+h is "switch
-    // pane," and once focus moves to sidebar the textarea has
-    // already lost focus.
+    // byte) and alt+digit gets eaten by macOS launchers like Raycast.
     id: "focus.numeric",
     scope: "global",
-    keys: [],
+    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
     prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",

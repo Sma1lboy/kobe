@@ -24,7 +24,13 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
-import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
+import {
+  type WorkspacePageState,
+  bindingModeForPane,
+  focusSlotIndex,
+  settingsCloseKeysEnabled,
+  workspacePagesClosed,
+} from "./keybinding-gates"
 
 // Slot 3 (ctrl+l — "terminal" in the 4-pane model) maps back to workspace:
 // this host is 3-pane and its middle column IS the terminal, so ctrl+l
@@ -107,10 +113,6 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     bindings: [
       ...bindByIds({
         "help.open": () => HelpDialog.show(dialog),
-        "focus.numeric": (_evt, slot) => {
-          const pane = PANE_BY_SLOT[slot ?? 0]
-          if (pane) focus.setFocused(pane)
-        },
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.
         "focus.next": () => cyclePane(1),
@@ -122,13 +124,21 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
       }),
+      // Dual-mode rows retain the established Ctrl chord everywhere it is
+      // safe, but ChatPane and the terminal receive only their prefix half.
+      ...bindByIds({
+        "focus.numeric": (_evt, slot) => {
+          const pane = PANE_BY_SLOT[focusSlotIndex(slot)]
+          if (pane) focus.setFocused(pane)
+        },
+      }).filter((binding) => (binding.prefix ? "prefix" : "direct") === bindingModeForPane(focus.focused)),
     ],
   }))
   useBindings(() => ({
     enabled: pagesClosed && focus.focused !== "sidebar",
-    bindings: bindByIds({
-      "focus.sidebar": () => focus.setFocused("sidebar"),
-    }),
+    bindings: bindByIds({ "focus.sidebar": () => focus.setFocused("sidebar") }).filter(
+      (binding) => (binding.prefix ? "prefix" : "direct") === bindingModeForPane(focus.focused),
+    ),
   }))
   useBindings(() => ({
     enabled: pagesClosed && focus.focused === "sidebar",

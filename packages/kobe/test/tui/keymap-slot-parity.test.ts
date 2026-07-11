@@ -30,15 +30,16 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest"
+import { focusSlotIndex } from "../../src/tui-react/workspace/keybinding-gates"
 import { KobeKeymap, bindByIds, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
 import { type Binding, type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 
-function makeEvt(name: string) {
+function makeEvt(name: string, ctrl = false) {
   let defaultPrevented = false
   return {
     name,
-    ctrl: false,
+    ctrl,
     meta: false,
     option: false,
     shift: false,
@@ -64,6 +65,25 @@ afterEach(() => {
 })
 
 describe("slot dispatch parity with default keys", () => {
+  test("focus.numeric wraps prefix slots back onto the four pane ordinals", () => {
+    const panes = ["sidebar", "workspace", "files", "workspace"] as const
+    const calls: string[] = []
+    const reg: RegisteredBinding = {
+      id: 1,
+      config: () => ({
+        bindings: bindByIds({
+          "focus.numeric": (_evt, slot) => calls.push(panes[focusSlotIndex(slot)] ?? "missing"),
+        }),
+      }),
+    }
+
+    expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
+    expect(dispatchKeyEvent([reg], makeEvt("h"))).toBe(true)
+    expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
+    expect(dispatchKeyEvent([reg], makeEvt("l"))).toBe(true)
+    expect(calls).toEqual(["sidebar", "workspace"])
+  })
+
   test("sidebar.nav: j/down → down, k/up → up", () => {
     const calls: string[] = []
     // Mirrors useSidebarBindings' slot mapping (panes/sidebar/keys.ts).
