@@ -1,17 +1,16 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Settings sections (React, issue #15 G3) — sidebar + General. Port of the
- * corresponding views in `src/tui/component/settings-dialog/sections.tsx`;
- * row indices come from the shared framework-free row registry (`model.ts`),
- * so keyboard navigation and click targets stay in lockstep with the Solid
- * dialog. Accessor props became plain values/callbacks (React re-renders
- * through the provider on every kv/theme change).
+ * Settings sections (issue #15 G3) — sidebar + General. Row indices come
+ * from the shared framework-free row registry (`../../../tui/component/
+ * settings-dialog/model`), so keyboard navigation and click targets stay
+ * in lockstep with the dialog's key handlers. kv-backed prefs arrive as
+ * one `prefs: SettingsPrefs` bundle (getters are plain kv reads — the
+ * KVProvider re-renders the tree on every kv/theme change).
  */
 
 import { TextAttributes } from "@opentui/core"
 import { useMemo } from "react"
-import { SPLIT_STYLES, type SplitStyle } from "../../../state/split-style"
-import type { WorktreeBaseKind } from "../../../state/worktree-base"
+import { SPLIT_STYLES } from "../../../state/split-style"
 import {
   type NavLevel,
   SECTIONS,
@@ -24,11 +23,10 @@ import {
   surfaceRowId,
 } from "../../../tui/component/settings-dialog/model"
 import { LOCALES, type LocaleId } from "../../../tui/i18n/catalog"
-import type { EditorKind } from "../../../tui/lib/editor-prefs"
-import type { SettingsSurface } from "../../../tui/lib/settings-surface"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { Row, type SectionCursorProps, SubSection } from "./rows"
+import type { SettingsPrefs } from "./use-settings-prefs"
 
 export function SettingsSectionSidebar(props: {
   level: NavLevel
@@ -66,6 +64,7 @@ export function SettingsSectionSidebar(props: {
 
 export function GeneralSettingsSection(
   props: SectionCursorProps & {
+    prefs: SettingsPrefs
     themeNames: readonly string[]
     selectTheme: (name: string) => void
     currentLocale: LocaleId
@@ -73,31 +72,9 @@ export function GeneralSettingsSection(
     toggleTransparent: () => void
     toggleReducedMotion: () => void
     selectFocusAccent: (slot: FocusAccentSlot) => void
-    toastEnabled: boolean
-    soundEnabled: boolean
-    toggleToast: () => void
-    toggleSound: () => void
-    crossTaskEnabled: boolean
-    toggleCrossTask: () => void
-    splitStyle: SplitStyle
-    selectSplitStyle: (style: SplitStyle) => void
-    zenKeepsTasks: boolean
-    toggleZenKeepsTasks: () => void
-    settingsSurface: SettingsSurface
-    selectSurface: (surface: SettingsSurface) => void
-    editorKind: EditorKind
-    cycleEditorKind: () => void
-    editorCustomCommand: string
-    editEditorCustom: () => void
-    worktreeKind: WorktreeBaseKind
-    worktreeKindLabel: string
-    cycleWorktreeBase: () => void
-    worktreeCustomPath: string
-    editWorktreeCustom: () => void
-    scrollbackRows: number
-    editScrollbackRows: () => void
   },
 ) {
+  const { prefs } = props
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const t = useT()
@@ -133,8 +110,8 @@ export function GeneralSettingsSection(
 
   return (
     <box flexDirection="column" gap={1}>
-      {/* First block matches the Solid layout: title/hint/rows are direct
-          children of the outer gap-1 box (one blank line between each). */}
+      {/* First block: title/hint/rows are direct children of the outer
+          gap-1 box (one blank line between each). */}
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
         {t("settings.general.theme")}
       </text>
@@ -212,12 +189,12 @@ export function GeneralSettingsSection(
       <SubSection title={t("settings.general.appearance")} hint={t("settings.general.appearanceHint")}>
         {SPLIT_STYLES.map((style) => {
           const styleRow = rowIdx(splitStyleRowId(style))
-          const isSelected = props.splitStyle === style
+          const isSelected = prefs.splitStyle() === style
           return (
             <Row
               key={style}
               cursor={isBodyCursor(styleRow)}
-              onMouseUp={activate(styleRow, () => props.selectSplitStyle(style))}
+              onMouseUp={activate(styleRow, () => prefs.selectSplitStyle(style))}
               fg={isSelected ? theme.accent : theme.text}
               bold={isBodyCursor(styleRow) || isSelected}
             >
@@ -229,103 +206,103 @@ export function GeneralSettingsSection(
       <SubSection title={t("settings.general.notifications")} hint={t("settings.general.notificationsHint")}>
         <Row
           cursor={isBodyCursor(toastRow)}
-          onMouseUp={activate(toastRow, props.toggleToast)}
-          fg={props.toastEnabled ? theme.accent : theme.textMuted}
+          onMouseUp={activate(toastRow, prefs.toggleToast)}
+          fg={prefs.toastEnabled() ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.toastEnabled)} ${t("settings.general.toast")}`}
+          {`${check(prefs.toastEnabled())} ${t("settings.general.toast")}`}
         </Row>
         <Row
           cursor={isBodyCursor(soundRow)}
-          onMouseUp={activate(soundRow, props.toggleSound)}
-          fg={props.soundEnabled ? theme.accent : theme.textMuted}
+          onMouseUp={activate(soundRow, prefs.toggleSound)}
+          fg={prefs.soundEnabled() ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.soundEnabled)} ${t("settings.general.sound")}`}
+          {`${check(prefs.soundEnabled())} ${t("settings.general.sound")}`}
         </Row>
         <Row
           cursor={isBodyCursor(crossTaskRow)}
-          onMouseUp={activate(crossTaskRow, props.toggleCrossTask)}
-          fg={props.crossTaskEnabled ? theme.accent : theme.textMuted}
+          onMouseUp={activate(crossTaskRow, prefs.toggleCrossTask)}
+          fg={prefs.crossTaskEnabled() ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.crossTaskEnabled)} ${t("settings.general.crossTask")}`}
+          {`${check(prefs.crossTaskEnabled())} ${t("settings.general.crossTask")}`}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>
         <Row
           cursor={isBodyCursor(zenKeepTasksRow)}
-          onMouseUp={activate(zenKeepTasksRow, props.toggleZenKeepsTasks)}
-          fg={props.zenKeepsTasks ? theme.accent : theme.textMuted}
+          onMouseUp={activate(zenKeepTasksRow, prefs.toggleZenKeepsTasks)}
+          fg={prefs.zenKeepsTasks() ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.zenKeepsTasks)} ${t("settings.general.zenKeepTasks")}`}
+          {`${check(prefs.zenKeepsTasks())} ${t("settings.general.zenKeepTasks")}`}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.surface")} hint={t("settings.general.surfaceHint")}>
         <Row
           cursor={isBodyCursor(surfaceChattabRow)}
-          onMouseUp={activate(surfaceChattabRow, () => props.selectSurface("chattab"))}
-          fg={props.settingsSurface === "chattab" ? theme.accent : theme.textMuted}
+          onMouseUp={activate(surfaceChattabRow, () => prefs.selectSurface("chattab"))}
+          fg={prefs.settingsSurface() === "chattab" ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.settingsSurface === "chattab")} ${t("settings.general.surfaceChattab")}`}
+          {`${check(prefs.settingsSurface() === "chattab")} ${t("settings.general.surfaceChattab")}`}
         </Row>
         <Row
           cursor={isBodyCursor(surfaceTaskpanelRow)}
-          onMouseUp={activate(surfaceTaskpanelRow, () => props.selectSurface("taskpanel"))}
-          fg={props.settingsSurface === "taskpanel" ? theme.accent : theme.textMuted}
+          onMouseUp={activate(surfaceTaskpanelRow, () => prefs.selectSurface("taskpanel"))}
+          fg={prefs.settingsSurface() === "taskpanel" ? theme.accent : theme.textMuted}
           bold={true}
         >
-          {`${check(props.settingsSurface === "taskpanel")} ${t("settings.general.surfaceTaskpanel")}`}
+          {`${check(prefs.settingsSurface() === "taskpanel")} ${t("settings.general.surfaceTaskpanel")}`}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.editor")} hint={t("settings.general.editorHint")}>
         <Row
           cursor={isBodyCursor(editorKindRow)}
-          onMouseUp={activate(editorKindRow, props.cycleEditorKind)}
+          onMouseUp={activate(editorKindRow, prefs.cycleEditorKind)}
           fg={theme.accent}
           bold={true}
         >
-          {t("settings.general.editorRow", { kind: props.editorKind })}
+          {t("settings.general.editorRow", { kind: prefs.editorKind() })}
         </Row>
         <Row
           cursor={isBodyCursor(editorCustomRow)}
-          onMouseUp={activate(editorCustomRow, props.editEditorCustom)}
-          fg={props.editorKind === "custom" ? theme.text : theme.textMuted}
+          onMouseUp={activate(editorCustomRow, () => void prefs.editEditorCustom())}
+          fg={prefs.editorKind() === "custom" ? theme.text : theme.textMuted}
         >
           {t("settings.general.editorCustom", {
-            cmd: props.editorCustomCommand.trim() || t("settings.general.editorCustomUnset"),
+            cmd: prefs.editorCustomCommand().trim() || t("settings.general.editorCustomUnset"),
           })}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.worktree")} hint={t("settings.general.worktreeHint")}>
         <Row
           cursor={isBodyCursor(worktreeBaseRow)}
-          onMouseUp={activate(worktreeBaseRow, props.cycleWorktreeBase)}
+          onMouseUp={activate(worktreeBaseRow, prefs.cycleWorktreeBase)}
           fg={theme.accent}
           bold={true}
         >
-          {t("settings.general.worktreeBase", { kind: props.worktreeKindLabel })}
+          {t("settings.general.worktreeBase", { kind: prefs.worktreeKindLabel() })}
         </Row>
         <Row
           cursor={isBodyCursor(worktreeCustomRow)}
-          onMouseUp={activate(worktreeCustomRow, props.editWorktreeCustom)}
-          fg={props.worktreeKind === "custom" ? theme.text : theme.textMuted}
+          onMouseUp={activate(worktreeCustomRow, () => void prefs.editWorktreeCustom())}
+          fg={prefs.worktreeKind() === "custom" ? theme.text : theme.textMuted}
         >
           {t("settings.general.worktreeCustom", {
-            path: props.worktreeCustomPath || t("settings.general.worktreeCustomUnset"),
+            path: prefs.worktreeCustomPath() || t("settings.general.worktreeCustomUnset"),
           })}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.terminal")} hint={t("settings.general.terminalHint")}>
         <Row
           cursor={isBodyCursor(scrollbackRow)}
-          onMouseUp={activate(scrollbackRow, props.editScrollbackRows)}
+          onMouseUp={activate(scrollbackRow, () => void prefs.editScrollbackRows())}
           fg={theme.accent}
           bold={true}
         >
-          {t("settings.general.scrollbackRow", { rows: String(props.scrollbackRows) })}
+          {t("settings.general.scrollbackRow", { rows: String(prefs.scrollbackRows()) })}
         </Row>
       </SubSection>
     </box>
