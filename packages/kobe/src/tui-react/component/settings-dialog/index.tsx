@@ -244,6 +244,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     reducedMotion: () => toggleReducedMotion(),
     toast: () => prefs.toggleToast(),
     sound: () => prefs.toggleSound(),
+    crossTask: () => prefs.toggleCrossTask(),
     splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),
     surface: (row) => prefs.selectSurface(row.surface),
@@ -366,6 +367,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               soundEnabled={prefs.soundEnabled()}
               toggleToast={prefs.toggleToast}
               toggleSound={prefs.toggleSound}
+              crossTaskEnabled={prefs.crossTaskEnabled()}
+              toggleCrossTask={prefs.toggleCrossTask}
               splitStyle={prefs.splitStyle()}
               selectSplitStyle={prefs.selectSplitStyle}
               zenKeepsTasks={prefs.zenKeepsTasks()}

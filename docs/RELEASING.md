@@ -29,16 +29,14 @@ scripts/release.sh
 > commit + tag that `release.sh` pushes is the ONE sanctioned direct push —
 > it only consumes changesets that already passed PR CI.
 
-This consumes every pending `.changeset/*.md`:
+This first runs the release gate — `bun run lint && bun run typecheck && (cd packages/kobe && bun run test)` — and aborts before touching anything if it fails. With a green gate, it consumes every pending `.changeset/*.md`:
 
 1. `changeset version` — computes the next version from the pending bump types, rewrites `packages/kobe/package.json`, and prepends the collected notes to `CHANGELOG.md` (then deletes the consumed changesets).
 2. Runs `bun install`, then `bun install --frozen-lockfile`, so `bun.lock` matches the workspace package versions before the release commit is made.
-3. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array).
+3. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array). This step is no longer error-swallowed — a `lint:fix` failure stops the release.
 4. Commits `chore: release — X.Y.Z`, tags `vX.Y.Z`, and (after confirming) pushes `main` + the tag.
 
-The push triggers `.github/workflows/release.yml`, which gates on **typecheck + test + build**, then `npm publish`es, extracts the new `CHANGELOG.md` section as the GitHub release body, and builds the standalone binaries.
-
-> The release workflow's gate does **not** run lint. Run `bun run lint` locally (or rely on the push-triggered `ci.yml`) — a lint regression won't block a publish on its own.
+The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es, extracts the new `CHANGELOG.md` section as the GitHub release body, and builds the standalone binaries.
 
 ## Style rule — no soft wraps inside bullets or paragraphs
 

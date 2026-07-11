@@ -41,8 +41,20 @@ export const en = {
     failed: "Failed to delete worktree: {error}",
   },
 
+  land: {
+    button: "Land",
+    confirmTitle: "Land branch?",
+    confirmBody:
+      'Merge "{branch}" into the base repo\'s current branch? A dirty base checkout is refused; conflicts abort with a file list.',
+    noTask: "This worktree isn't tracked as a kobe task — nothing to land.",
+    conflict: "Land hit conflicts (merge aborted). Resolve by hand: {files}",
+    dirtyBase: "The base checkout has uncommitted changes — commit or stash them, then land.",
+    failed: "Land failed: {error}",
+    done: 'Landed "{branch}" onto {landedOn} ({commit}).',
+  },
+
   hint: {
-    legend: "↑↓ nav · d delete · esc close",
+    legend: "↑↓ nav · d delete · l land · esc close",
   },
 }
 
@@ -83,7 +95,18 @@ export const zh: typeof en = {
     failed: "删除 worktree 失败：{error}",
   },
 
+  land: {
+    button: "合入",
+    confirmTitle: "合入分支？",
+    confirmBody: '把 "{branch}" 合入基仓库当前分支？基础检出有未提交改动会被拒绝；冲突会中止并给出文件清单。',
+    noTask: "该 worktree 未作为 kobe 任务被跟踪——没有可合入的对象。",
+    conflict: "合入遇到冲突（已中止）。请手动解决：{files}",
+    dirtyBase: "基础检出有未提交改动——请先提交或 stash，再合入。",
+    failed: "合入失败：{error}",
+    done: '已把 "{branch}" 合入 {landedOn}（{commit}）。',
+  },
+
   hint: {
-    legend: "↑↓ 移动 · d 删除 · esc 关闭",
+    legend: "↑↓ 移动 · d 删除 · l 合入 · esc 关闭",
   },
 }

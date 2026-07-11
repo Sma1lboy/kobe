@@ -40,7 +40,11 @@ export async function add(ctx: VerbContext): Promise<unknown> {
 
   const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
   const taskId = res.taskId
-  await daemon.request("task.setActive", { taskId })
+  // Only steal the shared active-task focus (which every mounted TUI's Tasks
+  // pane follows) when explicitly asked — a background agent/cron building
+  // tasks must not yank the user's focus on every create. Matches fan-out,
+  // which never setActive, and the "opening content doesn't pull focus" taste.
+  if (args.bool("activate")) await daemon.request("task.setActive", { taskId })
 
   // status / pin aren't create-time fields on the RPC — apply them as
   // follow-ups so `add` is the one-stop "make me a task exactly like this".
@@ -62,7 +66,25 @@ export async function add(ctx: VerbContext): Promise<unknown> {
     prompt,
   )
   task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
-  return { taskId, task, started: delivered.started, engineReady: delivered.engineReady, session: delivered.session }
+  // A prompt that never confirmed in the composer is a failure — but the task
+  // IS created, so carry the taskId in the error so a script can find it.
+  if (!delivered.delivered) {
+    throw new ApiError(
+      `task ${taskId} created but the prompt was not delivered (paste did not land)`,
+      "NOT_DELIVERED",
+      {
+        taskId,
+      },
+    )
+  }
+  return {
+    taskId,
+    task,
+    started: delivered.started,
+    engineReady: delivered.engineReady,
+    session: delivered.session,
+    delivered: delivered.delivered,
+  }
 }
 
 export async function send(ctx: VerbContext): Promise<unknown> {
@@ -90,6 +112,11 @@ export async function send(ctx: VerbContext): Promise<unknown> {
     },
     prompt,
   )
+  // A prompt that never landed in the composer is a delivery FAILURE the
+  // script must see — non-zero exit, not a phantom `ok:true`.
+  if (!delivered.delivered) {
+    throw new ApiError(`prompt was not confirmed in ${taskId}'s engine (paste did not land)`, "NOT_DELIVERED")
+  }
   return {
     ok: true,
     taskId,
@@ -162,6 +189,19 @@ export async function deleteTask(ctx: VerbContext): Promise<unknown> {
   // and kill it here, after the delete RPC succeeds.
   await ctx.runtime.tearDownSession(taskId)
   return res
+}
+
+export async function land(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const strategy = ctx.args.str("strategy") === "squash" ? "squash" : "merge"
+  const res = await daemon.request<{ result: unknown }>("task.land", {
+    taskId,
+    strategy,
+    deleteBranch: ctx.args.bool("delete-branch") ?? false,
+    archive: ctx.args.bool("then-archive") ?? false,
+  })
+  return { ok: true, taskId, ...(res.result as object) }
 }
 
 export async function adopt(ctx: VerbContext): Promise<unknown> {

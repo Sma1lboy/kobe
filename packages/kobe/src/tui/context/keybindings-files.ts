@@ -66,6 +66,28 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "r", label: "refresh", status: false },
   },
   {
+    // `b` → toggle the Changes tab between working-tree scope (uncommitted
+    // work) and Branch scope (everything vs the base — the vs-base view).
+    // Plain letter, files-scoped per the keybinding-boundaries rule.
+    id: "files.scope",
+    scope: "files",
+    keys: ["b"],
+    category: "Files",
+    description: "Toggle Changes scope (working ↔ branch vs base)",
+    hint: { keys: "b", label: "scope", status: false },
+  },
+  {
+    // `d` → open the current file's read-only diff in a workspace content
+    // tab (a content swap, does not steal focus — KOB-25). Enter still opens
+    // the editable editor tab; this is the non-focus-stealing diff view.
+    id: "files.diff",
+    scope: "files",
+    keys: ["d"],
+    category: "Files",
+    description: "Open read-only diff in a workspace tab",
+    hint: { keys: "d", label: "diff", status: false },
+  },
+  {
     id: "files.openExternal",
     scope: "files",
     keys: ["o"],

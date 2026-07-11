@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { CLAUDE_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
 import { sweepBar } from "../../src/tui/lib/progress-bar.ts"
-import { buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view.ts"
+import {
+  anyRowLoading,
+  buildSidebarRowView,
+  rowIsLoading,
+  withSpinnerFrame,
+} from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -276,5 +281,54 @@ describe("buildSidebarRowView — defer to the live terminal (isViewed)", () => 
       job: { kind: "ensureWorktree" },
     })
     expect(v.loading).toBe(true)
+  })
+})
+
+// O11: the pane-level spinner gate must be exactly the OR of the per-row
+// loading decisions the cards render, or a genuinely-loading row freezes.
+describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
+  const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
+
+  it("rowIsLoading matches buildSidebarRowView.loading across cases", () => {
+    const cases = [
+      { task: task({ status: "in_progress" }), live: false },
+      { task: task({ status: "in_progress" }), live: true },
+      { task: task({ status: "in_progress" }), live: true, isViewed: true },
+      { task: task({ status: "backlog" }), live: false },
+      { task: task({ kind: "main", branch: "", status: "in_progress" }), live: false },
+      { task: task({ status: "done" }), live: false, job: { kind: "ensureWorktree" as const } },
+      { task: task({}), live: false, activity: { state: "running" as const, at: 1 } },
+    ]
+    for (const c of cases) {
+      const view = buildSidebarRowView({ ...base, ...c })
+      expect(rowIsLoading(c)).toBe(view.loading)
+    }
+  })
+
+  it("anyRowLoading is true iff at least one row spins", () => {
+    const idle = task({ id: "idle", status: "backlog" })
+    const busy = task({ id: "busy", status: "in_progress" })
+    const reads = {
+      activity: () => undefined,
+      job: () => undefined,
+      live: (id: string) => id === "busy",
+      isViewed: () => false,
+    }
+    expect(anyRowLoading([idle], reads)).toBe(false)
+    expect(anyRowLoading([idle, busy], reads)).toBe(true)
+    expect(anyRowLoading([], reads)).toBe(false)
+  })
+
+  it("a viewed busy row does not by itself keep the pane spinning", () => {
+    const busy = task({ id: "busy", status: "in_progress" })
+    const reads = {
+      activity: () => undefined,
+      job: () => undefined,
+      live: () => true,
+      isViewed: (id: string) => id === "busy",
+    }
+    // The only busy row is the one on screen (its terminal draws its own
+    // spinner), so the pane has nothing to animate.
+    expect(anyRowLoading([busy], reads)).toBe(false)
   })
 })

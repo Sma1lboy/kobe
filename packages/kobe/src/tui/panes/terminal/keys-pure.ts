@@ -179,6 +179,12 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   // distraction-free view; F6 continues the F2-F5 row (rename/split/
   // pane-cycle/reset) and was unclaimed.
   "f6",
+  // Jump to the next waiting task (`attention.next`) — reserved so the
+  // "I'm blocked here, take me to whoever else is waiting" chord fires even
+  // from inside a running engine. Costs the embedded shell readline's ctrl+g
+  // (abort-editing) — accepted: the cross-task jump is the higher-value verb,
+  // and ctrl+c still aborts.
+  "ctrl+g",
 ] as const
 
 /**

@@ -33,6 +33,30 @@ export function remoteSpecFromConfig(config: RemoteRepoConfig): RemoteSpec {
 }
 
 /**
+ * `RemoteExecHost` instances, cached by `controlPath` — one ControlMaster
+ * socket per remote project, so its `ensureReady()` sync `ssh -O check`
+ * (see `exec-host.ts`) pays once per master lifetime instead of once per
+ * `execHostForRepo`/`execHostForWorktreePath` call. Before this cache, every
+ * git operation on a remote project built a FRESH instance (masterUp is
+ * instance-private state), so the sync check ran — and on a cold/dropped
+ * master, blocked the daemon's event loop on a full ssh connection — on every
+ * single call. `RemoteExecHost.run()` resets its own `masterUp` on an
+ * ssh-level failure (exit 255), so a cached instance self-heals after a
+ * dropped/expired ControlPersist socket instead of staying confidently wrong
+ * for the rest of the process.
+ */
+const remoteHostCache = new Map<string, RemoteExecHost>()
+
+function cachedRemoteHost(config: RemoteRepoConfig): RemoteExecHost {
+  const spec = remoteSpecFromConfig(config)
+  const cached = remoteHostCache.get(spec.controlPath)
+  if (cached) return cached
+  const host = new RemoteExecHost(spec)
+  remoteHostCache.set(spec.controlPath, host)
+  return host
+}
+
+/**
  * The ExecHost for a project key. Defaults to local; only an `ssh://` key with
  * a stored `remoteRepos` config produces a `RemoteExecHost`. An `ssh://` key
  * with no config (corrupt state) falls back to local rather than throwing —
@@ -41,7 +65,7 @@ export function remoteSpecFromConfig(config: RemoteRepoConfig): RemoteSpec {
 export function execHostForRepo(repoKey: string): ExecHost {
   const config = getRemoteRepoConfig(repoKey)
   if (!config) return new LocalExecHost()
-  return new RemoteExecHost(remoteSpecFromConfig(config))
+  return cachedRemoteHost(config)
 }
 
 /**
@@ -54,7 +78,7 @@ export function execHostForRepo(repoKey: string): ExecHost {
 export function execHostForWorktreePath(worktreePath: string): ExecHost {
   for (const config of Object.values(getRemoteRepos())) {
     if (worktreePath === config.basePath || worktreePath.startsWith(`${config.basePath}/`)) {
-      return new RemoteExecHost(remoteSpecFromConfig(config))
+      return cachedRemoteHost(config)
     }
   }
   return new LocalExecHost()

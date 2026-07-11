@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { kvStatePath } from "../../src/env.ts"
 import {
   execHostForRepo,
+  execHostForWorktreePath,
   localSpawnCwd,
   remoteKeyForRepo,
   remoteSpecFromConfig,
@@ -101,6 +102,24 @@ describe("execHostForRepo", () => {
 
   it("falls back to local for an ssh:// key with no stored config", () => {
     expect(execHostForRepo("ssh://ghost@nowhere").isRemote).toBe(false)
+  })
+
+  // The whole point of the controlPath cache (exec/resolve.ts) is that repeat
+  // calls for the same remote project reuse ONE RemoteExecHost instance
+  // instead of paying its sync ControlMaster `-O check` (see exec-host.ts)
+  // on every git operation.
+  it("caches the RemoteExecHost instance by controlPath across repeat calls", () => {
+    addRemoteRepo({ host: "box", user: "dev", basePath: "/srv", auth: { kind: "key" } })
+    const first = execHostForRepo("ssh://dev@box")
+    const second = execHostForRepo("ssh://dev@box")
+    expect(second).toBe(first)
+  })
+
+  it("execHostForRepo and execHostForWorktreePath share the same cached instance", () => {
+    addRemoteRepo({ host: "box", user: "dev", basePath: "/srv/work", auth: { kind: "key" } })
+    const byRepo = execHostForRepo("ssh://dev@box")
+    const byPath = execHostForWorktreePath("/srv/work/kobe-task-1")
+    expect(byPath).toBe(byRepo)
   })
 })
 

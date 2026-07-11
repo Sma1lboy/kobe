@@ -95,6 +95,20 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     },
   },
   {
+    name: "task.land",
+    web: true,
+    async handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      const strategy = optionalString(payload, "strategy") === "squash" ? "squash" : "merge"
+      const result = await ctx.orch.landTask(taskId, {
+        strategy,
+        deleteBranch: optionalBoolean(payload, "deleteBranch") === true,
+        archive: optionalBoolean(payload, "archive") === true,
+      })
+      return { result }
+    },
+  },
+  {
     name: "task.pin",
     web: true,
     async handle(payload, ctx) {

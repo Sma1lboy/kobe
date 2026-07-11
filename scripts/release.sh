@@ -9,18 +9,21 @@
 # docs/RELEASING.md.
 #
 # What it does:
-#   1. `changeset version` — derives the next version from pending changesets,
+#   1. Gate: `bun run lint && bun run typecheck && (cd packages/kobe && bun run test)`.
+#      Any failure aborts before touching version/CHANGELOG — a red tree never
+#      gets tagged.
+#   2. `changeset version` — derives the next version from pending changesets,
 #      rewrites packages/kobe/package.json, prepends notes to CHANGELOG.md, and
 #      deletes the consumed changesets.
-#   2. `bun install` — refreshes bun.lock after the package version changed,
+#   3. `bun install` — refreshes bun.lock after the package version changed,
 #      then `bun install --frozen-lockfile` verifies the lockfile is complete.
-#   3. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
+#   4. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
 #      reserialized JSON can't fail the lint gate (the `files` array used to
 #      re-expand to multi-line and break `biome check`).
-#   4. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
-#   5. Asks before pushing (main + tag) — the push triggers GitHub Actions
-#      which typechecks, tests, builds, publishes to npm, and creates the
-#      GitHub release with the extracted CHANGELOG notes.
+#   5. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
+#   6. Asks before pushing (main + tag) — the push triggers GitHub Actions
+#      which lints, typechecks, tests (incl. behavior), builds, publishes to
+#      npm, and creates the GitHub release with the extracted CHANGELOG notes.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,6 +55,14 @@ fi
 
 CURRENT=$(node -p "require('$PKG_JSON').version")
 
+# ── gate: lint + typecheck + test before touching version/CHANGELOG ───────────
+# Fail here, not after `changeset version` — a red tree must never get a
+# version bump, commit, or tag written for it.
+echo "Running release gate (lint, typecheck, test)…"
+bun run lint
+bun run typecheck
+(cd packages/kobe && bun run test)
+
 # ── consume changesets → bump version + write CHANGELOG ───────────────────────
 bun x changeset version
 
@@ -72,8 +83,9 @@ bun install --frozen-lockfile
 # ── neutralize the JSON-reserialize lint trap ─────────────────────────────────
 # `changeset version` rewrites package.json with its own formatter, which can
 # re-expand the single-line `files` array and trip `biome check`. Format the
-# files it touched so the lint gate stays green.
-bun run lint:fix >/dev/null 2>&1 || true
+# files it touched so the lint gate stays green. No error-swallowing: if
+# lint:fix itself fails, stop rather than commit+tag an unformatted tree.
+bun run lint:fix
 
 echo "──────────────────────────────────────────"
 echo "  kobe $CURRENT  →  $NEW_VERSION  ($TAG)"

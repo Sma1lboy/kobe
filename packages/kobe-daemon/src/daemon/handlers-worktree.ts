@@ -108,6 +108,15 @@ export const WORKTREE_HANDLERS: readonly DaemonRequestHandler[] = [
       const path = requireString(payload, "path")
       const force = payload.force === true
       await ctx.runtime.removeWorktree(path, force)
+      // Self-heal the task index: a worktree removed here (worktrees page /
+      // web) otherwise leaves the owning task pointing at a dead dir, so the
+      // next enter would spawn the engine into a nonexistent cwd. Drop the
+      // pointer (keep the branch) so ensureWorktree re-materialises instead.
+      // Exact-path match; unmatched (untracked worktree) is a harmless no-op.
+      // Guarded on `ctx.orch` — this handler historically composes runtime
+      // primitives directly, so a caller may not wire an orchestrator.
+      const taskId = ctx.orch ? matchTaskByWorktreePath(ctx.orch.listTasks(), path) : undefined
+      if (taskId) await ctx.orch.clearWorktreePath(taskId)
       return { removed: true }
     },
   },

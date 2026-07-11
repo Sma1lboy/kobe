@@ -15,6 +15,54 @@ import type { DaemonRpcClient } from "./rpc.ts"
 export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>) => void
 
 /**
+ * A daemon RPC exceeded its per-request deadline: the socket accepted the
+ * request but never sent a response frame. This is the WEDGED-daemon signal
+ * on a live connection (process alive, socket open, not servicing) — distinct
+ * from a normal `close`. The client force-disconnects on it so the wedge is
+ * converted into the ordinary disconnected→reconnect lifecycle instead of a
+ * silently-hung promise.
+ */
+export class RpcTimeoutError extends Error {
+  constructor(name: string, timeoutMs: number) {
+    super(`daemon rpc "${name}" timed out after ${timeoutMs}ms (daemon wedged?)`)
+    this.name = "RpcTimeoutError"
+  }
+}
+
+/**
+ * Default per-request deadline. A healthy daemon answers writes in well under
+ * a second; 20s is a wide margin for a busy-but-live daemon. Requests that can
+ * legitimately run for minutes are exempted by name below, not by this value.
+ * `KOBE_RPC_TIMEOUT_MS` overrides it (0/negative disables the deadline) — an
+ * operator escape hatch and the test seam for the wedged-daemon path.
+ */
+function rpcTimeoutMs(): number {
+  const raw = process.env.KOBE_RPC_TIMEOUT_MS?.trim()
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 20_000
+}
+
+/**
+ * RPCs that do git worktree work and/or forge lookups (ls-remote, gh PR
+ * states) — legitimately minute-scale, so the deadline is disabled for them.
+ * Everything else (task.create/status/delete/rename/… — the write surface the
+ * TUI drives interactively) gets the default deadline.
+ */
+const RPC_TIMEOUT_EXEMPT: ReadonlySet<DaemonRequestName> = new Set<DaemonRequestName>([
+  "task.ensureWorktree",
+  "task.ensureMain",
+  "worktree.discoverAdoptable",
+  "worktree.adopt",
+  "worktree.reconcile",
+  "worktree.archiveRemoved",
+  "worktree.list",
+  "worktree.remove",
+])
+
+/**
  * Single connection-lifecycle hook — fires when the socket transitions from
  * open to closed for ANY reason (daemon died, kernel dropped the socket,
  * manual `forceDisconnect`). The host TUI subscribes to this and prompts
@@ -45,7 +93,10 @@ export class KobeDaemonClient implements DaemonRpcClient {
   private socket: Socket | null = null
   private buffer = ""
   private nextId = 1
-  private readonly pending = new Map<string, { resolve: (value: unknown) => void; reject: (err: Error) => void }>()
+  private readonly pending = new Map<
+    string,
+    { resolve: (value: unknown) => void; reject: (err: Error) => void; timer?: ReturnType<typeof setTimeout> }
+  >()
   private readonly handlers = new Map<DaemonEventName | "*", Set<DaemonEventHandler>>()
   private readonly lifecycleHandlers = new Map<LifecycleEvent, Set<() => void>>()
   /** Shared in-flight connect promise — avoids parallel openSocket calls
@@ -118,7 +169,10 @@ export class KobeDaemonClient implements DaemonRpcClient {
   private failPending(): void {
     if (this.pending.size === 0) return
     const err = new Error("daemon connection closed")
-    for (const pending of this.pending.values()) pending.reject(err)
+    for (const pending of this.pending.values()) {
+      if (pending.timer) clearTimeout(pending.timer)
+      pending.reject(err)
+    }
     this.pending.clear()
   }
 
@@ -181,10 +235,41 @@ export class KobeDaemonClient implements DaemonRpcClient {
     if (!socket) throw new Error("daemon connection is not open")
     const id = String(this.nextId++)
     const promise = new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: (value) => resolve(value as T), reject })
+      const entry: {
+        resolve: (value: unknown) => void
+        reject: (err: Error) => void
+        timer?: ReturnType<typeof setTimeout>
+      } = { resolve: (value) => resolve(value as T), reject }
+      // Per-request deadline: without it a WEDGED daemon (socket open, no
+      // response frame) leaves this promise pending FOREVER — the caller's
+      // .catch never fires, connectionState stays a misleading "online", and
+      // the UI silently freezes on stale state. On expiry we reject with
+      // RpcTimeoutError and force-disconnect, routing the wedge into the same
+      // close→disconnected→reconnect recovery path a crashed daemon takes.
+      const timeoutMs = rpcTimeoutMs()
+      if (timeoutMs > 0 && !RPC_TIMEOUT_EXEMPT.has(name)) {
+        entry.timer = setTimeout(() => this.onRequestTimeout(id, name, timeoutMs), timeoutMs)
+      }
+      this.pending.set(id, entry)
     })
     socket.write(frameToLine({ type: "request", id, name, payload }))
     return promise
+  }
+
+  /** A pending request blew its deadline: reject it, then tear down the
+   *  (wedged) socket so the client re-enters its ordinary reconnect flow. */
+  private onRequestTimeout(id: string, name: DaemonRequestName, timeoutMs: number): void {
+    const pending = this.pending.get(id)
+    if (!pending) return
+    this.pending.delete(id)
+    pending.reject(new RpcTimeoutError(name, timeoutMs))
+    // forceDisconnect() nulls `this.socket` BEFORE destroy(), so the OS close
+    // event hits onSocketClose with the stale guard tripped and NO lifecycle
+    // "close" is emitted — connectionState would stay stuck on "online".
+    // Emit it explicitly here so a wedge converges on the same recovery
+    // semantics (disconnected → reconnect) as a normal socket drop.
+    this.forceDisconnect()
+    this.emitLifecycle("close")
   }
 
   private openSocket(): Promise<void> {
@@ -275,6 +360,7 @@ export class KobeDaemonClient implements DaemonRpcClient {
     const pending = this.pending.get(frame.id)
     if (!pending) return
     this.pending.delete(frame.id)
+    if (pending.timer) clearTimeout(pending.timer)
     if (frame.error) {
       // Preserve the daemon's error NAME (shapeDaemonError puts it on the
       // wire) so callers can branch on e.g. IllegalTransitionError instead
@@ -286,7 +372,26 @@ export class KobeDaemonClient implements DaemonRpcClient {
   }
 
   private emit(frame: Extract<DaemonFrame, { type: "event" }>): void {
-    for (const handler of this.handlers.get(frame.name) ?? []) handler(frame)
-    for (const handler of this.handlers.get("*") ?? []) handler(frame)
+    // Per-handler try/catch — same "one bad listener mustn't take the rest
+    // down" property `emitLifecycle` already has, and `onLine` already has
+    // for JSON.parse. Without it a single throwing subscriber (e.g. a React
+    // useSyncExternalStore listener down the setTasks→emit chain) skips the
+    // remaining handlers in this frame — including "*" — and the throw exits
+    // the socket 'data' callback as an uncaughtException, leaving the socket
+    // OS-open (no 'close', no reconnect) and the pane frozen on stale state.
+    for (const handler of this.handlers.get(frame.name) ?? []) {
+      try {
+        handler(frame)
+      } catch (err) {
+        logClientError("client-event", err)
+      }
+    }
+    for (const handler of this.handlers.get("*") ?? []) {
+      try {
+        handler(frame)
+      } catch (err) {
+        logClientError("client-event", err)
+      }
+    }
   }
 }

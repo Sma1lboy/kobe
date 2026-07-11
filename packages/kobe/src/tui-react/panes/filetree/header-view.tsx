@@ -8,6 +8,7 @@
  */
 
 import { TextAttributes } from "@opentui/core"
+import type { GitScope } from "../../../tui/panes/filetree/git"
 import { type FileTreeTab, TAB_ORDER, tabLabelKey } from "../../../tui/panes/filetree/keys-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
@@ -15,6 +16,11 @@ import { useT } from "../../i18n"
 export type FileTreeHeaderProps = {
   /** The active tab. */
   tab: FileTreeTab
+  /** Changes-tab scope (working ↔ branch vs base). */
+  scope: GitScope
+  /** Resolved Branch-scope base ref, or null when none resolved (Branch
+   *  scope + `b` toggle are unavailable then). */
+  base: string | null
   /** Mouse tab switch. */
   onSelectTab: (tab: FileTreeTab) => void
   /** Optional Ops-pane chips (see FileTreeProps). */
@@ -90,10 +96,17 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
           )
         })}
       </box>
-      {/* Status legend — only shown on the Changes tab so users can
-         decode single-char git status codes without leaving the TUI. */}
+      {/* Status legend + scope line — only on the Changes tab. The scope
+         line names the active view (working tree vs branch-vs-base) and,
+         when a base resolved, the `b` toggle affordance. */}
       {props.tab === "changes" ? (
         <box flexDirection="column" paddingBottom={1} flexShrink={0} gap={0}>
+          <text fg={theme.textMuted} wrapMode="none">
+            {props.scope === "branch" && props.base != null
+              ? t("files.scope.branch", { base: props.base })
+              : t("files.scope.working")}
+            {props.base != null ? `  ${t("files.scope.toggleHint")}` : ""}
+          </text>
           <text fg={theme.textMuted} wrapMode="none">
             {t("files.legend.changes")}
           </text>

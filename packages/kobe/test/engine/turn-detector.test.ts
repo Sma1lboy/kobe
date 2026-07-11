@@ -8,7 +8,7 @@ import {
 } from "../../src/engine/turn-detector"
 
 describe("latestCodexCompletionMarkerFromJsonl", () => {
-  test("uses turn.completed as the completion marker", () => {
+  test("uses turn.completed as the completion marker (legacy exec --json stream)", () => {
     const raw = [
       JSON.stringify({ type: "response_item", timestamp: "2026-05-29T01:00:00.000Z" }),
       JSON.stringify({ type: "turn.completed", timestamp: "2026-05-29T01:00:03.000Z", usage: { input_tokens: 1 } }),
@@ -16,6 +16,36 @@ describe("latestCodexCompletionMarkerFromJsonl", () => {
     const marker = latestCodexCompletionMarkerFromJsonl(raw, "rollout")
     expect(marker?.source).toBe("codex")
     expect(marker?.timestampMs).toBe(Date.parse("2026-05-29T01:00:03.000Z"))
+  })
+
+  // The bug: a REAL codex rollout never writes a top-level `turn.completed` —
+  // completion is an `event_msg` whose flattened EventMsg tag is task_complete /
+  // turn_complete / turn_aborted. Without this arm codex turns never reached
+  // "done" (background toast / unread badge never fired).
+  test("recognizes an event_msg task_complete as the completion marker (real rollout)", () => {
+    const raw = [
+      JSON.stringify({ type: "response_item", timestamp: "2026-05-29T01:00:00.000Z", payload: { type: "message" } }),
+      JSON.stringify({ type: "event_msg", timestamp: "2026-05-29T01:00:05.000Z", payload: { type: "task_complete" } }),
+    ].join("\n")
+    const marker = latestCodexCompletionMarkerFromJsonl(raw, "rollout")
+    expect(marker?.source).toBe("codex")
+    expect(marker?.timestampMs).toBe(Date.parse("2026-05-29T01:00:05.000Z"))
+  })
+
+  test("also accepts the turn_complete alias and turn_aborted", () => {
+    for (const type of ["turn_complete", "turn_aborted"]) {
+      const raw = JSON.stringify({ type: "event_msg", timestamp: "2026-05-29T01:00:06.000Z", payload: { type } })
+      expect(latestCodexCompletionMarkerFromJsonl(raw)?.timestampMs).toBe(Date.parse("2026-05-29T01:00:06.000Z"))
+    }
+  })
+
+  test("ignores non-completion event_msg records (token_count, etc.)", () => {
+    const raw = JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-05-29T01:00:07.000Z",
+      payload: { type: "token_count", info: null },
+    })
+    expect(latestCodexCompletionMarkerFromJsonl(raw)).toBeNull()
   })
 })
 

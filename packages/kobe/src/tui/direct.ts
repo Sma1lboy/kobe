@@ -18,6 +18,7 @@ import {
   addSavedRepo,
   getPersistedString,
   getSavedRepos,
+  isGitRepo,
   normalizeSavedRepos,
   setPersistedString,
 } from "../state/repos.ts"
@@ -76,8 +77,18 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
   normalizeSavedRepos()
   let repos = [...getSavedRepos()]
   if (repos.length === 0) {
-    const added = addSavedRepo(resolve(process.cwd()))
-    repos = [added.path]
+    // First run with nothing saved yet: auto-adopt cwd ONLY when it's a real
+    // git repo — same guard `kobe add` applies explicitly (see its
+    // `isGitRepo` check in cli/index.ts). Bare `kobe` run from e.g. $HOME
+    // must not permanently pollute savedRepos with a non-repo path. Leave
+    // `repos` empty so the caller falls through to the zero-task kobe-home
+    // session instead of creating a doomed main task.
+    const cwd = resolve(process.cwd())
+    if (isGitRepo(cwd)) {
+      repos = [addSavedRepo(cwd).path]
+    } else {
+      console.error("kobe: current directory is not a git repository — cd into one, or run `kobe add <path>`")
+    }
   }
   // Issue every repo's main-task ensure at once: the daemon transport pipelines
   // id-correlated requests and the store's saveChain/file-lock serialize the
@@ -91,7 +102,7 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
       }),
     ),
   )
-  return repos[0] ?? resolve(process.cwd())
+  return repos[0] ?? ""
 }
 
 export async function startDirectTmux(): Promise<void> {
@@ -102,7 +113,8 @@ export async function startDirectTmux(): Promise<void> {
   // never delay or fail the launch.
   void import("../cli/hook-cmd.ts").then((m) => m.ensureGlobalKobeHooks())
   if (!(await tmuxAvailable())) {
-    console.error("kobe: tmux not found on PATH — install tmux to use kobe 0.6 direct mode")
+    const installHint = process.platform === "darwin" ? "brew install tmux" : "sudo apt install tmux"
+    console.error(`kobe: tmux not found on PATH — install it first: ${installHint}`)
     process.exitCode = 1
     return
   }

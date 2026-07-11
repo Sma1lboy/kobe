@@ -62,6 +62,9 @@ export interface DaemonRuntimeAdapter {
   getSavedRepos(): readonly string[]
   engineEntry(vendor: VendorId): { effortLevels?: readonly string[] }
   prStatus: {
+    /** The `--json` field set `gh pr view`/`gh pr list` request — single source
+     * for the daemon's `gh` calls and the pure mapper's expected shape. */
+    viewFields: string
     mapView(view: unknown, at: string): NonNullable<DaemonTask["prStatus"]> | null
     sameStatus(a: DaemonTask["prStatus"] | null, b: DaemonTask["prStatus"] | null): boolean
     nextPoll(
@@ -74,5 +77,16 @@ export interface DaemonRuntimeAdapter {
       nextAllowedAt: number
       failures: number
     }
+    /** Classify a non-success `gh` run into a typed transport/tooling error.
+     * Pure — see `monitor/pr-status.ts`. "No PR" is never inferred here; it's
+     * a structural empty-array SUCCESS the caller detects before falling back
+     * to this classifier. */
+    classify(signals: {
+      spawnError?: boolean
+      timedOut?: boolean
+      exitCode?: number | null
+      stderr?: string
+      parseError?: boolean
+    }): { kind: "error"; error: string }
   }
 }

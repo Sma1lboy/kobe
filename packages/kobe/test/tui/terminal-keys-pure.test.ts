@@ -70,13 +70,15 @@ describe("key routing tables", () => {
     // splits + reset, plus f4 (focus.next pane cycle — the one cross-pane
     // chord besides ctrl+q reachable from inside the terminal). Anything
     // beyond this list steals a chord from the engine CLI. f6 (issue #18,
-    // workspace.zenToggle) added 2026-07-07 for the same reason as f4.
+    // workspace.zenToggle) added 2026-07-07 for the same reason as f4;
+    // ctrl+g (attention.next — jump to the next waiting task) same rationale.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
       [
         "ctrl+[",
         "ctrl+]",
         "ctrl+e",
         "ctrl+f",
+        "ctrl+g",
         "ctrl+q",
         "ctrl+t",
         "ctrl+w",

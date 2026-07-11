@@ -52,6 +52,7 @@ export type SettingsRow =
   | { id: string; kind: "splitStyle"; style: SplitStyle }
   | { id: "toast"; kind: "toast" }
   | { id: "sound"; kind: "sound" }
+  | { id: "cross-task"; kind: "crossTask" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
   | { id: string; kind: "surface"; surface: "chattab" | "taskpanel" }
   | { id: "editor-kind"; kind: "editorKind" }
@@ -121,6 +122,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     ...SPLIT_STYLES.map((style): SettingsRow => ({ id: splitStyleRowId(style), kind: "splitStyle", style })),
     { id: "toast", kind: "toast" },
     { id: "sound", kind: "sound" },
+    { id: "cross-task", kind: "crossTask" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },
     { id: surfaceRowId("chattab"), kind: "surface", surface: "chattab" },
     { id: surfaceRowId("taskpanel"), kind: "surface", surface: "taskpanel" },

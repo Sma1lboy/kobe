@@ -117,7 +117,14 @@ function recordingDelivery(result: Partial<DeliveredPrompt> = {}) {
   const calls: Array<{ target: PromptTarget; prompt: string }> = []
   const deliver: ApiRuntime["deliverPrompt"] = async (_client, target, prompt) => {
     calls.push({ target, prompt })
-    return { session: tmuxSessionName(target.id), pane: "%1", started: true, engineReady: true, ...result }
+    return {
+      session: tmuxSessionName(target.id),
+      pane: "%1",
+      started: true,
+      engineReady: true,
+      delivered: true,
+      ...result,
+    }
   }
   return { calls, deliver }
 }
@@ -141,19 +148,28 @@ describe("add handler", () => {
     const task = taskFixture()
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task }),
-      "task.setActive": () => ({}),
     })
     const result = await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
-    expect(client.requestNames).toEqual(["task.create", "task.setActive"])
+    // No --activate ⇒ no task.setActive (must not steal the shared focus).
+    expect(client.requestNames).toEqual(["task.create"])
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
-    expect(client.requests[1].payload).toEqual({ taskId: "t1" })
     expect(result).toEqual({ taskId: "t1", task, started: false })
+  })
+
+  it("--activate sets the task active (opt-in focus)", async () => {
+    const task = taskFixture()
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task }),
+      "task.setActive": () => ({}),
+    })
+    await invokeVerb("add", ["--repo", "/repo/x", "--activate"], { client, runtime: stubRuntime() })
+    expect(client.requestNames).toEqual(["task.create", "task.setActive"])
+    expect(client.requests[1].payload).toEqual({ taskId: "t1" })
   })
 
   it("resolves a relative --repo against $PWD", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.setActive": () => ({}),
     })
     await invokeVerb("add", ["--repo", "some/rel"], { client, runtime: stubRuntime() })
     expect((client.requests[0].payload as { repo: string }).repo).toBe(`${process.cwd()}/some/rel`)
@@ -162,7 +178,6 @@ describe("add handler", () => {
   it("canonicalizes --repo through the runtime before task.create", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture({ repo: "/repo/main" }) }),
-      "task.setActive": () => ({}),
     })
     await invokeVerb("add", ["--repo", "/repo/main/.kobe/worktrees/task"], {
       client,
@@ -174,7 +189,6 @@ describe("add handler", () => {
   it("uses the settings default vendor when --vendor is omitted", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture({ vendor: "codex" }) }),
-      "task.setActive": () => ({}),
     })
     await invokeVerb("add", ["--repo", "/repo/x"], {
       client,
@@ -187,7 +201,6 @@ describe("add handler", () => {
     const fresh = taskFixture({ status: "in_progress", pinned: true })
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.setActive": () => ({}),
       "task.status": () => ({}),
       "task.pin": () => ({}),
       "task.get": () => ({ task: fresh }),
@@ -197,11 +210,10 @@ describe("add handler", () => {
       ["--repo", "/repo/x", "--status", "in_progress", "--pin", "--title", "My task"],
       { client, runtime: stubRuntime() },
     )) as { task: unknown; started: boolean }
-    expect(client.requestNames).toEqual(["task.create", "task.setActive", "task.status", "task.pin", "task.get"])
+    expect(client.requestNames).toEqual(["task.create", "task.status", "task.pin", "task.get"])
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x", title: "My task" })
-    expect(client.requests[1].payload).toEqual({ taskId: "t1" })
-    expect(client.requests[2].payload).toEqual({ taskId: "t1", status: "in_progress" })
-    expect(client.requests[3].payload).toEqual({ taskId: "t1", pinned: true })
+    expect(client.requests[1].payload).toEqual({ taskId: "t1", status: "in_progress" })
+    expect(client.requests[2].payload).toEqual({ taskId: "t1", pinned: true })
     // The returned task is the REFRESHED one, not the create-time snapshot.
     expect(result.task).toEqual(fresh)
   })
@@ -209,19 +221,17 @@ describe("add handler", () => {
   it("--pin=false still fires the follow-up (explicit unpin) and refetches", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.setActive": () => ({}),
       "task.pin": () => ({}),
       "task.get": () => ({ task: taskFixture() }),
     })
     await invokeVerb("add", ["--repo", "/repo/x", "--pin=false"], { client, runtime: stubRuntime() })
-    expect(client.requestNames).toEqual(["task.create", "task.setActive", "task.pin", "task.get"])
-    expect(client.requests[2].payload).toEqual({ taskId: "t1", pinned: false })
+    expect(client.requestNames).toEqual(["task.create", "task.pin", "task.get"])
+    expect(client.requests[1].payload).toEqual({ taskId: "t1", pinned: false })
   })
 
   it("passes branch/base-branch/vendor through to task.create (baseRef key)", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.setActive": () => ({}),
     })
     await invokeVerb("add", ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--vendor", "codex"], {
       client,
@@ -235,7 +245,6 @@ describe("add handler", () => {
     const refreshed = { ...task, worktreePath: "/wt/t1-materialized" }
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task }),
-      "task.setActive": () => ({}),
       "task.get": () => ({ task: refreshed }),
     })
     const { calls, deliver } = recordingDelivery()
@@ -258,7 +267,6 @@ describe("add handler", () => {
   it("spawn-task alias dispatches to add", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.setActive": () => ({}),
     })
     const result = (await invokeVerb("spawn-task", ["--repo", "/repo/x"], {
       client,
@@ -316,6 +324,18 @@ describe("send handler task resolution", () => {
     expect(client.requests[0]).toEqual({ name: "task.get", payload: { taskId: "active-1" } })
     expect(calls[0].target.id).toBe("active-1")
     expect(result.taskId).toBe("active-1")
+  })
+
+  it("errors NOT_DELIVERED when the paste never lands in the composer", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
+    await expectApiError(
+      () =>
+        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+          client,
+          runtime: stubRuntime({ deliverPrompt: recordingDelivery({ delivered: false }).deliver }),
+        }),
+      "NOT_DELIVERED",
+    )
   })
 
   it("errors with MISSING_TARGET when neither --task-id nor an active task exists", async () => {
@@ -417,6 +437,62 @@ describe("fan-out handler", () => {
       { repo: "/repo/x", vendor: "codex", title: "try", baseRef: "main" },
       { repo: "/repo/x", vendor: "codex", title: "try", baseRef: "main" },
     ])
+  })
+
+  it("all delivered: each task carries ok:true and failures is empty", async () => {
+    const client = fanClient()
+    const { deliver } = recordingDelivery()
+    const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })) as { tasks: Array<{ ok: boolean }>; failures: unknown[] }
+    expect(result.tasks.map((t) => t.ok)).toEqual([true, true])
+    expect(result.failures).toEqual([])
+  })
+
+  it("partial failure: creates all, throws PARTIAL_FANOUT carrying every taskId + code 3 payload", async () => {
+    const client = fanClient()
+    // 2nd task's delivery throws; 3rd resolves but the paste didn't land.
+    let call = 0
+    const deliver: ApiRuntime["deliverPrompt"] = async (_c, target) => {
+      call += 1
+      if (target.id === "t2") throw new ApiError("boom", "SESSION_FAILED")
+      const undelivered = target.id === "t3"
+      return {
+        session: tmuxSessionName(target.id),
+        pane: "%1",
+        started: true,
+        engineReady: !undelivered,
+        delivered: !undelivered,
+      }
+    }
+    try {
+      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
+        client,
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect.unreachable("should throw PARTIAL_FANOUT")
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError)
+      const e = err as ApiError
+      expect(e.code).toBe("PARTIAL_FANOUT")
+      const data = e.data as {
+        count: number
+        tasks: Array<{ taskId: string }>
+        failures: Array<{ taskId: string; error: { code: string } }>
+      }
+      expect(data.count).toBe(3)
+      // The one success is reported; the two failures carry their taskId so a
+      // script never loses an already-created (engine-burning) task.
+      expect(data.tasks.map((t) => t.taskId)).toEqual(["t1"])
+      expect(data.failures.map((f) => [f.taskId, f.error.code])).toEqual([
+        ["t2", "SESSION_FAILED"],
+        ["t3", "NOT_DELIVERED"],
+      ])
+    }
+    // All 3 tasks were created even though delivery partly failed.
+    expect(client.requests.filter((r) => r.name === "task.create")).toHaveLength(3)
+    expect(call).toBe(3)
   })
 })
 
@@ -634,6 +710,7 @@ describe("deliverPrompt", () => {
       },
       pasteAndSubmit: async (pane, text) => {
         pasted.push({ pane, text })
+        return true
       },
       resolveEngineLaunchInit: async () => ({}),
       engineCommand: () => ["claude", "--continue"],
@@ -650,7 +727,13 @@ describe("deliverPrompt", () => {
     expect(ensured).toEqual([])
     expect(waited).toEqual([{ session: tmuxSessionName("t1"), fresh: false }])
     expect(pasted).toEqual([{ pane: "%9", text: "hello" }])
-    expect(result).toEqual({ session: tmuxSessionName("t1"), pane: "%9", started: false, engineReady: true })
+    expect(result).toEqual({
+      session: tmuxSessionName("t1"),
+      pane: "%9",
+      started: false,
+      engineReady: true,
+      delivered: true,
+    })
   })
 
   it("builds a fresh session with the engine command in the worktree, then waits fresh", async () => {

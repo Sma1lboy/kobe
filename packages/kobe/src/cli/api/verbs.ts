@@ -18,6 +18,7 @@ import {
   dispatch,
   getTask,
   issueUpdate,
+  land,
   list,
   note,
   send,
@@ -128,7 +129,7 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   drive: ["send", "dispatch", "note", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
-  lifecycle: ["archive", "pin", "delete"],
+  lifecycle: ["archive", "pin", "land", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
   feedback: ["feedback"],
 }
@@ -164,7 +165,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "add",
     summary:
-      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Alias: spawn-task.",
+      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Does NOT steal focus — pass --activate to make it the active task. Alias: spawn-task.",
     flags: [
       F.repo(),
       F.title(),
@@ -184,6 +185,12 @@ export const VERBS: readonly VerbSpec[] = [
         description: "Initial lifecycle status.",
       },
       { name: "pin", type: "bool", description: "Pin the task to the top of the sidebar." },
+      {
+        name: "activate",
+        type: "bool",
+        default: "false",
+        description: "Make this the active task (pulls every mounted TUI's Tasks-pane focus). Off by default.",
+      },
       F.prompt(
         false,
         "Optional first message — when set, materializes the worktree, starts the engine, and pastes it.",
@@ -391,6 +398,24 @@ export const VERBS: readonly VerbSpec[] = [
     summary: "Materialize a task's git worktree on disk now (without starting an engine). Returns { worktreePath }.",
     flags: [F.taskId()],
     handler: (ctx) => simpleRpc(ctx, "task.ensureWorktree", { taskId: ctx.args.require("task-id") }),
+  },
+  {
+    name: "land",
+    summary:
+      "Merge a task's branch back into its base repo's current branch. Refuses a dirty base checkout; on conflict, aborts and returns the conflicted files (resolve by hand). Returns { landedOn, commit }.",
+    flags: [
+      F.taskId(),
+      {
+        name: "strategy",
+        type: "enum",
+        values: ["merge", "squash"],
+        default: "merge",
+        description: "merge (--no-ff) or squash into one commit.",
+      },
+      { name: "delete-branch", type: "bool", description: "Delete the task's branch after a successful land." },
+      { name: "then-archive", type: "bool", description: "Archive the task after a successful land." },
+    ],
+    handler: land,
   },
   {
     name: "delete",

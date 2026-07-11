@@ -22,9 +22,11 @@
  * `activeLeaf` (local ephemeral focus, kept OUT of the persisted tree —
  * see the Solid header) is `useState`, re-seeded via a `useEffect` keyed on
  * `props.splitTree` identity (the Solid `createEffect(on(...))` twin). The
- * corner name-tag's live-title tracking is the same lazy-attach-with-retry
- * shape as `use-turn-polls.ts`, scoped to this component instead of a
- * shared hook (it only ever serves split shell leaves, one tab at a time).
+ * corner name-tag's live-title tracking is the shared framework-free
+ * `useTitleSubscriptions` store (O18) — keyed on each leaf's globally-unique
+ * `splitLeafPtyKey`, so an instance shared across tabs (this component mounts
+ * without a key) can't bleed one tab's `leaf-1` title onto the next, and a
+ * respawned leaf re-subscribes instead of freezing on the dead PTY's title.
  * `dividerProps` takes a resolved color value instead of a lazy accessor —
  * React re-evaluates the whole render on any prop/state change, so there is
  * no separate reactive-attribute path to preserve. The opentui borderColor
@@ -34,8 +36,7 @@
  */
 
 import { type RGBA, TextAttributes } from "@opentui/core"
-import { type ReactNode, useEffect, useRef, useState } from "react"
-import { titleDisplayName } from "../../engine/registry"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { SPLIT_STYLE_KEY, normalizeSplitStyle } from "../../state/split-style"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -65,6 +66,7 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { Terminal } from "../panes/terminal/Terminal"
 import { useDialog } from "../ui/dialog"
+import { useTitleSubscriptions } from "./title-subscriptions"
 
 /** What a terminal leaf shows: null = the tab's own command (`leaf-1`). */
 type LeafCommand = readonly string[] | null
@@ -85,9 +87,6 @@ export function releaseSplitLeaves(tabKey: string, tree: PersistedSplit | null):
     if (leaf.id !== "leaf-1") getDefaultPtyRegistry().release(splitLeafPtyKey(tabKey, leaf.id))
   }
 }
-
-/** Live foreground-process titles for split-created SHELL leaves — retry cadence. */
-const TITLE_ATTACH_MS = 2000
 
 export function TerminalSplit(props: {
   /** `tabPtyKey(taskId, tabId)` — PTY registry prefix for this tab's leaves. */
@@ -228,51 +227,16 @@ export function TerminalSplit(props: {
   // included: a SHELL tab's own leaf runs zsh and can enter claude/vim,
   // and its static command basename would freeze on "zsh". Engine leaves
   // still prefer their conversation title (`engineTitle` wins in
-  // `splitLeafNames`). Lazy-attach + retry: a leaf's PTY spawns
-  // asynchronously after its Terminal mounts, same contract as
-  // `use-turn-polls.ts`'s poll attach. Ephemeral (not persisted) — a fresh
-  // mount re-derives it as soon as the shell's next title escape lands.
-  const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
-  const titleSubsRef = useRef(new Map<string, () => void>())
-  const [titleTick, setTitleTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setTitleTick((n) => n + 1), TITLE_ATTACH_MS)
-    return () => clearInterval(timer)
-  }, [])
-  useEffect(() => {
-    void titleTick
-    const reg = getDefaultPtyRegistry()
-    const titleSubs = titleSubsRef.current
-    const leafIds = new Set(leaves(state.root).map((l) => l.id))
-    for (const id of leafIds) {
-      if (titleSubs.has(id)) continue
-      const pty = reg.get(splitLeafPtyKey(props.tabKey, id))
-      if (!pty) continue
-      // Normalize through the registry so an engine's decorated title
-      // ("✳ Claude Code") reads as its binary ("claude") — one vocabulary
-      // across corner tags and tab labels, however the process started.
-      titleSubs.set(
-        id,
-        pty.onTitleChange((title) => setLiveTitles((prev) => new Map(prev).set(id, titleDisplayName(title)))),
-      )
-    }
-    for (const [id, dispose] of titleSubs) {
-      if (leafIds.has(id)) continue
-      dispose()
-      titleSubs.delete(id)
-      setLiveTitles((prev) => {
-        const next = new Map(prev)
-        next.delete(id)
-        return next
-      })
-    }
-  }, [props.tabKey, state, titleTick])
-  useEffect(() => {
-    const subs = titleSubsRef.current
-    return () => {
-      for (const dispose of subs.values()) dispose()
-    }
-  }, [])
+  // `splitLeafNames`). Keyed by the globally-unique `splitLeafPtyKey` in the
+  // shared store, mapped back to the LEAF id here — the leaf id is only
+  // unique within one tab, so subscribing by ptyKey is what keeps two tabs'
+  // `leaf-1`s from sharing a title through this keyless-mounted instance.
+  const leafPtyKeys = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const leaf of leaves(state.root)) map.set(leaf.id, splitLeafPtyKey(props.tabKey, leaf.id))
+    return map
+  }, [props.tabKey, state])
+  const liveTitles = useTitleSubscriptions(leafPtyKeys)
 
   /** id → display name. Owner correction 2026-07-06: the TAB is the
    *  "group" (its default title says so) — each leaf carries its OWN
