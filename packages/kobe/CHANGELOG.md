@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.94
+
+### Patch Changes
+
+- e662338: Internal architecture sweep across the pure-TUI layer: duplicated logic consolidated into shared modules (error-message formatting, latest-ref hook, task-action dialog adapters, sidebar row-card chrome and callback types, best-effort daemon connect), the TerminalTabs/workspace hosts split into focused hooks, and the embedded-terminal docs refreshed. No behavior change.
+- 9245399: Launching the TUI now labels the outer terminal tab/window `kobe` instead of letting iTerm2 fall back to the JavaScript runtime name (`node`). Redirected CLI output remains free of terminal control sequences.
+- e5f669d: Engine tabs now launch inside your real shell: the PTY spawns `$SHELL` and types the engine command into it, so the session keeps your rc-file context (aliases, PATH) and exiting the vendor CLI lands on a normal prompt in the same tab — the engine-to-shell degrade transition is gone. ctrl+w closes an engine tab in one press (it no longer resurrects as a shell first), the last tab recycles in place as a fresh engine when its shell exits, the pty host keeps one pre-warmed shell per worktree so new tabs skip shell startup, and quick-fork prompts ride the engine argv instead of racing a paste.
+
 ## 0.7.93
 
 ### Patch Changes
