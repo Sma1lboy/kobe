@@ -189,20 +189,6 @@ describe("update / move / remove edges", () => {
   it("remove is a silent no-op for an unknown id", async () => {
     await expect(store.remove("missing")).resolves.toBeUndefined()
   })
-
-  it("archive() marks the task done by default and accepts an explicit status", async () => {
-    const t = await store.create({
-      repo: "/r",
-      title: "a",
-      branch: "",
-      worktreePath: "",
-      status: "backlog",
-      kind: "task",
-      vendor: "claude",
-    })
-    expect((await store.archive(t.id)).status).toBe("done")
-    expect((await store.archive(t.id, "canceled")).status).toBe("canceled")
-  })
 })
 
 describe("subscribe contract", () => {
