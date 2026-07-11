@@ -154,7 +154,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "task.openEditor",
     scope: "global",
-    keys: ["ctrl+o"],
+    keys: [],
     prefixKeys: ["o"],
     category: "Global",
     description: "Open active task worktree in editor",
@@ -162,7 +162,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "settings.open",
     scope: "global",
-    keys: ["ctrl+,"],
+    keys: [],
     prefixKeys: [","],
     category: "Global",
     description: "Open settings",
@@ -205,13 +205,12 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
-    // ctrl+q is direct from Files, while ChatPane and Terminal use the
-    // prefix form so their native input stays intact. Scope stays
-    // "workspace" for override validation; the host's focus-time filter
-    // selects exactly one of the two forms.
+    // this workspace-owned action is prefix-only so it cannot steal a
+    // ChatPane control byte. Scope stays "workspace" for override
+    // validation.
     id: "focus.sidebar",
     scope: "workspace",
-    keys: ["ctrl+q"],
+    keys: [],
     prefixKeys: ["q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
@@ -220,10 +219,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // `ctrl+hjkl` — vim-style direct pane focus outside ChatPane and the
-    // terminal. The prefix half retains that navigation where control bytes
-    // belong to the composer/child process. The four chords map to panes by
-    // ordinal:
+    // Prefix h/j/k/l — vim-style pane focus. This global navigation action
+    // keeps one static form so it cannot steal ChatPane control bytes. The
+    // four second strokes map to panes by ordinal:
     //   ctrl+h → 1 = sidebar (TASKS)
     //   ctrl+j → 2 = workspace
     //   ctrl+k → 3 = files
@@ -233,7 +231,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // byte) and alt+digit gets eaten by macOS launchers like Raycast.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
+    keys: [],
     prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",

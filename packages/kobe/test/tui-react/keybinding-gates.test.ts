@@ -10,8 +10,6 @@
 import { describe, expect, test } from "vitest"
 import {
   type WorkspacePageState,
-  bindingModeForPane,
-  focusSlotIndex,
   settingsCloseKeysEnabled,
   workspacePagesClosed,
 } from "../../src/tui-react/workspace/keybinding-gates"
@@ -51,23 +49,5 @@ describe("settingsCloseKeysEnabled — the deliberate exemption", () => {
   test("dead while settings is closed", () => {
     expect(settingsCloseKeysEnabled(closed)).toBe(false)
     expect(settingsCloseKeysEnabled({ ...closed, worktreesOpen: true })).toBe(false)
-  })
-})
-
-describe("bindingModeForPane", () => {
-  test("keeps ChatPane and terminal-conflicting controls behind the prefix", () => {
-    expect(bindingModeForPane("workspace")).toBe("prefix")
-    expect(bindingModeForPane("terminal")).toBe("prefix")
-  })
-
-  test("restores direct Ctrl controls in Tasks and Files panes", () => {
-    expect(bindingModeForPane("sidebar")).toBe("direct")
-    expect(bindingModeForPane("files")).toBe("direct")
-  })
-})
-
-describe("focusSlotIndex", () => {
-  test("normalizes the prefix half of a dual-mode four-pane binding", () => {
-    expect([0, 1, 2, 3, 4, 5, 6, 7].map(focusSlotIndex)).toEqual([0, 1, 2, 3, 0, 1, 2, 3])
   })
 })

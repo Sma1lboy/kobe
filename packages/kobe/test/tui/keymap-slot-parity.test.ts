@@ -30,7 +30,6 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest"
-import { focusSlotIndex } from "../../src/tui-react/workspace/keybinding-gates"
 import { KobeKeymap, bindByIds, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
 import { type Binding, type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
@@ -72,7 +71,7 @@ describe("slot dispatch parity with default keys", () => {
       id: 1,
       config: () => ({
         bindings: bindByIds({
-          "focus.numeric": (_evt, slot) => calls.push(panes[focusSlotIndex(slot)] ?? "missing"),
+          "focus.numeric": (_evt, slot) => calls.push(panes[slot ?? 0] ?? "missing"),
         }),
       }),
     }

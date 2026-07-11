@@ -20,11 +20,18 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
   })
 
-  test("dual-mode navigation retains direct Ctrl keys plus ChatPane prefix strokes", () => {
-    expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
+  test("ChatPane navigation keeps only its prefix second strokes", () => {
+    expect(findBinding("focus.sidebar")?.keys).toEqual([])
     expect(findBinding("focus.sidebar")?.prefixKeys).toEqual(["q"])
-    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"])
+    expect(findBinding("focus.numeric")?.keys).toEqual([])
     expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
+  })
+
+  test("non-ChatPane bindings retain their direct Ctrl chords", () => {
+    expect(findBinding("sidebar.projectFilter")?.keys).toEqual(["ctrl+p"])
+    expect(findBinding("sidebar.projectFilter")?.prefixKeys).toBeUndefined()
+    expect(findBinding("terminal.scroll-up")?.keys).toEqual(["ctrl+pageup"])
+    expect(findBinding("terminal.scroll-up")?.prefixKeys).toBeUndefined()
   })
 
   test("terminal scrollback remains a direct ctrl chord outside the ChatPane", () => {
