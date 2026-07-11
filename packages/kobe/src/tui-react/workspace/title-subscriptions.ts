@@ -28,10 +28,11 @@
  * asynchronously after its Terminal mounts, so the attach must retry).
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { titleDisplayName } from "../../engine/registry"
 import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { useLatest } from "../lib/use-latest"
 
 /** A registry lookup — injectable so tests drive a fake PTY set. */
 export type PtyLookup = (key: string) => TaskPtyLike | null
@@ -122,8 +123,10 @@ const TITLE_ATTACH_MS = 2000
 
 /**
  * React binding for {@link createTitleSubscriptions}: owns one store for the
- * component's lifetime, drives its reconcile from the given `ptyKeys` map on
- * every render AND a 2s lazy-attach tick, and returns the requested-id → live
+ * component's lifetime, drives its reconcile whenever the given `ptyKeys` map
+ * changes AND on a 2s lazy-attach tick AND on title pushes (the tick and the
+ * pushes call the stable reconcile directly — no render-tick state, so a
+ * no-change tick re-renders nothing), and returns the requested-id → live
  * display title map for render. `ptyKeys` maps a caller-chosen id (a leaf id,
  * a tab id) to its GLOBALLY-UNIQUE registry ptyKey — the id keys the returned
  * map, the ptyKey keys the subscription (so no two components' `leaf-1`s
@@ -135,32 +138,57 @@ export function useTitleSubscriptions(ptyKeys: ReadonlyMap<string, string>): Rea
   if (storeRef.current === null) storeRef.current = createTitleSubscriptions()
   const store = storeRef.current
   const [titles, setTitles] = useState<ReadonlyMap<string, string>>(new Map())
-  const [tick, setTick] = useState(0)
+  const ptyKeysRef = useLatest(ptyKeys)
 
-  useEffect(() => {
-    const timer = setInterval(() => setTick((n) => n + 1), TITLE_ATTACH_MS)
-    return () => clearInterval(timer)
-  }, [])
-
-  // Reconcile on every render (ptyKeys changed) and every retry tick (a PTY
-  // may have just spawned). Rebuild the id→title view only when something
-  // actually moved — identity-stable so idle renders don't allocate a Map.
-  useEffect(() => {
-    void tick
-    store.reconcile(ptyKeys.values())
+  // Reconcile subscriptions + project ptyKey→title onto id→title. Stable so
+  // the retry tick and title pushes call it directly without re-rendering
+  // the host; the identity-stable setTitles keeps a no-change run render-free.
+  const reconcile = useCallback(() => {
+    const keys = ptyKeysRef.current
+    store.reconcile(keys.values())
     setTitles((prev) => {
       const next = new Map<string, string>()
-      for (const [id, key] of ptyKeys) {
+      for (const [id, key] of keys) {
         const title = store.get(key)
         if (title !== undefined) next.set(id, title)
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next
     })
-  })
+  }, [store])
+
+  // Retry tick — a PTY may have just spawned.
+  useEffect(() => {
+    const timer = setInterval(reconcile, TITLE_ATTACH_MS)
+    return () => clearInterval(timer)
+  }, [reconcile])
+
+  // Reconcile when the requested key set changes (and once on mount).
+  useEffect(() => {
+    void ptyKeys
+    reconcile()
+  }, [ptyKeys, reconcile])
 
   // Title-change pushes (not caused by a reconcile) re-project the view.
-  useEffect(() => store.subscribe(() => setTick((n) => n + 1)), [store])
+  // Deferred one microtask (coalesced): a fresh subscription seeds its title
+  // SYNCHRONOUSLY inside the store's reconcile loop, which must never be
+  // re-entered — the old setState tick got this asynchrony for free from React.
+  useEffect(() => {
+    let active = true
+    let scheduled = false
+    const unsub = store.subscribe(() => {
+      if (scheduled) return
+      scheduled = true
+      queueMicrotask(() => {
+        scheduled = false
+        if (active) reconcile()
+      })
+    })
+    return () => {
+      active = false
+      unsub()
+    }
+  }, [store, reconcile])
 
   useEffect(() => () => store.dispose(), [store])
 
