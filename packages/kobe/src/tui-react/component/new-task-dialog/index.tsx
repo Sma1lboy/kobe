@@ -12,7 +12,7 @@
  */
 
 import type { NewTaskDialogOptions, NewTaskInput } from "../../../tui/component/new-task-dialog/state"
-import type { DialogContext } from "../../ui/dialog"
+import { type DialogContext, showDialog } from "../../ui/dialog"
 import { NewTaskDialogView } from "./dialog"
 
 export type { NewTaskDialogOptions, NewTaskInput } from "../../../tui/component/new-task-dialog/state"
@@ -32,26 +32,24 @@ function show(
   savedRepos: readonly string[],
   options?: NewTaskDialogOptions,
 ): Promise<NewTaskInput | undefined> {
-  return new Promise<NewTaskInput | undefined>((resolve) => {
-    dialog.replace(
-      () => (
-        <NewTaskDialogView
-          defaultRepo={defaultRepo}
-          savedRepos={savedRepos}
-          defaultCloneParent={options?.defaultCloneParent}
-          defaultVendor={options?.defaultVendor}
-          availableVendors={options?.availableVendors}
-          discoverAdoptable={options?.discoverAdoptable}
-          onSubmit={(v) => resolve(v)}
-          onCancel={() => resolve(undefined)}
-        />
-      ),
-      () => resolve(undefined),
-    )
-    // medium (80 cols) — small clipped repo paths mid-row; the card sizes
-    // to content height. Same rationale as the Solid entry.
-    dialog.setSize("medium")
-  })
+  // medium (80 cols) — small clipped repo paths mid-row; the card sizes
+  // to content height. Same rationale as the Solid entry.
+  return showDialog<NewTaskInput>(
+    dialog,
+    (resolve) => (
+      <NewTaskDialogView
+        defaultRepo={defaultRepo}
+        savedRepos={savedRepos}
+        defaultCloneParent={options?.defaultCloneParent}
+        defaultVendor={options?.defaultVendor}
+        availableVendors={options?.availableVendors}
+        discoverAdoptable={options?.discoverAdoptable}
+        onSubmit={(v) => resolve(v)}
+        onCancel={() => resolve(undefined)}
+      />
+    ),
+    { size: "medium" },
+  )
 }
 
 export const NewTaskDialog = {

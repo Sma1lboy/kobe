@@ -25,7 +25,8 @@ import { nextVendorWithin } from "../../types/vendor"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { ChoiceRow } from "./new-task-dialog/picker-list"
 import { quickTaskBindings } from "./quick-task-bindings"
 
 export interface QuickTaskComposerOptions {
@@ -179,22 +180,17 @@ function QuickTaskComposerView(
         </box>
       ) : null}
 
-      <box flexDirection="row" gap={2}>
-        <text fg={fieldColor("engine")}>{t("quickTask.engineLabel")}</text>
-        {props.engines.map((v) => (
-          <text
-            key={v}
-            fg={vendor === v ? theme.primary : theme.textMuted}
-            attributes={vendor === v ? TextAttributes.BOLD : undefined}
-            onMouseUp={() => {
-              setVendor(v)
-              setField("engine")
-            }}
-          >
-            {props.engineLabel(v)}
-          </text>
-        ))}
-      </box>
+      <ChoiceRow
+        choices={props.engines}
+        selected={vendor}
+        label={<text fg={fieldColor("engine")}>{t("quickTask.engineLabel")}</text>}
+        arrow={false}
+        display={(v) => props.engineLabel(v)}
+        onPick={(v) => {
+          setVendor(v)
+          setField("engine")
+        }}
+      />
 
       <box gap={0}>
         <text fg={fieldColor("branch")}>{t("quickTask.branchLabel")}</text>
@@ -215,13 +211,11 @@ function QuickTaskComposerView(
 }
 
 function show(dialog: DialogContext, opts: QuickTaskComposerOptions): Promise<QuickTaskResult | undefined> {
-  return new Promise<QuickTaskResult | undefined>((resolve) => {
-    dialog.replace(
-      () => <QuickTaskComposerView {...opts} onSubmit={(r) => resolve(r)} onCancel={() => resolve(undefined)} />,
-      () => resolve(undefined),
-    )
-    dialog.setSize("medium")
-  })
+  return showDialog<QuickTaskResult>(
+    dialog,
+    (resolve) => <QuickTaskComposerView {...opts} onSubmit={(r) => resolve(r)} onCancel={() => resolve(undefined)} />,
+    { size: "medium" },
+  )
 }
 
 export const QuickTaskComposer = { show }

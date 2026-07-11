@@ -16,7 +16,8 @@ import { useState } from "react"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { ChoiceRow } from "./new-task-dialog/picker-list"
 
 /** What the picker can resolve to: an engine vendor or a plain shell tab. */
 export type EnginePick = VendorId | "shell"
@@ -76,22 +77,7 @@ export function EnginePickerDialogView(props: {
           esc
         </text>
       </box>
-      <box flexDirection="row" gap={2}>
-        {choices.map((v) => {
-          const selected = pick === v
-          return (
-            <text
-              key={v}
-              fg={selected ? theme.primary : theme.textMuted}
-              attributes={selected ? TextAttributes.BOLD : undefined}
-              onMouseUp={() => commit(v)}
-            >
-              {selected ? "▸ " : "  "}
-              {v}
-            </text>
-          )
-        })}
-      </box>
+      <ChoiceRow choices={choices} selected={pick} onPick={(v) => commit(v)} />
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>{t("terminal.tab.chooseEngineHint")}</text>
       </box>
@@ -105,21 +91,16 @@ function show(
   defaultVendor: VendorId,
   opts: { dialogTitle?: string; allowShell?: boolean } = {},
 ): Promise<EnginePick | undefined> {
-  return new Promise<EnginePick | undefined>((resolve) => {
-    dialog.replace(
-      () => (
-        <EnginePickerDialogView
-          availableVendors={availableVendors}
-          defaultVendor={defaultVendor}
-          dialogTitle={opts.dialogTitle}
-          allowShell={opts.allowShell}
-          onSubmit={(v) => resolve(v)}
-          onCancel={() => resolve(undefined)}
-        />
-      ),
-      () => resolve(undefined),
-    )
-  })
+  return showDialog<EnginePick>(dialog, (resolve) => (
+    <EnginePickerDialogView
+      availableVendors={availableVendors}
+      defaultVendor={defaultVendor}
+      dialogTitle={opts.dialogTitle}
+      allowShell={opts.allowShell}
+      onSubmit={(v) => resolve(v)}
+      onCancel={() => resolve(undefined)}
+    />
+  ))
 }
 
 export const EnginePickerDialog = {
