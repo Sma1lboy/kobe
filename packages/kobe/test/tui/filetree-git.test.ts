@@ -26,7 +26,16 @@ vi.mock("../../src/worktree/content", async (importOriginal) => {
   }
 })
 
-import { buildTree, listFiles, parseNumstat, parsePorcelain, statusFiles } from "../../src/tui/panes/filetree/git"
+import {
+  buildTree,
+  listFiles,
+  parseNameStatus,
+  parseNumstat,
+  parsePorcelain,
+  resolveBase,
+  statusFiles,
+  statusFilesBranch,
+} from "../../src/tui/panes/filetree/git"
 import { readWorktreeFile, runWorktreeGit } from "../../src/worktree/content"
 
 const runGit = vi.mocked(runWorktreeGit)
@@ -215,5 +224,58 @@ describe("statusFiles", () => {
     readFile.mockResolvedValue(null)
     const rows = await statusFiles("/repo")
     expect(rows).toEqual([{ path: "gone.txt", status: "?" }])
+  })
+})
+
+describe("parseNameStatus", () => {
+  test("maps M/A/D headlines and keeps the new path for renames", () => {
+    const raw = "M\tsrc/a.ts\nA\tsrc/b.ts\nD\told.ts\nR094\tsrc/old.ts\tsrc/new.ts\n"
+    expect(parseNameStatus(raw)).toEqual([
+      { status: "M", path: "src/a.ts" },
+      { status: "A", path: "src/b.ts" },
+      { status: "D", path: "old.ts" },
+      { status: "R", path: "src/new.ts" },
+    ])
+  })
+
+  test("drops unknown codes and directory rows", () => {
+    expect(parseNameStatus("X\tweird.ts\nM\treal.ts\n")).toEqual([{ status: "M", path: "real.ts" }])
+  })
+})
+
+describe("statusFilesBranch", () => {
+  test("merges name-status headlines with numstat counts over base...HEAD", async () => {
+    runGit.mockImplementation(async (_cwd, args) => {
+      // Three-dot merge-base range, never a literal $(merge-base) subshell.
+      expect(args).toContain("origin/main...HEAD")
+      if (args.includes("--name-status")) return ok("M\tsrc/a.ts\nA\tsrc/b.ts\n")
+      if (args.includes("--numstat")) return ok("3\t1\tsrc/a.ts\n10\t0\tsrc/b.ts\n")
+      throw new Error(`unexpected args ${args.join(" ")}`)
+    })
+    const rows = await statusFilesBranch("/repo", "origin/main")
+    expect(rows).toEqual([
+      { path: "src/a.ts", status: "M", added: 3, deleted: 1 },
+      { path: "src/b.ts", status: "A", added: 10, deleted: 0 },
+    ])
+  })
+})
+
+describe("resolveBase", () => {
+  test("prefers an explicit PR base ref", async () => {
+    expect(await resolveBase("/repo", "origin/release")).toBe("origin/release")
+  })
+
+  test("falls back to origin/HEAD, then origin/main", async () => {
+    runGit.mockImplementation(async (_cwd, args) => {
+      if (args.includes("symbolic-ref")) return fail("no origin/HEAD")
+      if (args.includes("rev-parse") && args.includes("origin/main")) return ok("")
+      return fail("nope")
+    })
+    expect(await resolveBase("/repo")).toBe("origin/main")
+  })
+
+  test("returns null when nothing resolves", async () => {
+    runGit.mockImplementation(async () => fail("detached, no remote"))
+    expect(await resolveBase("/repo")).toBeNull()
   })
 })

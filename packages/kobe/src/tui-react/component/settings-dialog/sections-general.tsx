@@ -77,6 +77,8 @@ export function GeneralSettingsSection(
     soundEnabled: boolean
     toggleToast: () => void
     toggleSound: () => void
+    crossTaskEnabled: boolean
+    toggleCrossTask: () => void
     splitStyle: SplitStyle
     selectSplitStyle: (style: SplitStyle) => void
     zenKeepsTasks: boolean
@@ -119,6 +121,7 @@ export function GeneralSettingsSection(
   const reducedMotionRow = rowIdx("reduced-motion")
   const toastRow = rowIdx("toast")
   const soundRow = rowIdx("sound")
+  const crossTaskRow = rowIdx("cross-task")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
   const surfaceChattabRow = rowIdx(surfaceRowId("chattab"))
   const surfaceTaskpanelRow = rowIdx(surfaceRowId("taskpanel"))
@@ -239,6 +242,14 @@ export function GeneralSettingsSection(
           bold={true}
         >
           {`${check(props.soundEnabled)} ${t("settings.general.sound")}`}
+        </Row>
+        <Row
+          cursor={isBodyCursor(crossTaskRow)}
+          onMouseUp={activate(crossTaskRow, props.toggleCrossTask)}
+          fg={props.crossTaskEnabled ? theme.accent : theme.textMuted}
+          bold={true}
+        >
+          {`${check(props.crossTaskEnabled)} ${t("settings.general.crossTask")}`}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>

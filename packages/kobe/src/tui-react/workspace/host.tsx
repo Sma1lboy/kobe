@@ -28,11 +28,14 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useDialog } from "../ui/dialog"
 import { UpdatePage } from "../update/host.tsx"
+import { forgetTaskTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
+import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { useAccessor } from "./use-accessor"
+import { useAttention } from "./use-attention"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 
 const SIDEBAR_WIDTH = 32
@@ -90,6 +93,20 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
   const worktree = selectedTask?.worktreePath || null
 
+  // Cross-task attention (P0): rising-edge notify for non-selected tasks +
+  // the global chord's jump-to-next handler. State is engine-owned/neutral.
+  const t = useT()
+  const { jumpToNextAttention } = useAttention({
+    tasks,
+    engineState,
+    selectedId,
+    kv,
+    notif,
+    selectTask,
+    focusWorkspace: () => focus.setFocused("workspace"),
+    noTasksMessage: t("workspace.attention.none"),
+  })
+
   // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
   // — the shared lib/task-actions flows live in host-task-actions.ts.
   const { createTask, archiveTask, deleteTask, renameTask, renameBranch, cycleVendor, togglePin, moveTask } =
@@ -103,12 +120,26 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       setSelectedId,
       selectedTask: () => selectedTask,
       activateTask,
+      forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
 
   const setSortMode = (next: "default" | "recent"): void => {
     setSortModeSig(next)
     kv.set("activeSortMode", next)
   }
+
+  // One-time orphan sweep (O19): clear historical `terminalTabs.*` snapshots
+  // whose task no longer exists — the backlog that accumulated before
+  // delete-time reclamation. Runs once, the first render the task list has
+  // hydrated (the raw signal, so archived tasks are kept — their snapshots
+  // are load-bearing for unarchive --resume). A ref, not a dep, so a later
+  // task-list change never re-sweeps a live task's fresh snapshot.
+  const sweptOrphansRef = useRef(false)
+  useEffect(() => {
+    if (sweptOrphansRef.current || tasks.length === 0) return
+    sweptOrphansRef.current = true
+    sweepOrphanTabsSnapshots(kv, tasks.map((task) => task.id))
+  }, [tasks, kv])
 
   // Imperative handle from the currently-mounted TerminalTabs (issue #16
   // editor-tab flow). A ref (not a plain `let` — this component re-renders
@@ -117,6 +148,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // re-hands it on every mount (task/worktree switch).
   const openEditorTabFn = useRef<((command: readonly string[], label: string) => void) | null>(null)
   const sendToEngineFn = useRef<((text: string) => void) | null>(null)
+  // Read-only diff tab opener (issue #21) — same ref pattern as the editor
+  // tab: TerminalTabs re-hands it per mount, FileTree's `d` reads it at
+  // keypress. Opening is a content swap; the host does NOT focus the
+  // workspace here (KOB-25 — a read-only open must not pull focus).
+  const openDiffTabFn = useRef<((relPath: string, label: string, base?: string) => void) | null>(null)
 
   /** FileTree corner `pr` action — the Ops pane's createPR verbatim, with
    *  the tmux send-keys half swapped for a PTY paste+submit. */
@@ -163,6 +199,18 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focus.setFocused("workspace")
   }
 
+  /**
+   * FileTree's `d` action (issue #21): open a file's read-only diff in the
+   * workspace content tab. The file's basename labels the tab; `base` (when
+   * the Changes tab is in Branch scope) makes it a vs-base diff. Deliberately
+   * NO `focus.setFocused` — a read-only open is a content swap, not a
+   * navigation (KOB-25), so the FileTree keeps keyboard focus.
+   */
+  function openDiff(relPath: string, base?: string): void {
+    const label = relPath.split("/").at(-1) ?? relPath
+    openDiffTabFn.current?.(relPath, label, base)
+  }
+
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
   // `kobe settings` window. Theme/transparent/focus accent changes apply
   // centrally via host-boot's UiPrefsSync, so there's no workspace-pane
@@ -197,6 +245,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     renameBranch: (id) => void renameBranch(id),
     cycleVendor: (id) => void cycleVendor(id),
     toggleZen,
+    jumpToNextAttention,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus
@@ -299,6 +348,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onEngineSendReady={(send) => {
             sendToEngineFn.current = send
           }}
+          onDiffTabReady={(open) => {
+            openDiffTabFn.current = open
+          }}
           onQuickFork={quickFork.onQuickFork}
           initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
@@ -313,8 +365,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         >
           <FileTree
             worktreePath={worktree}
+            prBaseRef={selectedTask?.prStatus?.baseRef}
             focused={activePane === "files"}
             onOpenFile={(relPath) => void openFileInEditor(relPath)}
+            onOpenDiff={openDiff}
             onZenToggle={toggleZen}
             onCreatePR={() => void createPR()}
           />

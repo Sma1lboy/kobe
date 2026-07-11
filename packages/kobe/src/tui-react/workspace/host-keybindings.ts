@@ -51,6 +51,7 @@ export type WorkspaceKeybindingDeps = {
   renameBranch: (id: string) => void
   cycleVendor: (id: string) => void
   toggleZen: () => void
+  jumpToNextAttention: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -117,6 +118,9 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // tier as focus.next so it fires from every pane including inside
         // the embedded terminal.
         "workspace.zenToggle": () => deps.toggleZen(),
+        // ctrl+g — reserved from terminal passthrough too, so "jump to the
+        // next waiting task" works even while focused inside the engine.
+        "attention.next": () => deps.jumpToNextAttention(),
       }),
     ],
   }))

@@ -39,6 +39,9 @@ export type WorkspaceTaskActionDeps = {
   setSelectedId: (id: string | null) => void
   selectedTask: () => Task | undefined
   activateTask: (id: string) => Promise<void>
+  /** Reclaim a deleted task's terminal-tab snapshot (O19). Delete only —
+   *  archive keeps the snapshot for unarchive --resume. */
+  forgetTaskTabs: (taskId: string) => void
 }
 
 export type WorkspaceTaskActions = {
@@ -65,11 +68,19 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     notifyError,
     notifyInfo: deps.notifyInfo,
     updateActiveTask: true,
-    onTaskDeleted: selectNextAfterDelete({
-      tasks,
-      selectedId: deps.selectedId,
-      setSelectedId: deps.setSelectedId,
-    }),
+    onTaskDeleted: (() => {
+      // Reclaim the deleted task's terminal-tab snapshot (O19), THEN move the
+      // host cursor off it (the shared selection move).
+      const moveSelection = selectNextAfterDelete({
+        tasks,
+        selectedId: deps.selectedId,
+        setSelectedId: deps.setSelectedId,
+      })
+      return (taskId: string, nextTask: Task | undefined) => {
+        deps.forgetTaskTabs(taskId)
+        moveSelection(taskId, nextTask)
+      }
+    })(),
     cursorRepo: () => deps.selectedTask()?.repo ?? tasks()[0]?.repo,
     selectTask: (id) => deps.setSelectedId(id),
     enterTask: (id) => deps.activateTask(id),
