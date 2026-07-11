@@ -34,8 +34,7 @@ interface TabBase {
    * PTY-world `runChatTabNamingPass`). Display precedence is
    * `title ?? autoTitle ?? numbered default`: a manual F2 rename always
    * wins, and clearing one falls back here — tmux's automatic-rename
-   * semantics. On the base so a tab degraded to a shell (`tabToShell`)
-   * keeps the name of the conversation it hosted.
+   * semantics.
    */
   readonly autoTitle?: string | null
   /**
@@ -52,9 +51,11 @@ interface TabBase {
 }
 
 /**
- * Runs an interactive engine CLI. When its process exits, the tab
- * degrades in place to a {@link CommandTab} running the user's shell
- * (`tabToShell`) — exiting the vendor is allowed, not an error.
+ * Runs an interactive engine CLI inside the user's shell: the tab's PTY
+ * spawns `$SHELL` and the engine command is TYPED into it as initial
+ * input ({@link shellSpawn}), so exiting the vendor lands on a normal
+ * shell prompt with the user's full rc context — no degrade transition.
+ * The tab closes only when the wrapping shell itself exits.
  */
 export interface EngineTab extends TabBase {
   readonly kind: "engine"
@@ -84,10 +85,9 @@ export interface EngineTab extends TabBase {
 
 /**
  * Runs a fixed one-off argv: an editor tab (the FileTree "open in
- * editor" flow, see `openEditorTab`) or an engine tab degraded to the
- * user's shell (`tabToShell`). Closes itself (and releases its PTY)
- * when its process exits — the PTY-world equivalent of tmux closing an
- * editor's transient window on quit.
+ * editor" flow, see `openEditorTab`) or the ctrl+e "shell" pick. Closes
+ * itself (and releases its PTY) when its process exits — the PTY-world
+ * equivalent of tmux closing an editor's transient window on quit.
  */
 export interface CommandTab extends TabBase {
   readonly kind: "command"
@@ -175,24 +175,6 @@ export function openEditorTab(state: TabsState, command: readonly string[], labe
 }
 
 /**
- * Degrade an engine tab whose CLI exited into a plain shell tab. Exiting
- * the vendor CLI is an allowed action, not an error: the tab keeps
- * its identity (id/title/ordinal) and respawns
- * as `shell` in the same worktree instead of freezing behind the
- * dead-shell exit banner. No-op if the tab is gone or already a command
- * tab (those close themselves on exit instead — see `TerminalTabs.tsx`).
- */
-export function tabToShell(state: TabsState, id: string, shell: readonly string[]): TabsState {
-  const tabs = state.tabs.map(
-    (t): TerminalTab =>
-      t.id === id && t.kind === "engine"
-        ? { kind: "command", id: t.id, title: t.title, ordinal: t.ordinal, autoTitle: t.autoTitle, command: shell }
-        : t,
-  )
-  return { ...state, tabs }
-}
-
-/**
  * Close a specific tab by id, focusing its left neighbor if it was the
  * active tab (right neighbor when closing the first) — same neighbor rule
  * as `closeActiveTab`, generalized so an ephemeral editor tab can close
@@ -255,7 +237,7 @@ export function setTabAutoTitle(state: TabsState, id: string, autoTitle: string)
  * restart-verification correction: `--session-id` creates NO transcript
  * until the first message, so a tab that spawned but never conversed
  * must NOT `--resume` on the next start (claude errors "no conversation
- * found" and the tab degrades to a shell).
+ * found" and drops the user at the wrapping shell's prompt).
  */
 export function setTabSpawned(state: TabsState, id: string, spawned: boolean): TabsState {
   const tabs = state.tabs.map(
@@ -284,21 +266,47 @@ export function engineTabArgv(tab: EngineTab, base: readonly string[], live: boo
   return [...base, "--session-id", tab.sessionId]
 }
 
-export type TabExitAction = "close" | "resume" | "degrade"
+export type TabExitAction = "close" | "resume"
 
 /**
- * Policy for the ACTIVE tab's process exiting. Command tabs close
- * themselves (editor quit, degraded shell exit). An engine tab found dead
- * ON ATTACH (host restart / park-sweep corpse) with a resumable session
- * gets ONE resume attempt — `resumeTried` is the per-tab one-shot guard,
- * so a `--resume` that itself dies degrades normally instead of
- * respawning forever. Every other engine exit degrades the tab to a
- * plain shell in place (exiting the vendor CLI is allowed, not an error).
+ * Policy for the ACTIVE tab's process exiting. Engine tabs run their CLI
+ * inside the user's shell ({@link shellSpawn}), so a live PTY exit means
+ * the SHELL ended — the tab closes, same as a command tab (editor quit,
+ * shell exit). An engine tab found dead ON ATTACH (host restart /
+ * park-sweep corpse) with a resumable session gets ONE resume attempt —
+ * `resumeTried` is the per-tab one-shot guard, so a `--resume` that
+ * itself dies closes normally instead of respawning forever.
  */
 export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTried: boolean): TabExitAction {
-  if (tab.kind === "command") return "close"
-  if (deadOnAttach && !!tab.sessionId && tab.spawned && !resumeTried) return "resume"
-  return "degrade"
+  if (tab.kind === "engine" && deadOnAttach && !!tab.sessionId && tab.spawned && !resumeTried) return "resume"
+  return "close"
+}
+
+/** What a tab's PTY should spawn: an argv, plus optional bytes typed into
+ *  it right after spawn (`TaskPtyOpts.initialInput`). */
+export interface TabSpawn {
+  readonly command: readonly string[]
+  readonly initialInput?: string
+}
+
+/** Args that survive an interactive prompt unquoted; anything else gets
+ *  single-quoted (`'\''` escape) — POSIX shells and fish both accept it. */
+const SHELL_SAFE_ARG = /^[A-Za-z0-9@%+=:,./_-]+$/
+
+/** Render an argv as one shell-ready command line. */
+export function shellCommandLine(argv: readonly string[]): string {
+  return argv.map((a) => (SHELL_SAFE_ARG.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`)).join(" ")
+}
+
+/**
+ * Wrap an engine argv in the user's interactive shell: the PTY spawns
+ * `shell` and the engine command line is TYPED into it (kernel tty input
+ * buffering holds it until the shell is ready). This keeps the user's
+ * full shell context — rc files, aliases, PATH — and exiting the engine
+ * lands on the shell prompt instead of killing the tab.
+ */
+export function shellSpawn(argv: readonly string[], shell: string): TabSpawn {
+  return { command: [shell], initialInput: `${shellCommandLine(argv)}\r` }
 }
 
 /**
@@ -306,8 +314,8 @@ export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTri
  * (owner model 2026-07-07): claude/an editor are just processes that ran
  * in it, so EVERY tab survives restart. Engine tabs keep their identity
  * + sessionId so the host can `--resume` the conversation; command tabs
- * (an engine degraded to a shell, a dead editor) come back running
- * `shell` — their old process is gone, and resurrecting a fresh engine
+ * (a shell pick, a dead editor) come back running `shell` — their old
+ * process is gone, and resurrecting a fresh engine
  * in its place was the "closed shell reopens as claude" bug. Same
  * freeze-the-layout rule splitTree restore follows. Guards against a
  * corrupt/empty snapshot by falling back to `initialTabs()`; re-anchors

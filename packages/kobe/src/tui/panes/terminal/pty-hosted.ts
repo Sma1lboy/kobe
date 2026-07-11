@@ -27,7 +27,7 @@ import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import type { TaskPtyOpts } from "./pty-types"
+import { type TaskPtyOpts, defaultShell } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
 
 /**
@@ -121,6 +121,20 @@ function getSharedPtyClient(): Promise<KobeDaemonClient> {
   return p
 }
 
+/**
+ * Ask the pty host to pre-spawn one idle shell for `cwd` (`pty.warm`) so
+ * the next shell-wrapped engine tab adopts an ALREADY-initialized shell
+ * (rc files done) instead of paying shell startup. Fire-and-forget and
+ * best-effort: a host that predates the verb (or no hosted backend at
+ * all) simply means the next spawn is cold.
+ */
+export function warmHostedShell(cwd: string, shell: string = defaultShell()): void {
+  if ((process.env.KOBE_TERMINAL_BACKEND ?? "hosted") !== "hosted") return
+  void getSharedPtyClient()
+    .then((client) => client.request("pty.warm", { cwd, shell }))
+    .catch(() => {})
+}
+
 export class HostedTaskPty extends XtermTaskPty {
   private client: KobeDaemonClient | null = null
   private opened = false
@@ -144,6 +158,17 @@ export class HostedTaskPty extends XtermTaskPty {
   constructor(opts: TaskPtyOpts) {
     super(opts)
     void this.openRemote(opts)
+  }
+
+  /**
+   * Whether the open response describes a session WE just brought into
+   * being (spawned fresh or adopted from the host's warm-shell slot) —
+   * only then may `initialInput` be typed; a reattach means the command
+   * line already ran. Pre-`created` hosts fall back to "alive with an
+   * empty replay", which is only ever true for a just-spawned child.
+   */
+  private static createdFresh(res: PtyOpenResult): boolean {
+    return res.alive && (res.created ?? res.replay.length === 0)
   }
 
   private async openRemote(opts: TaskPtyOpts): Promise<void> {
@@ -182,6 +207,9 @@ export class HostedTaskPty extends XtermTaskPty {
         this.pendingResize = null
         this.sendResize(cols, rows)
       }
+      // The typed engine line goes FIRST (it belongs to the spawn), then
+      // any keystrokes the user queued while the socket opened.
+      if (opts.initialInput && HostedTaskPty.createdFresh(res)) this.sendInput(opts.initialInput)
       for (const data of this.pendingInput.splice(0)) this.sendInput(data)
       // An exit frame that raced the open response: ours only if the pid
       // matches this session's child — a mismatch is the previous

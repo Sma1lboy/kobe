@@ -1,19 +1,18 @@
 /**
  * Mount-once parent-handoff effects extracted from `TerminalTabs.tsx` (the
  * ~500-line cap), sibling of `use-tab-lifecycle.ts`: the imperative
- * editor-tab / engine-send handles handed to the parent, and the quick-fork
- * initial-prompt delivery. All three are mount-only, forever-lived effects —
- * everything they read comes through the caller's `stateRef`/`propsRef`
- * latest-render mirrors, and every write goes through the caller's `update`
- * (which refreshes `stateRef` synchronously). See the TerminalTabs file
- * header for why refs.
+ * editor-tab / engine-send handles handed to the parent. Both are
+ * mount-only, forever-lived effects — everything they read comes through
+ * the caller's `stateRef`/`propsRef` latest-render mirrors, and every write
+ * goes through the caller's `update` (which refreshes `stateRef`
+ * synchronously). See the TerminalTabs file header for why refs.
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { waitAndDeliverInitialPrompt } from "../../tui/workspace/quick-fork-delivery"
 import {
   type EngineTab,
+  type TabSpawn,
   type TabsState,
   findEditorTab,
   openEditorTab,
@@ -29,28 +28,20 @@ export interface TabHandoffIO {
       readonly worktree: string
       readonly onEditorTabReady?: (open: (command: readonly string[], label: string) => void) => void
       readonly onEngineSendReady?: (send: (text: string) => void) => void
-      readonly initialPrompt?: string
     }
   }
   readonly update: (next: TabsState) => void
-  /** Latest-render mirror of the per-tab engine argv builder. */
-  readonly engineTabCommandRef: { readonly current: (tab: EngineTab) => readonly string[] }
+  /** Latest-render mirror of the per-tab spawn-opts builder. */
+  readonly engineTabSpawnRef: { readonly current: (tab: EngineTab) => TabSpawn }
   readonly bumpResetToken: () => void
-  /** Error-toast surface for a failed initial-prompt delivery. */
-  readonly notifyDeliveryFailed: (tabId: string) => void
 }
 
 /**
  * Hand the parent the editor-tab / engine-send imperative handles once per
- * mount (remounting on task/worktree switch re-fires it), and deliver the
- * quick-fork `initialPrompt` into the first engine tab's PTY once it
- * produces its first output chunk — see `quick-fork-delivery.ts` for the
- * readiness contract. The prompt effect is guarded by a ref so React
- * StrictMode's double effect-fire can't deliver twice; its 5s-timeout
- * fallback surfaces an error toast instead of silently dropping the prompt.
+ * mount — remounting on task/worktree switch re-fires it.
  */
 export function useTabHandoffs(io: TabHandoffIO): void {
-  const { stateRef, propsRef, update, engineTabCommandRef } = io
+  const { stateRef, propsRef, update, engineTabSpawnRef } = io
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
   useEffect(() => {
@@ -83,7 +74,7 @@ export function useTabHandoffs(io: TabHandoffIO): void {
         // Default geometry until the tab is next mounted; the engine
         // rewraps on the real resize like any terminal.
         try {
-          pty = reg.acquire(key, propsRef.current.worktree, { command: engineTabCommandRef.current(target) })
+          pty = reg.acquire(key, propsRef.current.worktree, { ...engineTabSpawnRef.current(target) })
         } catch {
           return
         }
@@ -92,26 +83,5 @@ export function useTabHandoffs(io: TabHandoffIO): void {
       pty.paste(text)
       pty.write("\r")
     })
-  }, [])
-
-  const initialPromptSentRef = useRef(false)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once delivery; reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    const prompt = propsRef.current.initialPrompt
-    if (!prompt || initialPromptSentRef.current) return
-    initialPromptSentRef.current = true
-    const controller = new AbortController()
-    const target = stateRef.current.tabs.find((tab) => tab.kind === "engine")
-    if (!target) return
-    void waitAndDeliverInitialPrompt(
-      () => getDefaultPtyRegistry().get(tabPtyKey(propsRef.current.taskId, target.id)),
-      prompt,
-      undefined,
-      controller.signal,
-    ).then((result) => {
-      if (result.delivered) return
-      io.notifyDeliveryFailed(target.id)
-    })
-    return () => controller.abort()
   }, [])
 }
