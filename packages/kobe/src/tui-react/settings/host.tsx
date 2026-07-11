@@ -16,15 +16,15 @@
  * daemon is unreachable.
  */
 
-import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useRef } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { currentSessionName, refreshKobeWorkspacePanes } from "../../tui/panes/terminal/tmux"
 import { SettingsDialog } from "../component/settings-dialog"
 import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 
 export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null }) {
@@ -61,11 +61,7 @@ export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null })
   // the engine-command editor) keeps esc/typing for itself.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      { key: "escape", cmd: () => void exit() },
-      { key: "q", cmd: () => void exit() },
-      { key: "ctrl+c", cmd: () => void exit() },
-    ],
+    bindings: pageCloseBindings(() => void exit()),
   }))
 
   return (
@@ -95,21 +91,12 @@ export async function startSettingsHost(): Promise<void> {
   await bootPaneHost({
     providers: { kv: true },
     setup: async () => {
-      let orch: RemoteOrchestrator | null = null
-      try {
-        // NON-spawning: connect ONLY to a daemon that's already running.
-        // `null` → no daemon up → Restart backend disabled.
-        const client = await connectIfRunning()
-        if (client) {
-          const remote = new RemoteOrchestrator(client)
-          await remote.init()
-          orch = remote
-        } else {
-          console.error("[kobe settings] no daemon running; Restart backend disabled")
-        }
-      } catch (err) {
-        console.error("[kobe settings] daemon unavailable; Restart backend disabled:", err)
-      }
+      // NON-spawning: connect ONLY to a daemon that's already running, via
+      // the shared seam (which logs the cause — no daemon vs failed
+      // handshake — and disposes a half-built orchestrator on failure).
+      // `null` → Restart backend disabled.
+      const orch = await connectPaneOrchestrator({ logTag: "settings" })
+      if (!orch) console.error("[kobe settings] daemon unavailable; Restart backend disabled")
       return {
         root: () => <SettingsPage orchestrator={orch} />,
         onDestroy: () => {

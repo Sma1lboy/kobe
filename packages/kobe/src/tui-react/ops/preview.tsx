@@ -18,7 +18,7 @@ import { buildSyntaxStyle } from "../../tui/ops/preview-syntax"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 
 export interface OpsPreviewArgs {
   readonly worktree: string
@@ -64,11 +64,7 @@ export function PreviewScreen(props: OpsPreviewArgs) {
   const onClose = props.onClose ?? (() => process.exit(0))
   useBindings(() => ({
     enabled: props.focused ?? true,
-    bindings: [
-      { key: "q", cmd: onClose },
-      { key: "escape", cmd: onClose },
-      { key: "ctrl+c", cmd: onClose },
-    ],
+    bindings: pageCloseBindings(onClose),
   }))
 
   return (

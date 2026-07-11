@@ -27,6 +27,7 @@ import type { KeyEvent, KeyHandler } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { createContext, useContext, useEffect, useRef } from "react"
 import {
+  type Binding,
   type BindingsConfig,
   type RegisteredBinding,
   dispatchKeyEvent,
@@ -132,4 +133,19 @@ export function useBindings(config: () => BindingsConfig, opts?: { modalOwner?: 
       if (i >= 0) stack.splice(i, 1)
     }
   }, [])
+}
+
+/**
+ * The standard page-close chord trio — escape / q / ctrl+c — every
+ * standalone full-window page binds to its close action. Spread into the
+ * site's `bindings` array; extra keys (f1, list navigation) and `enabled`
+ * gates stay at the site. The three keys are distinct, so the fixed order
+ * here never changes which binding a keypress dispatches to.
+ */
+export function pageCloseBindings(cmd: () => void): Binding[] {
+  return [
+    { key: "escape", cmd },
+    { key: "q", cmd },
+    { key: "ctrl+c", cmd },
+  ]
 }
