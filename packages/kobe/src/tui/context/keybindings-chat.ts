@@ -9,7 +9,7 @@
  * display rules).
  */
 
-import type { KobeBinding } from "./keybindings.ts"
+import type { KobeBinding } from "./keybindings-table.ts"
 
 export const CHAT_BINDINGS: readonly KobeBinding[] = [
   // ─── Workspace (tmux) ─────────────────────────────────────────────────
