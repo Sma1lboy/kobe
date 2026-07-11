@@ -15,6 +15,7 @@ import { devRows, rowIndex } from "../../../tui/component/settings-dialog/model"
 import { userKeybindingsReport } from "../../../tui/context/keybindings-user"
 import { currentPrefixConfiguration } from "../../../tui/lib/keymap-dispatch"
 import { FIXED_BINDING_IDS } from "../../../tui/lib/keymap-overrides"
+import { useKeymapVersion } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { Row, type SectionCursorProps, SubSection } from "./rows"
@@ -249,8 +250,10 @@ export function DevSettingsSection(
 export function KeybindingsSettingsSection() {
   const { theme } = useTheme()
   const t = useT()
-  // Boot-time snapshot — overrides only change on restart, so a plain
-  // (non-reactive) read is correct here.
+  // Re-read the cached report when the daemon's keybindings channel triggers
+  // the host's live keymap reload, so an already-open Settings page stays
+  // truthful after a YAML edit.
+  useKeymapVersion()
   const report = userKeybindingsReport()
   const prefix = currentPrefixConfiguration()
   const fixedIds = Object.keys(FIXED_BINDING_IDS).sort()
