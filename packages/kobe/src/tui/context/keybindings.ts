@@ -259,18 +259,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Jump to the next task that needs attention (P0) — walks the sidebar
     // order to the next task whose daemon engine-state is permission_needed /
-    // error (plus any unread needs_input/error mark) and selects it. `ctrl+g`
-    // ("go to next"): a free ctrl+letter with stable C0 bytes in every
-    // terminal — no CSI-u/kitty dependency, doesn't collide with the fork
-    // (ctrl+f), editor (ctrl+o), engine (ctrl+e), or tab (ctrl+t/w/]/[) chords.
+    // error (plus any unread needs_input/error mark) and selects it. `f7`
+    // continues kobe's F-row (F2 rename / F3 split / F4 pane-cycle / F5 reset
+    // / F6 zen) — the only chord tier that fires from inside the embedded
+    // terminal without stealing an engine chord. NOT `ctrl+g`: that's the
+    // engine/readline abort-editing chord, and reserving it ate the user's
+    // ctrl+g inside claude — kobe must not swallow the engine's own keys.
     // In RESERVED_GLOBAL_CHORDS so it fires identically from inside the
     // embedded terminal, same tier as focus.next (f4) / zenToggle (f6).
     id: "attention.next",
     scope: "global",
-    keys: ["ctrl+g"],
+    keys: ["f7"],
     category: "Navigation",
     description: "Jump to the next task waiting for input",
-    hint: { keys: "ctrl+g", label: "next waiting", status: false },
+    hint: { keys: "f7", label: "next waiting", status: false },
   },
   {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;

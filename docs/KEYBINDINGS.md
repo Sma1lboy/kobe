@@ -410,6 +410,16 @@ embedded terminal, same tier as `focus.next` in `host-keybindings.ts`'s first `u
 `tmux.layout.zenToggle` (`space`, `keybindings-chat.ts`) — that row is the tmux-layer's own
 display toggle, a separate contract the pure-TUI host doesn't touch.
 
+### Attention jump chord — why `F7`, not `ctrl+g`
+
+`attention.next` ("I'm blocked here, jump me to whoever else is waiting") must fire from inside a
+running engine, so it has to sit in `RESERVED_GLOBAL_CHORDS`. It first shipped on `ctrl+g` (0.7.95)
+— but `ctrl+g` is the engine/readline **abort-editing** chord, and reserving it swallowed the
+user's own `ctrl+g` inside `claude`. That violates the terminal pane's core contract (kobe must not
+eat the engine's chords), so it moved to `F7`: the next unclaimed key in kobe's F-row (F2 rename /
+F3 split / F4 pane-cycle / F5 reset / F6 zen), which engines don't bind and which fires identically
+from inside the embedded terminal. `ctrl+g` now passes through to the engine again.
+
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 
 We iterated through three candidates before landing on `ctrl+hjkl`. Recording the journey here so the next agent (or Jackson) doesn't
@@ -469,10 +479,12 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 | `F4` | pane cycle (`focus.next`) — the one cross-pane chord besides `ctrl+q` that works from inside the terminal (see the pure-TUI navigation decision log below) |
 | `F5` | terminal reset (confirm-gated) |
 | `F6` | zen toggle (`workspace.zenToggle`) — hides the files column from inside the terminal too (see the zen-toggle decision log below) |
+| `F7` | jump to the next waiting task (`attention.next`) — fires from inside the terminal too; F7 not `ctrl+g`, which is the engine's readline abort (see the attention-jump decision log below) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 
-Everything else — `shift+tab` (claude plan-mode cycle), `ctrl+hjkl`, `F1`,
-`ctrl+p`, `ctrl+,`, `ctrl+r`, alt-combos — passes through to the engine.
+Everything else — `shift+tab` (claude plan-mode cycle), `ctrl+g` (readline
+abort-editing), `ctrl+hjkl`, `F1`, `ctrl+p`, `ctrl+,`, `ctrl+r`,
+alt-combos — passes through to the engine.
 The pane registers modifier-variant passthrough bindings (`ctrl+`/`alt+`/
 `shift+` forms) so they WIN the LIFO stack against kobe's global bindings;
 kobe's globals stay reachable from every non-terminal pane. The pane also
