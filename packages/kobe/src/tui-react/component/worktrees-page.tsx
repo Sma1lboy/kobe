@@ -56,6 +56,15 @@ function flattenRows(projects: readonly WorktreeProject[]): readonly WorktreeAud
 }
 
 const DIRTY_REFUSAL_RE = /refusing to remove dirty worktree/
+const LAND_CONFLICT_RE = /LAND_CONFLICT/
+const MAIN_DIRTY_RE = /MAIN_CHECKOUT_DIRTY/
+
+/** Match a worktree row's path to a tracked task id (loose realpath tolerance). */
+function taskIdForPath(orch: RemoteOrchestrator, wtPath: string): string | undefined {
+  const norm = (p: string): string => p.replace(/^\/private\//, "/").replace(/\/+$/, "")
+  const target = norm(wtPath)
+  return orch.listTasks().find((task) => task.worktreePath && norm(task.worktreePath) === target)?.id
+}
 
 export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; onClose: () => void }): ReactNode {
   const { theme } = useTheme()
@@ -153,6 +162,43 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
     }
   }
 
+  async function requestLand(row: WorktreeAuditRow): Promise<void> {
+    const orch = props.orchestrator
+    if (!orch || busyPath) return
+    const taskId = taskIdForPath(orch, row.path)
+    if (!taskId) {
+      console.error(`[kobe worktrees] ${t("worktrees.land.noTask")}`)
+      return
+    }
+    const ok = await DialogConfirm.show(
+      dialog,
+      t("worktrees.land.confirmTitle"),
+      t("worktrees.land.confirmBody", { branch: row.branch || row.path }),
+      t("common.cancel"),
+      t("worktrees.land.button"),
+    )
+    if (ok !== true) return
+    setBusyPath(row.path)
+    try {
+      const res = await orch.landTask(taskId)
+      console.error(
+        `[kobe worktrees] ${t("worktrees.land.done", { branch: res.branch, landedOn: res.landedOn, commit: res.commit })}`,
+      )
+      refetch()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (LAND_CONFLICT_RE.test(msg)) {
+        console.error(`[kobe worktrees] ${t("worktrees.land.conflict", { files: msg })}`)
+      } else if (MAIN_DIRTY_RE.test(msg)) {
+        console.error(`[kobe worktrees] ${t("worktrees.land.dirtyBase")}`)
+      } else {
+        console.error(`[kobe worktrees] ${t("worktrees.land.failed", { error: msg })}`)
+      }
+    } finally {
+      setBusyPath(null)
+    }
+  }
+
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
@@ -166,6 +212,13 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
         cmd: () => {
           const row = flatRows[cursor]
           if (row) void requestDelete(row)
+        },
+      },
+      {
+        key: "l",
+        cmd: () => {
+          const row = flatRows[cursor]
+          if (row) void requestLand(row)
         },
       },
     ],

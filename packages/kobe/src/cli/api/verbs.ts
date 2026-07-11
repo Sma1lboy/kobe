@@ -18,6 +18,7 @@ import {
   dispatch,
   getTask,
   issueUpdate,
+  land,
   list,
   note,
   send,
@@ -128,7 +129,7 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   drive: ["send", "dispatch", "note", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
-  lifecycle: ["archive", "pin", "delete"],
+  lifecycle: ["archive", "pin", "land", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
   feedback: ["feedback"],
 }
@@ -391,6 +392,24 @@ export const VERBS: readonly VerbSpec[] = [
     summary: "Materialize a task's git worktree on disk now (without starting an engine). Returns { worktreePath }.",
     flags: [F.taskId()],
     handler: (ctx) => simpleRpc(ctx, "task.ensureWorktree", { taskId: ctx.args.require("task-id") }),
+  },
+  {
+    name: "land",
+    summary:
+      "Merge a task's branch back into its base repo's current branch. Refuses a dirty base checkout; on conflict, aborts and returns the conflicted files (resolve by hand). Returns { landedOn, commit }.",
+    flags: [
+      F.taskId(),
+      {
+        name: "strategy",
+        type: "enum",
+        values: ["merge", "squash"],
+        default: "merge",
+        description: "merge (--no-ff) or squash into one commit.",
+      },
+      { name: "delete-branch", type: "bool", description: "Delete the task's branch after a successful land." },
+      { name: "then-archive", type: "bool", description: "Archive the task after a successful land." },
+    ],
+    handler: land,
   },
   {
     name: "delete",

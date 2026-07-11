@@ -36,6 +36,14 @@ export interface DaemonTask {
   readonly updatedAt: string
 }
 
+/** Result of a `task.land` — mirrors the orchestrator's `LandResult`. */
+export interface LandResult {
+  readonly branch: string
+  readonly strategy: "merge" | "squash"
+  readonly landedOn: string
+  readonly commit: string
+}
+
 export interface AdoptableWorktree {
   readonly path: string
   readonly branch: string
@@ -71,7 +79,13 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
   deleteTask(id: string, options?: { force?: boolean }): Promise<void>
+  landTask(
+    id: string,
+    options?: { strategy?: "merge" | "squash"; deleteBranch?: boolean; archive?: boolean },
+  ): Promise<LandResult>
   setActiveTask(id: string | null): Promise<void>
+  /** Clear a task's worktreePath (keep its branch) after an out-of-band worktree removal. */
+  clearWorktreePath(id: string): Promise<void>
   discoverAdoptableWorktrees(repo: string): Promise<readonly AdoptableWorktree[]>
   adoptWorktree(input: {
     repo: string
