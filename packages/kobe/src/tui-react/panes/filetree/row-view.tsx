@@ -10,9 +10,14 @@
  * terracotta fill, so the semantic colours survive instead of being
  * flattened to inverted text. A bare space holds the 1-cell gutter on
  * non-cursor rows so content stays aligned.
+ *
+ * Memoized: every prop is identity-stable across a j/k cursor move
+ * (`reconcileRows` rows, memoized stat widths, ONE shared `onActivate`),
+ * so a keystroke re-renders only the two rows whose `cursor` flag flipped.
  */
 
 import { TextAttributes } from "@opentui/core"
+import { memo } from "react"
 import { type StatWidths, statCell, statusToken } from "../../../tui/panes/filetree/pane-core"
 import { type Row, truncatePathTail } from "../../../tui/panes/filetree/rows"
 import { useTheme } from "../../context/theme"
@@ -20,17 +25,20 @@ import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 
 export type FileTreeRowProps = {
   row: Row
+  /** Row index in the flattened list — echoed back through `onActivate`. */
+  index: number
   /** Whether the cursor sits on this row. */
   cursor: boolean
   /** Shared stat column widths (Changes tab). */
   statWidths: StatWidths
   /** Path cell budget (Changes tab). */
   pathBudget: number
-  /** Mouse activation: sets the cursor here and opens/toggles the row. */
-  onActivate: () => void
+  /** Mouse activation: sets the cursor here and opens/toggles the row.
+   *  ONE stable callback shared by all rows (memo-friendly). */
+  onActivate: (row: Row, index: number) => void
 }
 
-export function FileTreeRowView(props: FileTreeRowProps) {
+export const FileTreeRowView = memo(function FileTreeRowView(props: FileTreeRowProps) {
   const { theme } = useTheme()
   const selection = resolveRowSelectionChrome(theme, { cursor: props.cursor })
   const bar = (
@@ -44,7 +52,12 @@ export function FileTreeRowView(props: FileTreeRowProps) {
     // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
     const indent = "  ".repeat(row.depth)
     return (
-      <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate()}>
+      <box
+        flexDirection="row"
+        gap={0}
+        backgroundColor={rowBg}
+        onMouseUp={() => props.onActivate(props.row, props.index)}
+      >
         {bar}
         <box flexGrow={1} paddingRight={1}>
           <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
@@ -58,7 +71,12 @@ export function FileTreeRowView(props: FileTreeRowProps) {
     const indent = "  ".repeat(row.depth)
     // Two-cell gutter where the dir marker would sit.
     return (
-      <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate()}>
+      <box
+        flexDirection="row"
+        gap={0}
+        backgroundColor={rowBg}
+        onMouseUp={() => props.onActivate(props.row, props.index)}
+      >
         {bar}
         <box flexGrow={1} paddingRight={1}>
           <text fg={theme.text} wrapMode="none">
@@ -81,7 +99,7 @@ export function FileTreeRowView(props: FileTreeRowProps) {
             ? theme.info
             : theme.textMuted
   return (
-    <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate()}>
+    <box flexDirection="row" gap={0} backgroundColor={rowBg} onMouseUp={() => props.onActivate(props.row, props.index)}>
       {bar}
       <box flexDirection="row" flexGrow={1} gap={1} paddingRight={1}>
         <text fg={statusColor} wrapMode="none">
@@ -103,4 +121,4 @@ export function FileTreeRowView(props: FileTreeRowProps) {
       </box>
     </box>
   )
-}
+})
