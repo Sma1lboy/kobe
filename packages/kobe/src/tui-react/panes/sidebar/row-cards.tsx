@@ -27,13 +27,13 @@ import {
   prCheckChip,
   withSpinnerFrame,
 } from "../../../tui/panes/sidebar/row-view"
-import { taskIsLive, toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
+import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
-import type { ChatRunState, SidebarHover } from "./types"
+import type { SidebarHover } from "./types"
 
 export type SidebarRowCardSharedProps = {
   readonly selectedId: string | null
@@ -49,7 +49,6 @@ export type SidebarRowCardSharedProps = {
   readonly spinnerFrame: number
   readonly titleBudget: number
   readonly subtitleBudget: number
-  readonly chatRunState?: ReadonlyMap<string, ChatRunState>
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
@@ -174,7 +173,6 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
   const changes = useChanges(shared, task)
   const activity = shared.engineState?.get(task.id)
   const job = shared.taskJobs?.get(task.id)
-  const live = taskIsLive(task.id, shared.chatRunState)
   const { subtitleBudget } = shared
   const { mainBranch } = opts
   // Memoized on the real inputs so the 10Hz spinner tick (a fresh `shared`
@@ -187,7 +185,6 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       task,
       activity,
       job,
-      live,
       spinnerFrame: 0,
       subtitleBudget,
       truncateBranch: truncateBranchLabel,
@@ -196,7 +193,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       // Defer to the live terminal when this task's pane is the one on screen.
       isViewed: isSelected,
     })
-  }, [task, activity, job, live, subtitleBudget, mainBranch, reducedMotion, isSelected, t])
+  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, isSelected, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object, so an idle row does zero per-frame derivation.
   const rowView = withSpinnerFrame(baseView, () => shared.spinnerFrame)

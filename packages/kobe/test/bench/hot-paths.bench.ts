@@ -104,7 +104,6 @@ describe("buildSidebarRowView", () => {
     buildSidebarRowView({
       task: benchTask,
       activity: { state: "running", at: 1 },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,

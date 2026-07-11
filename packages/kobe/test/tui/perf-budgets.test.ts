@@ -291,7 +291,6 @@ function rowView(id: string, running: boolean) {
   return buildSidebarRowView({
     task: task({ id, status: running ? "in_progress" : "done" }),
     activity: running ? { state: "running", at: 1 } : { state: "turn_complete", at: 1 },
-    live: false,
     spinnerFrame: 0,
     subtitleBudget: 80,
     truncateBranch: (b) => b,
