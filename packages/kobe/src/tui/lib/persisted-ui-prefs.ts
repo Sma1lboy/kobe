@@ -14,7 +14,7 @@
 
 import { readFileSync } from "node:fs"
 import { kvStatePath } from "../../env.ts"
-import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, hasTheme } from "../context/theme-core"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, hasBundledTheme } from "../context/theme-core"
 import { DEFAULT_LOCALE, type LocaleId, isLocaleId } from "../i18n/catalog"
 
 /** state.json key holding the persisted UI language. */
@@ -40,7 +40,7 @@ export function readPersistedUiPrefs(fallbackTheme: string): PersistedUiPrefs {
   try {
     const parsed = JSON.parse(readFileSync(kvStatePath(), "utf8")) as Record<string, unknown>
     const theme =
-      typeof parsed.activeTheme === "string" && hasTheme(parsed.activeTheme) ? parsed.activeTheme : fallbackTheme
+      typeof parsed.activeTheme === "string" && hasBundledTheme(parsed.activeTheme) ? parsed.activeTheme : fallbackTheme
     const transparent = parsed.transparentBackground === true
     const focusAccent =
       typeof parsed.focusAccent === "string" && (FOCUS_ACCENT_SLOTS as readonly string[]).includes(parsed.focusAccent)

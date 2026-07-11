@@ -76,13 +76,14 @@ export type Theme = {
 export const BUNDLED_THEMES: Record<string, ThemeJson> = BUNDLED_THEME_JSONS
 
 /**
- * Is `name` a known theme? Framework-free check against the bundled set —
+ * Is `name` a bundled theme? Framework-free check against the bundled set —
  * the live provider (`src/tui-react/context/theme.tsx`) keeps its own
- * mutable registry for user-added themes; this bundled-only check is what
- * off-render callers (e.g. `readPersistedUiPrefs` in a pane subprocess)
- * use to validate a persisted theme name before applying it.
+ * mutable registry (bundled + user themes) behind its own `hasTheme`; this
+ * bundled-only check is what off-render callers (e.g. `readPersistedUiPrefs`
+ * in a pane subprocess) use to validate a persisted theme name before
+ * applying it.
  */
-export function hasTheme(name: string): boolean {
+export function hasBundledTheme(name: string): boolean {
   return Boolean(BUNDLED_THEMES[name])
 }
 
