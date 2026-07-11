@@ -152,8 +152,13 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests (kobe package)
+        # `bun run test` = test:fast (all non-daemon/-behavior/-render dirs)
+        # + test:socket (test/daemon, unix-socket protocol/lifecycle/pty-sweep
+        # suite — previously not covered by any hardcoded dir whitelist here).
+        # New test/ subdirectories are picked up automatically; no whitelist
+        # to update when one is added.
         working-directory: packages/kobe
-        run: bun x vitest run test/cli test/tui test/types test/orchestrator test/engine test/state --passWithNoTests
+        run: bun run test
 
       - name: Build (kobe package)
         run: bun run build

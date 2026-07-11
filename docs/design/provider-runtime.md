@@ -1,14 +1,26 @@
 # Provider Runtime — the AI SDK harness behind the native chat pane
 
-> Decision doc. Why the experimental native chat pane (`KOBE_TUI=1`) runs on
-> the Vercel AI SDK's harness packages, what the boundaries are, and what is
+> **Superseded (2026-07-06).** The native chat pane / AI SDK harness path
+> this doc describes was deleted whole in the 2026-07-06 provider-runtime →
+> terminal pivot: kobe now embeds the real `claude`/`codex` CLI in an
+> in-process embedded terminal tab instead of driving a harness. The
+> `src/engine/ai-sdk/` directory referenced below no longer exists and
+> `package.json` carries no `@ai-sdk/*` dependency. This doc is kept for
+> historical rationale only — see git history for the deleted code, and
+> `docs/DESIGN.md` §2.2 / current architecture notes for the live shape.
+>
+> Everything below this line describes the deleted path in present tense —
+> read it as history, not as current implementation.
+>
+> Decision doc. Why the experimental native chat pane (`KOBE_TUI=1`) ran on
+> the Vercel AI SDK's harness packages, what the boundaries were, and what was
 > deliberately NOT built.
 >
 > Companions: [`../DESIGN.md`](../DESIGN.md) §2.2 (the superseded
-> "no `@ai-sdk/*`" lock), the engine contract in
-> [`packages/kobe/src/engine/registry.ts`](../../packages/kobe/src/engine/registry.ts),
-> and the runtime in
-> [`packages/kobe/src/engine/ai-sdk/harness-turn.ts`](../../packages/kobe/src/engine/ai-sdk/harness-turn.ts).
+> "no `@ai-sdk/*`" lock) and the engine contract in
+> [`packages/kobe/src/engine/registry.ts`](../../packages/kobe/src/engine/registry.ts)
+> (still live). The `src/engine/ai-sdk/harness-turn.ts` runtime this doc
+> originally linked no longer exists.
 
 ---
 

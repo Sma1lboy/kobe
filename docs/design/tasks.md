@@ -4,9 +4,9 @@
 > orchestrator, the sidebar, and the chat pane talk about "what is the
 > user working on right now."
 >
-> Companions: [`../DESIGN.md`](../DESIGN.md) §2.4 + §10 (data model) and
-> §11.3 (worktree path resolution); the on-disk types in
-> [`packages/kobe/src/types/task.ts`](../../packages/kobe/src/types/task.ts).
+> Companions: [`../DESIGN.md`](../DESIGN.md) §2.4 + §10 (data model); worktree
+> path resolution is §2 below (there is no separate DESIGN.md subsection for
+> it). On-disk types: [`packages/kobe/src/types/task.ts`](../../packages/kobe/src/types/task.ts).
 
 ---
 
@@ -85,7 +85,7 @@ Concretely:
   no longer require a repo-level `.gitignore` entry.
 
 The single source of truth for the path is
-[`worktreePathFor(repo, taskId)`](../../packages/kobe/src/orchestrator/worktree/paths.ts).
+[`worktreePathFor(repo, slug)`](../../packages/kobe/src/orchestrator/worktree/paths.ts).
 Nothing else should concatenate a worktree root by hand.
 
 ### Boundary: the orchestrator does not coordinate writes inside a worktree
@@ -142,7 +142,7 @@ stateDiagram-v2
     Streaming : sessionId set
     Streaming : Engine handle live
     Streaming --> Idle : done / error / user paused
-    Idle --> Streaming : engine.resume(sessionId)\n+ KOBE_RESUME_CWD
+    Idle --> Streaming : engine.resume(sessionId)\nwith task.worktreePath as cwd
     Idle : sessionId retained
     Idle : No live handle
     Idle : History lives in JSONL
@@ -163,60 +163,31 @@ Claude Code's JSONL on disk and is reread via `engine.readHistory`.
 
 ## 4. Task lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> backlog
-    backlog : Defined, not running
-    in_progress : Engine streaming (counts toward cap)
-    in_review : Engine done, awaiting user
-    done : Terminal — success
-    error : Terminal — engine failed (worktree preserved)
-    canceled : Terminal — user canceled
+> **Drifted from an earlier design.** Earlier drafts of this section
+> described an engine-driven state machine (`runTask()`/`pauseTask()`/
+> `cancelTask()`, an enforced `backlog → in_progress → in_review → done`
+> flow, a `CONCURRENCY_CAP` of 20) — none of that exists in the current
+> code. Since v0.6 the engine runs interactively inside a tmux pane/embedded
+> terminal and owns its own lifecycle; the orchestrator does not drive
+> `run`/`pause`/`cancel` transitions or count concurrent sessions. What's
+> actually enforced, in
+> [`orchestrator/task-editor.ts`](../../packages/kobe/src/orchestrator/task-editor.ts)
+> `setStatus()`:
 
-    backlog --> in_progress : runTask()
-    in_progress --> backlog : pauseTask()
-    in_progress --> in_review : engine done + user wants review
-    in_progress --> done : engine done (auto-complete)
-    in_progress --> error : engine error
-    in_progress --> canceled : cancelTask()
-    in_review --> done : approve
-    in_review --> in_progress : re-run
-    done --> in_progress : re-run
-    error --> in_progress : re-run
-
-    note right of error
-        Terminal but distinct
-        from done — worktree
-        is left intact for
-        inspection.
-    end note
-
-    note left of in_progress
-        Concurrency cap = 4.
-        5th run → ConcurrencyCapError.
-    end note
-```
-
-Status transitions are enforced explicitly in
-[`orchestrator/core.ts`](../../packages/kobe/src/orchestrator/core.ts);
-they are not derived from `update({ status })`. Bad transitions throw
-`IllegalTransitionError` so the UI can branch.
-
-`error` is terminal but distinct from `done`: the worktree is left
-alone for inspection.
+- Any `TaskStatus` → any other `TaskStatus` is legal, via `setStatus(id, status)`,
+  **except** flip-flopping directly between `done` and `error` — that throws
+  `IllegalTransitionError` to surface likely-bad code (a task that finished
+  should not be marked failed without an intermediate state, and vice versa).
+- There is no automatic engine-driven transition and no concurrency cap.
+  The user (or the sidebar) sets status explicitly.
+- `error` and `done` are both effectively terminal in practice but not
+  enforced as such by the code — the only enforced rule is the done↔error
+  guard above.
 
 `archived` is **orthogonal to status** — a `done` task can be
 archived; so can a `backlog` one. Archiving is non-destructive
 (worktree stays, history stays, sidebar splits "Working session" vs.
 "Archives"). The user toggles it with `a`.
-
-### Concurrency cap
-
-We cap `in_progress` tasks at **20**
-([`CONCURRENCY_CAP`](../../packages/kobe/src/orchestrator/core.ts#L98)).
-The 21st `runTask` rejects with a typed `ConcurrencyCapError`; the UI
-surfaces the error and the user pauses something. Queueing is not in
-scope.
 
 ---
 
@@ -247,26 +218,24 @@ setting describes "this particular conversation," it's tab-level.
 | Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
 | Per-task worktree             | `~/.kobe/worktrees/<repo-key>/<slug>/`                 | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
-| Spawned-engine resume cwd     | typed `opts.cwd` on `engine.resume()` (+ legacy env var) | string                     |
+| Engine cwd                    | the embedded terminal / tmux pane is launched with `task.worktreePath` as its cwd | string |
 
 The task index does **not** store messages. The orchestrator reads
 them on demand via `engine.readHistory(sessionId)`. This is why a
 crash mid-stream loses no transcript content — JSONL is the source of
 truth, the index is just a manifest.
 
-### Resume cwd — typed channel + legacy back-channel
+### Resume cwd — removed (v0.5 `AIEngine.resume()` no longer exists)
 
-`AIEngine.resume()` does not take a positional `cwd` parameter (only
-`spawn()` does). The orchestrator runs in kobe's binary cwd, not the
-task's worktree, so every resume must pass `task.worktreePath`
-explicitly. The primary channel is the typed `cwd` field on
-`SpawnOpts`; engines MUST honour it. The orchestrator also sets
-`KOBE_RESUME_CWD = task.worktreePath` in `opts.env` as a defensive
-duplicate for one release — that legacy env-var back-channel can be
-removed in a follow-up once external consumers (test fixtures, MCP
-bridges) are confirmed off it. Skipping cwd entirely resumes the
-session in the wrong directory and is a regression-class bug —
-covered by behavior tests.
+> **Superseded.** This subsection described the v0.5 `AIEngine.resume()` /
+> `SpawnOpts.cwd` / `KOBE_RESUME_CWD` env-var back-channel. That whole
+> interface is gone as of v0.6 — see the explicit "don't drag the whole port
+> back" warning in
+> [`packages/kobe/src/types/engine.ts`](../../packages/kobe/src/types/engine.ts).
+> `KOBE_RESUME_CWD` has zero references left in the codebase. Since v0.6 the
+> engine CLI runs interactively inside a tmux pane / embedded terminal, which
+> kobe launches directly with `task.worktreePath` as its process cwd — there
+> is no separate "resume" RPC or cwd back-channel to get wrong.
 
 ---
 
