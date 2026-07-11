@@ -105,10 +105,23 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
-  await unlink(socketPath).catch(() => {})
+  // Never unlink before listen: an already-running host keeps its socket
+  // alive after unlink, so a second host could bind the same pathname,
+  // overwrite the pidfile, and strand the first host's live sessions.
+  // `ensurePtyHostReachable()` clears only a confirmed-stale socket through
+  // stopDaemonProcess before it spawns us.
 
   const server: Server = createServer((socket) => {
-    const client: PtyClientState = { socket, writer: new ClientWriter(socket), buffer: "" }
+    const client: PtyClientState = {
+      socket,
+      writer: new ClientWriter(socket, {
+        onOverflow: () => {
+          log("backpressure", "disconnecting PTY client whose critical queue exceeded 8MiB")
+          socket.destroy()
+        },
+      }),
+      buffer: "",
+    }
     clients.add(client)
     const decoder = new StringDecoder("utf8")
     socket.on("data", (chunk) => {
@@ -131,7 +144,7 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       stopping = true
       cancelIdle()
       // The host process IS the sessions' lifetime — ending it ends them.
-      ptys.killAll()
+      await ptys.killAll()
       for (const client of Array.from(clients)) client.socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await unlink(socketPath).catch(() => {})

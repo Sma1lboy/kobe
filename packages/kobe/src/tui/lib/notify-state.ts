@@ -70,3 +70,67 @@ export function removeUnread(
 export function shouldShowToast(kind: NotificationKind, toastEnabled: boolean): boolean {
   return kind === "error" || toastEnabled
 }
+
+/**
+ * Cross-task attention (WorkspaceRoot rising-edge notify). The daemon's
+ * `TaskActivityState` is engine-normalized (no vendor strings); we map the
+ * three attention-worthy transitions to a {@link NotificationKind} and treat
+ * everything else as "no notification". A `null` return means "don't notify".
+ * `permission_needed` → `needs_input` (yellow), `error` → `error` (red), and
+ * `turn_complete` → `done` (green). Kept as a string→string map so the caller
+ * (which owns the daemon state type) doesn't import the notify enum names.
+ */
+export function attentionKindFor(state: string): NotificationKind | null {
+  if (state === "permission_needed") return "needs_input"
+  if (state === "error") return "error"
+  if (state === "turn_complete") return "done"
+  return null
+}
+
+/**
+ * OSC 9 desktop-notification escape. iTerm2 / kitty / WezTerm / Ghostty render
+ * it as a native OS notification; every other terminal ignores an unknown OSC
+ * silently. Zero deps, and — crucially — it travels down the SSH stream to the
+ * user's LOCAL terminal, unlike an `afplay` chime that rings on the remote box.
+ * Body is BEL-terminated (`\x07`), the widely-accepted OSC terminator.
+ */
+export function osc9(body: string): string {
+  return `\x1b]9;${body}\x07`
+}
+
+/**
+ * Attention-jump cycle (the global chord). Given the sidebar's task order, the
+ * daemon engine-state per task, the unread map, and the current task, return
+ * the id of the NEXT task that needs attention — searching forward from the
+ * current position and wrapping, so repeated presses walk every candidate.
+ * Returns `null` when nothing needs attention.
+ *
+ * "Needs attention" = daemon `TaskEngineState.state` is `permission_needed` or
+ * `error` (the real source of truth), OR the task has an unread `needs_input` /
+ * `error` mark (a rising edge the user hasn't cleared). `turn_complete`/`done`
+ * are deliberately excluded — a finished turn isn't blocking you.
+ */
+export function nextAttentionTask(
+  order: readonly string[],
+  engineState: ReadonlyMap<string, { readonly state: string }>,
+  unread: ReadonlyMap<string, NotificationKind>,
+  currentId: string | null,
+): string | null {
+  const unreadTasks = new Set<string>()
+  for (const [key, kind] of unread) {
+    if (kind === "needs_input" || kind === "error") unreadTasks.add(key.split(":")[0] ?? key)
+  }
+  const needsAttention = (id: string): boolean => {
+    const s = engineState.get(id)?.state
+    return s === "permission_needed" || s === "error" || unreadTasks.has(id)
+  }
+  const start = currentId ? order.indexOf(currentId) : -1
+  // Start one past the current task (wrapping); when current isn't in the list
+  // (or is null) start from 0. A press while sitting ON the only candidate
+  // walks away and wraps back to it, which is the intended "next" behavior.
+  for (let step = 1; step <= order.length; step++) {
+    const id = order[(start + step) % order.length]
+    if (id && needsAttention(id)) return id
+  }
+  return null
+}

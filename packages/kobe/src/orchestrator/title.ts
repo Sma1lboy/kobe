@@ -12,6 +12,17 @@
 export const TITLE_CHAR_CAP = 40
 
 /**
+ * Placeholder title a task carries before the user (or the auto-title poller)
+ * gives it a real name. SINGLE source of truth: `followBranchToTitle` decides
+ * whether to keep a task's branch in lockstep with its title by re-deriving
+ * this exact placeholder's branch and comparing byte-for-byte, so a second
+ * private copy that drifts even one character silently breaks first-rename
+ * branch-following with no compile error and no test signal. Everything that
+ * needs the placeholder imports it from here.
+ */
+export const PLACEHOLDER_TASK_TITLE = "(new task)"
+
+/**
  * Reduce an arbitrary user prompt to a one-line sidebar label.
  */
 export function deriveTitleFromPrompt(prompt: string): string {
@@ -42,4 +53,17 @@ export function autoBranch(title: string, taskId: string): string {
   const suffix = taskId.slice(-6).toLowerCase()
   const base = slug || "task"
   return `kobe/${base}-${suffix}`
+}
+
+/**
+ * Whether `branch` is still the untouched placeholder-derived default for
+ * `taskId` — i.e. nobody has renamed the branch since it was auto-allocated
+ * from the `(new task)` placeholder. This is the discriminator
+ * `TaskEditor.followBranchToTitle` uses to fire the first-rename branch
+ * follow at most once; keeping it beside {@link autoBranch} and
+ * {@link PLACEHOLDER_TASK_TITLE} means the derivation and the equality check
+ * can never drift apart into two files.
+ */
+export function isPlaceholderDerivedBranch(branch: string, taskId: string): boolean {
+  return branch === autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
 }

@@ -33,11 +33,11 @@ The corollary: we accept the constraints those modules impose. If opencode's dia
 
 We don't build our own vendor-neutral LLM abstraction, and we never call raw model APIs — engines own auth (subscription login), prompts, approvals, and model execution. The default product path runs local interactive engine CLIs inside tmux.
 
-The native chat pane (`KOBE_TUI=1`, experimental) is the one sanctioned exception to "no `@ai-sdk/*`": it drives the SAME locally-installed engines through the AI SDK's harness packages (`ai` + `@ai-sdk/harness-claude-code` / `harness-codex`) and renders the streamed `UIMessage` verbatim — Vercel owns that schema, we build no mapping layer on top. Rationale + boundaries: [`docs/design/provider-runtime.md`](./design/provider-runtime.md). (The original 2026-06 "we don't ship `@ai-sdk/*` adapters" lock predates this decision — superseded 2026-07-04 after the pi RPC spike was rejected.)
+**(Historical, 2026-07-04 to 2026-07-06, since reversed.)** For a stretch, the native chat pane (`KOBE_TUI=1`, experimental) was a sanctioned exception to "no `@ai-sdk/*`": it drove the SAME locally-installed engines through the AI SDK's harness packages and rendered the streamed `UIMessage` verbatim. The 2026-07-06 provider-runtime → terminal pivot deleted that path whole — kobe now embeds the real `claude`/`codex` CLI in an in-process embedded terminal tab instead. `package.json` carries no `@ai-sdk/*` dependency; [`docs/design/provider-runtime.md`](./design/provider-runtime.md) is kept for the historical rationale only. The "no vendor-neutral LLM abstraction, no `@ai-sdk/*` adapters" stance is back in force with no exception.
 
 But: we keep engine-owned Adapter seams for product identity, command launch, hook normalization, history, telemetry, and model/catalog capability. Neutral layers ask those Adapters instead of hard-coding Claude/Codex strings.
 
-Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and the engine backend that runs it (tmux interactive CLI today; the AI SDK harness behind the same engine contract in the native pane). Everything else (theme, panes, persistence) is hardcoded for now.
+Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and the engine backend that runs it — an embedded terminal running the real vendor CLI, behind the same engine contract. Everything else (theme, panes, persistence) is hardcoded for now.
 
 ### 2.3 The terminal is a feature, not a constraint
 
@@ -130,61 +130,56 @@ The interesting whitespace for kobe:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  TUI Shell  (opentui + Solid, copied from opencode) │
-│   ├ panes: history, preview, tree, terminal, chat   │
+│  TUI Shell  (opentui + @opentui/react, React 19)    │
+│   ├ panes: sidebar, filetree, terminal, workspace   │
 │   ├ dialogs, command palette, theme                 │
 │   └ keybindings, focus mgmt                         │
 ├─────────────────────────────────────────────────────┤
 │  Orchestrator  (kobe core, our code)                │
-│   ├ Task lifecycle (create / run / pause / archive) │
+│   ├ Task lifecycle (create / status / archive)      │
 │   ├ Worktree manager (git worktree wrapper)         │
 │   ├ Status grouping & sidebar tree                  │
 │   ├ Task index (JSON manifest)                      │
 │   └ Background workers (status polling, log drain)  │
 ├─────────────────────────────────────────────────────┤
-│  AI Engine Port  (interface — single seam)          │
-│   spawn(cwd, prompt, opts) → SessionHandle          │
-│   resume(session_id) → SessionHandle                │
-│   stream(handle) → AsyncIterable<Event>             │
-│   readJsonl(session_id) → Message[]                 │
+│  Engine contract  (registry.ts — single seam)       │
+│   identity (productName/shortName/…)                │
+│   capabilities (model catalog, context math)        │
+│   readHistory(sessionId) → EngineHistory            │
 ├─────────────────────────────────────────────────────┤
-│  Engine impl  (Claude Code subprocess, ported       │
-│   from opcode)                                      │
+│  Engine impl  (claude-code-local, codex-local:      │
+│   interactive tmux CLI + on-disk history reader)     │
 └─────────────────────────────────────────────────────┘
 ```
 
-The **AI Engine Port** is the only declared interface. Above it: orchestrator owns task semantics. Below it: a Claude Code subprocess wrapper (see §6).
+The **engine contract** (`packages/kobe/src/engine/registry.ts`) is the pluggability seam. Above it: orchestrator owns task semantics and the TUI renders engine-neutral data. Below it: per-vendor adapters (see §6).
 
-### 5.2 The AI Engine Port (sketch)
+### 5.2 The engine contract (current shape)
 
-```ts
-interface AIEngine {
-  // Start a fresh session in a working directory.
-  spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle>;
+> The v0.5 `AIEngine` interface (`spawn`/`resume`/`stream`/`readJsonl` driving
+> a subprocess kobe owned directly) described in earlier drafts of this
+> section is **gone as of v0.6** and must not be revived casually — see the
+> explicit warning in
+> [`packages/kobe/src/types/engine.ts`](../packages/kobe/src/types/engine.ts)
+> header comment ("What's gone (vs v0.5) … don't drag the whole port back").
+> kobe no longer drives `claude`/`codex` as a subprocess; they run
+> interactively inside a tmux pane and own their own session lifecycle. The
+> only thing kobe still consumes from the engine side is **history on disk**.
 
-  // Resume an existing session by id (Claude Code's session uuid).
-  resume(sessionId: string, prompt: string): Promise<SessionHandle>;
+What the contract actually exposes today (`registry.ts` + `types/engine.ts`):
 
-  // Stream events from a live session (stream-json line per event).
-  stream(handle: SessionHandle): AsyncIterable<EngineEvent>;
+- **`EngineIdentity`** — `productName` / `shortName` / etc., so neutral layers
+  never hard-code `"Claude"` or `"Codex"` strings (`Ask ${engine.shortName}`,
+  not a literal).
+- **`EngineCapabilities`** — model catalog (`ModelChoice[]`) and context math,
+  keyed by `VendorId`.
+- **`EngineHistory`** / `Message` / `EngineUsageSnapshot` — the vendor-neutral
+  shape each adapter's `history.ts` (`engine/claude-code-local/history.ts`,
+  `engine/codex-local/history.ts`) normalizes its on-disk JSONL into. Token
+  count, context usage, and speed are engine-normalized here — the TUI does
+  not parse vendor transcript files or reconstruct these itself.
 
-  // Read historical messages from disk (JSONL on Claude Code).
-  readHistory(sessionId: string): Promise<Message[]>;
-
-  // Stop a running session (SIGTERM → SIGKILL with grace).
-  stop(handle: SessionHandle): Promise<void>;
-}
-
-type EngineEvent =
-  | { type: "assistant.delta"; text: string }
-  | { type: "tool.start"; name: string; input: unknown }
-  | { type: "tool.result"; name: string; output: unknown }
-  | { type: "usage"; input_tokens: number; output_tokens: number }
-  | { type: "done" }
-  | { type: "error"; message: string };
-```
-
-The events are normalized — we don't leak Claude Code's stream-json shape into the orchestrator. This is the *only* place we pay an abstraction tax. It's worth it because it's the only place that ever gets swapped.
+The events are normalized at the history-read boundary — we don't leak a vendor's on-disk JSONL shape into the orchestrator or TUI. This is the *only* place we pay an abstraction tax. It's worth it because it's the only place that ever gets swapped.
 
 ### 5.3 What the Orchestrator owns
 

@@ -26,6 +26,28 @@ function reduceActivity(
  *  follow-up event before lapsing to idle (safety net for a missed Stop/SessionEnd). */
 export const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
 
+/**
+ * States that persist until the NEXT real hook event clears them, rather than
+ * lapsing to idle on a stale liveness probe. `running` is the only state the
+ * lapse watchdog polices (a missed Stop pinning it forever); every other
+ * non-idle state is terminal-until-next-event:
+ *
+ *   - `turn_complete` keeps its checkmark until the next activity.
+ *   - `permission_needed` / `error` / `rate_limited` are exactly the states a
+ *     user leaves the session to attend to. The liveness probe is the transcript
+ *     mtime, and an engine BLOCKED on a permission prompt / rate limit / error
+ *     writes nothing — so the probe always reads "stale" and the old watchdog
+ *     idled precisely the tasks that needed a human, hiding the ? badge after
+ *     ~10min. They clear naturally: an approved turn emits Stop → turn_complete,
+ *     an exit emits SessionEnd → idle, and clearTask() / task deletion wipe them.
+ */
+const STICKY_STATES: ReadonlySet<TaskActivityState> = new Set([
+  "turn_complete",
+  "permission_needed",
+  "error",
+  "rate_limited",
+])
+
 export function resolveEngineStateTtlMs(): number {
   const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
   if (raw === undefined) return DEFAULT_ENGINE_STATE_TTL_MS
@@ -80,12 +102,12 @@ export class DaemonActivityRegistry {
     const state = reduceActivity(prev?.state, kind, detail)
     const at = this.now()
     const entry: ActivityEntry = { state, detail, at }
-    // Safety net: an in-flight/blocking/error state that never gets a
-    // follow-up event lapses back to idle, so a missed Stop/SessionEnd can't
-    // pin a badge forever. A completed turn is already terminal; keep the
-    // checkmark visible until the next activity event instead of refreshing
-    // itself back to the neutral status circle.
-    if (state !== "idle" && state !== "turn_complete") {
+    // Safety net: only `running` is policed by the lapse watchdog — a missed
+    // Stop/SessionEnd must not pin it forever, so it lapses to idle once the
+    // engine genuinely goes silent (heartbeat probe below). Sticky states
+    // (turn_complete + the attention states a user walks away to handle) stay
+    // visible until the next real event clears them; see {@link STICKY_STATES}.
+    if (state !== "idle" && !STICKY_STATES.has(state)) {
       entry.lapse = this.armLapse(taskId, at)
     }
     this.activity.set(taskId, entry)

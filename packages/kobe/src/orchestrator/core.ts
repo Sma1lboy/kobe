@@ -12,14 +12,14 @@
  *     broker. No live event stream from inside an engine to surface.
  *   - Orchestrator-owned ChatTab CRUD. ChatTabs are tmux windows inside a
  *     task's tmux Session now, so tmux owns their lifecycle/persistence.
- *   - Create-PR / merge / refresh-PR-status. A follow-up will re-introduce
- *     create-PR as a `tmux send-keys` injection from the Ops pane.
+ *   - Create-PR / refresh-PR-status. A follow-up will re-introduce create-PR
+ *     as a `tmux send-keys` injection from the Ops pane. (Branch collection
+ *     came BACK as `landTask` — merge/squash the task branch into its base.)
  *
- * What it gained: `ensureWorktree(id)` — the path task-entry surfaces
- * (`direct.ts`, the Tasks pane, `kobe api`) call before
- * `tmux new-session` to make sure the task's worktree exists on disk. (Worktree allocation is still lazy: `createTask`
- * records the intent; the directory only materialises when the user
- * actually enters the task.)
+ * What it gained: `ensureWorktree(id)` — task-entry surfaces (`direct.ts`, the
+ * Tasks pane, `kobe api`) call it before spawning to make the worktree real.
+ * Allocation stays lazy: `createTask` records intent; the dir materialises on
+ * first enter.
  */
 
 import { type ReadableState, type StateCell, createStateCell } from "../lib/external-store.ts"
@@ -37,7 +37,9 @@ import {
   WorktreeRemoveFailedError,
 } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
+import { type LandResult, type LandTaskOpts, landTaskWithCleanup } from "./land.ts"
 import { TaskEditor } from "./task-editor.ts"
+import { PLACEHOLDER_TASK_TITLE } from "./title.ts"
 import { WorktreeCoordinator } from "./worktree-coordinator.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
@@ -73,10 +75,9 @@ export interface OrchestratorDeps {
   readonly worktrees: GitWorktreeManager
 }
 
-/**
- * Placeholder title for tasks created before the user picks one.
- */
-export const PLACEHOLDER_TASK_TITLE = "(new task)"
+// Re-exported from `title.ts` (its single source of truth) so existing
+// importers of `PLACEHOLDER_TASK_TITLE` from `core.ts` keep working.
+export { PLACEHOLDER_TASK_TITLE }
 
 /**
  * Owner of the task lifecycle.
@@ -271,21 +272,39 @@ export class Orchestrator {
   }
 
   /**
-   * Materialise the worktree on disk for `task`. Idempotent: if the
-   * worktree already exists, this is a fast path that just verifies
-   * the recorded path. Task-entry surfaces call this before
-   * `tmux new-session` so the engine's `cwd` is real.
-   *
-   * Returns the worktree path (same as `task.worktreePath` on success).
+   * Materialise the worktree on disk for `task`. Idempotent: if the recorded
+   * worktree still exists, fast-path it. If the recorded dir vanished (a UI/web
+   * delete that didn't clear the index, a manual `rm`, a crash mid-`deleteTask`),
+   * self-heal: prune git's stale registration, drop the dead path, and
+   * re-materialise onto the task's OWN branch — committed work recovered, not a
+   * permanently-dead task. Returns the worktree path.
    */
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
     if (task.kind === "main") return repoWorkingDir(task.repo)
-    if (task.worktreePath) return task.worktreePath
-    // Lazy materialisation + its dedupe/rollback machinery lives in the
-    // coordinator; the short-circuits above (main root, already-materialised)
-    // stay here because they read the task index, not the worktree side.
+    if (task.worktreePath) {
+      if (await this.worktrees.pathExists(task.worktreePath)) return task.worktreePath
+      // Recorded path is gone: prune git's dangling registration (else `worktree
+      // add` on the same path errors), clear the dead pointer, re-materialise.
+      await this.worktrees.pruneWorktrees(task.repo)
+      await this.store.update(task.id, { worktreePath: "" })
+      return this.worktreeCoordinator.ensure({ ...task, worktreePath: "" })
+    }
+    // Lazy materialise via the coordinator; the short-circuits above read the
+    // task index, not the worktree side, so they stay here.
     return this.worktreeCoordinator.ensure(task)
+  }
+
+  /**
+   * Clear a task's `worktreePath` (keeping its branch) after an out-of-band
+   * worktree removal — the next enter re-materialises onto the retained branch
+   * instead of spawning into a dead dir. No-op if already unlinked.
+   */
+  async clearWorktreePath(id: TaskId | string): Promise<void> {
+    const task = this.store.get(id)
+    if (!task || !task.worktreePath) return
+    await this.store.update(task.id, { worktreePath: "" })
+    this.worktreeCoordinator.forget(task.id)
   }
 
   // In-place task-field edits (title / branch / vendor / pinned / archived /
@@ -370,7 +389,9 @@ export class Orchestrator {
         if (dirty) throw new DirtyWorktreeError(task.id)
       }
       try {
-        await this.worktrees.remove(task.worktreePath, { force })
+        // deleteBranch: a deleted task shouldn't leave its loser branch piling
+        // up (branch cleanup is best-effort inside remove(), never blocks it).
+        await this.worktrees.remove(task.worktreePath, { force, deleteBranch: true })
       } catch (err) {
         // Keep the index entry — see method doc. Surfacing instead of
         // the old console.warn-and-continue means a failed cleanup no
@@ -382,24 +403,24 @@ export class Orchestrator {
     this.worktreeCoordinator.forget(task.id)
   }
 
+  /** Land a task's branch back into its base repo — executor + cleanup in `land.ts`. */
+  async landTask(id: TaskId | string, opts?: LandTaskOpts): Promise<LandResult> {
+    const task = this.requireTask(id)
+    return landTaskWithCleanup(task, opts ?? {}, {
+      worktrees: this.worktrees,
+      setArchived: (tid, archived) => this.editor.setArchived(tid, archived),
+    })
+  }
+
   /**
-   * Forget a saved project: drop it from `savedRepos` (and, for a remote
-   * `ssh://` project, its stored connection config) AND remove the synthetic
-   * `kind: "main"` row that projects it into the sidebar. Non-destructive —
-   * the repo's files, branches, and its non-main task worktrees all stay on
-   * disk; only the picker entry + the project header row go away.
-   *
-   * This is the inverse of {@link ensureMainTask} and the one supported way to
-   * remove a main row: {@link deleteTask} deliberately refuses main rows
-   * (throws {@link CannotDeleteMainTaskError}) because they are a projection
-   * of `savedRepos`, not real work. Without this, un-saving a repo left an
-   * orphaned main task in the index — the row stayed, un-deletable, and a
-   * garbage `kobe add` entry (e.g. `kobe add ,`) could never be cleared.
-   *
-   * The main task's `worktreePath` is the repo root itself (see
-   * {@link ensureMainTask}), so we remove ONLY the index entry — never a
-   * `git worktree remove`. Idempotent: forgetting an already-forgotten /
-   * never-saved repo just no-ops.
+   * Forget a saved project: drop it from `savedRepos` (+ any remote `ssh://`
+   * connection config) AND remove the synthetic `kind:"main"` sidebar row.
+   * Non-destructive — the repo's files, branches, and non-main task worktrees
+   * all stay; only the picker entry + project header go away. The inverse of
+   * {@link ensureMainTask} and the ONE supported way to remove a main row
+   * ({@link deleteTask} refuses them — they project `savedRepos`, not real
+   * work). The main row's `worktreePath` is the repo root, so this touches only
+   * the index, never `git worktree remove`. Idempotent.
    */
   async forgetProject(repo: string): Promise<void> {
     if (!repo) throw new Error("forgetProject: repo is required")

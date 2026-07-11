@@ -8,6 +8,7 @@
 
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { LandResult } from "../orchestrator/land.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
 import { deserializeTask } from "./remote-orchestrator-payloads.ts"
@@ -82,6 +83,24 @@ export async function deleteTaskOp(
   opts?: { force?: boolean },
 ): Promise<void> {
   await client.request("task.delete", { taskId: String(id), force: opts?.force })
+}
+
+/** Land a task's branch back into its base repo (`task.land`). Merge or
+ *  squash; optionally delete the branch / archive the task after. The daemon
+ *  throws with a `LAND_CONFLICT`/`MAIN_CHECKOUT_DIRTY` sentinel in the message
+ *  on the guarded failures, which the caller matches to prompt/print. */
+export async function landTaskOp(
+  client: KobeDaemonClient,
+  id: TaskId | string,
+  opts?: { strategy?: "merge" | "squash"; deleteBranch?: boolean; archive?: boolean },
+): Promise<LandResult> {
+  const res = await client.request<{ result: LandResult }>("task.land", {
+    taskId: String(id),
+    strategy: opts?.strategy,
+    deleteBranch: opts?.deleteBranch,
+    archive: opts?.archive,
+  })
+  return res.result
 }
 
 export async function discoverAdoptableWorktreesOp(

@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   type HistoryDeps,
   deleteHistory,
+  deriveCodexUsageMetrics,
   parseJsonl,
   readHistory,
   readHistoryWithMetrics,
@@ -241,6 +242,85 @@ describe("parseJsonl — tool call / result records", () => {
   it("drops an unrecognized response_item type", () => {
     const raw = meta({ type: "something_new" })
     expect(parseJsonl(raw, SID)).toEqual([])
+  })
+})
+
+describe("deriveCodexUsageMetrics — real rollout event_msg token_count", () => {
+  // The shape codex-cli actually writes to ~/.codex/sessions/**.jsonl: usage is
+  // an event_msg with payload.type=token_count carrying info.total_token_usage +
+  // model_context_window. The old parser matched only `turn.completed` (an exec
+  // --json stream event that never appears in a rollout), so History showed
+  // 0 tok and the context window stayed 0 despite sitting in the file.
+  it("reads tokens + context window from an event_msg token_count record", () => {
+    const raw = JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-01-01T00:00:03Z",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: { input_tokens: 1200, cached_input_tokens: 200, output_tokens: 340, total_tokens: 1540 },
+          last_token_usage: { input_tokens: 400, output_tokens: 120, total_tokens: 520 },
+          model_context_window: 258_400,
+        },
+      },
+    })
+    expect(deriveCodexUsageMetrics(raw)).toEqual({
+      input_tokens: 1000, // total_input (1200) − cached (200)
+      output_tokens: 340,
+      cache_read_input_tokens: 200,
+      context_window_tokens: 258_400,
+    })
+  })
+
+  it("keeps the latest token_count by file order across turns", () => {
+    const raw = [
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "token_count", info: { total_token_usage: { input_tokens: 10, output_tokens: 5 } } },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "token_count", info: { total_token_usage: { input_tokens: 99, output_tokens: 7 } } },
+      }),
+    ].join("\n")
+    expect(deriveCodexUsageMetrics(raw)).toMatchObject({ input_tokens: 99, output_tokens: 7 })
+  })
+
+  it("stamps last_token_usage onto the nearest assistant message (History per-msg sum)", () => {
+    // The History host sums Message.usage.output_tokens; codex never set it, so
+    // the panel read 0 tok. token_count follows the turn's assistant message, so
+    // last_token_usage lands on that message.
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-01-01T00:00:01Z",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "hi" }] },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-01-01T00:00:02Z",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: { input_tokens: 500, output_tokens: 300 },
+            last_token_usage: { input_tokens: 120, cached_input_tokens: 20, output_tokens: 80 },
+          },
+        },
+      }),
+    ].join("\n")
+    const out = parseJsonl(raw, SID)
+    expect(out).toHaveLength(1)
+    expect(out[0]?.usage).toEqual({ input_tokens: 100, output_tokens: 80, cache_read_input_tokens: 20 })
+  })
+
+  it("ignores a token_count with null info and the legacy turn.completed still works", () => {
+    expect(
+      deriveCodexUsageMetrics(JSON.stringify({ type: "event_msg", payload: { type: "token_count", info: null } })),
+    ).toBeUndefined()
+    expect(deriveCodexUsageMetrics(JSON.stringify({ type: "turn.completed", usage: { output_tokens: 7 } }))).toEqual({
+      input_tokens: 0,
+      output_tokens: 7,
+    })
   })
 })
 

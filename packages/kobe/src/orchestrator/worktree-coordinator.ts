@@ -27,12 +27,9 @@ import type { Task, TaskId, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeInfo } from "../types/worktree.ts"
 import type { TaskIndexStore } from "./index/store.ts"
-import { autoBranch } from "./title.ts"
+import { PLACEHOLDER_TASK_TITLE, autoBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
-
-/** Placeholder title reused for adopted worktrees with an empty derived name. */
-const PLACEHOLDER_TASK_TITLE = "(new task)"
 
 /** Resolve a canonical path — injected by the Orchestrator so both sides dedupe identically. */
 type CanonPath = (p: string) => string
@@ -231,7 +228,10 @@ export class WorktreeCoordinator {
       if (input.ifExists === "return") return existing
       throw new Error(`adoptWorktree: ${input.worktreePath} is already adopted as a task`)
     }
-    const candidates = await this.worktrees.listAll(input.repo)
+    // Only a path→branch match is needed here, so use the lightweight
+    // adoptable-paths list — NOT `listAll`, which would run a git status + git
+    // log per worktree (dirty / last-activity) only to discard all of it.
+    const candidates = await this.worktrees.listAdoptablePaths(input.repo)
     const match = candidates.find((wt) => this.canonPath(wt.path) === target)
     if (!match) {
       throw new Error(

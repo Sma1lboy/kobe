@@ -61,6 +61,12 @@ export type FileTreeController = {
   expandOrDescend: () => void
   /** `h` — collapse current dir or jump to parent. */
   collapseOrParent: () => void
+  /** `b` — toggle the Changes tab between working-tree and Branch (vs-base)
+   *  scope. No-op on the All tab. */
+  toggleScope?: () => void
+  /** `d` — open the current file's read-only diff in a workspace content tab
+   *  (content swap, does not steal focus per KOB-25). */
+  openDiff?: () => void
 }
 
 /**
@@ -96,5 +102,7 @@ export function fileTreeBindings(opts: FileTreeController): Binding[] {
     "files.createPR": () => opts.createPR?.(),
     "files.openExternal": () => opts.openExternal(),
     "files.refresh": () => opts.refresh(),
+    "files.scope": () => opts.toggleScope?.(),
+    "files.diff": () => opts.openDiff?.(),
   })
 }

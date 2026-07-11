@@ -81,16 +81,31 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useLatest } from "../lib/use-latest"
+import { PreviewScreen } from "../ops/preview"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
+import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
 import { useTurnPolls } from "./use-turn-polls"
 
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
+
+/**
+ * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
+ * `tabsByTask` entry (module-level, otherwise only-grows) and its
+ * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never
+ * the archived sweep (an archived task must keep its snapshot to
+ * unarchive-and-`--resume`). Its PTYs are released separately by the host's
+ * archived-task sweep / the tab's own exit path.
+ */
+export function forgetTaskTabs(kv: TabsSnapshotKv, taskId: string): void {
+  tabsByTask.delete(taskId)
+  forgetTaskTabsSnapshot(kv, taskId)
+}
 
 export interface TerminalTabsProps {
   taskId: string
@@ -108,6 +123,10 @@ export interface TerminalTabsProps {
   /** Hands the parent an imperative "paste this into the active engine tab
    *  and submit" function, once per mount (see file header). */
   onEngineSendReady?: (send: (text: string) => void) => void
+  /** Hands the parent an imperative "open this file's read-only diff in a
+   *  content tab" function, once per mount — the FileTree `d` action (issue
+   *  #21). Opening is a content swap, not a focus grab (KOB-25). */
+  onDiffTabReady?: (open: (relPath: string, label: string, base?: string) => void) => void
   /** Quick-fork (issue #17): the composer submitted — parent creates the
    *  child task (in `repo`, the source task's main repo root) and jumps in. */
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
@@ -129,7 +148,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const notif = useNotifications()
   const kv = useKV()
   const t = useT()
-  const persistKey = `terminalTabs.${props.taskId}`
+  const persistKey = terminalTabsKey(props.taskId)
 
   // Latest-render mirror — read inside the two mount-only forever-lived
   // effects below (see file header).
@@ -253,7 +272,14 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     update(next)
   }
 
-  const activeSpawn = (): TabSpawn => (active.kind === "command" ? { command: active.command } : engineTabSpawn(active))
+  const activeSpawn = (): TabSpawn =>
+    active.kind === "command"
+      ? { command: active.command }
+      : active.kind === "content"
+        ? // Content tabs have no PTY (a read-only preview); the render below
+          // never mounts a Terminal for them, so this spawn is never used.
+          { command: [] }
+        : engineTabSpawn(active)
 
   /** Engine tabs whose dead-on-attach resume was already attempted — one
    *  shot per tab, so a `--resume` that itself dies closes normally
@@ -426,6 +452,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         <box flexGrow={1} paddingLeft={1} paddingTop={1}>
           <text fg={theme.textMuted}>{t("terminal.restoring")}</text>
         </box>
+      ) : active.kind === "content" ? (
+        // Read-only diff/preview tab (issue #21) — the shared PreviewScreen,
+        // no PTY. `onClose` (q/esc) closes THIS tab instead of exiting the
+        // process (the standalone entrypoint keeps the process.exit default).
+        <PreviewScreen
+          worktree={props.worktree}
+          relPath={active.relPath}
+          base={active.base}
+          focused={props.focused}
+          onClose={() => closeExitedTab(active.id)}
+        />
       ) : (
         <TerminalSplit
           tabKey={tabPtyKey(props.taskId, active.id)}

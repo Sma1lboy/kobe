@@ -24,6 +24,7 @@ import {
   TOAST_DURATION_MS,
   type Toast,
   addUnread,
+  osc9,
   removeUnread,
   shouldShowToast,
 } from "../../tui/lib/notify-state"
@@ -71,13 +72,17 @@ export function NotificationsProvider(props: { children?: ReactNode }) {
       // (needs_input/error outrank done) lives in the shared notify-state.
       setUnread((prev) => addUnread(prev, input))
 
-      // Sound gate (BEL + chime). BEL alone leaks past `pulse.wav`
-      // failure — they're the same intent (audible cue), one toggle.
+      // Sound gate (BEL + chime + OSC 9 desktop notification). All three are
+      // the same intent (get the user's attention), one toggle. The OSC 9
+      // escape is the SSH-critical one: iTerm2/kitty/WezTerm/Ghostty raise a
+      // native OS notification from it, and it rides the SSH stream to the
+      // user's LOCAL terminal — unlike `afplay`, which rings on the remote box.
+      // Unsupported terminals ignore the unknown OSC silently.
       if ((prefs["notifications.sound.enabled"] as boolean | undefined) !== false) {
         try {
-          process.stdout.write("\x07")
+          process.stdout.write(`\x07${osc9(`kobe — ${input.title}`)}`)
         } catch {
-          /* swallow — bell is best-effort */
+          /* swallow — bell/OSC is best-effort */
         }
         pulseSound()
       }

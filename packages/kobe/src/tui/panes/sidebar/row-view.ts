@@ -158,6 +158,64 @@ function isCustomEngineTask(task: Task): boolean {
   return task.vendor !== undefined && !isBuiltinVendor(task.vendor)
 }
 
+/** The inputs that decide whether a row spins — the loading subset of
+ *  `buildSidebarRowView`'s options. */
+export interface RowLoadingInputs {
+  readonly task: Task
+  readonly activity?: TaskEngineState
+  readonly job?: TaskJobState
+  readonly live: boolean
+  readonly isViewed?: boolean
+}
+
+/**
+ * Whether a single row is in its loading (spinning) state. THE source of the
+ * `loading` decision — `buildSidebarRowView` calls this, so a pane-level
+ * "does anything spin" check built on it can never drift from what the rows
+ * actually render (a drift would freeze a genuinely-loading row's spinner,
+ * which is worse than the idle CPU tax it saves). Pure.
+ */
+export function rowIsLoading(opts: RowLoadingInputs): boolean {
+  const { task } = opts
+  const isMain = task.kind === "main"
+  const activityState = opts.activity?.state
+  const hasActivity = activityState !== undefined
+  const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
+  const materializing = opts.job !== undefined
+  return (
+    materializing ||
+    (!opts.isViewed &&
+      !untrackedCustomEngine &&
+      (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
+  )
+}
+
+/**
+ * Pane-level "is ANY visible row spinning" — the gate the React Sidebar uses
+ * to suspend its 10Hz spinner interval while everything is idle (O11). Built
+ * on the exact same `rowIsLoading` per-row decision the cards render with, so
+ * the timer is present precisely when a row needs animating.
+ */
+export function anyRowLoading(
+  tasks: readonly Task[],
+  reads: {
+    activity(taskId: string): TaskEngineState | undefined
+    job(taskId: string): TaskJobState | undefined
+    live(taskId: string): boolean
+    isViewed(taskId: string): boolean
+  },
+): boolean {
+  return tasks.some((task) =>
+    rowIsLoading({
+      task,
+      activity: reads.activity(task.id),
+      job: reads.job(task.id),
+      live: reads.live(task.id),
+      isViewed: reads.isViewed(task.id),
+    }),
+  )
+}
+
 export function buildSidebarRowView(opts: {
   readonly task: Task
   readonly activity?: TaskEngineState
@@ -217,11 +275,13 @@ export function buildSidebarRowView(opts: {
   // genuine daemon-side liveness fact, not engine telemetry, so the spinner
   // never lies here even for a custom engine.
   const materializing = opts.job !== undefined
-  const loading =
-    materializing ||
-    (!opts.isViewed &&
-      !untrackedCustomEngine &&
-      (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
+  const loading = rowIsLoading({
+    task,
+    activity: opts.activity,
+    job: opts.job,
+    live: opts.live,
+    isViewed: opts.isViewed,
+  })
   // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
   // reduced motion replaces every set with the slow pulsing dot.
   const spinnerFrames = opts.reducedMotion

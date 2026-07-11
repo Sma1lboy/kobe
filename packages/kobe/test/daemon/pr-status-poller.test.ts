@@ -19,6 +19,7 @@ import {
   type PrViewRunner,
   SETTLED_BACKOFF_MS,
   isPrPollable,
+  pickPr,
   runPrStatusPass as runPrStatusPassRaw,
 } from "@sma1lboy/kobe-daemon/daemon/pr-status-collector"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
@@ -74,6 +75,23 @@ const emptyRunner: PrViewRunner = async () => ({ kind: "empty" })
 
 /** Cancel jitter (rand 0.5 → no offset) so the scheduled delays are exact. */
 const noJitter = (): number => 0.5
+
+describe("pickPr", () => {
+  test("empty list → undefined (no PR)", () => {
+    expect(pickPr([])).toBeUndefined()
+  })
+  test("an open PR wins over a merged/closed one, regardless of order", () => {
+    const open = { number: 2, state: "OPEN" }
+    const merged = { number: 1, state: "MERGED" }
+    expect(pickPr([merged, open])).toBe(open)
+    expect(pickPr([open, merged])).toBe(open)
+  })
+  test("merged vs closed ties keep the first (list order = most-recently-updated)", () => {
+    const merged = { number: 1, state: "MERGED" }
+    const closed = { number: 2, state: "CLOSED" }
+    expect(pickPr([merged, closed])).toBe(merged)
+  })
+})
 
 describe("isPrPollable", () => {
   const base: Task = {

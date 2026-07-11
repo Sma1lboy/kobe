@@ -68,6 +68,15 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   function toggleSound(): void {
     kv.set("notifications.sound.enabled", !soundEnabled())
   }
+  // Cross-task attention: notify (bell/toast/OSC 9) when a NON-selected task
+  // pauses on an approval / errors / finishes a turn. Default on — this is the
+  // "call me back when I've switched away" promise that makes parallel useful.
+  function crossTaskEnabled(): boolean {
+    return (kv.get("notifications.crossTask.enabled", true) as boolean) !== false
+  }
+  function toggleCrossTask(): void {
+    kv.set("notifications.crossTask.enabled", !crossTaskEnabled())
+  }
 
   // Appearance: how split leaves draw — full box frames or single dividers.
   function splitStyle(): SplitStyle {
@@ -246,6 +255,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleToast,
     soundEnabled,
     toggleSound,
+    crossTaskEnabled,
+    toggleCrossTask,
     splitStyle,
     selectSplitStyle,
     zenKeepsTasks,

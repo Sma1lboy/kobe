@@ -15,6 +15,11 @@ export const en = {
   legend: {
     changes: "M modified · A added · D deleted · ? untracked",
   },
+  scope: {
+    working: "scope: working tree",
+    branch: "scope: vs {base}",
+    toggleHint: "b to toggle",
+  },
   empty: {
     noTask: "(no task — press n to create)",
     noFiles: "(empty worktree)",
@@ -29,7 +34,7 @@ export const en = {
     gitFailed: "git command failed",
   },
   footer: {
-    openHint: "↵ open",
+    openHint: "↵ open · d diff",
   },
 }
 
@@ -45,6 +50,11 @@ export const zh: typeof en = {
   legend: {
     changes: "M 已修改 · A 已添加 · D 已删除 · ? 未跟踪",
   },
+  scope: {
+    working: "范围：工作区改动",
+    branch: "范围：对比 {base}",
+    toggleHint: "按 b 切换",
+  },
   empty: {
     noTask: "（暂无任务 — 按 n 创建）",
     noFiles: "（worktree 为空）",
@@ -59,6 +69,6 @@ export const zh: typeof en = {
     gitFailed: "git 命令失败",
   },
   footer: {
-    openHint: "↵ 打开",
+    openHint: "↵ 打开 · d 差异",
   },
 }

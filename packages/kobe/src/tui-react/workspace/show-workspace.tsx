@@ -23,6 +23,7 @@ export function ShowWorkspace(props: {
   onRequestFocus: () => void
   onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
   onEngineSendReady: (send: (text: string) => void) => void
+  onDiffTabReady: (open: (relPath: string, label: string, base?: string) => void) => void
   onQuickFork: (repo: string, result: QuickTaskResult) => void
   initialPrompt?: string
 }): ReactNode {
@@ -70,6 +71,7 @@ export function ShowWorkspace(props: {
       onRequestFocus={props.onRequestFocus}
       onEditorTabReady={props.onEditorTabReady}
       onEngineSendReady={props.onEngineSendReady}
+      onDiffTabReady={props.onDiffTabReady}
       onQuickFork={props.onQuickFork}
       initialPrompt={props.initialPrompt}
       // This worktree's slice of the daemon transcript.activity push

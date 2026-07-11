@@ -257,6 +257,22 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "f4", label: "next pane", status: false },
   },
   {
+    // Jump to the next task that needs attention (P0) — walks the sidebar
+    // order to the next task whose daemon engine-state is permission_needed /
+    // error (plus any unread needs_input/error mark) and selects it. `ctrl+g`
+    // ("go to next"): a free ctrl+letter with stable C0 bytes in every
+    // terminal — no CSI-u/kitty dependency, doesn't collide with the fork
+    // (ctrl+f), editor (ctrl+o), engine (ctrl+e), or tab (ctrl+t/w/]/[) chords.
+    // In RESERVED_GLOBAL_CHORDS so it fires identically from inside the
+    // embedded terminal, same tier as focus.next (f4) / zenToggle (f6).
+    id: "attention.next",
+    scope: "global",
+    keys: ["ctrl+g"],
+    category: "Navigation",
+    description: "Jump to the next task waiting for input",
+    hint: { keys: "ctrl+g", label: "next waiting", status: false },
+  },
+  {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
     // the sidebar's ☯ ZEN chip is the click-based exit affordance, this is
     // the keyboard one. `f6` sits in RESERVED_GLOBAL_CHORDS (panes/terminal/

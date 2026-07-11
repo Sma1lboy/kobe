@@ -44,9 +44,10 @@ export const en = {
     splitLine: "Divider line",
     notifications: "Notifications",
     notificationsHint:
-      "Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound = terminal bell + chime. Tab-chip unread dot is always on.",
+      "Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound = terminal bell + chime + OSC 9 desktop notification (rides SSH to your local terminal). Cross-task = also notify when a task you've switched AWAY from pauses/errors/finishes. Tab-chip unread dot is always on.",
     toast: "Toast",
     sound: "Sound",
+    crossTask: "Notify for background tasks",
     zen: "Zen mode",
     zenHint:
       "The `zen` chip (above the file list) and `prefix`+space collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
@@ -188,9 +189,10 @@ export const zh: typeof en = {
       "让界面动效安静下来：运行中任务的 spinner 变为缓慢明暗脉冲点，Toast 滑入、worktree 创建扫动条和标签完成闪烁全部关闭。",
     notifications: "通知",
     notificationsHint:
-      "后台聊天页完成或在审批处暂停时触发。Toast = 右下角弹窗；Sound = 终端响铃 + 提示音。标签上的未读圆点始终开启。",
+      "后台聊天页完成或在审批处暂停时触发。Toast = 右下角弹窗；Sound = 终端响铃 + 提示音 + OSC 9 桌面通知（经 SSH 直达你本地终端）。跨任务 = 你已切走的任务暂停/出错/完成时也通知。标签上的未读圆点始终开启。",
     toast: "Toast 弹窗",
     sound: "声音",
+    crossTask: "为后台任务发送通知",
     zen: "禅模式",
     zenHint:
       "`zen` 标记（文件列表上方）和 `prefix`+空格 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
