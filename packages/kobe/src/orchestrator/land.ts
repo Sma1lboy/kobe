@@ -148,11 +148,21 @@ export async function landTask(
       throw new Error(`landTask: '${branch}' has nothing to land onto '${landedOn}' (already merged or empty)`)
     }
   } else {
+    const before = (await git(exec, dir, ["rev-parse", "HEAD"])).stdout.trim()
     const merge = await git(exec, dir, ["merge", "--no-ff", "-m", `Land ${branch}`, branch])
     if (merge.exitCode !== 0) {
       const files = await conflictedFiles(exec, dir)
       await git(exec, dir, ["merge", "--abort"]).catch(() => {})
       throw new LandConflictError(task.id, branch, files)
+    }
+    // `git merge --no-ff` on an already-merged/empty branch exits 0 with
+    // "Already up to date." and creates NO commit — HEAD does not move. Guard
+    // it the same way the squash path guards its empty `git commit`, so both
+    // strategies reject a nothing-to-land branch instead of the merge path
+    // reporting a fake success on the unchanged base commit.
+    const after = (await git(exec, dir, ["rev-parse", "HEAD"])).stdout.trim()
+    if (before === after) {
+      throw new Error(`landTask: '${branch}' has nothing to land onto '${landedOn}' (already merged or empty)`)
     }
   }
 
