@@ -1,16 +1,14 @@
 /**
- * Framework-free view logic shared by the Solid sidebar and its React port
- * (issue #15, G3). Pure derivations only — no Solid, no React, no opentui:
- * view-tab cycling, line budgets, the search-input keystroke reducer,
- * empty-state / label i18n-key selection, and small row helpers. Both
- * renderers consume this module so the pair cannot drift (theme-core /
- * lookup / message-core precedent).
+ * Framework-free view logic for the React sidebar (issue #15, G3; the Solid
+ * original was removed 2026-07-07). Pure derivations only — no React, no
+ * opentui: view-tab cycling, line budgets, the search-input keystroke
+ * reducer, empty-state / label i18n-key selection, and small row helpers
+ * (theme-core / lookup / message-core precedent).
  */
 
 import { truncateEnd } from "../../lib/truncate"
 import type { SidebarView } from "./groups"
 import type { SidebarTone } from "./row-view"
-import type { ChatRunState } from "./types"
 
 /** Default sidebar width — task-list rail matching the tmux Tasks pane. */
 export const SIDEBAR_WIDTH = 32
@@ -34,8 +32,7 @@ export function viewTabLabelKey(view: SidebarView): string {
 /**
  * Cycle the view by `delta` (-1 = `[` / left, +1 = `]` / right). Wraps:
  * `[` from the leftmost lands on the rightmost and vice versa (loop is the
- * confirmed intended behavior — see the Solid Sidebar's history note).
- * Returns null when `cur` isn't a known tab.
+ * confirmed intended behavior). Returns null when `cur` isn't a known tab.
  */
 export function cycleViewTarget(cur: SidebarView, delta: -1 | 1): SidebarView | null {
   const idx = VIEW_TABS.findIndex((t) => t.view === cur)
@@ -94,17 +91,7 @@ export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): str
   return truncateEnd(branch, max)
 }
 
-/** True when any chat tab of `taskId` is in the `running` state. */
-export function taskIsLive(taskId: string, map: ReadonlyMap<string, ChatRunState> | undefined): boolean {
-  if (!map) return false
-  const prefix = `${taskId}:`
-  for (const [key, state] of map) {
-    if (state === "running" && key.startsWith(prefix)) return true
-  }
-  return false
-}
-
-/** Map a row tone to its theme slot. Works on the Solid Proxy and the plain React theme alike. */
+/** Map a row tone to its theme slot. */
 export function toneColor<V>(theme: Record<SidebarTone, V>, tone: SidebarTone): V {
   switch (tone) {
     case "success":

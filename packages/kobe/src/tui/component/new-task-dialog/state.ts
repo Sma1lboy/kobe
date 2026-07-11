@@ -1,12 +1,12 @@
 /**
  * Pure state-machine helpers for the new-task dialog.
  *
- * Lifted out of `src/tui/app.tsx` so the dialog's logic — field
- * cycling, repo-list assembly, substring filtering, picker windowing —
- * can be unit-tested without standing up the dialog stack or opentui.
- * None of these functions touch Solid, opentui, the filesystem, or a
- * subprocess; they are effectively reducers + pure helpers. **Keep this
- * file Solid-free AND side-effect-free** — anything that shells out or
+ * Kept separate so the dialog's logic — field cycling, repo-list
+ * assembly, substring filtering, picker windowing — can be unit-tested
+ * without standing up the dialog stack or opentui. None of these
+ * functions touch React, opentui, the filesystem, or a subprocess; they
+ * are effectively reducers + pure helpers. **Keep this file
+ * framework-free AND side-effect-free** — anything that shells out or
  * reads the fs lives elsewhere:
  *
  *   - sync git snapshots (current branch, branch list, repo
@@ -16,8 +16,8 @@
  *     → `src/tui/lib/path-helpers.ts`.
  *   - clone-tab fs/spawn helpers → `./clone.ts`.
  *
- * The JSX shell (`./dialog.tsx`) imports all four and wires them to
- * signals.
+ * The React dialog cluster (`src/tui-react/component/new-task-dialog/`)
+ * imports all of these and wires them to component state.
  */
 
 import { matchPathGlob } from "@/lib/path-glob"

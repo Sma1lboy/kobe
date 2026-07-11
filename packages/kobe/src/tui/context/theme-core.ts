@@ -1,9 +1,10 @@
 /**
- * Framework-free theme core, shared by the Solid provider (`./theme.tsx`)
- * and the React one (`src/tui-react/context/theme.tsx`). Extracted during
- * the React migration (issue #15, G2): JSON shape types, hex/def-ref/variant
+ * Framework-free theme core behind the React provider
+ * (`src/tui-react/context/theme.tsx`). Extracted during the React
+ * migration (issue #15, G2): JSON shape types, hex/def-ref/variant
  * resolution, and the display-time overlay (focus-accent slot +
- * transparent-background policy) all live here so the two providers cannot
+ * transparent-background policy) all live here so the provider and
+ * off-render consumers (`tui/lib/persisted-ui-prefs.ts`, tests) cannot
  * drift. The bundled theme JSONs themselves live in `./theme/bundled`.
  */
 

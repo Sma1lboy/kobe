@@ -1,10 +1,7 @@
 /** @jsxImportSource @opentui/react */
 /**
- * `kobe help-page` — React host (issue #15, G3), the `src/tui/help/host.tsx`
- * counterpart. React is the default runtime since 2026-07-07 (`uiFramework()`
- * in `src/env.ts`); `KOBE_SOLID=1` is the legacy escape hatch. Same contract:
- * the F1 keybindings
- * help as a standalone full-window surface, rendering the SAME `HelpDialog`
+ * `kobe help-page` (issue #15, G3) — the F1 keybindings help as a
+ * standalone full-window surface, rendering the SAME `HelpDialog`
  * component the in-pane overlay pushes onto the dialog stack; closing
  * (q / esc / F1 / ? / Ctrl+C) exits the process so tmux closes the window.
  * Purely read-only — no daemon connection, no KV/Focus providers.

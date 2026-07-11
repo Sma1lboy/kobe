@@ -1,12 +1,11 @@
 /**
  * Pure dispatch logic for kobe's TUI keymap.
  *
- * Split out of `keymap.tsx` so unit tests can exercise the binding-
- * stack precedence + preventDefault behavior without pulling in
- * `@opentui/solid` (whose transitive `.scm` asset imports vitest's
- * node loader can't resolve). The Solid hook + renderer-install side
- * lives in `keymap.tsx` and re-exports from here for the rest of the
- * codebase.
+ * Kept framework-free so unit tests can exercise the binding-stack
+ * precedence + preventDefault behavior without pulling in the renderer.
+ * The React hook + renderer-install side lives in
+ * `src/tui-react/lib/keymap.ts` and re-exports from here for the rest
+ * of the codebase.
  */
 
 import type { KeyEvent } from "@opentui/core"
@@ -148,7 +147,7 @@ export function matchKey(evt: KeyEvent): string[] {
 
 /**
  * Re-entrancy guard. A binding's `cmd()` runs synchronously and can mount /
- * unmount Solid components, which in turn synchronously dispatch their own
+ * unmount React components, which in turn synchronously dispatch their own
  * key events (rare, but possible — e.g. a handler that programmatically
  * pushes a key into the renderer). A nested dispatch would scan a stack that
  * the outer dispatch's handler is in the middle of mutating, firing a chord
@@ -165,8 +164,8 @@ const shadowWarned = new Set<string>()
 
 /**
  * Contract check behind the ctrl+w-class bug (split-close vs tab-close):
- * two ENABLED entries matching the same chord means LIFO order — which
- * React INVERTED relative to Solid (ancestors on top, see
+ * two ENABLED entries matching the same chord means LIFO order — React's
+ * effect-order registration puts ancestors on top (see
  * tui-react/lib/keymap.ts) — silently picks the winner. The rule is
  * mutual GATING (exactly one enabled at a time); a second enabled match
  * is a latent bug, so surface it. Runs on the pre-`cmd` snapshot (the
@@ -204,8 +203,9 @@ function warnShadowedMatch(snapshot: readonly RegisteredBinding[], hitIndex: num
  * textarea's onSubmit) don't also receive the key in the same tick.
  *
  * The scan runs over a STABLE SNAPSHOT of `bindingStack` taken at entry. A
- * matched handler's `cmd()` can synchronously mutate the live stack (Solid
- * mount/cleanup pushes/removes entries — see `useBindings` in keymap.tsx);
+ * matched handler's `cmd()` can synchronously mutate the live stack (React
+ * mount/cleanup effects push/remove entries — see `useBindings` in
+ * `src/tui-react/lib/keymap.ts`);
  * iterating the live array would let those mid-flight mutations skip or
  * double-visit entries. Snapshotting insulates the in-progress scan without
  * changing precedence: the same top-down (LIFO) order is searched and the

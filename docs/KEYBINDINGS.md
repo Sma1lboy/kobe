@@ -1,7 +1,7 @@
 # Keybindings — boundaries, conflicts, conventions
 
 Single source of truth for "what keys do what, where, and why."
-Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
+Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; a row's friendly `hint` has exactly two consumers — the help dialog (F1), which shows `hint.keys` as the row's primary cap, and the Tasks-pane footer legend, which derives its keycaps from the same rows (`legendCap`/`legendRowCap` in [`src/tui/lib/help-groups.ts`](../packages/kobe/src/tui/lib/help-groups.ts)). A single edit there is enough to update chord, Help copy, and footer keycaps.
 
 > **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now; **`focus.next` revived 2026-07-06** for the pure TUI, on `f4`, forward-only — see the pure-TUI navigation decision log), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
 
@@ -129,8 +129,9 @@ hand-authored settings directory (`~/.kobe/settings/`, distinct from the
 machine-written KV blob) and is loaded ONCE per process at TUI boot by
 `applyUserKeybindings()` ([`src/tui/context/keybindings-user.ts`](../packages/kobe/src/tui/context/keybindings-user.ts)),
 which mutates the matching `KobeKeymap` rows in place. Because every pane
-registers through `bindByIds` and the F1 help dialog / status bar render from
-the same table, one mutation re-points every surface — chord, Help copy, and
+registers through `bindByIds` and the F1 help dialog / Tasks-pane footer
+legend render from the same table, one mutation re-points every surface —
+chord, Help copy, and
 footer hint follow automatically (overridden rows get their `hint.keys`
 refreshed; an unbound row loses its hint). Restart kobe — or respawn the pane —
 to apply edits. Pure parsing/validation logic lives in
@@ -235,7 +236,7 @@ Semantics and guard rails:
 ## Adding a new binding — checklist
 
 1. Decide the flavour (global/modifier vs pane-scoped/letter).
-2. Add the row to `KobeKeymap`. Set `id`, `scope`, `keys`, `description`, optional `hint`, optional `category`. Use `hint.status: false` when the chord belongs in Help but not in the always-visible footer.
+2. Add the row to `KobeKeymap`. Set `id`, `scope`, `keys`, `description`, optional `hint`, optional `category`. Use `hint.keys` when the displayed cap should be a friendly pseudo-chord (e.g. `j/k`) instead of the first real chord.
 3. Wire the handler:
    - Global → register inside `useKobeKeybindings` (in `keybindings.ts`) or as a top-level `useBindings` block in
      `app.tsx`.

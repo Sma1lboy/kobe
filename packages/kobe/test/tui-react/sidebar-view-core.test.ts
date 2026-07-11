@@ -1,14 +1,12 @@
 /**
  * Unit tests for `src/tui/panes/sidebar/view-core.ts` — the framework-free
- * view logic extracted for the React sidebar port (issue #15, G3) and
- * consumed by BOTH renderers. These pin the shared derivations (tab cycle,
- * budgets, empty-state key selection, the `/`-search keystroke reducer, and
- * the small row helpers) so the Solid original and the React port cannot
- * drift: a behavior change here is a behavior change in two shipped panes.
+ * view logic extracted for the React sidebar port (issue #15, G3; the Solid
+ * original was removed 2026-07-07). These pin the shared derivations (tab
+ * cycle, budgets, empty-state key selection, the `/`-search keystroke
+ * reducer, and the small row helpers).
  */
 
 import { describe, expect, it } from "vitest"
-import type { ChatRunState } from "../../src/tui/panes/sidebar/types"
 import {
   BRANCH_LABEL_MAX,
   type SearchKeystroke,
@@ -18,7 +16,6 @@ import {
   searchQueryKeystroke,
   sidebarEmptyStateKey,
   subtitleBudgetFor,
-  taskIsLive,
   titleBudgetFor,
   toneColor,
   truncateBranchLabel,
@@ -110,20 +107,6 @@ describe("row helpers", () => {
     const long = "feature/very-long-branch-name"
     expect(truncateBranchLabel(long).length).toBeLessThanOrEqual(BRANCH_LABEL_MAX)
     expect(truncateBranchLabel("main")).toBe("main")
-  })
-
-  it("taskIsLive matches only running states under the task's key prefix", () => {
-    const map = new Map<string, ChatRunState>([
-      ["a:tab1", "idle"],
-      ["a:tab2", "running"],
-      ["b:tab1", "running"],
-    ])
-    expect(taskIsLive("a", map)).toBe(true)
-    expect(taskIsLive("c", map)).toBe(false)
-    expect(taskIsLive("a", undefined)).toBe(false)
-    // Prefix discipline: "a" must not match a task id "ab".
-    const tricky = new Map<string, ChatRunState>([["ab:tab1", "running"]])
-    expect(taskIsLive("a", tricky)).toBe(false)
   })
 
   it("toneColor maps every tone to its theme slot with textMuted as default", () => {

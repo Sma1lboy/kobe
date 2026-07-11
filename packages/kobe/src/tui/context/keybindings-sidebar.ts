@@ -19,7 +19,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["j", "k", "down", "up"],
     category: "Sidebar",
     description: "Move cursor up/down",
-    hint: { keys: "j/k", label: "nav" },
+    hint: { keys: "j/k" },
   },
   {
     id: "sidebar.select",
@@ -27,7 +27,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["return"],
     category: "Sidebar",
     description: "Open the selected task",
-    hint: { keys: "enter", label: "select" },
+    hint: { keys: "enter" },
   },
   {
     id: "sidebar.goto",
@@ -42,7 +42,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["r"],
     category: "Sidebar",
     description: "Rename task",
-    hint: { keys: "r", label: "rename", status: false },
+    hint: { keys: "r" },
   },
   {
     id: "sidebar.archive",
@@ -50,7 +50,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["a"],
     category: "Sidebar",
     description: "Toggle archive",
-    hint: { keys: "a", label: "archive", status: false },
+    hint: { keys: "a" },
   },
   {
     id: "sidebar.localMerge",
@@ -58,7 +58,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["m"],
     category: "Sidebar",
     description: "Reorder task (Shift+M, then j/k)",
-    hint: { keys: "M", label: "reorder", status: false },
+    hint: { keys: "M" },
   },
   {
     // Capital P pins / unpins a regular task. Lowercase `p` falls
@@ -72,7 +72,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["p"],
     category: "Sidebar",
     description: "Pin / unpin task at top (Shift+P)",
-    hint: { keys: "P", label: "pin", status: false },
+    hint: { keys: "P" },
   },
   {
     // `i` opens the cursor task in a live read-only preview (the `kobe history`
@@ -84,7 +84,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["i"],
     category: "Sidebar",
     description: "Toggle live preview for task (i)",
-    hint: { keys: "i", label: "preview", status: false },
+    hint: { keys: "i" },
   },
   {
     // POSITIONAL: [previous view, next view] pairs (slot dispatch).
@@ -93,7 +93,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["[", "]"],
     category: "Sidebar",
     description: "Switch view (Working session ↔ Archives)",
-    hint: { keys: "[/]", label: "view", status: false },
+    hint: { keys: "[/]" },
   },
   {
     id: "sidebar.sort",
@@ -101,7 +101,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["t"],
     category: "Sidebar",
     description: "Switch task sort (default ↔ recent)",
-    hint: { keys: "t", label: "sort", status: false },
+    hint: { keys: "t" },
   },
   {
     id: "sidebar.projectFilter",
@@ -109,7 +109,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+p"],
     category: "Sidebar",
     description: "Cycle task project filter",
-    hint: { keys: "ctrl+p", label: "project", status: false },
+    hint: { keys: "ctrl+p" },
   },
   {
     id: "sidebar.delete",
@@ -117,7 +117,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["d"],
     category: "Sidebar",
     description: "Delete task (with confirm)",
-    hint: { keys: "d", label: "delete", status: false },
+    hint: { keys: "d" },
   },
   {
     // `/`-search filter. Enters an inline search mode rendered at the
@@ -133,7 +133,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["/"],
     category: "Sidebar",
     description: "Search tasks (fuzzy filter)",
-    hint: { keys: "/", label: "search" },
+    hint: { keys: "/" },
   },
   {
     // Search-mode nav. Only fires while the search input is focused —
@@ -178,7 +178,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["o"],
     category: "Tasks pane",
     description: "Open selected task's worktree in your editor",
-    hint: { keys: "o", label: "open wt", status: false },
+    hint: { keys: "o" },
   },
   {
     id: "tasks.renameBranch",
@@ -186,7 +186,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["b"],
     category: "Tasks pane",
     description: "Rename the selected task's git branch",
-    hint: { keys: "b", label: "branch", status: false },
+    hint: { keys: "b" },
   },
   {
     id: "tasks.cycleEngine",
@@ -194,7 +194,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["v"],
     category: "Tasks pane",
     description: "Cycle engine vendor (claude ↔ codex ↔ …) — applies on reopen",
-    hint: { keys: "v", label: "engine", status: false },
+    hint: { keys: "v" },
   },
   {
     id: "tasks.update",
@@ -202,7 +202,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["u"],
     category: "Tasks pane",
     description: "Open the update page (when a new version is available)",
-    hint: { keys: "u", label: "update", status: false },
+    hint: { keys: "u" },
   },
   {
     // Right arrow jumps from the Tasks pane back into the current
@@ -216,7 +216,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["right"],
     category: "Tasks pane",
     description: "Focus the engine pane of the current window",
-    hint: { keys: "→", label: "engine", status: false },
+    hint: { keys: "→" },
   },
   {
     // `?` (shift+/ — terminals deliver the literal character) folds the
@@ -229,6 +229,6 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     keys: ["?"],
     category: "Tasks pane",
     description: "Collapse / expand the keys legend",
-    hint: { keys: "?", label: "fold keys", status: false },
+    hint: { keys: "?" },
   },
 ]

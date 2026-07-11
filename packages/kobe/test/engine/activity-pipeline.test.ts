@@ -73,7 +73,6 @@ function rowAfterClaudeHook(event: string, payload: Record<string, unknown>) {
     return buildSidebarRowView({
       task: task(),
       activity,
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
