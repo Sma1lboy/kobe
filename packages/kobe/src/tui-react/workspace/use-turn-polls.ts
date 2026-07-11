@@ -16,11 +16,12 @@
  * the exact same rule. The same title stream feeds `liveTitles` — the tab
  * strip's dynamic "$process $ordinal" default names.
  *
- * Solid→React deltas: the reconcile pass is a `useEffect` keyed on
- * `[taskId, worktree, state, pollTick]` (Solid's fine-grained `createEffect`
- * re-ran on every read of `deps.state()`/`pollTick()`; `state` — the tabs
- * snapshot — becoming a plain dependency gives the same "re-run whenever
- * tabs change" behavior). Values only needed inside long-lived detector
+ * Solid→React deltas: the reconcile pass is a STABLE callback reading its
+ * changing inputs through latest-render refs; a `useEffect` keyed on
+ * `[taskId, worktree, vendor, state]` re-runs it whenever the tabs snapshot
+ * changes, and the 2s lazy-attach tick + title-store pushes call it
+ * directly — no render-tick state, so a no-change tick re-renders nothing
+ * (the inner setStates are identity-stable). Values only needed inside long-lived detector
  * closures (`sharedActivity`, `onBackgroundDone`, the latest `state` for
  * the active-tab check) ride refs refreshed every render — the closures
  * are created once per attach and must not go stale between renders,
@@ -31,7 +32,7 @@
  * this hook used to hand-write, now shared with `TerminalSplit.tsx`.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
 import { engineEntry } from "../../engine/registry"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
@@ -76,38 +77,35 @@ export function useTurnPolls(deps: {
    *  detector attached to the fresh shell). Same store `TerminalSplit` uses. */
   const titleStoreRef = useRef<TitleSubscriptions | null>(null)
   if (titleStoreRef.current === null) titleStoreRef.current = createTitleSubscriptions()
-  const [pollTick, setPollTick] = useState(0)
-
-  // A title push (not from this hook's own reconcile) may flip a tab's engine
-  // identity — re-evaluate attach/detach the moment a user-typed engine
-  // announces itself, not on the next slow tick.
-  useEffect(() => titleStoreRef.current?.subscribe(() => setPollTick((n) => n + 1)), [])
 
   // Latest-render mirrors for the long-lived detector closures (created
-  // once per attach, must never go stale between renders).
+  // once per attach, must never go stale between renders) and for the
+  // stable reconcile callback below.
   const sharedActivityRef = useLatest(deps.sharedActivity)
   const onBackgroundDoneRef = useLatest(deps.onBackgroundDone)
   const stateRef = useLatest(deps.state)
+  const taskIdRef = useLatest(deps.taskId)
+  const worktreeRef = useLatest(deps.worktree)
+  const vendorRef = useLatest(deps.vendor)
 
-  useEffect(() => {
-    const timer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)
-    return () => clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    void pollTick
+  // The reconcile pass — stable so the 2s tick and title-store pushes call
+  // it directly without re-rendering the host; the inner setStates'
+  // identity-stable guards make a no-change run render-free.
+  const reconcile = useCallback(() => {
     const reg = getDefaultPtyRegistry()
     const attached = new Set<string>()
     const turnPolls = turnPollsRef.current
     const titleStore = titleStoreRef.current
     if (!titleStore) return
+    const taskId = taskIdRef.current
+    const state = stateRef.current
 
     // Pass 1 — reconcile title subscriptions on every tab's solo PTY through
     // the shared store (instance-compared: a release + respawn at the same
     // key drops the dead PTY's stale title before targets are computed).
     const soloKeys = new Map<string, string>() // ptyKey → tabId
-    for (const tab of deps.state.tabs) {
-      const key = soloKey(deps.taskId, tab)
+    for (const tab of state.tabs) {
+      const key = soloKey(taskId, tab)
       if (key) soloKeys.set(key, tab.id)
     }
     titleStore.reconcile(soloKeys.keys())
@@ -126,8 +124,8 @@ export function useTurnPolls(deps: {
     // Pass 2 — attach/detach detectors per the tab's process identity.
     // `targetFor` reads the store by the tab's solo ptyKey (the same key it
     // resolves for the title lookup).
-    for (const tab of deps.state.tabs) {
-      const target = targetFor(deps.taskId, tab, deps.vendor, (key) => titleStore.get(key))
+    for (const tab of state.tabs) {
+      const target = targetFor(taskId, tab, vendorRef.current, (key) => titleStore.get(key))
       if (!target) continue
       const existing = turnPolls.get(tab.id)
       if (existing && existing.vendor === target.vendor && existing.key === target.key) {
@@ -145,7 +143,7 @@ export function useTurnPolls(deps: {
       const detector = engineEntry(target.vendor).createTurnDetector()
       const dispose = startTurnStatusPoll(
         {
-          worktree: deps.worktree,
+          worktree: worktreeRef.current,
           detector,
           // Shared mode (issue #24): the daemon's transcript.activity push
           // supplies completion reads + drives the adaptive capture
@@ -199,7 +197,46 @@ export function useTurnPolls(deps: {
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next
     })
-  }, [deps.taskId, deps.worktree, deps.vendor, deps.state, pollTick])
+  }, [])
+
+  // A title push (not from this hook's own reconcile) may flip a tab's engine
+  // identity — re-evaluate attach/detach the moment a user-typed engine
+  // announces itself, not on the next slow tick. Deferred one microtask
+  // (coalesced): a fresh subscription seeds its title SYNCHRONOUSLY inside
+  // the store's reconcile loop, which must never be re-entered — the old
+  // setState tick got this asynchrony for free from React.
+  useEffect(() => {
+    let active = true
+    let scheduled = false
+    const unsub = titleStoreRef.current?.subscribe(() => {
+      if (scheduled) return
+      scheduled = true
+      queueMicrotask(() => {
+        scheduled = false
+        if (active) reconcile()
+      })
+    })
+    return () => {
+      active = false
+      unsub?.()
+    }
+  }, [reconcile])
+
+  // Lazy attach retry — a tab's PTY spawns after mount.
+  useEffect(() => {
+    const timer = setInterval(reconcile, TURN_POLL_ATTACH_MS)
+    return () => clearInterval(timer)
+  }, [reconcile])
+
+  // Re-reconcile the moment the real inputs change (and once on mount) —
+  // the tick only covers lazy PTY attach.
+  useEffect(() => {
+    void deps.taskId
+    void deps.worktree
+    void deps.vendor
+    void deps.state
+    reconcile()
+  }, [deps.taskId, deps.worktree, deps.vendor, deps.state, reconcile])
 
   // Final teardown on unmount only.
   useEffect(() => {
