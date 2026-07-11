@@ -31,15 +31,8 @@ import type { ExecHost } from "../../exec/exec-host.ts"
 import type { AdoptableWorktree, WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
 import { type ExecCtx, type WorktreeExecDeps, defaultExecDeps } from "./exec-deps.ts"
 import { GitCommandError, type GitRunOpts, type GitRunResult } from "./git.ts"
-import {
-  canonicalize,
-  isKobeManagedPath,
-  managedWorktreeRootForPath,
-  remoteManagedRootForPath,
-  remoteWorktreePathFor,
-  requireAbsolute,
-  worktreePathFor,
-} from "./paths.ts"
+import { type ListDeps, adoptablePaths, listAllAdoptable, listManaged } from "./manager-list.ts"
+import { canonicalize, remoteWorktreePathFor, requireAbsolute, worktreePathFor } from "./paths.ts"
 import { parseWorktreeListPorcelain } from "./worktree-list.ts"
 
 export class GitWorktreeManager implements WorktreeManager {
@@ -187,11 +180,18 @@ export class GitWorktreeManager implements WorktreeManager {
    * Remove a worktree. Refuses to remove a dirty worktree unless
    * `opts.force` is true.
    *
-   * On success the directory is gone, the worktree is deregistered
-   * from the repo's metadata, and the branch is left in place (per
-   * interface contract — caller decides branch lifecycle).
+   * On success the directory is gone and the worktree is deregistered from the
+   * repo's metadata. The branch is left in place UNLESS `opts.deleteBranch` is
+   * set — then it's also deleted (`git branch -d`, or `-D` under `force`), so a
+   * task delete/land doesn't leave the loser branch piling up. Branch deletion
+   * is best-effort: it runs after the worktree is gone and a failure (branch
+   * checked out elsewhere, name gone) is swallowed, never masking a successful
+   * removal.
    */
-  async remove(worktreePath: string, opts?: { readonly force?: boolean }): Promise<void> {
+  async remove(
+    worktreePath: string,
+    opts?: { readonly force?: boolean; readonly deleteBranch?: boolean },
+  ): Promise<void> {
     requireAbsolute("path", worktreePath)
     const exec = this.execDeps.execForPath(worktreePath)
     const force = opts?.force === true
@@ -211,6 +211,13 @@ export class GitWorktreeManager implements WorktreeManager {
     const repo = await this.findRepoFor(exec, worktreePath)
     if (!repo) {
       throw new Error(`remove(): ${worktreePath} is not a git worktree`)
+    }
+
+    // Capture the branch BEFORE removal (once the worktree is gone we can't
+    // read its HEAD) so an opt-in `deleteBranch` can clean it up after.
+    let branch: string | null = null
+    if (opts?.deleteBranch) {
+      branch = await this.currentBranch(worktreePath).catch(() => null)
     }
 
     if (!force) {
@@ -233,95 +240,83 @@ export class GitWorktreeManager implements WorktreeManager {
     // Defensive prune — cleans up `.git/worktrees/<name>/` if the
     // remove left it behind (rare, but documented in vibe-kanban).
     await this.runGit(exec, ["worktree", "prune"], { cwd: repo, allowFail: true })
+
+    if (branch) await this.deleteBranchIn(exec, repo, branch, force)
   }
 
   /**
-   * List kobe-managed worktrees under `repo`.
-   *
-   * Parses `git worktree list --porcelain` and filters to entries
-   * whose path lives inside a kobe-managed root. Worktrees the user
-   * created elsewhere are invisible to kobe — we don't enumerate the
-   * whole world.
+   * Delete a branch in `repo`. `git branch -d` (safe: refuses an unmerged
+   * branch) unless `opts.force`, which uses `-D`. Best-effort — a branch that's
+   * checked out elsewhere, unmerged (without force), or already gone just
+   * returns; the caller (task delete / land cleanup) treats it as non-fatal.
    */
-  async list(repo: string): Promise<readonly WorktreeInfo[]> {
+  async deleteBranch(repo: string, branch: string, opts?: { readonly force?: boolean }): Promise<void> {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
-    const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
-    const all = parseWorktreeListPorcelain(out.stdout)
+    await this.deleteBranchIn(ctx.exec, ctx.dir, branch, opts?.force === true)
+  }
 
-    const infos: WorktreeInfo[] = []
-    for (const entry of all) {
-      if (!entry.path) continue
-      // Remote: kobe-managed = under <basePath>/.kobe/worktrees. Local: the
-      // usual `~/.kobe/worktrees/<repo-key>` + legacy roots.
-      const callerRoot = ctx.remote
-        ? remoteManagedRootForPath(ctx.dir, entry.path)
-        : managedWorktreeRootForPath(repo, entry.path)
-      if (!callerRoot) continue
-      // Detached / bare entries don't have a branch we care about.
-      if (!entry.branch || entry.detached) continue
-      // Re-root paths into the caller's form. Git on macOS reports
-      // `/private/var/...` but the caller passed in `/var/...`; we hand
-      // back paths that satisfy `path.startsWith(callerRoot)` so callers
-      // can use string ops without surprise. Legacy paths stay under the
-      // legacy root instead of being rewritten to the primary root.
-      const canonRoot = canonicalize(callerRoot)
-      const canonEntry = canonicalize(entry.path)
-      const rel = path.relative(canonRoot, canonEntry)
-      const callerPath = path.join(callerRoot, rel)
-      const dirty = await this.isDirty(entry.path)
-      infos.push({
-        path: callerPath,
-        branch: entry.branch,
-        head: entry.head ?? "",
-        dirty,
-      })
+  private async deleteBranchIn(exec: ExecHost, repo: string, branch: string, force: boolean): Promise<void> {
+    if (!branch || branch === "HEAD") return
+    await this.runGit(exec, ["branch", force ? "-D" : "-d", branch], { cwd: repo, allowFail: true })
+  }
+
+  /** The listing primitives, exposed to `manager-list.ts`'s free functions. */
+  private listDeps(): ListDeps {
+    return {
+      ctxFor: (repoKey) => this.ctxFor(repoKey),
+      runGitStdout: async (ctx, args) => (await this.runGit(ctx.exec, args, { cwd: ctx.dir })).stdout,
+      isDirty: (worktreePath) => this.isDirty(worktreePath),
+      lastActivityMs: (ctx, worktreePath) => this.lastActivityMs(ctx.exec, worktreePath),
     }
-    return infos
   }
 
   /**
-   * List ALL git worktrees registered on `repo` — including ones the
-   * user created outside kobe-managed roots. Unlike
-   * {@link list}, this does NOT filter to the kobe convention root; it's
-   * the discovery source for "adopt an existing worktree as a task".
-   *
-   * Excludes the repo's main checkout (that's the main task, not an
-   * adoptable worktree) and detached/bare entries (no branch to track).
-   * Paths are returned as git reports them (absolute; on macOS that may
-   * be the `/private/...` realpath) — valid as a worktree `cwd` and
-   * compared canonically by callers, so no re-rooting is needed here.
+   * List kobe-managed worktrees under `repo` (parses `git worktree list
+   * --porcelain`, filters to kobe-managed roots; other worktrees are invisible
+   * to kobe). Body in `manager-list.ts`.
    */
-  async listAll(repo: string): Promise<readonly AdoptableWorktree[]> {
+  list(repo: string): Promise<readonly WorktreeInfo[]> {
+    return listManaged(this.listDeps(), repo)
+  }
+
+  /**
+   * List ALL git worktrees registered on `repo` — the discovery source for
+   * "adopt an existing worktree as a task". Excludes the main checkout and
+   * detached/bare entries. Body in `manager-list.ts`.
+   */
+  listAll(repo: string): Promise<readonly AdoptableWorktree[]> {
+    return listAllAdoptable(this.listDeps(), repo)
+  }
+
+  /**
+   * Adoptable worktree paths + branches for `repo`, WITHOUT the dirty /
+   * last-activity probes {@link listAll} runs. `adoptWorktree` only needs a
+   * path→branch match to validate one candidate, so it uses this instead of
+   * `listAll` — turning a many-worktree adopt from O(N) git-status/log spawns
+   * (all discarded) into a single porcelain list.
+   */
+  listAdoptablePaths(repo: string): Promise<readonly { readonly path: string; readonly branch: string }[]> {
+    return adoptablePaths(this.listDeps(), this.ctxFor(repo))
+  }
+
+  /** Whether `worktreePath` still exists on disk (local fs / remote `test -e`). */
+  async pathExists(worktreePath: string): Promise<boolean> {
+    requireAbsolute("path", worktreePath)
+    return this.execDeps.execForPath(worktreePath).exists(worktreePath)
+  }
+
+  /**
+   * `git worktree prune` in `repo` — drop stale `.git/worktrees/<name>/`
+   * registrations left behind when a worktree dir was deleted out-of-band (a
+   * manual `rm -rf`, a half-finished delete). Best-effort. Needed before
+   * re-materialising a task whose recorded dir vanished: without it, `git
+   * worktree add` on the still-registered path errors.
+   */
+  async pruneWorktrees(repo: string): Promise<void> {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
-    const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
-    const all = parseWorktreeListPorcelain(out.stdout)
-    const canonRepo = ctx.remote ? ctx.dir : canonicalize(ctx.dir)
-
-    const infos: AdoptableWorktree[] = []
-    for (const entry of all) {
-      if (!entry.path) continue
-      if (entry.bare) continue
-      // Detached entries have no branch to map to a task's branch.
-      if (!entry.branch || entry.detached) continue
-      // Skip the main checkout — it's the repo root (the main task).
-      if ((ctx.remote ? entry.path : canonicalize(entry.path)) === canonRepo) continue
-      const dirty = await this.isDirty(entry.path)
-      infos.push({
-        path: entry.path,
-        branch: entry.branch,
-        head: entry.head ?? "",
-        dirty,
-        kobeManaged: ctx.remote
-          ? remoteManagedRootForPath(ctx.dir, entry.path) !== null
-          : isKobeManagedPath(repo, entry.path),
-        lastActivityMs: await this.lastActivityMs(ctx.exec, entry.path),
-      })
-    }
-    // Most recently active first.
-    infos.sort((a, b) => b.lastActivityMs - a.lastActivityMs)
-    return infos
+    await this.runGit(ctx.exec, ["worktree", "prune"], { cwd: ctx.dir, allowFail: true })
   }
 
   /**

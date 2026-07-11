@@ -70,3 +70,52 @@ export class WorktreeRemoveFailedError extends Error {
     this.name = "WorktreeRemoveFailedError"
   }
 }
+
+/**
+ * Stable sentinel embedded in {@link MainCheckoutDirtyError}'s message — the
+ * `name` field doesn't survive the daemon wire, so a caller across the boundary
+ * discriminates on the MESSAGE (`err.message.includes(MAIN_CHECKOUT_DIRTY_CODE)`).
+ */
+export const MAIN_CHECKOUT_DIRTY_CODE = "MAIN_CHECKOUT_DIRTY"
+
+/**
+ * Thrown by `landTask` when the base repo's checkout has uncommitted changes.
+ * Landing merges the task branch INTO that checkout, so a dirty tree would
+ * entangle the user's in-progress work with the landed branch — we refuse and
+ * let them commit/stash first.
+ */
+export class MainCheckoutDirtyError extends Error {
+  constructor(
+    public readonly repo: string,
+    public readonly dir: string,
+  ) {
+    super(
+      `${MAIN_CHECKOUT_DIRTY_CODE}: base checkout at ${dir} has uncommitted changes; commit or stash them before landing`,
+    )
+    this.name = "MainCheckoutDirtyError"
+  }
+}
+
+/**
+ * Stable sentinel embedded in {@link LandConflictError}'s message — same
+ * wire-boundary reason as {@link DIRTY_WORKTREE_CODE}. The conflicted-file list
+ * rides along in the message so a CLI/TUI caller can print it after matching.
+ */
+export const LAND_CONFLICT_CODE = "LAND_CONFLICT"
+
+/**
+ * Thrown by `landTask` when the merge hit conflicts. The merge is aborted
+ * before this throws, so the base checkout is left exactly as it was; the
+ * conflicted paths are carried so the caller can show the human what to resolve.
+ */
+export class LandConflictError extends Error {
+  constructor(
+    public readonly taskId: string,
+    public readonly branch: string,
+    public readonly files: readonly string[],
+  ) {
+    const list = files.length > 0 ? files.join(", ") : "(none reported)"
+    super(`${LAND_CONFLICT_CODE}: merging '${branch}' hit conflicts, merge aborted — conflicted files: ${list}`)
+    this.name = "LandConflictError"
+  }
+}

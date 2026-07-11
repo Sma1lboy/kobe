@@ -66,6 +66,7 @@ import {
   ensureMainTaskOp,
   ensureWorktreeOp,
   forgetProjectOp,
+  landTaskOp,
   listWorktreesOp,
   moveTaskOp,
   removeWorktreeOp,
@@ -390,6 +391,13 @@ export class RemoteOrchestrator {
 
   deleteTask(id: TaskId | string, opts?: { force?: boolean }): Promise<void> {
     return deleteTaskOp(this.client, id, opts)
+  }
+
+  /** Land a task's branch back into its base repo (`task.land`). Throws with a
+   *  `LAND_CONFLICT` / `MAIN_CHECKOUT_DIRTY` sentinel in the message on the
+   *  guarded failures so callers can print the conflicted files / re-prompt. */
+  landTask(id: TaskId | string, opts?: Parameters<typeof landTaskOp>[2]): ReturnType<typeof landTaskOp> {
+    return landTaskOp(this.client, id, opts)
   }
 
   discoverAdoptableWorktrees(repo: string): Promise<readonly AdoptableWorktree[]> {
