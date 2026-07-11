@@ -71,14 +71,15 @@ describe("key routing tables", () => {
     // chord besides ctrl+q reachable from inside the terminal). Anything
     // beyond this list steals a chord from the engine CLI. f6 (issue #18,
     // workspace.zenToggle) added 2026-07-07 for the same reason as f4;
-    // ctrl+g (attention.next — jump to the next waiting task) same rationale.
+    // f7 (attention.next — jump to the next waiting task) same rationale.
+    // NOT ctrl+g for attention.next: that's the engine's readline abort —
+    // it moved to f7 so ctrl+g passes through to the engine again.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
       [
         "ctrl+[",
         "ctrl+]",
         "ctrl+e",
         "ctrl+f",
-        "ctrl+g",
         "ctrl+q",
         "ctrl+t",
         "ctrl+w",
@@ -89,11 +90,13 @@ describe("key routing tables", () => {
         "f4",
         "f5",
         "f6",
+        "f7",
       ].sort(),
     )
     // Chords the engine depends on must NOT be reserved (shift+tab is
-    // claude's plan-mode cycle; the rest are its own UI shortcuts).
-    for (const chord of ["shift+tab", "ctrl+h", "ctrl+p", "f1", "ctrl+r"]) {
+    // claude's plan-mode cycle; ctrl+g is readline abort-editing; the rest
+    // are its own UI shortcuts).
+    for (const chord of ["shift+tab", "ctrl+g", "ctrl+h", "ctrl+p", "f1", "ctrl+r"]) {
       expect(RESERVED_GLOBAL_CHORDS).not.toContain(chord)
     }
     // Plain typing keys must stay forwardable.
