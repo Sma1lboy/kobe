@@ -1,11 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Settings sections (React, issue #15 G3) — Feedback + Dev + Keybindings.
- * Port of the corresponding views in `src/tui/component/settings-dialog/
- * sections.tsx` (see that file for the feedback-form design notes: the
- * body is an UNCONTROLLED `<textarea>` so pasted newlines survive; edits
- * mirror back through `onContentChange`, and an external reset clears the
- * edit buffer through the ref).
+ * Settings sections (issue #15 G3) — Feedback + Dev + Keybindings.
+ * Feedback-form design notes: the body is an UNCONTROLLED `<textarea>` so
+ * pasted newlines survive; edits mirror back through `onContentChange`,
+ * and an external reset clears the edit buffer through the ref.
  */
 
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
@@ -17,6 +15,7 @@ import { FIXED_BINDING_IDS } from "../../../tui/lib/keymap-overrides"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { Row, type SectionCursorProps, SubSection } from "./rows"
+import type { SettingsPrefs } from "./use-settings-prefs"
 
 export function FeedbackSettingsSection(
   props: SectionCursorProps & {
@@ -122,19 +121,13 @@ export function FeedbackSettingsSection(
 
 export function DevSettingsSection(
   props: SectionCursorProps & {
+    prefs: SettingsPrefs
     hasDaemon: boolean
     confirmReset: () => void
     confirmRestartDaemon: () => void
-    remoteProjectsEnabled: boolean
-    toggleRemoteProjects: () => void
-    autoStatusEnabled: boolean
-    toggleAutoStatus: () => void
-    dispatcherEnabled: boolean
-    toggleDispatcher: () => void
-    archivedHistoryEnabled: boolean
-    toggleArchivedHistory: () => void
   },
 ) {
+  const { prefs } = props
   const { theme } = useTheme()
   const t = useT()
   const rows = devRows(props.hasDaemon)
@@ -203,35 +196,35 @@ export function DevSettingsSection(
         </text>
         {toggleRow(
           "remote-projects",
-          props.remoteProjectsEnabled,
+          prefs.remoteProjectsEnabled(),
           "settings.dev.remoteHint",
           "settings.dev.remoteOn",
           "settings.dev.remoteOff",
-          props.toggleRemoteProjects,
+          prefs.toggleRemoteProjects,
         )}
         {toggleRow(
           "auto-status",
-          props.autoStatusEnabled,
+          prefs.autoStatusOn(),
           "settings.dev.autoStatusHint",
           "settings.dev.autoStatusOn",
           "settings.dev.autoStatusOff",
-          props.toggleAutoStatus,
+          prefs.toggleAutoStatus,
         )}
         {toggleRow(
           "dispatcher",
-          props.dispatcherEnabled,
+          prefs.dispatcherOn(),
           "settings.dev.dispatcherHint",
           "settings.dev.dispatcherOn",
           "settings.dev.dispatcherOff",
-          props.toggleDispatcher,
+          prefs.toggleDispatcher,
         )}
         {toggleRow(
           "archived-history",
-          props.archivedHistoryEnabled,
+          prefs.archivedHistoryOn(),
           "settings.dev.archivedHistoryHint",
           "settings.dev.archivedHistoryOn",
           "settings.dev.archivedHistoryOff",
-          props.toggleArchivedHistory,
+          prefs.toggleArchivedHistory,
         )}
       </box>
     </box>

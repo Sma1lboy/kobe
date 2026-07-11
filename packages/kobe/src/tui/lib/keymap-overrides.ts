@@ -26,9 +26,6 @@ export {
 
 export type OverridableHint = {
   keys: string
-  label: string
-  status?: false
-  pin?: "right"
 }
 
 /**
@@ -144,7 +141,7 @@ function scopesOverlap(a: string, b: string): boolean {
 /**
  * Validate the requested overrides against `keymap` and apply the
  * survivors by MUTATING the matching rows in place (`keys`, plus a
- * refreshed `hint.keys` so the status bar / help dialog advertise the
+ * refreshed `hint.keys` so the help dialog / footer legend advertise the
  * user's chord, not the stale default). Returns what landed and every
  * warning produced on the way.
  */

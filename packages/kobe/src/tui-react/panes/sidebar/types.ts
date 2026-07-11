@@ -1,19 +1,19 @@
 /**
- * React sidebar prop types (issue #15, G3). Same surface as the Solid
- * `src/tui/panes/sidebar/types.ts`, with the idiomatic React translation:
- * every `Accessor<T>` prop becomes a plain `T` — the host re-renders the
- * Sidebar when the value changes, so per-read reactivity has no equivalent.
+ * React sidebar prop types (issue #15, G3). Ported from the Solid-era props
+ * (removed 2026-07-07) with the idiomatic React translation: every
+ * `Accessor<T>` prop became a plain `T` — the host re-renders the Sidebar
+ * when the value changes, so per-read reactivity has no equivalent.
  * Callback props are unchanged. Shared data shapes (`SidebarHover`,
- * `ChatRunState`, `WorktreeChanges`) are the framework-free originals.
+ * `WorktreeChanges`) are the framework-free originals.
  */
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
 import type { TaskSortMode } from "../../../tui/panes/sidebar/groups"
-import type { ChatRunState, SidebarHover } from "../../../tui/panes/sidebar/types"
+import type { SidebarHover } from "../../../tui/panes/sidebar/types"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 
-export type { ChatRunState, SidebarHover } from "../../../tui/panes/sidebar/types"
+export type { SidebarHover } from "../../../tui/panes/sidebar/types"
 
 /**
  * Task-lifecycle callbacks shared VERBATIM by {@link SidebarProps} (host
@@ -61,7 +61,6 @@ export type SidebarProps = SidebarTaskCallbacks & {
   onAddTask?: () => void
   zenActive?: boolean
   onZenClick?: () => void
-  chatRunState?: ReadonlyMap<string, ChatRunState>
   engineState?: ReadonlyMap<string, TaskEngineState>
   taskJobs?: ReadonlyMap<string, TaskJobState>
   worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null

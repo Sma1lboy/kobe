@@ -139,15 +139,15 @@ describe("applyKeymapOverrides", () => {
         id: "chat.fork.new",
         scope: "workspace",
         keys: ["ctrl+f"],
-        hint: { keys: "ctrl+f", label: "fork" },
+        hint: { keys: "ctrl+f" },
       },
-      { id: "app.quit", scope: "sidebar", keys: ["q", "ctrl+q"], hint: { keys: "q", label: "quit", status: false } },
+      { id: "app.quit", scope: "sidebar", keys: ["q", "ctrl+q"], hint: { keys: "q" } },
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
-      { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k", label: "nav" } },
+      { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k" } },
       { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
       { id: "sidebar.goto", scope: "sidebar", keys: ["g"] }, // FIXED (evt.shift gate)
       { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
-      { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p", label: "create PR" } },
+      { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p" } },
     ]
   }
 
@@ -160,7 +160,7 @@ describe("applyKeymapOverrides", () => {
     expect(keymap[0]?.hint?.keys).toBe("ctrl+g")
   })
 
-  test("unbind ([]) clears keys AND drops the hint so the status bar stops advertising it", () => {
+  test("unbind ([]) clears keys AND drops the hint so legends stop advertising it", () => {
     const keymap = makeKeymap()
     const { applied } = applyKeymapOverrides(keymap, [{ id: "files.createPR", keys: [] }])
     expect(applied[0]?.keys).toEqual([])

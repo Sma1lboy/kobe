@@ -1,18 +1,17 @@
 /**
  * Central keybinding registry for kobe.
  *
- * Single source of truth for: which chords trigger which action, what the
- * help dialog displays, and what the status bar hints. Panes register
+ * Single source of truth for: which chords trigger which action and what
+ * the help dialog (F1) + Tasks-pane footer legend display. Panes register
  * handlers by binding **id** (`bindByIds`) — they don't hardcode chord
- * strings. The status bar reads `KobeKeymap` directly. A future settings
- * UI can edit `KobeKeymap` (in-memory or persisted via KV) without any
- * pane having to know.
+ * strings. A future settings UI can edit `KobeKeymap` (in-memory or
+ * persisted via KV) without any pane having to know.
  *
  * Hand-off contract:
  *   - `id` is stable. Tests + settings persistence key off it.
  *   - `keys` is the list of chords that register the action. The first
- *     entry is the canonical chord (help dialog primary; status-bar hint
- *     when no `hint.keys` override). Multiple chords are common when a
+ *     entry is the canonical chord (the displayed cap when there is no
+ *     `hint.keys` override). Multiple chords are common when a
  *     terminal delivers the same logical key as different byte sequences
  *     (`ctrl+k`/`alt+k`) or when several keys do the same thing
  *     (`j`/`down`).
@@ -20,24 +19,24 @@
  *     when a specific pane is focused. The pane that owns the scope
  *     calls `bindByIds(...)` with the same id → the chord(s) come from
  *     this table.
- *   - `hint` is cosmetic display metadata. Help uses it to print friendly
- *     pseudo-chords (`j/k`, `ctrl+hjkl`, etc.). The status bar also uses it
- *     unless `hint.status === false`. `hint.pin = "right"` keeps the hint
- *     in the always-visible right column; otherwise the hint shows only while
- *     its scope is focused. `hint == null` means no friendly display override.
+ *   - `hint` is cosmetic display metadata: a friendly pseudo-chord
+ *     (`j/k`, `ctrl+hjkl`, etc.) read by the two hint consumers — the
+ *     help dialog's (F1) primary cap and the Tasks-pane footer legend
+ *     (`capOf`/`legendCap` in `lib/help-groups.ts`). `hint == null` means
+ *     no friendly display override — the canonical chord shows instead.
  *   - `description` + `category` feed the help dialog (F1).
  *
  * Hint vs. chord:
- *   - The status bar may show a collapsed pseudo-chord (e.g. "j/k" for
- *     four real chords or "1/2/3") — that's `hint.keys`. The actually
+ *   - Legends may show a collapsed pseudo-chord (e.g. "j/k" for four
+ *     real chords or "1/2/3") — that's `hint.keys`. The actually
  *     registered chords stay in `keys` and remain individually testable.
  *
  * Re-binding a chord = mutate `keys` for the relevant id. Users do this
  * via `~/.kobe/settings/keybindings.yaml`, applied once at TUI boot by
  * `applyUserKeybindings()` (context/keybindings-user.ts), which mutates
  * this table in place. No pane code has to change because pane
- * registration goes through `bindByIds` and the help dialog / status bar
- * render from the (already-overridden) rows.
+ * registration goes through `bindByIds` and the help dialog / footer
+ * legend render from the (already-overridden) rows.
  *
  * Cmd / Option / Ctrl on macOS — three different modifiers, three different
  * chord prefixes:
@@ -72,25 +71,14 @@ import { SIDEBAR_BINDINGS } from "./keybindings-sidebar.ts"
 /** Pane scopes used to gate where a binding is active. */
 export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "terminal"
 
-/** Status-bar hint metadata. Optional — bindings without a hint don't show in the bar. */
+/**
+ * Friendly-chord display override, read by the help dialog (F1) and the
+ * Tasks-pane footer legend (`capOf`/`legendCap` in `lib/help-groups.ts`).
+ * Optional — without it the canonical first chord is displayed.
+ */
 export type KobeBindingHint = {
   /** Display string for the chord. May be a collapsed pseudo-chord (e.g. "j/k"). */
   keys: string
-  /** Short verb/noun shown next to the chord (e.g. "nav", "delete"). */
-  label: string
-  /**
-   * `false` keeps the friendly chord in Help while suppressing it from the
-   * bottom status bar. Use for low-frequency, destructive, or state-specific
-   * actions that should not crowd small terminals.
-   */
-  status?: false
-  /**
-   * `"right"` keeps the hint in the always-visible right column of the
-   * status bar (global / cross-pane reminders like quit, help, new).
-   * Omitted = pane-local hint, only shown when the binding's scope is
-   * focused.
-   */
-  pin?: "right"
 }
 
 /** A single binding row. */
@@ -111,17 +99,16 @@ export type KobeBinding = {
   category: string
   /** Help-dialog description text. */
   description: string
-  /** Status-bar hint config. Omitted = not shown in status bar. */
+  /** Friendly-chord display override. Omitted = the first chord in `keys` shows. */
   hint?: KobeBindingHint
 }
 
 /**
  * The full kobe keymap. Edit this table to rebind / rename / regroup.
  * Pane code reaches in via `chordsOf(id)` / `bindByIds({...})`; the help
- * dialog and status bar both render from this list.
+ * dialog and the Tasks-pane footer legend render from this list.
  *
- * Order matters for help-dialog grouping (preserved within a category)
- * and for status-bar hint display order (left column left-to-right).
+ * Order matters for help-dialog grouping (preserved within a category).
  */
 export const KobeKeymap: readonly KobeBinding[] = [
   // ─── Global ───────────────────────────────────────────────────────────
@@ -131,7 +118,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f1"],
     category: "Global",
     description: "Show keybindings help",
-    hint: { keys: "F1", label: "help", pin: "right" },
+    hint: { keys: "F1" },
   },
   {
     // Sidebar-only — single letter `n`. While focused on the chat
@@ -144,7 +131,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["n"],
     category: "Sidebar",
     description: "New task",
-    hint: { keys: "n", label: "new" },
+    hint: { keys: "n" },
   },
   {
     id: "task.openEditor",
@@ -169,7 +156,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["s"],
     category: "Sidebar",
     description: "Open settings",
-    hint: { keys: "s", label: "settings", status: false },
+    hint: { keys: "s" },
   },
   {
     // Sidebar-only, like `task.new` — a sidebar-launched utility page, not
@@ -182,7 +169,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["x"],
     category: "Sidebar",
     description: "Open worktrees",
-    hint: { keys: "x", label: "worktrees", status: false },
+    hint: { keys: "x" },
   },
   {
     // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is
@@ -194,7 +181,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["q", "ctrl+q"],
     category: "Sidebar",
     description: "Quit (with confirm)",
-    hint: { keys: "q", label: "quit", status: false },
+    hint: { keys: "q" },
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
@@ -207,7 +194,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
-    hint: { keys: "ctrl+q", label: "tasks" },
+    hint: { keys: "ctrl+q" },
   },
 
   // ─── Navigation ───────────────────────────────────────────────────────
@@ -233,7 +220,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
-    hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
+    hint: { keys: "ctrl+hjkl" },
   },
   {
     // Pane cycle — walks the workspace host's panes in order
@@ -253,7 +240,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f4"],
     category: "Navigation",
     description: "Focus next pane (sidebar → workspace → files)",
-    hint: { keys: "f4", label: "next pane", status: false },
+    hint: { keys: "f4" },
   },
   {
     // Jump to the next task that needs attention (P0) — walks the sidebar
@@ -271,7 +258,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f7"],
     category: "Navigation",
     description: "Jump to the next task waiting for input",
-    hint: { keys: "f7", label: "next waiting", status: false },
+    hint: { keys: "f7" },
   },
   {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
@@ -286,7 +273,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f6"],
     category: "Navigation",
     description: "Toggle zen mode (hide the files column)",
-    hint: { keys: "f6", label: "zen", status: false },
+    hint: { keys: "f6" },
   },
   {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on
@@ -321,7 +308,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+pageup"],
     category: "Terminal",
     description: "Scroll scrollback up",
-    hint: { keys: "ctrl+pgup", label: "scroll", status: false },
+    hint: { keys: "ctrl+pgup" },
   },
   {
     id: "terminal.scroll-down",
@@ -336,7 +323,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f5"],
     category: "Terminal",
     description: "Reset terminal — kill the current shell and respawn",
-    hint: { keys: "f5", label: "reset" },
+    hint: { keys: "f5" },
   },
   // NOTE: The terminal pane's bare-key passthrough (every alphanumeric /
   // named key forwarded to the PTY) is intentionally NOT in this table.
@@ -367,6 +354,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: [],
     category: "Dialog",
     description: "Switch New Task tab (Existing / New Repo)",
-    hint: { keys: "ctrl+[/]", label: "tab" },
+    hint: { keys: "ctrl+[/]" },
   },
 ] as const

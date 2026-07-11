@@ -1,8 +1,8 @@
 /**
- * Framework-free catalog lookup + interpolation, shared by the Solid i18n
- * runtime (`./index.ts`) and the React one (`src/tui-react/i18n/index.ts`).
- * Extracted during the React migration (issue #15, G2) so neither runtime
- * duplicates the resolution rules.
+ * Framework-free catalog lookup + interpolation behind the i18n runtime
+ * (`./index.ts`, which `src/tui-react/i18n/index.ts` subscribes to).
+ * Extracted during the React migration (issue #15, G2) so the resolution
+ * rules live in exactly one place.
  */
 
 import type { Messages } from "./catalog"

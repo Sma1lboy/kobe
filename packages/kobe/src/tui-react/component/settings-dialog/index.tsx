@@ -1,23 +1,18 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Settings dialog — React port of `src/tui/component/settings-dialog.tsx`
- * (issue #15 G3). Two-column layout: left sidebar (sections), right pane
- * (the active section). Row order/indices come from the shared
- * framework-free registry (`../../../tui/component/settings-dialog/model`),
- * so keyboard nav stays in lockstep with the Solid dialog; the kv-backed
- * helper closures live in `./use-settings-prefs` / `./use-engine-settings`
- * (file-size cap split).
+ * Settings dialog (issue #15 G3). Two-column layout: left sidebar
+ * (sections), right pane (the active section). Row order/indices come from
+ * the shared framework-free registry
+ * (`../../../tui/component/settings-dialog/model`), so keyboard nav stays
+ * in lockstep with the section views; the kv-backed helper closures live
+ * in `./use-settings-prefs` / `./use-engine-settings` (file-size cap
+ * split) and reach the sections as one `prefs: SettingsPrefs` prop.
  *
  * Bindings inside the dialog:
  *   - `↑` / `↓` / `j` / `k` — navigate the current level.
  *   - `h` / `l`              — switch sidebar/body levels.
  *   - `enter`                — activate the focused row.
  *   - `esc`                  — close (handled by the dialog stack / page).
- *
- * Deliberate deltas from the Solid dialog (no behavior change):
- *   - the write-only theme-cursor signal was dead state — dropped;
- *   - `SettingsDialog.show` (the overlay `taskpanel` surface) has no React
- *     caller yet — it lands with the React workspace/tasks-pane port.
  */
 
 import { errorMessage } from "@/lib/error-message"
@@ -190,7 +185,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   // The Feedback section is an inline form; while it holds focus we suspend
   // this dialog's own j/k/h/l/t nav and drive the form with a dedicated Tab
-  // cycle + a Send-row Enter binding below (see the Solid dialog notes).
+  // cycle + a Send-row Enter binding below.
   const editingFeedback = section === "feedback" && level === "body"
 
   function feedbackFieldStep(delta: 1 | -1): void {
@@ -325,8 +320,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ],
   }))
 
-  // Feedback-form navigation, live only while that form holds focus (see
-  // the Solid dialog for the full key-routing rationale).
+  // Feedback-form navigation, live only while that form holds focus —
+  // Tab/Shift+Tab step the fields so typed letters reach the inputs.
   useBindings(() => ({
     enabled: editingFeedback,
     bindings: [
@@ -356,6 +351,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
           {section === "general" ? (
             <GeneralSettingsSection
               {...cursorProps}
+              prefs={prefs}
               themeNames={themeNames}
               selectTheme={selectTheme}
               currentLocale={currentLang()}
@@ -363,29 +359,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleTransparent={toggleTransparent}
               toggleReducedMotion={toggleReducedMotion}
               selectFocusAccent={selectFocusAccent}
-              toastEnabled={prefs.toastEnabled()}
-              soundEnabled={prefs.soundEnabled()}
-              toggleToast={prefs.toggleToast}
-              toggleSound={prefs.toggleSound}
-              crossTaskEnabled={prefs.crossTaskEnabled()}
-              toggleCrossTask={prefs.toggleCrossTask}
-              splitStyle={prefs.splitStyle()}
-              selectSplitStyle={prefs.selectSplitStyle}
-              zenKeepsTasks={prefs.zenKeepsTasks()}
-              toggleZenKeepsTasks={prefs.toggleZenKeepsTasks}
-              settingsSurface={prefs.settingsSurface()}
-              selectSurface={prefs.selectSurface}
-              editorKind={prefs.editorKind()}
-              cycleEditorKind={prefs.cycleEditorKind}
-              editorCustomCommand={prefs.editorCustomCommand()}
-              editEditorCustom={() => void prefs.editEditorCustom()}
-              worktreeKind={prefs.worktreeKind()}
-              worktreeKindLabel={prefs.worktreeKindLabel()}
-              cycleWorktreeBase={prefs.cycleWorktreeBase}
-              worktreeCustomPath={prefs.worktreeCustomPath()}
-              editWorktreeCustom={() => void prefs.editWorktreeCustom()}
-              scrollbackRows={prefs.scrollbackRows()}
-              editScrollbackRows={() => void prefs.editScrollbackRows()}
             />
           ) : null}
           {section === "engines" ? (
@@ -430,17 +403,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
           {section === "dev" ? (
             <DevSettingsSection
               {...cursorProps}
+              prefs={prefs}
               hasDaemon={hasDaemon}
               confirmReset={() => void confirmResetState(dialog, props.kv, renderer)}
               confirmRestartDaemon={() => void confirmRestartDaemon(dialog, props.orchestrator, renderer)}
-              remoteProjectsEnabled={prefs.remoteProjectsEnabled()}
-              toggleRemoteProjects={prefs.toggleRemoteProjects}
-              autoStatusEnabled={prefs.autoStatusOn()}
-              toggleAutoStatus={prefs.toggleAutoStatus}
-              dispatcherEnabled={prefs.dispatcherOn()}
-              toggleDispatcher={prefs.toggleDispatcher}
-              archivedHistoryEnabled={prefs.archivedHistoryOn()}
-              toggleArchivedHistory={prefs.toggleArchivedHistory}
             />
           ) : null}
         </box>
@@ -455,8 +421,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
 /**
  * Overlay (`taskpanel`) surface — push the dialog onto the stack and resolve
  * once it closes, reporting whether any visual pref changed so the caller can
- * refresh workspace panes. The React counterpart of the Solid
- * `SettingsDialog.show`; the in-pane Tasks/Settings surfaces are its callers.
+ * refresh workspace panes. The in-pane Tasks/Settings surfaces are its
+ * callers.
  */
 SettingsDialog.show = (
   dialog: DialogContext,

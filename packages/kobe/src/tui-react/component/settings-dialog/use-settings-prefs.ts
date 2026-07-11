@@ -1,11 +1,10 @@
 /**
- * kv-backed preference helpers for the React settings dialog (issue #15,
- * G3) — the General/Dev getter+toggle closures split out of `./index.tsx`
- * to keep it under the file-size cap. Same kv keys, defaults, and
- * validation flows as the Solid `src/tui/component/settings-dialog.tsx`
- * (see that file's commentary for the full design notes). All reads are
- * plain `kv.get` — the KVProvider re-renders the tree on every `kv.set`,
- * so the values are recomputed per render.
+ * kv-backed preference helpers for the settings dialog (issue #15, G3) —
+ * the General/Dev getter+toggle closures split out of `./index.tsx` to
+ * keep it under the file-size cap. All reads are plain `kv.get` — the
+ * KVProvider re-renders the tree on every `kv.set`, so the values are
+ * recomputed per render. Sections receive the whole bundle as a single
+ * `prefs: SettingsPrefs` prop and call the getters directly.
  */
 
 import { accessSync, constants as fsConstants, mkdirSync } from "node:fs"
@@ -94,7 +93,7 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
   }
 
-  // Experimental flags (Dev section) — same keys/defaults as the Solid dialog.
+  // Experimental flags (Dev section).
   function remoteProjectsEnabled(): boolean {
     return kv.get("experimental.remoteProjects", false) === true
   }
@@ -175,7 +174,7 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
 
   // Worktree location: a global override for where new LOCAL task worktrees
-  // are created — same preset cycle + validation as the Solid dialog.
+  // are created — preset cycle (default → next-to-project → custom) + validation.
   function worktreeBasePath(): string {
     const v = kv.get(WORKTREE_BASE_KEY, "")
     return typeof v === "string" ? v : ""
@@ -216,8 +215,7 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     })
     if (next === undefined) return
     const raw = next.trim()
-    // Validate (create + writability check) and refuse to save a bad path —
-    // same rationale and rules as the Solid dialog.
+    // Validate (create + writability check) and refuse to save a bad path.
     if (raw.includes(PROJECT_DIR_TOKEN)) {
       if (!hasProjectDirToken(raw)) {
         await DialogConfirm.show(
@@ -282,3 +280,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     editWorktreeCustom,
   }
 }
+
+/** The prefs bundle sections receive as a single `prefs` prop. */
+export type SettingsPrefs = ReturnType<typeof useSettingsPrefs>

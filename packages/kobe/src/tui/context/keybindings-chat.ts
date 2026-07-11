@@ -25,7 +25,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Quick new task (tmux prefix, then f)",
-    hint: { keys: "prefix f", label: "new task", status: false },
+    hint: { keys: "prefix f" },
   },
   {
     id: "tmux.engineTab",
@@ -33,7 +33,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Open the engine in a new tab (tmux prefix, then t)",
-    hint: { keys: "prefix t", label: "engine tab", status: false },
+    hint: { keys: "prefix t" },
   },
   {
     id: "tmux.layout.workspaceSplit",
@@ -41,7 +41,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Add a temporary workspace split (tmux prefix, then s)",
-    hint: { keys: "prefix s", label: "split", status: false },
+    hint: { keys: "prefix s" },
   },
   {
     id: "tmux.layout.workspaceClose",
@@ -49,7 +49,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Close the focused temporary workspace split (tmux prefix, then x)",
-    hint: { keys: "prefix x", label: "close split", status: false },
+    hint: { keys: "prefix x" },
   },
   {
     id: "tmux.layout.workspaceReset",
@@ -57,7 +57,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Close all temporary workspace splits (tmux prefix, then r)",
-    hint: { keys: "prefix r", label: "reset splits", status: false },
+    hint: { keys: "prefix r" },
   },
   {
     id: "tmux.layout.tasksToggle",
@@ -65,7 +65,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Hide / restore the Tasks pane (tmux prefix, then a)",
-    hint: { keys: "prefix a", label: "tasks pane", status: false },
+    hint: { keys: "prefix a" },
   },
   {
     id: "tmux.layout.opsToggle",
@@ -73,7 +73,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Toggle the file/Ops pane (tmux prefix, then o)",
-    hint: { keys: "prefix o", label: "file pane", status: false },
+    hint: { keys: "prefix o" },
   },
   {
     id: "tmux.layout.terminalToggle",
@@ -81,7 +81,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Hide / restore the terminal pane (tmux prefix, then z)",
-    hint: { keys: "prefix z", label: "terminal", status: false },
+    hint: { keys: "prefix z" },
   },
   {
     id: "tmux.layout.zenToggle",
@@ -89,44 +89,44 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace (tmux)",
     description: "Zen mode — collapse to the engine pane (tmux prefix, then space)",
-    hint: { keys: "prefix space", label: "zen", status: false },
+    hint: { keys: "prefix space" },
   },
 
   // ─── Workspace (chat) ─────────────────────────────────────────────────
   {
     // Composer textarea handles enter via its own onKeyDown. This row
-    // exists only for help-dialog + status-bar visibility; no chord is
-    // registered here.
+    // exists only for help-dialog visibility; no chord is registered
+    // here.
     id: "chat.send",
     scope: "workspace",
     keys: [],
     category: "Workspace",
     description: "Send message (composer)",
-    hint: { keys: "enter", label: "send" },
+    hint: { keys: "enter" },
   },
   {
     // Composer textarea inserts a literal newline on shift+enter (kitty/
     // CSI-u terminals) and ctrl+J everywhere else; no chord is registered
-    // here. Surfaced in the status bar so the user doesn't have to memorize
+    // here. Surfaced in Help (F1) so the user doesn't have to memorize
     // it after we stripped the inline footer hint from the composer.
     id: "chat.newline",
     scope: "workspace",
     keys: [],
     category: "Workspace",
     description: "Newline in composer",
-    hint: { keys: "shift+enter", label: "newline" },
+    hint: { keys: "shift+enter" },
   },
   {
     // Shift+tab inside the composer cycles the per-task permission mode
     // (default ↔ plan); the chord is registered in
-    // Composer's onKeyDown, not here. Doc-only entry so the status bar
+    // Composer's onKeyDown, not here. Doc-only entry so Help (F1)
     // advertises the binding to a focused user.
     id: "chat.cycle-mode",
     scope: "workspace",
     keys: [],
     category: "Workspace",
     description: "Cycle permission mode (composer)",
-    hint: { keys: "shift+tab", label: "mode" },
+    hint: { keys: "shift+tab" },
   },
   {
     // Ctrl+enter mid-stream interrupts the in-flight subprocess and
@@ -138,7 +138,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace",
     description: "Steer (interrupt + send) — mid-stream only",
-    hint: { keys: "ctrl+enter", label: "steer", status: false },
+    hint: { keys: "ctrl+enter" },
   },
   {
     id: "chat.tab.new",
@@ -146,7 +146,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
-    hint: { keys: "ctrl+t", label: "new tab" },
+    hint: { keys: "ctrl+t" },
   },
   {
     // tmux's chattab has a "prompt for engine, then open a tab" chord on
@@ -160,7 +160,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+e"],
     category: "Workspace",
     description: "New tab with a chosen engine or a plain shell",
-    hint: { keys: "ctrl+e", label: "choose engine", status: false },
+    hint: { keys: "ctrl+e" },
   },
   {
     // Quick-fork: from a focused chat tab, spin up a child
@@ -180,7 +180,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+f"],
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
-    hint: { keys: "ctrl+f", label: "fork" },
+    hint: { keys: "ctrl+f" },
   },
   {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing
@@ -196,7 +196,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+y"],
     category: "Workspace",
     description: "Resume a prior session in this task's worktree",
-    hint: { keys: "ctrl+y", label: "resume", status: false },
+    hint: { keys: "ctrl+y" },
   },
   {
     id: "chat.tab.close",
@@ -204,7 +204,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+w"],
     category: "Workspace",
     description: "Close chat tab",
-    hint: { keys: "ctrl+w", label: "close tab", status: false },
+    hint: { keys: "ctrl+w" },
   },
   {
     // Rename the active chat tab. F2 is the cross-OS / cross-IDE
@@ -217,7 +217,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["f2"],
     category: "Workspace",
     description: "Rename active chat tab",
-    hint: { keys: "f2", label: "rename tab", status: false },
+    hint: { keys: "f2" },
   },
   {
     // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket
@@ -232,7 +232,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+]"],
     category: "Workspace",
     description: "Next chat tab",
-    hint: { keys: "ctrl+]", label: "next tab", status: false },
+    hint: { keys: "ctrl+]" },
   },
   {
     id: "chat.tab.cycle-prev",
@@ -240,7 +240,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+["],
     category: "Workspace",
     description: "Previous chat tab",
-    hint: { keys: "ctrl+[", label: "prev tab", status: false },
+    hint: { keys: "ctrl+[" },
   },
   {
     // tmux-style splits inside the active workspace tab (issue #16).
@@ -256,7 +256,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+\\"],
     category: "Workspace",
     description: "Split right",
-    hint: { keys: "ctrl+\\", label: "split →", status: false },
+    hint: { keys: "ctrl+\\" },
   },
   {
     id: "workspace.split.down",
@@ -264,7 +264,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+="],
     category: "Workspace",
     description: "Split down",
-    hint: { keys: "ctrl+=", label: "split ↓", status: false },
+    hint: { keys: "ctrl+=" },
   },
   {
     // Split-focus cycle in reading order (tmux `prefix o`). F3 because
@@ -276,7 +276,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["f3"],
     category: "Workspace",
     description: "Focus next split",
-    hint: { keys: "f3", label: "next split", status: false },
+    hint: { keys: "f3" },
   },
   {
     // Same chord as chat.tab.close, contextual scope: while the tab is
@@ -290,7 +290,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["ctrl+w"],
     category: "Workspace",
     description: "Close active split (tab when unsplit)",
-    hint: { keys: "ctrl+w", label: "close split", status: false },
+    hint: { keys: "ctrl+w" },
   },
   {
     // Same chord as chat.tab.rename, contextual like workspace.split.close:
@@ -303,7 +303,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["f2"],
     category: "Workspace",
     description: "Rename active split (tab when unsplit)",
-    hint: { keys: "f2", label: "rename split", status: false },
+    hint: { keys: "f2" },
   },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
@@ -326,7 +326,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["j", "k", "down", "up"],
     category: "Workspace",
     description: "Move highlight in question picker",
-    hint: { keys: "j/k", label: "pick", status: false },
+    hint: { keys: "j/k" },
   },
   {
     id: "chat.question.toggle",
@@ -334,7 +334,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["space"],
     category: "Workspace",
     description: "Toggle highlighted option in question picker",
-    hint: { keys: "space", label: "toggle", status: false },
+    hint: { keys: "space" },
   },
   {
     id: "chat.question.submit",
@@ -342,7 +342,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["return"],
     category: "Workspace",
     description: "Advance / submit question picker",
-    hint: { keys: "enter", label: "submit", status: false },
+    hint: { keys: "enter" },
   },
   {
     id: "chat.question.pick-number",
@@ -350,6 +350,6 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
     category: "Workspace",
     description: "Pick option by number in question picker",
-    hint: { keys: "1-9", label: "pick", status: false },
+    hint: { keys: "1-9" },
   },
 ]

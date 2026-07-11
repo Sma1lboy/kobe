@@ -16,7 +16,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["j", "k", "down", "up"],
     category: "Files",
     description: "Move cursor up/down",
-    hint: { keys: "j/k", label: "nav" },
+    hint: { keys: "j/k" },
   },
   {
     // `h`/`l` for hierarchy navigation in the All tab tree:
@@ -31,7 +31,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["h", "l", "left", "right"],
     category: "Files",
     description: "Collapse / expand tree level",
-    hint: { keys: "h/l", label: "level" },
+    hint: { keys: "h/l" },
   },
   {
     // enter → one-key "just open it": opens the file in the user's
@@ -43,7 +43,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["return"],
     category: "Files",
     description: "Open file in nvim (diff vs HEAD when changed)",
-    hint: { keys: "enter", label: "open" },
+    hint: { keys: "enter" },
   },
   {
     // `[` / `]` cycle the All / Changes tabs. Bracket pair matches
@@ -55,7 +55,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["[", "]"],
     category: "Files",
     description: "Switch tab (cycle All / Changes)",
-    hint: { keys: "[/]", label: "tab", status: false },
+    hint: { keys: "[/]" },
   },
   {
     id: "files.refresh",
@@ -63,7 +63,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["r"],
     category: "Files",
     description: "Refresh",
-    hint: { keys: "r", label: "refresh", status: false },
+    hint: { keys: "r" },
   },
   {
     // `b` → toggle the Changes tab between working-tree scope (uncommitted
@@ -74,7 +74,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["b"],
     category: "Files",
     description: "Toggle Changes scope (working ↔ branch vs base)",
-    hint: { keys: "b", label: "scope", status: false },
+    hint: { keys: "b" },
   },
   {
     // `d` → open the current file's read-only diff in a workspace content
@@ -85,7 +85,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["d"],
     category: "Files",
     description: "Open read-only diff in a workspace tab",
-    hint: { keys: "d", label: "diff", status: false },
+    hint: { keys: "d" },
   },
   {
     id: "files.openExternal",
@@ -93,7 +93,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["o"],
     category: "Files",
     description: "Open file in system default app (audio / video / pdf preview)",
-    hint: { keys: "o", label: "open external", status: false },
+    hint: { keys: "o" },
   },
   {
     // `a` → inject `@<path>` into the engine (claude/codex) pane via
@@ -105,7 +105,7 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["a"],
     category: "Files",
     description: "Inject @<path> mention into the engine pane",
-    hint: { keys: "a", label: "@mention" },
+    hint: { keys: "a" },
   },
   {
     // Ops-pane action on the Changes tab. This is the v0.5 Create PR
@@ -117,6 +117,6 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     keys: ["p"],
     category: "Files",
     description: "Create PR from the current task",
-    hint: { keys: "p", label: "create PR" },
+    hint: { keys: "p" },
   },
 ]
