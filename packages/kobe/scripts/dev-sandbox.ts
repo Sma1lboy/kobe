@@ -48,6 +48,9 @@ const env = {
   KOBE_DEV: "1",
   KOBE_HOME_DIR: home,
   KOBE_TMUX_SOCKET: process.env.KOBE_TMUX_SOCKET ?? "kobe-sandbox",
+  // Isolate the sandbox daemon's web port from the production daemon's 5174 —
+  // otherwise starting dev:sandbox races the real daemon for the same port.
+  KOBE_DAEMON_WEB_PORT: process.env.KOBE_DAEMON_WEB_PORT ?? "5274",
 }
 
 const args =

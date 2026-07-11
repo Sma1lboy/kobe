@@ -363,50 +363,39 @@ export function createDirectWebLink(args: {
   }
 }
 
-async function pidsOnPort(port: number): Promise<number[]> {
-  try {
-    const proc = Bun.spawn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    })
-    const out = await new Response(proc.stdout).text()
-    return out
-      .split("\n")
-      .map((line) => Number.parseInt(line.trim(), 10))
-      .filter((n) => Number.isFinite(n) && n !== process.pid)
-  } catch {
-    return []
-  }
-}
-
-export async function takeoverWebPort(port: number, healthPath: string = DAEMON_WEB_HEALTH_PATH): Promise<void> {
+/**
+ * Whether the web transport should bind {@link port}.
+ *
+ * The web transport is a SECONDARY surface (TUI-first): it must never have a
+ * veto over daemon startup and must NEVER kill whatever holds the port.
+ *   - port free               → bind.
+ *   - held by another kobe web → SKIP (don't fight another daemon for it;
+ *     since ADR 0003 the port-holder IS a live daemon process, so SIGTERM-ing
+ *     it would kill every parallel session — the 2026-07-07 sweep failure
+ *     shape). The already-listening daemon serves the browser fine.
+ *   - held by a non-kobe svc   → SKIP (a stray `vite preview` on 5174 must
+ *     not make kobe unbootable).
+ * A skip degrades the daemon to socket-only; it never throws.
+ */
+export async function probeWebPort(port: number, healthPath: string = DAEMON_WEB_HEALTH_PATH): Promise<boolean> {
   let body: string
   try {
     const res = await fetch(`http://localhost:${port}${healthPath}`, { signal: AbortSignal.timeout(800) })
     body = (await res.text()).trim()
   } catch {
-    return
+    // Nothing answered the health probe → assume the port is free to bind.
+    // If something races onto it, Bun.serve's EADDRINUSE is caught upstream.
+    return true
   }
-  if (body !== DAEMON_WEB_HEALTH_MARKER) {
-    throw new Error(`port ${port} is in use by a non-kobe service; refusing to replace it`)
-  }
-  const pids = await pidsOnPort(port)
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGTERM")
-    } catch {
-      /* already gone */
-    }
-  }
-  const deadline = Date.now() + 2000
-  while (Date.now() < deadline) {
-    if ((await pidsOnPort(port)).length === 0) return
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
+  return false
 }
 
 export async function startDaemonWebServer(opts: DaemonWebServerOptions): Promise<DaemonWebServer> {
-  if (opts.takeover !== false) await takeoverWebPort(opts.port)
+  if (opts.takeover !== false && !(await probeWebPort(opts.port))) {
+    throw new Error(
+      `web port ${opts.port} is already in use — leaving it alone and running socket-only (set KOBE_DAEMON_WEB_PORT to a free port, or 0/off to disable the web transport)`,
+    )
+  }
   const sseSends = new Set<SseSend>()
   const unsubscribe = opts.onEvent((event) => {
     for (const send of sseSends) send("channel", event)
