@@ -4,6 +4,7 @@
  * formatting contracts without loading @opentui.
  */
 
+import { truncateEnd } from "@/tui/lib/truncate"
 import type { ContentBlock } from "@/types/content"
 import type { Message } from "@/types/engine"
 
@@ -46,12 +47,12 @@ export function toolInputSummary(input: unknown): string {
       pick("description") ??
       pick("prompt") ??
       pick("query")
-    if (candidate) return candidate.length > SUMMARY_MAX ? `${candidate.slice(0, SUMMARY_MAX - 1)}…` : candidate
+    if (candidate) return truncateEnd(candidate, SUMMARY_MAX)
   }
   try {
     const raw = JSON.stringify(input)
     if (!raw || raw === "{}" || raw === "null") return ""
-    return raw.length > SUMMARY_MAX ? `${raw.slice(0, SUMMARY_MAX - 1)}…` : raw
+    return truncateEnd(raw, SUMMARY_MAX)
   } catch {
     return ""
   }

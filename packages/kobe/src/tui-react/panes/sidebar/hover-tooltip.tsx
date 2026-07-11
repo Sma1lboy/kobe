@@ -16,8 +16,6 @@ import { truncateTitle } from "../../../tui/panes/sidebar/labels"
 import { useTheme } from "../../context/theme"
 import type { SidebarHover } from "./types"
 
-export { approxCellWidth } from "../../../tui/panes/sidebar/hover-layout"
-
 export function SidebarHoverTooltip(props: {
   hover: SidebarHover | null
   dims: { width: number; height: number }

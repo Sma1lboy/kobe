@@ -9,50 +9,22 @@
  * read becomes a top-level `useKeymapVersion()` subscription (so a live
  * keybindings reload re-renders the legend), `<For>`/`<Show>`→`.map()`/
  * conditional rendering, and `t()`→`useT()` so labels re-render on a
- * language change. `legendCap`/`legendRowCap` stay pure + exported (they use
- * the framework-free `findBinding`) so the derivation is unit-testable
- * without booting a tmux pane.
+ * language change. The keycap derivation (`legendCap`/`legendRowCap`) lives
+ * in the framework-free `src/tui/lib/help-groups.ts` so it stays
+ * unit-testable without booting a tmux pane.
  */
 
 import { runTmuxCapturing } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { useEffect, useState } from "react"
+import { approxCellWidth, approxCharCells } from "../../lib/display-width"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
 import { formatChord, tmuxPrefixGlyph } from "../../tui/lib/chord-glyphs"
-import { approxCellWidth } from "../../tui/panes/sidebar/hover-layout"
-import { findBinding, useKeymapVersion } from "../context/keybindings"
+import { legendRowCap } from "../../tui/lib/help-groups"
+import { truncateEndCells } from "../../tui/lib/truncate"
+import { useKeymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-
-/**
- * Resolve a single binding id to the chord cap the footer should advertise:
- * the cosmetic `hint.keys` when present (it's refreshed in place on an
- * override — keymap-overrides.ts), else the canonical first chord. Returns
- * `null` when the id is unbound (no chords) — the row that owns it should
- * then drop, since advertising a dead chord is worse than none (mirrors the
- * override path that nulls a hint on unbind).
- *
- * Pure + exported so the legend derivation is unit-testable against a faked
- * keymap without booting a tmux pane (the host itself isn't CI-runnable).
- */
-export function legendCap(id: string): string | null {
-  const row = findBinding(id)
-  if (!row) return null
-  const cap = row.hint?.keys ?? row.keys[0]
-  return cap && cap.length > 0 ? cap : null
-}
-
-/**
- * Resolve a (possibly composite) legend row's keycap from the binding ids it
- * represents. Each id contributes its {@link legendCap}; unbound ids drop out
- * and the survivors join with `/` (so `r/b/v` becomes `r/v` if `b` is
- * unbound, or the whole row drops when nothing survives). Returns `null` when
- * every id resolved to no chord — the caller drops the row entirely.
- */
-export function legendRowCap(ids: readonly string[]): string | null {
-  const caps = ids.map(legendCap).filter((c): c is string => c !== null)
-  return caps.length > 0 ? caps.join("/") : null
-}
 
 /**
  * A small shortcut legend pinned to the bottom of the Tasks pane:
@@ -185,23 +157,10 @@ export function ShortcutHints(props: {
   // the needed width and clipped the label. `approxCellWidth` (the CJK-aware
   // helper the hover tooltip already uses) counts fullwidth codepoints as 2.
   const labelColWidth = Math.min(LABEL_COL_MAX, Math.max(...hints.map((h) => approxCellWidth(h.label))))
-  // Truncate to the CELL budget too. truncateEnd's budget is code points, so a
-  // CJK label needs a code-point budget of at most floor(cells/2) to fit the
-  // cell-sized box; take the tighter of the two so a wide label can't overflow.
-  const clipLabel = (s: string): string => {
-    const cells = labelColWidth
-    if (approxCellWidth(s) <= cells) return s
-    const points = [...s]
-    let used = 0
-    let cut = 0
-    for (const ch of points) {
-      const w = (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1
-      if (used + w > cells - 1) break // reserve 1 cell for the ellipsis
-      used += w
-      cut++
-    }
-    return `${points.slice(0, cut).join("")}…`
-  }
+  // Truncate to the CELL budget too — truncateEnd's budget is code points, so
+  // a wide CJK label would overflow the cell-sized box. truncateEndCells
+  // spends the same approx cell measure the column sizing uses.
+  const clipLabel = (s: string): string => truncateEndCells(s, labelColWidth, approxCharCells)
   // Version + update moved UP to the Sidebar's `kobe` brand header (the old
   // `── system ──` block lived here); the footer is now just the key legend.
   // Move-mode overrides the fold: its two hints are the only exit
