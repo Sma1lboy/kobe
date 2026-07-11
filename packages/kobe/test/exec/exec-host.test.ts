@@ -136,6 +136,42 @@ describe("RemoteExecHost.run", () => {
 
     expect(calls[1]?.argv.at(-1)).toBe("cd '/srv/wt' && GIT_OPTIONAL_LOCKS='0' 'git' 'status'")
   })
+
+  // A cached RemoteExecHost (exec/resolve.ts) lives for the whole daemon
+  // process, so a dropped/expired ControlPersist socket must self-heal
+  // instead of leaving `masterUp` confidently (and permanently) wrong.
+  it("self-heals: an ssh-level failure (exit 255) resets masterUp so the next run() re-checks", async () => {
+    let exitCode = 0
+    const calls: string[][] = []
+    const spawn: Spawner = (argv) => {
+      calls.push([...argv])
+      return { stdout: "", stderr: "", exitCode }
+    }
+    const host = new RemoteExecHost(KEY_SPEC, spawn)
+
+    await host.run(["git", "status"]) // master probe (exit 0) + the command
+    expect(calls.filter((c) => c.includes("check"))).toHaveLength(1)
+
+    exitCode = 255 // simulate the multiplexed socket dying mid-command
+    await host.run(["git", "status"])
+    expect(calls.filter((c) => c.includes("check"))).toHaveLength(1) // still cached — this run() itself failed
+
+    exitCode = 0
+    await host.run(["git", "status"])
+    // masterUp was reset by the 255 above → this run() re-probes before the command.
+    expect(calls.filter((c) => c.includes("check"))).toHaveLength(2)
+  })
+
+  it("a remote command's own non-zero exit (not ssh's) does NOT reset masterUp", async () => {
+    const { spawn, calls } = recordingSpawner({ stdout: "", stderr: "not found", exitCode: 1 })
+    const host = new RemoteExecHost(KEY_SPEC, spawn)
+
+    await host.run(["git", "status"])
+    await host.run(["git", "status"])
+    // Both runs' remote command failed with exit 1 (a real git error, not an
+    // ssh-transport failure) — still only ONE `-O check` across both calls.
+    expect(calls.filter((c) => c.argv.includes("check"))).toHaveLength(1)
+  })
 })
 
 describe("RemoteExecHost master bring-up (password)", () => {

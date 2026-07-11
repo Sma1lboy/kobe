@@ -130,11 +130,6 @@ describe("classifyGhFailure", () => {
     expect(classifyGhFailure({ timedOut: true, stderr: "anything" })).toEqual({ kind: "error", error: "timeout" })
     expect(classifyGhFailure({ spawnError: true })).toEqual({ kind: "error", error: "missing-binary" })
   })
-  test("a recognized 'no PR' stderr is a genuine empty, NOT an error", () => {
-    expect(classifyGhFailure({ exitCode: 1, stderr: 'no pull requests found for branch "x"' })).toEqual({
-      kind: "empty",
-    })
-  })
   test("no-remote / auth / network stderr map to their kinds", () => {
     expect(classifyGhFailure({ exitCode: 1, stderr: "none of the git remotes point to a GitHub host" })).toEqual({
       kind: "error",
@@ -148,8 +143,11 @@ describe("classifyGhFailure", () => {
       error: "network",
     })
   })
-  test("an unrecognized non-zero exit defaults to empty (gh's dominant no-PR case)", () => {
-    expect(classifyGhFailure({ exitCode: 1, stderr: "some unfamiliar message" })).toEqual({ kind: "empty" })
+  test("an unrecognized non-zero exit is a typed 'unknown' error, never a guessed empty", () => {
+    expect(classifyGhFailure({ exitCode: 1, stderr: "some unfamiliar message" })).toEqual({
+      kind: "error",
+      error: "unknown",
+    })
   })
 })
 
