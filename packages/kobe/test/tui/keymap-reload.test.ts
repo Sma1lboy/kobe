@@ -20,6 +20,13 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toEqual(["q"])
   })
 
+  test("terminal scrollback remains a direct ctrl chord outside the ChatPane", () => {
+    expect(findBinding("terminal.scroll-up")?.keys).toEqual(["ctrl+pageup"])
+    expect(findBinding("terminal.scroll-up")?.prefixKeys).toBeUndefined()
+    expect(findBinding("terminal.scroll-down")?.keys).toEqual(["ctrl+pagedown"])
+    expect(findBinding("terminal.scroll-down")?.prefixKeys).toBeUndefined()
+  })
+
   test("restores a row's chords + hint after an override", () => {
     const row = findBinding(ID)
     expect(row).toBeDefined()

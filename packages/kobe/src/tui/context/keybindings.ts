@@ -329,8 +329,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "terminal.scroll-up",
     scope: "terminal",
-    keys: [],
-    prefixKeys: ["pageup"],
+    keys: ["ctrl+pageup"],
     category: "Terminal",
     description: "Scroll scrollback up",
     hint: { keys: "ctrl+pgup", label: "scroll", status: false },
@@ -338,8 +337,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "terminal.scroll-down",
     scope: "terminal",
-    keys: [],
-    prefixKeys: ["pagedown"],
+    keys: ["ctrl+pagedown"],
     category: "Terminal",
     description: "Scroll scrollback down",
   },
