@@ -42,8 +42,6 @@ export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt" | "arc
 }
 
 const CURRENT_VERSION = 3 as const
-const EMPTY_INDEX: TaskIndex = { version: CURRENT_VERSION, tasks: [] } as const
-void EMPTY_INDEX
 
 export type TaskIndexListener = (snapshot: readonly Task[]) => void
 export type TaskIndexUnsubscribe = () => void
@@ -53,7 +51,7 @@ export type TaskIndexUnsubscribe = () => void
  *
  * Lifecycle: callers `await store.load()` once at startup, then
  * operate synchronously against the in-memory copy. Each mutating
- * method (`create`, `update`, `archive`, `remove`) persists
+ * method (`create`, `update`, `remove`) persists
  * immediately.
  */
 export class TaskIndexStore {
@@ -428,10 +426,6 @@ export class TaskIndexStore {
       throw err
     }
     this.notifyListeners()
-  }
-
-  async archive(id: TaskId | string, status: TaskStatus = "done"): Promise<Task> {
-    return this.update(id, { status })
   }
 
   async remove(id: TaskId | string): Promise<void> {

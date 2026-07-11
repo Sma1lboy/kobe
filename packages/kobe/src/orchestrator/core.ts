@@ -27,7 +27,7 @@ import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-activ
 import { getRemoteRepoConfig, getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
-import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
+import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { canonPath, normalizeMainRepo, titleFromRepo } from "./core-helpers.ts"
 import {
@@ -488,7 +488,3 @@ export class Orchestrator {
     return task
   }
 }
-
-// Avoid an unused-import warning while keeping toTaskId reachable for
-// callers that need to brand a raw string id.
-void toTaskId
