@@ -171,6 +171,12 @@ export type AddResult = { added: boolean; path: string; total: number }
  * {@link resolveRepoRoot}) — so `kobe add` from a monorepo subdirectory
  * stores the repo root, not the subdir. The returned `path` is the
  * normalized form so callers report what was actually saved.
+ *
+ * Deliberately does NOT validate `absPath` is a real git repo — this is a
+ * pure state mutation callers may exercise on synthetic paths in tests.
+ * Callers that take a path from an untrusted source (bare-`kobe` cwd,
+ * `kobe add` CLI arg) must check {@link isGitRepo} themselves first; see
+ * `kobe add`'s guard in `cli/index.ts` and `tui/direct.ts`'s `ensureRepos`.
  */
 export function addSavedRepo(absPath: string): AddResult {
   // Resolve BEFORE the transaction — `git rev-parse` (a subprocess) inside
