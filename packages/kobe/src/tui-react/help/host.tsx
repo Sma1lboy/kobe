@@ -13,7 +13,7 @@
 import { HelpDialog } from "../component/help-dialog"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 
 function HelpPage() {
@@ -31,12 +31,7 @@ function HelpPage() {
   // HelpDialog via its onClose prop.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      { key: "escape", cmd: exit },
-      { key: "q", cmd: exit },
-      { key: "f1", cmd: exit },
-      { key: "ctrl+c", cmd: exit },
-    ],
+    bindings: [...pageCloseBindings(exit), { key: "f1", cmd: exit }],
   }))
 
   return (
