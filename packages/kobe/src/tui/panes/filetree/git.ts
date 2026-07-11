@@ -27,8 +27,18 @@
  *     rendering stale data.
  */
 
-import { parseNumstatRows, parsePorcelainRows } from "@/lib/git-parsers"
+import { parseNumstatRows, parsePorcelainRows, unquoteGitPath } from "@/lib/git-parsers"
 import { readWorktreeFile, runWorktreeGit } from "../../../worktree/content.ts"
+
+/**
+ * Which diff the Changes tab shows:
+ *   - `working`: uncommitted work only (`git status` / `diff HEAD`).
+ *   - `branch`:  everything this task's branch adds over its base
+ *                (`git diff <base>...HEAD` — the vs-base view). Because the
+ *                engine contract is "commit when green", a finished task's
+ *                whole output only shows up here.
+ */
+export type GitScope = "working" | "branch"
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
  * collapsed to a single-char headline. `T` is a typechange (a regular
@@ -164,6 +174,102 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
     )
   }
   return merged
+}
+
+/**
+ * Resolve the ref this worktree's branch should be diffed against for the
+ * Branch scope. Prefers an explicit PR base (`prBaseRef` — the GitHub base
+ * ref off `task.prStatus`, the only place kobe persists a base). Otherwise
+ * asks git for the repo's default branch — `origin/HEAD`, falling back to
+ * `origin/main` / `origin/master` — mirroring `daemon-worktree-adapter`'s
+ * `defaultRef`. Returns `null` when none resolves (no remote / detached),
+ * and the caller stays in working scope.
+ */
+export async function resolveBase(
+  worktreePath: string,
+  prBaseRef?: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  if (prBaseRef && prBaseRef.trim().length > 0) return prBaseRef.trim()
+  try {
+    const head = (await runGit(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], worktreePath, signal)).trim()
+    if (head.length > 0) return head
+  } catch {
+    // No origin/HEAD (never fetched, or no remote) — fall through to guesses.
+  }
+  for (const guess of ["origin/main", "origin/master"]) {
+    try {
+      await runGit(["rev-parse", "--verify", "--quiet", guess], worktreePath, signal)
+      return guess
+    } catch {
+      // rev-parse --verify exits non-zero when the ref is absent; try next.
+    }
+  }
+  return null
+}
+
+/**
+ * Branch scope for the Changes tab: every file this task's branch changed
+ * relative to `base`, via `git diff <base>...HEAD` (three-dot = diff against
+ * the merge-base, so unrelated commits landed on the base afterward don't
+ * pollute the list). Two reads keyed by path — `--name-status` for the M/A/D
+ * headline, `--numstat` for the +/- counts — the same two-call merge
+ * {@link statusFiles} does for working scope. Throws on a bad base so the
+ * pane's error empty-state shows instead of silently rendering nothing.
+ */
+export async function statusFilesBranch(
+  worktreePath: string,
+  base: string,
+  signal?: AbortSignal,
+): Promise<StatusEntry[]> {
+  const range = `${base}...HEAD`
+  const [nameStatusOut, numstatOut] = await Promise.all([
+    runGit(["diff", "--no-color", "--name-status", range], worktreePath, signal),
+    runGit(["diff", "--no-color", "--numstat", range], worktreePath, signal),
+  ])
+  const counts = new Map(parseNumstat(numstatOut).map((n) => [n.path, { added: n.added, deleted: n.deleted }]))
+  const entries: StatusEntry[] = []
+  for (const { status, path } of parseNameStatus(nameStatusOut)) {
+    const c = counts.get(path)
+    entries.push({ path, status, added: c?.added, deleted: c?.deleted })
+  }
+  return entries
+}
+
+/**
+ * Parse `git diff --name-status` rows into the pane's `{ status, path }`
+ * headline. Each line is `<X>\t<path>` (or `R<score>\t<old>\t<new>` /
+ * `C<score>\t<old>\t<new>` for renames/copies — we keep the NEW path, same
+ * as the porcelain façade). Statuses the pane doesn't colour are dropped.
+ */
+export function parseNameStatus(raw: string): { status: FileStatus; path: string }[] {
+  const out: { status: FileStatus; path: string }[] = []
+  for (const rawLine of raw.split("\n")) {
+    const line = rawLine.replace(/\r$/, "")
+    if (line.length === 0) continue
+    const tab1 = line.indexOf("\t")
+    if (tab1 < 0) continue
+    const code = line[0]
+    let path: string
+    if (code === "R" || code === "C") {
+      // R<score>\t<old>\t<new> — take the new (last) field.
+      const tab2 = line.indexOf("\t", tab1 + 1)
+      path = unquoteGitPath(tab2 < 0 ? line.slice(tab1 + 1) : line.slice(tab2 + 1))
+    } else {
+      path = unquoteGitPath(line.slice(tab1 + 1))
+    }
+    if (path.length === 0 || path.endsWith("/")) continue
+    const status: FileStatus | null =
+      code === "M" || code === "A" || code === "D" || code === "T"
+        ? code
+        : code === "R"
+          ? "R"
+          : code === "C"
+            ? "C"
+            : null
+    if (status) out.push({ status, path })
+  }
+  return out
 }
 
 /**
