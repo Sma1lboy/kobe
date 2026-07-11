@@ -66,6 +66,17 @@ vi.mock("../../src/engine/interactive-command.ts", () => ({
   interactiveEngineCommand: mocks.interactiveEngineCommand,
 }))
 
+// No pty host in the unit env: openPtyHost resolves null so the hosted probe
+// is a no-op and every op below exercises its tmux fallback (what's asserted).
+vi.mock("../../src/cli/api/pty-delivery.ts", () => ({
+  openPtyHost: vi.fn(async () => null),
+  listSessions: vi.fn(async () => []),
+  findEngineKey: vi.fn(() => null),
+  taskKeys: vi.fn(() => []),
+  killTaskSessions: vi.fn(async () => {}),
+  deliverToKey: vi.fn(async () => false),
+}))
+
 import { defaultApiRuntime, deliverPrompt, invokeVerb } from "../../src/cli/api-cmd.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 import { tmuxSessionName } from "../../src/tmux/client.ts"

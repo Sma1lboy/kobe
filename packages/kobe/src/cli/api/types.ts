@@ -115,6 +115,13 @@ export interface PromptDeliveryOps {
     intent: import("../../state/repo-init.ts").PromptDeliveryIntent,
   ): Promise<import("../../state/repo-init.ts").EngineLaunchInit>
   engineCommand(vendor: VendorId | undefined): readonly string[]
+  /**
+   * Deliver into the task's DAEMON-HOSTED (pty-host) engine, or `null` when
+   * the task has no hosted session at all (caller falls back to tmux). A
+   * non-null result — even `delivered:false` — means the task IS hosted and
+   * the tmux path must NOT run (building it would double-open the engine).
+   */
+  deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt | null>
 }
 
 // ── Runtime (the side-effect seam handlers run against) ─────────────────────
