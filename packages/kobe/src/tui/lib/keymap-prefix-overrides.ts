@@ -119,7 +119,7 @@ export function extractPrefixKeybindings(doc: unknown, platform: NodeJS.Platform
   return { configuration, entries: [...entries].map(([id, keys]) => ({ id, keys })), warnings }
 }
 
-/** Apply second-stroke overrides without changing a row's direct chords. */
+/** Move rows into prefix mode, replacing any direct chords. */
 export function applyPrefixKeymapOverrides(
   keymap: readonly PrefixOverridableBinding[],
   entries: readonly PrefixKeymapOverrideEntry[],
@@ -132,16 +132,13 @@ export function applyPrefixKeymapOverrides(
       warnings.push(`${entry.id}: unknown binding id`)
       continue
     }
-    if (row.prefixKeys === undefined) {
-      warnings.push(`${entry.id}: not a prefix binding`)
-      continue
-    }
     if (entry.id === "focus.numeric" && entry.keys.length !== 4) {
       warnings.push(`${entry.id}: needs exactly 4 prefix keys (sidebar, workspace, files, terminal)`)
       continue
     }
-    const mutable = row as { prefixKeys?: readonly string[] }
-    const defaultKeys = [...row.prefixKeys]
+    const mutable = row as { keys: readonly string[]; prefixKeys?: readonly string[] }
+    const defaultKeys = [...(row.prefixKeys ?? [])]
+    mutable.keys = []
     mutable.prefixKeys = [...entry.keys]
     applied.push({ id: entry.id, keys: [...entry.keys], defaultKeys })
   }

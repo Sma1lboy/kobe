@@ -146,7 +146,7 @@ prefix:                   # Workspace Host (`KOBE_TUI=1`) only
   bindings:
     chat.tab.new: t       # actual chord: ctrl+a, then t
 bindings:                 # applies on every platform
-  chat.fork.new: ctrl+g   # string = one chord
+  chat.fork.new: ctrl+g   # move this action to one direct chord
   sidebar.select: [enter] # list  = several chords (all fire the action)
   files.createPR: null    # null / [] = unbind (hint disappears too)
 darwin:                   # platform overlay — wins over `bindings` per id
@@ -163,6 +163,10 @@ Semantics and guard rails:
   Settings → Keybindings (read-only section showing the config path, applied
   overrides, and every load warning; warnings also go to `console.warn` →
   the pane log).
+- **`bindings` and `prefix.bindings` select the mode**: writing an id under
+  `bindings` makes it direct and removes its prefix form; writing it under
+  `prefix.bindings` makes it prefix-gated and removes its direct form. If an
+  id appears in both, kobe warns and `prefix.bindings` wins.
 - **Chord grammar mirrors `matchKey()`**: `mod+...+key`, modifier aliases
   (`control`/`command`/`meta`/`option`…) are canonicalized to
   `ctrl`/`cmd`/`alt`/`shift` in the dispatcher's order. `esc`→`escape`,

@@ -47,7 +47,7 @@ describe("PureTUI prefix settings", () => {
     expect(extracted.warnings.join("\n")).toContain("modifier")
   })
 
-  test("changes only declared prefix rows and preserves the direct key slots", () => {
+  test("moves declared rows to prefix and clears their direct chords", () => {
     const copy = keymap.map((row) => ({
       ...row,
       keys: [...row.keys],
@@ -61,8 +61,12 @@ describe("PureTUI prefix settings", () => {
 
     expect(copy[0]?.prefixKeys).toEqual(["n"])
     expect(copy[0]?.keys).toEqual([])
-    expect(result.applied).toEqual([{ id: "chat.tab.new", keys: ["n"], defaultKeys: ["t"] }])
-    expect(result.warnings.join("\n")).toContain("not a prefix binding")
+    expect(copy[1]?.prefixKeys).toEqual(["x"])
+    expect(copy[1]?.keys).toEqual([])
+    expect(result.applied).toEqual([
+      { id: "chat.tab.new", keys: ["n"], defaultKeys: ["t"] },
+      { id: "task.new", keys: ["x"], defaultKeys: [] },
+    ])
   })
 
   test("preserves the four-slot focus prefix contract", () => {

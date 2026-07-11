@@ -74,12 +74,40 @@ describe("applyUserKeybindings", () => {
     expect(report.warnings).toEqual([])
   })
 
-  test("migrates a legacy control-chord override onto a prefix-only row", () => {
+  test("moves a prefix row to a direct chord through bindings", () => {
     fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" } }
     const report = userKb.reloadUserKeybindings()
 
-    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["g"])
+    expect(findBinding("chat.tab.new")?.keys).toEqual(["ctrl+g"])
+    expect(findBinding("chat.tab.new")?.prefixKeys).toBeUndefined()
     expect(report.warnings).toEqual([])
+  })
+
+  test("moves a direct row to prefix through prefix.bindings", () => {
+    fileState.doc = { prefix: { bindings: { "sidebar.projectFilter": "p" } } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("sidebar.projectFilter")?.keys).toEqual([])
+    expect(findBinding("sidebar.projectFilter")?.prefixKeys).toEqual(["p"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("moves positional pane navigation from prefix to direct with four ordered chords", () => {
+    fileState.doc = { bindings: { "focus.numeric": ["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"] } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"])
+    expect(findBinding("focus.numeric")?.prefixKeys).toBeUndefined()
+    expect(report.warnings).toEqual([])
+  })
+
+  test("uses prefix.bindings when both configuration modes name one id", () => {
+    fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" }, prefix: { bindings: { "chat.tab.new": "n" } } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("chat.tab.new")?.keys).toEqual([])
+    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["n"])
+    expect(report.warnings.join("\n")).toContain("configured in both bindings and prefix.bindings")
   })
 
   test("warns when a configured prefix collides with a direct override", () => {
