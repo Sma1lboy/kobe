@@ -714,6 +714,9 @@ describe("deliverPrompt", () => {
       },
       resolveEngineLaunchInit: async () => ({}),
       engineCommand: () => ["claude", "--continue"],
+      // Default: no hosted session → delivery falls through to the tmux path
+      // these scenarios exercise. Overridden by the hosted-routing tests.
+      deliverHosted: async () => null,
       ...overrides,
     }
     return { ops, ensured, pasted, waited }
@@ -800,5 +803,47 @@ describe("deliverPrompt", () => {
     const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
     expect(result.engineReady).toBe(false)
     expect(pasted).toHaveLength(1)
+  })
+
+  // ── backend routing: hosted (pty-host) wins over tmux ──────────────────────
+  it("hosted hit short-circuits: returns the hosted result, tmux never touched", async () => {
+    const hosted: DeliveredPrompt = {
+      session: "t1::tab-1",
+      pane: "t1::tab-1",
+      started: false,
+      engineReady: true,
+      delivered: true,
+    }
+    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => hosted })
+    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
+    expect(result).toEqual(hosted)
+    expect(ensured).toEqual([]) // no tmux session built
+    expect(pasted).toEqual([]) // no tmux paste
+  })
+
+  it("hosted-but-undeliverable does NOT build a tmux session (no double-open)", async () => {
+    // The data-corruption guard: a task with a hosted session whose engine
+    // tab is gone returns delivered:false — building a second tmux engine in
+    // the same worktree is exactly what this slice forbids.
+    const undeliverable: DeliveredPrompt = {
+      session: "",
+      pane: "",
+      started: false,
+      engineReady: false,
+      delivered: false,
+    }
+    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => undeliverable })
+    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
+    expect(result.delivered).toBe(false)
+    expect(ensured).toEqual([]) // critically: NO tmux session built
+    expect(pasted).toEqual([])
+  })
+
+  it("no hosted session (null) falls through to the tmux path", async () => {
+    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => null })
+    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
+    expect(ensured).toHaveLength(1) // tmux session built
+    expect(pasted).toHaveLength(1)
+    expect(result.delivered).toBe(true)
   })
 })
