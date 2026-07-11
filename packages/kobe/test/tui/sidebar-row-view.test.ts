@@ -32,7 +32,6 @@ function view(overrides: Parameters<typeof task>[0], activity?: Parameters<typeo
   return buildSidebarRowView({
     task: task(overrides),
     activity,
-    live: false,
     spinnerFrame: 0,
     subtitleBudget: 80,
     truncateBranch: (branch) => branch,
@@ -92,7 +91,6 @@ describe("buildSidebarRowView", () => {
   it("shows the repo-root branch (mainBranch) as a project row's subtitle", () => {
     const v = buildSidebarRowView({
       task: task({ kind: "main", branch: "", status: "backlog" }),
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -110,7 +108,6 @@ describe("buildSidebarRowView", () => {
     const v = buildSidebarRowView({
       task: task({ status: "backlog", branch: "", worktreePath: "" }),
       job: { kind: "ensureWorktree" },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -129,7 +126,6 @@ describe("buildSidebarRowView", () => {
     const v = buildSidebarRowView({
       task: task({ status: "backlog", branch: "feature/sidebar" }),
       job: { kind: "ensureWorktree" },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -142,7 +138,6 @@ describe("buildSidebarRowView", () => {
     const v = buildSidebarRowView({
       task: task({ status: "backlog", vendor: "my-custom-engine", branch: "" }),
       job: { kind: "ensureWorktree" },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -153,7 +148,6 @@ describe("buildSidebarRowView", () => {
   it("falls back to a neutral dash for a project with no resolvable branch", () => {
     const v = buildSidebarRowView({
       task: task({ kind: "main", branch: "", status: "backlog" }),
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -174,7 +168,6 @@ describe("withSpinnerFrame", () => {
     return buildSidebarRowView({
       task: task({ status: "backlog" }),
       activity: { state: "running", at: 1 },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -205,7 +198,6 @@ describe("withSpinnerFrame", () => {
     const direct = buildSidebarRowView({
       task: task({ status: "backlog" }),
       activity: { state: "running", at: 1 },
-      live: false,
       spinnerFrame: 3,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -229,7 +221,6 @@ describe("withSpinnerFrame", () => {
     const v = buildSidebarRowView({
       task: task({ status: "backlog" }),
       activity: { state: "running", at: 1 },
-      live: false,
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (b) => b,
@@ -257,9 +248,9 @@ describe("sweepBar", () => {
 })
 
 describe("buildSidebarRowView — defer to the live terminal (isViewed)", () => {
-  const base = { live: true, spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
+  const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
 
-  it("spins for a live task whose terminal is NOT the one on screen", () => {
+  it("spins for an in-progress task whose terminal is NOT the one on screen", () => {
     const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: false })
     expect(v.loading).toBe(true)
   })
@@ -291,13 +282,12 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
 
   it("rowIsLoading matches buildSidebarRowView.loading across cases", () => {
     const cases = [
-      { task: task({ status: "in_progress" }), live: false },
-      { task: task({ status: "in_progress" }), live: true },
-      { task: task({ status: "in_progress" }), live: true, isViewed: true },
-      { task: task({ status: "backlog" }), live: false },
-      { task: task({ kind: "main", branch: "", status: "in_progress" }), live: false },
-      { task: task({ status: "done" }), live: false, job: { kind: "ensureWorktree" as const } },
-      { task: task({}), live: false, activity: { state: "running" as const, at: 1 } },
+      { task: task({ status: "in_progress" }) },
+      { task: task({ status: "in_progress" }), isViewed: true },
+      { task: task({ status: "backlog" }) },
+      { task: task({ kind: "main", branch: "", status: "in_progress" }) },
+      { task: task({ status: "done" }), job: { kind: "ensureWorktree" as const } },
+      { task: task({}), activity: { state: "running" as const, at: 1 } },
     ]
     for (const c of cases) {
       const view = buildSidebarRowView({ ...base, ...c })
@@ -311,7 +301,6 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
     const reads = {
       activity: () => undefined,
       job: () => undefined,
-      live: (id: string) => id === "busy",
       isViewed: () => false,
     }
     expect(anyRowLoading([idle], reads)).toBe(false)
@@ -324,7 +313,6 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
     const reads = {
       activity: () => undefined,
       job: () => undefined,
-      live: () => true,
       isViewed: (id: string) => id === "busy",
     }
     // The only busy row is the one on screen (its terminal draws its own

@@ -164,7 +164,6 @@ export interface RowLoadingInputs {
   readonly task: Task
   readonly activity?: TaskEngineState
   readonly job?: TaskJobState
-  readonly live: boolean
   readonly isViewed?: boolean
 }
 
@@ -186,7 +185,7 @@ export function rowIsLoading(opts: RowLoadingInputs): boolean {
     materializing ||
     (!opts.isViewed &&
       !untrackedCustomEngine &&
-      (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
+      (activityState === "running" || (!hasActivity && !isMain && task.status === "in_progress")))
   )
 }
 
@@ -201,7 +200,6 @@ export function anyRowLoading(
   reads: {
     activity(taskId: string): TaskEngineState | undefined
     job(taskId: string): TaskJobState | undefined
-    live(taskId: string): boolean
     isViewed(taskId: string): boolean
   },
 ): boolean {
@@ -210,7 +208,6 @@ export function anyRowLoading(
       task,
       activity: reads.activity(task.id),
       job: reads.job(task.id),
-      live: reads.live(task.id),
       isViewed: reads.isViewed(task.id),
     }),
   )
@@ -228,7 +225,6 @@ export function buildSidebarRowView(opts: {
    * branch labels can't be more current than this.
    */
   readonly job?: TaskJobState
-  readonly live: boolean
   readonly spinnerFrame: number
   readonly subtitleBudget: number
   readonly truncateBranch: (branch: string, budget: number) => string
@@ -279,7 +275,6 @@ export function buildSidebarRowView(opts: {
     task,
     activity: opts.activity,
     job: opts.job,
-    live: opts.live,
     isViewed: opts.isViewed,
   })
   // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;

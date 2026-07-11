@@ -1,11 +1,11 @@
 /** @jsxImportSource @opentui/react */
 /**
- * React sidebar (issue #15, G3) — the `src/tui/panes/sidebar/Sidebar.tsx`
- * counterpart, the highest-Solid-density pane port. All list shaping /
+ * React sidebar (issue #15, G3) — ported from the Solid original (removed
+ * 2026-07-07), the highest-Solid-density pane port. All list shaping /
  * cursor policy / budgets are the shared framework-free modules (`groups`,
  * `view-core`, `row-view`); this file owns only the React state machine.
  *
- * Translation notes vs the Solid original (full rationale lives there):
+ * Translation notes vs the Solid original:
  *   - Signals → useState; memos → useMemo (row reconcile keeps its `prev`
  *     in a ref so daemon snapshot echoes preserve row identity).
  *   - The cursor is state + a ref written together: key handlers between
@@ -46,7 +46,6 @@ import {
   projectScrollMaxHeightFor,
   searchQueryKeystroke,
   subtitleBudgetFor,
-  taskIsLive,
   titleBudgetFor,
 } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
@@ -58,7 +57,7 @@ import { SidebarPanel } from "./panel"
 import type { SidebarRowCardSharedProps } from "./row-cards"
 import type { SidebarHover, SidebarProps } from "./types"
 
-export type { ChatRunState, SidebarHover, SidebarProps } from "./types"
+export type { SidebarHover, SidebarProps } from "./types"
 
 export function Sidebar(props: SidebarProps) {
   const t = useT()
@@ -130,10 +129,9 @@ export function Sidebar(props: SidebarProps) {
       anyRowLoading(props.tasks, {
         activity: (id) => props.engineState?.get(id),
         job: (id) => props.taskJobs?.get(id),
-        live: (id) => taskIsLive(id, props.chatRunState),
         isViewed: (id) => id === props.selectedId,
       }),
-    [reducedMotion, props.tasks, props.engineState, props.taskJobs, props.chatRunState, props.selectedId],
+    [reducedMotion, props.tasks, props.engineState, props.taskJobs, props.selectedId],
   )
 
   const [spinnerFrame, setSpinnerFrame] = useState(0)
@@ -378,7 +376,6 @@ export function Sidebar(props: SidebarProps) {
     spinnerFrame,
     titleBudget,
     subtitleBudget,
-    chatRunState: props.chatRunState,
     engineState: props.engineState,
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
