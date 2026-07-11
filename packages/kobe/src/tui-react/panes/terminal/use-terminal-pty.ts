@@ -31,6 +31,9 @@ export interface UseTerminalPtyOpts {
   taskId: string | null
   /** Read at acquire/reset time via a ref — see file header. */
   command: readonly string[] | undefined
+  /** Typed into a FRESH spawn (`TaskPtyOpts.initialInput`) — the shell-
+   *  wrapped engine line. Read via a ref like `command`. */
+  initialInput?: string
   resetToken?: number
   /** `deadOnAttach`: the exit was discovered on reattach (engine died
    *  while the TUI was away), not observed live — see `TaskPtyLike`. */
@@ -65,6 +68,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   // Latest-render mirrors read by effect bodies that must NOT depend on
   // them (the Solid original's untracked reads inside `on(...)`).
   const commandRef = useLatest(opts.command)
+  const initialInputRef = useLatest(opts.initialInput)
   const bodyGeometryRef = useLatest(opts.bodyGeometry)
   const registryRef = useLatest(opts.registry)
   const onExitRef = useLatest(opts.onExit)
@@ -91,7 +95,11 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     if (!geometry) return
     let handle: TaskPty
     try {
-      handle = registryRef.current.acquire(taskId, cwd, { ...geometry, command: commandRef.current })
+      handle = registryRef.current.acquire(taskId, cwd, {
+        ...geometry,
+        command: commandRef.current,
+        initialInput: initialInputRef.current,
+      })
     } catch (err) {
       const message = errorMessage(err)
       setAcquireError(message)
@@ -151,7 +159,11 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   const forceReacquire = useCallback(
     (nextCwd: string, nextTaskId: string, geometry: { cols: number; rows: number }): void => {
       try {
-        const fresh = registryRef.current.reset(nextTaskId, nextCwd, { ...geometry, command: commandRef.current })
+        const fresh = registryRef.current.reset(nextTaskId, nextCwd, {
+          ...geometry,
+          command: commandRef.current,
+          initialInput: initialInputRef.current,
+        })
         setPty(fresh)
         setSnapshot([])
         setCursor(null)
