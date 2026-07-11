@@ -9,9 +9,6 @@
  *   - `focused` is a plain value (was `Accessor<PaneId>`).
  *   - `is(pane)` returns a boolean (was a memoized `Accessor<boolean>`);
  *     Solid call sites `is("sidebar")()` become `is("sidebar")`.
- *   - `refocusTick` is a plain number that increments on every `setFocused`
- *     call — even same-pane — so input-bearing children can re-assert
- *     native focus in an effect keyed on it (same one-tick-race fix).
  */
 
 import { useRenderer } from "@opentui/react"
@@ -33,8 +30,6 @@ export type FocusContextValue = {
   setFocused: (pane: PaneId) => void
   /** Cycle by ±1 through PANE_ORDER. Used by `tab` / `shift+tab`. */
   cycle: (delta: 1 | -1) => void
-  /** Increments on every `setFocused` call — even same-pane (see header). */
-  refocusTick: number
 }
 
 const FocusContext = createContext<FocusContextValue | null>(null)
@@ -47,7 +42,6 @@ const FocusContext = createContext<FocusContextValue | null>(null)
  */
 export function FocusProvider(props: { children?: ReactNode; initial?: PaneId }) {
   const [focused, setFocusedState] = useState<PaneId>(props.initial ?? "sidebar")
-  const [refocusTick, setRefocusTick] = useState(0)
   const renderer = useRenderer()
   // Latest focused value for the stable callbacks below (React state reads
   // in callbacks go stale; the ref always holds the current pane).
@@ -55,14 +49,13 @@ export function FocusProvider(props: { children?: ReactNode; initial?: PaneId })
 
   /**
    * Unified focus-change entry point (same contract as the Solid provider):
-   * tick refocus unconditionally, then on a real transition blur whatever
-   * opentui renderable holds native focus BEFORE flipping the pane state —
-   * removing the one-tick window where a composer textarea keeps eating
-   * keystrokes after the user chorded away from the workspace.
+   * on a real transition blur whatever opentui renderable holds native
+   * focus BEFORE flipping the pane state — removing the one-tick window
+   * where a composer textarea keeps eating keystrokes after the user
+   * chorded away from the workspace.
    */
   const setFocused = useCallback(
     (pane: PaneId): void => {
-      setRefocusTick((t) => t + 1)
       if (focusedRef.current === pane) return
       const current = renderer?.currentFocusedRenderable
       if (current && !current.isDestroyed) {
@@ -93,9 +86,8 @@ export function FocusProvider(props: { children?: ReactNode; initial?: PaneId })
       is: (pane: PaneId) => focused === pane,
       setFocused,
       cycle,
-      refocusTick,
     }),
-    [focused, refocusTick, setFocused, cycle],
+    [focused, setFocused, cycle],
   )
 
   return <FocusContext.Provider value={value}>{props.children}</FocusContext.Provider>
