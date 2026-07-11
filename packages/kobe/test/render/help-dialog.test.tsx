@@ -49,7 +49,7 @@ describe("HelpDialog", () => {
 
     const text = await frame()
     expect(text).toContain("PureTUI prefix: ⌃ B · 750ms")
-    expect(text).toContain("⌃ B O")
+    expect(text).toContain("prefix + o")
   })
 
   it("? dismisses the dialog (dialog stack empties)", async () => {
