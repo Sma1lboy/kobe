@@ -16,7 +16,7 @@
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import { type BoxRenderable, TextAttributes } from "@opentui/core"
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useMemo } from "react"
 import { sweepBar } from "../../../tui/lib/progress-bar"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import type { SidebarRow } from "../../../tui/panes/sidebar/groups"
@@ -124,15 +124,12 @@ function ChangeStats(props: { readonly changes: WorktreeChanges }) {
 function RowBody(props: {
   readonly row: SidebarRow
   readonly shared: SidebarRowCardSharedProps
+  readonly selection: ReturnType<typeof resolveRowSelectionChrome>
   readonly children: ReactNode
 }) {
-  const { theme } = useTheme()
   const task = props.row.task
   const flatIndex = props.row.flatIndex
   const shared = props.shared
-  const isCursor = flatIndex === shared.cursorIndex
-  const isSelected = task.id === shared.selectedId
-  const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   return (
     // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model; hover is pointer-only while keyboard nav exposes the same row detail by selection.
     <box
@@ -147,7 +144,7 @@ function RowBody(props: {
       width="100%"
       flexDirection="column"
       gap={0}
-      backgroundColor={selection.backgroundColor}
+      backgroundColor={props.selection.backgroundColor}
       onMouseUp={() => {
         shared.setCursorIndex(flatIndex)
         shared.onSelect(task.id)
@@ -167,29 +164,42 @@ function RowBody(props: {
  * cards; only `mainBranch` (project rows poll the repo HEAD) differs.
  */
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
+  const t = useT()
   const themeCtx = useTheme()
-  const { theme } = themeCtx
+  const { theme, reducedMotion } = themeCtx
   const task = row.task
   const isCursor = row.flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
   const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
-  const rowView = withSpinnerFrame(
-    buildSidebarRowView({
+  const activity = shared.engineState?.get(task.id)
+  const job = shared.taskJobs?.get(task.id)
+  const live = taskIsLive(task.id, shared.chatRunState)
+  const { subtitleBudget } = shared
+  const { mainBranch } = opts
+  // Memoized on the real inputs so the 10Hz spinner tick (a fresh `shared`
+  // object every render) doesn't re-derive idle rows.
+  const baseView = useMemo(() => {
+    // Dependency-only invalidation key: rebuild when the language changes —
+    // buildSidebarRowView reads the global `t` through the locale store.
+    void t
+    return buildSidebarRowView({
       task,
-      activity: shared.engineState?.get(task.id),
-      job: shared.taskJobs?.get(task.id),
-      live: taskIsLive(task.id, shared.chatRunState),
+      activity,
+      job,
+      live,
       spinnerFrame: 0,
-      subtitleBudget: shared.subtitleBudget,
+      subtitleBudget,
       truncateBranch: truncateBranchLabel,
-      mainBranch: opts.mainBranch,
-      reducedMotion: themeCtx.reducedMotion,
+      mainBranch,
+      reducedMotion,
       // Defer to the live terminal when this task's pane is the one on screen.
       isViewed: isSelected,
-    }),
-    () => shared.spinnerFrame,
-  )
+    })
+  }, [task, activity, job, live, subtitleBudget, mainBranch, reducedMotion, isSelected, t])
+  // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
+  // same object, so an idle row does zero per-frame derivation.
+  const rowView = withSpinnerFrame(baseView, () => shared.spinnerFrame)
   return { theme, task, isCursor, isSelected, selection, changes, rowView }
 }
 
@@ -223,7 +233,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={0}>
-      <RowBody row={props.row} shared={shared}>
+      <RowBody row={props.row} shared={shared} selection={selection}>
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
@@ -257,7 +267,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={1}>
-      <RowBody row={props.row} shared={shared}>
+      <RowBody row={props.row} shared={shared} selection={selection}>
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
