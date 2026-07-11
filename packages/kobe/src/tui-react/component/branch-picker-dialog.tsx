@@ -28,7 +28,7 @@ import { listLocalBranches } from "../../tui/lib/git-snapshot"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 import { PickerList } from "./new-task-dialog/picker-list"
 
 export function BranchPickerDialogView(props: {
@@ -128,19 +128,14 @@ export function BranchPickerDialogView(props: {
  * `undefined` on cancel, matching the other dialogs' convention.
  */
 function show(dialog: DialogContext, opts: { currentBranch: string; repo: string }): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
-    dialog.replace(
-      () => (
-        <BranchPickerDialogView
-          currentBranch={opts.currentBranch}
-          repo={opts.repo}
-          onSubmit={(v) => resolve(v)}
-          onCancel={() => resolve(undefined)}
-        />
-      ),
-      () => resolve(undefined),
-    )
-  })
+  return showDialog<string>(dialog, (resolve) => (
+    <BranchPickerDialogView
+      currentBranch={opts.currentBranch}
+      repo={opts.repo}
+      onSubmit={(v) => resolve(v)}
+      onCancel={() => resolve(undefined)}
+    />
+  ))
 }
 
 export const BranchPickerDialog = {

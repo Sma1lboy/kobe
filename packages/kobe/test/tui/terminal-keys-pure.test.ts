@@ -1,5 +1,6 @@
 import type { KeyEvent } from "@opentui/core"
 import { describe, expect, it } from "vitest"
+import { defaultChordsOf, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
 import {
   DEFAULT_PAGE_SIZE,
   PASSTHROUGH_NAMES,
@@ -104,6 +105,25 @@ describe("key routing tables", () => {
       expect(PASSTHROUGH_NAMES).toContain(name)
     }
     expect(DEFAULT_PAGE_SIZE).toBeGreaterThan(0)
+  })
+
+  it("derives the reservation from KobeKeymap DEFAULTS, immune to live overrides", () => {
+    // RESERVED_GLOBAL_CHORDS is now generated from RESERVED_BINDING_IDS via
+    // defaultChordsOf (keys-pure.ts) — the exact-list pin above is what
+    // fails if a keymap-table edit silently changes terminal passthrough.
+    // This case pins the other half: user overrides must NOT change the
+    // reservation, matching the old literal behavior.
+    const row = findBinding("focus.sidebar") as unknown as { keys: readonly string[] }
+    expect(row.keys).toEqual(["ctrl+q"])
+    row.keys = ["ctrl+x"]
+    try {
+      expect(defaultChordsOf("focus.sidebar")).toEqual(["ctrl+q"])
+      expect(RESERVED_GLOBAL_CHORDS).toContain("ctrl+q")
+      expect(RESERVED_GLOBAL_CHORDS).not.toContain("ctrl+x")
+    } finally {
+      resetKeymapToDefaults()
+    }
+    expect(defaultChordsOf("nope.not-a-binding")).toEqual([])
   })
 
   it("synthesizes modifier bytes for synthetic events", () => {

@@ -19,7 +19,7 @@ import { useState } from "react"
 import { isBlankText, stripNewlines } from "../../tui/component/new-task-dialog/state"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-import { type DialogContext, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 
 export function RenameTaskDialogView(props: {
   currentTitle: string
@@ -97,23 +97,18 @@ function show(
     allowEmpty?: boolean
   } = {},
 ): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
-    dialog.replace(
-      () => (
-        <RenameTaskDialogView
-          currentTitle={currentTitle}
-          dialogTitle={opts.dialogTitle}
-          fieldLabel={opts.fieldLabel}
-          submitLabel={opts.submitLabel}
-          placeholder={opts.placeholder}
-          allowEmpty={opts.allowEmpty}
-          onSubmit={(v) => resolve(v)}
-          onCancel={() => resolve(undefined)}
-        />
-      ),
-      () => resolve(undefined),
-    )
-  })
+  return showDialog<string>(dialog, (resolve) => (
+    <RenameTaskDialogView
+      currentTitle={currentTitle}
+      dialogTitle={opts.dialogTitle}
+      fieldLabel={opts.fieldLabel}
+      submitLabel={opts.submitLabel}
+      placeholder={opts.placeholder}
+      allowEmpty={opts.allowEmpty}
+      onSubmit={(v) => resolve(v)}
+      onCancel={() => resolve(undefined)}
+    />
+  ))
 }
 
 export const RenameTaskDialog = {

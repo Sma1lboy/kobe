@@ -10,7 +10,7 @@ import {
   renameLeaf,
   splitActive,
 } from "../../src/tui/workspace/split-core"
-import { splitLeafNames, splitLeafPtyKey } from "../../src/tui/workspace/terminal-tabs-core"
+import { type EngineTab, splitLeafNames, splitLeafPtyKey, tabTitle } from "../../src/tui/workspace/terminal-tabs-core"
 
 /** Terminal-flavored payload in these tests; the tree never inspects it. */
 const MAIN = null
@@ -190,5 +190,56 @@ describe("split tree (content-agnostic)", () => {
     expect(splitLeafNames(leaves(s.root), ["claude"], "fix the resize race", live).get("leaf-1")).toBe(
       "fix the resize race",
     )
+  })
+})
+
+// Why: tabTitle is the ONE naming rule for the strip label, the rename
+// dialog prefill, and notification titles (owner order 2026-07-09:
+// rename > live process > first-prompt > vendor default). Deriving from
+// anything else relabelled running tabs — pin the precedence and the
+// split-tab branches ("group N" / a collapsed sole shell leaf).
+describe("tabTitle (tab naming policy)", () => {
+  const engine = (over: Partial<EngineTab> = {}): EngineTab => ({
+    kind: "engine",
+    id: "tab-1",
+    title: null,
+    ordinal: 1,
+    ...over,
+  })
+
+  it("precedence: rename > live process > first-prompt > vendor default", () => {
+    const full = engine({ title: "my name", autoTitle: "fix the resize race" })
+    expect(tabTitle(full, "claude", "vim")).toBe("my name")
+    // No rename → the live foreground process names the tab.
+    expect(tabTitle(engine({ autoTitle: "fix the resize race" }), "claude", "vim")).toBe("vim 1")
+    // No live title yet → the conversation's first-prompt title.
+    expect(tabTitle(engine({ autoTitle: "fix the resize race" }), "claude")).toBe("fix the resize race")
+    // Nothing at all → "$vendorCommand $ordinal"; a per-tab vendor pin
+    // outranks the task vendor; command tabs fall back to the shell name.
+    expect(tabTitle(engine(), "claude")).toBe("claude 1")
+    expect(tabTitle(engine({ vendor: "codex" }), "claude")).toBe("codex 1")
+    expect(tabTitle({ kind: "command", id: "tab-2", title: null, ordinal: 2, command: ["/bin/zsh"] }, "claude")).toBe(
+      "shell 2",
+    )
+  })
+
+  it("a multi-leaf split tab is a 'group N'; a rename still wins", () => {
+    const tree = splitActive(initialSplit(MAIN), "row", SH) // leaf-1 | leaf-2
+    expect(tabTitle(engine({ ordinal: 3, splitTree: tree }), "claude", "vim")).toBe("group 3")
+    expect(tabTitle(engine({ ordinal: 3, splitTree: tree, title: "my group" }), "claude")).toBe("my group")
+  })
+
+  it("collapsed to a sole NON-engine leaf: leaf rename, else live process, else shell", () => {
+    const split = splitActive(initialSplit(MAIN), "row", SH)
+    const soleShell = removeLeaf(split, "leaf-1") // only leaf-2 (shell) survives
+    expect(soleShell).not.toBeNull()
+    if (!soleShell) return
+    expect(tabTitle(engine({ splitTree: soleShell }), "claude", "vim")).toBe("vim 1")
+    expect(tabTitle(engine({ splitTree: soleShell }), "claude")).toBe("shell 1")
+    const renamed = renameLeaf(soleShell, "leaf-2", "logs")
+    expect(tabTitle(engine({ splitTree: renamed }), "claude", "vim")).toBe("logs")
+    // A sole surviving leaf-1 is the pristine engine — normal precedence.
+    const soleEngine = removeLeaf(split, "leaf-2")
+    if (soleEngine) expect(tabTitle(engine({ splitTree: soleEngine }), "claude")).toBe("claude 1")
   })
 })

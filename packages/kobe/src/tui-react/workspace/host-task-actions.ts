@@ -27,7 +27,7 @@ import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-creat
 import type { Task } from "../../types/task.ts"
 import { BranchPickerDialog } from "../component/branch-picker-dialog"
 import type { DialogContext } from "../ui/dialog"
-import { selectNextAfterDelete, taskDialogAdapters, vendorPrefAdapters } from "../ui/task-dialog-adapters"
+import { buildBaseCreateTaskContext, selectNextAfterDelete } from "../ui/task-dialog-adapters"
 
 export type WorkspaceTaskActionDeps = {
   orchestrator: RemoteOrchestrator
@@ -59,18 +59,21 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
   const { orchestrator, tasks, dialog, notifyError } = deps
 
   const taskActions: CreateTaskContext = {
-    orch: orchestrator,
-    tasks: () => tasks(),
-    ...taskDialogAdapters(dialog),
-    ...vendorPrefAdapters,
-    logger: console,
-    logPrefix: "[kobe workspace]",
-    notifyError,
-    notifyInfo: deps.notifyInfo,
-    updateActiveTask: true,
+    ...buildBaseCreateTaskContext({
+      orch: orchestrator,
+      tasks,
+      dialog,
+      notifyError,
+      notifyInfo: deps.notifyInfo,
+      selectedId: deps.selectedId,
+      setSelectedId: deps.setSelectedId,
+      logPrefix: "[kobe workspace]",
+      enterTask: deps.activateTask,
+    }),
     onTaskDeleted: (() => {
       // Reclaim the deleted task's terminal-tab snapshot (O19), THEN move the
-      // host cursor off it (the shared selection move).
+      // host cursor off it (the shared selection move — the base's bare
+      // `selectNextAfterDelete` overridden with this wrapper).
       const moveSelection = selectNextAfterDelete({
         tasks,
         selectedId: deps.selectedId,
@@ -81,9 +84,6 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
         moveSelection(taskId, nextTask)
       }
     })(),
-    cursorRepo: () => deps.selectedTask()?.repo ?? tasks()[0]?.repo,
-    selectTask: (id) => deps.setSelectedId(id),
-    enterTask: (id) => deps.activateTask(id),
   }
 
   async function togglePin(id: string): Promise<void> {

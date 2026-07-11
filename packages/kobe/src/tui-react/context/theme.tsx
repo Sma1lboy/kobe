@@ -28,7 +28,7 @@ import {
   applyDisplayOverlay,
   resolveTheme,
 } from "../../tui/context/theme-core"
-import { useAccessor } from "../workspace/use-accessor"
+import { useAccessor } from "../lib/use-accessor"
 
 export { FOCUS_ACCENT_SLOTS, resolveTheme } from "../../tui/context/theme-core"
 export type { FocusAccentSlot, Theme, ThemeJson } from "../../tui/context/theme-core"
