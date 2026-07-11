@@ -31,7 +31,11 @@
  *   `ensureReady()` remains sync: it's called from TUI processes
  *   (tmux engine launch) and from `RemoteExecHost.run`'s first call per host
  *   instance. That first ControlMaster bring-up is the one remaining sync ssh
- *   on the daemon path (experimental remote-projects; tracked, not fixed here).
+ *   on the daemon path (experimental remote-projects). `exec/resolve.ts`
+ *   caches ONE `RemoteExecHost` per `controlPath` (not one per call), so this
+ *   sync `-O check` pays once per master lifetime rather than once per git
+ *   operation — see that file's cache + the `exitCode === 255` self-heal in
+ *   `run()` below (a dropped/expired ControlPersist socket un-caches itself).
  *
  * Security (non-negotiable, see the design doc):
  *   - The password is NEVER in the command string, in `state.json`, or in
@@ -340,7 +344,18 @@ export class RemoteExecHost implements ExecHost {
     // re-auth, so no secret ever reaches a per-call command.
     const command = `${remoteEnvPrefix(opts.env)}${shJoin(argv)}`
     const remote = opts.cwd ? `cd ${shQuote(opts.cwd)} && ${command}` : command
-    return this.spawnAsync([...sshConnectArgs(this.spec, { batch: true }), remote], undefined, { signal: opts.signal })
+    const result = await this.spawnAsync([...sshConnectArgs(this.spec, { batch: true }), remote], undefined, {
+      signal: opts.signal,
+    })
+    // ssh itself (not the remote command) reports failure as exit 255 — the
+    // one exit code the remote command can never produce (`exitCode` in the
+    // 0-254 range always passes through from the far side). A stale
+    // ControlPersist socket (master timed out, network dropped) shows up this
+    // way: reset `masterUp` so the CALLER's cached host instance (see
+    // `exec/resolve.ts`) re-runs `ensureReady()` next call instead of staying
+    // confidently wrong for the rest of the process lifetime.
+    if (result.exitCode === 255) this.masterUp = false
+    return result
   }
 
   async exists(path: string): Promise<boolean> {

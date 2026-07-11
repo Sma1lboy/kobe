@@ -11,7 +11,7 @@ import { readOnlyGitProcessEnv } from "../lib/git-env.ts"
 import { spawnCapture } from "../lib/poll-scheduling.ts"
 import { latestTranscriptMtime } from "../monitor/activity.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
-import { mapGhPrView, nextPrPoll, samePrStatus } from "../monitor/pr-status.ts"
+import { GH_PR_VIEW_FIELDS, classifyGhFailure, mapGhPrView, nextPrPoll, samePrStatus } from "../monitor/pr-status.ts"
 import { maybeAutoStart } from "../monitor/status-rules.ts"
 import { type Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { getPersistedString, getSavedRepos, setPersistedString } from "../state/repos.ts"
@@ -81,9 +81,11 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   setPersistedString,
   getSavedRepos: () => [...getSavedRepos()],
   prStatus: {
+    viewFields: GH_PR_VIEW_FIELDS,
     mapView: (view, at) => mapGhPrView(view as never, at),
     sameStatus: samePrStatus,
     nextPoll: (outcome, failures, now, config, random) =>
       nextPrPoll(outcome as never, failures, now, config as never, random),
+    classify: classifyGhFailure,
   },
 }

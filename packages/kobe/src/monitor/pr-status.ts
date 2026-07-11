@@ -163,9 +163,10 @@ export function samePrStatus(a: TaskPRStatus | undefined, b: TaskPRStatus | unde
 // ---------------------------------------------------------------------------
 
 /**
- * The diagnosable kinds of `gh pr view` failure. Distinct from a genuine "no
- * PR for this branch" (that's `empty`), so the daemon can log *why* PR status
- * is unavailable and back off appropriately:
+ * The diagnosable kinds of `gh pr list` failure. Distinct from a genuine "no
+ * PR for this branch" (that's a structural empty-array SUCCESS, never a
+ * failure kind — see the `pr-status-collector.ts` file header), so the daemon
+ * can log *why* PR status is unavailable and back off appropriately:
  *   - `missing-binary` — `gh` is not on PATH (deterministic-ish; backoff caps it).
  *   - `auth`           — not logged in / bad credentials (`gh auth login`).
  *   - `timeout`        — our own abort fired (the network stalled).
@@ -174,10 +175,14 @@ export function samePrStatus(a: TaskPRStatus | undefined, b: TaskPRStatus | unde
  *   - `no-remote`      — the worktree has no GitHub remote at all. DETERMINISTIC:
  *                        this repo will never sprout a GitHub PR, so it settles
  *                        to a long idle cadence rather than retrying with backoff.
+ *   - `unknown`        — a non-zero exit that matched none of the above
+ *                        patterns (gh's error text changed, a proxy, a
+ *                        non-English locale, …). Still a real error — it backs
+ *                        off like any other, it just can't be labeled further.
  */
-export type PrViewErrorKind = "missing-binary" | "auth" | "timeout" | "network" | "parse" | "no-remote"
+export type PrViewErrorKind = "missing-binary" | "auth" | "timeout" | "network" | "parse" | "no-remote" | "unknown"
 
-/** The raw signals from one non-success `gh pr view` run, fed to {@link classifyGhFailure}. */
+/** The raw signals from one non-success `gh pr list` run, fed to {@link classifyGhFailure}. */
 export interface GhFailureSignals {
   /** The child failed to spawn (e.g. ENOENT) — and it was NOT our abort. */
   readonly spawnError?: boolean
@@ -222,30 +227,29 @@ const NETWORK_PATTERNS = [
   "rate limit",
   "try again",
 ]
-/** stderr fragments that mean a genuine "no PR for this branch" (not an error). */
-const NO_PR_PATTERNS = ["no pull requests found", "no open pull requests", "no pull request found"]
-
 function matchesAny(haystack: string, needles: readonly string[]): boolean {
   return needles.some((n) => haystack.includes(n))
 }
 
 /**
- * Classify a non-success `gh pr view` run as either a genuine `empty` (gh ran
- * and there is no PR for the branch) or a typed transport/tooling `error`.
- * Pure + unit-tested. We detect the breakage modes explicitly; an unrecognized
- * non-zero exit defaults to `empty`, matching gh's dominant exit-1 "no PR"
- * case, so we never turn a real "no PR" into a sticky error.
+ * Classify a non-success `gh pr list` run into a typed transport/tooling
+ * `error`. Pure + unit-tested. There is no `empty` outcome here anymore: "no
+ * PR for this branch" is a structural SUCCESS (`gh pr list` exits 0 with an
+ * empty JSON array — see `pr-status-collector.ts`), never inferred from a
+ * failure's stderr. So every non-zero exit is a genuine error; an
+ * unrecognized one still classifies as `error` (kind `"unknown"`) rather than
+ * silently collapsing to "no PR" — a broken `gh` must never look like a clean
+ * "no PR yet" to the poller.
  */
-export function classifyGhFailure(s: GhFailureSignals): { kind: "empty" } | { kind: "error"; error: PrViewErrorKind } {
+export function classifyGhFailure(s: GhFailureSignals): { kind: "error"; error: PrViewErrorKind } {
   if (s.parseError) return { kind: "error", error: "parse" }
   if (s.timedOut) return { kind: "error", error: "timeout" }
   if (s.spawnError) return { kind: "error", error: "missing-binary" }
   const err = (s.stderr ?? "").toLowerCase()
-  if (matchesAny(err, NO_PR_PATTERNS)) return { kind: "empty" }
   if (matchesAny(err, NO_REMOTE_PATTERNS)) return { kind: "error", error: "no-remote" }
   if (matchesAny(err, AUTH_PATTERNS)) return { kind: "error", error: "auth" }
   if (matchesAny(err, NETWORK_PATTERNS)) return { kind: "error", error: "network" }
-  return { kind: "empty" }
+  return { kind: "error", error: "unknown" }
 }
 
 /** Cadence knobs for {@link nextPrPoll}. All ms; clock domain is the caller's. */
