@@ -10,6 +10,8 @@
 
 import type { KeyEvent } from "@opentui/core"
 
+import { defaultChordsOf } from "../../context/keybindings.ts"
+
 /**
  * Kitty keyboard-protocol CSI-u sequence (e.g. ctrl+c = `\x1b[99;5u`,
  * esc = `\x1b[27u`). The host renderer enables kitty
@@ -135,58 +137,71 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
  *   - `ctrl+pageup`/`ctrl+pagedown` are already trapped earlier in the
  *     same bindings array (scrollback) — first-match-wins handles them.
  */
-export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
-  // THE escape hatch out of the terminal: from anywhere inside
-  // the engine CLI, ctrl+q returns to the tasks list. Everything else the
-  // engine may want (shift+tab plan-mode, ctrl+hjkl, f1, ctrl+p, ctrl+,)
-  // now PASSES THROUGH — kobe must not eat the
-  // engine's own chords; kobe-global chords remain available from every
-  // other pane.
-  "ctrl+q",
+/**
+ * Keymap ids whose DEFAULT chords form {@link RESERVED_GLOBAL_CHORDS}.
+ * Ids, not chord literals, so `KobeKeymap` (keybindings-table.ts) stays
+ * the single source of truth (docs/KEYBINDINGS.md); the reservation reads
+ * `defaultChordsOf` — the pristine defaults, NOT the live rows — so a user
+ * override never changes what the terminal swallows (exactly the old
+ * literal behavior). `terminal-keys-pure.test.ts` pins the resolved set.
+ */
+const RESERVED_BINDING_IDS = [
+  // THE escape hatch out of the terminal (`focus.sidebar`): from anywhere
+  // inside the engine CLI, ctrl+q returns to the tasks list. Everything
+  // else the engine may want (shift+tab plan-mode, ctrl+hjkl, f1, ctrl+p,
+  // ctrl+,) now PASSES THROUGH — kobe must not eat the engine's own
+  // chords; kobe-global chords remain available from every other pane.
+  "focus.sidebar", // ctrl+q
   // Terminal tab management (the PTY chattab, issue #16) — parity with the
-  // tmux root key-table which also intercepted these.
-  "ctrl+t",
-  "ctrl+w",
-  "ctrl+]",
-  "ctrl+[",
-  "f2",
+  // tmux root key-table which also intercepted these. ctrl+w / f2 double
+  // as `workspace.split.close` / `workspace.split.rename` when split —
+  // same chords, so reserving the tab-management ids covers both.
+  "chat.tab.new", // ctrl+t
+  "chat.tab.close", // ctrl+w
+  "chat.tab.cycle-next", // ctrl+]
+  "chat.tab.cycle-prev", // ctrl+[
+  "chat.tab.rename", // f2
   // Engine picker for a new chat tab (tmux's `ctrl+shift+t` equivalent —
   // ctrl+e instead, since the keymap layer can't distinguish shift+letter
   // from the bare letter).
-  "ctrl+e",
-  // Quick-fork (chat.fork.new, KOB-74/issue #17): opens the quick-task
-  // composer seeded from the active task. Same reservation shape as ctrl+e —
-  // without it the embedded terminal forwards ctrl+f to the engine CLI
-  // (emacs-style forward-char) and the binding never fires.
-  "ctrl+f",
+  "chat.tab.chooseEngine", // ctrl+e
+  // Quick-fork (KOB-74/issue #17): opens the quick-task composer seeded
+  // from the active task. Same reservation shape as ctrl+e — without it
+  // the embedded terminal forwards ctrl+f to the engine CLI (emacs-style
+  // forward-char) and the binding never fires.
+  "chat.fork.new", // ctrl+f
   // Split panes inside the tab (tmux % / "): ctrl+\ splits right (the
   // glyph is a vertical divider), ctrl+= splits down (horizontal strokes),
   // f3 cycles pane focus (tmux prefix+o). Reserving ctrl+\ costs the
   // embedded shell SIGQUIT — accepted trade, documented in
   // docs/KEYBINDINGS.md. Both chords need the kitty keyboard protocol
   // (legacy terminals cannot encode ctrl+= at all).
-  "ctrl+\\",
-  "ctrl+=",
-  "f3",
-  // Pane cycle (`focus.next`): the one cross-pane chord besides ctrl+q
-  // that works from inside the terminal — without it, workspace → files
-  // always costs two hops (ctrl+q, then ctrl+k). `tab` itself stays
-  // passthrough (shell completion); F4 fills the F2/F3/F5 row.
-  "f4",
+  "workspace.split.right", // ctrl+\
+  "workspace.split.down", // ctrl+=
+  "workspace.split.focus-next", // f3
+  // Pane cycle: the one cross-pane chord besides ctrl+q that works from
+  // inside the terminal — without it, workspace → files always costs two
+  // hops (ctrl+q, then ctrl+k). `tab` itself stays passthrough (shell
+  // completion); F4 fills the F2/F3/F5 row.
+  "focus.next", // f4
   // Terminal reset (confirm-gated).
-  "f5",
-  // Zen toggle (`workspace.zenToggle`) — the pure-TUI 3-pane host's
-  // distraction-free view; F6 continues the F2-F5 row (rename/split/
-  // pane-cycle/reset) and was unclaimed.
-  "f6",
-  // Jump to the next waiting task (`attention.next`) — reserved so the
-  // "I'm blocked here, take me to whoever else is waiting" chord fires even
-  // from inside a running engine. F7 continues the F2-F6 kobe row and was
-  // unclaimed. NOT ctrl+g (its first binding): that's the engine/readline
+  "terminal.reset", // f5
+  // Zen toggle — the pure-TUI 3-pane host's distraction-free view; F6
+  // continues the F2-F5 row (rename/split/pane-cycle/reset) and was
+  // unclaimed.
+  "workspace.zenToggle", // f6
+  // Jump to the next waiting task — reserved so the "I'm blocked here,
+  // take me to whoever else is waiting" chord fires even from inside a
+  // running engine. F7 continues the F2-F6 kobe row and was unclaimed.
+  // NOT ctrl+g (its first binding): that's the engine/readline
   // abort-editing chord — reserving it swallowed the user's ctrl+g inside
   // claude, so it moved to F7 where nothing in the engine collides.
-  "f7",
+  "attention.next", // f7
 ] as const
+
+export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
+  ...new Set(RESERVED_BINDING_IDS.flatMap((id) => defaultChordsOf(id))),
+]
 
 /**
  * Names opentui's keypress events use that we want forwarded to the
