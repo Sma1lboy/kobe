@@ -3,6 +3,8 @@
 Single source of truth for "what keys do what, where, and why."
 Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
+> **PureTUI prefix (2026-07-11).** ChatPane and cross-pane control rows use the configurable prefix sequence `ctrl+a`, then the action's second key (for example `ctrl+t` becomes `ctrl+a t`); Tasks, Files, and non-conflicting Terminal-local rows retain their direct Ctrl chords. A row may also expose both forms as deliberate aliases, but there is no focus-time fallback or priority rule. tmux Handover bindings remain documented as tmux behavior below and are unaffected.
+
 > **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now; **`focus.next` revived 2026-07-06** for the pure TUI, on `f4`, forward-only — see the pure-TUI navigation decision log), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
 
 Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings installed by [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts). Their DEFAULT chords live in [`packages/kobe/src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) (`TMUX_SINGLE_BINDING_DEFAULTS` / `TMUX_FOCUS_DEFAULTS`, user-overridable via `tmux.*` ids — see "User customization" below), and the in-session Tasks pane footer ([`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx)) renders from the same resolved set. Change a handover default in the defaults table, not at the install site.
@@ -20,14 +22,14 @@ There are four panes:
 | k       | Files       | `"files"`     | `ctrl+k`    |
 | l       | Terminal    | `"terminal"`  | `ctrl+l`    |
 
-`ctrl+hjkl` is **global** (`scope: "global"`, id `focus.numeric`). It fires from any pane, including when the chat composer has the
-keyboard. ctrl+letter chords map to stable C0 control bytes that every terminal sends without protocol negotiation, so the chord
-works without iTerm CSI-u, kitty keyboard, tmux extended-keys, or any per-user setup. The only thing that suppresses it is an
-open dialog — binding registrations include `enabled: dialog.stack.length === 0` so dialog-internal keys
-(esc to dismiss, enter to confirm) win on the dialog stack.
+`prefix + h/j/k/l` is the cross-pane navigator (`scope: "global"`, id `focus.numeric`), with h/j/k/l mapped to sidebar/workspace/
+files/terminal. It remains prefix-only because direct control bytes collide with ChatPane and terminal input. An open dialog
+suppresses it — binding registrations include `enabled: dialog.stack.length === 0` so dialog-internal keys (esc to dismiss, enter to
+confirm) win on the dialog stack.
 
-`ctrl+q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`). In the native workspace, a second `ctrl+q`
-from sidebar focus exits the attached native UI, matching the direct-tmux handover's two-stage detach shape. `esc` is
+`prefix + q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`). In Tasks, `ctrl+q` exits the attached native UI,
+while plain `q` opens the quit confirmation.
+`esc` is
 **not** a global "back to sidebar" — it would yank focus out of the chat composer mid-edit. ESC is reserved for: closing
 the top dialog (DialogProvider) and interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm)
 and plain `n` (new task).
@@ -55,8 +57,8 @@ site — they should agree.
 
 | Chord            | Overlap                                 | Resolution                                                                                                                                                                          |
 | ---------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctrl+hjkl`      | `focus.numeric` (global) — works without any terminal config | Pane focus uses `ctrl+hjkl` (vim-style direction keys mapped onto pane ordinals h/j/k/l = sidebar/workspace/files/terminal). **Why not ctrl+digit?** ctrl+digit needs CSI-u / kitty keyboard support; even with kobe's `useKittyKeyboard: {}` enabled, iTerm2 has a quirk where ctrl+1 / ctrl+9 / ctrl+0 fall through to a bare digit byte while ctrl+2..8 emit CSI-u correctly. **Why not alt+digit?** Option+digit on macOS gets eaten by launchers like Raycast before reaching the terminal. ctrl+letter has stable C0 control byte mappings that every terminal sends, no protocol negotiation, no per-key quirks. |
-| `ctrl+k` palette vs focus | `palette.open` moved to ctrl+p, then the palette was retired with the outer monitor | `ctrl+k` was the palette chord, then the "focus files pane" chord (k = ordinal 3). The command palette is gone (2026-06 retirement); `ctrl+k` keeps its `focus.numeric` role. |
+| `prefix + h/j/k/l` | `focus.numeric` (global) vs ChatPane / terminal input | Pane focus uses the configurable prefix followed by vim-style h/j/k/l, mapped to sidebar/workspace/files/terminal. The prefix keeps raw control bytes available to ChatPane and the terminal child process. **Why not ctrl+digit?** ctrl+digit needs CSI-u / kitty keyboard support; iTerm2 has a quirk where ctrl+1 / ctrl+9 / ctrl+0 fall through to a bare digit byte while ctrl+2..8 emit CSI-u correctly. |
+| `prefix + k` focus | `ctrl+k` remains available to ChatPane / terminal input | The retired palette no longer owns `ctrl+k`; pane focus is the prefix row's `k` second stroke. |
 | `esc`            | dialog dismiss vs chat interrupt        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog and chat focused while streaming, `chat.interrupt` cancels the turn. Idle ESC is a no-op so the composer doesn't lose focus mid-edit. |
 | `ctrl+c`         | copy selection vs double-tap quit       | RETIRED with the outer monitor (`app.copy_or_quit` + `useKobeKeybindings` are gone). In pane hosts `ctrl+c` is host-local (Ops/settings hosts exit); inside a Handover the terminal/tmux own it. |
 | `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
@@ -138,8 +140,15 @@ to apply edits. Pure parsing/validation logic lives in
 (vitest-covered, no opentui imports, mirroring the keymap-dispatch split).
 
 ```yaml
+prefix:                   # Workspace Host (`KOBE_TUI=1`) only
+  key: ctrl+a             # first stroke; null disables prefix bindings
+  timeoutMs: 1000         # second stroke deadline (100–10000 ms)
+  bindings:
+    chat.tab.new: t       # actual chord: ctrl+a, then t
 bindings:                 # applies on every platform
-  chat.fork.new: ctrl+g   # string = one chord
+  chat.fork.new:
+    direct: ctrl+g        # direct alias
+    prefix: f             # Ctrl+A → F alias
   sidebar.select: [enter] # list  = several chords (all fire the action)
   files.createPR: null    # null / [] = unbind (hint disappears too)
 darwin:                   # platform overlay — wins over `bindings` per id
@@ -156,6 +165,11 @@ Semantics and guard rails:
   Settings → Keybindings (read-only section showing the config path, applied
   overrides, and every load warning; warnings also go to `console.warn` →
   the pane log).
+- **Each binding can expose both aliases**: use `bindings.<id>.direct` and
+  `bindings.<id>.prefix` together or independently. The older scalar form
+  (`bindings.<id>: ctrl+x`) remains a direct-only shorthand, and
+  `prefix.bindings` remains a prefix-only shorthand. Neither form removes
+  the other alias.
 - **Chord grammar mirrors `matchKey()`**: `mod+...+key`, modifier aliases
   (`control`/`command`/`meta`/`option`…) are canonicalized to
   `ctrl`/`cmd`/`alt`/`shift` in the dispatcher's order. `esc`→`escape`,

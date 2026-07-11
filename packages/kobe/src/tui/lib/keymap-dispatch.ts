@@ -14,6 +14,8 @@ import { isDev } from "../../env.ts"
 
 export type Binding = {
   key: string
+  /** True when `key` is the second stroke of the PureTUI prefix. */
+  prefix?: boolean
   /**
    * Handler. The second argument is the binding's {@link Binding.slot} —
    * present when the registration site assigned one (`bindByIds` does).
@@ -159,6 +161,49 @@ export function matchKey(evt: KeyEvent): string[] {
  */
 let dispatching = false
 
+export type PrefixConfiguration = {
+  /** First stroke; null disables PureTUI prefix dispatch. */
+  key: string | null
+  /** Maximum elapsed milliseconds between the two strokes. */
+  timeoutMs: number
+}
+
+export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 1000 }
+
+let prefixConfiguration: PrefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
+let prefixArmedAt: number | null = null
+let prefixTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Apply a validated configuration and cancel an in-flight sequence. */
+export function configurePrefix(next: PrefixConfiguration): void {
+  prefixConfiguration = { ...next }
+  resetPrefixState()
+}
+
+/** Restore the built-in PureTUI prefix configuration. */
+export function resetPrefixConfiguration(): void {
+  prefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
+  resetPrefixState()
+}
+
+/** Current PureTUI prefix configuration for help and shortcut displays. */
+export function currentPrefixConfiguration(): Readonly<PrefixConfiguration> {
+  return prefixConfiguration
+}
+
+/** Cancel a prefix sequence when reload, a modal, or teardown intervenes. */
+export function resetPrefixState(): void {
+  if (prefixTimer !== null) clearTimeout(prefixTimer)
+  prefixTimer = null
+  prefixArmedAt = null
+}
+
+function armPrefix(now: number): void {
+  resetPrefixState()
+  prefixArmedAt = now
+  prefixTimer = setTimeout(resetPrefixState, prefixConfiguration.timeoutMs)
+}
+
 /** Chords already flagged by the shadowed-match warning (once per process
  *  per chord — a stuck contract violation must not spam every keypress). */
 const shadowWarned = new Set<string>()
@@ -178,11 +223,16 @@ const shadowWarned = new Set<string>()
  * dispatch's read-one-config-on-hit budget on the per-keypress hot path
  * (test/tui/perf-budgets.test.ts).
  */
-function warnShadowedMatch(snapshot: readonly RegisteredBinding[], hitIndex: number, candidates: string[]): void {
+function warnShadowedMatch(
+  snapshot: readonly RegisteredBinding[],
+  hitIndex: number,
+  candidates: string[],
+  prefix: boolean,
+): void {
   for (let j = hitIndex - 1; j >= 0; j--) {
     const cfg = snapshot[j]?.config()
     if (!cfg || cfg.enabled === false) continue
-    const shadowed = cfg.bindings.find((b) => candidates.includes(b.key))
+    const shadowed = cfg.bindings.find((b) => Boolean(b.prefix) === prefix && candidates.includes(b.key))
     if (shadowed) {
       if (!shadowWarned.has(shadowed.key)) {
         shadowWarned.add(shadowed.key)
@@ -194,6 +244,40 @@ function warnShadowedMatch(snapshot: readonly RegisteredBinding[], hitIndex: num
     }
     if (cfg.modal) return
   }
+}
+
+/** Whether an enabled prefix row is reachable above the modal barrier. */
+function prefixReachable(snapshot: readonly RegisteredBinding[]): boolean {
+  for (let i = snapshot.length - 1; i >= 0; i--) {
+    const cfg = snapshot[i]?.config()
+    if (!cfg || cfg.enabled === false) continue
+    if (cfg.bindings.some((binding) => binding.prefix === true)) return true
+    if (cfg.modal) return false
+  }
+  return false
+}
+
+/** Match one Binding Stack mode, preserving normal LIFO and modal semantics. */
+function dispatchMode(
+  snapshot: readonly RegisteredBinding[],
+  evt: KeyEvent,
+  candidates: string[],
+  prefix: boolean,
+): boolean {
+  for (let i = snapshot.length - 1; i >= 0; i--) {
+    const reg = snapshot[i]
+    if (!reg) continue
+    const cfg = reg.config()
+    if (cfg.enabled === false) continue
+    const hit = cfg.bindings.find((binding) => Boolean(binding.prefix) === prefix && candidates.includes(binding.key))
+    if (hit) {
+      if (!cfg.modal && isDev()) warnShadowedMatch(snapshot, i, candidates, prefix)
+      hit.cmd(evt, hit.slot)
+      return true
+    }
+    if (cfg.modal) return false
+  }
+  return false
 }
 
 /**
@@ -223,38 +307,44 @@ export function dispatchKeyEvent(
     option?: boolean
     shift?: boolean
   },
+  now = Date.now(),
 ): boolean {
-  if (evt.defaultPrevented) return false
-  if (dispatching) return false
-  // Freeze the stack for this dispatch so a handler that mutates the live
-  // array (mount/unmount during cmd) can't corrupt the scan in flight.
+  if (evt.defaultPrevented || dispatching) return false
   const snapshot = bindingStack.slice()
   const candidates = matchKey(evt as KeyEvent)
   dispatching = true
   try {
-    for (let i = snapshot.length - 1; i >= 0; i--) {
-      const reg = snapshot[i]
-      if (!reg) continue
-      const cfg = reg.config()
-      if (cfg.enabled === false) continue
-      const hit = cfg.bindings.find((b) => candidates.includes(b.key))
-      if (hit) {
-        // Shadow check BEFORE cmd: the handler can re-gate the shadowed
-        // entry (close-split collapses the tree → tab-close re-enables),
-        // which would mask the violation.
-        if (!cfg.modal && isDev()) warnShadowedMatch(snapshot, i, candidates)
-        hit.cmd(evt as KeyEvent, hit.slot)
-        // Consume the event so native widgets (e.g. opentui's textarea
-        // onSubmit) don't also receive it in the same tick. Without this,
-        // an Enter that fires `sidebar.select` — whose handler pulls
-        // focus to the workspace — would then ALSO submit the
-        // freshly-focused composer's draft.
+    if (prefixArmedAt !== null) {
+      const expired = now - prefixArmedAt > prefixConfiguration.timeoutMs
+      prefixArmedAt = null
+      if (expired) {
+        if (prefixTimer !== null) clearTimeout(prefixTimer)
+        prefixTimer = null
+      } else {
+        // Escape cancels an armed sequence instead of also closing a dialog.
+        if (candidates.includes("escape")) {
+          resetPrefixState()
+          evt.preventDefault()
+          return true
+        }
+        // A miss is consumed so it cannot type into an input or Terminal pane
+        // after the user deliberately started a prefix sequence.
+        resetPrefixState()
+        dispatchMode(snapshot, evt as KeyEvent, candidates, true)
         evt.preventDefault()
         return true
       }
-      // Modal barrier — nothing below may see this key; native routing
-      // (the dialog's own focused input) still does. See BindingsConfig.
-      if (cfg.modal) return false
+    }
+
+    if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key) && prefixReachable(snapshot)) {
+      armPrefix(now)
+      evt.preventDefault()
+      return true
+    }
+
+    if (dispatchMode(snapshot, evt as KeyEvent, candidates, false)) {
+      evt.preventDefault()
+      return true
     }
     return false
   } finally {
