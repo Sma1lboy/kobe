@@ -81,7 +81,7 @@ beforeEach(() => {
   mocks.ensureSession.mockReset().mockResolvedValue(true)
   mocks.resolveEngineLaunchInit.mockReset().mockResolvedValue({ initScript: "./setup.sh" })
   mocks.waitForEnginePane.mockReset().mockResolvedValue({ pane: "%7", ready: true })
-  mocks.pasteAndSubmit.mockReset().mockResolvedValue(undefined)
+  mocks.pasteAndSubmit.mockReset().mockResolvedValue(true)
   mocks.interactiveEngineCommand.mockReset().mockReturnValue(["claude", "--continue"])
 })
 
@@ -172,9 +172,17 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
         launchInit: { initScript: "./setup.sh" },
       }),
     )
-    expect(mocks.waitForEnginePane).toHaveBeenCalledWith(tmuxSessionName("t1"), true)
+    // Fixture ships an initScript, so the pane wait gets the full init-script
+    // budget (REPO_INIT_TIMEOUT_SECONDS = 120) instead of the short default.
+    expect(mocks.waitForEnginePane).toHaveBeenCalledWith(tmuxSessionName("t1"), true, 120)
     expect(mocks.pasteAndSubmit).toHaveBeenCalledWith("%7", "go")
-    expect(result).toEqual({ session: tmuxSessionName("t1"), pane: "%7", started: true, engineReady: true })
+    expect(result).toEqual({
+      session: tmuxSessionName("t1"),
+      pane: "%7",
+      started: true,
+      engineReady: true,
+      delivered: true,
+    })
   })
 })
 

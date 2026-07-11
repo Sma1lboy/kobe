@@ -164,7 +164,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "add",
     summary:
-      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Alias: spawn-task.",
+      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Does NOT steal focus — pass --activate to make it the active task. Alias: spawn-task.",
     flags: [
       F.repo(),
       F.title(),
@@ -184,6 +184,12 @@ export const VERBS: readonly VerbSpec[] = [
         description: "Initial lifecycle status.",
       },
       { name: "pin", type: "bool", description: "Pin the task to the top of the sidebar." },
+      {
+        name: "activate",
+        type: "bool",
+        default: "false",
+        description: "Make this the active task (pulls every mounted TUI's Tasks-pane focus). Off by default.",
+      },
       F.prompt(
         false,
         "Optional first message — when set, materializes the worktree, starts the engine, and pastes it.",
