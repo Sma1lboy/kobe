@@ -126,7 +126,7 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
   // expands it to the individual untracked files — matching the All tab's
   // `git ls-files --others` enumeration and respecting .gitignore the same way.
   const out = await runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath, signal)
-  const entries = parsePorcelain(out)
+  const entries = parseStatusEntries(out)
   // Merge in `git diff HEAD --numstat` so each row carries +/- counts.
   // Untracked files don't appear in `git diff` output — for those we
   // count line counts on disk so the user still sees how many lines
@@ -373,7 +373,7 @@ function sortTree(node: TreeNode): void {
  * editorial choices: collapse the two status chars to one headline, drop
  * statuses it doesn't colour, and skip directory rows.
  */
-export function parsePorcelain(raw: string): StatusEntry[] {
+export function parseStatusEntries(raw: string): StatusEntry[] {
   const out: StatusEntry[] = []
   for (const row of parsePorcelainRows(raw)) {
     let status: FileStatus

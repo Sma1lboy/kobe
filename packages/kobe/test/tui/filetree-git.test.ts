@@ -8,7 +8,7 @@
  * to the same canonical post-rename path porcelain reports — otherwise a
  * renamed file silently shows no +/- line counts.
  *
- * Also covers `parsePorcelain` (headline collapsing), `buildTree` (dir/file
+ * Also covers `parseStatusEntries` (headline collapsing), `buildTree` (dir/file
  * grouping), and the `listFiles`/`statusFiles` git-invoking wrappers, whose
  * only seam is `runWorktreeGit`/`readWorktreeFile` from `worktree/content.ts` —
  * mocked below (spreading the real module so any export the code path touches
@@ -31,7 +31,7 @@ import {
   listFiles,
   parseNameStatus,
   parseNumstat,
-  parsePorcelain,
+  parseStatusEntries,
   resolveBase,
   statusFiles,
   statusFilesBranch,
@@ -95,34 +95,34 @@ describe("parseNumstat", () => {
   })
 })
 
-describe("parsePorcelain", () => {
+describe("parseStatusEntries", () => {
   test("collapses to worktree status when present, else index status", () => {
-    expect(parsePorcelain(" M a.ts\nM  b.ts\n")).toEqual([
+    expect(parseStatusEntries(" M a.ts\nM  b.ts\n")).toEqual([
       { path: "a.ts", status: "M" },
       { path: "b.ts", status: "M" },
     ])
   })
 
   test("reports untracked rows as ?", () => {
-    expect(parsePorcelain("?? new.txt\n")).toEqual([{ path: "new.txt", status: "?" }])
+    expect(parseStatusEntries("?? new.txt\n")).toEqual([{ path: "new.txt", status: "?" }])
   })
 
   test("keeps only the new path for a rename row", () => {
-    expect(parsePorcelain("R  old.txt -> new.txt\n")).toEqual([{ path: "new.txt", status: "R" }])
+    expect(parseStatusEntries("R  old.txt -> new.txt\n")).toEqual([{ path: "new.txt", status: "R" }])
   })
 
   test("skips a row whose collapsed status is unrecognized", () => {
     // "!" is git's ignored-file marker in porcelain v2 extensions; v1 never
     // emits it, so this exercises the "skip rather than display garbage" branch.
-    expect(parsePorcelain("!! ignored.txt\n")).toEqual([])
+    expect(parseStatusEntries("!! ignored.txt\n")).toEqual([])
   })
 
   test("skips a trailing-slash directory row defensively", () => {
-    expect(parsePorcelain("?? dir/\n")).toEqual([])
+    expect(parseStatusEntries("?? dir/\n")).toEqual([])
   })
 
   test("empty input yields no entries", () => {
-    expect(parsePorcelain("")).toEqual([])
+    expect(parseStatusEntries("")).toEqual([])
   })
 })
 

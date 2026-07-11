@@ -14,7 +14,7 @@
 
 import { bench, describe } from "vitest"
 import { type Binding, type RegisteredBinding, dispatchKeyEvent, matchKey } from "../../src/tui/lib/keymap-dispatch"
-import { parsePorcelain } from "../../src/tui/panes/filetree/git"
+import { parseStatusEntries } from "../../src/tui/panes/filetree/git"
 import { type Row, reconcileRows } from "../../src/tui/panes/filetree/rows"
 import { buildSidebarRowView } from "../../src/tui/panes/sidebar/row-view"
 import type { Task } from "../../src/types/task"
@@ -50,16 +50,16 @@ describe("keymap dispatch (25-group stack)", () => {
   })
 })
 
-/* -- parsePorcelain: per git-status poll on busy worktrees ------------ */
+/* -- parseStatusEntries: per git-status poll on busy worktrees -------- */
 
 const porcelain5k = Array.from({ length: 5_000 }, (_, i) => {
   const status = i % 7 === 0 ? "??" : i % 3 === 0 ? " M" : "M "
   return `${status} src/dir-${i % 40}/file-${i}.ts`
 }).join("\n")
 
-describe("parsePorcelain", () => {
+describe("parseStatusEntries", () => {
   bench("5k-line status", () => {
-    parsePorcelain(porcelain5k)
+    parseStatusEntries(porcelain5k)
   })
 })
 
