@@ -82,6 +82,21 @@ describe("loadStateFile", () => {
     fs.writeFileSync(statePath(), JSON.stringify(["a", "b"]), "utf8")
     expect(loadStateFile()).toEqual({})
   })
+
+  // Why: a corrupt file must not be silently discarded — it's backed up
+  // (aligned with tasks.json's "stale file is left in place" policy) so the
+  // data is forensically recoverable, and the original path is freed for the
+  // next write to rebuild cleanly.
+  test("backs up malformed JSON to a .corrupt-<ts> file instead of deleting it", () => {
+    fs.mkdirSync(path.dirname(statePath()), { recursive: true })
+    fs.writeFileSync(statePath(), "{not valid json", "utf8")
+    expect(loadStateFile()).toEqual({})
+    expect(fs.existsSync(statePath())).toBe(false)
+    const dir = fs.readdirSync(path.dirname(statePath()))
+    const backup = dir.find((f) => f.startsWith("state.json.corrupt-"))
+    expect(backup).toBeDefined()
+    expect(fs.readFileSync(path.join(path.dirname(statePath()), backup as string), "utf8")).toBe("{not valid json")
+  })
 })
 
 describe("patchStateFile — the lost-update fix", () => {
@@ -153,6 +168,17 @@ describe("patchStateFile — the lost-update fix", () => {
     patchStateFile({ k: "v" })
     expect(fs.existsSync(`${statePath()}.tmp`)).toBe(false)
     expect(readDisk()).toEqual({ k: "v" })
+  })
+
+  // Why: a fixed shared tmp path lets two processes' writeFileSync calls
+  // interleave on the same inode before either renames — the tmp name must
+  // be unique per write so concurrent flushes can never collide.
+  test("tmp filename is unique per write (pid + nonce), no leftover after flush", () => {
+    patchStateFile({ a: 1 })
+    patchStateFile({ b: 2 })
+    const leftover = fs.readdirSync(path.dirname(statePath())).filter((f) => f.includes(".tmp"))
+    expect(leftover).toEqual([])
+    expect(readDisk()).toEqual({ a: 1, b: 2 })
   })
 })
 
