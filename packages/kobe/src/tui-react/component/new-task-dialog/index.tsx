@@ -11,26 +11,12 @@
  * from the shared Solid-side modules — both are framework-free .ts.
  */
 
-import type { VendorId } from "@/types/vendor"
-import type { AdoptableWorktree } from "@/types/worktree"
-import type { NewTaskInput } from "../../../tui/component/new-task-dialog/state"
+import type { NewTaskDialogOptions, NewTaskInput } from "../../../tui/component/new-task-dialog/state"
 import type { DialogContext } from "../../ui/dialog"
 import { NewTaskDialogView } from "./dialog"
 
-export type { NewTaskInput } from "../../../tui/component/new-task-dialog/state"
+export type { NewTaskDialogOptions, NewTaskInput } from "../../../tui/component/new-task-dialog/state"
 export { isBlankText, stripNewlines } from "../../../tui/component/new-task-dialog/state"
-
-/** Same option surface as the Solid entry — see its docs for field notes. */
-export type NewTaskDialogOptions = {
-  /** Default parent dir for the Clone tab (kv `lastClonedRepoParent`). */
-  defaultCloneParent?: string
-  /** Engine to pre-select (kv `lastSelectedVendor`); falls back to claude. */
-  defaultVendor?: VendorId
-  /** Vendors detected on this machine; omit/empty falls back to all. */
-  availableVendors?: readonly VendorId[]
-  /** Adopt-tab discovery; omit to disable adoption. */
-  discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
-}
 
 /**
  * Open the new-task dialog and resolve with the user's selection —
