@@ -13,8 +13,8 @@ import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import type { QuickTaskResult } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
+import { useAccessor } from "../lib/use-accessor"
 import { TerminalTabs } from "./TerminalTabs"
-import { useAccessor } from "./use-accessor"
 
 export function ShowWorkspace(props: {
   task: Task | undefined
