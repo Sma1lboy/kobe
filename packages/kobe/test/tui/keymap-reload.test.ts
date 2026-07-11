@@ -15,8 +15,9 @@ import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
 
 describe("resetKeymapToDefaults", () => {
-  test("app quit defaults include native two-stage ctrl+q", () => {
-    expect(findBinding("app.quit")?.keys).toEqual(["q", "ctrl+q"])
+  test("app quit keeps its direct confirm and moves hard exit behind the prefix", () => {
+    expect(findBinding("app.quit")?.keys).toEqual(["q"])
+    expect(findBinding("app.quit")?.prefixKeys).toEqual(["q"])
   })
 
   test("restores a row's chords + hint after an override", () => {

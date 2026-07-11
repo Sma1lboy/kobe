@@ -108,6 +108,8 @@ export type KobeBinding = {
    * that the textarea handles via `onKeyDown`, e.g. `chat.send`.)
    */
   keys: readonly string[]
+  /** Second strokes reached through the configurable PureTUI prefix. */
+  prefixKeys?: readonly string[]
   /** Help-dialog category (groups rows visually). */
   category: string
   /** Help-dialog description text. */
@@ -150,14 +152,16 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "task.openEditor",
     scope: "global",
-    keys: ["ctrl+o"],
+    keys: [],
+    prefixKeys: ["o"],
     category: "Global",
     description: "Open active task worktree in editor",
   },
   {
     id: "settings.open",
     scope: "global",
-    keys: ["ctrl+,"],
+    keys: [],
+    prefixKeys: [","],
     category: "Global",
     description: "Open settings",
   },
@@ -192,7 +196,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // the attached native UI. Pressing q while in the composer just types q.
     id: "app.quit",
     scope: "sidebar",
-    keys: ["q", "ctrl+q"],
+    keys: ["q"],
+    prefixKeys: ["q"],
     category: "Sidebar",
     description: "Quit (with confirm)",
     hint: { keys: "q", label: "quit", status: false },
@@ -205,7 +210,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // non-sidebar pane (files/terminal too).
     id: "focus.sidebar",
     scope: "workspace",
-    keys: ["ctrl+q"],
+    keys: [],
+    prefixKeys: ["q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
     hint: { keys: "ctrl+q", label: "tasks" },
@@ -231,7 +237,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // already lost focus.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
+    keys: [],
+    prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
     hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
@@ -319,7 +326,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "terminal.scroll-up",
     scope: "terminal",
-    keys: ["ctrl+pageup"],
+    keys: [],
+    prefixKeys: ["pageup"],
     category: "Terminal",
     description: "Scroll scrollback up",
     hint: { keys: "ctrl+pgup", label: "scroll", status: false },
@@ -327,7 +335,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "terminal.scroll-down",
     scope: "terminal",
-    keys: ["ctrl+pagedown"],
+    keys: [],
+    prefixKeys: ["pagedown"],
     category: "Terminal",
     description: "Scroll scrollback down",
   },
@@ -379,8 +388,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
  * removed override returns to its default — additive in-place mutation
  * alone can't "un-override" a row.
  */
-const KEYMAP_DEFAULTS: ReadonlyMap<string, { keys: readonly string[]; hint?: KobeBindingHint }> = new Map(
-  KobeKeymap.map((b) => [b.id, { keys: [...b.keys], hint: b.hint ? { ...b.hint } : undefined }]),
+const KEYMAP_DEFAULTS: ReadonlyMap<
+  string,
+  { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
+> = new Map(
+  KobeKeymap.map((b) => [
+    b.id,
+    { keys: [...b.keys], prefixKeys: b.prefixKeys && [...b.prefixKeys], hint: b.hint ? { ...b.hint } : undefined },
+  ]),
 )
 
 /**
@@ -395,8 +410,9 @@ export function resetKeymapToDefaults(): void {
   for (const row of KobeKeymap) {
     const def = KEYMAP_DEFAULTS.get(row.id)
     if (!def) continue
-    const mutable = row as { keys: readonly string[]; hint?: KobeBindingHint }
+    const mutable = row as { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
     mutable.keys = [...def.keys]
+    mutable.prefixKeys = def.prefixKeys && [...def.prefixKeys]
     mutable.hint = def.hint ? { ...def.hint } : undefined
   }
 }
@@ -460,6 +476,11 @@ export function chordsOf(id: string): readonly string[] {
   return findBinding(id)?.keys ?? []
 }
 
+/** Resolve the configured-prefix second strokes for one binding id. */
+export function prefixChordsOf(id: string): readonly string[] {
+  return findBinding(id)?.prefixKeys ?? []
+}
+
 /**
  * Build a list of `Binding` (chord → handler) entries from a map of
  * `binding-id → handler`. Each id's chords from `KobeKeymap` get
@@ -486,12 +507,14 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
     const cmd = handlers[id]
     if (!cmd) continue
     const chords = chordsOf(id)
-    if (chords.length === 0) {
+    const prefixChords = prefixChordsOf(id)
+    if (chords.length === 0 && prefixChords.length === 0) {
       // eslint-disable-next-line no-console
       console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
       continue
     }
     chords.forEach((c, slot) => out.push({ key: c, cmd, slot }))
+    prefixChords.forEach((c, index) => out.push({ key: c, prefix: true, cmd, slot: chords.length + index }))
   }
   return out
 }

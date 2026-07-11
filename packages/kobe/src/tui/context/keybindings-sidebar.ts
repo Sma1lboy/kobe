@@ -106,7 +106,8 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
   {
     id: "sidebar.projectFilter",
     scope: "sidebar",
-    keys: ["ctrl+p"],
+    keys: [],
+    prefixKeys: ["p"],
     category: "Sidebar",
     description: "Cycle task project filter",
     hint: { keys: "ctrl+p", label: "project", status: false },

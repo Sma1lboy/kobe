@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react"
 import { runTmuxCapturing } from "../../tmux/client"
 import { formatChord, tmuxPrefixGlyph } from "../../tui/lib/chord-glyphs"
 import { groupBindings } from "../../tui/lib/help-groups"
+import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { KobeKeymap, useKeymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { tKeys, useT } from "../i18n"
@@ -90,9 +91,17 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 // when present; fall back to the first registered chord.
                 // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
                 // so the help matches the footer.
-                const rawPrimary = row.hint?.keys ?? row.keys[0] ?? "—"
+                const prefix = currentPrefixConfiguration().key
+                const prefixPrimary = prefix && row.prefixKeys?.[0] ? `${prefix} ${row.prefixKeys[0]}` : undefined
+                const rawPrimary = prefixPrimary ?? row.hint?.keys ?? row.keys[0] ?? "—"
                 const primary = rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph)
-                const aliases = (row.hint ? row.keys : row.keys.slice(1)).map((k) => formatChord(k, prefixGlyph))
+                const aliases = (row.hint ? row.keys : row.keys.slice(1))
+                  .concat(
+                    prefix && row.prefixKeys
+                      ? row.prefixKeys.slice(prefixPrimary ? 1 : 0).map((key) => `${prefix} ${key}`)
+                      : [],
+                  )
+                  .map((key) => formatChord(key, prefixGlyph))
                 return (
                   <box key={row.id} flexDirection="row" gap={2} paddingLeft={1}>
                     <box width={14}>
