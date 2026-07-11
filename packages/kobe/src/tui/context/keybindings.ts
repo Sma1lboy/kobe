@@ -108,6 +108,8 @@ export type KobeBinding = {
    * that the textarea handles via `onKeyDown`, e.g. `chat.send`.)
    */
   keys: readonly string[]
+  /** Second strokes reached through the configurable PureTUI prefix. */
+  prefixKeys?: readonly string[]
   /** Help-dialog category (groups rows visually). */
   category: string
   /** Help-dialog description text. */
@@ -150,14 +152,16 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "task.openEditor",
     scope: "global",
-    keys: ["ctrl+o"],
+    keys: [],
+    prefixKeys: ["o"],
     category: "Global",
     description: "Open active task worktree in editor",
   },
   {
     id: "settings.open",
     scope: "global",
-    keys: ["ctrl+,"],
+    keys: [],
+    prefixKeys: [","],
     category: "Global",
     description: "Open settings",
   },
@@ -199,13 +203,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
-    // ctrl+q is the chord-form aliased to sidebar focus, mirroring
-    // esc / ctrl+1 in effect. Scope stays "workspace" for override
-    // validation, but the native workspace enables it from any
-    // non-sidebar pane (files/terminal too).
+    // this workspace-owned action is prefix-only so it cannot steal a
+    // ChatPane control byte. Scope stays "workspace" for override
+    // validation.
     id: "focus.sidebar",
     scope: "workspace",
-    keys: ["ctrl+q"],
+    keys: [],
+    prefixKeys: ["q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
     hint: { keys: "ctrl+q", label: "tasks" },
@@ -213,25 +217,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // `ctrl+hjkl` — vim-style direct pane focus. Reliable across
-    // every terminal (ctrl+letter maps to stable C0 control bytes,
-    // no CSI-u / kitty keyboard / iTerm quirks). The four chords
-    // map to the four panes by ordinal:
+    // Prefix h/j/k/l — vim-style pane focus. This global navigation action
+    // keeps one static form so it cannot steal ChatPane control bytes. The
+    // four second strokes map to panes by ordinal:
     //   ctrl+h → 1 = sidebar (TASKS)
     //   ctrl+j → 2 = workspace
     //   ctrl+k → 3 = files
     //   ctrl+l → 4 = terminal
     // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
     // doesn't fully support — ctrl+1 falls through to a bare `1`
-    // byte) and alt+digit gets eaten by macOS launchers like
-    // Raycast. ctrl+letter just works. The conflict with composer
-    // editing chords (ctrl+h=backspace etc.) is OK in practice
-    // because the user's intent when pressing ctrl+h is "switch
-    // pane," and once focus moves to sidebar the textarea has
-    // already lost focus.
+    // byte) and alt+digit gets eaten by macOS launchers like Raycast.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
+    keys: [],
+    prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
     hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
@@ -379,8 +378,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
  * removed override returns to its default — additive in-place mutation
  * alone can't "un-override" a row.
  */
-const KEYMAP_DEFAULTS: ReadonlyMap<string, { keys: readonly string[]; hint?: KobeBindingHint }> = new Map(
-  KobeKeymap.map((b) => [b.id, { keys: [...b.keys], hint: b.hint ? { ...b.hint } : undefined }]),
+const KEYMAP_DEFAULTS: ReadonlyMap<
+  string,
+  { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
+> = new Map(
+  KobeKeymap.map((b) => [
+    b.id,
+    { keys: [...b.keys], prefixKeys: b.prefixKeys && [...b.prefixKeys], hint: b.hint ? { ...b.hint } : undefined },
+  ]),
 )
 
 /**
@@ -395,8 +400,9 @@ export function resetKeymapToDefaults(): void {
   for (const row of KobeKeymap) {
     const def = KEYMAP_DEFAULTS.get(row.id)
     if (!def) continue
-    const mutable = row as { keys: readonly string[]; hint?: KobeBindingHint }
+    const mutable = row as { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
     mutable.keys = [...def.keys]
+    mutable.prefixKeys = def.prefixKeys && [...def.prefixKeys]
     mutable.hint = def.hint ? { ...def.hint } : undefined
   }
 }
@@ -451,47 +457,4 @@ export function findBinding(id: string): KobeBinding | undefined {
   return KEYMAP_BY_ID.get(id)
 }
 
-/**
- * Resolve the chord list for a binding id. Returns an empty array if the
- * id isn't found — `bindByIds` warns but doesn't throw, so a typo doesn't
- * crash the renderer.
- */
-export function chordsOf(id: string): readonly string[] {
-  return findBinding(id)?.keys ?? []
-}
-
-/**
- * Build a list of `Binding` (chord → handler) entries from a map of
- * `binding-id → handler`. Each id's chords from `KobeKeymap` get
- * registered against the same handler. Pane code uses this so it doesn't
- * have to know the chord strings — those live in `KobeKeymap`.
- *
- * Each entry carries `slot` = the chord's index within the id's (possibly
- * user-overridden) `keys` array, and the dispatcher passes it to the
- * handler as a second argument. Multiplexed handlers (`sidebar.nav`,
- * `files.hierarchy`, …) decide direction from the slot instead of
- * `evt.name`, which is what lets users rebind those ids: the slot LAYOUT
- * is the per-id positional contract (`SLOT_CONTRACTS` in
- * keymap-overrides.ts validates override counts against it). Because the
- * `useBindings` config closure re-runs `bindByIds` on every keypress,
- * slots are always derived from the CURRENT keymap — a live keybindings
- * reload re-slots automatically.
- *
- * Unknown ids log a warning and are skipped (typos shouldn't crash the
- * UI, but they should be loud in dev).
- */
-export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
-  const out: Binding[] = []
-  for (const id in handlers) {
-    const cmd = handlers[id]
-    if (!cmd) continue
-    const chords = chordsOf(id)
-    if (chords.length === 0) {
-      // eslint-disable-next-line no-console
-      console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
-      continue
-    }
-    chords.forEach((c, slot) => out.push({ key: c, cmd, slot }))
-  }
-  return out
-}
+export { bindByIds, chordsOf } from "./keybindings-bindings.ts"

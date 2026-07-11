@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react"
 import { runTmuxCapturing } from "../../tmux/client"
 import { formatChord, tmuxPrefixGlyph } from "../../tui/lib/chord-glyphs"
 import { groupBindings } from "../../tui/lib/help-groups"
+import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { KobeKeymap, useKeymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { tKeys, useT } from "../i18n"
@@ -31,6 +32,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
   const { theme } = useTheme()
   const t = useT()
   const keymapVersion = useKeymapVersion()
+  const pureTuiPrefix = currentPrefixConfiguration()
   // biome-ignore lint/correctness/useExhaustiveDependencies: keymapVersion is the invalidation key — the table is mutated in place.
   const grouped = useMemo(() => groupBindings(KobeKeymap), [keymapVersion])
   // Standalone full-window page (`kobe help-page`) passes its own exit;
@@ -62,9 +64,14 @@ export function HelpDialog(props: { onClose?: () => void }) {
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} flexShrink={1}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {t("help.title")}
-        </text>
+        <box flexDirection="column" gap={0}>
+          <text attributes={TextAttributes.BOLD} fg={theme.text}>
+            {t("help.title")}
+          </text>
+          <text fg={theme.textMuted}>
+            {`PureTUI prefix: ${pureTuiPrefix.key ? formatChord(pureTuiPrefix.key) : "disabled"} · ${pureTuiPrefix.timeoutMs}ms`}
+          </text>
+        </box>
         <text fg={theme.textMuted} onMouseUp={close}>
           {t("help.esc")}
         </text>
@@ -90,9 +97,21 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 // when present; fall back to the first registered chord.
                 // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
                 // so the help matches the footer.
-                const rawPrimary = row.hint?.keys ?? row.keys[0] ?? "—"
-                const primary = rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph)
-                const aliases = (row.hint ? row.keys : row.keys.slice(1)).map((k) => formatChord(k, prefixGlyph))
+                const prefixPrimary =
+                  pureTuiPrefix.key && row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
+                const rawPrimary = prefixPrimary ?? row.hint?.keys ?? row.keys[0] ?? "—"
+                const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph))
+                // A prefix primary leaves every direct chord as a visible
+                // alias. Without this, a user-configured direct+prefix row
+                // silently lost its first direct chord in F1.
+                const directAliases = (prefixPrimary || row.hint ? row.keys : row.keys.slice(1)).map((key) =>
+                  formatChord(key, prefixGlyph),
+                )
+                const aliases = directAliases.concat(
+                  pureTuiPrefix.key
+                    ? (row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
+                    : [],
+                )
                 return (
                   <box key={row.id} flexDirection="row" gap={2} paddingLeft={1}>
                     <box width={14}>

@@ -15,8 +15,30 @@ import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 const ID = "sidebar.rename" // overridable, default ["r"], carries a hint
 
 describe("resetKeymapToDefaults", () => {
-  test("app quit defaults include native two-stage ctrl+q", () => {
+  test("Tasks keeps ctrl+q as its direct hard-exit chord", () => {
     expect(findBinding("app.quit")?.keys).toEqual(["q", "ctrl+q"])
+    expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
+  })
+
+  test("ChatPane navigation keeps only its prefix second strokes", () => {
+    expect(findBinding("focus.sidebar")?.keys).toEqual([])
+    expect(findBinding("focus.sidebar")?.prefixKeys).toEqual(["q"])
+    expect(findBinding("focus.numeric")?.keys).toEqual([])
+    expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
+  })
+
+  test("non-ChatPane bindings retain their direct Ctrl chords", () => {
+    expect(findBinding("sidebar.projectFilter")?.keys).toEqual(["ctrl+p"])
+    expect(findBinding("sidebar.projectFilter")?.prefixKeys).toBeUndefined()
+    expect(findBinding("terminal.scroll-up")?.keys).toEqual(["ctrl+pageup"])
+    expect(findBinding("terminal.scroll-up")?.prefixKeys).toBeUndefined()
+  })
+
+  test("terminal scrollback remains a direct ctrl chord outside the ChatPane", () => {
+    expect(findBinding("terminal.scroll-up")?.keys).toEqual(["ctrl+pageup"])
+    expect(findBinding("terminal.scroll-up")?.prefixKeys).toBeUndefined()
+    expect(findBinding("terminal.scroll-down")?.keys).toEqual(["ctrl+pagedown"])
+    expect(findBinding("terminal.scroll-down")?.prefixKeys).toBeUndefined()
   })
 
   test("restores a row's chords + hint after an override", () => {
