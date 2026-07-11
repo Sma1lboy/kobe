@@ -81,7 +81,9 @@ export async function ensureDaemonReachable(): Promise<string> {
     if (await testDaemonResponds(socketPath)) return socketPath
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
   }
-  throw new Error(`kobe: daemon did not start (or stayed wedged) at ${socketPath}`)
+  throw new Error(
+    `kobe: daemon did not start (or stayed wedged) at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
+  )
 }
 
 export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
