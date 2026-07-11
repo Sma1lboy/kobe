@@ -118,4 +118,20 @@ describe("TabStrip native terminal-title status", () => {
     expect(text).toContain("● my session")
     await destroy()
   })
+
+  it("shows no idle-circle placeholder for a freshly-spawned engine tab before its first poll", async () => {
+    // turnStates empty = detector hasn't reported yet. A kobe-launched
+    // engine tab must NOT fall back to the hollow "○" idle glyph in this
+    // window — we already know it's an engine, the placeholder is noise.
+    const { text, destroy } = await renderStrip({
+      tab: codexTab,
+      turnStates: new Map(),
+      liveTitles: new Map(),
+      turnVendors: new Map(),
+      vendor: "codex",
+    })
+    expect(text).not.toContain("○")
+    expect(text).toContain("codex 26")
+    await destroy()
+  })
 })
