@@ -1,4 +1,4 @@
-import { type Chunk, type RGB, ansi256ToRgb } from "./sgr"
+import { ATTR, type Chunk, type RGB, ansi256ToRgb } from "./sgr"
 
 const XTERM_COLOR_MODE_DEFAULT = 0
 const XTERM_COLOR_MODE_PALETTE = 1 << 24
@@ -66,14 +66,15 @@ function colorKey(cell: XtermCellLike, kind: "fg" | "bg"): string {
 
 function cellStyle(cell: XtermCellLike): RenderStyle {
   let attrs = 0
-  if (cell.isBold()) attrs |= 1 << 0
-  if (cell.isDim()) attrs |= 1 << 1
-  if (cell.isItalic()) attrs |= 1 << 2
-  if (cell.isUnderline()) attrs |= 1 << 3
-  if (cell.isBlink()) attrs |= 1 << 4
-  if (cell.isInverse()) attrs |= 1 << 5
-  if (cell.isInvisible()) attrs |= 1 << 6
-  if (cell.isStrikethrough()) attrs |= 1 << 7
+  if (cell.isBold()) attrs |= ATTR.BOLD
+  if (cell.isDim()) attrs |= ATTR.DIM
+  if (cell.isItalic()) attrs |= ATTR.ITALIC
+  if (cell.isUnderline()) attrs |= ATTR.UNDERLINE
+  if (cell.isBlink()) attrs |= ATTR.BLINK
+  if (cell.isInverse()) attrs |= ATTR.INVERSE
+  // xterm's "invisible" flag is the SGR 8 concealed attribute → ATTR.HIDDEN.
+  if (cell.isInvisible()) attrs |= ATTR.HIDDEN
+  if (cell.isStrikethrough()) attrs |= ATTR.STRIKETHROUGH
   return {
     fg: colorKey(cell, "fg"),
     bg: colorKey(cell, "bg"),
