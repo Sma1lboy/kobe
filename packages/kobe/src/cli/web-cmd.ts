@@ -16,6 +16,7 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { errorMessage } from "@/lib/error-message"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
@@ -147,7 +148,7 @@ async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> 
     body = (await res.text()).trim()
   } catch (err) {
     throw new Error(
-      `daemon web transport is not reachable on :${port}; run \`kobe daemon restart\` so the daemon picks up this build (${err instanceof Error ? err.message : String(err)})`,
+      `daemon web transport is not reachable on :${port}; run \`kobe daemon restart\` so the daemon picks up this build (${errorMessage(err)})`,
     )
   }
   if (body !== DAEMON_WEB_HEALTH_MARKER) {
@@ -229,7 +230,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     })
     await new Promise<void>(() => {})
   } catch (err) {
-    process.stderr.write(`kobe web: ${err instanceof Error ? err.message : String(err)}\n`)
+    process.stderr.write(`kobe web: ${errorMessage(err)}\n`)
     process.exit(1)
   }
 }

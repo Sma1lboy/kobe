@@ -19,6 +19,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { useTheme } from "../context/theme"
 import { ModalScopeContext, useBindings } from "../lib/keymap"
+import { useLatest } from "../lib/use-latest"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
@@ -148,8 +149,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
 
   // Latest stack for callbacks (kept in a ref so replace/push/pop/clear can
   // stay identity-stable while reading current state).
-  const stackRef = useRef(stack)
-  stackRef.current = stack
+  const stackRef = useLatest(stack)
 
   const captureFocusIfFirst = useCallback(() => {
     if (stackRef.current.length === 0) {

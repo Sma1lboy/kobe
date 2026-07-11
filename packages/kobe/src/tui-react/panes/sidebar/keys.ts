@@ -21,8 +21,10 @@ import { useRef } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
+import { useLatest } from "../../lib/use-latest"
+import type { SidebarTaskCallbacks } from "./types"
 
-export type SidebarBindingsOpts = {
+export type SidebarBindingsOpts = SidebarTaskCallbacks & {
   /** Whether the sidebar should respond to keys at all. */
   focused: boolean
   /** Live cursor read — ref-backed by the Sidebar (see header). */
@@ -33,21 +35,8 @@ export type SidebarBindingsOpts = {
   flatTaskIds: readonly string[]
   /** Selection callback. Fires on `enter` with the task id under the cursor. */
   onSelect: (id: string) => void
-  onDeleteRequest?: (taskId: string) => void
-  onArchiveRequest?: (taskId: string) => void
-  /** Shift+M — lowercase `m` is captured but ignored (shift dropped on letters). */
-  onLocalMergeRequest?: (taskId: string) => void
-  /** Task reorder mode: j/k move the cursor task instead of the cursor. */
-  moveMode?: boolean
-  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
-  onMoveModeExit?: () => void
-  onRenameRequest?: (taskId: string) => void
-  /** Shift+P only — bare `p` is consumed but does nothing (same as Solid). */
-  onPinRequest?: (taskId: string) => void
-  onPreviewToggleRequest?: (taskId: string) => void
   /** `[` (-1) / `]` (+1). Always live, even during search. */
   onViewSwitch?: (delta: -1 | 1) => void
-  onSortModeToggle?: () => void
   onProjectFilterToggle?: () => void
   /** While true, single-letter chords are de-registered so typing reaches the search input. */
   searchMode?: boolean
@@ -61,8 +50,7 @@ export type SidebarBindingsOpts = {
  * `src/tui/panes/sidebar/keys.ts` for the full per-binding rationale.
  */
 export function useSidebarBindings(opts: SidebarBindingsOpts): void {
-  const optsRef = useRef(opts)
-  optsRef.current = opts
+  const optsRef = useLatest(opts)
 
   // One controller per mount: it owns the g·g chord timer state. Its
   // callbacks read through optsRef so they never go stale across renders.

@@ -20,15 +20,20 @@
  * `[cwd, taskId, geometryReady]` as the effect's dependency array.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { CursorPos, TaskPty, TerminalRow } from "../../../tui/panes/terminal/pty"
 import type { PtyRegistry } from "../../../tui/panes/terminal/registry"
+import { useLatest } from "../../lib/use-latest"
 
 export interface UseTerminalPtyOpts {
   cwd: string | null
   taskId: string | null
   /** Read at acquire/reset time via a ref — see file header. */
   command: readonly string[] | undefined
+  /** Typed into a FRESH spawn (`TaskPtyOpts.initialInput`) — the shell-
+   *  wrapped engine line. Read via a ref like `command`. */
+  initialInput?: string
   resetToken?: number
   /** `deadOnAttach`: the exit was discovered on reattach (engine died
    *  while the TUI was away), not observed live — see `TaskPtyLike`. */
@@ -62,23 +67,17 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
 
   // Latest-render mirrors read by effect bodies that must NOT depend on
   // them (the Solid original's untracked reads inside `on(...)`).
-  const commandRef = useRef(opts.command)
-  commandRef.current = opts.command
-  const bodyGeometryRef = useRef(opts.bodyGeometry)
-  bodyGeometryRef.current = opts.bodyGeometry
-  const registryRef = useRef(opts.registry)
-  registryRef.current = opts.registry
-  const onExitRef = useRef(opts.onExit)
-  onExitRef.current = opts.onExit
-  const onFreshPtyRef = useRef(opts.onFreshPty)
-  onFreshPtyRef.current = opts.onFreshPty
+  const commandRef = useLatest(opts.command)
+  const initialInputRef = useLatest(opts.initialInput)
+  const bodyGeometryRef = useLatest(opts.bodyGeometry)
+  const registryRef = useLatest(opts.registry)
+  const onExitRef = useLatest(opts.onExit)
+  const onFreshPtyRef = useLatest(opts.onFreshPty)
   // Read untracked by the resetToken effect below (see file header); the
   // acquire effect intentionally reads the plain `cwd`/`taskId` values
   // instead, since THAT effect is meant to depend on them.
-  const cwdRef = useRef(opts.cwd)
-  cwdRef.current = opts.cwd
-  const taskIdRef = useRef(opts.taskId)
-  taskIdRef.current = opts.taskId
+  const cwdRef = useLatest(opts.cwd)
+  const taskIdRef = useLatest(opts.taskId)
 
   const geometryReady = opts.bodyGeometry !== null
   const cwd = opts.cwd
@@ -96,9 +95,13 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     if (!geometry) return
     let handle: TaskPty
     try {
-      handle = registryRef.current.acquire(taskId, cwd, { ...geometry, command: commandRef.current })
+      handle = registryRef.current.acquire(taskId, cwd, {
+        ...geometry,
+        command: commandRef.current,
+        initialInput: initialInputRef.current,
+      })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       setAcquireError(message)
       setPty(null)
       setSnapshot([])
@@ -156,13 +159,17 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   const forceReacquire = useCallback(
     (nextCwd: string, nextTaskId: string, geometry: { cols: number; rows: number }): void => {
       try {
-        const fresh = registryRef.current.reset(nextTaskId, nextCwd, { ...geometry, command: commandRef.current })
+        const fresh = registryRef.current.reset(nextTaskId, nextCwd, {
+          ...geometry,
+          command: commandRef.current,
+          initialInput: initialInputRef.current,
+        })
         setPty(fresh)
         setSnapshot([])
         setCursor(null)
         onFreshPtyRef.current()
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         // `registry.reset()` kills the old PTY BEFORE the acquire half runs,
         // so on failure there is no live handle left — clear the pane to the
         // error state (same shape as the acquire effect's failure path)

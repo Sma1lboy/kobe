@@ -220,7 +220,7 @@ export async function enterTask(
   }
   // Reconcile the target to the global zen intent BEFORE fitting, so a project
   // you enter inherits zen and the fit accounts for the collapsed layout.
-  const { syncSessionZen } = await import("../panes/terminal/layout-actions.ts")
+  const { syncSessionZen } = await import("../panes/terminal/layout-zen.ts")
   await syncSessionZen(session)
   // A later switch superseded this one while its (cold) session was being
   // built: don't fight the winner for the active task or the client focus.

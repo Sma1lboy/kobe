@@ -23,9 +23,8 @@
  * (and `quick-task`'s jump) so the surfaces stay in lockstep.
  */
 
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useRef } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
 import { addSavedRepo, getSavedRepos } from "../../state/repos.ts"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
@@ -33,7 +32,7 @@ import { jumpToTask } from "../../tui/lib/task-enter.ts"
 import type { Task } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { useTheme } from "../context/theme"
-import { bootPaneHost } from "../lib/host-boot"
+import { bootPaneHost, connectOrchestratorBestEffort } from "../lib/host-boot"
 import { useDialog } from "../ui/dialog"
 
 export interface NewTaskHostArgs {
@@ -133,15 +132,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
 export async function startNewTaskHost(args: NewTaskHostArgs): Promise<void> {
   await bootPaneHost({
     setup: async () => {
-      let orch: RemoteOrchestrator | null = null
-      try {
-        const client = await connectOrStartDaemon()
-        const remote = new RemoteOrchestrator(client)
-        await remote.init()
-        orch = remote
-      } catch (err) {
-        console.error("[kobe new-task] daemon unavailable; cannot create task:", err)
-      }
+      const orch = await connectOrchestratorBestEffort("new-task")
       return {
         root: () => <NewTaskPage defaultRepo={args.defaultRepo} orchestrator={orch} />,
         onDestroy: () => {

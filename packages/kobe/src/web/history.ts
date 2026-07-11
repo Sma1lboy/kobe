@@ -22,6 +22,7 @@
  */
 
 import { isAbsolute } from "node:path"
+import { errorMessage } from "@/lib/error-message"
 import { engineEntry } from "../engine/registry.ts"
 
 const SESSIONS_ROUTE = "/api/history/sessions"
@@ -58,7 +59,7 @@ async function handleSessions(url: URL): Promise<Response> {
     ])
     return Response.json({ sessions, latestMtime })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -75,7 +76,7 @@ async function handleMessages(url: URL): Promise<Response> {
     const messages = await engineEntry(vendor).history.readHistory(sessionId)
     return Response.json({ messages })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 

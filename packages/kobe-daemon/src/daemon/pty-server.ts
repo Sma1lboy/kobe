@@ -15,9 +15,10 @@
  * the ring-buffer cap bounds what a session can queue.
  *
  * Requests served: `hello` (reachability probe), `pty.open/write/resize/
- * kill/detach/list`, `pty.sweep` (daemon janitor: kill sessions of
- * archived tasks), `daemon.stop` (reset teardown — shared with
- * `stopDaemonProcess`'s graceful path).
+ * kill/detach/list`, `pty.warm` (pre-spawn one idle shell for adoption),
+ * `pty.sweep` (daemon janitor: kill sessions of archived tasks),
+ * `daemon.stop` (reset teardown — shared with `stopDaemonProcess`'s
+ * graceful path).
  */
 
 import { mkdir, unlink, writeFile } from "node:fs/promises"
@@ -199,6 +200,16 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
         return {}
       case "pty.list":
         return { sessions: ptys.list() }
+      case "pty.warm": {
+        const payload = objectPayload(req.payload)
+        ptys.warm(
+          requireString(payload, "cwd"),
+          typeof payload.shell === "string" ? payload.shell : undefined,
+          typeof payload.cols === "number" ? payload.cols : undefined,
+          typeof payload.rows === "number" ? payload.rows : undefined,
+        )
+        return {}
+      }
       case "pty.sweep": {
         const payload = objectPayload(req.payload)
         const ids = Array.isArray(payload.liveTaskIds)

@@ -45,6 +45,8 @@ export interface PtyAttachResult {
   readonly alive: boolean
   /** The session child's pid (null when spawn failed) — see `PtyOpenResult.pid`. */
   readonly pid: number | null
+  /** True when this open spawned/adopted the session — see `PtyOpenResult.created`. */
+  readonly created: boolean
 }
 
 /** Writes one event frame to an attached connection. */
@@ -77,7 +79,9 @@ export interface PtySessionInfo {
 }
 
 interface PtySessionState {
-  readonly key: string
+  /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
+  key: string
+  readonly cwd: string
   proc: ReturnType<typeof Bun.spawn> | null
   alive: boolean
   chunks: Buffer[]
@@ -103,6 +107,15 @@ const TITLE_CARRY_CAP = 1024
 export class PtyHost {
   private readonly sessions = new Map<string, PtySessionState>()
   private readonly opts: PtyHostOptions
+  /**
+   * One pre-initialized spare shell (`pty.warm`) kept OUTSIDE the session
+   * map — invisible to `list`/`sweepTasks`/`liveCount` (it must not pin
+   * the host open or be swept as an orphan). A matching `open` adopts it
+   * under the opener's key and a replacement is warmed right away.
+   * ponytail: single global slot keyed by cwd; per-worktree pools if
+   * multi-repo warm hits matter.
+   */
+  private spare: PtySessionState | null = null
 
   constructor(opts: PtyHostOptions = {}) {
     this.opts = opts
@@ -110,15 +123,18 @@ export class PtyHost {
 
   /**
    * Attach `token`'s connection to the session for `key`, spawning the
-   * child on first open. On reattach the spawn spec is IGNORED (the
-   * session already runs); the caller gets the ring-buffer replay either
-   * way. A fresh TUI can therefore always pass its would-be spawn command
-   * — an existing background session simply wins.
+   * child on first open (adopting the warm spare when it matches). On
+   * reattach the spawn spec is IGNORED (the session already runs); the
+   * caller gets the ring-buffer replay either way. A fresh TUI can
+   * therefore always pass its would-be spawn command — an existing
+   * background session simply wins.
    */
   open(key: string, spec: PtySpawnSpec, token: object, sink: PtySink): PtyAttachResult {
     let session = this.sessions.get(key)
+    let created = false
     if (!session) {
-      session = this.spawn(key, spec)
+      created = true
+      session = this.adoptSpare(key, spec) ?? this.spawn(key, spec)
       this.sessions.set(key, session)
     } else if (session.alive && (session.cols !== spec.cols || session.rows !== spec.rows)) {
       // Reattach from a differently-sized client: last-attach-wins, like
@@ -131,7 +147,58 @@ export class PtyHost {
       replay: Buffer.concat(session.chunks).toString("base64"),
       alive: session.alive,
       pid: session.proc?.pid ?? null,
+      created,
     }
+  }
+
+  /** The bare-shell argv a spec resolves to when it has no command. */
+  private static shellArgv(shell: string | undefined): string {
+    return shell ?? process.env.SHELL ?? "/bin/bash"
+  }
+
+  /**
+   * Keep one idle shell pre-spawned for `cwd`. A live spare for the same
+   * cwd+shell is kept; anything else is replaced (single slot — the most
+   * recently warmed worktree wins). The spare deliberately skips
+   * `onSessionStart` so it never cancels the host's idle-exit.
+   */
+  warm(cwd: string, shell?: string, cols = 80, rows = 24): void {
+    const argv0 = PtyHost.shellArgv(shell)
+    if (this.spare?.alive && this.spare.cwd === cwd && this.spare.command[0] === argv0) return
+    const old = this.spare
+    this.spare = null
+    if (old) this.endChild(old)
+    const session = this.spawn("::spare", { cwd, command: [argv0], cols, rows }, true)
+    this.spare = session.alive ? session : null
+  }
+
+  /**
+   * Hand the spare over to `open(key)` when it matches the spec: same
+   * cwd, and the spec resolves to the spare's bare shell. The adopted
+   * session becomes a REAL one (it now pins the host open) and a
+   * replacement spare is warmed immediately.
+   */
+  private adoptSpare(key: string, spec: PtySpawnSpec): PtySessionState | null {
+    const spare = this.spare
+    if (!spare?.alive || spare.cwd !== spec.cwd) return null
+    const want = spec.command && spec.command.length > 0 ? spec.command : [PtyHost.shellArgv(spec.shell)]
+    if (want.length !== 1 || want[0] !== spare.command[0]) return null
+    this.spare = null
+    spare.key = key
+    if (spare.cols !== spec.cols || spare.rows !== spec.rows) {
+      spare.cols = spec.cols
+      spare.rows = spec.rows
+      try {
+        spare.proc?.terminal?.resize(spec.cols, spec.rows)
+      } catch {
+        this.markExited(spare)
+        return null
+      }
+    }
+    this.opts.log?.("pty", `adopted warm shell for ${key} (pid ${spare.proc?.pid})`)
+    this.opts.onSessionStart?.()
+    this.warm(spec.cwd, spare.command[0], spec.cols, spec.rows)
+    return spare
   }
 
   /** Forward client input (already UTF-8 text from xterm) to the child. */
@@ -200,9 +267,13 @@ export class PtyHost {
     }
   }
 
-  /** Kill every session — daemon shutdown owns its children's lifetime. */
+  /** Kill every session and the warm spare before host shutdown completes. */
   async killAll(): Promise<void> {
-    await Promise.all(Array.from(this.sessions.keys(), (key) => this.kill(key)))
+    const sessions = Array.from(this.sessions.keys(), (key) => this.kill(key))
+    const spare = this.spare
+    this.spare = null
+    if (spare) sessions.push(this.endChild(spare))
+    await Promise.all(sessions)
   }
 
   /** Sessions whose child is still running — the host process's reason
@@ -213,11 +284,13 @@ export class PtyHost {
     return n
   }
 
-  private spawn(key: string, spec: PtySpawnSpec): PtySessionState {
-    const argv =
-      spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? process.env.SHELL ?? "/bin/bash"]
+  /** `spare` skips `onSessionStart` — a warm shell must not pin the host
+   *  open (its adoption fires the callback instead). */
+  private spawn(key: string, spec: PtySpawnSpec, spare = false): PtySessionState {
+    const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [PtyHost.shellArgv(spec.shell)]
     const session: PtySessionState = {
       key,
+      cwd: spec.cwd,
       proc: null,
       alive: true,
       chunks: [],
@@ -252,7 +325,7 @@ export class PtyHost {
         () => this.markExited(session),
       )
       this.opts.log?.("pty", `spawned ${argv[0]} for ${key} (pid ${session.proc.pid})`)
-      this.opts.onSessionStart?.()
+      if (!spare) this.opts.onSessionStart?.()
     } catch (err) {
       session.alive = false
       this.opts.log?.("pty", `spawn failed for ${key}: ${err instanceof Error ? err.message : String(err)}`)

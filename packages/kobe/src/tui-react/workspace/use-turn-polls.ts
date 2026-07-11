@@ -39,6 +39,7 @@ import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import type { TabsState } from "../../tui/workspace/terminal-tabs-core"
 import { soloKey, targetFor } from "../../tui/workspace/turn-target"
 import type { VendorId } from "../../types/vendor"
+import { useLatest } from "../lib/use-latest"
 
 /** Cadence of the lazy attach retry (a tab's PTY spawns after mount). */
 const TURN_POLL_ATTACH_MS = 2000
@@ -76,12 +77,9 @@ export function useTurnPolls(deps: {
 
   // Latest-render mirrors for the long-lived detector closures (created
   // once per attach, must never go stale between renders).
-  const sharedActivityRef = useRef(deps.sharedActivity)
-  sharedActivityRef.current = deps.sharedActivity
-  const onBackgroundDoneRef = useRef(deps.onBackgroundDone)
-  onBackgroundDoneRef.current = deps.onBackgroundDone
-  const stateRef = useRef(deps.state)
-  stateRef.current = deps.state
+  const sharedActivityRef = useLatest(deps.sharedActivity)
+  const onBackgroundDoneRef = useLatest(deps.onBackgroundDone)
+  const stateRef = useLatest(deps.state)
 
   useEffect(() => {
     const timer = setInterval(() => setPollTick((n) => n + 1), TURN_POLL_ATTACH_MS)

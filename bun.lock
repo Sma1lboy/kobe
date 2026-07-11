@@ -27,7 +27,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.7.92",
+      "version": "0.7.94",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -38,7 +38,6 @@
         "@xterm/headless": "^6.0.0",
         "node-pty": "^1.1.0",
         "react": "^19.2.0",
-        "solid-js": "1.9.13",
         "ws": "^8.18.0",
       },
       "devDependencies": {

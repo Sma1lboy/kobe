@@ -1,5 +1,7 @@
-import { shellQuote } from "@sma1lboy/kobe-daemon/daemon/web-session"
+import { quoteShellArgv } from "../../kobe/src/lib/shell-command.ts"
 import { describe, expect, it } from "vitest"
+
+const shellQuote = (argv: readonly string[]) => quoteShellArgv(argv, { bareSafe: true })
 
 /**
  * shellQuote builds the engine launch command line that runs in the worktree,

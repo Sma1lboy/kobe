@@ -214,11 +214,35 @@ export function remoteWorktreePathFor(basePath: string, slug: string): string {
   return `${remoteWorktreeRootFor(basePath)}/${slug}`
 }
 
+/**
+ * Remote analogue of {@link managedWorktreeRootForPath}: is `candidate` under
+ * `<basePath>/.kobe/worktrees`? Pure string compare on POSIX remote paths (no
+ * local realpath possible). Returns the remote root when matched, else null.
+ */
+export function remoteManagedRootForPath(basePath: string, candidate: string): string | null {
+  const root = remoteWorktreeRootFor(basePath)
+  return candidate === root || candidate.startsWith(`${root}/`) ? root : null
+}
+
 function stripTrailingSlash(p: string): string {
   return p.length > 1 && p.endsWith("/") ? p.replace(/\/+$/, "") : p
 }
 
-function canonicalize(p: string): string {
+/** Throw unless `value` is a non-empty absolute path (`name` labels the error). */
+export function requireAbsolute(name: string, value: string): void {
+  if (!value || !path.isAbsolute(value)) {
+    throw new Error(`${name} must be an absolute path, got: ${JSON.stringify(value)}`)
+  }
+}
+
+/**
+ * Resolve symlinks on a path so two strings that name the same node
+ * compare equal. Necessary on macOS where `/tmp` and `/var/folders/...`
+ * are symlinks into `/private/`. Falls back to `path.resolve` if the
+ * path doesn't exist (we're sometimes asked about a target that's not
+ * yet created).
+ */
+export function canonicalize(p: string): string {
   try {
     return fs.realpathSync(p)
   } catch {

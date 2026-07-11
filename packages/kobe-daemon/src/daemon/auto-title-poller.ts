@@ -26,12 +26,11 @@
  * (e.g. a `kobe` started without a live daemon).
  */
 
-import { deriveTitleFromSession } from "@/monitor/auto-title"
-import type { Orchestrator } from "@/orchestrator/core"
-import { PLACEHOLDER_TASK_TITLE } from "@/orchestrator/core"
-import { type ChatTabPollSchedule, runChatTabNamingPass } from "@/tmux/chat-tab-naming"
-import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
+import type { DaemonOrchestrator, VendorId } from "./contracts.ts"
 import { logDaemonError } from "./crash-log"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
+
+export type ChatTabPollSchedule = Map<string, unknown>
 
 /** Default re-scan cadence; responsive without hammering disk. */
 export const DEFAULT_AUTO_TITLE_POLL_MS = 4000
@@ -57,8 +56,10 @@ export interface AutoTitled {
  * window; tests assert on the list. Pure orchestrator work, no tmux.
  */
 export async function runAutoTitlePass(
-  orch: Orchestrator,
-  derive: TitleDeriver = deriveTitleFromSession,
+  orch: DaemonOrchestrator,
+  derive: TitleDeriver,
+  placeholderTitle = "(new task)",
+  defaultVendor: VendorId = "claude",
 ): Promise<AutoTitled[]> {
   const renamed: AutoTitled[] = []
   for (const task of orch.listTasks()) {
@@ -66,15 +67,15 @@ export async function runAutoTitlePass(
     // before any disk read; un-archiving re-includes them on the next tick
     // (the live store reflects `archived` immediately). Matches the sidebar's
     // canonical `t.archived` predicate (tui/panes/sidebar/groups.ts).
-    if (task.archived || task.title !== PLACEHOLDER_TASK_TITLE || !task.worktreePath) continue
+    if (task.archived || task.title !== placeholderTitle || !task.worktreePath) continue
     try {
-      const title = await derive(task.worktreePath, task.vendor ?? DEFAULT_TASK_VENDOR)
+      const title = await derive(task.worktreePath, task.vendor ?? defaultVendor)
       if (!title) continue
       // Re-check under the live store: the user may have manually renamed
       // (or the detach-time path may have named it) between the snapshot
       // above and this await. `setTitle` is also a no-op if unchanged.
       const current = orch.getTask(task.id)
-      if (!current || current.title !== PLACEHOLDER_TASK_TITLE) continue
+      if (!current || current.title !== placeholderTitle) continue
       await orch.setTitle(task.id, title)
       renamed.push({ id: task.id, title })
     } catch (err) {
@@ -106,7 +107,11 @@ export async function runAutoTitlePass(
  * assert on the schedule directly.
  */
 export function startAutoTitlePoller(
-  orch: Orchestrator,
+  orch: DaemonOrchestrator,
+  runtime: Pick<
+    DaemonRuntimeAdapter,
+    "deriveTitleFromSession" | "runChatTabNamingPass" | "placeholderTaskTitle" | "defaultTaskVendor"
+  >,
   intervalMs: number = DEFAULT_AUTO_TITLE_POLL_MS,
   hasSubscribers?: () => boolean,
   chatTabSchedule: ChatTabPollSchedule = new Map(),
@@ -124,8 +129,8 @@ export function startAutoTitlePoller(
     // Two independent passes: (1) name still-placeholder TASKS from their
     // first prompt; (2) name still-default ChatTab WINDOWS from each tab's own
     // first prompt. Both are best-effort and self-limiting.
-    void runAutoTitlePass(orch)
-      .then(() => runChatTabNamingPass(orch, undefined, chatTabSchedule))
+    void runAutoTitlePass(orch, runtime.deriveTitleFromSession, runtime.placeholderTaskTitle, runtime.defaultTaskVendor)
+      .then(() => runtime.runChatTabNamingPass(orch, chatTabSchedule))
       .catch((err) => logDaemonError("auto-title-poller", err))
       .finally(() => {
         running = false

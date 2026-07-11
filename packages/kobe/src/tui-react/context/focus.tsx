@@ -16,6 +16,7 @@
 
 import { useRenderer } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useRef, useState } from "react"
+import { useLatest } from "../lib/use-latest"
 
 /** The four primary panes in kobe's layout. */
 export type PaneId = "sidebar" | "workspace" | "files" | "terminal"
@@ -50,8 +51,7 @@ export function FocusProvider(props: { children?: ReactNode; initial?: PaneId })
   const renderer = useRenderer()
   // Latest focused value for the stable callbacks below (React state reads
   // in callbacks go stale; the ref always holds the current pane).
-  const focusedRef = useRef(focused)
-  focusedRef.current = focused
+  const focusedRef = useLatest(focused)
 
   /**
    * Unified focus-change entry point (same contract as the Solid provider):

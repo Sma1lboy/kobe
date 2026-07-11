@@ -16,6 +16,7 @@ import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import type { Readable } from "node:stream"
+import { errorMessage } from "@/lib/error-message"
 import { t } from "@/tui/i18n"
 import { expandHome } from "../../lib/path-helpers"
 
@@ -197,7 +198,7 @@ export function cloneRepo(url: string, target: string, onProgress?: CloneProgres
         resolve({ ok: false, error: tail })
       })
     } catch (err) {
-      resolve({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      resolve({ ok: false, error: errorMessage(err) })
     }
   })
 }

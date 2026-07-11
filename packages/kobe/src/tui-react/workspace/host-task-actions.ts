@@ -20,22 +20,14 @@
  * from the Solid original.
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolvePreferredVendor, setRepoLastActiveVendor } from "../../state/vendor-prefs.ts"
-import {
-  type CreateTaskContext,
-  archiveTaskFlow,
-  createTaskFlow,
-  cycleVendorFlow,
-  deleteTaskFlow,
-  renameTaskFlow,
-} from "../../tui/lib/task-actions"
+import { archiveTaskFlow, cycleVendorFlow, deleteTaskFlow, renameTaskFlow } from "../../tui/lib/task-actions"
+import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
 import type { Task } from "../../types/task.ts"
 import { BranchPickerDialog } from "../component/branch-picker-dialog"
-import { NewTaskDialog } from "../component/new-task-dialog"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
 import type { DialogContext } from "../ui/dialog"
-import { DialogConfirm } from "../ui/dialog-confirm"
+import { selectNextAfterDelete, taskDialogAdapters, vendorPrefAdapters } from "../ui/task-dialog-adapters"
 
 export type WorkspaceTaskActionDeps = {
   orchestrator: RemoteOrchestrator
@@ -66,22 +58,19 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
   const taskActions: CreateTaskContext = {
     orch: orchestrator,
     tasks: () => tasks(),
-    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
-    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    ...taskDialogAdapters(dialog),
+    ...vendorPrefAdapters,
     logger: console,
     logPrefix: "[kobe workspace]",
     notifyError,
     notifyInfo: deps.notifyInfo,
     updateActiveTask: true,
-    onTaskDeleted: (taskId, nextTask) => {
-      if (deps.selectedId() !== taskId) return
-      const remaining = tasks()
-      deps.setSelectedId(nextTask?.id ?? (remaining.find((task) => !task.archived) ?? remaining[0])?.id ?? null)
-    },
-    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    onTaskDeleted: selectNextAfterDelete({
+      tasks,
+      selectedId: deps.selectedId,
+      setSelectedId: deps.setSelectedId,
+    }),
     cursorRepo: () => deps.selectedTask()?.repo ?? tasks()[0]?.repo,
-    lastVendor: (repo) => resolvePreferredVendor(repo),
-    rememberVendor: (repo, vendor) => setRepoLastActiveVendor(repo, vendor),
     selectTask: (id) => deps.setSelectedId(id),
     enterTask: (id) => deps.activateTask(id),
   }
@@ -90,13 +79,13 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     const task = tasks().find((t) => t.id === id)
     if (!task) return
     await orchestrator.setPinned(id, !task.pinned).catch((err) => {
-      notifyError(`Couldn't pin: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't pin: ${errorMessage(err)}`)
     })
   }
 
   async function moveTask(id: string, delta: -1 | 1): Promise<void> {
     await orchestrator.moveTask(id, delta).catch((err) => {
-      notifyError(`Couldn't move: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't move: ${errorMessage(err)}`)
     })
   }
 
@@ -110,7 +99,7 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
     const next = await BranchPickerDialog.show(dialog, { currentBranch: task.branch, repo: task.repo })
     if (!next) return
     await orchestrator.setBranch(id, next).catch((err) => {
-      notifyError(`Couldn't rename branch: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(`Couldn't rename branch: ${errorMessage(err)}`)
     })
   }
 

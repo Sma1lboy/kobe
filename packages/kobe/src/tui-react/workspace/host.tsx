@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 /**
  * Experimental native workspace (`KOBE_TUI=1`): Sidebar | engine Terminal |
- * Files. `useAccessor` bridges daemon Solid signals into React; imperative
+ * Files. `useAccessor` subscribes React to framework-free daemon state; imperative
  * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
  * Settings, worktrees, and update surfaces swap in-process instead of exiting.
  */
@@ -9,15 +9,12 @@
 import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
-import type { QuickTaskResult } from "../component/quick-task-composer"
 import { SettingsDialog } from "../component/settings-dialog"
 import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
@@ -31,12 +28,12 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useDialog } from "../ui/dialog"
 import { UpdatePage } from "../update/host.tsx"
-import { TerminalTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
+import { ShowWorkspace } from "./show-workspace"
 import { useAccessor } from "./use-accessor"
-import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
+import { useWorkspaceSelection } from "./use-workspace-selection"
 
 const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
@@ -58,7 +55,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
-  const [selectedId, setSelectedId] = useState<string | null>(() => orch.activeTaskSignal()())
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
   // Task-lifecycle UI state (issue #20 — parity with the tmux Tasks pane):
   // move mode (m + arrows reorder), the global sort preference (kv-fanned
@@ -83,59 +79,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     WORKTREE_TOOLS_MIN_WIDTH,
     Math.min(WORKTREE_TOOLS_MAX_WIDTH, Math.floor(available / 3)),
   )
-  const selectedTask = selectedId ? tasks.find((task) => task.id === selectedId) : undefined
+
+  // Selection + adopt-first-focus + the archived-task PTY sweep — extracted
+  // verbatim to use-workspace-selection.ts (file-size cap split).
+  const { selectedId, setSelectedId, selectedTask, selectTask, activateTask } = useWorkspaceSelection({
+    orch,
+    tasks,
+    activeTaskId,
+    focusWorkspace: () => focus.setFocused("workspace"),
+  })
   const worktree = selectedTask?.worktreePath || null
-
-  const focusRestoredRef = useRef(false)
-  const userPickedRef = useRef(false)
-  // Adopt the daemon's first restored focus, but never let later events from
-  // sibling clients yank a task the local user already selected.
-  useEffect(() => {
-    if (!focusRestoredRef.current && activeTaskId && tasks.some((task) => task.id === activeTaskId)) {
-      focusRestoredRef.current = true
-      if (!userPickedRef.current && selectedId !== activeTaskId) {
-        setSelectedId(activeTaskId)
-        return
-      }
-    }
-    if (selectedId && tasks.some((task) => task.id === selectedId)) return
-    setSelectedId(firstSelectableTask(tasks, activeTaskId)?.id ?? null)
-  }, [tasks, activeTaskId, selectedId])
-
-  // PTY lifecycle (issue #16): archiving/deleting a task must end every
-  // engine session it owns — its tab PTYs are keyed `taskId::tabId` in the
-  // default registry, invisible to the pane once unmounted. Watch the task
-  // snapshot and release the corpses; the pane never kills (registry docs),
-  // so this is the one place tab shells die with their task.
-  const liveTaskIdsRef = useRef<ReadonlySet<string>>(new Set())
-  useEffect(() => {
-    const next = new Set<string>(tasks.filter((task) => !task.archived).map((task) => task.id))
-    const registry = getDefaultPtyRegistry()
-    for (const id of liveTaskIdsRef.current) {
-      if (!next.has(id)) registry.releaseWhere((key) => key === id || key.startsWith(`${id}::`))
-    }
-    liveTaskIdsRef.current = next
-  }, [tasks])
-
-  function selectTask(id: string): void {
-    userPickedRef.current = true
-    if (selectedId === id) return
-    setSelectedId(id)
-    void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
-  }
-
-  async function activateTask(id: string): Promise<void> {
-    await activateWorkspaceTask(
-      {
-        getTask: (taskId) => tasks.find((task) => task.id === taskId),
-        ensureWorktree: (taskId) => orch.ensureWorktree(taskId),
-        selectTask,
-        focusWorkspace: () => focus.setFocused("workspace"),
-        reportError: (error) => console.error("[kobe workspace] task.ensureWorktree failed:", error),
-      },
-      id,
-    )
-  }
 
   // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
   // — the shared lib/task-actions flows live in host-task-actions.ts.
@@ -370,70 +323,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
       <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
     </box>
-  )
-}
-
-function ShowWorkspace(props: {
-  task: Task | undefined
-  worktree: string | null
-  orchestrator: RemoteOrchestrator
-  focused: boolean
-  onRequestFocus: () => void
-  onEditorTabReady: (open: (command: readonly string[], label: string) => void) => void
-  onEngineSendReady: (send: (text: string) => void) => void
-  onQuickFork: (repo: string, result: QuickTaskResult) => void
-  initialPrompt?: string
-}): ReactNode {
-  const { theme } = useTheme()
-  const t = useT()
-  const transcriptActivityStore = props.orchestrator.transcriptActivityStore()
-  const transcriptActivity = useSyncExternalStore(
-    transcriptActivityStore.subscribe,
-    transcriptActivityStore.get,
-    transcriptActivityStore.get,
-  )
-  if (!props.worktree) {
-    return (
-      <box flexGrow={1} alignItems="center" justifyContent="center">
-        <text fg={theme.textMuted}>{t("workspace.empty.selectTask")}</text>
-      </box>
-    )
-  }
-  const path = props.worktree
-  return (
-    // The terminal-in-the-middle seam (issue #16): the center column IS
-    // the engine — an in-process PTY (Bun.spawn terminal) running the
-    // real interactive CLI, so kobe never re-renders the engine's own
-    // TUI. `key={path}` remounts per worktree, giving each task its own
-    // registry-backed PTY (acquire reuses a live one on switch-back).
-    <TerminalTabs
-      key={path}
-      taskId={props.task?.id ?? path}
-      worktree={path}
-      command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
-      vendor={props.task?.vendor ?? DEFAULT_TASK_VENDOR}
-      modelEffort={props.task?.modelEffort}
-      onChooseEngine={
-        props.task
-          ? (vendor) => {
-              const taskId = props.task?.id
-              if (!taskId) return
-              void props.orchestrator
-                .setVendor(taskId, vendor)
-                .catch((err) => console.error("[kobe workspace] task.setVendor failed:", err))
-            }
-          : undefined
-      }
-      focused={props.focused}
-      onRequestFocus={props.onRequestFocus}
-      onEditorTabReady={props.onEditorTabReady}
-      onEngineSendReady={props.onEngineSendReady}
-      onQuickFork={props.onQuickFork}
-      initialPrompt={props.initialPrompt}
-      // This worktree's slice of the daemon transcript.activity push
-      // (issue #24) — flips the tab turn-status loops to shared mode.
-      sharedActivity={transcriptActivity?.get(path) ?? null}
-    />
   )
 }
 

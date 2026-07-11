@@ -26,6 +26,7 @@ import {
 } from "../../../tui/panes/terminal/keys-pure"
 import { bindByIds } from "../../context/keybindings"
 import { modalActive, useBindings } from "../../lib/keymap"
+import { useLatest } from "../../lib/use-latest"
 
 // Re-export pure helpers so callers can import everything from one path.
 export { DEFAULT_PAGE_SIZE, TRAPPED_KEYS, keyEventToShellBytes }
@@ -91,8 +92,7 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   // (empty deps) and reads the latest `opts` through a render-refreshed
   // ref, so it doesn't re-subscribe to the renderer's emitter every render.
   const renderer = useRenderer()
-  const optsRef = useRef(opts)
-  optsRef.current = opts
+  const optsRef = useLatest(opts)
   useEffect(() => {
     if (!renderer) return
     // `modalActive()`: pane focus does NOT change when a dialog opens, so

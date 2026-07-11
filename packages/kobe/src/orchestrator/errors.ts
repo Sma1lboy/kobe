@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/error-message"
 import type { TaskStatus } from "../types/task.ts"
 
 /** Thrown when a state-machine transition is illegal. */
@@ -65,7 +66,7 @@ export class WorktreeRemoveFailedError extends Error {
     public readonly taskId: string,
     public override readonly cause: unknown,
   ) {
-    super(`failed to remove worktree for task ${taskId}: ${cause instanceof Error ? cause.message : String(cause)}`)
+    super(`failed to remove worktree for task ${taskId}: ${errorMessage(cause)}`)
     this.name = "WorktreeRemoveFailedError"
   }
 }

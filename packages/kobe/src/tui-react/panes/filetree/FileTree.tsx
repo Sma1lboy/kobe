@@ -23,6 +23,7 @@
  * carries (rows.ts has the memory-leak story).
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -51,6 +52,7 @@ import {
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
+import { useLatest } from "../../lib/use-latest"
 import { FileTreeHeaderView } from "./header-view"
 import { FileTreeRowView } from "./row-view"
 
@@ -92,14 +94,10 @@ export function FileTree(props: FileTreeProps) {
 
   // Latest-render mirrors for effect bodies that must read a value without
   // depending on it (the Solid originals read these untracked inside `on(...)`).
-  const pathRef = useRef(props.worktreePath)
-  pathRef.current = props.worktreePath
-  const tabRef = useRef(tab)
-  tabRef.current = tab
-  const allFilesRef = useRef(allFiles)
-  allFilesRef.current = allFiles
-  const changesRef = useRef(changes)
-  changesRef.current = changes
+  const pathRef = useLatest(props.worktreePath)
+  const tabRef = useLatest(tab)
+  const allFilesRef = useLatest(allFiles)
+  const changesRef = useLatest(changes)
   const fetchSeq = useRef(0)
 
   /**
@@ -132,7 +130,7 @@ export function FileTree(props: FileTreeProps) {
         // An aborted fetch (tab/worktree changed out from under us) throws
         // via the killed subprocess — swallow it, the next run owns state.
         if (signal?.aborted) return
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         if (seq === fetchSeq.current && pathRef.current === path) setError(message)
       }
     },

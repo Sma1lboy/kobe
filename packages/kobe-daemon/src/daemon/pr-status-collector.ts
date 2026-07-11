@@ -38,20 +38,45 @@
  */
 
 import { spawn } from "node:child_process"
-import {
-  GH_PR_VIEW_FIELDS,
-  type GhPrView,
-  type PrBackoffConfig,
-  type PrViewErrorKind,
-  classifyGhFailure,
-  mapGhPrView,
-  nextPrPoll,
-  samePrStatus,
-} from "@/monitor/pr-status"
-import type { Orchestrator } from "@/orchestrator/core"
-import { isRemoteRepoKey } from "@/state/repos"
-import type { Task } from "@/types/task"
+import type { DaemonOrchestrator, DaemonTask as Task } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
+import type { DaemonRuntimeAdapter } from "./runtime.ts"
+
+export interface GhPrView {
+  readonly number?: number
+  readonly state?: string
+  readonly statusCheckRollup?: readonly unknown[]
+  readonly [key: string]: unknown
+}
+
+export type PrViewErrorKind = "missing-binary" | "auth" | "timeout" | "network" | "parse" | "no-remote"
+
+function classifyGhFailure(input: {
+  spawnError?: boolean
+  timedOut?: boolean
+  stderr?: string
+  parseError?: boolean
+}): { kind: "empty" } | { kind: "error"; error: PrViewErrorKind } {
+  if (input.parseError) return { kind: "error", error: "parse" }
+  if (input.timedOut) return { kind: "error", error: "timeout" }
+  if (input.spawnError) return { kind: "error", error: "missing-binary" }
+  const stderr = (input.stderr ?? "").toLowerCase()
+  if (["none of the git remotes", "no git remote", "not a github repository"].some((part) => stderr.includes(part)))
+    return { kind: "error", error: "no-remote" }
+  if (
+    ["gh auth login", "authentication required", "not logged in", "bad credentials"].some((part) =>
+      stderr.includes(part),
+    )
+  )
+    return { kind: "error", error: "auth" }
+  if (
+    ["could not resolve host", "connection refused", "network is unreachable", "tls handshake", "rate limit"].some(
+      (part) => stderr.includes(part),
+    )
+  )
+    return { kind: "error", error: "network" }
+  return { kind: "empty" }
+}
 
 /** Default re-scan cadence. PR checks move on the order of seconds-to-minutes;
  * 30s is responsive without hammering `gh` (which hits the network). */
@@ -143,7 +168,17 @@ export const runGhPrView: PrViewRunner = async (worktreePath, branch) => {
     controller.abort()
   }, PR_VIEW_TIMEOUT_MS)
   try {
-    const res = await spawnGh(["pr", "view", branch, "--json", GH_PR_VIEW_FIELDS], worktreePath, controller.signal)
+    const res = await spawnGh(
+      [
+        "pr",
+        "view",
+        branch,
+        "--json",
+        "number,url,title,state,baseRefName,headRefName,reviewDecision,mergeable,statusCheckRollup",
+      ],
+      worktreePath,
+      controller.signal,
+    )
     if (res.status === 0 && !timedOut) {
       try {
         const view = JSON.parse(res.stdout) as GhPrView
@@ -152,12 +187,7 @@ export const runGhPrView: PrViewRunner = async (worktreePath, branch) => {
         return classifyGhFailure({ parseError: true })
       }
     }
-    return classifyGhFailure({
-      spawnError: res.spawnError,
-      timedOut,
-      exitCode: res.status,
-      stderr: res.stderr,
-    })
+    return classifyGhFailure({ spawnError: res.spawnError, timedOut, stderr: res.stderr })
   } finally {
     clearTimeout(timer)
   }
@@ -169,7 +199,7 @@ export function isPrPollable(task: Task): boolean {
   if (task.archived) return false
   if (task.kind === "main") return false
   if (!task.branch || !task.worktreePath) return false
-  if (isRemoteRepoKey(task.repo) || isRemoteRepoKey(task.worktreePath)) return false
+  if (task.repo.startsWith("ssh://") || task.worktreePath.startsWith("ssh://")) return false
   return true
 }
 
@@ -185,6 +215,7 @@ export interface PrPollEntry {
 export type PrPollSchedule = Map<string, PrPollEntry>
 
 export interface PrStatusPassOptions {
+  readonly runtime: Pick<DaemonRuntimeAdapter, "prStatus">
   readonly run: PrViewRunner
   /** `Date.now()`-style clock (ms). Injected so tests are deterministic. */
   readonly now: number
@@ -203,10 +234,10 @@ export interface PrStatusPassOptions {
  * Returns the ids whose persisted status actually changed (for tests). Pure
  * orchestrator work — no timers, no `Date.now()`.
  */
-export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOptions): Promise<string[]> {
+export async function runPrStatusPass(orch: DaemonOrchestrator, opts: PrStatusPassOptions): Promise<string[]> {
   const tickMs = opts.tickMs ?? DEFAULT_PR_STATUS_POLL_MS
   const rand = opts.rand
-  const cfg: PrBackoffConfig = {
+  const cfg = {
     tickMs,
     settledMs: SETTLED_BACKOFF_MS,
     noPrMs: NO_PR_BACKOFF_MS,
@@ -237,17 +268,17 @@ export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOpti
         )
         opts.schedule.set(
           task.id,
-          nextPrPoll({ kind: "error", error: result.error }, prevFailures, opts.now, cfg, rand),
+          opts.runtime.prStatus.nextPoll({ kind: "error", error: result.error }, prevFailures, opts.now, cfg, rand),
         )
         continue
       }
       if (result.kind === "empty") {
         // gh ran and there is genuinely no PR yet. Keep the last value; back off
         // (a branch rarely sprouts a PR between ticks).
-        opts.schedule.set(task.id, nextPrPoll({ kind: "empty" }, prevFailures, opts.now, cfg, rand))
+        opts.schedule.set(task.id, opts.runtime.prStatus.nextPoll({ kind: "empty" }, prevFailures, opts.now, cfg, rand))
         continue
       }
-      const next = mapGhPrView(result.view, opts.at)
+      const next = opts.runtime.prStatus.mapView(result.view, opts.at)
       // Re-read under the live store (the task may have been archived/deleted
       // during the await) and diff before writing.
       const current = orch.getTask(task.id)
@@ -255,18 +286,24 @@ export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOpti
         opts.schedule.delete(task.id)
         continue
       }
-      if (!samePrStatus(current.prStatus, next ?? undefined)) {
+      if (!opts.runtime.prStatus.sameStatus(current.prStatus, next ?? undefined)) {
         await orch.setPRStatus(task.id, next)
         changed.push(task.id)
       }
       // A merged/closed PR is done — poll it rarely; an open one tracks checks.
       const settled = next?.lifecycle === "merged" || next?.lifecycle === "closed"
-      opts.schedule.set(task.id, nextPrPoll({ kind: "pr", settled }, prevFailures, opts.now, cfg, rand))
+      opts.schedule.set(
+        task.id,
+        opts.runtime.prStatus.nextPoll({ kind: "pr", settled }, prevFailures, opts.now, cfg, rand),
+      )
     } catch (err) {
       // The injected runner threw (the real one never does). Treat as a
       // transient error so it backs off rather than hammering.
       logDaemonError("pr-status-poller", err)
-      opts.schedule.set(task.id, nextPrPoll({ kind: "error", error: "network" }, prevFailures, opts.now, cfg, rand))
+      opts.schedule.set(
+        task.id,
+        opts.runtime.prStatus.nextPoll({ kind: "error", error: "network" }, prevFailures, opts.now, cfg, rand),
+      )
     }
   }
   return changed
@@ -280,7 +317,8 @@ export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOpti
  * running; the first tick after a pane subscribes repopulates.
  */
 export function startPrStatusPoller(
-  orch: Orchestrator,
+  orch: DaemonOrchestrator,
+  runtime: Pick<DaemonRuntimeAdapter, "prStatus">,
   intervalMs: number = DEFAULT_PR_STATUS_POLL_MS,
   hasSubscribers?: () => boolean,
   run: PrViewRunner = runGhPrView,
@@ -292,7 +330,14 @@ export function startPrStatusPoller(
     if (hasSubscribers && !hasSubscribers()) return
     if (running) return
     running = true
-    void runPrStatusPass(orch, { run, now: Date.now(), at: new Date().toISOString(), schedule, tickMs: intervalMs })
+    void runPrStatusPass(orch, {
+      runtime,
+      run,
+      now: Date.now(),
+      at: new Date().toISOString(),
+      schedule,
+      tickMs: intervalMs,
+    })
       .catch((err) => logDaemonError("pr-status-poller", err))
       .finally(() => {
         running = false

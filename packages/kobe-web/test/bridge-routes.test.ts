@@ -3,6 +3,7 @@ import {
   DAEMON_WEB_HEALTH_MARKER,
   DAEMON_WEB_HEALTH_PATH,
 } from "@sma1lboy/kobe-daemon/daemon/web-server"
+import { daemonRuntime } from "../../kobe/src/core/daemon-runtime.ts"
 import { describe, expect, it, vi } from "vitest"
 import { build, fakeLink, post } from "./route-fakes.ts"
 
@@ -65,7 +66,12 @@ describe("daemon web request handler", () => {
     it("allows the deliberately-configured LAN host through allowedHost", async () => {
       const link = fakeLink()
       const sseSends = new Set<(type: string, data: unknown) => void>()
-      const handle = createDaemonWebRequestHandler({ link, sseSends, allowedHost: "192.168.1.5" })
+      const handle = createDaemonWebRequestHandler({
+        runtime: daemonRuntime,
+        link,
+        sseSends,
+        allowedHost: "192.168.1.5",
+      })
       const res = await handle(
         new Request("http://192.168.1.5:5173/api/rpc", {
           method: "POST",
@@ -190,7 +196,7 @@ describe("daemon web request handler", () => {
       const sseSends = new Set<(type: string, data: unknown) => void>()
       const cleanup = vi.fn()
       const onSseOpen = vi.fn(() => cleanup)
-      const handle = createDaemonWebRequestHandler({ link, sseSends, onSseOpen })
+      const handle = createDaemonWebRequestHandler({ runtime: daemonRuntime, link, sseSends, onSseOpen })
 
       const res = await handle(new Request("http://localhost/events"))
       expect(onSseOpen).toHaveBeenCalledTimes(1)
@@ -205,7 +211,12 @@ describe("daemon web request handler", () => {
       const link = fakeLink()
       const sseSends = new Set<(type: string, data: unknown) => void>()
       const cleanup = vi.fn()
-      const handle = createDaemonWebRequestHandler({ link, sseSends, onSseOpen: () => cleanup })
+      const handle = createDaemonWebRequestHandler({
+        runtime: daemonRuntime,
+        link,
+        sseSends,
+        onSseOpen: () => cleanup,
+      })
 
       const ac = new AbortController()
       const res = await handle(new Request("http://localhost/events", { signal: ac.signal }))

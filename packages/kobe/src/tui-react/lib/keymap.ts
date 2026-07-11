@@ -32,6 +32,7 @@ import {
   dispatchKeyEvent,
   insertRegistration,
 } from "../../tui/lib/keymap-dispatch"
+import { useLatest } from "../lib/use-latest"
 
 export type { Binding, BindingsConfig, RegisteredBinding } from "../../tui/lib/keymap-dispatch"
 export { dispatchKeyEvent } from "../../tui/lib/keymap-dispatch"
@@ -113,8 +114,7 @@ export function useBindings(config: () => BindingsConfig, opts?: { modalOwner?: 
   const renderer = useRenderer()
   ensureInstalled(renderer)
 
-  const configRef = useRef(config)
-  configRef.current = config
+  const configRef = useLatest(config)
   const scope = useContext(ModalScopeContext)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once registration; scope/owner tokens are stable for the component's lifetime.
