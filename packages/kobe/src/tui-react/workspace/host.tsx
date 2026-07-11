@@ -15,6 +15,7 @@ import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
+import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
@@ -29,6 +30,7 @@ import { useAccessor } from "../lib/use-accessor"
 import { FileTree } from "../panes/filetree/FileTree"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
+import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { UpdatePage } from "../update/host.tsx"
 import { forgetTaskTabs } from "./TerminalTabs"
@@ -40,7 +42,6 @@ import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { useAttention } from "./use-attention"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 
-const SIDEBAR_WIDTH = 32
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
 
@@ -62,22 +63,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
   // Task-lifecycle UI state (issue #20 — parity with the tmux Tasks pane):
-  // move mode (m + arrows reorder), the global sort preference (kv-fanned
-  // like theme), the project filter, and the sidebar-search gate that mutes
-  // host letter chords while the user types a query.
-  const [moveMode, setMoveMode] = useState(false)
-  const [sortMode, setSortModeSig] = useState<"default" | "recent">(() =>
-    kv.get("activeSortMode", "default") === "recent" ? "recent" : "default",
-  )
+  // the project filter and the sidebar-search gate that mutes host letter
+  // chords while the user types a query. Move mode, the global sort pref,
+  // and the toast helpers live in the shared useSidebarHostState below.
+  // KNOWN GAP vs the Tasks pane: this host does NOT follow live `ui-prefs`
+  // pushes for sortMode/projectFilter (deliberate for now).
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
   const [searchActive, setSearchActive] = useState(false)
-
-  function notifyError(message: string): void {
-    notif.notify({ kind: "error", taskId: selectedId ?? "", tabId: "", title: message })
-  }
-  function notifyInfo(message: string): void {
-    notif.notify({ kind: "done", taskId: selectedId ?? "", tabId: "", title: message })
-  }
 
   const available = Math.max(WORKTREE_TOOLS_MIN_WIDTH, dims.width - SIDEBAR_WIDTH)
   const worktreeToolsWidth = Math.max(
@@ -94,6 +86,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focusWorkspace: () => focus.setFocused("workspace"),
   })
   const worktree = selectedTask?.worktreePath || null
+
+  // Toasts + global sort pref + move-mode — the wiring shared with the tmux
+  // Tasks pane, extracted to the hook next to the Sidebar itself.
+  const { sortMode, toggleSortMode, moveMode, setMoveMode, notifyError, notifyInfo, onLocalMergeRequest } =
+    useSidebarHostState({ kv, notif, tasks, selectedId, setSelectedId })
 
   // Cross-task attention (P0): rising-edge notify for non-selected tasks +
   // the global chord's jump-to-next handler. State is engine-owned/neutral.
@@ -124,11 +121,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       activateTask,
       forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
-
-  const setSortMode = (next: "default" | "recent"): void => {
-    setSortModeSig(next)
-    kv.set("activeSortMode", next)
-  }
 
   // One-time orphan sweep (O19): clear historical `terminalTabs.*` snapshots
   // whose task no longer exists — the backlog that accumulated before
@@ -319,14 +311,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           moveMode={moveMode}
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
-          onLocalMergeRequest={(id) => {
-            const task = tasks.find((tk) => tk.id === id)
-            if (!task || task.kind === "main") return
-            setSelectedId(id)
-            setMoveMode((cur) => !cur)
-          }}
+          onLocalMergeRequest={onLocalMergeRequest}
           sortMode={sortMode}
-          onSortModeToggle={() => setSortMode(sortMode === "default" ? "recent" : "default")}
+          onSortModeToggle={toggleSortMode}
           projectFilter={projectFilter}
           onProjectFilterChange={setProjectFilter}
           onSearchActiveChange={setSearchActive}

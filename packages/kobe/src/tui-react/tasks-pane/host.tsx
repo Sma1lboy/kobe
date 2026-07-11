@@ -1,25 +1,20 @@
 /** @jsxImportSource @opentui/react */
 /**
  * `kobe tasks` — the Tasks pane on the far left of a task's tmux session.
- * React port of `src/tui/tasks-pane/host.tsx` (React is the default runtime
- * since 2026-07-07). agent-deck-style: keep the task list visible inside a
- * tmux Session so you can jump between tasks without detaching to the outer
- * monitor. Reuses the real `Sidebar`; Enter `switch-client`s to a task's
- * session.
+ * agent-deck-style: keep the task list visible inside a tmux Session so you
+ * can jump between tasks without detaching to the outer monitor. Reuses the
+ * real `Sidebar`; Enter `switch-client`s to a task's session.
  *
- * Solid→React deltas: `RemoteOrchestrator`'s live signals are read in the
- * boot component (`setup.tsx`'s `useAccessor` bridge) and handed to this
- * component as PLAIN VALUES — `tasks`, `activeTaskId`, `uiPrefs`,
- * `liveUpdate`, `engineState`, `taskJobs`, `worktreeChanges`, `daemonStale`,
- * `daemonVersion`, `online` — so nothing here reads a Solid signal in render
- * (the React Sidebar takes plain values too). `createSignal`→`useState`,
- * `createEffect(on(…, untrack(…)))` changed-only follows→`useEffect` diffing
- * against a ref of the current state, `createMemo`→plain derivation,
- * `onCleanup`→effect-return.
+ * `RemoteOrchestrator`'s live signals are read in the boot component
+ * (`setup.tsx`'s `useAccessor` bridge) and handed to this component as PLAIN
+ * VALUES — `tasks`, `activeTaskId`, `uiPrefs`, `liveUpdate`, `engineState`,
+ * `taskJobs`, `worktreeChanges`, `daemonStale`, `daemonVersion`, `online` —
+ * so nothing here reads a live signal in render (the Sidebar takes plain
+ * values too).
  *
- * File-size-cap split (mirrors the Solid original): `tasks-pane/actions.ts`
- * (action bodies + deps bag), `tasks-pane/setup.tsx` (boot wiring + signal
- * bridge), `tasks-pane/shortcut-hints.tsx` (footer legend) — this file keeps
+ * File-size-cap split: `tasks-pane/actions.ts` (action bodies + deps bag),
+ * `tasks-pane/setup.tsx` (boot wiring + signal bridge),
+ * `tasks-pane/shortcut-hints.tsx` (footer legend) — this file keeps
  * `TasksShell` + thin wrappers + `startTasksPane`.
  */
 
@@ -37,7 +32,6 @@ import {
   renameTaskFlow,
 } from "../../tui/lib/task-actions"
 import { type CreateTaskContext, createTaskFlow } from "../../tui/lib/task-create-flow"
-import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
 import type { WorktreeChanges } from "../../tui/panes/sidebar/worktree-changes"
 import { runLayoutAction } from "../../tui/panes/terminal/layout-actions"
 import type { Task } from "../../types/task.ts"
@@ -51,6 +45,7 @@ import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { useLatest } from "../lib/use-latest"
 import { Sidebar } from "../panes/sidebar/Sidebar"
+import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import {
   type SwitchToRef,
@@ -114,30 +109,10 @@ export function TasksShell(props: TasksShellProps) {
   const [cursorId, setCursorId] = useState<string | null>(null)
   const actionTargetId = (): string | null => cursorId ?? selectedId
 
-  // Surface a user-action FAILURE as a red error toast. Under tmux's
-  // alternate screen a bare `console.error` is invisible (it only reaches
-  // the daemon log), so a failed key press would otherwise look like a
-  // silent no-op. We KEEP the matching `console.error` at each call site for
-  // log forensics — this is the on-screen half. The notifications context is
-  // per-ChatTab (taskId/tabId-keyed); a pane action isn't tab-scoped, so we
-  // tag it with the selected task and an empty tab — only the toast queue is
-  // consumed here, the unread-dot map is harmless side state we never render.
-  function notifyError(message: string): void {
-    notif.notify({ kind: "error", taskId: selectedId ?? "", tabId: "", title: message })
-  }
-  // Neutral (non-error) toast — same on-screen surfacing as notifyError but
-  // green/`done` styling, for "this happened" confirmations (engine cycled,
-  // creating task, already up to date) that aren't failures.
-  function notifyInfo(message: string): void {
-    notif.notify({ kind: "done", taskId: selectedId ?? "", tabId: "", title: message })
-  }
-  const [moveMode, setMoveMode] = useState(false)
-  // Sort mode is a GLOBAL pref, fanned out like theme/appearance: the toggle
-  // writes `activeSortMode` to state.json, the daemon's ui-prefs watcher sees
-  // it and pushes on the `ui-prefs` channel, and the effect below re-applies
-  // it here AND in every other session's Tasks pane. Seed from the persisted
-  // value so a freshly-spawned pane opens in the user's last sort.
-  const [sortMode, setSortMode] = useState<TaskSortMode>(kv.get("activeSortMode") === "recent" ? "recent" : "default")
+  // Toasts + global sort pref + move-mode — the wiring shared with the
+  // workspace host, extracted to the hook next to the Sidebar itself.
+  const { sortMode, setSortMode, toggleSortMode, moveMode, setMoveMode, notifyError, notifyInfo, onLocalMergeRequest } =
+    useSidebarHostState({ kv, notif, tasks: props.tasks, selectedId, setSelectedId })
   const persistedProjectFilter = kv.get("tasksPane.projectFilter")
   const [projectFilter, setProjectFilterSig] = useState<string | null>(
     typeof persistedProjectFilter === "string" && persistedProjectFilter.length > 0 ? persistedProjectFilter : null,
@@ -196,7 +171,9 @@ export function TasksShell(props: TasksShellProps) {
     if (!payload) return
     if (payload.sortMode !== sortModeRef.current) setSortMode(payload.sortMode)
     if (payload.projectFilter !== projectFilterRef.current) setProjectFilterSig(payload.projectFilter)
-  }, [props.uiPrefs])
+    // `setSortMode` is the shared hook's raw useState setter — stable, listed
+    // only to satisfy the dep lint; the body is changed-only anyway.
+  }, [props.uiPrefs, setSortMode])
 
   // Update info comes from the daemon-owned `update` channel; keep the last
   // non-null value so a later null poll doesn't drop the chip.
@@ -392,26 +369,14 @@ export function TasksShell(props: TasksShellProps) {
           onArchiveRequest={(id) => void archiveTask(id)}
           onPinRequest={(id) => void togglePin(id)}
           onPreviewToggleRequest={(id) => void togglePreviewFlow(id)}
-          onLocalMergeRequest={(id) => {
-            const task = props.tasks.find((t) => t.id === id)
-            if (!task || task.kind === "main") return
-            setSelectedId(id)
-            setMoveMode((cur) => !cur)
-          }}
+          onLocalMergeRequest={onLocalMergeRequest}
           moveMode={moveMode}
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
           sortMode={sortMode}
           projectFilter={projectFilter}
           onProjectFilterChange={setProjectFilter}
-          onSortModeToggle={() => {
-            const next: TaskSortMode = sortMode === "default" ? "recent" : "default"
-            // Apply locally for instant feedback, then persist — the kv write
-            // lands in state.json and the daemon's ui-prefs watcher fans it
-            // out to every other session's Tasks pane (global sort).
-            setSortMode(next)
-            kv.set("activeSortMode", next)
-          }}
+          onSortModeToggle={toggleSortMode}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // leaks past the input to switchTo and yanks you into a task.
@@ -439,9 +404,9 @@ export async function startTasksPane(opts: { initialTaskId?: string } = {}): Pro
     // Notifications power the bottom-right error toasts: under tmux's
     // alternate screen a failed action's `console.error` is invisible (daemon
     // log only), so a rejected key press surfaces as a red chip here instead
-    // of looking like a silent no-op. `kv` is opted in explicitly (React
-    // host-boot defaults it FALSE, unlike the Solid host which mounted it for
-    // every pane) — the pane persists sort / project-filter / keys-fold prefs.
+    // of looking like a silent no-op. `kv` is opted in explicitly (host-boot
+    // defaults it FALSE) — the pane persists sort / project-filter /
+    // keys-fold prefs.
     providers: { kv: true, notifications: true },
     setup: () => setupTasksPane(opts),
   })
