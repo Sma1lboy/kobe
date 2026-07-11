@@ -97,12 +97,17 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 // when present; fall back to the first registered chord.
                 // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
                 // so the help matches the footer.
-                const prefixPrimary = row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
+                const prefixPrimary =
+                  pureTuiPrefix.key && row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
                 const rawPrimary = prefixPrimary ?? row.hint?.keys ?? row.keys[0] ?? "—"
                 const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph))
                 const aliases = (row.hint ? row.keys : row.keys.slice(1))
                   .map((key) => formatChord(key, prefixGlyph))
-                  .concat(row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
+                  .concat(
+                    pureTuiPrefix.key
+                      ? (row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
+                      : [],
+                  )
                 return (
                   <box key={row.id} flexDirection="row" gap={2} paddingLeft={1}>
                     <box width={14}>

@@ -55,13 +55,18 @@ describe("PureTUI prefix dispatch", () => {
   })
 
   test("expires an armed prefix before the second stroke", () => {
-    let calls = 0
+    let prefixCalls = 0
+    let directCalls = 0
     configurePrefix({ key: "ctrl+a", timeoutMs: 1000 })
-    const stack = [registration(1, true, "t", () => calls++)]
+    const stack: RegisteredBinding[] = [
+      registration(1, true, "t", () => prefixCalls++),
+      { id: 2, config: () => ({ bindings: [{ key: "t", cmd: () => directCalls++ }] }) },
+    ]
 
     dispatchKeyEvent(stack, event("a", true), 100)
     expect(dispatchKeyEvent(stack, event("t"), 1101)).toBe(true)
-    expect(calls).toBe(0)
+    expect(prefixCalls).toBe(0)
+    expect(directCalls).toBe(1)
   })
 
   test("escape cancels an armed prefix without running its second stroke", () => {

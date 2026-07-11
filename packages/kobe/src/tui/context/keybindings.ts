@@ -110,6 +110,8 @@ export type KobeBinding = {
   keys: readonly string[]
   /** Second strokes reached through the configurable PureTUI prefix. */
   prefixKeys?: readonly string[]
+  /** Slot index for prefix keys when direct overrides have a different length. */
+  prefixSlotOffset?: number
   /** Help-dialog category (groups rows visually). */
   category: string
   /** Help-dialog description text. */
@@ -198,6 +200,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "sidebar",
     keys: ["q"],
     prefixKeys: ["q"],
+    prefixSlotOffset: 1,
     category: "Sidebar",
     description: "Quit (with confirm)",
     hint: { keys: "q", label: "quit", status: false },
@@ -467,54 +470,4 @@ export function findBinding(id: string): KobeBinding | undefined {
   return KEYMAP_BY_ID.get(id)
 }
 
-/**
- * Resolve the chord list for a binding id. Returns an empty array if the
- * id isn't found — `bindByIds` warns but doesn't throw, so a typo doesn't
- * crash the renderer.
- */
-export function chordsOf(id: string): readonly string[] {
-  return findBinding(id)?.keys ?? []
-}
-
-/** Resolve the configured-prefix second strokes for one binding id. */
-export function prefixChordsOf(id: string): readonly string[] {
-  return findBinding(id)?.prefixKeys ?? []
-}
-
-/**
- * Build a list of `Binding` (chord → handler) entries from a map of
- * `binding-id → handler`. Each id's chords from `KobeKeymap` get
- * registered against the same handler. Pane code uses this so it doesn't
- * have to know the chord strings — those live in `KobeKeymap`.
- *
- * Each entry carries `slot` = the chord's index within the id's (possibly
- * user-overridden) `keys` array, and the dispatcher passes it to the
- * handler as a second argument. Multiplexed handlers (`sidebar.nav`,
- * `files.hierarchy`, …) decide direction from the slot instead of
- * `evt.name`, which is what lets users rebind those ids: the slot LAYOUT
- * is the per-id positional contract (`SLOT_CONTRACTS` in
- * keymap-overrides.ts validates override counts against it). Because the
- * `useBindings` config closure re-runs `bindByIds` on every keypress,
- * slots are always derived from the CURRENT keymap — a live keybindings
- * reload re-slots automatically.
- *
- * Unknown ids log a warning and are skipped (typos shouldn't crash the
- * UI, but they should be loud in dev).
- */
-export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
-  const out: Binding[] = []
-  for (const id in handlers) {
-    const cmd = handlers[id]
-    if (!cmd) continue
-    const chords = chordsOf(id)
-    const prefixChords = prefixChordsOf(id)
-    if (chords.length === 0 && prefixChords.length === 0) {
-      // eslint-disable-next-line no-console
-      console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
-      continue
-    }
-    chords.forEach((c, slot) => out.push({ key: c, cmd, slot }))
-    prefixChords.forEach((c, index) => out.push({ key: c, prefix: true, cmd, slot: chords.length + index }))
-  }
-  return out
-}
+export { bindByIds, chordsOf, prefixChordsOf } from "./keybindings-bindings.ts"

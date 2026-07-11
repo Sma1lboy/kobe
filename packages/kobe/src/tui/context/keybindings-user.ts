@@ -80,11 +80,28 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   // layer; everything else targets KobeKeymap.
   const tmuxEntries = extracted.entries.filter((e) => e.id.startsWith("tmux."))
   const keymapEntries = extracted.entries.filter((e) => !e.id.startsWith("tmux."))
+  const prefixOnlyIds = new Set(
+    KobeKeymap.filter((row) => row.keys.length === 0 && row.prefixKeys !== undefined).map((row) => row.id),
+  )
+  const legacyPrefixEntries = keymapEntries
+    .filter((entry) => prefixOnlyIds.has(entry.id))
+    .map((entry) => ({
+      ...entry,
+      keys: entry.keys.map((key) => (key.startsWith("ctrl+") ? key.slice("ctrl+".length) : key)),
+    }))
+  const directEntries = keymapEntries.filter((entry) => !prefixOnlyIds.has(entry.id))
 
-  const result = applyKeymapOverrides(KobeKeymap, keymapEntries)
+  const result = applyKeymapOverrides(KobeKeymap, directEntries)
   warnings.push(...result.warnings)
   const applied: AppliedOverride[] = [...result.applied]
-  const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, prefix.entries)
+  const prefixKey = prefix.configuration.key
+  if (prefixKey !== null && prefixKey !== undefined) {
+    const directOwner = KobeKeymap.find((row) => row.keys.includes(prefixKey))
+    if (directOwner) warnings.push(`prefix.key "${prefixKey}" collides with direct binding ${directOwner.id}`)
+  }
+  // Legacy `bindings:` overrides for control-chord rows retain their intent:
+  // ctrl+g becomes the `g` second stroke. The explicit prefix namespace wins.
+  const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, [...legacyPrefixEntries, ...prefix.entries])
   warnings.push(...prefixResult.warnings)
   applied.push(...prefixResult.applied)
 

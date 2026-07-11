@@ -74,6 +74,21 @@ describe("applyUserKeybindings", () => {
     expect(report.warnings).toEqual([])
   })
 
+  test("migrates a legacy control-chord override onto a prefix-only row", () => {
+    fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["g"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("warns when a configured prefix collides with a direct override", () => {
+    fileState.doc = { prefix: { key: "ctrl+r" }, bindings: { [ID]: "ctrl+r" } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(report.warnings.join("\n")).toContain('prefix.key "ctrl+r" collides with direct binding sidebar.rename')
+  })
+
   test("an unknown binding id becomes a warning, mirrored to console.warn", () => {
     fileState.doc = { bindings: { "sidebar.does-not-exist": "ctrl+x" } }
     const report = userKb.reloadUserKeybindings()

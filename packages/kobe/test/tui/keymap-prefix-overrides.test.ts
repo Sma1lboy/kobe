@@ -64,4 +64,16 @@ describe("PureTUI prefix settings", () => {
     expect(result.applied).toEqual([{ id: "chat.tab.new", keys: ["n"], defaultKeys: ["t"] }])
     expect(result.warnings.join("\n")).toContain("not a prefix binding")
   })
+
+  test("preserves the four-slot focus prefix contract", () => {
+    const copy = keymap.map((row) => ({
+      ...row,
+      keys: [...row.keys],
+      prefixKeys: row.prefixKeys && [...row.prefixKeys],
+    }))
+    const result = applyPrefixKeymapOverrides(copy, [{ id: "focus.numeric", keys: ["h"] }])
+
+    expect(copy[2]?.prefixKeys).toEqual(["h", "j", "k", "l"])
+    expect(result.warnings.join("\n")).toContain("exactly 4")
+  })
 })

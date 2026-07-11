@@ -172,6 +172,7 @@ export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key
 
 let prefixConfiguration: PrefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
 let prefixArmedAt: number | null = null
+let prefixTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Apply a validated configuration and cancel an in-flight sequence. */
 export function configurePrefix(next: PrefixConfiguration): void {
@@ -192,7 +193,15 @@ export function currentPrefixConfiguration(): Readonly<PrefixConfiguration> {
 
 /** Cancel a prefix sequence when reload, a modal, or teardown intervenes. */
 export function resetPrefixState(): void {
+  if (prefixTimer !== null) clearTimeout(prefixTimer)
+  prefixTimer = null
   prefixArmedAt = null
+}
+
+function armPrefix(now: number): void {
+  resetPrefixState()
+  prefixArmedAt = now
+  prefixTimer = setTimeout(resetPrefixState, prefixConfiguration.timeoutMs)
 }
 
 /** Chords already flagged by the shadowed-match warning (once per process
@@ -309,25 +318,26 @@ export function dispatchKeyEvent(
       const expired = now - prefixArmedAt > prefixConfiguration.timeoutMs
       prefixArmedAt = null
       if (expired) {
-        // The first stroke was consumed, so consume this late second stroke
-        // too rather than leaking an unexpected byte into the focused pane.
+        if (prefixTimer !== null) clearTimeout(prefixTimer)
+        prefixTimer = null
+      } else {
+        // Escape cancels an armed sequence instead of also closing a dialog.
+        if (candidates.includes("escape")) {
+          resetPrefixState()
+          evt.preventDefault()
+          return true
+        }
+        // A miss is consumed so it cannot type into an input or Terminal pane
+        // after the user deliberately started a prefix sequence.
+        resetPrefixState()
+        dispatchMode(snapshot, evt as KeyEvent, candidates, true)
         evt.preventDefault()
         return true
       }
-      // Escape cancels an armed sequence instead of also closing a dialog.
-      if (candidates.includes("escape")) {
-        evt.preventDefault()
-        return true
-      }
-      // A miss is consumed so it cannot type into an input or Terminal pane
-      // after the user deliberately started a prefix sequence.
-      dispatchMode(snapshot, evt as KeyEvent, candidates, true)
-      evt.preventDefault()
-      return true
     }
 
     if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key) && prefixReachable(snapshot)) {
-      prefixArmedAt = now
+      armPrefix(now)
       evt.preventDefault()
       return true
     }
