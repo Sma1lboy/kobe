@@ -15,6 +15,7 @@ import {
   type TabSpawn,
   type TabsState,
   findEditorTab,
+  openContentTab,
   openEditorTab,
   tabPtyKey,
 } from "../../tui/workspace/terminal-tabs-core"
@@ -28,6 +29,7 @@ export interface TabHandoffIO {
       readonly worktree: string
       readonly onEditorTabReady?: (open: (command: readonly string[], label: string) => void) => void
       readonly onEngineSendReady?: (send: (text: string) => void) => void
+      readonly onDiffTabReady?: (open: (relPath: string, label: string, base?: string) => void) => void
     }
   }
   readonly update: (next: TabsState) => void
@@ -55,6 +57,17 @@ export function useTabHandoffs(io: TabHandoffIO): void {
       }
       update(openEditorTab(current, command, label))
       if (existing?.id === current.activeId) io.bumpResetToken()
+    })
+  }, [])
+
+  // Read-only diff/preview tab (issue #21): the FileTree `d` action. A
+  // content swap, NOT a focus grab — `openContentTab` selects the tab but
+  // the host never calls `focus.setFocused` here (KOB-25), so keyboard focus
+  // stays on the FileTree that opened it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
+  useEffect(() => {
+    propsRef.current.onDiffTabReady?.((relPath, label, base) => {
+      update(openContentTab(stateRef.current, relPath, label, base))
     })
   }, [])
 

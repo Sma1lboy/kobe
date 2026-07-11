@@ -132,6 +132,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // re-hands it on every mount (task/worktree switch).
   const openEditorTabFn = useRef<((command: readonly string[], label: string) => void) | null>(null)
   const sendToEngineFn = useRef<((text: string) => void) | null>(null)
+  // Read-only diff tab opener (issue #21) — same ref pattern as the editor
+  // tab: TerminalTabs re-hands it per mount, FileTree's `d` reads it at
+  // keypress. Opening is a content swap; the host does NOT focus the
+  // workspace here (KOB-25 — a read-only open must not pull focus).
+  const openDiffTabFn = useRef<((relPath: string, label: string, base?: string) => void) | null>(null)
 
   /** FileTree corner `pr` action — the Ops pane's createPR verbatim, with
    *  the tmux send-keys half swapped for a PTY paste+submit. */
@@ -176,6 +181,18 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     }
     openEditorTabFn.current?.(["sh", "-c", launch.command], launch.label)
     focus.setFocused("workspace")
+  }
+
+  /**
+   * FileTree's `d` action (issue #21): open a file's read-only diff in the
+   * workspace content tab. The file's basename labels the tab; `base` (when
+   * the Changes tab is in Branch scope) makes it a vs-base diff. Deliberately
+   * NO `focus.setFocused` — a read-only open is a content swap, not a
+   * navigation (KOB-25), so the FileTree keeps keyboard focus.
+   */
+  function openDiff(relPath: string, base?: string): void {
+    const label = relPath.split("/").at(-1) ?? relPath
+    openDiffTabFn.current?.(relPath, label, base)
   }
 
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
@@ -315,6 +332,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onEngineSendReady={(send) => {
             sendToEngineFn.current = send
           }}
+          onDiffTabReady={(open) => {
+            openDiffTabFn.current = open
+          }}
           onQuickFork={quickFork.onQuickFork}
           initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
@@ -329,8 +349,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         >
           <FileTree
             worktreePath={worktree}
+            prBaseRef={selectedTask?.prStatus?.baseRef}
             focused={activePane === "files"}
             onOpenFile={(relPath) => void openFileInEditor(relPath)}
+            onOpenDiff={openDiff}
             onZenToggle={toggleZen}
             onCreatePR={() => void createPR()}
           />

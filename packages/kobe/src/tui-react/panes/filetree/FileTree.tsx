@@ -27,7 +27,16 @@ import { errorMessage } from "@/lib/error-message"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "../../../tui/panes/filetree/git"
+import {
+  type GitScope,
+  type StatusEntry,
+  type TreeNode,
+  buildTree,
+  listFiles,
+  resolveBase,
+  statusFiles,
+  statusFilesBranch,
+} from "../../../tui/panes/filetree/git"
 import { type FileTreeTab, fileTreeBindings } from "../../../tui/panes/filetree/keys-core"
 import { openExternally } from "../../../tui/panes/filetree/open-external"
 import {
@@ -61,8 +70,15 @@ import { FileTreeRowView } from "./row-view"
 export type FileTreeProps = {
   /** Active task's worktree path; `null` renders the "No worktree" placeholder. */
   worktreePath: string | null
+  /** Task's PR base ref (`task.prStatus.baseRef`), when it has an open PR —
+   *  the preferred base for Branch (vs-base) scope. Absent falls back to the
+   *  repo's default branch (`resolveBase`). */
+  prBaseRef?: string
   /** Fires when the user activates a row (enter / click); worktree-relative path. */
   onOpenFile: (relPath: string) => void
+  /** `d` — open the current file's read-only diff in a workspace content tab.
+   *  `base` (Branch scope) makes it a vs-base diff; omitted = diff vs HEAD. */
+  onOpenDiff?: (relPath: string, base?: string) => void
   /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
   onMention?: (relPath: string) => void
   /** `p` — request PR creation (Ops host only); also rendered as a chip. */
@@ -83,6 +99,15 @@ export function FileTree(props: FileTreeProps) {
 
   // ---------- pane state ----------
   const [tab, setTab] = useState<FileTreeTab>("all")
+  // Changes-tab scope: uncommitted work vs the whole branch vs its base.
+  // `scopeManual` tracks whether the user pressed `b` — until then the pane
+  // auto-falls-back to Branch scope when the working tree is clean (the
+  // engine committed everything, so working scope would show nothing).
+  const [scope, setScope] = useState<GitScope>("working")
+  const [scopeManual, setScopeManual] = useState(false)
+  // Resolved base ref for Branch scope (null = couldn't resolve → working
+  // scope). Recomputed on worktree / prBaseRef change.
+  const [base, setBase] = useState<string | null>(null)
   const [cursorIndex, setCursorIndex] = useState(0)
   // Bumped by `r` (and the opt-in fs watch) to force a re-fetch.
   const [refreshTick, setRefreshTick] = useState(0)
@@ -98,6 +123,9 @@ export function FileTree(props: FileTreeProps) {
   const tabRef = useLatest(tab)
   const allFilesRef = useLatest(allFiles)
   const changesRef = useLatest(changes)
+  const scopeRef = useLatest(scope)
+  const baseRef = useLatest(base)
+  const scopeManualRef = useLatest(scopeManual)
   const fetchSeq = useRef(0)
 
   /**
@@ -122,8 +150,19 @@ export function FileTree(props: FileTreeProps) {
           if (signal?.aborted || seq !== fetchSeq.current || pathRef.current !== path) return
           setAllFiles((prev) => (sameFileList(prev, files) ? prev : files))
         } else if (currentTab === "changes") {
-          const entries = await statusFiles(path, signal)
+          const wantBranch = scopeRef.current === "branch" && baseRef.current != null
+          const entries = wantBranch
+            ? await statusFilesBranch(path, baseRef.current as string, signal)
+            : await statusFiles(path, signal)
           if (signal?.aborted || seq !== fetchSeq.current || pathRef.current !== path) return
+          // Auto-fallback: a clean working tree in un-toggled working scope
+          // means the engine committed everything — switch to Branch scope so
+          // the task's output is visible. Only when a base resolved; the
+          // scope change re-triggers this effect via the changes-scope effect.
+          if (!wantBranch && entries.length === 0 && !scopeManualRef.current && baseRef.current != null) {
+            setScope("branch")
+            return
+          }
           setChanges((prev) => (sameStatusEntries(prev, entries) ? prev : entries))
         }
       } catch (err) {
@@ -139,17 +178,58 @@ export function FileTree(props: FileTreeProps) {
 
   // Re-fetch when the worktree changes — wipe all caches first because the
   // old cache no longer applies. Cleanup aborts the in-flight git read so
-  // rapid task-switches don't stack subprocesses.
+  // rapid task-switches don't stack subprocesses. Scope resets to its
+  // auto-fallback default (working, un-toggled) for the new task.
   useEffect(() => {
     setAllFiles(null)
     setChanges(null)
     setError(null)
     setCursorIndex(0)
     setExpandedDirs(new Set<string>())
+    setScope("working")
+    setScopeManual(false)
     const controller = new AbortController()
     void refetch(tabRef.current, props.worktreePath, controller.signal)
     return () => controller.abort()
   }, [props.worktreePath, refetch])
+
+  // Resolve the Branch-scope base ref for this worktree (prefers the task's
+  // PR base, else the repo default branch). Runs on worktree / prBaseRef
+  // change; a null result keeps the pane in working scope. `base` becoming
+  // available is what lets the auto-fallback flip a clean worktree to Branch.
+  useEffect(() => {
+    const path = props.worktreePath
+    if (path == null) {
+      setBase(null)
+      return
+    }
+    let disposed = false
+    const controller = new AbortController()
+    void resolveBase(path, props.prBaseRef, controller.signal)
+      .then((b) => {
+        if (!disposed) setBase(b)
+      })
+      .catch(() => {
+        if (!disposed) setBase(null)
+      })
+    return () => {
+      disposed = true
+      controller.abort()
+    }
+  }, [props.worktreePath, props.prBaseRef])
+
+  // Re-fetch the Changes tab when scope OR the resolved base changes — a
+  // scope toggle (`b`) or an async base resolution both switch which diff the
+  // tab shows. Only fires on the Changes tab; the All tab is scope-agnostic.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads tab/path via refs; runs on the scope/base transition, matching the other refetch effects' shape.
+  useEffect(() => {
+    if (tabRef.current !== "changes") return
+    const path = pathRef.current
+    if (path == null) return
+    const controller = new AbortController()
+    void refetch("changes", path, controller.signal)
+    return () => controller.abort()
+  }, [scope, base, refetch])
 
   // Realtime watch is opt-in (see watchWorktree) — the default path is
   // explicit refresh (`r`) plus tab/worktree changes.
@@ -270,6 +350,19 @@ export function FileTree(props: FileTreeProps) {
       refresh: () => {
         setRefreshTick((n) => n + 1)
       },
+      toggleScope: () => {
+        // Only meaningful on the Changes tab; Branch scope needs a base.
+        if (tab !== "changes") return
+        if (base == null) return
+        setScopeManual(true)
+        setScope((s) => (s === "working" ? "branch" : "working"))
+      },
+      openDiff: () => {
+        const row = rows[cursorIndex]
+        if (!row || row.kind === "dir") return
+        // Branch scope diffs vs the resolved base; working scope vs HEAD.
+        props.onOpenDiff?.(row.path, scope === "branch" && base != null ? base : undefined)
+      },
       expandOrDescend: () => applyNav(expandOrDescendAction(rows, cursorIndex)),
       collapseOrParent: () => {
         if (tab !== "all") return
@@ -293,6 +386,8 @@ export function FileTree(props: FileTreeProps) {
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
       <FileTreeHeaderView
         tab={tab}
+        scope={scope}
+        base={base}
         onSelectTab={setTab}
         onZenToggle={props.onZenToggle}
         onCreatePR={props.onCreatePR}

@@ -97,10 +97,27 @@ export interface CommandTab extends TabBase {
 }
 
 /**
+ * A read-only file view — the FileTree `d` action (issue #21): the preview
+ * `<diff>`/`<code>` renderable, hosted as a tab instead of the removed
+ * `kobe ops --preview` window. No PTY: it renders from a one-shot git read
+ * (`loadPreviewData`), so it never spawns, resumes, or auto-closes on an
+ * exit. Like the editor tab it's a FileTree-owned SINGLETON slot ({@link
+ * openContentTab} replaces it in place), so repeatedly hitting `d` swaps the
+ * one preview tab rather than piling up.
+ */
+export interface ContentTab extends TabBase {
+  readonly kind: "content"
+  /** Worktree-relative path being previewed. */
+  readonly relPath: string
+  /** Base ref for the vs-base (Branch scope) diff; absent = diff vs HEAD. */
+  readonly base?: string
+}
+
+/**
  * Discriminated on `kind` so the illegal shapes (vendor+command on one
  * tab, close-on-exit without a command) cannot be represented.
  */
-export type TerminalTab = EngineTab | CommandTab
+export type TerminalTab = EngineTab | CommandTab | ContentTab
 
 export interface TabsState {
   readonly tabs: readonly TerminalTab[]
@@ -170,6 +187,32 @@ export function openEditorTab(state: TabsState, command: readonly string[], labe
   }
   const tabs = state.tabs.map(
     (tab): TerminalTab => (tab.id === existing.id ? { ...existing, title: label, command, splitTree: null } : tab),
+  )
+  return { ...state, tabs, activeId: existing.id }
+}
+
+/** The FileTree-owned read-only preview tab, if this task already has one. */
+export function findContentTab(state: TabsState): ContentTab | undefined {
+  return state.tabs.find((tab): tab is ContentTab => tab.kind === "content")
+}
+
+/**
+ * Open or replace the one FileTree-owned read-only preview tab ({@link
+ * ContentTab}) — the `d` action's singleton slot, mirroring {@link
+ * openEditorTab}. First time: insert after the active tab and focus it. Later
+ * hits: retarget the existing tab to the new file/base in place (its render
+ * re-reads on the prop change) and select it. Selecting is a content swap,
+ * not a focus grab — the FileTree keeps keyboard focus (KOB-25); the host
+ * wires it without a `focus.setFocused`.
+ */
+export function openContentTab(state: TabsState, relPath: string, label: string, base?: string): TabsState {
+  const existing = findContentTab(state)
+  if (!existing) {
+    const ordinal = state.nextOrdinal
+    return insertAfterActive(state, { kind: "content", id: `tab-${ordinal}`, title: label, ordinal, relPath, base })
+  }
+  const tabs = state.tabs.map(
+    (tab): TerminalTab => (tab.id === existing.id ? { ...existing, title: label, relPath, base } : tab),
   )
   return { ...state, tabs, activeId: existing.id }
 }
@@ -282,32 +325,9 @@ export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTri
   return "close"
 }
 
-/** What a tab's PTY should spawn: an argv, plus optional bytes typed into
- *  it right after spawn (`TaskPtyOpts.initialInput`). */
-export interface TabSpawn {
-  readonly command: readonly string[]
-  readonly initialInput?: string
-}
-
-/** Args that survive an interactive prompt unquoted; anything else gets
- *  single-quoted (`'\''` escape) — POSIX shells and fish both accept it. */
-const SHELL_SAFE_ARG = /^[A-Za-z0-9@%+=:,./_-]+$/
-
-/** Render an argv as one shell-ready command line. */
-export function shellCommandLine(argv: readonly string[]): string {
-  return argv.map((a) => (SHELL_SAFE_ARG.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`)).join(" ")
-}
-
-/**
- * Wrap an engine argv in the user's interactive shell: the PTY spawns
- * `shell` and the engine command line is TYPED into it (kernel tty input
- * buffering holds it until the shell is ready). This keeps the user's
- * full shell context — rc files, aliases, PATH — and exiting the engine
- * lands on the shell prompt instead of killing the tab.
- */
-export function shellSpawn(argv: readonly string[], shell: string): TabSpawn {
-  return { command: [shell], initialInput: `${shellCommandLine(argv)}\r` }
-}
+// Shell-wrapping helpers moved to `./terminal-tab-spawn` for the file-size
+// cap; re-exported here so existing importers keep one entry point.
+export { type TabSpawn, shellCommandLine, shellSpawn } from "./terminal-tab-spawn"
 
 /**
  * Rehydrate a persisted tab snapshot (issue #22). A tab is a TERMINAL

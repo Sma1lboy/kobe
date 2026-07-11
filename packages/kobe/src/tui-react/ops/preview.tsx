@@ -23,18 +23,32 @@ import { useBindings } from "../lib/keymap"
 export interface OpsPreviewArgs {
   readonly worktree: string
   readonly relPath: string
+  /** Base ref for the vs-base (Branch scope) diff; omitted = diff vs HEAD. */
+  readonly base?: string
+  /**
+   * How q/escape/ctrl+c close the preview. The standalone `kobe ops
+   * --preview` entrypoint passes `() => process.exit(0)` (the whole process
+   * IS the preview); the in-workspace content tab passes a real closer that
+   * removes the tab — same `onClose` seam as `UpdatePage`, so the shared
+   * component never hard-exits when it's just one tab in a live TUI.
+   */
+  readonly onClose?: () => void
+  /** Whether this preview has keyboard focus — gates its close chords when
+   *  hosted as a tab (a standalone process is always focused). */
+  readonly focused?: boolean
 }
 
-function PreviewScreen(props: OpsPreviewArgs) {
+export function PreviewScreen(props: OpsPreviewArgs) {
   const { theme } = useTheme()
   const t = useT()
   const style = useMemo(() => buildSyntaxStyle(theme), [theme])
   const filetype = filetypeOf(props.relPath)
 
   const [data, setData] = useState<PreviewData | null>(null)
+  const base = props.base
   useEffect(() => {
     let disposed = false
-    void loadPreviewData(props.worktree, props.relPath)
+    void loadPreviewData(props.worktree, props.relPath, base ? { base } : undefined)
       .then((d) => {
         if (!disposed) setData(d)
       })
@@ -45,13 +59,15 @@ function PreviewScreen(props: OpsPreviewArgs) {
     return () => {
       disposed = true
     }
-  }, [props.worktree, props.relPath])
+  }, [props.worktree, props.relPath, base])
 
+  const onClose = props.onClose ?? (() => process.exit(0))
   useBindings(() => ({
+    enabled: props.focused ?? true,
     bindings: [
-      { key: "q", cmd: () => process.exit(0) },
-      { key: "escape", cmd: () => process.exit(0) },
-      { key: "ctrl+c", cmd: () => process.exit(0) },
+      { key: "q", cmd: onClose },
+      { key: "escape", cmd: onClose },
+      { key: "ctrl+c", cmd: onClose },
     ],
   }))
 
@@ -59,7 +75,13 @@ function PreviewScreen(props: OpsPreviewArgs) {
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
         <text fg={theme.accent}>{props.relPath}</text>
-        <text fg={theme.textMuted}>{data?.kind === "diff" ? t("ops.preview.diffVsHead") : t("ops.preview.file")}</text>
+        <text fg={theme.textMuted}>
+          {data?.kind === "diff"
+            ? base
+              ? t("ops.preview.diffVsBase", { base })
+              : t("ops.preview.diffVsHead")
+            : t("ops.preview.file")}
+        </text>
         <text fg={theme.textMuted}>{t("ops.preview.closeHint")}</text>
       </box>
       <box flexGrow={1}>
