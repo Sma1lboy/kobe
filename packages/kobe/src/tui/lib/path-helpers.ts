@@ -18,6 +18,16 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 
 /**
+ * Last `/`-separated segment of a path — the shared owner of leaf-name
+ * extraction (history header, Ops preview window name, diff-tab labels,
+ * split-leaf naming). Pure string work, the one non-filesystem helper
+ * here. Semantics: trailing slash → `""`, no slash → the whole string.
+ */
+export function pathLeaf(p: string): string {
+  return p.slice(p.lastIndexOf("/") + 1)
+}
+
+/**
  * Expand a leading `~` to the user's home directory. Supports `~` alone
  * and `~/...`-prefixed paths only (no `~user/` lookups — rare; not
  * worth the parsing complexity here). The fs / git helpers don't expand

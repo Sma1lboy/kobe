@@ -20,14 +20,10 @@ import {
 import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
 import { sessionAttached } from "@/tui/lib/attach-gate"
+import { pathLeaf } from "@/tui/lib/path-helpers"
 import { inheritedEnvPrefix } from "../panes/terminal/launch"
 import { CHAT_TAB_STATE_OPTION, type TurnStatusIo } from "./activity-monitor"
 import { buildPRPrompt } from "./pr-prompt"
-
-export function basename(p: string): string {
-  const i = p.lastIndexOf("/")
-  return i >= 0 ? p.slice(i + 1) : p
-}
 
 /** The launcher-provided identity of one Ops pane (see `OpsHostArgs`). */
 export interface OpsShellContext {
@@ -58,7 +54,7 @@ export function makeOpsActions(ctx: OpsShellContext): OpsActions {
     void newWindow(tmuxSessionName(ctx.taskId), {
       cwd: ctx.worktree,
       command: previewWindowCommand({ worktree: ctx.worktree, relPath: rel, cliInvocation: kobeCliInvocation() }),
-      name: basename(rel),
+      name: pathLeaf(rel),
     })
   }
 

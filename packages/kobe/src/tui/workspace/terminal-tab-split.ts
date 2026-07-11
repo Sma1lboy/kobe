@@ -8,6 +8,7 @@
  * split trees and leaf payloads, never `TabsState`.
  */
 
+import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
 
 /**
@@ -94,7 +95,7 @@ export function splitLeafNames(
 ): ReadonlyMap<string, string> {
   const basename = (argv: readonly string[] | null): string => {
     const head = (argv ?? tabCommand)[0] ?? ""
-    const name = head.split("/").at(-1) ?? ""
+    const name = pathLeaf(head)
     return name.length > 0 ? name : "?"
   }
   const seen = new Map<string, number>()
