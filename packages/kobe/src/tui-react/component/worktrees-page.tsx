@@ -26,30 +26,14 @@
 import { TextAttributes } from "@opentui/core"
 import { type ReactNode, useEffect, useState } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { clampCursor } from "../../tui/component/new-task-dialog/state"
+import { relativeAgeMs } from "../../tui/history/message-core"
 import type { WorktreeAuditRow, WorktreeProject } from "../../types/worktree"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
-
-/** Compact relative age ("3m", "2h", "4d") — mirrors `tui/history/host.tsx`'s
- *  `relativeTime`, an epoch-ms variant since worktree timestamps aren't ISO. */
-function relativeAge(ms: number): string {
-  if (!ms) return ""
-  const secs = Math.max(0, Math.floor((Date.now() - ms) / 1000))
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h`
-  return `${Math.floor(hours / 24)}d`
-}
-
-function clampCursor(next: number, len: number): number {
-  if (len <= 0) return 0
-  return Math.min(Math.max(next, 0), len - 1)
-}
 
 function flattenRows(projects: readonly WorktreeProject[]): readonly WorktreeAuditRow[] {
   return projects.flatMap((p) => p.worktrees)
@@ -303,7 +287,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
                         </text>
                         {row.createdAtMs > 0 ? (
                           <text fg={theme.textMuted} wrapMode="none">
-                            {t("worktrees.row.created", { age: relativeAge(row.createdAtMs) })}
+                            {t("worktrees.row.created", { age: relativeAgeMs(row.createdAtMs) })}
                           </text>
                         ) : null}
                       </box>

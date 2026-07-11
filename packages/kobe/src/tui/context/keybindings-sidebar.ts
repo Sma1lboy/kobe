@@ -6,7 +6,7 @@
  * display rules).
  */
 
-import type { KobeBinding } from "./keybindings.ts"
+import type { KobeBinding } from "./keybindings-table.ts"
 
 export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
   // ─── Sidebar ──────────────────────────────────────────────────────────
