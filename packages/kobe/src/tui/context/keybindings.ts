@@ -26,6 +26,19 @@ const KEYMAP_DEFAULTS: ReadonlyMap<string, { keys: readonly string[]; hint?: Kob
 )
 
 /**
+ * Default chords for a binding id, read from the pristine
+ * {@link KEYMAP_DEFAULTS} snapshot — NOT the live (possibly
+ * user-overridden) row. `RESERVED_GLOBAL_CHORDS`
+ * (panes/terminal/keys-pure.ts) derives the terminal-passthrough
+ * reservation from this, so a user override never changes which chords
+ * the embedded terminal swallows. Unknown id → empty array (same
+ * contract as {@link chordsOf}).
+ */
+export function defaultChordsOf(id: string): readonly string[] {
+  return KEYMAP_DEFAULTS.get(id)?.keys ?? []
+}
+
+/**
  * Restore every `KobeKeymap` row to its boot-time default chords + hint.
  * Called before re-applying the (re-read) keybindings file on a live
  * reload, so the net effect is "defaults + current overrides", never a
