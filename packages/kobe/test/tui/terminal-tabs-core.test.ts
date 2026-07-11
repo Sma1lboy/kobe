@@ -7,11 +7,13 @@ import {
   collapseSplit,
   cycleTab,
   engineTabArgv,
+  findContentTab,
   hasEngineLeaf,
   initialTabs,
   isTabSplit,
   markTabSpawned,
   openCommandTab,
+  openContentTab,
   openEditorTab,
   rehydrateTabs,
   renameActiveTab,
@@ -140,6 +142,19 @@ describe("terminal tabs state", () => {
     expect(shellTab).toMatchObject({ kind: "command" })
     expect(shellTab).not.toHaveProperty("purpose")
     expect(s.tabs.filter((tab) => tab.kind === "command" && tab.purpose === "editor")).toHaveLength(1)
+  })
+
+  it("openContentTab opens then reuses the single read-only preview slot", () => {
+    let s = openContentTab(initialTabs(), "src/a.ts", "a.ts", "origin/main")
+    const contentId = s.activeId
+    expect(s.tabs).toHaveLength(2)
+    expect(s.tabs[1]).toMatchObject({ kind: "content", id: contentId, relPath: "src/a.ts", base: "origin/main" })
+    // A second `d` retargets the SAME tab in place (no pile-up), and drops
+    // the base when opened in working scope.
+    s = openContentTab(s, "src/b.ts", "b.ts")
+    expect(s.tabs).toHaveLength(2)
+    expect(s.activeId).toBe(contentId)
+    expect(findContentTab(s)).toMatchObject({ relPath: "src/b.ts", base: undefined })
   })
 
   // Why: sessionId is the naming/resume anchor (tmux @kobe_session_id) —

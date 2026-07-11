@@ -35,9 +35,20 @@ export interface PreviewData {
   readonly text: string
 }
 
-/** Diff vs HEAD when the file has changes, otherwise its full content. */
-export async function loadPreviewData(worktree: string, relPath: string): Promise<PreviewData> {
-  const res = await runWorktreeGit(worktree, ["diff", "HEAD", "--", relPath])
+/**
+ * Diff for `relPath`, otherwise its full content. `range` picks the diff:
+ * omitted → uncommitted work (`git diff HEAD`); `{ base }` → everything this
+ * branch changed vs its base (`git diff <base>...HEAD`, three-dot = against
+ * the merge-base — the Changes tab's Branch scope). Either way, an empty diff
+ * falls back to the file's current content.
+ */
+export async function loadPreviewData(
+  worktree: string,
+  relPath: string,
+  range?: { base: string },
+): Promise<PreviewData> {
+  const spec = range ? `${range.base}...HEAD` : "HEAD"
+  const res = await runWorktreeGit(worktree, ["diff", spec, "--", relPath])
   const diff = res.status === 0 ? res.stdout : ""
   if (diff.trim().length > 0) return { kind: "diff", text: diff }
   return { kind: "code", text: (await readWorktreeFile(worktree, relPath)) ?? "" }
