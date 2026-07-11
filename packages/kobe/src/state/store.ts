@@ -17,15 +17,29 @@
  * serialize writers. A true cross-process lock is the multi-instance
  * follow-up if same-key contention ever becomes real.
  *
- * Corrupt-file policy (preserved from both former writers): a missing or
- * unparseable state.json reads as `{}` and is silently rebuilt on the next
- * write. A corrupt state file must never block the UI or a CLI command —
- * the data here is all reconstructible preference state.
+ * Corrupt-file policy (aligned with orchestrator/index/store.ts's tasks.json
+ * handling): a missing state.json reads as `{}` silently — that's the normal
+ * fresh-machine case. Unparseable JSON is different: the bad file is renamed
+ * to `state.json.corrupt-<ts>` (never deleted — a forensic copy survives) and
+ * a warning goes to stderr once, then `{}` is returned so the UI/CLI is never
+ * blocked. Either way the caller always gets `{}`, never a throw.
+ *
+ * tmp-write uniqueness: `writeStateFile` targets `${path}.<pid>.<nonce>.tmp`,
+ * not a fixed shared name. Every write here still goes through the
+ * read-merge-write of `patchStateFile`/`updateStateFile` above, but nothing
+ * stops two DIFFERENT processes from calling `writeStateFile` at genuinely
+ * the same instant (no flock, per the module's opening paragraph) — a shared
+ * tmp path would let one process's `writeFileSync` interleave with another's
+ * on the same inode and rename over a torn write. Per-process-unique tmp
+ * names make that impossible; the final `rename()` stays atomic and
+ * last-write-wins, unchanged.
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { kvStatePath } from "../env.ts"
+
+let corruptWarned = false
 
 /** The flat JSON object persisted at `kvStatePath()`. */
 export type StateSnapshot = Record<string, unknown>
@@ -36,30 +50,53 @@ export type StateSnapshot = Record<string, unknown>
  * policy in the module doc. Never throws.
  */
 export function loadStateFile(): StateSnapshot {
+  const path = kvStatePath()
+  let text: string
   try {
-    const text = readFileSync(kvStatePath(), "utf8")
+    text = readFileSync(path, "utf8")
+  } catch {
+    // Missing (or unreadable) file: normal fresh-machine case, start fresh.
+    return {}
+  }
+  try {
     const parsed = JSON.parse(text) as unknown
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as StateSnapshot
     }
   } catch {
-    // Missing file or malformed JSON: start fresh. We don't surface the
-    // error — a corrupt state file shouldn't block the UI or a CLI run.
+    // fall through to the corrupt-JSON handling below
+  }
+  // The file exists but didn't parse as a JSON object: back it up instead of
+  // silently discarding it, then start fresh. Best-effort — if the backup
+  // rename itself fails (e.g. file vanished between read and rename), we
+  // still must not throw or block the caller.
+  try {
+    renameSync(path, `${path}.corrupt-${Date.now()}`)
+    if (!corruptWarned) {
+      corruptWarned = true
+      console.error(`[kobe] ${path} is corrupted; backed up and starting fresh.`)
+    }
+  } catch {
+    // Nothing more we can do; still return {} below.
   }
   return {}
 }
 
 /**
- * Atomic whole-file write: serialize to `state.json.tmp`, then rename over
- * `state.json` so a crash mid-write can never leave a half-written file.
- * `undefined` values vanish at JSON.stringify time, which is how key
- * deletion serializes. Throws on I/O failure — callers decide whether
- * that's fatal (CLI) or logged-and-retried (KVProvider's next flush).
+ * Atomic whole-file write: serialize to a process-unique
+ * `state.json.<pid>.<nonce>.tmp`, then rename over `state.json` so a crash
+ * mid-write can never leave a half-written file. The tmp name is unique per
+ * call (not just per process) so two writes racing in the same process via
+ * concurrent callers can't collide either. `undefined` values vanish at
+ * JSON.stringify time, which is how key deletion serializes. Throws on I/O
+ * failure — callers decide whether that's fatal (CLI) or logged-and-retried
+ * (KVProvider's next flush).
  */
 function writeStateFile(state: StateSnapshot): void {
   const path = kvStatePath()
   mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.tmp`
+  const nonce = Math.random().toString(36).slice(2)
+  const tmp = `${path}.${process.pid}.${nonce}.tmp`
   writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8")
   renameSync(tmp, path)
 }
