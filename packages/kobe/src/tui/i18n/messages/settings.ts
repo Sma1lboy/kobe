@@ -103,7 +103,7 @@ export const en = {
   },
   keybindings: {
     title: "Keybindings",
-    hint: "Rebind chords by editing the YAML below, then restart kobe (or respawn the pane). Press F1 anywhere for the live keymap with every binding id.",
+    hint: "Edit the YAML below to rebind direct and PureTUI prefix chords; changes reload live. Press F1 anywhere for the live keymap with every binding id.",
     configFile: "Config file",
     notCreated: "  (not created yet)",
     example: "Example",
@@ -247,7 +247,7 @@ export const zh: typeof en = {
   },
   keybindings: {
     title: "快捷键",
-    hint: "编辑下面的 YAML 来重绑定按键，然后重启 kobe（或重建面板）。任意位置按 F1 查看带每个绑定 id 的实时键位表。",
+    hint: "编辑下面的 YAML 来重绑定直接按键和 PureTUI prefix 组合；修改会实时加载。任意位置按 F1 查看带每个绑定 id 的实时键位表。",
     configFile: "配置文件",
     notCreated: "  (尚未创建)",
     example: "示例",
