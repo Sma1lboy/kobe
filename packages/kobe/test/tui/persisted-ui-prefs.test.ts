@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 // don't depend on the full bundled-theme list.
 vi.mock("../../src/tui/context/theme-core", () => ({
   FOCUS_ACCENT_SLOTS: ["primary", "success", "info"] as const,
-  hasTheme: (name: string) => ["claude", "tokyonight"].includes(name),
+  hasBundledTheme: (name: string) => ["claude", "tokyonight"].includes(name),
 }))
 
 const { readPersistedUiPrefs } = await import("../../src/tui/lib/persisted-ui-prefs.ts")
