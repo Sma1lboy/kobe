@@ -32,6 +32,7 @@ import {
   type RegisteredBinding,
   dispatchKeyEvent,
   insertRegistration,
+  resetPrefixState,
 } from "../../tui/lib/keymap-dispatch"
 import { useLatest } from "../lib/use-latest"
 
@@ -79,6 +80,7 @@ function ensureInstalled(renderer: ReturnType<typeof useRenderer>): void {
   // block every key of the next renderer. Late cleanups from the old tree
   // splice by id and no-op safely against the cleared array.
   stack.length = 0
+  resetPrefixState()
   installedRenderer = renderer
   installed = renderer.keyInput
   listener = (evt: KeyEvent) => {
@@ -120,6 +122,9 @@ export function useBindings(config: () => BindingsConfig, opts?: { modalOwner?: 
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once registration; scope/owner tokens are stable for the component's lifetime.
   useEffect(() => {
+    // Opening a Dialog Stack scope invalidates an in-flight prefix from the
+    // surface behind it before any async/mouse transition can leak it back.
+    if (opts?.modalOwner !== undefined) resetPrefixState()
     const reg: RegisteredBinding = {
       config: () => configRef.current(),
       id: nextId++,

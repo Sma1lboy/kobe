@@ -17,6 +17,7 @@ import type { KeymapOverrideEntry } from "./keymap-overrides-parse"
 
 export {
   type ChordResult,
+  type ExtractedKeybindingOverrides,
   type ExtractOverridesOpts,
   type KeymapOverrideEntry,
   type NormalizeChordOpts,
@@ -37,6 +38,7 @@ export type OverridableBinding = {
   id: string
   scope: string
   keys: readonly string[]
+  prefixKeys?: readonly string[]
   hint?: OverridableHint
 }
 
@@ -47,28 +49,8 @@ export type AppliedOverride = {
   defaultKeys: readonly string[]
 }
 
-/**
- * Ids that genuinely cannot be rebound. Two families:
- *
- *   - `evt.shift`-gated handlers: the chord registered is a bare letter
- *     and the handler fires only on the SHIFTED press (`Shift+G/P/M`).
- *     The chord grammar can't express `shift+<letter>` (terminals deliver
- *     it as a plain uppercase character — see `normalizeChord`), so a
- *     rebind could never carry the shift half. Fixed until/unless the
- *     handlers drop the shift gate.
- *   - positional sets mirrored OUTSIDE this keymap, or rows with no live
- *     registration site (rebinding would change the F1/help display
- *     without changing behavior — worse than refusing).
- *
- * Direction-multiplexed ids (`sidebar.nav`, `files.hierarchy`, …) are NOT
- * fixed anymore — their handlers dispatch on the matched chord's SLOT
- * (see {@link SLOT_CONTRACTS}), not on `evt.name`.
- *
- * Value = the reason shown in warnings / settings.
- */
+/** Ids whose event-shape or handler contract cannot be expressed by a rebind. */
 export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
-  "focus.numeric":
-    "pane focus is positional (h/j/k/l → pane) and mirrors the tmux-layer ctrl+hjkl bindings — rebind tmux.focus instead",
   "sidebar.goto":
     "gg vs Shift+G is discriminated via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't carry both halves",
   "sidebar.pin": "fires on Shift+P via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't work",
@@ -115,6 +97,10 @@ function pairContract(first: string, second: string): SlotContract {
  * reload, since the reload path resets and re-applies from scratch).
  */
 export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
+  "focus.numeric": {
+    layout: "[sidebar, workspace, files, terminal]",
+    validateCount: (count) => (count === 4 ? null : "needs 4 chords in [sidebar, workspace, files, terminal] order"),
+  },
   "sidebar.nav": pairContract("down", "up"),
   "files.nav": pairContract("down", "up"),
   "sidebar.search.nav": pairContract("down", "up"),
@@ -163,7 +149,7 @@ export function applyKeymapOverrides(
       warnings.push(`${entry.id}: not customizable — ${fixedReason}`)
       continue
     }
-    if (row.keys.length === 0) {
+    if (row.keys.length === 0 && row.prefixKeys === undefined) {
       warnings.push(`${entry.id}: not customizable — the key is handled outside the keymap (doc-only row)`)
       continue
     }

@@ -143,7 +143,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.new",
     scope: "workspace",
-    keys: ["ctrl+t"],
+    keys: [],
+    prefixKeys: ["t"],
     category: "Workspace",
     description: "New chat tab",
     hint: { keys: "ctrl+t" },
@@ -157,7 +158,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // uses for its own vendor cycle chord.
     id: "chat.tab.chooseEngine",
     scope: "workspace",
-    keys: ["ctrl+e"],
+    keys: [],
+    prefixKeys: ["e"],
     category: "Workspace",
     description: "New tab with a chosen engine or a plain shell",
     hint: { keys: "ctrl+e" },
@@ -177,7 +179,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // other panes.
     id: "chat.fork.new",
     scope: "workspace",
-    keys: ["ctrl+f"],
+    keys: [],
+    prefixKeys: ["f"],
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
     hint: { keys: "ctrl+f" },
@@ -193,7 +196,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // collides with terminals' backspace byte.
     id: "chat.session.resume",
     scope: "workspace",
-    keys: ["ctrl+y"],
+    keys: [],
+    prefixKeys: ["y"],
     category: "Workspace",
     description: "Resume a prior session in this task's worktree",
     hint: { keys: "ctrl+y" },
@@ -201,7 +205,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.close",
     scope: "workspace",
-    keys: ["ctrl+w"],
+    keys: [],
+    prefixKeys: ["w"],
     category: "Workspace",
     description: "Close chat tab",
     hint: { keys: "ctrl+w" },
@@ -229,7 +234,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // collision-prone.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    keys: ["ctrl+]"],
+    keys: [],
+    prefixKeys: ["]"],
     category: "Workspace",
     description: "Next chat tab",
     hint: { keys: "ctrl+]" },
@@ -237,7 +243,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.cycle-prev",
     scope: "workspace",
-    keys: ["ctrl+["],
+    keys: [],
+    prefixKeys: ["["],
     category: "Workspace",
     description: "Previous chat tab",
     hint: { keys: "ctrl+[" },
@@ -253,7 +260,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // encode ctrl+=; ctrl+\ would be SIGQUIT) — see docs/KEYBINDINGS.md.
     id: "workspace.split.right",
     scope: "workspace",
-    keys: ["ctrl+\\"],
+    keys: [],
+    prefixKeys: ["\\"],
     category: "Workspace",
     description: "Split right",
     hint: { keys: "ctrl+\\" },
@@ -261,7 +269,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "workspace.split.down",
     scope: "workspace",
-    keys: ["ctrl+="],
+    keys: [],
+    prefixKeys: ["="],
     category: "Workspace",
     description: "Split down",
     hint: { keys: "ctrl+=" },
@@ -287,7 +296,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // disables its close-tab entry while split, so exactly one is live.
     id: "workspace.split.close",
     scope: "workspace",
-    keys: ["ctrl+w"],
+    keys: [],
+    prefixKeys: ["w"],
     category: "Workspace",
     description: "Close active split (tab when unsplit)",
     hint: { keys: "ctrl+w" },

@@ -74,6 +74,58 @@ describe("applyUserKeybindings", () => {
     expect(report.warnings).toEqual([])
   })
 
+  test("adds a direct chord alongside a prefix row through bindings", () => {
+    fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("chat.tab.new")?.keys).toEqual(["ctrl+g"])
+    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["t"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("adds a prefix chord alongside a direct row through legacy prefix.bindings", () => {
+    fileState.doc = { prefix: { bindings: { "sidebar.projectFilter": "p" } } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("sidebar.projectFilter")?.keys).toEqual(["ctrl+p"])
+    expect(findBinding("sidebar.projectFilter")?.prefixKeys).toEqual(["p"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("adds direct positional pane navigation with four ordered chords", () => {
+    fileState.doc = { bindings: { "focus.numeric": ["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"] } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"])
+    expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("keeps both aliases when direct and prefix configuration name one id", () => {
+    fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" }, prefix: { bindings: { "chat.tab.new": "n" } } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("chat.tab.new")?.keys).toEqual(["ctrl+g"])
+    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["n"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("reads direct and prefix aliases from one binding object", () => {
+    fileState.doc = { bindings: { "chat.tab.new": { direct: "ctrl+g", prefix: "n" } } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(findBinding("chat.tab.new")?.keys).toEqual(["ctrl+g"])
+    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["n"])
+    expect(report.warnings).toEqual([])
+  })
+
+  test("warns when a configured prefix collides with a direct override", () => {
+    fileState.doc = { prefix: { key: "ctrl+r" }, bindings: { [ID]: "ctrl+r" } }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(report.warnings.join("\n")).toContain('prefix.key "ctrl+r" collides with direct binding sidebar.rename')
+  })
+
   test("an unknown binding id becomes a warning, mirrored to console.warn", () => {
     fileState.doc = { bindings: { "sidebar.does-not-exist": "ctrl+x" } }
     const report = userKb.reloadUserKeybindings()

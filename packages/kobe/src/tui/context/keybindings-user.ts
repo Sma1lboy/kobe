@@ -37,7 +37,9 @@ import {
   resolveTmuxKeyEntries,
   tmuxChordOptsFor,
 } from "../../tmux/keybindings"
+import { DEFAULT_PREFIX_CONFIGURATION, configurePrefix, resetPrefixConfiguration } from "../lib/keymap-dispatch"
 import { type AppliedOverride, applyKeymapOverrides, extractKeybindingOverrides } from "../lib/keymap-overrides"
+import { applyPrefixKeymapOverrides, extractPrefixKeybindings } from "../lib/keymap-prefix-overrides"
 import { KobeKeymap, bumpKeymapVersion, resetKeymapToDefaults } from "./keybindings"
 
 export type UserKeybindingsReport = {
@@ -70,15 +72,25 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   const warnings: string[] = [...file.warnings]
   const extracted = extractKeybindingOverrides(file.doc, process.platform, { chordOptsFor: tmuxChordOptsFor })
   warnings.push(...extracted.warnings)
+  const prefix = extractPrefixKeybindings(file.doc, process.platform)
+  warnings.push(...prefix.warnings)
+  configurePrefix({ ...DEFAULT_PREFIX_CONFIGURATION, ...prefix.configuration })
 
   // Partition by namespace: tmux.* entries belong to the session-key
   // layer; everything else targets KobeKeymap.
   const tmuxEntries = extracted.entries.filter((e) => e.id.startsWith("tmux."))
   const keymapEntries = extracted.entries.filter((e) => !e.id.startsWith("tmux."))
-
   const result = applyKeymapOverrides(KobeKeymap, keymapEntries)
   warnings.push(...result.warnings)
   const applied: AppliedOverride[] = [...result.applied]
+  const prefixKey = prefix.configuration.key
+  if (prefixKey !== null && prefixKey !== undefined) {
+    const directOwner = KobeKeymap.find((row) => row.keys.includes(prefixKey))
+    if (directOwner) warnings.push(`prefix.key "${prefixKey}" collides with direct binding ${directOwner.id}`)
+  }
+  const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, [...extracted.prefixEntries, ...prefix.entries])
+  warnings.push(...prefixResult.warnings)
+  applied.push(...prefixResult.applied)
 
   // Validate tmux entries with the same resolver `ensureSession` uses,
   // so the report shows what will actually bind (and why something
@@ -142,6 +154,7 @@ export function reloadUserKeybindings(): UserKeybindingsReport {
   resetKeybindingsFileCache()
   resetTmuxKeysCache()
   resetKeymapToDefaults()
+  resetPrefixConfiguration()
   const report = applyUserKeybindings()
   bumpKeymapVersion()
   return report

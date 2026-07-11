@@ -126,9 +126,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
   }))
   useBindings(() => ({
     enabled: pagesClosed && focus.focused !== "sidebar",
-    bindings: bindByIds({
-      "focus.sidebar": () => focus.setFocused("sidebar"),
-    }),
+    bindings: bindByIds({ "focus.sidebar": () => focus.setFocused("sidebar") }),
   }))
   useBindings(() => ({
     enabled: pagesClosed && focus.focused === "sidebar",

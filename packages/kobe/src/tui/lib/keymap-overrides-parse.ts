@@ -45,6 +45,13 @@
 /** One requested override after extraction: `keys: []` means "unbind". */
 export type KeymapOverrideEntry = { id: string; keys: string[] }
 
+/** Extraction result: direct-chord overrides, prefix-stroke overrides, warnings. */
+export type ExtractedKeybindingOverrides = {
+  entries: KeymapOverrideEntry[]
+  prefixEntries: KeymapOverrideEntry[]
+  warnings: string[]
+}
+
 const MOD_ALIASES: Readonly<Record<string, "ctrl" | "cmd" | "alt" | "shift">> = {
   ctrl: "ctrl",
   control: "ctrl",
@@ -196,15 +203,20 @@ export function extractKeybindingOverrides(
   doc: unknown,
   platform: string,
   opts?: ExtractOverridesOpts,
-): { entries: KeymapOverrideEntry[]; warnings: string[] } {
+): ExtractedKeybindingOverrides {
   const warnings: string[] = []
-  if (doc === null || doc === undefined) return { entries: [], warnings }
+  if (doc === null || doc === undefined) return { entries: [], prefixEntries: [], warnings }
   if (!isRecord(doc)) {
-    return { entries: [], warnings: ["config root must be a YAML mapping (e.g. a top-level `bindings:` key)"] }
+    return {
+      entries: [],
+      prefixEntries: [],
+      warnings: ["config root must be a YAML mapping (e.g. a top-level `bindings:` key)"],
+    }
   }
 
   // id → keys, base layer first, platform overlay replacing per id.
   const merged = new Map<string, string[]>()
+  const prefixMerged = new Map<string, string[]>()
 
   const layers: Array<Record<string, unknown>> = []
   if (doc.bindings !== undefined) {
@@ -221,43 +233,54 @@ export function extractKeybindingOverrides(
 
   for (const layer of layers) {
     for (const [id, value] of Object.entries(layer)) {
-      // Unbind spellings: null / false / empty list.
-      if (value === null || value === false || (Array.isArray(value) && value.length === 0)) {
-        merged.set(id, [])
-        continue
-      }
-      const rawChords = typeof value === "string" ? [value] : Array.isArray(value) ? value : null
-      if (!rawChords) {
-        warnings.push(`${id}: expected a chord string, a list of chords, or null — got ${typeof value}`)
-        continue
-      }
-      const chords: string[] = []
-      let anyError = false
-      for (const rawChord of rawChords) {
-        if (typeof rawChord !== "string") {
-          warnings.push(`${id}: chord entries must be strings`)
-          anyError = true
+      const modeValues =
+        isRecord(value) && ("direct" in value || "prefix" in value)
+          ? ([
+              [merged, value.direct],
+              [prefixMerged, value.prefix],
+            ] as const)
+          : ([[merged, value]] as const)
+      for (const [target, modeValue] of modeValues) {
+        if (modeValue === undefined) continue
+        // Unbind spellings: null / false / empty list.
+        if (modeValue === null || modeValue === false || (Array.isArray(modeValue) && modeValue.length === 0)) {
+          target.set(id, [])
           continue
         }
-        const result = normalizeChord(rawChord, opts?.chordOptsFor?.(id))
-        if ("error" in result) {
-          warnings.push(`${id}: ${result.error}`)
-          anyError = true
+        const rawChords = typeof modeValue === "string" ? [modeValue] : Array.isArray(modeValue) ? modeValue : null
+        if (!rawChords) {
+          warnings.push(`${id}: expected a chord string, a list of chords, or null — got ${typeof modeValue}`)
           continue
         }
-        if (result.warning) warnings.push(`${id}: ${result.warning}`)
-        if (!chords.includes(result.chord)) chords.push(result.chord)
+        const chords: string[] = []
+        let anyError = false
+        for (const rawChord of rawChords) {
+          if (typeof rawChord !== "string") {
+            warnings.push(`${id}: chord entries must be strings`)
+            anyError = true
+            continue
+          }
+          const result = normalizeChord(rawChord, opts?.chordOptsFor?.(id))
+          if ("error" in result) {
+            warnings.push(`${id}: ${result.error}`)
+            anyError = true
+            continue
+          }
+          if (result.warning) warnings.push(`${id}: ${result.warning}`)
+          if (!chords.includes(result.chord)) chords.push(result.chord)
+        }
+        if (chords.length === 0 && anyError) {
+          warnings.push(`${id}: no valid chords — keeping the default`)
+          continue
+        }
+        target.set(id, chords)
       }
-      if (chords.length === 0 && anyError) {
-        warnings.push(`${id}: no valid chords — keeping the default`)
-        continue
-      }
-      merged.set(id, chords)
     }
   }
 
   return {
     entries: Array.from(merged, ([id, keys]) => ({ id, keys })),
+    prefixEntries: Array.from(prefixMerged, ([id, keys]) => ({ id, keys })),
     warnings,
   }
 }
