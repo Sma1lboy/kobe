@@ -1,15 +1,22 @@
 /**
- * Split-tree policy for a terminal tab — the terminal-flavored layer over
- * the content-agnostic `split-core.ts` tree, split out of
+ * Split-tree + naming policy for a terminal tab — the terminal-flavored
+ * layer over the content-agnostic `split-core.ts` tree, split out of
  * `terminal-tabs-core.ts` (the tab-list transitions) purely for the
  * 500-line file-size cap. Owns the persisted leaf payload shape
  * ({@link PersistedSplit}), the collapse/is-split/has-engine predicates,
- * leaf PTY keying, and leaf display naming. No tab-shape imports: it knows
- * split trees and leaf payloads, never `TabsState`.
+ * leaf PTY keying, leaf display naming, and the tab-level display naming
+ * ({@link tabTitle} — framework-free so both the strip and non-render
+ * callers share one rule). Never imports `TabsState`; the one tab-shape
+ * dependency is the type-only {@link TerminalTab} (erased at runtime, so
+ * no cycle with `terminal-tabs-core`).
  */
 
+import type { VendorId } from "@/types/vendor"
+import { engineEntry } from "../../engine/registry"
+import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
+import type { TerminalTab } from "./terminal-tabs-core"
 
 /**
  * A tab's frozen split layout — the content-agnostic tree (`split-core`)
@@ -119,4 +126,62 @@ export function splitLeafNames(
     out.set(leaf.id, n === 1 ? name : `${name} ${n}`)
   }
   return out
+}
+
+/**
+ * Default tab names are "$process $ordinal" (owner naming 2026-07-07):
+ * a tab IS a terminal, so its name says what runs in it — "claude 3",
+ * "shell 5", "vim 2" — never an opaque "tab N". `liveName` is the tab's
+ * live foreground-process display name from `useTurnPolls().liveTitles`;
+ * engine tabs don't need it (their process is known by construction),
+ * callers without it (notifications) fall back to the static shell default.
+ *
+ * Plain (non-hook) helper — used by the strip render AND outside render
+ * (rename dialog prefill, notification titles) — so it reads the
+ * module-level `t()` rather than `useT()`.
+ */
+export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
+  // Manual rename always wins; a conversation's first-prompt title beats
+  // the numbered default; a multi-leaf SPLIT tab is a "group N" (its
+  // leaves carry the individual names — see splitLeafNames).
+  if (tab.title) return tab.title
+  const ls = tab.splitTree ? leaves(tab.splitTree.root) : []
+  if (ls.length > 1) return t("terminal.tab.groupTitle", { n: tab.ordinal })
+  // Collapsed to a single NON-engine leaf (you closed the engine leaf and
+  // a shell survives) → that leaf's rename, else its live process name.
+  const sole = ls.length === 1 ? ls[0] : undefined
+  if (sole && sole.id !== "leaf-1") return sole.title ?? `${liveName ?? SHELL_LEAF_NAME} ${tab.ordinal}`
+  // The RUNNING process names the tab first (liveName — the OSC title
+  // stream, owner order 2026-07-09: rename > live process > first-prompt >
+  // vendor default). The first-prompt autoTitle and vendor derivation are
+  // only the pre-title fallback. Deriving from the task's CURRENT vendor
+  // relabelled every inherit-mode tab the moment a new tab switched the
+  // task engine, while their PTYs kept running the old one.
+  if (liveName) return `${liveName} ${tab.ordinal}`
+  if (tab.autoTitle) return tab.autoTitle
+  const name =
+    tab.kind === "engine"
+      ? (engineEntry(tab.vendor ?? taskVendor).defaultCommand[0] ?? SHELL_LEAF_NAME)
+      : SHELL_LEAF_NAME
+  return `${name} ${tab.ordinal}`
+}
+
+/**
+ * True only when `tabTitle` is visibly rendering an engine-owned title.
+ * Launch-path agnostic: `vendor` is the tab's resolved live process identity
+ * (`useTurnPolls().turnVendors` — the same `turn-target.ts` rule that
+ * attaches detectors), so a user-typed `claude` in a shell and a
+ * kobe-launched engine tab get the exact same treatment. The label
+ * comparison replaces structural kind/leaf checks: native status is visible
+ * iff the rendered label IS the live title.
+ */
+export function visibleNativeStatus(
+  tab: TerminalTab,
+  taskVendor: VendorId,
+  vendor: VendorId | undefined,
+  liveName?: string | null,
+): boolean {
+  if (!vendor || !liveName) return false
+  if (engineEntry(vendor).terminalTitle?.ownsStatus !== true) return false
+  return tabTitle(tab, taskVendor, liveName) === `${liveName} ${tab.ordinal}`
 }

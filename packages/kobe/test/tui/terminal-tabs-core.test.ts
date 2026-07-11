@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest"
 import { initialSplit, removeLeaf, splitActive } from "../../src/tui/workspace/split-core"
 import {
   type EngineTab,
+  type TabsState,
   addTab,
   closeActiveTab,
   collapseSplit,
   cycleTab,
   engineTabArgv,
+  engineTabSpawnFor,
   findContentTab,
   hasEngineLeaf,
   initialTabs,
@@ -289,6 +291,49 @@ describe("terminal tabs state", () => {
     expect(engineTabArgv(tab({ sessionId: "u1", spawned: true }), base, true)).toEqual(["claude", "--session-id", "u1"])
     // Spawned + PTY gone (host restart / degrade re-acquire) → resume.
     expect(engineTabArgv(tab({ sessionId: "u1", spawned: true }), base, false)).toEqual(["claude", "--resume", "u1"])
+  })
+
+  // Why: the quick-fork initial prompt (issue #17, delivery verified in
+  // 12283c57) rides the argv as a positional arg ONLY on the first engine
+  // tab's FIRST spawn — any wider and the prompt re-delivers on re-render
+  // churn / restart / every new tab, replaying the fork message forever.
+  it("engineTabSpawnFor: the initial prompt rides only the first engine tab's first spawn", () => {
+    const s = addTab(initialTabs()) // [tab-1, tab-2*] — both engine
+    const first = s.tabs[0] as EngineTab
+    const second = s.tabs[1] as EngineTab
+    const base = ["claude"] as const
+    const opts = { live: false, shell: "/bin/zsh", prompt: "fix the bug" }
+    expect(engineTabSpawnFor(s, first, base, opts)).toEqual({
+      command: ["/bin/zsh"],
+      initialInput: "claude 'fix the bug'\r",
+    })
+    // Second engine tab: never gets the prompt.
+    expect(engineTabSpawnFor(s, second, base, opts).initialInput).toBe("claude\r")
+    // Already spawned: the conversation has begun — never re-deliver.
+    const spawned = markTabSpawned(s, "tab-1")
+    expect(engineTabSpawnFor(spawned, spawned.tabs[0] as EngineTab, base, opts).initialInput).toBe("claude\r")
+    // PTY still live (re-render churn): the running session keeps its input.
+    expect(engineTabSpawnFor(s, first, base, { ...opts, live: true }).initialInput).toBe("claude\r")
+    // No prompt at all: the plain spawn.
+    expect(engineTabSpawnFor(s, first, base, { ...opts, prompt: undefined }).initialInput).toBe("claude\r")
+    // "First" means first ENGINE tab, not tabs[0] — a leading command tab
+    // (rehydrated shell) must not steal or block the delivery.
+    const mixed: TabsState = {
+      tabs: [
+        { kind: "command", id: "tab-1", title: null, ordinal: 1, command: ["/bin/zsh"] },
+        { kind: "engine", id: "tab-2", title: null, ordinal: 2 },
+      ],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    }
+    expect(engineTabSpawnFor(mixed, mixed.tabs[1] as EngineTab, base, opts).initialInput).toBe("claude 'fix the bug'\r")
+    // The prompt composes WITH the session pin: positional arg first, then
+    // the `--session-id` flags (engineTabArgv order — the engine reads the
+    // prompt as its first message, not as a flag value).
+    const pinned = setTabSessionId(s, "tab-1", "u1")
+    expect(engineTabSpawnFor(pinned, pinned.tabs[0] as EngineTab, base, opts).initialInput).toBe(
+      "claude 'fix the bug' --session-id u1\r",
+    )
   })
 
   // Why: the exit policy decides between two irreversible side-effect

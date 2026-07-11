@@ -12,11 +12,12 @@
  */
 
 import type { VendorId } from "@/types/vendor"
+import { type TabSpawn, shellSpawn } from "./terminal-tab-spawn"
 import type { PersistedSplit } from "./terminal-tab-split"
 
-// Split-tree policy (PersistedSplit + the leaf predicates/keying/naming)
-// moved to `./terminal-tab-split` for the file-size cap; re-exported here
-// so existing importers keep one entry point.
+// Split-tree + naming policy (PersistedSplit + the leaf predicates/keying/
+// naming + tab display naming) moved to `./terminal-tab-split` for the
+// file-size cap; re-exported here so existing importers keep one entry point.
 export {
   type PersistedSplit,
   SHELL_LEAF_NAME,
@@ -25,6 +26,8 @@ export {
   isTabSplit,
   splitLeafNames,
   splitLeafPtyKey,
+  tabTitle,
+  visibleNativeStatus,
 } from "./terminal-tab-split"
 
 interface TabBase {
@@ -312,6 +315,28 @@ export function engineTabArgv(tab: EngineTab, base: readonly string[], live: boo
   if (!tab.sessionId) return base
   if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
   return [...base, "--session-id", tab.sessionId]
+}
+
+/**
+ * Full spawn composition for an engine tab — {@link engineTabArgv} wrapped
+ * in the user's shell ({@link shellSpawn}), plus the quick-fork initial
+ * prompt policy (issue #17, verified delivery 12283c57): `prompt` rides the
+ * argv as a positional arg ONLY on the first engine tab's FIRST spawn —
+ * never on a later engine tab, an already-spawned tab, or one whose PTY is
+ * still live (re-render churn), so the prompt can't re-deliver. Pure so
+ * vitest pins the rule; the component supplies the IO reads (`live` from
+ * the registry, `prompt` from props, `shell` from the environment).
+ */
+export function engineTabSpawnFor(
+  state: TabsState,
+  tab: EngineTab,
+  base: readonly string[],
+  opts: { live: boolean; shell: string; prompt?: string },
+): TabSpawn {
+  const { live, shell, prompt } = opts
+  const firstEngine = state.tabs.find((t) => t.kind === "engine")
+  const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
+  return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), shell)
 }
 
 export type TabExitAction = "close" | "resume"
