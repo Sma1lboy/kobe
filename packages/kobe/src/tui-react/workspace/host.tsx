@@ -12,6 +12,7 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { useEffect, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
+import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -211,7 +212,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
    * navigation (KOB-25), so the FileTree keeps keyboard focus.
    */
   function openDiff(relPath: string, base?: string): void {
-    const label = relPath.split("/").at(-1) ?? relPath
+    const label = pathLeaf(relPath)
     openDiffTabFn.current?.(relPath, label, base)
   }
 

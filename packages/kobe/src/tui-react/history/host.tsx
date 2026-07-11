@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { resultsByCallId } from "../../tui/history/message-core"
 import { windowTail } from "../../tui/history/window"
 import { sessionAttached } from "../../tui/lib/attach-gate"
+import { pathLeaf } from "../../tui/lib/path-helpers"
 import { ACTIVITY_POLL_MIN_MS, nextActivityPollDelay } from "../../tui/ops/activity-poll"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
@@ -39,11 +40,6 @@ export interface HistoryHostArgs {
 
 /** Lines of transcript scrolled per `j`/`k` keypress. */
 const SCROLL_STEP = 3
-
-function basename(p: string): string {
-  const i = p.lastIndexOf("/")
-  return i >= 0 ? p.slice(i + 1) : p
-}
 
 function HistoryScreen(props: HistoryHostArgs) {
   const { theme } = useTheme()
@@ -187,7 +183,7 @@ function HistoryScreen(props: HistoryHostArgs) {
     ],
   }))
 
-  const headerTitle = props.title?.trim() || basename(props.worktree)
+  const headerTitle = props.title?.trim() || pathLeaf(props.worktree)
   const counter = sessionList.length > 0 ? `${t("history.sessionLabel")} ${selected + 1}/${sessionList.length}` : ""
 
   return (
