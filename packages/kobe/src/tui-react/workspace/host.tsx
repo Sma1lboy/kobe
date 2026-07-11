@@ -28,10 +28,12 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useDialog } from "../ui/dialog"
 import { UpdatePage } from "../update/host.tsx"
+import { forgetTaskTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
+import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { useAccessor } from "./use-accessor"
 import { useAttention } from "./use-attention"
 import { useWorkspaceSelection } from "./use-workspace-selection"
@@ -118,12 +120,26 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       setSelectedId,
       selectedTask: () => selectedTask,
       activateTask,
+      forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
 
   const setSortMode = (next: "default" | "recent"): void => {
     setSortModeSig(next)
     kv.set("activeSortMode", next)
   }
+
+  // One-time orphan sweep (O19): clear historical `terminalTabs.*` snapshots
+  // whose task no longer exists — the backlog that accumulated before
+  // delete-time reclamation. Runs once, the first render the task list has
+  // hydrated (the raw signal, so archived tasks are kept — their snapshots
+  // are load-bearing for unarchive --resume). A ref, not a dep, so a later
+  // task-list change never re-sweeps a live task's fresh snapshot.
+  const sweptOrphansRef = useRef(false)
+  useEffect(() => {
+    if (sweptOrphansRef.current || tasks.length === 0) return
+    sweptOrphansRef.current = true
+    sweepOrphanTabsSnapshots(kv, tasks.map((task) => task.id))
+  }, [tasks, kv])
 
   // Imperative handle from the currently-mounted TerminalTabs (issue #16
   // editor-tab flow). A ref (not a plain `let` — this component re-renders

@@ -30,6 +30,7 @@
  */
 
 import { readOnlyGitProcessEnv } from "@/lib/git-env"
+import { sessionAttached } from "@/tui/lib/attach-gate"
 import { computeNextAllowedAt, createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 import { type WorktreeChanges, parsePorcelain, sameWorktreeChanges } from "./worktree-changes"
 
@@ -91,9 +92,16 @@ export function nextAllowedAt(startedAt: number, finishedAt: number, timedOut: b
  * Safe to call from a reactive memo on every tick — the guards make the
  * extra calls free, and a signal update caused by a finishing poll
  * cannot re-trigger an immediate spawn (MIN_POLL_INTERVAL_MS floor).
+ *
+ * Detached (background) session: skip the `git status` — the `+N −M` chip is
+ * invisible, so an O(repo-size) status walk per visible row per ~2s tick is
+ * pure waste. Same cached process-wide attach gate `pollCurrentBranch` uses
+ * (git-head.ts), so this stays free to call from a reactive memo every tick.
  */
 export function pollWorktreeChanges(worktreePath: string): void {
-  poller.poll(worktreePath)
+  void sessionAttached().then((attached) => {
+    if (attached) poller.poll(worktreePath)
+  })
 }
 
 /** Test hook: drop all cached entries/backoff state. */

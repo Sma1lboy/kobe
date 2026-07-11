@@ -85,6 +85,7 @@ import { PreviewScreen } from "../ops/preview"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
+import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
@@ -92,6 +93,19 @@ import { useTurnPolls } from "./use-turn-polls"
 
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
+
+/**
+ * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
+ * `tabsByTask` entry (module-level, otherwise only-grows) and its
+ * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never
+ * the archived sweep (an archived task must keep its snapshot to
+ * unarchive-and-`--resume`). Its PTYs are released separately by the host's
+ * archived-task sweep / the tab's own exit path.
+ */
+export function forgetTaskTabs(kv: TabsSnapshotKv, taskId: string): void {
+  tabsByTask.delete(taskId)
+  forgetTaskTabsSnapshot(kv, taskId)
+}
 
 export interface TerminalTabsProps {
   taskId: string
@@ -134,7 +148,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const notif = useNotifications()
   const kv = useKV()
   const t = useT()
-  const persistKey = `terminalTabs.${props.taskId}`
+  const persistKey = terminalTabsKey(props.taskId)
 
   // Latest-render mirror — read inside the two mount-only forever-lived
   // effects below (see file header).
