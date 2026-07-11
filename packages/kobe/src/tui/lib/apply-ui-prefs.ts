@@ -9,13 +9,13 @@
  * hosts drifted: tasks/settings/ops applied transparent + focus accent in
  * their own `onMount` while new-task / quick-task / update / ops-preview
  * only ever got the theme name — the central caller in
- * `tui/lib/host-boot.tsx` now routes all of them through here.
+ * `tui-react/lib/host-boot.tsx` now routes all of them through here.
  *
  * The target is INJECTED (not `useTheme()` directly) for two reasons:
- *   - vitest-safety: `tui/context/theme.tsx` imports @opentui, which is
- *     not importable under node/vitest — this module must stay pure so
- *     the apply rules are unit-testable (same seam stance as
- *     `tmux-border-theme.ts`'s mirrored slot list);
+ *   - vitest-safety: the theme provider (`tui-react/context/theme.tsx`)
+ *     imports @opentui/react, which is not importable under node/vitest —
+ *     this module must stay pure so the apply rules are unit-testable
+ *     (same seam stance as `tmux-border-theme.ts`'s mirrored slot list);
  *   - echo-loop guard: the process that CAUSED a prefs write (the
  *     Settings dialog applied it locally already) receives its own push
  *     back from the daemon — every setter here is gated on a
@@ -23,14 +23,14 @@
  */
 
 /**
- * Mirror of `FOCUS_ACCENT_SLOTS` in `tui/context/theme.tsx` — not
- * imported because that module builds a Solid store on the renderer at
- * load time (see the identical mirror in `tui/lib/tmux-border-theme.ts`).
+ * Mirror of `FOCUS_ACCENT_SLOTS` in `tui/context/theme-core.ts` — kept
+ * as a local copy so this module stays import-free (see the identical
+ * mirror in `tui/lib/tmux-border-theme.ts`).
  */
 export const UI_PREFS_FOCUS_ACCENT_SLOTS = ["primary", "success", "info"] as const
 export type UiPrefsFocusAccentSlot = (typeof UI_PREFS_FOCUS_ACCENT_SLOTS)[number]
 
-/** Default focus-accent slot when the pref is unset (`theme.tsx` default). */
+/** Default focus-accent slot when the pref is unset (the theme provider's default, `tui-react/context/theme.tsx`). */
 export const DEFAULT_FOCUS_ACCENT_SLOT: UiPrefsFocusAccentSlot = "primary"
 
 /** A visual-prefs snapshot, as loose as the wire/file can make it. */
