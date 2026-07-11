@@ -4,13 +4,21 @@
  * fell back to the JavaScript runtime name (observed as "node").
  */
 
-import { spawn } from "node-pty"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { type BehaviorEnv, DIST_CLI, makeBehaviorEnv } from "./harness.ts"
 
+// node-pty is a native addon; CI's linux runner has no prebuild for it, so a
+// top-level import fails the whole suite before skip logic can run. Load it
+// lazily and skip the suite where the native module can't load — the pin
+// still runs on every dev machine (darwin prebuilds ship in the package).
+const nodePty = await import("node-pty").then(
+  (mod) => mod,
+  () => null,
+)
+
 const TITLE_SEQUENCE = "\x1b]0;kobe\x07"
 
-describe("kobe outer terminal title (behavior)", () => {
+describe.skipIf(!nodePty)("kobe outer terminal title (behavior)", () => {
   let env: BehaviorEnv
 
   beforeAll(async () => {
@@ -22,7 +30,8 @@ describe("kobe outer terminal title (behavior)", () => {
   })
 
   it("publishes kobe as the terminal title on pure-TUI boot", async () => {
-    const child = spawn("bun", [DIST_CLI], {
+    if (!nodePty) throw new Error("unreachable: suite is skipped without node-pty")
+    const child = nodePty.spawn("bun", [DIST_CLI], {
       cols: 120,
       rows: 35,
       cwd: env.home,
