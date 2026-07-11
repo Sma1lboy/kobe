@@ -181,10 +181,11 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f6",
   // Jump to the next waiting task (`attention.next`) — reserved so the
   // "I'm blocked here, take me to whoever else is waiting" chord fires even
-  // from inside a running engine. Costs the embedded shell readline's ctrl+g
-  // (abort-editing) — accepted: the cross-task jump is the higher-value verb,
-  // and ctrl+c still aborts.
-  "ctrl+g",
+  // from inside a running engine. F7 continues the F2-F6 kobe row and was
+  // unclaimed. NOT ctrl+g (its first binding): that's the engine/readline
+  // abort-editing chord — reserving it swallowed the user's ctrl+g inside
+  // claude, so it moved to F7 where nothing in the engine collides.
+  "f7",
 ] as const
 
 /**
