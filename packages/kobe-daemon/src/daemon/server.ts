@@ -264,6 +264,10 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options)
 
   let webServer: DaemonWebServer | null = null
+  // Why the web transport isn't listening (port taken, bind failed). Surfaced
+  // via daemon.status so `kobe daemon status` reports the real reason instead
+  // of the TUI's misleading "daemon did not start".
+  let webError: string | null = null
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -335,6 +339,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         startedAt,
         socketPath,
         webPort: webServer?.port,
+        webError,
         pid: process.pid,
         guiCount: () => lifetime.guiCount(),
         stopSoon,
@@ -350,32 +355,43 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       activity,
       ctx: handlerContext,
     })
-    webServer = await startDaemonWebServer({
-      runtime,
-      port: options.webPort,
-      hostname: options.webHost,
-      staticDir: options.webStaticDir,
-      link,
-      onEvent: (sink) => bus.onPublish(sink),
-      onSseOpen: () => {
-        const client = { subscribed: true, holdsLifetime: true }
-        webClients.add(client)
-        lifetime.guiAttached()
-        logDaemonInfo(
-          "conn",
-          `web client subscribed — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui`,
-        )
-        return () => {
-          webClients.delete(client)
+    // The web transport is a SECONDARY surface — a bind failure (port taken by
+    // a stray `vite preview`, another kobe daemon, whatever) must NEVER take
+    // the daemon down. Degrade to socket-only, record the reason for status,
+    // and keep serving every attached TUI/pane over the unix socket.
+    try {
+      webServer = await startDaemonWebServer({
+        runtime,
+        port: options.webPort,
+        hostname: options.webHost,
+        staticDir: options.webStaticDir,
+        link,
+        onEvent: (sink) => bus.onPublish(sink),
+        onSseOpen: () => {
+          const client = { subscribed: true, holdsLifetime: true }
+          webClients.add(client)
+          lifetime.guiAttached()
           logDaemonInfo(
             "conn",
-            `web client disconnected — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui left`,
+            `web client subscribed — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui`,
           )
-          lifetime.clientDisconnected(true)
-        }
-      },
-    })
-    logDaemonInfo("web", `daemon web transport listening on http://${webServer.hostname}:${webServer.port}`)
+          return () => {
+            webClients.delete(client)
+            logDaemonInfo(
+              "conn",
+              `web client disconnected — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui left`,
+            )
+            lifetime.clientDisconnected(true)
+          }
+        },
+      })
+      logDaemonInfo("web", `daemon web transport listening on http://${webServer.hostname}:${webServer.port}`)
+    } catch (err) {
+      webServer = null
+      webError = err instanceof Error ? err.message : String(err)
+      logDaemonError("web", err)
+      logDaemonInfo("web", "daemon running socket-only — web transport disabled (see error above)")
+    }
   }
 
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
