@@ -33,6 +33,7 @@ import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { useAccessor } from "./use-accessor"
+import { useAttention } from "./use-attention"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 
 const SIDEBAR_WIDTH = 32
@@ -89,6 +90,20 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     focusWorkspace: () => focus.setFocused("workspace"),
   })
   const worktree = selectedTask?.worktreePath || null
+
+  // Cross-task attention (P0): rising-edge notify for non-selected tasks +
+  // the global chord's jump-to-next handler. State is engine-owned/neutral.
+  const t = useT()
+  const { jumpToNextAttention } = useAttention({
+    tasks,
+    engineState,
+    selectedId,
+    kv,
+    notif,
+    selectTask,
+    focusWorkspace: () => focus.setFocused("workspace"),
+    noTasksMessage: t("workspace.attention.none"),
+  })
 
   // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
   // — the shared lib/task-actions flows live in host-task-actions.ts.
@@ -197,6 +212,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     renameBranch: (id) => void renameBranch(id),
     cycleVendor: (id) => void cycleVendor(id),
     toggleZen,
+    jumpToNextAttention,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus

@@ -13,6 +13,9 @@ export const en = {
   empty: {
     selectTask: "Select a task with a worktree",
   },
+  attention: {
+    none: "No tasks waiting for input",
+  },
   terminalComing: "Embedded terminal tab lands here (issue #16) — use the tmux path meanwhile.",
 }
 
@@ -24,6 +27,9 @@ export const zh: typeof en = {
   },
   empty: {
     selectTask: "请选择一个带 worktree 的任务",
+  },
+  attention: {
+    none: "没有等待输入的任务",
   },
   terminalComing: "嵌入终端标签页即将落位（issue #16）——期间请走 tmux 路径。",
 }

@@ -9,7 +9,15 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { addUnread, removeUnread, shouldShowToast, unreadKey } from "../../src/tui/lib/notify-state"
+import {
+  addUnread,
+  attentionKindFor,
+  nextAttentionTask,
+  osc9,
+  removeUnread,
+  shouldShowToast,
+  unreadKey,
+} from "../../src/tui/lib/notify-state"
 
 const input = (kind: "done" | "needs_input" | "error", tabId = "tab-1") =>
   ({ kind, taskId: "task-1", tabId, title: "t" }) as const
@@ -60,5 +68,56 @@ describe("shouldShowToast", () => {
     // Error toasts are failure feedback — disabling the completion-toast
     // preference must never silence them (silent-failure regression).
     expect(shouldShowToast("error", false)).toBe(true)
+  })
+})
+
+describe("attentionKindFor", () => {
+  it("maps the three attention transitions and ignores the rest", () => {
+    expect(attentionKindFor("permission_needed")).toBe("needs_input")
+    expect(attentionKindFor("error")).toBe("error")
+    expect(attentionKindFor("turn_complete")).toBe("done")
+    expect(attentionKindFor("running")).toBeNull()
+    expect(attentionKindFor("idle")).toBeNull()
+  })
+})
+
+describe("osc9", () => {
+  it("wraps the body in the OSC 9 escape with a BEL terminator", () => {
+    expect(osc9("kobe — hi")).toBe("\x1b]9;kobe — hi\x07")
+  })
+})
+
+describe("nextAttentionTask", () => {
+  const es = (m: Record<string, string>): Map<string, { state: string }> =>
+    new Map(Object.entries(m).map(([id, state]) => [id, { state }]))
+
+  it("finds the next permission_needed/error task forward from current, wrapping", () => {
+    const order = ["a", "b", "c", "d"]
+    const engine = es({ a: "running", b: "permission_needed", c: "idle", d: "error" })
+    // from a → next waiting is b
+    expect(nextAttentionTask(order, engine, new Map(), "a")).toBe("b")
+    // from b → wraps past c (idle) to d
+    expect(nextAttentionTask(order, engine, new Map(), "b")).toBe("d")
+    // from d → wraps back to b
+    expect(nextAttentionTask(order, engine, new Map(), "d")).toBe("b")
+  })
+
+  it("counts an unread needs_input/error mark as attention, but not a done mark", () => {
+    const order = ["a", "b"]
+    const idle = es({ a: "idle", b: "idle" })
+    expect(nextAttentionTask(order, idle, new Map([["b:tab", "needs_input"]]), "a")).toBe("b")
+    // a plain `done` unread is not blocking → no candidate
+    expect(nextAttentionTask(order, idle, new Map([["b:tab", "done"]]), "a")).toBeNull()
+  })
+
+  it("returns null when nothing needs attention", () => {
+    expect(nextAttentionTask(["a", "b"], es({ a: "running", b: "idle" }), new Map(), "a")).toBeNull()
+  })
+
+  it("handles a null/unknown current id by scanning from the start", () => {
+    const order = ["a", "b"]
+    const engine = es({ a: "error", b: "idle" })
+    expect(nextAttentionTask(order, engine, new Map(), null)).toBe("a")
+    expect(nextAttentionTask(order, engine, new Map(), "gone")).toBe("a")
   })
 })
