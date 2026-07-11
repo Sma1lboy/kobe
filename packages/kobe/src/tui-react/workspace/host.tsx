@@ -16,6 +16,7 @@ import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { SettingsDialog } from "../component/settings-dialog"
+import { ToastOverlay } from "../component/toast-overlay"
 import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
@@ -379,6 +380,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       ) : null}
 
       <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
+      {/* Cross-task attention toasts (issue #15). `useAttention` above fires
+          `notif.notify()` on unfocused-task state changes, but the main app
+          never mounted the overlay that renders them (only the standalone
+          `kobe tasks` pane did) — so the bottom-right toast silently never
+          appeared. Absolute-positioned like SidebarHoverTooltip, under the
+          host's NotificationsProvider. */}
+      <ToastOverlay />
     </box>
   )
 }
