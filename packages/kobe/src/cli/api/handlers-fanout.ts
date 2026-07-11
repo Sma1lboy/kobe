@@ -29,26 +29,62 @@ export async function fanOut(ctx: VerbContext): Promise<unknown> {
     throw new ApiError(`fan-out of ${plan.length} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
   }
 
-  const tasks: unknown[] = []
+  // Create serially (concurrent `git worktree add` in one repo races), then
+  // deliver concurrently — the sessions are task-id isolated, so N cold-boot
+  // waits run in parallel instead of stacking (5 tasks: ~6s, not ~30s).
+  const created: Array<{ taskId: string; vendor: VendorId; task: SerializedTask }> = []
   for (const vendor of plan) {
     const payload: Record<string, string> = { repo, vendor }
     if (title) payload.title = title
     if (baseRef) payload.baseRef = baseRef
     const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
-    const delivered = await ctx.runtime.deliverPrompt(
-      daemon,
-      { id: res.taskId, worktreePath: res.task.worktreePath, vendor, repo: res.task.repo },
-      prompt,
-    )
-    tasks.push({
-      taskId: res.taskId,
-      vendor,
-      started: delivered.started,
-      engineReady: delivered.engineReady,
-      session: delivered.session,
-    })
+    created.push({ taskId: res.taskId, vendor, task: res.task })
   }
-  return { count: tasks.length, tasks }
+
+  const settled = await Promise.allSettled(
+    created.map(({ taskId, vendor, task }) =>
+      ctx.runtime.deliverPrompt(
+        daemon,
+        { id: taskId, worktreePath: task.worktreePath, vendor, repo: task.repo },
+        prompt,
+      ),
+    ),
+  )
+
+  const tasks: unknown[] = []
+  const failures: unknown[] = []
+  settled.forEach((r, i) => {
+    const { taskId, vendor } = created[i]
+    if (r.status === "fulfilled" && r.value.delivered) {
+      tasks.push({
+        ok: true,
+        taskId,
+        vendor,
+        started: r.value.started,
+        engineReady: r.value.engineReady,
+        session: r.value.session,
+      })
+      return
+    }
+    // Either deliverPrompt threw, or it resolved but the paste never landed.
+    // The task IS created (engine already burning tokens) — always carry its
+    // taskId so a script can find/retry it instead of orphaning it.
+    const err =
+      r.status === "rejected"
+        ? r.reason
+        : new ApiError(`prompt was not confirmed in ${taskId}'s engine`, "NOT_DELIVERED")
+    const code = err instanceof ApiError ? err.code : "DELIVER_FAILED"
+    const message = err instanceof Error ? err.message : String(err)
+    failures.push({ ok: false, taskId, vendor, error: { message, code } })
+  })
+
+  const result = { count: created.length, tasks, failures }
+  // Partial (or total) delivery failure must not exit 0 — carry the whole
+  // result (created taskIds included) up so the dispatcher emits it + exits 3.
+  if (failures.length > 0) {
+    throw new ApiError(`fan-out delivered ${tasks.length}/${created.length}`, "PARTIAL_FANOUT", result)
+  }
+  return result
 }
 
 export async function collect(ctx: VerbContext): Promise<unknown> {

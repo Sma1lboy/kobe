@@ -21,6 +21,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly code: string,
+    /** Extra context merged into the error JSON — e.g. `taskId` when a
+     *  create succeeded but delivery failed, so a script doesn't lose the
+     *  already-created (engine-burning) task. */
+    readonly data?: Record<string, unknown>,
   ) {
     super(message)
   }
@@ -84,6 +88,13 @@ export interface DeliveredPrompt {
   readonly pane: string
   readonly started: boolean
   readonly engineReady: boolean
+  /**
+   * Whether the paste was CONFIRMED in the engine's composer (its tail
+   * appeared on capture). `false` on a cold boot where the pane never
+   * settled — surfaced so a scripted fan-out's dropped first prompt never
+   * looks like a clean success.
+   */
+  readonly delivered: boolean
 }
 
 /**
@@ -95,8 +106,9 @@ export interface DeliveredPrompt {
 export interface PromptDeliveryOps {
   sessionExists(session: string): Promise<boolean>
   ensureSession(opts: import("../../tui/panes/terminal/tmux.ts").EnsureSessionOpts): Promise<boolean>
-  waitForEnginePane(session: string, fresh: boolean): Promise<{ pane: string; ready: boolean }>
-  pasteAndSubmit(pane: string, text: string): Promise<void>
+  waitForEnginePane(session: string, fresh: boolean, budgetSeconds?: number): Promise<{ pane: string; ready: boolean }>
+  /** Paste + submit; resolves `true` when the paste was confirmed in the composer. */
+  pasteAndSubmit(pane: string, text: string): Promise<boolean>
   resolveEngineLaunchInit(
     repoRoot: string,
     worktreePath: string,
