@@ -24,22 +24,24 @@
  * closures (`sharedActivity`, `onBackgroundDone`, the latest `state` for
  * the active-tab check) ride refs refreshed every render — the closures
  * are created once per attach and must not go stale between renders,
- * mirroring `ops/host.tsx`'s `sharedMapRef` convention. The mutable Maps
- * (`turnPolls`/`titles`/`titleSubs`) live in refs so they persist across
- * renders without becoming React state churn.
+ * mirroring `ops/host.tsx`'s `sharedMapRef` convention. The `turnPolls` Map
+ * lives in a ref so it persists across renders without becoming React state
+ * churn; the per-tab live-title tracking is the shared framework-free
+ * `TitleSubscriptions` store (O18) — the same instance-compared reconcile
+ * this hook used to hand-write, now shared with `TerminalSplit.tsx`.
  */
 
 import { useEffect, useRef, useState } from "react"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
-import { engineEntry, titleDisplayName } from "../../engine/registry"
+import { engineEntry } from "../../engine/registry"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { startTurnStatusPoll } from "../../tui/ops/activity-monitor"
-import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import type { TabsState } from "../../tui/workspace/terminal-tabs-core"
 import { soloKey, targetFor } from "../../tui/workspace/turn-target"
 import type { VendorId } from "../../types/vendor"
 import { useLatest } from "../lib/use-latest"
+import { type TitleSubscriptions, createTitleSubscriptions } from "./title-subscriptions"
 
 /** Cadence of the lazy attach retry (a tab's PTY spawns after mount). */
 const TURN_POLL_ATTACH_MS = 2000
@@ -68,12 +70,18 @@ export function useTurnPolls(deps: {
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
   const [turnVendors, setTurnVendors] = useState<ReadonlyMap<string, VendorId>>(new Map())
   const turnPollsRef = useRef(new Map<string, { dispose: () => void; vendor: VendorId; key: string }>())
-  /** ptyKey → raw OSC title. Cleared when the PTY instance at that key
-   *  changes (release + respawn), so a dead claude's title can't keep a
-   *  detector attached to the fresh shell that replaced it. */
-  const titlesRef = useRef(new Map<string, string>())
-  const titleSubsRef = useRef(new Map<string, { pty: TaskPtyLike; unsub: () => void }>())
+  /** Shared live-title store: ptyKey → display title, instance-compared so a
+   *  release + respawn at the same key drops the dead PTY's stale title
+   *  before targets are computed (a dead claude's title must not keep a
+   *  detector attached to the fresh shell). Same store `TerminalSplit` uses. */
+  const titleStoreRef = useRef<TitleSubscriptions | null>(null)
+  if (titleStoreRef.current === null) titleStoreRef.current = createTitleSubscriptions()
   const [pollTick, setPollTick] = useState(0)
+
+  // A title push (not from this hook's own reconcile) may flip a tab's engine
+  // identity — re-evaluate attach/detach the moment a user-typed engine
+  // announces itself, not on the next slow tick.
+  useEffect(() => titleStoreRef.current?.subscribe(() => setPollTick((n) => n + 1)), [])
 
   // Latest-render mirrors for the long-lived detector closures (created
   // once per attach, must never go stale between renders).
@@ -91,49 +99,35 @@ export function useTurnPolls(deps: {
     const reg = getDefaultPtyRegistry()
     const attached = new Set<string>()
     const turnPolls = turnPollsRef.current
-    const titles = titlesRef.current
-    const titleSubs = titleSubsRef.current
+    const titleStore = titleStoreRef.current
+    if (!titleStore) return
 
-    // Pass 1 — reconcile title subscriptions on every tab's solo PTY.
-    // Instance-compared: release + respawn at the same key (shell degrade)
-    // must drop the dead PTY's stale title before targets are computed.
+    // Pass 1 — reconcile title subscriptions on every tab's solo PTY through
+    // the shared store (instance-compared: a release + respawn at the same
+    // key drops the dead PTY's stale title before targets are computed).
     const soloKeys = new Map<string, string>() // ptyKey → tabId
     for (const tab of deps.state.tabs) {
       const key = soloKey(deps.taskId, tab)
       if (key) soloKeys.set(key, tab.id)
     }
-    for (const [key, sub] of titleSubs) {
-      const cur = soloKeys.has(key) ? reg.get(key) : null
-      if (cur === sub.pty) continue
-      sub.unsub()
-      titleSubs.delete(key)
-      titles.delete(key)
-    }
-    for (const [key, tabId] of soloKeys) {
-      if (titleSubs.has(key)) continue
-      const pty = reg.get(key)
-      if (!pty) continue
-      const unsub = pty.onTitleChange((title) => {
-        if (titles.get(key) === title) return
-        titles.set(key, title)
-        setLiveTitles((prev) => new Map(prev).set(tabId, titleDisplayName(title)))
-        // Re-evaluate attach/detach now, not on the next slow tick — the
-        // chip should land the moment a user-typed engine announces itself.
-        setPollTick((n) => n + 1)
-      })
-      titleSubs.set(key, { pty, unsub })
-    }
+    titleStore.reconcile(soloKeys.keys())
+    // Project the store's ptyKey→title map onto tabId→title for render; identity-
+    // stable so the slow tick doesn't churn re-renders when nothing moved.
     setLiveTitles((prev) => {
-      const alive = new Set(deps.state.tabs.map((t) => t.id))
-      if (![...prev.keys()].some((id) => !alive.has(id))) return prev
-      const next = new Map(prev)
-      for (const id of next.keys()) if (!alive.has(id)) next.delete(id)
+      const next = new Map<string, string>()
+      for (const [key, tabId] of soloKeys) {
+        const title = titleStore.get(key)
+        if (title !== undefined) next.set(tabId, title)
+      }
+      if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next
     })
 
     // Pass 2 — attach/detach detectors per the tab's process identity.
+    // `targetFor` reads the store by the tab's solo ptyKey (the same key it
+    // resolves for the title lookup).
     for (const tab of deps.state.tabs) {
-      const target = targetFor(deps.taskId, tab, deps.vendor, (key) => titles.get(key))
+      const target = targetFor(deps.taskId, tab, deps.vendor, (key) => titleStore.get(key))
       if (!target) continue
       const existing = turnPolls.get(tab.id)
       if (existing && existing.vendor === target.vendor && existing.key === target.key) {
@@ -211,7 +205,7 @@ export function useTurnPolls(deps: {
   useEffect(() => {
     return () => {
       for (const poll of turnPollsRef.current.values()) poll.dispose()
-      for (const sub of titleSubsRef.current.values()) sub.unsub()
+      titleStoreRef.current?.dispose()
     }
   }, [])
 
