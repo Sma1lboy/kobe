@@ -95,6 +95,8 @@ export type KobeBinding = {
    * that the textarea handles via `onKeyDown`, e.g. `chat.send`.)
    */
   keys: readonly string[]
+  /** Second strokes reached through the configurable PureTUI prefix. */
+  prefixKeys?: readonly string[]
   /** Help-dialog category (groups rows visually). */
   category: string
   /** Help-dialog description text. */
@@ -136,14 +138,16 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "task.openEditor",
     scope: "global",
-    keys: ["ctrl+o"],
+    keys: [],
+    prefixKeys: ["o"],
     category: "Global",
     description: "Open active task worktree in editor",
   },
   {
     id: "settings.open",
     scope: "global",
-    keys: ["ctrl+,"],
+    keys: [],
+    prefixKeys: [","],
     category: "Global",
     description: "Open settings",
   },
@@ -185,13 +189,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
-    // ctrl+q is the chord-form aliased to sidebar focus, mirroring
-    // esc / ctrl+1 in effect. Scope stays "workspace" for override
-    // validation, but the native workspace enables it from any
-    // non-sidebar pane (files/terminal too).
+    // this workspace-owned action is prefix-only so it cannot steal a
+    // ChatPane control byte. Scope stays "workspace" for override
+    // validation.
     id: "focus.sidebar",
     scope: "workspace",
-    keys: ["ctrl+q"],
+    keys: [],
+    prefixKeys: ["q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
     hint: { keys: "ctrl+q" },
@@ -199,25 +203,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // `ctrl+hjkl` — vim-style direct pane focus. Reliable across
-    // every terminal (ctrl+letter maps to stable C0 control bytes,
-    // no CSI-u / kitty keyboard / iTerm quirks). The four chords
-    // map to the four panes by ordinal:
+    // Prefix h/j/k/l — vim-style pane focus. This global navigation action
+    // keeps one static form so it cannot steal ChatPane control bytes. The
+    // four second strokes map to panes by ordinal:
     //   ctrl+h → 1 = sidebar (TASKS)
     //   ctrl+j → 2 = workspace
     //   ctrl+k → 3 = files
     //   ctrl+l → 4 = terminal
     // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
     // doesn't fully support — ctrl+1 falls through to a bare `1`
-    // byte) and alt+digit gets eaten by macOS launchers like
-    // Raycast. ctrl+letter just works. The conflict with composer
-    // editing chords (ctrl+h=backspace etc.) is OK in practice
-    // because the user's intent when pressing ctrl+h is "switch
-    // pane," and once focus moves to sidebar the textarea has
-    // already lost focus.
+    // byte) and alt+digit gets eaten by macOS launchers like Raycast.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
+    keys: [],
+    prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
     hint: { keys: "ctrl+hjkl" },

@@ -7,7 +7,6 @@
  * unchanged.
  */
 
-import type { Binding } from "../lib/keymap-dispatch.ts"
 import type { KobeBinding, KobeBindingHint } from "./keybindings-table.ts"
 import { KobeKeymap } from "./keybindings-table.ts"
 
@@ -21,8 +20,14 @@ export type { KobeBinding, KobeBindingHint, KobeBindingScope } from "./keybindin
  * removed override returns to its default — additive in-place mutation
  * alone can't "un-override" a row.
  */
-const KEYMAP_DEFAULTS: ReadonlyMap<string, { keys: readonly string[]; hint?: KobeBindingHint }> = new Map(
-  KobeKeymap.map((b) => [b.id, { keys: [...b.keys], hint: b.hint ? { ...b.hint } : undefined }]),
+const KEYMAP_DEFAULTS: ReadonlyMap<
+  string,
+  { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
+> = new Map(
+  KobeKeymap.map((b) => [
+    b.id,
+    { keys: [...b.keys], prefixKeys: b.prefixKeys && [...b.prefixKeys], hint: b.hint ? { ...b.hint } : undefined },
+  ]),
 )
 
 /**
@@ -50,8 +55,9 @@ export function resetKeymapToDefaults(): void {
   for (const row of KobeKeymap) {
     const def = KEYMAP_DEFAULTS.get(row.id)
     if (!def) continue
-    const mutable = row as { keys: readonly string[]; hint?: KobeBindingHint }
+    const mutable = row as { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: KobeBindingHint }
     mutable.keys = [...def.keys]
+    mutable.prefixKeys = def.prefixKeys && [...def.prefixKeys]
     mutable.hint = def.hint ? { ...def.hint } : undefined
   }
 }
@@ -106,47 +112,4 @@ export function findBinding(id: string): KobeBinding | undefined {
   return KEYMAP_BY_ID.get(id)
 }
 
-/**
- * Resolve the chord list for a binding id. Returns an empty array if the
- * id isn't found — `bindByIds` warns but doesn't throw, so a typo doesn't
- * crash the renderer.
- */
-export function chordsOf(id: string): readonly string[] {
-  return findBinding(id)?.keys ?? []
-}
-
-/**
- * Build a list of `Binding` (chord → handler) entries from a map of
- * `binding-id → handler`. Each id's chords from `KobeKeymap` get
- * registered against the same handler. Pane code uses this so it doesn't
- * have to know the chord strings — those live in `KobeKeymap`.
- *
- * Each entry carries `slot` = the chord's index within the id's (possibly
- * user-overridden) `keys` array, and the dispatcher passes it to the
- * handler as a second argument. Multiplexed handlers (`sidebar.nav`,
- * `files.hierarchy`, …) decide direction from the slot instead of
- * `evt.name`, which is what lets users rebind those ids: the slot LAYOUT
- * is the per-id positional contract (`SLOT_CONTRACTS` in
- * keymap-overrides.ts validates override counts against it). Because the
- * `useBindings` config closure re-runs `bindByIds` on every keypress,
- * slots are always derived from the CURRENT keymap — a live keybindings
- * reload re-slots automatically.
- *
- * Unknown ids log a warning and are skipped (typos shouldn't crash the
- * UI, but they should be loud in dev).
- */
-export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
-  const out: Binding[] = []
-  for (const id in handlers) {
-    const cmd = handlers[id]
-    if (!cmd) continue
-    const chords = chordsOf(id)
-    if (chords.length === 0) {
-      // eslint-disable-next-line no-console
-      console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
-      continue
-    }
-    chords.forEach((c, slot) => out.push({ key: c, cmd, slot }))
-  }
-  return out
-}
+export { bindByIds, chordsOf } from "./keybindings-bindings.ts"

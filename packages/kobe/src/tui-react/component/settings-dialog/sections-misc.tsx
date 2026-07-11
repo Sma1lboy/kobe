@@ -11,7 +11,9 @@ import { useEffect, useRef } from "react"
 import { stripNewlines } from "../../../tui/component/new-task-dialog/state"
 import { devRows, rowIndex } from "../../../tui/component/settings-dialog/model"
 import { userKeybindingsReport } from "../../../tui/context/keybindings-user"
+import { currentPrefixConfiguration } from "../../../tui/lib/keymap-dispatch"
 import { FIXED_BINDING_IDS } from "../../../tui/lib/keymap-overrides"
+import { useKeymapVersion } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { Row, type SectionCursorProps, SubSection } from "./rows"
@@ -241,9 +243,12 @@ export function DevSettingsSection(
 export function KeybindingsSettingsSection() {
   const { theme } = useTheme()
   const t = useT()
-  // Boot-time snapshot — overrides only change on restart, so a plain
-  // (non-reactive) read is correct here.
+  // Re-read the cached report when the daemon's keybindings channel triggers
+  // the host's live keymap reload, so an already-open Settings page stays
+  // truthful after a YAML edit.
+  useKeymapVersion()
   const report = userKeybindingsReport()
+  const prefix = currentPrefixConfiguration()
   const fixedIds = Object.keys(FIXED_BINDING_IDS).sort()
   return (
     <box flexDirection="column" gap={1}>
@@ -261,11 +266,24 @@ export function KeybindingsSettingsSection() {
           {report.path + (report.exists ? "" : t("settings.keybindings.notCreated"))}
         </text>
       </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          PureTUI prefix
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {`First stroke: ${prefix.key ?? "disabled"}; timeout: ${prefix.timeoutMs}ms. Prefix bindings retain their existing pane scope and modal barrier.`}
+        </text>
+      </box>
       {!report.exists ? (
         <box flexDirection="column" gap={0}>
           <text fg={theme.text} attributes={TextAttributes.BOLD}>
             {t("settings.keybindings.example")}
           </text>
+          <text fg={theme.textMuted}>prefix:</text>
+          <text fg={theme.textMuted}>{"  key: ctrl+a                 # first stroke (null disables)"}</text>
+          <text fg={theme.textMuted}>{"  timeoutMs: 1000             # second stroke deadline"}</text>
+          <text fg={theme.textMuted}>{"  bindings:"}</text>
+          <text fg={theme.textMuted}>{"    chat.tab.new: t           # ctrl+a, then t"}</text>
           <text fg={theme.textMuted}>bindings:</text>
           <text fg={theme.textMuted}>{"  chat.fork.new: ctrl+g      # string = one chord"}</text>
           <text fg={theme.textMuted}>{"  sidebar.select: [enter]    # list = several chords"}</text>

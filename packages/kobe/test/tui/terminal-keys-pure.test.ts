@@ -108,17 +108,20 @@ describe("key routing tables", () => {
   })
 
   it("derives the reservation from KobeKeymap DEFAULTS, immune to live overrides", () => {
-    // RESERVED_GLOBAL_CHORDS is now generated from RESERVED_BINDING_IDS via
-    // defaultChordsOf (keys-pure.ts) — the exact-list pin above is what
-    // fails if a keymap-table edit silently changes terminal passthrough.
-    // This case pins the other half: user overrides must NOT change the
-    // reservation, matching the old literal behavior.
-    const row = findBinding("focus.sidebar") as unknown as { keys: readonly string[] }
-    expect(row.keys).toEqual(["ctrl+q"])
+    // RESERVED_GLOBAL_CHORDS is generated from RESERVED_SPEC (keys-pure.ts):
+    // ids resolve via defaultChordsOf, prefix-moved chords stay literals —
+    // the exact-list pin above is what fails if a keymap-table edit
+    // silently changes terminal passthrough. This case pins the other
+    // half: user overrides must NOT change the reservation, matching the
+    // old literal behavior. (`focus.next`/f4 is a still-derived id; the
+    // pre-#308 exemplar `focus.sidebar` is prefix-only now and reserved
+    // as the ctrl+q literal instead.)
+    const row = findBinding("focus.next") as unknown as { keys: readonly string[] }
+    expect(row.keys).toEqual(["f4"])
     row.keys = ["ctrl+x"]
     try {
-      expect(defaultChordsOf("focus.sidebar")).toEqual(["ctrl+q"])
-      expect(RESERVED_GLOBAL_CHORDS).toContain("ctrl+q")
+      expect(defaultChordsOf("focus.next")).toEqual(["f4"])
+      expect(RESERVED_GLOBAL_CHORDS).toContain("f4")
       expect(RESERVED_GLOBAL_CHORDS).not.toContain("ctrl+x")
     } finally {
       resetKeymapToDefaults()
