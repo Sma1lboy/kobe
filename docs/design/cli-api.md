@@ -1,16 +1,19 @@
 # CLI API — one bin, scriptable, skill-driven
 
-> Design doc. Not implemented yet. Captures the decision shape so a
-> future agent (human or otherwise) picks up implementation with full
-> context.
+> **Historical.** This doc's proposal shape (§3 five-verb table, §10
+> single-file `api-cmd.ts` dispatcher) is implemented, but the shipped
+> shape outgrew it: `kobe api` is now a 30+ verb declarative table
+> (discover/read/create/drive/edit/issues/lifecycle/worktree/feedback
+> categories), not five verbs in a switch. For the real surface, read
+> [`packages/kobe/src/cli/api/verbs.ts`](../../packages/kobe/src/cli/api/verbs.ts)
+> or run `kobe api schema`. This doc is kept for the *why* (§1) and the
+> phasing history — don't treat §3/§10 as current.
 >
 > Sibling of `bridge.md` (superseded by ADR-0003; doc now in git history): that doc covers the MCP-bridge
 > surface (long-lived stdio child of `claude`); this doc covers a
 > short-lived CLI surface that the model drives from its `Bash` tool.
 > MCP bridge stays in tree as a fallback; CLI becomes the recommended
 > path.
->
-> Linear epic: TBD (file before P1 work starts).
 
 ---
 
@@ -71,6 +74,11 @@ Non-goals (deliberately):
 ---
 
 ## 3. The `kobe api` surface
+
+> **Superseded.** This section describes the original 5-verb v1 proposal.
+> The shipped surface is a 30+ verb declarative table in
+> [`verbs.ts`](../../packages/kobe/src/cli/api/verbs.ts) — run
+> `kobe api schema` for the live list. Kept below for historical context only.
 
 Five verbs. Each takes flag-style args (`--task-id ID`, not positional)
 so the skill examples stay readable and tab IDs / paths with spaces
@@ -296,6 +304,12 @@ Total estimate: 4 small PRs, ~150-300 LOC each excluding generated docs.
 ---
 
 ## 10. Implementation plan
+
+> **Superseded.** This phasing/file-layout plan (`api-cmd.ts` as a single
+> in-file dispatcher) is not what shipped — the real implementation is
+> [`packages/kobe/src/cli/api/verbs.ts`](../../packages/kobe/src/cli/api/verbs.ts)
+> plus the surrounding `src/cli/api/` directory. Kept below for historical
+> context only; don't use this as a map of the current source tree.
 
 Concrete enough that any agent picks up a phase and starts typing.
 Phases are independent PRs (per §9); each is green on its own. The

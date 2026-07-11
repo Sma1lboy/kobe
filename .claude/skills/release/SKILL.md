@@ -82,10 +82,11 @@ applied with the detected bump) so you can verify it later.
 
 ## Step 2 — Run the gates locally (abort on failure)
 
-The push-triggered CI gate is typecheck + unit tests + build, and **does not run
-lint** (release.yml comment + RELEASING.md both say so). So run lint locally — a
-lint regression won't block publish on its own, but it'll redden `ci.yml` and rot
-main. Run all five; abort the release on any failure:
+`scripts/release.sh` now enforces `lint && typecheck && (cd packages/kobe && bun
+run test)` itself before touching version/CHANGELOG, and the push-triggered
+`release.yml` re-runs lint + typecheck + test + build + the behavior suite before
+`npm publish`. Running the same set here first just fails fast, before burning a
+`changeset version` cycle:
 
 ```bash
 bun run lint
@@ -98,10 +99,13 @@ cd packages/kobe && bun run perf:golden   # golden perf doctor (~90s incl. binar
 `perf:golden` ceilings are 2-3× the reference numbers, so a FAIL means a real
 structural regression (startup, PTY spawn/wake, per-tab memory, park reclaim)
 — treat it like a red test, not jitter; rerun once to confirm before digging.
+`perf:golden` is not part of the enforced `release.sh`/`release.yml` gate (opt-in,
+local/pre-release only per docs/HARNESS.md), so run it manually here.
 
-Do **not** run `bun run test:behavior` as a release gate — it needs tmux + node-pty
-+ a real `claude` binary and is intentionally excluded from CI. Only run it if the
-release itself is a user-visible TUI behavior change and the user asks.
+`bun run test:behavior` needs tmux + node-pty + a real `claude` binary; `release.yml`
+now runs it (apt-installed tmux + a fake `claude` shim, same as `ci.yml`'s PR gate)
+before `npm publish`. Running it locally first is optional but catches a failure
+before the tag push.
 
 If a gate fails: report the exact failing command + output, fix it if it's an
 obvious in-scope issue (and re-run the full set), or stop. Never proceed to tag a
@@ -125,7 +129,8 @@ hand:
 scripts/release.sh
 ```
 
-What it does (don't fight it): `changeset version` → `bun install` +
+What it does (don't fight it): gate (`lint` → `typecheck` → `test`) → `changeset
+version` → `bun install` +
 `--frozen-lockfile` → `lint:fix` on the regenerated JSON → commits
 `chore: release — X.Y.Z` → tags `vX.Y.Z` → **prompts** before pushing `main` + tag.
 

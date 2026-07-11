@@ -176,8 +176,9 @@ TUI may show any task at any time.
 > stance below was reversed. The daemon now **auto-spawns** on first TUI
 > launch and **refcounted-lazily self-stops** once the last attached GUI
 > disconnects (grace `KOBE_DAEMON_IDLE_GRACE_MS`, default 3s). Shutdown
-> never tears down tmux sessions. See AGENTS.md "Daemon lifecycle:
-> refcounted lazy shutdown" for the live behavior.
+> never tears down tmux sessions. This is the live behavior — there is no
+> separate AGENTS.md section for it; CLAUDE.md's own "Daemon" bullet
+> summarizes it and points back to this doc.
 
 ```bash
 $ kobed start            # binds ~/.kobe/daemon.sock, writes pidfile
