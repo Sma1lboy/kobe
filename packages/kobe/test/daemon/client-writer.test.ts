@@ -111,6 +111,27 @@ describe("ClientWriter backpressure", () => {
     expect(sock.writes).toEqual(["PAUSE", "L1!!!", "L2!!!", "L3!!!"])
   })
 
+  it("disconnects a critical-only slow stream instead of retaining an unbounded queue", () => {
+    const sock = new FakeSocket()
+    let overflows = 0
+    const writer = new ClientWriter(sock, {
+      highWaterMark: 4,
+      onOverflow: () => overflows++,
+    })
+
+    sock.accept = false
+    writer.write("PAUSE", false)
+    writer.write("L1!!!", true)
+
+    expect(overflows).toBe(1)
+    expect(writer.pendingBytes).toBe(0)
+    expect(writer.pendingCount).toBe(0)
+
+    writer.write("L2!!!", true)
+    expect(overflows).toBe(1)
+    expect(writer.pendingCount).toBe(0)
+  })
+
   it("re-pauses mid-flush if the socket saturates again, losing nothing", () => {
     const sock = new FakeSocket()
     const writer = new ClientWriter(sock)

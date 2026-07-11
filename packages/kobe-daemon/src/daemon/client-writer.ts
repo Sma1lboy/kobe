@@ -51,6 +51,12 @@ export interface ClientWriterOptions {
    * {@link DEFAULT_WRITE_HIGH_WATER_MARK}.
    */
   readonly highWaterMark?: number
+  /**
+   * Called when critical frames alone exceed the queue cap. The caller must
+   * tear down the connection: ordered streams such as PTY bytes cannot be
+   * dropped or reordered to make room.
+   */
+  readonly onOverflow?: () => void
 }
 
 /** 8 MiB of queued-but-unsent frames per client before we shed droppable load. */
@@ -66,6 +72,7 @@ interface QueuedFrame {
 export class ClientWriter {
   private readonly socket: BackpressureSocket
   private readonly highWaterMark: number
+  private readonly onOverflow: (() => void) | undefined
   private queue: QueuedFrame[] = []
   private queuedBytes = 0
   /** True while we are waiting for `'drain'` — every write is queued, not sent. */
@@ -73,10 +80,13 @@ export class ClientWriter {
   /** True while a one-shot `'drain'` listener is registered (avoids doubling up). */
   private draining = false
   private droppedFrames = 0
+  /** The connection is being torn down after critical-only overflow. */
+  private overflowed = false
 
   constructor(socket: BackpressureSocket, options: ClientWriterOptions = {}) {
     this.socket = socket
     this.highWaterMark = options.highWaterMark ?? DEFAULT_WRITE_HIGH_WATER_MARK
+    this.onOverflow = options.onOverflow
   }
 
   /** True while the socket is saturated and frames are queued, not sent. */
@@ -106,6 +116,7 @@ export class ClientWriter {
    * mark. Order among surviving frames is always preserved.
    */
   write(line: string, critical: boolean): void {
+    if (this.overflowed) return
     if (!this.paused) {
       // Flowing: hand the line straight to the socket. A `false` return means
       // Node's buffer is now full — the line WAS accepted (so we don't requeue
@@ -135,6 +146,13 @@ export class ClientWriter {
       survivors.push(queued)
     }
     this.queue = survivors
+    if (this.queuedBytes <= this.highWaterMark || !this.onOverflow) return
+    // No droppable frames remain. Keeping critical bytes is correct only
+    // while the connection can recover; otherwise this queue is unbounded.
+    this.overflowed = true
+    this.queue = []
+    this.queuedBytes = 0
+    this.onOverflow()
   }
 
   private pause(): void {

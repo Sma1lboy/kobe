@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { type PtyHostServer, startPtyHostServer } from "@sma1lboy/kobe-daemon/daemon/pty-server"
 import { HostedTaskPty } from "../../src/tui/panes/terminal/pty-hosted.ts"
 
@@ -57,6 +58,29 @@ async function until(cond: () => boolean, label: string, ms = 5000): Promise<voi
 const OPTS = { cwd: dir, command: ["/bin/cat"], cols: 60, rows: 12 }
 
 describe("HostedTaskPty over a real pty-host socket", () => {
+  test("a second host refuses to replace a live host socket", async () => {
+    const socketPath = join(dir, "singleton.sock")
+    const pidPath = join(dir, "singleton.pid")
+    const first = await startPtyHostServer({ socketPath, pidPath, idleExitMs: 60_000 })
+    const secondAttempt = startPtyHostServer({ socketPath, pidPath, idleExitMs: 60_000 })
+    try {
+      await expect(secondAttempt).rejects.toThrow()
+
+      const client = new KobeDaemonClient(socketPath)
+      try {
+        await client.connect()
+        const hello = await client.request<{ pid: number }>("hello", {})
+        expect(hello.pid).toBe(process.pid)
+      } finally {
+        client.close()
+      }
+    } finally {
+      const second = await secondAttempt.catch(() => null)
+      await second?.close()
+      await first.close()
+    }
+  })
+
   test("detach survives, reattach replays, kill ends the child", async () => {
     // Attach #1: live stream.
     const a = new HostedTaskPty({ taskId: "smoke::t1", ...OPTS })
