@@ -183,12 +183,16 @@ export async function createSession(opts: EnsureSessionOpts): Promise<boolean> {
   // First engine message: deliver it AFTER the engine wakes, on this
   // FRESH session only (this is the create path — reuse/respawn never
   // reach here). Fire-and-forget so building the session doesn't block on
-  // the engine's boot; the helper waits for readiness then pastes.
+  // the engine's boot; the helper waits for readiness then pastes. A
+  // dropped delivery (no engine pane / paste didn't land) is logged, not
+  // thrown — the session is up and the user can type the prompt.
   const firstMessage = launchInit?.firstMessage
   if (firstMessage) {
-    void deliverFirstEngineMessage(opts.name, firstMessage).catch((err) =>
-      console.error("[kobe tmux] first message delivery failed:", err),
-    )
+    void deliverFirstEngineMessage(opts.name, firstMessage)
+      .then((delivered) => {
+        if (!delivered) console.error("[kobe tmux] first message not delivered (engine pane never settled)")
+      })
+      .catch((err) => console.error("[kobe tmux] first message delivery failed:", err))
   }
   return true
 }
