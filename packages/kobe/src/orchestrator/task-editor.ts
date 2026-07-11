@@ -14,11 +14,8 @@ import { samePrStatus } from "../monitor/pr-status.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { IllegalTransitionError, TaskNotFoundError } from "./errors.ts"
 import type { TaskIndexStore } from "./index/store.ts"
-import { autoBranch } from "./title.ts"
+import { autoBranch, isPlaceholderDerivedBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
-
-/** Placeholder title whose derived branch marks a not-yet-renamed task (see {@link TaskEditor.followBranchToTitle}). */
-const PLACEHOLDER_TASK_TITLE = "(new task)"
 
 /**
  * Owns the Orchestrator's in-place task-field mutations. One per Orchestrator.
@@ -62,7 +59,7 @@ export class TaskEditor {
    */
   private async followBranchToTitle(taskBefore: Task, newTitle: string): Promise<void> {
     if (taskBefore.kind === "main" || !taskBefore.worktreePath) return
-    if (taskBefore.branch !== autoBranch(PLACEHOLDER_TASK_TITLE, taskBefore.id)) return
+    if (!isPlaceholderDerivedBranch(taskBefore.branch, taskBefore.id)) return
     const nextBranch = autoBranch(newTitle, taskBefore.id)
     if (nextBranch === taskBefore.branch) return
     try {

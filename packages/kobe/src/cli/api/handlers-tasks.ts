@@ -164,6 +164,19 @@ export async function deleteTask(ctx: VerbContext): Promise<unknown> {
   return res
 }
 
+export async function land(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const strategy = ctx.args.str("strategy") === "squash" ? "squash" : "merge"
+  const res = await daemon.request<{ result: unknown }>("task.land", {
+    taskId,
+    strategy,
+    deleteBranch: ctx.args.bool("delete-branch") ?? false,
+    archive: ctx.args.bool("then-archive") ?? false,
+  })
+  return { ok: true, taskId, ...(res.result as object) }
+}
+
 export async function adopt(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const { args } = ctx
