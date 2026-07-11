@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   deriveTitleFromSession: vi.fn(async () => ""),
   resolveEngineLaunchInit: vi.fn(() => undefined),
   addSavedRepo: vi.fn((p: string) => ({ added: true, path: p, total: 1 })),
+  isGitRepo: vi.fn(() => true),
   getCustomEngineIds: vi.fn(() => [] as string[]),
   getPersistedString: vi.fn((_key: string) => undefined as string | undefined),
   getSavedRepos: vi.fn(() => ["/repo"] as readonly string[]),
@@ -67,6 +68,7 @@ vi.mock("../../src/state/repo-init", () => ({
 }))
 vi.mock("../../src/state/repos", () => ({
   addSavedRepo: mocks.addSavedRepo,
+  isGitRepo: mocks.isGitRepo,
   getCustomEngineIds: mocks.getCustomEngineIds,
   getPersistedString: mocks.getPersistedString,
   getSavedRepos: mocks.getSavedRepos,
@@ -241,6 +243,21 @@ describe("startDirectTmux — ensureRepos", () => {
 
     expect(mocks.addSavedRepo).toHaveBeenCalledWith(process.cwd())
     expect(orch.ensureMainTask).toHaveBeenCalledWith(process.cwd())
+  })
+
+  test("does not save cwd or create a main task when cwd is not a git repo (KOB first-run guard)", async () => {
+    mocks.getSavedRepos.mockReturnValue([])
+    mocks.isGitRepo.mockReturnValue(false)
+    const orch = makeOrch({ tasks: [] })
+    mocks.RemoteOrchestrator.mockImplementation(() => orch)
+
+    await startDirectTmux()
+
+    expect(mocks.addSavedRepo).not.toHaveBeenCalled()
+    expect(orch.ensureMainTask).not.toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("not a git repository"))
+    // Zero saved repos + zero tasks: lands on the kobe-home fallback, not a crash.
+    expect(mocks.ensureFallbackSession).toHaveBeenCalledTimes(1)
   })
 
   test("ensureMainTask failures are swallowed (logged) so boot still proceeds", async () => {
