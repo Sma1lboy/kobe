@@ -3,7 +3,7 @@
 Single source of truth for "what keys do what, where, and why."
 Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
-> **PureTUI prefix (2026-07-11).** Each Workspace Host keymap row has one static form: ChatPane and cross-pane control rows use the configurable prefix sequence `ctrl+a`, then the action's second key (for example `ctrl+t` becomes `ctrl+a t`); Tasks, Files, and non-conflicting Terminal-local rows retain their direct Ctrl chords. There is no focus-time direct/prefix fallback. Users rebind a direct row through `bindings`, or a prefix row through `prefix.bindings`. tmux Handover bindings remain documented as tmux behavior below and are unaffected.
+> **PureTUI prefix (2026-07-11).** ChatPane and cross-pane control rows use the configurable prefix sequence `ctrl+a`, then the action's second key (for example `ctrl+t` becomes `ctrl+a t`); Tasks, Files, and non-conflicting Terminal-local rows retain their direct Ctrl chords. A row may also expose both forms as deliberate aliases, but there is no focus-time fallback or priority rule. tmux Handover bindings remain documented as tmux behavior below and are unaffected.
 
 > **Outer-monitor retirement (2026-06; record `docs/design/app-retirement.md` in git history).** The opentui outer monitor (`app.tsx`) is gone, and the keymap rows whose only registering surface died with it were removed: `palette.open` (the command palette itself was deleted), `app.copy_or_quit` (the Ctrl+C arm-to-quit machinery + its status-bar chip), `focus.next` / `focus.prev` (tab pane-cycling — pane focus is tmux's job now; **`focus.next` revived 2026-07-06** for the pure TUI, on `f4`, forward-only — see the pure-TUI navigation decision log), and `pane.resize-grow` / `pane.resize-shrink` (the mouse `ResizableEdge` was the last resize surface). Rows that document live tmux-layer or pane-host behavior (`focus.numeric`, `focus.sidebar`, the Workspace chat/question rows, terminal rows) stay. References to those removed rows below in the historical decision log are kept as history.
 
@@ -146,7 +146,9 @@ prefix:                   # Workspace Host (`KOBE_TUI=1`) only
   bindings:
     chat.tab.new: t       # actual chord: ctrl+a, then t
 bindings:                 # applies on every platform
-  chat.fork.new: ctrl+g   # move this action to one direct chord
+  chat.fork.new:
+    direct: ctrl+g        # direct alias
+    prefix: f             # Ctrl+A → F alias
   sidebar.select: [enter] # list  = several chords (all fire the action)
   files.createPR: null    # null / [] = unbind (hint disappears too)
 darwin:                   # platform overlay — wins over `bindings` per id
@@ -163,10 +165,11 @@ Semantics and guard rails:
   Settings → Keybindings (read-only section showing the config path, applied
   overrides, and every load warning; warnings also go to `console.warn` →
   the pane log).
-- **`bindings` and `prefix.bindings` select the mode**: writing an id under
-  `bindings` makes it direct and removes its prefix form; writing it under
-  `prefix.bindings` makes it prefix-gated and removes its direct form. If an
-  id appears in both, kobe warns and `prefix.bindings` wins.
+- **Each binding can expose both aliases**: use `bindings.<id>.direct` and
+  `bindings.<id>.prefix` together or independently. The older scalar form
+  (`bindings.<id>: ctrl+x`) remains a direct-only shorthand, and
+  `prefix.bindings` remains a prefix-only shorthand. Neither form removes
+  the other alias.
 - **Chord grammar mirrors `matchKey()`**: `mod+...+key`, modifier aliases
   (`control`/`command`/`meta`/`option`…) are canonicalized to
   `ctrl`/`cmd`/`alt`/`shift` in the dispatcher's order. `esc`→`escape`,

@@ -65,6 +65,12 @@ export type OverridableBinding = {
 /** One requested override after extraction: `keys: []` means "unbind". */
 export type KeymapOverrideEntry = { id: string; keys: string[] }
 
+export type ExtractedKeybindingOverrides = {
+  entries: KeymapOverrideEntry[]
+  prefixEntries: KeymapOverrideEntry[]
+  warnings: string[]
+}
+
 /** One override that actually landed on the keymap. */
 export type AppliedOverride = {
   id: string
@@ -72,25 +78,7 @@ export type AppliedOverride = {
   defaultKeys: readonly string[]
 }
 
-/**
- * Ids that genuinely cannot be rebound. Two families:
- *
- *   - `evt.shift`-gated handlers: the chord registered is a bare letter
- *     and the handler fires only on the SHIFTED press (`Shift+G/P/M`).
- *     The chord grammar can't express `shift+<letter>` (terminals deliver
- *     it as a plain uppercase character — see `normalizeChord`), so a
- *     rebind could never carry the shift half. Fixed until/unless the
- *     handlers drop the shift gate.
- *   - positional sets mirrored OUTSIDE this keymap, or rows with no live
- *     registration site (rebinding would change the F1/help display
- *     without changing behavior — worse than refusing).
- *
- * Direction-multiplexed ids (`sidebar.nav`, `files.hierarchy`, …) are NOT
- * fixed anymore — their handlers dispatch on the matched chord's SLOT
- * (see {@link SLOT_CONTRACTS}), not on `evt.name`.
- *
- * Value = the reason shown in warnings / settings.
- */
+/** Ids whose event-shape or handler contract cannot be expressed by a rebind. */
 export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
   "sidebar.goto":
     "gg vs Shift+G is discriminated via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't carry both halves",
@@ -311,15 +299,20 @@ export function extractKeybindingOverrides(
   doc: unknown,
   platform: string,
   opts?: ExtractOverridesOpts,
-): { entries: KeymapOverrideEntry[]; warnings: string[] } {
+): ExtractedKeybindingOverrides {
   const warnings: string[] = []
-  if (doc === null || doc === undefined) return { entries: [], warnings }
+  if (doc === null || doc === undefined) return { entries: [], prefixEntries: [], warnings }
   if (!isRecord(doc)) {
-    return { entries: [], warnings: ["config root must be a YAML mapping (e.g. a top-level `bindings:` key)"] }
+    return {
+      entries: [],
+      prefixEntries: [],
+      warnings: ["config root must be a YAML mapping (e.g. a top-level `bindings:` key)"],
+    }
   }
 
   // id → keys, base layer first, platform overlay replacing per id.
   const merged = new Map<string, string[]>()
+  const prefixMerged = new Map<string, string[]>()
 
   const layers: Array<Record<string, unknown>> = []
   if (doc.bindings !== undefined) {
@@ -336,43 +329,54 @@ export function extractKeybindingOverrides(
 
   for (const layer of layers) {
     for (const [id, value] of Object.entries(layer)) {
-      // Unbind spellings: null / false / empty list.
-      if (value === null || value === false || (Array.isArray(value) && value.length === 0)) {
-        merged.set(id, [])
-        continue
-      }
-      const rawChords = typeof value === "string" ? [value] : Array.isArray(value) ? value : null
-      if (!rawChords) {
-        warnings.push(`${id}: expected a chord string, a list of chords, or null — got ${typeof value}`)
-        continue
-      }
-      const chords: string[] = []
-      let anyError = false
-      for (const rawChord of rawChords) {
-        if (typeof rawChord !== "string") {
-          warnings.push(`${id}: chord entries must be strings`)
-          anyError = true
+      const modeValues =
+        isRecord(value) && ("direct" in value || "prefix" in value)
+          ? ([
+              [merged, value.direct],
+              [prefixMerged, value.prefix],
+            ] as const)
+          : ([[merged, value]] as const)
+      for (const [target, modeValue] of modeValues) {
+        if (modeValue === undefined) continue
+        // Unbind spellings: null / false / empty list.
+        if (modeValue === null || modeValue === false || (Array.isArray(modeValue) && modeValue.length === 0)) {
+          target.set(id, [])
           continue
         }
-        const result = normalizeChord(rawChord, opts?.chordOptsFor?.(id))
-        if ("error" in result) {
-          warnings.push(`${id}: ${result.error}`)
-          anyError = true
+        const rawChords = typeof modeValue === "string" ? [modeValue] : Array.isArray(modeValue) ? modeValue : null
+        if (!rawChords) {
+          warnings.push(`${id}: expected a chord string, a list of chords, or null — got ${typeof modeValue}`)
           continue
         }
-        if (result.warning) warnings.push(`${id}: ${result.warning}`)
-        if (!chords.includes(result.chord)) chords.push(result.chord)
+        const chords: string[] = []
+        let anyError = false
+        for (const rawChord of rawChords) {
+          if (typeof rawChord !== "string") {
+            warnings.push(`${id}: chord entries must be strings`)
+            anyError = true
+            continue
+          }
+          const result = normalizeChord(rawChord, opts?.chordOptsFor?.(id))
+          if ("error" in result) {
+            warnings.push(`${id}: ${result.error}`)
+            anyError = true
+            continue
+          }
+          if (result.warning) warnings.push(`${id}: ${result.warning}`)
+          if (!chords.includes(result.chord)) chords.push(result.chord)
+        }
+        if (chords.length === 0 && anyError) {
+          warnings.push(`${id}: no valid chords — keeping the default`)
+          continue
+        }
+        target.set(id, chords)
       }
-      if (chords.length === 0 && anyError) {
-        warnings.push(`${id}: no valid chords — keeping the default`)
-        continue
-      }
-      merged.set(id, chords)
     }
   }
 
   return {
     entries: Array.from(merged, ([id, keys]) => ({ id, keys })),
+    prefixEntries: Array.from(prefixMerged, ([id, keys]) => ({ id, keys })),
     warnings,
   }
 }
@@ -450,9 +454,8 @@ export function applyKeymapOverrides(
     }
 
     const defaultKeys = row.keys
-    const mutable = row as { keys: readonly string[]; prefixKeys?: readonly string[]; hint?: OverridableHint }
+    const mutable = row as { keys: readonly string[]; hint?: OverridableHint }
     mutable.keys = keys
-    mutable.prefixKeys = undefined
     if (row.hint) {
       if (keys.length === 0) {
         // Unbound — a hint advertising a dead chord is worse than none.

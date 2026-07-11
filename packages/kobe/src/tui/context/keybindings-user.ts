@@ -88,14 +88,7 @@ export function applyUserKeybindings(): UserKeybindingsReport {
     const directOwner = KobeKeymap.find((row) => row.keys.includes(prefixKey))
     if (directOwner) warnings.push(`prefix.key "${prefixKey}" collides with direct binding ${directOwner.id}`)
   }
-  const directIds = new Set(keymapEntries.map((entry) => entry.id))
-  for (const entry of prefix.entries) {
-    if (directIds.has(entry.id))
-      warnings.push(`${entry.id}: configured in both bindings and prefix.bindings; prefix.bindings wins`)
-  }
-  // Prefix entries apply after direct entries, making the mode choice
-  // deterministic when a user accidentally declares both forms.
-  const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, prefix.entries)
+  const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, [...extracted.prefixEntries, ...prefix.entries])
   warnings.push(...prefixResult.warnings)
   applied.push(...prefixResult.applied)
 

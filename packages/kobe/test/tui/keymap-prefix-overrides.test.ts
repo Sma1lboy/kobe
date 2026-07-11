@@ -47,7 +47,7 @@ describe("PureTUI prefix settings", () => {
     expect(extracted.warnings.join("\n")).toContain("modifier")
   })
 
-  test("moves declared rows to prefix and clears their direct chords", () => {
+  test("adds declared prefix rows without clearing their direct chords", () => {
     const copy = keymap.map((row) => ({
       ...row,
       keys: [...row.keys],
@@ -62,7 +62,7 @@ describe("PureTUI prefix settings", () => {
     expect(copy[0]?.prefixKeys).toEqual(["n"])
     expect(copy[0]?.keys).toEqual([])
     expect(copy[1]?.prefixKeys).toEqual(["x"])
-    expect(copy[1]?.keys).toEqual([])
+    expect(copy[1]?.keys).toEqual(["n"])
     expect(result.applied).toEqual([
       { id: "chat.tab.new", keys: ["n"], defaultKeys: ["t"] },
       { id: "task.new", keys: ["x"], defaultKeys: [] },
