@@ -7,8 +7,9 @@
  * module-level constant — that freezes the language.
  */
 
-import { useCallback, useSyncExternalStore } from "react"
+import { useCallback } from "react"
 import { currentLang, localeState, setLocaleLang, t, tKeys } from "../../tui/i18n"
+import { useAccessor } from "../workspace/use-accessor"
 
 export { LOCALES, DEFAULT_LOCALE, isLocaleId } from "../../tui/i18n/catalog"
 export type { LocaleId } from "../../tui/i18n/catalog"
@@ -16,8 +17,7 @@ export { currentLang, setLocaleLang, t, tKeys }
 
 /** Subscribe the component to the active language. */
 export function useLang(): ReturnType<typeof currentLang> {
-  const state = localeState()
-  return useSyncExternalStore(state.subscribe, state.get, state.get)
+  return useAccessor(localeState())
 }
 
 /**

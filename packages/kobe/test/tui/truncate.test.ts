@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 
-import { truncateEnd, truncateStart } from "../../src/tui/lib/truncate"
+import { approxCharCells } from "../../src/lib/display-width"
+import { truncateEnd, truncateEndCells, truncateStart } from "../../src/tui/lib/truncate"
 
 describe("truncateEnd — keep the prefix", () => {
   test("returns the string unchanged when it fits the budget", () => {
@@ -21,6 +22,26 @@ describe("truncateEnd — keep the prefix", () => {
   test("max <= 0 leaves no room, so yields the empty string", () => {
     expect(truncateEnd("anything", 0)).toBe("")
     expect(truncateEnd("anything", -3)).toBe("")
+  })
+})
+
+describe("truncateEndCells — keep the prefix within a CELL budget", () => {
+  test("returns the string unchanged when its cells fit the budget", () => {
+    // 3 CJK glyphs = 6 cells under the approx measure.
+    expect(truncateEndCells("新任务", 6, approxCharCells)).toBe("新任务")
+    expect(truncateEndCells("open", 8, approxCharCells)).toBe("open")
+  })
+
+  test("reserves one cell for the ellipsis and never splits a wide glyph", () => {
+    // Budget 4 → 3 cells of content: the second 2-cell glyph won't fit.
+    expect(truncateEndCells("新任务", 4, approxCharCells)).toBe("新…")
+    // Narrow-only strings clip like truncateEnd.
+    expect(truncateEndCells("open worktree", 8, approxCharCells)).toBe("open wo…")
+  })
+
+  test("maxCells <= 0 leaves no room, so yields the empty string", () => {
+    expect(truncateEndCells("任务", 0, approxCharCells)).toBe("")
+    expect(truncateEndCells("任务", -2, approxCharCells)).toBe("")
   })
 })
 

@@ -60,3 +60,23 @@ export function displayWidth(s: string): number {
   for (const ch of s) width += charWidth(ch.codePointAt(0) as number)
   return width
 }
+
+/**
+ * FAST over-counting variant of {@link charWidth}: every code point at or
+ * above U+1100 counts 2 cells, everything below counts 1. It never
+ * under-counts CJK but has no zero-width class and doubles some narrow
+ * high-plane glyphs — fine for sizing hover tooltips and legend columns,
+ * where a slightly-too-wide box beats a clipped label. Use
+ * {@link charWidth}/{@link displayWidth} when exact cell math matters
+ * (cursor mapping, table alignment).
+ */
+export function approxCharCells(cp: number): 1 | 2 {
+  return cp >= 0x1100 ? 2 : 1
+}
+
+/** {@link approxCharCells} summed over a string's code points. */
+export function approxCellWidth(s: string): number {
+  let n = 0
+  for (const ch of s) n += approxCharCells(ch.codePointAt(0) ?? 0)
+  return n
+}

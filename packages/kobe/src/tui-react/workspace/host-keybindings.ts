@@ -21,7 +21,7 @@ import { HelpDialog } from "../component/help-dialog"
 import type { FocusContextValue, PaneId } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
 import { useT } from "../i18n"
-import { useBindings } from "../lib/keymap"
+import { pageCloseBindings, useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
@@ -177,10 +177,6 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
   // e.g. the engine-command editor, keeps esc/typing for itself).
   useBindings(() => ({
     enabled: settingsCloseKeysEnabled(pages),
-    bindings: [
-      { key: "escape", cmd: deps.closeSettings },
-      { key: "q", cmd: deps.closeSettings },
-      { key: "ctrl+c", cmd: deps.closeSettings },
-    ],
+    bindings: pageCloseBindings(deps.closeSettings),
   }))
 }

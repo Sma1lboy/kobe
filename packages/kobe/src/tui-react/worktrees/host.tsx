@@ -18,29 +18,19 @@
  * renders empty (nothing to list).
  */
 
-import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
 import { WorktreesPage } from "../component/worktrees-page.tsx"
 import { bootPaneHost } from "../lib/host-boot"
 
 export async function startWorktreesHost(): Promise<void> {
   await bootPaneHost({
     setup: async () => {
-      let orch: RemoteOrchestrator | null = null
-      try {
-        // NON-spawning: connect ONLY to a daemon that's already running —
-        // same contract as `kobe settings` (see file header).
-        const client = await connectIfRunning()
-        if (client) {
-          const remote = new RemoteOrchestrator(client)
-          await remote.init()
-          orch = remote
-        } else {
-          console.error("[kobe worktrees] no daemon running; nothing to list")
-        }
-      } catch (err) {
-        console.error("[kobe worktrees] daemon unavailable:", err)
-      }
+      // NON-spawning: connect ONLY to a daemon that's already running —
+      // same contract as `kobe settings` (see file header), via the shared
+      // seam (which logs the cause and disposes a half-built orchestrator
+      // on failure). `null` → the page renders empty.
+      const orch = await connectPaneOrchestrator({ logTag: "worktrees" })
+      if (!orch) console.error("[kobe worktrees] no daemon running; nothing to list")
       return {
         root: () => <WorktreesPage orchestrator={orch} onClose={() => process.exit(0)} />,
         onDestroy: () => {

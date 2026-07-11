@@ -23,6 +23,14 @@ describe("history message core", () => {
     expect(out.endsWith("…")).toBe(true)
   })
 
+  it("cuts long summaries by code point — never bisects a surrogate pair", () => {
+    // Each 🎉 is one code point but two UTF-16 units; the old
+    // `.slice(0, 119)` by UTF-16 length could cut mid-pair and emit a lone
+    // surrogate (→ �). truncateEnd counts code points instead.
+    const out = toolInputSummary({ command: "🎉".repeat(200) })
+    expect(out).toBe(`${"🎉".repeat(119)}…`)
+  })
+
   it("stringifies expanded tool bodies without throwing", () => {
     expect(bodyText("plain")).toBe("plain")
     expect(bodyText({ ok: true })).toBe(JSON.stringify({ ok: true }, null, 2))

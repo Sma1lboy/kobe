@@ -21,10 +21,10 @@
  */
 
 import { stat } from "node:fs/promises"
-import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
-import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { logClient } from "@sma1lboy/kobe-daemon/client/client-log"
 import { useEffect, useState } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { sessionAttached } from "../../tui/lib/attach-gate"
@@ -47,25 +47,14 @@ export async function setupTasksPane(opts: { initialTaskId?: string }): Promise<
   const store = new TaskIndexStore({ homeDir: homeDir() })
   await store.load()
 
-  let orch: RemoteOrchestrator | null = null
-  try {
-    // NON-spawning connect. A Tasks pane subscribes as role:"pane" and must
-    // NEVER start a daemon — doing so would resurrect an idle-stopped daemon
-    // with no gui to hold it, breaking the refcounted lazy-shutdown. A gui
-    // owns daemon lifecycle; if none is up we fall through to the always-on
-    // tasks.json poll below.
-    const client = await connectIfRunning()
-    if (client) {
-      const remote = new RemoteOrchestrator(client)
-      await remote.init() // hello + subscribe → tasksSignal() is now live
-      orch = remote
-    } else {
-      logClient("tasks-boot", "no daemon running — polling tasks.json (a gui owns daemon lifecycle)")
-    }
-  } catch (err) {
-    logClientError("tasks-boot", err)
-    logClient("tasks-boot", "daemon subscribe failed — polling tasks.json")
-  }
+  // NON-spawning connect via the shared seam. A Tasks pane subscribes as
+  // role:"pane" and must NEVER start a daemon — doing so would resurrect an
+  // idle-stopped daemon with no gui to hold it, breaking the refcounted
+  // lazy-shutdown. A gui owns daemon lifecycle; with no daemon (or a failed
+  // handshake — the seam logs the cause and disposes the half-built
+  // orchestrator) we fall through to the always-on tasks.json poll below.
+  const orch = await connectPaneOrchestrator({ logTag: "tasks-boot" })
+  if (!orch) logClient("tasks-boot", "no daemon — polling tasks.json (a gui owns daemon lifecycle)")
 
   return {
     root: () => (
