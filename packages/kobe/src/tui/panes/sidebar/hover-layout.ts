@@ -1,5 +1,10 @@
+import { approxCellWidth } from "../../../lib/display-width"
 import { repoBasename } from "./groups"
 import type { SidebarHover } from "./types"
+
+// Cell measurement moved to the shared width module; re-exported so
+// existing importers (tests, panes) keep compiling.
+export { approxCellWidth }
 
 export const SIDEBAR_HOVER_TOOLTIP_Z_INDEX = 2750
 export const SIDEBAR_HOVER_TOOLTIP_MAX_WIDTH = 72
@@ -16,12 +21,6 @@ export type SidebarHoverTooltipLayout = {
   readonly boxHeight: number
   readonly left: number
   readonly top: number
-}
-
-export function approxCellWidth(s: string): number {
-  let n = 0
-  for (const ch of s) n += (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1
-  return n
 }
 
 export function sidebarHoverTooltipLines(hover: SidebarHover): SidebarHoverTooltipLine[] {
