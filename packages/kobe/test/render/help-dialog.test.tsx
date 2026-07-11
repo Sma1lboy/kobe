@@ -5,10 +5,11 @@
  * re-dismisses it (the mount-time `runTmuxCapturing` call degrades to a
  * harmless no-op without a real tmux server).
  */
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it } from "bun:test"
 import { useEffect } from "react"
 import { HelpDialog } from "../../src/tui-react/component/help-dialog"
 import { useDialog } from "../../src/tui-react/ui/dialog"
+import { configurePrefix, resetPrefixConfiguration } from "../../src/tui/lib/keymap-dispatch"
 import { act, renderComponent } from "./harness"
 
 function Harness(props: { onReady?: (dialog: ReturnType<typeof useDialog>) => void }) {
@@ -21,6 +22,8 @@ function Harness(props: { onReady?: (dialog: ReturnType<typeof useDialog>) => vo
   return <box />
 }
 
+afterEach(() => resetPrefixConfiguration())
+
 describe("HelpDialog", () => {
   it("renders the title and at least one keybinding row", async () => {
     const { frame } = await renderComponent(<Harness />, {
@@ -30,8 +33,23 @@ describe("HelpDialog", () => {
     })
     const text = await frame()
     expect(text).toContain("kobe — keybindings")
+    expect(text).toContain("PureTUI prefix")
+    expect(text).toContain("⌃ A · 1000ms")
     // Every keymap category renders with the "esc" close hint visible.
     expect(text).toContain("esc")
+  })
+
+  it("shows the configured prefix in the header and migrated action rows", async () => {
+    configurePrefix({ key: "ctrl+b", timeoutMs: 750 })
+    const { frame } = await renderComponent(<Harness />, {
+      providers: { dialog: true },
+      width: 100,
+      height: 40,
+    })
+
+    const text = await frame()
+    expect(text).toContain("PureTUI prefix: ⌃ B · 750ms")
+    expect(text).toContain("⌃ B O")
   })
 
   it("? dismisses the dialog (dialog stack empties)", async () => {

@@ -32,6 +32,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
   const { theme } = useTheme()
   const t = useT()
   const keymapVersion = useKeymapVersion()
+  const pureTuiPrefix = currentPrefixConfiguration()
   // biome-ignore lint/correctness/useExhaustiveDependencies: keymapVersion is the invalidation key — the table is mutated in place.
   const grouped = useMemo(() => groupBindings(KobeKeymap), [keymapVersion])
   // Standalone full-window page (`kobe help-page`) passes its own exit;
@@ -63,9 +64,14 @@ export function HelpDialog(props: { onClose?: () => void }) {
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} flexShrink={1}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {t("help.title")}
-        </text>
+        <box flexDirection="column" gap={0}>
+          <text attributes={TextAttributes.BOLD} fg={theme.text}>
+            {t("help.title")}
+          </text>
+          <text fg={theme.textMuted}>
+            {`PureTUI prefix: ${pureTuiPrefix.key ? formatChord(pureTuiPrefix.key) : "disabled"} · ${pureTuiPrefix.timeoutMs}ms`}
+          </text>
+        </box>
         <text fg={theme.textMuted} onMouseUp={close}>
           {t("help.esc")}
         </text>
@@ -91,7 +97,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 // when present; fall back to the first registered chord.
                 // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
                 // so the help matches the footer.
-                const prefix = currentPrefixConfiguration().key
+                const prefix = pureTuiPrefix.key
                 const prefixPrimary = prefix && row.prefixKeys?.[0] ? `${prefix} ${row.prefixKeys[0]}` : undefined
                 const rawPrimary = prefixPrimary ?? row.hint?.keys ?? row.keys[0] ?? "—"
                 const primary = rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph)
