@@ -490,6 +490,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("kobe failed to start:", err)
+  console.error("kobe failed to start:", process.env.KOBE_DEBUG === "1" ? err : errorMessage(err))
   process.exit(1)
 })
