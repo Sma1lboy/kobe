@@ -18,6 +18,7 @@ describe("FileTreeRowView", () => {
     const { destroy, spans } = await renderComponent(
       <FileTreeRowView
         row={{ kind: "dir", path: ".agents", name: ".agents", depth: 0, expanded: false, hasChildren: true }}
+        index={0}
         cursor
         statWidths={{ added: 0, deleted: 0 }}
         pathBudget={30}

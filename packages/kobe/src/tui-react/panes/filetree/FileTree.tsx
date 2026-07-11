@@ -126,6 +126,7 @@ export function FileTree(props: FileTreeProps) {
   const scopeRef = useLatest(scope)
   const baseRef = useLatest(base)
   const scopeManualRef = useLatest(scopeManual)
+  const onOpenFileRef = useLatest(props.onOpenFile)
   const fetchSeq = useRef(0)
 
   /**
@@ -309,11 +310,23 @@ export function FileTree(props: FileTreeProps) {
     else setExpandedDirs((prev) => toggleDir(prev, action.path))
   }
 
-  /** Shared enter/click activation: dirs toggle, files open. */
-  function activateRow(row: Row): void {
+  /** Shared enter/click activation: dirs toggle, files open. Stable (reads
+   *  the open handler via ref) so the memoized rows share ONE callback. */
+  const activateRow = useCallback((row: Row): void => {
     if (row.kind === "dir") setExpandedDirs((prev) => toggleDir(prev, row.path))
-    else props.onOpenFile(row.path)
-  }
+    else onOpenFileRef.current(row.path)
+  }, [])
+
+  /** Mouse activation for rows: set the cursor there, then activate. ONE
+   *  identity across renders so a j/k keystroke re-renders only the two
+   *  rows whose `cursor` flag flipped (FileTreeRowView is memoized). */
+  const handleRowActivate = useCallback(
+    (row: Row, index: number): void => {
+      setCursorIndex(index)
+      activateRow(row)
+    },
+    [activateRow],
+  )
 
   // `useBindings` re-reads the config per keypress through a render-refreshed
   // ref, so these closures always see the latest rows/cursor/tab.
@@ -425,13 +438,11 @@ export function FileTree(props: FileTreeProps) {
               <FileTreeRowView
                 key={`${row.kind}:${row.path}`}
                 row={row}
+                index={index}
                 cursor={index === cursorIndex}
                 statWidths={statWidths}
                 pathBudget={pathBudget}
-                onActivate={() => {
-                  setCursorIndex(index)
-                  activateRow(row)
-                }}
+                onActivate={handleRowActivate}
               />
             ))}
           </box>
