@@ -113,6 +113,10 @@ export type DaemonRequestName =
   | "task.setBranch"
   | "task.setVendor"
   | "task.delete"
+  // Land a task's branch back into its base repo (merge/squash). The last step
+  // of the worktree→engine→branch lifecycle that had no product path; refuses a
+  // dirty base checkout and aborts on conflict, returning the conflicted files.
+  | "task.land"
   | "task.pin"
   | "task.move"
   | "task.status"
