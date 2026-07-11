@@ -8,7 +8,8 @@
 
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../../tmux/client.ts"
-import { pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
+import { REPO_INIT_TIMEOUT_SECONDS } from "../../tmux/launch-line.ts"
+import { FRESH_PANE_BUDGET_SECONDS, pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import { ApiError, type ApiRuntime, type DeliveredPrompt, type PromptDeliveryOps, type PromptTarget } from "./types.ts"
 
@@ -37,8 +38,10 @@ export async function deliverPrompt(
 
   const session = tmuxSessionName(target.id)
   const existed = await ops.sessionExists(session)
+  let hasInitScript = false
   if (!existed) {
     const launchInit = await ops.resolveEngineLaunchInit(target.repo ?? "", worktree, { kind: "none" })
+    hasInitScript = Boolean(launchInit.initScript)
     const ok = await ops.ensureSession({
       name: session,
       cwd: worktree,
@@ -53,11 +56,16 @@ export async function deliverPrompt(
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
   }
 
-  const { pane, ready } = await ops.waitForEnginePane(session, !existed)
+  // A repo `.kobe/init.sh` runs BEFORE the engine paints, so give the pane
+  // wait the full init-script budget when one is present; otherwise stay
+  // snappy. A reused session (existed) waits non-fresh with the short budget.
+  const budgetSeconds = hasInitScript ? REPO_INIT_TIMEOUT_SECONDS : FRESH_PANE_BUDGET_SECONDS
+  const { pane, ready } = await ops.waitForEnginePane(session, !existed, budgetSeconds)
+  // No tagged engine pane (strict) ⇒ never blind-paste into a shell/ops pane.
   if (!pane) throw new ApiError(`no engine pane in session ${session}`, "NO_ENGINE_PANE")
 
-  await ops.pasteAndSubmit(pane, prompt)
-  return { session, pane, started: !existed, engineReady: ready }
+  const delivered = await ops.pasteAndSubmit(pane, prompt)
+  return { session, pane, started: !existed, engineReady: ready, delivered }
 }
 
 export async function resolveActiveTaskId(client: DaemonRpc): Promise<string | null> {

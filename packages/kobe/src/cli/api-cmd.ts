@@ -76,8 +76,10 @@ function emit(value: unknown, pretty: boolean): void {
   process.stdout.write(`${text}\n`)
 }
 
-function fail(message: string, code: string, exitCode = 1): never {
-  process.stderr.write(`${JSON.stringify({ error: { message, code } })}\n`)
+function fail(message: string, code: string, exitCode = 1, data?: Record<string, unknown>): never {
+  // Merge any error `data` (e.g. a taskId from a create-then-deliver failure)
+  // into the error object so a script never loses an already-created task.
+  process.stderr.write(`${JSON.stringify({ error: { message, code, ...data } })}\n`)
   process.exit(exitCode)
 }
 
@@ -147,7 +149,15 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     const result = await verb.handler(makeContext(verb, parsed.flags, session?.client ?? null, defaultApiRuntime))
     emit(result, parsed.pretty)
   } catch (err) {
-    if (err instanceof ApiError) fail(err.message, err.code, 1)
+    // PARTIAL_FANOUT carries a full result payload (created tasks + failures)
+    // that MUST reach the script — emit it to stdout, then exit 3 so the
+    // "non-zero = something failed" contract holds without losing the data.
+    if (err instanceof ApiError && err.code === "PARTIAL_FANOUT") {
+      emit(err.data, parsed.pretty)
+      session?.close()
+      process.exit(3)
+    }
+    if (err instanceof ApiError) fail(err.message, err.code, 1, err.data)
     fail(errorMessage(err), "RPC_ERROR", 1)
   } finally {
     session?.close()
