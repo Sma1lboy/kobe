@@ -53,7 +53,7 @@ describe("sweepOrphanTabsSnapshots", () => {
       [terminalTabsKey("archived")]: { tabs: [] },
       [terminalTabsKey("orphan1")]: { tabs: [] },
       [terminalTabsKey("orphan2")]: { tabs: [] },
-      "activeSortMode": "recent",
+      activeSortMode: "recent",
     })
     // liveTaskIds MUST include archived tasks — their snapshots are kept.
     const swept = sweepOrphanTabsSnapshots(kv, ["live", "archived"])
@@ -62,7 +62,7 @@ describe("sweepOrphanTabsSnapshots", () => {
     expect(kv.store[terminalTabsKey("archived")]).toEqual({ tabs: [] })
     expect(kv.store[terminalTabsKey("orphan1")]).toBeUndefined()
     expect(kv.store[terminalTabsKey("orphan2")]).toBeUndefined()
-    expect(kv.store["activeSortMode"]).toBe("recent")
+    expect(kv.store.activeSortMode).toBe("recent")
   })
 
   it("is idempotent — a second sweep removes nothing more", () => {

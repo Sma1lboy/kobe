@@ -138,7 +138,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   useEffect(() => {
     if (sweptOrphansRef.current || tasks.length === 0) return
     sweptOrphansRef.current = true
-    sweepOrphanTabsSnapshots(kv, tasks.map((task) => task.id))
+    sweepOrphanTabsSnapshots(
+      kv,
+      tasks.map((task) => task.id),
+    )
   }, [tasks, kv])
 
   // Imperative handle from the currently-mounted TerminalTabs (issue #16

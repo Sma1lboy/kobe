@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { CLAUDE_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
 import { sweepBar } from "../../src/tui/lib/progress-bar.ts"
-import { anyRowLoading, buildSidebarRowView, rowIsLoading, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view.ts"
+import {
+  anyRowLoading,
+  buildSidebarRowView,
+  rowIsLoading,
+  withSpinnerFrame,
+} from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 

@@ -10,8 +10,8 @@
 
 import { describe, expect, it } from "vitest"
 import { titleDisplayName, vendorFromTerminalTitle } from "../../src/engine/registry"
-import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types"
 import { createTitleSubscriptions } from "../../src/tui-react/workspace/title-subscriptions"
+import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types"
 
 /** Minimal fake: only the title stream the store touches, fires immediately
  *  with the current title on subscribe (real + mock PTYs both do). */

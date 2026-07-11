@@ -53,7 +53,9 @@ export interface TitleSubscriptions {
   dispose(): void
 }
 
-export function createTitleSubscriptions(lookup: PtyLookup = getDefaultPtyRegistry().get.bind(getDefaultPtyRegistry())): TitleSubscriptions {
+export function createTitleSubscriptions(
+  lookup: PtyLookup = getDefaultPtyRegistry().get.bind(getDefaultPtyRegistry()),
+): TitleSubscriptions {
   /** ptyKey → { the subscribed PTY instance, its unsub, latest display title }. */
   const subs = new Map<string, { pty: TaskPtyLike; unsub: () => void; title: string }>()
   const listeners = new Set<() => void>()
