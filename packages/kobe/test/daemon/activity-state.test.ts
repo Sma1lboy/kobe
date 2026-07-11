@@ -34,6 +34,52 @@ describe("daemon activity state", () => {
     client.close()
   })
 
+  it("keeps permission_needed sticky instead of lapsing it to idle after the TTL", async () => {
+    // The whole point of the ? badge: a task blocked on a permission prompt is
+    // exactly what a user leaves the session to handle. A blocked engine writes
+    // no transcript, so the liveness probe reads "stale" — the badge must NOT
+    // lapse to idle regardless, or "come back and see who's stuck" breaks.
+    h = await bootDaemonHarness({ env: { KOBE_ENGINE_STATE_TTL_MS: String(TTL_MS) } })
+    const client = h.client()
+    const states: TaskActivityState[] = []
+    client.onChannel("engine-state", (payload) => {
+      if (payload.taskId === "task-1") states.push(payload.state)
+    })
+    await client.subscribe()
+
+    await client.request("engine.reportEvent", {
+      taskId: "task-1",
+      kind: "awaiting-input",
+      detail: { waiting: "permission" },
+    })
+    await sleep(TTL_MS + 50)
+
+    expect(states).toEqual(["permission_needed"])
+    client.close()
+  })
+
+  it("keeps error / rate_limited sticky — no lapse timer armed for either", () => {
+    // Even with a probe that always reports "dead" (mtime 0), a blocked/errored
+    // engine must stay lit. These states arm no lapse at all, so no timer exists
+    // to fire; the badge clears only on the next real event / clearTask.
+    const bus = new DaemonEventBus()
+    const registry = new DaemonActivityRegistry(
+      bus,
+      TTL_MS,
+      () => Date.now(),
+      () => Promise.resolve(0),
+    )
+
+    registry.report("task-err", "turn-failed", { failure: "other" })
+    registry.report("task-rl", "turn-failed", { failure: "rate_limit" })
+
+    expect(registry.currentNonIdle().map((p) => [p.taskId, p.state])).toEqual([
+      ["task-err", "error"],
+      ["task-rl", "rate_limited"],
+    ])
+    registry.close()
+  })
+
   it("replays every current non-idle activity, not just the bus cache", () => {
     const bus = new DaemonEventBus()
     const registry = new DaemonActivityRegistry(bus, 1_000)

@@ -231,13 +231,35 @@ export function latestClaudeCompletionMarkerFromJsonl(
   return latest
 }
 
+/**
+ * Rollout `event_msg` payload types that mean "this turn is done". Codex's
+ * real on-disk rollout (codex-cli) never writes a top-level `turn.completed`
+ * record — that shape is the `codex exec --json` STREAM event. A rollout wraps
+ * each agent event as `{ type: "event_msg", payload: { type: ... } }`, and the
+ * completion signal is the flattened EventMsg tag: `task_complete` (v1 wire),
+ * `turn_complete` (v2 alias), or `turn_aborted` (interrupted). Sourced from the
+ * codex protocol enum (`EventMsg` #[serde(rename_all="snake_case")], with
+ * `task_complete`/`turn_complete` aliased on the same variant).
+ */
+const CODEX_ROLLOUT_DONE_EVENTS = new Set(["task_complete", "turn_complete", "turn_aborted"])
+
+/** True when `record` is a rollout completion marker — either the real
+ *  rollout `event_msg` (task_complete / turn_complete / turn_aborted) or the
+ *  legacy top-level `turn.completed` from a `codex exec --json` stream dump. */
+function isCodexCompletionRecord(record: Record<string, unknown>): boolean {
+  if (record.type === "turn.completed") return true
+  if (record.type !== "event_msg") return false
+  const payload = isObject(record.payload) ? record.payload : undefined
+  return typeof payload?.type === "string" && CODEX_ROLLOUT_DONE_EVENTS.has(payload.type)
+}
+
 export function latestCodexCompletionMarkerFromJsonl(raw: string, sourceId = "codex"): TurnCompletionMarker | null {
   let latest: TurnCompletionMarker | null = null
   let lineNo = 0
   for (const line of raw.split("\n")) {
     lineNo++
     const record = parseJsonLine(line)
-    if (!record || record.type !== "turn.completed") continue
+    if (!record || !isCodexCompletionRecord(record)) continue
     const timestampMs = timestampFromRecord(record, 0)
     const marker = {
       id: `codex:${sourceId}:${timestampMs}:${lineNo}`,
