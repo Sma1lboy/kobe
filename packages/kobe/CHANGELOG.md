@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.96
+
+### Patch Changes
+
+- 39ba695: Move the "jump to next waiting task" chord off `ctrl+g` (which swallowed the engine's readline abort inside claude) onto `F7`, continuing kobe's F-row; `ctrl+g` now passes through to the engine again.
+- cc5a9b8: Stop flashing a hollow-circle (`○`) status placeholder on freshly-spawned engine tabs. The turn glyph now renders only once the detector has a real reading, instead of defaulting to an "idle" circle in the window before the engine's native title arrives.
+
 ## 0.7.95
 
 ### Patch Changes
