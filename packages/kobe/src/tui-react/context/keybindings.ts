@@ -26,7 +26,7 @@ export type { KobeBinding, KobeBindingScope, KobeBindingHint } from "../../tui/c
  * counter — use it as a dependency to recompute chord legends.
  */
 export function useKeymapVersion(): number {
-  // keymapVersion is a Solid signal read; outside a tracked scope it is a
-  // plain getter, which is exactly what getSnapshot wants.
+  // keymapVersion is a plain getter over the module-level version
+  // counter, which is exactly what getSnapshot wants.
   return useSyncExternalStore(subscribeKeymapVersion, keymapVersion, keymapVersion)
 }

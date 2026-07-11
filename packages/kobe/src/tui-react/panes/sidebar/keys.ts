@@ -1,20 +1,20 @@
 /**
- * Sidebar key bindings — React hook layer (issue #15, G3), the
- * `src/tui/panes/sidebar/keys.ts` counterpart. The navigation/chord state
- * machine is the shared framework-free `tui/panes/sidebar/controller.ts`;
- * this file owns only the React hook + key→method wiring through the
- * render-refreshed-ref `useBindings` (tui-react/lib/keymap).
+ * Sidebar key bindings — React hook layer (issue #15, G3). The
+ * navigation/chord state machine is the shared framework-free
+ * `tui/panes/sidebar/controller.ts`; this file owns only the React hook +
+ * key→method wiring through the render-refreshed-ref `useBindings`
+ * (tui-react/lib/keymap).
  *
- * Contract parity notes:
- *   - Opts are plain per-render values (the Solid accessors' React shape);
- *     the hook reads them through a ref refreshed every render, so the
- *     per-keypress config always sees the latest render's state.
+ * Contract notes:
+ *   - Opts are plain per-render values; the hook reads them through a ref
+ *     refreshed every render, so the per-keypress config always sees the
+ *     latest render's state.
  *   - The cursor is the one exception: reads go through `getCursorIndex`
  *     because two keypresses can land between renders (React state commits
  *     asynchronously) — the Sidebar backs it with a ref so a fast j·j
  *     doesn't move from a stale index.
- *   - Same three binding blocks (letters+`/`, view switch, search-mode) and
- *     the same slot/evt.shift discrimination as the Solid hook.
+ *   - Three binding blocks (letters+`/`, view switch, search-mode);
+ *     direction-multiplexed ids resolve via slot/evt.shift.
  */
 
 import { useRef } from "react"
@@ -46,8 +46,9 @@ export type SidebarBindingsOpts = SidebarTaskCallbacks & {
 
 /**
  * Register the sidebar's pane-local key bindings for the lifetime of the
- * calling component. Same behavior contract as the Solid hook — see
- * `src/tui/panes/sidebar/keys.ts` for the full per-binding rationale.
+ * calling component. Chord assignments + scope rules live in
+ * `docs/KEYBINDINGS.md`; the nav/chord semantics in
+ * `tui/panes/sidebar/controller.ts`.
  */
 export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   const optsRef = useLatest(opts)

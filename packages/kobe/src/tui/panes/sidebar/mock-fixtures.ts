@@ -1,6 +1,7 @@
 /**
  * Shared mock task fixtures for the sidebar smoke hosts (issue #15, G3).
- * Framework-free, so the Solid and React mock entries can render the same
+ * Framework-free, so the React mock hosts (e.g.
+ * `src/tui-react/panes/sidebar/mock-host.tsx`) can render the same
  * synthetic task list without a daemon, tasks.json, or real worktrees.
  * Paths point under /mock so the git pollers fail closed (chips hidden).
  */

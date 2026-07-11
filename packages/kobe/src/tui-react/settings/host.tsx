@@ -1,13 +1,10 @@
 /** @jsxImportSource @opentui/react */
 /**
- * `kobe settings` — React port of `src/tui/settings/host.tsx` (issue #15,
- * G3). React is the default runtime since 2026-07-07 (`uiFramework()` in
- * `src/env.ts`); `KOBE_SOLID=1` is the legacy escape hatch back to the
- * Solid host in `src/cli/commands-tui.ts`. Same contract:
- * the Settings page rendered as a standalone full-window surface, reusing
- * the SAME SettingsDialog component the overlay surface uses, in its own
- * process inside a tmux window. Closing (q / esc / Ctrl+C) flushes kv,
- * refreshes workspace panes when visual prefs changed, and exits.
+ * `kobe settings` (issue #15, G3) — the Settings page rendered as a
+ * standalone full-window surface, reusing the SAME SettingsDialog
+ * component the overlay surface uses, in its own process inside a tmux
+ * window. Closing (q / esc / Ctrl+C) flushes kv, refreshes workspace
+ * panes when visual prefs changed, and exits.
  *
  * Daemon connect is NON-spawning (`connectIfRunning`): a settings window
  * must never resurrect an idle-stopped daemon (it would never idle-stop
@@ -65,9 +62,9 @@ export function SettingsPage(props: { orchestrator: RemoteOrchestrator | null })
   }))
 
   return (
-    // Scroll, don't compress — same rationale as the Solid page: the
-    // full-window page has no fixed-height card, so a scrollbox gives the
-    // content its natural height and scrolls the overflow.
+    // Scroll, don't compress — the full-window page has no fixed-height
+    // card, so a scrollbox gives the content its natural height and
+    // scrolls the overflow.
     <scrollbox
       flexGrow={1}
       backgroundColor={theme.background}
