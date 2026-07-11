@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.98
+
+### Patch Changes
+
+- 01f1baa: PureTUI now routes former control-key actions through a configurable prefix sequence, defaulting to `ctrl+a` followed by the action key.
+- 4019edd: Internal: pure-TUI architecture sweep — split near-cap modules along real seams (keybindings chord table, keymap-overrides parse/apply, terminal-tabs split-tree policy), single-owner the bundled theme registry, and consolidate duplicated helpers (relative-age/clamp-cursor, path leaf, cell-width/truncation, chord-cap resolution, pane-orchestrator boot, page-close chords). No behavior change.
+
 ## 0.7.97
 
 ### Patch Changes
