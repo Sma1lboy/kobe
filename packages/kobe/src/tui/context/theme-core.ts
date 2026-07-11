@@ -1,21 +1,15 @@
 /**
  * Framework-free theme core, shared by the Solid provider (`./theme.tsx`)
  * and the React one (`src/tui-react/context/theme.tsx`). Extracted during
- * the React migration (issue #15, G2): JSON shape types, the bundled theme
- * registry, hex/def-ref/variant resolution, and the display-time overlay
- * (focus-accent slot + transparent-background policy) all live here so the
- * two providers cannot drift.
+ * the React migration (issue #15, G2): JSON shape types, hex/def-ref/variant
+ * resolution, and the display-time overlay (focus-accent slot +
+ * transparent-background policy) all live here so the two providers cannot
+ * drift. The bundled theme JSONs themselves live in `./theme/bundled`.
  */
 
 import { RGBA } from "@opentui/core"
 
-import claude from "./theme/claude.json" with { type: "json" }
-import conductor from "./theme/conductor.json" with { type: "json" }
-import dracula from "./theme/dracula.json" with { type: "json" }
-import nord from "./theme/nord.json" with { type: "json" }
-import opencode from "./theme/opencode.json" with { type: "json" }
-import osakaJade from "./theme/osaka-jade.json" with { type: "json" }
-import tokyonight from "./theme/tokyonight.json" with { type: "json" }
+import { BUNDLED_THEME_JSONS } from "./theme/bundled"
 
 type HexColor = `#${string}`
 type RefName = string
@@ -74,18 +68,12 @@ export type Theme = {
   [key: string]: RGBA
 }
 
-export const BUNDLED_THEMES: Record<string, ThemeJson> = {
-  // Claude-branded palette (terracotta accent on warm neutrals), ported
-  // from ashwingopalsamy/claude-code-theme's brandTokens. Default for
-  // new kobe installs so the TUI reads as part of the Claude ecosystem.
-  claude: claude as ThemeJson,
-  conductor: conductor as ThemeJson,
-  nord: nord as ThemeJson,
-  opencode: opencode as ThemeJson,
-  dracula: dracula as ThemeJson,
-  tokyonight: tokyonight as ThemeJson,
-  "osaka-jade": osakaJade as ThemeJson,
-}
+/**
+ * The bundled theme registry. The JSON payloads live in `./theme/bundled`
+ * (the single owner); this re-export keeps the historical import path for
+ * consumers (`src/tui-react/context/theme.tsx`, tests).
+ */
+export const BUNDLED_THEMES: Record<string, ThemeJson> = BUNDLED_THEME_JSONS
 
 /**
  * Is `name` a known theme? Framework-free check against the bundled set —
