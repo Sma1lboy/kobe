@@ -83,6 +83,24 @@ describe("slot dispatch parity with default keys", () => {
     expect(calls).toEqual(["sidebar", "workspace"])
   })
 
+  test("focus.numeric keeps prefix pane slots when direct aliases are added", () => {
+    applyKeymapOverrides(KobeKeymap, [{ id: "focus.numeric", keys: ["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"] }])
+    const panes = ["sidebar", "workspace", "files", "workspace"] as const
+    const calls: string[] = []
+    const reg: RegisteredBinding = {
+      id: 1,
+      config: () => ({
+        bindings: bindByIds({
+          "focus.numeric": (_evt, slot) => calls.push(panes[slot ?? 0] ?? "missing"),
+        }),
+      }),
+    }
+
+    dispatchKeyEvent([reg], makeEvt("a", true))
+    dispatchKeyEvent([reg], makeEvt("h"))
+    expect(calls).toEqual(["sidebar"])
+  })
+
   test("sidebar.nav: j/down → down, k/up → up", () => {
     const calls: string[] = []
     // Mirrors useSidebarBindings' slot mapping (panes/sidebar/keys.ts).

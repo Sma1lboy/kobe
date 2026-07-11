@@ -8,11 +8,6 @@ export function chordsOf(id: string): readonly string[] {
   return findBinding(id)?.keys ?? []
 }
 
-/** Resolve configured-prefix second strokes for one binding id. */
-export function prefixChordsOf(id: string): readonly string[] {
-  return findBinding(id)?.prefixKeys ?? []
-}
-
 /** Expand binding ids into direct and prefix-marked dispatcher entries. */
 export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
   const out: Binding[] = []
@@ -27,8 +22,7 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
       continue
     }
     chords.forEach((key, slot) => out.push({ key, cmd, slot }))
-    const prefixSlotOffset = binding?.prefixSlotOffset ?? chords.length
-    prefixChords.forEach((key, index) => out.push({ key, prefix: true, cmd, slot: prefixSlotOffset + index }))
+    prefixChords.forEach((key, slot) => out.push({ key, prefix: true, cmd, slot }))
   }
   return out
 }

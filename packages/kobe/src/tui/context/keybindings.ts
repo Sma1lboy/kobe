@@ -110,8 +110,6 @@ export type KobeBinding = {
   keys: readonly string[]
   /** Second strokes reached through the configurable PureTUI prefix. */
   prefixKeys?: readonly string[]
-  /** Slot index for prefix keys when direct overrides have a different length. */
-  prefixSlotOffset?: number
   /** Help-dialog category (groups rows visually). */
   category: string
   /** Help-dialog description text. */
@@ -459,4 +457,4 @@ export function findBinding(id: string): KobeBinding | undefined {
   return KEYMAP_BY_ID.get(id)
 }
 
-export { bindByIds, chordsOf, prefixChordsOf } from "./keybindings-bindings.ts"
+export { bindByIds, chordsOf } from "./keybindings-bindings.ts"

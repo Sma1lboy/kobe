@@ -4,16 +4,13 @@
  * using keymap-overrides.ts without learning PureTUI sequence semantics.
  */
 
-import { type AppliedOverride, normalizeChord } from "./keymap-overrides"
+import { type AppliedOverride, type KeymapOverrideEntry, normalizeChord } from "./keymap-overrides"
 
 export type PrefixOverridableBinding = {
   id: string
-  scope: string
   keys: readonly string[]
   prefixKeys?: readonly string[]
 }
-
-export type PrefixKeymapOverrideEntry = { id: string; keys: string[] }
 
 export type PrefixConfigurationOverride = {
   key?: string | null
@@ -22,7 +19,7 @@ export type PrefixConfigurationOverride = {
 
 export type PrefixExtraction = {
   configuration: PrefixConfigurationOverride
-  entries: PrefixKeymapOverrideEntry[]
+  entries: KeymapOverrideEntry[]
   warnings: string[]
 }
 
@@ -122,7 +119,7 @@ export function extractPrefixKeybindings(doc: unknown, platform: NodeJS.Platform
 /** Apply prefix second-stroke overrides alongside any direct chords. */
 export function applyPrefixKeymapOverrides(
   keymap: readonly PrefixOverridableBinding[],
-  entries: readonly PrefixKeymapOverrideEntry[],
+  entries: readonly KeymapOverrideEntry[],
 ): { applied: AppliedOverride[]; warnings: string[] } {
   const applied: AppliedOverride[] = []
   const warnings: string[] = []
