@@ -12,7 +12,7 @@ import { useState } from "react"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "./dialog"
+import { type DialogContext, showDialog, useDialog } from "./dialog"
 
 function titlecase(s: string): string {
   if (!s) return s
@@ -104,23 +104,21 @@ DialogConfirm.show = (
   confirmLabel?: string,
   options?: DialogConfirmOptions,
 ): Promise<DialogConfirmResult> => {
-  return new Promise<DialogConfirmResult>((resolve) => {
-    dialog.replace(
-      () => (
-        <DialogConfirm
-          title={title}
-          message={message}
-          onConfirm={() => resolve(true)}
-          onCancel={() => resolve(false)}
-          label={label}
-          confirmLabel={confirmLabel}
-          initialActive={options?.initialActive}
-        />
-      ),
-      () => resolve(undefined),
-    )
-    // Confirms are tight yes/no prompts; the narrow `small` width reads
-    // at a glance instead of swallowing half the viewport.
-    dialog.setSize("small")
-  })
+  // Confirms are tight yes/no prompts; the narrow `small` width reads
+  // at a glance instead of swallowing half the viewport.
+  return showDialog<boolean>(
+    dialog,
+    (resolve) => (
+      <DialogConfirm
+        title={title}
+        message={message}
+        onConfirm={() => resolve(true)}
+        onCancel={() => resolve(false)}
+        label={label}
+        confirmLabel={confirmLabel}
+        initialActive={options?.initialActive}
+      />
+    ),
+    { size: "small" },
+  )
 }

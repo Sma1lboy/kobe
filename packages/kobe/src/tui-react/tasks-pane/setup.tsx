@@ -31,7 +31,7 @@ import { sessionAttached } from "../../tui/lib/attach-gate"
 import type { Task } from "../../types/task.ts"
 import { ToastOverlay } from "../component/toast-overlay"
 import type { HostScreen } from "../lib/host-boot"
-import { useAccessor } from "../workspace/use-accessor"
+import { useAccessor } from "../lib/use-accessor"
 import { TasksShell } from "./host.tsx"
 
 const RELOAD_MS = 1500

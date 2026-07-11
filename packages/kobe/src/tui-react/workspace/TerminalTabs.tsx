@@ -58,7 +58,7 @@ import {
   closeActiveTab,
   closeTab,
   cycleTab,
-  engineTabArgv,
+  engineTabSpawnFor,
   initialTabs,
   isTabSplit,
   openCommandTab,
@@ -67,7 +67,6 @@ import {
   selectTab,
   setTabSessionId,
   setTabSplit,
-  shellSpawn,
   tabExitAction,
   tabPtyKey,
 } from "../../tui/workspace/terminal-tabs-core"
@@ -190,20 +189,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     kv.set(persistKey, next)
   }
 
-  /** Engine-tab spawn: the PTY runs the user's SHELL and the engine argv
-   *  (pinned session id riding it — resume-vs-pin is pure, `engineTabArgv`)
-   *  is TYPED into it (`shellSpawn`), so exiting the vendor lands on a
-   *  normal prompt with full rc context. The quick-fork initial prompt
-   *  (issue #17) rides the argv as a positional arg on the first engine
-   *  tab's FIRST spawn — pasting it into the PTY raced the shell (typed
-   *  input executed by the shell, not the engine). */
+  /** Engine-tab spawn: the composition (shell wrap + resume-vs-pin +
+   *  first-spawn initial prompt, issue #17) is pure — `engineTabSpawnFor`;
+   *  this closure only supplies the IO reads (registry liveness, props). */
   const engineTabSpawn = (tab: EngineTab): TabSpawn => {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
     const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
-    const prompt = propsRef.current.initialPrompt
-    const firstEngine = stateRef.current.tabs.find((t) => t.kind === "engine")
-    const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
-    return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), defaultShell())
+    return engineTabSpawnFor(stateRef.current, tab, base, {
+      live,
+      shell: defaultShell(),
+      prompt: propsRef.current.initialPrompt,
+    })
   }
   // Latest-render mirror for the mount-once engine-send closure below —
   // same freshness convention as propsRef/stateRef (file header).

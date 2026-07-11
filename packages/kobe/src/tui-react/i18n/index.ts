@@ -9,7 +9,7 @@
 
 import { useCallback } from "react"
 import { currentLang, localeState, setLocaleLang, t, tKeys } from "../../tui/i18n"
-import { useAccessor } from "../workspace/use-accessor"
+import { useAccessor } from "../lib/use-accessor"
 
 export { LOCALES, DEFAULT_LOCALE, isLocaleId } from "../../tui/i18n/catalog"
 export type { LocaleId } from "../../tui/i18n/catalog"

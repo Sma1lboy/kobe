@@ -273,3 +273,25 @@ export function useDialog(): DialogContext {
   if (!value) throw new Error("useDialog must be used within a DialogProvider")
   return value
 }
+
+/**
+ * Open a dialog that resolves a single value — the shared `show` shape:
+ * `body` receives the promise's `resolve` and wires it to its
+ * submit/cancel props; dismissing through the stack (esc / backdrop /
+ * replaced) resolves `undefined`. Not for dialogs that resolve a value
+ * on their onClose path too (e.g. SettingsDialog) — those keep their own
+ * wrapper.
+ */
+export function showDialog<T>(
+  dialog: DialogContext,
+  body: (resolve: (value: T | undefined) => void) => ReactNode,
+  opts?: { size?: DialogSize },
+): Promise<T | undefined> {
+  return new Promise<T | undefined>((resolve) => {
+    dialog.replace(
+      () => body(resolve),
+      () => resolve(undefined),
+    )
+    if (opts?.size) dialog.setSize(opts.size)
+  })
+}

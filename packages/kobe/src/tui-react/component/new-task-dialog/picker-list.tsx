@@ -6,6 +6,8 @@
  * parent, adopt); the React port renders all four through this one
  * component — callers supply the pre-windowed row bodies and pick
  * handler, the list owns the cursor arrow, bold, and overflow lines.
+ * Also home to {@link ChoiceRow}, the horizontal choose-one row shared
+ * across the dialog layer (engine picker, quick composer, this dialog).
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -73,4 +75,47 @@ export function labelStyle(theme: Theme, focusedField: Field, f: Field): { fg: T
   return focusedField === f
     ? { fg: theme.primary, attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE }
     : { fg: theme.textMuted }
+}
+
+/**
+ * Horizontal choose-one row — the engine/vendor selector pattern shared by
+ * the new-task dialog, the engine-picker dialog and the quick-task
+ * composer: choices side by side (`gap={2}`), the selected one primary +
+ * bold (arrowed variants prefix `▸ ` / two spaces), click picks.
+ */
+export function ChoiceRow<T extends string>(props: {
+  choices: readonly T[]
+  selected: T
+  /** Leading cell (e.g. a field label) rendered before the choices. */
+  label?: ReactNode
+  onPick: (choice: T) => void
+  /** `▸ `/two-space prefix on each choice (default true). */
+  arrow?: boolean
+  /** Display text for a choice (default: the choice itself). */
+  display?: (choice: T) => string
+  /** Trailing content (spacer/hints) inside the same row. */
+  children?: ReactNode
+}) {
+  const { theme } = useTheme()
+  const arrow = props.arrow !== false
+  return (
+    <box flexDirection="row" gap={2}>
+      {props.label}
+      {props.choices.map((choice) => {
+        const selected = props.selected === choice
+        const prefix = arrow ? (selected ? "▸ " : "  ") : ""
+        return (
+          <text
+            key={choice}
+            fg={selected ? theme.primary : theme.textMuted}
+            attributes={selected ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onPick(choice)}
+          >
+            {prefix + (props.display ? props.display(choice) : choice)}
+          </text>
+        )
+      })}
+      {props.children}
+    </box>
+  )
 }

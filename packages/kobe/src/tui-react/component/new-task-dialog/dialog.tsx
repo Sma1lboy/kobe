@@ -14,7 +14,7 @@ import { TextAttributes } from "@opentui/core"
 import type { DialogTab } from "../../../tui/component/new-task-dialog/state"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
-import { labelStyle } from "./picker-list"
+import { ChoiceRow, labelStyle } from "./picker-list"
 import { AdoptTab } from "./tab-adopt"
 import { CloneTab } from "./tab-clone"
 import { ExistingTab } from "./tab-existing"
@@ -69,27 +69,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             ctrl+e from anywhere, click picks. Detected vendors only. */}
         <box gap={0}>
           <text {...labelStyle(theme, vm.field, "engine")}>{t("newTask.field.engine")}</text>
-          <box flexDirection="row" gap={2}>
-            {vm.vendors.map((v) => {
-              const selected = vm.vendor === v
-              return (
-                <text
-                  key={v}
-                  fg={selected ? theme.primary : theme.textMuted}
-                  attributes={selected ? TextAttributes.BOLD : undefined}
-                  onMouseUp={() => {
-                    vm.setVendor(v)
-                    vm.setField("engine")
-                  }}
-                >
-                  {selected ? "▸ " : "  "}
-                  {v}
-                </text>
-              )
-            })}
+          <ChoiceRow
+            choices={vm.vendors}
+            selected={vm.vendor}
+            onPick={(v) => {
+              vm.setVendor(v)
+              vm.setField("engine")
+            }}
+          >
             <box flexGrow={1} />
             <text fg={theme.textMuted}>{t("newTask.hint.engineCycle")}</text>
-          </box>
+          </ChoiceRow>
         </box>
         {vm.tab === "existing" ? <ExistingTab vm={vm} /> : null}
         {vm.tab === "clone" ? <CloneTab vm={vm} /> : null}
