@@ -25,7 +25,7 @@
  * preserving its exact previous behavior.
  */
 
-import { spawn, spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useEffect, useState } from "react"
@@ -42,6 +42,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
+import { runShellUpdater } from "./run-updater.ts"
 
 type ActionId = "update" | "release" | "close"
 
@@ -63,28 +64,12 @@ function openExternalUrl(url: string | null): boolean {
   }
 }
 
-function releaseBodyLines(body: string): string[] {
+export function releaseBodyLines(body: string): string[] {
   return body
     .replace(/\r\n/g, "\n")
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-}
-
-function waitForKeypress(): Promise<void> {
-  if (!process.stdin.isTTY) return Promise.resolve()
-  return new Promise((resolve) => {
-    const stdin = process.stdin
-    const done = () => {
-      stdin.off("data", done)
-      stdin.setRawMode?.(false)
-      stdin.pause()
-      resolve()
-    }
-    stdin.setRawMode?.(true)
-    stdin.resume()
-    stdin.once("data", done)
-  })
 }
 
 export function UpdatePage(props: { onClose: () => void }) {
@@ -146,18 +131,7 @@ export function UpdatePage(props: { onClose: () => void }) {
   async function runUpdater(): Promise<void> {
     setStatus(t("update.statusRunningUpdater"))
     await new Promise((resolve) => setTimeout(resolve, 30))
-    renderer?.destroy()
-    process.stdout.write(`\nkobe ${CURRENT_VERSION} -> ${latest}\n`)
-    process.stdout.write(`running: ${UPDATE_COMMAND}\n\n`)
-    const result = spawnSync("sh", ["-c", UPDATE_COMMAND], { stdio: "inherit" })
-    const code = result.status ?? (result.error ? 1 : 0)
-    if (result.error) process.stderr.write(`\nkobe update: failed to start updater: ${result.error.message}\n`)
-    process.stdout.write(
-      code === 0 ? `\n${t("update.updateComplete")}\n` : `\n${t("update.updateFailed", { code: String(code) })}\n`,
-    )
-    process.stdout.write(t("update.pressAnyKey"))
-    await waitForKeypress()
-    process.exit(code)
+    await runShellUpdater({ renderer, t, targetLabel: latest, command: UPDATE_COMMAND })
   }
 
   useBindings(() => ({

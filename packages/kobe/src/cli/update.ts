@@ -70,7 +70,7 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
       dryRun = true
       continue
     }
-    if (arg === "--list") {
+    if (arg === "--list" || arg === "list") {
       list = true
       continue
     }
@@ -98,7 +98,8 @@ function printUsage(out: Pick<typeof process.stderr, "write">): void {
       "0.7.90) the script installs that exact release instead of latest.",
       "",
       "Options:",
-      "  --list      Print recent published versions and exit",
+      "  --list      Browse recent versions — a TUI page with release notes",
+      "              when interactive, plain text when piped",
       "  --dry-run   Print the command without running it",
       "",
       "Default command:",
@@ -175,6 +176,14 @@ export async function runUpdateSubcommand(args: readonly string[], deps?: Partia
     return
   }
   if (parsed.list) {
+    // Interactive terminal → the TUI versions browser (list + release
+    // notes + pinned install). Injected deps (tests) or a pipe keep the
+    // plain parseable text output for scripts and agents.
+    if (deps === undefined && process.stdout.isTTY) {
+      const { startVersionsHost } = await import("../tui-react/update/versions-page.tsx")
+      await startVersionsHost()
+      return
+    }
     await printVersionList(io)
     return
   }
