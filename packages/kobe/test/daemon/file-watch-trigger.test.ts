@@ -25,7 +25,12 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { startFileWatchTrigger } from "@sma1lboy/kobe-daemon/daemon/file-watch-trigger"
-import { afterEach, beforeEach, describe, expect, test } from "vitest"
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+
+// fs-event delivery (chokidar arm + fsevents) can take seconds when the socket
+// track runs multi-worker under load; the polling waitFor needs headroom past
+// vitest's 5s default.
+vi.setConfig({ testTimeout: 20_000 })
 
 let tmpDir: string
 let filePath: string
@@ -47,9 +52,9 @@ afterEach(() => {
   }
 })
 
-/** Poll until `cond` holds or ~2s elapses (fs-event delivery is async). */
+/** Poll until `cond` holds or ~8s elapses (fs-event delivery is async and slow under parallel load). */
 async function waitFor(cond: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2000
+  const deadline = Date.now() + 8000
   while (!cond() && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 20))
   }
