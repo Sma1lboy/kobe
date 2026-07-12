@@ -1,10 +1,11 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Bottom-left prefix HUD (terminal column): while the PureTUI prefix is
- * armed it shows a live `ctrl+a ⋯` line, and each resolved sequence lands a
- * `ctrl+a + t → tab.new` line (or `∅` on a miss). The last three lines
- * stream like a mini log and flush PREFIX_HUD_TTL_MS after they land —
- * flush timers live HERE; the framework-free feed only timestamps
+ * Bottom-left prefix HUD (over the Tasks sidebar — NOT the terminal column,
+ * where it collided with the engine's own status line): while the PureTUI
+ * prefix is armed it shows a live `ctrl+a ⋯` line, and each resolved
+ * sequence lands a `ctrl+a + t → tab.new` line (or `∅` on a miss). The last
+ * three lines stream like a mini log and flush PREFIX_HUD_TTL_MS after they
+ * land — flush timers live HERE; the framework-free feed only timestamps
  * (src/tui/lib/prefix-hud.ts), so headless dispatch stays timer-free.
  */
 
@@ -17,7 +18,7 @@ import { useAccessor } from "../lib/use-accessor"
 
 const BOTTOM_MARGIN = 1
 
-export function PrefixHud(props: { left: number }) {
+export function PrefixHud(props: { left: number; width: number }) {
   const { theme } = useTheme()
   const dims = useTerminalDimensions()
   const hud = useAccessor(prefixHudState)
@@ -43,7 +44,7 @@ export function PrefixHud(props: { left: number }) {
   const armedKey = currentPrefixConfiguration().key ?? ""
 
   return (
-    <box position="absolute" zIndex={2400} left={props.left} top={top} flexDirection="column">
+    <box position="absolute" zIndex={2400} left={props.left} top={top} width={props.width} flexDirection="column">
       {fresh.map((entry) => (
         <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
           <text fg={entry.action ? theme.textMuted : theme.warning} wrapMode="none">

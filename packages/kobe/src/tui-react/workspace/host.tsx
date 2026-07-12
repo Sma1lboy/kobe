@@ -379,10 +379,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           appeared. Absolute-positioned like SidebarHoverTooltip, under the
           host's NotificationsProvider. */}
       <ToastOverlay />
-      {/* Prefix sequence HUD — bottom-left of the terminal column, streams
-          the last three `prefix + key → action` resolutions (issue-free
-          overlay: absolute, below toasts/dialogs). */}
-      <PrefixHud left={SIDEBAR_WIDTH + 1} />
+      {/* Prefix sequence HUD — bottom-left over the Tasks sidebar (the
+          terminal column is off-limits: it collided with the engine's own
+          status line). Width-capped to the rail so lines never spill into
+          the terminal. */}
+      <PrefixHud left={1} width={SIDEBAR_WIDTH - 2} />
     </box>
   )
 }
