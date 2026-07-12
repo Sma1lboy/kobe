@@ -91,6 +91,25 @@ describe("split tree (content-agnostic)", () => {
     expect(removed?.activeLeafId).toBe("leaf-2")
   })
 
+  it("removeLeaf refocuses the surviving next leaf when the active FIRST leaf is closed", () => {
+    // Regression: the fallback read the pre-removal reading order, so closing
+    // the active leaf at index 0 refocused `order[0]` — the leaf just pruned.
+    let s = splitActive(initialSplit(MAIN), "row", SH) // [leaf-1 | leaf-2*]
+    s = focusLeaf(s, "leaf-1") // active is now the FIRST leaf
+    const removed = removeLeaf(s, "leaf-1")
+    expect(removed).not.toBeNull()
+    // Only leaf-2 survives; focus must land on it, not the removed leaf-1.
+    expect(leaves(removed?.root ?? s.root).map((l) => l.id)).toEqual(["leaf-2"])
+    expect(removed?.activeLeafId).toBe("leaf-2")
+  })
+
+  it("removeLeaf leaves focus untouched when a non-active leaf is closed", () => {
+    let s = splitActive(initialSplit(MAIN), "row", SH) // [leaf-1 | leaf-2*]
+    s = splitActive(s, "row", SH) // [leaf-1 | leaf-3* | leaf-2], active = leaf-3
+    const removed = removeLeaf(s, "leaf-1") // close a leaf that isn't focused
+    expect(removed?.activeLeafId).toBe("leaf-3")
+  })
+
   it("removeLeaf returns null for the last leaf — the caller owns what happens next", () => {
     expect(removeLeaf(initialSplit(MAIN), "leaf-1")).toBeNull()
   })

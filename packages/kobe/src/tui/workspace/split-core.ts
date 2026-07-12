@@ -98,8 +98,10 @@ export function splitActive<T>(state: SplitState<T>, orientation: "row" | "colum
  * Remove a leaf (its content finished, tmux-style auto-close): 1-child
  * groups collapse into their parent so the tree never holds degenerate
  * groups. Returns `null` when `id` is the last leaf — the CALLER owns
- * what happens then (e.g. the terminal tab's own exit behavior). Focus
- * moves to the previous leaf in reading order.
+ * what happens then (e.g. the terminal tab's own exit behavior). When the
+ * removed leaf held focus, focus moves to the previous leaf in reading
+ * order — or the next one when the FIRST leaf was the one removed (there
+ * is no previous), never to the just-pruned id.
  */
 export function removeLeaf<T>(state: SplitState<T>, id: string): SplitState<T> | null {
   const all = leaves(state.root)
@@ -115,7 +117,12 @@ export function removeLeaf<T>(state: SplitState<T>, id: string): SplitState<T> |
   if (root === null) return null // unreachable behind the length guard; keeps prune's type honest
   if (leaves(root).length === all.length) return state // id not present — no-op
   const order = all.map((l) => l.id)
-  const fallback = order[Math.max(0, order.indexOf(id) - 1)]
+  // `order` is the reading order BEFORE removal, so `order[removedIdx]` is the
+  // leaf being pruned. Step to the previous surviving leaf; when the first leaf
+  // (index 0) was removed there is no previous, so take the next one — never the
+  // just-pruned id. `all.length >= 2` (length guard) means index 1 always exists.
+  const removedIdx = order.indexOf(id)
+  const fallback = order[removedIdx > 0 ? removedIdx - 1 : removedIdx + 1]
   const activeLeafId = state.activeLeafId === id ? fallback : state.activeLeafId
   return { ...state, root, activeLeafId }
 }
