@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.101
+
+### Patch Changes
+
+- fa813e9: Keystroke HUD renders in a single muted gray — armed, resolved, and unbound lines alike. It's a passive narration stream, not an alert surface, so it no longer pulls attention with accent/warning colors.
+
 ## 0.7.100
 
 ### Patch Changes
