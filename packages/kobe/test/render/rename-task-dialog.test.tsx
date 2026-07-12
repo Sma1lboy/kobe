@@ -52,6 +52,43 @@ describe("RenameTaskDialog", () => {
     expect(result).toBe("new title")
   })
 
+  it("chained shows start from fresh input state (add-engine flow leak)", async () => {
+    // Pins the Settings → Engines "+ Add engine" bug: the flow chains three
+    // RenameTaskDialog.show prompts (id → command → name), and without a
+    // per-entry React key on the dialog stack the SAME view type reconciled
+    // in place, so prompt N's typed text leaked into prompt N+1 (an engine
+    // added as "aider" ended up with command "aideraider --model sonnet").
+    let second: string | undefined
+    function ChainHarness() {
+      const dialog = useDialog()
+      // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once show.
+      useEffect(() => {
+        void (async () => {
+          await RenameTaskDialog.show(dialog, "", { fieldLabel: "id" })
+          second = await RenameTaskDialog.show(dialog, "", { fieldLabel: "command" })
+        })()
+      }, [])
+      return <box />
+    }
+    const { frame, mockInput } = await renderComponent(<ChainHarness />, {
+      providers: { dialog: true },
+    })
+    await frame()
+    await mockInput.typeText("aider")
+    await frame()
+    mockInput.pressEnter()
+    await settle()
+    const secondFrame = await frame()
+    expect(secondFrame).toContain("command")
+    expect(secondFrame).not.toContain("aider") // fresh input, no leaked text
+    await mockInput.typeText("run")
+    await settle()
+    await frame()
+    mockInput.pressEnter()
+    await settle()
+    expect(second).toBe("run") // pre-fix this was "aiderrun"
+  })
+
   it("esc cancels without resolving a value", async () => {
     let result: string | undefined = "unset"
     const { frame, mockInput } = await renderComponent(

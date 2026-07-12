@@ -91,7 +91,15 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
   )
 }
 
-type StackEntry = { element: () => ReactNode; onClose?: () => void }
+type StackEntry = { key: number; element: () => ReactNode; onClose?: () => void }
+
+/**
+ * Per-entry React key seq. Without it, two consecutive dialogs built from
+ * the SAME component type (e.g. addEngineFlow's chained id → command → name
+ * RenameTaskDialog prompts) reconcile in place, so the previous prompt's
+ * input state leaks into the next one.
+ */
+let entrySeq = 0
 
 export type DialogContext = {
   clear(): void
@@ -187,11 +195,11 @@ export function DialogProvider(props: { children?: ReactNode }) {
         captureFocusIfFirst()
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
-        setStack([{ element: thunk, onClose }])
+        setStack([{ key: ++entrySeq, element: thunk, onClose }])
       },
       push(thunk, onClose) {
         captureFocusIfFirst()
-        setStack((s) => [...s, { element: thunk, onClose }])
+        setStack((s) => [...s, { key: ++entrySeq, element: thunk, onClose }])
       },
       pop() {
         const current = stackRef.current.at(-1)
@@ -229,7 +237,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
           // cut off — regardless of effect-commit order.
           <ModalScopeContext value={MODAL_SCOPE}>
             <ModalBarrier dismissTop={dismissTop} />
-            <Dialog onClose={() => value.clear()} size={size}>
+            <Dialog key={top.key} onClose={() => value.clear()} size={size}>
               {top.element()}
             </Dialog>
           </ModalScopeContext>
