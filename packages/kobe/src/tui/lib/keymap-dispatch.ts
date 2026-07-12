@@ -357,7 +357,14 @@ export function dispatchKeyEvent(
       return true
     }
 
-    if (dispatchMode(snapshot, evt as KeyEvent, candidates, false)) {
+    const direct = dispatchMode(snapshot, evt as KeyEvent, candidates, false)
+    if (direct) {
+      // Direct chords land in the HUD too — but only modifier chords
+      // (ctrl+t, alt+…): plain pane letters (sidebar j/k) would stream
+      // noise on every navigation keypress.
+      if (direct.key.includes("+")) {
+        prefixHudPush({ prefixKey: "", stroke: direct.key, action: direct.id ?? direct.key, at: now })
+      }
       evt.preventDefault()
       return true
     }

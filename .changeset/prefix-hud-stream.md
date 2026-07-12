@@ -2,4 +2,4 @@
 "@sma1lboy/kobe": patch
 ---
 
-Prefix HUD: a small bottom-left overlay in the workspace terminal column that narrates PureTUI prefix sequences live — an armed `ctrl+a ⋯` line while waiting for the second stroke, then `ctrl+a + t → tab.new` (or `∅` on an unbound stroke) for each resolution. The last three lines stream like a mini log and flush after 4s. Escape/timeout cancellations disarm the line without leaving noise.
+Keystroke HUD: a small overlay at the Tasks sidebar's bottom-left that narrates shortcuts live — an armed `ctrl+a ⋯` line while a PureTUI prefix waits for its second stroke, then `ctrl+a + f → Quick-fork` for each resolution (the keymap row's description; `∅` on an unbound stroke). Direct modifier chords stream too (`ctrl+t → New tab`); plain pane letters like j/k stay quiet. The last three lines flow like a mini log and flush after 4s.

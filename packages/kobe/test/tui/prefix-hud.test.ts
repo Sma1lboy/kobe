@@ -101,6 +101,26 @@ describe("prefix HUD feed", () => {
     expect(strokes).toEqual(["x", "y", "z"])
   })
 
+  test("a direct modifier chord lands an entry with an empty prefixKey", () => {
+    const stack: RegisteredBinding[] = [
+      { id: 1, config: () => ({ enabled: true, bindings: [{ key: "ctrl+t", cmd: () => {}, id: "tab.new" }] }) },
+    ]
+
+    dispatchKeyEvent(stack, event("t", true), 100)
+
+    expect(prefixHudState().entries[0]).toMatchObject({ prefixKey: "", stroke: "ctrl+t", action: "tab.new" })
+  })
+
+  test("a plain pane letter does not land an entry", () => {
+    const stack: RegisteredBinding[] = [
+      { id: 1, config: () => ({ enabled: true, bindings: [{ key: "j", cmd: () => {}, id: "sidebar.nav" }] }) },
+    ]
+
+    dispatchKeyEvent(stack, event("j"), 100)
+
+    expect(prefixHudState().entries).toHaveLength(0)
+  })
+
   test("a prefix binding without an id falls back to its chord as the action", () => {
     const stack = [registration(1, "t")]
 

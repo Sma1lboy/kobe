@@ -1,7 +1,8 @@
 /**
- * PureTUI prefix HUD feed — a tiny framework-free stream the dispatch layer
- * writes and the workspace overlay renders (bottom-left of the terminal
- * column). Keeps the last three resolved strokes plus the live armed flag;
+ * Keystroke HUD feed — a tiny framework-free stream the dispatch layer
+ * writes and the workspace overlay renders (bottom-left of the Tasks
+ * sidebar). Carries resolved PureTUI prefix sequences AND direct modifier
+ * chords (`prefixKey: ""`). Keeps the last three plus the live armed flag;
  * entries carry a timestamp and the OVERLAY enforces expiry, so this module
  * owns no timers and stays inert for headless/unit-test dispatch.
  */

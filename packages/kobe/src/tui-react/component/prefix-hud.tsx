@@ -11,12 +11,25 @@
 
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
+import { findBinding } from "../../tui/context/keybindings"
 import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { PREFIX_HUD_TTL_MS, prefixHudState } from "../../tui/lib/prefix-hud"
+import { truncateEnd } from "../../tui/lib/truncate"
 import { useTheme } from "../context/theme"
 import { useAccessor } from "../lib/use-accessor"
 
 const BOTTOM_MARGIN = 1
+
+/**
+ * Human label for a resolved action: the KobeKeymap row's help description,
+ * clipped at its `:` lead when present (`Quick-fork: create child task…` →
+ * `Quick-fork`). Falls back to the raw id for rows without a description.
+ */
+function actionLabel(action: string): string {
+  const description = findBinding(action)?.description
+  if (!description) return action
+  return description.split(":")[0] ?? description
+}
 
 export function PrefixHud(props: { left: number; width: number }) {
   const { theme } = useTheme()
@@ -48,7 +61,12 @@ export function PrefixHud(props: { left: number; width: number }) {
       {fresh.map((entry) => (
         <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
           <text fg={entry.action ? theme.textMuted : theme.warning} wrapMode="none">
-            {`${entry.prefixKey} + ${entry.stroke} ${entry.action ? `→ ${entry.action}` : "∅"}`}
+            {truncateEnd(
+              `${entry.prefixKey ? `${entry.prefixKey} + ` : ""}${entry.stroke} ${
+                entry.action ? `→ ${actionLabel(entry.action)}` : "∅"
+              }`,
+              props.width - 2,
+            )}
           </text>
         </box>
       ))}
