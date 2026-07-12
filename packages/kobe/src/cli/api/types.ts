@@ -49,8 +49,8 @@ export interface FlagSpec {
 
 /**
  * What a verb handler runs against. Everything here is injectable so a
- * handler's LOGIC is unit-testable without a daemon socket or a tmux
- * server: `client` accepts any {@link DaemonRpc} (tests pass a fake that
+ * handler's LOGIC is unit-testable without a daemon or PTY Host socket:
+ * `client` accepts any {@link DaemonRpc} (tests pass a fake that
  * records requests), `runtime` carries the side-effecting operations
  * (tmux liveness, prompt delivery, git worktree reads).
  */
@@ -59,7 +59,7 @@ export interface VerbContext {
   readonly args: VerbArgs
   /** Daemon RPC surface; `null` only for `offline` verbs (guard with `daemonOf`). */
   readonly client: DaemonRpc | null
-  /** Side-effect seam (tmux / git / repo-init) — swapped for a fake in unit tests. */
+  /** Side-effect seam (hosted sessions / git) — swapped for a fake in unit tests. */
   readonly runtime: ApiRuntime
 }
 
@@ -79,7 +79,9 @@ export interface VerbSpec {
 export interface PromptTarget {
   readonly id: string
   readonly worktreePath: string
+  readonly kind?: "main" | "task"
   readonly vendor?: VendorId
+  readonly modelEffort?: string
   readonly repo?: string
 }
 
@@ -97,31 +99,9 @@ export interface DeliveredPrompt {
   readonly delivered: boolean
 }
 
-/**
- * The tmux/engine operations prompt delivery performs, injectable so its
- * decision logic (ensure-worktree fallback, fresh-session build,
- * explicit-prompt-wins-over-repo-init-prompt) is unit-testable without a
- * tmux server.
- */
+/** Hosted prompt delivery seam, injectable for handler/unit tests. */
 export interface PromptDeliveryOps {
-  sessionExists(session: string): Promise<boolean>
-  ensureSession(opts: import("../../tui/panes/terminal/tmux.ts").EnsureSessionOpts): Promise<boolean>
-  waitForEnginePane(session: string, fresh: boolean, budgetSeconds?: number): Promise<{ pane: string; ready: boolean }>
-  /** Paste + submit; resolves `true` when the paste was confirmed in the composer. */
-  pasteAndSubmit(pane: string, text: string): Promise<boolean>
-  resolveEngineLaunchInit(
-    repoRoot: string,
-    worktreePath: string,
-    intent: import("../../state/repo-init.ts").PromptDeliveryIntent,
-  ): Promise<import("../../state/repo-init.ts").EngineLaunchInit>
-  engineCommand(vendor: VendorId | undefined): readonly string[]
-  /**
-   * Deliver into the task's DAEMON-HOSTED (pty-host) engine, or `null` when
-   * the task has no hosted session at all (caller falls back to tmux). A
-   * non-null result — even `delivered:false` — means the task IS hosted and
-   * the tmux path must NOT run (building it would double-open the engine).
-   */
-  deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt | null>
+  deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt>
 }
 
 // ── Runtime (the side-effect seam handlers run against) ─────────────────────

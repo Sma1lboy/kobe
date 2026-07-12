@@ -62,7 +62,14 @@ export async function add(ctx: VerbContext): Promise<unknown> {
   if (!prompt) return { taskId, task, started: false }
   const delivered = await ctx.runtime.deliverPrompt(
     daemon,
-    { id: taskId, worktreePath: task.worktreePath, vendor: task.vendor as VendorId | undefined, repo: task.repo },
+    {
+      id: taskId,
+      worktreePath: task.worktreePath,
+      kind: task.kind,
+      vendor: task.vendor as VendorId | undefined,
+      modelEffort: task.modelEffort,
+      repo: task.repo,
+    },
     prompt,
   )
   task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
@@ -107,7 +114,9 @@ export async function send(ctx: VerbContext): Promise<unknown> {
     {
       id: taskId,
       worktreePath: res.task.worktreePath,
+      kind: res.task.kind,
       vendor: res.task.vendor as VendorId | undefined,
+      modelEffort: res.task.modelEffort,
       repo: res.task.repo,
     },
     prompt,

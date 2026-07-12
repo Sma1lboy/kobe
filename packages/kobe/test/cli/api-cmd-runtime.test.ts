@@ -23,6 +23,10 @@ const mocks = vi.hoisted(() => ({
   waitForEnginePane: vi.fn(),
   pasteAndSubmit: vi.fn(),
   interactiveEngineCommand: vi.fn(),
+  ensurePtyHost: vi.fn(),
+  deliverHostedPrompt: vi.fn(),
+  closePtyHost: vi.fn(),
+  buildEngineSessionLaunch: vi.fn(),
 }))
 
 vi.mock("../../src/state/repos.ts", async (importOriginal) => {
@@ -66,10 +70,16 @@ vi.mock("../../src/engine/interactive-command.ts", () => ({
   interactiveEngineCommand: mocks.interactiveEngineCommand,
 }))
 
+vi.mock("../../src/engine/session-launch.ts", () => ({
+  buildEngineSessionLaunch: mocks.buildEngineSessionLaunch,
+}))
+
 // No pty host in the unit env: openPtyHost resolves null so the hosted probe
 // is a no-op and every op below exercises its tmux fallback (what's asserted).
 vi.mock("../../src/cli/api/pty-delivery.ts", () => ({
   openPtyHost: vi.fn(async () => null),
+  ensurePtyHost: mocks.ensurePtyHost,
+  deliverHostedPrompt: mocks.deliverHostedPrompt,
   listSessions: vi.fn(async () => []),
   findEngineKey: vi.fn(() => null),
   taskKeys: vi.fn(() => []),
@@ -94,6 +104,19 @@ beforeEach(() => {
   mocks.waitForEnginePane.mockReset().mockResolvedValue({ pane: "%7", ready: true })
   mocks.pasteAndSubmit.mockReset().mockResolvedValue(true)
   mocks.interactiveEngineCommand.mockReset().mockReturnValue(["claude", "--continue"])
+  mocks.closePtyHost.mockReset()
+  mocks.ensurePtyHost.mockReset().mockResolvedValue({ rpc: { request: vi.fn() }, close: mocks.closePtyHost })
+  mocks.buildEngineSessionLaunch.mockReset().mockReturnValue({
+    key: "t1::tab-1",
+    command: ["/bin/zsh", "-ilc", "claude --continue 'go'"],
+  })
+  mocks.deliverHostedPrompt.mockReset().mockResolvedValue({
+    session: "t1::tab-1",
+    pane: "t1::tab-1",
+    started: true,
+    engineReady: true,
+    delivered: true,
+  })
 })
 
 afterEach(() => {
@@ -165,35 +188,55 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
     onChannel: () => () => {},
   }
 
-  it("builds a fresh session through the lazily-imported builder, with repo-init + the engine command", async () => {
+  it("builds and starts a fresh hosted session without touching tmux", async () => {
     mocks.sessionExists.mockResolvedValue(false)
     const result = await deliverPrompt(
       client,
-      { id: "t1", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x" },
+      {
+        id: "t1",
+        kind: "task",
+        worktreePath: "/wt/t1",
+        vendor: "claude",
+        modelEffort: "high",
+        repo: "/repo/x",
+      },
       "go",
     )
-    // repo-init resolved for the worktree (explicit prompt wins → intent none).
-    expect(mocks.resolveEngineLaunchInit).toHaveBeenCalledWith("/repo/x", "/wt/t1", { kind: "none" })
-    expect(mocks.interactiveEngineCommand).toHaveBeenCalledWith("claude")
-    expect(mocks.ensureSession).toHaveBeenCalledWith(
+    expect(mocks.ensurePtyHost).toHaveBeenCalledOnce()
+    expect(mocks.interactiveEngineCommand).toHaveBeenCalledWith("claude", "high")
+    expect(mocks.buildEngineSessionLaunch).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: tmuxSessionName("t1"),
-        cwd: "/wt/t1",
-        command: ["claude", "--continue"],
-        launchInit: { initScript: "./setup.sh" },
+        task: { id: "t1", kind: "task", vendor: "claude", repo: "/repo/x" },
+        worktreePath: "/wt/t1",
+        argv: ["claude", "--continue"],
+        promptIntent: { kind: "explicit", prompt: "go" },
       }),
     )
-    // Fixture ships an initScript, so the pane wait gets the full init-script
-    // budget (REPO_INIT_TIMEOUT_SECONDS = 120) instead of the short default.
-    expect(mocks.waitForEnginePane).toHaveBeenCalledWith(tmuxSessionName("t1"), true, 120)
-    expect(mocks.pasteAndSubmit).toHaveBeenCalledWith("%7", "go")
+    expect(mocks.deliverHostedPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: "t1", engineBin: "claude" },
+      "/wt/t1",
+      "go",
+      expect.objectContaining({ key: "t1::tab-1" }),
+    )
+    expect(mocks.ensureSession).not.toHaveBeenCalled()
+    expect(mocks.closePtyHost).toHaveBeenCalledOnce()
     expect(result).toEqual({
-      session: tmuxSessionName("t1"),
-      pane: "%7",
+      session: "t1::tab-1",
+      pane: "t1::tab-1",
       started: true,
       engineReady: true,
       delivered: true,
     })
+  })
+
+  it("maps PTY RPC failures to SESSION_FAILED and always closes the client", async () => {
+    mocks.deliverHostedPrompt.mockRejectedValue(new Error("socket closed"))
+
+    await expect(
+      deliverPrompt(client, { id: "t1", worktreePath: "/wt/t1", vendor: "claude" }, "go"),
+    ).rejects.toMatchObject({ code: "SESSION_FAILED" })
+    expect(mocks.closePtyHost).toHaveBeenCalledOnce()
   })
 })
 

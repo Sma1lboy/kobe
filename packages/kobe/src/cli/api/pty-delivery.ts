@@ -1,14 +1,7 @@
 /**
- * Hosted-backend (pty-host) side of `kobe api` prompt delivery — the twin
- * of the tmux path in `prompt-delivery.ts`.
- *
- * A task's engine runs in ONE of two backends: the legacy tmux session, or
- * (default) a daemon-hosted PTY owned by the standalone `kobe pty-host`
- * process. `runtime.ts`'s three seams (`isTaskRunning` / `deliverPrompt` /
- * `tearDownSession`) probe hosted FIRST and fall back to tmux, so a
- * pty-host task is addressed on its own backend instead of being mistaken
- * for "not running" — which would silently spawn a SECOND tmux engine in
- * the same worktree and let two agents clobber each other's files.
+ * PTY Host prompt delivery for `kobe api`. The standalone `kobe pty-host`
+ * process is the only owner of interactive engine sessions; API automation
+ * reuses the canonical engine key or creates it from the shared launch spec.
  *
  * pty.* frames are served by the pty-host on its OWN socket (NOT proxied
  * through the daemon — see `kobe-daemon/daemon/pty-server.ts`), so this
@@ -20,9 +13,12 @@
  */
 
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
+import type { DeliveredPrompt } from "./types.ts"
 
 /**
  * The narrow pty-host surface this module needs: request/response RPC plus
@@ -81,8 +77,7 @@ export function taskKeys(sessions: readonly PtySessionInfo[], taskId: string): s
   return sessions.filter((s) => isTaskKey(s.key, taskId)).map((s) => s.key)
 }
 
-/** Open a short-lived pty-host client; resolves `null` when no host is
- *  running (nothing hosted, so the caller falls back to tmux). */
+/** Open a short-lived client without starting the host (read/teardown probes). */
 export async function openPtyHost(): Promise<{ rpc: PtyHostRpc; close: () => void } | null> {
   const client = new KobeDaemonClient(defaultPtyHostSocketPath())
   try {
@@ -90,6 +85,19 @@ export async function openPtyHost(): Promise<{ rpc: PtyHostRpc; close: () => voi
   } catch {
     client.close()
     return null
+  }
+  return { rpc: client, close: () => client.close() }
+}
+
+/** Ensure the standalone host exists, then open a short-lived RPC client. */
+export async function ensurePtyHost(): Promise<{ rpc: PtyHostRpc; close: () => void }> {
+  const socketPath = await ensurePtyHostReachable()
+  const client = new KobeDaemonClient(socketPath)
+  try {
+    await client.connect()
+  } catch (error) {
+    client.close()
+    throw error
   }
   return { rpc: client, close: () => client.close() }
 }
@@ -114,10 +122,79 @@ export async function listSessions(rpc: PtyHostRpc): Promise<PtySessionInfo[]> {
 export async function deliverToKey(rpc: PtyHostRpc, key: string, cwd: string, prompt: string): Promise<boolean> {
   const open = await rpc.request<PtyOpenResult>("pty.open", { key, cwd, cols: 80, rows: 24 })
   if (!open.alive) return false
+  await writePrompt(rpc, key, prompt)
+  return true
+}
+
+async function writePrompt(rpc: PtyHostRpc, key: string, prompt: string): Promise<void> {
   await rpc.request("pty.write", { key, data: `\x1b[200~${prompt}\x1b[201~` })
   await sleep(SUBMIT_DELAY_MS)
   await rpc.request("pty.write", { key, data: "\r" })
-  return true
+}
+
+/**
+ * Deliver to an existing canonical hosted engine, or create it once with
+ * the explicit prompt already embedded in its launch argv. The latter avoids
+ * racing a paste against a cold engine's startup screen.
+ */
+export async function deliverHostedPrompt(
+  rpc: PtyHostRpc,
+  target: { readonly id: string; readonly engineBin?: string },
+  cwd: string,
+  prompt: string,
+  launch: EngineSessionLaunch,
+): Promise<DeliveredPrompt> {
+  const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
+  const existingKey = findEngineKey(sessions, target.id, target.engineBin)
+  if (existingKey) {
+    try {
+      const delivered = await deliverToKey(rpc, existingKey, cwd, prompt)
+      return {
+        session: existingKey,
+        pane: existingKey,
+        started: false,
+        engineReady: delivered,
+        delivered,
+      }
+    } finally {
+      await rpc.request("pty.detach", { key: existingKey }).catch(() => {})
+    }
+  }
+
+  const staleCanonical = sessions.find((session) => session.key === launch.key && !session.alive)
+  if (staleCanonical) await rpc.request("pty.kill", { key: launch.key })
+
+  const open = await rpc.request<PtyOpenResult>("pty.open", {
+    key: launch.key,
+    cwd,
+    command: launch.command,
+    cols: 80,
+    rows: 24,
+  })
+  try {
+    if (!open.alive) {
+      return {
+        session: launch.key,
+        pane: launch.key,
+        started: open.created !== false,
+        engineReady: false,
+        delivered: false,
+      }
+    }
+    // Another API process may win the create race after our pty.list. Its
+    // launch spec wins, so ours did not carry this prompt; deliver it now.
+    if (open.created === false) await writePrompt(rpc, launch.key, prompt)
+    const delivered = true
+    return {
+      session: launch.key,
+      pane: launch.key,
+      started: open.created !== false,
+      engineReady: delivered,
+      delivered,
+    }
+  } finally {
+    await rpc.request("pty.detach", { key: launch.key }).catch(() => {})
+  }
 }
 
 /** Kill every hosted session for a task (its engine + any tabs). */

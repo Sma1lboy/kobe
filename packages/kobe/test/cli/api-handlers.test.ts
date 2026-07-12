@@ -25,7 +25,6 @@ import {
 } from "../../src/cli/api-cmd.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 import { tmuxSessionName } from "../../src/tmux/client.ts"
-import type { EnsureSessionOpts } from "../../src/tui/panes/terminal/tmux.ts"
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -241,7 +240,13 @@ describe("add handler", () => {
   })
 
   it("with --prompt it delivers exactly the explicit prompt to the created task", async () => {
-    const task = taskFixture({ worktreePath: "/wt/t1", vendor: "codex", repo: "/repo/x" })
+    const task = taskFixture({
+      worktreePath: "/wt/t1",
+      kind: "task",
+      vendor: "codex",
+      modelEffort: "high",
+      repo: "/repo/x",
+    })
     const refreshed = { ...task, worktreePath: "/wt/t1-materialized" }
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task }),
@@ -254,7 +259,14 @@ describe("add handler", () => {
     })) as Record<string, unknown>
     expect(calls).toEqual([
       {
-        target: { id: "t1", worktreePath: "/wt/t1", vendor: "codex", repo: "/repo/x" },
+        target: {
+          id: "t1",
+          worktreePath: "/wt/t1",
+          kind: "task",
+          vendor: "codex",
+          modelEffort: "high",
+          repo: "/repo/x",
+        },
         prompt: "do the thing",
       },
     ])
@@ -695,87 +707,44 @@ describe("adopt handler", () => {
 
 describe("deliverPrompt", () => {
   function fakeOps(overrides: Partial<PromptDeliveryOps> = {}) {
-    const ensured: EnsureSessionOpts[] = []
-    const pasted: Array<{ pane: string; text: string }> = []
-    const waited: Array<{ session: string; fresh: boolean }> = []
+    const calls: Array<{ target: PromptTarget; worktree: string; prompt: string }> = []
     const ops: PromptDeliveryOps = {
-      sessionExists: async () => false,
-      ensureSession: async (opts) => {
-        ensured.push(opts)
-        return true
+      deliverHosted: async (target, worktree, prompt) => {
+        calls.push({ target, worktree, prompt })
+        return {
+          session: `${target.id}::tab-1`,
+          pane: `${target.id}::tab-1`,
+          started: true,
+          engineReady: true,
+          delivered: true,
+        }
       },
-      waitForEnginePane: async (session, fresh) => {
-        waited.push({ session, fresh })
-        return { pane: "%9", ready: true }
-      },
-      pasteAndSubmit: async (pane, text) => {
-        pasted.push({ pane, text })
-        return true
-      },
-      resolveEngineLaunchInit: async () => ({}),
-      engineCommand: () => ["claude", "--continue"],
-      // Default: no hosted session → delivery falls through to the tmux path
-      // these scenarios exercise. Overridden by the hosted-routing tests.
-      deliverHosted: async () => null,
       ...overrides,
     }
-    return { ops, ensured, pasted, waited }
+    return { ops, calls }
   }
 
   const target: PromptTarget = { id: "t1", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x" }
 
-  it("reuses a live session: no rebuild, non-fresh wait, started:false", async () => {
-    const { ops, ensured, pasted, waited } = fakeOps({ sessionExists: async () => true })
+  it("routes every prompt through the hosted PTY delivery seam", async () => {
+    const { ops, calls } = fakeOps()
     const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(ensured).toEqual([])
-    expect(waited).toEqual([{ session: tmuxSessionName("t1"), fresh: false }])
-    expect(pasted).toEqual([{ pane: "%9", text: "hello" }])
+    expect(calls).toEqual([{ target, worktree: "/wt/t1", prompt: "hello" }])
     expect(result).toEqual({
-      session: tmuxSessionName("t1"),
-      pane: "%9",
-      started: false,
+      session: "t1::tab-1",
+      pane: "t1::tab-1",
+      started: true,
       engineReady: true,
       delivered: true,
     })
   })
 
-  it("builds a fresh session with the engine command in the worktree, then waits fresh", async () => {
-    const { ops, ensured, waited } = fakeOps()
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(ensured).toHaveLength(1)
-    expect(ensured[0]).toMatchObject({
-      name: tmuxSessionName("t1"),
-      cwd: "/wt/t1",
-      command: ["claude", "--continue"],
-      taskId: "t1",
-      vendor: "claude",
-      repo: "/repo/x",
-    })
-    expect(waited).toEqual([{ session: tmuxSessionName("t1"), fresh: true }])
-    expect(result.started).toBe(true)
-  })
-
-  it("delivers the EXPLICIT prompt, not the repo's first prompt (init script still runs)", async () => {
-    // CLAUDE.md contract: `kobe api … --prompt` runs the init script but
-    // delivers the explicit prompt INSTEAD of the repo's init-prompt — a
-    // fresh session must never get both pastes.
-    const { ops, ensured, pasted } = fakeOps({
-      resolveEngineLaunchInit: async () => ({
-        initScript: "./setup.sh",
-        firstMessage: undefined,
-      }),
-    })
-    await deliverPrompt(new FakeClient(), target, "explicit prompt", ops)
-    expect(ensured[0].launchInit).toEqual({ initScript: "./setup.sh", firstMessage: undefined })
-    expect(pasted).toEqual([{ pane: "%9", text: "explicit prompt" }])
-  })
-
   it("materializes a missing worktree via task.ensureWorktree first", async () => {
     const client = new FakeClient({ "task.ensureWorktree": () => ({ worktreePath: "/wt/made" }) })
-    const { ops, ensured } = fakeOps()
+    const { ops, calls } = fakeOps()
     await deliverPrompt(client, { ...target, worktreePath: "" }, "hello", ops)
     expect(client.requests).toEqual([{ name: "task.ensureWorktree", payload: { taskId: "t1" } }])
-    expect(ensured[0].cwd).toBe("/wt/made")
+    expect(calls[0].worktree).toBe("/wt/made")
   })
 
   it("fails NO_WORKTREE when even ensureWorktree yields nothing", async () => {
@@ -788,62 +757,25 @@ describe("deliverPrompt", () => {
     )
   })
 
-  it("fails SESSION_FAILED when the tmux session can't be built", async () => {
-    const { ops } = fakeOps({ ensureSession: async () => false })
-    await expectApiError(() => deliverPrompt(new FakeClient(), target, "hello", ops), "SESSION_FAILED")
-  })
-
-  it("fails NO_ENGINE_PANE when no engine pane ever appears", async () => {
-    const { ops } = fakeOps({ waitForEnginePane: async () => ({ pane: "", ready: false }) })
-    await expectApiError(() => deliverPrompt(new FakeClient(), target, "hello", ops), "NO_ENGINE_PANE")
-  })
-
-  it("still delivers best-effort when readiness never confirms (engineReady:false)", async () => {
-    const { ops, pasted } = fakeOps({ waitForEnginePane: async () => ({ pane: "%9", ready: false }) })
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(result.engineReady).toBe(false)
-    expect(pasted).toHaveLength(1)
-  })
-
-  // ── backend routing: hosted (pty-host) wins over tmux ──────────────────────
-  it("hosted hit short-circuits: returns the hosted result, tmux never touched", async () => {
-    const hosted: DeliveredPrompt = {
+  it("returns a hosted delivery failure without any fallback backend", async () => {
+    const undeliverable: DeliveredPrompt = {
       session: "t1::tab-1",
       pane: "t1::tab-1",
-      started: false,
-      engineReady: true,
-      delivered: true,
-    }
-    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => hosted })
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(result).toEqual(hosted)
-    expect(ensured).toEqual([]) // no tmux session built
-    expect(pasted).toEqual([]) // no tmux paste
-  })
-
-  it("hosted-but-undeliverable does NOT build a tmux session (no double-open)", async () => {
-    // The data-corruption guard: a task with a hosted session whose engine
-    // tab is gone returns delivered:false — building a second tmux engine in
-    // the same worktree is exactly what this slice forbids.
-    const undeliverable: DeliveredPrompt = {
-      session: "",
-      pane: "",
       started: false,
       engineReady: false,
       delivered: false,
     }
-    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => undeliverable })
+    const { ops } = fakeOps({ deliverHosted: async () => undeliverable })
     const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(result.delivered).toBe(false)
-    expect(ensured).toEqual([]) // critically: NO tmux session built
-    expect(pasted).toEqual([])
+    expect(result).toEqual(undeliverable)
   })
 
-  it("no hosted session (null) falls through to the tmux path", async () => {
-    const { ops, ensured, pasted } = fakeOps({ deliverHosted: async () => null })
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(ensured).toHaveLength(1) // tmux session built
-    expect(pasted).toHaveLength(1)
-    expect(result.delivered).toBe(true)
+  it("propagates PTY host startup failures", async () => {
+    const { ops } = fakeOps({
+      deliverHosted: async () => {
+        throw new ApiError("host failed", "SESSION_FAILED")
+      },
+    })
+    await expectApiError(() => deliverPrompt(new FakeClient(), target, "hello", ops), "SESSION_FAILED", "host failed")
   })
 })
