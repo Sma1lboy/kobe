@@ -16,8 +16,8 @@ import {
   DEFAULT_SKILL_AGENT,
   kobeSkillPaths,
   kobeSkillState,
-  npxSkillsArgv,
   npxSkillsCommand,
+  runNpxSkillsInstall,
 } from "../lib/skill-install.ts"
 
 const SKILL_VERBS = ["install", "status", "command"] as const
@@ -97,10 +97,8 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
 
   // install — shell out to the agent-skills CLI via npx.
   const agent = parseAgent(rest)
-  const args = npxSkillsArgv({ agent })
-  process.stdout.write(`kobe skill: running \`npx ${args.join(" ")}\`\n`)
-  const proc = Bun.spawn(["npx", ...args], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
-  const code = await proc.exited
+  process.stdout.write(`kobe skill: running \`${npxSkillsCommand({ agent })}\`\n`)
+  const code = await runNpxSkillsInstall(agent)
   if (code !== 0) {
     process.stderr.write(
       `\nkobe skill install failed (npx exited ${code}). Is \`npx\` on PATH and are you online?\n` +

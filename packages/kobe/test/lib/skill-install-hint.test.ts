@@ -25,6 +25,7 @@ import { getPersistedString } from "../../src/state/repos.ts"
 let cwd: string
 let originalKobeHome: string | undefined
 let stderrSpy: MockInstance
+let originalStdinIsTTY: boolean | undefined
 
 function skillDir(root: string): string {
   return join(root, ".claude/skills/kobe")
@@ -37,6 +38,10 @@ beforeEach(() => {
   originalKobeHome = process.env.KOBE_HOME_DIR
   process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-skillhint-state-"))
   stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true)
+  // Force the non-interactive path unless a test injects `ask` (a TTY test
+  // runner would otherwise flip maybeHintSkillInstall into prompt mode).
+  originalStdinIsTTY = process.stdin.isTTY
+  process.stdin.isTTY = false
 })
 
 afterEach(() => {
@@ -44,6 +49,7 @@ afterEach(() => {
   if (originalKobeHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = originalKobeHome
   vi.restoreAllMocks()
+  process.stdin.isTTY = originalStdinIsTTY as boolean
   rmSync(cwd, { recursive: true, force: true })
   if (stateHome) rmSync(stateHome, { recursive: true, force: true })
   rmSync(skillDir(tmpHome), { recursive: true, force: true })
@@ -61,43 +67,93 @@ describe("kobeSkillState — unreadable install", () => {
   })
 })
 
+function writeStaleSkill(): void {
+  mkdirSync(skillDir(cwd), { recursive: true })
+  writeFileSync(join(skillDir(cwd), "SKILL.md"), `<!-- kobe-skill-version: ${KOBE_SKILL_VERSION - 1} -->`)
+}
+
+const muteKey = `skillHintSeen:v${KOBE_SKILL_VERSION}`
+
 describe("maybeHintSkillInstall", () => {
-  it("absent skill: hints exactly once, then persists the flag and stays quiet", () => {
-    maybeHintSkillInstall()
+  it("absent skill: hints exactly once, then persists the flag and stays quiet", async () => {
+    await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
     expect(String(stderrSpy.mock.calls[0]?.[0])).toContain("kobe skill install")
     expect(getPersistedString("skillHintSeen")).toBe("1")
 
-    maybeHintSkillInstall()
+    await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
   })
 
-  it("fresh skill: no hint at all", () => {
+  it("fresh skill: no hint at all", async () => {
     mkdirSync(skillDir(cwd), { recursive: true })
     writeFileSync(join(skillDir(cwd), "SKILL.md"), `<!-- kobe-skill-version: ${KOBE_SKILL_VERSION} -->`)
-    maybeHintSkillInstall()
+    await maybeHintSkillInstall()
     expect(stderrSpy).not.toHaveBeenCalled()
   })
 
-  it("stale skill: hints once per skill version, naming the installed version", () => {
-    mkdirSync(skillDir(cwd), { recursive: true })
-    writeFileSync(join(skillDir(cwd), "SKILL.md"), `<!-- kobe-skill-version: ${KOBE_SKILL_VERSION - 1} -->`)
+  it("stale + non-TTY: hints once per skill version, naming the installed version", async () => {
+    writeStaleSkill()
 
-    maybeHintSkillInstall()
+    await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
     const msg = String(stderrSpy.mock.calls[0]?.[0])
     expect(msg).toContain(`v${KOBE_SKILL_VERSION - 1}`)
     expect(msg).toContain(`v${KOBE_SKILL_VERSION}`)
-    expect(getPersistedString(`skillHintSeen:v${KOBE_SKILL_VERSION}`)).toBe("1")
+    expect(getPersistedString(muteKey)).toBe("1")
 
-    maybeHintSkillInstall()
+    await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
   })
 
-  it("unstamped install: hinted as 'an older' version", () => {
+  it("unstamped install: hinted as 'an older' version", async () => {
     mkdirSync(skillDir(cwd), { recursive: true })
     writeFileSync(join(skillDir(cwd), "SKILL.md"), "no marker")
-    maybeHintSkillInstall()
+    await maybeHintSkillInstall()
     expect(String(stderrSpy.mock.calls[0]?.[0])).toContain("an older")
+  })
+
+  it("stale + interactive 'y': runs the install, nothing persisted", async () => {
+    writeStaleSkill()
+    let ran = 0
+    const install = async () => {
+      ran++
+      return 0
+    }
+    await maybeHintSkillInstall({ ask: async () => "y\n", install })
+    expect(ran).toBe(1)
+    expect(getPersistedString(muteKey)).toBeUndefined()
+    expect(String(stderrSpy.mock.calls.at(-1)?.[0])).toContain("updated")
+  })
+
+  it("stale + interactive 'n': asks again next launch", async () => {
+    writeStaleSkill()
+    let ran = 0
+    const install = async () => {
+      ran++
+      return 0
+    }
+    await maybeHintSkillInstall({ ask: async () => "n\n", install })
+    expect(ran).toBe(0)
+    expect(getPersistedString(muteKey)).toBeUndefined()
+
+    await maybeHintSkillInstall({ ask: async () => "n\n", install })
+    expect(stderrSpy).toHaveBeenCalledTimes(2) // prompted both launches
+  })
+
+  it("stale + interactive 'd': mutes this skill version", async () => {
+    writeStaleSkill()
+    await maybeHintSkillInstall({ ask: async () => "d\n", install: async () => 0 })
+    expect(getPersistedString(muteKey)).toBe("1")
+
+    await maybeHintSkillInstall({ ask: async () => "d\n", install: async () => 0 })
+    expect(stderrSpy).toHaveBeenCalledTimes(1) // no second prompt
+  })
+
+  it("stale + interactive 'y' with failing install: not muted, retries next launch", async () => {
+    writeStaleSkill()
+    await maybeHintSkillInstall({ ask: async () => "yes\n", install: async () => 1 })
+    expect(getPersistedString(muteKey)).toBeUndefined()
+    expect(String(stderrSpy.mock.calls.at(-1)?.[0])).toContain("failed")
   })
 })

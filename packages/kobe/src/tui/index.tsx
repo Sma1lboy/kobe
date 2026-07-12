@@ -21,10 +21,10 @@ export async function startTui(): Promise<void> {
   // (observed as "node") instead of the product the user launched.
   publishKobeTerminalTitle()
 
-  // One-time nudge: if the kobe agent
-  // skill isn't installed, tell the user how. Best-effort — the reliable
-  // check is `kobe skill status`. No-op when installed or already shown once.
-  maybeHintSkillInstall()
+  // Before the screen takeover: nudge if the kobe agent skill is absent
+  // (one-time hint), or prompt yes/no/don't-notify-this-version if it's
+  // out of date. Best-effort — the reliable check is `kobe skill status`.
+  await maybeHintSkillInstall()
 
   const { startWorkspaceHost } = await import("../tui-react/workspace/host.tsx")
   await startWorkspaceHost()

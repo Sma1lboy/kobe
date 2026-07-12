@@ -10,8 +10,11 @@
  * the `npx skills add Sma1lboy/kobe --skill kobe --agent …` invocation.
  *
  * Reliable check: `kobe skill status`. The startup hint
- * here is best-effort (the opentui screen takeover can scroll it off),
- * so it fires at most once (gated on a persisted flag) and never nags.
+ * here is best-effort (the opentui screen takeover can scroll it off).
+ * Absent skill → one-shot hint, never nags. Stale skill on an interactive
+ * terminal → a yes / no / don't-notify-this-version prompt (runs before the
+ * screen takeover); "no" re-asks next launch, "don't notify" mutes that
+ * skill version, non-TTY falls back to the old one-shot hint.
  */
 
 import { existsSync, readFileSync } from "node:fs"
@@ -58,6 +61,19 @@ export function npxSkillsArgv(opts: { agent?: string } = {}): string[] {
 /** The full underlying command string, for display in help / hints. */
 export function npxSkillsCommand(opts: { agent?: string } = {}): string {
   return `npx ${npxSkillsArgv(opts).join(" ")}`
+}
+
+/**
+ * Run the `npx skills add …` install flow, inheriting stdio. Returns the
+ * npx exit code. Shared by `kobe skill install` and the startup prompt.
+ */
+export async function runNpxSkillsInstall(agent: string = DEFAULT_SKILL_AGENT): Promise<number> {
+  const proc = Bun.spawn(["npx", ...npxSkillsArgv({ agent })], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  return await proc.exited
 }
 
 /** Persisted flag: the one-time startup hint has already been shown. */
@@ -115,15 +131,35 @@ export function kobeSkillState(opts?: { home?: string; cwd?: string }): SkillSta
   return { installed: true, installedVersion, currentVersion: KOBE_SKILL_VERSION, stale }
 }
 
+/** Test seams for the startup prompt (presence of `ask` marks the session interactive). */
+export interface SkillHintIO {
+  /** Read one line of user input. */
+  ask?: () => Promise<string>
+  /** Run the install flow; returns the exit code. */
+  install?: () => Promise<number>
+}
+
+/** Read one line from stdin (cooked mode — runs before any screen takeover). */
+function promptLine(): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdin.resume()
+    process.stdin.once("data", (d) => {
+      process.stdin.pause()
+      resolve(String(d))
+    })
+  })
+}
+
 /**
- * Print a best-effort, one-time hint to stderr when the kobe skill is absent
- * OR out of date. Two independent one-shot gates:
- *   - absent → hint to install (gated on {@link HINT_SEEN_KEY}).
- *   - stale  → hint to update, gated PER skill version (`HINT_SEEN_KEY:vN`),
- *     so a fresh staleness after a kobe upgrade re-hints exactly once.
+ * Best-effort startup notice when the kobe skill is absent or out of date.
+ *   - absent → one-time hint to install (gated on {@link HINT_SEEN_KEY}).
+ *   - stale + interactive terminal → prompt: yes (install now) / no (ask
+ *     again next launch) / don't notify for this version (persists
+ *     `HINT_SEEN_KEY:vN`, so the next skill-version bump prompts again).
+ *   - stale + non-TTY → the old one-shot stderr hint, gated per version.
  * Safe to call on every startup.
  */
-export function maybeHintSkillInstall(): void {
+export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void> {
   const state = kobeSkillState()
   if (!state.installed) {
     if (getPersistedString(HINT_SEEN_KEY) === "1") return
@@ -133,13 +169,31 @@ export function maybeHintSkillInstall(): void {
     )
     return
   }
-  if (state.stale) {
-    const key = `${HINT_SEEN_KEY}:v${state.currentVersion}`
-    if (getPersistedString(key) === "1") return
+  if (!state.stale) return
+
+  const key = `${HINT_SEEN_KEY}:v${state.currentVersion}`
+  if (getPersistedString(key) === "1") return
+  const was = state.installedVersion === null ? "an older version" : `v${state.installedVersion}`
+
+  const interactive = io.ask !== undefined || Boolean(process.stdin.isTTY && process.stderr.isTTY)
+  if (!interactive) {
     setPersistedString(key, "1")
-    const was = state.installedVersion === null ? "an older" : `v${state.installedVersion}`
     process.stderr.write(
       `\nkobe: your kobe agent skill is out of date (${was}; this kobe wants v${state.currentVersion}) — refresh it so \`kobe api\` guidance matches:\n  ${SKILL_INSTALL_COMMAND}\n\n`,
     )
+    return
   }
+
+  process.stderr.write(
+    `\nkobe: a new version of the kobe agent skill is available (${was} → v${state.currentVersion}).\nUpdate now? [y]es / [n]o / [d]on't notify for this version: `,
+  )
+  const answer = (await (io.ask ?? promptLine)()).trim().toLowerCase()
+  if (answer === "y" || answer === "yes") {
+    const code = await (io.install ?? runNpxSkillsInstall)()
+    if (code === 0) process.stderr.write("kobe: skill updated.\n")
+    else process.stderr.write(`kobe: skill update failed (exit ${code}) — run \`${SKILL_INSTALL_COMMAND}\` manually.\n`)
+  } else if (answer.startsWith("d")) {
+    setPersistedString(key, "1")
+  }
+  // anything else = "no": ask again next launch, nothing persisted.
 }
