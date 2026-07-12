@@ -85,7 +85,7 @@ extracted from `Bun.serve` so the whole surface is unit-testable against a fake 
 | `/__kobe_web` | GET | Health marker for the port-takeover handshake. |
 | `/events` | GET | SSE: `snapshot` on connect, then `channel` pushes. |
 | `/api/rpc` | POST | Forward an **allowlisted** daemon RPC. See below. |
-| `/api/session` | POST | Ensure a task's tmux session exists (engine PTY backing). |
+| `/api/session` | POST | Ensure a task's canonical standalone Hosted PTY engine session exists. |
 | `/api/engine-spec` / `/api/terminal-spec` | GET | PTY launch spec for an engine / shell tab. |
 | `/api/engines` | GET | Engine-owned vendor list (detected built-ins + custom, with display labels) — the SPA never hard-codes vendor strings. |
 | `/api/themes` | GET | The TUI's 7 theme JSONs resolved into the web CSS token vocabulary. |
@@ -108,10 +108,9 @@ a contract test (`test/rpc-allowlist.test.ts`).
 The daemon is the single writer for the task index. For browser task deletion
 and archive, the daemon web route also performs the matching session cleanup:
 a committed `task.delete` / `task.archive` (when actually archiving) triggers
-`tearDownTaskSession`, killing the task's tmux session and the engine inside
-it. Without this a web delete leaves an orphaned engine running, the same bug
-`kobe api delete` had. Un-archive (`archived: false`) deliberately does NOT
-tear down.
+`tearDownTaskSession`, stopping the task's sessions owned by the standalone PTY
+Host. Browser-sidecar PTYs are a separate owner and are not covered by this
+hook. Un-archive (`archived: false`) deliberately does NOT tear down.
 
 ## SPA routes
 
@@ -213,9 +212,10 @@ Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/l
 
 `bun --filter kobe-web dev` connects to the **production** `~/.kobe` daemon and
 prints a banner saying so. `bun --filter kobe-web dev:sandbox` points
-`KOBE_HOME_DIR` at the TUI's shared `.dev-sandbox/home` (+ the `kobe-sandbox`
-tmux socket) so the daemon web transport, PTY engines, and tmux stay isolated. `bun run test`
-touches no daemon at all — its isolation is unconditional.
+`KOBE_HOME_DIR` at the TUI's shared `.dev-sandbox/home`, isolating the task
+index, daemon socket, standalone PTY Host socket, and Web PTY sidecar from
+production state. `bun run test` touches no daemon at all — its isolation is
+unconditional.
 
 ## Security posture (current + gaps)
 

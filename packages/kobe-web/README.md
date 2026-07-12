@@ -20,9 +20,9 @@ daemon down — so the dashboard is split into three cooperating processes:
 
 ```bash
 bun run dev            # all three processes; opens http://localhost:5173
-bun run dev:sandbox    # same, but pointed at a throwaway KOBE_HOME_DIR + the
-                       # kobe-sandbox tmux socket — never touches production
-                       # ~/.kobe/tasks.json
+bun run dev:sandbox    # same, but pointed at a throwaway KOBE_HOME_DIR so the
+                       # task index, daemon, Hosted PTY Host, and web sidecar
+                       # never touch production state
 ```
 
 `bun run dev` connects to your **production** `~/.kobe` daemon — the startup
