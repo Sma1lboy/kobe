@@ -31,6 +31,7 @@ const spies = vi.hoisted(() => ({
   hook: vi.fn(async () => {}),
   addRemote: vi.fn(async () => {}),
   startTui: vi.fn(async () => {}),
+  onboarding: vi.fn(async () => false),
   newChatTab: vi.fn(async () => {}),
   quickCreate: vi.fn(async () => {}),
   selectTasksPane: vi.fn(async () => {}),
@@ -60,6 +61,7 @@ vi.mock("../../src/cli/skill-cmd.ts", () => ({ runSkillSubcommand: spies.skill }
 vi.mock("../../src/cli/hook-cmd.ts", () => ({ runHookSubcommand: spies.hook }))
 vi.mock("../../src/cli/add-remote.ts", () => ({ runAddRemote: spies.addRemote }))
 vi.mock("../../src/tui/index.tsx", () => ({ startTui: spies.startTui }))
+vi.mock("../../src/cli/onboarding.ts", () => ({ maybeRunOnboarding: spies.onboarding }))
 vi.mock("../../src/tmux/client.ts", () => ({
   windowIsSurface: spies.windowIsSurface,
   runTmux: spies.runTmux,
@@ -171,6 +173,13 @@ describe("version / help / unknown", () => {
   test("a bare `kobe` launches the TUI", async () => {
     await runCli()
     expect(spies.startTui).toHaveBeenCalled()
+  })
+
+  test("a first run hands the launch to onboarding instead of the TUI", async () => {
+    spies.onboarding.mockResolvedValueOnce(true)
+    await runCli()
+    expect(spies.onboarding).toHaveBeenCalled()
+    expect(spies.startTui).not.toHaveBeenCalled()
   })
 })
 

@@ -30,7 +30,7 @@ export function topLevelUsage(): string {
     "  theme <verb>            Manage user themes (list|add|remove)",
     "  skill <verb>            Install the kobe agent skill (install|status|command)",
     "  feedback                Send feedback to GitHub Discussions",
-    "  update [target]         Self-update kobe",
+    "  update [version|list]   Self-update kobe, or browse versions with `list`",
     "  doctor                  Diagnose daemon / tmux / state (read-only)",
     "  reset [--hard]          Stop daemon, PTY host, and tmux sessions",
     "  reload                  Restart Tasks/Ops panes in place (engine untouched)",

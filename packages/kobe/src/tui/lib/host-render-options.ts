@@ -25,6 +25,28 @@ export function hostRenderOptions(onDestroy?: () => void): Record<string, unknow
 }
 
 /**
+ * Inline (ink-style) variant for CLI-command hosts (`kobe update list`,
+ * onboarding): a reserved `heightRows` footer on the MAIN screen instead of
+ * the alternate screen — the shell's scrollback stays visible above, and
+ * the footer is cleared on exit so the prompt returns where it was. The
+ * runtime TUI (workspace, panes) keeps `hostRenderOptions`; anything a user
+ * reaches through a subcommand should feel like a prompt, not an app.
+ */
+export function inlineRenderOptions(heightRows: number, onDestroy?: () => void): Record<string, unknown> {
+  const base = {
+    backgroundColor: "transparent",
+    // No externalOutputMode override: split-footer defaults to
+    // capture-stdout, which replays stray logs above the footer instead of
+    // letting them corrupt it.
+    exitOnCtrlC: false,
+    screenMode: "split-footer",
+    footerHeight: heightRows,
+    useKittyKeyboard: {},
+  }
+  return onDestroy ? { ...base, onDestroy } : base
+}
+
+/**
  * Exit-signal backstop (orphaned-helper leak): opentui's own exit handler
  * for SIGHUP/SIGTERM only destroys the renderer — it never calls
  * process.exit — and installing that listener replaced the signals' default

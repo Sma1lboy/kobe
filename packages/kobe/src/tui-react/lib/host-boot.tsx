@@ -43,6 +43,7 @@ import { sessionAttached } from "../../tui/lib/attach-gate"
 import { installEventLoopStallTelemetry } from "../../tui/lib/event-loop-stall"
 import {
   hostRenderOptions,
+  inlineRenderOptions,
   installOrphanExitWatchdog,
   installPaneExitBackstop,
 } from "../../tui/lib/host-render-options"
@@ -91,6 +92,12 @@ export interface HostScreen {
 export interface BootPaneHostOpts {
   readonly logContext?: string
   readonly providers?: HostProviderFlags
+  /**
+   * Render ink-style in an N-row footer on the main screen instead of the
+   * fullscreen alternate screen. For CLI-command hosts (`kobe update list`)
+   * — the shell's scrollback stays visible above the page.
+   */
+  readonly inlineRows?: number
   readonly setup: (prefs: PersistedUiPrefs) => HostScreen | Promise<HostScreen>
 }
 
@@ -253,7 +260,11 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   const notifications = opts.providers?.notifications ?? false
 
   const screen = await opts.setup(prefs)
-  const renderer = await createCliRenderer(hostRenderOptions(screen.onDestroy))
+  const renderer = await createCliRenderer(
+    opts.inlineRows !== undefined
+      ? inlineRenderOptions(opts.inlineRows, screen.onDestroy)
+      : hostRenderOptions(screen.onDestroy),
+  )
 
   const body = (
     <>
