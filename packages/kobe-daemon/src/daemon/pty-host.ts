@@ -47,6 +47,10 @@ export interface PtyAttachResult {
   readonly pid: number | null
   /** True when this open spawned/adopted the session — see `PtyOpenResult.created`. */
   readonly created: boolean
+  /** Monotonic byte offset at attach — see `PtyOpenResult.offset`. */
+  readonly offset: number
+  /** `replay` is the exact delta since the request's `sinceOffset` — see `PtyOpenResult.sinceValid`. */
+  readonly sinceValid: boolean
 }
 
 /** Writes one event frame to an attached connection. */
@@ -86,6 +90,11 @@ interface PtySessionState {
   alive: boolean
   chunks: Buffer[]
   bytes: number
+  /** Total bytes the child has EVER written (monotonic — never reduced by
+   *  ring trimming). `totalBytes - bytes` is the ring window's start
+   *  offset; a detached client's recorded offset stays comparable across
+   *  trims, which is what makes `sinceOffset` delta replays exact. */
+  totalBytes: number
   cols: number
   rows: number
   readonly command: readonly string[]
@@ -129,7 +138,14 @@ export class PtyHost {
    * therefore always pass its would-be spawn command — an existing
    * background session simply wins.
    */
-  open(key: string, spec: PtySpawnSpec, token: object, sink: PtySink): PtyAttachResult {
+  open(
+    key: string,
+    spec: PtySpawnSpec,
+    token: object,
+    sink: PtySink,
+    sinceOffset?: number,
+    sincePid?: number,
+  ): PtyAttachResult {
     let session = this.sessions.get(key)
     let created = false
     if (!session) {
@@ -143,11 +159,35 @@ export class PtyHost {
       this.resize(key, spec.cols, spec.rows)
     }
     session.sinks.set(token, sink)
+    // Delta replay: a parking client recorded the monotonic offset it had
+    // consumed; when that offset is still inside the ring window AND the
+    // child is the same incarnation it parked against (`sincePid`), replay
+    // ONLY the bytes written since — its serialized screen + this delta is
+    // bit-identical to never detaching. The pid check lives HERE because
+    // the client can't validate before the slice: a stale restore must get
+    // the full ring, not a delta it will discard. Trimmed-away offsets and
+    // respawned keys fall back the same way.
+    const windowStart = session.totalBytes - session.bytes
+    let replay = Buffer.concat(session.chunks)
+    let sinceValid = false
+    if (
+      !created &&
+      sinceOffset !== undefined &&
+      sinceOffset >= windowStart &&
+      sinceOffset <= session.totalBytes &&
+      sincePid !== undefined &&
+      sincePid === session.proc?.pid
+    ) {
+      replay = replay.subarray(sinceOffset - windowStart)
+      sinceValid = true
+    }
     return {
-      replay: Buffer.concat(session.chunks).toString("base64"),
+      replay: replay.toString("base64"),
       alive: session.alive,
       pid: session.proc?.pid ?? null,
       created,
+      offset: session.totalBytes,
+      sinceValid,
     }
   }
 
@@ -295,6 +335,7 @@ export class PtyHost {
       alive: true,
       chunks: [],
       bytes: 0,
+      totalBytes: 0,
       cols: spec.cols,
       rows: spec.rows,
       command: argv,
@@ -359,6 +400,7 @@ export class PtyHost {
     this.scanTitle(session, buf)
     session.chunks.push(buf)
     session.bytes += buf.byteLength
+    session.totalBytes += buf.byteLength
     // ponytail: O(chunks) front-trim like the web sidecar; a chunk may
     // overshoot the cap slightly — replay correctness only needs "recent
     // tail", the client's xterm re-derives the screen from whatever it gets.

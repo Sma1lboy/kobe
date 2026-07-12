@@ -226,6 +226,61 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     c.kill()
   })
 
+  test("park + wake restores the exact screen: serialize at park, only the delta replayed (issue #29)", async () => {
+    // A sibling handle that never detaches is the oracle: after the parked
+    // handle wakes, its screen must be BYTE-IDENTICAL to the sibling's —
+    // the contract that made re-enabling the auto-park sweep safe.
+    const key = "smoke::park1"
+    const OPTS_P = { cwd: dir, command: ["/bin/cat"], cols: 60, rows: 12, scrollback: 200 }
+    const parkee = new HostedTaskPty({ taskId: key, ...OPTS_P })
+    const oracle = new HostedTaskPty({ taskId: key, ...OPTS_P })
+    for (let i = 0; i < 60; i++) parkee.write(`\x1b[3${(i % 6) + 1}mpre-park line ${i}\x1b[0m\n`)
+    parkee.write("PRE-PARK-END\n")
+    await until(() => text(parkee).includes("PRE-PARK-END"), "parkee sees pre-park content")
+    await until(() => text(oracle).includes("PRE-PARK-END"), "oracle sees pre-park content")
+
+    const screen = parkee.capturePark()
+    expect(screen).not.toBeNull()
+    parkee.detach()
+
+    // Output produced WHILE parked — only these bytes may be replayed.
+    oracle.write("while-parked output\n")
+    oracle.write("WAKE-MARKER\n")
+    await until(() => text(oracle).includes("WAKE-MARKER"), "oracle sees while-parked output")
+
+    const woken = new HostedTaskPty({ taskId: key, ...OPTS_P, restore: screen ?? undefined })
+    await until(() => text(woken).includes("WAKE-MARKER"), "woken handle sees the while-parked delta")
+    // Full-screen equality against the never-parked oracle — scrollback,
+    // colors, and the pre-park content the 512KB-ring path used to lose.
+    expect(text(woken)).toBe(text(oracle))
+    expect(text(woken)).toContain("pre-park line 0")
+    expect(woken.captureCursor()).toEqual(oracle.captureCursor())
+    woken.write("interactive-after-wake\n")
+    await until(() => text(woken).includes("interactive-after-wake"), "woken session stays interactive")
+    oracle.kill()
+  })
+
+  test("a stale park state (respawned key) degrades to the full replay, losing nothing", async () => {
+    const key = "smoke::park2"
+    const OPTS_P = { cwd: dir, command: ["/bin/cat"], cols: 60, rows: 12, scrollback: 200 }
+    const a = new HostedTaskPty({ taskId: key, ...OPTS_P })
+    a.write("first-incarnation\n")
+    await until(() => text(a).includes("first-incarnation"), "first incarnation streams")
+    const stale = a.capturePark()
+    expect(stale).not.toBeNull()
+    a.kill()
+    await new Promise((r) => setTimeout(r, 200))
+
+    // Same key, NEW child: the host's pid check must refuse the delta and
+    // hand back the full ring, so the fresh session's history survives the
+    // discarded restore.
+    const b = new HostedTaskPty({ taskId: key, ...OPTS_P, restore: stale ?? undefined })
+    b.write("second-incarnation\n")
+    await until(() => text(b).includes("second-incarnation"), "respawned session streams")
+    expect(text(b)).not.toContain("first-incarnation")
+    b.kill()
+  })
+
   test("kill() on a self-exited session forgets the host record — reopen spawns fresh", async () => {
     // The engine-degrade path: the child exits on its own (claude/codex
     // quit), so the handle is already dead when the registry release()s it.

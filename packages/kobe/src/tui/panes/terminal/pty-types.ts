@@ -35,6 +35,40 @@ export type TaskPtyOpts = {
    * Backends that reattach to an existing session must NOT resend it.
    */
   initialInput?: string
+  /**
+   * A previously parked screen to restore (issue #29). When the host
+   * confirms the recorded byte offset is still inside its ring window,
+   * the fresh emulator is primed with `serialized` and fed only the
+   * delta written since park — bit-identical to never detaching. When
+   * the offset was trimmed away (or the session was respawned), the
+   * restore is discarded and the full-replay + repaint-wiggle path runs.
+   */
+  restore?: ParkedScreen
+}
+
+/**
+ * Everything a parked (hidden, detached) tab keeps in place of its live
+ * xterm instance: the SerializeAddon VT stream (~100-200KB) instead of a
+ * multi-MB emulator. Captured by `capturePark()` right before detach.
+ */
+export type ParkedScreen = {
+  /** SerializeAddon output — a VT escape stream that rebuilds cells,
+   *  colors, cursor, modes, and both screen buffers when written into a
+   *  fresh emulator. */
+  readonly serialized: string
+  /** OSC 0/2 window title at park time (serialize doesn't carry it). */
+  readonly title: string | null
+  /** `?25l` state at park time (serialize doesn't carry it either). */
+  readonly cursorHidden: boolean
+  /** Geometry the serialized stream was captured at — the wake feed must
+   *  happen at this size, then reflow to the pane's current size. */
+  readonly cols: number
+  readonly rows: number
+  /** Monotonic host byte offset this client had consumed at park. */
+  readonly byteOffset: number
+  /** The session child's pid at park — a mismatch on wake means the key
+   *  was killed + respawned while parked, so the screen is stale. */
+  readonly pid: number | null
 }
 
 /**
@@ -106,6 +140,15 @@ export interface TaskPtyLike {
    * pane subscribes — so "unwatched for N ms" means "hidden for N ms".
    */
   unwatchedSinceMs?(): number | null
+  /**
+   * Snapshot everything a parked tab needs for a lossless wake (see
+   * {@link ParkedScreen}) — the park sweep calls this right before
+   * `detach()` and hands the result to the next `acquire()` as
+   * `TaskPtyOpts.restore`. Null when this handle can't restore exactly
+   * (not attached yet, already dead) — the sweep still detaches, and the
+   * wake degrades to the full-replay path.
+   */
+  capturePark?(): ParkedScreen | null
   /**
    * True when this handle attached to a session whose child had ALREADY
    * exited — the engine died while no TUI was attached. Lets the tab

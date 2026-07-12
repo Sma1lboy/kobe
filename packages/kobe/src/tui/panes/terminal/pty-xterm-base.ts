@@ -16,6 +16,7 @@
 import { Unicode11Addon } from "@xterm/addon-unicode11"
 import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
 import { persistedScrollbackRows } from "../../../state/scrollback"
+import { encodeWheel } from "./keys-pure"
 import {
   type CursorPos,
   DEFAULT_COLS,
@@ -32,6 +33,7 @@ import {
   XtermRefreshTracker,
   dirtyRowsMatchSnapshot,
   snapshotMeta,
+  wireXtermChannels,
   xtermCursorHidden,
   xtermSynchronizedOutput,
 } from "./xterm-refresh"
@@ -89,6 +91,10 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.cwd = opts.cwd
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
+    // A restored (previously parked) screen brings its title with it —
+    // serialize streams don't carry OSC titles, and the tab strip must not
+    // flash back to "shell" on wake.
+    if (opts.restore?.title) this._title = opts.restore.title
     this.scrollbackRows = opts.scrollback ?? persistedScrollbackRows()
     this.term = new XtermHeadless({
       allowProposedApi: true,
@@ -104,43 +110,32 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.term.unicode.activeVersion = "11"
     this.refreshTracker = new XtermRefreshTracker(this.term)
 
-    // Reply channel: xterm emits responses to the program's terminal
-    // queries (Primary DA `\x1b[c`, cursor-position report `\x1b[6n`,
-    // status DSR, etc.) via `onData`. These MUST flow back to the
-    // child's stdin — an interactive app like `claude` queries the
-    // terminal on startup to detect its type/capabilities and to sync
-    // its cursor model. Dropping the replies left claude on a fallback
-    // path whose relative cursor-move + erase-to-EOL redraw landed on
-    // the wrong rows, half-erasing its input-box rule.
-    this.term.onData((data) => {
+    wireXtermChannels(this.term, {
       // `muteReplies`: replies triggered while parsing a ring-buffer REPLAY
       // are answers to queries the child asked in the PAST (it already got
       // them, from whatever emulator was attached then). Sending fresh
       // answers now injects unsolicited CPR/DA bytes into the child's
       // stdin — an interactive claude read them as input and scrambled its
       // renderer. Live queries still flow.
-      if (this._killed || this.muteReplies) return
-      try {
-        this.transportWrite(data)
-      } catch {
-        /* best effort — child may have exited */
-      }
-    })
-
-    // Window-title tracking (OSC 0/2) — xterm-headless already parses
-    // these escapes internally, so the split-leaf corner tag can show
-    // "vim"/"htop"/whatever's actually running instead of a static
-    // "shell" (see `terminal-tabs-core.ts`'s `splitLeafNames`).
-    this.term.onTitleChange((title) => {
-      if (!title || title === this._title) return
-      this._title = title
-      for (const cb of this.titleListeners) {
+      onReply: (data) => {
+        if (this._killed || this.muteReplies) return
         try {
-          cb(title)
+          this.transportWrite(data)
         } catch {
-          /* one listener must not break the others */
+          /* best effort — child may have exited */
         }
-      }
+      },
+      onTitle: (title) => {
+        if (!title || title === this._title) return
+        this._title = title
+        for (const cb of this.titleListeners) {
+          try {
+            cb(title)
+          } catch {
+            /* one listener must not break the others */
+          }
+        }
+      },
     })
   }
 
@@ -204,26 +199,18 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     if (this._killed) return false
     try {
       const modes = this.term.modes
-      if (modes.mouseTrackingMode !== "none") {
-        // SGR (1006) wheel encoding — xterm.js doesn't expose which
-        // encoding the app negotiated, and every current TUI (claude,
-        // vim, less with --mouse) requests SGR, so it's assumed.
-        const btn = direction === "up" ? 64 : 65
-        this.write(`\x1b[<${btn};${Math.max(1, col)};${Math.max(1, row)}M`)
-        return true
-      }
-      if (this.term.buffer.active.type === "alternate") {
-        // Fullscreen app without mouse reporting: the classic emulator
-        // fallback of 3 arrow keys per wheel tick.
-        const arrow =
-          modes.applicationCursorKeysMode === true
-            ? direction === "up"
-              ? "\x1bOA"
-              : "\x1bOB"
-            : direction === "up"
-              ? "\x1b[A"
-              : "\x1b[B"
-        this.write(arrow.repeat(3))
+      const seq = encodeWheel(
+        {
+          mouseTracking: modes.mouseTrackingMode !== "none",
+          applicationCursorKeys: modes.applicationCursorKeysMode === true,
+          alternateScreen: this.term.buffer.active.type === "alternate",
+        },
+        direction,
+        col,
+        row,
+      )
+      if (seq !== null) {
+        this.write(seq)
         return true
       }
     } catch {
@@ -254,6 +241,26 @@ export abstract class XtermTaskPty implements TaskPtyLike {
 
   unwatchedSinceMs(): number | null {
     return this._unwatchedSince
+  }
+
+  /** Park-capture accessors for persistent backends (see `HostedTaskPty.capturePark`). */
+  protected get windowTitle(): string | null {
+    return this._title
+  }
+
+  protected get scrollback(): number {
+    return this.scrollbackRows
+  }
+
+  /** Emulator-only resize for the wake feed: the serialized stream must be
+   *  parsed at its capture geometry; the child is NOT resized (the host
+   *  already runs it at the pane's current size). */
+  protected resizeEmulator(cols: number, rows: number): void {
+    this.cols = cols
+    this.rows = rows
+    this.term.resize(cols, rows)
+    this.invalidateScrollbackCache()
+    this.refreshTracker.markAll()
   }
 
   resize(cols: number, rows: number): void {
@@ -453,10 +460,23 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     }
   }
 
+  /** Free the emulator's cell buffers NOW instead of waiting for GC — the
+   *  whole point of parking a hidden tab. The last snapshot stays readable
+   *  (capture() serves the cached rows; every term-touching path guards on
+   *  `_killed`), so the dead-shell banner still shows the final screen. */
+  private disposeEmulator(): void {
+    try {
+      this.term.dispose()
+    } catch {
+      /* already disposed */
+    }
+  }
+
   protected markDead(killProcess: boolean): void {
     if (this._killed) return
     this._killed = true
     this.refreshTracker.dispose()
+    this.disposeEmulator()
     if (killProcess) {
       try {
         this.transportKill()
@@ -485,6 +505,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   protected silentDispose(): void {
     this._killed = true
     this.refreshTracker.dispose()
+    this.disposeEmulator()
     this.listeners.clear()
     this.exitListeners.clear()
     this.titleListeners.clear()
