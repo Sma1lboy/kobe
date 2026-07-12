@@ -93,14 +93,8 @@ export function VersionsPage(props: { onClose: () => void }) {
   const selectedNotes = selectedVersion === undefined ? undefined : notes[selectedVersion]
 
   return (
-    <box
-      flexDirection="column"
-      flexGrow={1}
-      backgroundColor={theme.background}
-      paddingTop={1}
-      paddingLeft={2}
-      paddingRight={2}
-    >
+    // No backgroundColor: inline pages sit on the shell's own background.
+    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           {t("update.versions.pageTitle")}
