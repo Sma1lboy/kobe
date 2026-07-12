@@ -60,7 +60,7 @@ export function PrefixHud(props: { left: number; width: number }) {
     <box position="absolute" zIndex={2400} left={props.left} top={top} width={props.width} flexDirection="column">
       {fresh.map((entry) => (
         <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
-          <text fg={entry.action ? theme.textMuted : theme.warning} wrapMode="none">
+          <text fg={theme.textMuted} wrapMode="none">
             {truncateEnd(
               `${entry.prefixKey ? `${entry.prefixKey} + ` : ""}${entry.stroke} ${
                 entry.action ? `→ ${actionLabel(entry.action)}` : "∅"
@@ -72,7 +72,7 @@ export function PrefixHud(props: { left: number; width: number }) {
       ))}
       {hud.armed ? (
         <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
-          <text fg={theme.accent} wrapMode="none">
+          <text fg={theme.textMuted} wrapMode="none">
             {`${armedKey} ⋯`}
           </text>
         </box>
