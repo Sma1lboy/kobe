@@ -302,20 +302,26 @@ describe("terminal tabs state", () => {
     const first = s.tabs[0] as EngineTab
     const second = s.tabs[1] as EngineTab
     const base = ["claude"] as const
-    const opts = { live: false, shell: "/bin/zsh", prompt: "fix the bug" }
+    const opts = {
+      live: false,
+      shell: "/bin/zsh",
+      prompt: "fix the bug",
+      task: { id: "task-1", kind: "task" as const, vendor: "claude" as const, repo: "/repo" },
+      worktreePath: "/repo/.worktrees/task-1",
+      protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
+    }
     expect(engineTabSpawnFor(s, first, base, opts)).toEqual({
-      command: ["/bin/zsh"],
-      initialInput: "claude 'fix the bug'\r",
+      command: ["/bin/zsh", "-ilc", expect.stringContaining("claude 'fix the bug'; __rc=$?")],
     })
     // Second engine tab: never gets the prompt.
-    expect(engineTabSpawnFor(s, second, base, opts).initialInput).toBe("claude\r")
+    expect(engineTabSpawnFor(s, second, base, opts).command[2]).not.toContain("fix the bug")
     // Already spawned: the conversation has begun — never re-deliver.
     const spawned = markTabSpawned(s, "tab-1")
-    expect(engineTabSpawnFor(spawned, spawned.tabs[0] as EngineTab, base, opts).initialInput).toBe("claude\r")
+    expect(engineTabSpawnFor(spawned, spawned.tabs[0] as EngineTab, base, opts).command[2]).not.toContain("fix the bug")
     // PTY still live (re-render churn): the running session keeps its input.
-    expect(engineTabSpawnFor(s, first, base, { ...opts, live: true }).initialInput).toBe("claude\r")
+    expect(engineTabSpawnFor(s, first, base, { ...opts, live: true }).command[2]).not.toContain("fix the bug")
     // No prompt at all: the plain spawn.
-    expect(engineTabSpawnFor(s, first, base, { ...opts, prompt: undefined }).initialInput).toBe("claude\r")
+    expect(engineTabSpawnFor(s, first, base, { ...opts, prompt: undefined }).command[2]).not.toContain("fix the bug")
     // "First" means first ENGINE tab, not tabs[0] — a leading command tab
     // (rehydrated shell) must not steal or block the delivery.
     const mixed: TabsState = {
@@ -326,13 +332,14 @@ describe("terminal tabs state", () => {
       activeId: "tab-2",
       nextOrdinal: 3,
     }
-    expect(engineTabSpawnFor(mixed, mixed.tabs[1] as EngineTab, base, opts).initialInput).toBe("claude 'fix the bug'\r")
-    // The prompt composes WITH the session pin: positional arg first, then
-    // the `--session-id` flags (engineTabArgv order — the engine reads the
-    // prompt as its first message, not as a flag value).
+    expect(engineTabSpawnFor(mixed, mixed.tabs[1] as EngineTab, base, opts).command[2]).toContain(
+      "claude 'fix the bug'",
+    )
+    // The prompt composes WITH the session pin: flags stay before the
+    // positional first message so the vendor CLI parses both correctly.
     const pinned = setTabSessionId(s, "tab-1", "u1")
-    expect(engineTabSpawnFor(pinned, pinned.tabs[0] as EngineTab, base, opts).initialInput).toBe(
-      "claude 'fix the bug' --session-id u1\r",
+    expect(engineTabSpawnFor(pinned, pinned.tabs[0] as EngineTab, base, opts).command[2]).toContain(
+      "claude --session-id u1 'fix the bug'",
     )
   })
 

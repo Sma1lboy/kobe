@@ -49,6 +49,8 @@ export function ShowWorkspace(props: {
       key={path}
       taskId={props.task?.id ?? path}
       worktree={path}
+      repo={props.task?.repo}
+      taskKind={props.task?.kind}
       command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
       vendor={props.task?.vendor ?? DEFAULT_TASK_VENDOR}
       modelEffort={props.task?.modelEffort}
