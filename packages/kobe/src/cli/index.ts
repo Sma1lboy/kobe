@@ -414,6 +414,16 @@ async function main(): Promise<void> {
     await runDaemonSubcommand(rest)
     return
   }
+  if (subcommand === "doctor") {
+    const { runDoctorSubcommand } = await import("./doctor-cmd.ts")
+    await runDoctorSubcommand(rest)
+    return
+  }
+  if (subcommand === "reset") {
+    const { runResetSubcommand } = await import("./reset-cmd.ts")
+    await runResetSubcommand(rest)
+    return
+  }
   if (subcommand === "pty-host") {
     // Internal (spawned detached by the terminal pane's
     // ensurePtyHostReachable): the standalone process that owns embedded

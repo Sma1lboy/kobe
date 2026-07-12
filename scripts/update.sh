@@ -3,6 +3,18 @@ set -eu
 
 PACKAGE="@sma1lboy/kobe"
 
+# Optional pin: `curl … | sh -s -- 0.7.90` installs that exact version;
+# `… | sh -s -- --list` prints recent published versions and exits.
+VERSION="${1:-}"
+
+if [ "$VERSION" = "--list" ]; then
+  npm view "$PACKAGE" versions --json 2>/dev/null | sed 's/[][",]//g' | awk 'NF' | tail -n 20
+  echo ""
+  echo "install one with: kobe update <version>"
+  echo "            or:   curl -fsSL https://raw.githubusercontent.com/Sma1lboy/kobe/main/scripts/update.sh | sh -s -- <version>"
+  exit 0
+fi
+
 BIN="$(command -v kobe 2>/dev/null || true)"
 BEFORE="$("${BIN:-false}" -v 2>/dev/null || true)"
 
@@ -14,7 +26,11 @@ case "$BIN" in
   *) MANAGER="npm" ;;
 esac
 
-LATEST="$(npm view "${PACKAGE}" version 2>/dev/null || true)"
+if [ -n "$VERSION" ]; then
+  TARGET="$VERSION"
+else
+  TARGET="$(npm view "${PACKAGE}" version 2>/dev/null || true)"
+fi
 
 if [ -t 1 ]; then
   BOLD='\033[1m'
@@ -37,8 +53,8 @@ printf '%b\n' \
   "${DIM}many sessions. one terminal.${RESET}" \
   ""
 
-if [ -n "$LATEST" ]; then
-  printf '%bUpdating %s: %s -> v%s%b (via %s)\n' "$BOLD" "$PACKAGE" "${BEFORE:-not installed}" "$LATEST" "$RESET" "$MANAGER"
+if [ -n "$TARGET" ]; then
+  printf '%bUpdating %s: %s -> v%s%b (via %s)\n' "$BOLD" "$PACKAGE" "${BEFORE:-not installed}" "$TARGET" "$RESET" "$MANAGER"
 else
   printf '%bUpdating %s via %s...%b\n' "$BOLD" "$PACKAGE" "$MANAGER" "$RESET"
 fi
@@ -46,7 +62,7 @@ fi
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
-"$MANAGER" install -g "${PACKAGE}@latest" >"$LOG" 2>&1 &
+"$MANAGER" install -g "${PACKAGE}@${VERSION:-latest}" >"$LOG" 2>&1 &
 PID=$!
 
 if [ -t 1 ]; then
@@ -71,10 +87,10 @@ fi
 
 AFTER="$(kobe -v 2>/dev/null || true)"
 
-if [ -n "$LATEST" ] && [ "${AFTER##* }" != "$LATEST" ]; then
-  echo "error: 'kobe' on PATH reports '${AFTER:-nothing}' but latest is ${LATEST}." >&2
+if [ -n "$TARGET" ] && [ "${AFTER##* }" != "$TARGET" ]; then
+  echo "error: 'kobe' on PATH reports '${AFTER:-nothing}' but the target is ${TARGET}." >&2
   echo "PATH resolves kobe to: $(command -v kobe || echo 'not found')" >&2
-  echo "Another install is likely shadowing it. Remove the stale one or run: ${MANAGER} install -g ${PACKAGE}@latest" >&2
+  echo "Another install is likely shadowing it. Remove the stale one or run: ${MANAGER} install -g ${PACKAGE}@${VERSION:-latest}" >&2
   exit 1
 fi
 

@@ -27,6 +27,8 @@ export function topLevelUsage(): string {
     "  repo <verb>             Per-repo init script + first prompt (show|set|unset)",
     "  api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)",
     "  daemon <verb>           Manage the daemon (start|stop|status|restart)",
+    "  doctor                   Diagnose daemon, Hosted PTY, and local state",
+    "  reset [--hard]           Stop runtimes; optionally wipe task/UI state",
     "  theme <verb>            Manage user themes (list|add|remove)",
     "  skill <verb>            Install the kobe agent skill (install|status|command)",
     "  feedback                Send feedback to GitHub Discussions",

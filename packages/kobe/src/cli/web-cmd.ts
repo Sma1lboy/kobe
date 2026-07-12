@@ -170,6 +170,12 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     return
   }
 
+  // Breaking-version gate — same door policy as the default TUI launch:
+  // an install that crossed a BREAKING_VERSIONS entry must `kobe reset`
+  // before any app surface (and its daemon spawn) comes up.
+  const { enforceResetGate } = await import("./reset-gate.ts")
+  enforceResetGate()
+
   let port = 5174
   const portIdx = args.indexOf("--port")
   if (portIdx !== -1) {

@@ -28,6 +28,16 @@ export const en = {
     olderBuild: "an older build",
     hint: "daemon is {daemon} — you launched v{clientVersion}. Run `kobe daemon restart`, then relaunch kobe",
   },
+  versions: {
+    pageTitle: "KOBE VERSIONS",
+    loading: "Loading releases...",
+    unavailable: "Could not fetch releases (offline or rate-limited).",
+    tagCurrent: "current",
+    tagLatest: "latest",
+    tagBreaking: "breaking",
+    breakingWarning: "⚠ installing this crosses breaking version(s) {versions} — run `kobe reset` after the update.",
+    footerHint: "j/k select · enter install · q close",
+  },
 }
 
 export const zh: typeof en = {
@@ -54,5 +64,15 @@ export const zh: typeof en = {
     title: "⚠ DAEMON 版本不一致",
     olderBuild: "旧版本构建",
     hint: "daemon 运行的是 {daemon}，而你启动的是 v{clientVersion}。请运行 `kobe daemon restart`，然后重新启动 kobe",
+  },
+  versions: {
+    pageTitle: "KOBE 版本列表",
+    loading: "正在加载发布列表……",
+    unavailable: "无法获取发布列表（离线或触发限流）。",
+    tagCurrent: "当前",
+    tagLatest: "最新",
+    tagBreaking: "breaking",
+    breakingWarning: "⚠ 安装该版本会跨过 breaking 版本 {versions}——更新后需运行 `kobe reset`。",
+    footerHint: "j/k 选择 · enter 安装 · q 关闭",
   },
 }

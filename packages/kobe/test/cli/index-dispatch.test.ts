@@ -11,6 +11,8 @@ const spies = vi.hoisted(() => ({
   theme: vi.fn(async () => {}),
   feedback: vi.fn(async () => {}),
   daemon: vi.fn(async () => {}),
+  doctor: vi.fn(async () => {}),
+  reset: vi.fn(async () => {}),
   web: vi.fn(async () => {}),
   skill: vi.fn(async () => {}),
   hook: vi.fn(async () => {}),
@@ -26,6 +28,8 @@ vi.mock("../../src/cli/update.ts", () => ({ runUpdateSubcommand: spies.update })
 vi.mock("../../src/cli/theme.ts", () => ({ runThemeSubcommand: spies.theme }))
 vi.mock("../../src/cli/feedback-cmd.ts", () => ({ runFeedbackSubcommand: spies.feedback }))
 vi.mock("../../src/cli/daemon-cmd.ts", () => ({ runDaemonSubcommand: spies.daemon }))
+vi.mock("../../src/cli/doctor-cmd.ts", () => ({ runDoctorSubcommand: spies.doctor }))
+vi.mock("../../src/cli/reset-cmd.ts", () => ({ runResetSubcommand: spies.reset }))
 vi.mock("../../src/cli/web-cmd.ts", () => ({ runWebSubcommand: spies.web }))
 vi.mock("../../src/cli/skill-cmd.ts", () => ({ runSkillSubcommand: spies.skill }))
 vi.mock("../../src/cli/hook-cmd.ts", () => ({ runHookSubcommand: spies.hook }))
@@ -89,7 +93,7 @@ describe("version, help, launch, and unknown commands", () => {
     expect(spies.startTui).toHaveBeenCalledWith()
   })
 
-  test.each(["--tmux", "--puretui", "reload", "kill-sessions", "doctor", "reset"])(
+  test.each(["--tmux", "--puretui", "reload", "kill-sessions"])(
     "retired surface %s is an unknown command",
     async (command) => {
       await runCli(command)
@@ -110,6 +114,8 @@ describe("public subcommand routing", () => {
     [["theme", "list"], "theme", ["list"]],
     [["feedback"], "feedback", []],
     [["daemon", "status"], "daemon", ["status"]],
+    [["doctor"], "doctor", []],
+    [["reset", "--yes"], "reset", ["--yes"]],
     [["web"], "web", []],
     [["skill", "install"], "skill", ["install"]],
     [["hook", "claude"], "hook", ["claude"]],

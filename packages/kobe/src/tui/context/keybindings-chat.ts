@@ -67,11 +67,11 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // (the keymap layer drops shift+ on letter keys, so ctrl+shift+t and
     // ctrl+t are indistinguishable).
     // `ctrl+e` mirrors the "engine" mnemonic the new-task dialog already
-    // uses for its own vendor cycle chord.
+    // uses for its own vendor cycle chord. Direct-only (owner call
+    // 2026-07-12): same reasoning as the tab-management rows above.
     id: "chat.tab.chooseEngine",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["e"],
+    keys: ["ctrl+e"],
     category: "Workspace",
     description: "New tab with a chosen engine or a plain shell",
     hint: { keys: "ctrl+e" },

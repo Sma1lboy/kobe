@@ -23,15 +23,14 @@ Default prefix actions:
 
 | Sequence | Action |
 |---|---|
-| `ctrl+a`, `e` | New tab with engine/shell picker |
 | `ctrl+a`, `f` | Quick-fork a child task |
 | `ctrl+a`, `y` | Resume a prior engine Session |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
 
-High-frequency tab actions remain direct: `ctrl+t`, `ctrl+w`, `ctrl+[`, and
-`ctrl+]`. The escape hatch `ctrl+q` is also direct.
+High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
+`ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct.
 
 ## Navigation and workspace defaults
 
@@ -45,6 +44,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+w`, `ctrl+[`, and
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
 | `ctrl+t` | New engine tab |
+| `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 
@@ -74,14 +74,13 @@ prefix:
   key: ctrl+a          # null disables prefix bindings
   timeoutMs: 1000
   bindings:
-    chat.tab.chooseEngine: e
     chat.fork.new: f
 
 bindings:
   chat.tab.new: ctrl+t
+  chat.tab.chooseEngine: ctrl+e
   sidebar.select: [enter]
   files.createPR: null
-
 darwin:
   bindings:
     files.openExternal: cmd+o

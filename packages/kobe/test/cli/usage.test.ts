@@ -22,7 +22,20 @@ describe("topLevelUsage", () => {
   })
 
   it("lists every public subcommand, including api", () => {
-    for (const cmd of ["web", "add", "remove", "adopt", "repo", "api", "daemon", "theme", "skill", "update"]) {
+    for (const cmd of [
+      "web",
+      "add",
+      "remove",
+      "adopt",
+      "repo",
+      "api",
+      "daemon",
+      "doctor",
+      "reset",
+      "theme",
+      "skill",
+      "update",
+    ]) {
       expect(usage).toContain(cmd)
     }
   })
@@ -47,7 +60,7 @@ describe("topLevelUsage", () => {
     expect(usage).not.toContain("--tmux")
     expect(usage).not.toContain("kill-sessions")
     expect(usage).not.toContain("  reload")
-    expect(usage).not.toContain("  doctor")
-    expect(usage).not.toContain("  reset")
+    expect(usage).toContain("  doctor")
+    expect(usage).toContain("  reset")
   })
 })
