@@ -85,6 +85,9 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 - Other agents' worktree slices — coordinate via the orchestrator.
 - Workspace-level config (`/Users/jacksonc/i/CLAUDE.md`, global git config, etc.).
 
+### Keybindings: every NEW or MOVED chord needs owner sign-off
+Adding/moving a chord is a taste + muscle-memory call the owner makes, not the agent. Follow `docs/KEYBINDINGS.md` for the mechanical rules (pane scope, modifier tiers), but the PLACEMENT decision — direct chord vs prefix-sequence, which letter, what it may shadow — requires context the agent doesn't have: which keys are high-frequency for the owner (e.g. `ctrl+w`/`ctrl+t` stay direct), which collide with claude/codex in-terminal shortcuts, which are fine behind the prefix (e.g. `ctrl+f`). So: implement behind a PROPOSED chord if needed, but always surface new/changed bindings for discussion before (or immediately after) landing — never silently ship a chord as settled. Record each resolution + its reasoning in `docs/KEYBINDINGS.md` so the next agent has the context.
+
 ### Layout: flex-first, hardcode last
 opentui boxes are Yoga flexbox. Default to flex flow (`flexGrow`/`flexShrink`/`flexBasis`/`flexDirection`) — panes share width by ratio, not pixels. Hardcoded `width={N}`/`height={N}` is acceptable only for a documented convention (e.g. the 12-cell sidebar rail), a terminal-grammar fixed glyph (a 2-cell `+`/`-` diff column), or a modal overlay. Never use `width={N}` to mean "this big proportionally" — that's `flexGrow={N}`. Avoid `height="100%"` (use `flexGrow={1}`).
 
