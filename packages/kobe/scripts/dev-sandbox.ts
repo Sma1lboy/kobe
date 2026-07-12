@@ -1,12 +1,10 @@
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { parseSandboxArgs } from "./dev-sandbox-args.ts"
 
-type Mode = "run" | "reset" | "home"
-
-function parseMode(raw: string | undefined): Mode {
-  if (raw === undefined || raw === "run") return "run"
-  if (raw === "reset" || raw === "home") return raw
-  console.error("usage: bun run scripts/dev-sandbox.ts [run|reset|home]")
+function usageError(err: unknown): never {
+  console.error(err instanceof Error ? err.message : String(err))
+  console.error("usage: bun run scripts/dev-sandbox.ts [run [--puretui|--tmux]|reset|home]")
   process.exit(2)
 }
 
@@ -32,7 +30,13 @@ async function sandboxHome(): Promise<string> {
   return join(repoRoot, "packages", "kobe", ".dev-sandbox", "home")
 }
 
-const mode = parseMode(process.argv[2])
+let parsed: ReturnType<typeof parseSandboxArgs>
+try {
+  parsed = parseSandboxArgs(process.argv.slice(2))
+} catch (err) {
+  usageError(err)
+}
+const { mode } = parsed
 const home = await sandboxHome()
 
 if (mode === "home") {
@@ -56,7 +60,12 @@ const env = {
 const args =
   mode === "reset"
     ? [process.execPath, "./src/cli/index.ts", "kill-sessions"]
-    : [process.execPath, "--conditions=browser", "./src/cli/index.ts"]
+    : [
+        process.execPath,
+        "--conditions=browser",
+        "./src/cli/index.ts",
+        ...(parsed.launchFlag ? [parsed.launchFlag] : []),
+      ]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),
