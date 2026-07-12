@@ -65,12 +65,16 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
     ],
   }))
 
-  const question =
-    step === "completions"
+  function questionFor(s: StepId): string {
+    return s === "completions"
       ? t("onboarding.completionsQuestion", { shell: props.shell ?? "" })
       : t("onboarding.skillQuestion")
+  }
   const explain = step === "completions" ? t("onboarding.completionsExplain") : t("onboarding.skillExplain")
 
+  // Transcript flow, no backgrounds anywhere: answered questions stay on
+  // screen as one muted line each (question + chosen answer), the active
+  // question flows naturally below them — the npm-create feel, not a form.
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingLeft={2} paddingRight={2}>
       <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
@@ -80,25 +84,37 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
         {t("onboarding.subtitle")}
       </text>
       <box flexDirection="column" paddingTop={1}>
+        {steps.slice(0, stepIndex).map((answered) => (
+          <box key={answered} flexDirection="row" gap={1}>
+            <text fg={theme.success} wrapMode="none">
+              ✓
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              {questionFor(answered)}
+            </text>
+            <text fg={theme.text} wrapMode="none">
+              {answers[answered] ? t("onboarding.optionYes") : t("onboarding.optionNo")}
+            </text>
+          </box>
+        ))}
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="word">
-          {question}
+          {questionFor(step)}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
           {explain}
         </text>
-      </box>
-      <box flexDirection="column" paddingTop={1}>
         {[true, false].map((option) => {
           const active = yes === option
           return (
-            <box
-              key={String(option)}
-              flexDirection="row"
-              paddingLeft={1}
-              backgroundColor={active ? theme.primary : undefined}
-              onMouseUp={() => confirm(option)}
-            >
-              <text fg={active ? theme.selectedListItemText : theme.text} wrapMode="none">
+            <box key={String(option)} flexDirection="row" gap={1} paddingLeft={1} onMouseUp={() => confirm(option)}>
+              <text fg={active ? theme.primary : theme.textMuted} wrapMode="none">
+                {active ? "❯" : " "}
+              </text>
+              <text
+                fg={active ? theme.primary : theme.textMuted}
+                attributes={active ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+              >
                 {option ? t("onboarding.optionYes") : t("onboarding.optionNo")}
               </text>
             </box>

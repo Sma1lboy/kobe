@@ -44,6 +44,7 @@ import { installEventLoopStallTelemetry } from "../../tui/lib/event-loop-stall"
 import {
   hostRenderOptions,
   inlineRenderOptions,
+  installExitRestoreBackstop,
   installOrphanExitWatchdog,
   installPaneExitBackstop,
 } from "../../tui/lib/host-render-options"
@@ -284,6 +285,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
       {withKv}
     </ThemeProvider>,
   )
+  installExitRestoreBackstop(renderer)
   installPaneExitBackstop()
   installOrphanExitWatchdog()
   installEventLoopStallTelemetry()

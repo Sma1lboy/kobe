@@ -163,8 +163,11 @@ export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "li
   )
 
   // Push background to the renderer so the terminal background matches
-  // (or shows through, when transparentBackground is on).
+  // (or shows through, when transparentBackground is on). Inline hosts
+  // (split-footer: update list, onboarding) never paint one — a CLI
+  // command should sit on the shell's own background, prompt-style.
   useEffect(() => {
+    if (renderer?.screenMode === "split-footer") return
     renderer?.setBackgroundColor(theme.background ?? RGBA.fromInts(0, 0, 0))
   }, [renderer, theme])
 
