@@ -1,7 +1,5 @@
 /**
- * The declarative verb table — {@link VERBS} is the single source of truth
- * binding each verb's spec (name, summary, flags) to its handler. Split
- * out of `api-cmd.ts` (see that file's header for the full rationale).
+ * Declarative verb table; see `api-cmd.ts` for the split rationale.
  */
 
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
