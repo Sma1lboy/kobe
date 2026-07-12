@@ -64,7 +64,7 @@ function colorKey(cell: XtermCellLike, kind: "fg" | "bg"): string {
   return ""
 }
 
-function cellStyle(cell: XtermCellLike): RenderStyle {
+function cellAttributes(cell: XtermCellLike): number {
   let attrs = 0
   if (cell.isBold()) attrs |= ATTR.BOLD
   if (cell.isDim()) attrs |= ATTR.DIM
@@ -75,10 +75,14 @@ function cellStyle(cell: XtermCellLike): RenderStyle {
   // xterm's "invisible" flag is the SGR 8 concealed attribute → ATTR.HIDDEN.
   if (cell.isInvisible()) attrs |= ATTR.HIDDEN
   if (cell.isStrikethrough()) attrs |= ATTR.STRIKETHROUGH
+  return attrs
+}
+
+function cellStyle(cell: XtermCellLike): RenderStyle {
   return {
     fg: colorKey(cell, "fg"),
     bg: colorKey(cell, "bg"),
-    attrs,
+    attrs: cellAttributes(cell),
   }
 }
 
@@ -127,10 +131,12 @@ function isVisibleCell(cell: XtermCellLike): boolean {
  */
 let scratchCell: XtermCellLike | undefined
 
-function getCellReusing(
-  line: { getCell(index: number, cell?: XtermCellLike): XtermCellLike | undefined },
-  x: number,
-): XtermCellLike | undefined {
+export type XtermLineLike = {
+  length: number
+  getCell(index: number, cell?: XtermCellLike): XtermCellLike | undefined
+}
+
+function getCellReusing(line: XtermLineLike, x: number): XtermCellLike | undefined {
   if (scratchCell === undefined) {
     // First-ever call: no scratch yet, so this one fresh cell becomes it.
     const seeded = line.getCell(x)
@@ -150,10 +156,7 @@ function getCellReusing(
  * when the trailing cells are blank, mirroring the snapshot the cursor
  * overlay is computed against.
  */
-export function xtermLineToChunks(
-  line: { length: number; getCell(index: number, cell?: XtermCellLike): XtermCellLike | undefined },
-  minLast = -1,
-): Chunk[] {
+export function xtermLineToChunks(line: XtermLineLike, minLast = -1): Chunk[] {
   // `Math.max` is load-bearing: the `minLast` seed (cursor column) must
   // survive the visible-cell scan. A plain `last = x` let the FIRST
   // visible cell clobber the seed, so trailing BLANK cells (typed spaces
@@ -187,4 +190,59 @@ export function xtermLineToChunks(
   }
   flush()
   return out
+}
+
+function chunkColorMatchesCell(rgb: RGB | undefined, cell: XtermCellLike, kind: "fg" | "bg"): boolean {
+  const isDefault = kind === "fg" ? cell.isFgDefault() : cell.isBgDefault()
+  if (isDefault) return rgb === undefined
+  if (!rgb) return false
+  const mode = kind === "fg" ? cell.getFgColorMode() : cell.getBgColorMode()
+  const color = kind === "fg" ? cell.getFgColor() : cell.getBgColor()
+  if (mode === XTERM_COLOR_MODE_RGB || (kind === "fg" ? cell.isFgRGB() : cell.isBgRGB())) {
+    return rgb[0] === ((color >> 16) & 0xff) && rgb[1] === ((color >> 8) & 0xff) && rgb[2] === (color & 0xff)
+  }
+  if (mode === XTERM_COLOR_MODE_PALETTE || (kind === "fg" ? cell.isFgPalette() : cell.isBgPalette())) {
+    const palette = ansi256ToRgb(color)
+    return rgb[0] === palette[0] && rgb[1] === palette[1] && rgb[2] === palette[2]
+  }
+  return false
+}
+
+function chunkStyleMatchesCell(chunk: Chunk, cell: XtermCellLike): boolean {
+  return (
+    (chunk.attributes ?? 0) === cellAttributes(cell) &&
+    chunkColorMatchesCell(chunk.fg, cell, "fg") &&
+    chunkColorMatchesCell(chunk.bg, cell, "bg")
+  )
+}
+
+/** Compare xterm cells with their rendered chunks without allocating a replacement row. */
+export function xtermLineMatchesChunks(line: XtermLineLike | undefined, row: readonly Chunk[], minLast = -1): boolean {
+  if (!line) return row.length === 0
+  let last = Math.min(line.length - 1, minLast)
+  for (let x = 0; x < line.length; x++) {
+    const cell = getCellReusing(line, x)
+    if (!cell || cell.getWidth() === 0) continue
+    if (isVisibleCell(cell)) last = Math.max(last, x)
+  }
+  if (last === -1) return row.length === 0
+
+  let chunkIndex = 0
+  let textOffset = 0
+  for (let x = 0; x <= last; x++) {
+    const cell = getCellReusing(line, x)
+    if (!cell || cell.getWidth() === 0) continue
+    const chunk = row[chunkIndex]
+    if (!chunk || !chunkStyleMatchesCell(chunk, cell)) return false
+    const text = cell.getChars() || " "
+    if (!chunk.text.startsWith(text, textOffset)) return false
+    textOffset += text.length
+    if (textOffset === chunk.text.length) {
+      chunkIndex++
+      textOffset = 0
+    } else if (textOffset > chunk.text.length) {
+      return false
+    }
+  }
+  return chunkIndex === row.length && textOffset === 0
 }

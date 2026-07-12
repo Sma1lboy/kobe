@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { xtermLineToChunks } from "../../src/tui/panes/terminal/xterm-chunks"
+import { xtermLineMatchesChunks, xtermLineToChunks } from "../../src/tui/panes/terminal/xterm-chunks"
 
 /**
  * Minimal default-style xterm cell — blank cells are what a typed space
@@ -81,6 +81,24 @@ describe("xtermLineToChunks — minLast keeps the cursor's blank tail", () => {
         .map((c) => c.text)
         .join(""),
     ).toBe("ab ")
+  })
+})
+
+describe("xtermLineMatchesChunks — allocation-free semantic check", () => {
+  it("matches the converter across text, cursor padding, and styles", () => {
+    const plain = line("ab  ")
+    expect(xtermLineMatchesChunks(plain, xtermLineToChunks(plain))).toBe(true)
+    expect(xtermLineMatchesChunks(plain, xtermLineToChunks(plain, 3), 3)).toBe(true)
+    expect(xtermLineMatchesChunks(plain, xtermLineToChunks(plain), 3)).toBe(false)
+
+    const cells = [styledCell("A"), styledCell("B"), cell(" "), styledCell("C")]
+    const styled = {
+      length: cells.length,
+      getCell: (index: number) => cells[index],
+    }
+    const chunks = xtermLineToChunks(styled)
+    expect(xtermLineMatchesChunks(styled, chunks)).toBe(true)
+    expect(xtermLineMatchesChunks(line("AB C", 4), chunks)).toBe(false)
   })
 })
 
