@@ -24,7 +24,16 @@ import {
   type TaskPtyOpts,
   type TerminalRow,
 } from "./pty-types"
+import { reconcileTerminalCursor, reconcileTerminalRow, reconcileTerminalRows } from "./terminal-snapshot"
 import { xtermLineToChunks } from "./xterm-chunks"
+import {
+  type SnapshotMeta,
+  XtermRefreshTracker,
+  dirtyRowsMatchSnapshot,
+  snapshotMeta,
+  xtermCursorHidden,
+  xtermSynchronizedOutput,
+} from "./xterm-refresh"
 
 export abstract class XtermTaskPty implements TaskPtyLike {
   readonly taskId: string
@@ -68,6 +77,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   protected cols: number
   protected rows: number
   private refreshQueued = false
+  private readonly refreshTracker: XtermRefreshTracker
+  private publishedMeta: SnapshotMeta | null = null
   /** Scrollback rows resolved from the persisted preference at construction
    * (Settings → General → Terminal) — fixed for this PTY's lifetime. */
   private readonly scrollbackRows: number
@@ -84,6 +95,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       rows: this.rows,
       scrollback: this.scrollbackRows,
     })
+    this.refreshTracker = new XtermRefreshTracker(this.term)
 
     // Reply channel: xterm emits responses to the program's terminal
     // queries (Primary DA `\x1b[c`, cursor-position report `\x1b[6n`,
@@ -246,6 +258,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       // Reflow rewraps history — every cached scrollback row is stale.
       this.invalidateScrollbackCache()
       this.transportResize(cols, rows)
+      this.refreshTracker.markAll()
       this.refreshSnapshot()
     } catch {
       this.markDead(false)
@@ -290,7 +303,10 @@ export abstract class XtermTaskPty implements TaskPtyLike {
    * instead corrupted any glyph straddling a boundary. */
   protected feed(data: string | Uint8Array): void {
     if (this._killed) return
-    this.term.write(data, () => this.queueRefresh())
+    this.term.write(data, () => {
+      if (!this.refreshTracker.supported) this.refreshTracker.markAll()
+      this.queueRefresh()
+    })
   }
 
   /** Feed a ring-buffer REPLAY: parsed like live output, but the emulator's
@@ -302,6 +318,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.muteReplies = true
     this.term.write(data, () => {
       this.muteReplies = false
+      if (!this.refreshTracker.supported) this.refreshTracker.markAll()
       this.queueRefresh()
     })
   }
@@ -321,52 +338,41 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     }, 16)
   }
 
-  /**
-   * Is xterm currently mid-`?2026` synchronized-output block? Apps that
-   * paint atomically (interactive `claude` opens ~45 of these per
-   * prompt) write a frame in two halves; snapshotting between them
-   * renders a torn intermediate state. We skip the refresh while the
-   * mode is set — the closing `?2026l` is itself a write that re-queues
-   * a refresh once the frame is whole.
-   */
-  private inSynchronizedOutput(): boolean {
-    try {
-      return this.term.modes.synchronizedOutputMode === true
-    } catch {
-      return false
-    }
-  }
-
-  /**
-   * Has the app hidden the cursor via `?25l`? Streaming `claude` hides
-   * the cursor while it paints; an unconditional inverse cursor cell on
-   * top of that looks like a stray glyph. xterm tracks this on its
-   * core service — not surfaced through the public typings, hence the
-   * narrow internal reach.
-   */
-  private cursorHidden(): boolean {
-    try {
-      const core = (
-        this.term as unknown as {
-          _core?: { coreService?: { isCursorHidden?: boolean } }
-        }
-      )._core
-      return core?.coreService?.isCursorHidden === true
-    } catch {
-      return false
-    }
-  }
-
   private refreshSnapshot(): void {
     if (this._killed) return
+    const previousSnapshot = this.snapshot
+    const previousCursor = this.cursor
     // Don't snapshot a half-painted frame. Self-reschedule rather than
     // relying solely on the closing write's callback — under rapid redraws
     // a new sync block can open before that write lands, bouncing forever.
-    if (this.inSynchronizedOutput()) {
+    if (xtermSynchronizedOutput(this.term)) {
       this.queueRefresh()
       return
     }
     const active = this.term.buffer.active
+    const cursorHidden = xtermCursorHidden(this.term)
+    const currentMeta = snapshotMeta(active, this.rows, this.scrollbackRows)
+    const nextCursor = reconcileTerminalCursor(
+      previousCursor,
+      cursorHidden ? null : { x: active.cursorX, y: active.baseY + active.cursorY - currentMeta.start },
+    )
+    if (
+      dirtyRowsMatchSnapshot(
+        active,
+        previousSnapshot,
+        this.publishedMeta,
+        currentMeta,
+        this.refreshTracker.peek(),
+        cursorHidden,
+      )
+    ) {
+      this.snapshotDirty = false
+      this.refreshTracker.clear()
+      this.publishedMeta = currentMeta
+      this.cursor = nextCursor
+      if (this.cursor !== previousCursor) this.publishSnapshot()
+      return
+    }
     // Alt screen has no scrollback (baseY 0) — every row is live, nothing
     // to cache. The normal buffer's anchor/cache are left untouched so
     // they're still valid when the fullscreen app exits.
@@ -388,7 +394,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     const cache = this.scrollbackCache
     const rows: TerminalRow[] = []
     const cursorY = active.baseY + active.cursorY
-    const start = Math.max(0, active.length - (this.rows + this.scrollbackRows))
+    const start = currentMeta.start
     for (let y = start; y < active.length; y++) {
       const frozen = anchorAlive && y < active.baseY
       if (frozen) {
@@ -399,10 +405,11 @@ export abstract class XtermTaskPty implements TaskPtyLike {
         }
       }
       const line = active.getLine(y)
-      const minLast = y === cursorY ? active.cursorX - 1 : -1
+      const minLast = !cursorHidden && y === cursorY ? active.cursorX - 1 : -1
       const row: TerminalRow = line ? xtermLineToChunks(line, minLast) : []
-      rows.push(row)
-      if (frozen) cache.set(absBase + y, row)
+      const stableRow = frozen ? reconcileTerminalRow(previousSnapshot[rows.length], row) : row
+      rows.push(stableRow)
+      if (frozen) cache.set(absBase + y, stableRow)
     }
     if (anchorAlive) {
       // Drop ids that scrolled past the window so the map stays ≤ margin.
@@ -420,12 +427,16 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       }
       // registerMarker can return undefined — keep the old anchor then.
     }
-    this.snapshot = rows
+    this.snapshot = reconcileTerminalRows(previousSnapshot, rows)
     this.snapshotDirty = false
-    // A hidden cursor (`?25l`) reports as null so the pane draws no
-    // inverse cursor cell — same contract as a backend that can't
-    // report a cursor at all.
-    this.cursor = this.cursorHidden() ? null : { x: active.cursorX, y: active.baseY + active.cursorY - start }
+    this.refreshTracker.clear()
+    this.publishedMeta = currentMeta
+    this.cursor = nextCursor
+    if (this.snapshot === previousSnapshot && this.cursor === previousCursor) return
+    this.publishSnapshot()
+  }
+
+  private publishSnapshot(): void {
     for (const cb of this.listeners) {
       try {
         cb(this.snapshot, this.cursor)
@@ -438,6 +449,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   protected markDead(killProcess: boolean): void {
     if (this._killed) return
     this._killed = true
+    this.refreshTracker.dispose()
     if (killProcess) {
       try {
         this.transportKill()
@@ -465,6 +477,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
    */
   protected silentDispose(): void {
     this._killed = true
+    this.refreshTracker.dispose()
     this.listeners.clear()
     this.exitListeners.clear()
     this.titleListeners.clear()
