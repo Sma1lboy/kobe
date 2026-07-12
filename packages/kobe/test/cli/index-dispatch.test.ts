@@ -168,9 +168,25 @@ describe("version / help / unknown", () => {
     expect(spies.startTui).not.toHaveBeenCalled()
   })
 
-  test("a bare `kobe` launches the TUI", async () => {
+  test("a bare `kobe` launches PureTUI", async () => {
     await runCli()
-    expect(spies.startTui).toHaveBeenCalled()
+    expect(spies.startTui).toHaveBeenCalledWith("puretui")
+  })
+
+  test.each([
+    ["--puretui", "puretui"],
+    ["--tmux", "tmux"],
+  ] as const)("kobe %s launches %s", async (flag, mode) => {
+    await runCli(flag)
+    expect(spies.startTui).toHaveBeenCalledWith(mode)
+  })
+
+  test("conflicting launch flags print usage and launch nothing", async () => {
+    await runCli("--tmux", "--puretui")
+    expect(stderrText()).toContain("cannot be used together")
+    expect(stderrText()).toContain("Usage: kobe")
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(spies.startTui).not.toHaveBeenCalled()
   })
 })
 

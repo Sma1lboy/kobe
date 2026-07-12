@@ -40,6 +40,7 @@ import { resolve } from "node:path"
  * `skill`, and pane-host test fixtures remain gone.
  */
 import { errorMessage } from "@/lib/error-message"
+import { parseLaunchRequest } from "../launch-mode.ts"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { expandTilde } from "../lib/path-home.ts"
 import { type VendorId, coerceVendorId } from "../types/vendor.ts"
@@ -359,7 +360,17 @@ function printTopLevelUsage(out: Pick<typeof process.stderr, "write">): void {
 
 async function main(): Promise<void> {
   const [, , ...rawArgs] = process.argv
-  const [subcommand, ...rest] = rawArgs
+  const request = parseLaunchRequest(rawArgs)
+  if (request.kind === "error") {
+    process.stderr.write(`${request.message}\n\n${topLevelUsage()}\n`)
+    process.exit(2)
+  }
+  if (request.kind === "launch") {
+    const { startTui } = await import("../tui/index.tsx")
+    await startTui(request.mode)
+    return
+  }
+  const [subcommand, ...rest] = request.args
 
   if (subcommand === "--version" || subcommand === "-v" || subcommand === "version") {
     const { CURRENT_VERSION } = await import("../version.ts")
@@ -475,18 +486,10 @@ async function main(): Promise<void> {
   if (await dispatchTuiCommand(subcommand, rest)) return
 
   // An unrecognized subcommand is a CLI error, not a TUI launch — a typo
-  // like `kobe statsu` should print usage and exit non-zero, not silently
-  // open the project. Only a bare `kobe` (no subcommand) launches the TUI.
-  if (subcommand !== undefined) {
-    console.error(`kobe: unknown command '${subcommand}'`)
-    printTopLevelUsage(process.stderr)
-    process.exit(2)
-  }
-
-  // Default: launch the TUI. Dynamic import so non-TUI subcommands
-  // (like `kobe add`) don't pull in opentui/solid at startup.
-  const { startTui } = await import("../tui/index.tsx")
-  await startTui()
+  // like `kobe statsu` should print usage and exit non-zero.
+  console.error(`kobe: unknown command '${subcommand}'`)
+  printTopLevelUsage(process.stderr)
+  process.exit(2)
 }
 
 main().catch((err) => {
