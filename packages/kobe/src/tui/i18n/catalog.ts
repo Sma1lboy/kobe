@@ -21,6 +21,7 @@ import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
 import { en as history, zh as historyZh } from "./messages/history"
+import { en as kanban, zh as kanbanZh } from "./messages/kanban"
 import { en as keys, zh as keysZh } from "./messages/keys"
 import { en as newTask, zh as newTaskZh } from "./messages/newTask"
 import { en as onboarding, zh as onboardingZh } from "./messages/onboarding"
@@ -49,6 +50,7 @@ export const en = {
   keys,
   workspace,
   worktrees,
+  kanban,
 }
 
 /**
@@ -74,6 +76,7 @@ export const zh: Messages = {
   keys: keysZh,
   workspace: workspaceZh,
   worktrees: worktreesZh,
+  kanban: kanbanZh,
 }
 
 /** Registered locales, in display order. */

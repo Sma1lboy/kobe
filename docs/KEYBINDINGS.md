@@ -396,6 +396,12 @@ all in this pass:
   registered by the pure-TUI host too (gated on `/`-search inactive, same as tmux).
   The host cycles over its own pane list, not `PANE_ORDER` — that includes `"terminal"`,
   which this host never mounts, and focus must never land on an unmounted pane.
+- **`kanban.open.sidebar` (`c`) → in-place page swap** — the daemon issue store as a
+  read-only Backlog / In progress / Done board (`KanbanPage`), same sidebar-launched
+  utility grammar as `x` worktrees: plain letter, sidebar scope, no global companion
+  chord. `c` because the mnemonic letters are taken (`k` `sidebar.nav`, `b`
+  `tasks.renameBranch`, `i` `sidebar.previewToggle`) and `w`/`e` stay free for
+  `keymap-slot-parity.test.ts`. Inside the page: `r` refetch, `esc`/`ctrl+c` close.
 - **`worktrees.open.sidebar` (`x`) / `tasks.update` (`u`) → in-place page swaps, not
   tmux windows** (daemon issue #23). In the tmux Tasks pane these chords spawn a
   standalone `kobe worktrees` / `kobe update-page` tmux window. The pure-TUI

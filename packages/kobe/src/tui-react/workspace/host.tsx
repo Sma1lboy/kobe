@@ -17,6 +17,7 @@ import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { KanbanPage } from "../component/kanban-page"
 import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
@@ -225,6 +226,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
   // Worktrees page (issue #23) — placeholder swap, see file header GAP note.
   const [worktreesOpen, setWorktreesOpen] = useState(false)
+  // Kanban page — the daemon issue store as a board, same swap shape.
+  const [kanbanOpen, setKanbanOpen] = useState(false)
   // Update page (issue #23 remainder) — same in-place swap shape as
   // WorktreesPage; UpdatePage's onClose seam makes this safe (it no longer
   // process.exit(0)s on close — only the post-update self-replace does).
@@ -238,6 +241,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openWorktrees: () => setWorktreesOpen(true),
     updateOpen,
     openUpdate: () => setUpdateOpen(true),
+    kanbanOpen,
+    openKanban: () => setKanbanOpen(true),
     searchActive,
     selectedId,
     openSettings,
@@ -261,6 +266,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   if (worktreesOpen) {
     return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
+  }
+
+  if (kanbanOpen) {
+    return <KanbanPage orchestrator={orch} onClose={() => setKanbanOpen(false)} />
   }
 
   if (updateOpen) {
