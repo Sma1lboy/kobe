@@ -217,6 +217,13 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     // for back-compat / direct invocation.
     const taskId = flagValue(rest, "--task-id")
     const cwd = typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd()
+    // Tab identity: engine tabs launch as `env KOBE_TASK_ID=… KOBE_TAB_ID=… <engine>`
+    // (terminal-tab-spawn.ts), and hooks are the engine's subprocesses, so the
+    // vars arrive here by inheritance. cwd alone can't tell tabs apart — every
+    // tab of a task shares the worktree. Env taskId also beats the cwd map
+    // (exact identity vs longest-prefix guess) but yields to an explicit flag.
+    const envTaskId = process.env.KOBE_TASK_ID
+    const envTabId = process.env.KOBE_TAB_ID
     // Payload → neutral detail is the engine adapter's job (it owns the
     // vendor's payload vocabulary, e.g. Claude's `error_type` classes). The
     // installed hook command carries no vendor id, so ask each adapter with
@@ -230,9 +237,11 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     const client = await connectIfRunning() // NON-spawning by contract
     if (!client) return
     try {
+      const effectiveTaskId = taskId ?? envTaskId
       await client.request("engine.reportEvent", {
-        ...(taskId ? { taskId } : { cwd }),
+        ...(effectiveTaskId ? { taskId: effectiveTaskId } : { cwd }),
         kind: verb,
+        ...(envTabId ? { tabId: envTabId } : {}),
         ...(detail ? { detail } : {}),
       })
     } finally {

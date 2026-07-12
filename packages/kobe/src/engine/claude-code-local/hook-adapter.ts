@@ -39,18 +39,24 @@ import {
 export { buildWorktreeWatchHook, mergeWorktreeWatchHook }
 
 /** Claude Code hook event → normalized kobe verb. The ONE place Claude event
- *  names live. `matcher` narrows which Notification types fire (permission only). */
+ *  names live. `matcher` narrows which Notification types fire. */
 const EVENT_MAP: readonly HookEventSpec[] = [
   { event: "SessionStart", verb: "session-start" },
   { event: "UserPromptSubmit", verb: "turn-start" },
   { event: "Stop", verb: "turn-complete" },
   { event: "StopFailure", verb: "turn-failed" },
   { event: "Notification", matcher: "permission_prompt", verb: "awaiting-input" },
+  // elicitation_dialog = the engine put up a QUESTION dialog (AskUserQuestion /
+  // MCP elicitation) — the "question" stage the F7 attention jump must reach.
+  // NOT idle_prompt: that fires for ANY prompt idle after a response, which
+  // turn_complete already covers and would escalate every idle session.
+  { event: "Notification", matcher: "elicitation_dialog", verb: "awaiting-input" },
   { event: "SessionEnd", verb: "session-end" },
 ]
 
-/** The events kobe owns — used to replace only these in a merge. */
-export const KOBE_HOOK_EVENTS: readonly string[] = EVENT_MAP.map((e) => e.event)
+/** The events kobe owns — used to replace only these in a merge. Deduped:
+ *  one event can carry several matcher-scoped specs. */
+export const KOBE_HOOK_EVENTS: readonly string[] = [...new Set(EVENT_MAP.map((e) => e.event))]
 
 /** Normalized kobe verb for a Claude Code hook event name, or undefined for an
  *  event kobe doesn't install — the query side of {@link EVENT_MAP}, so tests
@@ -134,16 +140,18 @@ export class ClaudeHookAdapter extends JsonHookAdapter {
   /**
    * Fire-time translation: neutral verb + Claude's stdin payload → neutral
    * detail. Only two verbs carry detail today: `turn-failed` (classify the
-   * StopFailure `error_type`) and `awaiting-input` (the only Notification
-   * matcher kobe installs is `permission_prompt`, so waiting is always
-   * "permission").
+   * StopFailure `error_type`) and `awaiting-input` (classified by the
+   * Notification payload's `notification_type` — `permission_prompt` vs
+   * `elicitation_dialog`, the two matchers kobe installs).
    */
   override activityDetailFromPayload(
     kind: EngineActivityKind,
     payload: Record<string, unknown>,
   ): EngineActivityDetail | undefined {
     if (kind === "turn-failed") return { failure: failureFromErrorType(payload.error_type) }
-    if (kind === "awaiting-input") return { waiting: "permission" }
+    if (kind === "awaiting-input") {
+      return { waiting: payload.notification_type === "elicitation_dialog" ? "input" : "permission" }
+    }
     return undefined
   }
 

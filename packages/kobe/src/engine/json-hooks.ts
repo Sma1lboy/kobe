@@ -65,7 +65,11 @@ export function buildActivityHooks(
     const command = shellQuoteArgv([...inv, "hook", verb])
     const group: Record<string, unknown> = { hooks: [{ type: "command", command }] }
     if (matcher) group.matcher = matcher
-    out[event] = [group]
+    // Accumulate — one event may carry several matcher-scoped specs (e.g.
+    // Notification: permission_prompt + idle_prompt).
+    const groups = (out[event] as unknown[] | undefined) ?? []
+    groups.push(group)
+    out[event] = groups
   }
   return out
 }

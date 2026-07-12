@@ -432,6 +432,13 @@ display toggle, a separate contract the pure-TUI host doesn't touch.
 
 ### Attention jump chord — why `F7`, not `ctrl+g`
 
+**Targets (2026-07-12, owner call):** F7 walks (task, tab) pairs — permission prompts, question
+dialogs (`awaiting-input`, either flavor), errors, AND unseen turn-completions — in sidebar order ×
+tab order, starting with the OTHER waiting tabs of the task you're on, wrapping across every
+project. Tab precision comes from the spawn-line `env KOBE_TASK_ID/KOBE_TAB_ID` the hooks inherit;
+completions are unread-mark-gated (arrival marks them read) so the cycle advances instead of
+looping. Pure logic: `nextAttentionTarget` (`tui/lib/notify-state.ts`).
+
 `attention.next` ("I'm blocked here, jump me to whoever else is waiting") must fire from inside a
 running engine, so it has to sit in `RESERVED_GLOBAL_CHORDS`. It first shipped on `ctrl+g` (0.7.95)
 — but `ctrl+g` is the engine/readline **abort-editing** chord, and reserving it swallowed the
@@ -499,7 +506,7 @@ shrank to the minimum kobe cannot give up while the terminal is focused:
 | `F4` | pane cycle (`focus.next`) — the one cross-pane chord besides `ctrl+q` that works from inside the terminal (see the pure-TUI navigation decision log below) |
 | `F5` | terminal reset (confirm-gated) |
 | `F6` | zen toggle (`workspace.zenToggle`) — hides the files column from inside the terminal too (see the zen-toggle decision log below) |
-| `F7` | jump to the next waiting task (`attention.next`) — fires from inside the terminal too; F7 not `ctrl+g`, which is the engine's readline abort (see the attention-jump decision log below) |
+| `F7` | jump to the next waiting task/tab (`attention.next`) — permission, question dialog, error, or unseen turn-completion, across every project AND the current task's other tabs; fires from inside the terminal too; F7 not `ctrl+g`, which is the engine's readline abort (see the attention-jump decision log below) |
 | `ctrl+pgup` / `ctrl+pgdn` | local scrollback (trapped, not reserved) |
 
 Everything else — `shift+tab` (claude plan-mode cycle), `ctrl+g` (readline

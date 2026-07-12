@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  ClaudeHookAdapter,
   KOBE_HOOK_EVENTS,
   buildClaudeHooks,
   buildWorktreeWatchHook,
@@ -31,9 +32,28 @@ describe("buildClaudeHooks", () => {
     expect(hooks.SessionStart[0].hooks[0].command).toContain("'hook' 'session-start'")
   })
 
-  it("scopes the Notification hook to permission prompts only", () => {
-    expect(hooks.Notification[0].matcher).toBe("permission_prompt")
-    expect(hooks.Notification[0].hooks[0].command).toContain("'hook' 'awaiting-input'")
+  it("scopes the Notification hook to permission prompts + question dialogs", () => {
+    // Two matcher-scoped groups on ONE event — permission prompts and
+    // elicitation (question) dialogs both report awaiting-input; NOT
+    // idle_prompt, which fires for any resting prompt and would escalate
+    // every idle session (turn_complete already covers "done, look at me").
+    expect(hooks.Notification.map((g) => g.matcher)).toEqual(["permission_prompt", "elicitation_dialog"])
+    for (const group of hooks.Notification) {
+      expect(group.hooks[0].command).toContain("'hook' 'awaiting-input'")
+    }
+  })
+})
+
+describe("activityDetailFromPayload", () => {
+  const adapter = new ClaudeHookAdapter()
+
+  it("classifies awaiting-input by the Notification payload's notification_type", () => {
+    expect(adapter.activityDetailFromPayload("awaiting-input", { notification_type: "permission_prompt" })).toEqual({
+      waiting: "permission",
+    })
+    expect(adapter.activityDetailFromPayload("awaiting-input", { notification_type: "elicitation_dialog" })).toEqual({
+      waiting: "input",
+    })
   })
 })
 

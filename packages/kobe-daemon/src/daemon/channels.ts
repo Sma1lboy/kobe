@@ -59,7 +59,16 @@ export interface ChannelPayloads {
    * Last-value-per-channel replay means a late subscriber gets the most
    * recent task's state; the daemon also lets a state lapse back to idle.
    */
-  "engine-state": { taskId: string; state: TaskActivityState; detail?: EngineActivityDetail; at: number }
+  "engine-state": {
+    taskId: string
+    /** Which engine TAB the event came from (the `KOBE_TAB_ID` env the hook
+     *  process inherits from its tab's spawn line). Absent for sessions kobe
+     *  didn't spawn as a tab (manual `claude` in a shell) — task-level only. */
+    tabId?: string
+    state: TaskActivityState
+    detail?: EngineActivityDetail
+    at: number
+  }
   /**
    * The user's persisted VISUAL prefs (`state.json`'s `activeTheme` /
    * `transparentBackground` / `focusAccent` / `activeSortMode`), pushed

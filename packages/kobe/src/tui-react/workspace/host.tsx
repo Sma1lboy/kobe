@@ -63,6 +63,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
+  const engineTabStates = useAccessor(orch.engineTabStatesSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
@@ -103,6 +104,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { jumpToNextAttention } = useAttention({
     tasks,
     engineState,
+    engineTabStates,
     selectedId,
     kv,
     notif,

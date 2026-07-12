@@ -370,6 +370,34 @@ describe("terminal tabs state", () => {
     expect(shellCommandLine(["echo", "it's", ""])).toBe("echo 'it'\\''s' ''")
   })
 
+  // Why: tab identity reaches `kobe hook` as inherited env — an `env K=V`
+  // PREFIX on the typed line (not the PTY environment), so it covers fresh
+  // spawns and adopted warm shells in every backend, and fish (which
+  // rejects the bare `K=V cmd` form). Without it, all tabs of a task are
+  // indistinguishable to the daemon (same worktree cwd).
+  it("shellSpawn env rides the typed line as an `env K=V` prefix", () => {
+    expect(shellSpawn(["claude"], "/bin/zsh", { KOBE_TASK_ID: "t1", KOBE_TAB_ID: "tab-2" })).toEqual({
+      command: ["/bin/zsh"],
+      initialInput: "env KOBE_TASK_ID=t1 KOBE_TAB_ID=tab-2 claude\r",
+    })
+    // Empty env = the plain line, no `env` noise.
+    expect(shellSpawn(["claude"], "/bin/zsh", {}).initialInput).toBe("claude\r")
+  })
+
+  it("engineTabSpawnFor threads taskId + tab id into the env prefix", () => {
+    const state = initialTabs()
+    const tab = state.tabs[0] as EngineTab
+    const spawn = engineTabSpawnFor(state, tab, ["claude"], {
+      live: false,
+      shell: "/bin/zsh",
+      taskId: "01TASK",
+    })
+    expect(spawn.initialInput).toContain("env KOBE_TASK_ID=01TASK KOBE_TAB_ID=tab-1 ")
+    // No taskId (tests / legacy callers) → no env prefix.
+    const bare = engineTabSpawnFor(state, tab, ["claude"], { live: false, shell: "/bin/zsh" })
+    expect(bare.initialInput).toBe("claude\r")
+  })
+
   // Why: collapse decides persistence (null = unsplit fast path) AND the
   // render path. Folding a sole surviving SHELL leaf would respawn the
   // engine over it — the tree must survive; only a pristine leaf-1 folds.
