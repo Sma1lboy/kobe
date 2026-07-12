@@ -32,9 +32,14 @@ export const en = {
     created: "created {date}",
     /** Badge for a story already linked to a task. */
     linked: "linked to a session",
+    /** BOLD CAPS section headers in the drawer. */
+    description: "DESCRIPTION",
     noDescription: "No description.",
-    engine: "engine  ←/→",
-    workspace: "workspace  ↑/↓",
+    attachments: "ATTACHMENTS",
+    /** Muted hint beside the attachments header. */
+    attachHint: "paste a path · ctrl+v screenshot · click a chip to remove",
+    engine: "ENGINE",
+    workspace: "WORKSPACE",
     placement: {
       worktree: "New worktree — open its task session",
       worktreeBg: "New worktree — stay here (task under the project group)",
@@ -70,9 +75,12 @@ export const zh: typeof en = {
     },
     created: "创建于 {date}",
     linked: "已关联会话",
+    description: "描述",
     noDescription: "暂无描述。",
-    engine: "引擎  ←/→",
-    workspace: "工作区  ↑/↓",
+    attachments: "附件",
+    attachHint: "粘贴路径 · ctrl+v 贴截图 · 点击标签移除",
+    engine: "引擎",
+    workspace: "工作区",
     placement: {
       worktree: "新建 worktree——打开它的任务会话",
       worktreeBg: "新建 worktree——留在原地(任务挂在项目组下)",
