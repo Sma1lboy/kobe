@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1
+
+### Patch Changes
+
+- a0583cf: Hidden terminal tabs park again — automatically and losslessly: the sweep serializes each idle tab's full screen (~100KB) before releasing its multi-MB emulator, and switching back restores the serialized state plus the host's exact byte delta since park, bit-identical to never detaching. Stale parks (respawned key, delta trimmed past the ring window) degrade to the previous full-replay behavior.
+- 1c06958: Startup prompt when the installed kobe agent skill is out of date: yes (update now via `npx skills add`) / no (ask again next launch) / don't notify for this skill version. Non-interactive terminals keep the old one-shot stderr hint.
+- 135c65c: TUI kanban: card selection, an editable issue-detail drawer, new-story intake, delete, and start-chat placements. Arrow keys move a highlighted card cursor across the board (tab still cycles projects; ←/→ fall back to project cycling on an empty board). Enter — or clicking the selected card — opens the detail drawer: editable title and multiline description, where pasting an image path or ctrl+v'ing a clipboard screenshot inserts an `images[N]: /path` placeholder line straight into the body (it persists in the issue and rides the first prompt); esc saves and closes. From the drawer, start the story's engine session with a chosen vendor at one of three placements: a new worktree task (open it), a new worktree task in the background (its chattab waits under the project group), or directly on the project checkout with no worktree. `n` opens the same drawer as a new-story intake — ctrl+s files the story, enter files it and starts it immediately — and `d` deletes the selected story behind a confirm (the record only; linked task/branch/worktree untouched).
+- 807d434: Web Issues kanban: keyboard/mouse card selection with arrow-key navigation (Enter opens the detail drawer), and the issue detail gains a Workspace placement picker — start the story's chat in a new worktree task, in a worktree whose tab lives in the project workspace, or directly on the project checkout with no worktree, each with its own engine choice.
+- 7ba25c6: Adopt official xterm addons: Unicode 11 width tables fix emoji cursor/wrap desync in the embedded terminal, and the web dashboard terminal gains WebGL rendering, clickable links, OSC 52 clipboard, and matching Unicode 11 widths.
+
 ## 0.8.0
 
 ### Minor Changes

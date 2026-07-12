@@ -1,5 +1,0 @@
----
-"@sma1lboy/kobe": patch
----
-
-TUI kanban: card selection, an editable issue-detail drawer, new-story intake, delete, and start-chat placements. Arrow keys move a highlighted card cursor across the board (tab still cycles projects; ←/→ fall back to project cycling on an empty board). Enter — or clicking the selected card — opens the detail drawer: editable title and multiline description, where pasting an image path or ctrl+v'ing a clipboard screenshot inserts an `images[N]: /path` placeholder line straight into the body (it persists in the issue and rides the first prompt); esc saves and closes. From the drawer, start the story's engine session with a chosen vendor at one of three placements: a new worktree task (open it), a new worktree task in the background (its chattab waits under the project group), or directly on the project checkout with no worktree. `n` opens the same drawer as a new-story intake — ctrl+s files the story, enter files it and starts it immediately — and `d` deletes the selected story behind a confirm (the record only; linked task/branch/worktree untouched).
