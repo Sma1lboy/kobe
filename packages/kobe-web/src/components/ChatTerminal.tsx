@@ -12,7 +12,11 @@
  * scrollback ring on re-attach, so reattaching is loss-free.
  */
 
+import { ClipboardAddon } from "@xterm/addon-clipboard"
 import { FitAddon } from "@xterm/addon-fit"
+import { Unicode11Addon } from "@xterm/addon-unicode11"
+import { WebLinksAddon } from "@xterm/addon-web-links"
+import { WebglAddon } from "@xterm/addon-webgl"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { CornerDownLeft, RotateCw } from "lucide-react"
@@ -134,7 +138,25 @@ export function ChatTerminal({
       })
       const fit = new FitAddon()
       term.loadAddon(fit)
+      // Unicode 11 widths: default Unicode 6 measures emoji as one cell,
+      // desyncing wrap/cursor from what the server-side PTY apps assume.
+      term.loadAddon(new Unicode11Addon())
+      term.unicode.activeVersion = "11"
+      // OSC 52 → navigator.clipboard, so in-terminal copy (tmux/engine
+      // copy chords) lands on the viewer's clipboard across the web gap.
+      term.loadAddon(new ClipboardAddon())
+      // Plain URLs in engine output become clickable.
+      term.loadAddon(new WebLinksAddon())
       term.open(el)
+      // WebGL renderer when the GPU cooperates; throwing or losing the
+      // context falls back to the stock DOM renderer transparently.
+      try {
+        const webgl = new WebglAddon()
+        webgl.onContextLoss(() => webgl.dispose())
+        term.loadAddon(webgl)
+      } catch {
+        /* DOM renderer fallback */
+      }
       try {
         fit.fit()
       } catch {

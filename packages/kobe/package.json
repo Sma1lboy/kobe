@@ -58,6 +58,8 @@
     "@ansi-tools/parser": "^1.0.15",
     "@opentui/core": "0.4.3",
     "@opentui/react": "0.4.3",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/headless": "^6.0.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.0",

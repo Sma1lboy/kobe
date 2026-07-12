@@ -13,6 +13,7 @@
  * `markDead`, matching the old Bun backend's behavior.
  */
 
+import { Unicode11Addon } from "@xterm/addon-unicode11"
 import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
 import { persistedScrollbackRows } from "../../../state/scrollback"
 import {
@@ -95,6 +96,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       rows: this.rows,
       scrollback: this.scrollbackRows,
     })
+    // Unicode 11 width tables: the default (Unicode 6) measures emoji as ONE
+    // cell while every modern app — and kobe's own cursor-overlay math in
+    // lib/display-width.ts — measures them as TWO, so any emoji in engine
+    // output desynced the emulator's cursor/wrap from the drawn overlay.
+    this.term.loadAddon(new Unicode11Addon())
+    this.term.unicode.activeVersion = "11"
     this.refreshTracker = new XtermRefreshTracker(this.term)
 
     // Reply channel: xterm emits responses to the program's terminal
