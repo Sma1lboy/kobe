@@ -2,31 +2,80 @@
  * `kobe completions` — generate shell completion scripts.
  *
  * Usage:
- *   kobe completions bash   > ~/.bash_completion.d/kobe
- *   kobe completions zsh    > ~/.zsh/completions/_kobe
- *   kobe completions fish   > ~/.config/fish/completions/kobe.fish
+ *   source <(kobe completions zsh)                 # zsh, one-off or in ~/.zshrc
+ *   kobe completions zsh  > ~/.zsh/completions/_kobe   # zsh, fpath install
+ *   kobe completions bash > ~/.bash_completion.d/kobe
+ *   kobe completions fish > ~/.config/fish/completions/kobe.fish
+ *
+ * The zsh script works both ways: dropped into `$fpath` it is a normal
+ * `#compdef` autoload file; sourced directly it registers itself via
+ * `compdef` (the funcstack guard at the end tells the two apart).
  *
  * The generated scripts complete subcommands (and only subcommands — flags
  * are omitted because most kobe subcommands define their own flags).
  */
 import { TOP_LEVEL_SUBCOMMANDS } from "./subcommands.ts"
 
-const COMPLETION_USAGE =
-  "Usage: kobe completions <bash|zsh|fish>\n" +
-  "\n" +
-  "Generate a shell completion script for kobe and print it to stdout.\n" +
-  "Redirect the output to the appropriate file for your shell.\n"
+const COMPLETION_USAGE = [
+  "Usage: kobe completions <bash|zsh|fish>",
+  "",
+  "Generate a shell completion script for kobe and print it to stdout.",
+  "",
+  "Install:",
+  "  zsh   source <(kobe completions zsh)     # one-off, or in ~/.zshrc after compinit",
+  "        # or the fpath way:",
+  "        #   kobe completions zsh > ~/.zsh/completions/_kobe",
+  "        #   fpath=(~/.zsh/completions $fpath)   # in ~/.zshrc, BEFORE compinit",
+  "        #   rm -f ~/.zcompdump && exec zsh      # rebuild the completion cache",
+  "  bash  kobe completions bash > ~/.bash_completion.d/kobe   # source it from ~/.bashrc",
+  "  fish  kobe completions fish > ~/.config/fish/completions/kobe.fish",
+  "",
+].join("\n")
 
 function generateBashCompletions(): string {
   const subcommands = TOP_LEVEL_SUBCOMMANDS.join(" ")
 
-  return `# kobe bash completions\n# Source: kobe completions bash\n\n_kobe() {\n    local cur prev opts\n    COMPREPLY=()\n    cur="\${COMP_WORDS[COMP_CWORD]}"\n    prev="\${COMP_WORDS[COMP_CWORD-1]}"\n    opts="${subcommands}"\n\n    if [[ \${cur} == * ]] ; then\n        COMPREPLY=( $(compgen -W "\${opts}" -- \${cur}) )\n        return 0\n    fi\n}\ncomplete -F _kobe kobe\n`
+  return [
+    "# kobe bash completions",
+    "# Source: kobe completions bash",
+    "",
+    "_kobe() {",
+    "    local cur",
+    "    COMPREPLY=()",
+    '    cur="${COMP_WORDS[COMP_CWORD]}"',
+    "    if [[ ${COMP_CWORD} -eq 1 ]]; then",
+    `        COMPREPLY=( $(compgen -W "${subcommands}" -- \${cur}) )`,
+    "    fi",
+    "}",
+    "complete -F _kobe kobe",
+    "",
+  ].join("\n")
 }
 
 function generateZshCompletions(): string {
   const subcommandsList = TOP_LEVEL_SUBCOMMANDS.map((s) => `"${s}"`).join(" ")
 
-  return `#compdef kobe\n# kobe zsh completions\n# Source: kobe completions zsh\n\n_kobe() {\n    local -a subcommands\n    subcommands=(${subcommandsList})\n\n    _arguments "1:subcommand:(\${subcommands})"\n}\n\n_kobe "$@"\n`
+  return [
+    "#compdef kobe",
+    "# kobe zsh completions",
+    "# Source: kobe completions zsh",
+    "",
+    "_kobe() {",
+    "    local -a subcommands",
+    `    subcommands=(${subcommandsList})`,
+    "",
+    '    _arguments "1:subcommand:(${subcommands})"',
+    "}",
+    "",
+    "# Autoloaded from $fpath -> run as the completion function;",
+    "# sourced directly -> register with compdef instead.",
+    'if [ "${funcstack[1]}" = "_kobe" ]; then',
+    '    _kobe "$@"',
+    "elif (( $+functions[compdef] )); then",
+    "    compdef _kobe kobe",
+    "fi",
+    "",
+  ].join("\n")
 }
 
 function generateFishCompletions(): string {
