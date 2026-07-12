@@ -27,7 +27,7 @@
  * from the verb's own FlagSpecs — no ad hoc re-validation inside handlers),
  * the narrow daemon RPC surface ({@link DaemonRpc} — a fake that records
  * requests stands in for the socket in tests), and the side-effect seam
- * ({@link ApiRuntime}, `./api/runtime.ts` — tmux / git / repo-init). Daemon
+ * ({@link ApiRuntime}, `./api/runtime.ts` — hosted PTY / git / repo-init). Daemon
  * connect/close lives in `./daemon-session.ts`.
  *
  * ## Output contract

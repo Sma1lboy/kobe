@@ -9,8 +9,8 @@
  * Conventions: modifier glyphs are concatenated (`⌃⇧`), then a SPACE, then the
  * key (`⌃⇧ T`, `⌃ Q`) so the modifier icons read separately from the letter;
  * letters uppercase; named keys become their glyph (`⏎ ⎋ ↑`) EXCEPT `tab`,
- * which stays the word `tab` (a glyph is overkill for it); a tmux `prefix X`
- * chord is a TWO-step chord, shown as `<prefix glyph> X`.
+ * which stays the word `tab` (a glyph is overkill for it); a `prefix X`
+ * chord is a two-step PureTUI chord, shown as `<prefix glyph> X`.
  */
 
 const MODIFIER_GLYPH: Record<string, string> = {
@@ -48,20 +48,6 @@ const KEY_GLYPH: Record<string, string> = {
 }
 
 /**
- * Parse a `tmux show-options -g prefix` value (`prefix C-b` / `C-b` / `M-x`)
- * into a key cap (`⌃B`, `⌥X`). Returns null for anything unparseable so the
- * caller can fall back to a literal (the default prefix is `⌃B`).
- */
-export function tmuxPrefixGlyph(raw: string): string | null {
-  const value = raw.trim().split(/\s+/).pop() ?? ""
-  const m = /^([CM])-(.+)$/.exec(value)
-  if (!m) return null
-  const mod = m[1] === "C" ? "⌃" : "⌥"
-  const key = m[2] ?? ""
-  return `${mod}${key.length === 1 ? key.toUpperCase() : key}`
-}
-
-/**
  * Format a single key token (the part after any modifiers). `upper` uppercases
  * letters — true for a MODIFIER chord (mac style: `⌃ Q`), false for a BARE key
  * so a plain-letter chord stays the literal key you press (`n`, not `N`), and a
@@ -88,7 +74,7 @@ function formatKey(k: string, upper: boolean): string {
 
 /**
  * Turn a chord / display string into macOS key glyphs. `prefixGlyph` (default
- * `⌃B`, the tmux default) renders `prefix X` chords as `⌃B X`.
+ * `⌃A`, the PureTUI default) renders `prefix X` chords as `⌃A X`.
  *
  *   formatChord("ctrl+q")      → "⌃ Q"
  *   formatChord("shift+tab")   → "⇧ tab"
@@ -97,7 +83,7 @@ function formatKey(k: string, upper: boolean): string {
  *   formatChord("j/k")         → "J/K"
  *   formatChord("ctrl+hjkl")   → "⌃ HJKL"
  */
-export function formatChord(chord: string, prefixGlyph = "⌃B"): string {
+export function formatChord(chord: string, prefixGlyph = "⌃A"): string {
   const s = chord.trim()
   if (!s) return s
   const pm = /^prefix\s+(.+)$/i.exec(s)

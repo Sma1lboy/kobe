@@ -1,7 +1,6 @@
 /**
  * Pure prefix-specific settings for the Workspace Host Binding Stack.
- * Kept apart from direct-chord overrides so `tmux.*` consumers can continue
- * using keymap-overrides.ts without learning PureTUI sequence semantics.
+ * Kept apart from direct-chord overrides so each parser has one grammar.
  */
 
 import { type AppliedOverride, type KeymapOverrideEntry, normalizeChord } from "./keymap-overrides"

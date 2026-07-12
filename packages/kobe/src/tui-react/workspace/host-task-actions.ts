@@ -8,8 +8,7 @@
  *
  * Only this host's genuine divergences are wired here: dialog surfacing
  * (the React `DialogConfirm`/`RenameTaskDialog`/`NewTaskDialog`), toast
- * notifications, and selection. No `switchBeforeKill` (no tmux client to
- * yank), no `openCreateSurface` (the in-pane NewTaskDialog IS the
+ * notifications and selection. No `openCreateSurface` (the in-pane NewTaskDialog IS the
  * surface), no `reload` (this host is fully render-driven).
  *
  * Solid→React deltas: every accessor prop (`tasks`, `selectedId`,

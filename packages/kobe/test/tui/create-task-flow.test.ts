@@ -8,17 +8,12 @@
  * tests pin the per-item accounting + the real N/M summary that replaced it.
  *
  * The module deliberately has no `@opentui` imports, so the flow runs under
- * plain vitest with mocks. We stub the disk/CLI seams (`tmux`, saved-repo
+ * plain vitest with mocks. We stub the saved-repo
  * state, engine detection) so the test is hermetic.
  */
 
 import { describe, expect, test, vi } from "vitest"
 
-vi.mock("../../src/tui/panes/terminal/tmux", () => ({
-  tmuxSessionName: (id: string) => `kobe-${id}`,
-  killSession: vi.fn(async () => {}),
-  switchClientBeforeKill: vi.fn(async () => {}),
-}))
 vi.mock("../../src/state/repos", () => ({
   getSavedRepos: () => ["/repo"],
   addSavedRepo: vi.fn(() => ({ added: false, path: "/repo", total: 1 })),
@@ -41,7 +36,6 @@ function makeCreateCtx(opts: {
   adoptWorktree?: (input: { worktreePath: string }) => Promise<{ id: string }>
   createTask?: (input: { repo: string; baseRef?: string; vendor: unknown }) => Promise<{ id: string }>
   promptNewTask?: () => Promise<NewTaskInput | undefined>
-  openCreateSurface?: (defaultRepo: string) => Promise<boolean>
   orch?: KobeOrchestrator | null
 }): {
   ctx: CreateTaskContext
@@ -85,7 +79,6 @@ function makeCreateCtx(opts: {
     cursorRepo: () => "/repo",
     lastVendor: () => "claude" as never,
     rememberVendor,
-    openCreateSurface: opts.openCreateSurface,
     promptNewTask:
       opts.promptNewTask ??
       (async () => ({ mode: "adopt", repo: "/repo", vendor: "claude" as never, adopt: opts.adopt ?? [] })),
@@ -222,22 +215,6 @@ describe("createTaskFlow — create mode + guards", () => {
 
     expect(rememberVendor).not.toHaveBeenCalled()
     expect(reload).not.toHaveBeenCalled()
-  })
-
-  test("openCreateSurface handling it (returns true) short-circuits before the dialog", async () => {
-    const openCreateSurface = vi.fn(async () => true)
-    const promptNewTask = vi.fn(async () => ({
-      mode: "create" as const,
-      repo: "/repo",
-      baseRef: "main",
-      vendor: "claude",
-    }))
-    const { ctx } = makeCreateCtx({ openCreateSurface, promptNewTask })
-
-    await createTaskFlow(ctx)
-
-    expect(openCreateSurface).toHaveBeenCalledWith("/repo")
-    expect(promptNewTask).not.toHaveBeenCalled()
   })
 
   test("no engine CLI detected surfaces an info notice but still proceeds", async () => {

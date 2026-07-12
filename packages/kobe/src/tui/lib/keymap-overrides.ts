@@ -66,10 +66,8 @@ export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
  * Positional slot contract for a direction-multiplexed binding id. The
  * keymap layer threads the matched chord's index within the id's `keys`
  * array to the handler (`Binding.slot`, assigned by `bindByIds`), so the
- * MEANING of each position — the slot layout — is a documented contract
- * an override must respect. `tmux.focus` (exactly 4 chords, order
- * left/down/up/right, validated in `src/tmux/keybindings.ts`) is the
- * precedent.
+ * meaning of each position is a documented contract an override must
+ * respect.
  */
 export type SlotContract = {
   /** Human-readable layout, used in warnings and the docs. */

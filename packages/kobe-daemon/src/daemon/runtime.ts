@@ -36,7 +36,6 @@ export interface DaemonRuntimeAdapter {
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
-  runChatTabNamingPass(orch: DaemonOrchestrator, schedule: Map<string, unknown>): Promise<unknown>
   createEngineTurnDetector(vendor: VendorId): EngineTurnDetectorAdapter
   runWorktreeStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges>
   maybeAutoStart(orch: DaemonOrchestrator, taskId: string): Promise<string>

@@ -64,11 +64,11 @@ describe("readKeybindingsFile", () => {
     fs.mkdirSync(settingsDir(), { recursive: true })
     fs.writeFileSync(
       path.join(settingsDir(), "keybindings.yaml"),
-      JSON.stringify({ bindings: { "tmux.detach": "ctrl+y" } }),
+      JSON.stringify({ bindings: { "chat.tab.new": "ctrl+y" } }),
     )
     const r = readKeybindingsFile()
     expect(r.exists).toBe(true)
-    expect(r.doc).toEqual({ bindings: { "tmux.detach": "ctrl+y" } })
+    expect(r.doc).toEqual({ bindings: { "chat.tab.new": "ctrl+y" } })
     expect(r.warnings).toEqual([])
   })
 

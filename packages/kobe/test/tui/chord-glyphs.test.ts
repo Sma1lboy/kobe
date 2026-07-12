@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatChord, tmuxPrefixGlyph } from "../../src/tui/lib/chord-glyphs.ts"
+import { formatChord } from "../../src/tui/lib/chord-glyphs.ts"
 
 describe("formatChord", () => {
   it("renders modifier chords as glyph cluster + space + uppercased key", () => {
@@ -28,8 +28,8 @@ describe("formatChord", () => {
     expect(formatChord("M")).toBe("M") // bare capital (Shift+M) stays capital
   })
 
-  it("renders a tmux prefix chord as two steps", () => {
-    expect(formatChord("prefix f")).toBe("⌃B F")
+  it("renders a PureTUI prefix chord as two steps", () => {
+    expect(formatChord("prefix f")).toBe("⌃A F")
     expect(formatChord("prefix t", "⌃A")).toBe("⌃A T")
     expect(formatChord("prefix s/x/r", "⌃A")).toBe("⌃A S/X/R")
     expect(formatChord("prefix ctrl+x", "⌃A")).toBe("⌃A ⌃ X")
@@ -42,18 +42,5 @@ describe("formatChord", () => {
     expect(formatChord("[/]")).toBe("[/]")
     expect(formatChord("ctrl+[/]")).toBe("⌃ [/]") // modified
     expect(formatChord("1-9")).toBe("1-9")
-  })
-})
-
-describe("tmuxPrefixGlyph", () => {
-  it("parses `prefix C-b` / bare `C-a` / `M-x`", () => {
-    expect(tmuxPrefixGlyph("prefix C-b")).toBe("⌃B")
-    expect(tmuxPrefixGlyph("C-a")).toBe("⌃A")
-    expect(tmuxPrefixGlyph("M-x")).toBe("⌥X")
-  })
-
-  it("returns null for anything unparseable", () => {
-    expect(tmuxPrefixGlyph("garbage")).toBeNull()
-    expect(tmuxPrefixGlyph("")).toBeNull()
   })
 })

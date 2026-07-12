@@ -4,13 +4,13 @@
  *
  * `resolveTheme` returns `@opentui/core` RGBA values and lives in a module
  * that builds a Solid store at import time, so CLI / session-build code
- * (e.g. tmux styling) can't import it without dragging in the whole TUI
+ * (e.g. external styling) can't import it without dragging in the whole TUI
  * runtime — the same constraint that keeps `cli/theme.ts` away from
  * `theme.tsx`. This module resolves a single slot to a plain `#rrggbb`
  * string instead, mirroring `resolve()`'s semantics (defs refs, slot
  * refs, `{dark,light}` variants, circular-ref protection) with one
  * deliberate difference: unresolvable / circular / transparent values
- * return `null` rather than collapsing to black — for tmux styling,
+ * return `null` rather than collapsing to black — for external styling,
  * "skip the option" beats "paint it black".
  */
 
@@ -20,7 +20,7 @@ type Variant = { dark: string; light: string }
 type ColorValue = string | Variant
 
 /**
- * Normalize a theme hex literal to the 6-digit `#rrggbb` form tmux
+ * Normalize a theme hex literal to a 6-digit `#rrggbb` value
  * accepts: expand `#abc`, strip the alpha byte off `#rrggbbaa`, and
  * lowercase. Returns `null` for malformed values.
  */

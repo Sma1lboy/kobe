@@ -79,7 +79,7 @@ export interface BaseCreateTaskContextDeps {
  * console logging, toast wiring, shared active-task publish, post-delete
  * cursor move, cursor-row sibling-repo default, and selection/enter hooks.
  * Hosts spread this and add (or override) only their genuine divergences —
- * the Tasks pane's `reload`/`switchBeforeKill`/`openCreateSurface`, the
+ * the Tasks pane's `reload`/`openCreateSurface`, the
  * workspace's tab-snapshot-reclaiming `onTaskDeleted` wrapper.
  */
 export function buildBaseCreateTaskContext(deps: BaseCreateTaskContextDeps): CreateTaskContext {

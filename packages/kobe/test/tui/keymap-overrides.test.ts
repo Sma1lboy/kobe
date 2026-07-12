@@ -210,7 +210,7 @@ describe("applyKeymapOverrides", () => {
   // sidebar.view / files.tab dispatch on the matched chord's SLOT
   // (index in the keys array), layout = alternating pairs. Overrides
   // must keep the count even so the slot%2 direction mapping holds —
-  // the tmux.focus exact-count validation is the precedent.
+  // Directional slot groups must preserve their exact positional contract.
 
   test("slot ids: an even-count override applies (2-chord nav)", () => {
     const keymap = makeKeymap()

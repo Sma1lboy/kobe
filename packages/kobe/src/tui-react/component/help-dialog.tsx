@@ -16,9 +16,8 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { useEffect, useMemo, useState } from "react"
-import { runTmuxCapturing } from "../../tmux/client"
-import { formatChord, tmuxPrefixGlyph } from "../../tui/lib/chord-glyphs"
+import { useMemo } from "react"
+import { formatChord } from "../../tui/lib/chord-glyphs"
 import { capOf, groupBindings } from "../../tui/lib/help-groups"
 import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { KobeKeymap, useKeymapVersion } from "../context/keybindings"
@@ -39,23 +38,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
   // the in-pane overlay closes by clearing the dialog stack.
   const close = () => (props.onClose ? props.onClose() : dialog.clear())
 
-  // Resolve the user's real tmux prefix so `prefix f` shows as e.g. `⌃B F`
-  // (their actual prefix, not a guess). Falls back to the `⌃B` default when
-  // there's no kobe tmux server (e.g. the dev outer monitor).
-  const [prefixGlyph, setPrefixGlyph] = useState("⌃B")
-  useEffect(() => {
-    let disposed = false
-    void runTmuxCapturing(["show-options", "-g", "prefix"]).then(({ code, stdout }) => {
-      if (disposed || code !== 0) return
-      const glyph = tmuxPrefixGlyph(stdout)
-      if (glyph) setPrefixGlyph(glyph)
-    })
-    return () => {
-      disposed = true
-    }
-  }, [])
-
-  // Press `?` again to dismiss (ergonomic mirror of vim/tmux help). esc
+  // Press `?` again to dismiss. esc
   // is handled by the DialogProvider's own binding stack — don't re-bind.
   useBindings(() => ({
     bindings: [{ key: "?", cmd: close }],
@@ -100,12 +83,12 @@ export function HelpDialog(props: { onClose?: () => void }) {
                 const prefixPrimary =
                   pureTuiPrefix.key && row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
                 const rawPrimary = prefixPrimary ?? capOf(row) ?? "—"
-                const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph))
+                const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary))
                 // A prefix primary leaves every direct chord as a visible
                 // alias. Without this, a user-configured direct+prefix row
                 // silently lost its first direct chord in F1.
                 const directAliases = (prefixPrimary || row.hint ? row.keys : row.keys.slice(1)).map((key) =>
-                  formatChord(key, prefixGlyph),
+                  formatChord(key),
                 )
                 const aliases = directAliases.concat(
                   pureTuiPrefix.key

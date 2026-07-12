@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 /**
  * Embedded terminal pane — React port of `tui/panes/terminal/Terminal.tsx`
- * (issue #16 React migration). Same seam: the KOBE_TUI workspace host
+ * (issue #16 React migration). Same seam: the PureTUI Workspace Host
  * mounts it as the center column running the task's real interactive
  * engine CLI (its `command` prop); it also works as a plain worktree
  * shell. Body: a headless xterm screen snapshot fed by the task PTY,

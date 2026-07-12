@@ -1,5 +1,5 @@
 /**
- * Regression: KOBE_TUI=1 `n` creation must materialize the new worktree
+ * Regression: PureTUI `n` creation must materialize the new worktree
  * without a second Enter. This composes the shared create flow with the
  * pure-TUI activation boundary while its React task snapshot is still empty.
  */
@@ -13,12 +13,6 @@ vi.mock("../../src/state/repos", () => ({
 vi.mock("../../src/engine/account-detect", () => ({
   availableEngineIds: vi.fn(async () => ["claude"]),
 }))
-vi.mock("../../src/tui/panes/terminal/tmux", () => ({
-  tmuxSessionName: (id: string) => `kobe-${id}`,
-  killSession: vi.fn(async () => {}),
-  switchClientBeforeKill: vi.fn(async () => {}),
-}))
-
 import type { KobeOrchestrator } from "../../src/client/remote-orchestrator"
 import { activateWorkspaceTask } from "../../src/tui-react/workspace/use-task-selection"
 import { type CreateTaskContext, createTaskFlow } from "../../src/tui/lib/task-create-flow"

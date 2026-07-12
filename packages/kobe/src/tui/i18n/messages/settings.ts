@@ -39,7 +39,7 @@ export const en = {
       "Calms chrome animations: the running-task spinner becomes a slow pulsing dot, and the toast slide-in, materializing sweep, and tab-complete flash turn off.",
     appearance: "Appearance",
     appearanceHint:
-      "How split panes draw: a full box frame around every pane, or a single tmux-style divider line between neighbors.",
+      "How split panes draw: a full box frame around every pane, or a single divider line between neighbors.",
     splitBox: "Box frames",
     splitLine: "Divider line",
     notifications: "Notifications",
@@ -52,11 +52,6 @@ export const en = {
     zenHint:
       "The `zen` chip (above the file list) and `prefix`+space collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
     zenKeepTasks: "Keep Tasks pane in zen mode",
-    surface: "Settings page",
-    surfaceHint:
-      "Where Settings and the other full dialogs (new task, rename) open. ChatTab = a dedicated full-window page alongside the engine tabs; Task panel = an overlay inside the left Tasks pane. enter to pick.",
-    surfaceChattab: "ChatTab (separate page)",
-    surfaceTaskpanel: "Task panel (in-pane overlay)",
     editor: "Editor",
     editorHint:
       "What `e` opens a file with in the file tree (enter stays the read-only preview). `auto` (default) follows $VISUAL / $EDITOR, else auto-detects nvim / vim / emacs / nano. enter on the row below cycles auto / vim / nvim / nano / emacs / custom; if the editor isn't installed it falls back to the preview.",
@@ -130,7 +125,7 @@ export const en = {
       "Stops the kobe daemon and quits this kobe window so the next launch spawns a fresh daemon — picks up daemon / orchestrator / engine edits without a process kill. Other attached kobe windows will lose their connection too.",
     restartButton: "[enter] Restart",
     doctorHint:
-      "Daemon wedged or unresponsive? From a shell, run `kobe doctor` to diagnose, or `kobe reset` to stop the daemon + kill sessions (keeps your tasks). Use `kobe reset --hard` only to also wipe the task index + UI state.",
+      "Daemon wedged or unresponsive? From a shell, run `kobe daemon restart`, then relaunch kobe. Hosted engine sessions stay alive across a daemon restart.",
     experimental: "Experimental",
     remoteHint:
       "Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven from this local kobe. Unfinished — file/diff panes still degrade for remote. Enables `kobe add --remote`.",
@@ -181,7 +176,7 @@ export const zh: typeof en = {
     accentSuccess: "成功色（传统绿）",
     accentInfo: "信息色（冷蓝）",
     appearance: "外观",
-    appearanceHint: "分屏面板的描边方式:每个面板一个完整方框,或 tmux 风格的单线分隔。",
+    appearanceHint: "分屏面板的描边方式：每个面板一个完整方框，或相邻面板之间一条分隔线。",
     splitBox: "方框边框",
     splitLine: "单线分隔",
     reducedMotion: "减弱动效",
@@ -197,11 +192,6 @@ export const zh: typeof en = {
     zenHint:
       "`zen` 标记（文件列表上方）和 `prefix`+空格 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
     zenKeepTasks: "禅模式下保留 Tasks 面板",
-    surface: "设置页面",
-    surfaceHint:
-      "设置及其他完整对话框（新建任务、重命名）的打开位置。ChatTab = 与引擎标签并列的独立整窗页面；Task panel = 左侧 Tasks 面板内的浮层。enter 选择。",
-    surfaceChattab: "ChatTab（独立页面）",
-    surfaceTaskpanel: "Task panel（面板内浮层）",
     editor: "编辑器",
     editorHint:
       "文件树里按 `e` 用什么打开文件（enter 仍是只读预览）。`auto`（默认）跟随 $VISUAL / $EDITOR，否则自动探测 nvim / vim / emacs / nano。在下方一行按 enter 在 auto / vim / nvim / nano / emacs / custom 间循环；编辑器未安装时回退到预览。",
@@ -274,7 +264,7 @@ export const zh: typeof en = {
       "停止 kobe daemon 并退出当前 kobe 窗口，下次启动会拉起一个全新的 daemon——无需杀进程即可应用 daemon / orchestrator / engine 的改动。其他已连接的 kobe 窗口也会断开连接。",
     restartButton: "[enter] 重启",
     doctorHint:
-      "daemon 卡住或无响应？在 shell 里运行 `kobe doctor` 诊断，或 `kobe reset` 停止 daemon + 杀掉会话（保留你的任务）。只有要同时清空任务索引 + UI 状态时才用 `kobe reset --hard`。",
+      "daemon 卡住或无响应？在 shell 里运行 `kobe daemon restart`，然后重新启动 kobe。Hosted PTY 引擎会话不会因 daemon 重启而退出。",
     experimental: "实验性",
     remoteHint:
       "远程项目（SSH）：注册一个 git worktree + 引擎都通过 SSH 跑在另一台主机上、由本地 kobe 驱动的项目。尚未完成——文件/diff 面板对远程仍会降级。启用 `kobe add --remote`。",

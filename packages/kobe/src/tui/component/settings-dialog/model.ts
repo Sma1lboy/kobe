@@ -54,7 +54,6 @@ export type SettingsRow =
   | { id: "sound"; kind: "sound" }
   | { id: "cross-task"; kind: "crossTask" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
-  | { id: string; kind: "surface"; surface: "chattab" | "taskpanel" }
   | { id: "editor-kind"; kind: "editorKind" }
   | { id: "editor-custom"; kind: "editorCustom" }
   | { id: "worktree-base"; kind: "worktreeBase" }
@@ -89,10 +88,6 @@ export function engineRowId(vendor: VendorId): string {
   return `engine:${vendor}`
 }
 
-export function surfaceRowId(surface: "chattab" | "taskpanel"): string {
-  return `surface:${surface}`
-}
-
 export function splitStyleRowId(style: SplitStyle): string {
   return `split-style:${style}`
 }
@@ -108,8 +103,8 @@ export type SettingsRowsInput = {
 
 /**
  * General section: themes, transparent toggle, focus accents, toast,
- * sound, the zen-mode toggle, the two settings-surface pickers, then the
- * editor pair. Order here IS the on-screen order — sections.tsx renders
+ * sound, the zen-mode toggle, then the editor pair. Order here IS the
+ * on-screen order — sections.tsx renders
  * the same sequence.
  */
 export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focusAccentSlots">): SettingsRow[] {
@@ -124,8 +119,6 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "sound", kind: "sound" },
     { id: "cross-task", kind: "crossTask" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },
-    { id: surfaceRowId("chattab"), kind: "surface", surface: "chattab" },
-    { id: surfaceRowId("taskpanel"), kind: "surface", surface: "taskpanel" },
     { id: "editor-kind", kind: "editorKind" },
     { id: "editor-custom", kind: "editorCustom" },
     { id: "worktree-base", kind: "worktreeBase" },
