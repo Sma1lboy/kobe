@@ -1,27 +1,32 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Issue-detail dialog — the kanban page's Enter surface onto one story:
- * title + full description, status/created/link metadata, and (for a
- * startable story) the start-chat config — engine (←/→), workspace
- * placement (↑/↓), and prompt attachments.
+ * Issue-detail dialog — the kanban page's Enter surface onto one story.
+ * EDITABLE: the title rides a controlled <input>, the description an
+ * UNCONTROLLED <textarea> (the settings feedback-form pattern — pasted
+ * newlines survive; edits mirror out through onContentChange). `tab`
+ * cycles the focused field (title → description → engine → workspace);
+ * arrow keys only steer engine/workspace so they never fight the inputs'
+ * cursors. `esc` SAVES dirty edits and closes (ctrl+c discards).
  *
- * Attachments reuse the quick-task composer's paste grammar verbatim
- * (`tui/lib/attachments`, lifted from refs/claude-code imagePaste): pasted
- * image/PDF PATHS attach instead of inserting text, and ctrl+v asks the OS
- * clipboard for a raw image (screenshot) — saved under `~/.kobe/attachments/`
- * — or a copied file. Chips are click-to-remove; backspace drops the last.
+ * Images paste INLINE: a pasted image/PDF path — or a ctrl+v clipboard
+ * screenshot, saved via the composer's `captureClipboardAttachment` — is
+ * appended to the description as an `images[N]: /path` placeholder line.
+ * The description IS the carrier: the line persists in the issue body and
+ * rides the first prompt, where the engine reads the file itself. No
+ * separate attachments rail.
  *
- * Resolves through the shared `showDialog` promise: `{kind:"start", …}` for
- * a startable story's Enter, `{kind:"open", taskId}` for a linked story
- * (its session already exists), undefined on esc/backdrop.
+ * Resolves through the shared `showDialog` promise with the (possibly
+ * edited) title/body on EVERY outcome: `{kind:"start"|"open"|"close"}`.
+ * The kanban page owns persisting a dirty patch (`issue.mutate update`).
  */
 
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { usePaste } from "@opentui/react"
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
-import { type ReactNode, useState } from "react"
-import { ISSUE_CHAT_PLACEMENTS, type IssueChatPlacement } from "../../state/issue-chat"
-import { asAttachmentPaths, attachmentLabel, captureClipboardAttachment } from "../../tui/lib/attachments"
+import { type ReactNode, useRef, useState } from "react"
+import { ISSUE_CHAT_PLACEMENTS, type IssueChatPlacement, withImagePlaceholders } from "../../state/issue-chat"
+import { stripNewlines } from "../../tui/component/new-task-dialog/state"
+import { asAttachmentPaths, captureClipboardAttachment } from "../../tui/lib/attachments"
 import type { VendorId } from "../../types/task"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
@@ -36,31 +41,22 @@ export interface IssueDetailOptions {
   readonly engineLabel: (vendor: VendorId) => string
 }
 
-/** Visible description rows before it becomes a fixed-height scrollbox. */
-const DESCRIPTION_VIEW_ROWS = 10
-/** Rough wrap width inside the large (110-col) dialog card: padding + the
- *  content box's border/padding leave ~100 text columns. */
-const DESCRIPTION_WRAP_COLS = 100
-
-/** Word-wrap line estimate — ceil(len/width) per hard line, min 1. */
-export function estimateWrappedLines(text: string, width: number): number {
-  if (!text) return 1
-  return text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / width)), 0)
-}
-
+/** Every outcome carries the drafted title/body — the page saves a dirty
+ *  patch regardless of how the drawer was left. */
 export type IssueDetailOutcome =
-  | {
-      kind: "start"
-      vendor: VendorId
-      placement: IssueChatPlacement
-      attachments: readonly string[]
-    }
-  | { kind: "open"; taskId: string }
+  | { kind: "start"; vendor: VendorId; placement: IssueChatPlacement; title: string; body: string }
+  | { kind: "open"; taskId: string; title: string; body: string }
+  | { kind: "close"; title: string; body: string }
+
+type Field = "title" | "description" | "engine" | "workspace"
+
+/** Description editor height — tall enough to read a story, short enough
+ *  to keep the start config on screen. */
+const DESCRIPTION_ROWS = 8
 
 function IssueDetailDialogView(
   props: IssueDetailOptions & {
     onSubmit: (outcome: IssueDetailOutcome) => void
-    onCancel: () => void
   },
 ) {
   const dialog = useDialog()
@@ -72,21 +68,46 @@ function IssueDetailDialogView(
 
   const [vendor, setVendor] = useState<VendorId>(props.defaultVendor)
   const [placement, setPlacement] = useState<IssueChatPlacement>("worktree")
-  const [attachments, setAttachments] = useState<readonly string[]>([])
+  const [draftTitle, setDraftTitle] = useState(issue.title)
+  const [draftBody, setDraftBody] = useState(issue.body)
+  // Startable stories open ready to fire (enter = start from the workspace
+  // field); linked/done ones open on the title for reading/editing.
+  const [field, setField] = useState<Field>(startable ? "workspace" : "title")
 
-  // Pasted text that is entirely image/PDF path(s) becomes attachments —
-  // the quick-task composer's paste contract, verbatim.
+  // The description is an uncontrolled <textarea> (pasted newlines survive);
+  // placeholder inserts write through the ref, edits mirror into draftBody.
+  const bodyEl = useRef<TextareaRenderable | null>(null)
+
+  const fields: readonly Field[] = startable
+    ? ["title", "description", "engine", "workspace"]
+    : ["title", "description"]
+
+  function insertPlaceholders(paths: readonly string[]): void {
+    if (paths.length === 0) return
+    const next = withImagePlaceholders(bodyEl.current?.plainText ?? draftBody, paths)
+    bodyEl.current?.setText(next)
+    setDraftBody(next)
+  }
+
+  // Pasted text that is entirely image/PDF path(s) becomes placeholder
+  // lines — the quick-task composer's paste contract, aimed at the body.
   usePaste((event: { bytes: Uint8Array; preventDefault: () => void }) => {
-    if (!startable) return
     const paths = asAttachmentPaths(new TextDecoder().decode(event.bytes))
     if (!paths) return
     event.preventDefault()
-    setAttachments((prev) => [...prev, ...paths.filter((p) => !prev.includes(p))])
+    insertPlaceholders(paths)
   })
 
-  function pasteAttachment(): void {
+  function pasteClipboardImage(): void {
     void captureClipboardAttachment().then((path) => {
-      if (path) setAttachments((prev) => (prev.includes(path) ? prev : [...prev, path]))
+      if (path) insertPlaceholders([path])
+    })
+  }
+
+  function cycleField(dir: 1 | -1): void {
+    setField((current) => {
+      const i = Math.max(0, fields.indexOf(current))
+      return fields[(i + dir + fields.length) % fields.length] ?? "title"
     })
   }
 
@@ -106,35 +127,57 @@ function IssueDetailDialogView(
     })
   }
 
+  function draft(): { title: string; body: string } {
+    return {
+      title: draftTitle.trim() || issue.title,
+      body: bodyEl.current?.plainText ?? draftBody,
+    }
+  }
+
   function commit(): void {
     if (startable) {
-      props.onSubmit({ kind: "start", vendor, placement, attachments })
+      props.onSubmit({ kind: "start", vendor, placement, ...draft() })
     } else if (linkedTaskId) {
-      props.onSubmit({ kind: "open", taskId: linkedTaskId })
+      props.onSubmit({ kind: "open", taskId: linkedTaskId, ...draft() })
     } else {
-      return // done + unlinked — nothing to do on enter
+      return
     }
+    dialog.clear()
+  }
+
+  function close(): void {
+    props.onSubmit({ kind: "close", ...draft() })
     dialog.clear()
   }
 
   useBindings(() => ({
     bindings: [
-      { key: "return", cmd: () => commit() },
-      ...(startable
+      // Save-and-close esc: a modal MEMBER outranks the barrier's own
+      // escape, so dirty edits persist. ctrl+c (the barrier) still discards.
+      { key: "escape", cmd: () => close() },
+      { key: "tab", cmd: () => cycleField(1) },
+      { key: "shift+tab", cmd: () => cycleField(-1) },
+      { key: "ctrl+return", cmd: () => commit() },
+      { key: "ctrl+v", cmd: () => pasteClipboardImage() },
+      // Arrows steer ONLY the selector fields — in title/description they
+      // must reach the input's own cursor, so they stay unregistered there.
+      ...(field === "engine"
         ? [
             { key: "left", cmd: () => stepEngine(-1) },
             { key: "right", cmd: () => stepEngine(1) },
+            { key: "return", cmd: () => commit() },
+          ]
+        : []),
+      ...(field === "workspace"
+        ? [
             { key: "up", cmd: () => stepPlacement(-1) },
             { key: "down", cmd: () => stepPlacement(1) },
-            { key: "ctrl+v", cmd: () => pasteAttachment() },
-            { key: "backspace", cmd: () => setAttachments((prev) => prev.slice(0, -1)) },
+            { key: "return", cmd: () => commit() },
           ]
         : []),
     ],
   }))
 
-  const description = issue.body.trim()
-  const descriptionLines = estimateWrappedLines(description, DESCRIPTION_WRAP_COLS)
   const statusFg =
     issue.status === "done"
       ? theme.success
@@ -144,122 +187,104 @@ function IssueDetailDialogView(
           ? theme.accent
           : theme.textMuted
 
-  /** BOLD CAPS section header with a muted key hint — the board's grammar. */
-  const sectionHeader = (label: string, hint?: string): ReactNode => (
-    <box flexDirection="row" gap={2}>
-      <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-        {label}
-      </text>
-      {hint ? (
-        <text fg={theme.textMuted} wrapMode="none">
-          {hint}
+  /** Section header: BOLD CAPS, primary when its field is focused. */
+  const sectionHeader = (label: string, ownField: Field | null, hint?: string): ReactNode => {
+    const focused = ownField !== null && field === ownField
+    return (
+      <box flexDirection="row" gap={2}>
+        <text
+          fg={focused ? theme.primary : theme.textMuted}
+          attributes={focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD}
+          wrapMode="none"
+        >
+          {label}
         </text>
-      ) : null}
-    </box>
-  )
+        {hint ? (
+          <text fg={theme.textMuted} wrapMode="none">
+            {hint}
+          </text>
+        ) : null}
+      </box>
+    )
+  }
+
+  const frameColor = (ownField: Field) => (field === ownField ? theme.borderActive : theme.borderSubtle)
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
-        <box flexDirection="row" flexShrink={1}>
+        <box flexDirection="row" gap={2}>
+          <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+            #{issue.id}
+          </text>
+          <text fg={statusFg} attributes={TextAttributes.BOLD} wrapMode="none">
+            {t(`kanban.detail.status.${issue.status}`)}
+          </text>
           <text fg={theme.textMuted} wrapMode="none">
-            #{issue.id}{" "}
+            {t("kanban.detail.created", { date: issue.created })}
           </text>
-          <text attributes={TextAttributes.BOLD} fg={theme.text} wrapMode="word" flexShrink={1}>
-            {issue.title}
-          </text>
+          {linkedTaskId ? (
+            <text fg={theme.accent} wrapMode="none">
+              {t("kanban.detail.linked")}
+            </text>
+          ) : null}
         </box>
-        <text
-          fg={theme.textMuted}
-          wrapMode="none"
-          onMouseUp={() => {
-            props.onCancel()
-            dialog.clear()
-          }}
-        >
+        <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => close()}>
           esc
         </text>
       </box>
 
-      <box flexDirection="row" gap={2}>
-        <text fg={statusFg} attributes={TextAttributes.BOLD} wrapMode="none">
-          {t(`kanban.detail.status.${issue.status}`)}
-        </text>
-        <text fg={theme.textMuted} wrapMode="none">
-          {t("kanban.detail.created", { date: issue.created })}
-        </text>
-        {linkedTaskId ? (
-          <text fg={theme.accent} wrapMode="none">
-            {t("kanban.detail.linked")}
-          </text>
-        ) : null}
-      </box>
-
-      {/* DESCRIPTION — the card's two-line preview uncapped, on its own
-          bordered surface. A short body hugs its content (plain box); only a
-          long one mounts a fixed-height scrollbox — scrollbox always fills
-          its parent, so an unconditional one stretched the drawer with dead
-          rows. Line estimate wraps at ~content width; CJK/wide glyphs may
-          under-count, which at worst scrolls one line earlier. */}
+      {/* TITLE — controlled input, single line. Enter walks to the body. */}
       <box gap={0}>
-        {sectionHeader(t("kanban.detail.description"))}
+        {sectionHeader(t("kanban.detail.titleLabel"), "title")}
         <box
           border={true}
-          borderColor={theme.borderSubtle}
+          borderColor={frameColor("title")}
           backgroundColor={theme.backgroundElement}
           paddingLeft={1}
           paddingRight={1}
         >
-          {descriptionLines > DESCRIPTION_VIEW_ROWS ? (
-            <scrollbox
-              height={DESCRIPTION_VIEW_ROWS}
-              verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
-            >
-              <text fg={theme.text} wrapMode="word">
-                {description}
-              </text>
-            </scrollbox>
-          ) : description ? (
-            <text fg={theme.text} wrapMode="word">
-              {description}
-            </text>
-          ) : (
-            <text fg={theme.textMuted}>{t("kanban.detail.noDescription")}</text>
-          )}
+          <input
+            value={draftTitle}
+            focused={field === "title"}
+            onMouseUp={() => setField("title")}
+            onInput={(v: string) => setDraftTitle(stripNewlines(v))}
+            onSubmit={() => setField("description")}
+          />
+        </box>
+      </box>
+
+      {/* DESCRIPTION — uncontrolled multiline editor; pasted image paths and
+          ctrl+v screenshots append `images[N]: /path` placeholder lines. */}
+      <box gap={0}>
+        {sectionHeader(t("kanban.detail.description"), "description", t("kanban.detail.attachHint"))}
+        <box
+          border={true}
+          borderColor={frameColor("description")}
+          backgroundColor={theme.backgroundElement}
+          paddingLeft={1}
+          paddingRight={1}
+        >
+          <textarea
+            ref={(el: TextareaRenderable | null) => {
+              bodyEl.current = el
+            }}
+            initialValue={issue.body}
+            placeholder={t("kanban.detail.noDescription")}
+            focused={field === "description"}
+            height={DESCRIPTION_ROWS}
+            wrapMode="word"
+            onMouseUp={() => setField("description")}
+            onContentChange={() => setDraftBody(bodyEl.current?.plainText ?? "")}
+          />
         </box>
       </box>
 
       {startable ? (
         <box gap={1}>
-          {/* ATTACHMENTS — chips only when something is attached; the paste
-              hint rides the header so the empty state costs one line. */}
+          {/* ENGINE — chip buttons; selected = active border + primary bold. */}
           <box gap={0}>
-            {sectionHeader(t("kanban.detail.attachments"), t("kanban.detail.attachHint"))}
-            {attachments.length > 0 ? (
-              <box flexDirection="row" gap={1} flexWrap="wrap">
-                {attachments.map((path, i) => (
-                  <box
-                    key={path}
-                    border={true}
-                    borderColor={theme.borderSubtle}
-                    backgroundColor={theme.backgroundElement}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    onMouseUp={() => setAttachments((prev) => prev.filter((p) => p !== path))}
-                  >
-                    <text fg={theme.primary} wrapMode="none">
-                      {attachmentLabel(path, i)} ×
-                    </text>
-                  </box>
-                ))}
-              </box>
-            ) : null}
-          </box>
-
-          {/* ENGINE — chip buttons; the selected vendor gets the active
-              border + primary bold, the rest stay subtle. */}
-          <box gap={0}>
-            {sectionHeader(t("kanban.detail.engine"), "←/→")}
+            {sectionHeader(t("kanban.detail.engine"), "engine", "←/→")}
             <box flexDirection="row" gap={1}>
               {props.engines.map((engine) => {
                 const selected = engine === vendor
@@ -271,7 +296,10 @@ function IssueDetailDialogView(
                     backgroundColor={selected ? theme.backgroundElement : undefined}
                     paddingLeft={2}
                     paddingRight={2}
-                    onMouseUp={() => setVendor(engine)}
+                    onMouseUp={() => {
+                      setField("engine")
+                      setVendor(engine)
+                    }}
                   >
                     <text
                       fg={selected ? theme.primary : theme.textMuted}
@@ -288,10 +316,10 @@ function IssueDetailDialogView(
 
           {/* WORKSPACE — the three placements as one grouped, bordered list. */}
           <box gap={0}>
-            {sectionHeader(t("kanban.detail.workspace"), "↑/↓")}
+            {sectionHeader(t("kanban.detail.workspace"), "workspace", "↑/↓")}
             <box
               border={true}
-              borderColor={theme.borderSubtle}
+              borderColor={frameColor("workspace")}
               backgroundColor={theme.backgroundElement}
               paddingLeft={1}
               paddingRight={1}
@@ -303,7 +331,10 @@ function IssueDetailDialogView(
                     key={option}
                     fg={active ? theme.primary : theme.textMuted}
                     attributes={active ? TextAttributes.BOLD : undefined}
-                    onMouseUp={() => setPlacement(option)}
+                    onMouseUp={() => {
+                      setField("workspace")
+                      setPlacement(option)
+                    }}
                   >
                     {active ? "▸ " : "  "}
                     {t(`kanban.detail.placement.${option}`)}
@@ -329,9 +360,7 @@ function IssueDetailDialogView(
 function show(dialog: DialogContext, opts: IssueDetailOptions): Promise<IssueDetailOutcome | undefined> {
   return showDialog<IssueDetailOutcome>(
     dialog,
-    (resolve) => (
-      <IssueDetailDialogView {...opts} onSubmit={(outcome) => resolve(outcome)} onCancel={() => resolve(undefined)} />
-    ),
+    (resolve) => <IssueDetailDialogView {...opts} onSubmit={(outcome) => resolve(outcome)} />,
     { size: "large" },
   )
 }

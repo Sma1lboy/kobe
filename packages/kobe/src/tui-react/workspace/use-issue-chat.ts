@@ -17,7 +17,10 @@
  * like quick-fork — the prompt is held here per task id and consumed by the
  * task's first engine spawn, so a background start delivers on first visit.
  * Held in a Map (unlike quick-fork's single slot): background starts can
- * accumulate several pending prompts.
+ * accumulate several pending prompts. Image references need no side
+ * channel — `images[N]: /path` placeholder lines live in the issue BODY
+ * (the detail drawer inserts them on paste), so they ride the prompt as
+ * part of the story text.
  */
 
 import { errorMessage } from "@/lib/error-message"
@@ -32,16 +35,15 @@ import {
 } from "../../state/issue-chat"
 import { addSavedRepo } from "../../state/repos"
 import { setRepoLastActiveVendor } from "../../state/vendor-prefs"
-import { appendAttachmentRefs } from "../../tui/lib/attachments"
 import type { Task, VendorId } from "../../types/task"
 import { useT } from "../i18n"
 
 export interface IssueChatStart {
   readonly repoRoot: string
+  /** The story as the drawer left it — edited title/body already saved. */
   readonly issue: Issue
   readonly vendor: VendorId
   readonly placement: IssueChatPlacement
-  readonly attachments: readonly string[]
 }
 
 export interface IssueChatOrchestrator {
@@ -84,7 +86,7 @@ export function useIssueChat(
   }
 
   async function start(request: IssueChatStart): Promise<void> {
-    const { repoRoot, issue, vendor, placement, attachments } = request
+    const { repoRoot, issue, vendor, placement } = request
     try {
       const api = kobeApiInvocation()
       if (placement === "project") {
@@ -96,7 +98,7 @@ export function useIssueChat(
         await orch
           .mutateIssue(repoRoot, { type: "setStatus", id: issue.id, status: "doing" })
           .catch((err: unknown) => console.error("[kobe kanban] issue setStatus failed:", err))
-        holdPrompt(main.id, appendAttachmentRefs(issueProjectPrompt(issue, api), attachments))
+        holdPrompt(main.id, issueProjectPrompt(issue, api))
         await enter(main.id)
         return
       }
@@ -109,7 +111,7 @@ export function useIssueChat(
       await orch
         .mutateIssue(repoRoot, { type: "link", id: issue.id, taskId: task.id })
         .catch((err: unknown) => console.error("[kobe kanban] issue link failed:", err))
-      holdPrompt(task.id, appendAttachmentRefs(issueWorktreePrompt(issue, api), attachments))
+      holdPrompt(task.id, issueWorktreePrompt(issue, api))
       if (placement === "worktree") {
         await enter(task.id)
       } else {

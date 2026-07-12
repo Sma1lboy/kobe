@@ -64,10 +64,10 @@ describe("KanbanPage", () => {
     await frame()
     act(() => mockInput.pressEnter())
     const drawer = await frame()
-    // The drawer shows the FULL story: id, title, description, start config.
+    // The drawer shows the FULL story: id, description editor, start config.
     expect(drawer).toContain("#1")
     expect(drawer).toContain("repro steps live here")
-    expect(drawer).toContain("workspace")
+    expect(drawer).toContain("WORKSPACE")
     expect(modalActive()).toBe(true)
     mockInput.pressEscape()
     await settle()
