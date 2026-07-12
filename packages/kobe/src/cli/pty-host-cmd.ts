@@ -3,8 +3,8 @@
  * (this process becomes it). INTERNAL: spawned detached by
  * `ensurePtyHostReachable()` when the terminal pane needs a host; not
  * listed in `kobe --help`. See `kobe-daemon/daemon/pty-server.ts` for
- * why this is a separate process from the daemon (tmux-server analog:
- * `kobe daemon restart` must never end running engine sessions).
+ * why this is a separate process from the daemon: `kobe daemon restart`
+ * must never end running engine sessions.
  */
 
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"

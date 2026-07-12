@@ -93,10 +93,8 @@ export class TaskEditor {
   }
 
   /**
-   * Change a task's engine vendor. Pure metadata — no git / tmux side
-   * effects here. The change takes effect on the task's next enter:
-   * `ensureSession` rebuilds a session whose `@kobe_vendor` tag no
-   * longer matches, so the new tmux pane launches the new engine.
+   * Change a task's engine vendor. Pure metadata with no git or process side
+   * effects; the next fresh engine session uses the new vendor.
    */
   async setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
     const task = this.requireTask(id)

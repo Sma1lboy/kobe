@@ -42,13 +42,6 @@ export interface CreateTaskContext extends TaskActionContext {
    * clobber the disk write. The Tasks pane is disk-only and omits this.
    */
   readonly onRepoSaved?: () => void
-  /**
-   * DIVERGENCE — the Tasks pane's chattab surface preference can route the
-   * new-task flow to a dedicated tmux tab instead of the in-pane dialog.
-   * Return `true` when handled elsewhere (flow stops). The outer monitor
-   * has no tmux session to open a tab in and omits this.
-   */
-  readonly openCreateSurface?: (defaultRepo: string) => Promise<boolean>
   /** Land the host's cursor/selection on the created (or last adopted) task. */
   readonly selectTask?: (id: string) => void
   /**
@@ -63,7 +56,7 @@ export interface CreateTaskContext extends TaskActionContext {
 
 /**
  * Create (or adopt) a task through the shared NewTaskDialog flow: default
- * repo → optional surface redirect (Tasks pane chattab tab) → dialog →
+ * repo → dialog →
  * persist vendor + repo choices → `task.create` / `adoptWorktree` → land
  * the host cursor on the result. The repo auto-save keeps `kobe add`
  * optional: `addSavedRepo` normalizes to the git root + dedupes on disk.
@@ -76,7 +69,6 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   // Otherwise default to the host's cursor/active task's repo — the
   // "spawn a sibling" default.
   const defaultRepo = ctx.cursorRepo() ?? repos[0] ?? process.cwd()
-  if (ctx.openCreateSurface && (await ctx.openCreateSurface(defaultRepo))) return
   const defaultVendor = ctx.lastVendor(defaultRepo) ?? DEFAULT_TASK_VENDOR
   const availableVendors = await availableEngineIds()
   // First-run guard (#24): no built-in engine detected AND no custom engine

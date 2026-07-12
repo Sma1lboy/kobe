@@ -182,7 +182,7 @@ export async function runUpdateSubcommand(args: readonly string[], deps?: Partia
     // notes + pinned install). Injected deps (tests) or a pipe keep the
     // plain parseable text output for scripts and agents.
     if (deps === undefined && process.stdout.isTTY) {
-      const { startVersionsHost } = await import("../tui-react/update/versions-page.tsx")
+      const { startVersionsHost } = await import("../tui-react/component/versions-page.tsx")
       await startVersionsHost()
       return
     }

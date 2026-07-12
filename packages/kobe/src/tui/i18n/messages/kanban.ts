@@ -6,7 +6,7 @@
 export const en = {
   title: "Kanban",
   /** Footer/legend hint. */
-  hint: "r refresh · esc close",
+  hint: "tab/←/→ project · r refresh · esc close",
   loading: "Loading issues…",
   /** No saved projects / no tasks to derive repos from. */
   noRepos: "No projects yet — create a task first.",
@@ -25,7 +25,7 @@ export const en = {
 
 export const zh: typeof en = {
   title: "看板",
-  hint: "r 刷新 · esc 关闭",
+  hint: "tab/←/→ 切换项目 · r 刷新 · esc 关闭",
   loading: "正在加载 issues…",
   noRepos: "还没有项目——先创建一个任务。",
   empty: "暂无 issue——agent 可通过 `kobe api issue-create` 创建。",

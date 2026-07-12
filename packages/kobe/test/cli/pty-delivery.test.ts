@@ -8,7 +8,13 @@
 
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
 import { describe, expect, it } from "vitest"
-import { deliverToKey, findEngineKey, isTaskKey, taskKeys } from "../../src/cli/api/pty-delivery.ts"
+import {
+  deliverHostedPrompt,
+  deliverToKey,
+  findEngineKey,
+  isTaskKey,
+  taskKeys,
+} from "../../src/cli/api/pty-delivery.ts"
 
 function session(key: string, command: string[], alive = true): PtySessionInfo {
   return { key, alive, pid: alive ? 123 : null, command, title: "" }
@@ -105,5 +111,58 @@ describe("deliverToKey", () => {
     }
     expect(await deliverToKey(rpc, "t1::tab-1", "/wt/t1", "x")).toBe(false)
     expect(calls.map((c) => c.name)).toEqual(["pty.open"]) // no write into a dead pty
+  })
+})
+
+describe("deliverHostedPrompt", () => {
+  it("starts the canonical engine session with the explicit prompt already in its launch argv", async () => {
+    const calls: Array<{ name: string; payload: unknown }> = []
+    const rpc = {
+      request: async <T>(name: string, payload?: unknown): Promise<T> => {
+        calls.push({ name, payload })
+        if (name === "pty.list") return { sessions: [] } as T
+        if (name === "pty.open") return { replay: "", alive: true, created: true } as T
+        return {} as T
+      },
+    }
+
+    const result = await deliverHostedPrompt(rpc, { id: "t1", engineBin: "claude" }, "/wt/t1", "fix it", {
+      key: "t1::tab-1",
+      command: ["/bin/zsh", "-ilc", "claude 'fix it'"],
+    })
+
+    expect(calls.map((call) => call.name)).toEqual(["pty.list", "pty.open", "pty.detach"])
+    expect(calls[1].payload).toMatchObject({
+      key: "t1::tab-1",
+      cwd: "/wt/t1",
+      command: ["/bin/zsh", "-ilc", "claude 'fix it'"],
+    })
+    expect(result).toEqual({
+      session: "t1::tab-1",
+      pane: "t1::tab-1",
+      started: true,
+      engineReady: true,
+      delivered: true,
+    })
+  })
+
+  it("delivers once when another caller wins the create race", async () => {
+    const calls: Array<{ name: string; payload: unknown }> = []
+    const rpc = {
+      request: async <T>(name: string, payload?: unknown): Promise<T> => {
+        calls.push({ name, payload })
+        if (name === "pty.list") return { sessions: [] } as T
+        if (name === "pty.open") return { replay: "", alive: true, created: false } as T
+        return {} as T
+      },
+    }
+
+    const result = await deliverHostedPrompt(rpc, { id: "t1", engineBin: "claude" }, "/wt/t1", "fix it", {
+      key: "t1::tab-1",
+      command: ["/bin/zsh", "-ilc", "claude 'fix it'"],
+    })
+
+    expect(calls.map((call) => call.name)).toEqual(["pty.list", "pty.open", "pty.write", "pty.write", "pty.detach"])
+    expect(result).toMatchObject({ started: false, delivered: true })
   })
 })

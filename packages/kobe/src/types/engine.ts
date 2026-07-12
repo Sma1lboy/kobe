@@ -2,11 +2,9 @@
  * Engine-derived data types (v0.6).
  *
  * v0.5 had a full `AIEngine` port (spawn/resume/stream/...) that the
- * orchestrator drove. In v0.6 kobe doesn't drive claude/codex as a
- * subprocess — those run interactively inside a tmux pane and own
- * their own session lifecycle. The only thing kobe still consumes
- * from the engine side is **history on disk**, used by the outer
- * monitor view (live preview rail, cost dashboard, retrospective).
+ * orchestrator drove. Kobe now launches interactive engine CLIs through
+ * Hosted PTYs and lets each engine own its conversation lifecycle. Engine
+ * adapters expose history, identity, launch, capabilities, and telemetry.
  *
  * What lives here now:
  *   - `Message` / `EngineHistory` / `EngineUsageSnapshot` — the

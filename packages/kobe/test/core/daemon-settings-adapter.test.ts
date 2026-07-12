@@ -36,7 +36,6 @@ describe("daemon settings adapter", () => {
           transparentBackground: true,
           focusAccent: "info",
           notificationsToast: false,
-          settingsSurface: "taskpanel",
           editorKind: "custom",
           editorCustomCommand: "code -w {file}",
           remoteProjects: true,
@@ -51,7 +50,6 @@ describe("daemon settings adapter", () => {
     expect(await patched.json()).toMatchObject({
       activeTheme: "matrix",
       transparentBackground: true,
-      settingsSurface: "taskpanel",
       editorKind: "custom",
     })
 

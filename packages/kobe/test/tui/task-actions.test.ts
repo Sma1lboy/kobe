@@ -8,25 +8,25 @@
  *
  *   - delete's DIRTY_WORKTREE re-prompt — the guard that keeps a worktree
  *     with uncommitted work from being destroyed without an explicit
- *     force-confirm (KOB-244). A failed/declined delete must leave the tmux
+ *     force-confirm (KOB-244). A failed/declined delete must leave the hosted
  *     session and selection untouched.
  *   - archive's session teardown — archiving stops the running engine
- *     (switch-client away, optionally clear active-task focus, kill the tmux
- *     session) while unarchive touches nothing.
+ *     engine sessions while unarchive touches nothing.
  *
  * The module deliberately has no `@opentui` imports: modal UI arrives as
  * context adapters (`confirm`, `promptText`), so the flows run here with
- * plain mocks. Only the tmux session ops are module-mocked.
+ * plain mocks. Hosted session operations are module-mocked.
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { killHostedSessions, openHostedSessionHost } from "../../src/engine/hosted-session"
 import { DIRTY_WORKTREE_CODE } from "../../src/orchestrator/errors"
-import { killSession, switchClientBeforeKill } from "../../src/tui/panes/terminal/tmux"
 
-vi.mock("../../src/tui/panes/terminal/tmux", () => ({
-  tmuxSessionName: (id: string) => `kobe-${id}`,
-  killSession: vi.fn(async () => {}),
-  switchClientBeforeKill: vi.fn(async () => {}),
+vi.mock("../../src/engine/hosted-session", () => ({
+  openHostedSessionHost: vi.fn(),
+  listHostedSessions: vi.fn(async () => []),
+  hostedTaskKeys: vi.fn((_sessions: unknown, taskId: string) => [`${taskId}::tab-1`]),
+  killHostedSessions: vi.fn(async () => {}),
 }))
 // Rename/branch/vendor flows live in task-actions-rename.test.ts (file split
 // to stay under the ~500-line cap).
@@ -76,7 +76,6 @@ function makeCtx(opts: {
   tasks: readonly Task[]
   orch: OrchMock | null
   confirms?: readonly boolean[]
-  switchBeforeKill?: boolean
   updateActiveTask?: boolean
   promptTextResult?: string | undefined
 }): {
@@ -105,7 +104,6 @@ function makeCtx(opts: {
     notifyError,
     notifyInfo,
     reload,
-    switchBeforeKill: opts.switchBeforeKill,
     updateActiveTask: opts.updateActiveTask,
     onTaskDeleted,
   }
@@ -113,8 +111,11 @@ function makeCtx(opts: {
 }
 
 beforeEach(() => {
-  vi.mocked(killSession).mockClear()
-  vi.mocked(switchClientBeforeKill).mockClear()
+  vi.mocked(killHostedSessions).mockClear()
+  vi.mocked(openHostedSessionHost).mockResolvedValue({
+    rpc: { request: vi.fn() },
+    close: vi.fn(),
+  })
 })
 
 describe("nextActiveTask", () => {
@@ -146,7 +147,7 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
     expect(orch.deleteTask).toHaveBeenNthCalledWith(1, "t1")
     expect(orch.deleteTask).toHaveBeenNthCalledWith(2, "t1", { force: true })
     // Successful force-delete proceeds to teardown + host selection hook.
-    expect(killSession).toHaveBeenCalledWith("kobe-t1")
+    expect(killHostedSessions).toHaveBeenCalledWith(expect.anything(), ["t1::tab-1"])
     expect(reload).toHaveBeenCalledTimes(1)
     expect(onTaskDeleted).toHaveBeenCalledWith("t1", expect.objectContaining({ id: "t2" }))
   })
@@ -163,7 +164,7 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
     await deleteTaskFlow(ctx, "t1")
 
     expect(orch.deleteTask).toHaveBeenCalledTimes(1)
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
     expect(onTaskDeleted).not.toHaveBeenCalled()
   })
 
@@ -181,20 +182,19 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
     // No force re-prompt for a non-DIRTY error.
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(notifyError).toHaveBeenCalledWith("Couldn't delete: daemon exploded")
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
     expect(onTaskDeleted).not.toHaveBeenCalled()
   })
 
-  test("Tasks-pane divergence: switchBeforeKill switches the client away first", async () => {
+  test("updates focus before stopping the deleted task's hosted engine", async () => {
     const tasks = [makeTask({ id: "t1" }), makeTask({ id: "t2" })]
     const orch = makeOrch()
-    const { ctx } = makeCtx({ tasks, orch, confirms: [true], switchBeforeKill: true, updateActiveTask: true })
+    const { ctx } = makeCtx({ tasks, orch, confirms: [true], updateActiveTask: true })
 
     await deleteTaskFlow(ctx, "t1")
 
-    expect(switchClientBeforeKill).toHaveBeenCalledWith("kobe-t1", "kobe-t2")
     expect(orch.setActiveTask).toHaveBeenCalledWith("t2")
-    expect(killSession).toHaveBeenCalledWith("kobe-t1")
+    expect(killHostedSessions).toHaveBeenCalledWith(expect.anything(), ["t1::tab-1"])
   })
 })
 
@@ -213,7 +213,7 @@ describe("deleteTaskFlow — project (main) row", () => {
     expect(orch.forgetProject).toHaveBeenCalledWith("/repos/alpha")
     // Never routes to deleteTask (which refuses main rows) or kills a session.
     expect(orch.deleteTask).not.toHaveBeenCalled()
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
@@ -244,7 +244,7 @@ describe("deleteTaskFlow — project (main) row", () => {
 })
 
 describe("archiveTaskFlow — session teardown", () => {
-  test("archiving confirms, then kills the task's tmux session", async () => {
+  test("archiving confirms, then kills the task's hosted sessions", async () => {
     const tasks = [makeTask({ id: "t1", title: "busy" }), makeTask({ id: "t2" })]
     const orch = makeOrch()
     const { ctx, confirm, reload } = makeCtx({ tasks, orch, confirms: [true], updateActiveTask: true })
@@ -255,9 +255,8 @@ describe("archiveTaskFlow — session teardown", () => {
     expect(orch.setArchived).toHaveBeenCalledWith("t1", true)
     // Archive STOPS the running engine: switch away, hand focus to the next
     // active task, kill the session. Data (worktree/branch/history) survives.
-    expect(switchClientBeforeKill).toHaveBeenCalledWith("kobe-t1", "kobe-t2")
     expect(orch.setActiveTask).toHaveBeenCalledWith("t2")
-    expect(killSession).toHaveBeenCalledWith("kobe-t1")
+    expect(killHostedSessions).toHaveBeenCalledWith(expect.anything(), ["t1::tab-1"])
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
@@ -269,10 +268,10 @@ describe("archiveTaskFlow — session teardown", () => {
     await archiveTaskFlow(ctx, "t1")
 
     expect(orch.setArchived).not.toHaveBeenCalled()
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
   })
 
-  test("unarchive needs no confirm and never touches tmux", async () => {
+  test("unarchive needs no confirm and never touches hosted sessions", async () => {
     const tasks = [makeTask({ id: "t1", archived: true })]
     const orch = makeOrch()
     const { ctx, confirm, reload } = makeCtx({ tasks, orch, confirms: [] })
@@ -281,8 +280,7 @@ describe("archiveTaskFlow — session teardown", () => {
 
     expect(confirm).not.toHaveBeenCalled()
     expect(orch.setArchived).toHaveBeenCalledWith("t1", false)
-    expect(switchClientBeforeKill).not.toHaveBeenCalled()
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
@@ -294,7 +292,7 @@ describe("archiveTaskFlow — session teardown", () => {
     await archiveTaskFlow(ctx, "t1")
 
     expect(orch.setActiveTask).not.toHaveBeenCalled()
-    expect(killSession).toHaveBeenCalledWith("kobe-t1")
+    expect(killHostedSessions).toHaveBeenCalledWith(expect.anything(), ["t1::tab-1"])
   })
 
   test("setArchived failure logs and skips teardown/reload entirely", async () => {
@@ -309,7 +307,7 @@ describe("archiveTaskFlow — session teardown", () => {
     await archiveTaskFlow(ctx, "t1")
 
     expect(confirm).toHaveBeenCalledTimes(1)
-    expect(killSession).not.toHaveBeenCalled()
+    expect(killHostedSessions).not.toHaveBeenCalled()
     expect(reload).not.toHaveBeenCalled()
   })
 

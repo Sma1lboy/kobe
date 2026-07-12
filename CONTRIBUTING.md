@@ -1,6 +1,6 @@
 # Contributing to kobe
 
-Thanks for your interest in contributing! kobe is a local-first terminal UI for running many AI coding sessions at once — each task is a git worktree + engine session + branch, hosted in tmux.
+Thanks for your interest in contributing! kobe is a local-first terminal UI for running many AI coding sessions at once — each task is a git worktree + hosted engine session + branch.
 
 This guide covers the mechanics of contributing. The design rationale lives in `docs/` — when this file and those docs disagree, the docs win.
 
@@ -13,12 +13,11 @@ Read these, in order:
 3. [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md) — required reading before adding or moving any keyboard chord.
 4. [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) — current shipped behavior and release-note style.
 
-The tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun**. Proposals to swap any of these will not be accepted — see `docs/DESIGN.md` for why.
+The tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/react` + React 19 + Bun**. Proposals to swap any of these will not be accepted — see `docs/DESIGN.md` for why.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) `>= 1.3.11`
-- `tmux`
 - At least one engine CLI on `PATH`: `claude`, `codex`, or `copilot`
 - git
 
@@ -50,9 +49,9 @@ Two dev flavours:
 | `bun run dev` | Real `claude` / `codex` | `~/.kobe` (production) | Touching production-style state. |
 | `bun run dev:sandbox` | Real `claude` / `codex` | `packages/kobe/.dev-sandbox/home` (throwaway) | Day-to-day development. Won't touch your real `~/.kobe/tasks.json`. |
 
-The sandbox gets its own daemon socket and its own tmux server (`KOBE_TMUX_SOCKET=kobe-sandbox`), so it can coexist with a production kobe. After changing pane or engine code, run `bun run dev:sandbox:reset` so a long-lived sandbox session isn't still running old code.
+The sandbox gets its own home, daemon, and PTY host, so it can coexist with a production kobe. After changing daemon, orchestrator, or engine code, run `bun run dev:sandbox:reset` so a long-lived sandbox process isn't still running old code.
 
-Debugging the daemon? Read `<KOBE_HOME>/.kobe/daemon.log` first — the daemon's stdout/stderr are redirected there, and errors are tagged by `[subsystem]`. `kobe doctor` diagnoses a wedged daemon; `kobe reset` recovers it.
+Debugging the daemon? Read `<KOBE_HOME>/.kobe/daemon.log` first — the daemon's stdout/stderr are redirected there, and errors are tagged by `[subsystem]`. Use `kobe daemon restart` to replace a stale daemon process.
 
 ## Checks — run before every PR
 
@@ -65,7 +64,7 @@ bun run build         # the publish gate runs this too
 
 CI (`.github/workflows/ci.yml`) runs typecheck + tests + build on every PR. Note that lint is in `ci.yml` but **not** in the release gate, so run it locally.
 
-There is also an opt-in behavioral suite — `bun run test:behavior` — which spawns the real TUI in tmux/PTY and asserts on visible screen state. It needs a local tmux and terminal sizing, so it's local-only (not in CI). Run it when your change is user-visible; see [`docs/HARNESS.md`](./docs/HARNESS.md) for the philosophy: unit tests prove functions work, behavioral tests prove the *product* works.
+There is also a behavioral suite — `bun run test:behavior` — which drives the built CLI against an isolated daemon and hosted PTY engine. It runs in CI; use it locally for packaged-path and session-lifecycle changes. See [`docs/HARNESS.md`](./docs/HARNESS.md) for the philosophy: unit tests prove functions work, behavioral tests prove the *product* works.
 
 ## Making changes
 
@@ -74,7 +73,7 @@ There is also an opt-in behavioral suite — `bun run test:behavior` — which s
 - Keep PRs focused. Cross-cutting changes should be surfaced and discussed first, not bundled in.
 - **Layout is flex-first.** opentui boxes follow Yoga flexbox semantics — use `flexGrow`/`flexShrink`/`flexBasis` for sizing, not hardcoded `width={N}`/`height={N}`. Hardcoded dimensions are acceptable only for documented conventions, fixed terminal glyphs, or modal overlays. See "Layout: flex-first, hardcode last" in [`CLAUDE.md`](./CLAUDE.md).
 - **Engine adapters own UI data.** Neutral layers (TUI, orchestrator) must not hard-code Claude/Codex-specific strings, parse vendor transcript files, or derive vendor-specific metrics. Product names, model catalogs, history, and usage metrics all come from the engine contract (`AIEngine.identity`, `EngineCapabilities`, `EngineHistory`). If a pane needs engine-specific data, extend the engine contract first.
-- New daemon-subscribing surfaces subscribe as `role: "pane"` (the default). `role: "gui"` is reserved for the one process whose lifetime equals "a human is attached" — getting this wrong breaks daemon shutdown. See "Daemon lifecycle" in [`CLAUDE.md`](./CLAUDE.md).
+- Background consumers subscribe as `role: "pane"` (the default). `role: "gui"` is reserved for an attached TUI or browser whose lifetime represents a human client — getting this wrong breaks daemon shutdown. See "Daemon lifecycle" in [`AGENTS.md`](./AGENTS.md).
 - Diagrams in `docs/` use Mermaid fences, not ASCII art (tiny ≤3-node relationships excepted).
 
 ### Commits

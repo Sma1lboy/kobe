@@ -138,6 +138,8 @@ export function forgetTaskTabs(kv: TabsSnapshotKv, taskId: string): void {
 export interface TerminalTabsProps {
   taskId: string
   worktree: string
+  repo?: string
+  taskKind?: "main" | "task"
   command: readonly string[]
   /** Task's current engine + effort — used to build a per-tab command when
    *  a tab pins its own vendor via `chooseEngine`. */
@@ -247,7 +249,13 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       live,
       shell: defaultShell(),
       prompt: propsRef.current.initialPrompt,
-      taskId: props.taskId,
+      task: {
+        id: props.taskId,
+        kind: props.taskKind,
+        vendor: tab.vendor ?? props.vendor,
+        repo: props.repo,
+      },
+      worktreePath: props.worktree,
     })
   }
   // Latest-render mirror for the mount-once engine-send closure below —

@@ -26,13 +26,13 @@ If applicable, add screenshots to help explain your problem.
 **Environment**
  - OS: [e.g. macOS 15.5, Ubuntu 24.04]
  - Terminal app: [e.g. Terminal.app, iTerm2, kitty, Ghostty, VS Code terminal]
- - Where it happens: [main kobe TUI / inside a task (tmux) / both]
+ - Where it happens: [sidebar / embedded terminal / files / settings / browser]
 
-**`kobe doctor` output (required)**
-Run `kobe doctor` in the same terminal where the bug happens and paste the full output — it includes your kobe version, terminal, and keyboard-protocol info we need for triage.
+**Diagnostics**
+Run `kobe --version` and `kobe daemon status` in the same terminal where the bug happens and paste their output.
 
 ```text
-paste `kobe doctor` output here
+paste command output here
 ```
 
 **Additional context**

@@ -1,19 +1,11 @@
 /**
  * Shared reader for `~/.kobe/settings/keybindings.yaml`.
  *
- * Two consumers parse this file, in different layers of the stack:
- *   - the opentui keymap loader (`src/tui/context/keybindings-user.ts`),
- *     which mutates `KobeKeymap`;
- *   - the tmux-layer resolver (`src/tmux/keybindings.ts`), which feeds
- *     the no-prefix session bindings `ensureSession` installs.
- * The second must stay importable without `@opentui/*` (tmux.ts is
- * vitest-imported), so the file read lives here — node:fs + Bun.YAML
- * only — instead of inside the opentui-tainted loader.
+ * The framework-free reader lives here so config IO remains separate from
+ * the keymap mutation performed by `tui/context/keybindings-user.ts`.
  *
  * Read once per process and cached: the TUI applies keybindings at boot
- * and never re-reads (edits require a restart / pane respawn), so a
- * second disk read could only introduce inconsistency between the two
- * consumers, never fix one.
+ * and the daemon watcher explicitly clears this cache for live reloads.
  */
 
 import { existsSync, readFileSync } from "node:fs"

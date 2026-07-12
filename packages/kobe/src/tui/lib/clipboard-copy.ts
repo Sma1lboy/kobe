@@ -1,7 +1,6 @@
 /**
  * System-clipboard delivery for the embedded terminal's copy-on-select —
- * the pure-TUI sibling of the tmux workspace's copy-mode pipe
- * (`src/tmux/clipboard.ts`, same resolver). OSC52 alone is not enough:
+ * OSC52 alone is not enough:
  * several terminals ship with it disabled (iTerm2) or unsupported
  * (Terminal.app), so the selection is ALSO piped into the platform
  * clipboard command when one exists (pbcopy / wl-copy / xclip / xsel).
@@ -10,7 +9,7 @@
  * machine's clipboard.
  */
 
-import { clipboardBinaryOnPath, resolveClipboardCopyCommand } from "../../tmux/clipboard"
+import { clipboardBinaryOnPath, resolveClipboardCopyCommand } from "../../lib/clipboard-command"
 
 /** Resolved once per process — the probe shells out to `which`. */
 let resolvedCommand: string | null | undefined

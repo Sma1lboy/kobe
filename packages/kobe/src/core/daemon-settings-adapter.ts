@@ -14,11 +14,6 @@ import {
   EDITOR_KIND_KEY,
   normalizeEditorKind,
 } from "../tui/lib/editor-prefs.ts"
-import {
-  DEFAULT_SETTINGS_SURFACE,
-  SETTINGS_SURFACE_KEY,
-  normalizeSettingsSurface,
-} from "../tui/lib/settings-surface.ts"
 import type { VendorId } from "../types/task.ts"
 import { BUILTIN_VENDORS, isBuiltinVendor } from "../types/vendor.ts"
 
@@ -61,7 +56,6 @@ export function daemonSettingsSnapshot(): Response {
     focusAccent: FOCUS_ACCENTS.includes(focusAccent as (typeof FOCUS_ACCENTS)[number]) ? focusAccent : "primary",
     notificationsToast: state["notifications.toast.enabled"] !== false,
     notificationsSound: state["notifications.sound.enabled"] !== false,
-    settingsSurface: normalizeSettingsSurface(state[SETTINGS_SURFACE_KEY] ?? DEFAULT_SETTINGS_SURFACE),
     editorKind: normalizeEditorKind(state[EDITOR_KIND_KEY] ?? DEFAULT_EDITOR_KIND),
     editorCustomCommand: stringValue(state[EDITOR_CUSTOM_KEY]),
     remoteProjects: state["experimental.remoteProjects"] === true,
@@ -96,8 +90,6 @@ export async function daemonSettingsPatch(request: Request): Promise<Response> {
     if (FOCUS_ACCENTS.includes(body.focusAccent as (typeof FOCUS_ACCENTS)[number])) patch.focusAccent = body.focusAccent
     putBool(patch, "notifications.toast.enabled", body.notificationsToast)
     putBool(patch, "notifications.sound.enabled", body.notificationsSound)
-    if (body.settingsSurface === "chattab" || body.settingsSurface === "taskpanel")
-      patch[SETTINGS_SURFACE_KEY] = body.settingsSurface
     if (EDITOR_KINDS.includes(body.editorKind as (typeof EDITOR_KINDS)[number]))
       patch[EDITOR_KIND_KEY] = body.editorKind
     putString(patch, EDITOR_CUSTOM_KEY, body.editorCustomCommand)

@@ -1,15 +1,9 @@
 /**
  * Task data model (v0.6).
  *
- * v0.6 reshape vs v0.5:
- *   - Drops `tabs` / `activeTabId` / `sessionId` — there's no per-task
- *     chat-tab system anymore. Each task has exactly one tmux session;
- *     the engine (claude / codex) manages its own session id on disk.
- *   - Drops `model` / `modelEffort` / `vendor` / `permissionMode` —
- *     interactive claude/codex pick those at runtime, not via kobe.
- *     The remaining `vendor` field stays only as a hint for the outer
- *     monitor's history reader ("which adapter parses this task's
- *     transcript?"). Optional with a sensible default.
+ * Tasks persist Worktree and lifecycle metadata. Terminal-tab state and live
+ * Hosted PTY sessions have their own owners; engine conversation ids remain
+ * engine-owned on disk.
  *
  * On-disk manifest moves to v3 (see `TaskIndex` below). The store
  * migrates v1/v2 records on load by stripping the dropped fields;
@@ -35,10 +29,7 @@ import type { VendorId } from "./vendor.ts"
 export const DEFAULT_TASK_VENDOR: VendorId = "claude"
 
 /**
- * Lifecycle states for a task. Kept from v0.5 — the monitor still
- * needs to group by state. With claude running inside tmux the
- * transitions are user-driven (mark done / archive) rather than
- * engine-driven.
+ * Lifecycle states used by sidebar grouping and automation.
  */
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
@@ -73,8 +64,7 @@ export type PRLifecycleState = "creating" | "open" | "ready_to_merge" | "merged"
 /**
  * PR status persisted on Task. v0.6 keeps the shape (the monitor can
  * still display it) but the orchestrator no longer drives PR creation
- * itself — a follow-up will re-introduce the create-PR flow via the Ops
- * pane (`tmux send-keys` into the claude pane).
+ * itself; create-PR flows ask the active engine through Hosted PTY delivery.
  */
 export interface TaskPRStatus {
   readonly provider: PRProviderId

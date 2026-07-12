@@ -4,7 +4,7 @@ import { resolve } from "node:path"
  * kobe CLI entry point (v0.6).
  *
  * Subcommands surface:
- *   - `kobe`                    Launch the TUI (default).
+ *   - `kobe`                    Launch the terminal workspace.
  *   - `kobe completions <shell> Generate shell completion script (bash/zsh/fish).
  *   - `kobe add [path]`         Save a repo path for the new-task picker.
  *   - `kobe remove [path]`      Forget a saved project (inverse of `add`; non-destructive).
@@ -15,36 +15,22 @@ import { resolve } from "node:path"
  *   - `kobe theme <verb>`       Manage user themes.
  *   - `kobe feedback`           Send feedback to GitHub Discussions.
  *   - `kobe update [target]`    Self-update (when packaged).
- *   - `kobe doctor`             Diagnose daemon / tmux / state (read-only).
- *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
- *                               kill sessions (+ wipe state with --hard).
- *   - `kobe reload`             Restart Tasks/Ops panes in place (engine
- *                               panes untouched) to pick up new kobe code.
- *   - `kobe kill-sessions`      Tear down kobe's tmux server (dev reset).
  *   - `kobe --version` / `-v`   Print version.
  *   - `kobe --help` / `-h`      Print usage.
  *
  * An unrecognized subcommand prints usage and exits non-zero (it does
  * NOT fall through to launching the TUI).
  *
- * Internal subcommands fired by tmux key bindings inside a task session
- * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
- * `focus-tasks`, `heal-layout`, `capture-layout`, `layout`, `tasks`, `ops` —
- * each takes the session/worktree as flags.
  * `hook` is fired by an engine's own hooks inside a worktree to report
  * activity events.
  *
- * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
- * a prompt via `tmux send-keys` into the task's engine pane, not the
- * deleted chat RPCs (see `./api-cmd.ts`). v0.5's `diagnose`, `mcp-bridge`,
- * `skill`, and pane-host test fixtures remain gone.
+ * `kobe api send` delivers through the hosted PTY session controller.
  */
 import { errorMessage } from "@/lib/error-message"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { expandTilde } from "../lib/path-home.ts"
 import { type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
-import { dispatchTuiCommand } from "./commands-tui.ts"
 import { topLevelUsage } from "./usage.ts"
 
 const ADD_USAGE =
@@ -423,6 +409,16 @@ async function main(): Promise<void> {
     await runDaemonSubcommand(rest)
     return
   }
+  if (subcommand === "doctor") {
+    const { runDoctorSubcommand } = await import("./doctor-cmd.ts")
+    await runDoctorSubcommand(rest)
+    return
+  }
+  if (subcommand === "reset") {
+    const { runResetSubcommand } = await import("./reset-cmd.ts")
+    await runResetSubcommand(rest)
+    return
+  }
   if (subcommand === "pty-host") {
     // Internal (spawned detached by the terminal pane's
     // ensurePtyHostReachable): the standalone process that owns embedded
@@ -431,27 +427,9 @@ async function main(): Promise<void> {
     await runPtyHostSubcommand(rest)
     return
   }
-  if (subcommand === "doctor") {
-    const { runDoctorSubcommand } = await import("./maintenance.ts")
-    await runDoctorSubcommand(rest)
-    return
-  }
   if (subcommand === "web") {
     const { runWebSubcommand } = await import("./web-cmd.ts")
     await runWebSubcommand(rest)
-    return
-  }
-  if (subcommand === "reset") {
-    const { runResetSubcommand } = await import("./maintenance.ts")
-    await runResetSubcommand(rest)
-    return
-  }
-  if (subcommand === "reload") {
-    // Hot-reload the in-tmux Tasks/Ops panes across all sessions WITHOUT a
-    // reset: respawn only the kobe-owned helper panes (engine panes stay
-    // alive). Use after changing kobe TUI-layer code.
-    const { runReloadSubcommand } = await import("./maintenance.ts")
-    await runReloadSubcommand(rest)
     return
   }
   if (subcommand === "skill") {
@@ -468,12 +446,6 @@ async function main(): Promise<void> {
     await runHookSubcommand(rest)
     return
   }
-  // TUI/tmux pane-host subcommands (new-chattab, quick-create, focus-tasks,
-  // heal-layout, resync-window, capture-layout, layout, quick-task, tasks,
-  // settings, worktrees, help-page, new-task, update-page, history, ops) —
-  // split into their own file to stay under the file-size cap.
-  if (await dispatchTuiCommand(subcommand, rest)) return
-
   // An unrecognized subcommand is a CLI error, not a TUI launch — a typo
   // like `kobe statsu` should print usage and exit non-zero, not silently
   // open the project. Only a bare `kobe` (no subcommand) launches the TUI.
@@ -482,6 +454,11 @@ async function main(): Promise<void> {
     printTopLevelUsage(process.stderr)
     process.exit(2)
   }
+
+  // Own the terminal title before the first-run gate: onboarding is itself
+  // an interactive Kobe UI and may return without ever calling startTui().
+  const { publishKobeTerminalTitle } = await import("../tui/lib/outer-terminal-title.ts")
+  publishKobeTerminalTitle()
 
   // First interactive launch → the inline onboarding wizard instead of the
   // TUI (it ends with "run `kobe`"; the next launch lands in the app).

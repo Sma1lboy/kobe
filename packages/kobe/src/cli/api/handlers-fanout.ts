@@ -45,7 +45,14 @@ export async function fanOut(ctx: VerbContext): Promise<unknown> {
     created.map(({ taskId, vendor, task }) =>
       ctx.runtime.deliverPrompt(
         daemon,
-        { id: taskId, worktreePath: task.worktreePath, vendor, repo: task.repo },
+        {
+          id: taskId,
+          worktreePath: task.worktreePath,
+          kind: task.kind,
+          vendor,
+          modelEffort: task.modelEffort,
+          repo: task.repo,
+        },
         prompt,
       ),
     ),

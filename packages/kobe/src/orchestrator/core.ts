@@ -1,25 +1,7 @@
 /**
- * Orchestrator (v0.6).
- *
- * What it owns: task lifecycle + worktree allocation + the reactive
- * snapshot the TUI subscribes to. That's all.
- *
- * What it lost vs v0.5:
- *   - The whole engine port (`spawn` / `resume` / `stream`). Engines
- *     (claude / codex) now run inside tmux panes, owned by tmux —
- *     kobe never drives them as subprocesses anymore.
- *   - `pumpEvents` / event-bus / per-tab subscribers / user-input
- *     broker. No live event stream from inside an engine to surface.
- *   - Orchestrator-owned ChatTab CRUD. ChatTabs are tmux windows inside a
- *     task's tmux Session now, so tmux owns their lifecycle/persistence.
- *   - Create-PR / refresh-PR-status. A follow-up will re-introduce create-PR
- *     as a `tmux send-keys` injection from the Ops pane. (Branch collection
- *     came BACK as `landTask` — merge/squash the task branch into its base.)
- *
- * What it gained: `ensureWorktree(id)` — task-entry surfaces (`direct.ts`, the
- * Tasks pane, `kobe api`) call it before spawning to make the worktree real.
- * Allocation stays lazy: `createTask` records intent; the dir materialises on
- * first enter.
+ * Framework-free Task and Worktree orchestrator. It owns lifecycle metadata,
+ * lazy Worktree allocation, and the reactive snapshot clients subscribe to.
+ * Interactive engine processes and Terminal Tab state have separate owners.
  */
 
 import { type ReadableState, type StateCell, createStateCell } from "../lib/external-store.ts"
@@ -207,8 +189,7 @@ export class Orchestrator {
     // A task whose repo has no `kind:"main"` task is unrenderable state:
     // the sidebar's PROJECTS rows ARE the main tasks (sidebar/groups.ts),
     // so a task created for a brand-new repo would float with no project
-    // row. The tmux-era boot ensured mains per saved repo (direct.ts:84);
-    // in the daemon world every creation path guarantees its own project.
+    // row. Every creation path therefore guarantees its own project entry.
     await this.ensureMainTask(input.repo)
     const title = (input.title ?? PLACEHOLDER_TASK_TITLE).trim() || PLACEHOLDER_TASK_TITLE
     // Leave the branch EMPTY for a lazily-allocated task (unless the caller
