@@ -63,6 +63,31 @@ export function recommendedGlobalInstallCommand(): string {
   return `npm install -g ${PACKAGE_NAME}@latest`
 }
 
+/**
+ * Versions that ship a breaking state/daemon change: moving an install
+ * ACROSS one of these (either direction) requires `kobe reset` before the
+ * app starts again. Maintained by hand at release time — see
+ * docs/RELEASING.md §"Breaking releases". The boot gate
+ * (src/cli/reset-gate.ts) and `kobe update`'s pre-install warning both
+ * read this list.
+ */
+export const BREAKING_VERSIONS: readonly string[] = []
+
+/**
+ * The breaking versions crossed when moving an install `from` → `to`.
+ * Direction-agnostic (a downgrade back across a breaking version is just
+ * as incompatible): a version B is crossed when min(from,to) < B ≤
+ * max(from,to). Same-version moves cross nothing.
+ */
+export function breakingVersionsCrossed(
+  from: string,
+  to: string,
+  breaking: readonly string[] = BREAKING_VERSIONS,
+): string[] {
+  const [lo, hi] = compareSemver(from, to) <= 0 ? [from, to] : [to, from]
+  return breaking.filter((b) => compareSemver(b, lo) > 0 && compareSemver(b, hi) <= 0)
+}
+
 /** Network timeout for the registry call. */
 const FETCH_TIMEOUT_MS = 3_000
 

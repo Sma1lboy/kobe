@@ -408,6 +408,16 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     await removeStateFile(statePath, "UI state")
   }
 
+  // 5. Satisfy the breaking-version reset gate: a completed reset is
+  // exactly what the boot block asks for. Soft reset stamps the running
+  // version; --hard just deleted state.json, and a MISSING stamp already
+  // reads as "fresh install, nothing to block" — recreating the file here
+  // would contradict the wipe it just printed.
+  if (!hard) {
+    const { stampResetGate } = await import("./reset-gate.ts")
+    stampResetGate()
+  }
+
   console.log("\nkobe: reset complete. Relaunch kobe to start fresh.")
 }
 

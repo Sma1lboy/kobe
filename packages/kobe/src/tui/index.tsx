@@ -8,11 +8,16 @@
  * `kobe reset`, not a daemon-less in-process Orchestrator.
  */
 
+import { enforceResetGate } from "../cli/reset-gate.ts"
 import { nativeChatEnabled } from "../env.ts"
 import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 import { publishKobeTerminalTitle } from "./lib/outer-terminal-title.ts"
 
 export async function startTui(): Promise<void> {
+  // Breaking-version gate first: refuse to touch daemon/session state that
+  // a version in BREAKING_VERSIONS made incompatible (run `kobe reset`).
+  enforceResetGate()
+
   // Own the outer emulator's tab/window title while kobe is running. Without
   // an OSC title, iTerm2 falls back to the packaged JavaScript runtime name
   // (observed as "node") instead of the product the user launched.

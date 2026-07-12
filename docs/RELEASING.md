@@ -42,6 +42,17 @@ The push triggers `.github/workflows/release.yml`, which gates on **lint + typec
 
 GitHub renders release bodies with GFM's hard-break extension: every single newline inside a list item or paragraph becomes a `<br>`, which makes the release page look like a narrow column broken every ~70 chars. **Write each changeset bullet (and each paragraph) as one long line.** Editors can soft-wrap at display time. KOB-13 has the rationale; the [`changelog-generator`](../.claude/skills/changelog-generator/SKILL.md) skill knows this rule.
 
+## Breaking releases — the reset gate
+
+A release whose state/daemon/session format is incompatible with older installs must be added to `BREAKING_VERSIONS` in [`packages/kobe/src/version.ts`](../packages/kobe/src/version.ts) **in the same PR that ships the break** (the version you add is the one about to be released — confirm it against the pending changesets' bump). The changeset summary must say what breaks and that `kobe reset` is required.
+
+What the list drives:
+
+- **Boot gate** (`src/cli/reset-gate.ts`): `state.json` remembers the last version that ran; when a launch crosses a `BREAKING_VERSIONS` entry (upgrade *or* downgrade), the TUI/web entrances refuse to start and print the `kobe reset` instructions. A completed `kobe reset` re-stamps the gate.
+- **`kobe update` warning**: installing a target across a breaking version prints a heads-up before the script runs; `kobe update --list` marks breaking versions.
+
+Worktrees are never part of a reset — the gate's cost to the user is daemon/session teardown (plus the task index only if they choose `--hard`).
+
 ## Prereleases
 
 A prerelease tag (`v0.7.0-experimental.0`) publishes to an npm dist-tag named after the prerelease identifier (`experimental`), so `latest` stays on the stable line while testers opt in with `npm i @sma1lboy/kobe@experimental`. Use Changesets' [prerelease mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md) (`changeset pre enter experimental` … `changeset pre exit`) to generate those versions.

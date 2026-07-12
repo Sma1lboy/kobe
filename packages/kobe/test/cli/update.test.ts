@@ -12,6 +12,14 @@ describe("updatePlan", () => {
     expect(UPDATE_COMMAND).toBe(`curl -fsSL ${UPDATE_SCRIPT_URL} | sh`)
     expect(recommendedGlobalInstallCommand()).toBe(`npm install -g ${PACKAGE_NAME}@latest`)
   })
+
+  it("a pinned version rides into the script as `sh -s -- <version>`", () => {
+    expect(updatePlan("0.7.90")).toEqual({
+      command: "sh",
+      args: ["-c", `${UPDATE_COMMAND} -s -- 0.7.90`],
+      display: `${UPDATE_COMMAND} -s -- 0.7.90`,
+    })
+  })
 })
 
 describe("parseUpdateArgs", () => {
@@ -19,13 +27,30 @@ describe("parseUpdateArgs", () => {
     expect(parseUpdateArgs(["--dry-run"])).toEqual({
       help: false,
       dryRun: true,
+      list: false,
+      version: undefined,
     })
   })
 
+  it("parses a pinned version (plain and prerelease)", () => {
+    expect(parseUpdateArgs(["0.7.90"]).version).toBe("0.7.90")
+    expect(parseUpdateArgs(["0.8.0-experimental.1"]).version).toBe("0.8.0-experimental.1")
+    expect(parseUpdateArgs(["0.7.90", "--dry-run"])).toEqual({
+      help: false,
+      dryRun: true,
+      list: false,
+      version: "0.7.90",
+    })
+  })
+
+  it("parses --list", () => {
+    expect(parseUpdateArgs(["--list"]).list).toBe(true)
+  })
+
   it("recognizes every help spelling", () => {
-    expect(parseUpdateArgs(["--help"])).toEqual({ help: true, dryRun: false })
-    expect(parseUpdateArgs(["-h"])).toEqual({ help: true, dryRun: false })
-    expect(parseUpdateArgs(["help"])).toEqual({ help: true, dryRun: false })
+    expect(parseUpdateArgs(["--help"]).help).toBe(true)
+    expect(parseUpdateArgs(["-h"]).help).toBe(true)
+    expect(parseUpdateArgs(["help"]).help).toBe(true)
   })
 
   it("an unknown argument prints the error + full usage to stderr and exits 2", () => {
@@ -38,9 +63,23 @@ describe("parseUpdateArgs", () => {
       const err = errSpy.mock.calls.map((c) => String(c[0])).join("")
       // The instruction surface, not a bare one-liner: usage + script URL + fallback.
       expect(err).toContain('kobe update: unknown argument "--fast"')
-      expect(err).toContain("Usage: kobe update [--dry-run]")
+      expect(err).toContain("Usage: kobe update [version] [--list] [--dry-run]")
       expect(err).toContain(UPDATE_SCRIPT_URL)
       expect(err).toContain(recommendedGlobalInstallCommand())
+    } finally {
+      errSpy.mockRestore()
+      exitSpy.mockRestore()
+    }
+  })
+
+  it("a second version or a non-semver word is rejected, not silently reordered", () => {
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`)
+    }) as never)
+    try {
+      expect(() => parseUpdateArgs(["0.7.90", "0.7.91"])).toThrow("exit 2")
+      expect(() => parseUpdateArgs(["newest"])).toThrow("exit 2")
     } finally {
       errSpy.mockRestore()
       exitSpy.mockRestore()
@@ -77,6 +116,25 @@ describe("runUpdateSubcommand", () => {
     expect(spawn).not.toHaveBeenCalled()
     expect(err).toEqual([])
     expect(out.join("")).toContain(`running: ${UPDATE_COMMAND}`)
+  })
+
+  it("dry-run with a pinned version shows the pinned command", async () => {
+    const out: string[] = []
+    await runUpdateSubcommand(["0.7.90", "--dry-run"], {
+      spawn: vi.fn() as never,
+      stdout: {
+        write: (s: string) => {
+          out.push(s)
+          return true
+        },
+      },
+      stderr: { write: () => true },
+      exit: ((code: number) => {
+        throw new Error(`unexpected exit ${code}`)
+      }) as never,
+    })
+    expect(out.join("")).toContain(`running: ${UPDATE_COMMAND} -s -- 0.7.90`)
+    expect(out.join("")).toContain("-> 0.7.90")
   })
 
   it("exits with the update script status", async () => {
@@ -116,7 +174,7 @@ describe("runUpdateSubcommand", () => {
       stderr: { write: () => true },
       exit: exit as never,
     })
-    expect(out.join("")).toContain("Usage: kobe update [--dry-run]")
+    expect(out.join("")).toContain("Usage: kobe update [version] [--list] [--dry-run]")
     expect(spawn).not.toHaveBeenCalled()
     expect(exit).not.toHaveBeenCalled()
   })
