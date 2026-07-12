@@ -131,7 +131,9 @@ function TabContent({
         <ChatTerminal
           key={tab.id}
           tabId={tab.id}
-          taskId={taskId}
+          // A pinned tab runs another task's engine (a worktree session
+          // surfaced in the project workspace) — attach its PTY by that task.
+          taskId={tab.taskId ?? taskId}
           mode="engine"
         />
       </Suspense>

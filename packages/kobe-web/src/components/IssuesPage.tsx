@@ -29,12 +29,14 @@ import {
   filterIssues,
   groupByStatus,
   ISSUE_STATUSES,
+  type IssueStartPlacement,
   issueRepoOptions,
   promptIssueMerge,
-  quickStartIssue,
   STATUS_META,
+  startIssueChat,
   updateIssue,
 } from "../lib/issues.ts"
+import { moveKanbanSelection } from "../lib/kanban-nav.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
@@ -88,6 +90,7 @@ export function IssuesPage() {
 
   const [query, setQuery] = useState("")
   const [intakeOpen, setIntakeOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [peekId, setPeekId] = useState<number | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [savingPeek, setSavingPeek] = useState(false)
@@ -116,6 +119,67 @@ export function IssuesPage() {
     }
   }, [issues, peekId, deleteId])
 
+  // Selection is per-project — switching repos drops it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: repo is the reset trigger, not a read dependency.
+  useEffect(() => setSelectedId(null), [repo])
+
+  // Kanban keyboard navigation: arrows move the selection highlight across
+  // the board (skipping empty columns), Enter opens the selected card's
+  // detail drawer. Suspended while any drawer/dialog is open (they own Esc/
+  // focus) and while typing in a field (the filter input, the repo select).
+  useEffect(() => {
+    if (intakeOpen || peekId != null || deleteId != null) return
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      const dir =
+        event.key === "ArrowUp"
+          ? ("up" as const)
+          : event.key === "ArrowDown"
+            ? ("down" as const)
+            : event.key === "ArrowLeft"
+              ? ("left" as const)
+              : event.key === "ArrowRight"
+                ? ("right" as const)
+                : null
+      if (dir) {
+        event.preventDefault()
+        const idColumns = ISSUE_STATUSES.map((status) =>
+          columns[status].map((issue) => issue.id),
+        )
+        const next = moveKanbanSelection(idColumns, selectedId, dir)
+        if (next != null) setSelectedId(next)
+        return
+      }
+      if (
+        (event.key === "Enter" || event.key === " ") &&
+        selectedId != null &&
+        filtered.some((issue) => issue.id === selectedId)
+      ) {
+        event.preventDefault()
+        setPeekId(selectedId)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [columns, filtered, selectedId, intakeOpen, peekId, deleteId])
+
+  // Keep the keyboard-selected card visible inside its scrolling column.
+  useEffect(() => {
+    if (selectedId == null) return
+    document
+      .querySelector(`[data-issue-card="${selectedId}"]`)
+      ?.scrollIntoView({ block: "nearest" })
+  }, [selectedId])
+
   const openTaskWorkspace = (taskId: string): void => {
     void navigate({ to: "/task/$taskId", params: { taskId } })
   }
@@ -143,14 +207,15 @@ export function IssuesPage() {
   const onStartPeek = (opts: {
     vendor?: string
     effort?: string
+    placement?: IssueStartPlacement
     watch: boolean
   }): void => {
     if (!repo || !peekIssue) return
     setStarting(true)
-    void quickStartIssue(repo, peekIssue, opts.vendor, opts.effort)
-      .then(({ taskId }) => {
+    void startIssueChat(repo, peekIssue, opts)
+      .then(({ workspaceTaskId }) => {
         setPeekId(null)
-        if (opts.watch) openTaskWorkspace(taskId)
+        if (opts.watch) openTaskWorkspace(workspaceTaskId)
       })
       .catch((err: unknown) => reportError("start issue", err))
       .finally(() => setStarting(false))
@@ -296,7 +361,13 @@ export function IssuesPage() {
                       <IssueCard
                         key={issue.id}
                         issue={issue}
-                        onOpen={() => setPeekId(issue.id)}
+                        selected={issue.id === selectedId}
+                        onOpen={() => {
+                          // Mouse open also moves the selection so keyboard
+                          // navigation resumes from the clicked card.
+                          setSelectedId(issue.id)
+                          setPeekId(issue.id)
+                        }}
                         onDelete={() => setDeleteId(issue.id)}
                       />
                     ))}

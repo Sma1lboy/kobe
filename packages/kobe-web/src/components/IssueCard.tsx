@@ -18,20 +18,28 @@ import { TIP_ABOVE } from "./chips.tsx"
 
 export function IssueCard({
   issue,
+  selected = false,
   onOpen,
   onDelete,
 }: {
   issue: Issue
+  /** Keyboard/mouse selection highlight — the page owns which card is
+   *  selected; the card only renders the state. */
+  selected?: boolean
   onOpen: () => void
   /** Raise a delete request — the Board confirms before removing the record. */
   onDelete: () => void
 }) {
   return (
-    <div className="group/card relative">
+    <div className="group/card relative" data-issue-card={issue.id}>
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full cursor-pointer flex-col gap-1.5 border border-line bg-surface p-3 text-left transition-colors hover:border-primary hover:bg-inset"
+        className={`flex w-full cursor-pointer flex-col gap-1.5 border p-3 text-left transition-colors ${
+          selected
+            ? "border-primary bg-inset"
+            : "border-line bg-surface hover:border-primary hover:bg-inset"
+        }`}
       >
         <div className="flex items-center gap-2">
           <span className="shrink-0 font-mono text-[10px] text-subtle">

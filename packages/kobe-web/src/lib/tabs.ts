@@ -30,6 +30,10 @@ export interface VendorTab {
   id: string
   kind: "vendor"
   title: string
+  /** Engine-task override: the PTY runs against THIS task while the tab
+   *  lives in another task's strip (a worktree session surfaced in the
+   *  project workspace). Absent = the tab's bucket task, the normal case. */
+  taskId?: string
 }
 
 export interface TerminalTab {
@@ -242,12 +246,19 @@ export function resetLayout(): void {
  * had). Call ONLY with an authoritative live-daemon task list.
  */
 export function pruneMissingTasks(liveTaskIds: ReadonlySet<string>): void {
+  // A vendor tab pinned to a dead engine task is equally orphaned even though
+  // its bucket task survives — its PTY runs in a deleted worktree.
+  const deadOverride = (tab: WorkspaceTab): boolean =>
+    tab.kind === "vendor" && !!tab.taskId && !liveTaskIds.has(tab.taskId)
   const dead = Object.keys(state.tabsByTask).filter(
     (id) => !liveTaskIds.has(id),
   )
+  const orphanBuckets = Object.entries(state.tabsByTask).filter(
+    ([id, tabs]) => liveTaskIds.has(id) && tabs.some(deadOverride),
+  )
   const selectionDead =
     state.selectedTaskId !== null && !liveTaskIds.has(state.selectedTaskId)
-  if (dead.length === 0 && !selectionDead) return
+  if (dead.length === 0 && orphanBuckets.length === 0 && !selectionDead) return
   for (const taskId of dead) {
     for (const tab of state.tabsByTask[taskId] ?? []) {
       if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
@@ -261,26 +272,37 @@ export function pruneMissingTasks(liveTaskIds: ReadonlySet<string>): void {
     delete activeByTask[taskId]
     delete splitByTask[taskId]
   }
-  set({
+  for (const [taskId, tabs] of orphanBuckets) {
+    for (const tab of tabs) if (deadOverride(tab)) void closePtyTab(tab.id)
+    tabsByTask[taskId] = tabs.filter((tab) => !deadOverride(tab))
+  }
+  let next: TabsState = {
     selectedTaskId: selectionDead ? null : state.selectedTaskId,
     tabsByTask,
     activeByTask,
     splitByTask,
-  })
+  }
+  for (const [taskId] of orphanBuckets) next = withTaskTab(next, taskId)
+  set(next)
 }
 
 export function clearSelectedTask(): void {
   set({ ...state, selectedTaskId: null })
 }
 
-/** Open a new vendor tab for a task; returns the new tab id (now active). */
-export function addTab(taskId: string): string {
+/** Open a new vendor tab for a task; returns the new tab id (now active).
+ *  `engineTaskId` pins the tab's PTY to a DIFFERENT task than its bucket —
+ *  how a worktree session gets a tab inside the project workspace. */
+export function addTab(taskId: string, engineTaskId?: string): string {
   const list = state.tabsByTask[taskId] ?? []
   const id = newId()
   const tab: VendorTab = {
     id,
     kind: "vendor",
     title: nextTabTitle("vendor", list),
+    ...(engineTaskId && engineTaskId !== taskId
+      ? { taskId: engineTaskId }
+      : {}),
   }
   set({
     ...state,
@@ -303,7 +325,9 @@ export function addTab(taskId: string): string {
  */
 export function ensureEngineTab(taskId: string): string {
   const list = state.tabsByTask[taskId] ?? []
-  const existing = list.find((tab) => tab.kind === "vendor")
+  // Skip override tabs — a vendor tab pinned to ANOTHER task's engine is not
+  // this task's session, and attaching a peek to it would show the wrong PTY.
+  const existing = list.find((tab) => tab.kind === "vendor" && !tab.taskId)
   if (existing) return existing.id
   const id = newId()
   const tab: VendorTab = {

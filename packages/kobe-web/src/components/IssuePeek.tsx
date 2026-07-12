@@ -26,10 +26,38 @@
 
 import { ExternalLink, GitMerge, Play } from "lucide-react"
 import { useState } from "react"
-import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
+import {
+  canQuickStart,
+  type Issue,
+  type IssueStartPlacement,
+  STATUS_META,
+} from "../lib/issues.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
 import { RichEditor } from "./RichEditor.tsx"
 import { SlideOver } from "./SlideOver.tsx"
+
+/** Where the started chat lives — mirrors {@link IssueStartPlacement}. */
+const PLACEMENTS: ReadonlyArray<{
+  id: IssueStartPlacement
+  label: string
+  hint: string
+}> = [
+  {
+    id: "task",
+    label: "New worktree",
+    hint: "isolated branch, tab in its own task workspace",
+  },
+  {
+    id: "projectWorktree",
+    label: "Worktree · tab in project",
+    hint: "isolated branch, chat tab lives in the project workspace",
+  },
+  {
+    id: "project",
+    label: "Project checkout",
+    hint: "no worktree — the engine works directly on the checkout",
+  },
+]
 
 export function IssuePeek({
   issue,
@@ -52,9 +80,15 @@ export function IssuePeek({
   onClose: () => void
   /** Persist the edited story; resolves true on success so we can clear dirty. */
   onSave: (patch: { title: string; body: string }) => Promise<boolean>
-  /** Start the issue on the chosen engine/effort. `watch` opens the live
-   *  session immediately; otherwise the spawn stays in the background. */
-  onStart: (opts: { vendor?: string; effort?: string; watch: boolean }) => void
+  /** Start the issue on the chosen engine/effort at the chosen placement.
+   *  `watch` opens the target workspace immediately; otherwise the spawn
+   *  stays in the background. */
+  onStart: (opts: {
+    vendor?: string
+    effort?: string
+    placement?: IssueStartPlacement
+    watch: boolean
+  }) => void
   /** Open the running session/workspace for an already-started (linked) issue. */
   onOpenSession?: () => void
   /** Insert the finish/merge prompt into the linked issue task. */
@@ -64,6 +98,7 @@ export function IssuePeek({
   const [draftBody, setDraftBody] = useState(issue.body)
   const [vendor, setVendor] = useState<string | undefined>(undefined)
   const [effort, setEffort] = useState<string | undefined>(undefined)
+  const [placement, setPlacement] = useState<IssueStartPlacement>("task")
   const [error, setError] = useState<string | null>(null)
 
   // The story is already represented by a live task card on the board, so there
@@ -198,6 +233,36 @@ export function IssuePeek({
             />
           </section>
 
+          {/* WORKSPACE — where the started chat lives: its own worktree task,
+              a worktree whose tab rides the project workspace, or directly on
+              the project checkout (no worktree at all). */}
+          <section className="flex flex-col gap-1.5 border-t border-line pt-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Workspace
+            </h3>
+            <div className="flex flex-col gap-1">
+              {PLACEMENTS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={!startable}
+                  onClick={() => setPlacement(option.id)}
+                  title={option.hint}
+                  className={`border px-2 py-1 text-left text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    placement === option.id
+                      ? "border-primary bg-inset text-fg"
+                      : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
+                  }`}
+                >
+                  <span className="block">{option.label}</span>
+                  <span className="block text-[10px] text-subtle">
+                    {option.hint}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
           {/* Actions pinned to the rail bottom. */}
           <div className="mt-auto flex flex-col gap-2 border-t border-line pt-3">
             {linked ? (
@@ -231,8 +296,10 @@ export function IssuePeek({
                 <button
                   type="button"
                   disabled={starting}
-                  onClick={() => onStart({ vendor, effort, watch: false })}
-                  title="Spawn a kobe task session for this story and stay on the board"
+                  onClick={() =>
+                    onStart({ vendor, effort, placement, watch: false })
+                  }
+                  title="Spawn the session for this story and stay on the board"
                   className="flex h-8 items-center justify-center gap-1.5 border border-line bg-bg px-3 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={12} strokeWidth={1.8} />
@@ -241,8 +308,10 @@ export function IssuePeek({
                 <button
                   type="button"
                   disabled={starting}
-                  onClick={() => onStart({ vendor, effort, watch: true })}
-                  title="Spawn a kobe task session and open it"
+                  onClick={() =>
+                    onStart({ vendor, effort, placement, watch: true })
+                  }
+                  title="Spawn the session and open its workspace"
                   className="flex h-8 items-center justify-center gap-1.5 border border-primary bg-inset px-3 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={12} strokeWidth={1.8} />
