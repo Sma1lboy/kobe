@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 3 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 4 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -72,7 +72,20 @@ kobe api issue-list --repo "$PWD" --pretty
 kobe api issue-create --repo "$PWD" --title "title" --body "context"
 kobe api issue-set-status --repo "$PWD" --id <n> --status done
 kobe api issue-update --repo "$PWD" --id <n> --title "new" --body "body"
+kobe api issue-update --repo "$PWD" --id <n> --task <taskId>   # link; `--task none` unlinks
 ```
+
+### Kanban semantics
+
+The TUI and web render issues as a Backlog / In progress / Done board whose
+columns derive from the issue's own lifecycle — do NOT move cards with
+`issue-set-status doing`:
+
+- **In progress** = the issue has a linked task; `issue-update --task <taskId>`
+  IS the move (typical flow: `issue-create` → `add` a task → link them).
+- **Done** = `status done`; the daemon mirrors it automatically when the
+  linked task finishes.
+- **Backlog** = everything else (`open`/`doing`/`hold`, unlinked).
 
 ## Fan-out rules
 
