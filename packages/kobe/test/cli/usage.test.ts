@@ -22,21 +22,7 @@ describe("topLevelUsage", () => {
   })
 
   it("lists every public subcommand, including api", () => {
-    for (const cmd of [
-      "web",
-      "add",
-      "remove",
-      "adopt",
-      "repo",
-      "api",
-      "daemon",
-      "theme",
-      "skill",
-      "update",
-      "doctor",
-      "reset",
-      "reload",
-    ]) {
+    for (const cmd of ["web", "add", "remove", "adopt", "repo", "api", "daemon", "theme", "skill", "update"]) {
       expect(usage).toContain(cmd)
     }
   })
@@ -55,7 +41,13 @@ describe("topLevelUsage", () => {
     expect(usage).toContain("--version")
   })
 
-  it("explains the bare-kobe TUI default", () => {
-    expect(usage.toLowerCase()).toContain("launch the tui")
+  it("documents the sole PureTUI launch path without retired mode switches", () => {
+    expect(usage).toContain("launch PureTUI")
+    expect(usage).not.toContain("--puretui")
+    expect(usage).not.toContain("--tmux")
+    expect(usage).not.toContain("kill-sessions")
+    expect(usage).not.toContain("  reload")
+    expect(usage).not.toContain("  doctor")
+    expect(usage).not.toContain("  reset")
   })
 })

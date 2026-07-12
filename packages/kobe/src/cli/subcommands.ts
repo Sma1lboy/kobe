@@ -8,10 +8,7 @@
  * removing a public subcommand fails CI until both lists agree — they are NOT
  * auto-derived from the `index.ts` dispatch, so the test is what catches drift.
  *
- * Internal subcommands fired by tmux key bindings (`new-chattab`,
- * `quick-create`, `quick-task`, `focus-tasks`, `heal-layout`,
- * `capture-layout`, `layout`, `tasks`, `ops`, `hook`) are NOT included —
- * they are not meant for direct use.
+ * Internal process hosts are not included in the public completion list.
  */
 export const TOP_LEVEL_SUBCOMMANDS = [
   "web",
@@ -27,8 +24,4 @@ export const TOP_LEVEL_SUBCOMMANDS = [
   "skill",
   "feedback",
   "update",
-  "doctor",
-  "reset",
-  "reload",
-  "kill-sessions",
 ] as const

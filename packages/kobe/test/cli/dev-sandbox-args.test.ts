@@ -2,12 +2,9 @@ import { describe, expect, it } from "vitest"
 import { parseSandboxArgs } from "../../scripts/dev-sandbox-args"
 
 describe("parseSandboxArgs", () => {
-  it("defaults to run with the production PureTUI default", () => {
+  it("defaults to the sole run mode", () => {
     expect(parseSandboxArgs(["run"])).toEqual({ mode: "run" })
-  })
-
-  it.each(["--puretui", "--tmux"] as const)("forwards %s for run", (launchFlag) => {
-    expect(parseSandboxArgs(["run", launchFlag])).toEqual({ mode: "run", launchFlag })
+    expect(parseSandboxArgs([])).toEqual({ mode: "run" })
   })
 
   it("keeps reset and home unchanged", () => {
@@ -15,11 +12,8 @@ describe("parseSandboxArgs", () => {
     expect(parseSandboxArgs(["home"])).toEqual({ mode: "home" })
   })
 
-  it("rejects a launch flag for reset", () => {
-    expect(() => parseSandboxArgs(["reset", "--tmux"])).toThrow("launch flags are valid only for run")
-  })
-
-  it("rejects conflicting run flags", () => {
-    expect(() => parseSandboxArgs(["run", "--tmux", "--puretui"])).toThrow("cannot be used together")
+  it("rejects retired launch flags and extra arguments", () => {
+    expect(() => parseSandboxArgs(["--tmux"])).toThrow('unknown sandbox mode "--tmux"')
+    expect(() => parseSandboxArgs(["run", "extra"])).toThrow('unexpected argument "extra"')
   })
 })

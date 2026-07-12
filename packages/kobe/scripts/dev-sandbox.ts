@@ -1,10 +1,17 @@
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
+import {
+  defaultDaemonPidPath,
+  defaultDaemonSocketPath,
+  defaultPtyHostPidPath,
+  defaultPtyHostSocketPath,
+} from "@sma1lboy/kobe-daemon/daemon/paths"
 import { parseSandboxArgs } from "./dev-sandbox-args.ts"
 
 function usageError(err: unknown): never {
   console.error(err instanceof Error ? err.message : String(err))
-  console.error("usage: bun run scripts/dev-sandbox.ts [run [--puretui|--tmux]|reset|home]")
+  console.error("usage: bun run scripts/dev-sandbox.ts [run|reset|home]")
   process.exit(2)
 }
 
@@ -25,7 +32,7 @@ async function sandboxHome(): Promise<string> {
 
   // Share one dev sandbox across git worktrees. `git-common-dir` points at
   // the primary checkout's `.git`, even when this script runs from a Kobe
-  // task worktree, so native and tmux sandbox runs see the same task store.
+  // task worktree, so every sandbox run sees the same task store.
   const repoRoot = dirname(await gitCommonDir())
   return join(repoRoot, "packages", "kobe", ".dev-sandbox", "home")
 }
@@ -51,21 +58,19 @@ const env = {
   ...process.env,
   KOBE_DEV: "1",
   KOBE_HOME_DIR: home,
-  KOBE_TMUX_SOCKET: process.env.KOBE_TMUX_SOCKET ?? "kobe-sandbox",
   // Isolate the sandbox daemon's web port from the production daemon's 5174 —
   // otherwise starting dev:sandbox races the real daemon for the same port.
   KOBE_DAEMON_WEB_PORT: process.env.KOBE_DAEMON_WEB_PORT ?? "5274",
 }
 
-const args =
-  mode === "reset"
-    ? [process.execPath, "./src/cli/index.ts", "kill-sessions"]
-    : [
-        process.execPath,
-        "--conditions=browser",
-        "./src/cli/index.ts",
-        ...(parsed.launchFlag ? [parsed.launchFlag] : []),
-      ]
+if (mode === "reset") {
+  await stopDaemonProcess(defaultDaemonSocketPath(home), defaultDaemonPidPath(home))
+  await stopDaemonProcess(defaultPtyHostSocketPath(home), defaultPtyHostPidPath(home))
+  console.error("[kobe dev:sandbox] stopped daemon and PTY host")
+  process.exit(0)
+}
+
+const args = [process.execPath, "--conditions=browser", "./src/cli/index.ts"]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),

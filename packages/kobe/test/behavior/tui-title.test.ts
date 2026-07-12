@@ -35,7 +35,7 @@ describe.skipIf(!nodePty)("kobe outer terminal title (behavior)", () => {
       cols: 120,
       rows: 35,
       cwd: env.home,
-      env: { ...env.env, KOBE_TUI: "1" } as Record<string, string>,
+      env: env.env as Record<string, string>,
     })
     let raw = ""
     try {

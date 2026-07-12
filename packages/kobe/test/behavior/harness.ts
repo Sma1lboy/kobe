@@ -20,6 +20,13 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
+import {
+  defaultDaemonPidPath,
+  defaultDaemonSocketPath,
+  defaultPtyHostPidPath,
+  defaultPtyHostSocketPath,
+} from "@sma1lboy/kobe-daemon/daemon/paths"
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 export const DIST_CLI = join(PKG_ROOT, "dist/cli/index.js")
@@ -85,11 +92,11 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
   await writeFile(join(bin, "claude"), `#!/bin/sh\ntrap '' HUP\necho "fake-claude ready"\nexec sleep 600\n`)
   await chmod(join(bin, "claude"), 0o755)
 
-  // A behavior run is frequently launched FROM the live KOBE_TUI process,
-  // whose environment deliberately points at production sockets and enables
-  // the pure-TUI path. Never pass any ambient KOBE_* control through to a
-  // black-box child: `dispose()` runs `kobe reset --yes`, so one inherited
-  // socket/pid override can stop the user's real daemon or PTY host. HOME and
+  // A behavior run is frequently launched FROM the live kobe process, whose
+  // environment deliberately points at production sockets. Never pass any
+  // ambient KOBE_* control through to a
+  // black-box child: teardown stops daemon processes, so one inherited
+  // socket/pid override could stop the user's real daemon or PTY host. HOME and
   // XDG are isolated too because normal TUI boot installs engine hooks under
   // ~/.claude and ~/.codex independently of KOBE_HOME_DIR.
   const inherited = Object.fromEntries(
@@ -141,9 +148,8 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
         if (isolationError) {
           throw new Error(`behavior harness refusing destructive teardown: ${isolationError}`)
         }
-        // Stop the temp home's daemon so nothing outlives the test run. The
-        // guard above is deliberately adjacent to this destructive command.
-        spawnSync("bun", [DIST_CLI, "reset", "--yes"], { env, timeout: 30_000 })
+        await stopDaemonProcess(defaultDaemonSocketPath(home), defaultDaemonPidPath(home))
+        await stopDaemonProcess(defaultPtyHostSocketPath(home), defaultPtyHostPidPath(home))
       } finally {
         await rm(home, { recursive: true, force: true })
       }
