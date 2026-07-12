@@ -155,10 +155,10 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
  * `terminal-keys-pure.test.ts` pins the resolved set.
  */
 const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
-  // THE escape hatch out of the terminal: ctrl+q returned to the tasks
-  // list pre-#308 (`focus.sidebar`, now prefix-only `prefix q`) and is
-  // also the default PureTUI prefix candidate — kept reserved.
-  "ctrl+q",
+  // THE escape hatch out of the terminal: ctrl+q returns to the tasks
+  // list (direct chord restored 2026-07-11, same owner call as the tab
+  // rows below).
+  { id: "focus.sidebar" }, // ctrl+q
   // Terminal tab management (the PTY chattab, issue #16) — parity with the
   // tmux root key-table which also intercepted these. ctrl+w / f2 double
   // as `workspace.split.close` / `workspace.split.rename` when split —

@@ -189,13 +189,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // "Back to tasks" chord. Plain `q` (sidebar scope) actually quits;
-    // this workspace-owned action is prefix-only so it cannot steal a
-    // ChatPane control byte. Scope stays "workspace" for override
-    // validation.
+    // ctrl+q is THE escape hatch out of any pane (direct-only again —
+    // owner call 2026-07-11, same as the tab-management rows: too
+    // load-bearing for a two-stroke prefix). Scope stays "workspace"
+    // for override validation.
     id: "focus.sidebar",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["q"],
+    keys: ["ctrl+q"],
     category: "Workspace",
     description: "Back to sidebar (tasks)",
     hint: { keys: "ctrl+q" },

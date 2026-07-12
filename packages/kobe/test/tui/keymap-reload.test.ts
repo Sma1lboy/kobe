@@ -20,9 +20,11 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
   })
 
-  test("ChatPane navigation keeps only its prefix second strokes", () => {
-    expect(findBinding("focus.sidebar")?.keys).toEqual([])
-    expect(findBinding("focus.sidebar")?.prefixKeys).toEqual(["q"])
+  test("focus.sidebar is direct-only again; focus.numeric keeps prefix strokes", () => {
+    // Owner call 2026-07-11: ctrl+q (THE escape hatch) returned to a
+    // direct chord with no prefix stroke; pane focus stays prefix-only.
+    expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
+    expect(findBinding("focus.sidebar")?.prefixKeys).toBeUndefined()
     expect(findBinding("focus.numeric")?.keys).toEqual([])
     expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
   })

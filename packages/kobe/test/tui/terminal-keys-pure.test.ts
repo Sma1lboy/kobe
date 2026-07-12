@@ -113,9 +113,7 @@ describe("key routing tables", () => {
     // the exact-list pin above is what fails if a keymap-table edit
     // silently changes terminal passthrough. This case pins the other
     // half: user overrides must NOT change the reservation, matching the
-    // old literal behavior. (`focus.next`/f4 is a still-derived id; the
-    // pre-#308 exemplar `focus.sidebar` is prefix-only now and reserved
-    // as the ctrl+q literal instead.)
+    // old literal behavior.
     const row = findBinding("focus.next") as unknown as { keys: readonly string[] }
     expect(row.keys).toEqual(["f4"])
     row.keys = ["ctrl+x"]
