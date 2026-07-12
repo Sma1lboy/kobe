@@ -366,7 +366,10 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const taskId = explicitId ?? (cwd ? matchTaskByCwd(ctx.orch.listTasks(), cwd) : undefined)
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
-        ctx.activity.report(taskId, kind, detail)
+        // Which engine tab the event came from — the inherited KOBE_TAB_ID env
+        // the hook process reported. Optional: sessions kobe didn't spawn as a
+        // tab stay task-level.
+        ctx.activity.report(taskId, kind, detail, optionalString(payload, "tabId"))
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the

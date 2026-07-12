@@ -18,7 +18,10 @@ function reduceActivity(
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":
-      return detail?.waiting === "permission" ? "permission_needed" : "running"
+      // Permission prompt OR a question dialog — either way the engine is
+      // blocked on the user (`detail.waiting` keeps which). Mirrors
+      // kobe/src/engine/hook-events.ts.
+      return "permission_needed"
   }
 }
 
@@ -82,6 +85,9 @@ export type EngineStatePayload = ChannelPayloads["engine-state"]
  */
 export class DaemonActivityRegistry {
   private readonly activity = new Map<string, ActivityEntry>()
+  /** Per-tab entries (taskId → tabId → entry) for events that carried a
+   *  `tabId`. UI state like everything here — replayed, never persisted. */
+  private readonly tabActivity = new Map<string, Map<string, ActivityEntry>>()
 
   constructor(
     private readonly bus: DaemonEventBus,
@@ -96,7 +102,7 @@ export class DaemonActivityRegistry {
     private readonly livenessAt: ActivityLivenessProbe = () => Promise.resolve(undefined),
   ) {}
 
-  report(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail): void {
+  report(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail, tabId?: string): void {
     const prev = this.activity.get(taskId)
     if (prev?.lapse) clearTimeout(prev.lapse)
     const state = reduceActivity(prev?.state, kind, detail)
@@ -111,7 +117,22 @@ export class DaemonActivityRegistry {
       entry.lapse = this.armLapse(taskId, at)
     }
     this.activity.set(taskId, entry)
-    this.bus.publish("engine-state", this.payload(taskId, entry))
+    // Per-tab ledger (the F7 attention jump's tab precision). The task-level
+    // entry above stays the last-event-wins rollup every existing consumer
+    // reads; this map only adds "which tab". reduceActivity ignores `prev`, so
+    // one reduction serves both levels. Idle deletes the entry — a closed/
+    // ended tab must not linger as a candidate.
+    // ponytail: no per-tab lapse watchdog — a missed Stop pins a tab at
+    // `running`, which is never an attention candidate, so it's harmless;
+    // add per-tab arming if tab badges ever key off `running`.
+    if (tabId) {
+      const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
+      if (state === "idle") tabs.delete(tabId)
+      else tabs.set(tabId, entry)
+      if (tabs.size > 0) this.tabActivity.set(taskId, tabs)
+      else this.tabActivity.delete(taskId)
+    }
+    this.bus.publish("engine-state", this.payload(taskId, entry, tabId))
   }
 
   /**
@@ -176,6 +197,15 @@ export class DaemonActivityRegistry {
     const gone = this.activity.get(taskId)
     if (gone?.lapse) clearTimeout(gone.lapse)
     this.activity.delete(taskId)
+    // Per-tab entries go with the task; explicit per-tab idles so every
+    // subscriber drops its tab-level candidates too.
+    const tabs = this.tabActivity.get(taskId)
+    this.tabActivity.delete(taskId)
+    if (tabs) {
+      for (const tabId of tabs.keys()) {
+        this.bus.publish("engine-state", { taskId, tabId, state: "idle", at: this.now() })
+      }
+    }
     // Publish an explicit idle so every subscriber clears this task's badge.
     // The bus only caches one last value per channel, so this also prevents a
     // stale per-task replay if the id is quickly recreated.
@@ -193,6 +223,11 @@ export class DaemonActivityRegistry {
     for (const [taskId, entry] of this.activity) {
       if (entry.state !== "idle") out.push(this.payload(taskId, entry))
     }
+    // Tab entries ride the same replay so a late subscriber rebuilds its
+    // per-tab map too (they're only stored non-idle).
+    for (const [taskId, tabs] of this.tabActivity) {
+      for (const [tabId, entry] of tabs) out.push(this.payload(taskId, entry, tabId))
+    }
     return out
   }
 
@@ -201,6 +236,7 @@ export class DaemonActivityRegistry {
       if (entry.lapse) clearTimeout(entry.lapse)
     }
     this.activity.clear()
+    this.tabActivity.clear()
   }
 
   private publishIdle(taskId: string): void {
@@ -209,9 +245,10 @@ export class DaemonActivityRegistry {
     this.bus.publish("engine-state", this.payload(taskId, entry))
   }
 
-  private payload(taskId: string, entry: ActivityEntry): EngineStatePayload {
+  private payload(taskId: string, entry: ActivityEntry, tabId?: string): EngineStatePayload {
     return {
       taskId,
+      ...(tabId ? { tabId } : {}),
       state: entry.state,
       ...(entry.detail ? { detail: entry.detail } : {}),
       at: entry.at,

@@ -16,6 +16,7 @@ import type { Task, TaskId } from "../types/task.ts"
 import type { UpdateInfo } from "../version.ts"
 import type {
   DaemonConnectionState,
+  EngineTabStateMap,
   TaskEngineState,
   TaskJobState,
   TranscriptActivityMap,
@@ -30,6 +31,7 @@ export interface ReadSignals {
   readonly daemonVersionAcc: ReadableState<string | null>
   readonly daemonStaleAcc: ReadableState<boolean>
   readonly engineStateAcc: ReadableState<ReadonlyMap<string, TaskEngineState>>
+  readonly engineTabStateAcc: ReadableState<EngineTabStateMap>
   readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
@@ -93,6 +95,17 @@ export function daemonStaleSignalOp(s: ReadSignals): ReadableState<boolean> {
  */
 export function engineStateSignalOp(s: ReadSignals): ReadableState<ReadonlyMap<string, TaskEngineState>> {
   return s.engineStateAcc
+}
+
+/**
+ * Per-TAB engine activity (taskId → tabId → state) for events whose hook
+ * carried a tab identity (the spawn-line `KOBE_TAB_ID` env). Sparse: only
+ * tabs with a live non-idle state appear — sessions kobe didn't spawn as a
+ * tab exist solely in the task-level map. The F7 attention jump reads this
+ * for tab-precise targets.
+ */
+export function engineTabStatesSignalOp(s: ReadSignals): ReadableState<EngineTabStateMap> {
+  return s.engineTabStateAcc
 }
 
 /**

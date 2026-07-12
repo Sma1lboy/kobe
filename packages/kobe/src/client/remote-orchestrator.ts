@@ -32,6 +32,7 @@ import { performInit } from "./remote-orchestrator-connect.ts"
 import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
 import {
   type DaemonConnectionState,
+  type EngineTabStateMap,
   type OrchestratorSignals,
   type RemoteOrchestratorOptions,
   type TaskEngineState,
@@ -46,6 +47,7 @@ import {
   daemonStaleSignalOp,
   daemonVersionSignalOp,
   engineStateSignalOp,
+  engineTabStatesSignalOp,
   getTaskOp,
   keybindingsRevSignalOp,
   keybindingsRevStoreOp,
@@ -85,6 +87,7 @@ import {
 
 export type {
   DaemonConnectionState,
+  EngineTabStateMap,
   RemoteOrchestratorOptions,
   TaskEngineState,
   TaskJobState,
@@ -116,6 +119,8 @@ export class RemoteOrchestrator {
   )
   private readonly engineStateAcc = createStateCell<ReadonlyMap<string, TaskEngineState>>(new Map())
   private readonly setEngineStateSig = (next: ReadonlyMap<string, TaskEngineState>) => this.engineStateAcc.set(next)
+  private readonly engineTabStateAcc = createStateCell<EngineTabStateMap>(new Map())
+  private readonly setEngineTabStateSig = (next: EngineTabStateMap) => this.engineTabStateAcc.set(next)
   private readonly taskJobsAcc = createStateCell<ReadonlyMap<string, TaskJobState>>(new Map())
   private readonly setTaskJobsSig = (next: ReadonlyMap<string, TaskJobState>) => this.taskJobsAcc.set(next)
   private readonly worktreeChangesAcc = createStateCell<WorktreeChangesMap | null>(null)
@@ -161,6 +166,8 @@ export class RemoteOrchestrator {
       setDaemonVersionSig: this.setDaemonVersionSig,
       engineStateAcc: this.engineStateAcc,
       setEngineStateSig: this.setEngineStateSig,
+      engineTabStateAcc: this.engineTabStateAcc,
+      setEngineTabStateSig: this.setEngineTabStateSig,
       taskJobsAcc: this.taskJobsAcc,
       setTaskJobsSig: this.setTaskJobsSig,
       worktreeChangesAcc: this.worktreeChangesAcc,
@@ -179,6 +186,7 @@ export class RemoteOrchestrator {
       daemonVersionAcc: this.daemonVersionAcc,
       daemonStaleAcc: this.daemonStaleAcc,
       engineStateAcc: this.engineStateAcc,
+      engineTabStateAcc: this.engineTabStateAcc,
       taskJobsAcc: this.taskJobsAcc,
       worktreeChangesAcc: this.worktreeChangesAcc,
       transcriptActivityAcc: this.transcriptActivityAcc,
@@ -306,6 +314,12 @@ export class RemoteOrchestrator {
 
   engineStateSignal(): ReadableState<ReadonlyMap<string, TaskEngineState>> {
     return engineStateSignalOp(this.reads)
+  }
+
+  /** Per-TAB engine activity (taskId → tabId → state) — the F7 attention
+   *  jump's tab-precise read. Sparse; see {@link EngineTabStateMap}. */
+  engineTabStatesSignal(): ReadableState<EngineTabStateMap> {
+    return engineTabStatesSignalOp(this.reads)
   }
 
   taskJobsSignal(): ReadableState<ReadonlyMap<string, TaskJobState>> {

@@ -21,9 +21,12 @@ describe("reduceActivity", () => {
     expect(reduceActivity("running", "turn-failed")).toBe("error")
   })
 
-  it("treats a permission prompt as permission_needed, other input as still running", () => {
+  it("treats awaiting-input as permission_needed — permission prompt AND question dialog", () => {
+    // Owner call 2026-07-12: a question dialog blocks the engine on the user
+    // exactly like a permission prompt, and F7 must reach it. `detail.waiting`
+    // keeps which one it was.
     expect(reduceActivity("running", "awaiting-input", { waiting: "permission" })).toBe("permission_needed")
-    expect(reduceActivity("running", "awaiting-input", { waiting: "input" })).toBe("running")
+    expect(reduceActivity("running", "awaiting-input", { waiting: "input" })).toBe("permission_needed")
   })
 })
 

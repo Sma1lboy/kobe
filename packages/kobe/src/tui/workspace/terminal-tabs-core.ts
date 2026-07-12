@@ -331,12 +331,16 @@ export function engineTabSpawnFor(
   state: TabsState,
   tab: EngineTab,
   base: readonly string[],
-  opts: { live: boolean; shell: string; prompt?: string },
+  opts: { live: boolean; shell: string; prompt?: string; taskId?: string },
 ): TabSpawn {
-  const { live, shell, prompt } = opts
+  const { live, shell, prompt, taskId } = opts
   const firstEngine = state.tabs.find((t) => t.kind === "engine")
   const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
-  return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), shell)
+  // Tab identity rides the typed line as env (see shellSpawn): the engine's
+  // hook subprocesses inherit it, so `kobe hook` can attribute activity to
+  // THIS tab — cwd alone can't (every tab of a task shares the worktree).
+  const env = taskId ? { KOBE_TASK_ID: taskId, KOBE_TAB_ID: tab.id } : undefined
+  return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), shell, env)
 }
 
 export type TabExitAction = "close" | "resume"

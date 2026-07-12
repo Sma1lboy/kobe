@@ -61,8 +61,9 @@ export type TaskActivityState = (typeof TASK_ACTIVITY_STATES)[number]
  *   turn-complete                  → turn_complete
  *   turn-failed (rate_limit/billing)→ rate_limited
  *   turn-failed (other)            → error
- *   awaiting-input (permission)    → permission_needed
- *   awaiting-input (input)         → running   (still mid-turn, just blocked on input)
+ *   awaiting-input                 → permission_needed (permission prompt OR a
+ *                                    question dialog — either way the engine is
+ *                                    blocked on the user; `detail.waiting` keeps why)
  *   session-end                    → idle
  */
 export function reduceActivity(
@@ -81,6 +82,6 @@ export function reduceActivity(
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":
-      return detail?.waiting === "permission" ? "permission_needed" : "running"
+      return "permission_needed"
   }
 }

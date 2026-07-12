@@ -93,6 +93,35 @@ describe("runHookSubcommand — activity verbs", () => {
     expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", { taskId: "t1", kind: "turn-start" })
   })
 
+  // Why: tab precision for the F7 attention jump. Engine tabs launch as
+  // `env KOBE_TASK_ID=… KOBE_TAB_ID=… <engine>` and hooks inherit that env —
+  // the ONLY way to tell a task's tabs apart (they share one worktree cwd).
+  it("reports the inherited KOBE_TASK_ID/KOBE_TAB_ID env as exact identity", async () => {
+    vi.stubEnv("KOBE_TASK_ID", "t7")
+    vi.stubEnv("KOBE_TAB_ID", "tab-2")
+    stubStdin({ cwd: "/some/task/worktree" })
+    await runHookSubcommand(["awaiting-input"])
+    expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", {
+      taskId: "t7",
+      tabId: "tab-2",
+      kind: "awaiting-input",
+    })
+    vi.unstubAllEnvs()
+  })
+
+  it("an explicit --task-id still beats the env identity (tabId rides along)", async () => {
+    vi.stubEnv("KOBE_TASK_ID", "t7")
+    vi.stubEnv("KOBE_TAB_ID", "tab-2")
+    stubStdin({ cwd: "/ignored" })
+    await runHookSubcommand(["turn-start", "--task-id", "flag-wins"])
+    expect(mocks.request).toHaveBeenCalledWith("engine.reportEvent", {
+      taskId: "flag-wins",
+      tabId: "tab-2",
+      kind: "turn-start",
+    })
+    vi.unstubAllEnvs()
+  })
+
   it("attaches the adapter's normalized detail when one is produced", async () => {
     mocks.adapter.activityDetailFromPayload.mockReturnValue({ failureClass: "rate-limit" })
     await runHookSubcommand(["turn-failed"])

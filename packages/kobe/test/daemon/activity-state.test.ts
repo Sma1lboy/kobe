@@ -95,4 +95,44 @@ describe("daemon activity state", () => {
 
     registry.close()
   })
+
+  // Why: the F7 attention jump's tab precision rides these — a tabId-carrying
+  // report must ledger per-tab (published + replayed with the tabId), the
+  // task-level rollup must stay identical for every existing consumer, and a
+  // question dialog (`awaiting-input` waiting:"input") is now a blocking
+  // attention state, not `running` (owner call 2026-07-12).
+  it("tracks tabId-carrying reports per tab: publish, replay, session-end + clearTask cleanup", () => {
+    const bus = new DaemonEventBus()
+    const registry = new DaemonActivityRegistry(bus, 1_000)
+    const published: Array<{ taskId: string; tabId?: string; state: string }> = []
+    bus.onPublish((event) => {
+      if (event.channel === "engine-state") {
+        const p = event.payload as { taskId: string; tabId?: string; state: string }
+        published.push({ taskId: p.taskId, tabId: p.tabId, state: p.state })
+      }
+    })
+
+    registry.report("task-1", "awaiting-input", { waiting: "input" }, "tab-2")
+    expect(published).toEqual([{ taskId: "task-1", tabId: "tab-2", state: "permission_needed" }])
+    // Replay carries the task rollup AND the tab entry.
+    expect(registry.currentNonIdle().map((p) => [p.taskId, p.tabId, p.state])).toEqual([
+      ["task-1", undefined, "permission_needed"],
+      ["task-1", "tab-2", "permission_needed"],
+    ])
+
+    // A tab's session-end drops its per-tab entry (idle is never stored).
+    registry.report("task-1", "session-end", undefined, "tab-2")
+    expect(registry.currentNonIdle()).toEqual([])
+
+    // clearTask publishes per-tab idles so subscribers drop tab candidates.
+    registry.report("task-1", "turn-complete", undefined, "tab-3")
+    published.length = 0
+    registry.clearTask("task-1")
+    expect(published).toEqual([
+      { taskId: "task-1", tabId: "tab-3", state: "idle" },
+      { taskId: "task-1", tabId: undefined, state: "idle" },
+    ])
+
+    registry.close()
+  })
 })

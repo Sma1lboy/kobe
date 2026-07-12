@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest"
 import {
   addUnread,
   attentionKindFor,
-  nextAttentionTask,
+  nextAttentionTarget,
   osc9,
   removeUnread,
   shouldShowToast,
@@ -87,37 +87,83 @@ describe("osc9", () => {
   })
 })
 
-describe("nextAttentionTask", () => {
+describe("nextAttentionTarget", () => {
   const es = (m: Record<string, string>): Map<string, { state: string }> =>
     new Map(Object.entries(m).map(([id, state]) => [id, { state }]))
+  const ts = (m: Record<string, Record<string, string>>): Map<string, Map<string, { state: string }>> =>
+    new Map(Object.entries(m).map(([taskId, tabs]) => [taskId, es(tabs)]))
+  const NO_TABS = new Map<string, Map<string, { state: string }>>()
+  const at = (taskId: string | null, tabId: string | null = null) => ({ taskId, tabId })
 
   it("finds the next permission_needed/error task forward from current, wrapping", () => {
     const order = ["a", "b", "c", "d"]
     const engine = es({ a: "running", b: "permission_needed", c: "idle", d: "error" })
-    // from a → next waiting is b
-    expect(nextAttentionTask(order, engine, new Map(), "a")).toBe("b")
-    // from b → wraps past c (idle) to d
-    expect(nextAttentionTask(order, engine, new Map(), "b")).toBe("d")
-    // from d → wraps back to b
-    expect(nextAttentionTask(order, engine, new Map(), "d")).toBe("b")
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at("a"))).toEqual({ taskId: "b", tabId: null })
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at("b"))).toEqual({ taskId: "d", tabId: null })
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at("d"))).toEqual({ taskId: "b", tabId: null })
   })
 
-  it("counts an unread needs_input/error mark as attention, but not a done mark", () => {
+  it("counts unread needs_input/error AND done marks (turn_complete is navigable)", () => {
     const order = ["a", "b"]
     const idle = es({ a: "idle", b: "idle" })
-    expect(nextAttentionTask(order, idle, new Map([["b:tab", "needs_input"]]), "a")).toBe("b")
-    // a plain `done` unread is not blocking → no candidate
-    expect(nextAttentionTask(order, idle, new Map([["b:tab", "done"]]), "a")).toBeNull()
+    expect(nextAttentionTarget(order, idle, NO_TABS, new Map([["b:tab-2", "needs_input"]]), at("a"))).toEqual({
+      taskId: "b",
+      tabId: "tab-2",
+    })
+    // A `done` unread IS a candidate now (owner call 2026-07-12): F7 means
+    // "next thing that needs my eyes", and marking read on arrival keeps the
+    // cycle advancing instead of looping.
+    expect(nextAttentionTarget(order, idle, NO_TABS, new Map([["b:", "done"]]), at("a"))).toEqual({
+      taskId: "b",
+      tabId: null,
+    })
+  })
+
+  it("walks the CURRENT task's other waiting tabs before other tasks", () => {
+    const order = ["a", "b"]
+    const engine = es({ a: "permission_needed", b: "permission_needed" })
+    const tabs = ts({ a: { "tab-1": "permission_needed", "tab-3": "permission_needed" }, b: {} })
+    // Sitting on a's tab-1: its own waiting tab-3 comes before task b.
+    expect(nextAttentionTarget(order, engine, tabs, new Map(), at("a", "tab-1"))).toEqual({
+      taskId: "a",
+      tabId: "tab-3",
+    })
+    // From a's tab-3 the cycle moves on to b.
+    expect(nextAttentionTarget(order, engine, tabs, new Map(), at("a", "tab-3"))).toEqual({
+      taskId: "a",
+      tabId: "tab-1",
+    })
+  })
+
+  it("refines a task-level hit to the tab the per-tab map knows is waiting", () => {
+    const order = ["a", "b"]
+    const engine = es({ a: "idle", b: "turn_complete" })
+    const tabs = ts({ b: { "tab-2": "turn_complete" } })
+    // b qualifies via its unread done mark; the per-tab map points at tab-2.
+    expect(nextAttentionTarget(order, engine, tabs, new Map([["b:", "done"]]), at("a"))).toEqual({
+      taskId: "b",
+      tabId: "tab-2",
+    })
+    // Raw turn_complete alone (mark already cleared) is NOT a candidacy
+    // source — otherwise a visited completion would cycle forever.
+    expect(nextAttentionTarget(order, engine, tabs, new Map(), at("a"))).toBeNull()
+  })
+
+  it("skips a task-level self-target but keeps blocking states cycling", () => {
+    const order = ["a"]
+    const engine = es({ a: "permission_needed" })
+    // Alone on the blocked task with no tab info: nothing to jump to.
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at("a"))).toBeNull()
   })
 
   it("returns null when nothing needs attention", () => {
-    expect(nextAttentionTask(["a", "b"], es({ a: "running", b: "idle" }), new Map(), "a")).toBeNull()
+    expect(nextAttentionTarget(["a", "b"], es({ a: "running", b: "idle" }), NO_TABS, new Map(), at("a"))).toBeNull()
   })
 
   it("handles a null/unknown current id by scanning from the start", () => {
     const order = ["a", "b"]
     const engine = es({ a: "error", b: "idle" })
-    expect(nextAttentionTask(order, engine, new Map(), null)).toBe("a")
-    expect(nextAttentionTask(order, engine, new Map(), "gone")).toBe("a")
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at(null))).toEqual({ taskId: "a", tabId: null })
+    expect(nextAttentionTarget(order, engine, NO_TABS, new Map(), at("gone"))).toEqual({ taskId: "a", tabId: null })
   })
 })

@@ -98,39 +98,108 @@ export function osc9(body: string): string {
   return `\x1b]9;${body}\x07`
 }
 
+/** One F7 stop: a task, optionally a specific engine tab to activate. */
+export interface AttentionTarget {
+  readonly taskId: string
+  readonly tabId: string | null
+}
+
+/** States that BLOCK the engine on the user — raw daemon state is the truth
+ *  and the candidacy persists until the user actually acts (approving /
+ *  answering emits the next hook event, which clears it). */
+function isBlockingState(state: string | undefined): boolean {
+  return state === "permission_needed" || state === "error"
+}
+
+/** Stable within-task tab order: by trailing ordinal (`tab-3`), then name. */
+function compareTabIds(a: string, b: string): number {
+  const na = Number(a.split("-").pop())
+  const nb = Number(b.split("-").pop())
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb
+  return a.localeCompare(b)
+}
+
 /**
- * Attention-jump cycle (the global chord). Given the sidebar's task order, the
- * daemon engine-state per task, the unread map, and the current task, return
- * the id of the NEXT task that needs attention — searching forward from the
- * current position and wrapping, so repeated presses walk every candidate.
- * Returns `null` when nothing needs attention.
+ * Attention-jump cycle (the global chord). Candidates are (task, tab) pairs,
+ * walked in sidebar order × tab order, forward from the current position and
+ * wrapping — so repeated presses visit every waiting tab of every task,
+ * including the OTHER tabs of the task you're on. `null` when nothing waits.
  *
- * "Needs attention" = daemon `TaskEngineState.state` is `permission_needed` or
- * `error` (the real source of truth), OR the task has an unread `needs_input` /
- * `error` mark (a rising edge the user hasn't cleared). `turn_complete`/`done`
- * are deliberately excluded — a finished turn isn't blocking you.
+ * A pair qualifies via two mechanisms with different lifetimes:
+ *   - BLOCKING raw state (`permission_needed` — a permission prompt or a
+ *     question dialog — or `error`): persists until the user acts. Per-tab
+ *     when the hook carried a tab identity, else task-level.
+ *   - UNREAD marks (`needs_input` / `error` / `done`): rising edges the user
+ *     hasn't looked at — this is how `turn_complete` is navigable without
+ *     looping forever. The jump handler marks the target read on arrival, so
+ *     visited completions drop out of the cycle.
+ * A task qualifying only at task level still refines to a concrete tab when
+ * the per-tab map knows one in an attention-worthy state.
  */
-export function nextAttentionTask(
+export function nextAttentionTarget(
   order: readonly string[],
   engineState: ReadonlyMap<string, { readonly state: string }>,
+  tabStates: ReadonlyMap<string, ReadonlyMap<string, { readonly state: string }>>,
   unread: ReadonlyMap<string, NotificationKind>,
-  currentId: string | null,
-): string | null {
-  const unreadTasks = new Set<string>()
+  current: { readonly taskId: string | null; readonly tabId: string | null },
+): AttentionTarget | null {
+  // unread keys are `${taskId}:${tabId}` (tabId "" = a task-level mark).
+  const unreadTabsByTask = new Map<string, Set<string>>()
   for (const [key, kind] of unread) {
-    if (kind === "needs_input" || kind === "error") unreadTasks.add(key.split(":")[0] ?? key)
+    if (kind !== "needs_input" && kind !== "error" && kind !== "done") continue
+    const sep = key.indexOf(":")
+    const taskId = sep === -1 ? key : key.slice(0, sep)
+    const tabId = sep === -1 ? "" : key.slice(sep + 1)
+    const set = unreadTabsByTask.get(taskId) ?? new Set<string>()
+    set.add(tabId)
+    unreadTabsByTask.set(taskId, set)
   }
-  const needsAttention = (id: string): boolean => {
-    const s = engineState.get(id)?.state
-    return s === "permission_needed" || s === "error" || unreadTasks.has(id)
+
+  const candidatesFor = (taskId: string): readonly (string | null)[] => {
+    const tabs = tabStates.get(taskId)
+    const marks = unreadTabsByTask.get(taskId)
+    const out = new Set<string>()
+    if (tabs) {
+      for (const [tabId, s] of tabs) if (isBlockingState(s.state)) out.add(tabId)
+    }
+    if (marks) for (const tabId of marks) if (tabId !== "") out.add(tabId)
+    if (out.size > 0) return [...out].sort(compareTabIds)
+    // No tab-precise candidate — does the task qualify at task level?
+    if (!isBlockingState(engineState.get(taskId)?.state) && !marks) return []
+    // Refine a task-level hit to a concrete tab when the per-tab map knows
+    // one sitting in an attention-worthy state (e.g. the tab whose turn just
+    // completed). Raw turn_complete is only a REFINEMENT, never a candidacy
+    // source — otherwise a visited completion would cycle forever.
+    if (tabs) {
+      const refined = [...tabs.entries()]
+        .filter(([, s]) => isBlockingState(s.state) || s.state === "turn_complete")
+        .map(([tabId]) => tabId)
+        .sort(compareTabIds)
+      if (refined.length > 0) return [refined[0] as string]
+    }
+    return [null]
   }
-  const start = currentId ? order.indexOf(currentId) : -1
-  // Start one past the current task (wrapping); when current isn't in the list
-  // (or is null) start from 0. A press while sitting ON the only candidate
-  // walks away and wraps back to it, which is the intended "next" behavior.
-  for (let step = 1; step <= order.length; step++) {
-    const id = order[(start + step) % order.length]
-    if (id && needsAttention(id)) return id
+
+  const flat: AttentionTarget[] = []
+  for (const taskId of order) {
+    for (const tabId of candidatesFor(taskId)) {
+      // Sitting on the task already: a task-level (null-tab) self-target is a
+      // no-op jump — skip it; concrete OTHER tabs of the current task stay.
+      if (taskId === current.taskId && (tabId === null || tabId === current.tabId)) continue
+      flat.push({ taskId, tabId })
+    }
   }
-  return null
+  if (flat.length === 0) return null
+
+  // Forward from the current position: entries of the current task (its
+  // other waiting tabs) sort first in the walk, then tasks after it in
+  // sidebar order, wrapping.
+  const curOrder = current.taskId ? order.indexOf(current.taskId) : -1
+  const rank = (t: AttentionTarget): number => {
+    const i = order.indexOf(t.taskId)
+    if (i === curOrder) return 0 // current task's other tabs come first
+    return i > curOrder ? i - curOrder : order.length + (i - curOrder)
+  }
+  flat.sort((a, b) => rank(a) - rank(b))
+  return flat[0] ?? null
 }

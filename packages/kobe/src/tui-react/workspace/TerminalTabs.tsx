@@ -93,6 +93,35 @@ import { useTurnPolls } from "./use-turn-polls"
 /** Per-task tab state, preserved across task switches for the process. */
 const tabsByTask = new Map<string, TabsState>()
 
+/** The task's currently-active tab id (module map read) — the attention
+ *  jump's "where am I" input. Null when the task never mounted tabs. */
+export function activeTabIdFor(taskId: string): string | null {
+  return tabsByTask.get(taskId)?.activeId ?? null
+}
+
+/**
+ * Cross-component "activate this tab" request (the F7 attention jump). The
+ * mounted TerminalTabs for `taskId` consumes it via the listener; a task
+ * that isn't mounted yet consumes it on mount (the host selects the task
+ * first, TerminalTabs mounts, then reads the pending request). Unknown tab
+ * ids are dropped on consume — the tab may have closed meanwhile.
+ */
+let pendingTabActivation: { taskId: string; tabId: string } | null = null
+const tabActivationListeners = new Set<() => void>()
+
+export function requestTabActivation(taskId: string, tabId: string): void {
+  pendingTabActivation = { taskId, tabId }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending activation for this task, or null. */
+function takeTabActivation(taskId: string): string | null {
+  if (pendingTabActivation?.taskId !== taskId) return null
+  const tabId = pendingTabActivation.tabId
+  pendingTabActivation = null
+  return tabId
+}
+
 /**
  * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
  * `tabsByTask` entry (module-level, otherwise only-grows) and its
@@ -189,6 +218,25 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     kv.set(persistKey, next)
   }
 
+  // Attention-jump tab activation (F7): consume a pending request for this
+  // task — on mount (the host just selected the task, then TerminalTabs
+  // mounted) and on requests fired while already mounted. A request naming a
+  // tab that no longer exists is dropped. Mount-only; reads via refs.
+  const updateRef = useLatest(update)
+  useEffect(() => {
+    const consume = (): void => {
+      const tabId = takeTabActivation(propsRef.current.taskId)
+      if (!tabId) return
+      const s = stateRef.current
+      if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
+    }
+    consume()
+    tabActivationListeners.add(consume)
+    return () => {
+      tabActivationListeners.delete(consume)
+    }
+  }, [])
+
   /** Engine-tab spawn: the composition (shell wrap + resume-vs-pin +
    *  first-spawn initial prompt, issue #17) is pure — `engineTabSpawnFor`;
    *  this closure only supplies the IO reads (registry liveness, props). */
@@ -199,6 +247,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       live,
       shell: defaultShell(),
       prompt: propsRef.current.initialPrompt,
+      taskId: props.taskId,
     })
   }
   // Latest-render mirror for the mount-once engine-send closure below —

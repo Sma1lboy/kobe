@@ -29,7 +29,15 @@ export function shellCommandLine(argv: readonly string[]): string {
  * buffering holds it until the shell is ready). This keeps the user's
  * full shell context — rc files, aliases, PATH — and exiting the engine
  * lands on the shell prompt instead of killing the tab.
+ *
+ * `env` rides the typed line as an `env K=V …` prefix (not the PTY's own
+ * environment): it reaches fresh spawns AND adopted warm shells through the
+ * same path, works in fish (which rejects the bare `K=V cmd` prefix), and
+ * needs no per-backend plumbing. The engine's hook subprocesses inherit it —
+ * how `kobe hook` learns which TAB an activity event came from.
  */
-export function shellSpawn(argv: readonly string[], shell: string): TabSpawn {
-  return { command: [shell], initialInput: `${shellCommandLine(argv)}\r` }
+export function shellSpawn(argv: readonly string[], shell: string, env?: Readonly<Record<string, string>>): TabSpawn {
+  const pairs = Object.entries(env ?? {})
+  const full = pairs.length > 0 ? ["env", ...pairs.map(([k, v]) => `${k}=${v}`), ...argv] : argv
+  return { command: [shell], initialInput: `${shellCommandLine(full)}\r` }
 }

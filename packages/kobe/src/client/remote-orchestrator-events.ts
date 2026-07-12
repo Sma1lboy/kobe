@@ -38,16 +38,30 @@ import {
  * engine ever starts). No-op (no signal write) when nothing is stale.
  */
 function pruneEngineState(tasks: readonly SerializedTask[], signals: OrchestratorSignals): void {
-  const current = signals.engineStateAcc()
-  if (current.size === 0) return
   const live = new Set(tasks.map((t) => t.id))
-  let next: Map<string, TaskEngineState> | null = null
-  for (const key of current.keys()) {
-    if (live.has(key)) continue
-    if (!next) next = new Map(current)
-    next.delete(key)
+  const current = signals.engineStateAcc()
+  if (current.size > 0) {
+    let next: Map<string, TaskEngineState> | null = null
+    for (const key of current.keys()) {
+      if (live.has(key)) continue
+      if (!next) next = new Map(current)
+      next.delete(key)
+    }
+    if (next) signals.setEngineStateSig(next)
   }
-  if (next) signals.setEngineStateSig(next)
+  // Same leak guard for the per-tab map — a task deleted while a tab was
+  // non-idle never gets its per-tab idle events on this client if it was
+  // disconnected at the time.
+  const tabs = signals.engineTabStateAcc()
+  if (tabs.size > 0) {
+    let nextTabs: Map<string, ReadonlyMap<string, TaskEngineState>> | null = null
+    for (const key of tabs.keys()) {
+      if (live.has(key)) continue
+      if (!nextTabs) nextTabs = new Map(tabs)
+      nextTabs.delete(key)
+    }
+    if (nextTabs) signals.setEngineTabStateSig(nextTabs)
+  }
 }
 
 /**
@@ -97,7 +111,13 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     return
   }
   if (name === "engine-state") {
-    const p = payload as { taskId?: string; state?: TaskActivityState; detail?: EngineActivityDetail; at?: number }
+    const p = payload as {
+      taskId?: string
+      tabId?: string
+      state?: TaskActivityState
+      detail?: EngineActivityDetail
+      at?: number
+    }
     if (typeof p?.taskId !== "string" || typeof p.state !== "string") {
       logClientError(
         "orch",
@@ -105,11 +125,23 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       )
       return
     }
-    // Accumulate per-task into a fresh Map (new ref → Solid re-renders).
+    const entry: TaskEngineState = { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 }
+    // Accumulate per-task into a fresh Map (new ref → re-render). A tabId-
+    // carrying event updates BOTH levels: the daemon publishes one event per
+    // report, and the task entry is its last-event-wins rollup.
     const next = new Map(signals.engineStateAcc())
     if (p.state === "idle") next.delete(p.taskId)
-    else next.set(p.taskId, { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 })
+    else next.set(p.taskId, entry)
     signals.setEngineStateSig(next)
+    if (typeof p.tabId === "string" && p.tabId) {
+      const nextTabs = new Map(signals.engineTabStateAcc())
+      const tabs = new Map(nextTabs.get(p.taskId) ?? [])
+      if (p.state === "idle") tabs.delete(p.tabId)
+      else tabs.set(p.tabId, entry)
+      if (tabs.size > 0) nextTabs.set(p.taskId, tabs)
+      else nextTabs.delete(p.taskId)
+      signals.setEngineTabStateSig(nextTabs)
+    }
     return
   }
   if (name === "task.jobs") {

@@ -35,6 +35,11 @@ export interface TaskEngineState {
   readonly at: number
 }
 
+/** Per-TAB engine activity (taskId → tabId → state), accumulated from the
+ *  same channel's `tabId`-carrying events. Sparse — only tabs with a live
+ *  non-idle state; sessions without a tab identity stay task-level only. */
+export type EngineTabStateMap = ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>
+
 /**
  * A long daemon operation currently IN FLIGHT for a task, accumulated from
  * the `task.jobs` channel (today: `ensureWorktree` — `git worktree add` is
@@ -243,6 +248,8 @@ export interface OrchestratorSignals {
   readonly setDaemonVersionSig: (next: string | null) => void
   readonly engineStateAcc: ReadableState<ReadonlyMap<string, TaskEngineState>>
   readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
+  readonly engineTabStateAcc: ReadableState<EngineTabStateMap>
+  readonly setEngineTabStateSig: (next: EngineTabStateMap) => void
   readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
