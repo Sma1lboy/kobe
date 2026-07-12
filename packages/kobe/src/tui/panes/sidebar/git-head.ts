@@ -30,7 +30,6 @@
 import { stat } from "node:fs/promises"
 import { join } from "node:path"
 import { readOnlyGitProcessEnv } from "@/lib/git-env"
-import { sessionAttached } from "@/tui/lib/attach-gate"
 import { createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 
 /** Kill a ref read that runs longer than this — O(1) commands, tight leash. */
@@ -144,12 +143,7 @@ export function currentBranch(repo: string): string {
  * interval floor make the extra calls free.
  */
 export function pollCurrentBranch(repo: string): void {
-  // Detached (background) session: skip the git spawn — the branch hint is
-  // invisible. The gate is cached process-wide, so this stays free to call
-  // from a reactive memo every tick.
-  void sessionAttached().then((attached) => {
-    if (attached) poller.poll(repo)
-  })
+  poller.poll(repo)
 }
 
 /** Test hook: drop all cached entries/backoff state. */

@@ -25,7 +25,7 @@
  */
 
 import { createCliRenderer } from "@opentui/core"
-import { createRoot, useRenderer } from "@opentui/react"
+import { createRoot } from "@opentui/react"
 import {
   installClientCrashHandlers,
   logClientError,
@@ -39,7 +39,6 @@ import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { applyUserKeybindings, reloadUserKeybindings } from "../../tui/context/keybindings-user"
 import { loadUserThemes } from "../../tui/context/theme/loader"
 import { type UiPrefsTarget, applyUiPrefs } from "../../tui/lib/apply-ui-prefs"
-import { sessionAttached } from "../../tui/lib/attach-gate"
 import { installEventLoopStallTelemetry } from "../../tui/lib/event-loop-stall"
 import {
   hostRenderOptions,
@@ -108,32 +107,6 @@ const themeTarget: UiPrefsTarget = {
   setFocusAccent,
   reducedMotion,
   setReducedMotion,
-}
-
-/** Detached fps while the pane's session has no attached client. */
-const DETACHED_FPS = 2
-/** How often to re-check attachment (the probe itself is TTL-cached). */
-const DETACH_CHECK_MS = 3000
-
-/**
- * Render-loop throttle for background panes — fps drops to DETACHED_FPS
- * while the tmux session has no attached client, restores within ~3s of
- * re-attach. Same contract and rationale as the Solid host's sibling.
- */
-function DetachFpsThrottle() {
-  const renderer = useRenderer()
-  useEffect(() => {
-    if (!renderer) return
-    const attachedFps = renderer.targetFps
-    const timer = setInterval(() => {
-      void sessionAttached().then((attached) => {
-        const want = attached ? attachedFps : DETACHED_FPS
-        if (renderer.targetFps !== want) renderer.targetFps = want
-      })
-    }, DETACH_CHECK_MS)
-    return () => clearInterval(timer)
-  }, [renderer])
-  return null
 }
 
 /**
@@ -258,7 +231,6 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   const body = (
     <>
       <UiPrefsSync />
-      <DetachFpsThrottle />
       <PaneErrorBoundary>{screen.root()}</PaneErrorBoundary>
     </>
   )

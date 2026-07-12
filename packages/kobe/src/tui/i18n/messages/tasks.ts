@@ -65,11 +65,6 @@ export const en = {
     delete: "delete",
     views: "views",
     project: "project",
-    /** tmux session-key labels */
-    movePanes: "move panes",
-    detach: "tasks→detach",
-    splits: "splits",
-    panes: "panes",
     /** Move/reorder mode labels */
     reorder: "reorder",
     done: "done",
@@ -148,10 +143,6 @@ export const zh: typeof en = {
     delete: "删除",
     views: "视图",
     project: "项目",
-    movePanes: "移动面板",
-    detach: "任务→分离",
-    splits: "分割",
-    panes: "面板",
     reorder: "重新排序",
     done: "完成",
   },

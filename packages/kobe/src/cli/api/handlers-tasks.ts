@@ -177,10 +177,10 @@ export async function archive(ctx: VerbContext): Promise<unknown> {
   const res = await daemon.request("task.archive", { taskId, archived })
   // Archiving STOPS the engine (matching the TUI's archiveTaskFlow + the verb's
   // own "non-destructive: worktree/branch/history stay" contract): the data
-  // survives, but the live tmux session + engine subprocess must not keep
+  // survives, but the live hosted session + engine subprocess must not keep
   // burning resources. Unarchive is the inverse — it must NOT kill (the session
   // is rebuilt fresh on next enter), so teardown is gated on `archived === true`.
-  // The daemon never touches tmux, so the kill runs here in the CLI process,
+  // Hosted-session teardown runs here in the CLI process,
   // only after the RPC has committed the flag.
   if (archived) await ctx.runtime.tearDownSession(taskId)
   return res
@@ -192,7 +192,7 @@ export async function deleteTask(ctx: VerbContext): Promise<unknown> {
   const force = ctx.args.bool("force") ?? false
   const res = await daemon.request("task.delete", { taskId, force })
   // The daemon's task.delete removes the worktree + index entry but never the
-  // tmux session (it doesn't import tmux). Without this, a scripted delete
+  // hosted session. Without this, a scripted delete
   // orphans the `kobe-<id>` session + its engine — invisible to every kobe UI
   // since the task is gone from tasks.json. Mirror the TUI's finishDeletedTaskFlow
   // and kill it here, after the delete RPC succeeds.

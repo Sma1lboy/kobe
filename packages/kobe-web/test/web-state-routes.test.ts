@@ -90,7 +90,6 @@ describe("/api/quick-prompts", () => {
       activeTheme: string
       transparentBackground: boolean
       focusAccent: string
-      settingsSurface: string
       editorKind: string
       remoteProjects: boolean
       archivedHistoryPreview: boolean
@@ -101,7 +100,6 @@ describe("/api/quick-prompts", () => {
     expect(empty.activeTheme).toBe("claude")
     expect(empty.transparentBackground).toBe(false)
     expect(empty.focusAccent).toBe("primary")
-    expect(empty.settingsSurface).toBe("chattab")
     expect(empty.editorKind).toBe("auto")
     expect(empty.archivedHistoryPreview).toBe(false)
     expect(empty.engines.some((engine) => engine.id === "claude" && engine.isBuiltin)).toBe(true)
@@ -116,7 +114,6 @@ describe("/api/quick-prompts", () => {
             transparentBackground: true,
             focusAccent: "info",
             notificationsToast: false,
-            settingsSurface: "taskpanel",
             editorKind: "custom",
             editorCustomCommand: "code -w {file}",
             remoteProjects: true,
@@ -136,7 +133,6 @@ describe("/api/quick-prompts", () => {
     expect(patched.transparentBackground).toBe(true)
     expect(patched.focusAccent).toBe("info")
     expect(patched.notificationsToast).toBe(false)
-    expect(patched.settingsSurface).toBe("taskpanel")
     expect(patched.editorKind).toBe("custom")
     expect(patched.editorCustomCommand).toBe("code -w {file}")
     expect(patched.remoteProjects).toBe(true)

@@ -1,7 +1,7 @@
 /**
  * Behavioral tests for the user-keybindings loader
  * (`src/tui/context/keybindings-user.ts`): the once-per-process apply, the
- * caching, the tmux.* / keymap partition, and the reload-from-clean-slate
+ * caching, PureTUI keymap application, and reload-from-clean-slate
  * path. The file READER (`state/keybindings-file.ts`) is mocked — it needs
  * `Bun.YAML`, unavailable under vitest's node VM, and its parse behavior
  * isn't what this module owns. What IS asserted: the parsed doc lands as
@@ -149,18 +149,6 @@ describe("applyUserKeybindings", () => {
     userKb.applyUserKeybindings()
     userKb.userKeybindingsReport()
     expect(readKeybindingsFile).not.toHaveBeenCalled()
-  })
-
-  test("tmux.* entries are routed to the tmux resolver and reported with prefix-aware hints", () => {
-    fileState.doc = { bindings: { "tmux.tab.new": "ctrl+g" } }
-    const report = userKb.reloadUserKeybindings()
-    const applied = report.applied.find((a) => a.id === "tmux.tab.new")
-    expect(applied).toBeDefined()
-    expect(applied?.keys).toEqual(["ctrl+g"])
-    expect(applied?.defaultKeys).toEqual(["ctrl+t"])
-    // The KobeKeymap display row's hint tracks the resolved tmux chord.
-    const row = KobeKeymap.find((r) => r.id === "tmux.tab.new")
-    if (row?.hint) expect(row.hint.keys).toBe("ctrl+g")
   })
 })
 

@@ -158,7 +158,7 @@ export const VERBS: readonly VerbSpec[] = [
   { name: "list", summary: "List all tasks (incl. archived). Returns { tasks }.", flags: [], handler: list },
   {
     name: "get-task",
-    summary: "Read one task's metadata. `.running` = its tmux session is live.",
+    summary: "Read one task's metadata. `.running` = its hosted engine session is live.",
     flags: [F.taskId()],
     handler: getTask,
   },
@@ -226,7 +226,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "dispatch",
     summary:
-      "Route text into a task's live session via the daemon's session.deliver channel — the front-end hosting the session pastes it. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it never spawns or touches tmux itself.",
+      "Route text into a task's live session via the daemon's session.deliver channel. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it requires an already-hosted session.",
     flags: [F.taskId(true), F.prompt(true, "Text delivered into the task's engine session.")],
     handler: dispatch,
   },

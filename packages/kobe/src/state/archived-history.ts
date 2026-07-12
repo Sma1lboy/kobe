@@ -1,13 +1,7 @@
 /**
  * The archived-history-preview opt-in (beta). One switch gates the read-only
- * engine-history view that replaces the live engine pane when an ARCHIVED task
- * is opened — both surfaces share this key:
- *
- *   - web: the SPA's archived-task transcript drawer (the `/api/settings`
- *     `archivedHistoryPreview` field mirrors this key),
- *   - TUI: the session-build branch that launches `kobe history` into the
- *     engine pane slot instead of the engine when a task is archived
- *     (panes/terminal/tmux.ts).
+ * engine-history view for archived tasks. The web settings API mirrors this
+ * key, and the TUI settings dialog can toggle it.
  *
  * Lives in the shared state.json (the Settings dialog's KV writes the same
  * file), read fresh at each decision point so toggling needs no daemon

@@ -10,7 +10,7 @@ import { truncateEnd } from "../../lib/truncate"
 import type { SidebarView } from "./groups"
 import type { SidebarTone } from "./row-view"
 
-/** Default sidebar width — task-list rail matching the tmux Tasks pane. */
+/** Default width of the PureTUI task-list rail. */
 export const SIDEBAR_WIDTH = 32
 
 /** Polling interval for the per-main-row git branch refresh. */

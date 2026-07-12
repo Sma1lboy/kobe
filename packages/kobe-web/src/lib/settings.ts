@@ -1,7 +1,6 @@
 import { api } from "./api-client.ts"
 
 export type FocusAccent = "primary" | "success" | "info"
-export type SettingsSurface = "chattab" | "taskpanel"
 export type EditorKind = "auto" | "vim" | "nvim" | "nano" | "emacs" | "custom"
 
 export interface WebSettingsEngine {
@@ -19,7 +18,6 @@ export interface WebSettings {
   focusAccent: FocusAccent
   notificationsToast: boolean
   notificationsSound: boolean
-  settingsSurface: SettingsSurface
   editorKind: EditorKind
   editorCustomCommand: string
   remoteProjects: boolean

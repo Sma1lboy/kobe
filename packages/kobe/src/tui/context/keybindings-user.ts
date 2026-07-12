@@ -12,11 +12,6 @@
  * "runtime overlay" the keymap's header comment reserved for a future
  * settings layer.
  *
- * `tmux.*` ids in the same file belong to the tmux session-key layer
- * (`src/tmux/keybindings.ts`, consumed by `ensureSession`); they're
- * routed there for validation and merged into this report so the
- * Settings → Keybindings section shows ONE unified view.
- *
  * Call `applyUserKeybindings()` ONCE per process, BEFORE the first
  * `render()` — same slot as `loadUserThemes()` in every TUI host. It is
  * idempotent (subsequent calls return the cached report), never throws,
@@ -28,15 +23,6 @@
  */
 
 import { readKeybindingsFile, resetKeybindingsFileCache } from "../../state/keybindings-file"
-import {
-  TMUX_FOCUS_DEFAULTS,
-  TMUX_FOCUS_ID,
-  TMUX_SINGLE_BINDING_DEFAULTS,
-  isTmuxPrefixBindingId,
-  resetTmuxKeysCache,
-  resolveTmuxKeyEntries,
-  tmuxChordOptsFor,
-} from "../../tmux/keybindings"
 import { DEFAULT_PREFIX_CONFIGURATION, configurePrefix, resetPrefixConfiguration } from "../lib/keymap-dispatch"
 import { type AppliedOverride, applyKeymapOverrides, extractKeybindingOverrides } from "../lib/keymap-overrides"
 import { applyPrefixKeymapOverrides, extractPrefixKeybindings } from "../lib/keymap-prefix-overrides"
@@ -47,7 +33,7 @@ export type UserKeybindingsReport = {
   path: string
   /** Whether a config file was found at all. */
   exists: boolean
-  /** Overrides that landed (opentui keymap + tmux session keys). */
+  /** Overrides that landed in the workspace keymap. */
   applied: AppliedOverride[]
   /** Everything that didn't parse / validate / apply, human-readable. */
   warnings: string[]
@@ -70,17 +56,13 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   }
 
   const warnings: string[] = [...file.warnings]
-  const extracted = extractKeybindingOverrides(file.doc, process.platform, { chordOptsFor: tmuxChordOptsFor })
+  const extracted = extractKeybindingOverrides(file.doc, process.platform)
   warnings.push(...extracted.warnings)
   const prefix = extractPrefixKeybindings(file.doc, process.platform)
   warnings.push(...prefix.warnings)
   configurePrefix({ ...DEFAULT_PREFIX_CONFIGURATION, ...prefix.configuration })
 
-  // Partition by namespace: tmux.* entries belong to the session-key
-  // layer; everything else targets KobeKeymap.
-  const tmuxEntries = extracted.entries.filter((e) => e.id.startsWith("tmux."))
-  const keymapEntries = extracted.entries.filter((e) => !e.id.startsWith("tmux."))
-  const result = applyKeymapOverrides(KobeKeymap, keymapEntries)
+  const result = applyKeymapOverrides(KobeKeymap, extracted.entries)
   warnings.push(...result.warnings)
   const applied: AppliedOverride[] = [...result.applied]
   const prefixKey = prefix.configuration.key
@@ -91,35 +73,6 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   const prefixResult = applyPrefixKeymapOverrides(KobeKeymap, [...extracted.prefixEntries, ...prefix.entries])
   warnings.push(...prefixResult.warnings)
   applied.push(...prefixResult.applied)
-
-  // Validate tmux entries with the same resolver `ensureSession` uses,
-  // so the report shows what will actually bind (and why something
-  // won't). The resolver itself runs again, cached, in whatever process
-  // installs the session — same file, same logic, same outcome.
-  if (tmuxEntries.length > 0) {
-    const tmuxRes = resolveTmuxKeyEntries(tmuxEntries)
-    warnings.push(...tmuxRes.warnings)
-    for (const id of tmuxRes.overridden) {
-      if (id === TMUX_FOCUS_ID) {
-        applied.push({
-          id,
-          keys: tmuxRes.focus.map((b) => b?.chord ?? "").filter((c) => c !== ""),
-          defaultKeys: TMUX_FOCUS_DEFAULTS,
-        })
-        continue
-      }
-      const bind = tmuxRes.binds[id as keyof typeof tmuxRes.binds]
-      applied.push({
-        id,
-        keys: bind ? [bind.chord] : [],
-        defaultKeys: [TMUX_SINGLE_BINDING_DEFAULTS[id as keyof typeof TMUX_SINGLE_BINDING_DEFAULTS]],
-      })
-      const displayRow = KobeKeymap.find((row) => row.id === id)
-      if (displayRow?.hint) {
-        displayRow.hint.keys = bind ? `${isTmuxPrefixBindingId(id) ? "prefix " : ""}${bind.chord}` : "—"
-      }
-    }
-  }
 
   for (const w of warnings) console.warn(`[kobe/keybindings] ${w}`)
   cached = { path: file.path, exists: true, applied, warnings }
@@ -138,21 +91,17 @@ export function userKeybindingsReport(): UserKeybindingsReport {
  * keybindings watcher pings the `keybindings` channel.
  *
  * The order matters: the three per-process caches (file read, applied
- * report, tmux resolution) are dropped, then `KobeKeymap` is reset to its
+ * report) are dropped, then `KobeKeymap` is reset to its
  * boot-time defaults BEFORE re-applying — so removing an override actually
  * restores the default instead of leaving the stale chord behind. A
  * `keymapVersion` bump then re-renders the chord legends; binding BEHAVIOUR
  * needs no nudge, since the dispatcher re-reads chords on every keypress.
  *
- * Scope note: this refreshes the in-process keymap (every `kobe` pane's
- * chords + their legend display) and the tmux-hint DISPLAY. It does NOT
- * re-bind the tmux SERVER keys (`tmux.*`) — those are installed at session
- * build and still need a rebuild to change behaviour.
+ * Scope note: this refreshes the in-process keymap and its legend display.
  */
 export function reloadUserKeybindings(): UserKeybindingsReport {
   cached = null
   resetKeybindingsFileCache()
-  resetTmuxKeysCache()
   resetKeymapToDefaults()
   resetPrefixConfiguration()
   const report = applyUserKeybindings()

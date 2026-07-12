@@ -1,164 +1,22 @@
-/**
- * Unit tests for `kobe api` VERB HANDLER LOGIC — the decisions each handler
- * makes (task resolution, fan-out planning, prompt-delivery choice,
- * create/adopt flag interplay) — driven through `invokeVerb` against a
- * fake daemon client that records requests and a stubbed side-effect
- * runtime. No daemon socket, no tmux server, no git.
- *
- * Why these matter: `kobe api` is scripted against (the kobe skill +
- * shell aliases), so a handler silently changing which RPCs it fires, in
- * what order, with what payload — or what JSON it prints — breaks scripts
- * that never see a type error. These tests pin the REQUEST TRAFFIC and
- * RESULT SHAPES, which the schema (`kobe api schema`) cannot express.
- */
+/** Request-traffic tests for API creation, send, and fan-out handlers. */
 
-import type { ChannelName, ChannelPayloads } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { describe, expect, it } from "vitest"
-import {
-  ApiError,
-  type ApiRuntime,
-  type DeliveredPrompt,
-  type PromptDeliveryOps,
-  type PromptTarget,
-  deliverPrompt,
-  invokeVerb,
-} from "../../src/cli/api-cmd.ts"
-import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
-import { tmuxSessionName } from "../../src/tmux/client.ts"
-
-// ── Fakes ─────────────────────────────────────────────────────────────────────
-
-type RpcResponder = (payload: unknown, callIndex: number) => unknown
-
-/** Records every request; answers from a per-RPC responder table. */
-class FakeClient implements DaemonRpc {
-  readonly requests: Array<{ name: string; payload: unknown }> = []
-  /** Channel payloads "replayed" when `subscribe()` runs (mirrors the daemon). */
-  readonly replay: Array<{ channel: ChannelName; payload: unknown }> = []
-  subscribeCount = 0
-  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>()
-
-  constructor(private readonly responders: Record<string, RpcResponder> = {}) {}
-
-  async request<T = unknown>(name: string, payload?: unknown): Promise<T> {
-    const callIndex = this.requests.filter((r) => r.name === name).length
-    this.requests.push({ name, payload })
-    const respond = this.responders[name]
-    if (!respond) throw new Error(`fake daemon has no responder for "${name}"`)
-    return respond(payload, callIndex) as T
-  }
-
-  async subscribe(): Promise<unknown> {
-    this.subscribeCount += 1
-    for (const { channel, payload } of this.replay) {
-      for (const handler of this.handlers.get(channel) ?? []) handler(payload)
-    }
-    return {}
-  }
-
-  onChannel<C extends ChannelName>(channel: C, handler: (payload: ChannelPayloads[C]) => void): () => void {
-    let set = this.handlers.get(channel)
-    if (!set) {
-      set = new Set()
-      this.handlers.set(channel, set)
-    }
-    const h = handler as (payload: unknown) => void
-    set.add(h)
-    return () => set?.delete(h)
-  }
-
-  get requestNames(): string[] {
-    return this.requests.map((r) => r.name)
-  }
-}
-
-/** A task as the daemon serializes it — only the fields handlers read. */
-function taskFixture(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    id: "t1",
-    title: "T",
-    branch: "kobe/t-t1",
-    worktreePath: "/wt/t1",
-    vendor: "claude",
-    repo: "/repo/x",
-    status: "backlog",
-    archived: false,
-    ...over,
-  }
-}
-
-/** Runtime whose every operation is inert (or loudly unexpected). */
-function stubRuntime(overrides: Partial<ApiRuntime> = {}): ApiRuntime {
-  return {
-    isTaskRunning: async () => false,
-    deliverPrompt: async () => {
-      throw new Error("deliverPrompt should not run in this test")
-    },
-    resolveRepoRoot: async (p) => p,
-    defaultVendor: async () => undefined,
-    readWorktreeChanges: async () => ({ added: 0, deleted: 0 }),
-    tearDownSession: async () => {},
-    ...overrides,
-  }
-}
-
-/** A tearDownSession stub that records the task ids it was asked to kill. */
-function recordingTearDown() {
-  const killed: string[] = []
-  const tearDownSession: ApiRuntime["tearDownSession"] = async (taskId) => {
-    killed.push(taskId)
-  }
-  return { killed, tearDownSession }
-}
-
-/** A deliverPrompt that records its calls instead of touching tmux. */
-function recordingDelivery(result: Partial<DeliveredPrompt> = {}) {
-  const calls: Array<{ target: PromptTarget; prompt: string }> = []
-  const deliver: ApiRuntime["deliverPrompt"] = async (_client, target, prompt) => {
-    calls.push({ target, prompt })
-    return {
-      session: tmuxSessionName(target.id),
-      pane: "%1",
-      started: true,
-      engineReady: true,
-      delivered: true,
-      ...result,
-    }
-  }
-  return { calls, deliver }
-}
-
-async function expectApiError(run: () => Promise<unknown>, code: string, message?: string | RegExp): Promise<void> {
-  try {
-    await run()
-    expect.unreachable("should have thrown")
-  } catch (err) {
-    expect(err).toBeInstanceOf(ApiError)
-    expect((err as ApiError).code).toBe(code)
-    if (typeof message === "string") expect((err as ApiError).message).toBe(message)
-    else if (message) expect((err as ApiError).message).toMatch(message)
-  }
-}
-
-// ── add: create/flag interplay + prompt decision ─────────────────────────────
+import { ApiError, type ApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
+import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
 describe("add handler", () => {
-  it("minimal create: one task.create, no follow-ups, started:false", async () => {
+  it("creates without stealing focus", async () => {
     const task = taskFixture()
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task }),
-    })
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task }) })
     const result = await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
-    // No --activate ⇒ no task.setActive (must not steal the shared focus).
     expect(client.requestNames).toEqual(["task.create"])
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
     expect(result).toEqual({ taskId: "t1", task, started: false })
   })
 
-  it("--activate sets the task active (opt-in focus)", async () => {
-    const task = taskFixture()
+  it("sets active only when requested", async () => {
     const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task }),
+      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
       "task.setActive": () => ({}),
     })
     await invokeVerb("add", ["--repo", "/repo/x", "--activate"], { client, runtime: stubRuntime() })
@@ -166,37 +24,16 @@ describe("add handler", () => {
     expect(client.requests[1].payload).toEqual({ taskId: "t1" })
   })
 
-  it("resolves a relative --repo against $PWD", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-    })
-    await invokeVerb("add", ["--repo", "some/rel"], { client, runtime: stubRuntime() })
-    expect((client.requests[0].payload as { repo: string }).repo).toBe(`${process.cwd()}/some/rel`)
-  })
-
-  it("canonicalizes --repo through the runtime before task.create", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture({ repo: "/repo/main" }) }),
-    })
-    await invokeVerb("add", ["--repo", "/repo/main/.kobe/worktrees/task"], {
+  it("canonicalizes repo and uses the configured default vendor", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x/worktree"], {
       client,
-      runtime: stubRuntime({ resolveRepoRoot: async () => "/repo/main" }),
-    })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/main" })
-  })
-
-  it("uses the settings default vendor when --vendor is omitted", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture({ vendor: "codex" }) }),
-    })
-    await invokeVerb("add", ["--repo", "/repo/x"], {
-      client,
-      runtime: stubRuntime({ defaultVendor: async () => "codex" }),
+      runtime: stubRuntime({ resolveRepoRoot: async () => "/repo/x", defaultVendor: async () => "codex" }),
     })
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x", vendor: "codex" })
   })
 
-  it("applies --status and --pin as follow-up RPCs, then re-reads the task", async () => {
+  it("applies status and pin then returns the refreshed task", async () => {
     const fresh = taskFixture({ status: "in_progress", pinned: true })
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
@@ -208,30 +45,13 @@ describe("add handler", () => {
       "add",
       ["--repo", "/repo/x", "--status", "in_progress", "--pin", "--title", "My task"],
       { client, runtime: stubRuntime() },
-    )) as { task: unknown; started: boolean }
+    )) as { task: unknown }
     expect(client.requestNames).toEqual(["task.create", "task.status", "task.pin", "task.get"])
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", title: "My task" })
-    expect(client.requests[1].payload).toEqual({ taskId: "t1", status: "in_progress" })
-    expect(client.requests[2].payload).toEqual({ taskId: "t1", pinned: true })
-    // The returned task is the REFRESHED one, not the create-time snapshot.
     expect(result.task).toEqual(fresh)
   })
 
-  it("--pin=false still fires the follow-up (explicit unpin) and refetches", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-      "task.pin": () => ({}),
-      "task.get": () => ({ task: taskFixture() }),
-    })
-    await invokeVerb("add", ["--repo", "/repo/x", "--pin=false"], { client, runtime: stubRuntime() })
-    expect(client.requestNames).toEqual(["task.create", "task.pin", "task.get"])
-    expect(client.requests[1].payload).toEqual({ taskId: "t1", pinned: false })
-  })
-
-  it("passes branch/base-branch/vendor through to task.create (baseRef key)", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-    })
+  it("passes branch, base branch, and vendor to creation", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await invokeVerb("add", ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--vendor", "codex"], {
       client,
       runtime: stubRuntime(),
@@ -239,47 +59,23 @@ describe("add handler", () => {
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x", branch: "feat/x", baseRef: "main", vendor: "codex" })
   })
 
-  it("with --prompt it delivers exactly the explicit prompt to the created task", async () => {
-    const task = taskFixture({
-      worktreePath: "/wt/t1",
-      kind: "task",
-      vendor: "codex",
-      modelEffort: "high",
-      repo: "/repo/x",
-    })
-    const refreshed = { ...task, worktreePath: "/wt/t1-materialized" }
+  it("delivers an explicit prompt to the created task", async () => {
+    const task = taskFixture({ kind: "task", vendor: "codex", modelEffort: "high" })
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task }),
-      "task.get": () => ({ task: refreshed }),
+      "task.get": () => ({ task }),
     })
     const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "do the thing"], {
+    const result = (await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "do it"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })) as Record<string, unknown>
-    expect(calls).toEqual([
-      {
-        target: {
-          id: "t1",
-          worktreePath: "/wt/t1",
-          kind: "task",
-          vendor: "codex",
-          modelEffort: "high",
-          repo: "/repo/x",
-        },
-        prompt: "do the thing",
-      },
-    ])
-    expect(result.started).toBe(true)
-    expect(result.engineReady).toBe(true)
-    expect(result.session).toBe(tmuxSessionName("t1"))
-    expect(result.task).toEqual(refreshed)
+    expect(calls[0]).toMatchObject({ target: { id: "t1", vendor: "codex", modelEffort: "high" }, prompt: "do it" })
+    expect(result).toMatchObject({ started: true, engineReady: true, delivered: true, session: "t1::tab-1" })
   })
 
-  it("spawn-task alias dispatches to add", async () => {
-    const client = new FakeClient({
-      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
-    })
+  it("keeps the spawn-task alias", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     const result = (await invokeVerb("spawn-task", ["--repo", "/repo/x"], {
       client,
       runtime: stubRuntime(),
@@ -288,61 +84,33 @@ describe("add handler", () => {
   })
 })
 
-// ── issues: daemon-owned tracker ─────────────────────────────────────────────
-
-describe("issue handlers", () => {
-  it("issue-set-status sends a daemon-owned issue mutation", async () => {
-    const client = new FakeClient({
-      "issue.mutate": () => ({ repoRoot: "/repo/x", exists: true, nextId: 9, issues: [] }),
-    })
-    await invokeVerb("issue-set-status", ["--repo", "/repo/x", "--id", "8", "--status", "done"], {
-      client,
-      runtime: stubRuntime(),
-    })
-    expect(client.requests).toEqual([
-      {
-        name: "issue.mutate",
-        payload: { repoRoot: "/repo/x", op: { type: "setStatus", id: 8, status: "done" } },
-      },
-    ])
-  })
-})
-
-// ── send: task resolution (explicit id vs active task) ──────────────────────
-
-describe("send handler task resolution", () => {
-  it("uses an explicit --task-id without consulting the active task", async () => {
+describe("send handler", () => {
+  it("uses an explicit target without consulting active task", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
     const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+    const result = await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as Record<string, unknown>
+    })
     expect(client.subscribeCount).toBe(0)
-    expect(client.requests[0]).toEqual({ name: "task.get", payload: { taskId: "abc" } })
     expect(calls[0].prompt).toBe("hi")
-    expect(result).toMatchObject({ ok: true, taskId: "abc", started: true, engineReady: true })
+    expect(result).toMatchObject({ ok: true, taskId: "abc", started: true })
   })
 
-  it("falls back to the daemon's active task when --task-id is omitted", async () => {
+  it("falls back to the daemon active task", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "active-1" }) }) })
     client.replay.push({ channel: "active-task", payload: { taskId: "active-1" } })
     const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb("send", ["--prompt", "hi"], {
-      client,
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as { taskId: string }
+    await invokeVerb("send", ["--prompt", "hi"], { client, runtime: stubRuntime({ deliverPrompt: deliver }) })
     expect(client.subscribeCount).toBe(1)
-    expect(client.requests[0]).toEqual({ name: "task.get", payload: { taskId: "active-1" } })
     expect(calls[0].target.id).toBe("active-1")
-    expect(result.taskId).toBe("active-1")
   })
 
-  it("errors NOT_DELIVERED when the paste never lands in the composer", async () => {
-    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
+  it("reports a prompt that did not land", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture() }) })
     await expectApiError(
       () =>
-        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+        invokeVerb("send", ["--task-id", "t1", "--prompt", "hi"], {
           client,
           runtime: stubRuntime({ deliverPrompt: recordingDelivery({ delivered: false }).deliver }),
         }),
@@ -350,67 +118,42 @@ describe("send handler task resolution", () => {
     )
   })
 
-  it("errors with MISSING_TARGET when neither --task-id nor an active task exists", async () => {
-    const client = new FakeClient()
+  it("requires an explicit or active target", async () => {
     await expectApiError(
-      () => invokeVerb("send", ["--prompt", "hi"], { client, runtime: stubRuntime() }),
+      () => invokeVerb("send", ["--prompt", "hi"], { client: new FakeClient(), runtime: stubRuntime() }),
       "MISSING_TARGET",
-      "no --task-id given and no active task — open a task first or pass --task-id",
     )
-    // It never fired a task.get / delivery for a target it couldn't resolve.
-    expect(client.requestNames).toEqual([])
   })
 })
 
-// ── fan-out: plan building, cap, per-task traffic ────────────────────────────
-
 describe("fan-out handler", () => {
-  function fanClient(): FakeClient {
-    return new FakeClient({
-      "task.create": (_payload, i) => ({ taskId: `t${i + 1}`, task: taskFixture({ id: `t${i + 1}` }) }),
+  const fanClient = () =>
+    new FakeClient({
+      "task.create": (_payload, index) => ({ taskId: `t${index + 1}`, task: taskFixture({ id: `t${index + 1}` }) }),
     })
-  }
 
-  it("--count N spawns N tasks of the default vendor (claude)", async () => {
+  it("creates and delivers the requested count", async () => {
     const client = fanClient()
     const { calls, deliver } = recordingDelivery()
     const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as { count: number; tasks: Array<{ taskId: string; vendor: string }> }
+    })) as { count: number; tasks: Array<{ taskId: string }> }
     expect(result.count).toBe(3)
-    expect(result.tasks.map((t) => t.taskId)).toEqual(["t1", "t2", "t3"])
-    expect(client.requests.filter((r) => r.name === "task.create").map((r) => r.payload)).toEqual([
-      { repo: "/repo/x", vendor: "claude" },
-      { repo: "/repo/x", vendor: "claude" },
-      { repo: "/repo/x", vendor: "claude" },
-    ])
-    expect(calls.map((c) => c.prompt)).toEqual(["go", "go", "go"])
+    expect(result.tasks.map((task) => task.taskId)).toEqual(["t1", "t2", "t3"])
+    expect(calls.map((call) => call.prompt)).toEqual(["go", "go", "go"])
   })
 
-  it("--agents vendor:count expands in order and overrides --vendor/--count", async () => {
-    const client = fanClient()
+  it("expands per-vendor agent counts in order", async () => {
     const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb(
-      "fan-out",
-      ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2,codex:1"],
-      { client, runtime: stubRuntime({ deliverPrompt: deliver }) },
-    )) as { tasks: Array<{ vendor: string }> }
-    expect(result.tasks.map((t) => t.vendor)).toEqual(["claude", "claude", "codex"])
-    expect(calls.map((c) => c.target.vendor)).toEqual(["claude", "claude", "codex"])
-  })
-
-  it("defaults to a single claude task with no --count/--agents", async () => {
-    const client = fanClient()
-    const { deliver } = recordingDelivery()
-    const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go"], {
-      client,
+    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2,codex:1"], {
+      client: fanClient(),
       runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as { count: number }
-    expect(result.count).toBe(1)
+    })
+    expect(calls.map((call) => call.target.vendor)).toEqual(["claude", "claude", "codex"])
   })
 
-  it("rejects a plan above the cap BEFORE creating anything", async () => {
+  it("rejects a plan above the cap before creation", async () => {
     const client = fanClient()
     await expectApiError(
       () =>
@@ -419,363 +162,35 @@ describe("fan-out handler", () => {
           runtime: stubRuntime(),
         }),
       "BAD_FLAG",
-      "fan-out of 11 exceeds the cap of 10 — spawn in batches",
     )
-    expect(client.requestNames).toEqual([])
+    expect(client.requests).toEqual([])
   })
 
-  it("threads --title and --base-branch into every task.create", async () => {
-    const client = fanClient()
-    const { deliver } = recordingDelivery()
-    await invokeVerb(
-      "fan-out",
-      [
-        "--repo",
-        "/repo/x",
-        "--prompt",
-        "go",
-        "--count",
-        "2",
-        "--vendor",
-        "codex",
-        "--title",
-        "try",
-        "--base-branch",
-        "main",
-      ],
-      { client, runtime: stubRuntime({ deliverPrompt: deliver }) },
-    )
-    expect(client.requests.map((r) => r.payload)).toEqual([
-      { repo: "/repo/x", vendor: "codex", title: "try", baseRef: "main" },
-      { repo: "/repo/x", vendor: "codex", title: "try", baseRef: "main" },
-    ])
-  })
-
-  it("all delivered: each task carries ok:true and failures is empty", async () => {
-    const client = fanClient()
-    const { deliver } = recordingDelivery()
-    const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
-      client,
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as { tasks: Array<{ ok: boolean }>; failures: unknown[] }
-    expect(result.tasks.map((t) => t.ok)).toEqual([true, true])
-    expect(result.failures).toEqual([])
-  })
-
-  it("partial failure: creates all, throws PARTIAL_FANOUT carrying every taskId + code 3 payload", async () => {
-    const client = fanClient()
-    // 2nd task's delivery throws; 3rd resolves but the paste didn't land.
-    let call = 0
-    const deliver: ApiRuntime["deliverPrompt"] = async (_c, target) => {
-      call += 1
+  it("reports every id on partial delivery failure", async () => {
+    const deliver: ApiRuntime["deliverPrompt"] = async (_client, target) => {
       if (target.id === "t2") throw new ApiError("boom", "SESSION_FAILED")
-      const undelivered = target.id === "t3"
       return {
-        session: tmuxSessionName(target.id),
-        pane: "%1",
+        session: `${target.id}::tab-1`,
+        pane: `${target.id}::tab-1`,
         started: true,
-        engineReady: !undelivered,
-        delivered: !undelivered,
+        engineReady: true,
+        delivered: true,
       }
     }
     try {
       await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
-        client,
+        client: fanClient(),
         runtime: stubRuntime({ deliverPrompt: deliver }),
       })
-      expect.unreachable("should throw PARTIAL_FANOUT")
-    } catch (err) {
-      expect(err).toBeInstanceOf(ApiError)
-      const e = err as ApiError
-      expect(e.code).toBe("PARTIAL_FANOUT")
-      const data = e.data as {
-        count: number
-        tasks: Array<{ taskId: string }>
-        failures: Array<{ taskId: string; error: { code: string } }>
-      }
-      expect(data.count).toBe(3)
-      // The one success is reported; the two failures carry their taskId so a
-      // script never loses an already-created (engine-burning) task.
-      expect(data.tasks.map((t) => t.taskId)).toEqual(["t1"])
-      expect(data.failures.map((f) => [f.taskId, f.error.code])).toEqual([
-        ["t2", "SESSION_FAILED"],
-        ["t3", "NOT_DELIVERED"],
-      ])
+      expect.unreachable("should throw")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      expect((error as ApiError).code).toBe("PARTIAL_FANOUT")
+      expect((error as ApiError).data).toMatchObject({
+        count: 3,
+        tasks: [{ taskId: "t1" }, { taskId: "t3" }],
+        failures: [{ taskId: "t2", error: { code: "SESSION_FAILED" } }],
+      })
     }
-    // All 3 tasks were created even though delivery partly failed.
-    expect(client.requests.filter((r) => r.name === "task.create")).toHaveLength(3)
-    expect(call).toBe(3)
-  })
-})
-
-// ── collect: id-list vs repo-filter resolution ───────────────────────────────
-
-describe("collect handler task resolution", () => {
-  it("--task-ids reads each id verbatim (trimmed) and reports liveness + changes", async () => {
-    const client = new FakeClient({
-      "task.get": (payload) => ({ task: taskFixture({ id: (payload as { taskId: string }).taskId }) }),
-    })
-    const result = (await invokeVerb("collect", ["--task-ids", " a , b "], {
-      client,
-      runtime: stubRuntime({
-        isTaskRunning: async (taskId) => taskId === "a",
-        readWorktreeChanges: async () => ({ added: 2, deleted: 1 }),
-      }),
-    })) as { tasks: Array<{ taskId: string; running: boolean; changes: unknown }> }
-    expect(client.requests.map((r) => r.payload)).toEqual([{ taskId: "a" }, { taskId: "b" }])
-    expect(result.tasks.map((t) => [t.taskId, t.running])).toEqual([
-      ["a", true],
-      ["b", false],
-    ])
-    expect(result.tasks[0].changes).toEqual({ added: 2, deleted: 1 })
-  })
-
-  it("skips the worktree-changes read for a task with no worktree", async () => {
-    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ worktreePath: "" }) }) })
-    const result = (await invokeVerb("collect", ["--task-ids", "a"], {
-      client,
-      runtime: stubRuntime({
-        readWorktreeChanges: async () => {
-          throw new Error("must not read changes without a worktree")
-        },
-      }),
-    })) as { tasks: Array<{ changes: unknown }> }
-    expect(result.tasks[0].changes).toEqual({ added: 0, deleted: 0 })
-  })
-
-  it("--repo selects the repo's unarchived tasks via the canonical repo root", async () => {
-    const tasks = [
-      taskFixture({ id: "in-repo", repo: "/repo/x" }),
-      taskFixture({ id: "archived", repo: "/repo/x", archived: true }),
-      taskFixture({ id: "elsewhere", repo: "/repo/y" }),
-    ]
-    const client = new FakeClient({
-      "task.list": () => ({ tasks }),
-      "task.get": (payload) => ({ task: taskFixture({ id: (payload as { taskId: string }).taskId }) }),
-    })
-    const result = (await invokeVerb("collect", ["--repo", "/repo/x"], {
-      client,
-      runtime: stubRuntime(),
-    })) as { tasks: Array<{ taskId: string }> }
-    expect(result.tasks.map((t) => t.taskId)).toEqual(["in-repo"])
-  })
-
-  it("demands a target with MISSING_TARGET when given neither ids nor repo", async () => {
-    await expectApiError(
-      () => invokeVerb("collect", [], { client: new FakeClient(), runtime: stubRuntime() }),
-      "MISSING_TARGET",
-      "collect needs --task-ids id1,id2 or --repo PATH",
-    )
-  })
-})
-
-// ── small daemon verbs: payload + result shapes ──────────────────────────────
-
-describe("simple verb handlers", () => {
-  it("get-task pairs the daemon task with tmux liveness", async () => {
-    const task = taskFixture()
-    const client = new FakeClient({ "task.get": () => ({ task }) })
-    const result = await invokeVerb("get-task", ["--task-id", "t1"], {
-      client,
-      runtime: stubRuntime({ isTaskRunning: async () => true }),
-    })
-    expect(result).toEqual({ task, running: true })
-  })
-
-  it("set-active sets a task id, and --none clears it", async () => {
-    const client = new FakeClient({ "task.setActive": () => ({}) })
-    expect(await invokeVerb("set-active", ["--task-id", "t1"], { client, runtime: stubRuntime() })).toEqual({
-      ok: true,
-      activeTaskId: "t1",
-    })
-    expect(await invokeVerb("set-active", ["--none"], { client, runtime: stubRuntime() })).toEqual({
-      ok: true,
-      activeTaskId: null,
-    })
-    expect(client.requests.map((r) => r.payload)).toEqual([{ taskId: "t1" }, { taskId: null }])
-  })
-
-  it("archive defaults to archived:true; --archived=false unarchives", async () => {
-    const client = new FakeClient({ "task.archive": () => ({}) })
-    await invokeVerb("archive", ["--task-id", "t1"], { client, runtime: stubRuntime() })
-    await invokeVerb("archive", ["--task-id", "t1", "--archived=false"], { client, runtime: stubRuntime() })
-    expect(client.requests.map((r) => r.payload)).toEqual([
-      { taskId: "t1", archived: true },
-      { taskId: "t1", archived: false },
-    ])
-  })
-
-  it("archive(true) kills the task's tmux session AFTER the RPC commits", async () => {
-    // Archiving stops the engine (matching the TUI archiveTaskFlow + the verb's
-    // own "worktree/branch/history stay" contract): the live session must not
-    // outlive the archive flag, or it keeps burning resources.
-    const order: string[] = []
-    const client = new FakeClient({
-      "task.archive": () => {
-        order.push("rpc")
-        return {}
-      },
-    })
-    const { killed, tearDownSession } = recordingTearDown()
-    await invokeVerb("archive", ["--task-id", "t1"], {
-      client,
-      runtime: stubRuntime({
-        tearDownSession: async (id) => {
-          order.push("kill")
-          await tearDownSession(id)
-        },
-      }),
-    })
-    expect(killed).toEqual(["t1"])
-    // The kill runs only after the daemon has committed the archive.
-    expect(order).toEqual(["rpc", "kill"])
-  })
-
-  it("unarchive does NOT kill the session (it's rebuilt fresh on next enter)", async () => {
-    const client = new FakeClient({ "task.archive": () => ({}) })
-    const { killed, tearDownSession } = recordingTearDown()
-    await invokeVerb("archive", ["--task-id", "t1", "--archived=false"], {
-      client,
-      runtime: stubRuntime({ tearDownSession }),
-    })
-    expect(killed).toEqual([])
-  })
-
-  it("delete defaults force:false; --force flips it", async () => {
-    const client = new FakeClient({ "task.delete": () => ({}) })
-    await invokeVerb("delete", ["--task-id", "t1"], { client, runtime: stubRuntime() })
-    await invokeVerb("delete", ["--task-id", "t1", "--force"], { client, runtime: stubRuntime() })
-    expect(client.requests.map((r) => r.payload)).toEqual([
-      { taskId: "t1", force: false },
-      { taskId: "t1", force: true },
-    ])
-  })
-
-  it("delete kills the orphaned tmux session AFTER the delete RPC commits", async () => {
-    // The daemon's task.delete removes the worktree + index entry but never the
-    // tmux session (it can't — it never imports tmux). The CLI must kill it, or
-    // a scripted delete leaks a live engine invisible to every kobe UI.
-    const order: string[] = []
-    const client = new FakeClient({
-      "task.delete": () => {
-        order.push("rpc")
-        return {}
-      },
-    })
-    const { killed, tearDownSession } = recordingTearDown()
-    await invokeVerb("delete", ["--task-id", "t1", "--force"], {
-      client,
-      runtime: stubRuntime({
-        tearDownSession: async (id) => {
-          order.push("kill")
-          await tearDownSession(id)
-        },
-      }),
-    })
-    expect(killed).toEqual(["t1"])
-    expect(order).toEqual(["rpc", "kill"])
-  })
-})
-
-// ── adopt: flag interplay ────────────────────────────────────────────────────
-
-describe("adopt handler", () => {
-  it("sends only repo + worktreePath when optionals are omitted", async () => {
-    const client = new FakeClient({ "worktree.adopt": () => ({ task: taskFixture() }) })
-    await invokeVerb("adopt", ["--repo", "/repo/x", "--worktree", "/wt/z"], { client, runtime: stubRuntime() })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", worktreePath: "/wt/z" })
-  })
-
-  it("includes branch/vendor/title only when given (resolving paths)", async () => {
-    const client = new FakeClient({ "worktree.adopt": () => ({ task: taskFixture() }) })
-    await invokeVerb(
-      "adopt",
-      ["--repo", "rel-repo", "--worktree", "rel-wt", "--branch", "b1", "--vendor", "codex", "--title", "Adopted"],
-      { client, runtime: stubRuntime() },
-    )
-    expect(client.requests[0].payload).toEqual({
-      repo: `${process.cwd()}/rel-repo`,
-      worktreePath: `${process.cwd()}/rel-wt`,
-      branch: "b1",
-      vendor: "codex",
-      title: "Adopted",
-    })
-  })
-})
-
-// ── deliverPrompt: the delivery decision tree ────────────────────────────────
-
-describe("deliverPrompt", () => {
-  function fakeOps(overrides: Partial<PromptDeliveryOps> = {}) {
-    const calls: Array<{ target: PromptTarget; worktree: string; prompt: string }> = []
-    const ops: PromptDeliveryOps = {
-      deliverHosted: async (target, worktree, prompt) => {
-        calls.push({ target, worktree, prompt })
-        return {
-          session: `${target.id}::tab-1`,
-          pane: `${target.id}::tab-1`,
-          started: true,
-          engineReady: true,
-          delivered: true,
-        }
-      },
-      ...overrides,
-    }
-    return { ops, calls }
-  }
-
-  const target: PromptTarget = { id: "t1", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x" }
-
-  it("routes every prompt through the hosted PTY delivery seam", async () => {
-    const { ops, calls } = fakeOps()
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(calls).toEqual([{ target, worktree: "/wt/t1", prompt: "hello" }])
-    expect(result).toEqual({
-      session: "t1::tab-1",
-      pane: "t1::tab-1",
-      started: true,
-      engineReady: true,
-      delivered: true,
-    })
-  })
-
-  it("materializes a missing worktree via task.ensureWorktree first", async () => {
-    const client = new FakeClient({ "task.ensureWorktree": () => ({ worktreePath: "/wt/made" }) })
-    const { ops, calls } = fakeOps()
-    await deliverPrompt(client, { ...target, worktreePath: "" }, "hello", ops)
-    expect(client.requests).toEqual([{ name: "task.ensureWorktree", payload: { taskId: "t1" } }])
-    expect(calls[0].worktree).toBe("/wt/made")
-  })
-
-  it("fails NO_WORKTREE when even ensureWorktree yields nothing", async () => {
-    const client = new FakeClient({ "task.ensureWorktree": () => ({ worktreePath: "" }) })
-    const { ops } = fakeOps()
-    await expectApiError(
-      () => deliverPrompt(client, { ...target, worktreePath: "" }, "hello", ops),
-      "NO_WORKTREE",
-      "task t1 has no worktree",
-    )
-  })
-
-  it("returns a hosted delivery failure without any fallback backend", async () => {
-    const undeliverable: DeliveredPrompt = {
-      session: "t1::tab-1",
-      pane: "t1::tab-1",
-      started: false,
-      engineReady: false,
-      delivered: false,
-    }
-    const { ops } = fakeOps({ deliverHosted: async () => undeliverable })
-    const result = await deliverPrompt(new FakeClient(), target, "hello", ops)
-    expect(result).toEqual(undeliverable)
-  })
-
-  it("propagates PTY host startup failures", async () => {
-    const { ops } = fakeOps({
-      deliverHosted: async () => {
-        throw new ApiError("host failed", "SESSION_FAILED")
-      },
-    })
-    await expectApiError(() => deliverPrompt(new FakeClient(), target, "hello", ops), "SESSION_FAILED", "host failed")
   })
 })

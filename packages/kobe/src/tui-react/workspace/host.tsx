@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 /**
- * Experimental native workspace (`KOBE_TUI=1`): Sidebar | engine Terminal |
+ * Default PureTUI workspace: Sidebar | engine Terminal |
  * Files. `useAccessor` subscribes React to framework-free daemon state; imperative
  * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
  * Settings, worktrees, and update surfaces swap in-process instead of exiting.
@@ -11,7 +11,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolveEditorLaunch } from "../../tmux/editor-launch.ts"
+import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
@@ -20,6 +20,7 @@ import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
+import { UpdatePage } from "../component/update-page.tsx"
 import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
@@ -34,7 +35,6 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
-import { UpdatePage } from "../update/host.tsx"
 import { forgetTaskTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"

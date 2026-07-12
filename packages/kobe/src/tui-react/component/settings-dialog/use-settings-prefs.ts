@@ -33,12 +33,6 @@ import {
   type EditorKind,
   normalizeEditorKind,
 } from "../../../tui/lib/editor-prefs"
-import {
-  DEFAULT_SETTINGS_SURFACE,
-  SETTINGS_SURFACE_KEY,
-  type SettingsSurface,
-  normalizeSettingsSurface,
-} from "../../../tui/lib/settings-surface"
 import type { KVContext } from "../../context/kv"
 import { useT } from "../../i18n"
 import type { DialogContext } from "../../ui/dialog"
@@ -47,13 +41,6 @@ import { RenameTaskDialog } from "../rename-task-dialog"
 
 export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   const t = useT()
-
-  function settingsSurface(): SettingsSurface {
-    return normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
-  }
-  function selectSurface(surface: SettingsSurface): void {
-    kv.set(SETTINGS_SURFACE_KEY, surface)
-  }
 
   function toastEnabled(): boolean {
     return (kv.get("notifications.toast.enabled", true) as boolean) !== false
@@ -247,8 +234,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
 
   return {
-    settingsSurface,
-    selectSurface,
     toastEnabled,
     toggleToast,
     soundEnabled,

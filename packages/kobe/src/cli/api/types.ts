@@ -52,7 +52,7 @@ export interface FlagSpec {
  * handler's LOGIC is unit-testable without a daemon or PTY Host socket:
  * `client` accepts any {@link DaemonRpc} (tests pass a fake that
  * records requests), `runtime` carries the side-effecting operations
- * (tmux liveness, prompt delivery, git worktree reads).
+ * (hosted-session liveness, prompt delivery, git worktree reads).
  */
 export interface VerbContext {
   /** Spec-typed flag access — coercion + requiredness derived from the verb's own {@link FlagSpec}s. */
@@ -107,14 +107,14 @@ export interface PromptDeliveryOps {
 // ── Runtime (the side-effect seam handlers run against) ─────────────────────
 
 /**
- * Everything a verb handler touches BESIDES the daemon RPC: tmux session
- * liveness, prompt delivery, git worktree reads. The default implementation
+ * Everything a verb handler touches besides daemon RPC: hosted-session
+ * liveness, prompt delivery, and git worktree reads. The default implementation
  * (in `runtime.ts`) is the real thing (lazy-importing the heavier modules);
- * unit tests swap in fakes so handler logic runs without a daemon, tmux, or
+ * unit tests swap in fakes so handler logic runs without a daemon, PTY host, or
  * git.
  */
 export interface ApiRuntime {
-  /** True iff the task's tmux session is live. */
+  /** True iff the task's canonical hosted engine session is live. */
   isTaskRunning(taskId: string): Promise<boolean>
   /** Deliver a prompt into a task's engine pane (building the session if needed). */
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
@@ -125,12 +125,9 @@ export interface ApiRuntime {
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
   /**
-   * Stop and kill a task's tmux session (and its engine), mirroring the TUI's
-   * delete/archive teardown. The daemon must NOT touch tmux (it never imports
-   * it), so the CLI process owns this teardown — run only AFTER the matching
-   * `task.delete`/`task.archive` RPC succeeds. `switchClientBeforeKill` no-ops
-   * outside tmux (the CLI is rarely attached); `killSession` no-ops when the
-   * session isn't live. Best-effort: a teardown failure must not fail the
+   * Stop every hosted session for a task, mirroring the TUI's delete/archive
+   * teardown. Run only after the matching `task.delete`/`task.archive` RPC
+   * succeeds. Best-effort: a teardown failure must not fail the
    * already-committed RPC, so it never throws.
    */
   tearDownSession(taskId: string): Promise<void>
