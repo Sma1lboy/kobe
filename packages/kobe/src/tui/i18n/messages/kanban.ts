@@ -6,7 +6,7 @@
 export const en = {
   title: "Kanban",
   /** Footer/legend hint. */
-  hint: "tab project · ←↓↑→ card · enter detail · r refresh · esc close",
+  hint: "tab project · ←↓↑→ card · enter detail · n new · d delete · r refresh · esc close",
   loading: "Loading issues…",
   /** No saved projects / no tasks to derive repos from. */
   noRepos: "No projects yet — create a task first.",
@@ -50,12 +50,21 @@ export const en = {
     doneNote: "Done stories have nothing left to start · esc save & close",
     /** Toast after a background start. `{title}` = the spawned task title. */
     startedBackground: "Started in background: {title}",
+    /** Create-mode header + legend (`n` on the board). */
+    newStory: "NEW STORY",
+    createLegend: "ctrl+s save · enter/ctrl+enter save & start · tab fields · esc cancel",
+  },
+  confirmDelete: {
+    /** `{id}` = the issue number. */
+    title: "Delete story #{id}?",
+    /** `{title}` = the issue title. Deletes ONLY the record. */
+    body: "“{title}” will be removed from the tracker. A linked task, branch, or worktree is left untouched.",
   },
 }
 
 export const zh: typeof en = {
   title: "看板",
-  hint: "tab 切项目 · ←↓↑→ 选卡片 · enter 详情 · r 刷新 · esc 关闭",
+  hint: "tab 切项目 · ←↓↑→ 选卡片 · enter 详情 · n 新建 · d 删除 · r 刷新 · esc 关闭",
   loading: "正在加载 issues…",
   noRepos: "还没有项目——先创建一个任务。",
   empty: "暂无 issue——agent 可通过 `kobe api issue-create` 创建。",
@@ -90,5 +99,11 @@ export const zh: typeof en = {
     openLegend: "ctrl+enter 打开已关联会话 · tab 切字段 · esc 保存关闭",
     doneNote: "已完成的 story 无需启动 · esc 保存关闭",
     startedBackground: "已在后台启动:{title}",
+    newStory: "新建 STORY",
+    createLegend: "ctrl+s 仅保存 · enter/ctrl+enter 保存并启动 · tab 切字段 · esc 取消",
+  },
+  confirmDelete: {
+    title: "删除 story #{id}?",
+    body: "「{title}」将从 tracker 中移除。已关联的任务、分支、worktree 不受影响。",
   },
 }

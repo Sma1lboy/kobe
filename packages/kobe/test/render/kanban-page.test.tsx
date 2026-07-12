@@ -78,6 +78,43 @@ describe("KanbanPage", () => {
     expect(modalActive()).toBe(false)
   })
 
+  it("n opens the new-story intake; esc cancels without touching the store", async () => {
+    let mutations = 0
+    const orch = {
+      listTasks: () => [{ id: "t1", repo: "/repo/demo" }],
+      listIssues: async () => board,
+      activeTaskSignal: () => ({ get: () => null }),
+      mutateIssue: async () => {
+        mutations += 1
+        return board
+      },
+    } as unknown as RemoteOrchestrator
+    const { frame, mockInput } = await renderComponent(
+      <KanbanPage orchestrator={orch} onClose={() => {}} onStartChat={async () => {}} onOpenTask={() => {}} />,
+      { providers: { dialog: true }, width: 120, height: 44 },
+    )
+    await act(() => settle())
+    act(() => mockInput.pressKey("n"))
+    const intake = await frame()
+    expect(intake).toContain("NEW STORY")
+    expect(modalActive()).toBe(true)
+    mockInput.pressEscape()
+    await settle()
+    await frame()
+    expect(modalActive()).toBe(false)
+    expect(mutations).toBe(0)
+  })
+
+  it("d asks for confirmation before deleting the selected card", async () => {
+    const { frame, mockInput } = await mountPage()
+    act(() => mockInput.pressArrow("down"))
+    await frame()
+    act(() => mockInput.pressKey("d"))
+    const confirm = await frame()
+    expect(confirm).toContain("Delete story #1?")
+    expect(modalActive()).toBe(true)
+  })
+
   it("enter inside the drawer hands the start request up with the chosen placement", async () => {
     let started = null as { placement?: string; vendor?: string } | null
     const orch = fakeOrchestrator()

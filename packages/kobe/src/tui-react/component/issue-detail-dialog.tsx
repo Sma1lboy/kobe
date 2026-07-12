@@ -16,8 +16,10 @@
  * separate attachments rail.
  *
  * Resolves through the shared `showDialog` promise with the (possibly
- * edited) title/body on EVERY outcome: `{kind:"start"|"open"|"close"}`.
- * The kanban page owns persisting a dirty patch (`issue.mutate update`).
+ * edited) title/body on EVERY outcome: `{kind:"start"|"open"|"close"}`,
+ * plus `{kind:"create"}` from `mode: "create"` — the same drawer doubling
+ * as the board's `n` new-story intake (ctrl+s = save only, enter = save &
+ * start immediately, esc = cancel). The kanban page owns the store writes.
  */
 
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
@@ -35,6 +37,10 @@ import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 
 export interface IssueDetailOptions {
   readonly issue: Issue
+  /** `create` turns the drawer into the new-story intake: blank drafts,
+   *  esc CANCELS (nothing exists to save), ctrl+s creates without starting,
+   *  enter/ctrl+enter creates AND starts at the chosen placement. */
+  readonly mode?: "detail" | "create"
   /** Engines to offer (detected built-ins + custom), in cycle order. */
   readonly engines: readonly VendorId[]
   readonly defaultVendor: VendorId
@@ -47,6 +53,13 @@ export type IssueDetailOutcome =
   | { kind: "start"; vendor: VendorId; placement: IssueChatPlacement; title: string; body: string }
   | { kind: "open"; taskId: string; title: string; body: string }
   | { kind: "close"; title: string; body: string }
+  /** Create-mode result — `start` null = save only ("New story" Save). */
+  | {
+      kind: "create"
+      title: string
+      body: string
+      start: { vendor: VendorId; placement: IssueChatPlacement } | null
+    }
 
 type Field = "title" | "description" | "engine" | "workspace"
 
@@ -57,22 +70,25 @@ const DESCRIPTION_ROWS = 8
 function IssueDetailDialogView(
   props: IssueDetailOptions & {
     onSubmit: (outcome: IssueDetailOutcome) => void
+    onCancel: () => void
   },
 ) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
   const issue = props.issue
-  const linkedTaskId = issue.taskId && issue.taskId !== "" ? issue.taskId : null
-  const startable = !linkedTaskId && issue.status !== "done"
+  const create = props.mode === "create"
+  const linkedTaskId = !create && issue.taskId && issue.taskId !== "" ? issue.taskId : null
+  const startable = create || (!linkedTaskId && issue.status !== "done")
 
   const [vendor, setVendor] = useState<VendorId>(props.defaultVendor)
   const [placement, setPlacement] = useState<IssueChatPlacement>("worktree")
   const [draftTitle, setDraftTitle] = useState(issue.title)
   const [draftBody, setDraftBody] = useState(issue.body)
   // Startable stories open ready to fire (enter = start from the workspace
-  // field); linked/done ones open on the title for reading/editing.
-  const [field, setField] = useState<Field>(startable ? "workspace" : "title")
+  // field); a new story starts typing its title; linked/done ones open on
+  // the title for reading/editing.
+  const [field, setField] = useState<Field>(create ? "title" : startable ? "workspace" : "title")
 
   // The description is an uncontrolled <textarea> (pasted newlines survive);
   // placeholder inserts write through the ref, edits mirror into draftBody.
@@ -134,8 +150,18 @@ function IssueDetailDialogView(
     }
   }
 
+  /** Create mode needs a real title — bounce focus back when it's blank. */
+  function requireTitle(): boolean {
+    if (draftTitle.trim().length > 0) return true
+    setField("title")
+    return false
+  }
+
   function commit(): void {
-    if (startable) {
+    if (create) {
+      if (!requireTitle()) return
+      props.onSubmit({ kind: "create", start: { vendor, placement }, ...draft() })
+    } else if (startable) {
       props.onSubmit({ kind: "start", vendor, placement, ...draft() })
     } else if (linkedTaskId) {
       props.onSubmit({ kind: "open", taskId: linkedTaskId, ...draft() })
@@ -145,8 +171,18 @@ function IssueDetailDialogView(
     dialog.clear()
   }
 
+  /** ctrl+s in create mode — file the story without starting anything. */
+  function saveOnly(): void {
+    if (!create || !requireTitle()) return
+    props.onSubmit({ kind: "create", start: null, ...draft() })
+    dialog.clear()
+  }
+
   function close(): void {
-    props.onSubmit({ kind: "close", ...draft() })
+    // Detail esc saves (there's a record to patch); create esc cancels —
+    // nothing exists yet, and esc-created empty stories would be litter.
+    if (create) props.onCancel()
+    else props.onSubmit({ kind: "close", ...draft() })
     dialog.clear()
   }
 
@@ -158,6 +194,7 @@ function IssueDetailDialogView(
       { key: "tab", cmd: () => cycleField(1) },
       { key: "shift+tab", cmd: () => cycleField(-1) },
       { key: "ctrl+return", cmd: () => commit() },
+      ...(create ? [{ key: "ctrl+s", cmd: () => saveOnly() }] : []),
       { key: "ctrl+v", cmd: () => pasteClipboardImage() },
       // Arrows steer ONLY the selector fields — in title/description they
       // must reach the input's own cursor, so they stay unregistered there.
@@ -215,22 +252,28 @@ function IssueDetailDialogView(
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
-        <box flexDirection="row" gap={2}>
-          <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-            #{issue.id}
+        {create ? (
+          <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+            {t("kanban.detail.newStory")}
           </text>
-          <text fg={statusFg} attributes={TextAttributes.BOLD} wrapMode="none">
-            {t(`kanban.detail.status.${issue.status}`)}
-          </text>
-          <text fg={theme.textMuted} wrapMode="none">
-            {t("kanban.detail.created", { date: issue.created })}
-          </text>
-          {linkedTaskId ? (
-            <text fg={theme.accent} wrapMode="none">
-              {t("kanban.detail.linked")}
+        ) : (
+          <box flexDirection="row" gap={2}>
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+              #{issue.id}
             </text>
-          ) : null}
-        </box>
+            <text fg={statusFg} attributes={TextAttributes.BOLD} wrapMode="none">
+              {t(`kanban.detail.status.${issue.status}`)}
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              {t("kanban.detail.created", { date: issue.created })}
+            </text>
+            {linkedTaskId ? (
+              <text fg={theme.accent} wrapMode="none">
+                {t("kanban.detail.linked")}
+              </text>
+            ) : null}
+          </box>
+        )}
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => close()}>
           esc
         </text>
@@ -347,7 +390,9 @@ function IssueDetailDialogView(
           </box>
 
           <box paddingBottom={1}>
-            <text fg={theme.textMuted}>{t("kanban.detail.startLegend")}</text>
+            <text fg={theme.textMuted}>
+              {create ? t("kanban.detail.createLegend") : t("kanban.detail.startLegend")}
+            </text>
           </box>
         </box>
       ) : (
@@ -362,7 +407,9 @@ function IssueDetailDialogView(
 function show(dialog: DialogContext, opts: IssueDetailOptions): Promise<IssueDetailOutcome | undefined> {
   return showDialog<IssueDetailOutcome>(
     dialog,
-    (resolve) => <IssueDetailDialogView {...opts} onSubmit={(outcome) => resolve(outcome)} />,
+    (resolve) => (
+      <IssueDetailDialogView {...opts} onSubmit={(outcome) => resolve(outcome)} onCancel={() => resolve(undefined)} />
+    ),
     { size: "large" },
   )
 }

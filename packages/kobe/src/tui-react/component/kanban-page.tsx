@@ -31,6 +31,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 import { quickForkDefaultVendor } from "../workspace/quick-fork"
 import type { IssueChatStart } from "../workspace/use-issue-chat"
 import { IssueDetailDialog } from "./issue-detail-dialog"
@@ -164,11 +165,12 @@ export function KanbanPage(props: {
           .catch((err: unknown) => console.error("[kobe kanban] issue update failed:", err))
         setReloadTick((tick) => tick + 1)
       }
-      if (outcome.kind === "close") return
       if (outcome.kind === "open") {
         props.onOpenTask(outcome.taskId)
         return
       }
+      // "close" saved above; "create" never comes from detail mode.
+      if (outcome.kind !== "start") return
       void props.onStartChat({
         repoRoot: board.repoRoot,
         issue: { ...issue, ...patch },
@@ -181,6 +183,77 @@ export function KanbanPage(props: {
   function openSelectedDetail(): void {
     const issue = activeBoard?.issues.find((entry) => entry.id === selectedId)
     if (issue) openDetail(issue)
+  }
+
+  /** `n` — the new-story intake: the detail drawer in create mode. ctrl+s
+   *  files the story; enter/ctrl+enter files it AND starts it immediately
+   *  at the chosen engine/placement (the web intake's Execute button). */
+  function openIntake(): void {
+    const board = activeBoard
+    if (!board) return
+    const blank: Issue = {
+      id: board.nextId,
+      title: "",
+      status: "open",
+      created: new Date().toISOString().slice(0, 10),
+      body: "",
+    }
+    void IssueDetailDialog.show(dialog, {
+      issue: blank,
+      mode: "create",
+      engines,
+      defaultVendor: quickForkDefaultVendor(board.repoRoot, engines),
+      engineLabel: engineDisplayName,
+    }).then(async (outcome) => {
+      if (!outcome || outcome.kind !== "create") return
+      const orch = props.orchestrator
+      if (!orch) return
+      try {
+        const state = await orch.mutateIssue(board.repoRoot, {
+          type: "create",
+          title: outcome.title,
+          body: outcome.body,
+        })
+        setReloadTick((tick) => tick + 1)
+        if (!outcome.start) return
+        // The daemon allocates the id from nextId; fall back to the newest
+        // record if another writer raced the counter between open and save.
+        const created =
+          state.issues.find((entry) => entry.id === board.nextId) ??
+          state.issues.reduce<Issue | null>((max, entry) => (max && max.id > entry.id ? max : entry), null)
+        if (!created) return
+        void props.onStartChat({
+          repoRoot: board.repoRoot,
+          issue: created,
+          vendor: outcome.start.vendor,
+          placement: outcome.start.placement,
+        })
+      } catch (err) {
+        console.error("[kobe kanban] issue create failed:", err)
+      }
+    })
+  }
+
+  /** `d` — delete the selected story after a confirm. Deletes ONLY the
+   *  issue record; a linked task/branch/worktree is left untouched. */
+  function requestDelete(): void {
+    const board = activeBoard
+    const issue = board?.issues.find((entry) => entry.id === selectedId)
+    if (!board || !issue) return
+    void DialogConfirm.show(
+      dialog,
+      t("kanban.confirmDelete.title", { id: String(issue.id) }),
+      t("kanban.confirmDelete.body", { title: issue.title }),
+    ).then((confirmed) => {
+      if (!confirmed) return
+      void props.orchestrator
+        ?.mutateIssue(board.repoRoot, { type: "delete", id: issue.id })
+        .then(() => {
+          setSelectedId(null)
+          setReloadTick((tick) => tick + 1)
+        })
+        .catch((err: unknown) => console.error("[kobe kanban] issue delete failed:", err))
+    })
   }
 
   useBindings(() => ({
@@ -196,6 +269,8 @@ export function KanbanPage(props: {
       { key: "right", cmd: () => moveOrCycle("right") },
       { key: "left", cmd: () => moveOrCycle("left") },
       { key: "return", cmd: () => openSelectedDetail() },
+      { key: "n", cmd: () => openIntake() },
+      { key: "d", cmd: () => requestDelete() },
     ],
   }))
 
