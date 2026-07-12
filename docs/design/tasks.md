@@ -167,8 +167,9 @@ Claude Code's JSONL on disk and is reread via `engine.readHistory`.
 > described an engine-driven state machine (`runTask()`/`pauseTask()`/
 > `cancelTask()`, an enforced `backlog → in_progress → in_review → done`
 > flow, a `CONCURRENCY_CAP` of 20) — none of that exists in the current
-> code. Since v0.6 the engine runs interactively inside a tmux pane/embedded
-> terminal and owns its own lifecycle; the orchestrator does not drive
+> code. The engine runs interactively in a Hosted PTY session owned by the
+> standalone PTY Host, while the PureTUI Workspace Host attaches and renders it.
+> The engine owns its own lifecycle; the orchestrator does not drive
 > `run`/`pause`/`cancel` transitions or count concurrent sessions. What's
 > actually enforced, in
 > [`orchestrator/task-editor.ts`](../../packages/kobe/src/orchestrator/task-editor.ts)
@@ -185,9 +186,10 @@ Claude Code's JSONL on disk and is reread via `engine.readHistory`.
   guard above.
 
 `archived` is **orthogonal to status** — a `done` task can be
-archived; so can a `backlog` one. Archiving is non-destructive
-(worktree stays, history stays, sidebar splits "Working session" vs.
-"Archives"). The user toggles it with `a`.
+archived; so can a `backlog` one. Archiving is non-destructive for durable
+state (worktree stays, engine conversation history stays, sidebar splits
+"Working session" vs. "Archives") but stops the task's live Hosted PTY
+sessions. The user toggles it with `a`.
 
 ---
 
@@ -218,7 +220,7 @@ setting describes "this particular conversation," it's tab-level.
 | Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
 | Per-task worktree             | `~/.kobe/worktrees/<repo-key>/<slug>/`                 | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
-| Engine cwd                    | the embedded terminal / tmux pane is launched with `task.worktreePath` as its cwd | string |
+| Engine cwd                    | the Hosted PTY session is launched with `task.worktreePath` as its cwd | string |
 
 The task index does **not** store messages. The orchestrator reads
 them on demand via `engine.readHistory(sessionId)`. This is why a
@@ -232,10 +234,10 @@ truth, the index is just a manifest.
 > interface is gone as of v0.6 — see the explicit "don't drag the whole port
 > back" warning in
 > [`packages/kobe/src/types/engine.ts`](../../packages/kobe/src/types/engine.ts).
-> `KOBE_RESUME_CWD` has zero references left in the codebase. Since v0.6 the
-> engine CLI runs interactively inside a tmux pane / embedded terminal, which
-> kobe launches directly with `task.worktreePath` as its process cwd — there
-> is no separate "resume" RPC or cwd back-channel to get wrong.
+> `KOBE_RESUME_CWD` has zero references left in the codebase. The engine CLI
+> runs interactively in a Hosted PTY session that the shared session-launch
+> builder starts with `task.worktreePath` as its process cwd — there is no
+> separate "resume" RPC or cwd back-channel to get wrong.
 
 ---
 

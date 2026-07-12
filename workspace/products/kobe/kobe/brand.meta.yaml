@@ -9,13 +9,13 @@ brand:
 metadata_version: "1.0.0"
 product:
   category: "terminal developer tool"
-  positioning: "A local-first TUI for running parallel AI coding sessions as git worktrees, tmux sessions, and branches."
+  positioning: "A local-first TUI for running parallel AI coding sessions as git worktrees, hosted engine sessions, and branches."
   audience:
     - "AI coding power users"
     - "developers who work inside terminals, tmux, SSH, and local devboxes"
   value_props:
     - "parallel isolated worktrees"
-    - "persistent tmux sessions"
+    - "persistent hosted engine sessions"
     - "terminal-native task switching"
     - "local-first engine orchestration"
 voice:

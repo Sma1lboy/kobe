@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kobe — parallel coding agents, terminal-native</title>
-<meta name="description" content="kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent tmux sessions — from any terminal.">
+<meta name="description" content="kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.">
 <link rel="canonical" href="https://kobe.sma1lboy.me/">
 <meta property="og:title" content="kobe — parallel coding agents, terminal-native">
-<meta property="og:description" content="Run parallel AI coding agents in isolated git worktrees and persistent tmux sessions — from any terminal.">
+<meta property="og:description" content="Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kobe.sma1lboy.me/">
 <meta name="twitter:card" content="summary_large_image">
@@ -77,7 +77,7 @@
           Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.
         </h1>
         <p data-i18n="hero.sub" style="font-size:16.5px;line-height:1.6;color:#a39d92;max-width:48ch;margin-bottom:34px;">
-          kobe turns AI coding work into isolated git worktrees and persistent tmux sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
+          kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
         </p>
 
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
@@ -88,7 +88,7 @@
           </button>
           <a href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 22px;font-size:14.5px;">Get started ↗</a>
         </div>
-        <div data-i18n="hero.requirements" style="font-size:12.5px;color:#6b655c;">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11, tmux, and one engine CLI on your PATH.</div>
+        <div data-i18n="hero.requirements" style="font-size:12.5px;color:#6b655c;">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</div>
       </div>
       <div class="hero-art">
         <div class="halo"></div>
@@ -111,7 +111,7 @@
         <span data-i18n="workspace.equation" style="color:#6b655c;">one task =</span>
         <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">git worktree</span>
         <span style="color:#534d45;">+</span>
-        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">tmux session</span>
+        <span data-i18n="workspace.sessions" style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">hosted engine sessions</span>
         <span style="color:#534d45;">+</span>
         <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">branch</span>
       </div>
@@ -147,14 +147,14 @@
     <div class="why-row rev reveal">
       <div class="txt">
         <div data-i18n="why.r2.label" style="color:#cc785c;font-size:12px;margin-bottom:10px;">02 — persistent by default</div>
-        <h3 data-i18n="why.r2.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Close your laptop. Work keeps running.</h3>
-        <p data-i18n="why.r2.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">Agents live in tmux on the machine where your code is. A dropped SSH connection never kills the run — detach, reattach tomorrow, pick up exactly where you left off.</p>
+        <h3 data-i18n="why.r2.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Close kobe. Work keeps running.</h3>
+        <p data-i18n="why.r2.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">Agents run in Hosted PTYs on the machine where your code lives. The standalone PTY Host keeps them alive when kobe exits, the daemon restarts, or SSH drops — reopen kobe and pick up where you left off.</p>
       </div>
       <div class="illo">
         <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
-          <div style="border:1px dashed #34302a;border-radius:9px;padding:12px 14px;text-align:center;color:#6b655c;font-size:12px;opacity:0.7;">laptop<br><span style="color:#cc785c;font-size:11px;">✕ disconnected</span></div>
+          <div style="border:1px dashed #34302a;border-radius:9px;padding:12px 14px;text-align:center;color:#6b655c;font-size:12px;opacity:0.7;"><span data-i18n="why.r2.diagram.client">kobe</span><br><span data-i18n="why.r2.diagram.detached" style="color:#cc785c;font-size:11px;">✕ detached</span></div>
           <div style="color:#534d45;font-size:13px;letter-spacing:2px;">╌╌╌</div>
-          <div style="border:1px solid rgba(154,202,134,0.4);background:rgba(154,202,134,0.06);border-radius:9px;padding:12px 14px;text-align:center;color:#c4bdb1;font-size:12px;">tmux: kobe<br><span style="color:#9aca86;font-size:11px;">● still live</span></div>
+          <div style="border:1px solid rgba(154,202,134,0.4);background:rgba(154,202,134,0.06);border-radius:9px;padding:12px 14px;text-align:center;color:#c4bdb1;font-size:12px;"><span data-i18n="why.r2.diagram.host">standalone PTY Host</span><br><span data-i18n="why.r2.diagram.live" style="color:#9aca86;font-size:11px;">● sessions live</span></div>
         </div>
         <div style="margin-top:10px;border:1px solid #2c2823;background:#1a1917;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#8a847a;">
           <div><span style="color:#9aca86;">●</span> 3 agents working…</div>
@@ -279,21 +279,23 @@
   var KOBE_I18N = (function () {
     var zh = {
       'meta.title': 'kobe — 终端原生的并行 AI 编码代理',
-      'meta.desc': 'kobe 是本地优先的 TUI 编排器，支持 Claude Code、Codex 等。用隔离的 git worktree 和常驻 tmux 会话，在任何终端并行运行 AI 编码代理。',
+      'meta.desc': 'kobe 是本地优先的 TUI 编排器，支持 Claude Code、Codex 等。用隔离的 git worktree 和常驻 Hosted PTY 会话，在任何终端并行运行 AI 编码代理。',
       'nav.workspace': '工作区', 'nav.why': '为什么', 'nav.engines': '引擎', 'nav.install': '安装', 'nav.changelog': '更新日志',
       'hero.title': '在任何<span style="color:#cc785c;">终端</span>里并行运行 AI 编码代理。',
-      'hero.sub': 'kobe 把 AI 编码工作放进隔离的 git worktree 和常驻 tmux 会话。AI 代理一次跑一个已经很有用——kobe 是为你想同时跑五个尝试的时候准备的。',
+      'hero.sub': 'kobe 把 AI 编码工作放进隔离的 git worktree 和常驻托管引擎会话。AI 代理一次跑一个已经很有用——kobe 是为你想同时跑五个尝试的时候准备的。',
       'hero.getStarted': '快速上手 ↗',
-      'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11、tmux，以及 PATH 上任意一个引擎 CLI。',
+      'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
       'copy.hint': '点击复制', 'copy.done': '✓ 已复制',
-      'workspace.kicker': '// 快速一览', 'workspace.equation': '一个任务 =',
+      'workspace.kicker': '// 快速一览', 'workspace.equation': '一个任务 =', 'workspace.sessions': '托管引擎会话',
       'why.kicker': '// 为什么选 kobe',
       'why.title': '一次尝试是掷硬币。<br>跑五个，留下赢家。',
       'why.sub': 'kobe 给每次尝试独立的 worktree、分支和常驻会话——并行代理互不干扰，SSH 断线也不会杀掉工作。',
       'why.r1.label': '01 — 安全的并行', 'why.r1.title': '每次尝试都相互隔离。',
       'why.r1.body': '一条 prompt 扇出成多个独立的 worktree 和分支。五个尝试同时进行、互不碰文件——比较 diff，留下好的，归档其余。',
-      'why.r2.label': '02 — 默认常驻', 'why.r2.title': '合上笔记本，工作继续跑。',
-      'why.r2.body': '代理活在代码所在机器的 tmux 里。SSH 断线不会中断运行——先 detach，明天再 attach，从原地继续。',
+      'why.r2.label': '02 — 默认常驻', 'why.r2.title': '退出 kobe，工作继续跑。',
+      'why.r2.body': '代理运行在代码所在机器的 Hosted PTY 中。独立 PTY Host 会在 kobe 退出、daemon 重启或 SSH 断线后继续持有会话——重新打开 kobe，就能从原处继续。',
+      'why.r2.diagram.client': 'kobe', 'why.r2.diagram.detached': '✕ 已分离',
+      'why.r2.diagram.host': '独立 PTY Host', 'why.r2.diagram.live': '● 会话仍存活',
       'why.r3.label': '03 — 真实环境', 'why.r3.title': '不是沙箱里的近似品。',
       'why.r3.body': '代理就跑在你真实的依赖、服务、凭证和构建缓存旁边。代理跑通的对你也跑通——因为就是同一台机器。',
       'why.r4.label': '04 — 终端原生', 'why.r4.title': '跑在你代码已经在的地方。',
@@ -307,21 +309,23 @@
     };
     var en = {
       'meta.title': 'kobe — parallel coding agents, terminal-native',
-      'meta.desc': 'kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent tmux sessions — from any terminal.',
+      'meta.desc': 'kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.',
       'nav.workspace': 'workspace', 'nav.why': 'why', 'nav.engines': 'engines', 'nav.install': 'install', 'nav.changelog': 'changelog',
       'hero.title': 'Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.',
-      'hero.sub': 'kobe turns AI coding work into isolated git worktrees and persistent tmux sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.',
+      'hero.sub': 'kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.',
       'hero.getStarted': 'Get started ↗',
-      'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11, tmux, and one engine CLI on your PATH.',
+      'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
       'copy.hint': 'click to copy', 'copy.done': '✓ copied',
-      'workspace.kicker': '// a quick look', 'workspace.equation': 'one task =',
+      'workspace.kicker': '// a quick look', 'workspace.equation': 'one task =', 'workspace.sessions': 'hosted engine sessions',
       'why.kicker': '// why kobe',
       'why.title': 'One attempt is a coin flip.<br>Run five and keep the winner.',
       'why.sub': 'kobe gives every attempt its own worktree, branch, and persistent session — so parallel agents never step on each other, and a dropped SSH connection never kills the work.',
       'why.r1.label': '01 — safe parallelism', 'why.r1.title': 'Every attempt is isolated.',
       'why.r1.body': "One prompt fans out into separate worktrees and branches. Five tries run at once and never touch each other's files — compare the diffs, keep the good one, archive the rest.",
-      'why.r2.label': '02 — persistent by default', 'why.r2.title': 'Close your laptop. Work keeps running.',
-      'why.r2.body': 'Agents live in tmux on the machine where your code is. A dropped SSH connection never kills the run — detach, reattach tomorrow, pick up exactly where you left off.',
+      'why.r2.label': '02 — persistent by default', 'why.r2.title': 'Close kobe. Work keeps running.',
+      'why.r2.body': 'Agents run in Hosted PTYs on the machine where your code lives. The standalone PTY Host keeps them alive when kobe exits, the daemon restarts, or SSH drops — reopen kobe and pick up where you left off.',
+      'why.r2.diagram.client': 'kobe', 'why.r2.diagram.detached': '✕ detached',
+      'why.r2.diagram.host': 'standalone PTY Host', 'why.r2.diagram.live': '● sessions live',
       'why.r3.label': '03 — real environment', 'why.r3.title': 'Not a sandboxed approximation.',
       'why.r3.body': "Agents run right next to your real dependencies, services, credentials, and build cache. What passes for the agent passes for you — because it's the same machine.",
       'why.r4.label': '04 — terminal-native', 'why.r4.title': 'Runs where your code already lives.',

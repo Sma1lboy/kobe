@@ -102,8 +102,9 @@ structural regression (startup, PTY spawn/wake, per-tab memory, park reclaim)
 `perf:golden` is not part of the enforced `release.sh`/`release.yml` gate (opt-in,
 local/pre-release only per docs/HARNESS.md), so run it manually here.
 
-`bun run test:behavior` needs tmux + node-pty + a real `claude` binary; `release.yml`
-now runs it (apt-installed tmux + a fake `claude` shim, same as `ci.yml`'s PR gate)
+`bun run test:behavior` exercises the built CLI against an isolated daemon and
+standalone PTY Host with a fake `claude` shim; cases that drive the outer terminal
+also need native `node-pty` support. `release.yml` runs the same black-box suite
 before `npm publish`. Running it locally first is optional but catches a failure
 before the tag push.
 
