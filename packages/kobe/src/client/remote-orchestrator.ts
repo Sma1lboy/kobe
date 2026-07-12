@@ -75,6 +75,7 @@ import {
   listIssuesOp,
   listWorktreesOp,
   moveTaskOp,
+  mutateIssueOp,
   removeWorktreeOp,
   setActiveTaskOp,
   setArchivedOp,
@@ -446,6 +447,12 @@ export class RemoteOrchestrator {
   /** A repo's daemon-owned issues (`issue.list`) — the kanban page's read. */
   listIssues(repoRoot: string): Promise<RepoIssues> {
     return listIssuesOp(this.client, repoRoot)
+  }
+
+  /** One issue-store mutation (`issue.mutate`) — the kanban detail drawer's
+   *  write path (link on start, setStatus for the project placement). */
+  mutateIssue(repoRoot: string, op: unknown): Promise<RepoIssues> {
+    return mutateIssueOp(this.client, repoRoot, op)
   }
 
   /** Remove a worktree (`worktree.remove`); refuses a dirty one unless

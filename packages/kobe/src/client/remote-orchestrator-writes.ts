@@ -152,6 +152,13 @@ export async function listIssuesOp(client: KobeDaemonClient, repoRoot: string): 
   return client.request<RepoIssues>("issue.list", { repoRoot })
 }
 
+/** One issue-store mutation (`issue.mutate`) — the op union lives in the
+ *  daemon's issues-store (create/setStatus/update/link/unlink/delete). The
+ *  kanban detail drawer uses `link` (start → task) and `setStatus`. */
+export async function mutateIssueOp(client: KobeDaemonClient, repoRoot: string, op: unknown): Promise<RepoIssues> {
+  return client.request<RepoIssues>("issue.mutate", { repoRoot, op })
+}
+
 /**
  * Mark a task as the active focus (the session just switched/entered).
  * The daemon publishes it on the `active-task` channel so every Tasks

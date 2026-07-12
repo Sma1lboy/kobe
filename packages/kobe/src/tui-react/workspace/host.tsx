@@ -43,6 +43,7 @@ import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { useAttention } from "./use-attention"
+import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 
 const WORKTREE_TOOLS_MIN_WIDTH = 22
@@ -230,6 +231,15 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const [worktreesOpen, setWorktreesOpen] = useState(false)
   // Kanban page — the daemon issue store as a board, same swap shape.
   const [kanbanOpen, setKanbanOpen] = useState(false)
+  // Kanban detail drawer → engine session (create/link/prompt handoff) —
+  // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
+  const issueChat = useIssueChat(orch, {
+    selectTask: setSelectedId,
+    enterTask: activateTask,
+    closeKanban: () => setKanbanOpen(false),
+    notifyError,
+    notifyInfo,
+  })
   // Update page (issue #23 remainder) — same in-place swap shape as
   // WorktreesPage; UpdatePage's onClose seam makes this safe (it no longer
   // process.exit(0)s on close — only the post-update self-replace does).
@@ -271,7 +281,17 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   if (kanbanOpen) {
-    return <KanbanPage orchestrator={orch} onClose={() => setKanbanOpen(false)} />
+    return (
+      <KanbanPage
+        orchestrator={orch}
+        onClose={() => setKanbanOpen(false)}
+        onStartChat={issueChat.start}
+        onOpenTask={(taskId) => {
+          setKanbanOpen(false)
+          void activateTask(taskId)
+        }}
+      />
+    )
   }
 
   if (updateOpen) {
@@ -359,7 +379,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             openDiffTabFn.current = open
           }}
           onQuickFork={quickFork.onQuickFork}
-          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
+          initialPrompt={quickFork.initialPromptFor(selectedTask?.id) ?? issueChat.initialPromptFor(selectedTask?.id)}
         />
       </box>
 

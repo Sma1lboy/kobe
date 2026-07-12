@@ -28,6 +28,48 @@ export interface IssueBoardColumn {
   hiddenCount: number
 }
 
+export type BoardDirection = "up" | "down" | "left" | "right"
+
+/**
+ * Keyboard cursor movement over the RENDERED board (post-cap columns):
+ * up/down step within a column (clamped at the edges), left/right jump to
+ * the adjacent non-empty column keeping the row (clamped to its length).
+ * A missing/stale selection re-anchors on the first visible card, so a
+ * cursor key always lands somewhere on a non-empty board; null only when
+ * the board has no cards at all.
+ */
+export function moveBoardSelection(
+  columns: readonly IssueBoardColumn[],
+  currentId: number | null,
+  dir: BoardDirection,
+): number | null {
+  const firstVisible = columns.find((column) => column.issues.length > 0)?.issues[0]?.id ?? null
+  if (currentId == null) return firstVisible
+  let col = -1
+  let row = -1
+  for (const [c, column] of columns.entries()) {
+    const r = column.issues.findIndex((issue) => issue.id === currentId)
+    if (r !== -1) {
+      col = c
+      row = r
+      break
+    }
+  }
+  if (col === -1) return firstVisible
+  if (dir === "up" || dir === "down") {
+    const column = columns[col]?.issues ?? []
+    const next = dir === "up" ? row - 1 : row + 1
+    return column[Math.max(0, Math.min(next, column.length - 1))]?.id ?? currentId
+  }
+  const step = dir === "left" ? -1 : 1
+  for (let c = col + step; c >= 0 && c < columns.length; c += step) {
+    const column = columns[c]?.issues ?? []
+    if (column.length === 0) continue
+    return column[Math.min(row, column.length - 1)]?.id ?? currentId
+  }
+  return currentId
+}
+
 export function issueColumnKey(issue: Issue): BoardColumnKey {
   if (issue.status === "done") return "done"
   if (issue.taskId !== undefined && issue.taskId !== "") return "in_progress"
