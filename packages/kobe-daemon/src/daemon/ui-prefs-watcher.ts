@@ -88,7 +88,8 @@ export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
     // prefs channel must always have a sane value to replay.
   }
   const theme = typeof parsed.activeTheme === "string" && parsed.activeTheme.length > 0 ? parsed.activeTheme : "claude"
-  const transparentBackground = parsed.transparentBackground === true
+  // Default-true (2026-07-12): only an explicit stored `false` opts out.
+  const transparentBackground = parsed.transparentBackground !== false
   const focusAccent =
     typeof parsed.focusAccent === "string" &&
     (FOCUS_ACCENT_SLOT_NAMES as readonly string[]).includes(parsed.focusAccent)

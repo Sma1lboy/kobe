@@ -81,7 +81,7 @@ describe("readUiPrefsFromStateFile", () => {
   test("missing file yields the documented defaults", () => {
     expect(readUiPrefsFromStateFile(statePath)).toEqual({
       theme: "claude",
-      transparentBackground: false,
+      transparentBackground: true, // transparent-by-default
       focusAccent: null,
       locale: "en",
       sortMode: "default",
@@ -96,7 +96,7 @@ describe("readUiPrefsFromStateFile", () => {
     fs.writeFileSync(statePath, "{not json", "utf8")
     expect(readUiPrefsFromStateFile(statePath)).toEqual({
       theme: "claude",
-      transparentBackground: false,
+      transparentBackground: true, // transparent-by-default
       focusAccent: null,
       locale: "en",
       sortMode: "default",
@@ -159,7 +159,7 @@ describe("startUiPrefsWatcher", () => {
     expect(events).toEqual([
       {
         theme: "dracula",
-        transparentBackground: false,
+        transparentBackground: true, // transparent-by-default
         focusAccent: "info",
         locale: "en",
         sortMode: "default",

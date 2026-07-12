@@ -57,7 +57,7 @@ export function daemonSettingsSnapshot(): Response {
   const focusAccent = stringValue(state.focusAccent, "primary")
   return Response.json({
     activeTheme: stringValue(state.activeTheme, "claude"),
-    transparentBackground: boolValue(state.transparentBackground, false),
+    transparentBackground: boolValue(state.transparentBackground, true),
     focusAccent: FOCUS_ACCENTS.includes(focusAccent as (typeof FOCUS_ACCENTS)[number]) ? focusAccent : "primary",
     notificationsToast: state["notifications.toast.enabled"] !== false,
     notificationsSound: state["notifications.sound.enabled"] !== false,

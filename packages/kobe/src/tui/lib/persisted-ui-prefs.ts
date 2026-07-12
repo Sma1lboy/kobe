@@ -41,7 +41,8 @@ export function readPersistedUiPrefs(fallbackTheme: string): PersistedUiPrefs {
     const parsed = JSON.parse(readFileSync(kvStatePath(), "utf8")) as Record<string, unknown>
     const theme =
       typeof parsed.activeTheme === "string" && hasBundledTheme(parsed.activeTheme) ? parsed.activeTheme : fallbackTheme
-    const transparent = parsed.transparentBackground === true
+    // Default-true (2026-07-12): only an explicit stored `false` opts out.
+    const transparent = parsed.transparentBackground !== false
     const focusAccent =
       typeof parsed.focusAccent === "string" && (FOCUS_ACCENT_SLOTS as readonly string[]).includes(parsed.focusAccent)
         ? (parsed.focusAccent as FocusAccentSlot)
@@ -50,6 +51,6 @@ export function readPersistedUiPrefs(fallbackTheme: string): PersistedUiPrefs {
     const reducedMotion = parsed.reducedMotion === true
     return { theme, transparent, focusAccent, locale, reducedMotion }
   } catch {
-    return { theme: fallbackTheme, transparent: false, focusAccent: null, locale: DEFAULT_LOCALE, reducedMotion: false }
+    return { theme: fallbackTheme, transparent: true, focusAccent: null, locale: DEFAULT_LOCALE, reducedMotion: false }
   }
 }
