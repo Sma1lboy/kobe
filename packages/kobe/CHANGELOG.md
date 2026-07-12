@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.99
+
+### Patch Changes
+
+- 2d59544: New `kobe api notify` verb: broadcast a toast to every attached kobe UI (`--title`, free-form `--kind` where `done`/`needs_input`/`error` carry the TUI's severity styling and anything else renders neutrally, optional `--task-id` for the sidebar unread mark, `--source` tag). Agents and scripts surface their own moments over the daemon's new `notice.event` channel without touching the task's session; the Workspace Host and the Tasks pane render it through the existing toast queue.
+- 4e44ffe: `ctrl+q` is back as the direct "back to tasks" chord (`focus.sidebar`) — the escape hatch out of any pane is too load-bearing for a two-stroke prefix. Its prefix stroke is dropped along with the tab-management rows'.
+- 5f42c61: Restore the PureTUI global `Ctrl+Q` return-to-Tasks shortcut and `Ctrl+H/J/K/L` pane navigation, while retaining configurable prefix aliases.
+- ba538ad: Tab management is back on single-press chords: `ctrl+t` (new tab), `ctrl+w` (close tab), and `ctrl+]`/`ctrl+[` (next/previous tab) fire directly again, and their prefix strokes were removed — repeated actions like tab cycling don't suit a two-stroke sequence. The other prefix-moved rows stay prefix-only.
+
 ## 0.7.98
 
 ### Patch Changes

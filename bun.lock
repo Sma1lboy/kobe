@@ -27,7 +27,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.7.98",
+      "version": "0.7.99",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
