@@ -15,8 +15,31 @@
  */
 
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
+import { attachmentLabel } from "../tui/lib/attachments"
 
 export type IssueChatPlacement = "worktree" | "worktreeBg" | "project"
+
+/** Next `images[N]:`/`pdf[N]:` placeholder index in a body draft. */
+export function nextPlaceholderIndex(body: string): number {
+  const matches = body.match(/^(?:images|pdf)\[\d+\]:/gm)
+  return matches ? matches.length : 0
+}
+
+/**
+ * Append `images[N]: /path` placeholder lines for pasted files to a body
+ * draft — the description IS the carrier: the lines persist in the issue
+ * body and ride the first prompt, where the engine reads the files itself.
+ */
+export function withImagePlaceholders(body: string, paths: readonly string[]): string {
+  let next = body.replace(/\s+$/, "")
+  let index = nextPlaceholderIndex(body)
+  for (const path of paths) {
+    const line = `${attachmentLabel(path, index)}: ${path}`
+    next = next.length > 0 ? `${next}\n${line}` : line
+    index += 1
+  }
+  return next
+}
 
 export const ISSUE_CHAT_PLACEMENTS: readonly IssueChatPlacement[] = ["worktree", "worktreeBg", "project"]
 

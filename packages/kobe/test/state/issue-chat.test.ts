@@ -14,6 +14,8 @@ import {
   issueChatTaskTitle,
   issueProjectPrompt,
   issueWorktreePrompt,
+  nextPlaceholderIndex,
+  withImagePlaceholders,
 } from "../../src/state/issue-chat"
 
 const story: Issue = {
@@ -54,5 +56,21 @@ describe("issue-chat prompts", () => {
 
   test("placement cycle order is worktree → worktreeBg → project", () => {
     expect(ISSUE_CHAT_PLACEMENTS).toEqual(["worktree", "worktreeBg", "project"])
+  })
+})
+
+describe("image placeholders in the body", () => {
+  test("appends numbered placeholder lines, continuing the existing count", () => {
+    const body = "story text\n\nimages[0]: /a.png"
+    expect(nextPlaceholderIndex(body)).toBe(1)
+    expect(withImagePlaceholders(body, ["/b.png"])).toBe("story text\n\nimages[0]: /a.png\nimages[1]: /b.png")
+  })
+
+  test("an empty body starts at images[0] with no leading newline", () => {
+    expect(withImagePlaceholders("", ["/shot.png"])).toBe("images[0]: /shot.png")
+  })
+
+  test("pdfs get the pdf label; multiple pastes number sequentially", () => {
+    expect(withImagePlaceholders("x", ["/a.pdf", "/b.png"])).toBe("x\npdf[0]: /a.pdf\nimages[1]: /b.png")
   })
 })

@@ -33,11 +33,11 @@ export const en = {
     /** Badge for a story already linked to a task. */
     linked: "linked to a session",
     /** BOLD CAPS section headers in the drawer. */
+    titleLabel: "TITLE",
     description: "DESCRIPTION",
     noDescription: "No description.",
-    attachments: "ATTACHMENTS",
-    /** Muted hint beside the attachments header. */
-    attachHint: "paste a path · ctrl+v screenshot · click a chip to remove",
+    /** Muted hint beside the description header. */
+    attachHint: "paste a path / ctrl+v screenshot → inserts an image placeholder",
     engine: "ENGINE",
     workspace: "WORKSPACE",
     placement: {
@@ -45,9 +45,9 @@ export const en = {
       worktreeBg: "New worktree — stay here (task under the project group)",
       project: "Project checkout — no worktree",
     },
-    startLegend: "enter start · ←→ engine · ↑↓ workspace · paste/ctrl+v attach image · esc close",
-    openLegend: "enter open the linked session · esc close",
-    doneNote: "Done stories have nothing left to start.",
+    startLegend: "enter/ctrl+enter start · tab fields · ←→ engine · ↑↓ workspace · esc save & close",
+    openLegend: "ctrl+enter open the linked session · tab fields · esc save & close",
+    doneNote: "Done stories have nothing left to start · esc save & close",
     /** Toast after a background start. `{title}` = the spawned task title. */
     startedBackground: "Started in background: {title}",
   },
@@ -75,10 +75,10 @@ export const zh: typeof en = {
     },
     created: "创建于 {date}",
     linked: "已关联会话",
+    titleLabel: "标题",
     description: "描述",
     noDescription: "暂无描述。",
-    attachments: "附件",
-    attachHint: "粘贴路径 · ctrl+v 贴截图 · 点击标签移除",
+    attachHint: "粘贴路径 / ctrl+v 贴截图 → 插入图片占位行",
     engine: "引擎",
     workspace: "工作区",
     placement: {
@@ -86,9 +86,9 @@ export const zh: typeof en = {
       worktreeBg: "新建 worktree——留在原地(任务挂在项目组下)",
       project: "项目主目录——不建 worktree",
     },
-    startLegend: "enter 启动 · ←→ 引擎 · ↑↓ 工作区 · 粘贴/ctrl+v 附图 · esc 关闭",
-    openLegend: "enter 打开已关联会话 · esc 关闭",
-    doneNote: "已完成的 story 无需启动。",
+    startLegend: "enter/ctrl+enter 启动 · tab 切字段 · ←→ 引擎 · ↑↓ 工作区 · esc 保存关闭",
+    openLegend: "ctrl+enter 打开已关联会话 · tab 切字段 · esc 保存关闭",
+    doneNote: "已完成的 story 无需启动 · esc 保存关闭",
     startedBackground: "已在后台启动:{title}",
   },
 }

@@ -142,8 +142,10 @@ export function KanbanPage(props: {
   }
 
   /** Enter (or clicking the selected card): the story's detail drawer.
-   *  Its outcome routes up to the host — start a chat or open the linked
-   *  session; undefined = dismissed. */
+   *  EVERY outcome carries the drafted title/body — a dirty patch persists
+   *  through `issue.mutate update` (best-effort: an edit must not block the
+   *  start/open the user asked for), then the outcome routes to the host.
+   *  undefined = discarded (ctrl+c / backdrop). */
   function openDetail(issue: Issue): void {
     const board = activeBoard
     if (!board) return
@@ -153,18 +155,25 @@ export function KanbanPage(props: {
       engines,
       defaultVendor: quickForkDefaultVendor(board.repoRoot, engines),
       engineLabel: engineDisplayName,
-    }).then((outcome) => {
+    }).then(async (outcome) => {
       if (!outcome) return
+      const patch = { title: outcome.title, body: outcome.body }
+      if (patch.title !== issue.title || patch.body !== issue.body) {
+        await props.orchestrator
+          ?.mutateIssue(board.repoRoot, { type: "update", id: issue.id, ...patch })
+          .catch((err: unknown) => console.error("[kobe kanban] issue update failed:", err))
+        setReloadTick((tick) => tick + 1)
+      }
+      if (outcome.kind === "close") return
       if (outcome.kind === "open") {
         props.onOpenTask(outcome.taskId)
         return
       }
       void props.onStartChat({
         repoRoot: board.repoRoot,
-        issue,
+        issue: { ...issue, ...patch },
         vendor: outcome.vendor,
         placement: outcome.placement,
-        attachments: outcome.attachments,
       })
     })
   }
