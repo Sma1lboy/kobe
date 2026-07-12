@@ -318,7 +318,6 @@ export function buildTaskActionsContext(deps: TaskActionsContextDeps): CreateTas
     reload: () => deps.reload(),
     // This pane runs INSIDE the tmux client whose session a delete kills —
     // switch away first so the kill doesn't yank the user's terminal.
-    switchBeforeKill: true,
     // Same surface preference as Settings (default chattab): open the
     // new-task flow as a dedicated full-window page in a new tmux tab.
     // The page performs the create/adopt itself and the subscribe pushes

@@ -14,19 +14,17 @@ const mocks = vi.hoisted(() => ({
   resolveMainRepoRoot: vi.fn(),
   getPersistedString: vi.fn(),
   readWorktreeChanges: vi.fn(),
-  sessionExists: vi.fn(),
-  switchClientBeforeKill: vi.fn(),
-  killSession: vi.fn(),
   submitFeedback: vi.fn(),
-  ensureSession: vi.fn(),
-  resolveEngineLaunchInit: vi.fn(),
-  waitForEnginePane: vi.fn(),
-  pasteAndSubmit: vi.fn(),
   interactiveEngineCommand: vi.fn(),
   ensurePtyHost: vi.fn(),
   deliverHostedPrompt: vi.fn(),
   closePtyHost: vi.fn(),
   buildEngineSessionLaunch: vi.fn(),
+  openPtyHost: vi.fn(),
+  listSessions: vi.fn(),
+  findEngineKey: vi.fn(),
+  taskKeys: vi.fn(),
+  killTaskSessions: vi.fn(),
 }))
 
 vi.mock("../../src/state/repos.ts", async (importOriginal) => {
@@ -42,30 +40,11 @@ vi.mock("../../src/tui/panes/sidebar/worktree-changes.ts", () => ({
   readWorktreeChanges: mocks.readWorktreeChanges,
 }))
 
-vi.mock("../../src/tmux/client.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/tmux/client.ts")>()
-  return {
-    ...actual,
-    sessionExists: mocks.sessionExists,
-    switchClientBeforeKill: mocks.switchClientBeforeKill,
-    killSession: mocks.killSession,
-  }
-})
-
 vi.mock("../../src/lib/feedback.ts", () => ({
   DEFAULT_FEEDBACK_CATEGORY_SLUG: "feedback",
   submitFeedback: mocks.submitFeedback,
 }))
 
-// The realPromptDeliveryOps seams: the session builder + repo-init are
-// lazy-imported (so `kobe api list` never loads the TUI pane stack); the
-// pane wait / paste and the engine command are static imports.
-vi.mock("../../src/tui/panes/terminal/tmux.ts", () => ({ ensureSession: mocks.ensureSession }))
-vi.mock("../../src/state/repo-init.ts", () => ({ resolveEngineLaunchInit: mocks.resolveEngineLaunchInit }))
-vi.mock("../../src/tmux/prompt-delivery.ts", () => ({
-  waitForEnginePane: mocks.waitForEnginePane,
-  pasteAndSubmit: mocks.pasteAndSubmit,
-}))
 vi.mock("../../src/engine/interactive-command.ts", () => ({
   interactiveEngineCommand: mocks.interactiveEngineCommand,
 }))
@@ -74,35 +53,25 @@ vi.mock("../../src/engine/session-launch.ts", () => ({
   buildEngineSessionLaunch: mocks.buildEngineSessionLaunch,
 }))
 
-// No pty host in the unit env: openPtyHost resolves null so the hosted probe
-// is a no-op and every op below exercises its tmux fallback (what's asserted).
 vi.mock("../../src/cli/api/pty-delivery.ts", () => ({
-  openPtyHost: vi.fn(async () => null),
+  openPtyHost: mocks.openPtyHost,
   ensurePtyHost: mocks.ensurePtyHost,
   deliverHostedPrompt: mocks.deliverHostedPrompt,
-  listSessions: vi.fn(async () => []),
-  findEngineKey: vi.fn(() => null),
-  taskKeys: vi.fn(() => []),
-  killTaskSessions: vi.fn(async () => {}),
+  listSessions: mocks.listSessions,
+  findEngineKey: mocks.findEngineKey,
+  taskKeys: mocks.taskKeys,
+  killTaskSessions: mocks.killTaskSessions,
   deliverToKey: vi.fn(async () => false),
 }))
 
 import { defaultApiRuntime, deliverPrompt, invokeVerb } from "../../src/cli/api-cmd.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
-import { tmuxSessionName } from "../../src/tmux/client.ts"
 
 beforeEach(() => {
   mocks.resolveMainRepoRoot.mockReset().mockResolvedValue("/repo/main")
   mocks.getPersistedString.mockReset().mockReturnValue(undefined)
   mocks.readWorktreeChanges.mockReset().mockResolvedValue({ added: 3, deleted: 1 })
-  mocks.sessionExists.mockReset().mockResolvedValue(true)
-  mocks.switchClientBeforeKill.mockReset().mockResolvedValue(undefined)
-  mocks.killSession.mockReset().mockResolvedValue(undefined)
   mocks.submitFeedback.mockReset().mockReturnValue({ url: "https://github.com/d/1", number: 1 })
-  mocks.ensureSession.mockReset().mockResolvedValue(true)
-  mocks.resolveEngineLaunchInit.mockReset().mockResolvedValue({ initScript: "./setup.sh" })
-  mocks.waitForEnginePane.mockReset().mockResolvedValue({ pane: "%7", ready: true })
-  mocks.pasteAndSubmit.mockReset().mockResolvedValue(true)
   mocks.interactiveEngineCommand.mockReset().mockReturnValue(["claude", "--continue"])
   mocks.closePtyHost.mockReset()
   mocks.ensurePtyHost.mockReset().mockResolvedValue({ rpc: { request: vi.fn() }, close: mocks.closePtyHost })
@@ -117,6 +86,11 @@ beforeEach(() => {
     engineReady: true,
     delivered: true,
   })
+  mocks.openPtyHost.mockReset().mockResolvedValue({ rpc: { request: vi.fn() }, close: mocks.closePtyHost })
+  mocks.listSessions.mockReset().mockResolvedValue([{ key: "t1::tab-1", alive: true }])
+  mocks.findEngineKey.mockReset().mockReturnValue("t1::tab-1")
+  mocks.taskKeys.mockReset().mockReturnValue(["t1::tab-1", "t1::tab-2"])
+  mocks.killTaskSessions.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -124,9 +98,14 @@ afterEach(() => {
 })
 
 describe("defaultApiRuntime", () => {
-  it("isTaskRunning asks tmux for the task's canonical session name", async () => {
+  it("isTaskRunning resolves only the canonical hosted engine key", async () => {
     await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(true)
-    expect(mocks.sessionExists).toHaveBeenCalledWith(tmuxSessionName("t1"))
+    expect(mocks.findEngineKey).toHaveBeenCalledWith(expect.any(Array), "t1")
+  })
+
+  it("isTaskRunning is false when no PTY Host is running", async () => {
+    mocks.openPtyHost.mockResolvedValueOnce(null)
+    await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(false)
   })
 
   it("resolveRepoRoot canonicalizes through state/repos resolveMainRepoRoot", async () => {
@@ -156,26 +135,16 @@ describe("defaultApiRuntime", () => {
     expect(mocks.readWorktreeChanges).toHaveBeenCalledWith("/wt/t1")
   })
 
-  it("tearDownSession switches any attached client away BEFORE killing the session", async () => {
-    const order: string[] = []
-    mocks.switchClientBeforeKill.mockImplementation(async () => {
-      order.push("switch")
-    })
-    mocks.killSession.mockImplementation(async () => {
-      order.push("kill")
-    })
+  it("tearDownSession kills every hosted task key and closes the probe client", async () => {
     await defaultApiRuntime.tearDownSession("t1")
-    expect(mocks.switchClientBeforeKill).toHaveBeenCalledWith(tmuxSessionName("t1"))
-    expect(mocks.killSession).toHaveBeenCalledWith(tmuxSessionName("t1"))
-    expect(order).toEqual(["switch", "kill"])
+    expect(mocks.taskKeys).toHaveBeenCalledWith(expect.any(Array), "t1")
+    expect(mocks.killTaskSessions).toHaveBeenCalledWith(expect.anything(), ["t1::tab-1", "t1::tab-2"])
+    expect(mocks.closePtyHost).toHaveBeenCalledOnce()
   })
 
-  it("tearDownSession swallows both failures — the RPC already committed", async () => {
-    mocks.switchClientBeforeKill.mockRejectedValue(new Error("no client"))
-    mocks.killSession.mockRejectedValue(new Error("no session"))
+  it("tearDownSession swallows PTY failures — the RPC already committed", async () => {
+    mocks.killTaskSessions.mockRejectedValue(new Error("host closed"))
     await expect(defaultApiRuntime.tearDownSession("t1")).resolves.toBeUndefined()
-    // The kill is still attempted even when the switch failed.
-    expect(mocks.killSession).toHaveBeenCalledWith(tmuxSessionName("t1"))
   })
 })
 
@@ -188,8 +157,7 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
     onChannel: () => () => {},
   }
 
-  it("builds and starts a fresh hosted session without touching tmux", async () => {
-    mocks.sessionExists.mockResolvedValue(false)
+  it("builds and starts a fresh hosted session through the shared launch spec", async () => {
     const result = await deliverPrompt(
       client,
       {
@@ -219,7 +187,6 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
       "go",
       expect.objectContaining({ key: "t1::tab-1" }),
     )
-    expect(mocks.ensureSession).not.toHaveBeenCalled()
     expect(mocks.closePtyHost).toHaveBeenCalledOnce()
     expect(result).toEqual({
       session: "t1::tab-1",

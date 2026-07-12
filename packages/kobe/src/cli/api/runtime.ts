@@ -1,14 +1,13 @@
 /**
  * The real side-effect implementations `kobe api` verbs run against
- * outside tests: prompt delivery (tmux session build + paste) and the
+ * outside tests: hosted prompt delivery and the
  * default {@link ApiRuntime}. Split out of `api-cmd.ts` (see that file's
  * header) — handlers depend on the `ApiRuntime` TYPE from `./types.ts`,
- * not this module, so unit tests never pull in tmux/git.
+ * not this module, so unit tests never open PTY Host or git processes.
  */
 
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
-import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../../tmux/client.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import {
   deliverHostedPrompt,
@@ -93,20 +92,14 @@ export async function resolveActiveTaskId(client: DaemonRpc): Promise<string | n
 }
 
 export const defaultApiRuntime: ApiRuntime = {
-  // Hosted (pty-host) engine counts as running FIRST — otherwise a hosted
-  // task looks idle to `send`/`fan-out`, which then builds a second tmux
-  // engine in the same worktree (the double-open bug this slice closes).
   isTaskRunning: async (taskId) => {
     const host = await openPtyHost()
-    if (host) {
-      try {
-        const sessions = await listSessions(host.rpc)
-        if (findEngineKey(sessions, taskId) !== null) return true
-      } finally {
-        host.close()
-      }
+    if (!host) return false
+    try {
+      return findEngineKey(await listSessions(host.rpc), taskId) !== null
+    } finally {
+      host.close()
     }
-    return sessionExists(tmuxSessionName(taskId))
   },
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
   resolveRepoRoot: async (absPath) => (await import("../../state/repos.ts")).resolveMainRepoRoot(absPath),
@@ -117,11 +110,6 @@ export const defaultApiRuntime: ApiRuntime = {
   readWorktreeChanges: async (worktreePath) =>
     (await import("../../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
   tearDownSession: async (taskId) => {
-    // Kill the HOSTED engine too (both backends): teardown fires only from
-    // archive/delete — genuine "stop this task's engine" moments — and a
-    // hosted engine otherwise survives forever with no owner. The daemon's
-    // archive sweep eventually kills it, but that's keyed on the daemon
-    // seeing the flag; kill it here now, mirroring the tmux teardown.
     const host = await openPtyHost()
     if (host) {
       try {
@@ -132,11 +120,5 @@ export const defaultApiRuntime: ApiRuntime = {
         host.close()
       }
     }
-    const session = tmuxSessionName(taskId)
-    // Switch any attached client away first so a kill doesn't blank a terminal
-    // (no-op when this process isn't on that session), then kill the session +
-    // its engine. Both are swallowed — the task is already gone from the index.
-    await switchClientBeforeKill(session).catch(() => {})
-    await killSession(session).catch(() => {})
   },
 }

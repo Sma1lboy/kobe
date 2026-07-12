@@ -4,8 +4,7 @@
  * (`tui/tasks-pane/host.tsx`); the deprecated outer monitor (`app.tsx`)
  * was the second host until its retirement (docs/design/app-retirement.md)
  * — consolidating here is what made that a pure deletion, not a port.
- * Host differences (e.g. the Tasks pane lives INSIDE the tmux client it
- * may kill) are an explicit option or hook on {@link TaskActionContext},
+ * Host differences are an explicit option or hook on {@link TaskActionContext},
  * never a second copy.
  *
  * Testability rule: NO `@opentui` imports here. Modal UI (DialogConfirm /
@@ -17,12 +16,12 @@
 
 import type { KobeOrchestrator } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
+import { hostedTaskKeys, killHostedSessions, listHostedSessions, openHostedSessionHost } from "@/engine/hosted-session"
 import { engineDisplayName } from "@/engine/interactive-command"
 import { errorMessage } from "@/lib/error-message"
 import { DIRTY_WORKTREE_CODE } from "@/orchestrator/errors"
 import { DEFAULT_TASK_VENDOR, type Task } from "@/types/task"
 import { nextVendorWithin } from "@/types/vendor"
-import { killSession, switchClientBeforeKill, tmuxSessionName } from "../panes/terminal/tmux"
 
 export interface TaskActionLogger {
   error(message?: unknown, ...optionalParams: unknown[]): void
@@ -70,8 +69,7 @@ export interface TaskActionContext {
   readonly logPrefix: string
   /**
    * DIVERGENCE — on-screen failure toast. The Tasks pane surfaces failures
-   * as red toasts (under tmux's alternate screen a bare console.error is
-   * invisible); the outer monitor has no toast wiring for task actions, so
+   * as red toasts (a bare console.error is invisible in the TUI); the outer monitor has no toast wiring for task actions, so
    * it omits this and failures stay log-only, as before.
    */
   readonly notifyError?: (message: string) => void
@@ -83,13 +81,6 @@ export interface TaskActionContext {
    * signal-driven and omits it.
    */
   readonly reload?: () => Promise<void>
-  /**
-   * DIVERGENCE — the Tasks pane runs INSIDE the tmux client whose session
-   * a delete may kill, so it must `switch-client` away first or the kill
-   * yanks the user's terminal out from under them. The outer monitor sits
-   * outside tmux and omits this.
-   */
-  readonly switchBeforeKill?: boolean
   /**
    * DIVERGENCE — publish the shared active-task focus after archive/delete
    *. The Tasks pane sets this; the outer monitor historically
@@ -106,6 +97,18 @@ export interface TaskActionContext {
 
 export function nextActiveTask(tasks: readonly Task[], excludeId: string): Task | undefined {
   return tasks.find((t) => t.id !== excludeId && !t.archived)
+}
+
+async function stopHostedTask(taskId: string, logger: TaskActionLogger, logPrefix: string): Promise<void> {
+  const host = await openHostedSessionHost()
+  if (!host) return
+  try {
+    await killHostedSessions(host.rpc, hostedTaskKeys(await listHostedSessions(host.rpc), taskId))
+  } catch (err) {
+    logger.error(`${logPrefix} kill hosted session failed:`, err)
+  } finally {
+    host.close()
+  }
 }
 
 /**
@@ -142,21 +145,15 @@ export async function toggleTaskArchivedFlow(opts: {
   }
   if (!archived) return { archived }
 
-  // Archiving STOPS the task's running engine: switch the client away, clear
-  // active-task focus, then kill its tmux session so an archived task doesn't
+  // Archiving STOPS the task's running engine: clear active-task focus, then
+  // kill its hosted sessions so an archived task doesn't
   // keep a live engine subprocess burning resources/tokens. Non-destructive to
   // DATA — the worktree, branch, and chat history stay on disk and the session
   // is rebuilt fresh on unarchive / next enter. Gated behind a confirm at the
   // call site (it ends a running session). Mirrors finishDeletedTaskFlow's
   // teardown; the difference from delete is purely that the task record + its
   // worktree survive.
-  const sessionName = tmuxSessionName(opts.taskId)
   const nextTask = nextActiveTask(opts.tasks, opts.taskId)
-  await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-    (err: unknown) => {
-      opts.logger.error(`${opts.logPrefix} switch-client failed:`, err)
-    },
-  )
   // Only re-point the shared active-task focus when the archived task WAS the
   // active one. Archiving a background task must not yank every surface's focus
   // onto some other task (mirrors switchClientBeforeKill's current!=target
@@ -164,9 +161,7 @@ export async function toggleTaskArchivedFlow(opts: {
   if (opts.updateActiveTask && removedTaskIsActive(opts.orch, opts.taskId)) {
     await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
   }
-  await killSession(sessionName).catch((err: unknown) => {
-    opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
-  })
+  await stopHostedTask(opts.taskId, opts.logger, opts.logPrefix)
   return { archived, nextTask }
 }
 
@@ -176,27 +171,16 @@ export async function finishDeletedTaskFlow(opts: {
   readonly taskId: string
   readonly logger: TaskActionLogger
   readonly logPrefix: string
-  readonly switchBeforeKill?: boolean
   readonly updateActiveTask?: boolean
 }): Promise<{ nextTask?: Task }> {
   const nextTask = nextActiveTask(opts.tasks, opts.taskId)
-  const sessionName = tmuxSessionName(opts.taskId)
-  if (opts.switchBeforeKill) {
-    await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-      (err: unknown) => {
-        opts.logger.error(`${opts.logPrefix} switch-client failed:`, err)
-      },
-    )
-  }
   // Only re-point shared active-task focus when the DELETED task was the active
   // one — deleting a background task must leave the current focus alone (same
   // guard as the archive flow above).
   if (opts.updateActiveTask && opts.orch && removedTaskIsActive(opts.orch, opts.taskId)) {
     await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
   }
-  await killSession(sessionName).catch((err: unknown) => {
-    opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
-  })
+  await stopHostedTask(opts.taskId, opts.logger, opts.logPrefix)
   return { nextTask }
 }
 
@@ -233,7 +217,7 @@ export async function archiveTaskFlow(ctx: TaskActionContext, taskId: string): P
 
 /**
  * Delete a task: confirm → non-force delete → on DIRTY_WORKTREE re-prompt
- * for an explicit force-delete → tear down the tmux session → host
+ * for an explicit force-delete → tear down hosted sessions → host
  * selection hook. The first attempt is deliberately non-force: the
  * orchestrator refuses to destroy a worktree with uncommitted/untracked
  * work and throws a DIRTY_WORKTREE error instead, so the user can't lose
@@ -269,7 +253,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   }
   const ok = await ctx.confirm({
     title: `Delete "${task.title}"?`,
-    body: "Removes the task entry and its worktree. The tmux session (if any) is killed.",
+    body: "Removes the task entry and its worktree. Its hosted sessions are stopped.",
     cancelLabel: "cancel",
     confirmLabel: "delete",
   })
@@ -310,7 +294,6 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
     taskId,
     logger: ctx.logger,
     logPrefix: ctx.logPrefix,
-    switchBeforeKill: ctx.switchBeforeKill,
     updateActiveTask: ctx.updateActiveTask,
   })
   await ctx.reload?.()

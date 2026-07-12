@@ -12,11 +12,17 @@
  * the vendor's own launch binary — never a hard-coded "claude"/"codex".
  */
 
-import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
-import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import {
+  type HostedSessionRpc,
+  ensureHostedSessionHost,
+  hostedTaskKeys,
+  isHostedTaskKey,
+  killHostedSessions,
+  listHostedSessions,
+  openHostedSessionHost,
+} from "../../engine/hosted-session.ts"
 import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DeliveredPrompt } from "./types.ts"
 
@@ -25,12 +31,9 @@ import type { DeliveredPrompt } from "./types.ts"
  * cleanup. `KobeDaemonClient` satisfies it; tests inject a fake that
  * records requests instead of opening a socket.
  */
-export interface PtyHostRpc {
-  request<T = unknown>(name: string, payload?: unknown): Promise<T>
-}
+export type PtyHostRpc = HostedSessionRpc
 
-/** Delay between the bracketed paste and the submit CR so the engine reads
- *  them as two tty reads — mirrors the tmux path's `SUBMIT_DELAY_MS`. */
+/** Delay between bracketed paste and submit CR so the engine reads two tty events. */
 const SUBMIT_DELAY_MS = 150
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -40,9 +43,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * — the same split `pty-host.ts` `sweepTasks` uses. `tab-1` is the engine
  * tab the TUI's `initialTabs()` always mints first.
  */
-export function isTaskKey(key: string, taskId: string): boolean {
-  return (key.split("::")[0] ?? key) === taskId
-}
+export const isTaskKey = isHostedTaskKey
 
 /**
  * Pick the ALIVE engine session key for `taskId`, or `null` when none —
@@ -73,44 +74,16 @@ export function findEngineKey(sessions: readonly PtySessionInfo[], taskId: strin
 }
 
 /** All alive session keys for `taskId` — every tab, for teardown. */
-export function taskKeys(sessions: readonly PtySessionInfo[], taskId: string): string[] {
-  return sessions.filter((s) => isTaskKey(s.key, taskId)).map((s) => s.key)
-}
+export const taskKeys = hostedTaskKeys
 
 /** Open a short-lived client without starting the host (read/teardown probes). */
-export async function openPtyHost(): Promise<{ rpc: PtyHostRpc; close: () => void } | null> {
-  const client = new KobeDaemonClient(defaultPtyHostSocketPath())
-  try {
-    await client.connect()
-  } catch {
-    client.close()
-    return null
-  }
-  return { rpc: client, close: () => client.close() }
-}
+export const openPtyHost = openHostedSessionHost
 
 /** Ensure the standalone host exists, then open a short-lived RPC client. */
-export async function ensurePtyHost(): Promise<{ rpc: PtyHostRpc; close: () => void }> {
-  const socketPath = await ensurePtyHostReachable()
-  const client = new KobeDaemonClient(socketPath)
-  try {
-    await client.connect()
-  } catch (error) {
-    client.close()
-    throw error
-  }
-  return { rpc: client, close: () => client.close() }
-}
+export const ensurePtyHost = ensureHostedSessionHost
 
 /** Session inventory from the pty host; `[]` on any RPC hiccup. */
-export async function listSessions(rpc: PtyHostRpc): Promise<PtySessionInfo[]> {
-  try {
-    const { sessions } = await rpc.request<{ sessions: PtySessionInfo[] }>("pty.list", {})
-    return sessions ?? []
-  } catch {
-    return []
-  }
-}
+export const listSessions = listHostedSessions
 
 /**
  * Deliver `prompt` into an existing hosted engine session and submit it.
@@ -198,6 +171,4 @@ export async function deliverHostedPrompt(
 }
 
 /** Kill every hosted session for a task (its engine + any tabs). */
-export async function killTaskSessions(rpc: PtyHostRpc, keys: readonly string[]): Promise<void> {
-  for (const key of keys) await rpc.request("pty.kill", { key }).catch(() => {})
-}
+export const killTaskSessions = killHostedSessions

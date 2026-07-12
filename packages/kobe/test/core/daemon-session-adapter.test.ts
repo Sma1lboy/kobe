@@ -2,26 +2,28 @@ import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  ensureSession: vi.fn(async () => true),
-  sessionExists: vi.fn(async () => false),
-  resolveLaunch: vi.fn((_repo: string, _worktree: string, intent: { kind: string }) => ({
-    initScript: `init:${intent.kind}`,
-    firstMessage: intent.kind === "repo-init" ? { source: "repo-init", text: "repo prompt" } : undefined,
+  close: vi.fn(),
+  ensureHost: vi.fn(),
+  openHost: vi.fn(),
+  ensureEngine: vi.fn(async () => ({ alive: true, created: true })),
+  listSessions: vi.fn(async () => [{ key: "task-3::tab-1", alive: true }]),
+  taskKeys: vi.fn(() => ["task-3::tab-1"]),
+  killSessions: vi.fn(async () => {}),
+  buildLaunch: vi.fn((input: { task: { id: string } }) => ({
+    key: `${input.task.id}::tab-1`,
+    command: ["/bin/zsh", "-ilc", "claude 'repo prompt'"],
   })),
-  killSession: vi.fn(async () => {}),
-  switchClientBeforeKill: vi.fn(async () => {}),
 }))
 
-vi.mock("../../src/tui/panes/terminal/tmux.ts", () => ({
-  ensureSession: mocks.ensureSession,
-  sessionExists: mocks.sessionExists,
-  tmuxSessionName: (taskId: string) => `kobe-${taskId}`,
+vi.mock("../../src/engine/hosted-session.ts", () => ({
+  ensureHostedSessionHost: mocks.ensureHost,
+  openHostedSessionHost: mocks.openHost,
+  ensureHostedEngine: mocks.ensureEngine,
+  listHostedSessions: mocks.listSessions,
+  hostedTaskKeys: mocks.taskKeys,
+  killHostedSessions: mocks.killSessions,
 }))
-vi.mock("../../src/tmux/client.ts", () => ({
-  killSession: mocks.killSession,
-  switchClientBeforeKill: mocks.switchClientBeforeKill,
-}))
-vi.mock("../../src/state/repo-init.ts", () => ({ resolveEngineLaunchInit: mocks.resolveLaunch }))
+vi.mock("../../src/engine/session-launch.ts", () => ({ buildEngineSessionLaunch: mocks.buildLaunch }))
 
 import {
   engineSpecAdapter,
@@ -51,23 +53,33 @@ function link(): DaemonRpcClient {
 }
 
 describe("daemon session adapter", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    const host = { rpc: { request: vi.fn() }, close: mocks.close }
+    mocks.ensureHost.mockResolvedValue(host)
+    mocks.openHost.mockResolvedValue(host)
+  })
 
-  it("materializes the worktree and creates the canonical tmux session", async () => {
+  it("materializes the worktree and creates the canonical hosted session", async () => {
     await expect(ensureTaskSessionAdapter(link(), "task-1")).resolves.toEqual({
-      session: "kobe-task-1",
+      session: "task-1::tab-1",
       worktreePath: "/worktrees/story",
     })
-    expect(mocks.resolveLaunch).toHaveBeenCalledWith("/repo/kobe", "/worktrees/story", { kind: "repo-init" })
-    expect(mocks.ensureSession).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "kobe-task-1", cwd: "/worktrees/story" }),
+    expect(mocks.buildLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.objectContaining({ id: "task-1", kind: "task", vendor: "claude" }),
+        worktreePath: "/worktrees/story",
+        promptIntent: { kind: "repo-init" },
+      }),
     )
+    expect(mocks.ensureEngine).toHaveBeenCalledWith(expect.anything(), "/worktrees/story", expect.anything())
+    expect(mocks.close).toHaveBeenCalledOnce()
   })
 
   it("builds engine and terminal specs without duplicating the first prompt", async () => {
     const engine = await engineSpecAdapter(link(), "task-2")
     expect(engine.cwd).toBe("/worktrees/story")
-    expect(engine.command.join(" ")).toContain("init:none")
+    expect(engine.command).toEqual(["/bin/zsh", "-ilc", "claude 'repo prompt'"])
     await expect(terminalSpecAdapter(link(), "task-2")).resolves.toEqual({
       cwd: "/worktrees/story",
       command: [process.env.SHELL?.trim() || "/bin/zsh", "-il"],
@@ -76,12 +88,11 @@ describe("daemon session adapter", () => {
 
   it("tears down a task session best-effort", async () => {
     await tearDownTaskSessionAdapter("task-3")
-    expect(mocks.switchClientBeforeKill).toHaveBeenCalledWith("kobe-task-3")
-    expect(mocks.killSession).toHaveBeenCalledWith("kobe-task-3")
+    expect(mocks.killSessions).toHaveBeenCalledWith(expect.anything(), ["task-3::tab-1"])
+    expect(mocks.close).toHaveBeenCalledOnce()
   })
 
   it("reuses materialized worktrees and rejects a failed materialization", async () => {
-    mocks.sessionExists.mockResolvedValueOnce(true)
     const existing = {
       request: vi.fn(
         async <T>() =>
@@ -91,10 +102,10 @@ describe("daemon session adapter", () => {
       ),
     } as unknown as DaemonRpcClient
     await expect(ensureTaskSessionAdapter(existing, "task-4")).resolves.toEqual({
-      session: "kobe-task-4",
+      session: "task-4::tab-1",
       worktreePath: "/existing",
     })
-    expect(mocks.ensureSession).not.toHaveBeenCalled()
+    expect(mocks.ensureEngine).toHaveBeenCalledOnce()
 
     const missing = {
       request: vi.fn(

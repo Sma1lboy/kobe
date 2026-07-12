@@ -15,7 +15,6 @@ import { GH_PR_VIEW_FIELDS, classifyGhFailure, mapGhPrView, nextPrPoll, samePrSt
 import { maybeAutoStart } from "../monitor/status-rules.ts"
 import { type Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { getPersistedString, getSavedRepos, setPersistedString } from "../state/repos.ts"
-import { runChatTabNamingPass } from "../tmux/chat-tab-naming.ts"
 import { parsePorcelain } from "../tui/panes/sidebar/worktree-changes.ts"
 import { DEFAULT_TASK_VENDOR, isTaskStatus } from "../types/task.ts"
 import { CURRENT_VERSION, checkLatestVersion } from "../version.ts"
@@ -45,9 +44,6 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   checkLatestVersion,
   latestTranscriptMtime,
   deriveTitleFromSession,
-  async runChatTabNamingPass(orch, schedule) {
-    await runChatTabNamingPass(orch as Orchestrator, undefined, schedule as never)
-  },
   createEngineTurnDetector,
   async runWorktreeStatus(worktreePath, signal) {
     const result = await spawnCapture("git", ["status", "--porcelain=v1"], {
