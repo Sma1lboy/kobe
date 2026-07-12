@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest"
 import {
+  type HostedSessionRpc,
   ensureHostedEngine,
   hostedTaskKeys,
   isHostedTaskKey,
   killHostedSessions,
   listHostedSessions,
-  type HostedSessionRpc,
 } from "../../src/engine/hosted-session.ts"
 
 function session(key: string) {
@@ -33,10 +33,7 @@ describe("hosted session helpers", () => {
   })
 
   it("attempts every kill even when one hosted session has already disappeared", async () => {
-    const request = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("already gone"))
-      .mockResolvedValueOnce({})
+    const request = vi.fn().mockRejectedValueOnce(new Error("already gone")).mockResolvedValueOnce({})
     const rpc: HostedSessionRpc = { request }
 
     await expect(killHostedSessions(rpc, ["task-a::tab-1", "task-a::shell-2"])).resolves.toBeUndefined()
