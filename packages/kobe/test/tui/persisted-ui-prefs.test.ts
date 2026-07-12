@@ -69,14 +69,14 @@ describe("readPersistedUiPrefs", () => {
     writeState(
       JSON.stringify({
         activeTheme: "claude",
-        transparentBackground: "yes", // not === true
+        transparentBackground: "yes", // garbage → the default (true); only explicit false opts out
         focusAccent: "not-a-slot",
         locale: "xx-nope",
       }),
     )
     const prefs = readPersistedUiPrefs("claude")
     expect(prefs.theme).toBe("claude")
-    expect(prefs.transparent).toBe(false)
+    expect(prefs.transparent).toBe(true)
     expect(prefs.focusAccent).toBeNull()
     expect(prefs.locale).toBe("en") // DEFAULT_LOCALE
   })
@@ -85,11 +85,14 @@ describe("readPersistedUiPrefs", () => {
     // no file at all
     expect(readPersistedUiPrefs("claude")).toEqual({
       theme: "claude",
-      transparent: false,
+      transparent: true, // transparent-by-default
       focusAccent: null,
       locale: "en",
       reducedMotion: false,
     })
+    // An explicit stored false is the only opt-out.
+    writeState(JSON.stringify({ transparentBackground: false }))
+    expect(readPersistedUiPrefs("claude").transparent).toBe(false)
     writeState("{corrupt")
     expect(readPersistedUiPrefs("claude").theme).toBe("claude")
   })

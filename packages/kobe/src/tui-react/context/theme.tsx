@@ -46,7 +46,9 @@ const store = createExternalStore<State>({
   themes: { ...BUNDLED_THEMES },
   active: "claude",
   mode: "dark",
-  transparentBackground: false,
+  // Transparent by default (2026-07-12) — kobe sits on the terminal's own
+  // background unless the user explicitly turns transparency off.
+  transparentBackground: true,
   focusAccent: "primary",
   reducedMotion: false,
 })
