@@ -380,7 +380,7 @@ function TaskOverview({ task }: { task: Task | null }) {
       {confirm?.kind === "archive" && (
         <ConfirmDialog
           title="Archive task"
-          body={`Archive "${task.title || task.branch}"? Its tmux session and engine will be stopped; the worktree stays on disk and the task can be restored from the Archived section.`}
+          body={`Archive "${task.title || task.branch}"? Its Hosted PTY sessions will be stopped; the worktree stays on disk and the task can be restored from the Archived section.`}
           confirmLabel="Archive"
           danger
           busy={busy === "archive"}
