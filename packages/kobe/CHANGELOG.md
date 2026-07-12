@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.7.102
+## 0.8.0
+
+### Minor Changes
+
+- b5e3bfd: Make PureTUI the only kobe interface, move all interactive task sessions to the standalone Hosted PTY backend, and keep headless `kobe api send`, prompted `add`, and `fan-out` automation able to start and reuse engine sessions without an open TUI. `kobe doctor` and `kobe reset` now diagnose and reset the daemon plus Hosted PTY runtime, while tmux-only reload and session teardown commands are removed.
 
 ### Patch Changes
 
@@ -12,7 +16,6 @@
 - 517ba17: Silently restart and reconnect the daemon when a GUI connection drops, replaying the latest snapshots without blocking on a recovery dialog while keeping helper-pane retries non-spawning.
 - 5c08b98: CLI-command TUIs now render inline (ink-style) in a small main-screen footer instead of taking over the alternate screen — your shell scrollback stays visible. `kobe update list` is the first inline page.
 - 507b162: Fixed quitting an inline page (`kobe update list`) leaving mouse-tracking escape reports flooding the shell prompt — every pane host now restores the terminal on process exit, whatever the exit path. The onboarding wizard also flows as a transcript now: answered questions stay on screen as checked lines, the next question follows below, and inline pages no longer paint a background block over the shell.
-- b5e3bfd: Make PureTUI the only kobe interface, move all interactive task sessions to the standalone Hosted PTY backend, and keep headless `kobe api send`, prompted `add`, and `fan-out` automation able to start and reuse engine sessions without an open TUI. `kobe doctor` and `kobe reset` now diagnose and reset the daemon plus Hosted PTY runtime, while tmux-only reload and session teardown commands are removed.
 - df729b0: Correct active product copy and architecture guidance to describe the PureTUI Workspace Host and Hosted PTY sessions instead of the retired tmux runtime.
 - b6fd4dd: Stop publishing unchanged embedded-terminal snapshots to React and OpenTUI, reducing redraw allocation and heat while preserving text, cursor, and cursor-visibility updates.
 - 59e7ef8: Transparent background is now the default — kobe sits on your terminal's own background out of the box. An explicit "off" in Settings is the only opt-out; existing users who already toggled transparency keep their choice.
