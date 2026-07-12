@@ -2,6 +2,23 @@ import type { Terminal as XtermHeadless } from "@xterm/headless"
 import type { TerminalRow } from "./pty-types"
 import { type XtermLineLike, xtermLineMatchesChunks } from "./xterm-chunks"
 
+/**
+ * Wire the two outbound xterm channels every backend needs:
+ *   - the query-reply channel (`onData`): xterm's answers to the child's
+ *     terminal queries (Primary DA `\x1b[c`, CPR `\x1b[6n`, DSR…) MUST flow
+ *     back to the child's stdin — interactive engines probe the terminal on
+ *     startup and fall onto broken redraw paths without the replies;
+ *   - window-title tracking (`onTitleChange`, OSC 0/2): the tab strip shows
+ *     the live foreground-process name instead of a static "shell".
+ */
+export function wireXtermChannels(
+  term: XtermHeadless,
+  hooks: { onReply(data: string): void; onTitle(title: string): void },
+): void {
+  term.onData(hooks.onReply)
+  term.onTitleChange(hooks.onTitle)
+}
+
 export type SnapshotMeta = {
   type: "normal" | "alternate"
   baseY: number

@@ -248,6 +248,17 @@ export interface PtyOpenResult {
    *  warm-shell adoption) — the client's cue that `initialInput` may be
    *  typed. False on reattach; absent from pre-warm hosts. */
   readonly created?: boolean
+  /** Monotonic per-session byte offset at attach time (total bytes the
+   *  child has ever written). A client that detaches records it and asks
+   *  the next `pty.open` for only the delta via `sinceOffset`; absent
+   *  from pre-offset hosts. */
+  readonly offset?: number
+  /** True when the request's `sinceOffset` was still inside the ring
+   *  window and `replay` is exactly the bytes written since it — the
+   *  client may restore its serialized screen and apply the delta.
+   *  False/absent means `replay` is the full ring (offset trimmed away,
+   *  or an old host). */
+  readonly sinceValid?: boolean
 }
 
 export interface DaemonError {

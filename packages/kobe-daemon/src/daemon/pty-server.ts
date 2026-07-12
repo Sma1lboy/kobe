@@ -176,6 +176,8 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
           },
           client,
           (frame) => writeFrame(client, frame),
+          typeof payload.sinceOffset === "number" ? payload.sinceOffset : undefined,
+          typeof payload.sincePid === "number" ? payload.sincePid : undefined,
         )
       }
       case "pty.write": {

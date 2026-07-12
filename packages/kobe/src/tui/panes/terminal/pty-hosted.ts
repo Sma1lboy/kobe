@@ -27,8 +27,10 @@ import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { type TaskPtyOpts, defaultShell } from "./pty-types"
+import { SerializeAddon } from "@xterm/addon-serialize"
+import { type ParkedScreen, type TaskPtyOpts, defaultShell } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
+import { xtermCursorHidden } from "./xterm-refresh"
 
 /**
  * One shared pty-host connection for every HostedTaskPty in this process
@@ -154,9 +156,16 @@ export class HostedTaskPty extends XtermTaskPty {
   /** A pid-tagged `pty.exit` that arrived before our open response —
    *  parked, then resolved against the response's pid in `openRemote`. */
   private pendingExitPid: number | null = null
+  /** SerializeAddon riding our emulator — `capturePark` reads it. */
+  private readonly serializer = new SerializeAddon()
+  /** Monotonic host byte offset this handle has consumed: the open
+   *  response's `offset` plus every `pty.data` frame since. Recorded into
+   *  {@link ParkedScreen} at park; null until the open response lands. */
+  private hostOffset: number | null = null
 
   constructor(opts: TaskPtyOpts) {
     super(opts)
+    this.term.loadAddon(this.serializer)
     void this.openRemote(opts)
   }
 
@@ -192,15 +201,33 @@ export class HostedTaskPty extends XtermTaskPty {
         shell: opts.shell,
         cols: this.cols,
         rows: this.rows,
+        sinceOffset: opts.restore?.byteOffset,
+        sincePid: opts.restore?.pid ?? undefined,
       })
       if (this.killed) return
       this.sessionPid = res.pid ?? null
+      this.hostOffset = res.offset ?? null
+      // A parked screen restores ONLY when the host proved the delta is
+      // exact: `sinceValid` covers offset-in-window AND same-pid (the pid
+      // check must live host-side — a stale restore has to receive the
+      // FULL ring, not a delta it would discard). The local re-checks are
+      // a belt against pre-offset hosts echoing unknown fields.
+      const restored =
+        opts.restore !== undefined &&
+        res.sinceValid === true &&
+        res.created !== true &&
+        (res.pid ?? null) === opts.restore.pid
       // Replay BEFORE flushing queued input — the ring buffer is the
       // session's past; queued keystrokes are its future. feedReplay, not
       // feed: the replayed stream contains the child's PAST terminal
       // queries, and answering them again from this fresh emulator would
       // inject stray CPR/DA into the child's stdin.
-      if (res.replay.length > 0) this.feedReplay(Buffer.from(res.replay, "base64"))
+      if (restored && opts.restore) {
+        await this.restoreParked(opts.restore, Buffer.from(res.replay, "base64"))
+        if (this.killed) return
+      } else if (res.replay.length > 0) {
+        this.feedReplay(Buffer.from(res.replay, "base64"))
+      }
       this.opened = true
       if (this.pendingResize) {
         const { cols, rows } = this.pendingResize
@@ -217,11 +244,11 @@ export class HostedTaskPty extends XtermTaskPty {
       const parkedExitPid = this.pendingExitPid
       this.pendingExitPid = null
       if (!res.alive) {
-        this.deadOnAttach = res.replay.length > 0
+        this.deadOnAttach = res.replay.length > 0 || restored
         this.remoteGone()
       } else if (parkedExitPid !== null && parkedExitPid === this.sessionPid) {
         this.remoteGone()
-      } else if (res.replay.length > 0) {
+      } else if (res.replay.length > 0 && !restored) {
         // Reattach to a LIVE session (TUI restart): when our geometry
         // matches the host's, no SIGWINCH ever fires and nothing tells
         // the app to repaint what the replay painted — a long session's
@@ -291,6 +318,64 @@ export class HostedTaskPty extends XtermTaskPty {
    * Drop this handle, leave the child running in the pty host — the whole
    * point of the backend. Called by `registry.detachAll()` on app exit.
    */
+  /**
+   * Snapshot this handle's screen for a lossless wake (issue #29): the
+   * SerializeAddon VT stream (~100-200KB) replaces the multi-MB emulator
+   * while the tab is hidden. Null when we can't restore exactly — never
+   * attached (no offset), already dead — so the park sweep still detaches
+   * and the wake degrades to the full-replay + wiggle path.
+   */
+  capturePark(): ParkedScreen | null {
+    if (this.killed || !this.opened || this.hostOffset === null || this.sessionPid === undefined) return null
+    try {
+      return {
+        // Buffer round-trip is load-bearing: serialize() returns a JSC rope
+        // whose fragments pin the emulator's internal strings — keeping it
+        // as-is retained ~2MB per parked tab (measured). The copy owns its
+        // backing store, so the disposed emulator actually gets collected.
+        serialized: Buffer.from(this.serializer.serialize({ scrollback: this.scrollback }), "utf8").toString(),
+        title: this.windowTitle,
+        cursorHidden: xtermCursorHidden(this.term),
+        cols: this.cols,
+        rows: this.rows,
+        byteOffset: this.hostOffset,
+        pid: this.sessionPid,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Prime the fresh emulator from a parked screen: parse the serialized
+   * stream at its CAPTURE geometry (wrapping is width-dependent), re-apply
+   * the `?25l` state serialize doesn't carry, apply the exact byte delta
+   * the host confirmed, then reflow to the pane's current size. The result
+   * is bit-identical to never detaching — no repaint wiggle needed.
+   */
+  private async restoreParked(state: ParkedScreen, delta: Buffer): Promise<void> {
+    const targetCols = this.cols
+    const targetRows = this.rows
+    if (state.cols !== targetCols || state.rows !== targetRows) this.resizeEmulator(state.cols, state.rows)
+    this.feedReplay(state.serialized + (state.cursorHidden ? "\x1b[?25l" : ""))
+    if (delta.byteLength > 0) this.feedReplay(delta)
+    // Geometry restore must wait for the queued parses — xterm resizes take
+    // effect immediately while writes parse async, so resizing early would
+    // reflow the serialized stream at the wrong width. A kill() mid-restore
+    // disposes the emulator and may drop the write callback; the exit
+    // listener keeps this await from hanging the open.
+    await new Promise<void>((resolve) => {
+      const off = this.onExit(resolve)
+      this.term.write("", () => {
+        off()
+        resolve()
+      })
+    })
+    if (!this.killed && (this.cols !== targetCols || this.rows !== targetRows)) {
+      this.resizeEmulator(targetCols, targetRows)
+    }
+  }
+
   detach(): void {
     const client = this.client
     this.cleanup()
@@ -335,7 +420,12 @@ export class HostedTaskPty extends XtermTaskPty {
    */
   feedFrame(dataB64: string): void {
     this.dataWaiter?.()
-    this.feed(Buffer.from(dataB64, "base64"))
+    const buf = Buffer.from(dataB64, "base64")
+    // Frames only count once the open response set the baseline: anything
+    // routed to us earlier (a sibling handle's stream) is already inside
+    // the response's `offset`.
+    if (this.hostOffset !== null) this.hostOffset += buf.byteLength
+    this.feed(buf)
   }
 
   /**

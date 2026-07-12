@@ -29,15 +29,16 @@
  *     *running* tasks at 4, but a paused-but-in-progress task may
  *     still hold a live PTY.
  *
- * PTY parking (issue #28) — MANUAL ONLY since 2026-07-10 (owner call):
- * the automatic idle sweep parked hidden tabs' xterm instances and
- * revived them through the reattach replay, but the replay reconstructs
- * a long session from a byte-capped ring buffer (UI painted before the
- * window is simply gone), so switching back to a parked tab could come
- * up without claude's input box. Background tabs now keep their local
- * xterm resident for the app's lifetime — the memory cost is accepted.
- * `parkIdle` remains for the perf harness and any future explicit
- * memory-pressure hook; nothing in the app calls it on a timer.
+ * PTY parking (issues #28/#29) — AUTOMATIC again since 2026-07-12: the
+ * idle sweep detaches hidden tabs' xterm instances, but each handle now
+ * serializes its full screen first (`capturePark` → SerializeAddon VT
+ * stream, ~100-200KB in `this.parked`) and the wake feeds that stream
+ * plus the host's EXACT byte delta since park (`pty.open sinceOffset`)
+ * into the fresh emulator — bit-identical to never detaching, which
+ * removes the 2026-07-10 objection (the 512KB ring replay couldn't
+ * rebuild a long session's screen). When the delta was trimmed away or
+ * the child was respawned, the wake degrades to the old full-replay +
+ * repaint-wiggle path.
  *
  * Concurrency: every method is synchronous and JS is single-threaded,
  * so there's no race within a single registry. Two registries pointing
@@ -47,9 +48,14 @@
  */
 
 import { isDev } from "../../../env.ts"
-import { type TaskPty, type TaskPtyOpts, createTaskPty } from "./pty"
+import { type ParkedScreen, type TaskPty, type TaskPtyOpts, createTaskPty } from "./pty"
 
 export type AcquireOpts = Omit<TaskPtyOpts, "taskId" | "cwd">
+
+/** Hidden (no data subscriber) for this long → park the local handle. */
+export const PARK_AFTER_MS = 120_000
+/** Cadence of the park sweep. */
+const PARK_SWEEP_MS = 30_000
 
 /**
  * Factory for the underlying `TaskPty`. Defaults to `createTaskPty`
@@ -60,22 +66,39 @@ export type PtyFactory = (opts: TaskPtyOpts) => TaskPty
 
 export class PtyRegistry {
   private readonly map = new Map<string, TaskPty>()
+  /** Serialized screens of parked handles, keyed like `map` — consumed by
+   *  the next `acquire()` as `TaskPtyOpts.restore`. Entries are small
+   *  (~100-200KB VT strings) where a live handle is a multi-MB emulator. */
+  private readonly parked = new Map<string, ParkedScreen>()
   private readonly factory: PtyFactory
+  private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(factory: PtyFactory = createTaskPty) {
     this.factory = factory
+  }
+
+  /** Lazily start the park sweep on first acquire — a registry that never
+   *  holds a PTY (tests, mock hosts) never runs a timer. `unref` so the
+   *  sweep can't keep a wound-down process alive. */
+  private ensureSweeper(): void {
+    if (this.sweepTimer) return
+    const timer = setInterval(() => this.parkIdle(PARK_AFTER_MS), PARK_SWEEP_MS)
+    ;(timer as { unref?: () => void }).unref?.()
+    this.sweepTimer = timer
+  }
+
+  private stopSweeper(): void {
+    if (this.sweepTimer) clearInterval(this.sweepTimer)
+    this.sweepTimer = null
   }
 
   /**
    * Park every idle handle: persistent backend (`detach` present), no data
    * subscriber for `idleMs`+ (see `TaskPtyLike.unwatchedSinceMs` — only the
    * mounted pane subscribes, so unwatched == hidden tab). The child keeps
-   * running in the pty host; re-`acquire()` under the same key reattaches
-   * and replays the host ring buffer. Returns the parked keys.
-   *
-   * NOT called automatically (see the header): the reattach replay can't
-   * reconstruct a long session's full screen, so parking is reserved for
-   * explicit callers (perf harness) rather than a background sweep.
+   * running in the pty host; the serialized screen (`capturePark`) is kept
+   * here and the next `acquire()` under the same key restores it plus the
+   * host's exact byte delta. Returns the parked keys.
    */
   parkIdle(idleMs: number, now: number = Date.now()): string[] {
     const parked: string[] = []
@@ -84,12 +107,14 @@ export class PtyRegistry {
       if (!pty.detach || !pty.unwatchedSinceMs) continue
       const since = pty.unwatchedSinceMs()
       if (since === null || now - since < idleMs) continue
+      const screen = pty.capturePark?.() ?? null
       try {
         pty.detach()
       } catch {
         /* already dead — drop it either way */
       }
       this.map.delete(id)
+      if (screen) this.parked.set(id, screen)
       parked.push(id)
     }
     if (parked.length > 0 && isDev()) {
@@ -115,8 +140,13 @@ export class PtyRegistry {
     // creating a fresh one.
     if (existing) this.map.delete(taskId)
 
-    const pty = this.factory({ taskId, cwd, ...opts })
+    // A parked screen for this key rides along exactly once — the wake
+    // either restores it (host-confirmed delta) or discards it.
+    const restore = this.parked.get(taskId)
+    if (restore) this.parked.delete(taskId)
+    const pty = this.factory({ taskId, cwd, ...opts, ...(restore ? { restore } : {}) })
     this.map.set(taskId, pty)
+    this.ensureSweeper()
     return pty
   }
 
@@ -143,6 +173,9 @@ export class PtyRegistry {
   release(taskId: string): void {
     const pty = this.map.get(taskId)
     this.map.delete(taskId)
+    // A released key's parked screen is garbage — restoring it onto the
+    // NEXT session under this key would paint a dead session's past.
+    this.parked.delete(taskId)
     if (!pty) return
     try {
       pty.kill()
@@ -155,10 +188,13 @@ export class PtyRegistry {
    * Kill and forget every PTY whose id matches `predicate` — the
    * task-scoped teardown for tab-keyed PTYs (`taskId::tabId`, issue
    * #16): archiving a task must end every engine session it owns.
+   * Parked keys match too: their host sessions are ended by the host's
+   * own task-archive sweep, and the screens must not outlive the task.
    */
   releaseWhere(predicate: (id: string) => boolean): void {
     const ids = Array.from(this.map.keys()).filter(predicate)
     for (const id of ids) this.release(id)
+    for (const id of Array.from(this.parked.keys()).filter(predicate)) this.parked.delete(id)
   }
 
   /**
@@ -168,6 +204,8 @@ export class PtyRegistry {
   releaseAll(): void {
     const ids = Array.from(this.map.keys())
     for (const id of ids) this.release(id)
+    this.parked.clear()
+    this.stopSweeper()
   }
 
   /**
@@ -180,6 +218,8 @@ export class PtyRegistry {
   detachAll(): void {
     const ptys = Array.from(this.map.values())
     this.map.clear()
+    this.parked.clear()
+    this.stopSweeper()
     for (const pty of ptys) {
       try {
         if (pty.detach) pty.detach()

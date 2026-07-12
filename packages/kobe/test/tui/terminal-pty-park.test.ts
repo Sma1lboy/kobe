@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest"
 import { MockTaskPty } from "../../src/tui/panes/terminal/pty-mock"
-import type { TaskPtyOpts } from "../../src/tui/panes/terminal/pty-types"
+import type { ParkedScreen, TaskPtyOpts } from "../../src/tui/panes/terminal/pty-types"
 import { XtermTaskPty } from "../../src/tui/panes/terminal/pty-xterm-base"
 import { PtyRegistry } from "../../src/tui/panes/terminal/registry"
 
@@ -23,6 +23,8 @@ import { PtyRegistry } from "../../src/tui/panes/terminal/registry"
 class ParkableFakePty extends MockTaskPty {
   detached = false
   private unwatchedSince: number | null
+  /** Test seam: park-state capture, overridden per test. */
+  capturePark: (() => ParkedScreen | null) | undefined
 
   constructor(opts: TaskPtyOpts, unwatchedSince: number | null) {
     super(opts)
@@ -90,6 +92,61 @@ describe("PtyRegistry.parkIdle", () => {
     expect(woken).not.toBe(parked)
     expect(made).toHaveLength(2)
     expect(reg.get("t::tab-1")).toBe(woken)
+  })
+
+  it("carries the parked screen into the wake acquire exactly once (issue #29)", () => {
+    const SCREEN: ParkedScreen = {
+      serialized: "\x1b[1mparked\x1b[0m",
+      title: "vim",
+      cursorHidden: false,
+      cols: 60,
+      rows: 12,
+      byteOffset: 4096,
+      pid: 123,
+    }
+    const seen: (ParkedScreen | undefined)[] = []
+    const reg = new PtyRegistry((opts) => {
+      seen.push(opts.restore)
+      const fake = new ParkableFakePty(opts, NOW - IDLE - 1)
+      fake.capturePark = () => SCREEN
+      return fake
+    })
+    reg.acquire("t::tab-1", "/wt")
+    expect(reg.parkIdle(IDLE, NOW)).toEqual(["t::tab-1"])
+
+    reg.acquire("t::tab-1", "/wt") // wake — restore rides along
+    reg.parkIdle(IDLE, NOW)
+    reg.acquire("t::tab-1", "/wt") // second wake — captured again, not reused
+    expect(seen.map((s) => s?.byteOffset)).toEqual([undefined, 4096, 4096])
+    expect(seen[1]).toBe(SCREEN)
+  })
+
+  it("release/releaseWhere drop a parked screen so the next session never restores a dead one", () => {
+    const seen: (object | undefined)[] = []
+    const reg = new PtyRegistry((opts) => {
+      seen.push(opts.restore)
+      const fake = new ParkableFakePty(opts, NOW - IDLE - 1)
+      fake.capturePark = () => ({
+        serialized: "x",
+        title: null,
+        cursorHidden: false,
+        cols: 1,
+        rows: 1,
+        byteOffset: 1,
+        pid: 1,
+      })
+      return fake
+    })
+    reg.acquire("t::tab-1", "/wt")
+    reg.parkIdle(IDLE, NOW)
+    reg.release("t::tab-1")
+    reg.acquire("t::tab-1", "/wt")
+    expect(seen[1]).toBeUndefined()
+
+    reg.parkIdle(IDLE, NOW)
+    reg.releaseWhere((id) => id.startsWith("t::"))
+    reg.acquire("t::tab-1", "/wt")
+    expect(seen[2]).toBeUndefined()
   })
 })
 

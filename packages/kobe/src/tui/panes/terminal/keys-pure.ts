@@ -241,3 +241,37 @@ export const PASSTHROUGH_NAMES: readonly string[] = [
   "f11",
   "f12",
 ]
+
+/**
+ * Encode one mouse-wheel tick the way a real terminal emulator would —
+ * see `TaskPtyLike.wheel` for the routing contract. Pure: the caller
+ * (`XtermTaskPty.wheel`) supplies the mode facts; null means "the app
+ * asked for neither", i.e. the caller scrolls its local view.
+ */
+export function encodeWheel(
+  modes: { mouseTracking: boolean; applicationCursorKeys: boolean; alternateScreen: boolean },
+  direction: "up" | "down",
+  col: number,
+  row: number,
+): string | null {
+  if (modes.mouseTracking) {
+    // SGR (1006) wheel encoding — xterm.js doesn't expose which encoding
+    // the app negotiated, and every current TUI (claude, vim, less with
+    // --mouse) requests SGR, so it's assumed.
+    const btn = direction === "up" ? 64 : 65
+    return `\x1b[<${btn};${Math.max(1, col)};${Math.max(1, row)}M`
+  }
+  if (modes.alternateScreen) {
+    // Fullscreen app without mouse reporting: the classic emulator
+    // fallback of 3 arrow keys per wheel tick.
+    const arrow = modes.applicationCursorKeys
+      ? direction === "up"
+        ? "\x1bOA"
+        : "\x1bOB"
+      : direction === "up"
+        ? "\x1b[A"
+        : "\x1b[B"
+    return arrow.repeat(3)
+  }
+  return null
+}
