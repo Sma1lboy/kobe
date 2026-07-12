@@ -21,8 +21,8 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
       console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
       continue
     }
-    chords.forEach((key, slot) => out.push({ key, cmd, slot }))
-    prefixChords.forEach((key, slot) => out.push({ key, prefix: true, cmd, slot }))
+    chords.forEach((key, slot) => out.push({ key, cmd, slot, id }))
+    prefixChords.forEach((key, slot) => out.push({ key, prefix: true, cmd, slot, id }))
   }
   return out
 }

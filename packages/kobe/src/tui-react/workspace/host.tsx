@@ -17,6 +17,7 @@ import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { WorktreesPage } from "../component/worktrees-page"
@@ -378,6 +379,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           appeared. Absolute-positioned like SidebarHoverTooltip, under the
           host's NotificationsProvider. */}
       <ToastOverlay />
+      {/* Prefix sequence HUD — bottom-left of the terminal column, streams
+          the last three `prefix + key → action` resolutions (issue-free
+          overlay: absolute, below toasts/dialogs). */}
+      <PrefixHud left={SIDEBAR_WIDTH + 1} />
     </box>
   )
 }

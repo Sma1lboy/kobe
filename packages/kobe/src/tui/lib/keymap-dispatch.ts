@@ -10,11 +10,18 @@
 
 import type { KeyEvent } from "@opentui/core"
 import { isDev } from "../../env.ts"
+import { prefixHudPush, prefixHudSetArmed } from "./prefix-hud"
 
 export type Binding = {
   key: string
   /** True when `key` is the second stroke of the PureTUI prefix. */
   prefix?: boolean
+  /**
+   * Owning KobeKeymap binding id (`tab.new`) — `bindByIds` fills it in so
+   * the prefix HUD can name what a resolved sequence did. Hand-rolled
+   * `{ key, cmd }` literals may omit it.
+   */
+  id?: string
   /**
    * Handler. The second argument is the binding's {@link Binding.slot} —
    * present when the registration site assigned one (`bindByIds` does).
@@ -195,12 +202,14 @@ export function resetPrefixState(): void {
   if (prefixTimer !== null) clearTimeout(prefixTimer)
   prefixTimer = null
   prefixArmedAt = null
+  prefixHudSetArmed(false)
 }
 
 function armPrefix(now: number): void {
   resetPrefixState()
   prefixArmedAt = now
   prefixTimer = setTimeout(resetPrefixState, prefixConfiguration.timeoutMs)
+  prefixHudSetArmed(true)
 }
 
 /** Chords already flagged by the shadowed-match warning (once per process
@@ -262,7 +271,7 @@ function dispatchMode(
   evt: KeyEvent,
   candidates: string[],
   prefix: boolean,
-): boolean {
+): Binding | null {
   for (let i = snapshot.length - 1; i >= 0; i--) {
     const reg = snapshot[i]
     if (!reg) continue
@@ -272,11 +281,11 @@ function dispatchMode(
     if (hit) {
       if (!cfg.modal && isDev()) warnShadowedMatch(snapshot, i, candidates, prefix)
       hit.cmd(evt, hit.slot)
-      return true
+      return hit
     }
-    if (cfg.modal) return false
+    if (cfg.modal) return null
   }
-  return false
+  return null
 }
 
 /**
@@ -315,11 +324,11 @@ export function dispatchKeyEvent(
   dispatching = true
   try {
     if (prefixArmedAt !== null) {
+      const armedPrefixKey = prefixConfiguration.key ?? ""
       const expired = now - prefixArmedAt > prefixConfiguration.timeoutMs
       prefixArmedAt = null
       if (expired) {
-        if (prefixTimer !== null) clearTimeout(prefixTimer)
-        prefixTimer = null
+        resetPrefixState()
       } else {
         // Escape cancels an armed sequence instead of also closing a dialog.
         if (candidates.includes("escape")) {
@@ -330,7 +339,13 @@ export function dispatchKeyEvent(
         // A miss is consumed so it cannot type into an input or Terminal pane
         // after the user deliberately started a prefix sequence.
         resetPrefixState()
-        dispatchMode(snapshot, evt as KeyEvent, candidates, true)
+        const hit = dispatchMode(snapshot, evt as KeyEvent, candidates, true)
+        prefixHudPush({
+          prefixKey: armedPrefixKey,
+          stroke: candidates[0] ?? "",
+          action: hit ? (hit.id ?? hit.key) : null,
+          at: now,
+        })
         evt.preventDefault()
         return true
       }
