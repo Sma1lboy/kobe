@@ -19,6 +19,7 @@ const closed: WorkspacePageState = {
   settingsOpen: false,
   worktreesOpen: false,
   updateOpen: false,
+  kanbanOpen: false,
 }
 
 describe("workspacePagesClosed", () => {
@@ -30,9 +31,12 @@ describe("workspacePagesClosed", () => {
     expect(workspacePagesClosed({ ...closed, dialogOpen: true })).toBe(false)
   })
 
-  test.each(["settingsOpen", "worktreesOpen", "updateOpen"] as const)("an open %s page disables them too", (page) => {
-    expect(workspacePagesClosed({ ...closed, [page]: true })).toBe(false)
-  })
+  test.each(["settingsOpen", "worktreesOpen", "updateOpen", "kanbanOpen"] as const)(
+    "an open %s page disables them too",
+    (page) => {
+      expect(workspacePagesClosed({ ...closed, [page]: true })).toBe(false)
+    },
+  )
 })
 
 describe("settingsCloseKeysEnabled — the deliberate exemption", () => {
