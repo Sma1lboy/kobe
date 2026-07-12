@@ -8,21 +8,32 @@
  * plus a light poll so agent-driven moves (`kobe api issue-update --task`)
  * show up while the page is open.
  *
- * READ-ONLY on purpose: agents are the writers (`kobe api issue-*`); the
- * TUI is the human's viewing surface. Column math is the framework-free
- * `state/issue-board.ts` — columns derive from the issue's own lifecycle
- * (done > linked-task > backlog), never from task status.
+ * The BOARD stays read-only (agents move cards via `kobe api issue-*`); the
+ * human surface on top of it is selection + the detail drawer: ←↓↑→ moves
+ * the card cursor (highlighted border), Enter (or clicking the selected
+ * card) opens {@link IssueDetailDialog}, whose Start action hands an
+ * {@link IssueChatStart} up to the host (engine + workspace placement +
+ * attachments). Column math is the framework-free `state/issue-board.ts` —
+ * columns derive from the issue's own lifecycle (done > linked-task >
+ * backlog), never from task status.
  */
 
 import { TextAttributes } from "@opentui/core"
 import type { Issue, RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { type ReactNode, useEffect, useState } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
-import { type BoardColumnKey, buildIssueBoard } from "../../state/issue-board"
+import { availableEngineIds } from "../../engine/account-detect"
+import { engineDisplayName } from "../../engine/interactive-command"
+import { type BoardColumnKey, buildIssueBoard, moveBoardSelection } from "../../state/issue-board"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
+import type { VendorId } from "../../types/task"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
+import { useDialog } from "../ui/dialog"
+import { quickForkDefaultVendor } from "../workspace/quick-fork"
+import type { IssueChatStart } from "../workspace/use-issue-chat"
+import { IssueDetailDialog } from "./issue-detail-dialog"
 
 /** Agent moves land within one poll; issue.list is a local JSON read, so
  *  polling while the page is open is cheap. */
@@ -34,12 +45,32 @@ const COLUMN_LABEL_KEY: Record<BoardColumnKey, string> = {
   done: "kanban.column.done",
 }
 
-export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onClose: () => void }): ReactNode {
+export function KanbanPage(props: {
+  orchestrator: RemoteOrchestrator | null
+  onClose: () => void
+  /** Detail drawer's Start — the host owns task creation + prompt handoff. */
+  onStartChat: (request: IssueChatStart) => Promise<void>
+  /** Open a linked story's existing session (closes the kanban page). */
+  onOpenTask: (taskId: string) => void
+}): ReactNode {
   const { theme, transparentBackground } = useTheme()
   const columnBorder = transparentBackground ? theme.border : theme.borderSubtle
   const t = useT()
+  const dialog = useDialog()
 
   const [boards, setBoards] = useState<readonly RepoIssues[] | null>(null)
+  // Detected engines for the detail drawer's picker — one probe per page
+  // open (account files on disk; cheap and refreshed enough).
+  const [engines, setEngines] = useState<readonly VendorId[]>([])
+  useEffect(() => {
+    let disposed = false
+    void availableEngineIds().then((ids) => {
+      if (!disposed) setEngines(ids)
+    })
+    return () => {
+      disposed = true
+    }
+  }, [])
   const [reloadTick, setReloadTick] = useState(0)
   // Keyed by repoRoot (not index) so the poll refetch keeps the selection.
   const [activeRepo, setActiveRepo] = useState<string | null>(null)
@@ -84,21 +115,78 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
   )
   const activeBoard: RepoIssues | undefined = boardList[activeIndex]
   const repoRoots = boardList.map((board) => board.repoRoot)
+  const columns = activeBoard ? buildIssueBoard(activeBoard.issues) : []
+
+  // Card cursor — an issue id (not an index) so a poll refetch that reorders
+  // a column keeps the selection on the same story.
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   function cycleProject(delta: number): void {
     if (boardList.length === 0) return
     const next = (activeIndex + delta + boardList.length) % boardList.length
     setActiveRepo(boardList[next]?.repoRoot ?? null)
+    setSelectedId(null)
+  }
+
+  function moveCursor(dir: "up" | "down" | "left" | "right"): void {
+    const next = moveBoardSelection(columns, selectedId, dir)
+    if (next != null) setSelectedId(next)
+  }
+
+  // ←/→ MOVED from project-cycling to card selection when cards exist —
+  // tab still cycles projects. On an empty board they fall through to
+  // project cycling so the old muscle memory keeps working there.
+  function moveOrCycle(dir: "left" | "right"): void {
+    if (columns.some((column) => column.issues.length > 0)) moveCursor(dir)
+    else cycleProject(dir === "left" ? -1 : 1)
+  }
+
+  /** Enter (or clicking the selected card): the story's detail drawer.
+   *  Its outcome routes up to the host — start a chat or open the linked
+   *  session; undefined = dismissed. */
+  function openDetail(issue: Issue): void {
+    const board = activeBoard
+    if (!board) return
+    setSelectedId(issue.id)
+    void IssueDetailDialog.show(dialog, {
+      issue,
+      engines,
+      defaultVendor: quickForkDefaultVendor(board.repoRoot, engines),
+      engineLabel: engineDisplayName,
+    }).then((outcome) => {
+      if (!outcome) return
+      if (outcome.kind === "open") {
+        props.onOpenTask(outcome.taskId)
+        return
+      }
+      void props.onStartChat({
+        repoRoot: board.repoRoot,
+        issue,
+        vendor: outcome.vendor,
+        placement: outcome.placement,
+        attachments: outcome.attachments,
+      })
+    })
+  }
+
+  function openSelectedDetail(): void {
+    const issue = activeBoard?.issues.find((entry) => entry.id === selectedId)
+    if (issue) openDetail(issue)
   }
 
   useBindings(() => ({
-    enabled: true,
+    // Dormant while the detail drawer is up — the dialog owns the keyboard
+    // (same gate as WorktreesPage).
+    enabled: dialog.stack.length === 0,
     bindings: [
       ...pageCloseBindings(props.onClose),
       { key: "r", cmd: () => setReloadTick((tick) => tick + 1) },
       { key: "tab", cmd: () => cycleProject(1) },
-      { key: "right", cmd: () => cycleProject(1) },
-      { key: "left", cmd: () => cycleProject(-1) },
+      { key: "up", cmd: () => moveCursor("up") },
+      { key: "down", cmd: () => moveCursor("down") },
+      { key: "right", cmd: () => moveOrCycle("right") },
+      { key: "left", cmd: () => moveOrCycle("left") },
+      { key: "return", cmd: () => openSelectedDetail() },
     ],
   }))
 
@@ -111,6 +199,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
   function card(issue: Issue, column: BoardColumnKey): ReactNode {
     const fg = column === "done" ? theme.textMuted : theme.text
     const description = issue.body.trim()
+    const isSelected = issue.id === selectedId
     // backgroundElement survives transparent mode on purpose (see
     // applyDisplayOverlay): cards are content, not chrome — they keep a
     // tinted surface so the board reads against any host wallpaper.
@@ -118,10 +207,13 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
       <box
         key={issue.id}
         border={true}
-        borderColor={columnBorder}
+        borderColor={isSelected ? theme.primary : columnBorder}
         backgroundColor={theme.backgroundElement}
         paddingLeft={1}
         paddingRight={1}
+        // First click selects; a click on the already-selected card opens
+        // its detail drawer (Enter's mouse twin).
+        onMouseUp={() => (isSelected ? openDetail(issue) : setSelectedId(issue.id))}
       >
         <box flexDirection="row" justifyContent="space-between">
           <text fg={fg} attributes={TextAttributes.BOLD} wrapMode="word" flexShrink={1}>
@@ -183,8 +275,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
     )
   }
 
-  function board(active: RepoIssues): ReactNode {
-    const columns = buildIssueBoard(active.issues)
+  function board(): ReactNode {
     return (
       <box flexDirection="row" gap={1} flexGrow={1} paddingTop={1} paddingLeft={1} paddingRight={1}>
         {columns.map((col) => (
@@ -244,7 +335,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
       ) : (
         <>
           {projectSelector(activeBoard)}
-          {board(activeBoard)}
+          {board()}
         </>
       )}
     </box>

@@ -10,7 +10,8 @@ import type { RepoIssues } from "./issues.ts"
 import {
   deleteIssue,
   type Issue,
-  quickStartIssue,
+  type IssueStartPlacement,
+  startIssueChat,
   updateIssue,
 } from "./issues.ts"
 import { reportError } from "./toast.ts"
@@ -30,12 +31,14 @@ export interface IssueActions {
   ): Promise<boolean>
   /** Delete after the caller's confirm dialog. Resolves true when it landed. */
   deleteIssueConfirmed(repo: string, issue: Issue): Promise<boolean>
-  /** Spawn a task for the issue; returns its id (caller decides navigation). */
+  /** Spawn a session for the issue at the chosen placement; returns the
+   *  workspace task id to open (caller decides navigation). */
   quickStart(
     repo: string,
     issue: Issue,
     vendor?: string,
     effort?: string,
+    placement?: IssueStartPlacement,
   ): Promise<string | undefined>
 }
 
@@ -123,17 +126,26 @@ export function useIssueActions(args: {
     issue: Issue,
     vendor?: string,
     effort?: string,
+    placement?: IssueStartPlacement,
   ): Promise<string | undefined> => {
     if (quickStartingId !== null) return undefined
     setQuickStartingId(issue.id)
     try {
-      const { taskId } = await quickStartIssue(repo, issue, vendor, effort)
-      setPendingLinks((prev) => {
-        const next = new Map(prev)
-        next.set(`${repo}:${issue.id}`, { repo, issueId: issue.id, taskId })
-        return next
+      const { taskId, workspaceTaskId } = await startIssueChat(repo, issue, {
+        vendor,
+        effort,
+        placement,
       })
-      return taskId
+      // No optimistic link for the project placement — it never links the
+      // issue to a task, so a pending hint would promote the card wrongly.
+      if (placement !== "project") {
+        setPendingLinks((prev) => {
+          const next = new Map(prev)
+          next.set(`${repo}:${issue.id}`, { repo, issueId: issue.id, taskId })
+          return next
+        })
+      }
+      return workspaceTaskId
     } catch (err) {
       reportError("quick start issue", err)
       return undefined

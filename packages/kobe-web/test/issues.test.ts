@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("../src/lib/store.ts", () => ({ rpc: vi.fn() }))
-vi.mock("../src/lib/tabs.ts", () => ({ ensureEngineTab: vi.fn() }))
+vi.mock("../src/lib/tabs.ts", () => ({
+  addTab: vi.fn(),
+  ensureEngineTab: vi.fn(),
+}))
 vi.mock("../src/lib/terminal.ts", () => ({ sendPtyText: vi.fn() }))
 
 import {
@@ -15,15 +18,17 @@ import {
   issueRepoOptions,
   linkIssue,
   overviewRows,
+  projectChatPrompt,
   promptIssueMerge,
   quickStartIssue,
   quickStartPrompt,
   type RepoIssues,
   resolveIssueRepoSelection,
+  startIssueChat,
   unlinkIssue,
 } from "../src/lib/issues.ts"
 import { rpc } from "../src/lib/store.ts"
-import { ensureEngineTab } from "../src/lib/tabs.ts"
+import { addTab, ensureEngineTab } from "../src/lib/tabs.ts"
 import { sendPtyText } from "../src/lib/terminal.ts"
 import type { Task } from "../src/lib/types.ts"
 
@@ -375,11 +380,29 @@ describe("issueMergePrompt", () => {
   })
 })
 
+describe("projectChatPrompt", () => {
+  it("frames the story without worktree/merge instructions", () => {
+    const prompt = projectChatPrompt(
+      issue({ id: 9, title: "Tune it", body: "the details" }),
+      "kobe api",
+    )
+    expect(prompt).toContain("Work on user story #9: Tune it")
+    expect(prompt).toContain("the details")
+    expect(prompt).toContain("directly in the project checkout")
+    expect(prompt).not.toContain("task worktree")
+    expect(prompt).not.toContain("merge the task branch")
+    expect(prompt).toContain(
+      "kobe api issue-set-status --repo . --id 9 --status done",
+    )
+  })
+})
+
 describe("quickStartIssue", () => {
   const target = issue({ id: 3, title: "Fix it", body: "details" })
 
   beforeEach(() => {
     vi.mocked(rpc).mockReset()
+    vi.mocked(addTab).mockReset()
     vi.mocked(ensureEngineTab).mockReset()
     vi.mocked(sendPtyText).mockReset()
   })
@@ -565,6 +588,117 @@ describe("quickStartIssue", () => {
     )
     expect(ensureEngineTab).not.toHaveBeenCalled()
     expect(sendPtyText).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("startIssueChat placement=task delegates to the classic quick start", async () => {
+    vi.mocked(rpc).mockImplementation(async (name) => {
+      if (name === "task.create") return { taskId: "task-d" }
+      return {}
+    })
+    vi.mocked(ensureEngineTab).mockReturnValue("tab-d")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ api: "kobe api" }))),
+      ),
+    )
+
+    await expect(
+      startIssueChat("/u/p/kobe", target, { vendor: "claude" }),
+    ).resolves.toEqual({ taskId: "task-d", workspaceTaskId: "task-d" })
+    expect(rpc).not.toHaveBeenCalledWith("task.ensureMain", expect.anything())
+    expect(addTab).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("placement=projectWorktree pins the new task's tab in the project workspace", async () => {
+    vi.mocked(rpc).mockImplementation(async (name) => {
+      if (name === "task.create") return { taskId: "task-w" }
+      if (name === "task.ensureMain") return { task: { id: "main-1" } }
+      return {}
+    })
+    vi.mocked(addTab).mockReturnValue("tab-w")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url === "/api/settings" ? { defaultEngine: "codex" } : { api: "kobe api" },
+            ),
+          ),
+        ),
+      ),
+    )
+
+    const result = await startIssueChat("/u/p/kobe", target, {
+      vendor: "claude",
+      placement: "projectWorktree",
+    })
+    // The engine lives in the NEW worktree task; navigation targets the project.
+    expect(result).toEqual({ taskId: "task-w", workspaceTaskId: "main-1" })
+    expect(rpc).toHaveBeenCalledWith("task.ensureMain", { repo: "/u/p/kobe" })
+    // Tab bucket = the project's main task, engine override = the new task.
+    expect(addTab).toHaveBeenCalledWith("main-1", "task-w")
+    expect(sendPtyText).toHaveBeenCalledWith(
+      "tab-w",
+      "task-w",
+      quickStartPrompt(target, "kobe api"),
+    )
+    // The active pointer follows where the user lands (the project).
+    expect(rpc).toHaveBeenCalledWith("task.setActive", { taskId: "main-1" })
+    expect(ensureEngineTab).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("placement=project spawns on the main task with no worktree and no link", async () => {
+    vi.mocked(rpc).mockImplementation(async (name) => {
+      if (name === "task.ensureMain") return { task: { id: "main-2" } }
+      return {}
+    })
+    vi.mocked(addTab).mockReturnValue("tab-p")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(url === "/api/cli-invocation" ? { api: "kobe api" } : {}),
+        ),
+      ),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const result = await startIssueChat("/u/p/kobe", target, {
+      vendor: "claude",
+      placement: "project",
+    })
+    expect(result).toEqual({ taskId: "main-2", workspaceTaskId: "main-2" })
+    // No worktree task, no issue link — the chosen vendor is stamped on the
+    // main task before spawn-on-send reads it from engine-spec.
+    expect(rpc).not.toHaveBeenCalledWith("task.create", expect.anything())
+    expect(rpc).toHaveBeenCalledWith("task.setVendor", {
+      taskId: "main-2",
+      vendor: "claude",
+    })
+    expect(addTab).toHaveBeenCalledWith("main-2")
+    expect(sendPtyText).toHaveBeenCalledWith(
+      "tab-p",
+      "main-2",
+      projectChatPrompt(target, "kobe api"),
+    )
+    // The story flips `doing` via a setStatus op (no link op exists).
+    const issuesPost = fetchMock.mock.calls.find(
+      ([url, opts]) =>
+        url === "/api/issues" &&
+        (opts as RequestInit | undefined)?.method === "POST",
+    )
+    expect(issuesPost).toBeDefined()
+    const body = JSON.parse(
+      (issuesPost?.[1] as RequestInit).body as string,
+    ) as { op: { type: string; status?: string } }
+    expect(body.op).toEqual({ type: "setStatus", id: 3, status: "doing" })
     vi.unstubAllGlobals()
   })
 

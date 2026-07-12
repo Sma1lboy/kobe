@@ -384,18 +384,19 @@ export function Board() {
               starting={quickStartingId === entry.issue.id}
               onClose={() => setPeek(null)}
               onSave={(patch) => saveIssue(entry.repo, entry.issue.id, patch)}
-              onStart={async ({ vendor, effort, watch }) => {
-                const taskId = await quickStart(
+              onStart={async ({ vendor, effort, placement, watch }) => {
+                const workspaceTaskId = await quickStart(
                   entry.repo,
                   entry.issue,
                   vendor,
                   effort,
+                  placement,
                 )
                 // Watch = drop the user straight into the live session;
                 // otherwise spawn-and-stay closes the drawer back to the board.
-                if (watch && taskId) {
+                if (watch && workspaceTaskId) {
                   setPeek(null)
-                  openTask(taskId)
+                  openTask(workspaceTaskId)
                 } else {
                   setPeek(null)
                 }

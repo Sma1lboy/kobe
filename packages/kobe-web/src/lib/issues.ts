@@ -10,7 +10,7 @@ import { api } from "./api-client.ts"
 import { labelRepo } from "./board.ts"
 import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
-import { ensureEngineTab } from "./tabs.ts"
+import { addTab, ensureEngineTab } from "./tabs.ts"
 import { sendPtyText } from "./terminal.ts"
 import type { Task } from "./types.ts"
 
@@ -310,6 +310,24 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
 }
 
 /**
+ * The engine's first message for an issue chat opened directly in the project
+ * checkout (no dedicated worktree/branch): same story framing as
+ * {@link quickStartPrompt}, but without the worktree/merge instructions —
+ * the work happens on the checkout as-is.
+ */
+export function projectChatPrompt(issue: Issue, api = "kobe api"): string {
+  const lines = [`Work on user story #${issue.id}: ${issue.title}`, ""]
+  const body = issue.body.trim()
+  if (body) lines.push(body, "")
+  lines.push(
+    "You are working directly in the project checkout — no dedicated worktree or branch was created. Keep changes reviewable and do not switch branches unless asked.",
+    "Before finishing, verify the acceptance criteria implied by the story and summarize what changed plus any verification still needed.",
+    `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
+  )
+  return lines.join("\n")
+}
+
+/**
  * Follow-up prompt for a linked issue after implementation has run in its task
  * worktree. This is intentionally delivered to the task session instead of
  * merging in the web UI: the engine owns the final code/check/conflict work.
@@ -350,6 +368,26 @@ export async function quickStartIssue(
   vendor?: string,
   effort?: string,
 ): Promise<{ taskId: string }> {
+  const taskId = await createIssueTask(repoRoot, issue, vendor, effort)
+  // Move the daemon's active-task pointer too — every sibling open-task
+  // path pairs selectTask with this (Board/NewTaskDialog), and the
+  // /task/$taskId route effect won't fire it (selectTask runs first).
+  setActiveTaskBestEffort(taskId)
+  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
+  const tabId = ensureEngineTab(taskId)
+  await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
+  return { taskId }
+}
+
+/** Create the worktree task for an issue and stamp the issue → task link
+ *  (best-effort: the task already exists, so a link failure must not strand
+ *  it). Shared by the classic quick start and the project-placed variant. */
+async function createIssueTask(
+  repoRoot: string,
+  issue: Issue,
+  vendor?: string,
+  effort?: string,
+): Promise<string> {
   const engine = vendor?.trim() || (await fetchDefaultEngine())
   const { taskId } = await rpc<{ taskId: string }>("task.create", {
     repo: repoRoot,
@@ -357,17 +395,78 @@ export async function quickStartIssue(
     ...(engine ? { vendor: engine } : {}),
     ...(effort?.trim() ? { effort: effort.trim() } : {}),
   })
-  // Move the daemon's active-task pointer too — every sibling open-task
-  // path pairs selectTask with this (Board/NewTaskDialog), and the
-  // /task/$taskId route effect won't fire it (selectTask runs first).
-  setActiveTaskBestEffort(taskId)
   // Link issue → task: stamps the issue's taskId, flips it `doing`, and arms
   // the daemon's auto-mirror to `done` when the task completes.
   await linkIssue(repoRoot, issue.id, taskId).catch(() => {})
+  return taskId
+}
+
+/**
+ * Where an issue chat lives:
+ *  - `task`            — new worktree task, tab in that task's workspace
+ *                        (the classic quick start).
+ *  - `projectWorktree` — new worktree task, but its engine tab is added to
+ *                        the PROJECT (main-task) workspace via the vendor-tab
+ *                        taskId override.
+ *  - `project`         — no worktree: a fresh engine tab on the repo's main
+ *                        task, working directly in the checkout.
+ */
+export type IssueStartPlacement = "task" | "projectWorktree" | "project"
+
+/**
+ * Start an issue chat at the chosen placement. Returns the engine task id
+ * plus the workspace to open for "watch" navigation (the project's main task
+ * for both project placements, the new task itself otherwise).
+ */
+export async function startIssueChat(
+  repoRoot: string,
+  issue: Issue,
+  opts: {
+    vendor?: string
+    effort?: string
+    placement?: IssueStartPlacement
+  } = {},
+): Promise<{ taskId: string; workspaceTaskId: string }> {
+  const placement = opts.placement ?? "task"
+  if (placement === "task") {
+    const { taskId } = await quickStartIssue(
+      repoRoot,
+      issue,
+      opts.vendor,
+      opts.effort,
+    )
+    return { taskId, workspaceTaskId: taskId }
+  }
   const api = await fetchKobeApiInvocation().catch(() => "kobe api")
-  const tabId = ensureEngineTab(taskId)
-  await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
-  return { taskId }
+  const { task } = await rpc<{ task: { id: string } }>("task.ensureMain", {
+    repo: repoRoot,
+  })
+  const mainId = task.id
+  if (placement === "projectWorktree") {
+    const taskId = await createIssueTask(
+      repoRoot,
+      issue,
+      opts.vendor,
+      opts.effort,
+    )
+    setActiveTaskBestEffort(mainId)
+    const tabId = addTab(mainId, taskId)
+    await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
+    return { taskId, workspaceTaskId: mainId }
+  }
+  // `project` — no worktree, no task link: the engine runs on the checkout.
+  // A chosen vendor is stamped onto the main task BEFORE the spawn-on-send
+  // (engine-spec reads the task's vendor); effort is a create-time knob, so
+  // it doesn't apply here.
+  const vendor = opts.vendor?.trim()
+  if (vendor) await rpc("task.setVendor", { taskId: mainId, vendor })
+  setActiveTaskBestEffort(mainId)
+  // Flip the story `doing` — best-effort like the quick-start link: the chat
+  // must not fail on a status write.
+  await setIssueStatus(repoRoot, issue.id, "doing").catch(() => {})
+  const tabId = addTab(mainId)
+  await sendPtyText(tabId, mainId, projectChatPrompt(issue, api))
+  return { taskId: mainId, workspaceTaskId: mainId }
 }
 
 /** Insert the merge/finish follow-up prompt into an issue's linked task. */

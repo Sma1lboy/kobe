@@ -10,7 +10,13 @@
 
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { describe, expect, test } from "vitest"
-import { DONE_COLUMN_CAP, buildIssueBoard, compareIssues, issueColumnKey } from "../../src/state/issue-board"
+import {
+  DONE_COLUMN_CAP,
+  buildIssueBoard,
+  compareIssues,
+  issueColumnKey,
+  moveBoardSelection,
+} from "../../src/state/issue-board"
 
 function issue(over: Partial<Issue> & { id: number }): Issue {
   return { title: `t${over.id}`, status: "open", created: "2026-07-01", body: "", ...over }
@@ -61,5 +67,42 @@ describe("buildIssueBoard", () => {
     const bl = board.find((col) => col.key === "backlog")
     expect(bl?.issues.length).toBe(DONE_COLUMN_CAP + 5)
     expect(bl?.hiddenCount).toBe(0)
+  })
+})
+
+describe("moveBoardSelection", () => {
+  // backlog: 1,2,3 · in_progress: (empty) · done: 4,5 — post-build shape.
+  const columns = buildIssueBoard([
+    issue({ id: 1, created: "2026-07-03" }),
+    issue({ id: 2, created: "2026-07-02" }),
+    issue({ id: 3, created: "2026-07-01" }),
+    issue({ id: 4, status: "done" }),
+    issue({ id: 5, status: "done" }),
+  ])
+
+  test("anchors on the first visible card when nothing (or a stale id) is selected", () => {
+    expect(moveBoardSelection(columns, null, "down")).toBe(1)
+    expect(moveBoardSelection(columns, 99, "right")).toBe(1)
+  })
+
+  test("null only on an empty board", () => {
+    expect(moveBoardSelection(buildIssueBoard([]), null, "down")).toBeNull()
+  })
+
+  test("up/down step within a column and clamp at the edges", () => {
+    expect(moveBoardSelection(columns, 1, "down")).toBe(2)
+    expect(moveBoardSelection(columns, 3, "down")).toBe(3)
+    expect(moveBoardSelection(columns, 2, "up")).toBe(1)
+    expect(moveBoardSelection(columns, 1, "up")).toBe(1)
+  })
+
+  test("left/right skip empty columns and clamp the row", () => {
+    // From backlog row 2 (id 3) → skips empty in_progress → done row 1.
+    expect(moveBoardSelection(columns, 3, "right")).toBe(4)
+    // From done row 1 back left lands in backlog row 1.
+    expect(moveBoardSelection(columns, 4, "left")).toBe(2)
+    // Board edge: stay put.
+    expect(moveBoardSelection(columns, 1, "left")).toBe(1)
+    expect(moveBoardSelection(columns, 4, "right")).toBe(4)
   })
 })
