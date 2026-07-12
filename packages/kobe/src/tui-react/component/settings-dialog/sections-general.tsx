@@ -20,7 +20,6 @@ import {
   languageRowId,
   rowIndex,
   splitStyleRowId,
-  surfaceRowId,
 } from "../../../tui/component/settings-dialog/model"
 import { LOCALES, type LocaleId } from "../../../tui/i18n/catalog"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../context/theme"
@@ -100,8 +99,6 @@ export function GeneralSettingsSection(
   const soundRow = rowIdx("sound")
   const crossTaskRow = rowIdx("cross-task")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
-  const surfaceChattabRow = rowIdx(surfaceRowId("chattab"))
-  const surfaceTaskpanelRow = rowIdx(surfaceRowId("taskpanel"))
   const editorKindRow = rowIdx("editor-kind")
   const editorCustomRow = rowIdx("editor-custom")
   const worktreeBaseRow = rowIdx("worktree-base")
@@ -237,24 +234,6 @@ export function GeneralSettingsSection(
           bold={true}
         >
           {`${check(prefs.zenKeepsTasks())} ${t("settings.general.zenKeepTasks")}`}
-        </Row>
-      </SubSection>
-      <SubSection title={t("settings.general.surface")} hint={t("settings.general.surfaceHint")}>
-        <Row
-          cursor={isBodyCursor(surfaceChattabRow)}
-          onMouseUp={activate(surfaceChattabRow, () => prefs.selectSurface("chattab"))}
-          fg={prefs.settingsSurface() === "chattab" ? theme.accent : theme.textMuted}
-          bold={true}
-        >
-          {`${check(prefs.settingsSurface() === "chattab")} ${t("settings.general.surfaceChattab")}`}
-        </Row>
-        <Row
-          cursor={isBodyCursor(surfaceTaskpanelRow)}
-          onMouseUp={activate(surfaceTaskpanelRow, () => prefs.selectSurface("taskpanel"))}
-          fg={prefs.settingsSurface() === "taskpanel" ? theme.accent : theme.textMuted}
-          bold={true}
-        >
-          {`${check(prefs.settingsSurface() === "taskpanel")} ${t("settings.general.surfaceTaskpanel")}`}
         </Row>
       </SubSection>
       <SubSection title={t("settings.general.editor")} hint={t("settings.general.editorHint")}>

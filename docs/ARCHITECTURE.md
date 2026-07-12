@@ -1,536 +1,118 @@
-# kobe — Architecture
+# Architecture
 
-> Map, not territory. If you've never seen the codebase, read this in 10 minutes
-> and you should know "where does X live, and why is it there." For the *why* of
-> the design choices, read [`DESIGN.md`](./DESIGN.md). For the *how it got built*,
-> read [`PLAN.md`](./PLAN.md). For the *self-test contract*, read
-> [`HARNESS.md`](./HARNESS.md). This document is a tour of the source tree as it
-> currently stands.
-
-> **Path convention.** kobe is a Bun-workspaces monorepo. The TUI/CLI
-> package lives at `packages/kobe/`; daemon-owned code lives at
-> `packages/kobe-daemon/`. Unless a path is package-qualified, `src/...`,
-> `test/...`, and `scripts/...` paths in this doc are relative to
-> `packages/kobe/`. The branding workspace, `packages/branding/`, is the
-> Remotion render pipeline for the brand artwork in `docs/assets/brand/`
-> and isn't covered here.
-
-## Contents
-
-1. [The layer cake](#1-the-layer-cake)
-2. [Reference projects under `refs/`](#2-reference-projects-under-refs)
-3. [Workspace surfaces: tmux handover + pure-TUI Workspace Host](#3-workspace-surfaces-tmux-handover--pure-tui-workspace-host)
-4. [Daemon ↔ task-session seam](#4-daemon--task-session-seam)
-5. [Test harness](#5-test-harness)
-6. [Persistence: where state lives on disk](#6-persistence-where-state-lives-on-disk)
-7. [What's deliberately NOT in kobe](#7-whats-deliberately-not-in-kobe)
-8. [Recipes — how to add X](#8-recipes--how-to-add-x)
-
----
-
-## 1. The layer cake
-
-Four layers, top→bottom. Higher layers depend on lower; lower layers know
-nothing about higher.
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│  TUI clients + panes  (React + @opentui/react + @opentui/core) │
-│   src/tui-react/** (UI) + src/tui/{direct.ts, ops/, panes/}    │
-├────────────────────────────────────────────────────────────────┤
-│  RemoteOrchestrator  (client facade over daemon RPC + channels)│
-│   src/client/remote-orchestrator.ts                            │
-├────────────────────────────────────────────────────────────────┤
-│  Daemon  (single writer for task index)                        │
-│   packages/kobe-daemon/src/daemon/{server.ts,...}              │
-│   packages/kobe-daemon/src/client/                             │
-├────────────────────────────────────────────────────────────────┤
-│  Orchestrator + tmux handover                                  │
-│   src/orchestrator/{core.ts,worktree/,index/}                  │
-│   src/tmux/{client.ts,session-layout.ts}                       │
-├────────────────────────────────────────────────────────────────┤
-│  Types + engine-adapter helpers                                │
-│   src/types/{task.ts,worktree.ts,index.ts,vendor.ts}           │
-│   src/engine/*/{history,normalize,hook-adapter}.ts             │
-└────────────────────────────────────────────────────────────────┘
-```
-
-The seams matter:
-
-- **The Daemon is the task-index writer.** TUI clients and in-tmux panes
-  mutate tasks through daemon RPC and hydrate from daemon channels. Direct
-  writes to `TaskIndexStore` from UI code are a leak.
-- **The daemon package owns transport, not kobe implementation imports.**
-  `packages/kobe-daemon` declares a consumer-owned `DaemonRuntimeAdapter`;
-  the `packages/kobe` composition root supplies engine, tmux, settings,
-  worktree, and web-feature behavior. Daemon source must not import kobe's
-  `@/` aliases or sibling `../kobe/src` paths. This keeps the package graph
-  one-way while preserving the daemon's RPC/HTTP/SSE ownership (ADR 0003).
-- **The Orchestrator is task lifecycle only.** It owns task metadata,
-  worktree allocation, ordering, active-task touch timestamps, and the
-  reactive task-list signal. It does not spawn or stream an engine process.
-- **tmux owns interactive engine processes.** Entering a task is a
-  Handover: kobe ensures the Worktree and tmux Session, suspends the outer
-  renderer, and attaches the user's real TTY. Engine-specific code in
-  `src/engine/` is now Adapter support for commands, hook normalization,
-  history/usage readers, and account/model discovery.
-- **Panes never reach past the daemon facade for task writes.** Outer TUI
-  panes use `RemoteOrchestrator`; in-tmux helper panes subscribe as daemon
-  `role: "pane"` so they receive task snapshots without pinning daemon
-  lifetime.
-- **opentui is infrastructure, not architecture; observable state is a
-  framework-free reactive primitive.** The orchestrator must not depend on
-  opentui or anything that renders — that's the seam the daemon split
-  hangs on (see [`design/daemon.md`](./design/daemon.md) §9 D0). The
-  Orchestrator and RemoteOrchestrator publish stable `get` / `subscribe`
-  state, and React consumes it through `useSyncExternalStore`; there is one
-  state cell per semantic stream, with no UI-framework dependency or dual
-  state. Whenever a pane needs to *do* something
-  stateful (run a task, switch tabs, persist), it still goes through
-  the orchestrator — signals are wiring, not the source of truth.
-
-### File ownership cheat sheet
-
-| Concern | Owner |
-|---|---|
-| Daemon server, protocol, event bus, lifecycle, paths | `packages/kobe-daemon/src/daemon/` |
-| Low-level daemon socket client + autostart helper | `packages/kobe-daemon/src/client/` |
-| Remote task facade used by TUI clients | `src/client/remote-orchestrator.ts` |
-| Interactive engine command selection | `src/engine/interactive-command.ts` |
-| Engine hook normalization | `src/engine/*/hook-adapter.ts` + `src/engine/hook-events.ts` |
-| Reading historical JSONL | `src/engine/claude-code-local/history.ts` |
-| Finding the `claude` binary | `src/engine/claude-code-local/binary.ts` |
-| Task lifecycle | `src/orchestrator/core.ts` |
-| Per-task tmux Session layout | `src/tmux/session-layout.ts` + `src/tui/panes/terminal/tmux.ts` |
-| Handover attach/detach | `src/tui/direct.ts` |
-| `git worktree` wrapper | `src/orchestrator/worktree/manager.ts` |
-| Worktree path convention | `src/orchestrator/worktree/paths.ts` |
-| Task index on disk | `src/orchestrator/index/store.ts` |
-| ULID generator | `src/orchestrator/index/ulid.ts` |
-| PR prompt rendering | `src/orchestrator/pr/build.ts` |
-| TUI bootstrap | `src/tui/index.tsx` (straight to `direct.ts`) |
-| Pane focus | `src/tui/context/focus.tsx` |
-| Global keybindings | `src/tui/context/keybindings.ts` |
-| KV (per-user UI state) | `src/tui/context/kv.tsx` |
-| Theme (palettes + active theme) | `src/tui/context/theme.tsx` + `src/tui/context/theme/*.json` |
-| Daemon socket/integration tests | `test/daemon/*.test.ts` |
-| Unit-test type assertions | `test/types/*.test-d.ts` |
-
-### Web transport (daemon-owned)
-
-The browser dashboard talks directly to a daemon-hosted loopback HTTP/SSE
-transport in `packages/kobe-daemon/src/daemon/web-server.ts`. ADR 0003
-reversed the old "web routes live outside the daemon" decision: daemon-backed
-browser data and mutations now share the daemon handler registry, event bus,
-and lifetime policy instead of crossing a standalone `kobe-web/server` bridge.
-
-Current daemon web responsibilities:
-
-- Browser state hydrates from a daemon-built `snapshot`, then receives daemon
-  channel pushes as SSE `channel` events. An open browser SSE stream counts as
-  a GUI lifetime hold, so normal lazy-shutdown rules still apply.
-- Browser mutations go through `/api/rpc`, which dispatches to the daemon RPC
-  registry through an explicit web allowlist. Connection-scoped and lifecycle
-  verbs (`hello`, `subscribe`, `daemon.stop`) are not browser-reachable.
-- Session/launch-spec routes (`/api/session`, `/api/engine-spec`,
-  `/api/terminal-spec`) live on the daemon web transport so the PTY sidecar can
-  fetch launch details without a separate adapter process.
-- Web-specific route helpers (`packages/kobe/src/web/notes.ts`,
-  `packages/kobe/src/web/diff.ts`, `packages/kobe/src/web/history.ts`,
-  `packages/kobe/src/web/themes.ts`) remain feature modules consumed by the
-  daemon web transport. They are not a second daemon, and they must not keep
-  their own task/event cache.
-- Web dev (`packages/kobe-web/dev.ts`) runs only Vite plus the Node PTY
-  sidecar; Vite proxies `/api` and `/events` to the daemon web port. Desktop
-  uses the same path.
-
-Rule: add new daemon-backed browser behaviour to the daemon web interface
-first. Do not add new product behaviour to the legacy `kobe-web/server` bridge
-adapter.
-
----
-
-## 2. Reference projects under `refs/`
-
-`refs/` is gitignored study material. **Never edit anything inside it.** Each
-contributor clones it locally per the setup block in `AGENTS.md` (`CLAUDE.md`
-is a symlink). The slots and what each one teaches kobe:
-
-| `refs/` slot | Source | What kobe borrows from it |
-|---|---|---|
-| `agent-deck` | symlink to Jackson's local repo | TUI visual grammar — pane chunking, `[Tab] label` chip hotkeys, BOLD CAPS pane headers, focused-pane border highlighting |
-| `conductor` | screenshots only — no source | The 5-pane layout grammar (sidebar / workspace / files / preview / terminal) — see DESIGN.md §1 |
-| `opcode` | clone of `winfunc/opcode` | Subprocess wrapping for Claude Code — kobe's `src/engine/claude-code-local/` was algorithmically ported from `opcode/src-tauri/src/commands/claude.rs` |
-| `claude-code` | clone of `tanbiralam/claude-code` (leaked Anthropic source) | Render parity — match Claude Code's text formatting, tool display, citations exactly. See `src/ink/` in the ref |
-| `ccstatusline` | clone of `sirmalloc/ccstatusline` | Status/context/speed derivation — especially transcript JSONL usage parsing, context-window math, and token-speed calculations |
-| `codex` | clone of `openai/codex` | Official Codex CLI / engine behavior reference |
-| `codexui` | clone of `friuns2/codexui` | Driving `codex app-server` from another process |
-| `warp` | clone of `warpdotdev/warp` | Terminal-native workflow and pane/session UX reference |
-
-Concrete provenance examples in the kobe source:
-
-- `src/engine/claude-code-local/binary.ts` mirrors opcode's
-  `claude_binary.rs` discovery order (PATH → NVM → Homebrew →
-  `~/.claude/local`).
-- `src/engine/claude-code-local/history.ts` documents the
-  `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` path scheme,
-  cross-referenced with opcode.
-- `src/engine/*/normalize.ts` and `src/engine/*/usage.ts` are the
-  engine-owned transcript/history Adapters; read the relevant upstream ref
-  before changing an event or usage interpretation.
-- `src/tmux/session-layout.ts` and `src/tui/panes/terminal/tmux.ts` are the
-  tmux-native replacement for the removed v0.5 stream pump. Layout/attach
-  bugs should be fixed there, not by reintroducing a headless engine loop.
-- Usage metrics mirror `refs/ccstatusline/src/utils/jsonl-metrics.ts` by
-  deriving token totals and speed from transcript timestamps rather than
-  trusting a precomputed speed field.
-
-When two refs disagree with kobe, **kobe wins** (we already chose). But
-read the ref before deciding to deviate further.
-
----
-
-## 3. Workspace surfaces: tmux handover + pure-TUI Workspace Host
-
-`kobe`'s entry gate is `src/tui/index.tsx`. Plain `kobe` attaches into the
-tmux-native workspace by Handover (`src/tui/direct.ts`) — still the default
-path. `KOBE_TUI=1` (`nativeChatEnabled()`, `src/env.ts`) boots the
-single-process React **Workspace Host** instead
-(`src/tui-react/workspace/host.tsx`) — no tmux involved. **Both stacks are
-live product code**; `src/tui/panes/terminal/CLAUDE.md` maps which files in
-that shared directory belong to which. The opentui outer monitor (`app.tsx`)
-was retired in 2026-06; the Solid TUI was removed 2026-07-07 — every
-rendering component lives under `src/tui-react/**`, framework-free cores
-under `src/tui/**`.
-
-### tmux ChatTab layout (default path)
-
-Each Task owns one tmux Session (`kobe-<task-id>`). Each ChatTab is a tmux
-window with kobe-owned helper panes plus the engine pane:
-
-```
-┌────────────┬───────────────────────────────────────────────────────┐
-│ Tasks pane │ engine CLI (claude / codex / copilot)                 │
-│            ├───────────────────────────────────────────────────────┤
-│            │ Ops pane / shell                                      │
-└────────────┴───────────────────────────────────────────────────────┘
-```
-
-The pure layout policy is `src/tmux/session-layout.ts` (reuse/respawn policy:
-`src/tmux/session-decision.ts`); the tmux Adapter and session lifecycle
-helpers are `src/tmux/client.ts` and `src/tui/panes/terminal/tmux.ts`. The
-in-session task list host is `src/tui-react/tasks-pane/host.tsx` (rendering
-the shared `Sidebar` component, `src/tui-react/panes/sidebar/`); Ops/file
-browsing is hosted by `src/tui-react/ops/host.tsx` over the framework-free
-logic in `src/tui/ops/`.
-
-### Pure-TUI Workspace Host (`KOBE_TUI=1`)
-
-One React process renders the whole workspace; the center column embeds the
-task's real interactive engine CLI in an in-process PTY (kobe wraps the
-engine's own TUI instead of re-rendering its stream):
-
-```
-┌─────────┬──────────────────────────────────────────────┬─────────┐
-│ Sidebar │ tab strip (Terminal Tabs, ctrl+t/e/w, F2)    │ Files   │
-│ (tasks) ├──────────────────────────────────────────────┤ (tree + │
-│         │ embedded terminal — engine CLI / shell,      │ badge)  │
-│         │ optionally split (ctrl+\ / ctrl+=, F3)       │         │
-└─────────┴──────────────────────────────────────────────┴─────────┘
-```
-
-| Concern | Path |
-|---|---|
-| Workspace host — layout, task selection, zen (F6), page swaps | `src/tui-react/workspace/host.tsx` |
-| Terminal tabs — strip, per-task tab state, degrade/resume | `src/tui-react/workspace/TerminalTabs.tsx` + `src/tui/workspace/terminal-tabs-core.ts` |
-| Splits inside a tab | `src/tui-react/workspace/TerminalSplit.tsx` + `src/tui/workspace/split-core.ts` |
-| Embedded terminal pane — render/input, viewport | `src/tui-react/panes/terminal/Terminal.tsx` + `src/tui/panes/terminal/` |
-| PTY registry — acquire/release/detach + parking sweep | `src/tui/panes/terminal/registry.ts` |
-| Hosted PTY backend (default; VT stays in-process) | `src/tui/panes/terminal/pty-hosted.ts` + `pty-xterm-base.ts` |
-| PTY host process (`kobe pty-host`, tmux-server analog) | `packages/kobe-daemon/src/daemon/pty-server.ts` + `src/cli/pty-host-cmd.ts` |
-
-Engine sessions do NOT live in this process: the raw PTY children belong to
-the standalone `kobe pty-host` process, so they survive quitting the TUI and
-`kobe daemon restart`. Hidden tabs' local xterm instances are parked
-(detached and GC'd) after 2 minutes unwatched; the child keeps running in
-the host, whose byte ring buffer is the authoritative history.
-
-### System flows (verified in code)
-
-**Opening a new terminal tab (ctrl+t):**
+## 1. System shape
 
 ```mermaid
-sequenceDiagram
-  participant U as user
-  participant TT as TerminalTabs
-  participant T as Terminal pane
-  participant R as PtyRegistry
-  participant H as kobe pty-host
-
-  U->>TT: ctrl+t (chat.tab.new)
-  TT->>TT: add tab (terminal-tabs-core) — vendor via resolvePreferredVendor, argv via interactiveEngineCommand
-  TT->>T: mount active tab (registry key taskId::tabId)
-  T->>R: acquire(key, cwd, command)
-  R->>H: HostedTaskPty → ensurePtyHostReachable() → pty.open
-  H-->>T: spawn child — or reattach + ring-buffer replay
+flowchart LR
+  CLI["kobe CLI / API"] --> D["Daemon"]
+  TUI["PureTUI Workspace Host"] --> D
+  WEB["Browser dashboard"] --> D
+  D --> O["Orchestrator + Task index"]
+  D --> G["Git worktree manager"]
+  CLI --> P["Standalone PTY Host"]
+  TUI --> P
+  WEB --> P
+  P --> E["Interactive engine and shell children"]
 ```
 
-**Engine exit inside a tab:** the child exits in the pty host → a `pty.exit`
-frame reaches the backend's `onExit`. A split leaf collapses tmux-style
-(`TerminalSplit`); when the LAST leaf exits, the tab-level `onExit` fires in
-`TerminalTabs`: an engine tab degrades in place to a shell tab
-(`degradeToShell` — its conversation stays resumable), a shell/command tab
-closes itself.
+The Daemon owns control-plane state. The PTY Host independently owns
+interactive processes. This separation is load-bearing: a GUI exit or daemon
+restart must not end engine sessions.
 
-**TUI quit → next boot:** quit runs `registry.detachAll()` (children keep
-running in the pty host). The next boot rehydrates per-task tab state,
-re-verifies stale `spawned` flags against the real transcripts
-(`src/tui-react/workspace/use-tab-lifecycle.ts` — a dead engine tab relaunches
-with `--resume <sessionId>`, once), then each visible tab re-`acquire`s its
-key and replays the host's ring buffer.
+The product unit is:
 
-### Focus + keymap routing
-
-Focus is a single provider: `src/tui-react/context/focus.tsx`. `useFocus()`
-exposes `focused`, `setFocused(pane)`, `is(pane)`, `cycle(±1)`. The four pane
-ids are `"sidebar" | "workspace" | "files" | "terminal"`; `ctrl+h/j/k/l` jump
-directly, F4 cycles, `ctrl+q` returns to the sidebar. Full chord rules:
-[`KEYBINDINGS.md`](./KEYBINDINGS.md).
-
-Three rules govern key handling:
-
-1. **Modifier-prefixed chords are always-on** — they never collide with
-   typing. The canonical chord table is `KobeKeymap` in
-   `src/tui/context/keybindings.ts` (React re-export:
-   `src/tui-react/context/keybindings.ts`).
-2. **Plain-letter chords are pane-scoped** — gated at the registration site
-   on `useFocus().is(...)` (the boundary rule in `KEYBINDINGS.md`).
-3. **Pane-local bindings register inside the pane component** via
-   `useBindings()` from `src/tui-react/lib/keymap.ts`, scoped to that
-   component's lifetime.
-
-The runtime registry is a module-global LIFO **binding stack**; the
-framework-free dispatcher (chord matching, preventDefault-on-first-hit,
-slot-based multiplexed ids) is `src/tui/lib/keymap-dispatch.ts`. An open
-dialog (`src/tui-react/ui/dialog.tsx`) pushes a **modal barrier** entry that
-structurally cuts off every binding registered before it — the dialog's own
-keys and text inputs keep working, panes never gate themselves on "dialog
-open". One React-specific caveat: React mounts ancestors on top of the stack
-(the inverse of Solid), so a parent and child sharing a chord must resolve by
-gating, not stack order.
-
----
-
-## 4. Daemon ↔ task-session seam
-
-The current load-bearing contract is the daemon-backed task model plus the
-tmux Handover, not a live engine stream. `CONTEXT.md` is the vocabulary
-source of truth; this section maps that vocabulary to files.
-
-### Task writes
-
-All task mutations flow through one writer:
-
-```
-TUI Client / Tasks pane / kobe web
-  └─> RemoteOrchestrator or daemon web transport RPC
-        └─> packages/kobe-daemon/src/daemon/server.ts dispatch()
-              └─> Orchestrator
-                    └─> TaskIndexStore (~/.kobe/tasks.json)
+```text
+Task = git worktree + hosted engine sessions + branch
 ```
 
-`RemoteOrchestrator` keeps a client-side mirror of task state, hydrated by
-the daemon's `task.snapshot` channel. UI code should mutate through that
-facade or through daemon RPC; importing `TaskIndexStore` from a pane would
-bypass the single-writer Module.
+## 2. Package map
 
-### Handover
+- `packages/kobe/` — published CLI and PureTUI.
+  - `src/cli/` — command routing, help, API handlers, daemon and PTY-host
+    process entrypoints.
+  - `src/engine/` — engine registry, command/capability/history adapters,
+    protocols, turn detection, and shared session launch composition.
+  - `src/orchestrator/` — Task index and Worktree lifecycle.
+  - `src/client/` — framework-free remote Orchestrator client and channel
+    stores.
+  - `src/tui/` — framework-free keymap, state, terminal, file, sidebar, and
+    workspace cores.
+  - `src/tui-react/` — the only UI implementation: React 19 over opentui.
+- `packages/kobe-daemon/` — Unix-socket daemon protocol/server, browser
+  transport, and standalone PTY Host implementation.
+- `packages/kobe-web/` — browser dashboard SPA and browser-side PTY transport.
+- `packages/kobe-desktop/` — desktop wrapper.
+- `packages/branding/` — Remotion assets and checked-in replay rendering.
 
-Entering a task is a tmux attach:
+## 3. Launch and lifetime
 
-```
-Sidebar / Tasks pane select task
-  └─> task.setActive (touches updatedAt for recent sorting)
-        └─> ensureWorktree(taskId)
-              └─> ensureSession(...)
-                    └─> Session Layout builds the tmux command graph
-                          └─> tmux attach / switch-client
-```
+Plain `kobe` starts `src/tui/index.tsx`, which dynamically loads the React
+Workspace Host. Startup has one behavior; there is no launch-mode parser or
+environment switch.
 
-`src/tmux/session-layout.ts` is the pure layout policy. The imperative
-tmux Adapter is `src/tmux/client.ts` plus `src/tui/panes/terminal/tmux.ts`.
-The Handover path must keep tmux teardown out of daemon shutdown: task tmux
-Sessions survive daemon restarts and only `kobe reset` / `kobe kill-sessions`
-tear down the dedicated tmux server.
+The Workspace Host connects as a daemon GUI client and attaches to hosted PTY
+sessions. On exit it detaches local consumers. It does not kill children.
 
-### Engine adapters
+The Daemon is refcounted by attached GUI clients and browser streams. A daemon
+idle exit leaves the PTY Host untouched. The PTY Host idle-exits only when it
+owns zero live sessions.
 
-The engine-specific Modules now support tmux-native sessions instead of
-owning them:
+## 4. Hosted session addressing
 
-| Concern | Path |
-|---|---|
-| Which command starts the interactive engine | `src/engine/interactive-command.ts` |
-| Hook event normalization | `src/engine/*/hook-adapter.ts` + `src/engine/hook-events.ts` |
-| Transcript/history reading | `src/engine/*/history.ts` |
-| Usage/cost derivation | `src/engine/*/usage.ts` where available |
-| Binary/account discovery | `src/engine/*/binary.ts`, `src/engine/account-detect.ts` |
+Each Terminal Tab uses `<taskId>::<tabId>`. The initial engine tab is
+deterministically `<taskId>::tab-1`; API liveness, delivery, and teardown use
+the same address.
 
-Engine hooks report normalized activity with `engine.reportEvent`; the
-daemon folds those into the transient `engine-state` channel. The state is
-in-memory UI data, not task lifecycle and not persisted.
+`src/engine/session-launch.ts` is the canonical launch builder. It owns shell
+quoting, repository init scripts, engine argv/protocol, resume context, and
+first-prompt priority. Both the Workspace Host and headless API automation call
+it.
 
-### Web transport
+`kobe api send`, prompted `add`, and `fan-out`:
 
-`kobe web` is an early experimental front-end over the same daemon. The web
-UI owns browser-local workspace tabs. Browser task snapshots, safe task RPC,
-engine/terminal launch specs, notes, and diffs are served by the daemon web
-transport; ADR 0003 keeps the old kobe-web bridge as transitional source only.
-Do not introduce a separate web task cache or a second daemon.
+1. ensure the Worktree;
+2. ensure the PTY Host;
+3. reuse an alive canonical engine session, or open `tab-1` once;
+4. deliver the prompt and detach the short-lived client.
 
----
+The PTY Host's key-level `pty.open` idempotence prevents concurrent callers
+from creating duplicate children.
 
-## 5. Test harness
+## 5. Ownership boundaries
 
-Tests aren't just typecheck + unit. The current fast path is pure/unit +
-daemon socket coverage; full PTY behavior checks are local opt-in when a
-change affects visible terminal flow. See [`HARNESS.md`](./HARNESS.md).
+- Engine adapters own identity, launch commands, capabilities, models,
+  history, completion markers, and telemetry normalization.
+- The Orchestrator owns Task metadata and git Worktree mutations, not engine
+  children.
+- The Daemon is the Task-index writer and channel publisher, not the terminal
+  process owner.
+- The PTY Host owns child lifetime and buffered terminal bytes, not Task
+  metadata.
+- React components render and wire events; reusable policy/state belongs in
+  framework-free `src/tui/**` modules.
 
-Three test tiers:
+## 6. State
 
-| Tier | Lives in | What it proves | Cost |
-|---|---|---|---|
-| Type-level | `test/types/*.test-d.ts` | The interface shape compiles correctly | ms (tsc) |
-| Unit | `test/{engine,orchestrator,tui}/*.test.ts(x)` | Pure logic correct (parsers, stores, reducers) | ~10ms each |
-| Daemon/socket | `test/daemon/*.test.ts`, `test/client/*.test.ts` | Wire protocol, lazy shutdown, channel replay, reconnect, web lifecycle | socket-bound |
-| PTY behavior | local-only harness per `HARNESS.md` | The product, run end-to-end under a terminal, behaves correctly | slow |
+- Task index: `<KOBE_HOME>/.kobe/tasks.json`
+- UI/settings state: platform config home, normally
+  `~/.config/kobe/state.json`
+- Daemon socket/pid/log: derived from `KOBE_HOME_DIR`
+- PTY Host socket/pid/log: derived independently from the same home
+- Engine conversation history: engine-owned locations such as
+  `~/.claude/projects/**`
 
-### When to use which tier
+Never treat browser storage as authoritative for local product state.
 
-- Pure logic? Unit test in `test/{engine,orchestrator,tui}/`. Fast, easy
-  to diagnose.
-- "Does this daemon channel replay or RPC mutation work?" Socket test under
-  `test/daemon/` or `test/client/`.
-- "Does this sidebar row state render the right badge?" Unit test the pure
-  row-view Module under `test/tui/`.
-- "Does the user-visible product respond when I press `n`?" Behavior
-  test. There's no substitute.
-- Type contract changes? `test/types/*.test-d.ts` with
-  `expectTypeOf` — fastest feedback.
+## 7. Reference projects
 
----
+`refs/` is gitignored and read-only study material. Consult the relevant
+project before changing a boundary it demonstrates:
 
-## 6. Persistence: where state lives on disk
+- `agent-deck` — multi-session/task ergonomics
+- `opcode`, `codexui` — coding-agent UI patterns
+- `codex` — Codex CLI protocols and history
+- `claude-code` — interactive engine behavior
+- `ccstatusline` — terminal status presentation
+- `warp` — terminal interaction and layout patterns
 
-kobe leans on disk locations that already exist (DESIGN.md §2.5). New
-state lives in dedicated dirs we own.
-
-| Location | Owned by | Contents |
-|---|---|---|
-| `~/.kobe/tasks.json` | `TaskIndexStore` (`src/orchestrator/index/store.ts`) | The task manifest — id, title, repo, branch, worktreePath, status, archived flag, vendor/model/settings, ordering, timestamps |
-| `~/.kobe/tasks.json.tmp` | `TaskIndexStore` (atomic write) | Transient — written then renamed over `tasks.json` |
-| `~/.kobe/<lockfile>` | `src/orchestrator/index/lockfile.ts` | Multi-process safety for the manifest |
-| `~/.config/kobe/state.json` | `src/tui/context/kv.tsx` (`KVProvider`) | Per-user UI state — selected theme, transparent-bg toggle, pane sizes, last-open task, expanded sidebar groups |
-| `~/.claude/projects/<encoded-cwd>/<sessionUUID>.jsonl` | Claude Code itself; kobe reads via engine history/usage Adapters | Full message history per Session. kobe never writes here. |
-| `~/.codex/sessions/**/rollout-*.jsonl` | Codex itself; kobe reads via engine history/usage Adapters | Codex Session history. kobe never writes here. |
-| `~/.kobe/worktrees/<repo-key>/<slug>/` | `GitWorktreeManager` (`src/orchestrator/worktree/manager.ts`) | Per-task git worktree for new kobe-created tasks. Convention defined in `src/orchestrator/worktree/paths.ts`; repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` paths remain recognized for existing tasks. |
-| `<worktreePath>/.kobe/pr-instructions.md` | Read by `src/orchestrator/pr/instructions.ts` | Optional per-repo override for the PR-creation prompt |
-
-What's deliberately NOT persisted:
-
-- Chat messages (engine transcript files are the source of truth).
-- tmux Session process state (tmux owns it; kobe re-adopts by task id /
-  session options).
-- Engine activity badges (`engine-state`) — transient in-memory daemon UI
-  state, replayed to subscribers but never persisted.
-- Daemon subscribers, sockets, and web server runtime state.
-
-Backwards compat: older manifests with `sessionId`, `tabs`, or
-`activeTabId` are migrated by `TaskIndexStore`.
-`TaskIndex.version: 3` is the current shape — see `src/types/task.ts`.
-
----
-
-## 7. What's deliberately NOT in kobe
-
-DESIGN.md §12 is the authoritative list. Highlights:
-
-| Not in kobe | Where it'd live if we did it | Why we don't |
-|---|---|---|
-| Conductor-as-backend (was "Phase 2") | A separate daemon/orchestrator Adapter | Dropped 2026-05-09 — no real product driver. |
-| Vendor-neutral model abstraction (`@ai-sdk/*` etc) | n/a | kobe runs local interactive engine CLIs. Engine Adapters normalize command launch, hooks, history, usage, and identity; they do not abstract LLM API calls. |
-| Cloud sync, multi-machine state | n/a | Local-first. Single developer per machine. |
-| Team collaboration | n/a | Single-developer-focused. |
-| Plugin system for panes | n/a | Every pane is hardcoded. Pluggability is at the engine layer only. |
-| Production web/mobile UI | n/a | The terminal TUI is the product. `kobe web` is early experimental as of 2026-06-09, for local dashboard experiments only. |
-| Auto-update mechanism | TopBar shows a chip when a newer version is on npm — see `src/version.ts` — but kobe does not self-install. The chip links to the install command. | Auto-install was deferred from Wave 4. |
-| Status state machine in the sidebar UI | The state machine still exists on disk (`Task.status: backlog | in_progress | in_review | done | canceled | error`) — it drives the concurrency cap and is wired through. The sidebar groups by Working / Archives instead of by status. | Conductor-style status grouping was simplified. The 5 status states are kept on disk so the experimental flag can re-introduce the UI later. |
-
-If you find yourself reaching for any of the above, stop and ask first.
-
----
-
-## 8. Recipes — how to add X
-
-### A new pane
-
-1. Create `src/tui/panes/<name>/` with at least an `index.ts` and a
-   component file. Mirror the shape of an existing pane (`filetree/`
-   is small and self-contained).
-2. Host it as a `kobe <name>` pane host (see `src/tui/ops/host.tsx` /
-   `src/tui/tasks-pane/host.tsx`) booted via `bootPaneHost`
-   (`src/tui/lib/host-boot.tsx`), and wire it into the Session Layout
-   if it belongs in every ChatTab. Subscribe to the daemon as
-   `role: "pane"` (the default).
-3. Pane-local keybindings register inside the pane component via
-   `useBindings()` / `bindByIds()` with chords from `KobeKeymap`.
-4. Write focused unit tests for pure row/state/keymap logic. If the pane
-   needs visible terminal validation, use the local PTY harness described in
-   `docs/HARNESS.md`.
-
-### A new engine activity hook
-
-1. Add vendor-specific parsing in `src/engine/<vendor>-local/hook-adapter.ts`.
-   The Adapter translates raw hook input into the shared
-   `EngineActivityKind` / detail shape from `src/engine/hook-events.ts`.
-2. Extend `reduceActivity` only when the shared task-activity state machine
-   needs a new state. Keep vendor-only fields out of the daemon protocol.
-3. Report the normalized event through `engine.reportEvent`; the daemon
-   maps `cwd` to a Task, folds the event into `engine-state`, and replays
-   current non-idle states to late subscribers.
-4. Add a focused daemon socket test under `test/daemon/` and, if a visible
-   badge changes, a sidebar row-view-model unit test under `test/tui/`.
-
-### A new visible-flow check
-
-Use `docs/HARNESS.md` for local PTY checks when a change affects what the
-user sees or how keys route through the terminal. Keep the loop bounded:
-capture a failing screen, fix the narrow cause, then rerun once or twice.
-
-### A new orchestrator method
-
-1. Add the method to `Orchestrator` in `src/orchestrator/core.ts`. Follow
-   the existing shape: `requireTask(id)` to fetch + throw,
-   `IllegalTransitionError` for state-machine violations, `await`
-   `store.update(...)` so the listener bus refreshes the Solid signal
-   automatically; don't call any explicit refresh hook from UI code.
-2. Add a unit test under `test/orchestrator/` or a daemon RPC/socket test if
-   the method is exposed over the daemon.
-3. If the method is user-facing, surface it through `RemoteOrchestrator` /
-   daemon RPC and the relevant pane handler, then run a visible-flow check
-   when key routing or terminal output changes.
-4. Engine Adapters do not know about new orchestrator methods. If a method
-   needs engine-specific data, extend the Adapter-owned history/hook/usage
-   surface instead of threading vendor checks through the UI.
-
----
-
-## Pointers
-
-- Run dev: `bun run dev` (React JSX via per-file `@opentui/react` pragmas; no preload).
-- Run unit + type tests: `bun run test`.
-- Run behavior tests: `bun run test:behavior`.
-- Lint: `bun run lint` (biome).
-- Smoke: `timeout 5 bun run dev > /tmp/smoke.log 2>&1`.
-- Phase status, gates G0–G4, shipped-as-`@sma1lboy/kobe@0.1.0`: see
-  `CLAUDE.md` and `CHANGELOG.md`.
+Reference code informs decisions but is never edited or copied wholesale.

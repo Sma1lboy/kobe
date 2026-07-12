@@ -1,7 +1,7 @@
 /**
  * Editor preference — pure constants + normalization, no IO / no tmux.
  *
- * Split out (mirroring `settings-surface.ts`) so the Settings dialog can
+ * Split out so the Settings dialog can
  * read/write the editor prefs via its reactive `kv` WITHOUT importing
  * `tmux/editor-launch.ts` (which pulls in the tmux client). The launcher
  * imports these same constants so both sides agree on the keys.

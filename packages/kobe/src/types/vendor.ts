@@ -4,10 +4,8 @@
  * v0.5 supported `"claude" | "codex" | "gemini"` so the engine
  * registry could route per-task. v0.6 drops gemini entirely (no
  * interactive TUI equivalent worth wrapping) and keeps the engines
- * whose interactive CLI runs inside the tmux pane and whose on-disk
- * history JSONL the outer monitor reads for the live preview rail and
- * cost dashboard: `"claude"`, `"codex"`, and `"copilot"` (GitHub
- * Copilot CLI, ported into the v0.6 shape).
+ * whose interactive CLIs run in Hosted PTYs and whose on-disk history is
+ * normalized by engine adapters: `"claude"`, `"codex"`, and `"copilot"`.
  *
  * Per-task vendor is still recorded on Task so the monitor knows
  * which history-reader to call.
@@ -18,8 +16,8 @@
  * the type is OPEN (`string & {}`) because users can register their own
  * engines (a slug id + launch command, see `state/repos.ts`
  * customEngineIds). A custom id is just a string that isn't one of the
- * three; it flows the same way (Task.vendor, tmux `@kobe_vendor`, the
- * selector) and resolves its launch command from `engineCommand.<id>`.
+ * three; it flows through Task metadata and selectors and resolves its
+ * launch command from `engineCommand.<id>`.
  */
 export type VendorId = "claude" | "codex" | "copilot" | (string & {})
 

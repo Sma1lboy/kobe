@@ -1,5 +1,5 @@
 /**
- * Which interactive engine CLI to launch in a task's tmux pane.
+ * Which interactive engine CLI to launch in a task's hosted PTY.
  *
  * The "middle" pane of a task session runs a vendor's *interactive* CLI
  * (the same binary a human would run in a terminal) — not the headless
@@ -152,7 +152,7 @@ const CLAUDE_SESSION_CONTROL_FLAGS = new Set(["--session-id", "--resume", "-r", 
 
 /**
  * For a Claude launch, append a kobe-generated `--session-id <uuid>` so the
- * tmux window it runs in can be mapped to its transcript (recorded as the
+ * hosted session can be mapped to its transcript (recorded as the
  * `@kobe_session_id` window option) and auto-named from its first prompt
  * (KOB — per-tab naming). Returns `{ argv, sessionId }` where `sessionId`
  * is the forced UUID, or `null` when not applicable:
@@ -298,7 +298,7 @@ export function dispatcherProtocol(taskId: string, api: string = kobeApiInvocati
     `  - Relay a note to a task that would benefit: \`${api} dispatch --task-id <id> --prompt "[dispatcher] FYI from <author task>: <note verbatim>"\`.`,
     "  - Relay to the in-flight tasks whose work plausibly touches the same area — and to nobody else. If no task benefits, do nothing.",
     "  - Never relay a note back to its author, never relay the same note to the same task twice, and keep relays verbatim with provenance — no summarizing, no embellishment.",
-    "Use ONLY the dispatch verb to message sessions — the `send` verb pastes via tmux and would spawn a DUPLICATE engine for web-hosted sessions. If dispatch fails, report the error in your own session and stop; do not fall back.",
+    "Use ONLY the dispatch verb to message sessions — it targets an already-hosted session without starting an idle task. If dispatch fails, report the error in your own session and stop; do not fall back to send.",
     "Take no action on merge conflicts between tasks — the board's conflict radar is display-only by design, and resolution timing belongs to the humans and the tasks themselves.",
     "Never run git commands inside other tasks' worktrees.",
   ].join("\n")

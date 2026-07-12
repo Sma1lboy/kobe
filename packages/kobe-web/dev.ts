@@ -11,7 +11,7 @@
  * Daemon isolation: `bun run dev` connects to whatever the default socket
  * points to — your PRODUCTION `~/.kobe` daemon. `bun run dev:sandbox` sets
  * `KOBE_HOME_DIR` to a throwaway home so the daemon web transport, PTY engines, and
- * tmux all use a sandbox and never touch production `tasks.json`. The banner
+ * services all use a sandbox and never touch production `tasks.json`. The banner
  * below always prints which home this session is wired to, so you can never
  * mistake one for the other. (Automated tests — `bun run test` — touch no
  * daemon at all; that isolation is unconditional.)
@@ -40,9 +40,7 @@ const sandboxed = homeDir !== null
 console.log(
   `\x1b[1m[kobe web dev]\x1b[0m ${sandboxed ? "\x1b[33msandbox\x1b[0m" : "\x1b[31mPRODUCTION\x1b[0m"} · home: ${homeDir ?? `${homedir()}/.kobe (production)`}`,
 )
-console.log(
-  `  web :${WEB_PORT}  daemon-web :${DAEMON_WEB_PORT}  pty :${PTY_PORT}${process.env.KOBE_TMUX_SOCKET ? `  tmux: ${process.env.KOBE_TMUX_SOCKET}` : ""}`,
-)
+console.log(`  web :${WEB_PORT}  daemon-web :${DAEMON_WEB_PORT}  pty :${PTY_PORT}`)
 
 await ensureDaemonReachable()
 try {

@@ -12,7 +12,7 @@
 > Everything below this line describes the deleted path in present tense —
 > read it as history, not as current implementation.
 >
-> Decision doc. Why the experimental native chat pane (`KOBE_TUI=1`) ran on
+> Decision doc. Why the experimental native chat pane ran on
 > the Vercel AI SDK's harness packages, what the boundaries were, and what was
 > deliberately NOT built.
 >
@@ -26,8 +26,8 @@
 
 ## 1. Problem
 
-The default product path runs one always-on interactive engine CLI per task
-inside tmux. That is the right default — the engine owns auth, approvals, and
+The product path at the time ran one always-on interactive engine CLI per task
+inside tmux. That was the right default — the engine owns auth, approvals, and
 rendering — but its render loop burns CPU while *idle*, and with many parallel
 tasks the laptop cooks. The native workspace needs a chat backend that spends
 CPU only while a turn is actually running.
@@ -45,7 +45,7 @@ CPU only while a turn is actually running.
 
 ```mermaid
 flowchart LR
-    Pane["ChatPane (KOBE_TUI=1)"] -->|"prompt, vendor, model"| Turn["harness-turn.ts\nstartAiSdkTurn"]
+    Pane["Experimental ChatPane"] -->|"prompt, vendor, model"| Turn["harness-turn.ts\nstartAiSdkTurn"]
     Turn --> Agent["HarnessAgent (ai@7)"]
     Agent --> HC["@ai-sdk/harness-claude-code"]
     Agent --> HX["@ai-sdk/harness-codex"]
@@ -81,9 +81,9 @@ flowchart LR
    the SDK's `UIMessage`/`UIMessagePart` types and helpers directly. If a
    mapping layer ever seems necessary, that is a signal to push on the SDK,
    not to fork the schema.
-3. **The tmux path is untouched.** The default product path (interactive CLIs
-   in tmux) does not import any `@ai-sdk/*` package and keeps DESIGN.md §2.2's
-   original stance.
+3. **The tmux path is untouched.** The then-default product path (interactive
+   CLIs in tmux) did not import any `@ai-sdk/*` package and kept DESIGN.md
+   §2.2's original stance.
 
 ## 5. Open gaps (tracked, not blocking)
 

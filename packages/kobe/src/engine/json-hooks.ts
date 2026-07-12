@@ -16,7 +16,7 @@
  */
 
 import { kobeHookInvocation } from "../cli/invocation.ts"
-import { shellQuoteArgv } from "../tmux/session-layout.ts"
+import { quoteShellArgv } from "../lib/shell-command.ts"
 import type { EngineActivityKind } from "./hook-events.ts"
 
 /** One engine hook event mapped to a normalized kobe verb. `matcher` narrows
@@ -42,7 +42,7 @@ export function isObject(v: unknown): v is Record<string, unknown> {
  *  matches kobe's OWN previously-written (shell-quoted) commands exactly, and is
  *  independent of the CLI invocation prefix. */
 function activityMarkers(eventMap: readonly HookEventSpec[]): string[] {
-  return eventMap.map((e) => shellQuoteArgv(["hook", e.verb]))
+  return eventMap.map((e) => quoteShellArgv(["hook", e.verb]))
 }
 
 /** True if a hook group is one of kobe's activity groups (by its `kobe hook
@@ -62,7 +62,7 @@ export function buildActivityHooks(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const { event, matcher, verb } of eventMap) {
-    const command = shellQuoteArgv([...inv, "hook", verb])
+    const command = quoteShellArgv([...inv, "hook", verb])
     const group: Record<string, unknown> = { hooks: [{ type: "command", command }] }
     if (matcher) group.matcher = matcher
     out[event] = [group]
@@ -104,7 +104,7 @@ export function mergeActivityHooks(
  * git/`--worktree` behaviour.
  */
 export function buildWorktreeWatchHook(inv: readonly string[] = kobeHookInvocation()): Record<string, unknown> {
-  const command = shellQuoteArgv([...inv, "hook", WORKTREE_WATCH_MARKER])
+  const command = quoteShellArgv([...inv, "hook", WORKTREE_WATCH_MARKER])
   return { [WORKTREE_WATCH_EVENT]: [{ matcher: WORKTREE_WATCH_MATCHER, hooks: [{ type: "command", command }] }] }
 }
 

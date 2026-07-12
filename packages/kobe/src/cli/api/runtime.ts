@@ -1,54 +1,62 @@
 /**
  * The real side-effect implementations `kobe api` verbs run against
- * outside tests: prompt delivery (tmux session build + paste) and the
+ * outside tests: hosted prompt delivery and the
  * default {@link ApiRuntime}. Split out of `api-cmd.ts` (see that file's
  * header) — handlers depend on the `ApiRuntime` TYPE from `./types.ts`,
- * not this module, so unit tests never pull in tmux/git.
+ * not this module, so unit tests never open PTY Host or git processes.
  */
 
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
-import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../../tmux/client.ts"
-import { REPO_INIT_TIMEOUT_SECONDS } from "../../tmux/launch-line.ts"
-import { FRESH_PANE_BUDGET_SECONDS, pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
+import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
-import { deliverToKey, findEngineKey, killTaskSessions, listSessions, openPtyHost, taskKeys } from "./pty-delivery.ts"
+import {
+  deliverHostedPrompt,
+  ensurePtyHost,
+  findEngineKey,
+  killTaskSessions,
+  listSessions,
+  openPtyHost,
+  taskKeys,
+} from "./pty-delivery.ts"
 import { ApiError, type ApiRuntime, type DeliveredPrompt, type PromptDeliveryOps, type PromptTarget } from "./types.ts"
 
-/**
- * Deliver into a task's daemon-hosted engine session if one exists.
- * Returns `null` when the pty host has NO session for the task (so delivery
- * falls back to tmux). When the task IS hosted but no engine key resolves
- * (or the paste target is dead), returns `delivered:false` — the caller
- * must honour that and never build a tmux session, or two engines run in
- * one worktree. `session`/`pane` carry the hosted key so the result shape
- * matches the tmux path.
- */
-async function deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt | null> {
-  const host = await openPtyHost()
-  if (!host) return null
+/** Ensure and address the task's sole hosted engine session. */
+async function deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt> {
+  let host: Awaited<ReturnType<typeof ensurePtyHost>>
   try {
-    const sessions = await listSessions(host.rpc)
-    if (taskKeys(sessions, target.id).length === 0) return null // not hosted → tmux
-    const key = findEngineKey(sessions, target.id, interactiveEngineCommand(target.vendor)[0])
-    if (!key) {
-      // Hosted, but the engine tab is gone — refuse rather than double-open.
-      return { session: "", pane: "", started: false, engineReady: false, delivered: false }
+    host = await ensurePtyHost()
+  } catch (error) {
+    throw new ApiError(
+      `failed to start PTY host for ${target.id}: ${error instanceof Error ? error.message : String(error)}`,
+      "SESSION_FAILED",
+    )
+  }
+  try {
+    const argv = interactiveEngineCommand(target.vendor, target.modelEffort)
+    const launch = buildEngineSessionLaunch({
+      task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },
+      worktreePath: worktree,
+      shell: process.env.SHELL?.trim() || "/bin/zsh",
+      argv,
+      promptIntent: { kind: "explicit", prompt },
+    })
+    const result = await deliverHostedPrompt(host.rpc, { id: target.id, engineBin: argv[0] }, worktree, prompt, launch)
+    if (result.started && !result.engineReady) {
+      throw new ApiError(`failed to start hosted engine session for ${target.id}`, "SESSION_FAILED")
     }
-    const delivered = await deliverToKey(host.rpc, key, worktree, prompt)
-    return { session: key, pane: key, started: false, engineReady: delivered, delivered }
+    return result
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(
+      `hosted engine session failed for ${target.id}: ${error instanceof Error ? error.message : String(error)}`,
+      "SESSION_FAILED",
+    )
   } finally {
     host.close()
   }
 }
 
 const realPromptDeliveryOps: PromptDeliveryOps = {
-  sessionExists,
-  ensureSession: async (opts) => (await import("../../tui/panes/terminal/tmux.ts")).ensureSession(opts),
-  waitForEnginePane,
-  pasteAndSubmit,
-  resolveEngineLaunchInit: async (repoRoot, worktreePath, intent) =>
-    (await import("../../state/repo-init.ts")).resolveEngineLaunchInit(repoRoot, worktreePath, intent),
-  engineCommand: interactiveEngineCommand,
   deliverHosted,
 }
 
@@ -65,44 +73,9 @@ export async function deliverPrompt(
   }
   if (!worktree) throw new ApiError(`task ${target.id} has no worktree`, "NO_WORKTREE")
 
-  // Hosted backend (default) FIRST: if the pty host has any session for this
-  // task, its engine lives there — deliver into it and STOP. Building a tmux
-  // session would double-open a second engine in the same worktree (two
-  // agents clobbering the same files). Only when the task has NO hosted
-  // session at all do we fall through to the tmux path below.
   const hosted = await ops.deliverHosted(target, worktree, prompt)
-  if (hosted) return hosted
-
-  const session = tmuxSessionName(target.id)
-  const existed = await ops.sessionExists(session)
-  let hasInitScript = false
-  if (!existed) {
-    const launchInit = await ops.resolveEngineLaunchInit(target.repo ?? "", worktree, { kind: "none" })
-    hasInitScript = Boolean(launchInit.initScript)
-    const ok = await ops.ensureSession({
-      name: session,
-      cwd: worktree,
-      command: ops.engineCommand(target.vendor),
-      taskId: target.id,
-      vendor: target.vendor,
-      repo: target.repo,
-      // The EXPLICIT prompt is delivered below; this contract intentionally
-      // keeps only the init script so a fresh session never gets both pastes.
-      launchInit,
-    })
-    if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
-  }
-
-  // A repo `.kobe/init.sh` runs BEFORE the engine paints, so give the pane
-  // wait the full init-script budget when one is present; otherwise stay
-  // snappy. A reused session (existed) waits non-fresh with the short budget.
-  const budgetSeconds = hasInitScript ? REPO_INIT_TIMEOUT_SECONDS : FRESH_PANE_BUDGET_SECONDS
-  const { pane, ready } = await ops.waitForEnginePane(session, !existed, budgetSeconds)
-  // No tagged engine pane (strict) ⇒ never blind-paste into a shell/ops pane.
-  if (!pane) throw new ApiError(`no engine pane in session ${session}`, "NO_ENGINE_PANE")
-
-  const delivered = await ops.pasteAndSubmit(pane, prompt)
-  return { session, pane, started: !existed, engineReady: ready, delivered }
+  if (!hosted) throw new ApiError(`failed to start hosted engine session for ${target.id}`, "SESSION_FAILED")
+  return hosted
 }
 
 export async function resolveActiveTaskId(client: DaemonRpc): Promise<string | null> {
@@ -119,20 +92,14 @@ export async function resolveActiveTaskId(client: DaemonRpc): Promise<string | n
 }
 
 export const defaultApiRuntime: ApiRuntime = {
-  // Hosted (pty-host) engine counts as running FIRST — otherwise a hosted
-  // task looks idle to `send`/`fan-out`, which then builds a second tmux
-  // engine in the same worktree (the double-open bug this slice closes).
   isTaskRunning: async (taskId) => {
     const host = await openPtyHost()
-    if (host) {
-      try {
-        const sessions = await listSessions(host.rpc)
-        if (findEngineKey(sessions, taskId) !== null) return true
-      } finally {
-        host.close()
-      }
+    if (!host) return false
+    try {
+      return findEngineKey(await listSessions(host.rpc), taskId) !== null
+    } finally {
+      host.close()
     }
-    return sessionExists(tmuxSessionName(taskId))
   },
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
   resolveRepoRoot: async (absPath) => (await import("../../state/repos.ts")).resolveMainRepoRoot(absPath),
@@ -143,11 +110,6 @@ export const defaultApiRuntime: ApiRuntime = {
   readWorktreeChanges: async (worktreePath) =>
     (await import("../../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
   tearDownSession: async (taskId) => {
-    // Kill the HOSTED engine too (both backends): teardown fires only from
-    // archive/delete — genuine "stop this task's engine" moments — and a
-    // hosted engine otherwise survives forever with no owner. The daemon's
-    // archive sweep eventually kills it, but that's keyed on the daemon
-    // seeing the flag; kill it here now, mirroring the tmux teardown.
     const host = await openPtyHost()
     if (host) {
       try {
@@ -158,11 +120,5 @@ export const defaultApiRuntime: ApiRuntime = {
         host.close()
       }
     }
-    const session = tmuxSessionName(taskId)
-    // Switch any attached client away first so a kill doesn't blank a terminal
-    // (no-op when this process isn't on that session), then kill the session +
-    // its engine. Both are swallowed — the task is already gone from the index.
-    await switchClientBeforeKill(session).catch(() => {})
-    await killSession(session).catch(() => {})
   },
 }

@@ -1,14 +1,12 @@
 /**
  * How to re-invoke the kobe CLI as a subprocess.
  *
- * Some features spawn a kobe subcommand in a child process (the Ops
- * pane runs `kobe ops` inside a tmux pane; a future full-width preview
- * window will too). In a packaged install that's just `kobe` on PATH;
+ * Some features spawn a kobe subcommand in a child process. In a packaged
+ * install that's just `kobe` on PATH;
  * in dev (`bun run dev`) there's no `kobe` bin, so we reconstruct the
  * exact runtime the dev script uses.
  *
- * Lives in `cli/` (not `tmux/`) because it's about the kobe binary,
- * not tmux — tmux is just one caller.
+ * Lives in `cli/` because it is about locating the kobe binary.
  */
 
 import { fileURLToPath } from "node:url"

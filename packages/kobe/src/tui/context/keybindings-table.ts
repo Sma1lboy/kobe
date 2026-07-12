@@ -276,8 +276,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // the keyboard one. `f6` sits in RESERVED_GLOBAL_CHORDS (panes/terminal/
     // keys-pure.ts) so it fires identically from inside the embedded
     // terminal, continuing the F2 (rename) / F3 (split) / F4 (pane cycle) /
-    // F5 (reset) row. NOT `tmux.layout.zenToggle` (space) — that's the
-    // tmux-layer's separate display row, unrelated contract.
+    // F5 (reset) row.
     id: "workspace.zenToggle",
     scope: "global",
     keys: ["f6"],

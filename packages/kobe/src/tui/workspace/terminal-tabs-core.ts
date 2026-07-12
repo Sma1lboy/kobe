@@ -11,6 +11,11 @@
  * switches (acquire-reuse) until closed.
  */
 
+import {
+  type EngineSessionLaunchTask,
+  type EngineSessionProtocolGates,
+  buildEngineSessionLaunch,
+} from "@/engine/session-launch"
 import type { VendorId } from "@/types/vendor"
 import { type TabSpawn, shellSpawn } from "./terminal-tab-spawn"
 import type { PersistedSplit } from "./terminal-tab-split"
@@ -331,12 +336,33 @@ export function engineTabSpawnFor(
   state: TabsState,
   tab: EngineTab,
   base: readonly string[],
-  opts: { live: boolean; shell: string; prompt?: string },
+  opts: {
+    live: boolean
+    shell: string
+    prompt?: string
+    task: EngineSessionLaunchTask
+    worktreePath: string
+    protocolGates?: EngineSessionProtocolGates
+  },
 ): TabSpawn {
   const { live, shell, prompt } = opts
   const firstEngine = state.tabs.find((t) => t.kind === "engine")
   const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
-  return shellSpawn(engineTabArgv(tab, wantsPrompt ? [...base, prompt] : base, live), shell)
+  const isFreshFirstEngine = tab.id === firstEngine?.id && !tab.spawned && !live
+  const promptIntent = wantsPrompt
+    ? ({ kind: "explicit", prompt } as const)
+    : isFreshFirstEngine
+      ? ({ kind: "repo-init" } as const)
+      : ({ kind: "none" } as const)
+  const launch = buildEngineSessionLaunch({
+    task: opts.task,
+    worktreePath: opts.worktreePath,
+    shell,
+    argv: engineTabArgv(tab, base, live),
+    promptIntent,
+    protocolGates: opts.protocolGates,
+  })
+  return { command: launch.command }
 }
 
 export type TabExitAction = "close" | "resume"

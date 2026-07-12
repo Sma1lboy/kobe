@@ -1,14 +1,16 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
-  interactiveEngineCommand,
-  withDispatcherProtocol,
-  withWorktreeProtocol,
-} from "../engine/interactive-command.ts"
-import { quoteShellArgv } from "../lib/shell-command.ts"
-import { resolveEngineLaunchInit } from "../state/repo-init.ts"
-import { killSession, switchClientBeforeKill } from "../tmux/client.ts"
-import { ensureSession, sessionExists, tmuxSessionName } from "../tui/panes/terminal/tmux.ts"
+  ensureHostedEngine,
+  ensureHostedSessionHost,
+  hostedTaskKeys,
+  killHostedSessions,
+  listHostedSessions,
+  openHostedSessionHost,
+} from "../engine/hosted-session.ts"
+import { interactiveEngineCommand } from "../engine/interactive-command.ts"
+import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
+import type { PromptDeliveryIntent } from "../state/repo-init.ts"
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
@@ -25,35 +27,31 @@ async function ensureTaskWorktree(link: DaemonRpcClient, taskId: string) {
 
 export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: string) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const session = tmuxSessionName(taskId)
-  if (!(await sessionExists(session))) {
-    const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "repo-init" })
-    const ok = await ensureSession({
-      name: session,
-      cwd: worktreePath,
-      command: interactiveEngineCommand(task.vendor, task.modelEffort),
-      taskId,
-      vendor: task.vendor,
-      launchInit,
-    })
-    if (!ok) throw new Error(`failed to start tmux session for ${taskId}`)
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" })
+  const host = await ensureHostedSessionHost()
+  try {
+    const opened = await ensureHostedEngine(host.rpc, worktreePath, launch)
+    if (!opened.alive) throw new Error(`failed to start hosted engine session for ${taskId}`)
+  } finally {
+    host.close()
   }
-  return { session, worktreePath }
+  return { session: launch.key, worktreePath }
+}
+
+function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptIntent: PromptDeliveryIntent) {
+  return buildEngineSessionLaunch({
+    task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
+    worktreePath,
+    shell: process.env.SHELL?.trim() || "/bin/zsh",
+    argv: interactiveEngineCommand(task.vendor, task.modelEffort),
+    promptIntent,
+  })
 }
 
 export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const protocolTaskId = task.kind === "main" ? undefined : taskId
-  const dispatcherTaskId = task.kind === "main" ? taskId : undefined
-  const argv = withDispatcherProtocol(
-    withWorktreeProtocol(interactiveEngineCommand(task.vendor, task.modelEffort), task.vendor, protocolTaskId),
-    task.vendor,
-    dispatcherTaskId,
-  )
-  const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "none" })
-  const quoted = quoteShellArgv(argv, { bareSafe: true })
-  const script = launchInit.initScript?.trim() ? `${launchInit.initScript}\n${quoted}` : quoted
-  return { cwd: worktreePath, command: [process.env.SHELL?.trim() || "/bin/zsh", "-ilc", script] }
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" })
+  return { cwd: worktreePath, command: [...launch.command] }
 }
 
 export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {
@@ -62,7 +60,13 @@ export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string)
 }
 
 export async function tearDownTaskSessionAdapter(taskId: string): Promise<void> {
-  const session = tmuxSessionName(taskId)
-  await switchClientBeforeKill(session).catch(() => {})
-  await killSession(session).catch(() => {})
+  const host = await openHostedSessionHost()
+  if (!host) return
+  try {
+    await killHostedSessions(host.rpc, hostedTaskKeys(await listHostedSessions(host.rpc), taskId))
+  } catch {
+    // Task mutation already committed; teardown remains best-effort.
+  } finally {
+    host.close()
+  }
 }

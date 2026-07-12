@@ -1,174 +1,83 @@
 ---
 name: kobe
-description: Drive kobe — a local TUI that runs many parallel AI coding sessions — from your shell via `kobe api`. Use to spawn/fan-out parallel attempts, AND to manage the full task lifecycle (create, rename, re-branch, archive, delete, pin, switch focus) without leaving the terminal. Each task is its own git worktree + agent session. Run `kobe api schema` to discover the whole surface.
+description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 2 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts) whenever this file's guidance changes; that's how `kobe` detects an out-of-date installed skill and prompts `kobe skill install`. -->
+<!-- kobe-skill-version: 3 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
-# kobe — parallel coding tasks + full task control from your shell
+# kobe shell control
 
-kobe is a local terminal UI that runs many AI coding sessions at once.
-Each task lives in its own git worktree with its own agent session inside
-a tmux session. `kobe api` is the scriptable control surface: fan out
-parallel attempts, AND manage the whole task lifecycle — more than the TUI
-exposes — as one-shot JSON commands.
+Use `kobe api` to manage local coding tasks. Each Task owns a git Worktree,
+branch, and Hosted PTY engine sessions. API automation works without an open
+TUI; prompted `send`, `add`, and `fan-out` ensure the canonical engine session.
 
-## Install
-
-This skill is installed via the agent-skills CLI. The easiest path is the
-kobe wrapper, which runs `npx skills add Sma1lboy/kobe` for you:
+## Discover before calling
 
 ```bash
-npm i -g @sma1lboy/kobe        # the binary (or bun / pnpm / yarn add -g)
-kobe skill install            # wraps `npx skills add Sma1lboy/kobe --skill kobe`
+kobe api schema
+kobe api schema --verb add
+kobe api schema --group create
+kobe api <verb> --help
 ```
 
-`kobe api ...` auto-starts the daemon if it isn't running — nothing to
-launch first. Re-run `kobe skill install` after a `kobe` upgrade to pull
-the matching skill.
+Do not guess flags. Commands emit one JSON object; errors use
+`{"error":{"message","code"}}` on stderr. Add `--pretty` for readable output.
 
-## Explore the surface — LEVELED (don't slurp it all)
-
-The API is self-documenting, but explore it in levels so you don't flood
-your context with every flag of every verb:
+## Common operations
 
 ```bash
-kobe api schema                 # COMPACT index: groups + verb summaries (no flags)
-kobe api schema --verb add      # drill into ONE verb's full flag detail
-kobe api schema --group create  # just the verbs in one group
-kobe api <verb> --help          # human-readable usage for one verb
-kobe api schema --all           # the WHOLE spec — large, use only if a tool needs it
-```
+# Create one task and start its first engine turn.
+kobe api add --repo "$PWD" --title "focused title" --vendor claude \
+  --prompt "<complete scoped instruction>"
 
-Start with `kobe api schema` (small), then `--verb <name>` for the one you
-need. Read it instead of guessing flags. Every verb writes one JSON object
-to stdout (exit 0); errors are `{"error":{"message","code"}}` on stderr
-(exit ≠ 0). Add `--pretty` to any verb to indent stdout.
+# Parallel attempts of the same prompt (hard cap 10; prefer 3-4).
+kobe api fan-out --repo "$PWD" --count 3 --prompt "<prompt>"
+kobe api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 
-## Triggers — fire fan-out when the user says
+# Follow up. Use an explicit id for unattended work; the active task can drift.
+kobe api send --task-id <id> --prompt "<complete next turn>"
 
-- "try N approaches in parallel", "并行试 N 个"
-- "fan out", "split this into subtasks"
-- "compare X and Y side-by-side"
-- "explore a few different ways to..."
-- explicit count: "spin up 3 tasks for..."
-
-Single ambiguous tasks → no fan-out. Just do them in your own chat.
-
-## Core verbs
-
-```bash
-# Create a task — shows in the sidebar IMMEDIATELY (backlog). Fully
-# parameterized: title, explicit branch, base branch, vendor, status, pin.
-# With --prompt it also materializes the worktree, starts the engine, and
-# delivers the first message. Returns task JSON; read `.taskId`.
-kobe api add --repo "$PWD" --title "virtualize sidebar" \
-  --vendor claude --pin --prompt "<scoped prompt>"
-# (`spawn-task` is a back-compat alias of `add`.)
-
-# Fan out N tasks of ONE prompt (the usual parallel-attempts entry point).
-# Flat count of one vendor, or per-vendor counts. Capped at 10.
-kobe api fan-out --repo "$PWD" --prompt "<prompt>" --count 3
-kobe api fan-out --repo "$PWD" --prompt "<prompt>" --agents claude:2,codex:1
-
-# Send a follow-up into a task's running engine (one full turn). Prefer
-# --task-id for unattended fan-out; the bare default targets the *active*
-# task, which can drift.
-kobe api send --task-id <id> --prompt "<text>"
-
-# Read one task. `.running` = its tmux session is live.
 kobe api get-task --task-id <id>
-
-# Compare attempts: per task → identity, branch, .running, uncommitted
-# .changes ({added, deleted}). Read-only.
-kobe api collect --task-ids <id1>,<id2>,<id3>
-kobe api collect --repo "$PWD"            # all non-archived tasks in the repo
-
-# List every task.
-kobe api list
+kobe api collect --task-ids <id1>,<id2>,<id3> --pretty
+kobe api list --pretty
 ```
 
-## Full task lifecycle (more than the TUI)
+`.running` means the task's canonical Hosted PTY engine session is alive.
+`send` reuses it or auto-starts it when absent.
 
-All one-shot; see `kobe api <verb> --help` for flags.
+## Lifecycle
 
-| Verb | What it does |
+| Verb | Purpose |
 |---|---|
-| `rename --task-id ID --title T` | Set the task title |
-| `set-branch --task-id ID --branch B` | Rename the branch (git branch -m if materialized) |
-| `set-vendor --task-id ID --vendor V` | Change engine vendor (takes effect on next rebuild) |
-| `set-status --task-id ID --status S` | Set lifecycle status (backlog/in_progress/in_review/done/canceled/error) |
-| `archive --task-id ID [--archived=false]` | Archive / unarchive (non-destructive) |
-| `pin --task-id ID [--pinned=false]` | Pin / unpin to the top of the sidebar |
-| `set-active --task-id ID` / `--none` | Set the shared active-task focus every pane highlights |
-| `ensure-worktree --task-id ID` | Materialize the worktree on disk (no engine) |
-| `delete --task-id ID [--force]` | **Destructive** — remove the task + worktree (prefer archive) |
-| `discover-adoptable --repo PATH` | List untracked git worktrees in a repo |
-| `adopt --repo PATH --worktree PATH` | Import an existing worktree as a task |
+| `rename --task-id ID --title T` | Rename a task |
+| `set-branch --task-id ID --branch B` | Rename its branch |
+| `set-vendor --task-id ID --vendor V` | Change engine for the next launch |
+| `set-status --task-id ID --status S` | Set lifecycle status |
+| `archive --task-id ID [--archived=false]` | Archive/unarchive; stops live sessions |
+| `pin --task-id ID [--pinned=false]` | Pin/unpin |
+| `set-active --task-id ID` / `--none` | Change shared active task |
+| `ensure-worktree --task-id ID` | Materialize without starting an engine |
+| `delete --task-id ID [--force]` | Destructive task + Worktree removal |
+| `discover-adoptable --repo PATH` | Find untracked Worktrees |
+| `adopt --repo PATH --worktree PATH` | Import a Worktree |
+
+Prefer `archive` unless the user explicitly authorizes deletion.
 
 ## Issue tracker
 
-Issues are daemon-owned state, not repo files. Do not create or edit
-`docs/issues.json`; use `kobe api issue-*` so web, TUI, and agents all see
-the same tracker from any source checkout or task worktree.
+Issues are daemon-owned, not repo files:
 
 ```bash
-# List issues for the current repo/worktree.
 kobe api issue-list --repo "$PWD" --pretty
-
-# Create an issue.
-kobe api issue-create --repo "$PWD" --title "short title" --body "context"
-
-# Move an issue through open/doing/hold/done.
+kobe api issue-create --repo "$PWD" --title "title" --body "context"
 kobe api issue-set-status --repo "$PWD" --id <n> --status done
-
-# Update title and/or body.
-kobe api issue-update --repo "$PWD" --id <n> --title "new title" --body "new body"
+kobe api issue-update --repo "$PWD" --id <n> --title "new" --body "body"
 ```
 
-Inside a kobe task worktree, `--repo "$PWD"` resolves to the same daemon
-issue record as the source checkout because kobe keys issues by the repo's
-git common-dir. When a kobe-generated prompt gives you a concrete command,
-use that exact command: dev/source sessions may receive an environment-
-specific Bun invocation instead of the packaged `kobe api` binary.
+## Fan-out rules
 
-## Workflow — fan-out + compare
-
-```bash
-# 1. Fan out 3 parallel attempts. (For distinct per-attempt prompts, use
-#    separate `add` calls; fan-out shares one prompt.)
-IDS=$(kobe api fan-out --repo "$PWD" --count 3 \
-  --prompt "Make the sidebar virtualize long task lists. Explore your own approach." \
-  | jq -r '.tasks[].taskId')
-
-# 2. Tell the user what you spawned and point them at the kobe TUI to watch.
-echo "Spawned: $IDS — open the kobe TUI to watch them."
-
-# 3. Once they've run, compare attempts (branch + uncommitted change counts).
-kobe api collect --task-ids "$(echo "$IDS" | paste -sd, -)" --pretty
-```
-
-> tmux-native: a task's chat history lives in its tmux session, not the
-> daemon. `send` injects a prompt into the engine pane (like typing it);
-> there is no verb that reads the engine's reply back — the user reviews
-> results in the TUI.
-
-## Do
-
-- Explore with `kobe api schema` before composing a call — don't guess flags.
-- Keep fan-out to 3-4 in practice; `fan-out` hard-caps a single call at 10.
-- Give each subtask its own scoped prompt — don't dump the whole parent conversation.
-- Tell the user what was spawned, with IDs, so they can follow along in the sidebar.
-- Prefer `archive` over `delete` — archiving keeps the worktree, branch, and history.
-
-## Don't
-
-- Don't fan out for single simple tasks. One thing → do it yourself in chat.
-- Don't recursively spawn from inside a spawned task. There is no recursion
-  guard yet; you will starve the concurrency cap and the inner spawn will hang.
-- Don't use `send` as a chat channel. Every send is a full agent turn — it
-  costs tokens and time. Send a complete instruction, not a conversation.
-- Don't poll `send` in a tight loop. There is no CLI "turn finished" signal —
-  the user watches progress in the TUI.
-- Don't `delete` to tidy up casually. It removes the worktree and is
-  destructive; archive instead unless the user explicitly asks to delete.
+Fan out only when the user requests parallel approaches, comparison, or an
+explicit count. Give each task a scoped prompt, report returned IDs, then use
+`collect` to compare. Do not recursively fan out from spawned tasks. Do not
+poll `send` in a tight loop or use it as casual chat; every call is a full
+engine turn.

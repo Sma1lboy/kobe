@@ -1,98 +1,9 @@
-/**
- * `chat.*` (Workspace) + `tmux.*` (Workspace tmux-handover, display-only)
- * keybinding rows — split out of `keybindings.ts` (which was over the
- * repo's 500-line file-size cap) purely mechanically: same entries, same
- * order (`tmux.*` first, matching the original file — help-dialog's
- * `groupBindings` groups by first-encounter `category` order in the
- * flattened `KobeKeymap` array), moved verbatim. See `keybindings.ts`'s
- * doc comment for the full contract (id stability, scope semantics, hint
- * display rules).
- */
+/** Workspace keybinding rows, split out to keep the keymap table small. */
 
 import type { KobeBinding } from "./keybindings-table.ts"
 
 export const CHAT_BINDINGS: readonly KobeBinding[] = [
-  // ─── Workspace (tmux) ─────────────────────────────────────────────────
-  // tmux-handover chords that drive the task SESSION (windows/tabs/detach),
-  // not opentui bindings. Listed here so the HelpDialog advertises them; the
-  // bracket / ctrl rows below in "Workspace (chat)" register the real opentui
-  // handlers, while the `prefix f` quick-task is a tmux key-table binding the
-  // session installs (not registered through this keymap at all) — DISPLAY
-  // ONLY, with `keys: []` so nothing tries to bind a literal "prefix f" chord.
-  {
-    id: "tmux.quickTask",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Quick new task (tmux prefix, then f)",
-    hint: { keys: "prefix f" },
-  },
-  {
-    id: "tmux.engineTab",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Open the engine in a new tab (tmux prefix, then t)",
-    hint: { keys: "prefix t" },
-  },
-  {
-    id: "tmux.layout.workspaceSplit",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Add a temporary workspace split (tmux prefix, then s)",
-    hint: { keys: "prefix s" },
-  },
-  {
-    id: "tmux.layout.workspaceClose",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Close the focused temporary workspace split (tmux prefix, then x)",
-    hint: { keys: "prefix x" },
-  },
-  {
-    id: "tmux.layout.workspaceReset",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Close all temporary workspace splits (tmux prefix, then r)",
-    hint: { keys: "prefix r" },
-  },
-  {
-    id: "tmux.layout.tasksToggle",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Hide / restore the Tasks pane (tmux prefix, then a)",
-    hint: { keys: "prefix a" },
-  },
-  {
-    id: "tmux.layout.opsToggle",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Toggle the file/Ops pane (tmux prefix, then o)",
-    hint: { keys: "prefix o" },
-  },
-  {
-    id: "tmux.layout.terminalToggle",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Hide / restore the terminal pane (tmux prefix, then z)",
-    hint: { keys: "prefix z" },
-  },
-  {
-    id: "tmux.layout.zenToggle",
-    scope: "global",
-    keys: [],
-    category: "Workspace (tmux)",
-    description: "Zen mode — collapse to the engine pane (tmux prefix, then space)",
-    hint: { keys: "prefix space" },
-  },
-
-  // ─── Workspace (chat) ─────────────────────────────────────────────────
+  // ─── Workspace ────────────────────────────────────────────────────────
   {
     // Composer textarea handles enter via its own onKeyDown. This row
     // exists only for help-dialog visibility; no chord is registered
@@ -152,8 +63,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+t" },
   },
   {
-    // tmux's chattab has a "prompt for engine, then open a tab" chord on
-    // `ctrl+shift+t`. Can't reuse that chord here: same shift+letter collision
+    // Can't reuse `ctrl+shift+t`: it has the same shift+letter collision
     // (the keymap layer drops shift+ on letter keys, so ctrl+shift+t and
     // ctrl+t are indistinguishable).
     // `ctrl+e` mirrors the "engine" mnemonic the new-task dialog already
@@ -253,7 +163,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+[" },
   },
   {
-    // tmux-style splits inside the active workspace tab (issue #16).
+    // Splits inside the active workspace tab (issue #16).
     // Deliberately CONTENT-NEUTRAL ids (`workspace.split.*`, not
     // chat/terminal): the split tree (`workspace/split-core.ts`) is
     // generic over leaf content — terminals today, other surfaces
@@ -279,7 +189,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+=" },
   },
   {
-    // Split-focus cycle in reading order (tmux `prefix o`). F3 because
+    // Split-focus cycle in reading order. F3 because
     // every useful ctrl+letter is either engine passthrough or
     // taken; F-keys already carry the tab
     // vocabulary here (F2 rename).
@@ -293,7 +203,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     // Same chord as chat.tab.close, contextual scope: while the tab is
     // SPLIT, ctrl+w closes the active leaf (the innermost thing — VS
-    // Code/iTerm/Warp convention, tmux `prefix x`). Resolution is mutual
+    // Code/iTerm/Warp convention). Resolution is mutual
     // gating (React stacks ancestors on top — see tui-react/lib/keymap.ts):
     // TerminalSplit enables this entry only when split, and TerminalTabs
     // disables its close-tab entry while split, so exactly one is live.
@@ -326,13 +236,6 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   // chat pane must own focus — the user can still navigate the file tree
   // with j/k while a question is queued.
   //
-  // NOTE: with the tmux-native model the legacy Chat pane (and its
-  // QuestionRow) is gone, so these rows currently have NO live
-  // registration site — they're display-only. `chat.question.nav` /
-  // `chat.question.pick-number` stay in FIXED_BINDING_IDS for that
-  // reason: an override would change Help copy without changing
-  // behavior. If the picker returns, implement its nav with slot
-  // dispatch (see sidebar.nav) before unlocking them.
   {
     id: "chat.question.nav",
     scope: "workspace",

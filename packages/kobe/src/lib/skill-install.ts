@@ -9,8 +9,8 @@
  * that runs exactly that flow for the developer, so nobody has to remember
  * the `npx skills add Sma1lboy/kobe --skill kobe --agent …` invocation.
  *
- * Reliable check: `kobe doctor` / `kobe skill status`. The startup hint
- * here is best-effort (the tmux/opentui screen takeover can scroll it off),
+ * Reliable check: `kobe skill status`. The startup hint
+ * here is best-effort (the opentui screen takeover can scroll it off),
  * so it fires at most once (gated on a persisted flag) and never nags.
  */
 
@@ -27,7 +27,7 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * marker is below this number is STALE: the binary moved on, the skill
  * didn't, so we prompt the developer to re-run `kobe skill install`.
  */
-export const KOBE_SKILL_VERSION = 2
+export const KOBE_SKILL_VERSION = 3
 
 /**
  * Where the kobe skill lands for a coding agent, relative to a home/project

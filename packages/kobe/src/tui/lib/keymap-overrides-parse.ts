@@ -184,20 +184,14 @@ function extractBindingsMap(section: unknown): Record<string, unknown> | null {
 }
 
 export type ExtractOverridesOpts = {
-  /**
-   * Per-id chord-normalization options. The tmux-layer resolver passes
-   * `(id) => id.startsWith("tmux.") ? { allowShiftCharacter: true } : {}`
-   * so `tmux.tab.chooseEngine: ctrl+shift+t` round-trips while opentui
-   * ids keep the shift+letter rejection.
-   */
+  /** Per-id chord-normalization options for specialized consumers. */
   chordOptsFor?: (id: string) => NormalizeChordOpts
 }
 
 /**
  * Turn a parsed YAML document into a flat override list for `platform`.
  * Never throws; malformed pieces degrade to warnings. Each warning string
- * is prefixed `"<id>: "` when it concerns a specific binding — consumers
- * that split the id namespace (opentui vs tmux) filter on that prefix.
+ * is prefixed `"<id>: "` when it concerns a specific binding.
  */
 export function extractKeybindingOverrides(
   doc: unknown,

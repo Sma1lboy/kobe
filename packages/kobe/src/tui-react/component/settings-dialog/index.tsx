@@ -242,7 +242,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     crossTask: () => prefs.toggleCrossTask(),
     splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),
-    surface: (row) => prefs.selectSurface(row.surface),
     editorKind: () => prefs.cycleEditorKind(),
     editorCustom: () => void prefs.editEditorCustom(),
     worktreeBase: () => prefs.cycleWorktreeBase(),
