@@ -20,10 +20,10 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
   })
 
-  test("ChatPane navigation keeps only its prefix second strokes", () => {
-    expect(findBinding("focus.sidebar")?.keys).toEqual([])
+  test("global navigation keeps direct Ctrl chords alongside prefix aliases", () => {
+    expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
     expect(findBinding("focus.sidebar")?.prefixKeys).toEqual(["q"])
-    expect(findBinding("focus.numeric")?.keys).toEqual([])
+    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"])
     expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
   })
 
