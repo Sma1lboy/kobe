@@ -28,12 +28,12 @@ afterEach(() => {
 
 function Probe(opts: { writes: string[]; actionHits: string[] }) {
   // A real prefix-carrying row, registered like the workspace host does:
-  // `chat.tab.new` is prefix-only post-#308 (`prefixKeys: ["t"]`), so
-  // bindByIds emits a `{ key: "t", prefix: true }` dispatcher entry and
-  // makes the prefix reachable.
+  // `chat.fork.new` is prefix-only (`prefixKeys: ["f"]`), so bindByIds
+  // emits a `{ key: "f", prefix: true }` dispatcher entry and makes the
+  // prefix reachable.
   useBindings(() => ({
     enabled: true,
-    bindings: bindByIds({ "chat.tab.new": () => opts.actionHits.push("chat.tab.new") }),
+    bindings: bindByIds({ "chat.fork.new": () => opts.actionHits.push("chat.fork.new") }),
   }))
   useTerminalBindings({
     focused: true,
@@ -62,21 +62,21 @@ describe("terminal pane — PureTUI prefix routing (#308)", () => {
     const { mockInput } = await renderComponent(<Probe writes={writes} actionHits={actionHits} />)
     mockInput.pressKey("a", { ctrl: true })
     await settle()
-    await mockInput.typeText("t")
+    await mockInput.typeText("f")
     await settle()
-    expect(actionHits).toContain("chat.tab.new")
+    expect(actionHits).toContain("chat.fork.new")
     // Neither stroke may leak into the shell.
     expect(writes.join("")).not.toContain("\x01")
-    expect(writes).not.toContain("t")
+    expect(writes).not.toContain("f")
   })
 
   it("still forwards the same letter to the PTY when no prefix is armed", async () => {
     const writes: string[] = []
     const actionHits: string[] = []
     const { mockInput } = await renderComponent(<Probe writes={writes} actionHits={actionHits} />)
-    await mockInput.typeText("t")
+    await mockInput.typeText("f")
     await settle()
-    expect(writes).toContain("t")
+    expect(writes).toContain("f")
     expect(actionHits).toHaveLength(0)
   })
 
@@ -92,9 +92,9 @@ describe("terminal pane — PureTUI prefix routing (#308)", () => {
     // New key arms and completes the sequence.
     mockInput.pressKey("b", { ctrl: true })
     await settle()
-    await mockInput.typeText("t")
+    await mockInput.typeText("f")
     await settle()
-    expect(actionHits).toContain("chat.tab.new")
+    expect(actionHits).toContain("chat.fork.new")
     expect(writes.join("")).not.toContain("\x02")
   })
 

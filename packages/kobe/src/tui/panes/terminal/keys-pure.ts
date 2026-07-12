@@ -162,13 +162,14 @@ const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
   // Terminal tab management (the PTY chattab, issue #16) — parity with the
   // tmux root key-table which also intercepted these. ctrl+w / f2 double
   // as `workspace.split.close` / `workspace.split.rename` when split —
-  // same chords, so one reservation covers both. All prefix-only
-  // since #308; literals preserve the passthrough interception.
-  "ctrl+t", // chat.tab.new
-  "ctrl+w", // chat.tab.close / workspace.split.close
-  "ctrl+]", // chat.tab.cycle-next
-  "ctrl+[", // chat.tab.cycle-prev
-  { id: "chat.tab.rename" }, // f2 — still a direct default
+  // same chords, so one reservation covers both. Direct chords restored
+  // as dual aliases beside the prefix strokes (owner call 2026-07-11),
+  // so these derive from the table again.
+  { id: "chat.tab.new" }, // ctrl+t
+  { id: "chat.tab.close" }, // ctrl+w
+  { id: "chat.tab.cycle-next" }, // ctrl+]
+  { id: "chat.tab.cycle-prev" }, // ctrl+[
+  { id: "chat.tab.rename" }, // f2
   // Engine picker / quick-fork (ctrl+e, ctrl+f — prefix-only since #308;
   // without the reservation the embedded terminal forwards them to the
   // engine CLI, e.g. emacs-style forward-char on ctrl+f).

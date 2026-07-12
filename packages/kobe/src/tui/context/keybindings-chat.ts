@@ -143,8 +143,10 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.new",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["t"],
+    // Direct-only (owner call 2026-07-11): tab management is
+    // high-frequency, so the single-press chord returned and the prefix
+    // stroke was dropped.
+    keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
     hint: { keys: "ctrl+t" },
@@ -205,8 +207,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.close",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["w"],
+    // Direct-only (owner call 2026-07-11), same as chat.tab.new.
+    keys: ["ctrl+w"],
     category: "Workspace",
     description: "Close chat tab",
     hint: { keys: "ctrl+w" },
@@ -234,8 +236,9 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // collision-prone.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["]"],
+    // Direct-only (owner call 2026-07-11): cycling is a repeated action —
+    // a two-stroke prefix per hop is unusable.
+    keys: ["ctrl+]"],
     category: "Workspace",
     description: "Next chat tab",
     hint: { keys: "ctrl+]" },
@@ -243,8 +246,8 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "chat.tab.cycle-prev",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["["],
+    // Direct-only (owner call 2026-07-11), same as cycle-next.
+    keys: ["ctrl+["],
     category: "Workspace",
     description: "Previous chat tab",
     hint: { keys: "ctrl+[" },

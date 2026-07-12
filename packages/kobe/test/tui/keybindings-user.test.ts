@@ -75,11 +75,11 @@ describe("applyUserKeybindings", () => {
   })
 
   test("adds a direct chord alongside a prefix row through bindings", () => {
-    fileState.doc = { bindings: { "chat.tab.new": "ctrl+g" } }
+    fileState.doc = { bindings: { "chat.fork.new": "ctrl+g" } }
     const report = userKb.reloadUserKeybindings()
 
-    expect(findBinding("chat.tab.new")?.keys).toEqual(["ctrl+g"])
-    expect(findBinding("chat.tab.new")?.prefixKeys).toEqual(["t"])
+    expect(findBinding("chat.fork.new")?.keys).toEqual(["ctrl+g"])
+    expect(findBinding("chat.fork.new")?.prefixKeys).toEqual(["f"])
     expect(report.warnings).toEqual([])
   })
 
