@@ -483,6 +483,11 @@ async function main(): Promise<void> {
     process.exit(2)
   }
 
+  // First interactive launch → the inline onboarding wizard instead of the
+  // TUI (it ends with "run `kobe`"; the next launch lands in the app).
+  const { maybeRunOnboarding } = await import("./onboarding.ts")
+  if (await maybeRunOnboarding()) return
+
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add`) don't pull in opentui/solid at startup.
   const { startTui } = await import("../tui/index.tsx")
