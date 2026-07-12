@@ -201,10 +201,16 @@ export function VersionsPage(props: { onClose: () => void }) {
   )
 }
 
+/** Footer rows for the inline browser: title + 20 releases + hints. */
+const INLINE_ROWS = 24
+
 export async function startVersionsHost(): Promise<void> {
   // Same contract as startUpdateHost: no daemon, npm/GitHub only; closing
   // exits the process (the launching terminal gets its prompt back).
+  // Inline (main-screen footer) — a CLI subcommand should feel like a
+  // prompt, not a fullscreen app; the shell scrollback stays visible.
   await bootPaneHost({
+    inlineRows: INLINE_ROWS,
     setup: () => ({ root: () => <VersionsPage onClose={() => process.exit(0)} /> }),
   })
 }
