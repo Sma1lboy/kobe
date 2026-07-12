@@ -203,9 +203,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // Prefix h/j/k/l — vim-style pane focus. This global navigation action
-    // keeps one static form so it cannot steal ChatPane control bytes. The
-    // four second strokes map to panes by ordinal:
+    // Ctrl+hjkl — vim-style pane focus, with prefix h/j/k/l aliases. The
+    // four chords map to panes by ordinal:
     //   ctrl+h → 1 = sidebar (TASKS)
     //   ctrl+j → 2 = workspace
     //   ctrl+k → 3 = files
@@ -215,7 +214,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // byte) and alt+digit gets eaten by macOS launchers like Raycast.
     id: "focus.numeric",
     scope: "global",
-    keys: [],
+    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
     prefixKeys: ["h", "j", "k", "l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",

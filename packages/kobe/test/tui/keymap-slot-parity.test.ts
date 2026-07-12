@@ -64,7 +64,7 @@ afterEach(() => {
 })
 
 describe("slot dispatch parity with default keys", () => {
-  test("focus.numeric wraps prefix slots back onto the four pane ordinals", () => {
+  test("focus.numeric keeps global Ctrl and prefix pane aliases on the same slots", () => {
     const panes = ["sidebar", "workspace", "files", "workspace"] as const
     const calls: string[] = []
     const reg: RegisteredBinding = {
@@ -76,11 +76,12 @@ describe("slot dispatch parity with default keys", () => {
       }),
     }
 
+    expect(dispatchKeyEvent([reg], makeEvt("h", true))).toBe(true)
     expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
     expect(dispatchKeyEvent([reg], makeEvt("h"))).toBe(true)
     expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
     expect(dispatchKeyEvent([reg], makeEvt("l"))).toBe(true)
-    expect(calls).toEqual(["sidebar", "workspace"])
+    expect(calls).toEqual(["sidebar", "sidebar", "workspace"])
   })
 
   test("focus.numeric keeps prefix pane slots when direct aliases are added", () => {
