@@ -285,6 +285,24 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "notice.send",
+      async handle(payload, ctx) {
+        // `kobe api notify`: one toast for every attached UI. The daemon
+        // only validates + broadcasts; NotificationsProvider in each
+        // subscribed host renders it (and dedupes replays on `at`).
+        const title = requireString(payload, "title")
+        // Free-form kind: known severities get styled by the TUI, anything
+        // else renders neutrally — agents may invent their own vocabulary.
+        const kind = optionalString(payload, "kind") ?? "done"
+        if (kind.trim() === "") throw new Error("kind must be a non-empty string")
+        const taskId = optionalString(payload, "taskId")
+        if (taskId !== undefined && !ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
+        const source = optionalString(payload, "source")
+        ctx.bus.publish("notice.event", { title, kind, taskId, at: Date.now(), source })
+        return { ok: true }
+      },
+    },
+    {
       name: "note.file",
       async handle(payload, ctx) {
         // Field note (docs/design/dispatcher.md): a worktree session files a

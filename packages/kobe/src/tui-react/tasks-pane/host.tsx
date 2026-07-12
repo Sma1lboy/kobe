@@ -43,6 +43,7 @@ import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
+import { useDaemonNotices } from "../lib/use-daemon-notices"
 import { useLatest } from "../lib/use-latest"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
@@ -98,6 +99,8 @@ export function TasksShell(props: TasksShellProps) {
   const dialog = useDialog()
   const kv = useKV()
   const notif = useNotifications()
+  // Daemon-broadcast toasts (`kobe api notify` → notice.event).
+  useDaemonNotices(props.orch, notif.notify)
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     props.tasks.some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks[0]?.id ?? null),
   )

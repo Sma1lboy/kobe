@@ -147,12 +147,59 @@ describe("daemon handler registry", () => {
       "worktree.remove",
       "engine.reportEvent",
       "session.deliver",
+      "notice.send",
       "note.file",
     ]
     const registry = createDaemonHandlerRegistry()
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()
     expect(registry.has("subscribe")).toBe(false)
     expect(registry.size).toBe(rpcNames.length)
+  })
+
+  describe("notice.send", () => {
+    it("publishes a notice.event with a stamped `at` and the default kind", async () => {
+      const { ctx, rec } = fakeCtx()
+      const before = Date.now()
+      const result = await dispatch("notice.send", { title: "build done" }, ctx)
+      expect(result).toEqual({ ok: true })
+      expect(rec.published).toHaveLength(1)
+      const event = rec.published[0] as { channel: string; payload: Record<string, unknown> }
+      expect(event.channel).toBe("notice.event")
+      expect(event.payload.title).toBe("build done")
+      expect(event.payload.kind).toBe("done")
+      expect(event.payload.taskId).toBeUndefined()
+      expect(typeof event.payload.at).toBe("number")
+      expect(event.payload.at as number).toBeGreaterThanOrEqual(before)
+    })
+
+    it("carries kind/taskId/source through when valid", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: (id: string) => (id === "t1" ? TASK : undefined) })
+      await dispatch(
+        "notice.send",
+        { title: "needs a decision", kind: "needs_input", taskId: "t1", source: "api" },
+        ctx,
+      )
+      const payload = (rec.published[0] as { payload: Record<string, unknown> }).payload
+      expect(payload.kind).toBe("needs_input")
+      expect(payload.taskId).toBe("t1")
+      expect(payload.source).toBe("api")
+    })
+
+    it("accepts an arbitrary agent-invented kind verbatim", async () => {
+      const { ctx, rec } = fakeCtx()
+      await dispatch("notice.send", { title: "review round 2 posted", kind: "review-ready" }, ctx)
+      const payload = (rec.published[0] as { payload: Record<string, unknown> }).payload
+      expect(payload.kind).toBe("review-ready")
+    })
+
+    it("rejects an empty kind and an unknown task", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => undefined })
+      await expect(dispatch("notice.send", { title: "x", kind: "  " }, ctx)).rejects.toThrow(
+        "kind must be a non-empty string",
+      )
+      await expect(dispatch("notice.send", { title: "x", taskId: "nope" }, ctx)).rejects.toThrow("task not found: nope")
+      expect(rec.published).toHaveLength(0)
+    })
   })
 
   describe("task CRUD", () => {

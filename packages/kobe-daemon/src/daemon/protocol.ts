@@ -16,6 +16,7 @@ export {
   CHANNEL_NAMES,
   type ChannelName,
   type ChannelPayloads,
+  type NoticeEventPayload,
   type SessionDeliverPayload,
   type TranscriptActivityPayload,
   type UiPrefsPayload,
@@ -157,6 +158,9 @@ export type DaemonRequestName =
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
   | "session.deliver"
+  // Broadcast one toast to every attached UI over the `notice.event`
+  // channel (`kobe api notify`). The daemon only validates + publishes.
+  | "notice.send"
   // Field note (docs/design/dispatcher.md): a worktree session files a
   // one-line resolved gotcha; the daemon forwards it to the repo's
   // dispatcher seat (the main session) over `session.deliver`.

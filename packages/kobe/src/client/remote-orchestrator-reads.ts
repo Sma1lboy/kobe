@@ -9,7 +9,7 @@
  * `performInit`/`handleOrchestratorEvent` don't need).
  */
 
-import type { UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { NoticeEventPayload, UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { ExternalStore, ReadableState } from "../lib/external-store.ts"
 import type { Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId } from "../types/task.ts"
@@ -34,6 +34,8 @@ export interface ReadSignals {
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly transcriptActivityStoreInner: ExternalStore<TranscriptActivityMap | null>
+  readonly noticeAcc: ReadableState<NoticeEventPayload | null>
+  readonly noticeStoreInner: ExternalStore<NoticeEventPayload | null>
   readonly uiPrefsAcc: ReadableState<UiPrefsPayload | null>
   readonly uiPrefsStoreInner: ExternalStore<UiPrefsPayload | null>
   readonly keybindingsRevAcc: ReadableState<number | null>
@@ -138,6 +140,11 @@ export function transcriptActivitySignalOp(s: ReadSignals): ReadableState<Transc
 /** Framework-free twin of {@link transcriptActivitySignalOp} — see uiPrefsStoreOp. */
 export function transcriptActivityStoreOp(s: ReadSignals): ExternalStore<TranscriptActivityMap | null> {
   return s.transcriptActivityStoreInner
+}
+
+/** Latest `notice.event` broadcast (a toast) — consumers dedupe on `at`. */
+export function noticeStoreOp(s: ReadSignals): ExternalStore<NoticeEventPayload | null> {
+  return s.noticeStoreInner
 }
 
 /**

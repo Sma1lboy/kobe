@@ -187,10 +187,34 @@ export interface ChannelPayloads {
    * definition-time caveat) — consumers dedupe on `at`.
    */
   "session.deliver": SessionDeliverPayload
+  /**
+   * One toast for the attached UIs (`kobe api notify` → `notice.send` →
+   * here). EVENT channel, not state: last-value replay hands a late
+   * subscriber only the most recent notice — consumers dedupe on `at`
+   * and drop stale replays.
+   */
+  "notice.event": NoticeEventPayload
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
   // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
+}
+
+/** The `notice.event` channel payload — one toast for every attached UI. */
+export interface NoticeEventPayload {
+  readonly title: string
+  /**
+   * Free-form kind tag. The TUI styles the known severities
+   * ("done" / "needs_input" / "error" — its NotificationKind vocabulary)
+   * and renders anything else neutrally, so agents may invent their own.
+   */
+  readonly kind: string
+  /** Optional task the notice concerns (drives the sidebar unread mark). */
+  readonly taskId?: string
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+  /** Free-form origin tag (e.g. "api", an agent name). */
+  readonly source?: string
 }
 
 /** The `session.deliver` channel payload — one "paste this into task X". */
@@ -227,6 +251,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "worktree.changes",
   "transcript.activity",
   "session.deliver",
+  "notice.event",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)

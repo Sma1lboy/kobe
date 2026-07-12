@@ -17,6 +17,7 @@ import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-l
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import {
   type ChannelName,
+  type NoticeEventPayload,
   type SubscribeRole,
   type UiPrefsPayload,
   isDaemonVersionStale,
@@ -48,6 +49,7 @@ import {
   keybindingsRevSignalOp,
   keybindingsRevStoreOp,
   listTasksOp,
+  noticeStoreOp,
   subscribeTasksOp,
   taskJobsSignalOp,
   tasksSignalOp,
@@ -119,6 +121,8 @@ export class RemoteOrchestrator {
   private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
   private readonly setTranscriptActivitySig = (next: TranscriptActivityMap | null) =>
     this.transcriptActivityAcc.set(next)
+  private readonly noticeAcc = createStateCell<NoticeEventPayload | null>(null)
+  private readonly setNoticeSig = (next: NoticeEventPayload | null) => this.noticeAcc.set(next)
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
   private readonly setUiPrefsSig = (next: UiPrefsPayload | null) => this.uiPrefsAcc.set(next)
   private readonly keybindingsRevAcc = createStateCell<number | null>(null)
@@ -161,6 +165,7 @@ export class RemoteOrchestrator {
       setWorktreeChangesSig: this.setWorktreeChangesSig,
       transcriptActivityAcc: this.transcriptActivityAcc,
       setTranscriptActivitySig: this.setTranscriptActivitySig,
+      setNoticeSig: this.setNoticeSig,
       setUiPrefsSig: this.setUiPrefsSig,
       setKeybindingsRevSig: this.setKeybindingsRevSig,
       setConnectionState: this.setConnectionState,
@@ -176,6 +181,8 @@ export class RemoteOrchestrator {
       worktreeChangesAcc: this.worktreeChangesAcc,
       transcriptActivityAcc: this.transcriptActivityAcc,
       transcriptActivityStoreInner: this.transcriptActivityAcc,
+      noticeAcc: this.noticeAcc,
+      noticeStoreInner: this.noticeAcc,
       uiPrefsAcc: this.uiPrefsAcc,
       uiPrefsStoreInner: this.uiPrefsAcc,
       keybindingsRevAcc: this.keybindingsRevAcc,
@@ -313,6 +320,11 @@ export class RemoteOrchestrator {
 
   transcriptActivityStore(): ExternalStore<TranscriptActivityMap | null> {
     return transcriptActivityStoreOp(this.reads)
+  }
+
+  /** Latest daemon-broadcast notice (`notice.event`) — consumers dedupe on `at`. */
+  noticeStore(): ExternalStore<NoticeEventPayload | null> {
+    return noticeStoreOp(this.reads)
   }
 
   uiPrefsSignal(): ReadableState<UiPrefsPayload | null> {

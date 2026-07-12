@@ -14,7 +14,13 @@
  * is exactly as cheap as calling them as methods.
  */
 
-import type { ChannelName, SerializedTask, SubscribeRole, UiPrefsPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type {
+  ChannelName,
+  NoticeEventPayload,
+  SerializedTask,
+  SubscribeRole,
+  UiPrefsPayload,
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { ReadableState } from "../lib/external-store.ts"
 import { type WorktreeChanges, sameWorktreeChanges } from "../tui/panes/sidebar/worktree-changes.ts"
@@ -247,6 +253,7 @@ export interface OrchestratorSignals {
   readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
+  readonly setNoticeSig: (next: NoticeEventPayload | null) => void
   readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   readonly setKeybindingsRevSig: (next: number | null) => void
   readonly setConnectionState: (next: DaemonConnectionState) => void

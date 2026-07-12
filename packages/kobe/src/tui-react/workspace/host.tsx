@@ -27,6 +27,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useAccessor } from "../lib/use-accessor"
+import { useDaemonNotices } from "../lib/use-daemon-notices"
 import { FileTree } from "../panes/filetree/FileTree"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
@@ -54,6 +55,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const dims = useTerminalDimensions()
   const notif = useNotifications()
   const orch = props.orchestrator
+  // Daemon-broadcast toasts (`kobe api notify` → notice.event).
+  useDaemonNotices(orch, notif.notify)
 
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())

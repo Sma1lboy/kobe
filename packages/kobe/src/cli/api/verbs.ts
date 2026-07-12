@@ -309,6 +309,43 @@ export const VERBS: readonly VerbSpec[] = [
     handler: issueUpdate,
   },
   {
+    name: "notify",
+    summary:
+      "Show a toast in every attached kobe UI — broadcast over the daemon's notice.event channel. Agents/scripts use it to surface 'done / needs input / error' moments without touching the task's session.",
+    flags: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        placeholder: "TEXT",
+        description: "Toast text (one line).",
+      },
+      {
+        name: "kind",
+        type: "string",
+        default: "done",
+        placeholder: "KIND",
+        description:
+          'Free-form kind tag. "done", "needs_input" and "error" get the TUI\'s severity styling/unread mark; any other value renders neutrally.',
+      },
+      F.taskId(false),
+      {
+        name: "source",
+        type: "string",
+        placeholder: "TAG",
+        description: "Free-form origin tag (e.g. an agent name) recorded on the event.",
+      },
+    ],
+    handler: async (ctx) => {
+      return simpleRpc(ctx, "notice.send", {
+        title: ctx.args.str("title"),
+        kind: ctx.args.str("kind") ?? "done",
+        taskId: ctx.args.str("task-id"),
+        source: ctx.args.str("source"),
+      })
+    },
+  },
+  {
     name: "pty-list",
     summary:
       "List hosted PTY sessions (key, alive, pid, command, live OSC window title). Empty when no pty host runs. Returns { sessions }.",

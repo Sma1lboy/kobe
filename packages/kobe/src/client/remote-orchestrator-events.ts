@@ -8,7 +8,7 @@
  */
 
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
-import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { NoticeEventPayload, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { UpdateInfo } from "../version.ts"
 import {
@@ -169,6 +169,15 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     const current = signals.transcriptActivityAcc()
     if (current && sameTranscriptActivityMap(current, next)) return
     signals.setTranscriptActivitySig(next)
+    return
+  }
+  if (name === "notice.event") {
+    const p = payload as Partial<NoticeEventPayload> | undefined
+    if (typeof p?.title !== "string" || typeof p.at !== "number" || typeof p.kind !== "string") {
+      logClientError("orch", `dropped notice.event: malformed payload (${describePayload(payload)})`)
+      return
+    }
+    signals.setNoticeSig(p as NoticeEventPayload)
     return
   }
   if (name === "ui-prefs") {
