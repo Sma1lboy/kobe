@@ -208,7 +208,9 @@ function IssueDetailDialogView(
     )
   }
 
-  const frameColor = (ownField: Field) => (field === ownField ? theme.borderActive : theme.borderSubtle)
+  // Focused/selected frames light up PRIMARY — the same accent the kanban
+  // card cursor and the pane focus grammar use, not the generic borderActive.
+  const frameColor = (ownField: Field) => (field === ownField ? theme.primary : theme.borderSubtle)
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
@@ -292,7 +294,7 @@ function IssueDetailDialogView(
                   <box
                     key={engine}
                     border={true}
-                    borderColor={selected ? theme.borderActive : theme.borderSubtle}
+                    borderColor={selected ? theme.primary : theme.borderSubtle}
                     backgroundColor={selected ? theme.backgroundElement : undefined}
                     paddingLeft={2}
                     paddingRight={2}
