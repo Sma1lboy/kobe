@@ -8,11 +8,11 @@
  * `kobe reset`, not a daemon-less in-process Orchestrator.
  */
 
-import { nativeChatEnabled } from "../env.ts"
+import type { LaunchMode } from "../launch-mode.ts"
 import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 import { publishKobeTerminalTitle } from "./lib/outer-terminal-title.ts"
 
-export async function startTui(): Promise<void> {
+export async function startTui(mode: LaunchMode): Promise<void> {
   // Own the outer emulator's tab/window title while kobe is running. Without
   // an OSC title, iTerm2 falls back to the packaged JavaScript runtime name
   // (observed as "node") instead of the product the user launched.
@@ -23,7 +23,7 @@ export async function startTui(): Promise<void> {
   // check is `kobe doctor`. No-op when installed or already shown once.
   maybeHintSkillInstall()
 
-  if (nativeChatEnabled()) {
+  if (mode === "puretui") {
     // The native workspace is React-only (issue #16 — the Solid host was removed).
     const { startWorkspaceHost } = await import("../tui-react/workspace/host.tsx")
     await startWorkspaceHost()
