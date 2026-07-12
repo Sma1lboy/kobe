@@ -25,6 +25,41 @@ export function hostRenderOptions(onDestroy?: () => void): Record<string, unknow
 }
 
 /**
+ * Inline (ink-style) variant for CLI-command hosts (`kobe update list`,
+ * onboarding): a reserved `heightRows` footer on the MAIN screen instead of
+ * the alternate screen — the shell's scrollback stays visible above, and
+ * the footer is cleared on exit so the prompt returns where it was. The
+ * runtime TUI (workspace, panes) keeps `hostRenderOptions`; anything a user
+ * reaches through a subcommand should feel like a prompt, not an app.
+ */
+export function inlineRenderOptions(heightRows: number, onDestroy?: () => void): Record<string, unknown> {
+  const base = {
+    backgroundColor: "transparent",
+    // No externalOutputMode override: split-footer defaults to
+    // capture-stdout, which replays stray logs above the footer instead of
+    // letting them corrupt it.
+    exitOnCtrlC: false,
+    screenMode: "split-footer",
+    footerHeight: heightRows,
+    useKittyKeyboard: {},
+  }
+  return onDestroy ? { ...base, onDestroy } : base
+}
+
+/**
+ * Terminal-restore backstop: pages quit via `process.exit()` (every
+ * `onClose`), which fires "exit" but NOT "beforeExit" — the only hook
+ * opentui registers. Without this, mouse tracking / kitty keyboard stay
+ * enabled and the shell prompt drowns in `35;57;38M…` reports until a
+ * manual `reset`. `destroy()` is idempotent (`_isDestroyed` guard) and
+ * restores terminal+input state synchronously, so it is safe inside the
+ * sync-only "exit" handler; a normal destroy beforehand makes this a no-op.
+ */
+export function installExitRestoreBackstop(renderer: { destroy(): void }): void {
+  process.on("exit", () => renderer.destroy())
+}
+
+/**
  * Exit-signal backstop (orphaned-helper leak): opentui's own exit handler
  * for SIGHUP/SIGTERM only destroys the renderer — it never calls
  * process.exit — and installing that listener replaced the signals' default

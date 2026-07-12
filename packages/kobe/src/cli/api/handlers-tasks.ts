@@ -15,13 +15,23 @@ import { ApiError, type VerbContext } from "./types.ts"
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {
   const title = ctx.args.str("title")
   const body = ctx.args.str("body")
-  if (title === undefined && body === undefined) {
-    throw new ApiError("issue-update requires --title and/or --body", "MISSING_FLAG")
+  const task = ctx.args.str("task")
+  if (title === undefined && body === undefined && task === undefined) {
+    throw new ApiError("issue-update requires --title, --body, and/or --task", "MISSING_FLAG")
   }
-  return simpleRpc(ctx, "issue.mutate", {
-    repoRoot: ctx.args.requirePath("repo"),
-    op: { type: "update", id: ctx.args.int("id"), title, body },
-  })
+  const repoRoot = ctx.args.requirePath("repo")
+  const id = ctx.args.int("id")
+  let result: unknown
+  if (title !== undefined || body !== undefined) {
+    result = await simpleRpc(ctx, "issue.mutate", { repoRoot, op: { type: "update", id, title, body } })
+  }
+  if (task !== undefined) {
+    // `--task none` unlinks; anything else links. Linking IS the kanban move to
+    // In progress — the board column derives from the link, not a stored column.
+    const op = task === "none" ? { type: "unlink", id } : { type: "link", id, taskId: task }
+    result = await simpleRpc(ctx, "issue.mutate", { repoRoot, op })
+  }
+  return result
 }
 
 export async function add(ctx: VerbContext): Promise<unknown> {

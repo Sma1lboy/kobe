@@ -93,14 +93,8 @@ export function VersionsPage(props: { onClose: () => void }) {
   const selectedNotes = selectedVersion === undefined ? undefined : notes[selectedVersion]
 
   return (
-    <box
-      flexDirection="column"
-      flexGrow={1}
-      backgroundColor={theme.background}
-      paddingTop={1}
-      paddingLeft={2}
-      paddingRight={2}
-    >
+    // No backgroundColor: inline pages sit on the shell's own background.
+    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingLeft={2} paddingRight={2}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           {t("update.versions.pageTitle")}
@@ -201,10 +195,16 @@ export function VersionsPage(props: { onClose: () => void }) {
   )
 }
 
+/** Footer rows for the inline browser: title + 20 releases + hints. */
+const INLINE_ROWS = 24
+
 export async function startVersionsHost(): Promise<void> {
   // Same contract as startUpdateHost: no daemon, npm/GitHub only; closing
   // exits the process (the launching terminal gets its prompt back).
+  // Inline (main-screen footer) — a CLI subcommand should feel like a
+  // prompt, not a fullscreen app; the shell scrollback stays visible.
   await bootPaneHost({
+    inlineRows: INLINE_ROWS,
     setup: () => ({ root: () => <VersionsPage onClose={() => process.exit(0)} /> }),
   })
 }

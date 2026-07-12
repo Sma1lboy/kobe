@@ -43,6 +43,8 @@ export type WorkspaceKeybindingDeps = {
   openWorktrees: () => void
   updateOpen: boolean
   openUpdate: () => void
+  kanbanOpen: boolean
+  openKanban: () => void
   searchActive: boolean
   selectedId: string | null
   openSettings: () => void
@@ -99,6 +101,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     settingsOpen: deps.settingsOpen,
     worktreesOpen: deps.worktreesOpen,
     updateOpen: deps.updateOpen,
+    kanbanOpen: deps.kanbanOpen,
   }
   const pagesClosed = workspacePagesClosed(pages)
 
@@ -143,6 +146,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
       },
       "settings.open.sidebar": () => deps.openSettings(),
       "worktrees.open.sidebar": () => deps.openWorktrees(),
+      "kanban.open.sidebar": () => deps.openKanban(),
       "tasks.update": () => deps.openUpdate(),
     }),
   }))

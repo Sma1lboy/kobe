@@ -7,8 +7,10 @@
  * flow changes only require editing `scripts/update.sh` on main.
  *
  * `kobe update <version>` pins the install (the script receives the
- * version as `sh -s -- <version>`); `--list` prints recent published
- * versions. Installing across a {@link BREAKING_VERSIONS} entry prints a
+ * version as `sh -s -- <version>`); `kobe update list` prints recent
+ * published versions. Verbs are the canonical spelling — `--list` /
+ * `--dry-run` stay as accepted aliases. Installing across a
+ * {@link BREAKING_VERSIONS} entry prints a
  * heads-up that the next launch will demand `kobe reset` (the boot gate
  * in reset-gate.ts is the enforcement point — the script stays dumb).
  */
@@ -66,11 +68,11 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
     const arg = args[i]
     if (arg === undefined) continue
     if (arg === "--help" || arg === "-h" || arg === "help") return { help: true, dryRun, list, version }
-    if (arg === "--dry-run") {
+    if (arg === "dry-run" || arg === "--dry-run") {
       dryRun = true
       continue
     }
-    if (arg === "--list" || arg === "list") {
+    if (arg === "list" || arg === "--list") {
       list = true
       continue
     }
@@ -92,15 +94,15 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
 function printUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
-      "Usage: kobe update [version] [--list] [--dry-run]",
+      "Usage: kobe update [version|list|dry-run]",
       "",
       "Runs kobe's GitHub-hosted update script. With [version] (e.g.",
       "0.7.90) the script installs that exact release instead of latest.",
       "",
-      "Options:",
-      "  --list      Browse recent versions — a TUI page with release notes",
-      "              when interactive, plain text when piped",
-      "  --dry-run   Print the command without running it",
+      "Verbs (--flag spellings also accepted):",
+      "  list      Browse recent versions — a TUI page with release notes",
+      "            when interactive, plain text when piped",
+      "  dry-run   Print the command without running it",
       "",
       "Default command:",
       `  ${UPDATE_COMMAND}`,
@@ -114,8 +116,8 @@ function printUsage(out: Pick<typeof process.stderr, "write">): void {
       "Examples:",
       "  kobe update",
       "  kobe update 0.7.90",
-      "  kobe update --list",
-      "  kobe update --dry-run",
+      "  kobe update list",
+      "  kobe update dry-run",
       "",
     ].join("\n"),
   )

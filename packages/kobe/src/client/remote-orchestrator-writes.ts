@@ -7,6 +7,7 @@
  */
 
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import type { RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { LandResult } from "../orchestrator/land.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
@@ -144,6 +145,11 @@ export async function listWorktreesOp(
  *  always had. */
 export async function removeWorktreeOp(client: KobeDaemonClient, path: string, force?: boolean): Promise<void> {
   await client.request("worktree.remove", { path, force })
+}
+
+/** A repo's daemon-owned issues (`issue.list`) — the TUI kanban page's read. */
+export async function listIssuesOp(client: KobeDaemonClient, repoRoot: string): Promise<RepoIssues> {
+  return client.request<RepoIssues>("issue.list", { repoRoot })
 }
 
 /**

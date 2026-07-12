@@ -15,6 +15,7 @@
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import type { RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import {
   type ChannelName,
   type NoticeEventPayload,
@@ -69,6 +70,7 @@ import {
   ensureWorktreeOp,
   forgetProjectOp,
   landTaskOp,
+  listIssuesOp,
   listWorktreesOp,
   moveTaskOp,
   removeWorktreeOp,
@@ -425,6 +427,11 @@ export class RemoteOrchestrator {
    *  local-signals-only fast pass. */
   listWorktrees(opts?: { network?: boolean }): Promise<readonly WorktreeProject[]> {
     return listWorktreesOp(this.client, opts)
+  }
+
+  /** A repo's daemon-owned issues (`issue.list`) — the kanban page's read. */
+  listIssues(repoRoot: string): Promise<RepoIssues> {
+    return listIssuesOp(this.client, repoRoot)
   }
 
   /** Remove a worktree (`worktree.remove`); refuses a dirty one unless

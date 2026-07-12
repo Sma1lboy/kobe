@@ -345,11 +345,6 @@ function printTopLevelUsage(out: Pick<typeof process.stderr, "write">): void {
 
 async function main(): Promise<void> {
   const [, , ...rawArgs] = process.argv
-  if (rawArgs.length === 0) {
-    const { startTui } = await import("../tui/index.tsx")
-    await startTui()
-    return
-  }
   const [subcommand, ...rest] = rawArgs
 
   if (subcommand === "--version" || subcommand === "-v" || subcommand === "version") {
@@ -452,10 +447,28 @@ async function main(): Promise<void> {
     return
   }
   // An unrecognized subcommand is a CLI error, not a TUI launch — a typo
-  // like `kobe statsu` should print usage and exit non-zero.
-  console.error(`kobe: unknown command '${subcommand}'`)
-  printTopLevelUsage(process.stderr)
-  process.exit(2)
+  // like `kobe statsu` should print usage and exit non-zero, not silently
+  // open the project. Only a bare `kobe` (no subcommand) launches the TUI.
+  if (subcommand !== undefined) {
+    console.error(`kobe: unknown command '${subcommand}'`)
+    printTopLevelUsage(process.stderr)
+    process.exit(2)
+  }
+
+  // Own the terminal title before the first-run gate: onboarding is itself
+  // an interactive Kobe UI and may return without ever calling startTui().
+  const { publishKobeTerminalTitle } = await import("../tui/lib/outer-terminal-title.ts")
+  publishKobeTerminalTitle()
+
+  // First interactive launch → the inline onboarding wizard instead of the
+  // TUI (it ends with "run `kobe`"; the next launch lands in the app).
+  const { maybeRunOnboarding } = await import("./onboarding.ts")
+  if (await maybeRunOnboarding()) return
+
+  // Default: launch the TUI. Dynamic import so non-TUI subcommands
+  // (like `kobe add`) don't pull in opentui/solid at startup.
+  const { startTui } = await import("../tui/index.tsx")
+  await startTui()
 }
 
 main().catch((err) => {

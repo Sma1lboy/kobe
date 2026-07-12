@@ -176,6 +176,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "x" },
   },
   {
+    // Sidebar-launched utility page like worktrees above — no global
+    // companion chord. `c` (cards): the mnemonic letters k/b/i are taken
+    // (sidebar.nav / tasks.renameBranch / sidebar.previewToggle) and w/e
+    // stay free for keymap-slot-parity.test.ts.
+    id: "kanban.open.sidebar",
+    scope: "sidebar",
+    keys: ["c"],
+    category: "Sidebar",
+    description: "Open kanban (issues board)",
+    hint: { keys: "c" },
+  },
+  {
     // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is
     // also registered here for the native workspace's tmux-like two-stage
     // detach: first ctrl+q returns focus to the sidebar, second ctrl+q exits

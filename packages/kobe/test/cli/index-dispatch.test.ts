@@ -18,6 +18,7 @@ const spies = vi.hoisted(() => ({
   hook: vi.fn(async () => {}),
   addRemote: vi.fn(async () => {}),
   startTui: vi.fn(async () => {}),
+  onboarding: vi.fn(async () => false),
 }))
 
 vi.mock("../../src/cli/completions-cmd.ts", () => ({ runCompletionsSubcommand: spies.completions }))
@@ -34,6 +35,7 @@ vi.mock("../../src/cli/web-cmd.ts", () => ({ runWebSubcommand: spies.web }))
 vi.mock("../../src/cli/skill-cmd.ts", () => ({ runSkillSubcommand: spies.skill }))
 vi.mock("../../src/cli/hook-cmd.ts", () => ({ runHookSubcommand: spies.hook }))
 vi.mock("../../src/cli/add-remote.ts", () => ({ runAddRemote: spies.addRemote }))
+vi.mock("../../src/cli/onboarding.ts", () => ({ maybeRunOnboarding: spies.onboarding }))
 vi.mock("../../src/tui/index.tsx", () => ({ startTui: spies.startTui }))
 
 let originalArgv: string[]
@@ -47,7 +49,10 @@ async function runCli(...args: string[]): Promise<void> {
   process.argv = ["bun", "/kobe/src/cli/index.ts", ...args]
   vi.resetModules()
   await import("../../src/cli/index.ts")
-  for (let i = 0; i < 3; i++) await new Promise((resolve) => setImmediate(resolve))
+  // Bare launch performs two sequential dynamic imports (terminal-title,
+  // then onboarding) before it may import the TUI. Drain enough turns for
+  // that fire-and-forget main() chain to settle before assertions run.
+  for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve))
 }
 
 function stdoutText(): string {
@@ -56,6 +61,7 @@ function stdoutText(): string {
 
 beforeEach(() => {
   originalArgv = process.argv
+  spies.onboarding.mockResolvedValue(false)
   let exited = false
   exitSpy = vi.fn((code?: number) => {
     if (exited) return
@@ -88,9 +94,18 @@ describe("version, help, launch, and unknown commands", () => {
     expect(exitSpy).not.toHaveBeenCalled()
   })
 
-  test("bare kobe launches the sole TUI", async () => {
+  test("bare kobe launches the sole TUI after onboarding is complete", async () => {
     await runCli()
-    expect(spies.startTui).toHaveBeenCalledWith()
+    await vi.waitFor(() => expect(spies.onboarding).toHaveBeenCalled())
+    await vi.waitFor(() => expect(spies.startTui).toHaveBeenCalledWith())
+  })
+
+  test("a first run hands launch to onboarding instead of the TUI", async () => {
+    spies.onboarding.mockResolvedValueOnce(true)
+    await runCli()
+    await vi.waitFor(() => expect(spies.onboarding).toHaveBeenCalled())
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(spies.startTui).not.toHaveBeenCalled()
   })
 
   test.each(["--tmux", "--puretui", "reload", "kill-sessions"])(

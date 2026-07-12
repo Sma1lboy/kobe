@@ -23,13 +23,14 @@ describe("updatePlan", () => {
 })
 
 describe("parseUpdateArgs", () => {
-  it("parses dry-run", () => {
+  it("parses dry-run (verb and --flag spellings)", () => {
     expect(parseUpdateArgs(["--dry-run"])).toEqual({
       help: false,
       dryRun: true,
       list: false,
       version: undefined,
     })
+    expect(parseUpdateArgs(["dry-run"]).dryRun).toBe(true)
   })
 
   it("parses a pinned version (plain and prerelease)", () => {
@@ -43,7 +44,8 @@ describe("parseUpdateArgs", () => {
     })
   })
 
-  it("parses --list", () => {
+  it("parses list (verb and --flag spellings)", () => {
+    expect(parseUpdateArgs(["list"]).list).toBe(true)
     expect(parseUpdateArgs(["--list"]).list).toBe(true)
   })
 
@@ -63,7 +65,7 @@ describe("parseUpdateArgs", () => {
       const err = errSpy.mock.calls.map((c) => String(c[0])).join("")
       // The instruction surface, not a bare one-liner: usage + script URL + fallback.
       expect(err).toContain('kobe update: unknown argument "--fast"')
-      expect(err).toContain("Usage: kobe update [version] [--list] [--dry-run]")
+      expect(err).toContain("Usage: kobe update [version|list|dry-run]")
       expect(err).toContain(UPDATE_SCRIPT_URL)
       expect(err).toContain(recommendedGlobalInstallCommand())
     } finally {
@@ -174,7 +176,7 @@ describe("runUpdateSubcommand", () => {
       stderr: { write: () => true },
       exit: exit as never,
     })
-    expect(out.join("")).toContain("Usage: kobe update [version] [--list] [--dry-run]")
+    expect(out.join("")).toContain("Usage: kobe update [version|list|dry-run]")
     expect(spawn).not.toHaveBeenCalled()
     expect(exit).not.toHaveBeenCalled()
   })

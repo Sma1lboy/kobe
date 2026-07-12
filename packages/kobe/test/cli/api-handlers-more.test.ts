@@ -206,14 +206,45 @@ describe("issue verbs", () => {
     expect(client.requests[0].payload).toMatchObject({ op: { type: "update", id: 7, body: "More detail" } })
   })
 
-  it("issue-update with neither title nor body is MISSING_FLAG before any RPC", async () => {
+  it("issue-update with no flags at all is MISSING_FLAG before any RPC", async () => {
     const client = new FakeClient()
     await expectApiError(
       () => invokeVerb("issue-update", ["--repo", "/repo/x", "--id", "7"], { client, runtime: stubRuntime() }),
       "MISSING_FLAG",
-      "issue-update requires --title and/or --body",
+      "issue-update requires --title, --body, and/or --task",
     )
     expect(client.requests).toEqual([])
+  })
+
+  it("issue-update --task links the issue to the task", async () => {
+    const client = new FakeClient({ "issue.mutate": () => ({ issues: [] }) })
+    await invokeVerb("issue-update", ["--repo", "/repo/x", "--id", "7", "--task", "01TASK"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      { name: "issue.mutate", payload: { repoRoot: "/repo/x", op: { type: "link", id: 7, taskId: "01TASK" } } },
+    ])
+  })
+
+  it("issue-update --task none unlinks", async () => {
+    const client = new FakeClient({ "issue.mutate": () => ({ issues: [] }) })
+    await invokeVerb("issue-update", ["--repo", "/repo/x", "--id", "7", "--task", "none"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      { name: "issue.mutate", payload: { repoRoot: "/repo/x", op: { type: "unlink", id: 7 } } },
+    ])
+  })
+
+  it("issue-update with title AND task sends update then link, in that order", async () => {
+    const client = new FakeClient({ "issue.mutate": () => ({ issues: [] }) })
+    await invokeVerb("issue-update", ["--repo", "/repo/x", "--id", "7", "--title", "Renamed", "--task", "01TASK"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests.map((r) => (r.payload as { op: { type: string } }).op.type)).toEqual(["update", "link"])
   })
 })
 

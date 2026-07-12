@@ -32,7 +32,7 @@ export function topLevelUsage(): string {
     "  theme <verb>            Manage user themes (list|add|remove)",
     "  skill <verb>            Install the kobe agent skill (install|status|command)",
     "  feedback                Send feedback to GitHub Discussions",
-    "  update [target]         Self-update kobe",
+    "  update [version|list]   Self-update kobe, or browse versions with `list`",
     "",
     "Options:",
     "  -v, --version           Print version",

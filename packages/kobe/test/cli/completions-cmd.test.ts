@@ -45,6 +45,15 @@ describe("runCompletionsSubcommand", () => {
     for (const sub of TOP_LEVEL_SUBCOMMANDS) expect(script).toContain(`"${sub}"`)
   })
 
+  test("zsh script self-registers when sourced directly (not only via fpath)", async () => {
+    await runCompletionsSubcommand(["zsh"])
+    const script = stdoutText()
+    // fpath-autoload path: the funcstack guard runs the completion fn.
+    expect(script).toContain('if [ "${funcstack[1]}" = "_kobe" ]')
+    // source <(...) path: falls through to an explicit compdef registration.
+    expect(script).toContain("compdef _kobe kobe")
+  })
+
   test("fish script emits one complete line per subcommand", async () => {
     await runCompletionsSubcommand(["fish"])
     const script = stdoutText()

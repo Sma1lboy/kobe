@@ -43,6 +43,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
+| `F7` | Jump to the next waiting task |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
@@ -58,8 +59,8 @@ Bare letters are owned only while their surface has focus and no text input or
 dialog is active. The live F1 help lists every row and binding id.
 
 Common Sidebar actions include `n` new task, `enter` open, `s` settings, `o`
-open Worktree, `a` archive, `d` delete, `r` rename, `b` rename branch, `v`
-change engine, `/` search, and `[`/`]` switch Working/Archives.
+open Worktree, `c` Kanban, `a` archive, `d` delete, `r` rename, `b` rename
+branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
@@ -94,6 +95,11 @@ Positional groups must preserve their documented slot count/order. Invalid or
 unknown entries are ignored with warnings shown in Settings → Keybindings.
 
 ## Adding or moving a chord
+
+Chord placement is an owner decision. Before treating a new or moved binding
+as settled, get owner sign-off on direct versus prefix placement, the selected
+key, and any engine/terminal shortcut it may shadow. Record that decision and
+its reasoning here.
 
 1. Add or change the stable binding row in `tui/context/keybindings-*.ts`.
 2. Register its handler at the narrowest correct focused surface.

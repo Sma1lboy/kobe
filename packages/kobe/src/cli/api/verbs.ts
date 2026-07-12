@@ -299,12 +299,18 @@ export const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "issue-update",
-    summary: "Update a daemon-owned issue's title and/or body.",
+    summary: "Update a daemon-owned issue's title, body, and/or linked task.",
     flags: [
       F.repo(),
       { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
       { name: "title", type: "string", placeholder: "T", description: "New title." },
       { name: "body", type: "string", placeholder: "TEXT", description: "New body." },
+      {
+        name: "task",
+        type: "string",
+        placeholder: "TASK_ID",
+        description: "Link the issue to this task (kanban: In progress). Pass `none` to unlink.",
+      },
     ],
     handler: issueUpdate,
   },
