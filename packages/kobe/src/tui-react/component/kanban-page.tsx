@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 /**
  * KanbanPage — the daemon-owned issue store as a Backlog / In progress /
- * Done board. One PROJECT at a time (tab/←/→ or click cycles the repo
- * tabs), three full-height bordered columns matching the workspace host's
+ * Done board. One PROJECT at a time (tab/←/→ or click cycles the rolling
+ * selector), three full-height bordered columns matching the workspace host's
  * border grammar. Full-page swap in the workspace host, same shape as
  * WorktreesPage (issue #23 precedent): esc/ctrl+c closes, `r` refetches,
  * plus a light poll so agent-driven moves (`kobe api issue-update --task`)
@@ -110,20 +110,46 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
 
   function card(issue: Issue, column: BoardColumnKey): ReactNode {
     const fg = column === "done" ? theme.textMuted : theme.text
+    const description = issue.body.trim()
+    // backgroundElement survives transparent mode on purpose (see
+    // applyDisplayOverlay): cards are content, not chrome — they keep a
+    // tinted surface so the board reads against any host wallpaper.
     return (
-      <box key={issue.id} flexDirection="row">
-        <text fg={theme.textMuted} wrapMode="none">
-          #{issue.id}{" "}
-        </text>
-        <text fg={fg} wrapMode="none" flexShrink={1}>
-          {issue.title}
-        </text>
-        {column === "backlog" && issue.status === "hold" ? (
-          <text fg={theme.warning} wrapMode="none">
-            {" "}
-            {t("kanban.hold")}
+      <box
+        key={issue.id}
+        border={true}
+        borderColor={columnBorder}
+        backgroundColor={theme.backgroundElement}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <box flexDirection="row" justifyContent="space-between">
+          <text fg={fg} attributes={TextAttributes.BOLD} wrapMode="word" flexShrink={1}>
+            {issue.title}
           </text>
-        ) : null}
+          <text fg={theme.textMuted} wrapMode="none">
+            #{issue.id}
+          </text>
+        </box>
+        {/* Two-line preview is deliberate card grammar: enough room for a
+            description now, with a stable region for the future editor. */}
+        <box height={2} overflow="hidden">
+          {description ? (
+            <text fg={theme.textMuted} wrapMode="word">
+              {description}
+            </text>
+          ) : null}
+        </box>
+        <box flexDirection="row" justifyContent="space-between">
+          <text fg={theme.textMuted} wrapMode="none">
+            {issue.created}
+          </text>
+          {column === "backlog" && issue.status === "hold" ? (
+            <text fg={theme.warning} wrapMode="none">
+              {t("kanban.hold")}
+            </text>
+          ) : null}
+        </box>
       </box>
     )
   }
@@ -132,7 +158,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
    *  row. Label stays flush with the page's left edge. */
   function projectSelector(active: RepoIssues): ReactNode {
     return (
-      <box flexDirection="row" justifyContent="space-between" paddingTop={1} paddingLeft={2} paddingRight={2}>
+      <box flexDirection="row" justifyContent="space-between" paddingTop={1} paddingLeft={3} paddingRight={3}>
         <box flexDirection="row" onMouseUp={() => cycleProject(1)}>
           <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
             {sidebarProjectLabel(active.repoRoot, repoRoots)}
@@ -160,7 +186,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
   function board(active: RepoIssues): ReactNode {
     const columns = buildIssueBoard(active.issues)
     return (
-      <box flexDirection="row" gap={1} flexGrow={1} paddingTop={1}>
+      <box flexDirection="row" gap={1} flexGrow={1} paddingTop={1} paddingLeft={1} paddingRight={1}>
         {columns.map((col) => (
           <box
             key={col.key}
@@ -176,6 +202,7 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
             </text>
             <scrollbox
               flexGrow={1}
+              gap={1}
               paddingTop={1}
               verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
             >
@@ -194,23 +221,24 @@ export function KanbanPage(props: { orchestrator: RemoteOrchestrator | null; onC
 
   const loading = boards === null
 
-  // One shared left baseline: header/selector rows get paddingLeft=2, the
-  // column boxes run flush to the edge so border(1)+padding(1) lands their
-  // text on the SAME x=2 — Kanban / project / Backlog / cards all align.
+  // One shared left baseline at x=3: the board is inset one cell (border at
+  // x=1, +border cell +padding = text at x=3), and every header/selector row
+  // gets paddingLeft=3 — Kanban / project / Backlog / cards all align, with
+  // one cell of air between the borders and the screen edge.
   return (
     <box flexGrow={1} backgroundColor={theme.background} paddingTop={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between" paddingLeft={2} paddingRight={2}>
+      <box flexDirection="row" justifyContent="space-between" paddingLeft={3} paddingRight={3}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("kanban.title")}
         </text>
         <text fg={theme.textMuted}>{t("kanban.hint")}</text>
       </box>
       {loading ? (
-        <text fg={theme.textMuted} paddingLeft={2}>
+        <text fg={theme.textMuted} paddingLeft={3}>
           {t("kanban.loading")}
         </text>
       ) : boardList.length === 0 || !activeBoard ? (
-        <text fg={theme.textMuted} paddingLeft={2}>
+        <text fg={theme.textMuted} paddingLeft={3}>
           {t("kanban.noRepos")}
         </text>
       ) : (
