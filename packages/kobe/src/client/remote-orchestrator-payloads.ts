@@ -195,11 +195,7 @@ export function sameTranscriptActivityMap(a: TranscriptActivityMap, b: Transcrip
   return true
 }
 
-/**
- * Daemon connection lifecycle as observed by the TUI. Two states
- * because reconnect is user-driven (the host shows a "Restart daemon
- * or Quit?" prompt when we go `disconnected`).
- */
+/** Daemon connection lifecycle as observed by the TUI during silent recovery. */
 export type DaemonConnectionState = "online" | "disconnected"
 
 export interface RemoteOrchestratorOptions {

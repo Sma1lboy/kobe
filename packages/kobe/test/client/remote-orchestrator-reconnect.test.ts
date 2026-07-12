@@ -48,7 +48,7 @@ describe("shouldLogReconnectAttempt", () => {
  * fallback). The contract these lock:
  *   - role "pane"  → on socket close, RETRY a plain reconnect (re-`init`) so
  *     the bus replays the current snapshot and the pane re-syncs.
- *   - role "gui"   → do NOT auto-reconnect (the front-end shows a modal).
+ *   - role "gui"   → silently ensure/spawn a daemon, then reconnect.
  *   - the pane reconnect must be NON-SPAWNING (never `ensureReachable`), or
  *     it would resurrect an idle-stopped daemon and break lazy-shutdown.
  */
@@ -132,14 +132,40 @@ describe("RemoteOrchestrator auto-reconnect", () => {
     expect(orch.connectionStateSignal()()).toBe("online") // re-synced
   })
 
-  it("a gui does NOT auto-reconnect (waits for the user's modal)", async () => {
+  it("a gui silently ensures the daemon and re-subscribes after close", async () => {
     const h = fakeClient()
-    const orch = new RemoteOrchestrator(h.client, { role: "gui" })
+    let ensureCalls = 0
+    const orch = new RemoteOrchestrator(h.client, {
+      role: "gui",
+      ensureReachable: async () => {
+        ensureCalls++
+      },
+    })
     h.triggerClose()
     expect(orch.connectionStateSignal()()).toBe("disconnected")
+    await sleep(50)
+    expect(ensureCalls).toBe(1)
+    expect(h.helloCount()).toBe(1)
+    expect(orch.connectionStateSignal()()).toBe("online")
+  })
+
+  it("a gui silently retries when starting the daemon fails transiently", async () => {
+    const h = fakeClient()
+    let ensureCalls = 0
+    const orch = new RemoteOrchestrator(h.client, {
+      role: "gui",
+      ensureReachable: async () => {
+        ensureCalls++
+        if (ensureCalls === 1) throw new Error("daemon still stopping")
+      },
+    })
+
+    h.triggerClose()
     await sleep(800)
-    expect(h.helloCount()).toBe(0) // no reconnect attempted
-    expect(orch.connectionStateSignal()()).toBe("disconnected")
+
+    expect(ensureCalls).toBe(2)
+    expect(h.helloCount()).toBe(1)
+    expect(orch.connectionStateSignal()()).toBe("online")
   })
 
   it("stops retrying once the client is disposed", async () => {
