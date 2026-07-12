@@ -22,13 +22,12 @@ There are four panes:
 | k       | Files       | `"files"`     | `ctrl+k`    |
 | l       | Terminal    | `"terminal"`  | `ctrl+l`    |
 
-`prefix + h/j/k/l` is the cross-pane navigator (`scope: "global"`, id `focus.numeric`), with h/j/k/l mapped to sidebar/workspace/
-files/terminal. It remains prefix-only because direct control bytes collide with ChatPane and terminal input. An open dialog
-suppresses it — binding registrations include `enabled: dialog.stack.length === 0` so dialog-internal keys (esc to dismiss, enter to
-confirm) win on the dialog stack.
+`ctrl+h/j/k/l` is the global cross-pane navigator (`scope: "global"`, id `focus.numeric`), with prefix + h/j/k/l as equivalent
+aliases; h/j/k/l map to sidebar/workspace/files/terminal. An open dialog suppresses both forms — binding registrations include
+`enabled: dialog.stack.length === 0` so dialog-internal keys (esc to dismiss, enter to confirm) win on the dialog stack.
 
-`prefix + q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`). In Tasks, `ctrl+q` exits the attached native UI,
-while plain `q` opens the quit confirmation.
+`ctrl+q` from any non-sidebar pane jumps back to the sidebar (`focus.sidebar`), with `prefix + q` as an alias. In Tasks, a second
+`ctrl+q` exits the attached native UI, while plain `q` opens the quit confirmation.
 `esc` is
 **not** a global "back to sidebar" — it would yank focus out of the chat composer mid-edit. ESC is reserved for: closing
 the top dialog (DialogProvider) and interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm)
@@ -57,8 +56,8 @@ site — they should agree.
 
 | Chord            | Overlap                                 | Resolution                                                                                                                                                                          |
 | ---------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prefix + h/j/k/l` | `focus.numeric` (global) vs ChatPane / terminal input | Pane focus uses the configurable prefix followed by vim-style h/j/k/l, mapped to sidebar/workspace/files/terminal. The prefix keeps raw control bytes available to ChatPane and the terminal child process. **Why not ctrl+digit?** ctrl+digit needs CSI-u / kitty keyboard support; iTerm2 has a quirk where ctrl+1 / ctrl+9 / ctrl+0 fall through to a bare digit byte while ctrl+2..8 emit CSI-u correctly. |
-| `prefix + k` focus | `ctrl+k` remains available to ChatPane / terminal input | The retired palette no longer owns `ctrl+k`; pane focus is the prefix row's `k` second stroke. |
+| `ctrl+h/j/k/l` / `prefix + h/j/k/l` | `focus.numeric` (global) vs ChatPane / terminal input | Pane focus accepts both the global Ctrl chords and configurable prefix aliases, mapped to sidebar/workspace/files/terminal. **Why not ctrl+digit?** ctrl+digit needs CSI-u / kitty keyboard support; iTerm2 has a quirk where ctrl+1 / ctrl+9 / ctrl+0 fall through to a bare digit byte while ctrl+2..8 emit CSI-u correctly. |
+| `ctrl+k` focus | retired palette | The retired palette no longer owns `ctrl+k`; it returns focus to Files, while `prefix + k` is its alias. |
 | `esc`            | dialog dismiss vs chat interrupt        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog and chat focused while streaming, `chat.interrupt` cancels the turn. Idle ESC is a no-op so the composer doesn't lose focus mid-edit. |
 | `ctrl+c`         | copy selection vs double-tap quit       | RETIRED with the outer monitor (`app.copy_or_quit` + `useKobeKeybindings` are gone). In pane hosts `ctrl+c` is host-local (Ops/settings hosts exit); inside a Handover the terminal/tmux own it. |
 | `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
