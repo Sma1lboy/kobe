@@ -102,17 +102,12 @@ export function TabStrip(props: {
         return (
           <box key={tab.id} flexDirection="row" gap={0} onMouseUp={() => props.onSelect(tab.id)}>
             {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○. Shown
-                only once the turn detector has a REAL reading for the tab
-                (`turnStates.has`). We deliberately do NOT force it on for a
-                freshly-spawned engine tab before its first poll: that
-                defaulted `turn` to "idle" → a hollow "○" placeholder that
-                flickered on every kobe-launched engine tab until its native
-                title arrived. We already know it's an engine (we spawned the
-                command), so the placeholder carries no information — skip it
-                and let the real state (or the engine's native title) speak.
-                Hidden while an engine-owned live title is visibly carrying
-                the same status. */}
-            {!nativeStatusVisible && props.turnStates.has(tab.id) ? (
+                only once the turn detector has an actionable reading for the
+                tab. We deliberately skip absent and "unknown" readings: both
+                are placeholders with no information, so let the real state
+                (or the engine's native title) speak. Hidden while an
+                engine-owned live title is visibly carrying the same status. */}
+            {!nativeStatusVisible && turn !== "unknown" && props.turnStates.has(tab.id) ? (
               <text fg={turnColor} attributes={pulse ? TextAttributes.BOLD : undefined} wrapMode="none">
                 {`${TURN_GLYPHS[turn]} `}
               </text>

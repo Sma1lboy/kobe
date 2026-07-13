@@ -134,4 +134,17 @@ describe("TabStrip native terminal-title status", () => {
     expect(text).toContain("codex 26")
     await destroy()
   })
+
+  it("does not render an unknown-state question-mark placeholder", async () => {
+    const { text, destroy } = await renderStrip({
+      tab: shellTab,
+      turnStates: new Map([[shellTab.id, "unknown"]]),
+      liveTitles: new Map([[shellTab.id, "✳ 调整 Toast 以适配主题设计"]]),
+      turnVendors: new Map(),
+      vendor: "claude",
+    })
+    expect(text).toContain("✳ 调整 Toast 以适配主题设计 9")
+    expect(text).not.toContain("?")
+    await destroy()
+  })
 })
