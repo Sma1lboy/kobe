@@ -35,6 +35,31 @@ bun run build
 bun run test:behavior
 ```
 
+## OpenTUI visual ground truth
+
+Agent visual iteration and UI acceptance have exactly one path:
+
+```text
+fixed 1280×800 Chromium → /harness → xterm.js → PTY sidecar
+→ isolated dev:sandbox → real daemon/task/issue fixture → OpenTUI
+```
+
+```bash
+bun run visual          # compare against the committed baseline
+bun run visual:update   # intentionally accept a UI change (updates baseline)
+```
+
+Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
+(real git repo, real task, three issues via `kobe api`), drive the real TUI
+through the harness (`c` → Kanban, `n` → New Story), take the single
+`kanban-new-issue.png` screenshot, and tear everything down. Ports derive from
+`KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails fast — never reuse a
+stray server, and never point the fixture at a real HOME or the shared
+`.dev-sandbox/home`. Local Terminal screenshots, native `kobe-web` pages such
+as `/board`, render-test frames, and `dev:mock` cannot approve visual changes;
+`test:e2e` (dev:mock) stays a PTY-transport smoke only. Failure artifacts land
+in `packages/kobe-web/test-results/` (actual/diff/trace).
+
 ## Regression policy
 
 - A bug fix includes a test that fails for the reported defect and passes with

@@ -19,6 +19,8 @@
     "typecheck": "bun --filter @sma1lboy/kobe-daemon typecheck && bun --filter @sma1lboy/kobe typecheck",
     "test": "bun --filter @sma1lboy/kobe test",
     "test:behavior": "bun --filter @sma1lboy/kobe test:behavior",
+    "visual": "bun --filter kobe-web visual",
+    "visual:update": "bun --filter kobe-web visual:update",
     "lint": "biome check biome.json package.json docs packages/kobe packages/kobe-daemon --config-path ./biome.json",
     "lint:fix": "biome check biome.json package.json docs packages/kobe packages/kobe-daemon --config-path ./biome.json --write",
     "changeset": "changeset",

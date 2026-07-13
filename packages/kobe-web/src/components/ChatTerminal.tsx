@@ -75,17 +75,38 @@ async function loadTerminalFont(): Promise<void> {
   }
 }
 
-type WsStatus = "connecting" | "open" | "closed"
+export type WsStatus = "connecting" | "open" | "closed"
+
+type ChatTerminalProps = {
+  tabId: string
+  taskId: string
+  mode: PtyMode
+  testId?: string
+  disableWebgl?: boolean
+  onStatusChange?: (status: WsStatus) => void
+  onBufferChange?: (text: string) => void
+}
+
+function visibleBufferText(term: Terminal): string {
+  const buffer = term.buffer.active
+  const start = buffer.viewportY
+  const end = Math.min(buffer.length, start + term.rows)
+  const lines: string[] = []
+  for (let index = start; index < end; index += 1) {
+    lines.push(buffer.getLine(index)?.translateToString(true) ?? "")
+  }
+  return lines.join("\n")
+}
 
 export function ChatTerminal({
   tabId,
   taskId,
   mode,
-}: {
-  tabId: string
-  taskId: string
-  mode: PtyMode
-}) {
+  testId,
+  disableWebgl = false,
+  onStatusChange,
+  onBufferChange,
+}: ChatTerminalProps) {
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<WsStatus>("connecting")
@@ -121,7 +142,17 @@ export function ChatTerminal({
     let term: Terminal | null = null
     let ws: WebSocket | null = null
     let resizeObserver: ResizeObserver | null = null
+    let bufferFrame: number | null = null
     setStatus("connecting")
+    onStatusChange?.("connecting")
+
+    const publishBuffer = (): void => {
+      if (!term || !onBufferChange || bufferFrame !== null) return
+      bufferFrame = requestAnimationFrame(() => {
+        bufferFrame = null
+        if (!disposed && term) onBufferChange(visibleBufferText(term))
+      })
+    }
 
     void (async () => {
       await loadTerminalFont()
@@ -148,14 +179,16 @@ export function ChatTerminal({
       // Plain URLs in engine output become clickable.
       term.loadAddon(new WebLinksAddon())
       term.open(el)
-      // WebGL renderer when the GPU cooperates; throwing or losing the
-      // context falls back to the stock DOM renderer transparently.
-      try {
-        const webgl = new WebglAddon()
-        webgl.onContextLoss(() => webgl.dispose())
-        term.loadAddon(webgl)
-      } catch {
-        /* DOM renderer fallback */
+      // The visual harness pins the stock renderer so browser screenshots and
+      // buffer synchronization do not depend on GPU/WebGL availability.
+      if (!disableWebgl) {
+        try {
+          const webgl = new WebglAddon()
+          webgl.onContextLoss(() => webgl.dispose())
+          term.loadAddon(webgl)
+        } catch {
+          /* DOM renderer fallback */
+        }
       }
       try {
         fit.fit()
@@ -167,7 +200,10 @@ export function ChatTerminal({
       wsRef.current = ws
       ws.binaryType = "arraybuffer"
       ws.onopen = () => {
-        if (!disposed) setStatus("open")
+        if (!disposed) {
+          setStatus("open")
+          onStatusChange?.("open")
+        }
       }
       ws.onmessage = (e) => {
         // A WS close is async, so a frame already queued can fire after
@@ -178,13 +214,17 @@ export function ChatTerminal({
           typeof e.data === "string"
             ? e.data
             : PTY_DECODER.decode(e.data as ArrayBuffer)
-        term?.write(data)
+        term?.write(data, publishBuffer)
       }
       ws.onclose = (event) => {
         if (!disposed) {
           const reason = event.reason ? `: ${event.reason}` : ""
-          term?.writeln(`\r\n[detached${reason} — reattach below]`)
+          term?.writeln(
+            `\r\n[detached${reason} — reattach below]`,
+            publishBuffer,
+          )
           setStatus("closed")
+          onStatusChange?.("closed")
         }
       }
       term.onData((d) => {
@@ -215,11 +255,12 @@ export function ChatTerminal({
     return () => {
       disposed = true
       resizeObserver?.disconnect()
+      if (bufferFrame !== null) cancelAnimationFrame(bufferFrame)
       ws?.close()
       term?.dispose()
       wsRef.current = null
     }
-  }, [tabId, taskId, mode, epoch])
+  }, [tabId, taskId, mode, epoch, disableWebgl, onStatusChange, onBufferChange])
 
   const sendPrompt = (): void => {
     const ws = wsRef.current
@@ -249,7 +290,12 @@ export function ChatTerminal({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div ref={ref} className="min-h-0 w-full flex-1 overflow-hidden" />
+      <div
+        ref={ref}
+        data-testid={testId}
+        data-pty-status={testId ? status : undefined}
+        className="min-h-0 w-full flex-1 overflow-hidden"
+      />
       {status === "closed" ? (
         <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line bg-surface px-2">
           <span className="min-w-0 flex-1 truncate text-[11px] text-kobe-yellow">
