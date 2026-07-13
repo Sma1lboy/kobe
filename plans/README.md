@@ -10,7 +10,7 @@ Audit base: `81969596` (`0.8.2` release commit). Source changes are intentionall
 | 4 | [004 Last-intent task activation](004-make-task-activation-last-intent-wins.md) | HIGH | DONE | — |
 | 5 | [003 Guard async workspace actions](003-guard-async-workspace-actions.md) | HIGH | DONE | — |
 | 6 | [006 Cache terminal passthrough bindings](006-cache-terminal-passthrough-bindings.md) | MEDIUM | DONE | — |
-| 7 | [007 Follow settings keyboard cursor](007-follow-settings-keyboard-cursor.md) | MEDIUM | TODO | — |
+| 7 | [007 Follow settings keyboard cursor](007-follow-settings-keyboard-cursor.md) | MEDIUM | DONE | — |
 | 8 | [008 Help keyboard scrolling](008-add-help-keyboard-scrolling.md) | MEDIUM | TODO | owner chord approval if needed |
 | 9 | [009 Isolate sidebar spinner updates](009-isolate-sidebar-spinner-updates.md) | MEDIUM | TODO | operation-count baseline |
 | 10 | [010 Split TerminalTabs ownership](010-split-terminal-tabs-ownership.md) | MEDIUM | TODO | correctness changes settled |

@@ -16,9 +16,9 @@
  */
 
 import { errorMessage } from "@/lib/error-message"
-import { TextAttributes } from "@opentui/core"
+import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
 import {
   type ClaudeAccount,
@@ -47,6 +47,7 @@ import { type LocaleId, currentLang, setLocaleLang, useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
 import { type DialogContext, useDialog } from "../../ui/dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./actions"
+import { SettingsCursorElContext } from "./rows"
 import { AccountsSettingsSection, EngineSettingsSection } from "./sections-engines"
 import { GeneralSettingsSection, SettingsSectionSidebar } from "./sections-general"
 import { DevSettingsSection, FeedbackSettingsSection, KeybindingsSettingsSection } from "./sections-misc"
@@ -333,8 +334,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
     bindings: [{ key: "return", cmd: () => void sendFeedback() }],
   }))
 
+  // Cursor-follow (standalone page): the page scrollbox lives here, and the
+  // cursor Row reports its renderable through context so keyboard navigation
+  // never lands on a clipped row in a short terminal.
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const reportCursorEl = useCallback((el: BoxRenderable | null) => {
+    const scroll = scrollRef.current
+    if (!scroll || !el || scroll.viewport.height <= 0) return
+    scroll.scrollChildIntoView(el.id)
+  }, [])
+
   const cursorProps = { level, bodyRow, setLevel, setBodyRow }
-  return (
+  const body = (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
@@ -414,6 +425,22 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <text fg={theme.textMuted}>{editingFeedback ? t("settings.nav.feedback") : t("settings.nav.default")}</text>
       </box>
     </box>
+  )
+
+  if (!props.standalone)
+    return <SettingsCursorElContext.Provider value={reportCursorEl}>{body}</SettingsCursorElContext.Provider>
+  return (
+    <SettingsCursorElContext.Provider value={reportCursorEl}>
+      <scrollbox
+        ref={(r: ScrollBoxRenderable | null) => {
+          scrollRef.current = r
+        }}
+        flexGrow={1}
+        verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+      >
+        {body}
+      </scrollbox>
+    </SettingsCursorElContext.Provider>
   )
 }
 

@@ -1,6 +1,6 @@
 # 007 — Keep the settings keyboard cursor visible
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 81969596
 - **Severity**: MEDIUM
 - **Category**: Accessibility

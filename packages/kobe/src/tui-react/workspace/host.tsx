@@ -315,15 +315,12 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   if (settingsOpen) {
+    // The scrollbox lives inside SettingsDialog (standalone mode) so its
+    // keyboard cursor can scrollChildIntoView on short terminals.
     return (
-      <scrollbox
-        flexGrow={1}
-        backgroundColor={theme.background}
-        paddingTop={1}
-        verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
-      >
+      <box flexGrow={1} backgroundColor={theme.background} paddingTop={1}>
         <SettingsDialog kv={kv} orchestrator={orch} standalone={true} onClose={closeSettings} />
-      </scrollbox>
+      </box>
     )
   }
 

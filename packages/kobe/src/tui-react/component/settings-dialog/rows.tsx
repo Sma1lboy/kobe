@@ -8,9 +8,16 @@
  * rendering the exact same boxes.
  */
 
-import { type RGBA, TextAttributes } from "@opentui/core"
-import type { ReactNode } from "react"
+import { type BoxRenderable, type RGBA, TextAttributes } from "@opentui/core"
+import { type ReactNode, createContext, useContext, useEffect, useRef } from "react"
 import { useTheme } from "../../context/theme"
+
+/**
+ * Cursor-follow channel: the dialog provides a reporter; whichever `Row`
+ * currently carries the keyboard cursor hands its renderable up so the
+ * owning scrollbox can keep it visible on short terminals.
+ */
+export const SettingsCursorElContext = createContext<((el: BoxRenderable | null) => void) | null>(null)
 
 /**
  * One navigable settings row: cursor row paints `theme.primary` behind
@@ -28,8 +35,17 @@ export function Row(props: {
   children?: ReactNode
 }) {
   const { theme } = useTheme()
+  const reportCursorEl = useContext(SettingsCursorElContext)
+  const elRef = useRef<BoxRenderable | null>(null)
+  const { cursor } = props
+  useEffect(() => {
+    if (cursor) reportCursorEl?.(elRef.current)
+  }, [cursor, reportCursorEl])
   return (
     <box
+      ref={(r: BoxRenderable | null) => {
+        elRef.current = r
+      }}
       flexDirection="row"
       gap={1}
       paddingLeft={1}
