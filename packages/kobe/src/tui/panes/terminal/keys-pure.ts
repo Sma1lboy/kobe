@@ -242,6 +242,20 @@ export const PASSTHROUGH_NAMES: readonly string[] = [
   "f12",
 ]
 
+/** Modifier prefixes the passthrough table expands each name with. */
+const PASSTHROUGH_MODIFIER_PREFIXES = ["", "ctrl+", "alt+", "shift+", "ctrl+shift+", "alt+shift+", "ctrl+alt+"] as const
+
+/**
+ * The full passthrough chord vocabulary — every `PASSTHROUGH_NAMES ×
+ * modifier-prefix` combination minus the kobe-reserved chords. Computed
+ * once at module load: the terminal pane re-renders per PTY frame, and
+ * rebuilding ~850 chord strings per render was measurable GC pressure
+ * on the hottest path.
+ */
+export const PASSTHROUGH_CHORDS: readonly string[] = PASSTHROUGH_NAMES.flatMap((name) =>
+  PASSTHROUGH_MODIFIER_PREFIXES.map((prefix) => `${prefix}${name}`),
+).filter((chord) => !RESERVED_GLOBAL_CHORDS.includes(chord))
+
 /**
  * Encode one mouse-wheel tick the way a real terminal emulator would —
  * see `TaskPtyLike.wheel` for the routing contract. Pure: the caller

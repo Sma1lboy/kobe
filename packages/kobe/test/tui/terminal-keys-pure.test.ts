@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { defaultChordsOf, findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings"
 import {
   DEFAULT_PAGE_SIZE,
+  PASSTHROUGH_CHORDS,
   PASSTHROUGH_NAMES,
   RESERVED_GLOBAL_CHORDS,
   TRAPPED_KEYS,
@@ -105,6 +106,16 @@ describe("key routing tables", () => {
       expect(PASSTHROUGH_NAMES).toContain(name)
     }
     expect(DEFAULT_PAGE_SIZE).toBeGreaterThan(0)
+  })
+
+  it("expands the precomputed passthrough table and filters every reserved chord", () => {
+    const modifierPrefixes = ["", "ctrl+", "alt+", "shift+", "ctrl+shift+", "alt+shift+", "ctrl+alt+"]
+    const expected = PASSTHROUGH_NAMES.flatMap((name) => modifierPrefixes.map((prefix) => `${prefix}${name}`)).filter(
+      (chord) => !RESERVED_GLOBAL_CHORDS.includes(chord),
+    )
+    expect(PASSTHROUGH_CHORDS).toEqual(expected)
+    for (const chord of RESERVED_GLOBAL_CHORDS) expect(PASSTHROUGH_CHORDS).not.toContain(chord)
+    for (const chord of ["a", "ctrl+c", "shift+tab", "ctrl+alt+f1"]) expect(PASSTHROUGH_CHORDS).toContain(chord)
   })
 
   it("derives the reservation from KobeKeymap DEFAULTS, immune to live overrides", () => {

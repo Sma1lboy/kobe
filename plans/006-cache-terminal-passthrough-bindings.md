@@ -1,6 +1,6 @@
 # 006 — Cache terminal passthrough bindings per mount
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 81969596
 - **Severity**: MEDIUM
 - **Category**: Performance

@@ -16,11 +16,10 @@
 
 import type { KeyEvent } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import {
   DEFAULT_PAGE_SIZE,
-  PASSTHROUGH_NAMES,
-  RESERVED_GLOBAL_CHORDS,
+  PASSTHROUGH_CHORDS,
   TRAPPED_KEYS,
   keyEventToShellBytes,
 } from "../../../tui/panes/terminal/keys-pure"
@@ -55,34 +54,33 @@ export type TerminalBindingsOpts = {
  */
 export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   const pageSize = opts.pageSize ?? DEFAULT_PAGE_SIZE
+  const optsRef = useLatest(opts)
+  const pageSizeRef = useLatest(pageSize)
 
-  const bindings: { key: string; cmd: (evt: KeyEvent) => void }[] = []
-
-  // Scrollback exceptions FIRST so they take precedence over any
-  // passthrough variants of `pageup`/`pagedown` registered later.
-  bindings.push(
-    ...bindByIds({
-      "terminal.scroll-up": () => opts.scroll(-pageSize),
-      "terminal.scroll-down": () => opts.scroll(pageSize),
-      "terminal.reset": () => opts.reset(),
-    }),
-  )
-
-  const reserved = new Set<string>(RESERVED_GLOBAL_CHORDS)
-  const forward = (evt: KeyEvent): void => {
-    const bytes = keyEventToShellBytes(evt)
-    if (bytes != null) opts.write(bytes)
-  }
-  for (const name of PASSTHROUGH_NAMES) {
-    for (const prefix of ["", "ctrl+", "alt+", "shift+", "ctrl+shift+", "alt+shift+", "ctrl+alt+"]) {
-      const chord = `${prefix}${name}`
-      if (reserved.has(chord)) continue
-      bindings.push({ key: chord, cmd: forward })
+  // Built once per mount: the pane re-renders per PTY output frame, and the
+  // ~850-entry passthrough table is identical every time. Handlers read the
+  // live opts through the render-refreshed ref, so nothing here goes stale.
+  const bindings = useMemo(() => {
+    const table: { key: string; cmd: (evt: KeyEvent) => void }[] = []
+    // Scrollback exceptions FIRST so they take precedence over any
+    // passthrough variants of `pageup`/`pagedown` registered later.
+    table.push(
+      ...bindByIds({
+        "terminal.scroll-up": () => optsRef.current.scroll(-pageSizeRef.current),
+        "terminal.scroll-down": () => optsRef.current.scroll(pageSizeRef.current),
+        "terminal.reset": () => optsRef.current.reset(),
+      }),
+    )
+    const forward = (evt: KeyEvent): void => {
+      const bytes = keyEventToShellBytes(evt)
+      if (bytes != null) optsRef.current.write(bytes)
     }
-  }
+    for (const chord of PASSTHROUGH_CHORDS) table.push({ key: chord, cmd: forward })
+    return table
+  }, [])
 
   useBindings(() => ({
-    enabled: opts.focused,
+    enabled: optsRef.current.focused,
     bindings,
   }))
 
@@ -92,7 +90,6 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   // (empty deps) and reads the latest `opts` through a render-refreshed
   // ref, so it doesn't re-subscribe to the renderer's emitter every render.
   const renderer = useRenderer()
-  const optsRef = useLatest(opts)
   useEffect(() => {
     if (!renderer) return
     // `modalActive()`: pane focus does NOT change when a dialog opens, so
