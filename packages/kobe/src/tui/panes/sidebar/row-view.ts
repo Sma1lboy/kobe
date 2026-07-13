@@ -3,7 +3,7 @@ import type { TaskActivityState } from "@/engine/hook-events"
 import { engineEntry } from "@/engine/registry"
 import { DEFAULT_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { t } from "@/tui/i18n"
-import { DEFAULT_TASK_VENDOR, type Task, type TaskStatus } from "@/types/task"
+import { DEFAULT_TASK_VENDOR, type Task } from "@/types/task"
 import { isBuiltinVendor } from "@/types/vendor"
 import { repoBasename } from "./groups"
 
@@ -28,40 +28,6 @@ export interface SidebarRowView {
    * renders the indeterminate sweep bar instead of the shimmer.
    */
   readonly materializing: boolean
-}
-
-const STATUS_BADGE: Record<TaskStatus, { glyph: string; tone: SidebarTone }> = {
-  done: { glyph: "✓", tone: "success" },
-  in_review: { glyph: "◐", tone: "warning" },
-  in_progress: { glyph: "", tone: "primary" },
-  backlog: { glyph: "○", tone: "textMuted" },
-  canceled: { glyph: "⊘", tone: "textMuted" },
-  error: { glyph: "✕", tone: "error" },
-}
-
-/**
- * Returns a localised subtitle label for the given task status. Called at
- * render time (inside buildSidebarRowView) so `t()` is always scoped to a
- * reactive context — never frozen at module load.
- */
-function statusLabel(status: TaskStatus): string {
-  switch (status) {
-    case "done":
-      return t("tasks.status.done")
-    case "in_review":
-      return t("tasks.status.inReview")
-    case "in_progress":
-      return t("tasks.status.working")
-    case "backlog":
-      // No "backlog" word: every regular task is born `backlog` and nothing
-      // in the live engine path ever flips it, so surfacing the literal word
-      // lies (KOB). Fall back to the branch / a neutral dash instead.
-      return t("tasks.status.backlog")
-    case "canceled":
-      return t("tasks.status.canceled")
-    case "error":
-      return t("tasks.status.error")
-  }
 }
 
 /**
@@ -176,17 +142,11 @@ export interface RowLoadingInputs {
  */
 export function rowIsLoading(opts: RowLoadingInputs): boolean {
   const { task } = opts
-  const isMain = task.kind === "main"
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
   const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
   const materializing = opts.job !== undefined
-  return (
-    materializing ||
-    (!opts.isViewed &&
-      !untrackedCustomEngine &&
-      (activityState === "running" || (!hasActivity && !isMain && task.status === "in_progress")))
-  )
+  return materializing || (!opts.isViewed && !untrackedCustomEngine && activityState === "running")
 }
 
 /**
@@ -254,7 +214,6 @@ export function buildSidebarRowView(opts: {
   // Regular tasks store their branch; a `main` row's branch lives in the repo
   // root checkout, resolved by the caller and passed as `mainBranch`.
   const branch = isMain ? (opts.mainBranch ?? "") : task.branch
-  const badge = STATUS_BADGE[task.status]
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
   const activityBadge = activityBadgeFor(activityState)
@@ -287,14 +246,15 @@ export function buildSidebarRowView(opts: {
     ? "primary"
     : untrackedCustomEngine
       ? "textMuted"
-      : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? badge.tone)))
+      : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? "textMuted")))
   // Subtitle priority: the materializing word while a worktree job runs
   // (there is no branch on disk yet), then a non-normal activity word (rate
   // limited / needs permission / error), then the branch, then — for an
   // untracked custom engine with no branch — an explicit "no activity
-  // tracking" note so the row reads as un-tracked rather than stuck, then
-  // the lifecycle label (a neutral dash for `backlog`, never the word).
-  const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : statusLabel(task.status)
+  // tracking" note so the row reads as un-tracked rather than stuck, then a
+  // neutral dash. Persisted task lifecycle belongs to the board, not this
+  // runtime-activity projection.
+  const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : "—"
   const subtitleText = materializing
     ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
     : activityLabel
@@ -302,9 +262,9 @@ export function buildSidebarRowView(opts: {
       : branch.length > 0
         ? opts.truncateBranch(branch, opts.subtitleBudget)
         : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
-  // Untracked custom engine: a static dim dot instead of the spinner / empty
-  // backlog badge, so liveness reads as "not tracked" rather than frozen.
-  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? badge.glyph)
+  // Untracked custom engine: a static dim dot instead of an empty runtime
+  // badge, so liveness reads as "not tracked" rather than frozen.
+  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "")
   const restProjectGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "★")
   return {
     isMain,

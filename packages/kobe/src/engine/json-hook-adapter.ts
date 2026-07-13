@@ -19,13 +19,16 @@ import type { EngineHookAdapter } from "./hook-adapter.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "./hook-events.ts"
 import { type HookEventSpec, isObject, mergeActivityHooks, mergeWorktreeWatchHook } from "./json-hooks.ts"
 
-/** Read a JSON object from `path`, or {} if absent/unparseable/not-an-object. */
-async function readJsonObject(path: string): Promise<Record<string, unknown>> {
+/** Read a JSON object from `path`. A missing file starts empty; any other read
+ * or parse failure returns undefined so a best-effort install cannot clobber
+ * an existing engine configuration it could not understand. */
+async function readJsonObject(path: string): Promise<Record<string, unknown> | undefined> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown
-    return isObject(parsed) ? parsed : {}
-  } catch {
-    return {}
+    return isObject(parsed) ? parsed : undefined
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return {}
+    return undefined
   }
 }
 
@@ -41,6 +44,7 @@ export async function editJsonSettings(
 ): Promise<void> {
   try {
     const current = await readJsonObject(settingsFilePath)
+    if (!current) return
     const next = transform(current)
     if (JSON.stringify(next) === JSON.stringify(current)) return
     await mkdir(dirname(settingsFilePath), { recursive: true })

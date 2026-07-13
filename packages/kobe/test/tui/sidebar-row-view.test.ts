@@ -7,7 +7,7 @@ import {
   rowIsLoading,
   withSpinnerFrame,
 } from "../../src/tui/panes/sidebar/row-view.ts"
-import type { Task } from "../../src/types/task.ts"
+import type { Task, TaskStatus } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
 function task(overrides: Omit<Partial<Task>, "id"> & { id?: string } = {}): Task {
@@ -39,6 +39,43 @@ function view(overrides: Parameters<typeof task>[0], activity?: Parameters<typeo
 }
 
 describe("buildSidebarRowView", () => {
+  const lifecycleStatuses: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
+
+  it("does not project task lifecycle status into a branched task's runtime chrome", () => {
+    const projections = lifecycleStatuses.map((status) => {
+      const row = view({ status })
+      return {
+        loading: row.loading,
+        stateGlyph: row.stateGlyph,
+        tone: row.tone,
+        subtitleText: row.subtitleText,
+      }
+    })
+
+    expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
+    expect(projections[0]).toEqual({
+      loading: false,
+      stateGlyph: "",
+      tone: "textMuted",
+      subtitleText: "feature/sidebar",
+    })
+  })
+
+  it("uses the same neutral fallback for every lifecycle status when a task has no branch", () => {
+    const projections = lifecycleStatuses.map((status) => {
+      const row = view({ status, branch: "" })
+      return {
+        loading: row.loading,
+        stateGlyph: row.stateGlyph,
+        tone: row.tone,
+        subtitleText: row.subtitleText,
+      }
+    })
+
+    expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
+    expect(projections[0]).toEqual({ loading: false, stateGlyph: "", tone: "textMuted", subtitleText: "—" })
+  })
+
   it("keeps turn-complete as the visible row badge", () => {
     expect(view({ status: "in_progress" }, { state: "turn_complete", at: 1 })).toMatchObject({
       loading: false,
@@ -250,9 +287,10 @@ describe("sweepBar", () => {
 describe("buildSidebarRowView — defer to the live terminal (isViewed)", () => {
   const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
 
-  it("spins for an in-progress task whose terminal is NOT the one on screen", () => {
+  it("does not infer a running engine from in-progress lifecycle status", () => {
     const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: false })
-    expect(v.loading).toBe(true)
+    expect(v.loading).toBe(false)
+    expect(v.stateGlyph).toBe("")
   })
 
   it("suppresses its own spinner when the task's terminal is the one being viewed", () => {
@@ -295,11 +333,11 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
     }
   })
 
-  it("anyRowLoading is true iff at least one row spins", () => {
+  it("anyRowLoading is true iff at least one row has live runtime activity", () => {
     const idle = task({ id: "idle", status: "backlog" })
     const busy = task({ id: "busy", status: "in_progress" })
     const reads = {
-      activity: () => undefined,
+      activity: (id: string) => (id === "busy" ? ({ state: "running" as const, at: 1 } as const) : undefined),
       job: () => undefined,
       isViewed: () => false,
     }
@@ -311,7 +349,7 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
   it("a viewed busy row does not by itself keep the pane spinning", () => {
     const busy = task({ id: "busy", status: "in_progress" })
     const reads = {
-      activity: () => undefined,
+      activity: () => ({ state: "running" as const, at: 1 }),
       job: () => undefined,
       isViewed: (id: string) => id === "busy",
     }
