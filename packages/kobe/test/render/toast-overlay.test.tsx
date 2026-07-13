@@ -6,9 +6,12 @@
  * (kind -> chip) wiring the pane hosts rely on.
  */
 import { describe, expect, it } from "bun:test"
+import { type CapturedFrame, RGBA } from "@opentui/core"
 import { useEffect } from "react"
 import { ToastOverlay } from "../../src/tui-react/component/toast-overlay"
 import { useNotifications } from "../../src/tui-react/context/notifications"
+import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
+import { resolveThemeSlotHex } from "../../src/tui/context/theme/hex"
 import { renderComponent } from "./harness"
 
 // The notifications provider reads a one-shot state.json snapshot for the
@@ -23,6 +26,10 @@ function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: str
     notif.notify({ kind: props.kind, taskId: "t1", tabId: "tab1", title: props.title })
   }, [])
   return <ToastOverlay />
+}
+
+function findSpan(frame: CapturedFrame, needle: string) {
+  return frame.lines.flatMap((line) => line.spans).find((span) => span.text.includes(needle))
 }
 
 describe("ToastOverlay", () => {
@@ -47,5 +54,30 @@ describe("ToastOverlay", () => {
     const text = await frame()
     expect(text).toContain("clone failed")
     expect(text).toContain("✕")
+  })
+
+  it.each([
+    ["done", "success", "✓"],
+    ["needs_input", "warning", "?"],
+    ["error", "error", "✕"],
+  ] as const)("uses a neutral surface, readable title, and %s semantic glyph", async (kind, colorSlot, prefix) => {
+    const theme = BUNDLED_THEME_JSONS.claude!
+    const bgHex = resolveThemeSlotHex(theme, "backgroundElement")
+    const textHex = resolveThemeSlotHex(theme, "text")
+    const semanticHex = resolveThemeSlotHex(theme, colorSlot)
+    expect(bgHex).not.toBeNull()
+    expect(textHex).not.toBeNull()
+    expect(semanticHex).not.toBeNull()
+
+    const { spans } = await renderComponent(<NotifyProbe kind={kind} title={`${kind} notice`} />, {
+      providers: { notifications: true },
+    })
+    const frame = await spans()
+    const titleSpan = findSpan(frame, `${kind} notice`)
+    const prefixSpan = findSpan(frame, prefix)
+
+    expect(titleSpan?.bg.equals(RGBA.fromHex(bgHex!))).toBe(true)
+    expect(titleSpan?.fg.equals(RGBA.fromHex(textHex!))).toBe(true)
+    expect(prefixSpan?.fg.equals(RGBA.fromHex(semanticHex!))).toBe(true)
   })
 })

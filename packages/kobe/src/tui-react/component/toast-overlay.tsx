@@ -1,10 +1,10 @@
 /** @jsxImportSource @opentui/react */
 /**
  * Toast overlay (React port of `src/tui/component/toast-overlay.tsx`,
- * issue #15 G3) — bottom-right transient chips, colored by kind
- * (done→success, needs_input→warning, error→red), newest at the bottom,
- * up to four visible, click to dismiss early. Auto-dismiss timers stay
- * owned by the notifications context; full rationale in the Solid header.
+ * issue #15 G3) — bottom-right transient chips with a themed surface and
+ * semantic status glyph (done→success, needs_input→warning, error→red), newest
+ * at the bottom, up to four visible, click to dismiss early. Auto-dismiss timers
+ * stay owned by the notifications context; full rationale in the Solid header.
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -34,10 +34,7 @@ export function ToastOverlay() {
   return (
     <box position="absolute" zIndex={2500} left={left} top={top} width={CHIP_WIDTH} flexDirection="column" gap={0}>
       {visibleToasts.map((toast) => {
-        const bg = toast.kind === "needs_input" ? theme.warning : toast.kind === "error" ? theme.error : theme.success
-        // selectedListItemText is the readable foreground over a saturated
-        // chip background — same slot the active tab chip uses.
-        const fg = theme.selectedListItemText
+        const fg = toast.kind === "needs_input" ? theme.warning : toast.kind === "error" ? theme.error : theme.success
         const prefix = toast.kind === "needs_input" ? "?" : toast.kind === "error" ? "✕" : "✓"
         return (
           <box
@@ -46,13 +43,13 @@ export function ToastOverlay() {
             gap={1}
             paddingLeft={1}
             paddingRight={1}
-            backgroundColor={bg}
+            backgroundColor={theme.backgroundElement}
             onMouseUp={() => notif.dismiss(toast.id)}
           >
             <text fg={fg} attributes={TextAttributes.BOLD} wrapMode="none">
               {prefix}
             </text>
-            <text fg={fg} wrapMode="none">
+            <text fg={theme.text} wrapMode="none">
               {toast.title}
             </text>
           </box>
