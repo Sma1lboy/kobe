@@ -61,7 +61,7 @@ export type IssueDetailOutcome =
       start: { vendor: VendorId; placement: IssueChatPlacement } | null
     }
 
-type Field = "title" | "description" | "engine" | "workspace"
+type Field = "title" | "description" | "engine" | "workspace" | "open"
 
 /** Description editor height — tall enough to read a story, short enough
  *  to keep the start config on screen. */
@@ -87,9 +87,11 @@ function IssueDetailDialogView(
   const [draftTitle, setDraftTitle] = useState(issue.title)
   const [draftBody, setDraftBody] = useState(issue.body)
   // Startable stories open ready to fire (enter = start from the workspace
-  // field); a new story starts typing its title; linked/done ones open on
-  // the title for reading/editing.
-  const [field, setField] = useState<Field>(create ? "title" : startable ? "workspace" : "title")
+  // field); a new story starts typing its title; linked ones open ready to
+  // JUMP (enter = open the session); done-unlinked ones open on the title.
+  const [field, setField] = useState<Field>(
+    create ? "title" : startable ? "workspace" : linkedTaskId ? "open" : "title",
+  )
 
   // The description is an uncontrolled <textarea> (pasted newlines survive);
   // placeholder inserts write through the ref, edits mirror into draftBody.
@@ -97,7 +99,9 @@ function IssueDetailDialogView(
 
   const fields: readonly Field[] = startable
     ? ["title", "description", "engine", "workspace"]
-    : ["title", "description"]
+    : linkedTaskId
+      ? ["title", "description", "open"]
+      : ["title", "description"]
 
   function insertPlaceholders(paths: readonly string[]): void {
     if (paths.length === 0) return
@@ -213,6 +217,8 @@ function IssueDetailDialogView(
             { key: "return", cmd: () => commit() },
           ]
         : []),
+      // The linked story's jump action — enter fires it when focused.
+      ...(field === "open" ? [{ key: "return", cmd: () => commit() }] : []),
     ],
   }))
 
@@ -396,9 +402,41 @@ function IssueDetailDialogView(
             </text>
           </box>
         </box>
+      ) : linkedTaskId ? (
+        <box gap={1}>
+          {/* SESSION — the visible jump to the story's running workspace
+              (mouse or enter); the board closes and the task activates. */}
+          <box gap={0}>
+            {sectionHeader(t("kanban.detail.sessionLabel"), "open")}
+            <box flexDirection="row">
+              <box
+                border={true}
+                borderColor={field === "open" ? theme.primary : theme.borderSubtle}
+                backgroundColor={theme.backgroundElement}
+                paddingLeft={2}
+                paddingRight={2}
+                onMouseUp={() => {
+                  setField("open")
+                  commit()
+                }}
+              >
+                <text
+                  fg={field === "open" ? theme.primary : theme.text}
+                  attributes={field === "open" ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                >
+                  {t("kanban.detail.openAction")}
+                </text>
+              </box>
+            </box>
+          </box>
+          <box paddingBottom={1}>
+            <text fg={theme.textMuted}>{t("kanban.detail.openLegend")}</text>
+          </box>
+        </box>
       ) : (
         <box paddingBottom={1}>
-          <text fg={theme.textMuted}>{linkedTaskId ? t("kanban.detail.openLegend") : t("kanban.detail.doneNote")}</text>
+          <text fg={theme.textMuted}>{t("kanban.detail.doneNote")}</text>
         </box>
       )}
     </box>

@@ -49,7 +49,10 @@ export const en = {
       project: "Project checkout — no worktree",
     },
     startLegend: "enter/ctrl+enter start · tab fields · ←→ engine · ↑↓ workspace · esc save & close",
-    openLegend: "ctrl+enter open the linked session · tab fields · esc save & close",
+    /** Linked-story jump action: section header + the button itself. */
+    sessionLabel: "SESSION",
+    openAction: "Open the linked session ↵",
+    openLegend: "enter/ctrl+enter open the linked session · tab fields · esc save & close",
     doneNote: "Done stories have nothing left to start · esc save & close",
     /** Toast after a background start. `{title}` = the spawned task title. */
     startedBackground: "Started in background: {title}",
@@ -100,7 +103,9 @@ export const zh: typeof en = {
       project: "项目主目录——不建 worktree",
     },
     startLegend: "enter/ctrl+enter 启动 · tab 切字段 · ←→ 引擎 · ↑↓ 工作区 · esc 保存关闭",
-    openLegend: "ctrl+enter 打开已关联会话 · tab 切字段 · esc 保存关闭",
+    sessionLabel: "会话",
+    openAction: "打开关联会话 ↵",
+    openLegend: "enter/ctrl+enter 打开已关联会话 · tab 切字段 · esc 保存关闭",
     doneNote: "已完成的 story 无需启动 · esc 保存关闭",
     startedBackground: "已在后台启动:{title}",
     newStory: "新建 STORY",
