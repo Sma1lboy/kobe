@@ -287,6 +287,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         onClose={() => setKanbanOpen(false)}
         onStartChat={issueChat.start}
         engineStates={engineState}
+        // `c` fires from the sidebar, so the board opens pointed at the
+        // SELECTED task's project + its linked story card.
+        focusTask={selectedTask ? { id: selectedTask.id, repo: selectedTask.repo } : undefined}
         onOpenTask={(taskId) => {
           setKanbanOpen(false)
           void activateTask(taskId)

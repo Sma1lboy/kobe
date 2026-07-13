@@ -16,11 +16,12 @@ import { act, renderComponent, settle } from "./harness"
 const board: RepoIssues = {
   repoRoot: "/repo/demo",
   exists: true,
-  nextId: 4,
+  nextId: 5,
   issues: [
     { id: 1, title: "Fix the flake", status: "open", created: "2026-07-10", body: "repro steps live here" },
     { id: 2, title: "Polish the board", status: "open", created: "2026-07-09", body: "" },
     { id: 3, title: "Shipped thing", status: "done", created: "2026-07-01", body: "" },
+    { id: 4, title: "Started story", status: "doing", created: "2026-07-11", body: "", taskId: "t-linked" },
   ],
 }
 
@@ -143,5 +144,35 @@ describe("KanbanPage", () => {
     await settle()
     expect(started).not.toBeNull()
     expect(started?.placement).toBe("worktree")
+  })
+
+  // Why: `c` on a task row must open the board already POINTING at that
+  // task — cursor on its linked story — and the story's drawer must offer
+  // a visible, enter-able jump back to the running session (the old flow
+  // hid the jump behind ctrl+enter only).
+  it("focusTask pre-selects the linked story; its drawer's open action jumps to the session", async () => {
+    let opened = null as { taskId?: string } | null
+    const { frame, mockInput } = await renderComponent(
+      <KanbanPage
+        orchestrator={fakeOrchestrator()}
+        onClose={() => {}}
+        onStartChat={async () => {}}
+        onOpenTask={(taskId) => {
+          opened = { taskId }
+        }}
+        focusTask={{ id: "t-linked", repo: "/repo/demo" }}
+      />,
+      { providers: { dialog: true }, width: 120, height: 44 },
+    )
+    await act(() => settle())
+    // The linked story is already the selected card — enter opens ITS drawer.
+    act(() => mockInput.pressEnter())
+    const drawer = await frame()
+    expect(drawer).toContain("#4")
+    expect(drawer).toContain("Open the linked session")
+    // Focus starts on the open action — enter jumps to the workspace.
+    act(() => mockInput.pressEnter())
+    await settle()
+    expect(opened?.taskId).toBe("t-linked")
   })
 })

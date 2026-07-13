@@ -71,6 +71,10 @@ export function KanbanPage(props: {
   /** Per-task engine activity (host's `engineStateSignal`) — feeds the
    *  In-progress cards' live badges. */
   engineStates?: ReadonlyMap<string, TaskEngineState>
+  /** Opened from a task (`c` on the sidebar row): land on THAT task's
+   *  project and put the card cursor on its linked story, so the board
+   *  opens already pointing at the work the task belongs to. */
+  focusTask?: { readonly id: string; readonly repo: string }
 }): ReactNode {
   const { theme, transparentBackground } = useTheme()
   const columnBorder = transparentBackground ? theme.border : theme.borderSubtle
@@ -110,15 +114,18 @@ export function KanbanPage(props: {
       const next = results.filter((res): res is RepoIssues => res !== null)
       next.sort((a, b) => a.repoRoot.localeCompare(b.repoRoot))
       setBoards(next)
-      // First load lands on the project you opened kobe in — the active
-      // task's repo (loose realpath tolerance, like WorktreesPage).
+      // First load lands on the focus task's project (opened via `c` on a
+      // task row) or, without one, the project you opened kobe in — the
+      // active task's repo (loose realpath tolerance, like WorktreesPage).
       const norm = (p: string): string => p.replace(/^\/private\//, "/").replace(/\/+$/, "")
       const activeId = orch.activeTaskSignal().get()
-      const currentRepo = orch.listTasks().find((task) => task.id === activeId)?.repo
-      const initial = currentRepo
-        ? (next.find((board) => norm(board.repoRoot) === norm(currentRepo))?.repoRoot ?? null)
-        : null
-      setActiveRepo((prev) => prev ?? initial)
+      const targetRepo = props.focusTask?.repo ?? orch.listTasks().find((task) => task.id === activeId)?.repo
+      const initialBoard = targetRepo ? next.find((board) => norm(board.repoRoot) === norm(targetRepo)) : undefined
+      setActiveRepo((prev) => prev ?? initialBoard?.repoRoot ?? null)
+      // …and the card cursor on the focus task's linked story, if any.
+      const focusId = props.focusTask?.id
+      const linked = focusId ? initialBoard?.issues.find((issue) => issue.taskId === focusId) : undefined
+      if (linked) setSelectedId((prev) => prev ?? linked.id)
     })
     const timer = setInterval(() => setReloadTick((tick) => tick + 1), POLL_MS)
     return () => {
