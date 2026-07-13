@@ -16,6 +16,9 @@
     "test:e2e": "playwright test",
     "visual": "KOBE_VISUAL=1 playwright test e2e/sandbox.spec.ts",
     "visual:update": "KOBE_VISUAL=1 playwright test e2e/sandbox.spec.ts --update-snapshots",
+    "visual:serve": "KOBE_VISUAL=1 bun e2e/visual-serve.ts",
+    "visual:dev": "KOBE_VISUAL=1 KOBE_VISUAL_KEEP=1 playwright test e2e/sandbox.spec.ts",
+    "visual:shot": "KOBE_VISUAL=1 bun e2e/visual-shot.ts",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check"

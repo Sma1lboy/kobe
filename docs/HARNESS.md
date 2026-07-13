@@ -45,9 +45,19 @@ fixed 1280×800 Chromium → /harness → xterm.js → PTY sidecar
 ```
 
 ```bash
-bun run visual          # compare against the committed baseline
+bun run visual          # hermetic acceptance vs the committed baseline (~10-15s)
 bun run visual:update   # intentionally accept a UI change (updates baseline)
+
+bun run visual:serve    # warm iteration servers + reusable fixture (keep running)
+bun run visual:dev      # fast baseline check against visual:serve (~2s)
+cd packages/kobe-web && bun run visual:shot -- ctrl+h c   # ad-hoc screenshot (~2s)
 ```
+
+Iterate with the warm loop (`visual:serve` once, then `visual:dev` /
+`visual:shot` per change — `visual:shot` takes key tokens plus `text:…` and
+prints the PNG path); accept with hermetic `visual`, which refuses to reuse a
+running server — stop `visual:serve` first. `KOBE_VISUAL_FRESH=1` forces a
+fixture rebuild.
 
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
 (real git repo, real task, three issues via `kobe api`), drive the real TUI
