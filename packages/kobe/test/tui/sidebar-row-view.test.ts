@@ -55,7 +55,7 @@ describe("buildSidebarRowView", () => {
     expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
     expect(projections[0]).toEqual({
       loading: false,
-      stateGlyph: "",
+      stateGlyph: "○",
       tone: "textMuted",
       subtitleText: "feature/sidebar",
     })
@@ -73,7 +73,7 @@ describe("buildSidebarRowView", () => {
     })
 
     expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
-    expect(projections[0]).toEqual({ loading: false, stateGlyph: "", tone: "textMuted", subtitleText: "—" })
+    expect(projections[0]).toEqual({ loading: false, stateGlyph: "○", tone: "textMuted", subtitleText: "—" })
   })
 
   it("keeps turn-complete as the visible row badge", () => {
@@ -284,29 +284,29 @@ describe("sweepBar", () => {
   })
 })
 
-describe("buildSidebarRowView — defer to the live terminal (isViewed)", () => {
+describe("buildSidebarRowView — runtime spinner visibility", () => {
   const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
 
   it("does not infer a running engine from in-progress lifecycle status", () => {
-    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: false })
+    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base })
     expect(v.loading).toBe(false)
-    expect(v.stateGlyph).toBe("")
+    expect(v.stateGlyph).toBe("○")
   })
 
-  it("suppresses its own spinner when the task's terminal is the one being viewed", () => {
-    // claude/codex draws its OWN zero-latency spinner in the visible pane, so
-    // kobe's derived (laggier) spinner would be a duplicate — the viewed row
-    // defers to the live terminal instead of animating.
-    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base, isViewed: true })
-    expect(v.loading).toBe(false)
-    expect(v.stateGlyph).toBe("")
+  it("shows the spinner whenever runtime activity is running", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "in_progress" }),
+      activity: { state: "running", at: 1 },
+      ...base,
+    })
+    expect(v.loading).toBe(true)
+    expect(v.stateGlyph).not.toBe("○")
   })
 
-  it("still spins a viewed row while its worktree materializes (no terminal yet)", () => {
+  it("spins while its worktree materializes", () => {
     const v = buildSidebarRowView({
       task: task({ status: "in_progress" }),
       ...base,
-      isViewed: true,
       job: { kind: "ensureWorktree" },
     })
     expect(v.loading).toBe(true)
@@ -321,7 +321,6 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
   it("rowIsLoading matches buildSidebarRowView.loading across cases", () => {
     const cases = [
       { task: task({ status: "in_progress" }) },
-      { task: task({ status: "in_progress" }), isViewed: true },
       { task: task({ status: "backlog" }) },
       { task: task({ kind: "main", branch: "", status: "in_progress" }) },
       { task: task({ status: "done" }), job: { kind: "ensureWorktree" as const } },
@@ -339,22 +338,18 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
     const reads = {
       activity: (id: string) => (id === "busy" ? ({ state: "running" as const, at: 1 } as const) : undefined),
       job: () => undefined,
-      isViewed: () => false,
     }
     expect(anyRowLoading([idle], reads)).toBe(false)
     expect(anyRowLoading([idle, busy], reads)).toBe(true)
     expect(anyRowLoading([], reads)).toBe(false)
   })
 
-  it("a viewed busy row does not by itself keep the pane spinning", () => {
+  it("a running row keeps the pane spinner active", () => {
     const busy = task({ id: "busy", status: "in_progress" })
     const reads = {
       activity: () => ({ state: "running" as const, at: 1 }),
       job: () => undefined,
-      isViewed: (id: string) => id === "busy",
     }
-    // The only busy row is the one on screen (its terminal draws its own
-    // spinner), so the pane has nothing to animate.
-    expect(anyRowLoading([busy], reads)).toBe(false)
+    expect(anyRowLoading([busy], reads)).toBe(true)
   })
 })

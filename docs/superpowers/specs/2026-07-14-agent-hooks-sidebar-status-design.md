@@ -24,11 +24,11 @@ The installer remains best-effort and idempotent. It merges Kobe-owned activity 
 
 The leading task glyph and its tone will derive only from:
 
-- transient engine activity published by the daemon (`running`, `turn_complete`, `rate_limited`, `permission_needed`, or `error`);
+- transient engine activity published by the daemon (`idle`, `running`, `turn_complete`, `rate_limited`, `permission_needed`, or `error`);
 - an in-flight daemon task job such as worktree materialization; or
 - the explicit no-tracking affordance for a custom engine without telemetry.
 
-Persisted `task.status` values (`backlog`, `in_progress`, `in_review`, `done`, `canceled`, and `error`) will not affect sidebar loading, glyphs, tones, or subtitles. With no runtime signal, a normal task has no leading status glyph and uses its branch as the subtitle, or a neutral dash when no branch is available.
+Persisted `task.status` values (`backlog`, `in_progress`, `in_review`, `done`, `canceled`, and `error`) will not affect sidebar loading, glyphs, tones, or subtitles. With no active runtime signal, a normal task shows the hollow idle circle `○` and uses its branch as the subtitle, or a neutral dash when no branch is available.
 
 Project-row behavior remains unchanged. The right-side PR checks chip also remains unchanged because it represents CI checks, not board lifecycle or agent activity.
 
@@ -42,13 +42,13 @@ Task lifecycle status continues through the existing persisted task snapshot for
 
 Hook installation remains non-fatal: malformed or unwritable engine settings must not prevent Kobe from opening. Existing merge logic continues to preserve user-owned configuration and skip no-op writes.
 
-If no activity event is available, the sidebar shows a neutral idle row instead of guessing activity from lifecycle state.
+If no activity event is available, the sidebar shows a neutral idle row with `○` instead of guessing activity from lifecycle state.
 
 ## Testing
 
 1. Add a TUI-startup regression test that uses temporary engine settings paths and verifies startup installs real Kobe activity and worktree-watch hooks before the Workspace Host starts.
 2. Add a sidebar projection test proving all six task lifecycle values produce the same visible runtime state when every other input is identical.
-3. Keep existing activity-pipeline tests as protection for running, completion, permission, rate-limit, error, custom-engine, materialization, and viewed-terminal behavior.
+3. Keep existing activity-pipeline tests as protection for running, completion, permission, rate-limit, error, custom-engine, and materialization behavior; running animation remains visible for the selected task too.
 4. Run the focused TUI and activity tests, type checking, and the repository's relevant broad verification before publishing the branch.
 
 ## Non-Goals

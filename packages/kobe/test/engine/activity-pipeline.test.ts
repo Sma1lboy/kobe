@@ -133,7 +133,7 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
   it("session end: the row returns to neutral runtime chrome", () => {
     const row = rowAfterClaudeHook("SessionEnd", { cwd: "/repo/kobe/worktrees/sidebar" })
     expect(row.loading).toBe(false)
-    expect(row.stateGlyph).toBe("")
+    expect(row.stateGlyph).toBe("○")
     expect(row.tone).toBe("textMuted")
     expect(row.subtitleText).toBe("feature/sidebar")
   })

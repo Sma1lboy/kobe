@@ -130,7 +130,6 @@ export interface RowLoadingInputs {
   readonly task: Task
   readonly activity?: TaskEngineState
   readonly job?: TaskJobState
-  readonly isViewed?: boolean
 }
 
 /**
@@ -146,7 +145,7 @@ export function rowIsLoading(opts: RowLoadingInputs): boolean {
   const hasActivity = activityState !== undefined
   const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
   const materializing = opts.job !== undefined
-  return materializing || (!opts.isViewed && !untrackedCustomEngine && activityState === "running")
+  return materializing || (!untrackedCustomEngine && activityState === "running")
 }
 
 /**
@@ -160,7 +159,6 @@ export function anyRowLoading(
   reads: {
     activity(taskId: string): TaskEngineState | undefined
     job(taskId: string): TaskJobState | undefined
-    isViewed(taskId: string): boolean
   },
 ): boolean {
   return tasks.some((task) =>
@@ -168,7 +166,6 @@ export function anyRowLoading(
       task,
       activity: reads.activity(task.id),
       job: reads.job(task.id),
-      isViewed: reads.isViewed(task.id),
     }),
   )
 }
@@ -197,17 +194,6 @@ export function buildSidebarRowView(opts: {
   readonly mainBranch?: string
   /** Accessibility: swap the engine spinner for the slow pulsing dot. */
   readonly reducedMotion?: boolean
-  /**
-   * This task's terminal is the one currently on screen in the workspace
-   * (task.id === the host's selectedId). When true, the row suppresses its
-   * own engine-activity spinner and defers to the live terminal, where
-   * claude/codex draws its OWN zero-latency spinner — kobe's derived signal
-   * is necessarily a beat behind, so a spinner here is just a laggy duplicate
-   * of one you can already see. `materializing` is exempt (no terminal exists
-   * yet). Other rows are unaffected: their terminal isn't visible, so kobe's
-   * spinner is the only liveness cue they have.
-   */
-  readonly isViewed?: boolean
 }): SidebarRowView {
   const { task } = opts
   const isMain = task.kind === "main"
@@ -234,7 +220,6 @@ export function buildSidebarRowView(opts: {
     task,
     activity: opts.activity,
     job: opts.job,
-    isViewed: opts.isViewed,
   })
   // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
   // reduced motion replaces every set with the slow pulsing dot.
@@ -262,9 +247,10 @@ export function buildSidebarRowView(opts: {
       : branch.length > 0
         ? opts.truncateBranch(branch, opts.subtitleBudget)
         : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
-  // Untracked custom engine: a static dim dot instead of an empty runtime
-  // badge, so liveness reads as "not tracked" rather than frozen.
-  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "")
+  // Untracked custom engine gets a distinct dim dot. Normal tasks fall back
+  // to the hollow idle circle because the client deliberately removes an
+  // explicit `idle` activity entry; absence is therefore the idle projection.
+  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "○")
   const restProjectGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "★")
   return {
     isMain,
