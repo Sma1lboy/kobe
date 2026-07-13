@@ -50,7 +50,7 @@ export interface UseTerminalPtyResult {
   cursor: CursorPos | null
   exited: boolean
   acquireError: string | null
-  forceReacquire: (cwd: string, taskId: string, geometry: { cols: number; rows: number }) => void
+  forceReacquire: (cwd: string, taskId: string, geometry: { cols: number; rows: number }, expected?: TaskPty) => void
 }
 
 export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
@@ -109,6 +109,9 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
       return
     }
     setAcquireError(null)
+    setSnapshot([])
+    setCursor(null)
+    setExited(handle.killed)
     setPty(handle)
     // Reset the caller's viewport on task switch — every task gets its own.
     onFreshPtyRef.current()
@@ -157,13 +160,17 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   // signals together so a stale snapshot/cursor never survives onto the
   // new PTY.
   const forceReacquire = useCallback(
-    (nextCwd: string, nextTaskId: string, geometry: { cols: number; rows: number }): void => {
+    (nextCwd: string, nextTaskId: string, geometry: { cols: number; rows: number }, expected?: TaskPty): void => {
       try {
-        const fresh = registryRef.current.reset(nextTaskId, nextCwd, {
+        const opts = {
           ...geometry,
           command: commandRef.current,
           initialInput: initialInputRef.current,
-        })
+        }
+        const fresh = expected
+          ? registryRef.current.resetIfCurrent(nextTaskId, expected, nextCwd, opts)
+          : registryRef.current.reset(nextTaskId, nextCwd, opts)
+        if (!fresh) return
         setPty(fresh)
         setSnapshot([])
         setCursor(null)

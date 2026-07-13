@@ -1,6 +1,7 @@
 # 005 — Validate the terminal reset target after confirmation
 
-- **Status**: TODO
+- **Status**: DONE
+- **Resolution**: Added mounted/task guards plus an atomic `PtyRegistry.resetIfCurrent` compare-and-reset; resize dedupe now includes PTY identity so a fresh handle receives current geometry.
 - **Commit**: 81969596
 - **Severity**: HIGH
 - **Category**: Bugs & correctness

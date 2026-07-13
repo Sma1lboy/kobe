@@ -249,6 +249,12 @@ export class PtyRegistry {
     return this.acquire(taskId, cwd, opts)
   }
 
+  /** Reset only while `expected` is still the live PTY registered for this key. */
+  resetIfCurrent(taskId: string, expected: TaskPty, cwd: string, opts: AcquireOpts = {}): TaskPty | null {
+    if (expected.killed || this.map.get(taskId) !== expected) return null
+    return this.reset(taskId, cwd, opts)
+  }
+
   /** Tests / debug: how many live PTYs are tracked. */
   get size(): number {
     return this.map.size

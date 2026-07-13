@@ -61,6 +61,21 @@ describe("PtyRegistry", () => {
     expect(fresh).not.toBe(a)
     expect(reg.get("t1")).toBe(fresh)
   })
+
+  it("resetIfCurrent only replaces the expected live PTY", () => {
+    const reg = new PtyRegistry(mockFactory)
+    const first = reg.acquire("t1", "/wt")
+    const second = reg.reset("t1", "/wt")
+
+    expect(reg.resetIfCurrent("t1", first, "/wt")).toBeNull()
+    expect(second.killed).toBe(false)
+    expect(reg.get("t1")).toBe(second)
+
+    const third = reg.resetIfCurrent("t1", second, "/wt")
+    expect(third).not.toBeNull()
+    expect(second.killed).toBe(true)
+    expect(reg.get("t1")).toBe(third)
+  })
 })
 
 describe("default registry singleton", () => {

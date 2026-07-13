@@ -1,6 +1,7 @@
 # 002 — Clear stale PTY state on switch
 
-- **Status**: TODO
+- **Status**: DONE
+- **Resolution**: Reopened after adversarial review confirmed the real tab-switch path can retain the old snapshot; successful acquire now clears snapshot/cursor before exposing the replacement PTY.
 - **Commit**: 81969596
 - **Severity**: HIGH
 - **Category**: Bugs & correctness

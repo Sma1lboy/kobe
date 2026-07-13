@@ -36,7 +36,7 @@
 import type { BoxRenderable, TextRenderable } from "@opentui/core"
 import { StyledText } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { imeAnchorController } from "../../../tui/lib/ime-anchor-output"
 import {
   ImeCursorRetention,
@@ -50,6 +50,7 @@ import { overlaySelection } from "../../../tui/panes/terminal/terminal-selection
 import { computeViewport, viewportCursor } from "../../../tui/panes/terminal/viewport"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { useLatest } from "../../lib/use-latest"
 import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
@@ -213,18 +214,28 @@ export function Terminal(props: TerminalProps) {
   /* --------- reset (F5, confirm-gated) ---------- */
 
   const dialog = useDialog()
+  const resetTaskIdRef = useLatest(props.taskId)
+  const resetCwdRef = useLatest(props.cwd)
+  const mountedRef = useRef(true)
+  useLayoutEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
   const requestReset = (): void => {
     if (!pty) return
     // Snapshot at click-time so a task switch mid-confirm doesn't reset
     // the wrong shell.
+    const ptyAtClick = pty
     const cwdAtClick = props.cwd
     const taskIdAtClick = props.taskId
     const geometryAtClick = bodyGeometry
     if (!cwdAtClick || !taskIdAtClick || !geometryAtClick) return
     void DialogConfirm.show(dialog, t("terminal.reset.title"), t("terminal.reset.body"), "cancel").then((ok) => {
-      if (ok !== true) return
-      if (props.taskId !== taskIdAtClick || props.cwd !== cwdAtClick) return
-      forceReacquire(cwdAtClick, taskIdAtClick, geometryAtClick)
+      if (ok !== true || !mountedRef.current) return
+      if (resetTaskIdRef.current !== taskIdAtClick || resetCwdRef.current !== cwdAtClick) return
+      forceReacquire(cwdAtClick, taskIdAtClick, geometryAtClick, ptyAtClick)
     })
   }
 
@@ -250,13 +261,13 @@ export function Terminal(props: TerminalProps) {
 
   // Push geometry changes to the backend, deduped against the last push —
   // real PTY backends may emit SIGWINCH even when geometry is unchanged.
-  const lastResizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  const lastResizeRef = useRef<{ pty: typeof pty; cols: number; rows: number } | null>(null)
   useEffect(() => {
     if (!pty || !bodyGeometry) return
     const { cols, rows } = bodyGeometry
     const last = lastResizeRef.current
-    if (last && last.cols === cols && last.rows === rows) return
-    lastResizeRef.current = { cols, rows }
+    if (last?.pty === pty && last.cols === cols && last.rows === rows) return
+    lastResizeRef.current = { pty, cols, rows }
     try {
       pty.resize(cols, rows)
     } catch {

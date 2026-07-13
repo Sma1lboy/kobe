@@ -18,6 +18,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { useState } from "react"
+import { modalActive } from "../../src/tui-react/lib/keymap"
 import { Terminal } from "../../src/tui-react/panes/terminal/Terminal"
 import { type ScriptedPtyRegistry, createScriptedPtyRegistry } from "../../src/tui/panes/terminal/pty-scripted"
 import { type RenderHandle, act, renderComponent } from "./harness"
@@ -69,6 +70,21 @@ function ResetHost(props: {
       onExit={props.onExit}
     />
   )
+}
+
+function SwitchHost(props: {
+  harness: ScriptedPtyRegistry
+  api: { switchTo?: (taskId: string, cwd: string) => void }
+}) {
+  const [target, setTarget] = useState({ taskId: "t1", cwd: "/wt-1" })
+  props.api.switchTo = (taskId, cwd) => setTarget({ taskId, cwd })
+  return <Terminal cwd={target.cwd} taskId={target.taskId} focused registry={props.harness.registry} />
+}
+
+function UnmountHost(props: { harness: ScriptedPtyRegistry; api: { hide?: () => void } }) {
+  const [shown, setShown] = useState(true)
+  props.api.hide = () => setShown(false)
+  return shown ? <Terminal cwd="/wt" taskId="t1" focused registry={props.harness.registry} /> : <box />
 }
 
 describe("Terminal pane on a scripted fake PTY", () => {
@@ -171,6 +187,121 @@ describe("Terminal pane on a scripted fake PTY", () => {
     // reset() released the old handle before the throw — nothing leaks.
     expect(harness.ptys[0]?.killed).toBe(true)
     expect(harness.registry.size).toBe(0)
+  })
+
+  test("confirming reset after a task switch does not reset either terminal", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { switchTo?: (taskId: string, cwd: string) => void } = {}
+    const { aframe: frame, mockInput } = await mountTerminal(<SwitchHost harness={harness} api={api} />)
+    await frame()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    expect(modalActive()).toBe(true)
+    await act(async () => api.switchTo?.("t2", "/wt-1"))
+    await frame()
+    expect(modalActive()).toBe(true)
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(modalActive()).toBe(false)
+    expect(harness.ptys.length).toBe(2)
+    expect(harness.ptys.every((pty) => !pty.killed)).toBe(true)
+  })
+
+  test("confirming reset after only the cwd changes leaves the original PTY alive", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { switchTo?: (taskId: string, cwd: string) => void } = {}
+    const { aframe: frame, mockInput } = await mountTerminal(<SwitchHost harness={harness} api={api} />)
+    await frame()
+    const original = harness.last()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    await act(async () => api.switchTo?.("t1", "/wt-2"))
+    await frame()
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(harness.ptys.length).toBe(1)
+    expect(original.killed).toBe(false)
+  })
+
+  test("F5 confirmation resets an unchanged mounted terminal", async () => {
+    const harness = createScriptedPtyRegistry()
+    const { aframe: frame, mockInput } = await mountTerminal(
+      <Terminal cwd="/wt" taskId="t1" focused registry={harness.registry} />,
+    )
+    await frame()
+    const original = harness.last()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(harness.ptys.length).toBe(2)
+    expect(original.killed).toBe(true)
+    expect(harness.last().killed).toBe(false)
+  })
+
+  test("a stale confirmation does not reset a newer PTY under the same task key", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { bumpReset?: () => void } = {}
+    const { aframe: frame, mockInput } = await mountTerminal(<ResetHost harness={harness} api={api} />)
+    await frame()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    await act(async () => api.bumpReset?.())
+    await frame()
+    const replacement = harness.last()
+    expect(harness.ptys.length).toBe(2)
+
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(harness.ptys.length).toBe(2)
+    expect(replacement.killed).toBe(false)
+  })
+
+  test("confirming reset after Terminal unmounts leaves its PTY alive", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { hide?: () => void } = {}
+    const { aframe: frame, mockInput } = await mountTerminal(<UnmountHost harness={harness} api={api} />)
+    await frame()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    await act(async () => api.hide?.())
+    await frame()
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(harness.ptys.length).toBe(1)
+    expect(harness.last().killed).toBe(false)
+  })
+
+  test("a reset after resize applies the current geometry to the fresh PTY", async () => {
+    const harness = createScriptedPtyRegistry()
+    const {
+      aframe: frame,
+      mockInput,
+      resize,
+    } = await mountTerminal(<Terminal cwd="/wt" taskId="t1" focused registry={harness.registry} />)
+    await frame()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    act(() => resize(100, 30))
+    await frame()
+    const currentGeometry = harness.last().geometry
+
+    act(() => mockInput.pressEnter())
+    await frame()
+
+    expect(harness.ptys.length).toBe(2)
+    expect(harness.last().geometry).toEqual(currentGeometry)
   })
 
   test("null cwd renders the no-task placeholder without acquiring", async () => {
