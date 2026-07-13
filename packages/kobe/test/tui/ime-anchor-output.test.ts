@@ -59,6 +59,21 @@ describe("ImeAnchorController", () => {
 })
 
 describe("createImeAnchoredOutput", () => {
+  it("isolates renderer write reassignment from the real terminal stream", () => {
+    const sink = collectingOutput()
+    const originalWrite = sink.output.write
+    const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+    const adapterWrite = anchored.stdout.write.bind(anchored.stdout)
+    const rendererWrite = vi.fn(() => true) as unknown as NodeJS.WriteStream["write"]
+
+    anchored.stdout.write = rendererWrite
+
+    expect(anchored.stdout.write).toBe(rendererWrite)
+    expect(sink.output.write).toBe(originalWrite)
+    adapterWrite("frame")
+    expect(sink.text()).toBe("frame")
+  })
+
   it("passes renderer bytes through unchanged while no terminal owns the anchor", () => {
     const sink = collectingOutput()
     const controller = new ImeAnchorController()

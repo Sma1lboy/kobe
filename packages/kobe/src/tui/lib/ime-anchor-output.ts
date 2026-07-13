@@ -141,14 +141,19 @@ export function createImeAnchoredOutput(
     }
     return callback ? target.write(transformed, callback) : target.write(transformed)
   }
+  let exposedWrite: unknown = write
 
   const stdout = new Proxy(target, {
     get(stream, property) {
-      if (property === "write") return write
+      if (property === "write") return exposedWrite
       const value = Reflect.get(stream, property, stream)
       return typeof value === "function" ? value.bind(stream) : value
     },
     set(stream, property, value) {
+      if (property === "write") {
+        exposedWrite = value
+        return true
+      }
       return Reflect.set(stream, property, value, stream)
     },
   }) as NodeJS.WriteStream
