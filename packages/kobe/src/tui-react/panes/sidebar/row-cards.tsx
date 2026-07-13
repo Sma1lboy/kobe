@@ -190,10 +190,8 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       truncateBranch: truncateBranchLabel,
       mainBranch,
       reducedMotion,
-      // Defer to the live terminal when this task's pane is the one on screen.
-      isViewed: isSelected,
     })
-  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, isSelected, t])
+  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object, so an idle row does zero per-frame derivation.
   const rowView = withSpinnerFrame(baseView, () => shared.spinnerFrame)

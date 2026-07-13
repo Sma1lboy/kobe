@@ -30,15 +30,6 @@ export const en = {
   },
   /** In-list hint shown at the bottom of the Archives view */
   archiveHint: "a to unarchive",
-  /** Row-view status labels (shown in subtitle when no branch) */
-  status: {
-    done: "done",
-    inReview: "in review",
-    working: "working",
-    backlog: "—",
-    canceled: "canceled",
-    error: "error",
-  },
   /** Row-view engine activity labels (shown in subtitle, override branch) */
   activity: {
     rateLimited: "rate limited",
@@ -114,14 +105,6 @@ export const zh: typeof en = {
     noArchived: "暂无归档任务。",
   },
   archiveHint: "a 取消归档",
-  status: {
-    done: "已完成",
-    inReview: "审核中",
-    working: "进行中",
-    backlog: "—",
-    canceled: "已取消",
-    error: "错误",
-  },
   activity: {
     rateLimited: "请求受限",
     permissionNeeded: "等待授权",

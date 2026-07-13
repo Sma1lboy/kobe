@@ -82,7 +82,8 @@ function IssueDetailDialogView(
   const startable = create || (!linkedTaskId && issue.status !== "done")
 
   const [vendor, setVendor] = useState<VendorId>(props.defaultVendor)
-  const [placement, setPlacement] = useState<IssueChatPlacement>("worktree")
+  // Background start is the board's default trigger (ISSUE_CHAT_PLACEMENTS[0]).
+  const [placement, setPlacement] = useState<IssueChatPlacement>(ISSUE_CHAT_PLACEMENTS[0] ?? "worktreeBg")
   const [draftTitle, setDraftTitle] = useState(issue.title)
   const [draftBody, setDraftBody] = useState(issue.body)
   // Startable stories open ready to fire (enter = start from the workspace

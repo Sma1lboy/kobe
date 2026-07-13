@@ -41,7 +41,10 @@ export function withImagePlaceholders(body: string, paths: readonly string[]): s
   return next
 }
 
-export const ISSUE_CHAT_PLACEMENTS: readonly IssueChatPlacement[] = ["worktree", "worktreeBg", "project"]
+/** Drawer order — background start first: the board's default trigger is
+ *  "launch the agent, stay here and track the card"; jumping into the
+ *  session is the explicit second choice. */
+export const ISSUE_CHAT_PLACEMENTS: readonly IssueChatPlacement[] = ["worktreeBg", "worktree", "project"]
 
 /** Task title for a story-spawned task — same `#id title` shape the web uses. */
 export function issueChatTaskTitle(issue: Issue): string {

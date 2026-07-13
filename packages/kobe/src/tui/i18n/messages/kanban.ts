@@ -21,6 +21,9 @@ export const en = {
   more: "+{count} more",
   /** Badge on a Backlog card whose stored status is `hold`. */
   hold: "hold",
+  /** In-progress card badge: the linked task's engine finished a turn
+   *  (waiting on review/input) but the story isn't `done` yet. */
+  turnComplete: "turn done",
   detail: {
     status: {
       open: "open",
@@ -42,7 +45,7 @@ export const en = {
     workspace: "WORKSPACE",
     placement: {
       worktree: "New worktree — open its task session",
-      worktreeBg: "New worktree — stay here (task under the project group)",
+      worktreeBg: "New worktree — start in background, stay on the board",
       project: "Project checkout — no worktree",
     },
     startLegend: "enter/ctrl+enter start · tab fields · ←→ engine · ↑↓ workspace · esc save & close",
@@ -75,6 +78,7 @@ export const zh: typeof en = {
   },
   more: "还有 {count} 条",
   hold: "搁置",
+  turnComplete: "回合完成",
   detail: {
     status: {
       open: "待办",
@@ -92,7 +96,7 @@ export const zh: typeof en = {
     workspace: "工作区",
     placement: {
       worktree: "新建 worktree——打开它的任务会话",
-      worktreeBg: "新建 worktree——留在原地(任务挂在项目组下)",
+      worktreeBg: "新建 worktree——后台启动,留在看板",
       project: "项目主目录——不建 worktree",
     },
     startLegend: "enter/ctrl+enter 启动 · tab 切字段 · ←→ 引擎 · ↑↓ 工作区 · esc 保存关闭",

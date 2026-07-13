@@ -54,8 +54,8 @@ describe("issue-chat prompts", () => {
     expect(prompt).not.toContain("\n\n\n")
   })
 
-  test("placement cycle order is worktree → worktreeBg → project", () => {
-    expect(ISSUE_CHAT_PLACEMENTS).toEqual(["worktree", "worktreeBg", "project"])
+  test("placement cycle order is worktreeBg (default trigger) → worktree → project", () => {
+    expect(ISSUE_CHAT_PLACEMENTS).toEqual(["worktreeBg", "worktree", "project"])
   })
 })
 

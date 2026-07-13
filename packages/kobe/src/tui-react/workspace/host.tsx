@@ -286,6 +286,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         orchestrator={orch}
         onClose={() => setKanbanOpen(false)}
         onStartChat={issueChat.start}
+        engineStates={engineState}
         onOpenTask={(taskId) => {
           setKanbanOpen(false)
           void activateTask(taskId)
