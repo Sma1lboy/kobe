@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2
+
+### Patch Changes
+
+- 6c3cb9e: Stop rendering a question-mark placeholder when a terminal tab's turn state cannot be determined.
+- bdfc819: Restore global engine hook installation at TUI startup while preserving malformed user settings files.
+- 24da452: Keep macOS input-method preedit and candidate windows anchored to the embedded terminal prompt while Claude or another engine animates output.
+- 4436c7e: Restyle TUI toasts with the active theme's neutral overlay surface, readable title text, and semantic status glyphs across bundled and transparent themes.
+
 ## 0.8.1
 
 ### Patch Changes
