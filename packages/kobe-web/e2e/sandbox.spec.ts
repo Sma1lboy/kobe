@@ -1,31 +1,49 @@
 import { expect, test } from "@playwright/test"
+import { VISUAL_RUN_ID } from "./visual-fixture.ts"
 
-/**
- * Goal B — the FULL kobe TUI (dev:sandbox: real kobe + tmux + engine) driven
- * through the web xterm. Run with KOBE_PTY_DEV_COMMAND="bun run dev:sandbox".
- *
- * Proves the whole product renders + responds over the browser terminal: brand
- * header, the Tasks rail (PROJECTS / TASKS), the keys legend, and a live engine
- * pane — all inside tmux inside the PTY inside xterm. tmux sessions are cleaned
- * by the global teardown (dev:sandbox:reset) so runs don't bleed.
- */
-test("full kobe TUI (dev:sandbox) renders + responds in the web xterm", async ({ page }) => {
-  test.skip(!process.env.KOBE_PTY_DEV_COMMAND?.includes("sandbox"), "dev:sandbox only")
+const TITLE = "Improve Kanban card hierarchy"
+const BODY = "Make status, project, and next action easy to scan."
 
-  await page.goto("/harness")
-  const rows = page.locator(".xterm-rows")
-  await expect(rows).toBeVisible({ timeout: 40_000 })
+test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
-  // Full kobe + tmux + engine cold start — the retrying matcher waits it out.
-  await expect(rows).toContainText("KOBE", { timeout: 45_000 })
-  await expect(rows).toContainText("PROJECTS")
-  await expect(rows).toContainText("TASKS")
-  // The Tasks-pane keys legend rendered (proves the rail, not just a bare shell).
-  await expect(rows).toContainText("new task")
+  await page.goto(`/harness?run=${VISUAL_RUN_ID}`)
+  const harness = page.getByTestId("opentui-harness")
+  const terminal = page.getByTestId("opentui-terminal")
+  const buffer = page.getByTestId("opentui-buffer")
 
-  // Drive it: focus the terminal and switch the sidebar view with `[`.
-  await page.locator(".xterm-helper-textarea").focus()
-  await page.keyboard.press("BracketLeft")
-  // Still the full TUI after input (didn't die on a key).
-  await expect(rows).toContainText("KOBE")
+  await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
+  await expect(buffer).toContainText("PROJECTS", { timeout: 45_000 })
+  await expect(buffer).toContainText("TASKS")
+  await expect(buffer).toContainText("Visual Fixture")
+
+  await terminal.click({ position: { x: 24, y: 24 } })
+  await page.keyboard.press("Control+H")
+  await page.keyboard.press("c")
+
+  await expect(buffer).toContainText("Kanban")
+  await expect(buffer).toContainText("Backlog fixture")
+  await expect(buffer).toContainText("In progress fixture")
+  await expect(buffer).toContainText("Done fixture")
+
+  await page.keyboard.press("n")
+  await expect(buffer).toContainText("NEW STORY")
+  await expect(buffer).toContainText("TITLE")
+  await expect(buffer).toContainText("DESCRIPTION")
+
+  await page.keyboard.type(TITLE)
+  await page.keyboard.press("Enter")
+  await page.keyboard.type(BODY)
+  await expect(buffer).toContainText(TITLE)
+  await expect(buffer).toContainText(BODY)
+
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
+  await expect(page).toHaveScreenshot("kanban-new-issue.png", {
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+  })
 })

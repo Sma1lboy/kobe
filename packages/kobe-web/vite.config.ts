@@ -1,11 +1,10 @@
 /// <reference types="vitest/config" />
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
-import { configDefaults } from "vitest/config"
-
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import viteReact from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { configDefaults } from "vitest/config"
 
 // The daemon binds browser-facing HTTP/SSE routes on a sibling port. Vite
 // proxies those routes so the browser sees one origin during development.
