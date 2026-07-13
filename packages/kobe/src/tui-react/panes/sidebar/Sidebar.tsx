@@ -129,9 +129,8 @@ export function Sidebar(props: SidebarProps) {
       anyRowLoading(props.tasks, {
         activity: (id) => props.engineState?.get(id),
         job: (id) => props.taskJobs?.get(id),
-        isViewed: (id) => id === props.selectedId,
       }),
-    [reducedMotion, props.tasks, props.engineState, props.taskJobs, props.selectedId],
+    [reducedMotion, props.tasks, props.engineState, props.taskJobs],
   )
 
   const [spinnerFrame, setSpinnerFrame] = useState(0)
