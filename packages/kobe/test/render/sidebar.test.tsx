@@ -5,7 +5,7 @@
  * content width, not stop one cell short. React delta: props are plain values,
  * not accessors.
  */
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { type CapturedFrame, RGBA, TextAttributes } from "@opentui/core"
 import { setTransparentBackground } from "../../src/tui-react/context/theme"
 import { Sidebar } from "../../src/tui-react/panes/sidebar/Sidebar"
@@ -46,6 +46,9 @@ function backgroundWidth(frame: CapturedFrame, needle: string, bg: RGBA): number
   if (!line) return 0
   return line.spans.reduce((sum, span) => (span.bg.equals(bg) ? sum + span.width : sum), 0)
 }
+
+beforeEach(() => setTransparentBackground(false))
+afterEach(() => setTransparentBackground(true))
 
 describe("Sidebar", () => {
   it("paints the selected row background across the full scroll content width", async () => {
@@ -178,7 +181,6 @@ describe("Sidebar", () => {
       expect(divider?.fg.equals(border)).toBe(true)
     } finally {
       destroy()
-      setTransparentBackground(false)
     }
   })
 })
