@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { basename, join, relative, resolve, sep } from "node:path"
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..")
-export const KOBE_DIR = join(REPO_ROOT, "packages", "kobe")
+export const KOBE_DIR: string = join(REPO_ROOT, "packages", "kobe")
 export const VISUAL_PORT_BASE = Number.parseInt(process.env.KOBE_VISUAL_PORT_BASE ?? "5273", 10)
 export const VISUAL_WEB_PORT = VISUAL_PORT_BASE
 export const VISUAL_DAEMON_PORT = VISUAL_PORT_BASE + 1
@@ -12,6 +12,15 @@ export const VISUAL_RUN_ID = `p${VISUAL_PORT_BASE}`
 export const VISUAL_ROOT = join(REPO_ROOT, ".scratch", `opentui-visual-${VISUAL_PORT_BASE}`)
 export const VISUAL_HOME = join(VISUAL_ROOT, "home")
 export const VISUAL_REPO = join(VISUAL_ROOT, "fixture-repo")
+
+/** Bump when the fixture shape changes so warm reuse rebuilds. */
+const FIXTURE_VERSION = "1"
+const FIXTURE_MARKER = join(VISUAL_ROOT, "fixture-ok")
+
+// Inlined into the PTY command: the child runs under `/bin/sh -lc`, and a
+// login shell or env-passing gap must NEVER let it fall back to the shared
+// `.dev-sandbox/home` (the owner's live environment).
+export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} bun run dev:sandbox`
 
 const XDG_CONFIG_HOME = join(VISUAL_HOME, ".config")
 const XDG_DATA_HOME = join(VISUAL_HOME, ".local", "share")
@@ -129,7 +138,21 @@ export async function cleanupVisualFixture(): Promise<void> {
   }
 }
 
+/** Warm-path probe: marker matches and the fixture daemon still answers. */
+async function fixtureIsWarm(): Promise<boolean> {
+  if (process.env.KOBE_VISUAL_FRESH === "1") return false
+  try {
+    if ((await readFile(FIXTURE_MARKER, "utf8")).trim() !== FIXTURE_VERSION) return false
+    // `kobe api list` auto-starts the fixture daemon when it idled out.
+    const listed = runKobe(["list"]) as { tasks?: Array<{ title?: unknown }> }
+    return listed.tasks?.some((task) => task.title === "Visual Fixture") ?? false
+  } catch {
+    return false
+  }
+}
+
 export default async function setupVisualFixture(): Promise<void> {
+  if (await fixtureIsWarm()) return
   await cleanupVisualFixture()
   await Promise.all(
     [VISUAL_HOME, VISUAL_REPO, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, XDG_CACHE_HOME, XDG_RUNTIME_DIR].map(
@@ -176,4 +199,5 @@ export default async function setupVisualFixture(): Promise<void> {
   )
   runKobe(["issue-set-status", "--repo", VISUAL_REPO, "--id", String(doneId), "--status", "done"])
   runKobe(["set-active", "--task-id", added.taskId])
+  await writeFile(FIXTURE_MARKER, `${FIXTURE_VERSION}\n`)
 }

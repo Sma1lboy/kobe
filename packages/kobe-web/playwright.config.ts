@@ -4,20 +4,19 @@ import {
   VISUAL_DAEMON_PORT,
   VISUAL_ENV,
   VISUAL_HOME,
+  VISUAL_PTY_COMMAND,
   VISUAL_PTY_PORT,
   VISUAL_WEB_PORT,
 } from "./e2e/visual-fixture.ts"
 
 const KOBE_DIR = resolve(import.meta.dirname, "../kobe")
 const visual = process.env.KOBE_VISUAL === "1"
+// Warm iteration mode: reuse a `visual:serve` server pair and keep the
+// fixture alive after the run. Hermetic acceptance keeps strict ownership.
+const keepWarm = visual && process.env.KOBE_VISUAL_KEEP === "1"
 const webPort = visual ? VISUAL_WEB_PORT : 5173
 const ptyPort = visual ? VISUAL_PTY_PORT : 5175
-// The isolated home is inlined into the command itself: the PTY child runs
-// under `/bin/sh -lc`, and a login shell or env-passing gap must NEVER let it
-// fall back to the shared `.dev-sandbox/home` (the owner's live environment).
-const devCommand = visual
-  ? `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} bun run dev:sandbox`
-  : (process.env.KOBE_PTY_DEV_COMMAND ?? "bun run dev:mock")
+const devCommand = visual ? VISUAL_PTY_COMMAND : (process.env.KOBE_PTY_DEV_COMMAND ?? "bun run dev:mock")
 const baseEnv = visual
   ? {
       ...VISUAL_ENV,
@@ -49,7 +48,7 @@ export default defineConfig({
     {
       command: `bunx vite dev --port ${webPort} --strictPort`,
       port: webPort,
-      reuseExistingServer: visual ? false : !process.env.CI,
+      reuseExistingServer: visual ? keepWarm : !process.env.CI,
       stdout: "pipe",
       stderr: "pipe",
       env: baseEnv,
@@ -58,7 +57,7 @@ export default defineConfig({
       // node-pty does not run under Bun; Playwright owns this Node sidecar.
       command: "node pty-server.mjs",
       port: ptyPort,
-      reuseExistingServer: visual ? false : !process.env.CI,
+      reuseExistingServer: visual ? keepWarm : !process.env.CI,
       stdout: "pipe",
       stderr: "pipe",
       env: {

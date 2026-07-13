@@ -4,6 +4,9 @@ import { cleanupVisualFixture, VISUAL_HOME } from "./visual-fixture.ts"
 
 /** Stop only the sandbox processes owned by this E2E run. */
 export default async function globalTeardown(): Promise<void> {
+  // Warm iteration (`visual:dev` against `visual:serve`) keeps the fixture
+  // and servers alive for the next run; hermetic `visual` cleans everything.
+  if (process.env.KOBE_VISUAL_KEEP === "1") return
   if (process.env.KOBE_VISUAL === "1") {
     try {
       await cleanupVisualFixture()

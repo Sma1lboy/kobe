@@ -21,6 +21,8 @@
     "test:behavior": "bun --filter @sma1lboy/kobe test:behavior",
     "visual": "bun --filter kobe-web visual",
     "visual:update": "bun --filter kobe-web visual:update",
+    "visual:serve": "bun --filter kobe-web visual:serve",
+    "visual:dev": "bun --filter kobe-web visual:dev",
     "lint": "biome check biome.json package.json docs packages/kobe packages/kobe-daemon --config-path ./biome.json",
     "lint:fix": "biome check biome.json package.json docs packages/kobe packages/kobe-daemon --config-path ./biome.json --write",
     "changeset": "changeset",
