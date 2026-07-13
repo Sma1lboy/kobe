@@ -47,6 +47,7 @@ import {
   installOrphanExitWatchdog,
   installPaneExitBackstop,
 } from "../../tui/lib/host-render-options"
+import { createHostImeOutput } from "../../tui/lib/ime-anchor-output"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../../tui/lib/persisted-ui-prefs"
 import { FocusProvider } from "../context/focus"
 import { KVProvider } from "../context/kv"
@@ -234,11 +235,22 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   const notifications = opts.providers?.notifications ?? false
 
   const screen = await opts.setup(prefs)
-  const renderer = await createCliRenderer(
-    opts.inlineRows !== undefined
-      ? inlineRenderOptions(opts.inlineRows, screen.onDestroy)
-      : hostRenderOptions(screen.onDestroy),
-  )
+  const imeOutput = createHostImeOutput({
+    platform: process.platform,
+    fullscreen: opts.inlineRows === undefined,
+    stdout: process.stdout,
+  })
+  let detachImeOutput = (): void => {}
+  const onDestroy = (): void => {
+    detachImeOutput()
+    imeOutput.flush()
+    screen.onDestroy?.()
+  }
+  const renderer = await createCliRenderer({
+    ...(opts.inlineRows !== undefined ? inlineRenderOptions(opts.inlineRows, onDestroy) : hostRenderOptions(onDestroy)),
+    ...imeOutput.rendererOptions,
+  })
+  detachImeOutput = imeOutput.attach(renderer)
 
   const body = (
     <>

@@ -110,6 +110,13 @@ export interface ImeAnchoredOutput {
   flush(): void
 }
 
+export interface HostImeOutput {
+  readonly active: boolean
+  readonly rendererOptions: Readonly<{ stdout?: NodeJS.WriteStream; remote?: false }>
+  attach(renderer: { resize(width: number, height: number): void }): () => void
+  flush(): void
+}
+
 /**
  * Return a TTY-compatible proxy whose distinct identity selects OpenTUI's
  * ordered NativeSpanFeed, while every property except `write` delegates to
@@ -151,6 +158,31 @@ export function createImeAnchoredOutput(
       const pending = transformer.flush()
       if (pending.length > 0) target.write(pending)
     },
+  }
+}
+
+/** Select the custom output path only for the affected fullscreen macOS TUI. */
+export function createHostImeOutput(opts: {
+  readonly platform: NodeJS.Platform
+  readonly fullscreen: boolean
+  readonly stdout: NodeJS.WriteStream
+  readonly controller?: ImeAnchorController
+}): HostImeOutput {
+  if (opts.platform !== "darwin" || !opts.fullscreen) {
+    return {
+      active: false,
+      rendererOptions: {},
+      attach: () => () => {},
+      flush: () => {},
+    }
+  }
+
+  const output = createImeAnchoredOutput(opts.stdout, opts.controller)
+  return {
+    active: true,
+    rendererOptions: { stdout: output.stdout, remote: false },
+    attach: (renderer) => installRendererResizeForwarder(renderer, opts.stdout),
+    flush: () => output.flush(),
   }
 }
 
