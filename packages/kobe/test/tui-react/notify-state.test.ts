@@ -85,6 +85,19 @@ describe("osc9", () => {
   it("wraps the body in the OSC 9 escape with a BEL terminator", () => {
     expect(osc9("kobe — hi")).toBe("\x1b]9;kobe — hi\x07")
   })
+
+  it("neutralizes terminal control bytes before framing the notification", () => {
+    const injected = "safe\x07\x1b]52;c;Y2xpcGJvYXJk\x07\x9d9;again\x9c\nend"
+    const framed = osc9(injected)
+
+    expect(framed).toBe("\x1b]9;safe  ]52;c;Y2xpcGJvYXJk  9;again  end\x07")
+  })
+
+  it("neutralizes every C0 and C1 control byte", () => {
+    const controls = String.fromCharCode(...Array.from({ length: 0x20 }, (_, code) => code), 0x7f)
+    const c1 = String.fromCharCode(...Array.from({ length: 0x20 }, (_, offset) => 0x80 + offset))
+    expect(osc9(`${controls}${c1}`)).toBe(`\x1b]9;${" ".repeat(0x41)}\x07`)
+  })
 })
 
 describe("nextAttentionTarget", () => {

@@ -94,8 +94,20 @@ export function attentionKindFor(state: string): NotificationKind | null {
  * user's LOCAL terminal, unlike an `afplay` chime that rings on the remote box.
  * Body is BEL-terminated (`\x07`), the widely-accepted OSC terminator.
  */
+function sanitizeOscBody(body: string): string {
+  let out = ""
+  let segmentStart = 0
+  for (let i = 0; i < body.length; i++) {
+    const code = body.charCodeAt(i)
+    if (code > 0x1f && (code < 0x7f || code > 0x9f)) continue
+    out += `${body.slice(segmentStart, i)} `
+    segmentStart = i + 1
+  }
+  return segmentStart === 0 ? body : out + body.slice(segmentStart)
+}
+
 export function osc9(body: string): string {
-  return `\x1b]9;${body}\x07`
+  return `\x1b]9;${sanitizeOscBody(body)}\x07`
 }
 
 /** One F7 stop: a task, optionally a specific engine tab to activate. */
