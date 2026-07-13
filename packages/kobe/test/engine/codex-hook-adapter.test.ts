@@ -61,6 +61,25 @@ describe("CodexHookAdapter install/remove roundtrip (real file)", () => {
     return JSON.parse(await readFile(file, "utf8")).hooks
   }
 
+  it("creates a missing settings file", async () => {
+    await adapter.installActivityHooks(file)
+
+    const hooks = await readHooks()
+    expect(hooks.SessionStart).toBeDefined()
+    expect(hooks.UserPromptSubmit).toBeDefined()
+    expect(hooks.Stop).toBeDefined()
+  })
+
+  it("leaves a malformed settings file untouched", async () => {
+    const malformed = '{"model":"gpt-5",'
+    await writeFile(file, malformed)
+
+    await adapter.installActivityHooks(file)
+    await adapter.installWorktreeWatchHook(file)
+
+    expect(await readFile(file, "utf8")).toBe(malformed)
+  })
+
   it("installs SessionStart/UserPromptSubmit/Stop + the Bash worktree-watch, preserving the user's hooks", async () => {
     // Seed a user-authored hook that must survive kobe's merge.
     await writeFile(file, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "user-stop" }] }] } }))
