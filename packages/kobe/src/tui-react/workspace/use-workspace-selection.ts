@@ -69,7 +69,11 @@ export function useWorkspaceSelection(args: {
     void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
   }
 
+  // Last-intent-wins: a slow activation that resolves after a newer one must
+  // not yank selection/focus back to the older task.
+  const activationGenerationRef = useRef(0)
   async function activateTask(id: string): Promise<void> {
+    const generation = ++activationGenerationRef.current
     await activateWorkspaceTask(
       {
         getTask: (taskId) => tasks.find((task) => task.id === taskId),
@@ -77,6 +81,7 @@ export function useWorkspaceSelection(args: {
         selectTask,
         focusWorkspace: args.focusWorkspace,
         reportError: (error) => console.error("[kobe workspace] task.ensureWorktree failed:", error),
+        isCurrent: () => activationGenerationRef.current === generation,
       },
       id,
     )

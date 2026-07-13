@@ -11,6 +11,9 @@ type ActivateWorkspaceTaskOptions = {
   selectTask: (id: string) => void
   focusWorkspace: () => void
   reportError: (error: unknown) => void
+  /** Last-intent guard: `false` after the await means a newer activation
+   *  superseded this one, so selection/focus must not be applied. */
+  isCurrent?: () => boolean
 }
 
 export async function activateWorkspaceTask(opts: ActivateWorkspaceTaskOptions, id: string): Promise<boolean> {
@@ -28,6 +31,7 @@ export async function activateWorkspaceTask(opts: ActivateWorkspaceTaskOptions, 
       return false
     }
   }
+  if (opts.isCurrent?.() === false) return false
   opts.selectTask(id)
   opts.focusWorkspace()
   return true

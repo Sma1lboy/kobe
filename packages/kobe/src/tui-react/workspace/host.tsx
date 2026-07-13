@@ -31,6 +31,7 @@ import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useAccessor } from "../lib/use-accessor"
 import { useDaemonNotices } from "../lib/use-daemon-notices"
+import { useLatest } from "../lib/use-latest"
 import { FileTree } from "../panes/filetree/FileTree"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
@@ -159,13 +160,20 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // workspace here (KOB-25 — a read-only open must not pull focus).
   const openDiffTabFn = useRef<((relPath: string, label: string, base?: string) => void) | null>(null)
 
+  // Identity guard for the async actions below: after an await, the selected
+  // task (and therefore the TerminalTabs mount behind the imperative refs) may
+  // have changed — a stale continuation must not deliver into the new task.
+  const selectedWorktreeRef = useLatest(worktree)
+
   /** FileTree corner `pr` action — the Ops pane's createPR verbatim, with
    *  the tmux send-keys half swapped for a PTY paste+submit. */
   async function createPR(): Promise<void> {
     const wt = worktree
-    if (!wt || !sendToEngineFn.current) return
+    const send = sendToEngineFn.current
+    if (!wt || !send) return
     const prompt = await buildPRPrompt(wt)
-    sendToEngineFn.current(prompt)
+    if (selectedWorktreeRef.current !== wt || sendToEngineFn.current !== send) return
+    send(prompt)
   }
 
   // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
@@ -195,12 +203,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     const wt = worktree
     if (!wt) return
     const abs = join(wt, relPath)
-    const launch = openEditorTabFn.current ? await resolveEditorLaunch(wt, abs) : null
+    const openEditorTab = openEditorTabFn.current
+    const launch = openEditorTab ? await resolveEditorLaunch(wt, abs) : null
     if (!launch) {
       openExternally(abs)
       return
     }
-    openEditorTabFn.current?.(["sh", "-c", launch.command], launch.label)
+    // Stale continuation: the user switched tasks while the editor resolved —
+    // the file belongs to the old worktree, not whatever tab mount is live now.
+    if (selectedWorktreeRef.current !== wt || openEditorTabFn.current !== openEditorTab) return
+    openEditorTab?.(["sh", "-c", launch.command], launch.label)
     focus.setFocused("workspace")
   }
 

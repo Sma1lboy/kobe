@@ -1,6 +1,6 @@
 # 003 — Guard async workspace actions by task identity
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 81969596
 - **Severity**: HIGH
 - **Category**: Bugs & correctness

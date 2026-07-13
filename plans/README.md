@@ -7,8 +7,8 @@ Audit base: `81969596` (`0.8.2` release commit). Source changes are intentionall
 | 1 | [001 Sanitize terminal notifications](001-sanitize-terminal-notifications.md) | HIGH | DONE | — |
 | 2 | [002 Clear PTY state on switch](002-clear-pty-state-on-switch.md) | HIGH | DONE | — |
 | 3 | [005 Validate terminal reset target](005-validate-terminal-reset-target.md) | HIGH | DONE | — |
-| 4 | [004 Last-intent task activation](004-make-task-activation-last-intent-wins.md) | HIGH | TODO | — |
-| 5 | [003 Guard async workspace actions](003-guard-async-workspace-actions.md) | HIGH | TODO | 004 identity conventions |
+| 4 | [004 Last-intent task activation](004-make-task-activation-last-intent-wins.md) | HIGH | DONE | — |
+| 5 | [003 Guard async workspace actions](003-guard-async-workspace-actions.md) | HIGH | DONE | — |
 | 6 | [006 Cache terminal passthrough bindings](006-cache-terminal-passthrough-bindings.md) | MEDIUM | TODO | terminal correctness green |
 | 7 | [007 Follow settings keyboard cursor](007-follow-settings-keyboard-cursor.md) | MEDIUM | TODO | — |
 | 8 | [008 Help keyboard scrolling](008-add-help-keyboard-scrolling.md) | MEDIUM | TODO | owner chord approval if needed |

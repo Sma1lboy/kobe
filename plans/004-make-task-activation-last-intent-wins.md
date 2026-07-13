@@ -1,6 +1,6 @@
 # 004 — Make task activation last-intent-wins
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 81969596
 - **Severity**: HIGH
 - **Category**: Bugs & correctness

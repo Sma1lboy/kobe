@@ -97,6 +97,45 @@ describe("pure-TUI workspace task activation", () => {
     expect(focusWorkspace).toHaveBeenCalledOnce()
   })
 
+  test("a superseded activation resolves without stealing selection or focus", async () => {
+    const selectTask = vi.fn()
+    const focusWorkspace = vi.fn()
+    let releaseSlowWorktree: (() => void) | undefined
+    const slow = activateWorkspaceTask(
+      {
+        getTask: () => undefined,
+        ensureWorktree: () =>
+          new Promise((resolve) => {
+            releaseSlowWorktree = () => resolve("/worktrees/slow")
+          }),
+        selectTask,
+        focusWorkspace,
+        reportError: vi.fn(),
+        isCurrent: () => false,
+      },
+      "slow-task",
+    )
+
+    const fast = await activateWorkspaceTask(
+      {
+        getTask: (id) => task(id, "/worktrees/fast"),
+        ensureWorktree: vi.fn(async () => "/worktrees/fast"),
+        selectTask,
+        focusWorkspace,
+        reportError: vi.fn(),
+        isCurrent: () => true,
+      },
+      "fast-task",
+    )
+    releaseSlowWorktree?.()
+
+    expect(fast).toBe(true)
+    expect(await slow).toBe(false)
+    expect(selectTask).toHaveBeenCalledTimes(1)
+    expect(selectTask).toHaveBeenCalledWith("fast-task")
+    expect(focusWorkspace).toHaveBeenCalledTimes(1)
+  })
+
   test("selection restore prefers a live active task, then the first non-archived row", () => {
     const active = task("active", "/worktrees/active")
     const archived = { ...task("archived", "/worktrees/archived"), archived: true }
