@@ -7,6 +7,7 @@
  * restart`, not a daemon-less in-process Orchestrator.
  */
 
+import { ensureGlobalKobeHooks } from "../cli/hook-cmd.ts"
 import { enforceResetGate } from "../cli/reset-gate.ts"
 import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 import { publishKobeTerminalTitle } from "./lib/outer-terminal-title.ts"
@@ -25,6 +26,11 @@ export async function startTui(): Promise<void> {
   // (one-time hint), or prompt yes/no/don't-notify-this-version if it's
   // out of date. Best-effort — the reliable check is `kobe skill status`.
   await maybeHintSkillInstall()
+
+  // Hook installation used to live in the retired direct-tmux bootstrap.
+  // Finish the idempotent local settings merge before the Workspace Host can
+  // launch an engine, so its first activity events are observable too.
+  await ensureGlobalKobeHooks()
 
   const { startWorkspaceHost } = await import("../tui-react/workspace/host.tsx")
   await startWorkspaceHost()
