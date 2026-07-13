@@ -38,7 +38,11 @@ import { StyledText } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { imeAnchorController } from "../../../tui/lib/ime-anchor-output"
-import { ImeCursorRetention } from "../../../tui/panes/terminal/ime-cursor"
+import {
+  ImeCursorRetention,
+  type ImeScreenAnchor,
+  ImeScreenAnchorRetention,
+} from "../../../tui/panes/terminal/ime-cursor"
 import { type PtyRegistry, getDefaultPtyRegistry } from "../../../tui/panes/terminal/registry"
 import { rowsToStyledText } from "../../../tui/panes/terminal/sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "../../../tui/panes/terminal/terminal-render"
@@ -242,7 +246,7 @@ export function Terminal(props: TerminalProps) {
 
   const renderer = useRenderer()
   const imeAnchorOwner = useRef(Symbol("terminal-ime-anchor")).current
-  const lastImeScreenAnchorRef = useRef<{ x: number; y: number } | null>(null)
+  const [imeScreenAnchorRetention] = useState(() => new ImeScreenAnchorRetention())
 
   // Push geometry changes to the backend, deduped against the last push —
   // real PTY backends may emit SIGWINCH even when geometry is unchanged.
@@ -272,28 +276,29 @@ export function Terminal(props: TerminalProps) {
     void geomTick
     if (!renderer) return
     if (!focused) {
-      lastImeScreenAnchorRef.current = null
+      imeScreenAnchorRetention.update(null, null)
       if (imeAnchorController.release(imeAnchorOwner)) renderer.setCursorPosition(0, 0, false)
       return
     }
+    let currentScreenAnchor: ImeScreenAnchor | null = null
     if (bodyEl && visibleImeCursor && bodyEl.width > 0) {
-      const anchor = {
+      currentScreenAnchor = {
         x: bodyEl.screenX + visibleImeCursor.x,
         y: bodyEl.screenY + visibleImeCursor.y,
       }
-      lastImeScreenAnchorRef.current = anchor
-      imeAnchorController.claim(imeAnchorOwner, anchor)
-      renderer.setCursorPosition(anchor.x, anchor.y, false)
-      return
     }
     // Historical scrollback has no live viewport cursor. Keep the prior
-    // screen-cell anchor instead of sending the IME to the outer origin.
-    const retainedAnchor = lastImeScreenAnchorRef.current
+    // screen-cell anchor for this PTY instead of sending the IME to the outer
+    // origin. A replacement PTY starts at origin until it reports a cursor.
+    const retainedAnchor = imeScreenAnchorRetention.update(pty, currentScreenAnchor)
     if (retainedAnchor) {
       imeAnchorController.claim(imeAnchorOwner, retainedAnchor)
       renderer.setCursorPosition(retainedAnchor.x, retainedAnchor.y, false)
+      return
     }
-  }, [renderer, focused, bodyEl, visibleImeCursor, dims, geomTick, imeAnchorOwner])
+    imeAnchorController.claim(imeAnchorOwner, { x: 0, y: 0 })
+    renderer.setCursorPosition(0, 0, false)
+  }, [renderer, focused, bodyEl, visibleImeCursor, dims, geomTick, imeAnchorOwner, imeScreenAnchorRetention, pty])
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
   // gains focus next.

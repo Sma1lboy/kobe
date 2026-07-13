@@ -48,6 +48,14 @@ describe("ImeAnchorController", () => {
     expect(controller.release(focusedPane)).toBe(true)
     expect(controller.current()).toBeNull()
   })
+
+  it("stores renderer screen coordinates as zero-based values", () => {
+    const controller = new ImeAnchorController()
+
+    controller.claim(Symbol("terminal"), { x: 0, y: 0 })
+
+    expect(controller.current()).toEqual({ x: 0, y: 0 })
+  })
 })
 
 describe("createImeAnchoredOutput", () => {
@@ -67,7 +75,7 @@ describe("createImeAnchoredOutput", () => {
     const sink = collectingOutput()
     const controller = new ImeAnchorController()
     const anchored = createImeAnchoredOutput(sink.output, controller)
-    controller.claim(Symbol("terminal"), { x: 7, y: 5 })
+    controller.claim(Symbol("terminal"), { x: 6, y: 4 })
 
     const leftFrame = `${SYNC_START}${HIDE_CURSOR}\x1b[2;3HL${SYNC_END}`
     const rightFrame = `${SYNC_START}${HIDE_CURSOR}\x1b[9;16HR${SYNC_END}`
@@ -86,7 +94,7 @@ describe("createImeAnchoredOutput", () => {
       const sink = collectingOutput()
       const controller = new ImeAnchorController()
       const anchored = createImeAnchoredOutput(sink.output, controller)
-      controller.claim(Symbol(`terminal-${split}`), { x: 7, y: 5 })
+      controller.claim(Symbol(`terminal-${split}`), { x: 6, y: 4 })
 
       anchored.stdout.write(Buffer.from(framePrefix + SYNC_END.slice(0, split)))
       anchored.stdout.write(Buffer.from(SYNC_END.slice(split)))
@@ -100,7 +108,7 @@ describe("createImeAnchoredOutput", () => {
     const sink = collectingOutput()
     const controller = new ImeAnchorController()
     const anchored = createImeAnchoredOutput(sink.output, controller)
-    controller.claim(Symbol("terminal"), { x: 7, y: 5 })
+    controller.claim(Symbol("terminal"), { x: 6, y: 4 })
 
     anchored.stdout.write(`plain${SYNC_END.slice(0, 4)}`)
     anchored.flush()

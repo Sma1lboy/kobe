@@ -53,7 +53,8 @@ Expected: FAIL because `tui/lib/ime-anchor-output` does not exist.
 
 Implement owner-aware anchor state and a byte transformer that retains only a
 suffix which could be the start of the synchronized-frame terminator. Insert a
-1-based CUP plus `CSI ? 25 l` before each complete terminator. Wrap the real
+1-based CUP converted from the renderer's zero-based screen coordinate, plus
+`CSI ? 25 l`, before each complete terminator. Wrap the real
 stdout in a delegating proxy so OpenTUI selects its native custom-output feed.
 
 Expose a resize forwarder with this contract:

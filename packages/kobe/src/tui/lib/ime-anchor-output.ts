@@ -24,8 +24,8 @@ export class ImeAnchorController {
   claim(owner: symbol, anchor: ImeAnchor): void {
     this.owner = owner
     this.anchor = {
-      x: Math.max(1, Math.trunc(anchor.x)),
-      y: Math.max(1, Math.trunc(anchor.y)),
+      x: Math.max(0, Math.trunc(anchor.x)),
+      y: Math.max(0, Math.trunc(anchor.y)),
     }
   }
 
@@ -61,7 +61,8 @@ class ImeAnchorFrameTransformer {
       if (marker < 0) break
       output.push(data.subarray(offset, marker))
       const anchor = this.controller.current()
-      if (anchor) output.push(Buffer.from(`\x1b[${anchor.y};${anchor.x}H${HIDE_CURSOR}`))
+      // Renderer coordinates are zero-based; ANSI CUP rows/columns are one-based.
+      if (anchor) output.push(Buffer.from(`\x1b[${anchor.y + 1};${anchor.x + 1}H${HIDE_CURSOR}`))
       output.push(SYNC_END)
       offset = marker + SYNC_END.length
     }

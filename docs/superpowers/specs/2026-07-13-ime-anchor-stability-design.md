@@ -40,7 +40,7 @@ anchor is active, the transform inserts the following bytes immediately before
 the terminator:
 
 ```text
-CUP(anchorRow, anchorColumn) + DECTCEM hide
+CUP(screenY + 1, screenX + 1) + DECTCEM hide
 ```
 
 The cursor move is therefore committed in the same synchronized frame as the
