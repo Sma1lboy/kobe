@@ -225,17 +225,23 @@ export async function listSessionIdsForWorktree(worktree: string, deps: HistoryD
   return matches.reverse()
 }
 
-/** Reads probed before giving up the cwd-match scan in {@link findLatestRolloutForWorktree}. */
+/** Newest-first files probed for the max-mtime scan in {@link findLatestRolloutForWorktree}. */
 const MAX_MTIME_SCAN = 12
 
 /**
- * The newest rollout recorded for `worktree` (path + current mtime), or
- * `null` when none match. Walks `listRolloutFiles` (newest-first by
- * filename ≈ chronological) and returns the first cwd match — the file
- * the agent just appended to is the newest, so the common case is a
- * single probe, and with the {@link rolloutCwdForFile} memo a REPEAT
- * poll issues no file reads at all (directory listings + one stat).
- * Capped at {@link MAX_MTIME_SCAN} probes so a busy machine with many
+ * The rollout with the newest mtime recorded for `worktree` (path +
+ * that mtime), or `null` when none match. Walks `listRolloutFiles`
+ * (newest-first by filename ≈ chronological) and returns the cwd match
+ * with the greatest mtime — the "newest activity" signal the Ops badge
+ * and turn detector consume. This is the max mtime across the
+ * worktree's rollouts, matching the Claude and Copilot readers'
+ * `latestTranscriptMtimeForWorktree` semantics: filename order is
+ * creation order, so a resumed older session (a rollout appended to
+ * after a newer, idle one was created) can carry the higher mtime, and
+ * the older-by-filename file is then the one the agent is truly active
+ * in. With the {@link rolloutCwdForFile} memo a REPEAT poll issues no
+ * file reads at all (directory listings + one stat per match). Capped
+ * at {@link MAX_MTIME_SCAN} probes so a busy machine with many
  * unrelated sessions can't make the poll expensive. A match whose stat
  * fails (deleted mid-scan) is skipped and the scan continues.
  */
@@ -246,17 +252,19 @@ export async function findLatestRolloutForWorktree(
   if (!worktree) return null
   const files = await listRolloutFiles(deps)
   let scanned = 0
+  let best: { path: string; mtimeMs: number } | null = null
   for (const file of files) {
     if (scanned >= MAX_MTIME_SCAN) break
     scanned++
     if ((await rolloutCwdForFile(file, deps)) !== worktree) continue
     try {
-      return { path: file, mtimeMs: (await deps.stat(file)).mtimeMs }
+      const mtimeMs = (await deps.stat(file)).mtimeMs
+      if (!best || mtimeMs > best.mtimeMs) best = { path: file, mtimeMs }
     } catch {
       // vanished between listing and stat — keep scanning older rollouts
     }
   }
-  return null
+  return best
 }
 
 /**
