@@ -21,8 +21,9 @@
 import { TextAttributes } from "@opentui/core"
 import type { Issue, RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { type ReactNode, useEffect, useState } from "react"
-import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
+import type { RemoteOrchestrator, TaskEngineState } from "../../client/remote-orchestrator"
 import { availableEngineIds } from "../../engine/account-detect"
+import type { TaskActivityState } from "../../engine/hook-events"
 import { engineDisplayName } from "../../engine/interactive-command"
 import { type BoardColumnKey, buildIssueBoard, moveBoardSelection } from "../../state/issue-board"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
@@ -46,6 +47,20 @@ const COLUMN_LABEL_KEY: Record<BoardColumnKey, string> = {
   done: "kanban.column.done",
 }
 
+/** Live activity badge on an In-progress card, keyed by the linked task's
+ *  engine state — how the board tracks a background start without leaving
+ *  the page. `idle` (and unknown) draw nothing: the card's presence in the
+ *  column already says "started". */
+const ACTIVITY_BADGE: Partial<
+  Record<TaskActivityState, { labelKey: string; tone: "accent" | "warning" | "error" | "success" }>
+> = {
+  running: { labelKey: "tasks.status.working", tone: "accent" },
+  turn_complete: { labelKey: "kanban.turnComplete", tone: "success" },
+  rate_limited: { labelKey: "tasks.activity.rateLimited", tone: "warning" },
+  permission_needed: { labelKey: "tasks.activity.permissionNeeded", tone: "warning" },
+  error: { labelKey: "tasks.activity.error", tone: "error" },
+}
+
 export function KanbanPage(props: {
   orchestrator: RemoteOrchestrator | null
   onClose: () => void
@@ -53,6 +68,9 @@ export function KanbanPage(props: {
   onStartChat: (request: IssueChatStart) => Promise<void>
   /** Open a linked story's existing session (closes the kanban page). */
   onOpenTask: (taskId: string) => void
+  /** Per-task engine activity (host's `engineStateSignal`) — feeds the
+   *  In-progress cards' live badges. */
+  engineStates?: ReadonlyMap<string, TaskEngineState>
 }): ReactNode {
   const { theme, transparentBackground } = useTheme()
   const columnBorder = transparentBackground ? theme.border : theme.borderSubtle
@@ -280,10 +298,21 @@ export function KanbanPage(props: {
     done: theme.success,
   } satisfies Record<BoardColumnKey, unknown>
 
+  const badgeTone = {
+    accent: theme.accent,
+    warning: theme.warning,
+    error: theme.error,
+    success: theme.success,
+  } as const
+
   function card(issue: Issue, column: BoardColumnKey): ReactNode {
     const fg = column === "done" ? theme.textMuted : theme.text
     const description = issue.body.trim()
     const isSelected = issue.id === selectedId
+    // In-progress cards track their linked task's live engine activity —
+    // the stay-on-the-board half of the background-start trigger.
+    const activity = column === "in_progress" && issue.taskId ? props.engineStates?.get(issue.taskId)?.state : undefined
+    const badge = activity ? ACTIVITY_BADGE[activity] : undefined
     // backgroundElement survives transparent mode on purpose (see
     // applyDisplayOverlay): cards are content, not chrome — they keep a
     // tinted surface so the board reads against any host wallpaper.
@@ -323,6 +352,10 @@ export function KanbanPage(props: {
           {column === "backlog" && issue.status === "hold" ? (
             <text fg={theme.warning} wrapMode="none">
               {t("kanban.hold")}
+            </text>
+          ) : badge ? (
+            <text fg={badgeTone[badge.tone]} wrapMode="none">
+              {t(badge.labelKey)}
             </text>
           ) : null}
         </box>

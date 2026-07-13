@@ -134,12 +134,14 @@ describe("KanbanPage", () => {
     await frame()
     act(() => mockInput.pressEnter())
     await frame()
-    // ↓ moves the workspace placement to the second option (worktreeBg).
+    // ↓ moves the workspace placement off the worktreeBg default to the
+    // second option (worktree) — proves the picker steers AND that the
+    // background trigger is the drawer's default.
     act(() => mockInput.pressArrow("down"))
     await frame()
     act(() => mockInput.pressEnter())
     await settle()
     expect(started).not.toBeNull()
-    expect(started?.placement).toBe("worktreeBg")
+    expect(started?.placement).toBe("worktree")
   })
 })

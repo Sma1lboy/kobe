@@ -5,22 +5,25 @@
  *
  *   - `worktree`   — create the story's task, link the issue (flips it
  *                    `doing` + arms the daemon's done-mirror), enter it.
- *   - `worktreeBg` — same create+link, but NO activation: the task shows up
- *                    under its project group in the sidebar and the prompt
- *                    waits for the first visit.
+ *   - `worktreeBg` — same create+link, then the engine session LAUNCHES
+ *                    immediately in the hosted PTY (`tui/workspace/
+ *                    issue-chat-spawn.ts`) — the board's trigger: the agent
+ *                    starts on the story right away while the user stays on
+ *                    the kanban page tracking the card; visiting the task
+ *                    later attaches to the same live session (the spawn's
+ *                    tab snapshot is persisted under `terminalTabsKey`).
  *   - `project`    — `ensureMainTask` + stamp the chosen vendor on it (the
  *                    engine spec reads task.vendor at spawn), flip the story
  *                    `doing` (no link — the main task never "completes"),
  *                    enter the project workspace.
  *
- * First-prompt delivery rides `TerminalTabs`' `initialPrompt` prop exactly
- * like quick-fork — the prompt is held here per task id and consumed by the
- * task's first engine spawn, so a background start delivers on first visit.
- * Held in a Map (unlike quick-fork's single slot): background starts can
- * accumulate several pending prompts. Image references need no side
- * channel — `images[N]: /path` placeholder lines live in the issue BODY
- * (the detail drawer inserts them on paste), so they ride the prompt as
- * part of the story text.
+ * Foreground first-prompt delivery rides `TerminalTabs`' `initialPrompt`
+ * prop exactly like quick-fork — the prompt is held here per task id and
+ * consumed by the task's first engine spawn. Held in a Map (unlike
+ * quick-fork's single slot) so several starts can be pending at once.
+ * Image references need no side channel — `images[N]: /path` placeholder
+ * lines live in the issue BODY (the detail drawer inserts them on paste),
+ * so they ride the prompt as part of the story text.
  */
 
 import { errorMessage } from "@/lib/error-message"
@@ -35,8 +38,12 @@ import {
 } from "../../state/issue-chat"
 import { addSavedRepo } from "../../state/repos"
 import { setRepoLastActiveVendor } from "../../state/vendor-prefs"
+import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { buildIssueChatBackgroundSpawn } from "../../tui/workspace/issue-chat-spawn"
 import type { Task, VendorId } from "../../types/task"
+import { useKV } from "../context/kv"
 import { useT } from "../i18n"
+import { terminalTabsKey } from "./terminal-tabs-persist"
 
 export interface IssueChatStart {
   readonly repoRoot: string
@@ -49,6 +56,7 @@ export interface IssueChatStart {
 export interface IssueChatOrchestrator {
   createTask(input: { repo: string; title?: string; vendor?: VendorId }): Promise<Task>
   ensureMainTask(repo: string): Promise<Task>
+  ensureWorktree(id: string): Promise<string>
   setVendor(id: string, vendor: VendorId): Promise<void>
   mutateIssue(repoRoot: string, op: unknown): Promise<unknown>
 }
@@ -73,6 +81,7 @@ export function useIssueChat(
   },
 ): UseIssueChatResult {
   const t = useT()
+  const kv = useKV()
   const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map())
 
   function holdPrompt(taskId: string, prompt: string): void {
@@ -111,12 +120,28 @@ export function useIssueChat(
       await orch
         .mutateIssue(repoRoot, { type: "link", id: issue.id, taskId: task.id })
         .catch((err: unknown) => console.error("[kobe kanban] issue link failed:", err))
-      holdPrompt(task.id, issueWorktreePrompt(issue, api))
       if (placement === "worktree") {
+        holdPrompt(task.id, issueWorktreePrompt(issue, api))
         await enter(task.id)
-      } else {
-        hooks.notifyInfo(t("kanban.detail.startedBackground", { title: issueChatTaskTitle(issue) }))
+        return
       }
+      // Background trigger: launch the engine session NOW in the hosted PTY
+      // (the prompt rides its argv — no held prompt, no first-visit wait).
+      // The persisted tab snapshot makes a later visit attach to this
+      // session; the kanban card tracks progress via the engine-state
+      // channel until the agent self-reports the story done.
+      const worktreePath = await orch.ensureWorktree(task.id)
+      const spawn = buildIssueChatBackgroundSpawn({
+        issue,
+        taskId: task.id,
+        repoRoot,
+        worktreePath,
+        vendor,
+        api,
+      })
+      getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, { command: spawn.command })
+      kv.set(terminalTabsKey(task.id), spawn.tabsSnapshot)
+      hooks.notifyInfo(t("kanban.detail.startedBackground", { title: issueChatTaskTitle(issue) }))
     } catch (err) {
       hooks.notifyError(`Couldn't start issue chat: ${errorMessage(err)}`)
     }
