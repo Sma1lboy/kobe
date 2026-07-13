@@ -37,6 +37,8 @@ import type { BoxRenderable, TextRenderable } from "@opentui/core"
 import { StyledText } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { imeAnchorController } from "../../../tui/lib/ime-anchor-output"
+import { ImeCursorRetention } from "../../../tui/panes/terminal/ime-cursor"
 import { type PtyRegistry, getDefaultPtyRegistry } from "../../../tui/panes/terminal/registry"
 import { rowsToStyledText } from "../../../tui/panes/terminal/sgr-to-text-chunk"
 import { isShellMissing, overlayCursor } from "../../../tui/panes/terminal/terminal-render"
@@ -153,6 +155,15 @@ export function Terminal(props: TerminalProps) {
     () => viewportCursor(cursor, scrollOffset, visibleRange),
     [cursor, scrollOffset, visibleRange],
   )
+  // The inverse-cell cursor above follows the PTY's current visibility.
+  // macOS IME anchoring instead retains the last valid coordinate while an
+  // app briefly hides its cursor during a redraw.
+  const [imeCursorRetention] = useState(() => new ImeCursorRetention())
+  const imeCursor = imeCursorRetention.update(pty, cursor)
+  const visibleImeCursor = useMemo(
+    () => viewportCursor(imeCursor, scrollOffset, visibleRange),
+    [imeCursor, scrollOffset, visibleRange],
+  )
 
   /* --------- selection ---------- */
 
@@ -230,6 +241,8 @@ export function Terminal(props: TerminalProps) {
   /* --------- resize-push + host-cursor anchor ---------- */
 
   const renderer = useRenderer()
+  const imeAnchorOwner = useRef(Symbol("terminal-ime-anchor")).current
+  const lastImeScreenAnchorRef = useRef<{ x: number; y: number } | null>(null)
 
   // Push geometry changes to the backend, deduped against the last push —
   // real PTY backends may emit SIGWINCH even when geometry is unchanged.
@@ -250,33 +263,49 @@ export function Terminal(props: TerminalProps) {
   // Keep the native host cursor INVISIBLE (the visible cursor is the
   // inline inverse cell in `cursorRows`) but ANCHORED to the embedded
   // cursor's screen cell — the OS IME candidate window follows the real
-  // terminal cursor. Falls back to origin when scrolled out of view or
-  // not yet laid out.
+  // terminal cursor. A transient PTY cursor-hide retains the last position;
+  // the renderer-output adapter restores it at the end of every diff frame.
   useEffect(() => {
     // Dependency-only invalidation keys — see use-terminal-geometry.ts;
     // screenX/screenY are read imperatively, non-reactive geometry.
     void dims
     void geomTick
     if (!renderer) return
-    if (!focused) return
-    if (bodyEl && visibleCursor && bodyEl.width > 0) {
-      renderer.setCursorPosition(bodyEl.screenX + visibleCursor.x, bodyEl.screenY + visibleCursor.y, false)
-    } else {
-      renderer.setCursorPosition(0, 0, false)
+    if (!focused) {
+      lastImeScreenAnchorRef.current = null
+      if (imeAnchorController.release(imeAnchorOwner)) renderer.setCursorPosition(0, 0, false)
+      return
     }
-  }, [renderer, focused, bodyEl, visibleCursor, dims, geomTick])
+    if (bodyEl && visibleImeCursor && bodyEl.width > 0) {
+      const anchor = {
+        x: bodyEl.screenX + visibleImeCursor.x,
+        y: bodyEl.screenY + visibleImeCursor.y,
+      }
+      lastImeScreenAnchorRef.current = anchor
+      imeAnchorController.claim(imeAnchorOwner, anchor)
+      renderer.setCursorPosition(anchor.x, anchor.y, false)
+      return
+    }
+    // Historical scrollback has no live viewport cursor. Keep the prior
+    // screen-cell anchor instead of sending the IME to the outer origin.
+    const retainedAnchor = lastImeScreenAnchorRef.current
+    if (retainedAnchor) {
+      imeAnchorController.claim(imeAnchorOwner, retainedAnchor)
+      renderer.setCursorPosition(retainedAnchor.x, retainedAnchor.y, false)
+    }
+  }, [renderer, focused, bodyEl, visibleImeCursor, dims, geomTick, imeAnchorOwner])
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
   // gains focus next.
   useEffect(() => {
     return () => {
       try {
-        renderer?.setCursorPosition(0, 0, false)
+        if (imeAnchorController.release(imeAnchorOwner)) renderer?.setCursorPosition(0, 0, false)
       } catch {
         /* renderer may already be torn down */
       }
     }
-  }, [renderer])
+  }, [renderer, imeAnchorOwner])
 
   /* --------- view ---------- */
 
