@@ -153,6 +153,7 @@ export type ResolvedReplaySpec = Omit<RawReplaySpec, "camera" | "regions" | "sta
 }
 
 const REPLAY_ACTIONS = new Set<ReplayBeat["action"]>(["typeText", "typeTextWhenReady", "key", "flow", "sleep"])
+const SEED_TASK_STATUSES = new Set(["backlog", "in_progress", "in_review", "done", "canceled", "error"])
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -304,6 +305,20 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
     assertNumber(wait.timeoutMs, `waits.${name}.timeoutMs`)
   }
   for (const [name, value] of Object.entries(spec.text)) assertString(value, `text.${name}`)
+
+  if (root.setup !== undefined) {
+    const setup = assertObject(root.setup, "setup")
+    if (setup.seedTasks !== undefined) {
+      for (const [index, taskValue] of assertArray(setup.seedTasks, "setup.seedTasks").entries()) {
+        const task = assertObject(taskValue, `setup.seedTasks[${index}]`)
+        assertString(task.title, `setup.seedTasks[${index}].title`)
+        const status = assertString(task.status, `setup.seedTasks[${index}].status`)
+        if (!SEED_TASK_STATUSES.has(status)) {
+          throw new Error(`replay spec setup.seedTasks[${index}] has unsupported status "${status}"`)
+        }
+      }
+    }
+  }
 
   for (const [i, beat] of spec.beats.entries()) {
     assertNumber(beat.at, `beats[${i}].at`)

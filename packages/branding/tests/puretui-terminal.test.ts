@@ -3,7 +3,11 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { capturePureTui } from "../scripts/capture-puretui"
-import { createSidecarController } from "../scripts/puretui-pty-sidecar.mjs"
+import {
+  createSidecarController,
+  ensureNodePtySpawnHelperExecutable,
+  serializeXtermLine,
+} from "../scripts/puretui-pty-sidecar.mjs"
 import {
   createPureTuiCapture,
   type SidecarFactory,
@@ -77,9 +81,10 @@ const fakeFactory = (handler: (process: FakeSidecar, request: Request) => void) 
 }
 
 describe("PureTuiTerminal", () => {
-  test("launches dev:sandbox with an isolated home and fixed replay viewport", async () => {
+  test("launches source PureTUI with an isolated home, fixture repo, and fixed replay viewport", async () => {
     const repoRoot = resolve(import.meta.dirname, "../../..")
     const demoRoot = join(await mkdtemp(join(tmpdir(), "kobe-puretui-test-")), "demo")
+    const fixtureRepo = join(demoRoot, "fixture-repo")
     const sidecarFactory = fakeFactory((process, request) => {
       if (request.op === "start") {
         process.respond({ id: request.id, ok: true, value: { pid: 4242, demoRoot, snapshot: "boot" } })
@@ -88,7 +93,15 @@ describe("PureTuiTerminal", () => {
       }
     })
 
-    const capture = await createPureTuiCapture({ repoRoot, demoRoot, cols: 160, rows: 45, sidecarFactory })
+    const capture = await createPureTuiCapture({
+      repoRoot,
+      demoRoot,
+      fixtureRepo,
+      seedTasks: [{ title: "seed task", status: "in_progress" }],
+      cols: 160,
+      rows: 45,
+      sidecarFactory,
+    })
     expect(sidecarFactory.calls[0]).toMatchObject({
       file: "node",
       args: [expect.stringContaining("puretui-pty-sidecar.mjs")],
@@ -103,6 +116,8 @@ describe("PureTuiTerminal", () => {
       op: "start",
       repoRoot,
       demoRoot,
+      fixtureRepo,
+      seedTasks: [{ title: "seed task", status: "in_progress" }],
       cols: 160,
       rows: 45,
     })
@@ -124,6 +139,7 @@ describe("PureTuiTerminal", () => {
     const capture = await createPureTuiCapture({
       repoRoot: resolve(import.meta.dirname, "../../.."),
       demoRoot,
+      fixtureRepo: join(demoRoot, "fixture-repo"),
       cols: 80,
       rows: 24,
       protocolTimeoutMs: 10,
@@ -159,6 +175,7 @@ describe("PureTuiTerminal", () => {
     const capture = await createPureTuiCapture({
       repoRoot: resolve(import.meta.dirname, "../../.."),
       demoRoot,
+      fixtureRepo: join(demoRoot, "fixture-repo"),
       cols: 80,
       rows: 24,
       sidecarExitTimeoutMs: 10,
@@ -173,6 +190,107 @@ describe("PureTuiTerminal", () => {
 })
 
 describe("PureTUI PTY sidecar", () => {
+  test("seeds tasks before launching the source TUI in the fixture repo", async () => {
+    const calls: Array<{ file: string; args: string[]; cwd: string }> = []
+    const child = {
+      pid: 123,
+      write() {},
+      kill() {},
+      onData: () => ({ dispose() {} }),
+      onExit: () => ({ dispose() {} }),
+    }
+    const controller = createSidecarController({
+      baseEnv: { PATH: process.env.PATH ?? "" },
+      runSetup: async (file: string, args: string[], options: { cwd: string }) => {
+        calls.push({ file, args, cwd: options.cwd })
+      },
+      spawnPty: (file: string, args: string[], options: { cwd: string }) => {
+        calls.push({ file, args, cwd: options.cwd })
+        return child
+      },
+      createTerminal: () => ({
+        write: (_data: string, callback: () => void) => callback(),
+        buffer: { active: { getLine: () => undefined } },
+        dispose() {},
+      }),
+    })
+
+    await controller.handle({
+      id: 1,
+      op: "start",
+      repoRoot: "/repo",
+      demoRoot: "/demo",
+      fixtureRepo: "/demo/fixture-repo",
+      seedTasks: [{ title: "seed task", status: "in_progress" }],
+      cols: 160,
+      rows: 45,
+    })
+
+    expect(calls).toEqual([
+      {
+        file: "bun",
+        args: [
+          "--conditions=browser",
+          "/repo/packages/kobe/src/cli/index.ts",
+          "api",
+          "add",
+          "--repo",
+          "/demo/fixture-repo",
+          "--title",
+          "seed task",
+          "--status",
+          "in_progress",
+        ],
+        cwd: "/demo/fixture-repo",
+      },
+      {
+        file: "bun",
+        args: ["--conditions=browser", "/repo/packages/kobe/src/cli/index.ts"],
+        cwd: "/demo/fixture-repo",
+      },
+    ])
+  })
+
+  test("serializes active xterm cells with ANSI foreground and background styles", () => {
+    const cells = [
+      {
+        getChars: () => "K",
+        getWidth: () => 1,
+        isAttributeDefault: () => false,
+        isBold: () => true,
+        isDim: () => false,
+        isItalic: () => false,
+        isUnderline: () => false,
+        isBlink: () => false,
+        isInverse: () => false,
+        isInvisible: () => false,
+        isStrikethrough: () => false,
+        isFgDefault: () => false,
+        isFgPalette: () => false,
+        isFgRGB: () => true,
+        getFgColor: () => 0xff0000,
+        isBgDefault: () => false,
+        isBgPalette: () => true,
+        isBgRGB: () => false,
+        getBgColor: () => 4,
+      },
+    ]
+    const line = { length: 1, getCell: (index: number) => cells[index] }
+
+    expect(serializeXtermLine(line)).toBe("\u001b[0;1;38;2;255;0;0;48;5;4mK\u001b[0m")
+  })
+
+  test("repairs Bun-installed node-pty spawn-helper permissions before launch", async () => {
+    const calls: Array<[string, number]> = []
+    await ensureNodePtySpawnHelperExecutable({
+      platform: "darwin",
+      arch: "arm64",
+      resolveModule: () => "/deps/node-pty/lib/index.js",
+      chmodFile: async (path: string, mode: number) => calls.push([path, mode]),
+    })
+    expect(calls).toEqual([["/deps/node-pty/prebuilds/darwin-arm64/spawn-helper", 0o755]])
+  })
+
   test("acknowledges stop only after child exit and isolated sandbox reset", async () => {
     const order: string[] = []
     let onExit = () => {}
@@ -213,7 +331,15 @@ describe("PureTUI PTY sidecar", () => {
     const demoRoot = join(tmpdir(), "kobe-sidecar-stop")
 
     expect(
-      await controller.handle({ id: 1, op: "start", repoRoot: "/repo", demoRoot, cols: 160, rows: 45 }),
+      await controller.handle({
+        id: 1,
+        op: "start",
+        repoRoot: "/repo",
+        demoRoot,
+        fixtureRepo: join(demoRoot, "fixture-repo"),
+        cols: 160,
+        rows: 45,
+      }),
     ).toMatchObject({ ok: true })
     const response = await controller.handle({ id: 2, op: "stop" })
     order.push("ack")
@@ -243,7 +369,15 @@ describe("PureTUI PTY sidecar", () => {
       killTimeoutMs: 1,
     })
     const demoRoot = join(tmpdir(), "kobe-sidecar-alive")
-    await controller.handle({ id: 1, op: "start", repoRoot: "/repo", demoRoot, cols: 80, rows: 1 })
+    await controller.handle({
+      id: 1,
+      op: "start",
+      repoRoot: "/repo",
+      demoRoot,
+      fixtureRepo: join(demoRoot, "fixture-repo"),
+      cols: 80,
+      rows: 1,
+    })
 
     const response = await controller.handle({ id: 2, op: "stop" })
 
@@ -274,7 +408,15 @@ describe("PureTUI PTY sidecar", () => {
         dispose() {},
       }),
     })
-    await controller.handle({ id: 1, op: "start", repoRoot: "/repo", demoRoot: "/demo", cols: 80, rows: 1 })
+    await controller.handle({
+      id: 1,
+      op: "start",
+      repoRoot: "/repo",
+      demoRoot: "/demo",
+      fixtureRepo: "/demo/fixture-repo",
+      cols: 80,
+      rows: 1,
+    })
     onData("\u001b[31mraw ansi\u001b[0m")
 
     const response = await controller.handle({ id: 2, op: "waitFor", pattern: "missing", timeoutMs: 0 })
@@ -284,6 +426,54 @@ describe("PureTUI PTY sidecar", () => {
 })
 
 describe("capture PureTUI CLI", () => {
+  test("passes the fixture repo and declared seed tasks to the capture terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-valid-"))
+    const specPath = join(root, "capture.replay.json")
+    const outputPath = join(root, "frames.json")
+    const raw = JSON.parse(
+      await Bun.file(join(resolve(import.meta.dirname, ".."), "src/quicklook/quicklook.replay.json")).text(),
+    )
+    raw.capture.seconds = 0
+    raw.beats = []
+    raw.stages = [{ name: "still", from: 0, to: "end" }]
+    await writeFile(specPath, `${JSON.stringify(raw)}\n`)
+    let received: Parameters<NonNullable<Parameters<typeof capturePureTui>[1]["createCapture"]>>[0] | undefined
+
+    await capturePureTui(
+      { specPath, outputPath, demoRoot: join(root, "demo"), keepDemoRoot: true },
+      {
+        createCapture: async (options) => {
+          received = options
+          return {
+            demoRoot: options.demoRoot,
+            terminal: {
+              async start() {},
+              async snapshot() {
+                return Array.from({ length: options.rows }, () => "")
+              },
+              async type() {},
+              async key() {},
+              async waitFor() {},
+              async stop() {},
+            },
+            async cleanup() {},
+          }
+        },
+        log: () => {},
+      },
+    )
+
+    expect(received).toMatchObject({
+      fixtureRepo: join(root, "demo", "fixture-repo"),
+      seedTasks: [{ title: "fix flaky turn-detector test", status: "in_progress" }],
+    })
+    expect(await Bun.file(join(root, "demo", "home", ".config", "kobe", "state.json")).json()).toEqual({
+      onboarded: true,
+      skillHintSeen: "1",
+      savedRepos: [join(root, "demo", "fixture-repo")],
+    })
+  })
+
   test("validates the replay spec before spawning the sidecar", async () => {
     const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-"))
     const specPath = join(root, "invalid.replay.json")

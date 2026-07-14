@@ -1,7 +1,11 @@
 import { spawn as spawnChild } from "node:child_process"
+import { chmod } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { createInterface } from "node:readline"
 import { pathToFileURL } from "node:url"
-import { basename, join, resolve } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
+
+const require = createRequire(import.meta.url)
 
 const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
 
@@ -35,6 +39,7 @@ const isolatedEnvironment = (baseEnv, demoRoot) => {
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "kobe-capture",
+    KOBE_DEV: "1",
     KOBE_HOME_DIR: home,
     KOBE_SANDBOX_HOME_DIR: home,
     KOBE_DAEMON_WEB_PORT: baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274",
@@ -66,7 +71,7 @@ export function encodeKey(key) {
   throw new Error(`unsupported replay key "${key}"`)
 }
 
-const defaultRunReset = (file, args, options) =>
+const defaultRunCommand = (file, args, options, description) =>
   new Promise((resolveReset, reject) => {
     const child = spawnChild(file, args, { ...options, stdio: ["ignore", "ignore", "pipe"] })
     let stderr = ""
@@ -76,9 +81,75 @@ const defaultRunReset = (file, args, options) =>
     child.once("error", reject)
     child.once("exit", (code, signal) => {
       if (code === 0) resolveReset()
-      else reject(new Error(`sandbox reset failed (${signal ?? code ?? "unknown"}): ${stderr.trim()}`))
+      else reject(new Error(`${description} failed (${signal ?? code ?? "unknown"}): ${stderr.trim()}`))
     })
   })
+
+const defaultRunSetup = (file, args, options) => defaultRunCommand(file, args, options, "capture setup")
+const defaultRunReset = (file, args, options) => defaultRunCommand(file, args, options, "sandbox reset")
+
+const rgbComponents = (color) => [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff]
+
+const cellStyle = (cell) => {
+  const codes = [0]
+  if (cell.isBold?.()) codes.push(1)
+  if (cell.isDim?.()) codes.push(2)
+  if (cell.isItalic?.()) codes.push(3)
+  if (cell.isUnderline?.()) codes.push(4)
+  if (cell.isBlink?.()) codes.push(5)
+  if (cell.isInverse?.()) codes.push(7)
+  if (cell.isInvisible?.()) codes.push(8)
+  if (cell.isStrikethrough?.()) codes.push(9)
+  if (cell.isFgRGB?.()) codes.push(38, 2, ...rgbComponents(cell.getFgColor()))
+  else if (cell.isFgPalette?.()) codes.push(38, 5, cell.getFgColor())
+  else if (!cell.isFgDefault?.()) codes.push(39)
+  if (cell.isBgRGB?.()) codes.push(48, 2, ...rgbComponents(cell.getBgColor()))
+  else if (cell.isBgPalette?.()) codes.push(48, 5, cell.getBgColor())
+  else if (!cell.isBgDefault?.()) codes.push(49)
+  return codes.join(";")
+}
+
+export function serializeXtermLine(line) {
+  if (!line) return ""
+  if (typeof line.getCell !== "function") return line.translateToString?.(true) ?? ""
+  const cells = []
+  let lastMeaningful = -1
+  for (let index = 0; index < line.length; index++) {
+    const cell = line.getCell(index)
+    if (!cell || cell.getWidth?.() === 0) continue
+    const chars = cell.getChars?.() || " "
+    const styled = cell.isAttributeDefault?.() === false
+    cells.push({ index, chars, styled, style: styled ? cellStyle(cell) : "0" })
+    if (chars !== " " || styled) lastMeaningful = index
+  }
+  if (lastMeaningful < 0) return ""
+  let result = ""
+  let style = "0"
+  for (const cell of cells) {
+    if (cell.index > lastMeaningful) break
+    if (cell.style !== style) {
+      result += `\u001b[${cell.style}m`
+      style = cell.style
+    }
+    result += cell.chars
+  }
+  if (style !== "0") result += "\u001b[0m"
+  return result
+}
+
+export async function ensureNodePtySpawnHelperExecutable(dependencies = {}) {
+  if ((dependencies.platform ?? process.platform) === "win32") return
+  const resolveModule = dependencies.resolveModule ?? ((name) => require.resolve(name))
+  const chmodFile = dependencies.chmodFile ?? chmod
+  const packageRoot = dirname(dirname(resolveModule("node-pty")))
+  const helper = join(
+    packageRoot,
+    "prebuilds",
+    `${dependencies.platform ?? process.platform}-${dependencies.arch ?? process.arch}`,
+    "spawn-helper",
+  )
+  await chmodFile(helper, 0o755)
+}
 
 const assertRequest = (request) => {
   if (!request || typeof request !== "object") throw new Error("sidecar request must be an object")
@@ -91,6 +162,7 @@ export function createSidecarController(dependencies) {
   const {
     spawnPty,
     createTerminal,
+    runSetup = defaultRunSetup,
     runReset = defaultRunReset,
     baseEnv = process.env,
     stopTimeoutMs = 5_000,
@@ -111,7 +183,7 @@ export function createSidecarController(dependencies) {
   const snapshotLines = async () => {
     await writes
     if (!terminal) return Array.from({ length: rows }, () => "")
-    return Array.from({ length: rows }, (_, row) => terminal.buffer.active.getLine(row)?.translateToString(true) ?? "")
+    return Array.from({ length: rows }, (_, row) => serializeXtermLine(terminal.buffer.active.getLine(row)))
   }
 
   const diagnostics = async (message) => ({
@@ -129,22 +201,52 @@ export function createSidecarController(dependencies) {
 
   const start = async (request) => {
     if (childAlive) throw new Error("PureTUI capture child is already running")
-    if (typeof request.repoRoot !== "string" || typeof request.demoRoot !== "string") {
-      throw new Error("start requires repoRoot and demoRoot")
+    if (
+      typeof request.repoRoot !== "string" ||
+      typeof request.demoRoot !== "string" ||
+      typeof request.fixtureRepo !== "string"
+    ) {
+      throw new Error("start requires repoRoot, demoRoot, and fixtureRepo")
     }
     if (!Number.isInteger(request.cols) || request.cols <= 0 || !Number.isInteger(request.rows) || request.rows <= 0) {
       throw new Error("start requires positive integer cols and rows")
     }
     demoRoot = resolve(request.demoRoot)
     rows = request.rows
-    kobeDir = join(resolve(request.repoRoot), "packages", "kobe")
+    const repoRoot = resolve(request.repoRoot)
+    const fixtureRepo = resolve(request.fixtureRepo)
+    kobeDir = join(repoRoot, "packages", "kobe")
+    const cliPath = join(kobeDir, "src", "cli", "index.ts")
     childEnv = isolatedEnvironment(baseEnv, demoRoot)
+    const seedTasks = request.seedTasks ?? []
+    if (!Array.isArray(seedTasks)) throw new Error("start seedTasks must be an array")
+    for (const task of seedTasks) {
+      if (!task || typeof task.title !== "string" || typeof task.status !== "string") {
+        throw new Error("start seedTasks entries require title and status")
+      }
+      await runSetup(
+        "bun",
+        [
+          "--conditions=browser",
+          cliPath,
+          "api",
+          "add",
+          "--repo",
+          fixtureRepo,
+          "--title",
+          task.title,
+          "--status",
+          task.status,
+        ],
+        { cwd: fixtureRepo, env: childEnv },
+      )
+    }
     terminal = createTerminal({ cols: request.cols, rows: request.rows })
-    child = spawnPty("bun", ["run", "dev:sandbox"], {
+    child = spawnPty("bun", ["--conditions=browser", cliPath], {
       name: "xterm-256color",
       cols: request.cols,
       rows: request.rows,
-      cwd: kobeDir,
+      cwd: fixtureRepo,
       env: childEnv,
     })
     childAlive = true
@@ -163,11 +265,18 @@ export function createSidecarController(dependencies) {
   }
 
   const stop = async () => {
-    if (!child) return { pid: undefined, demoRoot, snapshot: "" }
+    if (!child) {
+      if (childEnv && kobeDir) await runReset("bun", ["run", "dev:sandbox:reset"], { cwd: kobeDir, env: childEnv })
+      return { pid: undefined, demoRoot, snapshot: "" }
+    }
     if (childAlive) {
       child.write("\u0003")
       if (!(await waitForExit(stopTimeoutMs))) {
-        child.kill()
+        child.kill("SIGTERM")
+        await waitForExit(killTimeoutMs)
+      }
+      if (childAlive) {
+        child.kill("SIGKILL")
         await waitForExit(killTimeoutMs)
       }
     }
@@ -225,7 +334,13 @@ export function createSidecarController(dependencies) {
 }
 
 async function main() {
-  const [{ spawn }, { Terminal }] = await Promise.all([import("node-pty"), import("@xterm/headless")])
+  await ensureNodePtySpawnHelperExecutable()
+  const [ptyModule, headlessModule] = await Promise.all([import("node-pty"), import("@xterm/headless")])
+  const spawn = ptyModule.spawn ?? ptyModule.default?.spawn
+  const Terminal = headlessModule.Terminal ?? headlessModule.default?.Terminal
+  if (typeof spawn !== "function" || typeof Terminal !== "function") {
+    throw new Error("PureTUI sidecar could not load node-pty or @xterm/headless")
+  }
   const controller = createSidecarController({
     spawnPty: spawn,
     createTerminal: (options) => new Terminal({ ...options, allowProposedApi: true, scrollback: 0 }),
@@ -245,6 +360,7 @@ async function main() {
       process.stdout.write(`${JSON.stringify(await controller.handle(request))}\n`)
     })()
   })
+  input.on("close", () => process.exit(0))
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main()

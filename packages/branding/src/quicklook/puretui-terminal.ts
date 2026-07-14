@@ -1,6 +1,7 @@
 import { chmod, mkdir } from "node:fs/promises"
 import { basename, join, resolve } from "node:path"
 import type { CaptureTerminal } from "./capture-core"
+import type { SeedTask } from "./replay-spec"
 
 export type SidecarSpawnOptions = {
   file: string
@@ -22,6 +23,8 @@ export type SidecarFactory = (options: SidecarSpawnOptions) => SidecarProcess
 export type PureTuiCaptureOptions = {
   repoRoot: string
   demoRoot: string
+  fixtureRepo: string
+  seedTasks?: readonly SeedTask[]
   cols: number
   rows: number
   protocolTimeoutMs?: number
@@ -226,7 +229,10 @@ export class PureTuiTerminal implements CaptureTerminal {
 
   constructor(
     private readonly client: JsonLineSidecarClient,
-    private readonly options: Pick<PureTuiCaptureOptions, "repoRoot" | "demoRoot" | "cols" | "rows">,
+    private readonly options: Pick<
+      PureTuiCaptureOptions,
+      "repoRoot" | "demoRoot" | "fixtureRepo" | "seedTasks" | "cols" | "rows"
+    >,
   ) {}
 
   async start() {
@@ -265,6 +271,7 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
 }> {
   const repoRoot = resolve(options.repoRoot)
   const demoRoot = resolve(options.demoRoot)
+  const fixtureRepo = resolve(options.fixtureRepo)
   const env = captureEnvironment(demoRoot)
   await Promise.all(
     [demoRoot, env.HOME, env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_STATE_HOME, env.XDG_CACHE_HOME, env.XDG_RUNTIME_DIR].map(
@@ -281,7 +288,7 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
   })
   const diagnostics: Diagnostics = { snapshot: "", demoRoot }
   const client = new JsonLineSidecarClient(process, options.protocolTimeoutMs ?? 30_000, diagnostics)
-  const terminal = new PureTuiTerminal(client, { ...options, repoRoot, demoRoot })
+  const terminal = new PureTuiTerminal(client, { ...options, repoRoot, demoRoot, fixtureRepo })
   let cleaned = false
   return {
     terminal,

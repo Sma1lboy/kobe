@@ -58,6 +58,15 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   return fixtureRepo
 }
 
+const prepareCaptureState = async (demoRoot: string, fixtureRepo: string): Promise<void> => {
+  const configDir = join(demoRoot, "home", ".config", "kobe")
+  await mkdir(configDir, { recursive: true })
+  await writeFile(
+    join(configDir, "state.json"),
+    `${JSON.stringify({ onboarded: true, skillHintSeen: "1", savedRepos: [fixtureRepo] }, null, 2)}\n`,
+  )
+}
+
 const captureOutput = (outputPath: string): CaptureOutput => ({
   replaceAtomically: (capture) => writeCaptureAtomically(outputPath, capture),
 })
@@ -72,10 +81,13 @@ export async function capturePureTui(
   const spec = resolveReplaySpec(raw, plannedCapture(raw))
   const demoRoot = resolve(options.demoRoot)
   await mkdir(demoRoot, { recursive: true })
-  await createFixtureRepository(demoRoot)
+  const fixtureRepo = await createFixtureRepository(demoRoot)
+  await prepareCaptureState(demoRoot, fixtureRepo)
   const capture = await (dependencies.createCapture ?? createPureTuiCapture)({
     repoRoot: REPO_ROOT,
     demoRoot,
+    fixtureRepo,
+    seedTasks: spec.setup?.seedTasks,
     cols: spec.viewport.cols,
     rows: spec.viewport.rows,
     protocolTimeoutMs: options.timeoutMs,

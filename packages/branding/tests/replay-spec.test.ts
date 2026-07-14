@@ -136,6 +136,15 @@ describe("replay spec", () => {
     )
   })
 
+  test("rejects malformed seed tasks before capture starts", () => {
+    expect(() =>
+      resolveReplaySpec({ ...baseSpec, setup: { seedTasks: [{ title: "", status: "in_progress" }] } }, capture),
+    ).toThrow(/setup.seedTasks\[0\].title/)
+    expect(() =>
+      resolveReplaySpec({ ...baseSpec, setup: { seedTasks: [{ title: "seed", status: "unknown" }] } }, capture),
+    ).toThrow(/unsupported status "unknown"/)
+  })
+
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
   })
