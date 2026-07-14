@@ -72,14 +72,13 @@ const wait = async (
   await captureSnapshot(terminal, clock, startedAt, frames)
 }
 
-const sleep = async (
+const pause = async (
   ms: number,
   terminal: CaptureTerminal,
   clock: CaptureClock,
   startedAt: number,
   frames: CaptureFrame[],
 ) => {
-  if (ms <= 0) return
   await clock.sleep(ms)
   await captureSnapshot(terminal, clock, startedAt, frames)
 }
@@ -107,7 +106,9 @@ const typeText = async (
   for (const [index, character] of characters.entries()) {
     await terminal.type(character)
     await captureSnapshot(terminal, clock, startedAt, frames)
-    if (index < characters.length - 1 && msPerChar) await sleep(msPerChar, terminal, clock, startedAt, frames)
+    if (index < characters.length - 1 && msPerChar !== undefined) {
+      await pause(msPerChar, terminal, clock, startedAt, frames)
+    }
   }
 }
 
@@ -124,7 +125,7 @@ const runDismissRules = async (
     if (!lines.join("\n").includes(rule.includes)) continue
     for (const step of rule.steps) {
       if (step.action === "key") lines = await sendKey(step.key, terminal, clock, startedAt, frames)
-      if (step.action === "sleep") await sleep(step.ms, terminal, clock, startedAt, frames)
+      if (step.action === "sleep") await pause(step.ms, terminal, clock, startedAt, frames)
       if (step.action === "waitFor") await wait(spec, step.waitFor, terminal, clock, startedAt, frames)
     }
   }
@@ -143,14 +144,16 @@ const runCreateTask = async (
   if (flow.focusPaneBeforeOpen === "leftmost") await sendKey("C-h", terminal, clock, startedAt, frames)
   await sendKey(flow.openKey ?? "n", terminal, clock, startedAt, frames)
   await wait(spec, flow.dialogWait, terminal, clock, startedAt, frames)
-  await sleep(flow.dialogSettleMs ?? 0, terminal, clock, startedAt, frames)
+  if (flow.dialogSettleMs !== undefined) await pause(flow.dialogSettleMs, terminal, clock, startedAt, frames)
   if (engine === "codex" && flow.codexEngineCycleKey) {
     await sendKey(flow.codexEngineCycleKey, terminal, clock, startedAt, frames)
-    await sleep(flow.codexEngineSettleMs ?? 0, terminal, clock, startedAt, frames)
+    if (flow.codexEngineSettleMs !== undefined) {
+      await pause(flow.codexEngineSettleMs, terminal, clock, startedAt, frames)
+    }
   }
   for (let index = 0; index < (flow.tabCount ?? 0); index++) {
     await sendKey("Tab", terminal, clock, startedAt, frames)
-    await sleep(flow.tabDelayMs ?? 0, terminal, clock, startedAt, frames)
+    if (flow.tabDelayMs !== undefined) await pause(flow.tabDelayMs, terminal, clock, startedAt, frames)
   }
   await sendKey(flow.submitKey ?? "Enter", terminal, clock, startedAt, frames)
 }
@@ -168,24 +171,28 @@ export async function runReplayCapture(
   try {
     await terminal.start()
     await captureSnapshot(terminal, clock, startedAt, frames)
-    for (const beat of spec.beats) {
-      await sleep(Math.max(0, (beat.at - nominalAt) * 1000), terminal, clock, startedAt, frames)
+    const beats = spec.beats.map((beat, index) => ({ beat, index })).sort((left, right) => left.beat.at - right.beat.at || left.index - right.index)
+    for (const { beat } of beats) {
+      const delay = (beat.at - nominalAt) * 1000
+      if (delay > 0) await pause(delay, terminal, clock, startedAt, frames)
       nominalAt = beat.at
       if (beat.action === "key") await sendKey(beat.key ?? "", terminal, clock, startedAt, frames)
-      if (beat.action === "sleep") await sleep(beat.ms ?? 0, terminal, clock, startedAt, frames)
+      if (beat.action === "sleep") await pause(beat.ms ?? 0, terminal, clock, startedAt, frames)
       if (beat.action === "flow") await runCreateTask(spec, beat.engine, terminal, clock, startedAt, frames)
       if (beat.action === "typeText" || beat.action === "typeTextWhenReady") {
         if (beat.action === "typeTextWhenReady" && beat.waitFor) {
           await wait(spec, beat.waitFor, terminal, clock, startedAt, frames)
         }
-        await sleep(beat.settleMs ?? 0, terminal, clock, startedAt, frames)
+        if (beat.settleMs !== undefined) await pause(beat.settleMs, terminal, clock, startedAt, frames)
         const text = beat.text ?? (beat.textRef ? spec.text[beat.textRef] : undefined)
         if (text === undefined) throw new Error("replay text beat has no text")
         await typeText(text, beat.msPerChar, terminal, clock, startedAt, frames)
         const lines = frames.at(-1)?.lines.map((line) => (typeof line === "string" ? line : line.rawAnsi)) ?? []
         await runDismissRules(spec, beat.dismissIfText, lines, terminal, clock, startedAt, frames)
         if (beat.submit) {
-          await sleep(beat.submitDelayMs ?? 0, terminal, clock, startedAt, frames)
+          if (beat.submitDelayMs !== undefined) {
+            await pause(beat.submitDelayMs, terminal, clock, startedAt, frames)
+          }
           await sendKey("Enter", terminal, clock, startedAt, frames)
         }
       }

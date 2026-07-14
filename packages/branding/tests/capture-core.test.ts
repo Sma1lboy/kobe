@@ -108,6 +108,37 @@ describe("capture core", () => {
     expect(result.meta).toEqual({ theme: spec([]).theme })
   })
 
+  test("orders out-of-order beats chronologically while preserving equal-time order", async () => {
+    const terminal = new FakeTerminal(["boot"])
+
+    await runReplayCapture(
+      spec([
+        { at: 2, action: "key", key: "second" },
+        { at: 1, action: "key", key: "first" },
+        { at: 2, action: "key", key: "third" },
+      ]),
+      terminal,
+      memoryOutput(),
+      clock([0]),
+    )
+
+    expect(terminal.calls).toEqual(["start", "key:first", "key:second", "key:third", "stop"])
+  })
+
+  test("attempts snapshots after declared zero-duration sleeps and settles", async () => {
+    const result = await runReplayCapture(
+      spec([
+        { at: 0, action: "sleep", ms: 0 },
+        { at: 0, action: "typeText", text: "g", settleMs: 0 },
+      ]),
+      new FakeTerminal(["boot", "after-sleep", "after-settle", "after-type"]),
+      memoryOutput(),
+      clock([0]),
+    )
+
+    expect(result.frames.map((frame) => frame.lines)).toEqual([["boot"], ["after-sleep"], ["after-settle"], ["after-type"]])
+  })
+
   test("stops the terminal and leaves the previous output untouched when a beat fails", async () => {
     const terminal = new FakeTerminal(["boot"], new Error("composer timeout"))
     const output = memoryOutput()
