@@ -12,7 +12,7 @@
 
 - Do not change the user's shell alias, provider configuration, global Kobe state, or normal engine defaults.
 - Do not put machine-specific `claudex`, model, or provider values in `quicklook.replay.json`.
-- The reviewed Claude frame must visibly contain Claude orange `rgb(215,119,87)`, warning yellow `rgb(255,193,7)`, muted gray, and a dark background.
+- The reviewed Claude permission frame must visibly contain Claude orange `rgb(215,119,87)`, Kobe permission-state yellow `rgb(232,201,107)`, muted gray, periwinkle, and a dark background.
 - A real but monochrome Claude frame fails acceptance.
 - Keep every touched source file at or below 500 lines.
 - Use no subagents; execute this plan inline.
@@ -177,7 +177,7 @@ Parse the review JSON and require occurrences of:
 
 ```text
 38;2;215;119;87
-38;2;255;193;7
+38;2;232;201;107
 38;2;153;153;153 (or another explicit muted gray emitted by ClaudeX)
 ```
 
@@ -204,7 +204,7 @@ Expected: 1280x720 MP4 renders successfully.
 
 - [ ] **Step 1: Extract candidate Claude frames**
 
-Use `ffmpeg` to extract multiple frames during the Claude stage, including after prompt submission. Select the frame with visible Claude orange, warning yellow, muted gray, white text, and dark background.
+Render a lossless Remotion still during the Claude permission stage. Select the frame with visible Claude orange, Kobe permission-state yellow, muted gray, periwinkle, white text, and dark background.
 
 - [ ] **Step 2: Inspect the selected frame at original resolution**
 

@@ -179,4 +179,39 @@ describe("replay spec", () => {
     expect(quicklookSpec.setup).not.toHaveProperty("fixtureEngines")
     expect(quicklookSpec.waits.claudeComposerReady.pattern).toBe("❯")
   })
+
+  test("holds a real ClaudeX permission prompt through the replay tail", () => {
+    const claudePrompt = quicklookSpec.beats.find(
+      (beat) => beat.action === "typeTextWhenReady" && beat.textRef === "claudePrompt",
+    )
+    const permissionReady = quicklookSpec.beats.find(
+      (beat) => beat.action === "waitFor" && beat.waitFor === "claudePermissionPrompt",
+    )
+    const permissionHold = quicklookSpec.beats.find(
+      (beat) => beat.action === "sleep" && beat.at === permissionReady?.at,
+    )
+    expect(quicklookSpec.text.claudePrompt).toContain("printf replay-color-probe")
+    expect(quicklookSpec.waits.claudePermissionPrompt.pattern).toBe("Do you want to proceed?")
+    expect(claudePrompt?.submit).toBe(true)
+    expect(permissionReady).toEqual(
+      expect.objectContaining({ action: "waitFor", waitFor: "claudePermissionPrompt" }),
+    )
+    expect(permissionReady?.at).toBeGreaterThan(claudePrompt?.at ?? Number.POSITIVE_INFINITY)
+    expect(permissionHold).toEqual(expect.objectContaining({ action: "sleep", ms: 2500 }))
+    expect(quicklookSpec.text).not.toHaveProperty("codexPrompt")
+    expect(Object.keys(quicklookSpec.waits)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^codex/)]),
+    )
+    expect(quicklookSpec.flows.createTask).not.toHaveProperty("codexEngineCycleKey")
+    expect(quicklookSpec.flows.createTask).not.toHaveProperty("codexEngineSettleMs")
+    expect(quicklookSpec.regions).not.toHaveProperty("inputCodex")
+    expect(quicklookSpec.beats).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ action: "flow", engine: "codex" })]),
+    )
+    expect(quicklookSpec.beats).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ action: "key", key: "C-q" })]),
+    )
+    expect(quicklookSpec.capture.seconds).toBe(50)
+    expect(quicklookSpec.stages.find((stage) => stage.name === "agent")?.region).toBeUndefined()
+  })
 })

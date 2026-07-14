@@ -18,8 +18,13 @@ viewport and terminal protocol handlers:
 
 - with inherited `NO_COLOR=1`: 0 SGR sequences and 0 color SGR sequences;
 - with only `NO_COLOR` removed: 27 SGR sequences and 14 color SGR sequences,
-  including Claude orange `rgb(215,119,87)`, warning yellow
-  `rgb(255,193,7)`, and multiple gray levels.
+  including Claude orange `rgb(215,119,87)` and multiple gray levels.
+
+A later screen-level probe showed that `rgb(255,193,7)` belonged to the
+repository-specific `PR #324` status link, not a portable warning state. The
+portable acceptance frame therefore uses a real Claude Bash permission prompt:
+Claude supplies the orange, gray, and periwinkle terminal palette while Kobe's
+`permission_needed` task state supplies warning yellow `rgb(232,201,107)`.
 
 This isolates the failure to the replay capture environment boundary.
 
@@ -78,9 +83,10 @@ Automated tests must prove:
 - the replay regression suite remains green.
 
 Manual acceptance must use the real `claudex` expansion and require a rendered
-Claude frame containing visible Claude orange, warning yellow, and muted gray
-text on the dark background. A monochrome frame fails acceptance even if the
-agent is real and readable.
+Claude permission frame containing visible Claude orange, Kobe permission-state
+yellow, muted gray text, and the periwinkle permission selection on the dark
+background. A monochrome frame fails acceptance even if the agent is real and
+readable.
 
 ## Scope
 
