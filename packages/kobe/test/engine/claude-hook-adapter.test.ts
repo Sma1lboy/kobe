@@ -86,6 +86,29 @@ describe("mergeActivityHooks (global, cwd-based)", () => {
     expect(twice.hooks?.Stop).toHaveLength(1)
   })
 
+  it("replaces LEGACY unquoted `kobe hook <verb>` entries too, keeping user hooks", () => {
+    // Early kobe wrote hook commands unquoted (`kobe hook turn-complete`); the
+    // quoted-marker-only recognizer left them behind on every upgrade, so each
+    // Claude event fired kobe's hook twice. They must be treated as kobe's own.
+    const legacy = {
+      hooks: {
+        Stop: [
+          { hooks: [{ type: "command", command: "kobe hook turn-complete" }] },
+          { hooks: [{ type: "command", command: "user-old-stop" }] },
+        ],
+        Notification: [
+          { matcher: "permission_prompt", hooks: [{ type: "command", command: "kobe hook awaiting-input" }] },
+        ],
+      },
+    }
+    const out = mergeActivityHooks(legacy, true, ["kobe"]) as SettingsShape
+    expect(out.hooks?.Stop).toHaveLength(2) // fresh kobe entry + the user's, legacy dropped
+    expect(JSON.stringify(out.hooks?.Stop)).toContain("user-old-stop")
+    expect(JSON.stringify(out.hooks?.Stop)).toContain("'hook' 'turn-complete'")
+    expect(JSON.stringify(out.hooks?.Stop)).not.toContain('"kobe hook turn-complete"')
+    expect(JSON.stringify(out.hooks)).not.toContain('"kobe hook awaiting-input"')
+  })
+
   it("removes kobe's hooks while keeping the user's same-event hooks", () => {
     const userSettings = {
       hooks: { Stop: [{ hooks: [{ type: "command", command: "user-old-stop" }] }] },

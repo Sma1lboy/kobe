@@ -38,11 +38,14 @@ export function isObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v)
 }
 
-/** The `'hook' '<verb>'` fragment each kobe activity command is written with —
- *  matches kobe's OWN previously-written (shell-quoted) commands exactly, and is
- *  independent of the CLI invocation prefix. */
+/** The `hook <verb>` fragments a kobe activity command may have been written
+ *  with, independent of the CLI invocation prefix: the current shell-quoted
+ *  `'hook' '<verb>'` form AND the legacy unquoted `hook <verb>` form. Early
+ *  kobe wrote the unquoted form; recognizing only the quoted one left those
+ *  stale entries behind on every re-install, so upgraded users had every
+ *  event firing twice (double `kobe hook` spawns + duplicate daemon reports). */
 function activityMarkers(eventMap: readonly HookEventSpec[]): string[] {
-  return eventMap.map((e) => quoteShellArgv(["hook", e.verb]))
+  return eventMap.flatMap((e) => [quoteShellArgv(["hook", e.verb]), `hook ${e.verb}`])
 }
 
 /** True if a hook group is one of kobe's activity groups (by its `kobe hook
