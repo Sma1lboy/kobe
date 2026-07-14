@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   close: vi.fn(),
+  inspectLegacyTmux: vi.fn(),
   kobeSkillState: vi.fn(),
 }))
 
@@ -21,6 +22,11 @@ vi.mock("../../src/lib/skill-install.ts", () => ({
   kobeSkillState: mocks.kobeSkillState,
 }))
 
+vi.mock("../../src/cli/legacy-tmux.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/cli/legacy-tmux.ts")>()
+  return { ...actual, inspectLegacyTmux: mocks.inspectLegacyTmux }
+})
+
 import { runDoctorSubcommand } from "../../src/cli/doctor-cmd.ts"
 
 let home: string
@@ -34,6 +40,14 @@ beforeEach(() => {
   mkdirSync(join(home, ".kobe"), { recursive: true })
   mocks.request.mockReset()
   mocks.close.mockReset()
+  mocks.inspectLegacyTmux.mockReset().mockResolvedValue({
+    available: true,
+    version: "tmux 3.6b",
+    sessions: [],
+    panePids: [],
+    processes: [],
+    error: null,
+  })
   mocks.kobeSkillState.mockReset().mockReturnValue({
     installed: true,
     installedVersion: 3,
@@ -57,7 +71,7 @@ function output(): string {
 }
 
 describe("runDoctorSubcommand", () => {
-  it("reports daemon and Hosted PTY health without a tmux section", async () => {
+  it("reports daemon, Hosted PTY, and installed tmux health", async () => {
     mocks.request.mockImplementation(async (name: string) => {
       if (name === "daemon.status") {
         return { daemonPid: 42, uptimeMs: 65_000, taskCount: 2, attachedClients: 1 }
@@ -77,13 +91,36 @@ describe("runDoctorSubcommand", () => {
 
     expect(output()).toContain("daemon:  ✓ running (pid 42, up 1m 5s, 2 task(s), 1 client(s))")
     expect(output()).toContain("pty host: ✓ running (2 session(s), 1 live)")
-    expect(output()).not.toContain("tmux")
+    expect(output()).toContain("legacy tmux: tmux 3.6b — no sessions on `kobe`")
   })
 
-  it("help describes a read-only daemon and Hosted PTY diagnosis", async () => {
+  it("reports legacy process counts and RSS without mutating them", async () => {
+    mocks.request.mockRejectedValue(new Error("not running"))
+    mocks.inspectLegacyTmux.mockResolvedValue({
+      available: true,
+      version: "tmux 3.6b",
+      sessions: ["kobe-a"],
+      panePids: [501],
+      processes: [
+        { pid: 501, pgid: 501, rssKb: 4096, command: "bun" },
+        { pid: 510, pgid: 501, rssKb: 2048, command: "claude" },
+      ],
+      error: null,
+    })
+
+    await runDoctorSubcommand([])
+
+    expect(output()).toContain("legacy tmux: ⚠ tmux 3.6b — 1 pre-v0.8 session(s)")
+    expect(output()).toContain("2 process(es) across 1 pane(s), 6.0 MB RSS total")
+    expect(output()).toContain("bun: 1 proc, 4.0 MB")
+    expect(output()).toContain("claude: 1 proc, 2.0 MB")
+    expect(mocks.inspectLegacyTmux).toHaveBeenCalledTimes(1)
+  })
+
+  it("help describes a read-only daemon, Hosted PTY, and legacy tmux diagnosis", async () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     await runDoctorSubcommand(["--help"])
-    expect(writeSpy.mock.calls.join("")).toContain("daemon / Hosted PTY / state")
+    expect(writeSpy.mock.calls.join("")).toContain("daemon / Hosted PTY / legacy tmux / state")
     expect(mocks.request).not.toHaveBeenCalled()
     writeSpy.mockRestore()
   })
