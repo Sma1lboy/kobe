@@ -26,10 +26,6 @@ import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
 
-// Slot 3 (ctrl+l — "terminal" in the 4-pane model) maps back to workspace:
-// this host is 3-pane and its middle column IS the terminal, so ctrl+l
-// would otherwise be a dead key for anyone with tmux-layer muscle memory.
-const PANE_BY_SLOT = ["sidebar", "workspace", "files", "workspace"] as const satisfies readonly PaneId[]
 // Cycle order for focus.next — the host's real panes, NOT the context's
 // PANE_ORDER: that includes "terminal", which this host never mounts, and
 // cycling focus onto an unmounted pane would strand it.
@@ -110,10 +106,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     bindings: [
       ...bindByIds({
         "help.open": () => HelpDialog.show(dialog),
-        "focus.numeric": (_evt, slot) => {
-          const pane = PANE_BY_SLOT[slot ?? 0]
-          if (pane) focus.setFocused(pane)
-        },
+        "focus.previous": () => cyclePane(-1),
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.
         "focus.next": () => cyclePane(1),

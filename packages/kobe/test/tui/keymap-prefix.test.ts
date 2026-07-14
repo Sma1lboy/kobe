@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest"
+import { bindByIds } from "../../src/tui/context/keybindings"
 import {
   type RegisteredBinding,
   configurePrefix,
@@ -34,6 +35,31 @@ afterEach(() => {
 })
 
 describe("PureTUI prefix dispatch", () => {
+  test("routes default prefix+j/k to previous/next without reclaiming ctrl+h/j/k/l", () => {
+    const calls: string[] = []
+    const stack: RegisteredBinding[] = [
+      {
+        id: 1,
+        config: () => ({
+          bindings: bindByIds({
+            "focus.previous": () => calls.push("previous"),
+            "focus.next": () => calls.push("next"),
+          }),
+        }),
+      },
+    ]
+
+    expect(dispatchKeyEvent(stack, event("a", true), 100)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("j"), 101)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("a", true), 102)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("k"), 103)).toBe(true)
+    expect(calls).toEqual(["previous", "next"])
+
+    for (const key of ["h", "j", "k", "l"]) {
+      expect(dispatchKeyEvent(stack, event(key, true), 104)).toBe(false)
+    }
+  })
+
   test("fires the enabled Binding Stack prefix row after ctrl+a", () => {
     let calls = 0
     const stack = [registration(1, true, "t", () => calls++)]

@@ -128,10 +128,6 @@ export function applyPrefixKeymapOverrides(
       warnings.push(`${entry.id}: unknown binding id`)
       continue
     }
-    if (entry.id === "focus.numeric" && entry.keys.length !== 4) {
-      warnings.push(`${entry.id}: needs exactly 4 prefix keys (sidebar, workspace, files, terminal)`)
-      continue
-    }
     const mutable = row as { prefixKeys?: readonly string[] }
     const defaultKeys = [...(row.prefixKeys ?? [])]
     mutable.prefixKeys = [...entry.keys]

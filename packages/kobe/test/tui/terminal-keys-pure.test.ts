@@ -36,6 +36,13 @@ describe("keyEventToShellBytes", () => {
     expect(keyEventToShellBytes(evt({ name: "q" }))).toBe("q")
   })
 
+  it("maps released ctrl+h/j/k/l navigation chords back to engine control bytes", () => {
+    expect(keyEventToShellBytes(evt({ name: "h", ctrl: true }))).toBe("\x08")
+    expect(keyEventToShellBytes(evt({ name: "j", ctrl: true }))).toBe("\x0a")
+    expect(keyEventToShellBytes(evt({ name: "k", ctrl: true }))).toBe("\x0b")
+    expect(keyEventToShellBytes(evt({ name: "l", ctrl: true }))).toBe("\x0c")
+  })
+
   it("re-encodes kitty CSI-u keystrokes instead of trusting sequence", () => {
     // The host renderer runs with useKittyKeyboard, so on kitty-capable
     // terminals modifier chords arrive CSI-u encoded. Field shapes below
@@ -98,7 +105,7 @@ describe("key routing tables", () => {
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; ctrl+g is readline abort-editing; the rest
     // are its own UI shortcuts).
-    for (const chord of ["shift+tab", "ctrl+g", "ctrl+h", "ctrl+p", "f1", "ctrl+r"]) {
+    for (const chord of ["shift+tab", "ctrl+g", "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "ctrl+p", "f1", "ctrl+r"]) {
       expect(RESERVED_GLOBAL_CHORDS).not.toContain(chord)
     }
     // Plain typing keys must stay forwardable.
@@ -115,7 +122,9 @@ describe("key routing tables", () => {
     )
     expect(PASSTHROUGH_CHORDS).toEqual(expected)
     for (const chord of RESERVED_GLOBAL_CHORDS) expect(PASSTHROUGH_CHORDS).not.toContain(chord)
-    for (const chord of ["a", "ctrl+c", "shift+tab", "ctrl+alt+f1"]) expect(PASSTHROUGH_CHORDS).toContain(chord)
+    for (const chord of ["a", "ctrl+c", "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "shift+tab", "ctrl+alt+f1"]) {
+      expect(PASSTHROUGH_CHORDS).toContain(chord)
+    }
   })
 
   it("derives the reservation from KobeKeymap DEFAULTS, immune to live overrides", () => {

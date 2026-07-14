@@ -64,44 +64,6 @@ afterEach(() => {
 })
 
 describe("slot dispatch parity with default keys", () => {
-  test("focus.numeric keeps global Ctrl and prefix pane aliases on the same slots", () => {
-    const panes = ["sidebar", "workspace", "files", "workspace"] as const
-    const calls: string[] = []
-    const reg: RegisteredBinding = {
-      id: 1,
-      config: () => ({
-        bindings: bindByIds({
-          "focus.numeric": (_evt, slot) => calls.push(panes[slot ?? 0] ?? "missing"),
-        }),
-      }),
-    }
-
-    expect(dispatchKeyEvent([reg], makeEvt("h", true))).toBe(true)
-    expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
-    expect(dispatchKeyEvent([reg], makeEvt("h"))).toBe(true)
-    expect(dispatchKeyEvent([reg], makeEvt("a", true))).toBe(true)
-    expect(dispatchKeyEvent([reg], makeEvt("l"))).toBe(true)
-    expect(calls).toEqual(["sidebar", "sidebar", "workspace"])
-  })
-
-  test("focus.numeric keeps prefix pane slots when direct aliases are added", () => {
-    applyKeymapOverrides(KobeKeymap, [{ id: "focus.numeric", keys: ["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"] }])
-    const panes = ["sidebar", "workspace", "files", "workspace"] as const
-    const calls: string[] = []
-    const reg: RegisteredBinding = {
-      id: 1,
-      config: () => ({
-        bindings: bindByIds({
-          "focus.numeric": (_evt, slot) => calls.push(panes[slot ?? 0] ?? "missing"),
-        }),
-      }),
-    }
-
-    dispatchKeyEvent([reg], makeEvt("a", true))
-    dispatchKeyEvent([reg], makeEvt("h"))
-    expect(calls).toEqual(["sidebar"])
-  })
-
   test("sidebar.nav: j/down → down, k/up → up", () => {
     const calls: string[] = []
     // Mirrors useSidebarBindings' slot mapping (panes/sidebar/keys.ts).

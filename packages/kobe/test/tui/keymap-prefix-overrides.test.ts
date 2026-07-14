@@ -4,7 +4,8 @@ import { applyPrefixKeymapOverrides, extractPrefixKeybindings } from "../../src/
 const keymap = [
   { id: "chat.tab.new", scope: "workspace", keys: [], prefixKeys: ["t"] },
   { id: "task.new", scope: "sidebar", keys: ["n"] },
-  { id: "focus.numeric", scope: "global", keys: [], prefixKeys: ["h", "j", "k", "l"] },
+  { id: "focus.previous", scope: "global", keys: [], prefixKeys: ["j"] },
+  { id: "focus.next", scope: "global", keys: ["f4"], prefixKeys: ["k"] },
 ]
 
 describe("PureTUI prefix settings", () => {
@@ -69,15 +70,19 @@ describe("PureTUI prefix settings", () => {
     ])
   })
 
-  test("preserves the four-slot focus prefix contract", () => {
+  test("lets relative pane directions be overridden independently", () => {
     const copy = keymap.map((row) => ({
       ...row,
       keys: [...row.keys],
       prefixKeys: row.prefixKeys && [...row.prefixKeys],
     }))
-    const result = applyPrefixKeymapOverrides(copy, [{ id: "focus.numeric", keys: ["h"] }])
+    const result = applyPrefixKeymapOverrides(copy, [
+      { id: "focus.previous", keys: ["h"] },
+      { id: "focus.next", keys: ["l"] },
+    ])
 
-    expect(copy[2]?.prefixKeys).toEqual(["h", "j", "k", "l"])
-    expect(result.warnings.join("\n")).toContain("exactly 4")
+    expect(copy[2]?.prefixKeys).toEqual(["h"])
+    expect(copy[3]?.prefixKeys).toEqual(["l"])
+    expect(result.warnings).toEqual([])
   })
 })

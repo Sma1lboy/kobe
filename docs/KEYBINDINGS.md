@@ -25,6 +25,8 @@ Default prefix actions:
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task |
 | `ctrl+a`, `y` | Resume a prior engine Session |
+| `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
+| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
@@ -36,7 +38,6 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 
 | Key | Action |
 |---|---|
-| `ctrl+h/j/k/l` | Focus Sidebar / Workspace / Files / Terminal |
 | `ctrl+q` | Focus Sidebar; from Sidebar, quit |
 | `F2` | Rename active tab or split |
 | `F3` | Focus next split |
@@ -52,6 +53,13 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 Context resolves intentional overlap. For example, `ctrl+w` closes the
 innermost split when a tab is split; otherwise it closes the tab. `F2` renames
 the active split when split, otherwise the tab.
+
+Owner decision (2026-07-14): cross-pane navigation is relative and prefix-only.
+`prefix+j` moves backward, `prefix+k` moves forward, and `F4` remains the
+direct forward-cycle alias. The former absolute `focus.numeric` action and its
+`ctrl+h/j/k/l` / `prefix+h/j/k/l` chords are removed so those Ctrl bytes reach
+the embedded engine. Existing `focus.numeric` YAML entries are rejected as an
+unknown binding instead of being silently migrated to different semantics.
 
 ## Sidebar and Files
 
