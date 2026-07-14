@@ -411,6 +411,20 @@ export function rehydrateTabs(persisted: TabsState, shell: readonly string[]): T
   return { tabs, activeId, nextOrdinal: Math.max(persisted.nextOrdinal, maxOrdinal + 1) }
 }
 
+/**
+ * Recycle-in-place state for the last tab's exit: a fresh engine tab
+ * (new session, ordinal 1) that KEEPS the exited tab's name — user
+ * `title` and `autoTitle` carry over, so the strip doesn't visibly
+ * rename itself on every recycle. The carried autoTitle also blocks the
+ * naming pass from deriving a new one (its `!title && !autoTitle`
+ * self-limit), which was the "title changes every recycle" bug.
+ */
+export function recycleTabs(prev: TerminalTab): TabsState {
+  const fresh = initialTabs()
+  const tabs = [{ ...fresh.tabs[0], title: prev.title, autoTitle: prev.autoTitle }]
+  return { ...fresh, tabs }
+}
+
 /** Cycle the active tab by ±1, wrapping at the ends. */
 export function cycleTab(state: TabsState, delta: 1 | -1): TabsState {
   const n = state.tabs.length

@@ -62,6 +62,7 @@ import {
   initialTabs,
   isTabSplit,
   openCommandTab,
+  recycleTabs,
   rehydrateTabs,
   renameActiveTab,
   selectTab,
@@ -85,55 +86,11 @@ import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
-import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
+import { terminalTabsKey } from "./terminal-tabs-persist"
+import { tabActivationListeners, tabsByTask, takeTabActivation } from "./terminal-tabs-shared"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
 import { useTurnPolls } from "./use-turn-polls"
-
-/** Per-task tab state, preserved across task switches for the process. */
-const tabsByTask = new Map<string, TabsState>()
-
-/** The task's currently-active tab id (module map read) — the attention
- *  jump's "where am I" input. Null when the task never mounted tabs. */
-export function activeTabIdFor(taskId: string): string | null {
-  return tabsByTask.get(taskId)?.activeId ?? null
-}
-
-/**
- * Cross-component "activate this tab" request (the F7 attention jump). The
- * mounted TerminalTabs for `taskId` consumes it via the listener; a task
- * that isn't mounted yet consumes it on mount (the host selects the task
- * first, TerminalTabs mounts, then reads the pending request). Unknown tab
- * ids are dropped on consume — the tab may have closed meanwhile.
- */
-let pendingTabActivation: { taskId: string; tabId: string } | null = null
-const tabActivationListeners = new Set<() => void>()
-
-export function requestTabActivation(taskId: string, tabId: string): void {
-  pendingTabActivation = { taskId, tabId }
-  for (const listener of tabActivationListeners) listener()
-}
-
-/** Consume a pending activation for this task, or null. */
-function takeTabActivation(taskId: string): string | null {
-  if (pendingTabActivation?.taskId !== taskId) return null
-  const tabId = pendingTabActivation.tabId
-  pendingTabActivation = null
-  return tabId
-}
-
-/**
- * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
- * `tabsByTask` entry (module-level, otherwise only-grows) and its
- * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never
- * the archived sweep (an archived task must keep its snapshot to
- * unarchive-and-`--resume`). Its PTYs are released separately by the host's
- * archived-task sweep / the tab's own exit path.
- */
-export function forgetTaskTabs(kv: TabsSnapshotKv, taskId: string): void {
-  tabsByTask.delete(taskId)
-  forgetTaskTabsSnapshot(kv, taskId)
-}
 
 export interface TerminalTabsProps {
   taskId: string
@@ -364,9 +321,11 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     }
     // Last tab: the strip can never be empty — recycle it in place as a
     // fresh engine tab (new session) instead of freezing on the exit banner.
+    // `recycleTabs` carries the old tab's title/autoTitle so the recycle
+    // doesn't visibly rename the tab.
     getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
     resumeTriedRef.current.clear()
-    const fresh = pinSession(initialTabs(), undefined)
+    const fresh = pinSession(recycleTabs(active), undefined)
     update(fresh)
     if (fresh.activeId === active.id) setResetToken((n) => n + 1)
   }

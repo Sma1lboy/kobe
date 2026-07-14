@@ -24,7 +24,7 @@ import { attentionKindFor, nextAttentionTarget } from "../../tui/lib/notify-stat
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
-import { activeTabIdFor, requestTabActivation } from "./TerminalTabs"
+import { activeTabIdFor, requestTabActivation } from "./terminal-tabs-shared"
 
 const CROSS_TASK_KEY = "notifications.crossTask.enabled"
 

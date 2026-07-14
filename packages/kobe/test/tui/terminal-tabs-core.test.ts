@@ -17,6 +17,7 @@ import {
   openCommandTab,
   openContentTab,
   openEditorTab,
+  recycleTabs,
   rehydrateTabs,
   renameActiveTab,
   selectTab,
@@ -253,6 +254,29 @@ describe("terminal tabs state", () => {
     s = renameActiveTab(s, "my name")
     expect(s.tabs[0].title).toBe("my name")
     expect(s.tabs[0].autoTitle).toBe("fix the resize race")
+  })
+
+  // Why: the last-tab in-place recycle used to reset to bare initialTabs(),
+  // dropping title/autoTitle — the naming pass then derived a NEW name from
+  // the fresh session's first prompt, so the tab visibly renamed itself on
+  // every recycle. Carrying both fields keeps the name stable AND blocks
+  // re-derivation (the pass only names tabs with neither field set).
+  it("recycleTabs keeps the exited tab's title/autoTitle on the fresh tab", () => {
+    let s = setTabAutoTitle(initialTabs(), "tab-1", "fix the resize race")
+    s = renameActiveTab(s, "my name")
+    const fresh = recycleTabs(s.tabs[0])
+    expect(fresh.tabs).toHaveLength(1)
+    expect(fresh.tabs[0]).toMatchObject({
+      kind: "engine",
+      id: "tab-1",
+      title: "my name",
+      autoTitle: "fix the resize race",
+    })
+    // Fresh session: no carried sessionId/spawned from the dead tab.
+    expect((fresh.tabs[0] as EngineTab).sessionId).toBeUndefined()
+    expect((fresh.tabs[0] as EngineTab).spawned).toBeUndefined()
+    // An untitled tab recycles untitled — nothing invented.
+    expect(recycleTabs(initialTabs().tabs[0]).tabs[0]).toMatchObject({ title: null })
   })
 
   // Why: closing the engine leaf (`leaf-1`) inside a split keeps `kind:
