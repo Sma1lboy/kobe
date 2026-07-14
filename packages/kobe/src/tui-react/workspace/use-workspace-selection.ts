@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { readLastActiveTaskId } from "../../state/last-active.ts"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import type { Task } from "../../types/task.ts"
 import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
@@ -29,7 +30,9 @@ export function useWorkspaceSelection(args: {
   readonly focusWorkspace: () => void
 }): WorkspaceSelection {
   const { orch, tasks, activeTaskId } = args
-  const [selectedId, setSelectedId] = useState<string | null>(() => orch.activeTaskSignal()())
+  // Seed from the daemon's replayed focus, else the persisted lastActive
+  // record — the adopt/fallback effect below corrects a stale/archived id.
+  const [selectedId, setSelectedId] = useState<string | null>(() => orch.activeTaskSignal()() ?? readLastActiveTaskId())
 
   const focusRestoredRef = useRef(false)
   const userPickedRef = useRef(false)
@@ -44,7 +47,10 @@ export function useWorkspaceSelection(args: {
       }
     }
     if (selectedId && tasks.some((task) => task.id === selectedId)) return
-    setSelectedId(firstSelectableTask(tasks, activeTaskId)?.id ?? null)
+    // Fallback carries the persisted lastActive record too — a stale or
+    // freshly-respawned daemon can replay a null focus while disk still
+    // knows the real one (the "reopens on the oldest project" bug).
+    setSelectedId(firstSelectableTask(tasks, activeTaskId, readLastActiveTaskId())?.id ?? null)
   }, [tasks, activeTaskId, selectedId])
 
   // PTY lifecycle (issue #16): archiving/deleting a task must end every

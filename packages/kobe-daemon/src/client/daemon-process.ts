@@ -53,28 +53,64 @@ export function spawnDetachedDaemon(
 }
 
 /**
- * If the daemon socket already accepts connections, do nothing. Otherwise
- * spawn a detached `kobe daemon start` and poll until the socket is
- * reachable (5s deadline). Both the TUI startup path and the in-session
- * "Restart daemon" prompt share this so the spawn+poll loop lives in
- * exactly one place.
- *
- * Returns the resolved socket path so the caller can build a client
- * pointed at it. Throws if the daemon never comes up within the deadline.
+ * True when this process runs INSIDE a kobe engine session — the launch
+ * script exports `KOBE_TASK_ID` into every engine tab. Helpers there (an
+ * agent's `kobe api`, a hook) must never KILL the shared daemon: a daemon
+ * that's merely busy past the hello timeout looks "wedged" from here, and
+ * the old stop-then-spawn path replaced it with a session-env clone — the
+ * 2026-07-13 zombie/socket-steal incident.
+ */
+function insideEngineSession(env: NodeJS.ProcessEnv = process.env): boolean {
+  return typeof env.KOBE_TASK_ID === "string" && env.KOBE_TASK_ID !== ""
+}
+
+/**
+ * Env for an AUTOSPAWNED daemon: drop the spawning process's engine-session
+ * identity (a helper inside an engine tab must not stamp its task/tab/TUI
+ * markers onto a long-lived shared daemon) and set the autospawn flag the
+ * daemon's lifetime policy reads (first-gui grace — a spawned daemon whose
+ * client never attaches as a gui reaps itself instead of living forever).
+ * Exported for tests.
+ */
+export function autospawnDaemonEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const { KOBE_TASK_ID: _task, KOBE_TAB_ID: _tab, KOBE_TUI: _tui, KOBE_TERMINAL_PTY: _pty, ...rest } = env
+  return { ...rest, KOBE_DAEMON_AUTOSPAWNED: "1" }
+}
+
+/**
+ * If the daemon socket already answers, do nothing. Otherwise spawn a
+ * detached `kobe daemon start` (session-scrubbed env, autospawn-flagged —
+ * see {@link autospawnDaemonEnv}) and poll until the socket is reachable
+ * (5s deadline). Both the TUI startup path and the in-session "Restart
+ * daemon" prompt share this so the spawn+poll loop lives in exactly one
+ * place. Returns the resolved socket path; throws if the daemon never
+ * comes up — or, inside an engine session, when the daemon is wedged
+ * (session helpers never kill/replace the shared daemon).
  */
 export async function ensureDaemonReachable(): Promise<string> {
   const socketPath = defaultDaemonSocketPath()
-  if (await testDaemonResponds(socketPath)) return socketPath
+  const state = await probeDaemonSocket(socketPath)
+  if (state === "alive") return socketPath
 
-  // Not responding: the daemon is absent OR wedged (socket open, hello
-  // silent). Kill any wedged process FIRST — `stopDaemonProcess` is
-  // idempotent (just clears stale socket/pidfile when nothing is alive),
-  // so this is safe when absent and prevents a fresh spawn from racing a
+  if (state === "wedged" && insideEngineSession()) {
+    // The socket CONNECTS but hello is slow — a busy daemon is
+    // indistinguishable from a wedged one from in here, and killing the
+    // shared daemon from a session helper is how split-brain starts.
+    // Leave recovery to the human-driven path (a real TUI boot / `kobe
+    // doctor`); fail with the cause instead.
+    throw new Error(
+      `kobe: daemon at ${socketPath} is not answering hello (busy or wedged); not restarting it from inside an engine session — retry, or run \`kobe daemon restart\` from a regular shell`,
+    )
+  }
+
+  // Absent, or wedged outside a session: kill any wedged process FIRST —
+  // `stopDaemonProcess` is idempotent (just clears stale socket/pidfile
+  // when nothing is alive) and prevents a fresh spawn from racing a
   // still-alive wedged daemon onto the same tasks.json (split-brain).
   await stopDaemonProcess(socketPath, defaultDaemonPidPath()).catch(() => {})
 
   const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
-  spawnDetachedDaemon(command, args, process.env, defaultDaemonLogPath())
+  spawnDetachedDaemon(command, args, autospawnDaemonEnv(), defaultDaemonLogPath())
 
   const deadline = Date.now() + 5000
   while (Date.now() < deadline) {
@@ -108,24 +144,28 @@ export async function connectIfRunning(): Promise<KobeDaemonClient | null> {
   return client
 }
 
+/** What a socket probe found: answering, nothing there, or a socket that
+ *  connects but won't answer hello (busy past the timeout, or truly hung). */
+export type DaemonSocketState = "alive" | "absent" | "wedged"
+
 /**
- * True iff a daemon at `socketPath` both accepts a connection AND answers
- * `hello` within `timeoutMs`. A socket that connects but never replies is
- * a WEDGED daemon — distinct from an absent one, and the reason we probe
+ * Probe the daemon at `socketPath`: does it accept a connection, and does
+ * it answer `hello` within `timeoutMs`? A socket that connects but never
+ * replies is WEDGED — distinct from an absent one, and the reason we probe
  * `hello` rather than just `connect` (KOB). Any reply (even a
- * version-mismatch error) counts as "alive"; only a timeout means wedged.
+ * version-mismatch error) counts as alive; only a timeout means wedged.
  * Exported for tests.
  */
-export async function testDaemonResponds(
+export async function probeDaemonSocket(
   socketPath: string,
   timeoutMs: number = DAEMON_HELLO_TIMEOUT_MS,
-): Promise<boolean> {
+): Promise<DaemonSocketState> {
   const probe = new KobeDaemonClient(socketPath)
   try {
     await probe.connect()
   } catch {
     probe.close()
-    return false
+    return "absent"
   }
   const replied = probe
     .request("hello", { protocolVersion: DAEMON_PROTOCOL_VERSION })
@@ -138,7 +178,15 @@ export async function testDaemonResponds(
   const alive = await Promise.race([replied, timedOut])
   if (timer) clearTimeout(timer)
   probe.close()
-  return alive
+  return alive ? "alive" : "wedged"
+}
+
+/** Back-compat boolean view of {@link probeDaemonSocket}. */
+export async function testDaemonResponds(
+  socketPath: string,
+  timeoutMs: number = DAEMON_HELLO_TIMEOUT_MS,
+): Promise<boolean> {
+  return (await probeDaemonSocket(socketPath, timeoutMs)) === "alive"
 }
 
 /**
