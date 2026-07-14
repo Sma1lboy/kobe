@@ -4,7 +4,7 @@
 
 **Goal:** Generate a Brand Studio-consumable `frames.json` from a real, isolated PureTUI + Hosted PTY run.
 
-**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The production adapter launches the supported `kobe dev:sandbox` entrypoint inside a unique home and uses a PTY plus xterm-headless to inject input and snapshot the actual OpenTUI screen; tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
+**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The Bun driver owns replay and output; a small Node `node-pty` sidecar launches `kobe dev:sandbox` inside a unique home and exchanges input, ANSI snapshots, and lifecycle messages over newline-delimited JSON. Tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
 
 **Tech Stack:** Bun, TypeScript, `node-pty`, `@xterm/headless`, `bun:test`, existing Kobe `dev:sandbox`, Remotion 4.
 
@@ -24,7 +24,8 @@
 
 - `packages/branding/src/quicklook/replay-spec.ts` — validates the storyboard and exposes the fully resolved, capture-safe spec shared by the renderer and the driver.
 - `packages/branding/src/quicklook/capture-core.ts` — backend-neutral terminal, clock, filesystem, and process-lifecycle interfaces plus the beat interpreter and atomic capture writer.
-- `packages/branding/src/quicklook/puretui-terminal.ts` — production adapter that launches the actual `dev:sandbox` TUI in a `node-pty`, feeds output into xterm-headless, supplies snapshots, and terminates the process tree.
+- `packages/branding/src/quicklook/puretui-terminal.ts` — Bun-side adapter that speaks the sidecar protocol and supplies `CaptureTerminal` to the interpreter.
+- `packages/branding/scripts/puretui-pty-sidecar.mjs` — Node-only `node-pty` process that launches PureTUI, feeds output into xterm-headless, and owns the terminal child lifecycle.
 - `packages/branding/scripts/capture-puretui.ts` — thin CLI composition root: creates the disposable demo environment, validates the spec, wires the real adapter/core, and prints useful diagnostic paths.
 - `packages/branding/tests/replay-spec.test.ts` — regression tests for invalid capture references and action grammar.
 - `packages/branding/tests/capture-core.test.ts` — deterministic fake-adapter tests for typing, waits, timestamps, atomic output, and failure/success teardown.
@@ -162,32 +163,34 @@ git commit -m "feat: add replay capture interpreter"
 
 **Files:**
 - Create: `packages/branding/src/quicklook/puretui-terminal.ts`
+- Create: `packages/branding/scripts/puretui-pty-sidecar.mjs`
 - Create: `packages/branding/scripts/capture-puretui.ts`
 - Create: `packages/branding/tests/puretui-terminal.test.ts`
 - Modify: `packages/branding/package.json`
 
 **Interfaces:**
-- Implements Task 2's `CaptureTerminal` as `PureTuiTerminal`.
-- `createPureTuiCapture(options): Promise<{ terminal: CaptureTerminal; cleanup(): Promise<void>; demoRoot: string }>` creates all disposable files under `options.demoRoot`.
+- Implements Task 2's `CaptureTerminal` as Bun-side `PureTuiTerminal`.
+- `createPureTuiCapture(options): Promise<{ terminal: CaptureTerminal; cleanup(): Promise<void>; demoRoot: string }>` starts the Node sidecar and creates all disposable files under `options.demoRoot`.
+- The sidecar protocol is newline-delimited JSON: requests use `{ id, op: "start" | "type" | "key" | "snapshot" | "waitFor" | "stop", ... }`; responses use `{ id, ok: true, value }` or `{ id, ok: false, error: { message, snapshot, pid, demoRoot } }`.
 - The CLI accepts `--spec <path>`, `--output <path>`, `--keep-demo-root`, and `--timeout-ms`, defaulting to the existing QuickLook paths.
 
 - [ ] **Step 1: Write the failing adapter tests around process construction and teardown**
 
-Create test doubles for the PTY factory and filesystem wrapper, then assert:
+Create a fake sidecar process and filesystem wrapper, then assert:
 
 ```ts
 test("launches dev:sandbox with an isolated home and fixed replay viewport", async () => {
-  const capture = await createPureTuiCapture({ repoRoot, demoRoot, cols: 160, rows: 45, ptyFactory })
-  expect(ptyFactory.calls[0]).toMatchObject({
-    file: "bun",
-    args: ["run", "dev:sandbox"],
-    options: { cols: 160, rows: 45, env: expect.objectContaining({ KOBE_SANDBOX_HOME_DIR: expect.stringContaining(demoRoot) }) },
+  const capture = await createPureTuiCapture({ repoRoot, demoRoot, cols: 160, rows: 45, sidecarFactory })
+  expect(sidecarFactory.calls[0]).toMatchObject({
+    file: "node",
+    args: [expect.stringContaining("puretui-pty-sidecar.mjs")],
+    env: expect.objectContaining({ KOBE_SANDBOX_HOME_DIR: expect.stringContaining(demoRoot) }),
   })
   await capture.cleanup()
 })
 ```
 
-Add a timeout test that requires the thrown error to include the latest ANSI snapshot, child pid, and demo root, and a teardown test that asserts `dev:sandbox:reset` runs before the temporary root is removed.
+Add a protocol-timeout test that requires the surfaced sidecar error to include the latest ANSI snapshot, child pid, and demo root. Add sidecar tests that require the Node process to run `bun run dev:sandbox:reset` before it acknowledges `stop`.
 
 - [ ] **Step 2: Verify the adapter tests fail**
 
@@ -197,9 +200,9 @@ Expected: failure because the production adapter and its injectable factory are 
 
 - [ ] **Step 3: Implement the production adapter without changing product code**
 
-Use a lazy `node-pty` import to launch `bun run dev:sandbox` with `cwd: <repoRoot>/packages/kobe`, `cols/rows` from the spec, and a child-only environment containing a unique `KOBE_SANDBOX_HOME_DIR`, `KOBE_HOME_DIR`, `KOBE_DAEMON_WEB_PORT`, and capture-specific host/session labels. Feed `onData` output to `@xterm/headless`, retain raw ANSI for diagnostics, and implement `snapshot()` by serializing the active buffer to stable `rows` lines.
+`capture-puretui.ts` runs in Bun and must not import `node-pty`. Have `puretui-terminal.ts` spawn the Node sidecar with `Bun.spawn(["node", sidecarPath])`, multiplex requests by id, and translate the protocol into `CaptureTerminal` methods. The Node sidecar imports `node-pty`, launches `bun run dev:sandbox` with `cwd: <repoRoot>/packages/kobe`, `cols/rows` from the spec, and a child-only environment containing a unique `KOBE_SANDBOX_HOME_DIR`, `KOBE_HOME_DIR`, `KOBE_DAEMON_WEB_PORT`, and capture-specific host/session labels. It feeds `onData` output to `@xterm/headless`, retains raw ANSI for diagnostics, and returns `snapshot()` as stable `rows` lines.
 
-Map declared strings such as `Enter`, `Escape`, `C-h`, and `C-e` to their terminal byte sequences in one `encodeKey()` function. `waitFor()` must poll the rendered snapshot until the declared pattern appears or timeout; it must never use a fixed boot sleep. `stop()` sends a cooperative interrupt, waits for the PTY child to exit, runs `bun run dev:sandbox:reset` with the exact same isolated-home environment, and fails if the child remains alive.
+Map declared strings such as `Enter`, `Escape`, `C-h`, and `C-e` to terminal byte sequences in the sidecar's single `encodeKey()` function. `waitFor()` must poll the rendered snapshot until the declared pattern appears or timeout; it must never use a fixed boot sleep. On `stop`, the sidecar sends a cooperative interrupt, waits for the PTY child to exit, runs `bun run dev:sandbox:reset` with the exact same isolated-home environment, and returns an error if the child remains alive. The Bun adapter then exits the sidecar cleanly.
 
 In `capture-puretui.ts`, resolve paths from the branding package, call `resolveReplaySpec` before `createPureTuiCapture`, create the fixture git repository below the demo root, invoke `runReplayCapture`, and print the output path plus retained demo root. Add `capture:puretui` and `test:replay` scripts and direct `node-pty`/`@xterm/headless` dependencies to `packages/branding/package.json`.
 
@@ -212,7 +215,7 @@ Expected: all fake-process tests pass; no real daemon or engine is launched.
 - [ ] **Step 5: Commit the runnable adapter**
 
 ```bash
-git add packages/branding/src/quicklook/puretui-terminal.ts packages/branding/scripts/capture-puretui.ts packages/branding/package.json packages/branding/tests/puretui-terminal.test.ts bun.lock
+git add packages/branding/src/quicklook/puretui-terminal.ts packages/branding/scripts/puretui-pty-sidecar.mjs packages/branding/scripts/capture-puretui.ts packages/branding/package.json packages/branding/tests/puretui-terminal.test.ts bun.lock
 git commit -m "feat: capture PureTUI replay frames"
 ```
 
