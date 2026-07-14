@@ -136,13 +136,25 @@ describe("pure-TUI workspace task activation", () => {
     expect(focusWorkspace).toHaveBeenCalledTimes(1)
   })
 
-  test("selection restore prefers a live active task, then the first non-archived row", () => {
+  // Why: the SSH-reconnect "reopens on the oldest project" bug — a stale or
+  // freshly-respawned daemon replays a null/ancient focus, and the old
+  // fallback took tasks.json ARRAY order, which leads with the oldest saved
+  // repo's main task (wakey). Restore order must be: daemon focus →
+  // persisted lastActive → newest updatedAt; never raw array position.
+  test("selection restore prefers active → persisted lastActive → most recently updated", () => {
     const active = task("active", "/worktrees/active")
     const archived = { ...task("archived", "/worktrees/archived"), archived: true }
-    const fallback = task("fallback", "/worktrees/fallback")
+    const stale = { ...task("stale", "/worktrees/stale"), updatedAt: "2026-01-01T00:00:00.000Z" }
+    const recent = { ...task("recent", "/worktrees/recent"), updatedAt: "2026-07-01T00:00:00.000Z" }
 
-    expect(firstSelectableTask([archived, active, fallback], "active")).toBe(active)
-    expect(firstSelectableTask([archived, fallback], "missing")).toBe(fallback)
+    expect(firstSelectableTask([archived, active, recent], "active")).toBe(active)
+    // Daemon focus missing → the persisted lastActive record wins.
+    expect(firstSelectableTask([stale, active, recent], null, "active")).toBe(active)
+    expect(firstSelectableTask([stale, active, recent], "missing", "active")).toBe(active)
+    // An archived lastActive is dead — fall through, never resurrect it.
+    expect(firstSelectableTask([archived, stale, recent], null, "archived")).toBe(recent)
+    // No focus records at all → newest unarchived, NOT array-first.
+    expect(firstSelectableTask([stale, recent], null)).toBe(recent)
     expect(firstSelectableTask([archived], null)).toBe(archived)
     expect(firstSelectableTask([], null)).toBeUndefined()
   })

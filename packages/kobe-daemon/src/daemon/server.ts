@@ -65,6 +65,12 @@ export type { DaemonClientConnection } from "./client-connection.ts"
  */
 const DEFAULT_IDLE_GRACE_MS = 3000
 
+/** First-gui window for AUTOSPAWNED daemons (`KOBE_DAEMON_AUTOSPAWNED`) —
+ *  generous enough for a slow TUI boot to attach, short enough that a
+ *  daemon born from a stray helper (an agent's `kobe api` inside an
+ *  engine tab) never becomes a week-old zombie holding the socket. */
+const FIRST_GUI_GRACE_MS = 60_000
+
 function resolveIdleGraceMs(): number {
   const raw = process.env.KOBE_DAEMON_IDLE_GRACE_MS
   if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
@@ -148,6 +154,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       yield* webClients
     },
     idleGraceMs: resolveIdleGraceMs(),
+    // Autospawned daemons (connectOrStartDaemon's spawn stamps the env
+    // flag) reap themselves if no gui EVER attaches — the zombie hole.
+    ...(process.env.KOBE_DAEMON_AUTOSPAWNED === "1" ? { firstGuiGraceMs: FIRST_GUI_GRACE_MS } : {}),
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
   })
 

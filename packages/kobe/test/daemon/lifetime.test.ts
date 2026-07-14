@@ -30,12 +30,13 @@ function manualClock(): { schedule: ScheduleFn; fire: () => void } {
 const GUI: LifetimeClient = { subscribed: true, holdsLifetime: true }
 const PANE: LifetimeClient = { subscribed: true, holdsLifetime: false }
 
-function make(clients: LifetimeClient[]) {
+function make(clients: LifetimeClient[], opts: { firstGuiGraceMs?: number } = {}) {
   const clock = manualClock()
   const onIdleStop = vi.fn()
   const lifetime = new DaemonLifetime({
     clients: () => clients,
     idleGraceMs: 50,
+    ...opts,
     onIdleStop,
     schedule: clock.schedule,
     log: () => {},
@@ -104,6 +105,30 @@ describe("DaemonLifetime", () => {
     expect(onIdleStop).not.toHaveBeenCalled()
     // A later disconnect can't re-arm once stopping.
     lifetime.clientDisconnected(true)
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+
+  // Why: the arm-on-transition rule alone means a daemon that NEVER sees a
+  // gui never self-stops — the 2026-07-13 zombie daemons (autospawned by a
+  // helper inside an engine tab) lived for days holding the prod socket.
+  // Autospawned daemons arm a boot-time first-gui grace instead.
+  it("firstGuiGraceMs: an autospawned daemon that never sees a gui self-stops", () => {
+    const { onIdleStop, clock } = make([PANE], { firstGuiGraceMs: 100 })
+    clock.fire()
+    expect(onIdleStop).toHaveBeenCalledTimes(1)
+  })
+
+  it("firstGuiGraceMs: the first gui attach cancels the boot grace", () => {
+    const { lifetime, onIdleStop, clock, clients } = make([], { firstGuiGraceMs: 100 })
+    clients.push(GUI)
+    lifetime.guiAttached()
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+
+  it("no firstGuiGraceMs: a deliberate gui-less start keeps the stays-up behavior", () => {
+    const { onIdleStop, clock } = make([PANE])
     clock.fire()
     expect(onIdleStop).not.toHaveBeenCalled()
   })

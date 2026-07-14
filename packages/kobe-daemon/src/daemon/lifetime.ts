@@ -55,6 +55,18 @@ export interface DaemonLifetimeOptions {
   readonly idleGraceMs: number
   /** Invoked once when the grace elapses with still-zero guis. */
   readonly onIdleStop: () => void
+  /**
+   * When set, arm a BOOT-time grace too: a daemon that never sees a single
+   * gui within this window self-stops. For AUTOSPAWNED daemons only
+   * (`KOBE_DAEMON_AUTOSPAWNED`, set by `connectOrStartDaemon`'s spawn) —
+   * they exist to serve the client that spawned them, and one whose client
+   * never attached as a gui otherwise lives FOREVER (the arm-on-transition
+   * rule above never fires without a >0 → 0 gui drop; that hole bred the
+   * 2026-07-13 zombie daemons holding the prod socket). A deliberate
+   * `kobe daemon start` never sets the env flag and keeps the documented
+   * stays-up behavior.
+   */
+  readonly firstGuiGraceMs?: number
   /** Timer factory (default: unref'd setTimeout); injected by tests. */
   readonly schedule?: ScheduleFn
   /** Structured log sink (default: {@link logDaemonInfo}); injected by tests. */
@@ -76,6 +88,19 @@ export class DaemonLifetime {
     this.onIdleStop = options.onIdleStop
     this.schedule = options.schedule ?? defaultSchedule
     this.log = options.log ?? logDaemonInfo
+    // Autospawned daemons must not outlive a client that never became a
+    // gui (see firstGuiGraceMs). The first guiAttached() cancels this;
+    // afterwards only the normal >0 → 0 transition arms shutdown.
+    const bootGrace = options.firstGuiGraceMs
+    if (bootGrace !== undefined) {
+      this.log("idle", `autospawned — arming ${bootGrace}ms first-gui grace`)
+      this.cancelIdle = this.schedule(() => {
+        this.cancelIdle = null
+        if (this.stopping || this.guiCount() > 0) return
+        this.log("idle", "first-gui grace elapsed with no gui — self-stopping")
+        this.onIdleStop()
+      }, bootGrace)
+    }
   }
 
   /** Attached GUIs — the refcount that gates lazy shutdown. Counts only
