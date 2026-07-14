@@ -1,6 +1,7 @@
 # 008 — Add keyboard scrolling to Help
 
-- **Status**: TODO
+- **Status**: DONE
+- **Resolution**: Used only native scroll vocabulary (arrows/page/home/end) inside the modal — no new Kobe-owned chords, so no docs/KEYBINDINGS.md entry; surfaced for owner review in the batch summary.
 - **Commit**: 81969596
 - **Severity**: MEDIUM
 - **Category**: Accessibility

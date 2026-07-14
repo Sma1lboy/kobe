@@ -52,6 +52,24 @@ describe("HelpDialog", () => {
     expect(text).toContain("prefix + o")
   })
 
+  it("scrolls below the fold with keyboard-only navigation", async () => {
+    const { frame, mockInput } = await renderComponent(<Harness />, {
+      providers: { dialog: true },
+      width: 100,
+      height: 16,
+    })
+    const initial = await frame()
+    expect(initial).toContain("kobe — keybindings")
+
+    for (let line = 0; line < 4; line++) act(() => mockInput.pressArrow("down"))
+    const scrolled = await frame()
+    expect(scrolled).not.toBe(initial)
+
+    // Home returns to the top; close still works afterwards.
+    act(() => mockInput.pressKey("HOME"))
+    expect(await frame()).toBe(initial)
+  })
+
   it("? dismisses the dialog (dialog stack empties)", async () => {
     const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
     const { frame, mockInput } = await renderComponent(

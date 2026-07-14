@@ -15,8 +15,8 @@
  * language changes so the non-reactive `tKeys` lookups re-run.
  */
 
-import { TextAttributes } from "@opentui/core"
-import { useMemo } from "react"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import { useMemo, useRef } from "react"
 import { formatChord } from "../../tui/lib/chord-glyphs"
 import { capOf, groupBindings } from "../../tui/lib/help-groups"
 import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
@@ -38,10 +38,33 @@ export function HelpDialog(props: { onClose?: () => void }) {
   // the in-pane overlay closes by clearing the dialog stack.
   const close = () => (props.onClose ? props.onClose() : dialog.clear())
 
+  // Keyboard scrolling for the shortcut reference — native navigation keys
+  // only (arrows/page/home/end), no new Kobe-owned chords, so keyboard-only
+  // users can read below the fold (docs/KEYBINDINGS.md pane-scope rules).
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const scrollBy = (lines: number): void => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+    scroll.scrollTo({ x: 0, y: Math.max(0, scroll.scrollTop + lines) })
+  }
+  const scrollToEdge = (edge: "top" | "bottom"): void => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+    scroll.scrollTo({ x: 0, y: edge === "top" ? 0 : Number.MAX_SAFE_INTEGER })
+  }
+
   // Press `?` again to dismiss. esc
   // is handled by the DialogProvider's own binding stack — don't re-bind.
   useBindings(() => ({
-    bindings: [{ key: "?", cmd: close }],
+    bindings: [
+      { key: "?", cmd: close },
+      { key: "up", cmd: () => scrollBy(-1) },
+      { key: "down", cmd: () => scrollBy(1) },
+      { key: "pageup", cmd: () => scrollBy(-(scrollRef.current?.viewport.height ?? 10)) },
+      { key: "pagedown", cmd: () => scrollBy(scrollRef.current?.viewport.height ?? 10) },
+      { key: "home", cmd: () => scrollToEdge("top") },
+      { key: "end", cmd: () => scrollToEdge("bottom") },
+    ],
   }))
 
   return (
@@ -62,6 +85,9 @@ export function HelpDialog(props: { onClose?: () => void }) {
       {/* Long-content dialogs handle their own overflow: flexShrink={1}
           fits the dialog's maxHeight, the scrollbox owns the scrolling. */}
       <scrollbox
+        ref={(r: ScrollBoxRenderable | null) => {
+          scrollRef.current = r
+        }}
         flexShrink={1}
         flexGrow={1}
         stickyScroll={false}
