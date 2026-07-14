@@ -165,12 +165,34 @@ export function legacyTmuxDoctorLines(report: LegacyTmuxReport, socket: string =
   return lines
 }
 
+const PROCESS_GROUP_EXIT_GRACE_MS = 6_000
+const PROCESS_GROUP_POLL_MS = 100
+
 async function ownProcessGroup(): Promise<{ pgid: number | null; error: string | null }> {
   const result = await run(["ps", "-o", "pgid=", "-p", String(process.pid)])
   if (result.code !== 0) return { pgid: null, error: commandFailure("ps current process group", result) }
   const pgid = Number.parseInt(result.stdout.trim(), 10)
   if (!Number.isFinite(pgid) || pgid <= 1) return { pgid: null, error: "unable to determine current process group" }
   return { pgid, error: null }
+}
+
+function processGroupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH"
+  }
+}
+
+async function waitForProcessGroupsExit(pgids: readonly number[]): Promise<number[]> {
+  const deadline = Date.now() + PROCESS_GROUP_EXIT_GRACE_MS
+  let survivors = pgids.filter(processGroupAlive)
+  while (survivors.length > 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, PROCESS_GROUP_POLL_MS))
+    survivors = survivors.filter(processGroupAlive)
+  }
+  return survivors
 }
 
 export async function stopLegacyTmux(socket: string = LEGACY_TMUX_SOCKET): Promise<LegacyTmuxStopResult> {
@@ -186,34 +208,44 @@ export async function stopLegacyTmux(socket: string = LEGACY_TMUX_SOCKET): Promi
     return { status: "failed", sessions: report.sessions.length, signalledGroups: 0, error: ownGroup.error }
   }
 
-  let signalledGroups = 0
+  const signalledPaneGroups: number[] = []
   for (const pgid of new Set(report.panePids)) {
     if (pgid === ownGroup.pgid) continue
     try {
       process.kill(-pgid, "SIGTERM")
-      signalledGroups++
+      signalledPaneGroups.push(pgid)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ESRCH") continue
       return {
         status: "failed",
         sessions: report.sessions.length,
-        signalledGroups,
+        signalledGroups: signalledPaneGroups.length,
         error: `failed to SIGTERM pane group ${pgid}: ${error instanceof Error ? error.message : String(error)}`,
       }
     }
   }
 
   const result = await runTmux(socket, ["kill-server"])
-  if (result.code === 0) return { status: "stopped", sessions: report.sessions.length, signalledGroups }
+  if (result.code !== 0) {
+    const remaining = await inspectLegacyTmux(socket)
+    if (remaining.error || remaining.sessions.length > 0) {
+      return {
+        status: "failed",
+        sessions: report.sessions.length,
+        signalledGroups: signalledPaneGroups.length,
+        error: remaining.error ?? (result.stderr.trim() || `tmux exited ${result.code}`),
+      }
+    }
+  }
 
-  const remaining = await inspectLegacyTmux(socket)
-  if (!remaining.error && remaining.sessions.length === 0) {
-    return { status: "stopped", sessions: report.sessions.length, signalledGroups }
+  const survivors = await waitForProcessGroupsExit(signalledPaneGroups)
+  if (survivors.length > 0) {
+    return {
+      status: "failed",
+      sessions: report.sessions.length,
+      signalledGroups: signalledPaneGroups.length,
+      error: `pane process groups still alive after ${PROCESS_GROUP_EXIT_GRACE_MS}ms: ${survivors.join(", ")}`,
+    }
   }
-  return {
-    status: "failed",
-    sessions: report.sessions.length,
-    signalledGroups,
-    error: remaining.error ?? (result.stderr.trim() || `tmux exited ${result.code}`),
-  }
+  return { status: "stopped", sessions: report.sessions.length, signalledGroups: signalledPaneGroups.length }
 }

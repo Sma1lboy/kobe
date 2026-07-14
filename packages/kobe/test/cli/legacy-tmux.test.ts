@@ -120,7 +120,8 @@ describe("stopLegacyTmux", () => {
       throw new Error(`unexpected command: ${command}`)
     })
     vi.stubGlobal("Bun", { spawn })
-    const kill = vi.spyOn(process, "kill").mockImplementation((pid) => {
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (signal === 0) throw Object.assign(new Error("gone"), { code: "ESRCH" })
       events.push(`SIGTERM ${pid}`)
       return true
     })

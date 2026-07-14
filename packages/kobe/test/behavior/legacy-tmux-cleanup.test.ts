@@ -50,7 +50,7 @@ beforeAll(() => {
 afterAll(() => {
   if (panePgid && panePgid > 1) {
     try {
-      process.kill(-panePgid, "SIGTERM")
+      process.kill(-panePgid, "SIGKILL")
     } catch {
       // The regression path already cleaned it.
     }
@@ -82,5 +82,30 @@ describe.skipIf(!TMUX_AVAILABLE)("legacy tmux process-group cleanup", () => {
     await waitUntil(() => groupPids.every((pid) => !isAlive(pid)), 10_000)
     expect(groupPids.filter(isAlive)).toEqual([])
     expect(tmux("list-sessions").status).not.toBe(0)
+  }, 20_000)
+
+  it("reports failure when a pane process group survives TERM and HUP", async () => {
+    const command = "/bin/sh -c 'trap \"\" HUP TERM; while :; do sleep 1; done'"
+    const created = tmux("new-session", "-d", "-s", "term-ignore", command)
+    expect(created.status, created.stderr).toBe(0)
+
+    const pane = tmux("list-panes", "-t", "term-ignore", "-F", "#{pane_pid}")
+    panePgid = Number.parseInt(pane.stdout.trim(), 10)
+    expect(panePgid).toBeGreaterThan(1)
+    await waitUntil(() => groupProcesses(panePgid ?? 0).length >= 2, 5_000)
+
+    await expect(stopLegacyTmux(SOCKET)).resolves.toMatchObject({
+      status: "failed",
+      sessions: 1,
+      signalledGroups: 1,
+      error: expect.stringContaining("pane process groups still alive"),
+    })
+    expect(groupProcesses(panePgid ?? 0).length).toBeGreaterThan(0)
+    expect(tmux("list-sessions").status).not.toBe(0)
+
+    process.kill(-(panePgid ?? 0), "SIGKILL")
+    await waitUntil(() => groupProcesses(panePgid ?? 0).length === 0, 5_000)
+    expect(groupProcesses(panePgid ?? 0)).toEqual([])
+    panePgid = null
   }, 20_000)
 })
