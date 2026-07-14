@@ -1,6 +1,6 @@
 # 009 — Isolate sidebar spinner updates to loading rows
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 81969596
 - **Severity**: MEDIUM
 - **Category**: Performance

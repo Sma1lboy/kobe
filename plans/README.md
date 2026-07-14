@@ -12,7 +12,7 @@ Audit base: `81969596` (`0.8.2` release commit). Source changes are intentionall
 | 6 | [006 Cache terminal passthrough bindings](006-cache-terminal-passthrough-bindings.md) | MEDIUM | DONE | — |
 | 7 | [007 Follow settings keyboard cursor](007-follow-settings-keyboard-cursor.md) | MEDIUM | DONE | — |
 | 8 | [008 Help keyboard scrolling](008-add-help-keyboard-scrolling.md) | MEDIUM | DONE | native keys only, surfaced to owner |
-| 9 | [009 Isolate sidebar spinner updates](009-isolate-sidebar-spinner-updates.md) | MEDIUM | TODO | operation-count baseline |
+| 9 | [009 Isolate sidebar spinner updates](009-isolate-sidebar-spinner-updates.md) | MEDIUM | DONE | — |
 | 10 | [010 Split TerminalTabs ownership](010-split-terminal-tabs-ownership.md) | MEDIUM | TODO | correctness changes settled |
 
 ## Execution policy

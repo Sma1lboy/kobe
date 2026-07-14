@@ -13,12 +13,13 @@
  *     state commits later), so `keys.ts` reads through `getCursorIndex`.
  *   - `defer: true` effects (view switch / project-filter reset) become
  *     mount-skip refs; `untrack` reads become ref reads.
- *   - The 10Hz spinner tick is SUSPENDED while nothing spins (O11): the
- *     interval mounts only when `anyRowLoading` (the same per-row `rowIsLoading`
- *     decision the cards render with) is true, so an all-idle rail — N
- *     detached sessions' Tasks panes running for days — burns zero timer
- *     re-renders. The ~2s branch/changes tick stays put; it's the pull that
- *     surfaces poller results, and it's slow enough not to matter.
+ *   - The 10Hz spinner pulse lives in the shared spinner-frame store
+ *     (`tui/lib/spinner-frame-store`): each LOADING row subscribes itself,
+ *     so a frame tick re-renders only the animating rows — an all-idle rail
+ *     (N detached sessions' Tasks panes running for days) keeps zero timers
+ *     and this component never re-runs per frame. The ~2s branch/changes
+ *     tick stays put; it's the pull that surfaces poller results, and it's
+ *     slow enough not to matter.
  */
 
 import type { KeyEvent } from "@opentui/core"
@@ -38,7 +39,6 @@ import {
   sidebarProjectKey,
   splitSidebarRows,
 } from "../../../tui/panes/sidebar/groups"
-import { SPINNER_FRAME_MS, SPINNER_TICK_CYCLE, anyRowLoading } from "../../../tui/panes/sidebar/row-view"
 import {
   MAIN_BRANCH_POLL_MS,
   SIDEBAR_WIDTH,
@@ -48,7 +48,6 @@ import {
   subtitleBudgetFor,
   titleBudgetFor,
 } from "../../../tui/panes/sidebar/view-core"
-import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { modalActive } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
@@ -110,36 +109,14 @@ export function Sidebar(props: SidebarProps) {
     }
   }, [searchMode, renderer])
 
-  // Branch/changes poll tick + shared spinner frame (one system pulse).
+  // Branch/changes poll tick (the spinner pulse moved to the shared
+  // spinner-frame store: each LOADING row subscribes itself, so a frame tick
+  // re-renders only the animating rows instead of the whole rail).
   const [branchTick, setBranchTick] = useState(0)
   useEffect(() => {
     const timer = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
     return () => clearInterval(timer)
   }, [])
-
-  // Does ANY visible row spin right now? Same per-row `rowIsLoading` decision
-  // the cards render with (via `anyRowLoading`) — reduced motion swaps the
-  // engine spinner for a static dot, so nothing animates then either. When
-  // false the 10Hz interval below never mounts: an all-idle rail (N detached
-  // sessions running for days) burns zero timer re-renders.
-  const { reducedMotion } = useTheme()
-  const anyLoading = useMemo(
-    () =>
-      !reducedMotion &&
-      anyRowLoading(props.tasks, {
-        activity: (id) => props.engineState?.get(id),
-        job: (id) => props.taskJobs?.get(id),
-      }),
-    [reducedMotion, props.tasks, props.engineState, props.taskJobs],
-  )
-
-  const [spinnerFrame, setSpinnerFrame] = useState(0)
-  useEffect(() => {
-    if (!anyLoading) return
-    // Common-multiple cycle — rows reduce modulo their own engine frame set.
-    const timer = setInterval(() => setSpinnerFrame((n) => (n + 1) % SPINNER_TICK_CYCLE), SPINNER_FRAME_MS)
-    return () => clearInterval(timer)
-  }, [anyLoading])
 
   const sortMode = props.sortMode ?? "default"
   const projectOptions = useMemo<readonly SidebarProjectOption[]>(
@@ -372,7 +349,6 @@ export function Sidebar(props: SidebarProps) {
     setHover,
     clearHoverForTask,
     branchTick,
-    spinnerFrame,
     titleBudget,
     subtitleBudget,
     engineState: props.engineState,

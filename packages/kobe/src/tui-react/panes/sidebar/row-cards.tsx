@@ -16,8 +16,9 @@
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import { type BoxRenderable, TextAttributes } from "@opentui/core"
-import { type ReactNode, useEffect, useMemo } from "react"
+import { type ReactNode, useEffect, useMemo, useSyncExternalStore } from "react"
 import { sweepBar } from "../../../tui/lib/progress-bar"
+import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../../tui/lib/spinner-frame-store"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import type { SidebarRow } from "../../../tui/panes/sidebar/groups"
 import { spacedTitle } from "../../../tui/panes/sidebar/labels"
@@ -46,13 +47,28 @@ export type SidebarRowCardSharedProps = {
   readonly setHover: (hover: SidebarHover | null) => void
   readonly clearHoverForTask: (taskId: string) => void
   readonly branchTick: number
-  readonly spinnerFrame: number
   readonly titleBudget: number
   readonly subtitleBudget: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   readonly moveMode?: boolean
+}
+
+const NOOP_SUBSCRIBE = () => () => {}
+const ZERO_FRAME = () => 0
+
+/**
+ * Per-row spinner pulse — subscribes to the shared 10Hz frame store ONLY
+ * while this row actually animates, so a frame tick re-renders the loading
+ * rows and nothing else (the old component-level interval re-ran the whole
+ * Sidebar per tick).
+ */
+function useSpinnerFrame(active: boolean): number {
+  return useSyncExternalStore(
+    active ? subscribeSpinnerFrame : NOOP_SUBSCRIBE,
+    active ? spinnerFrameSnapshot : ZERO_FRAME,
+  )
 }
 
 /**
@@ -76,10 +92,12 @@ function useChanges(shared: SidebarRowCardSharedProps, task: SidebarRow["task"])
  * Plain muted text, except a materialising row, which renders the
  * indeterminate sweep bar ahead of the word.
  */
-function SubtitleText(props: { readonly view: SidebarRowView; readonly frame: number }) {
+function SubtitleText(props: { readonly view: SidebarRowView }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
-  if (!props.view.materializing || themeCtx.reducedMotion) {
+  const animating = props.view.materializing && !themeCtx.reducedMotion
+  const frame = useSpinnerFrame(animating)
+  if (!animating) {
     return (
       <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
         {props.view.subtitleText}
@@ -89,7 +107,7 @@ function SubtitleText(props: { readonly view: SidebarRowView; readonly frame: nu
   return (
     <box flexDirection="row" gap={1} flexBasis={0} flexGrow={1} flexShrink={1}>
       <text fg={theme.primary} wrapMode="none">
-        {sweepBar(props.frame)}
+        {sweepBar(frame)}
       </text>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         {props.view.subtitleText}
@@ -193,8 +211,9 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
     })
   }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
-  // same object, so an idle row does zero per-frame derivation.
-  const rowView = withSpinnerFrame(baseView, () => shared.spinnerFrame)
+  // same object and never subscribe, so an idle row does zero per-frame work.
+  const frame = useSpinnerFrame(baseView.loading && !reducedMotion)
+  const rowView = withSpinnerFrame(baseView, () => frame)
   return { theme, task, isCursor, isSelected, selection, changes, rowView }
 }
 
@@ -241,7 +260,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
         </RowLine>
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <SubtitleText view={rowView} frame={shared.spinnerFrame} />
+            <SubtitleText view={rowView} />
             <ChangeStats changes={changes} />
           </box>
         </RowLine>
@@ -285,7 +304,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
         </RowLine>
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-            <SubtitleText view={rowView} frame={shared.spinnerFrame} />
+            <SubtitleText view={rowView} />
             {task.pinned === true ? (
               <text fg={theme.warning} wrapMode="none">
                 ▴
