@@ -8,17 +8,14 @@
   },
   "capture": {
     "fps": 10,
-    "seconds": 120,
+    "seconds": 50,
     "output": "src/quicklook/frames.json",
-    "home": ".capture-home-5",
-    "repoDefault": "/Users/jacksonc/i/kobe",
-    "shellPrompt": "jackson@kobe:~/i/kobe$ ",
-    "socket": "kobe-capture",
-    "innerSocket": "kobe-capture-inner",
-    "session": "quicklook",
-    "warmupSeconds": 50
+    "home": ".capture-home-puretui",
+    "repoDefault": "fixture-repo",
+    "shellPrompt": ""
   },
   "setup": {
+    "readyWait": "workspaceReady",
     "seedTasks": [
       {
         "title": "fix flaky turn-detector test",
@@ -27,32 +24,31 @@
     ]
   },
   "waits": {
+    "workspaceReady": {
+      "pattern": "KOBE",
+      "timeoutMs": 15000
+    },
     "newTaskDialog": {
       "pattern": "New task",
       "timeoutMs": 8000
     },
-    "codexComposerReady": {
-      "pattern": "›",
-      "timeoutMs": 30000
-    },
-    "codexComposerAfterTrust": {
-      "pattern": "›",
+    "claudeComposerReady": {
+      "pattern": "❯",
       "timeoutMs": 20000
+    },
+    "claudePermissionPrompt": {
+      "pattern": "Do you want to proceed?",
+      "timeoutMs": 30000
     }
   },
   "text": {
-    "shellCommand": "kobe",
-    "claudePrompt": "Explain what packages/kobe/src/cli/api-cmd.ts does in three short bullets. Read-only.",
-    "codexPrompt": "Summarize the purpose of packages/branding in two sentences. Read-only."
+    "claudePrompt": "Run this exact shell command once: printf replay-color-probe > replay-color-probe.txt"
   },
   "flows": {
     "createTask": {
       "openKey": "n",
-      "focusPaneBeforeOpen": "leftmost",
       "dialogWait": "newTaskDialog",
       "dialogSettleMs": 1500,
-      "codexEngineCycleKey": "C-e",
-      "codexEngineSettleMs": 900,
       "tabCount": 4,
       "tabDelayMs": 700,
       "submitKey": "Enter"
@@ -60,134 +56,46 @@
   },
   "beats": [
     {
-      "at": 1,
-      "action": "typeText",
-      "textRef": "shellCommand",
-      "msPerChar": 160
-    },
-    {
-      "at": 2.2,
-      "action": "key",
-      "key": "Enter"
-    },
-    {
-      "at": 7,
-      "action": "key",
-      "key": "C-h"
-    },
-    {
-      "at": 8,
+      "at": 3,
       "action": "flow",
       "flow": "createTask",
       "engine": "claude"
     },
     {
-      "at": 32,
-      "action": "typeText",
+      "at": 11,
+      "action": "typeTextWhenReady",
+      "waitFor": "claudeComposerReady",
       "textRef": "claudePrompt",
       "msPerChar": 45,
+      "settleMs": 500,
       "submit": true,
-      "submitDelayMs": 500,
-      "dismissIfText": [
-        {
-          "includes": "Claude in Chrome extension detected",
-          "steps": [
-            {
-              "action": "key",
-              "key": "Escape"
-            },
-            {
-              "action": "sleep",
-              "ms": 800
-            }
-          ]
-        }
-      ]
+      "submitDelayMs": 500
     },
     {
-      "at": 60,
-      "action": "key",
-      "key": "C-h"
+      "at": 28,
+      "action": "waitFor",
+      "waitFor": "claudePermissionPrompt"
     },
     {
-      "at": 61,
-      "action": "flow",
-      "flow": "createTask",
-      "engine": "codex"
-    },
-    {
-      "at": 86,
-      "action": "typeTextWhenReady",
-      "waitFor": "codexComposerReady",
-      "textRef": "codexPrompt",
-      "msPerChar": 45,
-      "settleMs": 1200,
-      "submit": true,
-      "submitDelayMs": 500,
-      "dismissIfText": [
-        {
-          "includes": "Update available!",
-          "steps": [
-            {
-              "action": "key",
-              "key": "Down"
-            },
-            {
-              "action": "sleep",
-              "ms": 400
-            },
-            {
-              "action": "key",
-              "key": "Enter"
-            },
-            {
-              "action": "sleep",
-              "ms": 1500
-            }
-          ]
-        },
-        {
-          "includes": "Hooks need review",
-          "steps": [
-            {
-              "action": "key",
-              "key": "Down"
-            },
-            {
-              "action": "sleep",
-              "ms": 600
-            },
-            {
-              "action": "key",
-              "key": "Enter"
-            },
-            {
-              "action": "sleep",
-              "ms": 1500
-            },
-            {
-              "action": "waitFor",
-              "waitFor": "codexComposerAfterTrust"
-            }
-          ]
-        }
-      ]
+      "at": 28,
+      "action": "sleep",
+      "ms": 2500
     }
   ],
   "regions": {
     "chat": {
       "c0": 33,
-      "c1": 107,
-      "r0": 3,
-      "r1": 36,
-      "hash": "rg_0clck2w"
+      "c1": 125,
+      "r0": 1,
+      "r1": 43,
+      "hash": "rg_1ctg642"
     },
     "agent": {
       "c0": 33,
-      "c1": 107,
-      "r0": 11,
-      "r1": 36,
-      "hash": "rg_1swli1i"
+      "c1": 125,
+      "r0": 1,
+      "r1": 43,
+      "hash": "rg_1xlx0jz"
     },
     "dialog": {
       "c0": 30,
@@ -198,91 +106,39 @@
     },
     "input": {
       "c0": 33,
-      "c1": 110,
-      "r0": 37,
-      "r1": 44,
-      "hash": "rg_01d9era"
-    },
-    "inputCodex": {
-      "c0": 33,
-      "c1": 110,
-      "r0": 22,
-      "r1": 40,
-      "hash": "rg_1kdxvrj"
+      "c1": 125,
+      "r0": 1,
+      "r1": 43,
+      "hash": "rg_0uquako"
     }
   },
   "stages": [
     {
-      "name": "shell",
-      "from": 0,
-      "to": 2.7,
-      "region": "full"
-    },
-    {
       "name": "boot",
-      "from": 2.7,
-      "to": 8
+      "from": 0,
+      "to": 3
     },
     {
       "name": "dialog",
-      "from": 8,
-      "to": 15,
+      "from": 3,
+      "to": 8,
       "region": "dialog"
     },
     {
       "name": "engine-boot",
-      "from": 15,
-      "to": 31
+      "from": 8,
+      "to": 14
     },
     {
       "name": "type-prompt",
-      "from": 31,
-      "to": 39,
+      "from": 14,
+      "to": 21,
       "region": "input"
     },
     {
-      "name": "prompt-wide",
-      "from": 39,
-      "to": 40
-    },
-    {
       "name": "agent",
-      "from": 40,
-      "to": 60,
-      "region": "agent"
-    },
-    {
-      "name": "agent-wide",
-      "from": 60,
-      "to": 61
-    },
-    {
-      "name": "dialog-codex",
-      "from": 61,
-      "to": 68,
-      "region": "dialog"
-    },
-    {
-      "name": "codex-boot",
-      "from": 68,
-      "to": 85
-    },
-    {
-      "name": "type-codex",
-      "from": 85,
-      "to": 95,
-      "region": "inputCodex"
-    },
-    {
-      "name": "codex-wide",
-      "from": 95,
-      "to": 96
-    },
-    {
-      "name": "agent-2",
-      "from": 96,
-      "to": "capture-end",
-      "region": "agent"
+      "from": 21,
+      "to": "capture-end"
     },
     {
       "name": "wrap",

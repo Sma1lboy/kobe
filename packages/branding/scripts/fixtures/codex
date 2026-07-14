@@ -1,0 +1,17 @@
+#!/bin/sh
+trap 'exit 0' INT TERM HUP
+
+printf '\033[2J\033[H'
+printf '\033[1;38;2;106;169;255mOpenAI Codex\033[0m  \033[2mfixture session\033[0m\n\n'
+printf '  Workspace ready · read-only demo\n\n'
+printf '\033[1;38;2;106;169;255m›\033[0m '
+
+while IFS= read -r prompt; do
+  printf '\n\033[2m• Inspecting packages/branding\033[0m\n'
+  sleep 0.5
+  printf '\npackages/branding owns Kobe’s visual identity and Remotion compositions.\n'
+  sleep 0.6
+  printf 'Its replay pipeline turns captured ANSI keyframes into reviewable product footage.\n'
+  printf '\n\033[2mCompleted read-only request: %s\033[0m\n\n' "$prompt"
+  printf '\033[1;38;2;106;169;255m›\033[0m '
+done

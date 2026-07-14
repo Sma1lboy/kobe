@@ -1,0 +1,19 @@
+#!/bin/sh
+trap 'exit 0' INT TERM HUP
+
+printf '\033[2J\033[H'
+printf '\033[1;38;2;204;120;92mClaude Code\033[0m  \033[2mfixture session\033[0m\n\n'
+printf '  Ready in the Kobe Hosted PTY\n\n'
+printf '\033[1;38;2;204;120;92m›\033[0m '
+
+while IFS= read -r prompt; do
+  printf '\n\033[2m● Reading packages/kobe/src/cli/api-cmd.ts\033[0m\n'
+  sleep 0.5
+  printf '\n\033[1m• Command surface\033[0m — dispatches typed API verbs through one validated table.\n'
+  sleep 0.5
+  printf '\033[1m• Daemon boundary\033[0m — opens one short-lived session and forwards the requested RPC.\n'
+  sleep 0.5
+  printf '\033[1m• Script contract\033[0m — emits stable JSON and preserves partial task results on errors.\n'
+  printf '\n\033[2mCompleted read-only request: %s\033[0m\n\n' "$prompt"
+  printf '\033[1;38;2;204;120;92m›\033[0m '
+done

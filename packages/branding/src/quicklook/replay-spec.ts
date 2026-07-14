@@ -56,7 +56,7 @@ export type DismissRule = {
 
 export type ReplayBeat = {
   at: number
-  action: "typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep"
+  action: "typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep" | "waitFor"
   text?: string
   textRef?: string
   msPerChar?: number
@@ -123,6 +123,7 @@ export type SeedTask = {
 
 export type ReplaySetup = {
   seedTasks?: SeedTask[]
+  readyWait?: string
 }
 
 export type DeliverySpec = {
@@ -152,6 +153,16 @@ export type ResolvedReplaySpec = Omit<RawReplaySpec, "camera" | "regions" | "sta
   stages: ResolvedStage[]
 }
 
+const REPLAY_ACTIONS = new Set<ReplayBeat["action"]>([
+  "typeText",
+  "typeTextWhenReady",
+  "key",
+  "flow",
+  "sleep",
+  "waitFor",
+])
+const SEED_TASK_STATUSES = new Set(["backlog", "in_progress", "in_review", "done", "canceled", "error"])
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -177,6 +188,31 @@ const assertString = (value: unknown, name: string): string => {
     throw new Error(`replay spec ${name} must be a non-empty string`)
   }
   return value
+}
+
+export function assertRenderableCapture(value: unknown): asserts value is CaptureMeta {
+  const capture = assertObject(value, "capture")
+  const cols = assertNumber(capture.cols, "capture.cols")
+  const rows = assertNumber(capture.rows, "capture.rows")
+  if (!Number.isInteger(cols) || cols <= 0 || !Number.isInteger(rows) || rows <= 0) {
+    throw new Error("capture cols and rows must be positive integers")
+  }
+  const frames = assertArray(capture.frames, "capture.frames")
+  if (frames.length === 0) throw new Error("capture must contain at least one frame")
+  let previous = Number.NEGATIVE_INFINITY
+  for (const [frameIndex, frameValue] of frames.entries()) {
+    const frame = assertObject(frameValue, `capture.frames[${frameIndex}]`)
+    const timestamp = assertNumber(frame.t, `capture.frames[${frameIndex}].t`)
+    if (timestamp < previous) throw new Error("capture frame timestamps must be monotonic")
+    previous = timestamp
+    const lines = assertArray(frame.lines, `capture.frames[${frameIndex}].lines`)
+    if (lines.length !== rows) throw new Error(`capture frame ${frameIndex} line count must match rows`)
+    for (const [lineIndex, line] of lines.entries()) {
+      if (typeof line === "string") continue
+      const positioned = assertObject(line, `capture.frames[${frameIndex}].lines[${lineIndex}]`)
+      assertString(positioned.rawAnsi, `capture.frames[${frameIndex}].lines[${lineIndex}].rawAnsi`)
+    }
+  }
 }
 
 const assertTheme = (value: unknown, name: string): TerminalTheme => {
@@ -286,6 +322,11 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
     )
   }
 
+  const fps = assertNumber(spec.capture.fps, "capture.fps")
+  const seconds = assertNumber(spec.capture.seconds, "capture.seconds")
+  if (fps <= 0) throw new Error("replay spec capture.fps must be positive")
+  if (seconds < 0) throw new Error("replay spec capture.seconds must be non-negative")
+
   const camera = resolveCamera(spec.camera)
   const theme = spec.theme === undefined ? undefined : assertTheme(spec.theme, "theme")
   const rawRegions: Record<string, RawRegion> = {
@@ -303,9 +344,36 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
   }
   for (const [name, value] of Object.entries(spec.text)) assertString(value, `text.${name}`)
 
+  if (root.setup !== undefined) {
+    const setup = assertObject(root.setup, "setup")
+    if (setup.readyWait !== undefined) {
+      const readyWait = assertString(setup.readyWait, "setup.readyWait")
+      assertWaitRef(spec.waits, readyWait, "setup")
+    }
+    if (setup.seedTasks !== undefined) {
+      for (const [index, taskValue] of assertArray(setup.seedTasks, "setup.seedTasks").entries()) {
+        const task = assertObject(taskValue, `setup.seedTasks[${index}]`)
+        assertString(task.title, `setup.seedTasks[${index}].title`)
+        const status = assertString(task.status, `setup.seedTasks[${index}].status`)
+        if (!SEED_TASK_STATUSES.has(status)) {
+          throw new Error(`replay spec setup.seedTasks[${index}] has unsupported status "${status}"`)
+        }
+      }
+    }
+  }
+
   for (const [i, beat] of spec.beats.entries()) {
     assertNumber(beat.at, `beats[${i}].at`)
     assertString(beat.action, `beats[${i}].action`)
+    if (!REPLAY_ACTIONS.has(beat.action)) throw new Error(`beat ${i} has unsupported action "${beat.action}"`)
+    if (beat.action === "flow" && (beat.flow !== "createTask" || !spec.flows?.createTask)) {
+      throw new Error(`beat ${i} references unknown flow "${beat.flow ?? ""}"`)
+    }
+    if (beat.action === "key") assertString(beat.key, `beats[${i}].key`)
+    if (beat.action === "sleep") {
+      const ms = assertNumber(beat.ms, `beats[${i}].ms`)
+      if (ms < 0) throw new Error(`replay spec beats[${i}].ms must be non-negative`)
+    }
     assertWaitRef(spec.waits, beat.waitFor, `beat ${i}`)
     assertTextRef(spec.text, beat.textRef, `beat ${i}`)
     for (const [ruleIndex, rule] of (beat.dismissIfText ?? []).entries()) {
