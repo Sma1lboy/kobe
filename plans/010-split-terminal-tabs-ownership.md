@@ -1,6 +1,7 @@
 # 010 — Split TerminalTabs ownership from rendering
 
-- **Status**: TODO
+- **Status**: DONE
+- **Resolution**: Landed via the concurrent workspace stream: the process-global tab store, activation event bus, and `forgetTaskTabs` moved to framework-free `terminal-tabs-shared.ts`, and `TerminalTabs.tsx` is back at the 500-line cap.
 - **Commit**: 81969596
 - **Severity**: MEDIUM
 - **Category**: Maintainability & architecture
