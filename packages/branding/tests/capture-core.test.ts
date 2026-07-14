@@ -62,6 +62,19 @@ const clock = (times: readonly number[]): CaptureClock & { sleeps: number[] } =>
   }
 }
 
+const advancingClock = (): CaptureClock & { sleeps: number[] } => {
+  let now = 0
+  const sleeps: number[] = []
+  return {
+    sleeps,
+    now: () => now,
+    sleep: async (ms) => {
+      sleeps.push(ms)
+      now += ms
+    },
+  }
+}
+
 const memoryOutput = (): CaptureOutput & { writes: CaptureDocument[] } => ({
   writes: [],
   replaceAtomically: async function (capture) {
@@ -73,7 +86,14 @@ const spec = (beats: ResolvedReplaySpec["beats"]): ResolvedReplaySpec =>
   ({
     id: "capture-test",
     viewport: { cols: 80, rows: 1, width: 80, height: 1 },
-    capture: { fps: 10, seconds: 3, output: "capture.json", home: ".home", repoDefault: ".", shellPrompt: "$ " },
+    capture: {
+      fps: 10,
+      seconds: Math.max(0, ...beats.map((beat) => beat.at)),
+      output: "capture.json",
+      home: ".home",
+      repoDefault: ".",
+      shellPrompt: "$ ",
+    },
     waits: { composer: { pattern: "composer", timeoutMs: 500 } },
     text: { prompt: "go" },
     beats,
@@ -106,6 +126,26 @@ describe("capture core", () => {
       [0.125, ["dialog"]],
     ])
     expect(result.meta).toEqual({ theme: spec([]).theme })
+  })
+
+  test("polls idle timeline changes at capture fps through capture end", async () => {
+    const replay = spec([])
+    replay.capture.seconds = 0.3
+    const timer = advancingClock()
+
+    const result = await runReplayCapture(
+      replay,
+      new FakeTerminal(["boot", "working", "working", "done"]),
+      memoryOutput(),
+      timer,
+    )
+
+    expect(timer.sleeps).toEqual([100, 100, 100])
+    expect(result.frames.map((frame) => [frame.t, frame.lines])).toEqual([
+      [0, ["boot"]],
+      [0.1, ["working"]],
+      [0.3, ["done"]],
+    ])
   })
 
   test("orders out-of-order beats chronologically while preserving equal-time order", async () => {

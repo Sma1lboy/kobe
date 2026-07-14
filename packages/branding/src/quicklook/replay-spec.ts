@@ -314,6 +314,11 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
     )
   }
 
+  const fps = assertNumber(spec.capture.fps, "capture.fps")
+  const seconds = assertNumber(spec.capture.seconds, "capture.seconds")
+  if (fps <= 0) throw new Error("replay spec capture.fps must be positive")
+  if (seconds < 0) throw new Error("replay spec capture.seconds must be non-negative")
+
   const camera = resolveCamera(spec.camera)
   const theme = spec.theme === undefined ? undefined : assertTheme(spec.theme, "theme")
   const rawRegions: Record<string, RawRegion> = {

@@ -83,6 +83,24 @@ const pause = async (
   await captureSnapshot(terminal, clock, startedAt, frames)
 }
 
+const pollTimeline = async (
+  ms: number,
+  fps: number,
+  terminal: CaptureTerminal,
+  clock: CaptureClock,
+  startedAt: number,
+  frames: CaptureFrame[],
+) => {
+  const interval = 1000 / fps
+  let remaining = ms
+  while (remaining > 0) {
+    const step = Math.min(interval, remaining)
+    await clock.sleep(step)
+    await captureSnapshot(terminal, clock, startedAt, frames)
+    remaining = remaining - step < 0.001 ? 0 : remaining - step
+  }
+}
+
 const sendKey = async (
   key: string,
   terminal: CaptureTerminal,
@@ -174,7 +192,7 @@ export async function runReplayCapture(
     const beats = spec.beats.map((beat, index) => ({ beat, index })).sort((left, right) => left.beat.at - right.beat.at || left.index - right.index)
     for (const { beat } of beats) {
       const delay = (beat.at - nominalAt) * 1000
-      if (delay > 0) await pause(delay, terminal, clock, startedAt, frames)
+      if (delay > 0) await pollTimeline(delay, spec.capture.fps, terminal, clock, startedAt, frames)
       nominalAt = beat.at
       if (beat.action === "key") await sendKey(beat.key ?? "", terminal, clock, startedAt, frames)
       if (beat.action === "sleep") await pause(beat.ms ?? 0, terminal, clock, startedAt, frames)
@@ -197,6 +215,8 @@ export async function runReplayCapture(
         }
       }
     }
+    const tail = (spec.capture.seconds - nominalAt) * 1000
+    if (tail > 0) await pollTimeline(tail, spec.capture.fps, terminal, clock, startedAt, frames)
     const document: CaptureDocument = {
       cols: spec.viewport.cols,
       rows: spec.viewport.rows,

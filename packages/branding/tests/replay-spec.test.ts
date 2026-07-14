@@ -145,6 +145,12 @@ describe("replay spec", () => {
     ).toThrow(/unsupported status "unknown"/)
   })
 
+  test("rejects capture timing that cannot drive polling", () => {
+    expect(() =>
+      resolveReplaySpec({ ...baseSpec, capture: { ...baseSpec.capture, fps: 0 } }, capture),
+    ).toThrow(/capture.fps must be positive/)
+  })
+
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
   })
