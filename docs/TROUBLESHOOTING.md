@@ -64,3 +64,24 @@ The wheel follows real terminal-emulator semantics, in order:
 
 If scrolling "does nothing" inside an app, that app received the events and
 chose not to scroll — check its own mouse setting (e.g. `:set mouse=a`).
+
+## Memory stays high after upgrading from a pre-0.8 build
+
+kobe 0.8 replaced the old tmux runtime with the PureTUI + Hosted PTY backend,
+but upgrading the package does not stop sessions that a pre-0.8 build already
+left running. Those old `tmux -L kobe` sessions keep their `bun` / engine
+process groups resident, so memory can look unchanged after the upgrade.
+
+`kobe doctor` now reports them:
+
+```
+legacy tmux: ⚠ tmux 3.5a — 2 pre-v0.8 session(s) on `kobe`
+             20 process(es) across 8 pane(s), 1008.5 MB RSS total
+             → run `kobe reset` to stop this retired runtime safely
+```
+
+**Fix:** `kobe reset`. It stops the daemon and Hosted PTY host, then SIGTERMs
+each legacy pane process group before killing the retired tmux server (a bare
+`tmux kill-server` would leak engines that ignore `SIGHUP`). Worktrees and the
+task index are untouched; add `--hard` only if you also want to wipe task/UI
+state.

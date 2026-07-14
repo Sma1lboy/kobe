@@ -15,6 +15,7 @@ import { readPidFile } from "@sma1lboy/kobe-daemon/daemon/server"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
+import { inspectLegacyTmux, legacyTmuxDoctorLines } from "./legacy-tmux.ts"
 
 type PtySessionStatus = { alive?: boolean }
 
@@ -106,9 +107,12 @@ async function appendUnavailableProcess(
 export async function runDoctorSubcommand(argv: readonly string[] = []): Promise<void> {
   if (argv.some((arg) => arg === "--help" || arg === "-h" || arg === "help")) {
     process.stdout.write(
-      ["Usage: kobe doctor", "", "Read-only diagnosis of the daemon / Hosted PTY / state. Takes no options.", ""].join(
-        "\n",
-      ),
+      [
+        "Usage: kobe doctor",
+        "",
+        "Read-only diagnosis of the daemon / Hosted PTY / legacy tmux / state. Takes no options.",
+        "",
+      ].join("\n"),
     )
     return
   }
@@ -167,6 +171,8 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     await appendUnavailableProcess(out, "pty host", defaultPtyHostPidPath(), ptySocket)
   }
   out.push("")
+
+  out.push(...legacyTmuxDoctorLines(await inspectLegacyTmux()), "")
 
   const skill = kobeSkillState()
   if (!skill.installed) {

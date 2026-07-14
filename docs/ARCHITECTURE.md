@@ -57,6 +57,11 @@ The Daemon is refcounted by attached GUI clients and browser streams. A daemon
 idle exit leaves the PTY Host untouched. The PTY Host idle-exits only when it
 owns zero live sessions.
 
+Tmux is not a session backend. The CLI retains one quarantined compatibility
+seam solely for upgrades from pre-v0.8: `kobe doctor` reports processes still
+owned by the retired `tmux -L kobe` server, and `kobe reset` terminates those
+pane process groups before stopping that server.
+
 ## 4. Hosted session addressing
 
 Each Terminal Tab uses `<taskId>::<tabId>`. The initial engine tab is

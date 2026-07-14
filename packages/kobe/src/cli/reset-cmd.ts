@@ -13,6 +13,7 @@ import {
   defaultPtyHostSocketPath,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { kobeStateDir, kvStatePath } from "../env.ts"
+import { stopLegacyTmux } from "./legacy-tmux.ts"
 import { stampResetGate } from "./reset-gate.ts"
 
 function printUsage(out: Pick<typeof process.stderr, "write">): void {
@@ -20,7 +21,7 @@ function printUsage(out: Pick<typeof process.stderr, "write">): void {
     [
       "Usage: kobe reset [--hard] [--yes]",
       "",
-      "Recover a wedged install: stop the daemon, then stop the standalone Hosted PTY host.",
+      "Recover a wedged install: stop the daemon, Hosted PTY host, and any pre-v0.8 tmux sessions.",
       "This ends background terminal and engine sessions; the next launch starts fresh.",
       "Never touches your git worktrees.",
       "",
@@ -58,7 +59,7 @@ async function removeStateFile(path: string, label: string): Promise<void> {
     console.log(`  removed ${label} (${path})`)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") console.log(`  ${label}: already absent`)
-    else console.error(`  failed to remove ${label} (${path}): ${errorMessage(err)}`)
+    else throw new Error(`failed to remove ${label} (${path}): ${errorMessage(err)}`)
   }
 }
 
@@ -85,6 +86,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   console.log("  • stop the kobe daemon (graceful → SIGTERM → SIGKILL)")
   console.log(`  • remove its socket + pidfile (${daemonSocket})`)
   console.log("  • stop the standalone Hosted PTY host and all background terminal/engine sessions")
+  console.log("  • stop any pre-v0.8 tmux sessions after SIGTERM-ing their pane process groups")
   if (hard) {
     const count = taskCount(tasksPath)
     console.log(`  • DELETE the task index${count === null ? "" : ` (${count} task(s))`} — ${tasksPath}`)
@@ -120,6 +122,18 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     ptyHost.method === "absent"
       ? "  pty host: was not running (cleared any stale socket/pidfile)"
       : `  pty host: stopped via ${ptyHost.method}${ptyHost.pid ? ` (pid ${ptyHost.pid})` : ""}`,
+  )
+
+  const legacyTmux = await stopLegacyTmux()
+  if (legacyTmux.status === "failed") {
+    console.error(`  legacy tmux: cleanup failed — ${legacyTmux.error ?? "unknown error"}`)
+    process.exitCode = 1
+    return
+  }
+  console.log(
+    legacyTmux.status === "absent"
+      ? "  legacy tmux: no pre-v0.8 sessions found"
+      : `  legacy tmux: stopped ${legacyTmux.sessions} session(s) after signalling ${legacyTmux.signalledGroups} pane group(s)`,
   )
 
   if (hard) {

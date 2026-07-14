@@ -88,7 +88,8 @@ in `packages/kobe-web/test-results/` (actual/diff/trace).
 - render paths do not run synchronous subprocesses outside the explicit
   whitelist;
 - production code cannot import, spawn, or configure the retired session
-  backend;
+  backend; the sole exception is `cli/legacy-tmux.ts`, which only diagnoses
+  and removes pre-v0.8 leftovers for `doctor` / `reset`;
 - published source changes include one patch changeset by default;
 - daemon/orchestrator/engine edits are verified after replacing stale daemon
   processes in the chosen sandbox.
