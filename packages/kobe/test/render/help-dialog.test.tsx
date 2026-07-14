@@ -52,6 +52,21 @@ describe("HelpDialog", () => {
     expect(text).toContain("prefix + o")
   })
 
+  it("shows only relative prefix+j/k pane navigation", async () => {
+    const { frame } = await renderComponent(<Harness />, {
+      providers: { dialog: true },
+      width: 100,
+      height: 80,
+    })
+
+    const text = await frame()
+    expect(text).toContain("prefix + j")
+    expect(text).toContain("prefix + k")
+    expect(text).not.toContain("prefix + h")
+    expect(text).not.toContain("prefix + l")
+    expect(text).not.toContain("Jump to pane")
+  })
+
   it("scrolls below the fold with keyboard-only navigation", async () => {
     const { frame, mockInput } = await renderComponent(<Harness />, {
       providers: { dialog: true },

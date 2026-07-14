@@ -20,7 +20,7 @@
  *     calls `bindByIds(...)` with the same id → the chord(s) come from
  *     this table.
  *   - `hint` is cosmetic display metadata: a friendly pseudo-chord
- *     (`j/k`, `ctrl+hjkl`, etc.) read by the two hint consumers — the
+ *     (`j/k`, `prefix+j`, etc.) read by the two hint consumers — the
  *     help dialog's (F1) primary cap and the Tasks-pane footer legend
  *     (`capOf`/`legendCap` in `lib/help-groups.ts`). `hint == null` means
  *     no friendly display override — the canonical chord shows instead.
@@ -215,39 +215,32 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    // Ctrl+hjkl — vim-style pane focus, with prefix h/j/k/l aliases. The
-    // four chords map to panes by ordinal:
-    //   ctrl+h → 1 = sidebar (TASKS)
-    //   ctrl+j → 2 = workspace
-    //   ctrl+k → 3 = files
-    //   ctrl+l → 4 = terminal
-    // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
-    // doesn't fully support — ctrl+1 falls through to a bare `1`
-    // byte) and alt+digit gets eaten by macOS launchers like Raycast.
-    id: "focus.numeric",
+    // Relative pane cycling replaces the old four-slot absolute
+    // ctrl/prefix+h/j/k/l map (owner call 2026-07-14). Keeping previous
+    // and next as separate ids lets users rebind either direction without
+    // preserving a positional slot contract. Direct ctrl+h/j/k/l remain
+    // available to the embedded engine.
+    id: "focus.previous",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
-    prefixKeys: ["h", "j", "k", "l"],
+    keys: [],
+    prefixKeys: ["j"],
     category: "Navigation",
-    description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
-    hint: { keys: "ctrl+hjkl" },
+    description: "Focus previous pane (files → workspace → sidebar)",
   },
   {
-    // Pane cycle — walks the workspace host's panes in order
-    // (sidebar → workspace → files → wrap). `f4` ONLY, everywhere:
-    // it sits in RESERVED_GLOBAL_CHORDS (panes/terminal/keys-pure.ts) so
-    // it fires identically from inside the embedded terminal — F2/F3/F5
-    // already carry kobe's rename/split/reset vocabulary, F4 fills the row.
+    // Forward pane cycle — walks sidebar → workspace → files → wrap.
+    // `f4` stays the direct alias and sits in RESERVED_GLOBAL_CHORDS
+    // (panes/terminal/keys-pure.ts), so it fires identically from inside
+    // the embedded terminal; prefix+k is the relative navigation form.
     // NOT `tab` (tried 2026-07-06, cut same day): the cycle path always
     // lands on the workspace terminal, which must keep tab as shell /
     // engine completion — so tab-cycling both trapped there every lap AND
     // typed a literal \t into the engine composer on arrival. NOT
-    // `shift+tab` reverse either — that's claude's plan-mode chord. One
-    // key, one meaning; forward-only (tmux `prefix o` shape), prev is
-    // just f4 twice.
+    // `shift+tab` reverse either — that's claude's plan-mode chord.
     id: "focus.next",
     scope: "global",
     keys: ["f4"],
+    prefixKeys: ["k"],
     category: "Navigation",
     description: "Focus next pane (sidebar → workspace → files)",
     hint: { keys: "f4" },

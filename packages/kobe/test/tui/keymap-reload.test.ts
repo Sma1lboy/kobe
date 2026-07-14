@@ -20,13 +20,16 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
   })
 
-  test("navigation chords: ctrl+q direct-only, ctrl+hjkl dual with prefix aliases", () => {
-    // Owner call 2026-07-11: ctrl+q (THE escape hatch) is a direct chord
-    // with no prefix stroke; pane focus keeps both forms (#310).
+  test("navigation keeps ctrl+q direct and uses only relative prefix j/k pane cycling", () => {
+    // Owner call 2026-07-14: release ctrl+h/j/k/l to the embedded engine
+    // and replace the four absolute prefix targets with relative cycling.
     expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
     expect(findBinding("focus.sidebar")?.prefixKeys).toBeUndefined()
-    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"])
-    expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
+    expect(findBinding("focus.numeric")).toBeUndefined()
+    expect(findBinding("focus.previous")?.keys).toEqual([])
+    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["j"])
+    expect(findBinding("focus.next")?.keys).toEqual(["f4"])
+    expect(findBinding("focus.next")?.prefixKeys).toEqual(["k"])
   })
 
   test("non-ChatPane bindings retain their direct Ctrl chords", () => {

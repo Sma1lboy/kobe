@@ -92,13 +92,29 @@ describe("applyUserKeybindings", () => {
     expect(report.warnings).toEqual([])
   })
 
-  test("adds direct positional pane navigation with four ordered chords", () => {
-    fileState.doc = { bindings: { "focus.numeric": ["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"] } }
+  test("lets previous and next pane cycling be rebound independently", () => {
+    fileState.doc = {
+      bindings: {
+        "focus.previous": { prefix: "h" },
+        "focus.next": { prefix: "l" },
+      },
+    }
     const report = userKb.reloadUserKeybindings()
 
-    expect(findBinding("focus.numeric")?.keys).toEqual(["ctrl+g", "ctrl+h", "ctrl+i", "ctrl+j"])
-    expect(findBinding("focus.numeric")?.prefixKeys).toEqual(["h", "j", "k", "l"])
+    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["h"])
+    expect(findBinding("focus.next")?.prefixKeys).toEqual(["l"])
     expect(report.warnings).toEqual([])
+  })
+
+  test("reports the removed focus.numeric id instead of silently migrating it", () => {
+    fileState.doc = {
+      bindings: { "focus.numeric": ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"] },
+      prefix: { bindings: { "focus.numeric": ["h", "j", "k", "l"] } },
+    }
+    const report = userKb.reloadUserKeybindings()
+
+    expect(report.applied).toEqual([])
+    expect(report.warnings.filter((warning) => warning.includes("focus.numeric: unknown binding id"))).toHaveLength(2)
   })
 
   test("keeps both aliases when direct and prefix configuration name one id", () => {

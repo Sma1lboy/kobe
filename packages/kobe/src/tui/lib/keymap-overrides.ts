@@ -95,10 +95,6 @@ function pairContract(first: string, second: string): SlotContract {
  * reload, since the reload path resets and re-applies from scratch).
  */
 export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
-  "focus.numeric": {
-    layout: "[sidebar, workspace, files, terminal]",
-    validateCount: (count) => (count === 4 ? null : "needs 4 chords in [sidebar, workspace, files, terminal] order"),
-  },
   "sidebar.nav": pairContract("down", "up"),
   "files.nav": pairContract("down", "up"),
   "sidebar.search.nav": pairContract("down", "up"),
