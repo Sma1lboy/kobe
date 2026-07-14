@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.5
+
+### Patch Changes
+
+- b6f74a8: Simplify global pane navigation to relative `prefix+j` / `prefix+k` cycling and release `Ctrl+H/J/K/L` to embedded engines.
+- 114a5ae: Detect and report pre-v0.8 tmux process memory in `kobe doctor`, and make `kobe reset` safely terminate those legacy pane process groups before stopping the retired server.
+- f97da39: Preserve terminal color negotiation in native PureTUI replay captures so Brand Studio renders match the live harness.
+
 ## 0.8.4
 
 ### Patch Changes
