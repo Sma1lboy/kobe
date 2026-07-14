@@ -18,7 +18,7 @@
     "mp4:streams": "remotion render src/index.ts task-streams ../../docs/assets/brand/task-streams.mp4",
     "mp4:glyph": "remotion render src/index.ts glyph-k ../../docs/assets/brand/glyph-k.mp4",
     "capture:puretui": "bun scripts/capture-puretui.ts",
-    "test:replay": "bun test tests/replay-spec.test.ts tests/capture-core.test.ts tests/puretui-terminal.test.ts tests/puretui-terminal-colors.test.ts tests/puretui-capture.test.ts",
+    "test:replay": "bun test tests/replay-spec.test.ts tests/capture-core.test.ts tests/puretui-terminal.test.ts tests/puretui-terminal-colors.test.ts tests/puretui-capture-environment.test.ts tests/puretui-capture.test.ts",
     "stills:all": "bun run still:bracket && bun run still:grid && bun run still:streams && bun run still:glyph",
     "gifs:all": "bun run gif:bracket && bun run gif:grid && bun run gif:streams && bun run gif:glyph",
     "render:all": "mkdir -p ../../docs/assets/brand && bun run stills:all && bun run gifs:all"

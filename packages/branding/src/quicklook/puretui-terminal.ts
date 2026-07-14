@@ -60,7 +60,8 @@ const inheritedEnvironment = (): Record<string, string> =>
         key !== "TERM" &&
         key !== "TERM_PROGRAM" &&
         key !== "TERM_PROGRAM_VERSION" &&
-        key !== "COLORTERM",
+        key !== "COLORTERM" &&
+        key !== "NO_COLOR",
     ),
   ) as Record<string, string>
 
@@ -70,7 +71,7 @@ const capturePort = (demoRoot: string): string => {
   return String(30_000 + (hash % 15_000))
 }
 
-const captureEnvironment = (demoRoot: string): Record<string, string> => {
+export const captureEnvironment = (demoRoot: string): Record<string, string> => {
   const kobeHome = join(demoRoot, "home")
   const inherited = inheritedEnvironment()
   return {

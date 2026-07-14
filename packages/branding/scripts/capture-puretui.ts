@@ -17,6 +17,7 @@ export type CapturePureTuiOptions = {
   outputPath: string
   demoRoot: string
   keepDemoRoot: boolean
+  claudeCommand?: string
   timeoutMs?: number
 }
 
@@ -56,13 +57,13 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   return fixtureRepo
 }
 
-const prepareCaptureState = async (demoRoot: string, fixtureRepo: string): Promise<void> => {
+const prepareCaptureState = async (demoRoot: string, fixtureRepo: string, claudeCommand?: string): Promise<void> => {
   const configDir = join(demoRoot, "home", ".config", "kobe")
   await mkdir(configDir, { recursive: true })
-  await writeFile(
-    join(configDir, "state.json"),
-    `${JSON.stringify({ onboarded: true, skillHintSeen: "1", savedRepos: [fixtureRepo] }, null, 2)}\n`,
-  )
+  const state: Record<string, unknown> = { onboarded: true, skillHintSeen: "1", savedRepos: [fixtureRepo] }
+  const captureClaudeCommand = claudeCommand?.trim()
+  if (captureClaudeCommand) state["engineCommand.claude"] = captureClaudeCommand
+  await writeFile(join(configDir, "state.json"), `${JSON.stringify(state, null, 2)}\n`)
 }
 
 const captureOutput = (outputPath: string): CaptureOutput => ({
@@ -80,7 +81,7 @@ export async function capturePureTui(
   const demoRoot = resolve(options.demoRoot)
   await mkdir(demoRoot, { recursive: true })
   const fixtureRepo = await createFixtureRepository(demoRoot)
-  await prepareCaptureState(demoRoot, fixtureRepo)
+  await prepareCaptureState(demoRoot, fixtureRepo, options.claudeCommand)
   const ready = spec.setup?.readyWait ? spec.waits[spec.setup.readyWait] : undefined
   const capture = await (dependencies.createCapture ?? createPureTuiCapture)({
     repoRoot: REPO_ROOT,
@@ -142,6 +143,7 @@ const parseArguments = (args: readonly string[]): CapturePureTuiOptions => {
     specPath,
     outputPath,
     keepDemoRoot,
+    claudeCommand: process.env.KOBE_REPLAY_CLAUDE_COMMAND?.trim() || undefined,
     timeoutMs,
     demoRoot: join(PACKAGE_ROOT, `.capture-home-puretui-${process.pid}-${Date.now()}`),
   }
