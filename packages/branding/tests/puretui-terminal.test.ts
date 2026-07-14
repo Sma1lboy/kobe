@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { mkdtemp, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { capturePureTui } from "../scripts/capture-puretui"
 import {
@@ -9,13 +9,12 @@ import {
   serializeXtermLine,
 } from "../scripts/puretui-pty-sidecar.mjs"
 import {
-  createPureTuiCapture,
   type SidecarFactory,
   type SidecarProcess,
   type SidecarSpawnOptions,
+  createPureTuiCapture,
 } from "../src/quicklook/puretui-terminal"
 type Request = { id: number; op: string; [key: string]: unknown }
-
 class FakeSidecar implements SidecarProcess {
   readonly requests: Request[] = []
   readonly stdout: ReadableStream<Uint8Array>
@@ -48,7 +47,9 @@ class FakeSidecar implements SidecarProcess {
     private readonly onRequest: (request: Request) => void,
     private readonly exitOnEnd = true,
   ) {
+    // biome-ignore lint/suspicious/noAssignInExpressions: the stream start callback captures its controller
     this.stdout = new ReadableStream({ start: (controller) => (this.output = controller) })
+    // biome-ignore lint/suspicious/noAssignInExpressions: the promise executor captures its resolver
     this.exited = new Promise((resolveExit) => (this.resolveExit = resolveExit))
   }
 
@@ -78,9 +79,8 @@ const fakeFactory = (handler: (process: FakeSidecar, request: Request) => void) 
   factory.process = () => process
   return factory
 }
-
 describe("PureTuiTerminal", () => {
-  test("launches source PureTUI with an isolated home, fixture repo, and fixed replay viewport", async () => {
+  test("launches source PureTUI with native engines, isolated Kobe state, and fixed replay viewport", async () => {
     const repoRoot = resolve(import.meta.dirname, "../../..")
     const demoRoot = join(await mkdtemp(join(tmpdir(), "kobe-puretui-test-")), "demo")
     const fixtureRepo = join(demoRoot, "fixture-repo")
@@ -91,13 +91,11 @@ describe("PureTuiTerminal", () => {
         process.respond({ id: request.id, ok: true, value: request.op === "snapshot" ? ["boot"] : null })
       }
     })
-
     const capture = await createPureTuiCapture({
       repoRoot,
       demoRoot,
       fixtureRepo,
       seedTasks: [{ title: "seed task", status: "in_progress" }],
-      pathPrefix: join(repoRoot, "packages", "branding", "scripts", "fixtures"),
       readyPattern: "KOBE",
       readyTimeoutMs: 500,
       cols: 160,
@@ -110,10 +108,12 @@ describe("PureTuiTerminal", () => {
       env: expect.objectContaining({
         KOBE_SANDBOX_HOME_DIR: expect.stringContaining(demoRoot),
         KOBE_HOME_DIR: expect.stringContaining(demoRoot),
-        PATH: expect.stringContaining("packages/branding/scripts/fixtures"),
+        HOME: homedir(),
+        USERPROFILE: homedir(),
       }),
     })
-
+    expect(sidecarFactory.calls[0].env).not.toHaveProperty("CLAUDE_CONFIG_DIR")
+    expect(sidecarFactory.calls[0].env).not.toHaveProperty("CODEX_HOME")
     await capture.terminal.start()
     expect(sidecarFactory.process().requests[0]).toMatchObject({
       op: "start",
@@ -149,7 +149,6 @@ describe("PureTuiTerminal", () => {
       protocolTimeoutMs: 10,
       sidecarFactory,
     })
-
     await capture.terminal.start()
     await expect(capture.terminal.snapshot()).rejects.toThrow("latest screen")
     await expect(capture.terminal.snapshot()).rejects.toThrow("90210")
@@ -187,7 +186,6 @@ describe("PureTuiTerminal", () => {
     })
     await capture.terminal.start()
     setTimeout(() => process.exit(), 50)
-
     await expect(capture.cleanup()).rejects.toThrow("child alive")
     expect(process.killCalls).toBe(1)
   }, 200)
@@ -196,6 +194,7 @@ describe("PureTuiTerminal", () => {
 describe("PureTUI PTY sidecar", () => {
   test("seeds tasks before launching the source TUI in the fixture repo", async () => {
     const calls: Array<{ file: string; args: string[]; cwd: string }> = []
+    let launchEnv: Record<string, string> | undefined
     const child = {
       pid: 123,
       write() {},
@@ -204,11 +203,12 @@ describe("PureTUI PTY sidecar", () => {
       onExit: () => ({ dispose() {} }),
     }
     const controller = createSidecarController({
-      baseEnv: { PATH: process.env.PATH ?? "" },
+      baseEnv: { PATH: process.env.PATH ?? "", HOME: "/native-home", USERPROFILE: "/native-profile" },
       runSetup: async (file: string, args: string[], options: { cwd: string }) => {
         calls.push({ file, args, cwd: options.cwd })
       },
-      spawnPty: (file: string, args: string[], options: { cwd: string }) => {
+      spawnPty: (file: string, args: string[], options: { cwd: string; env: Record<string, string> }) => {
+        launchEnv = options.env
         calls.push({ file, args, cwd: options.cwd })
         return child
       },
@@ -229,7 +229,6 @@ describe("PureTUI PTY sidecar", () => {
       cols: 160,
       rows: 45,
     })
-
     expect(calls).toEqual([
       {
         file: "bun",
@@ -253,6 +252,11 @@ describe("PureTUI PTY sidecar", () => {
         cwd: "/demo/fixture-repo",
       },
     ])
+    expect(launchEnv).toMatchObject({
+      HOME: "/native-home",
+      USERPROFILE: "/native-profile",
+      KOBE_HOME_DIR: "/demo/home",
+    })
   })
 
   test("serializes active xterm cells with ANSI foreground and background styles", () => {
@@ -280,7 +284,6 @@ describe("PureTUI PTY sidecar", () => {
       },
     ]
     const line = { length: 1, getCell: (index: number) => cells[index] }
-
     expect(serializeXtermLine(line)).toBe("\u001b[0;1;38;2;255;0;0;48;5;4mK\u001b[0m")
   })
 
@@ -347,9 +350,8 @@ describe("PureTUI PTY sidecar", () => {
     ).toMatchObject({ ok: true })
     const response = await controller.handle({ id: 2, op: "stop" })
     order.push("ack")
-
     expect(response).toMatchObject({ id: 2, ok: true })
-    expect(order).toEqual(["write:\"\\u0003\"", "child-exit", "reset", "ack"])
+    expect(order).toEqual(['write:"\\u0003"', "child-exit", "reset", "ack"])
     expect(resetEnv).toEqual(launchEnv)
   })
 
@@ -382,9 +384,7 @@ describe("PureTUI PTY sidecar", () => {
       cols: 80,
       rows: 1,
     })
-
     const response = await controller.handle({ id: 2, op: "stop" })
-
     expect(response).toMatchObject({
       id: 2,
       ok: false,
@@ -422,9 +422,7 @@ describe("PureTUI PTY sidecar", () => {
       rows: 1,
     })
     onData("\u001b[31mraw ansi\u001b[0m")
-
     const response = await controller.handle({ id: 2, op: "waitFor", pattern: "missing", timeoutMs: 0 })
-
     expect(response).toMatchObject({ ok: false, error: { snapshot: "\u001b[31mraw ansi\u001b[0m" } })
   })
 })
@@ -471,6 +469,7 @@ describe("capture PureTUI CLI", () => {
       fixtureRepo: join(root, "demo", "fixture-repo"),
       seedTasks: [{ title: "fix flaky turn-detector test", status: "in_progress" }],
     })
+    expect(received).not.toHaveProperty("pathPrefix")
     expect(await Bun.file(join(root, "demo", "home", ".config", "kobe", "state.json")).json()).toEqual({
       onboarded: true,
       skillHintSeen: "1",

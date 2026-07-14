@@ -15,7 +15,6 @@
     "shellPrompt": ""
   },
   "setup": {
-    "fixtureEngines": true,
     "readyWait": "workspaceReady",
     "seedTasks": [
       {
@@ -34,8 +33,16 @@
       "timeoutMs": 8000
     },
     "claudeComposerReady": {
-      "pattern": "›",
+      "pattern": "❯",
       "timeoutMs": 20000
+    },
+    "codexTrustPrompt": {
+      "pattern": "Do you trust the contents of this directory?",
+      "timeoutMs": 30000
+    },
+    "codexStartupPrompt": {
+      "pattern": "Press enter to continue",
+      "timeoutMs": 30000
     },
     "codexComposerReady": {
       "pattern": "›",
@@ -85,6 +92,26 @@
       "action": "flow",
       "flow": "createTask",
       "engine": "codex"
+    },
+    {
+      "at": 38,
+      "action": "waitFor",
+      "waitFor": "codexStartupPrompt",
+      "dismissIfText": [
+        {
+          "includes": "Update available!",
+          "steps": [
+            { "action": "key", "key": "Down" },
+            { "action": "key", "key": "Enter" },
+            { "action": "waitFor", "waitFor": "codexTrustPrompt" },
+            { "action": "key", "key": "Enter" }
+          ]
+        },
+        {
+          "includes": "Do you trust the contents of this directory?",
+          "steps": [{ "action": "key", "key": "Enter" }]
+        }
+      ]
     },
     {
       "at": 38,

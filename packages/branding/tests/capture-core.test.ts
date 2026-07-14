@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ResolvedReplaySpec } from "../src/quicklook/replay-spec"
 import {
-  runReplayCapture,
-  writeCaptureAtomically,
   type CaptureClock,
   type CaptureDocument,
   type CaptureOutput,
   type CaptureTerminal,
+  runReplayCapture,
+  writeCaptureAtomically,
 } from "../src/quicklook/capture-core"
+import type { ResolvedReplaySpec } from "../src/quicklook/replay-spec"
 
 class FakeTerminal implements CaptureTerminal {
   readonly calls: string[] = []
@@ -115,7 +115,10 @@ const spec = (beats: ResolvedReplaySpec["beats"]): ResolvedReplaySpec =>
 describe("capture core", () => {
   test("captures only changed screens with elapsed wall-clock timestamps", async () => {
     const result = await runReplayCapture(
-      spec([{ at: 0, action: "key", key: "Enter" }, { at: 0.1, action: "sleep", ms: 1 }]),
+      spec([
+        { at: 0, action: "key", key: "Enter" },
+        { at: 0.1, action: "sleep", ms: 1 },
+      ]),
       new FakeTerminal(["boot", "boot", "dialog"]),
       memoryOutput(),
       clock([100, 140, 225]),
@@ -176,7 +179,12 @@ describe("capture core", () => {
       clock([0]),
     )
 
-    expect(result.frames.map((frame) => frame.lines)).toEqual([["boot"], ["after-sleep"], ["after-settle"], ["after-type"]])
+    expect(result.frames.map((frame) => frame.lines)).toEqual([
+      ["boot"],
+      ["after-sleep"],
+      ["after-settle"],
+      ["after-type"],
+    ])
   })
 
   test("stops the terminal and leaves the previous output untouched when a beat fails", async () => {
@@ -184,7 +192,12 @@ describe("capture core", () => {
     const output = memoryOutput()
 
     await expect(
-      runReplayCapture(spec([{ at: 0, action: "typeTextWhenReady", waitFor: "composer", textRef: "prompt" }]), terminal, output, clock([0])),
+      runReplayCapture(
+        spec([{ at: 0, action: "typeTextWhenReady", waitFor: "composer", textRef: "prompt" }]),
+        terminal,
+        output,
+        clock([0]),
+      ),
     ).rejects.toThrow("composer timeout")
 
     expect(terminal.stopCalls).toBe(1)
@@ -217,6 +230,35 @@ describe("capture core", () => {
     )
 
     expect(terminal.calls).toEqual(["start", "wait:composer:500", "type:g", "type:o", "stop"])
+  })
+
+  test("supports a standalone wait before a following key", async () => {
+    const terminal = new FakeTerminal(["boot", "update available", "after-down", "after-dismiss"])
+
+    await runReplayCapture(
+      spec([
+        {
+          at: 0,
+          action: "waitFor",
+          waitFor: "composer",
+          dismissIfText: [
+            {
+              includes: "update available",
+              steps: [
+                { action: "key", key: "Down" },
+                { action: "key", key: "Enter" },
+              ],
+            },
+          ],
+        },
+        { at: 0, action: "key", key: "Enter" },
+      ]),
+      terminal,
+      memoryOutput(),
+      clock([0]),
+    )
+
+    expect(terminal.calls).toEqual(["start", "wait:composer:500", "key:Down", "key:Enter", "key:Enter", "stop"])
   })
 
   test("expands the named createTask flow", async () => {

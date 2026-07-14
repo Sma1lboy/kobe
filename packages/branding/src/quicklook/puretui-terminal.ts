@@ -1,4 +1,5 @@
 import { chmod, mkdir } from "node:fs/promises"
+import { homedir } from "node:os"
 import { basename, join, resolve } from "node:path"
 import type { CaptureTerminal } from "./capture-core"
 import type { SeedTask } from "./replay-spec"
@@ -25,7 +26,6 @@ export type PureTuiCaptureOptions = {
   demoRoot: string
   fixtureRepo: string
   seedTasks?: readonly SeedTask[]
-  pathPrefix?: string
   readyPattern?: string
   readyTimeoutMs?: number
   cols: number
@@ -68,24 +68,24 @@ const capturePort = (demoRoot: string): string => {
   return String(30_000 + (hash % 15_000))
 }
 
-const captureEnvironment = (demoRoot: string, pathPrefix?: string): Record<string, string> => {
-  const home = join(demoRoot, "home")
+const captureEnvironment = (demoRoot: string): Record<string, string> => {
+  const kobeHome = join(demoRoot, "home")
   const inherited = inheritedEnvironment()
   return {
     ...inherited,
-    PATH: pathPrefix ? `${resolve(pathPrefix)}:${inherited.PATH ?? ""}` : (inherited.PATH ?? ""),
-    HOME: home,
-    USERPROFILE: home,
-    XDG_CONFIG_HOME: join(home, ".config"),
-    XDG_DATA_HOME: join(home, ".local", "share"),
-    XDG_STATE_HOME: join(home, ".local", "state"),
-    XDG_CACHE_HOME: join(home, ".cache"),
-    XDG_RUNTIME_DIR: join(home, ".runtime"),
+    PATH: inherited.PATH ?? "",
+    HOME: homedir(),
+    USERPROFILE: homedir(),
+    XDG_CONFIG_HOME: join(kobeHome, ".config"),
+    XDG_DATA_HOME: join(kobeHome, ".local", "share"),
+    XDG_STATE_HOME: join(kobeHome, ".local", "state"),
+    XDG_CACHE_HOME: join(kobeHome, ".cache"),
+    XDG_RUNTIME_DIR: join(kobeHome, ".runtime"),
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "kobe-capture",
-    KOBE_HOME_DIR: home,
-    KOBE_SANDBOX_HOME_DIR: home,
+    KOBE_HOME_DIR: kobeHome,
+    KOBE_SANDBOX_HOME_DIR: kobeHome,
     KOBE_DAEMON_WEB_PORT: capturePort(demoRoot),
     KOBE_CAPTURE_HOST_LABEL: "puretui-replay",
     KOBE_CAPTURE_SESSION_LABEL: basename(demoRoot),
@@ -145,7 +145,12 @@ class JsonLineSidecarClient {
     void this.readStderr()
     void process.exited.then((code) => {
       if (this.pending.size === 0) return
-      this.failAll(formatDiagnostics(`PureTUI sidecar exited with code ${code}${this.stderr ? `: ${this.stderr}` : ""}`, diagnostics))
+      this.failAll(
+        formatDiagnostics(
+          `PureTUI sidecar exited with code ${code}${this.stderr ? `: ${this.stderr}` : ""}`,
+          diagnostics,
+        ),
+      )
     })
   }
 
@@ -281,11 +286,17 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
   const repoRoot = resolve(options.repoRoot)
   const demoRoot = resolve(options.demoRoot)
   const fixtureRepo = resolve(options.fixtureRepo)
-  const env = captureEnvironment(demoRoot, options.pathPrefix)
+  const env = captureEnvironment(demoRoot)
   await Promise.all(
-    [demoRoot, env.HOME, env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_STATE_HOME, env.XDG_CACHE_HOME, env.XDG_RUNTIME_DIR].map(
-      (path) => mkdir(path, { recursive: true }),
-    ),
+    [
+      demoRoot,
+      env.HOME,
+      env.XDG_CONFIG_HOME,
+      env.XDG_DATA_HOME,
+      env.XDG_STATE_HOME,
+      env.XDG_CACHE_HOME,
+      env.XDG_RUNTIME_DIR,
+    ].map((path) => mkdir(path, { recursive: true })),
   )
   await chmod(env.XDG_RUNTIME_DIR, 0o700)
   const sidecarPath = options.sidecarPath ?? join(import.meta.dirname, "../../scripts/puretui-pty-sidecar.mjs")
@@ -314,9 +325,7 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
       client.closeInput()
       let code = await Promise.race([
         process.exited,
-        new Promise<undefined>((resolveTimeout) =>
-          setTimeout(resolveTimeout, options.sidecarExitTimeoutMs ?? 2_000),
-        ),
+        new Promise<undefined>((resolveTimeout) => setTimeout(resolveTimeout, options.sidecarExitTimeoutMs ?? 2_000)),
       ])
       if (code === undefined) {
         process.kill("SIGTERM")

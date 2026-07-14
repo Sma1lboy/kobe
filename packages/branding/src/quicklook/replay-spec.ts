@@ -56,7 +56,7 @@ export type DismissRule = {
 
 export type ReplayBeat = {
   at: number
-  action: "typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep"
+  action: "typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep" | "waitFor"
   text?: string
   textRef?: string
   msPerChar?: number
@@ -123,7 +123,6 @@ export type SeedTask = {
 
 export type ReplaySetup = {
   seedTasks?: SeedTask[]
-  fixtureEngines?: boolean
   readyWait?: string
 }
 
@@ -154,7 +153,14 @@ export type ResolvedReplaySpec = Omit<RawReplaySpec, "camera" | "regions" | "sta
   stages: ResolvedStage[]
 }
 
-const REPLAY_ACTIONS = new Set<ReplayBeat["action"]>(["typeText", "typeTextWhenReady", "key", "flow", "sleep"])
+const REPLAY_ACTIONS = new Set<ReplayBeat["action"]>([
+  "typeText",
+  "typeTextWhenReady",
+  "key",
+  "flow",
+  "sleep",
+  "waitFor",
+])
 const SEED_TASK_STATUSES = new Set(["backlog", "in_progress", "in_review", "done", "canceled", "error"])
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -193,7 +199,7 @@ export function assertRenderableCapture(value: unknown): asserts value is Captur
   }
   const frames = assertArray(capture.frames, "capture.frames")
   if (frames.length === 0) throw new Error("capture must contain at least one frame")
-  let previous = -Infinity
+  let previous = Number.NEGATIVE_INFINITY
   for (const [frameIndex, frameValue] of frames.entries()) {
     const frame = assertObject(frameValue, `capture.frames[${frameIndex}]`)
     const timestamp = assertNumber(frame.t, `capture.frames[${frameIndex}].t`)
@@ -340,9 +346,6 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
 
   if (root.setup !== undefined) {
     const setup = assertObject(root.setup, "setup")
-    if (setup.fixtureEngines !== undefined && typeof setup.fixtureEngines !== "boolean") {
-      throw new Error("replay spec setup.fixtureEngines must be a boolean")
-    }
     if (setup.readyWait !== undefined) {
       const readyWait = assertString(setup.readyWait, "setup.readyWait")
       assertWaitRef(spec.waits, readyWait, "setup")

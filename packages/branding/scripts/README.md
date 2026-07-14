@@ -11,11 +11,13 @@ bun x remotion render src/index.ts quicklook-replay out/quicklook-replay.mp4
 bun x remotion render src/index.ts quicklook-replay-4x out/quicklook-replay-4x.mp4
 ```
 
-The storyboard is `src/quicklook/quicklook.replay.json`. Its
-`setup.fixtureEngines` option uses deterministic capture-only Claude and Codex
-processes inside real Hosted PTY sessions, so Brand Studio capture does not
-depend on a developer's credentials or profile. Every run creates an isolated
-Kobe home and fixture repository; the CLI prints the retained root for review.
+The storyboard is `src/quicklook/quicklook.replay.json`. Capture always launches
+the installed Claude and Codex binaries from the inherited `PATH`; there is no
+fixture or engine-mode switch in the replay spec. Kobe state and the fixture
+repository remain isolated, while engine subprocesses keep the host's normal
+home directory and native Claude/Codex profile. Test-only fixtures are injected
+by the opt-in end-to-end test itself and cannot be selected by a production
+replay. The CLI prints the retained demo root for review.
 
 Camera and framing logic lives in `src/quicklook/QuickLookReplay.tsx`; ANSI
 parsing lives in `src/quicklook/ansi.ts`.

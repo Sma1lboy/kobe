@@ -1,11 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
-import { runReplayCapture, writeCaptureAtomically, type CaptureOutput } from "../src/quicklook/capture-core"
-import {
-  createPureTuiCapture,
-  type PureTuiCaptureOptions,
-} from "../src/quicklook/puretui-terminal"
-import { resolveReplaySpec, type CaptureMeta, type RawReplaySpec } from "../src/quicklook/replay-spec"
+import { type CaptureOutput, runReplayCapture, writeCaptureAtomically } from "../src/quicklook/capture-core"
+import { type PureTuiCaptureOptions, createPureTuiCapture } from "../src/quicklook/puretui-terminal"
+import { type CaptureMeta, type RawReplaySpec, resolveReplaySpec } from "../src/quicklook/replay-spec"
 
 const PACKAGE_ROOT = resolve(import.meta.dirname, "..")
 const REPO_ROOT = resolve(PACKAGE_ROOT, "../..")
@@ -89,7 +86,6 @@ export async function capturePureTui(
     demoRoot,
     fixtureRepo,
     seedTasks: spec.setup?.seedTasks,
-    pathPrefix: spec.setup?.fixtureEngines ? join(PACKAGE_ROOT, "scripts", "fixtures") : undefined,
     readyPattern: ready?.pattern,
     readyTimeoutMs: ready?.timeoutMs,
     cols: spec.viewport.cols,

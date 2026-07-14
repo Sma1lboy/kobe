@@ -4,7 +4,7 @@
 
 **Goal:** Generate a Brand Studio-consumable `frames.json` from a real, isolated PureTUI + Hosted PTY run.
 
-**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The Bun driver owns replay and output; a small Node `node-pty` sidecar launches the source CLI against a disposable fixture repository inside a unique home and exchanges input, ANSI snapshots, and lifecycle messages over newline-delimited JSON. Tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
+**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The Bun driver owns replay and output; a small Node `node-pty` sidecar launches the source CLI against a disposable fixture repository with unique Kobe state while preserving the host home used by native engines, then exchanges input, ANSI snapshots, and lifecycle messages over newline-delimited JSON. Tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
 
 **Tech Stack:** Bun, TypeScript, Node, `node-pty`, `@xterm/headless`, `bun:test`, Kobe's source CLI and sandbox reset, Remotion 4.
 
@@ -12,6 +12,7 @@
 
 - Keep all capture, replay, and Remotion code in `packages/branding`; do not introduce marketing dependencies in `packages/kobe` or `packages/kobe-daemon`.
 - Start every production capture with a unique `KOBE_SANDBOX_HOME_DIR`/`KOBE_HOME_DIR`, repository fixture, host identity, and session identity; never use normal `~/.kobe` state.
+- Production capture always launches the installed native engines from inherited `PATH` and host `HOME`; engine fixtures are test-only dependency injection and are never selectable from the replay spec.
 - Preserve the demo root for diagnostics and never replace `frames.json` on failure; teardown must prove every child has exited.
 - Treat `quicklook.replay.json` as the editable storyboard. Reject unknown action, text, wait, flow, region, stage boundary, and invalid capture geometry before starting a child process.
 - Store frames only when the rendered terminal state changes, using elapsed wall-clock time rather than nominal beat time; publish the output with a same-directory atomic rename.
@@ -39,7 +40,7 @@
 - Modify: `packages/branding/tests/replay-spec.test.ts:1-133`
 
 **Interfaces:**
-- Produces `ResolvedReplaySpec`, where each `ReplayBeat.action` is one of `"typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep"` and each `flow` resolves to an existing named flow.
+- Produces `ResolvedReplaySpec`, where each `ReplayBeat.action` is one of `"typeText" | "typeTextWhenReady" | "key" | "flow" | "sleep" | "waitFor"` and each `flow` resolves to an existing named flow.
 - Consumes the historical `CaptureMeta` shape `{ cols: number; rows: number; frames: Array<{ t: number; lines: unknown[] }> }` without changing renderer compatibility.
 
 - [ ] **Step 1: Write failing validation tests**
@@ -179,7 +180,7 @@ git commit -m "feat: add replay capture interpreter"
 Create a fake sidecar process and filesystem wrapper, then assert:
 
 ```ts
-test("launches source PureTUI with an isolated home, fixture repo, and fixed replay viewport", async () => {
+test("launches source PureTUI with native engines, isolated Kobe state, and a fixed replay viewport", async () => {
   const capture = await createPureTuiCapture({ repoRoot, demoRoot, cols: 160, rows: 45, sidecarFactory })
   expect(sidecarFactory.calls[0]).toMatchObject({
     file: "node",

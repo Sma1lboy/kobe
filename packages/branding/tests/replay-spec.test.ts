@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import quicklookSpec from "../src/quicklook/quicklook.replay.json"
-import { regionCoordinateHash, resolveReplaySpec, replayDurationSeconds } from "../src/quicklook/replay-spec"
+import { regionCoordinateHash, replayDurationSeconds, resolveReplaySpec } from "../src/quicklook/replay-spec"
 
 const capture = {
   cols: 160,
   rows: 45,
-  frames: [{ t: 0, lines: [] }, { t: 12.5, lines: [] }],
+  frames: [
+    { t: 0, lines: [] },
+    { t: 12.5, lines: [] },
+  ],
 }
 
 const baseSpec = {
@@ -116,8 +119,22 @@ describe("replay spec", () => {
             defaultFg: "#fff",
             defaultBg: "#000",
             ansi16: [
-              "#000", "#000", "#000", "#000", "#000", "#000", "#000", "#000",
-              "#000", "#000", "#000", "#000", "#000", "#000", "#000", "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
+              "#000",
             ],
             runOverrides: [],
           },
@@ -131,9 +148,9 @@ describe("replay spec", () => {
     expect(() => resolveReplaySpec({ ...baseSpec, beats: [{ at: 0, action: "mouse" }] }, capture)).toThrow(
       /unsupported action "mouse"/,
     )
-    expect(() => resolveReplaySpec({ ...baseSpec, beats: [{ at: 0, action: "flow", flow: "missing" }] }, capture)).toThrow(
-      /unknown flow "missing"/,
-    )
+    expect(() =>
+      resolveReplaySpec({ ...baseSpec, beats: [{ at: 0, action: "flow", flow: "missing" }] }, capture),
+    ).toThrow(/unknown flow "missing"/)
   })
 
   test("rejects malformed seed tasks before capture starts", () => {
@@ -146,9 +163,9 @@ describe("replay spec", () => {
   })
 
   test("rejects capture timing that cannot drive polling", () => {
-    expect(() =>
-      resolveReplaySpec({ ...baseSpec, capture: { ...baseSpec.capture, fps: 0 } }, capture),
-    ).toThrow(/capture.fps must be positive/)
+    expect(() => resolveReplaySpec({ ...baseSpec, capture: { ...baseSpec.capture, fps: 0 } }, capture)).toThrow(
+      /capture.fps must be positive/,
+    )
   })
 
   test("rejects an unknown workspace readiness wait", () => {
@@ -159,5 +176,7 @@ describe("replay spec", () => {
 
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
+    expect(quicklookSpec.setup).not.toHaveProperty("fixtureEngines")
+    expect(quicklookSpec.waits.claudeComposerReady.pattern).toBe("❯")
   })
 })

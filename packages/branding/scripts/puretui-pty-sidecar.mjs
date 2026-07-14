@@ -1,9 +1,9 @@
 import { spawn as spawnChild } from "node:child_process"
 import { chmod } from "node:fs/promises"
 import { createRequire } from "node:module"
+import { basename, dirname, join, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { pathToFileURL } from "node:url"
-import { basename, dirname, join, resolve } from "node:path"
 
 const require = createRequire(import.meta.url)
 
@@ -26,22 +26,23 @@ const inheritedEnvironment = (environment) =>
   )
 
 const isolatedEnvironment = (baseEnv, demoRoot) => {
-  const home = join(demoRoot, "home")
+  const kobeHome = join(demoRoot, "home")
+  const nativeHome = baseEnv.HOME ?? kobeHome
   return {
     ...inheritedEnvironment(baseEnv),
-    HOME: home,
-    USERPROFILE: home,
-    XDG_CONFIG_HOME: join(home, ".config"),
-    XDG_DATA_HOME: join(home, ".local", "share"),
-    XDG_STATE_HOME: join(home, ".local", "state"),
-    XDG_CACHE_HOME: join(home, ".cache"),
-    XDG_RUNTIME_DIR: join(home, ".runtime"),
+    HOME: nativeHome,
+    USERPROFILE: baseEnv.USERPROFILE ?? nativeHome,
+    XDG_CONFIG_HOME: join(kobeHome, ".config"),
+    XDG_DATA_HOME: join(kobeHome, ".local", "share"),
+    XDG_STATE_HOME: join(kobeHome, ".local", "state"),
+    XDG_CACHE_HOME: join(kobeHome, ".cache"),
+    XDG_RUNTIME_DIR: join(kobeHome, ".runtime"),
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "kobe-capture",
     KOBE_DEV: "1",
-    KOBE_HOME_DIR: home,
-    KOBE_SANDBOX_HOME_DIR: home,
+    KOBE_HOME_DIR: kobeHome,
+    KOBE_SANDBOX_HOME_DIR: kobeHome,
     KOBE_DAEMON_WEB_PORT: baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274",
     KOBE_CAPTURE_HOST_LABEL: baseEnv.KOBE_CAPTURE_HOST_LABEL ?? "puretui-replay",
     KOBE_CAPTURE_SESSION_LABEL: baseEnv.KOBE_CAPTURE_SESSION_LABEL ?? basename(demoRoot),
@@ -250,6 +251,7 @@ export function createSidecarController(dependencies) {
       env: childEnv,
     })
     childAlive = true
+    // biome-ignore lint/suspicious/noAssignInExpressions: the promise executor captures its resolver
     childExited = new Promise((resolveExit) => (resolveChildExit = resolveExit))
     child.onExit(() => {
       childAlive = false
@@ -257,9 +259,7 @@ export function createSidecarController(dependencies) {
     })
     child.onData((data) => {
       rawAnsi = `${rawAnsi}${data}`.slice(-1_048_576)
-      writes = writes.then(
-        () => new Promise((resolveWrite) => terminal.write(data, resolveWrite)),
-      )
+      writes = writes.then(() => new Promise((resolveWrite) => terminal.write(data, resolveWrite)))
     })
     return { pid: child.pid, demoRoot, snapshot: "" }
   }

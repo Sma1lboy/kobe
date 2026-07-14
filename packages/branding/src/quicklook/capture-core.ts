@@ -35,9 +35,10 @@ const validateCapture = (capture: CaptureDocument) => {
     throw new Error("capture dimensions must be positive finite numbers")
   }
   if (capture.frames.length === 0) throw new Error("capture must contain at least one frame")
-  let previous = -Infinity
+  let previous = Number.NEGATIVE_INFINITY
   for (const frame of capture.frames) {
-    if (!Number.isFinite(frame.t) || frame.t < previous) throw new Error("capture frame timestamps must be finite and monotonic")
+    if (!Number.isFinite(frame.t) || frame.t < previous)
+      throw new Error("capture frame timestamps must be finite and monotonic")
     if (frame.lines.length !== capture.rows) throw new Error("capture frame line count must match rows")
     previous = frame.t
   }
@@ -139,10 +140,11 @@ const runDismissRules = async (
   startedAt: number,
   frames: CaptureFrame[],
 ) => {
+  let currentLines = lines
   for (const rule of rules ?? []) {
-    if (!lines.join("\n").includes(rule.includes)) continue
+    if (!currentLines.join("\n").includes(rule.includes)) continue
     for (const step of rule.steps) {
-      if (step.action === "key") lines = await sendKey(step.key, terminal, clock, startedAt, frames)
+      if (step.action === "key") currentLines = await sendKey(step.key, terminal, clock, startedAt, frames)
       if (step.action === "sleep") await pause(step.ms, terminal, clock, startedAt, frames)
       if (step.action === "waitFor") await wait(spec, step.waitFor, terminal, clock, startedAt, frames)
     }
@@ -189,13 +191,20 @@ export async function runReplayCapture(
   try {
     await terminal.start()
     await captureSnapshot(terminal, clock, startedAt, frames)
-    const beats = spec.beats.map((beat, index) => ({ beat, index })).sort((left, right) => left.beat.at - right.beat.at || left.index - right.index)
+    const beats = spec.beats
+      .map((beat, index) => ({ beat, index }))
+      .sort((left, right) => left.beat.at - right.beat.at || left.index - right.index)
     for (const { beat } of beats) {
       const delay = (beat.at - nominalAt) * 1000
       if (delay > 0) await pollTimeline(delay, spec.capture.fps, terminal, clock, startedAt, frames)
       nominalAt = beat.at
       if (beat.action === "key") await sendKey(beat.key ?? "", terminal, clock, startedAt, frames)
       if (beat.action === "sleep") await pause(beat.ms ?? 0, terminal, clock, startedAt, frames)
+      if (beat.action === "waitFor" && beat.waitFor) {
+        await wait(spec, beat.waitFor, terminal, clock, startedAt, frames)
+        const lines = frames.at(-1)?.lines.map((line) => (typeof line === "string" ? line : line.rawAnsi)) ?? []
+        await runDismissRules(spec, beat.dismissIfText, lines, terminal, clock, startedAt, frames)
+      }
       if (beat.action === "flow") await runCreateTask(spec, beat.engine, terminal, clock, startedAt, frames)
       if (beat.action === "typeText" || beat.action === "typeTextWhenReady") {
         if (beat.action === "typeTextWhenReady" && beat.waitFor) {
