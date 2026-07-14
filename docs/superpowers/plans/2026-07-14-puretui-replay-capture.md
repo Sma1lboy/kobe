@@ -4,15 +4,15 @@
 
 **Goal:** Generate a Brand Studio-consumable `frames.json` from a real, isolated PureTUI + Hosted PTY run.
 
-**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The Bun driver owns replay and output; a small Node `node-pty` sidecar launches `kobe dev:sandbox` inside a unique home and exchanges input, ANSI snapshots, and lifecycle messages over newline-delimited JSON. Tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
+**Architecture:** `packages/branding` gains a backend-neutral capture core that interprets the existing replay spec through a small terminal adapter. The Bun driver owns replay and output; a small Node `node-pty` sidecar launches the source CLI against a disposable fixture repository inside a unique home and exchanges input, ANSI snapshots, and lifecycle messages over newline-delimited JSON. Tests use an in-memory adapter. The existing Remotion renderer remains the sole consumer of the checked-in ANSI capture.
 
-**Tech Stack:** Bun, TypeScript, `node-pty`, `@xterm/headless`, `bun:test`, existing Kobe `dev:sandbox`, Remotion 4.
+**Tech Stack:** Bun, TypeScript, Node, `node-pty`, `@xterm/headless`, `bun:test`, Kobe's source CLI and sandbox reset, Remotion 4.
 
 ## Global Constraints
 
 - Keep all capture, replay, and Remotion code in `packages/branding`; do not introduce marketing dependencies in `packages/kobe` or `packages/kobe-daemon`.
 - Start every production capture with a unique `KOBE_SANDBOX_HOME_DIR`/`KOBE_HOME_DIR`, repository fixture, host identity, and session identity; never use normal `~/.kobe` state.
-- The capture driver may remove only the demo root it created after proving every child has exited; preserve that root on failure and never replace `frames.json` on failure.
+- Preserve the demo root for diagnostics and never replace `frames.json` on failure; teardown must prove every child has exited.
 - Treat `quicklook.replay.json` as the editable storyboard. Reject unknown action, text, wait, flow, region, stage boundary, and invalid capture geometry before starting a child process.
 - Store frames only when the rendered terminal state changes, using elapsed wall-clock time rather than nominal beat time; publish the output with a same-directory atomic rename.
 - Do not add or move keybindings. Use the spec's declared keys and interstitial dismissal rules verbatim.
@@ -179,7 +179,7 @@ git commit -m "feat: add replay capture interpreter"
 Create a fake sidecar process and filesystem wrapper, then assert:
 
 ```ts
-test("launches dev:sandbox with an isolated home and fixed replay viewport", async () => {
+test("launches source PureTUI with an isolated home, fixture repo, and fixed replay viewport", async () => {
   const capture = await createPureTuiCapture({ repoRoot, demoRoot, cols: 160, rows: 45, sidecarFactory })
   expect(sidecarFactory.calls[0]).toMatchObject({
     file: "node",
@@ -200,7 +200,7 @@ Expected: failure because the production adapter and its injectable factory are 
 
 - [ ] **Step 3: Implement the production adapter without changing product code**
 
-`capture-puretui.ts` runs in Bun and must not import `node-pty`. Have `puretui-terminal.ts` spawn the Node sidecar with `Bun.spawn(["node", sidecarPath])`, multiplex requests by id, and translate the protocol into `CaptureTerminal` methods. The Node sidecar imports `node-pty`, launches `bun run dev:sandbox` with `cwd: <repoRoot>/packages/kobe`, `cols/rows` from the spec, and a child-only environment containing a unique `KOBE_SANDBOX_HOME_DIR`, `KOBE_HOME_DIR`, `KOBE_DAEMON_WEB_PORT`, and capture-specific host/session labels. It feeds `onData` output to `@xterm/headless`, retains raw ANSI for diagnostics, and returns `snapshot()` as stable `rows` lines.
+`capture-puretui.ts` runs in Bun and must not import `node-pty`. Have `puretui-terminal.ts` spawn the Node sidecar with `Bun.spawn(["node", sidecarPath])`, multiplex requests by id, and translate the protocol into `CaptureTerminal` methods. The Node sidecar imports `node-pty`, seeds declared tasks through the source CLI, then launches that CLI with `cwd` set to the fixture repository, `cols/rows` from the spec, and a child-only environment containing a unique `KOBE_SANDBOX_HOME_DIR`, `KOBE_HOME_DIR`, `KOBE_DAEMON_WEB_PORT`, and capture-specific host/session labels. It feeds `onData` output to `@xterm/headless`, retains raw ANSI for diagnostics, and returns active-buffer lines serialized with SGR styling.
 
 Map declared strings such as `Enter`, `Escape`, `C-h`, and `C-e` to terminal byte sequences in the sidecar's single `encodeKey()` function. `waitFor()` must poll the rendered snapshot until the declared pattern appears or timeout; it must never use a fixed boot sleep. On `stop`, the sidecar sends a cooperative interrupt, waits for the PTY child to exit, runs `bun run dev:sandbox:reset` with the exact same isolated-home environment, and returns an error if the child remains alive. The Bun adapter then exits the sidecar cleanly.
 
@@ -243,7 +243,7 @@ Expected: the empty-capture assertion fails because the renderer currently index
 
 Extract `assertRenderableCapture(capture)` from `QuickLookReplay.tsx` into `replay-spec.ts` or a small `capture-document.ts` helper. It must require positive finite `cols/rows`, a non-empty frame array, finite monotonic timestamps, and exactly `rows` serializable lines per frame. Invoke it before the renderer derives dimensions or calls `frameAt`.
 
-Keep the end-to-end fixture under the test temporary directory. It must use a fake engine shim supplied on `PATH`, run with a hard timeout, call the capture CLI with a temp output path, and finally assert the isolated daemon/PTY sockets no longer exist. Do not overwrite the checked-in `frames.json` during tests.
+Keep the end-to-end fixture under the test temporary directory. It must use the capture-only fixture engines supplied on `PATH`, run with a hard timeout, call the capture CLI with a temp output path, and finally assert the isolated daemon/PTY sockets no longer exist. Do not overwrite the checked-in `frames.json` during tests.
 
 - [ ] **Step 4: Verify unit and bounded end-to-end behavior**
 

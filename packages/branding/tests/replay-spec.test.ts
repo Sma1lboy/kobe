@@ -151,6 +151,12 @@ describe("replay spec", () => {
     ).toThrow(/capture.fps must be positive/)
   })
 
+  test("rejects an unknown workspace readiness wait", () => {
+    expect(() => resolveReplaySpec({ ...baseSpec, setup: { readyWait: "missing" } }, capture)).toThrow(
+      /setup references unknown wait "missing"/,
+    )
+  })
+
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
   })

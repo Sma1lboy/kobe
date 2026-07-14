@@ -14,7 +14,6 @@ import {
   type SidecarProcess,
   type SidecarSpawnOptions,
 } from "../src/quicklook/puretui-terminal"
-
 type Request = { id: number; op: string; [key: string]: unknown }
 
 class FakeSidecar implements SidecarProcess {
@@ -98,6 +97,9 @@ describe("PureTuiTerminal", () => {
       demoRoot,
       fixtureRepo,
       seedTasks: [{ title: "seed task", status: "in_progress" }],
+      pathPrefix: join(repoRoot, "packages", "branding", "scripts", "fixtures"),
+      readyPattern: "KOBE",
+      readyTimeoutMs: 500,
       cols: 160,
       rows: 45,
       sidecarFactory,
@@ -108,6 +110,7 @@ describe("PureTuiTerminal", () => {
       env: expect.objectContaining({
         KOBE_SANDBOX_HOME_DIR: expect.stringContaining(demoRoot),
         KOBE_HOME_DIR: expect.stringContaining(demoRoot),
+        PATH: expect.stringContaining("packages/branding/scripts/fixtures"),
       }),
     })
 
@@ -121,6 +124,7 @@ describe("PureTuiTerminal", () => {
       cols: 160,
       rows: 45,
     })
+    expect(sidecarFactory.process().requests[1]).toMatchObject({ op: "waitFor", pattern: "KOBE", timeoutMs: 500 })
     await capture.cleanup()
   })
 

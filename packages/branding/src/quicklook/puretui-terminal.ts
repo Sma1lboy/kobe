@@ -25,6 +25,9 @@ export type PureTuiCaptureOptions = {
   demoRoot: string
   fixtureRepo: string
   seedTasks?: readonly SeedTask[]
+  pathPrefix?: string
+  readyPattern?: string
+  readyTimeoutMs?: number
   cols: number
   rows: number
   protocolTimeoutMs?: number
@@ -65,10 +68,12 @@ const capturePort = (demoRoot: string): string => {
   return String(30_000 + (hash % 15_000))
 }
 
-const captureEnvironment = (demoRoot: string): Record<string, string> => {
+const captureEnvironment = (demoRoot: string, pathPrefix?: string): Record<string, string> => {
   const home = join(demoRoot, "home")
+  const inherited = inheritedEnvironment()
   return {
-    ...inheritedEnvironment(),
+    ...inherited,
+    PATH: pathPrefix ? `${resolve(pathPrefix)}:${inherited.PATH ?? ""}` : (inherited.PATH ?? ""),
     HOME: home,
     USERPROFILE: home,
     XDG_CONFIG_HOME: join(home, ".config"),
@@ -231,13 +236,17 @@ export class PureTuiTerminal implements CaptureTerminal {
     private readonly client: JsonLineSidecarClient,
     private readonly options: Pick<
       PureTuiCaptureOptions,
-      "repoRoot" | "demoRoot" | "fixtureRepo" | "seedTasks" | "cols" | "rows"
+      "repoRoot" | "demoRoot" | "fixtureRepo" | "seedTasks" | "readyPattern" | "readyTimeoutMs" | "cols" | "rows"
     >,
   ) {}
 
   async start() {
     if (this.started) return
     await this.client.request("start", this.options)
+    if (this.options.readyPattern) {
+      const timeoutMs = this.options.readyTimeoutMs ?? 30_000
+      await this.client.request("waitFor", { pattern: this.options.readyPattern, timeoutMs }, timeoutMs + 1_000)
+    }
     this.started = true
   }
 
@@ -272,7 +281,7 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
   const repoRoot = resolve(options.repoRoot)
   const demoRoot = resolve(options.demoRoot)
   const fixtureRepo = resolve(options.fixtureRepo)
-  const env = captureEnvironment(demoRoot)
+  const env = captureEnvironment(demoRoot, options.pathPrefix)
   await Promise.all(
     [demoRoot, env.HOME, env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_STATE_HOME, env.XDG_CACHE_HOME, env.XDG_RUNTIME_DIR].map(
       (path) => mkdir(path, { recursive: true }),

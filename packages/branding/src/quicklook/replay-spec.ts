@@ -123,6 +123,8 @@ export type SeedTask = {
 
 export type ReplaySetup = {
   seedTasks?: SeedTask[]
+  fixtureEngines?: boolean
+  readyWait?: string
 }
 
 export type DeliverySpec = {
@@ -338,6 +340,13 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
 
   if (root.setup !== undefined) {
     const setup = assertObject(root.setup, "setup")
+    if (setup.fixtureEngines !== undefined && typeof setup.fixtureEngines !== "boolean") {
+      throw new Error("replay spec setup.fixtureEngines must be a boolean")
+    }
+    if (setup.readyWait !== undefined) {
+      const readyWait = assertString(setup.readyWait, "setup.readyWait")
+      assertWaitRef(spec.waits, readyWait, "setup")
+    }
     if (setup.seedTasks !== undefined) {
       for (const [index, taskValue] of assertArray(setup.seedTasks, "setup.seedTasks").entries()) {
         const task = assertObject(taskValue, `setup.seedTasks[${index}]`)

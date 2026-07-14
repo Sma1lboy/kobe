@@ -83,11 +83,15 @@ export async function capturePureTui(
   await mkdir(demoRoot, { recursive: true })
   const fixtureRepo = await createFixtureRepository(demoRoot)
   await prepareCaptureState(demoRoot, fixtureRepo)
+  const ready = spec.setup?.readyWait ? spec.waits[spec.setup.readyWait] : undefined
   const capture = await (dependencies.createCapture ?? createPureTuiCapture)({
     repoRoot: REPO_ROOT,
     demoRoot,
     fixtureRepo,
     seedTasks: spec.setup?.seedTasks,
+    pathPrefix: spec.setup?.fixtureEngines ? join(PACKAGE_ROOT, "scripts", "fixtures") : undefined,
+    readyPattern: ready?.pattern,
+    readyTimeoutMs: ready?.timeoutMs,
     cols: spec.viewport.cols,
     rows: spec.viewport.rows,
     protocolTimeoutMs: options.timeoutMs,

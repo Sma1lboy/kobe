@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { defaultDaemonSocketPath, defaultPtyHostSocketPath } from "../../kobe-daemon/src/daemon/paths"
@@ -17,27 +17,21 @@ test("rejects empty and malformed captures before renderer setup", () => {
 const e2e = process.env.KOBE_REPLAY_E2E === "1" ? test : test.skip
 
 e2e(
-  "captures the real PureTUI create-task flow with a PATH-first fake engine",
+  "captures the real PureTUI create-task flow with fixture engines",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "kobe-puretui-e2e-"))
-    const bin = join(root, "bin")
     const demoRoot = join(root, "demo")
     const outputPath = join(root, "frames.json")
     const specPath = join(root, "capture.replay.json")
-    await mkdir(bin, { recursive: true })
-    await writeFile(join(bin, "claude"), "#!/bin/sh\nprintf 'fake-claude ready\\n'\nexec sleep 60\n")
-    await chmod(join(bin, "claude"), 0o755)
-
     const spec = structuredClone(quicklookSpec) as unknown as RawReplaySpec
     spec.viewport = { cols: 100, rows: 30, width: 800, height: 480 }
     spec.capture.seconds = 18
-    spec.setup = { seedTasks: [] }
+    spec.setup = { seedTasks: [], fixtureEngines: true }
     spec.waits = { newTaskDialog: { pattern: "New task", timeoutMs: 8000 } }
     spec.text = { prompt: "Brand Studio replay prompt" }
     spec.flows = {
       createTask: {
         openKey: "n",
-        focusPaneBeforeOpen: "leftmost",
         dialogWait: "newTaskDialog",
         dialogSettleMs: 100,
         tabCount: 4,
@@ -54,13 +48,10 @@ e2e(
     spec.stages = [{ name: "capture", from: 0, to: "end" }]
     await writeFile(specPath, `${JSON.stringify(spec)}\n`)
 
-    const previousPath = process.env.PATH
-    process.env.PATH = `${bin}:${previousPath ?? ""}`
-    try {
-      await capturePureTui({ specPath, outputPath, demoRoot, keepDemoRoot: true, timeoutMs: 20_000 }, { log: () => {} })
-    } finally {
-      process.env.PATH = previousPath
-    }
+    await capturePureTui(
+      { specPath, outputPath, demoRoot, keepDemoRoot: true, timeoutMs: 20_000 },
+      { log: () => {} },
+    )
 
     const capture = await Bun.file(outputPath).json()
     const screen = capture.frames.flatMap((frame: { lines: string[] }) => frame.lines).join("\n")
