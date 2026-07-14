@@ -48,9 +48,10 @@ export interface IssueDetailOptions {
 }
 
 /** Every outcome carries the drafted title/body — the page saves a dirty
- *  patch regardless of how the drawer was left. */
+ *  patch regardless of how the drawer was left. `jump` is the drawer's
+ *  follow-or-stay toggle, orthogonal to placement. */
 export type IssueDetailOutcome =
-  | { kind: "start"; vendor: VendorId; placement: IssueChatPlacement; title: string; body: string }
+  | { kind: "start"; vendor: VendorId; placement: IssueChatPlacement; jump: boolean; title: string; body: string }
   | { kind: "open"; taskId: string; title: string; body: string }
   | { kind: "close"; title: string; body: string }
   /** Create-mode result — `start` null = save only ("New story" Save). */
@@ -58,10 +59,10 @@ export type IssueDetailOutcome =
       kind: "create"
       title: string
       body: string
-      start: { vendor: VendorId; placement: IssueChatPlacement } | null
+      start: { vendor: VendorId; placement: IssueChatPlacement; jump: boolean } | null
     }
 
-type Field = "title" | "description" | "engine" | "workspace" | "open"
+type Field = "title" | "description" | "engine" | "workspace" | "jump" | "open"
 
 /** Description editor height — tall enough to read a story, short enough
  *  to keep the start config on screen. */
@@ -82,8 +83,10 @@ function IssueDetailDialogView(
   const startable = create || (!linkedTaskId && issue.status !== "done")
 
   const [vendor, setVendor] = useState<VendorId>(props.defaultVendor)
-  // Background start is the board's default trigger (ISSUE_CHAT_PLACEMENTS[0]).
-  const [placement, setPlacement] = useState<IssueChatPlacement>(ISSUE_CHAT_PLACEMENTS[0] ?? "worktreeBg")
+  const [placement, setPlacement] = useState<IssueChatPlacement>(ISSUE_CHAT_PLACEMENTS[0] ?? "worktree")
+  // Follow-or-stay, orthogonal to placement. Default STAY: the board is
+  // the tracking surface; jumping into the session is the explicit ask.
+  const [jump, setJump] = useState(false)
   const [draftTitle, setDraftTitle] = useState(issue.title)
   const [draftBody, setDraftBody] = useState(issue.body)
   // Startable stories open ready to fire (enter = start from the workspace
@@ -98,7 +101,7 @@ function IssueDetailDialogView(
   const bodyEl = useRef<TextareaRenderable | null>(null)
 
   const fields: readonly Field[] = startable
-    ? ["title", "description", "engine", "workspace"]
+    ? ["title", "description", "engine", "workspace", "jump"]
     : linkedTaskId
       ? ["title", "description", "open"]
       : ["title", "description"]
@@ -165,9 +168,9 @@ function IssueDetailDialogView(
   function commit(): void {
     if (create) {
       if (!requireTitle()) return
-      props.onSubmit({ kind: "create", start: { vendor, placement }, ...draft() })
+      props.onSubmit({ kind: "create", start: { vendor, placement, jump }, ...draft() })
     } else if (startable) {
-      props.onSubmit({ kind: "start", vendor, placement, ...draft() })
+      props.onSubmit({ kind: "start", vendor, placement, jump, ...draft() })
     } else if (linkedTaskId) {
       props.onSubmit({ kind: "open", taskId: linkedTaskId, ...draft() })
     } else {
@@ -214,6 +217,13 @@ function IssueDetailDialogView(
         ? [
             { key: "up", cmd: () => stepPlacement(-1) },
             { key: "down", cmd: () => stepPlacement(1) },
+            { key: "return", cmd: () => commit() },
+          ]
+        : []),
+      ...(field === "jump"
+        ? [
+            { key: "left", cmd: () => setJump((v) => !v) },
+            { key: "right", cmd: () => setJump((v) => !v) },
             { key: "return", cmd: () => commit() },
           ]
         : []),
@@ -391,6 +401,39 @@ function IssueDetailDialogView(
                     {active ? "▸ " : "  "}
                     {t(`kanban.detail.placement.${option}`)}
                   </text>
+                )
+              })}
+            </box>
+          </box>
+
+          {/* AFTER START — follow the session or stay on the board;
+              orthogonal to placement (all three support both). */}
+          <box gap={0}>
+            {sectionHeader(t("kanban.detail.jumpLabel"), "jump", "←/→")}
+            <box flexDirection="row" gap={1}>
+              {([false, true] as const).map((option) => {
+                const active = option === jump
+                return (
+                  <box
+                    key={String(option)}
+                    border={true}
+                    borderColor={active ? theme.primary : theme.borderSubtle}
+                    backgroundColor={active ? theme.backgroundElement : undefined}
+                    paddingLeft={2}
+                    paddingRight={2}
+                    onMouseUp={() => {
+                      setField("jump")
+                      setJump(option)
+                    }}
+                  >
+                    <text
+                      fg={active ? theme.primary : theme.textMuted}
+                      attributes={active ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                    >
+                      {t(option ? "kanban.detail.jump.follow" : "kanban.detail.jump.stay")}
+                    </text>
+                  </box>
                 )
               })}
             </box>

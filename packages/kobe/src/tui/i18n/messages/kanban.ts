@@ -44,9 +44,15 @@ export const en = {
     engine: "ENGINE",
     workspace: "WORKSPACE",
     placement: {
-      worktree: "New worktree — open its task session",
-      worktreeBg: "New worktree — start in background, stay on the board",
-      project: "Project checkout — no worktree",
+      worktree: "New worktree task — its own workspace",
+      projectWorktree: "New worktree — as a chattab in the project workspace",
+      project: "Project checkout — a new chattab, no worktree",
+    },
+    /** The follow-or-stay toggle (orthogonal to placement). */
+    jumpLabel: "AFTER START",
+    jump: {
+      stay: "Stay on the board",
+      follow: "Jump to the session",
     },
     startLegend: "enter/ctrl+enter start · tab fields · ←→ engine · ↑↓ workspace · esc save & close",
     /** Linked-story jump action: section header + the button itself. */
@@ -98,9 +104,14 @@ export const zh: typeof en = {
     engine: "引擎",
     workspace: "工作区",
     placement: {
-      worktree: "新建 worktree——打开它的任务会话",
-      worktreeBg: "新建 worktree——后台启动,留在看板",
-      project: "项目主目录——不建 worktree",
+      worktree: "新建 worktree 任务——独立工作区",
+      projectWorktree: "新建 worktree——作为项目工作区里的 chattab",
+      project: "项目主目录——新开 chattab,不建 worktree",
+    },
+    jumpLabel: "启动后",
+    jump: {
+      stay: "留在看板",
+      follow: "跳转到会话",
     },
     startLegend: "enter/ctrl+enter 启动 · tab 切字段 · ←→ 引擎 · ↑↓ 工作区 · esc 保存关闭",
     sessionLabel: "会话",

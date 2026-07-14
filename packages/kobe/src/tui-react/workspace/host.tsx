@@ -392,7 +392,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             openDiffTabFn.current = open
           }}
           onQuickFork={quickFork.onQuickFork}
-          initialPrompt={quickFork.initialPromptFor(selectedTask?.id) ?? issueChat.initialPromptFor(selectedTask?.id)}
+          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
       </box>
 
