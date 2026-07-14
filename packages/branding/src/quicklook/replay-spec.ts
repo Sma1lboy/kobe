@@ -152,6 +152,8 @@ export type ResolvedReplaySpec = Omit<RawReplaySpec, "camera" | "regions" | "sta
   stages: ResolvedStage[]
 }
 
+const REPLAY_ACTIONS = new Set<ReplayBeat["action"]>(["typeText", "typeTextWhenReady", "key", "flow", "sleep"])
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -306,6 +308,15 @@ export function resolveReplaySpec(raw: unknown, capture: CaptureMeta): ResolvedR
   for (const [i, beat] of spec.beats.entries()) {
     assertNumber(beat.at, `beats[${i}].at`)
     assertString(beat.action, `beats[${i}].action`)
+    if (!REPLAY_ACTIONS.has(beat.action)) throw new Error(`beat ${i} has unsupported action "${beat.action}"`)
+    if (beat.action === "flow" && (beat.flow !== "createTask" || !spec.flows?.createTask)) {
+      throw new Error(`beat ${i} references unknown flow "${beat.flow ?? ""}"`)
+    }
+    if (beat.action === "key") assertString(beat.key, `beats[${i}].key`)
+    if (beat.action === "sleep") {
+      const ms = assertNumber(beat.ms, `beats[${i}].ms`)
+      if (ms < 0) throw new Error(`replay spec beats[${i}].ms must be non-negative`)
+    }
     assertWaitRef(spec.waits, beat.waitFor, `beat ${i}`)
     assertTextRef(spec.text, beat.textRef, `beat ${i}`)
     for (const [ruleIndex, rule] of (beat.dismissIfText ?? []).entries()) {

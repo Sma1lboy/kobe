@@ -127,6 +127,15 @@ describe("replay spec", () => {
     ).toThrow(/theme.runOverrides/)
   })
 
+  test("rejects unsupported capture actions and missing flow names", () => {
+    expect(() => resolveReplaySpec({ ...baseSpec, beats: [{ at: 0, action: "mouse" }] }, capture)).toThrow(
+      /unsupported action "mouse"/,
+    )
+    expect(() => resolveReplaySpec({ ...baseSpec, beats: [{ at: 0, action: "flow", flow: "missing" }] }, capture)).toThrow(
+      /unknown flow "missing"/,
+    )
+  })
+
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
   })
