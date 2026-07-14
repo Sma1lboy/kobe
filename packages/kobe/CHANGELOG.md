@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.3
+
+### Patch Changes
+
+- 5a7b9ce: Stop rebuilding the embedded terminal's ~850-entry key passthrough table on every output frame; it is now computed once and reused for the pane's lifetime.
+- 85ee965: Prevent stale terminal reset confirmations from replacing newer sessions, clear the previous task snapshot on PTY switches, and keep fresh terminals sized to the current pane.
+- 95d82c1: Let keyboard-only users read the whole help reference: arrows, PageUp/PageDown, and Home/End now scroll the shortcuts list while the dialog is open.
+- 1b7e01e: Fix duplicate global engine hooks after upgrade: the activity-hook merge now recognizes legacy unquoted `kobe hook <verb>` entries as kobe's own and replaces them, instead of leaving them behind next to the quoted form — previously every Claude event fired kobe's hook twice (double `kobe hook` spawns and duplicate daemon reports). The stale entries are cleaned automatically on the next kobe launch.
+- 6cb361d: Sidebar spinner frames now update only the rows that are actually animating instead of re-rendering the whole task rail ten times a second while anything is loading.
+- 23a8a73: Kanban background Start now actually launches the engine session: the story's task is created, the engine spawns immediately in the hosted PTY with the story prompt (including the self-report `issue-set-status` instruction), and you stay on the board — In-progress cards show a live activity badge (working / turn done / needs permission / rate limited / error) from the engine-state channel, and visiting the task later attaches to the same running session. Background start is now the detail drawer's default placement.
+- 68af91c: Kanban ↔ task round-trip: `c` on a sidebar task row now opens the board pointed at that task — its project active and its linked story pre-selected — and a started story's detail drawer shows a visible "Open the linked session" action (focused by default, enter or click jumps to the workspace) instead of hiding the jump behind ctrl+enter.
+- d303589: Kanban start: jump-or-stay is now its own toggle (AFTER START — stay on the board / jump to the session), decoupled from placement, and the three placements purely describe where the session runs: a new worktree task with its own workspace, a new worktree presented as a chattab inside the project workspace (viewport tab attached to the task's session), or a new chattab on the project checkout. Every combination launches the engine immediately; the project-checkout start now always opens its own chattab, so a busy first tab can no longer swallow the story prompt.
+- 95739e2: Keep the last-selected task in control: a slow task activation no longer steals selection back, and PR prompts or editor opens resolved after a task switch no longer land in the newly selected session.
+- 71de61b: Keep the chat tab's title when the last tab recycles in place: the fresh engine tab now carries the exited tab's user title and auto-title instead of resetting to untitled and re-deriving a new name from the next session's first prompt, so the tab no longer visibly renames itself on every recycle.
+- ab97a7b: Prevent notification titles from injecting terminal control sequences through OSC desktop alerts.
+- 38b6c0a: Keep the settings page's keyboard cursor visible: navigating with j/k or arrows now scrolls the selected row into view on short terminals instead of moving focus onto clipped rows.
+- 4cc1842: Keep the Tasks sidebar status glyph scoped to agent runtime activity, with a hollow idle circle and an always-visible running animation.
+
 ## 0.8.2
 
 ### Patch Changes
