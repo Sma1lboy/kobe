@@ -2,6 +2,7 @@ import { chmod, mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { basename, join, resolve } from "node:path"
 import type { CaptureTerminal } from "./capture-core"
+import { DEFAULT_TERMINAL_THEME, type TerminalTheme } from "./ansi"
 import type { SeedTask } from "./replay-spec"
 
 export type SidecarSpawnOptions = {
@@ -30,6 +31,7 @@ export type PureTuiCaptureOptions = {
   readyTimeoutMs?: number
   cols: number
   rows: number
+  theme?: Pick<TerminalTheme, "defaultFg" | "defaultBg">
   protocolTimeoutMs?: number
   sidecarExitTimeoutMs?: number
   sidecarPath?: string
@@ -241,7 +243,15 @@ export class PureTuiTerminal implements CaptureTerminal {
     private readonly client: JsonLineSidecarClient,
     private readonly options: Pick<
       PureTuiCaptureOptions,
-      "repoRoot" | "demoRoot" | "fixtureRepo" | "seedTasks" | "readyPattern" | "readyTimeoutMs" | "cols" | "rows"
+      | "repoRoot"
+      | "demoRoot"
+      | "fixtureRepo"
+      | "seedTasks"
+      | "readyPattern"
+      | "readyTimeoutMs"
+      | "cols"
+      | "rows"
+      | "theme"
     >,
   ) {}
 
@@ -308,7 +318,16 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
   })
   const diagnostics: Diagnostics = { snapshot: "", demoRoot }
   const client = new JsonLineSidecarClient(process, options.protocolTimeoutMs ?? 30_000, diagnostics)
-  const terminal = new PureTuiTerminal(client, { ...options, repoRoot, demoRoot, fixtureRepo })
+  const terminal = new PureTuiTerminal(client, {
+    ...options,
+    repoRoot,
+    demoRoot,
+    fixtureRepo,
+    theme: options.theme ?? {
+      defaultFg: DEFAULT_TERMINAL_THEME.defaultFg,
+      defaultBg: DEFAULT_TERMINAL_THEME.defaultBg,
+    },
+  })
   let cleaned = false
   return {
     terminal,

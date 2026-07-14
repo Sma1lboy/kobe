@@ -138,6 +138,28 @@ export function serializeXtermLine(line) {
   return result
 }
 
+const oscRgb = (color, name) => {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color)
+  if (!match) throw new Error(`${name} must be a #RRGGBB color`)
+  return match.slice(1).map((component) => component.toLowerCase().repeat(2)).join("/")
+}
+
+const DEFAULT_TERMINAL_THEME = { defaultFg: "#FFFFFF", defaultBg: "#141413" }
+
+export function registerDefaultColorHandlers(terminal, theme, reply) {
+  const colors = [
+    [10, oscRgb(theme?.defaultFg, "theme.defaultFg")],
+    [11, oscRgb(theme?.defaultBg, "theme.defaultBg")],
+  ]
+  return colors.map(([slot, color]) =>
+    terminal.parser.registerOscHandler(slot, (data) => {
+      if (data !== "?") return false
+      reply(`\u001b]${slot};rgb:${color}\u001b\\`)
+      return true
+    }),
+  )
+}
+
 export async function ensureNodePtySpawnHelperExecutable(dependencies = {}) {
   if ((dependencies.platform ?? process.platform) === "win32") return
   const resolveModule = dependencies.resolveModule ?? ((name) => require.resolve(name))
@@ -257,6 +279,13 @@ export function createSidecarController(dependencies) {
       childAlive = false
       resolveChildExit()
     })
+    const forwardReply = (data) => {
+      if (childAlive) child.write(data)
+    }
+    if (typeof terminal.onData === "function" && typeof terminal.parser?.registerOscHandler === "function") {
+      terminal.onData(forwardReply)
+      registerDefaultColorHandlers(terminal, request.theme ?? DEFAULT_TERMINAL_THEME, forwardReply)
+    }
     child.onData((data) => {
       rawAnsi = `${rawAnsi}${data}`.slice(-1_048_576)
       writes = writes.then(() => new Promise((resolveWrite) => terminal.write(data, resolveWrite)))

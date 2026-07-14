@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
+import { DEFAULT_TERMINAL_THEME } from "../src/quicklook/ansi"
 import { type CaptureOutput, runReplayCapture, writeCaptureAtomically } from "../src/quicklook/capture-core"
 import { type PureTuiCaptureOptions, createPureTuiCapture } from "../src/quicklook/puretui-terminal"
 import { type CaptureMeta, type RawReplaySpec, resolveReplaySpec } from "../src/quicklook/replay-spec"
@@ -90,6 +91,10 @@ export async function capturePureTui(
     readyTimeoutMs: ready?.timeoutMs,
     cols: spec.viewport.cols,
     rows: spec.viewport.rows,
+    theme: {
+      defaultFg: spec.theme?.defaultFg ?? DEFAULT_TERMINAL_THEME.defaultFg,
+      defaultBg: spec.theme?.defaultBg ?? DEFAULT_TERMINAL_THEME.defaultBg,
+    },
     protocolTimeoutMs: options.timeoutMs,
   })
   try {
