@@ -8,12 +8,13 @@ loadFont("normal", { weights: ["400", "700"] })
 import { DEFAULT_TERMINAL_THEME, normalizeTerminalLine, renderTextPresentation, terminalThemeFrom, type TerminalLine } from "./ansi"
 import capture from "./frames.json"
 import replaySpecJson from "./quicklook.replay.json"
-import { resolveReplaySpec, type Region } from "./replay-spec"
+import { assertRenderableCapture, resolveReplaySpec, type Region } from "./replay-spec"
 
 // Replays a captured kobe TUI session (scripts/capture-tui.ts output) as the
 // landing-page quicklook video. UI iterates -> re-run capture -> re-render;
 // no manual screen recording.
 
+assertRenderableCapture(capture)
 const replaySpec = resolveReplaySpec(replaySpecJson, capture)
 const VIEW_W = replaySpec.viewport.width
 const VIEW_H = replaySpec.viewport.height

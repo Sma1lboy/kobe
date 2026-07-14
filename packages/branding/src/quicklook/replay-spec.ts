@@ -182,6 +182,31 @@ const assertString = (value: unknown, name: string): string => {
   return value
 }
 
+export function assertRenderableCapture(value: unknown): asserts value is CaptureMeta {
+  const capture = assertObject(value, "capture")
+  const cols = assertNumber(capture.cols, "capture.cols")
+  const rows = assertNumber(capture.rows, "capture.rows")
+  if (!Number.isInteger(cols) || cols <= 0 || !Number.isInteger(rows) || rows <= 0) {
+    throw new Error("capture cols and rows must be positive integers")
+  }
+  const frames = assertArray(capture.frames, "capture.frames")
+  if (frames.length === 0) throw new Error("capture must contain at least one frame")
+  let previous = -Infinity
+  for (const [frameIndex, frameValue] of frames.entries()) {
+    const frame = assertObject(frameValue, `capture.frames[${frameIndex}]`)
+    const timestamp = assertNumber(frame.t, `capture.frames[${frameIndex}].t`)
+    if (timestamp < previous) throw new Error("capture frame timestamps must be monotonic")
+    previous = timestamp
+    const lines = assertArray(frame.lines, `capture.frames[${frameIndex}].lines`)
+    if (lines.length !== rows) throw new Error(`capture frame ${frameIndex} line count must match rows`)
+    for (const [lineIndex, line] of lines.entries()) {
+      if (typeof line === "string") continue
+      const positioned = assertObject(line, `capture.frames[${frameIndex}].lines[${lineIndex}]`)
+      assertString(positioned.rawAnsi, `capture.frames[${frameIndex}].lines[${lineIndex}].rawAnsi`)
+    }
+  }
+}
+
 const assertTheme = (value: unknown, name: string): TerminalTheme => {
   const theme = assertObject(value, name)
   for (const key of Object.keys(theme)) {
