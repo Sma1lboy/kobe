@@ -14,7 +14,7 @@
  * Chords reuse the canonical chattab binding ids: ctrl+t new · ctrl+e
  * new-with-engine · ctrl+w close (last tab refuses) · F2 rename · ctrl+]/[
  * cycle. Per-task tab state lives in the module-level map owned by
- * `terminal-tabs-store.ts` (shared with non-mounted writers like the
+ * `terminal-tabs-shared.ts` (shared with non-mounted writers like the
  * kanban issue-start paths), so switching tasks and back preserves each
  * task's tabs — their PTYs already survive via the registry's
  * acquire-reuse.
