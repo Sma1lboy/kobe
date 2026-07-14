@@ -22,26 +22,27 @@
 ### Task 1: Sanitize the Capture Color Environment
 
 **Files:**
-- Modify: `packages/branding/tests/puretui-terminal.test.ts`
+- Create: `packages/branding/tests/puretui-capture-environment.test.ts`
 - Modify: `packages/branding/src/quicklook/puretui-terminal.ts:51-65`
+- Modify: `packages/branding/package.json`
 
 **Interfaces:**
-- Consumes: `createPureTuiCapture(options: PureTuiCaptureOptions)` and its `SidecarFactory` injection.
+- Consumes: `captureEnvironment(demoRoot: string)` exported from the internal PureTUI capture adapter.
 - Produces: a sidecar spawn environment that never contains `NO_COLOR` and still declares `TERM=xterm-256color` plus `COLORTERM=truecolor`.
 
 - [ ] **Step 1: Write the failing environment-boundary test**
 
-Add a focused test that temporarily sets `process.env.NO_COLOR = "1"`, creates a capture with the existing fake sidecar, and asserts:
+Add a focused test that temporarily sets `process.env.NO_COLOR = "1"`, builds the capture environment, and asserts:
 
 ```ts
-expect(sidecarFactory.calls[0].env).not.toHaveProperty("NO_COLOR")
-expect(sidecarFactory.calls[0].env).toMatchObject({
+expect(env).not.toHaveProperty("NO_COLOR")
+expect(env).toMatchObject({
   TERM: "xterm-256color",
   COLORTERM: "truecolor",
 })
 ```
 
-Restore the previous process environment in `finally` and call capture cleanup.
+Restore the previous process environment in `finally`. Add the new test file to `test:replay`.
 
 - [ ] **Step 2: Run the test and verify RED**
 
@@ -56,7 +57,7 @@ Expected: FAIL because the sidecar environment currently contains `NO_COLOR: "1"
 
 - [ ] **Step 3: Implement the minimal environment filter**
 
-Extend the existing `inheritedEnvironment()` predicate in `puretui-terminal.ts` with:
+Export the existing internal environment builder for direct testing and extend the `inheritedEnvironment()` predicate in `puretui-terminal.ts` with:
 
 ```ts
 key !== "NO_COLOR"
@@ -71,7 +72,7 @@ Run the same focused command. Expected: PASS.
 ### Task 2: Add a Capture-Only Claude Command Override
 
 **Files:**
-- Modify: `packages/branding/tests/puretui-terminal.test.ts`
+- Modify: `packages/branding/tests/puretui-capture-environment.test.ts`
 - Modify: `packages/branding/scripts/capture-puretui.ts`
 
 **Interfaces:**
