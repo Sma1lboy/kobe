@@ -14,10 +14,11 @@
  *
  * Chords reuse the canonical chattab binding ids: ctrl+t new · ctrl+e
  * new-with-engine · ctrl+w close (last tab refuses) · F2 rename · ctrl+]/[
- * cycle. Per-task tab state lives in a module-level map so switching tasks
- * and back preserves each task's tabs (their PTYs already survive via the
- * registry's acquire-reuse) — same module map as the Solid original;
- * module-level state is framework-agnostic.
+ * cycle. Per-task tab state lives in the module-level map owned by
+ * `terminal-tabs-store.ts` (shared with non-mounted writers like the
+ * kanban issue-start paths), so switching tasks and back preserves each
+ * task's tabs — their PTYs already survive via the registry's
+ * acquire-reuse.
  *
  * Solid→React deltas (the load-bearing one): everything the Solid
  * component reads via the live `state()` accessor becomes a `stateRef`
@@ -32,12 +33,10 @@
  * ONCE (`useEffect(..., [])`), so anything they read must come through a
  * ref, not a captured render-time value. Everywhere else (event handlers,
  * `useBindings` configs, JSX) reads the plain `state`/`props` directly —
- * those are recreated fresh every render, same guarantee Solid's
- * accessors gave for free. `onEditorTabReady`/`onEngineSendReady` hand
- * their callback to the parent once per mount (a `useEffect(..., [])`)
- * instead of Solid's once-per-setup call — remounting on task/worktree
- * switch (the parent's `key`-ed Show/keyed render) re-fires it exactly
- * like the Solid original's re-setup.
+ * recreated fresh every render, the guarantee Solid's accessors gave for
+ * free. `onEditorTabReady`/`onEngineSendReady` hand their callback to the
+ * parent once per mount; remounting on task/worktree switch re-fires it
+ * exactly like the Solid original's re-setup.
  */
 
 import type { TranscriptActivity } from "@/client/remote-orchestrator"
@@ -67,8 +66,10 @@ import {
   selectTab,
   setTabSessionId,
   setTabSplit,
+  tabCwdFor,
   tabExitAction,
   tabPtyKey,
+  tabPtyKeyFor,
 } from "../../tui/workspace/terminal-tabs-core"
 import { EnginePickerDialog } from "../component/engine-picker-dialog"
 import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
@@ -85,55 +86,11 @@ import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
-import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
+import { terminalTabsKey } from "./terminal-tabs-persist"
+import { tabActivationListeners, tabsByTask, takeTabActivation } from "./terminal-tabs-store"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
 import { useTurnPolls } from "./use-turn-polls"
-
-/** Per-task tab state, preserved across task switches for the process. */
-const tabsByTask = new Map<string, TabsState>()
-
-/** The task's currently-active tab id (module map read) — the attention
- *  jump's "where am I" input. Null when the task never mounted tabs. */
-export function activeTabIdFor(taskId: string): string | null {
-  return tabsByTask.get(taskId)?.activeId ?? null
-}
-
-/**
- * Cross-component "activate this tab" request (the F7 attention jump). The
- * mounted TerminalTabs for `taskId` consumes it via the listener; a task
- * that isn't mounted yet consumes it on mount (the host selects the task
- * first, TerminalTabs mounts, then reads the pending request). Unknown tab
- * ids are dropped on consume — the tab may have closed meanwhile.
- */
-let pendingTabActivation: { taskId: string; tabId: string } | null = null
-const tabActivationListeners = new Set<() => void>()
-
-export function requestTabActivation(taskId: string, tabId: string): void {
-  pendingTabActivation = { taskId, tabId }
-  for (const listener of tabActivationListeners) listener()
-}
-
-/** Consume a pending activation for this task, or null. */
-function takeTabActivation(taskId: string): string | null {
-  if (pendingTabActivation?.taskId !== taskId) return null
-  const tabId = pendingTabActivation.tabId
-  pendingTabActivation = null
-  return tabId
-}
-
-/**
- * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
- * `tabsByTask` entry (module-level, otherwise only-grows) and its
- * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never
- * the archived sweep (an archived task must keep its snapshot to
- * unarchive-and-`--resume`). Its PTYs are released separately by the host's
- * archived-task sweep / the tab's own exit path.
- */
-export function forgetTaskTabs(kv: TabsSnapshotKv, taskId: string): void {
-  tabsByTask.delete(taskId)
-  forgetTaskTabsSnapshot(kv, taskId)
-}
 
 export interface TerminalTabsProps {
   taskId: string
@@ -244,7 +201,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
    *  this closure only supplies the IO reads (registry liveness, props). */
   const engineTabSpawn = (tab: EngineTab): TabSpawn => {
     const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
-    const live = getDefaultPtyRegistry().has(tabPtyKey(props.taskId, tab.id))
+    const live = getDefaultPtyRegistry().has(tabPtyKeyFor(props.taskId, tab))
     return engineTabSpawnFor(stateRef.current, tab, base, {
       live,
       shell: defaultShell(),
@@ -319,8 +276,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     const closing = current.tabs.find((tb) => tb.id === id)
     const { state: next, closedId } = closeTab(current, id)
     if (closedId) {
-      releaseSplitLeaves(tabPtyKey(props.taskId, closedId), closing?.splitTree ?? null)
-      getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
+      const key = closing ? tabPtyKeyFor(props.taskId, closing) : tabPtyKey(props.taskId, closedId)
+      releaseSplitLeaves(key, closing?.splitTree ?? null)
+      getDefaultPtyRegistry().release(key)
     }
     update(next)
   }
@@ -354,7 +312,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     const action = tabExitAction(active, info?.deadOnAttach === true, resumeTriedRef.current.has(active.id))
     if (action === "resume") {
       resumeTriedRef.current.add(active.id)
-      getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
+      getDefaultPtyRegistry().release(tabPtyKeyFor(props.taskId, active))
       setResetToken((n) => n + 1)
       return
     }
@@ -364,7 +322,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     }
     // Last tab: the strip can never be empty — recycle it in place as a
     // fresh engine tab (new session) instead of freezing on the exit banner.
-    getDefaultPtyRegistry().release(tabPtyKey(props.taskId, active.id))
+    getDefaultPtyRegistry().release(tabPtyKeyFor(props.taskId, active))
     resumeTriedRef.current.clear()
     const fresh = pinSession(initialTabs(), undefined)
     update(fresh)
@@ -478,8 +436,12 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           return
         }
         update(next)
-        releaseSplitLeaves(tabPtyKey(props.taskId, closedId), closing?.splitTree ?? null)
-        getDefaultPtyRegistry().release(tabPtyKey(props.taskId, closedId))
+        const key = closing ? tabPtyKeyFor(props.taskId, closing) : tabPtyKey(props.taskId, closedId)
+        releaseSplitLeaves(key, closing?.splitTree ?? null)
+        // A viewport tab (ptyTask) only VIEWS another task's session —
+        // ctrl+w removes the view; the story's session keeps running and
+        // its own task still resumes it.
+        if (!(closing?.kind === "engine" && closing.ptyTask)) getDefaultPtyRegistry().release(key)
       },
       "chat.tab.rename": requestRename,
     }),
@@ -518,8 +480,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         />
       ) : (
         <TerminalSplit
-          tabKey={tabPtyKey(props.taskId, active.id)}
-          cwd={props.worktree}
+          tabKey={tabPtyKeyFor(props.taskId, active)}
+          cwd={tabCwdFor(active, props.worktree)}
           command={spawn.command}
           initialInput={spawn.initialInput}
           splitTree={active.splitTree ?? null}

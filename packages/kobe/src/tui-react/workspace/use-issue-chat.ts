@@ -1,26 +1,27 @@
 /**
- * Issue-chat start wiring (kanban detail drawer → engine session) — the
- * quick-fork pattern generalized to the three issue placements
- * (`state/issue-chat.ts`):
+ * Issue-chat start wiring (kanban detail drawer → engine session). The
+ * placement says WHERE the session runs; `jump` says whether the user
+ * follows it or stays on the board — every combination LAUNCHES the engine
+ * immediately in the hosted PTY (`tui/workspace/issue-chat-spawn.ts`), so
+ * "start" always means the agent is working, and a jump merely attaches to
+ * the already-running session:
  *
- *   - `worktree`   — create the story's task, link the issue (flips it
- *                    `doing` + arms the daemon's done-mirror), enter it.
- *   - `worktreeBg` — same create+link, then the engine session LAUNCHES
- *                    immediately in the hosted PTY (`tui/workspace/
- *                    issue-chat-spawn.ts`) — the board's trigger: the agent
- *                    starts on the story right away while the user stays on
- *                    the kanban page tracking the card; visiting the task
- *                    later attaches to the same live session (the spawn's
- *                    tab snapshot is persisted under `terminalTabsKey`).
- *   - `project`    — `ensureMainTask` + stamp the chosen vendor on it (the
- *                    engine spec reads task.vendor at spawn), flip the story
- *                    `doing` (no link — the main task never "completes"),
- *                    enter the project workspace.
+ *   - `worktree`        — create the story's task + link the issue (the
+ *                         link stamps issue.taskId, flips it `doing`, arms
+ *                         the daemon's done-mirror), spawn its tab-1
+ *                         session headlessly, persist the tab snapshot.
+ *                         Jump = enter the task's workspace.
+ *   - `projectWorktree` — same task/spawn as `worktree`, PLUS a viewport
+ *                         tab (`EngineTab.ptyTask`) appended to the repo's
+ *                         MAIN workspace strip: isolated work, presented in
+ *                         the project. Jump = enter the project workspace
+ *                         (the viewport tab is active).
+ *   - `project`         — no worktree: a NEW chattab appended to the main
+ *                         workspace, running on the project checkout with
+ *                         the story prompt riding its spawn (a busy tab-1
+ *                         can no longer swallow the prompt). Jump = enter
+ *                         the project workspace.
  *
- * Foreground first-prompt delivery rides `TerminalTabs`' `initialPrompt`
- * prop exactly like quick-fork — the prompt is held here per task id and
- * consumed by the task's first engine spawn. Held in a Map (unlike
- * quick-fork's single slot) so several starts can be pending at once.
  * Image references need no side channel — `images[N]: /path` placeholder
  * lines live in the issue BODY (the detail drawer inserts them on paste),
  * so they ride the prompt as part of the story text.
@@ -28,7 +29,6 @@
 
 import { errorMessage } from "@/lib/error-message"
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
-import { useState } from "react"
 import { kobeApiInvocation } from "../../engine/interactive-command"
 import {
   type IssueChatPlacement,
@@ -38,12 +38,15 @@ import {
 } from "../../state/issue-chat"
 import { addSavedRepo } from "../../state/repos"
 import { setRepoLastActiveVendor } from "../../state/vendor-prefs"
+import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { buildIssueChatBackgroundSpawn } from "../../tui/workspace/issue-chat-spawn"
+import { buildIssueChatBackgroundSpawn, buildIssueTabSpawn } from "../../tui/workspace/issue-chat-spawn"
+import type { EngineTab } from "../../tui/workspace/terminal-tabs-core"
 import type { Task, VendorId } from "../../types/task"
 import { useKV } from "../context/kv"
 import { useT } from "../i18n"
 import { terminalTabsKey } from "./terminal-tabs-persist"
+import { appendBackgroundEngineTab } from "./terminal-tabs-store"
 
 export interface IssueChatStart {
   readonly repoRoot: string
@@ -51,6 +54,8 @@ export interface IssueChatStart {
   readonly issue: Issue
   readonly vendor: VendorId
   readonly placement: IssueChatPlacement
+  /** Follow the session (enter its workspace) or stay on the board. */
+  readonly jump: boolean
 }
 
 export interface IssueChatOrchestrator {
@@ -64,8 +69,6 @@ export interface IssueChatOrchestrator {
 export interface UseIssueChatResult {
   /** Kanban detail drawer's start action. Errors surface via `notifyError`. */
   readonly start: (request: IssueChatStart) => Promise<void>
-  /** Pass into ShowWorkspace's `initialPrompt` (alongside quick-fork's). */
-  readonly initialPromptFor: (taskId: string | undefined) => string | undefined
 }
 
 export function useIssueChat(
@@ -76,17 +79,12 @@ export function useIssueChat(
     /** Close the kanban page before landing on the session's workspace. */
     closeKanban: () => void
     notifyError: (message: string) => void
-    /** Feedback for a background start (the user stays on the board). */
+    /** Feedback for a stay-on-the-board start. */
     notifyInfo: (message: string) => void
   },
 ): UseIssueChatResult {
   const t = useT()
   const kv = useKV()
-  const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map())
-
-  function holdPrompt(taskId: string, prompt: string): void {
-    setPending((prev) => new Map(prev).set(taskId, prompt))
-  }
 
   async function enter(taskId: string): Promise<void> {
     hooks.closeKanban()
@@ -94,62 +92,81 @@ export function useIssueChat(
     await hooks.enterTask(taskId)
   }
 
+  async function finish(request: IssueChatStart, enterTaskId: string): Promise<void> {
+    if (request.jump) await enter(enterTaskId)
+    else hooks.notifyInfo(t("kanban.detail.startedBackground", { title: issueChatTaskTitle(request.issue) }))
+  }
+
+  /** Append a story chattab to the repo's MAIN workspace and spawn it (the
+   *  `project` placement — the story runs on the project checkout). */
+  async function startProjectTab(request: IssueChatStart, api: string): Promise<void> {
+    const { repoRoot, issue, vendor } = request
+    const main = await orch.ensureMainTask(repoRoot)
+    // Vendor lands on the task for future tabs; the story flip is
+    // best-effort (a status write must not strand the chat).
+    await orch.setVendor(main.id, vendor)
+    await orch
+      .mutateIssue(repoRoot, { type: "setStatus", id: issue.id, status: "doing" })
+      .catch((err: unknown) => console.error("[kobe kanban] issue setStatus failed:", err))
+    const { tab } = appendBackgroundEngineTab(kv, main.id, defaultShell(), { vendor })
+    const spawn = buildIssueTabSpawn({
+      taskId: main.id,
+      repoRoot,
+      worktreePath: main.worktreePath,
+      tab,
+      vendor,
+      prompt: issueProjectPrompt(issue, api),
+    })
+    getDefaultPtyRegistry().acquire(spawn.ptyKey, main.worktreePath, { command: spawn.command })
+    await finish(request, main.id)
+  }
+
+  /** Create + link the story's task and spawn its tab-1 session headlessly
+   *  (both worktree placements share this half). */
+  async function startWorktreeTask(
+    request: IssueChatStart,
+    api: string,
+  ): Promise<{ task: Task; worktreePath: string; tab: EngineTab }> {
+    const { repoRoot, issue, vendor } = request
+    setRepoLastActiveVendor(repoRoot, vendor)
+    addSavedRepo(repoRoot)
+    const task = await orch.createTask({ repo: repoRoot, title: issueChatTaskTitle(issue), vendor })
+    await orch
+      .mutateIssue(repoRoot, { type: "link", id: issue.id, taskId: task.id })
+      .catch((err: unknown) => console.error("[kobe kanban] issue link failed:", err))
+    const worktreePath = await orch.ensureWorktree(task.id)
+    const spawn = buildIssueChatBackgroundSpawn({ issue, taskId: task.id, repoRoot, worktreePath, vendor, api })
+    getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, { command: spawn.command })
+    kv.set(terminalTabsKey(task.id), spawn.tabsSnapshot)
+    return { task, worktreePath, tab: spawn.tabsSnapshot.tabs[0] as EngineTab }
+  }
+
   async function start(request: IssueChatStart): Promise<void> {
-    const { repoRoot, issue, vendor, placement } = request
     try {
       const api = kobeApiInvocation()
-      if (placement === "project") {
-        const main = await orch.ensureMainTask(repoRoot)
-        // Vendor must land on the task BEFORE the engine spawns — the spec
-        // reads task.vendor. The story flip is best-effort (a status write
-        // must not strand the chat), the setVendor is not.
-        await orch.setVendor(main.id, vendor)
-        await orch
-          .mutateIssue(repoRoot, { type: "setStatus", id: issue.id, status: "doing" })
-          .catch((err: unknown) => console.error("[kobe kanban] issue setStatus failed:", err))
-        holdPrompt(main.id, issueProjectPrompt(issue, api))
-        await enter(main.id)
+      if (request.placement === "project") {
+        await startProjectTab(request, api)
         return
       }
-      // Both worktree placements: create the story's task + link it (the
-      // link stamps issue.taskId, flips it `doing`, and arms the daemon's
-      // done-mirror). Link is best-effort — the task already exists.
-      setRepoLastActiveVendor(repoRoot, vendor)
-      addSavedRepo(repoRoot)
-      const task = await orch.createTask({ repo: repoRoot, title: issueChatTaskTitle(issue), vendor })
-      await orch
-        .mutateIssue(repoRoot, { type: "link", id: issue.id, taskId: task.id })
-        .catch((err: unknown) => console.error("[kobe kanban] issue link failed:", err))
-      if (placement === "worktree") {
-        holdPrompt(task.id, issueWorktreePrompt(issue, api))
-        await enter(task.id)
+      const { task, worktreePath, tab } = await startWorktreeTask(request, api)
+      if (request.placement === "projectWorktree") {
+        // Present the running session as a viewport tab in the PROJECT
+        // workspace — same PTY key, the task's worktree as cwd. Workspaces
+        // render one at a time, so the two views attach sequentially.
+        const main = await orch.ensureMainTask(request.repoRoot)
+        appendBackgroundEngineTab(kv, main.id, defaultShell(), {
+          vendor: request.vendor,
+          sessionId: tab.sessionId ?? null,
+          ptyTask: { id: task.id, worktree: worktreePath },
+        })
+        await finish(request, main.id)
         return
       }
-      // Background trigger: launch the engine session NOW in the hosted PTY
-      // (the prompt rides its argv — no held prompt, no first-visit wait).
-      // The persisted tab snapshot makes a later visit attach to this
-      // session; the kanban card tracks progress via the engine-state
-      // channel until the agent self-reports the story done.
-      const worktreePath = await orch.ensureWorktree(task.id)
-      const spawn = buildIssueChatBackgroundSpawn({
-        issue,
-        taskId: task.id,
-        repoRoot,
-        worktreePath,
-        vendor,
-        api,
-      })
-      getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, { command: spawn.command })
-      kv.set(terminalTabsKey(task.id), spawn.tabsSnapshot)
-      hooks.notifyInfo(t("kanban.detail.startedBackground", { title: issueChatTaskTitle(issue) }))
+      await finish(request, task.id)
     } catch (err) {
       hooks.notifyError(`Couldn't start issue chat: ${errorMessage(err)}`)
     }
   }
 
-  function initialPromptFor(taskId: string | undefined): string | undefined {
-    return taskId ? pending.get(taskId) : undefined
-  }
-
-  return { start, initialPromptFor }
+  return { start }
 }

@@ -36,12 +36,12 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
-import { forgetTaskTabs } from "./TerminalTabs"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
+import { forgetTaskTabs } from "./terminal-tabs-store"
 import { useAttention } from "./use-attention"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
@@ -383,7 +383,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             openDiffTabFn.current = open
           }}
           onQuickFork={quickFork.onQuickFork}
-          initialPrompt={quickFork.initialPromptFor(selectedTask?.id) ?? issueChat.initialPromptFor(selectedTask?.id)}
+          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
         />
       </box>
 

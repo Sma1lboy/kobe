@@ -117,7 +117,7 @@ describe("KanbanPage", () => {
   })
 
   it("enter inside the drawer hands the start request up with the chosen placement", async () => {
-    let started = null as { placement?: string; vendor?: string } | null
+    let started = null as { placement?: string; vendor?: string; jump?: boolean } | null
     const orch = fakeOrchestrator()
     const { frame, mockInput } = await renderComponent(
       <KanbanPage
@@ -135,15 +135,16 @@ describe("KanbanPage", () => {
     await frame()
     act(() => mockInput.pressEnter())
     await frame()
-    // ↓ moves the workspace placement off the worktreeBg default to the
-    // second option (worktree) — proves the picker steers AND that the
-    // background trigger is the drawer's default.
+    // ↓ moves the workspace placement off the worktree default to the
+    // second option (projectWorktree) — proves the picker steers — and the
+    // request carries jump:false (stay on the board is the default).
     act(() => mockInput.pressArrow("down"))
     await frame()
     act(() => mockInput.pressEnter())
     await settle()
     expect(started).not.toBeNull()
-    expect(started?.placement).toBe("worktree")
+    expect(started?.placement).toBe("projectWorktree")
+    expect(started?.jump).toBe(false)
   })
 
   // Why: `c` on a task row must open the board already POINTING at that

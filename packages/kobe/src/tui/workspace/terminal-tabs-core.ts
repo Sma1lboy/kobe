@@ -94,6 +94,16 @@ export interface EngineTab extends TabBase {
    * blank session under the same id.
    */
   readonly spawned?: boolean
+  /**
+   * This tab is a VIEWPORT onto another task's first engine session — the
+   * kanban "project chattab with its own worktree" placement: the story's
+   * task owns the worktree/branch/session, and this tab in the PROJECT
+   * workspace attaches to that session (`<ptyTask.id>::tab-1` key, the
+   * task's worktree as cwd, engine activity attributed to the task).
+   * Workspaces render one at a time, so the two views never attach
+   * simultaneously. Absent on every ordinary tab.
+   */
+  readonly ptyTask?: { readonly id: string; readonly worktree: string }
 }
 
 /**
@@ -354,9 +364,13 @@ export function engineTabSpawnFor(
     : isFreshFirstEngine
       ? ({ kind: "repo-init" } as const)
       : ({ kind: "none" } as const)
+  // A viewport tab (see EngineTab.ptyTask) launches AS the referenced
+  // task's first tab: its id, worktree, and tab identity — so activity,
+  // hooks, and a dead-reattach resume all belong to the story's task.
+  const ref = tab.ptyTask
   const launch = buildEngineSessionLaunch({
-    task: opts.task,
-    worktreePath: opts.worktreePath,
+    task: ref ? { ...opts.task, id: ref.id, kind: "task" } : opts.task,
+    worktreePath: ref?.worktree ?? opts.worktreePath,
     shell,
     argv: engineTabArgv(tab, base, live),
     promptIntent,
@@ -364,7 +378,7 @@ export function engineTabSpawnFor(
     // Tab identity → exported env in the launch script: the engine's hook
     // subprocesses inherit it, so `kobe hook` can attribute activity to
     // THIS tab — cwd alone can't (every tab of a task shares the worktree).
-    tabId: tab.id,
+    tabId: ref ? "tab-1" : tab.id,
   })
   return { command: launch.command }
 }
@@ -446,4 +460,19 @@ export function setTabSplit(state: TabsState, id: string, tree: PersistedSplit |
 /** Registry key for one tab's PTY — namespaced so tabs never collide. */
 export function tabPtyKey(taskId: string, tabId: string): string {
   return `${taskId}::${tabId}`
+}
+
+/** A tab's actual PTY key: a viewport tab (see {@link EngineTab.ptyTask})
+ *  attaches to the referenced task's FIRST engine session; every other tab
+ *  keys under its own task. */
+export function tabPtyKeyFor(taskId: string, tab: TerminalTab): string {
+  if (tab.kind === "engine" && tab.ptyTask) return tabPtyKey(tab.ptyTask.id, "tab-1")
+  return tabPtyKey(taskId, tab.id)
+}
+
+/** A tab's PTY working directory: viewport tabs run in the referenced
+ *  task's worktree, everything else in the host task's. */
+export function tabCwdFor(tab: TerminalTab, taskWorktree: string): string {
+  if (tab.kind === "engine" && tab.ptyTask) return tab.ptyTask.worktree
+  return taskWorktree
 }

@@ -5,19 +5,22 @@
  * story, and the agent reports completion through the daemon-owned issue API
  * (`issue-set-status`), never by editing repo files.
  *
- * Placements:
- *   - `worktree`   — a new worktree task; the session opens immediately.
- *   - `worktreeBg` — same task creation, but the user stays where they are;
- *                    the task's chattab lives under the project group in the
- *                    sidebar and the prompt rides its first engine spawn.
- *   - `project`    — no worktree: the engine runs on the repo's main-task
- *                    checkout (`task.ensureMain`), vendor stamped first.
+ * Placements say WHERE the session runs — jump-or-stay is the drawer's
+ * separate toggle (`IssueChatStart.jump`), supported by all three:
+ *   - `worktree`        — a new worktree task with its own workspace.
+ *   - `projectWorktree` — same task creation (worktree + branch + link),
+ *                         but the session ALSO appears as a chattab in the
+ *                         PROJECT workspace (a viewport tab —
+ *                         `EngineTab.ptyTask`): isolated work, presented
+ *                         where the project lives.
+ *   - `project`         — no worktree: a new chattab on the repo's
+ *                         main-task checkout (`task.ensureMain`).
  */
 
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { attachmentLabel } from "../tui/lib/attachments"
 
-export type IssueChatPlacement = "worktree" | "worktreeBg" | "project"
+export type IssueChatPlacement = "worktree" | "projectWorktree" | "project"
 
 /** Next `images[N]:`/`pdf[N]:` placeholder index in a body draft. */
 export function nextPlaceholderIndex(body: string): number {
@@ -41,10 +44,9 @@ export function withImagePlaceholders(body: string, paths: readonly string[]): s
   return next
 }
 
-/** Drawer order — background start first: the board's default trigger is
- *  "launch the agent, stay here and track the card"; jumping into the
- *  session is the explicit second choice. */
-export const ISSUE_CHAT_PLACEMENTS: readonly IssueChatPlacement[] = ["worktreeBg", "worktree", "project"]
+/** Drawer order — the isolated task workspace first (kobe's product unit),
+ *  then the project-presented variants. Jump/stay is a separate toggle. */
+export const ISSUE_CHAT_PLACEMENTS: readonly IssueChatPlacement[] = ["worktree", "projectWorktree", "project"]
 
 /** Task title for a story-spawned task — same `#id title` shape the web uses. */
 export function issueChatTaskTitle(issue: Issue): string {

@@ -201,6 +201,7 @@ export function KanbanPage(props: {
         issue: { ...issue, ...patch },
         vendor: outcome.vendor,
         placement: outcome.placement,
+        jump: outcome.jump,
       })
     })
   }
@@ -252,6 +253,7 @@ export function KanbanPage(props: {
           issue: created,
           vendor: outcome.start.vendor,
           placement: outcome.start.placement,
+          jump: outcome.start.jump,
         })
       } catch (err) {
         console.error("[kobe kanban] issue create failed:", err)
