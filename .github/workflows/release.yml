@@ -90,7 +90,7 @@ jobs:
   visual-ground-truth:
     # Keep the browser → PTY → OpenTUI baseline gate on macOS Intel: node-pty
     # cannot currently spawn even /bin/sh on the arm64 hosted runner.
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v5

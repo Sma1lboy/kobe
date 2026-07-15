@@ -16,9 +16,9 @@ matters.
 The render track is a required macOS CI/release gate. It uses Bun's native
 OpenTUI renderer and carries the same 50% per-touched-file floor as Vitest for
 `.tsx` components and React-owning hooks. The separate required visual gate
-runs the committed browser journey on macOS Intel, where node-pty can spawn
-the real terminal child. The Ubuntu V8 coverage job remains the fast/unit
-track; it does not pretend Node can execute OpenTUI components.
+runs the committed browser journey on the supported macOS Intel runner, where
+node-pty can spawn the real terminal child. The Ubuntu V8 coverage job remains
+the fast/unit track; it does not pretend Node can execute OpenTUI components.
 
 ## Behavioral self-test
 

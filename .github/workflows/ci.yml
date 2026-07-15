@@ -225,9 +225,9 @@ jobs:
 
   visual-ground-truth:
     # node-pty's macOS arm64 spawn path currently fails before the child shell
-    # starts (posix_spawnp); macos-13 keeps the real browser/PTy/OpenTUI
+    # starts (posix_spawnp); macos-15-intel keeps the real browser/PTy/OpenTUI
     # contract hard-gated on the supported Intel native helper.
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v5
