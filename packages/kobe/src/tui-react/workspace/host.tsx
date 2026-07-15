@@ -10,7 +10,7 @@ import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useRef, useState } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { type AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
@@ -37,12 +37,14 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
+import { ATTENTION_INBOX_HEIGHT, AttentionInboxPane } from "./AttentionInboxPane"
+import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
-import { forgetTaskTabs } from "./terminal-tabs-shared"
+import { forgetTaskTabs, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
@@ -65,7 +67,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
-  const engineTabStates = useAccessor(orch.engineTabStatesSignal())
+  const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
@@ -106,7 +108,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { jumpToNextAttention } = useAttention({
     tasks,
     engineState,
-    engineTabStates,
+    inboxItems,
     selectedId,
     kv,
     notif,
@@ -190,7 +192,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     if (next) focus.setFocused("workspace")
   }
   useEffect(() => {
-    if (focus.focused === "files") setZen(false)
+    if (focus.focused === "files" || focus.focused === "inbox") setZen(false)
   }, [focus.focused])
 
   /**
@@ -226,6 +228,22 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   function openDiff(relPath: string, base?: string): void {
     const label = pathLeaf(relPath)
     openDiffTabFn.current?.(relPath, label, base)
+  }
+
+  function openInboxItem(item: AttentionInboxItem): void {
+    const task = tasks.find((candidate) => candidate.id === item.taskId)
+    const available = isAttentionInboxItemAvailable(
+      item,
+      task,
+      (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined,
+    )
+    if (!available) {
+      notifyInfo(t("workspace.inbox.unavailable"))
+      return
+    }
+    selectTask(item.taskId)
+    if (item.tabId) requestTabActivation(item.taskId, item.tabId)
+    focus.setFocused("workspace")
   }
 
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
@@ -397,21 +415,40 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       </box>
 
       {!zen ? (
-        <box
-          width={worktreeToolsWidth}
-          flexShrink={0}
-          borderColor={focus.focused === "files" ? theme.focusAccent : inactiveBorder}
-          onMouseUp={() => focus.setFocused("files")}
-        >
-          <FileTree
-            worktreePath={worktree}
-            prBaseRef={selectedTask?.prStatus?.baseRef}
-            focused={activePane === "files"}
-            onOpenFile={(relPath) => void openFileInEditor(relPath)}
-            onOpenDiff={openDiff}
-            onZenToggle={toggleZen}
-            onCreatePR={() => void createPR()}
-          />
+        <box width={worktreeToolsWidth} flexShrink={0} flexDirection="column">
+          <box
+            flexGrow={1}
+            flexShrink={1}
+            borderColor={focus.focused === "files" ? theme.focusAccent : inactiveBorder}
+            onMouseUp={() => focus.setFocused("files")}
+          >
+            <FileTree
+              worktreePath={worktree}
+              prBaseRef={selectedTask?.prStatus?.baseRef}
+              focused={activePane === "files"}
+              onOpenFile={(relPath) => void openFileInEditor(relPath)}
+              onOpenDiff={openDiff}
+              onZenToggle={toggleZen}
+              onCreatePR={() => void createPR()}
+            />
+          </box>
+          <box
+            // A compact fixed row budget keeps Files as the flexible owner
+            // of the right column; this is UI grammar, not a pane proportion.
+            flexBasis={ATTENTION_INBOX_HEIGHT}
+            flexShrink={0}
+            borderColor={focus.focused === "inbox" ? theme.focusAccent : inactiveBorder}
+          >
+            <AttentionInboxPane
+              items={inboxItems}
+              tasks={tasks}
+              kv={kv}
+              focused={activePane === "inbox"}
+              onOpen={openInboxItem}
+              onDelete={(item) => void orch.dismissAttention(item.taskId, item.tabId).catch(notifyError)}
+              onRequestFocus={() => focus.setFocused("inbox")}
+            />
+          </box>
         </box>
       ) : null}
 
@@ -422,7 +459,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           `kobe tasks` pane did) — so the bottom-right toast silently never
           appeared. Absolute-positioned like SidebarHoverTooltip, under the
           host's NotificationsProvider. */}
-      <ToastOverlay />
+      <ToastOverlay bottomOffset={zen ? 0 : ATTENTION_INBOX_HEIGHT} />
       {/* Prefix sequence HUD — bottom-left over the Tasks sidebar (the
           terminal column is off-limits: it collided with the engine's own
           status line). Width-capped to the rail so lines never spill into

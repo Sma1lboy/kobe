@@ -19,13 +19,13 @@ import { renderComponent } from "./harness"
 // (or depends on) a real ~/.config/kobe/state.json.
 process.env.KOBE_HOME_DIR = process.env.KOBE_HOME_DIR ?? "/tmp/kobe-render-test-home"
 
-function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: string }) {
+function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: string; bottomOffset?: number }) {
   const notif = useNotifications()
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once notify.
   useEffect(() => {
     notif.notify({ kind: props.kind, taskId: "t1", tabId: "tab1", title: props.title })
   }, [])
-  return <ToastOverlay />
+  return <ToastOverlay bottomOffset={props.bottomOffset} />
 }
 
 function findSpan(frame: CapturedFrame, needle: string) {
@@ -54,6 +54,19 @@ describe("ToastOverlay", () => {
     const text = await frame()
     expect(text).toContain("clone failed")
     expect(text).toContain("✕")
+  })
+
+  it("moves above a bottom pane offset", async () => {
+    const normal = await renderComponent(<NotifyProbe kind="done" title="normal anchor" />, {
+      providers: { notifications: true },
+    })
+    const normalLine = (await normal.frame()).split("\n").findIndex((line) => line.includes("normal anchor"))
+    normal.destroy()
+    const raised = await renderComponent(<NotifyProbe kind="done" title="raised anchor" bottomOffset={8} />, {
+      providers: { notifications: true },
+    })
+    const raisedLine = (await raised.frame()).split("\n").findIndex((line) => line.includes("raised anchor"))
+    expect(raisedLine).toBe(normalLine - 8)
   })
 
   it.each([
