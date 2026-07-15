@@ -1,6 +1,5 @@
 import { attentionInboxItemKey } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { AttentionInboxItem } from "../../client/remote-orchestrator"
-import { sidebarProjectKey, sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import type { Task } from "../../types/task"
 
 export const attentionInboxKey = attentionInboxItemKey
@@ -43,61 +42,6 @@ export function sortAttentionInbox(
       (taskIndex.get(a.taskId) ?? Number.MAX_SAFE_INTEGER) - (taskIndex.get(b.taskId) ?? Number.MAX_SAFE_INTEGER)
     if (task !== 0) return task
     return attentionInboxItemKey(a).localeCompare(attentionInboxItemKey(b))
-  })
-}
-
-export type AttentionInboxGroup = {
-  key: string
-  repo: string | null
-  label: string | null
-  items: AttentionInboxItem[]
-}
-
-/** Group sorted episodes by project order; missing-task episodes form one final cleanup group. */
-export function groupAttentionInbox(
-  items: readonly AttentionInboxItem[],
-  tasks: readonly Task[],
-): AttentionInboxGroup[] {
-  const taskOrder = tasks.map((task) => task.id)
-  const sorted = sortAttentionInbox(items, taskOrder)
-  const tasksById = new Map(tasks.map((task) => [task.id as string, task]))
-  const unavailableKey = "unavailable"
-  const buckets = new Map<string, { repo: string | null; items: AttentionInboxItem[] }>()
-
-  for (const item of sorted) {
-    const task = tasksById.get(item.taskId)
-    const key = task ? `repo:${sidebarProjectKey(task.repo)}` : unavailableKey
-    const bucket = buckets.get(key) ?? { repo: task?.repo ?? null, items: [] }
-    bucket.items.push(item)
-    buckets.set(key, bucket)
-  }
-
-  const keys: string[] = []
-  const seen = new Set<string>()
-  for (const task of tasks) {
-    const key = `repo:${sidebarProjectKey(task.repo)}`
-    if (!buckets.has(key) || seen.has(key)) continue
-    seen.add(key)
-    keys.push(key)
-  }
-  if (buckets.has(unavailableKey)) keys.push(unavailableKey)
-
-  const repos = keys.flatMap((key) => {
-    const repo = buckets.get(key)?.repo
-    return repo ? [repo] : []
-  })
-  return keys.flatMap((key) => {
-    const bucket = buckets.get(key)
-    return bucket
-      ? [
-          {
-            key,
-            repo: bucket.repo,
-            label: bucket.repo ? sidebarProjectLabel(bucket.repo, repos) : null,
-            items: bucket.items,
-          },
-        ]
-      : []
   })
 }
 

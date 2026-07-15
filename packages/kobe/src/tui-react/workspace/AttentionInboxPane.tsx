@@ -5,6 +5,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { relativeAgeMs } from "../../tui/history/message-core"
+import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
 import { DEFAULT_TASK_VENDOR } from "../../types/task"
@@ -15,20 +16,13 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
-import {
-  type AttentionInboxGroup,
-  attentionInboxKey,
-  groupAttentionInbox,
-  isAttentionInboxItemAvailable,
-} from "./attention-inbox-core"
+import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
-const MAX_DIALOG_ROWS = 10
+const MAX_VISIBLE_CARDS = 4
+const CARD_ROWS_WITH_GAP = 5
+const DIALOG_CHROME_ROWS = 7
 const AGE_REFRESH_MS = 30_000
-
-type InboxViewRow =
-  | { kind: "project"; group: AttentionInboxGroup }
-  | { kind: "item"; item: AttentionInboxItem; itemIndex: number }
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -63,24 +57,22 @@ export function AttentionInboxPane(props: {
   onDelete: (item: AttentionInboxItem) => void
   onClose: () => void
 }) {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
   const [now, setNow] = useState(() => Date.now())
-  const groups = groupAttentionInbox(props.items, props.tasks)
-  const ordered = groups.flatMap((group) => group.items)
-  const rows: InboxViewRow[] = []
-  let itemIndex = 0
-  for (const group of groups) {
-    rows.push({ kind: "project", group })
-    for (const item of group.items) rows.push({ kind: "item", item, itemIndex: itemIndex++ })
-  }
-  const maxRows = Math.max(1, Math.min(MAX_DIALOG_ROWS, dimensions.height - 8))
+  const taskOrder = props.tasks.map((task) => task.id)
+  const ordered = sortAttentionInbox(props.items, taskOrder)
+  const maxVisibleCards = Math.max(
+    1,
+    Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
+  )
   const safeCursor = Math.min(cursor, Math.max(0, ordered.length - 1))
-  const activeRowIndex = rows.findIndex((row) => row.kind === "item" && row.itemIndex === safeCursor)
-  const windowStart = Math.max(0, Math.min(activeRowIndex - maxRows + 1, rows.length - maxRows))
-  const visible = rows.slice(windowStart, windowStart + maxRows)
+  const windowStart = Math.max(0, Math.min(safeCursor - maxVisibleCards + 1, ordered.length - maxVisibleCards))
+  const visible = ordered.slice(windowStart, windowStart + maxVisibleCards)
+  const repos = [...new Set(props.tasks.map((task) => task.repo))]
+  const idleCardBorder = transparentBackground ? theme.border : theme.borderSubtle
 
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
@@ -139,57 +131,57 @@ export function AttentionInboxPane(props: {
           </text>
         </box>
       ) : (
-        <box flexDirection="column" paddingTop={1} paddingBottom={1}>
-          {visible.map((row) => {
-            if (row.kind === "project") {
-              return (
-                <box key={row.group.key} flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
-                  <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-                    {row.group.label ?? t("workspace.inbox.unavailable")}
-                  </text>
-                  <text fg={theme.borderSubtle} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-                    {"─".repeat(120)}
-                  </text>
-                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                    {row.group.items.length}
-                  </text>
-                </box>
-              )
-            }
-            const { item, itemIndex: absoluteIndex } = row
+        <box flexDirection="column" gap={1} paddingTop={1} paddingBottom={1}>
+          {visible.map((item, index) => {
+            const absoluteIndex = windowStart + index
             const active = absoluteIndex === safeCursor
             const task = props.tasks.find((candidate) => candidate.id === item.taskId)
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
+            const project = task ? sidebarProjectLabel(task.repo, repos) : t("workspace.inbox.unavailable")
             return (
               <box
                 key={attentionInboxKey(item)}
-                flexDirection="row"
+                border={true}
+                borderColor={active ? theme.primary : idleCardBorder}
                 paddingLeft={1}
                 paddingRight={1}
-                backgroundColor={active ? theme.backgroundElement : undefined}
+                backgroundColor={theme.backgroundElement}
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
                   setCursor(absoluteIndex)
                   props.onOpen(item, tab.available)
                 }}
               >
-                <text fg={theme.focusAccent} wrapMode="none">
-                  {item.unread ? "• " : "  "}
-                </text>
-                <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
-                <text
-                  fg={tab.available ? theme.text : theme.textMuted}
-                  wrapMode="none"
-                  flexBasis={0}
-                  flexGrow={1}
-                  flexShrink={1}
-                >
-                  {`${title}${tab.label ? ` · ${tab.label}` : ""}${tab.available ? "" : ` · ${t("workspace.inbox.unavailable")}`}`}
-                </text>
-                <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                  {relativeAgeMs(item.at, now)}
-                </text>
+                <box flexDirection="row">
+                  <text fg={theme.focusAccent} wrapMode="none">
+                    {item.unread ? "• " : "  "}
+                  </text>
+                  <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
+                  <text
+                    fg={tab.available ? theme.text : theme.textMuted}
+                    attributes={active ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                    flexBasis={0}
+                    flexGrow={1}
+                    flexShrink={1}
+                  >
+                    {`${title}${tab.label ? ` · ${tab.label}` : ""}`}
+                  </text>
+                </box>
+                <box flexDirection="row" paddingLeft={4} gap={1}>
+                  <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+                    {project}
+                  </text>
+                  {!tab.available ? (
+                    <text fg={theme.warning} wrapMode="none" flexShrink={0}>
+                      {t("workspace.inbox.unavailable")}
+                    </text>
+                  ) : null}
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                    {relativeAgeMs(item.at, now)}
+                  </text>
+                </box>
               </box>
             )
           })}

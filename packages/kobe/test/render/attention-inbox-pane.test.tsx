@@ -48,12 +48,13 @@ function Probe(props: {
   onOpen: (item: AttentionInboxItem) => void
   onDelete: (item: AttentionInboxItem) => void
   items?: AttentionInboxItem[]
+  tasks?: Task[]
 }) {
   const kv = useKV()
   return (
     <AttentionInboxPane
       items={props.items ?? items}
-      tasks={tasks}
+      tasks={props.tasks ?? tasks}
       kv={kv}
       onOpen={props.onOpen}
       onDelete={props.onDelete}
@@ -119,8 +120,12 @@ describe("AttentionInboxPane", () => {
     const opened: string[] = []
     const deleted: string[] = []
     const { frame, mockInput } = await renderComponent(
-      <Probe onOpen={(item) => opened.push(item.taskId)} onDelete={(item) => deleted.push(item.taskId)} />,
-      { providers: { kv: true }, width: 46, height: 16 },
+      <Probe
+        tasks={[...tasks].reverse()}
+        onOpen={(item) => opened.push(item.taskId)}
+        onDelete={(item) => deleted.push(item.taskId)}
+      />,
+      { providers: { kv: true }, width: 60, height: 24 },
     )
     const text = await frame()
     expect(text).toContain("INBOX 2")
@@ -131,6 +136,8 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("2m")
     expect(text).toContain("2h")
     expect(text).toContain("• ? Alpha")
+    expect(text).not.toContain("project-a ─")
+    expect(text.indexOf("Alpha")).toBeLessThan(text.indexOf("Beta"))
 
     act(() => mockInput.pressKey("j"))
     act(() => mockInput.pressKey("d"))
