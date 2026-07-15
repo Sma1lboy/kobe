@@ -157,6 +157,8 @@ export type DaemonRequestName =
   // Explicitly dismiss one durable attention episode. Viewing/jumping never
   // calls this; only the Inbox pane's user action does.
   | "attention.dismiss"
+  // Mark the exact opened episode read; `at` guards against stale opens.
+  | "attention.read"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.

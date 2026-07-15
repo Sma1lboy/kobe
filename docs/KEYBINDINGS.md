@@ -44,7 +44,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
-| `F7` | Jump to the next retained Inbox episode — permission/input, error/rate-limit, or turn completion — across every project and the current task's other tabs. Jumping does not consume the episode. |
+| `F7` | Jump to the next retained Inbox episode — permission/input, error/rate-limit, or turn completion — across every project and the current task's other tabs. Opening marks it read but does not remove it. |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
@@ -75,7 +75,8 @@ preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
 The bottom-right Inbox is a separate focused surface. Its pane-local bindings
 are `j/k` to select, `enter` to jump to the task/chat tab, and `d` to delete
-that attention episode. Owner decision (2026-07-15): `d` is direct and
+that attention episode. Opening an episode marks its unread dot read; only a
+newer turn in the same tab or `d` removes it. Owner decision (2026-07-15): `d` is direct and
 Inbox-scoped because deletion is a frequent, explicit cleanup action there;
 it cannot shadow chat input or embedded-terminal shortcuts outside the pane.
 

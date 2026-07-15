@@ -54,6 +54,8 @@ function normalizeItem(value: unknown): AttentionInboxItem | null {
     tabId: item.tabId,
     state: item.state,
     ...(item.detail ? { detail: item.detail } : {}),
+    // Snapshots written before unread tracking are unresolved by definition.
+    unread: item.unread !== false,
     at: item.at,
   }
 }
@@ -116,10 +118,24 @@ export class AttentionInboxStore {
           tabId: tabId ?? null,
           state,
           ...(detail ? { detail } : {}),
+          unread: true,
           at: this.now(),
         })
       }
       await this.commit(next)
+    })
+  }
+
+  /** Mark only the episode the caller actually opened, not a newer replacement. */
+  async markRead(taskId: string, tabId: string | null, at: number): Promise<boolean> {
+    return await this.enqueue(async () => {
+      const key = itemKey(taskId, tabId)
+      const item = this.items.get(key)
+      if (!item || item.at !== at || !item.unread) return false
+      const next = new Map(this.items)
+      next.set(key, { ...item, unread: false })
+      await this.commit(next)
+      return true
     })
   }
 

@@ -161,6 +161,7 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
           p.state === "permission_needed" ||
           p.state === "error" ||
           p.state === "rate_limited") &&
+        (p.unread === undefined || typeof p.unread === "boolean") &&
         typeof p.at === "number"
       )
     })
@@ -168,7 +169,12 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       logClientError("orch", `dropped attention.inbox event: malformed item (${describePayload(items)})`)
       return
     }
-    signals.setAttentionInboxSig(items as AttentionInboxItem[])
+    signals.setAttentionInboxSig(
+      items.map((item) => ({
+        ...(item as AttentionInboxItem),
+        unread: (item as Partial<AttentionInboxItem>).unread !== false,
+      })),
+    )
     return
   }
   if (name === "task.jobs") {

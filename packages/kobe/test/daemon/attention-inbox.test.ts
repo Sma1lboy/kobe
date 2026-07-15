@@ -13,11 +13,15 @@ describe("daemon attention inbox", () => {
     dir = null
   })
 
-  async function create(now = 100): Promise<{ store: AttentionInboxStore; path: string; bus: DaemonEventBus }> {
+  async function create(now: number | (() => number) = 100): Promise<{
+    store: AttentionInboxStore
+    path: string
+    bus: DaemonEventBus
+  }> {
     dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-"))
     const path = join(dir, "attention-inbox.json")
     const bus = new DaemonEventBus()
-    const store = new AttentionInboxStore(path, bus, () => now)
+    const store = new AttentionInboxStore(path, bus, () => (typeof now === "function" ? now() : now))
     await store.init()
     return { store, path, bus }
   }
@@ -31,7 +35,9 @@ describe("daemon attention inbox", () => {
 
     await store.record("task-1", "turn-complete", undefined, "tab-2")
 
-    expect(store.snapshot()).toEqual([{ taskId: "task-1", tabId: "tab-2", state: "turn_complete", at: 123 }])
+    expect(store.snapshot()).toEqual([
+      { taskId: "task-1", tabId: "tab-2", state: "turn_complete", unread: true, at: 123 },
+    ])
     expect(snapshots.at(-1)).toEqual({ items: store.snapshot() })
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ version: 1, items: store.snapshot() })
 
@@ -61,7 +67,43 @@ describe("daemon attention inbox", () => {
     expect(await store.deleteEpisode("task-1", "tab-1")).toBe(false)
 
     await store.record("task-1", "turn-complete", undefined, "tab-1")
-    expect(store.snapshot()).toEqual([{ taskId: "task-1", tabId: "tab-1", state: "turn_complete", at: 100 }])
+    expect(store.snapshot()).toEqual([
+      { taskId: "task-1", tabId: "tab-1", state: "turn_complete", unread: true, at: 100 },
+    ])
+  })
+
+  it("persists read state and ignores a stale open after a replacement episode", async () => {
+    let now = 100
+    const { store, path } = await create(() => now)
+    await store.record("task-1", "turn-complete", undefined, "tab-1")
+
+    expect(await store.markRead("task-1", "tab-1", 100)).toBe(true)
+    expect(store.snapshot()[0]?.unread).toBe(false)
+
+    now = 200
+    await store.record("task-1", "turn-failed", { failure: "other" }, "tab-1")
+    expect(await store.markRead("task-1", "tab-1", 100)).toBe(false)
+    expect(store.snapshot()[0]).toMatchObject({ at: 200, unread: true })
+
+    const reloaded = new AttentionInboxStore(path, new DaemonEventBus())
+    await reloaded.init()
+    expect(reloaded.snapshot()[0]).toMatchObject({ at: 200, unread: true })
+  })
+
+  it("treats pre-unread snapshots as unread", async () => {
+    dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-legacy-"))
+    const path = join(dir, "attention-inbox.json")
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        items: [{ taskId: "task-1", tabId: null, state: "turn_complete", at: 50 }],
+      }),
+      "utf8",
+    )
+    const store = new AttentionInboxStore(path, new DaemonEventBus())
+    await store.init()
+    expect(store.snapshot()[0]?.unread).toBe(true)
   })
 
   it("keeps closed-tab episodes but cascades an explicit task deletion", async () => {

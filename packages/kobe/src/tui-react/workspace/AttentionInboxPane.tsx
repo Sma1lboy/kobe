@@ -15,6 +15,7 @@ import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } 
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 export const ATTENTION_INBOX_HEIGHT = 8
+export const ATTENTION_INBOX_BORDER: Array<"left" | "right" | "bottom"> = ["left", "right", "bottom"]
 const MAX_ROWS = 4
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
@@ -124,6 +125,9 @@ export function AttentionInboxPane(props: {
                   props.onOpen(item)
                 }}
               >
+                <text fg={theme.focusAccent} wrapMode="none">
+                  {item.unread ? "• " : "  "}
+                </text>
                 <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
                 <text fg={tab.available ? theme.text : theme.textMuted} wrapMode="none">
                   {`${title}${tab.label ? ` · ${tab.label}` : ""}${tab.available ? "" : ` · ${t("workspace.inbox.unavailable")}`}`}

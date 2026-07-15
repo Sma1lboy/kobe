@@ -12,6 +12,21 @@ function dispatch(name: DaemonRequestName, payload: unknown, ctx: DaemonHandlerC
 }
 
 describe("attention.dismiss handler", () => {
+  it("marks the exact opened episode read", async () => {
+    const { ctx, rec } = fakeCtx()
+    await expect(dispatch("attention.read", { taskId: "t1", tabId: "tab-2", at: 42 }, ctx)).resolves.toEqual({
+      updated: true,
+    })
+    expect(rec.inboxRead).toEqual([{ taskId: "t1", tabId: "tab-2", at: 42 }])
+  })
+
+  it("rejects a malformed episode timestamp", async () => {
+    const { ctx } = fakeCtx()
+    await expect(dispatch("attention.read", { taskId: "t1", at: "old" }, ctx)).rejects.toThrow(
+      "at must be a finite number",
+    )
+  })
+
   it("deletes exactly one task+tab episode", async () => {
     const { ctx, rec } = fakeCtx()
     await expect(dispatch("attention.dismiss", { taskId: "t1", tabId: "tab-2" }, ctx)).resolves.toEqual({

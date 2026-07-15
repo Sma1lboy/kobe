@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test"
 import type { AttentionInboxItem } from "../../src/client/remote-orchestrator"
 import { useKV } from "../../src/tui-react/context/kv"
-import { AttentionInboxPane } from "../../src/tui-react/workspace/AttentionInboxPane"
+import { ATTENTION_INBOX_BORDER, AttentionInboxPane } from "../../src/tui-react/workspace/AttentionInboxPane"
 import type { Task } from "../../src/types/task"
 import { toTaskId } from "../../src/types/task"
 import { act, renderComponent } from "./harness"
@@ -36,8 +36,8 @@ const tasks: Task[] = [
 ]
 
 const items: AttentionInboxItem[] = [
-  { taskId: "task-b", tabId: null, state: "turn_complete", at: 10 },
-  { taskId: "task-a", tabId: null, state: "permission_needed", at: 20 },
+  { taskId: "task-b", tabId: null, state: "turn_complete", unread: false, at: 10 },
+  { taskId: "task-a", tabId: null, state: "permission_needed", unread: true, at: 20 },
 ]
 
 function Probe(props: {
@@ -60,6 +60,24 @@ function Probe(props: {
 }
 
 describe("AttentionInboxPane", () => {
+  it("shares one divider line with the Files pane", async () => {
+    const { frame } = await renderComponent(
+      <box flexDirection="column">
+        <box height={4} borderColor="white">
+          <text>FILES</text>
+        </box>
+        <box height={4} border={ATTENTION_INBOX_BORDER} borderColor="white">
+          <text>INBOX</text>
+        </box>
+      </box>,
+      { width: 24, height: 8 },
+    )
+    const lines = (await frame()).split("\n")
+    const inboxLine = lines.findIndex((line) => line.includes("INBOX"))
+    expect(lines[inboxLine - 1]).toContain("└")
+    expect(lines[inboxLine]).not.toContain("┌")
+  })
+
   it("renders the empty Inbox state", async () => {
     const { frame } = await renderComponent(<Probe items={[]} onOpen={() => {}} onDelete={() => {}} />, {
       providers: { kv: true },
@@ -82,6 +100,7 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("INBOX 2")
     expect(text).toContain("Alpha")
     expect(text).toContain("Beta")
+    expect(text).toContain("• ? Alpha")
 
     act(() => mockInput.pressKey("j"))
     act(() => mockInput.pressKey("d"))
@@ -93,7 +112,7 @@ describe("AttentionInboxPane", () => {
   it("keeps a closed chat tab visible as unavailable", async () => {
     const { frame } = await renderComponent(
       <Probe
-        items={[{ taskId: "task-a", tabId: "closed-tab", state: "error", at: 10 }]}
+        items={[{ taskId: "task-a", tabId: "closed-tab", state: "error", unread: true, at: 10 }]}
         onOpen={() => {}}
         onDelete={() => {}}
       />,

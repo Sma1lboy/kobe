@@ -137,6 +137,8 @@ export interface AttentionInboxItem {
   readonly tabId: string | null
   readonly state: AttentionInboxState
   readonly detail?: EngineActivityDetail
+  /** Cleared only when this exact episode is opened; survives reconnects. */
+  readonly unread: boolean
   /** Event time, epoch milliseconds. Stable across daemon/TUI restarts. */
   readonly at: number
 }

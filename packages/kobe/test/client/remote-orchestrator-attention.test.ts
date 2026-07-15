@@ -24,7 +24,7 @@ describe("RemoteOrchestrator attention channel", () => {
   it("replaces the durable Inbox from full snapshots and rejects malformed payloads", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)
-    const item = { taskId: "t1", tabId: "tab-2", state: "permission_needed" as const, at: 42 }
+    const item = { taskId: "t1", tabId: "tab-2", state: "permission_needed" as const, unread: true, at: 42 }
 
     emit("attention.inbox", { items: [item] })
     expect(orch.attentionInboxSignal()()).toEqual([item])
@@ -32,6 +32,13 @@ describe("RemoteOrchestrator attention channel", () => {
     emit("attention.inbox", { items: "bad" })
     expect(orch.attentionInboxSignal()()).toEqual([item])
     expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("dropped attention.inbox"))
+
+    emit("attention.inbox", { items: [{ ...item, unread: "yes" }] })
+    expect(orch.attentionInboxSignal()()).toEqual([item])
+
+    const legacy = { taskId: "t2", tabId: null, state: "turn_complete" as const, at: 43 }
+    emit("attention.inbox", { items: [legacy] })
+    expect(orch.attentionInboxSignal()()).toEqual([{ ...legacy, unread: true }])
 
     emit("attention.inbox", { items: [] })
     expect(orch.attentionInboxSignal()()).toEqual([])

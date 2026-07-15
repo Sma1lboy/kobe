@@ -12,7 +12,7 @@ const item = (
   tabId: string | null,
   state: AttentionInboxItem["state"],
   at: number,
-): AttentionInboxItem => ({ taskId, tabId, state, at })
+): AttentionInboxItem => ({ taskId, tabId, state, unread: true, at })
 
 describe("attention inbox ordering", () => {
   test("prioritizes input and failures over completions, then oldest first", () => {

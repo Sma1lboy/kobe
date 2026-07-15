@@ -77,6 +77,7 @@ import {
   landTaskOp,
   listIssuesOp,
   listWorktreesOp,
+  markAttentionReadOp,
   moveTaskOp,
   mutateIssueOp,
   removeWorktreeOp,
@@ -436,6 +437,10 @@ export class RemoteOrchestrator {
 
   dismissAttention(taskId: TaskId | string, tabId: string | null): Promise<boolean> {
     return dismissAttentionOp(this.client, taskId, tabId)
+  }
+
+  markAttentionRead(taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> {
+    return markAttentionReadOp(this.client, taskId, tabId, at)
   }
 
   /** Land a task's branch back into its base repo (`task.land`). Throws with a

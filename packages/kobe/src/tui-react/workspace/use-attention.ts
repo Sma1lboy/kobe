@@ -21,7 +21,7 @@ import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
 import { isAttentionInboxItemAvailable, nextAttentionInboxTarget } from "./attention-inbox-core"
-import { activeTabIdFor, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
+import { activeTabIdFor, knownTaskTab } from "./terminal-tabs-shared"
 
 const CROSS_TASK_KEY = "notifications.crossTask.enabled"
 
@@ -32,12 +32,11 @@ export function useAttention(args: {
   selectedId: string | null
   kv: KVContext
   notif: NotificationsContext
-  selectTask: (id: string) => void
-  focusWorkspace: () => void
+  openAttention: (item: AttentionInboxItem) => void
   /** i18n'd toast shown when the chord finds no waiting task. */
   noTasksMessage: string
 }): { jumpToNextAttention: () => void } {
-  const { tasks, engineState, inboxItems, selectedId, kv, notif, selectTask, focusWorkspace, noTasksMessage } = args
+  const { tasks, engineState, inboxItems, selectedId, kv, notif, openAttention, noTasksMessage } = args
 
   // Previous frame's per-task state, for rising-edge detection. Seeded on the
   // first render so tasks already sitting in an attention state at mount don't
@@ -82,9 +81,7 @@ export function useAttention(args: {
       notif.notify({ kind: "done", taskId: selectedId ?? "", tabId: "", title: noTasksMessage })
       return
     }
-    selectTask(target.taskId)
-    if (target.tabId) requestTabActivation(target.taskId, target.tabId)
-    focusWorkspace()
+    openAttention(target)
   }
 
   return { jumpToNextAttention }

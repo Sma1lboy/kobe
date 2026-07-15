@@ -2,4 +2,4 @@
 "@sma1lboy/kobe": patch
 ---
 
-Add a durable bottom-right Inbox for chat tabs that need attention, retaining permission requests, failures, rate limits, and completions until that tab starts working again or the user explicitly deletes the episode.
+Add a durable bottom-right Inbox for chat tabs that need attention, with persistent unread dots and an explanatory modal for tabs that no longer exist. Episodes retain permission requests, failures, rate limits, and completions until that tab starts working again or the user explicitly deletes them.

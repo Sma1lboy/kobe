@@ -37,7 +37,8 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
-import { ATTENTION_INBOX_HEIGHT, AttentionInboxPane } from "./AttentionInboxPane"
+import { ATTENTION_INBOX_BORDER, ATTENTION_INBOX_HEIGHT, AttentionInboxPane } from "./AttentionInboxPane"
+import { InboxUnavailableDialog } from "./InboxUnavailableDialog"
 import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
@@ -112,8 +113,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     selectedId,
     kv,
     notif,
-    selectTask,
-    focusWorkspace: () => focus.setFocused("workspace"),
+    openAttention: openInboxItem,
     noTasksMessage: t("workspace.attention.none"),
   })
 
@@ -231,6 +231,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   function openInboxItem(item: AttentionInboxItem): void {
+    void orch.markAttentionRead(item.taskId, item.tabId, item.at).catch(notifyError)
     const task = tasks.find((candidate) => candidate.id === item.taskId)
     const available = isAttentionInboxItemAvailable(
       item,
@@ -238,7 +239,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined,
     )
     if (!available) {
-      notifyInfo(t("workspace.inbox.unavailable"))
+      InboxUnavailableDialog.show(dialog, t("workspace.inbox.unavailableTitle"), t("workspace.inbox.unavailableBody"))
       return
     }
     selectTask(item.taskId)
@@ -437,6 +438,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             // of the right column; this is UI grammar, not a pane proportion.
             flexBasis={ATTENTION_INBOX_HEIGHT}
             flexShrink={0}
+            border={ATTENTION_INBOX_BORDER}
             borderColor={focus.focused === "inbox" ? theme.focusAccent : inactiveBorder}
           >
             <AttentionInboxPane

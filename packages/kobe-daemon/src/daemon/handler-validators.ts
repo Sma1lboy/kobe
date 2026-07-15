@@ -38,6 +38,12 @@ export function optionalBoolean(payload: Record<string, unknown>, key: string): 
   return value
 }
 
+export function requireNumber(payload: Record<string, unknown>, key: string): number {
+  const value = payload[key]
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`)
+  return value
+}
+
 export function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
   // Engines are open: a vendor id may be a built-in OR a user-registered
   // custom engine (its launch command lives in the kobe-side customEngineIds
