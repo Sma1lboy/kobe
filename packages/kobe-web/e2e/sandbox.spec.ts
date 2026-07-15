@@ -6,6 +6,15 @@ const BODY = "Make status, project, and next action easy to scan."
 
 type VisualJourney = (terminal: Locator, buffer: Locator) => Promise<void>
 
+async function waitForVisualPty(harness: Locator, buffer: Locator): Promise<void> {
+  try {
+    await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
+  } catch (error) {
+    const output = (await buffer.textContent())?.trim() || "(no terminal output)"
+    throw new Error(`visual PTY did not open; terminal output:\n${output}\n${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 async function withVisualTui(page: Page, run: VisualJourney): Promise<void> {
   // Warm mode needs a fresh session per run (a reused tab would resume the
   // previous TUI mid-Kanban); hermetic mode keeps the stable id.
@@ -16,7 +25,7 @@ async function withVisualTui(page: Page, run: VisualJourney): Promise<void> {
     const terminal = page.getByTestId("opentui-terminal")
     const buffer = page.getByTestId("opentui-buffer")
 
-    await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
+    await waitForVisualPty(harness, buffer)
     await expect(buffer).toContainText("PROJECTS", { timeout: 45_000 })
     await expect(buffer).toContainText("TASKS")
     await expect(buffer).toContainText("Visual Fixture")
