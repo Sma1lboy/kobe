@@ -79,9 +79,19 @@ describe("runDoctorSubcommand", () => {
       if (name === "pty.list") {
         return {
           sessions: [
-            { key: "task-a::tab-1", alive: true },
-            { key: "task-b::tab-1", alive: false },
+            { key: "task-a::tab-1", alive: true, parked: false },
+            { key: "task-b::tab-1", alive: false, parked: true },
           ],
+          pid: 99,
+          rssBytes: 12 * 1024 * 1024,
+          stats: {
+            ringBytes: 128 * 1024,
+            ringCapacityBytes: 1024 * 1024,
+            parkedSessions: 1,
+            parkedScreenBytes: 100 * 1024,
+            parkRestoreDeltas: 7,
+            parkRestoreFallbacks: 2,
+          },
         }
       }
       throw new Error(`unexpected request ${name}`)
@@ -90,7 +100,11 @@ describe("runDoctorSubcommand", () => {
     await runDoctorSubcommand([])
 
     expect(output()).toContain("daemon:  ✓ running (pid 42, up 1m 5s, 2 task(s), 1 client(s))")
-    expect(output()).toContain("pty host: ✓ running (2 session(s), 1 live)")
+    expect(output()).toContain("pty host: ✓ running (2 session(s), 1 live, 1 parked)")
+    expect(output()).toContain("pid 99, 12.0 MB RSS")
+    expect(output()).toContain("ring: 128.0 KB / 1.0 MB")
+    expect(output()).toContain("parked screens: 100.0 KB")
+    expect(output()).toContain("park wakes: 7 delta, 2 full replay fallback")
     expect(output()).toContain("legacy tmux: tmux 3.6b — no sessions on `kobe`")
   })
 

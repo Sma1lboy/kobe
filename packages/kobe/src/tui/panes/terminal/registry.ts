@@ -109,7 +109,10 @@ export class PtyRegistry {
       if (since === null || now - since < idleMs) continue
       const screen = pty.capturePark?.() ?? null
       try {
-        pty.detach()
+        pty.detach({
+          parked: screen !== null,
+          parkedScreenBytes: screen ? Buffer.byteLength(screen.serialized) : undefined,
+        })
       } catch {
         /* already dead — drop it either way */
       }

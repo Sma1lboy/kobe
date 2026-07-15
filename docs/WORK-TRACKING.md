@@ -47,7 +47,8 @@ Code changes still land their user-facing line as a **Changeset** (see [`RELEASI
 2. Check `git status --short` so user changes are not mistaken for agent changes.
 3. Make a focused change.
 4. Run the applicable checks from `docs/HARNESS.md`.
-5. Update `CHANGELOG.md` for user-visible changes.
+5. Add a Changeset for user-visible package behavior; the release workflow
+   updates `CHANGELOG.md`. Do not edit the generated changelog by hand.
 6. Commit when green, using the repository commit rules from `AGENTS.md`.
 
 ## Recording follow-ups

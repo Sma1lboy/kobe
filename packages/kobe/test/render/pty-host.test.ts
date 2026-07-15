@@ -112,6 +112,26 @@ describe("PtyHost", () => {
     await until(() => dataText(b.frames).includes("after-reattach"))
   })
 
+  test("reports parked-screen retention and exact-delta versus fallback wakes", async () => {
+    const host = makeHost({ scrollbackCap: 32 })
+    const firstToken = {}
+    const first = host.open("t1::tab1", SPEC, firstToken, collector().sink)
+    host.write("t1::tab1", "one\n")
+    await until(() => host.stats().ringBytes > 0)
+    host.detach("t1::tab1", firstToken, true, 1234)
+
+    expect(host.list()).toMatchObject([{ key: "t1::tab1", parked: true, parkedScreenBytes: 1234 }])
+    expect(host.stats()).toMatchObject({ parkedSessions: 1, parkedScreenBytes: 1234 })
+
+    const secondToken = {}
+    host.open("t1::tab1", SPEC, secondToken, collector().sink, first.offset, first.pid ?? undefined)
+    expect(host.stats()).toMatchObject({ parkedSessions: 0, parkRestoreDeltas: 1, parkRestoreFallbacks: 0 })
+
+    host.detach("t1::tab1", secondToken, true, 99)
+    host.open("t1::tab1", SPEC, {}, collector().sink, 0, -1)
+    expect(host.stats().parkRestoreFallbacks).toBe(1)
+  })
+
   test("kill ends the child, notifies sinks, and forgets the session", async () => {
     let ended = 0
     const host = makeHost({ onSessionEnd: () => ended++ })

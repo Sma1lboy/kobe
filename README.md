@@ -15,18 +15,9 @@
 </p>
 <img width="2559" height="1510" alt="image" src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" />
 
-
 ## A quick look
 
-
-
-
-
 https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
-
-
-
-
 
 kobe opens into a PureTUI workspace with:
 
@@ -156,17 +147,18 @@ Start with [`AGENTS.md`](./AGENTS.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECT
 
 ### Testing & coverage
 
-Three test layers (contract: [`docs/HARNESS.md`](./docs/HARNESS.md)):
+Verification layers (contract: [`docs/HARNESS.md`](./docs/HARNESS.md)):
 
 ```bash
 bun run test                                   # unit + socket suites (fast, CI-gated)
 bun run build && bun run test:behavior         # black-box: the BUILT CLI in a temp home
                                                # + isolated daemon and Hosted PTY runtime
                                                # (CI-gated, `behavior` job)
+bun run visual                                 # real OpenTUI through /harness + PTY (Linux CI gate)
 cd packages/kobe && bun run coverage           # v8 coverage report (text + json-summary)
 ```
 
 Two hard rules keep regressions from coming back:
 
 - **Every bug fix ships a regression test** that fails before the fix and passes after, commented with the issue it pins. Environment-shaped bugs (terminal bytes, PATH state, packaged-vs-dev) get pinned in `test/behavior/`, not in a mocked unit test.
-- **Per-touched-file coverage floor on PRs** — every `packages/kobe/src` **`.ts`** file a PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); `coverage-exemption: <reason>` in the PR body opts out with a paper trail. Coverage scope is unit-testable `.ts` logic — opentui `.tsx` components can't run under vitest and are pinned by the behavior suite instead. There is deliberately no repo-wide % gate.
+- **Per-touched-file coverage floor on PRs** — touched source must meet the current floor or carry a documented `coverage-exemption`. OpenTUI render paths are also covered by the native render and browser visual gates; there is deliberately no repo-wide percentage target. See [`docs/HARNESS.md`](./docs/HARNESS.md) for the current CI matrix.

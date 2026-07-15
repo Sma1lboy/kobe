@@ -13,6 +13,13 @@ matters.
 - `bun run test:behavior` — built-CLI black-box tests.
 - `bun run test` — the package's required fast + socket aggregate.
 
+The render track is a required macOS CI/release gate. It uses Bun's native
+OpenTUI renderer and carries the same 50% per-touched-file floor as Vitest for
+`.tsx` components and React-owning hooks. The separate required visual gate
+runs the committed browser journey on Linux, which compiles node-pty and can
+create a real PTY in the hosted environment. The Ubuntu V8 coverage job remains
+the fast/unit track; it does not pretend Node can execute OpenTUI components.
+
 ## Behavioral self-test
 
 `test/behavior/harness.ts` runs `dist/cli/index.js` in a disposable HOME and
@@ -60,15 +67,40 @@ running server — stop `visual:serve` first. `KOBE_VISUAL_FRESH=1` forces a
 fixture rebuild.
 
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
-(real git repo, real task, three issues via `kobe api`), drive the real TUI
-through the harness (`c` → Kanban, `n` → New Story), take the single
-`kanban-new-issue.png` screenshot, and tear everything down. Ports derive from
-`KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails fast — never reuse a
-stray server, and never point the fixture at a real HOME or the shared
-`.dev-sandbox/home`. Local Terminal screenshots, native `kobe-web` pages such
-as `/board`, render-test frames, and `dev:mock` cannot approve visual changes;
-`test:e2e` (dev:mock) stays a PTY-transport smoke only. Failure artifacts land
-in `packages/kobe-web/test-results/` (actual/diff/trace).
+(real git repo, real task, three issues via `kobe api`). Each journey gets a
+fresh `/harness` browser PTY and starts from the Workspace; the journeys are
+independent, not one long stateful session. CI and release run this exact
+command on Linux.
+
+| Journey | Real OpenTUI route | Contract pinned |
+| --- | --- | --- |
+| Help and settings | Workspace → `F1` Help → close → Settings → close | Global modal and sidebar page transitions return to the live Workspace. |
+| Worktree audit | Workspace sidebar → Worktrees → close | The daemon-backed Worktrees page loads from the real fixture and returns safely. |
+| Story detail | Workspace sidebar → Kanban → select fixture card → detail drawer → close | Board selection reaches the persisted story detail without mutating it. |
+| Story intake | Workspace sidebar → Kanban → New Story → title and description | The creation drawer accepts real terminal input; its completed state is screenshot-pinned as `kanban-new-issue.png`. |
+
+Ports derive from `KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails
+fast — never reuse a stray server, and never point the fixture at a real HOME
+or the shared `.dev-sandbox/home`. Local Terminal screenshots, native
+`kobe-web` pages such as `/board`, render-test frames, and `dev:mock` cannot
+approve visual changes; `test:e2e` (dev:mock) stays a PTY-transport smoke only.
+Failure artifacts land in `packages/kobe-web/test-results/` (actual/diff/trace).
+
+## Terminal endurance probe
+
+`perf:golden` stays the fast release doctor. For multi-tab retention and
+park/wake regressions, run the non-CI hosted-PTY soak on a development machine:
+
+```bash
+cd packages/kobe
+bun run pty:soak -- --tabs=50 --cycles=5 --lines=1200
+```
+
+It creates a disposable `KOBE_HOME_DIR`, drives long output through real hosted
+shells, parks every tab, lets them keep emitting while hidden, then proves each
+wake sees its exact delta. It fails on lost markers or any full-replay fallback,
+not timing. `--tabs` accepts up to 100; the printed temporary home is retained
+for post-failure inspection and never points at production state.
 
 ## Regression policy
 

@@ -71,6 +71,15 @@ export type ParkedScreen = {
   readonly pid: number | null
 }
 
+/** Metadata sent with a persistent-handle detach. It lets the PTY Host's
+ * read-only inventory explain why a session has no attached terminal. */
+export type PtyDetachOpts = {
+  /** True only when the registry retained a serialized screen for this session. */
+  readonly parked?: boolean
+  /** UTF-8 byte size of that local serialized screen, never the screen itself. */
+  readonly parkedScreenBytes?: number
+}
+
 /**
  * Listener for new pane snapshots. Receives the full screen as
  * structured rows (one `Chunk[]` per row) plus the cursor position.
@@ -132,7 +141,7 @@ export interface TaskPtyLike {
    * to kill(). App teardown calls this via `registry.detachAll()`; the
    * registry's park sweep detaches idle unwatched handles the same way.
    */
-  detach?(): void
+  detach?(opts?: PtyDetachOpts): void
   /**
    * Epoch ms since the last data subscriber left, null while anyone is
    * subscribed. The park sweep's idle signal (`registry.parkIdle`): a
