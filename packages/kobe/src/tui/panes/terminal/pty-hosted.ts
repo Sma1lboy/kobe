@@ -262,9 +262,11 @@ export class HostedTaskPty extends XtermTaskPty {
         // reads the already-restored size, sees "unchanged", and skips
         // the repaint (measured: 2 zero-gap resizes → 1 signal at the
         // final size). Wait for the child's shrink repaint to actually
-        // arrive before restoring; the timeout covers children that
-        // don't repaint on WINCH at all (a plain shell).
-        await this.nextDataOrTimeout(200)
+        // arrive before restoring; macOS can schedule a shell's trap one
+        // tick later than the resize frame, so leave a bounded half-second
+        // for it. The timeout still covers children that do not repaint on
+        // WINCH at all (a plain shell).
+        await this.nextDataOrTimeout(500)
         if (!this.killed) this.sendResize(this.cols, this.rows)
       }
     } catch (err) {
