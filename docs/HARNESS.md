@@ -67,16 +67,24 @@ running server — stop `visual:serve` first. `KOBE_VISUAL_FRESH=1` forces a
 fixture rebuild.
 
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
-(real git repo, real task, three issues via `kobe api`), drive the real TUI
-through the harness (workspace → F1 help → Settings, then Kanban → New Story),
-lock the completed intake with `kanban-new-issue.png`, and tear everything
-down. CI and release run this exact command on Linux. Ports derive from
-`KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails fast — never reuse a
-stray server, and never point the fixture at a real HOME or the shared
-`.dev-sandbox/home`. Local Terminal screenshots, native `kobe-web` pages such
-as `/board`, render-test frames, and `dev:mock` cannot approve visual changes;
-`test:e2e` (dev:mock) stays a PTY-transport smoke only. Failure artifacts land
-in `packages/kobe-web/test-results/` (actual/diff/trace).
+(real git repo, real task, three issues via `kobe api`). Each journey gets a
+fresh `/harness` browser PTY and starts from the Workspace; the journeys are
+independent, not one long stateful session. CI and release run this exact
+command on Linux.
+
+| Journey | Real OpenTUI route | Contract pinned |
+| --- | --- | --- |
+| Help and settings | Workspace → `F1` Help → close → Settings → close | Global modal and sidebar page transitions return to the live Workspace. |
+| Worktree audit | Workspace sidebar → Worktrees → close | The daemon-backed Worktrees page loads from the real fixture and returns safely. |
+| Story detail | Workspace sidebar → Kanban → select fixture card → detail drawer → close | Board selection reaches the persisted story detail without mutating it. |
+| Story intake | Workspace sidebar → Kanban → New Story → title and description | The creation drawer accepts real terminal input; its completed state is screenshot-pinned as `kanban-new-issue.png`. |
+
+Ports derive from `KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails
+fast — never reuse a stray server, and never point the fixture at a real HOME
+or the shared `.dev-sandbox/home`. Local Terminal screenshots, native
+`kobe-web` pages such as `/board`, render-test frames, and `dev:mock` cannot
+approve visual changes; `test:e2e` (dev:mock) stays a PTY-transport smoke only.
+Failure artifacts land in `packages/kobe-web/test-results/` (actual/diff/trace).
 
 ## Terminal endurance probe
 
