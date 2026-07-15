@@ -296,6 +296,7 @@ export function deserializeTask(s: SerializedTask): Task {
     vendor: s.vendor,
     prStatus: s.prStatus,
     modelEffort: s.modelEffort,
+    deletion: s.deletion,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   }

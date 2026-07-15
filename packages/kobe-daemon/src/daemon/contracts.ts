@@ -3,6 +3,13 @@
 export type VendorId = "claude" | "codex" | "copilot" | (string & {})
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
+export interface TaskDeletionState {
+  readonly phase: "queued" | "running" | "error"
+  readonly force: boolean
+  readonly requestedAt: string
+  readonly error?: string
+}
+
 export interface TaskPRStatus {
   readonly provider: "github" | "gitlab" | "bitbucket" | "unknown"
   readonly lifecycle: "creating" | "open" | "ready_to_merge" | "merged" | "closed" | "unknown"
@@ -32,6 +39,7 @@ export interface DaemonTask {
   readonly prStatus?: TaskPRStatus
   readonly position?: number
   readonly modelEffort?: string
+  readonly deletion?: TaskDeletionState
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -79,6 +87,9 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
   deleteTask(id: string, options?: { force?: boolean }): Promise<void>
+  prepareTaskDeletion(id: string, options?: { force?: boolean }): Promise<boolean>
+  beginTaskDeletion(id: string): Promise<boolean>
+  finishTaskDeletion(id: string): Promise<void>
   landTask(
     id: string,
     options?: { strategy?: "merge" | "squash"; deleteBranch?: boolean; archive?: boolean },

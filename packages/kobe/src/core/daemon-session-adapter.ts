@@ -10,6 +10,7 @@ import {
 } from "../engine/hosted-session.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
+import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
@@ -19,6 +20,7 @@ async function getTask(link: DaemonRpcClient, taskId: string): Promise<Serialize
 
 async function ensureTaskWorktree(link: DaemonRpcClient, taskId: string) {
   const task = await getTask(link, taskId)
+  if (task.deletion) throw new TaskDeletingError(taskId)
   if (task.worktreePath) return { task, worktreePath: task.worktreePath }
   const { worktreePath } = await link.request<{ worktreePath: string | null }>("task.ensureWorktree", { taskId })
   if (!worktreePath) throw new Error(`task ${taskId} has no worktree`)

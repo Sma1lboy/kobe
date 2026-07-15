@@ -52,6 +52,7 @@ import {
   serializeTask,
 } from "./protocol.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
 
 // Re-exported for backward compatibility — `server.ts` and (transitively)
 // `packages/kobe/test/daemon/handlers.test.ts` import these from here.
@@ -79,6 +80,8 @@ export interface DaemonHandlerContext {
   readonly bus: DaemonEventBus
   /** Transient engine-activity state (`engine.reportEvent`, `task.delete`). */
   readonly activity: DaemonActivityRegistry
+  /** Starts deduplicated durable background deletion after RPC acceptance. */
+  readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
   readonly issues: IssuesStore
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */

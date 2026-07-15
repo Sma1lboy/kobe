@@ -40,6 +40,8 @@ export const en = {
   subtitle: {
     noTracking: "no activity tracking",
     materializing: "materializing",
+    deleting: "deleting",
+    deleteFailed: "delete failed",
   },
   /** ShortcutHints legend */
   hints: {
@@ -113,6 +115,8 @@ export const zh: typeof en = {
   subtitle: {
     noTracking: "不跟踪活动",
     materializing: "正在创建 worktree",
+    deleting: "正在删除",
+    deleteFailed: "删除失败",
   },
   hints: {
     headerFolded: "── 快捷键 ?▸ ──",

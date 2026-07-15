@@ -12,14 +12,10 @@ import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { canonPath, normalizeMainRepo, titleFromRepo } from "./core-helpers.ts"
-import {
-  CannotDeleteMainTaskError,
-  DirtyWorktreeError,
-  TaskNotFoundError,
-  WorktreeRemoveFailedError,
-} from "./errors.ts"
+import { DirtyWorktreeError, TaskDeletingError, TaskNotFoundError, WorktreeRemoveFailedError } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { type LandResult, type LandTaskOpts, landTaskWithCleanup } from "./land.ts"
+import { TaskDeletionCoordinator } from "./task-deletion.ts"
 import { TaskEditor } from "./task-editor.ts"
 import { PLACEHOLDER_TASK_TITLE } from "./title.ts"
 import { WorktreeCoordinator } from "./worktree-coordinator.ts"
@@ -75,6 +71,7 @@ export class Orchestrator {
   private readonly worktreeCoordinator: WorktreeCoordinator
   /** Owns in-place task-field edits (title / branch / vendor / status / …). */
   private readonly editor: TaskEditor
+  private readonly deletions: TaskDeletionCoordinator
   private readonly tasksAcc: StateCell<Task[]>
   private readonly activeTaskAcc: StateCell<string | null>
   private readonly unsubscribeStore: TaskIndexUnsubscribe
@@ -88,6 +85,9 @@ export class Orchestrator {
       this.ensureMainTask(repo),
     )
     this.editor = new TaskEditor(this.store, this.worktrees)
+    this.deletions = new TaskDeletionCoordinator(this.store, this.worktrees, (id) =>
+      this.worktreeCoordinator.forget(id),
+    )
     this.tasksAcc = createStateCell<Task[]>(this.store.list())
     // Seed focus from the persisted `lastActive` record (state/last-active
     // .ts) so a daemon restart or fresh TUI opens on the last-focused task
@@ -125,6 +125,7 @@ export class Orchestrator {
   /** Set the active-task focus and touch recency for task-list sorting. */
   async setActiveTask(id: TaskId | string | null): Promise<void> {
     const next = id === null ? null : String(id)
+    if (next && this.store.get(next)?.deletion) throw new TaskDeletingError(next)
     this.activeTaskAcc.set(next)
     if (next && this.store.get(next)) {
       // Global last-writer-wins focus record — see state/last-active.ts. This
@@ -262,6 +263,7 @@ export class Orchestrator {
    */
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
+    if (task.deletion) throw new TaskDeletingError(String(task.id))
     if (task.kind === "main") return repoWorkingDir(task.repo)
     if (task.worktreePath) {
       if (await this.worktrees.pathExists(task.worktreePath)) return task.worktreePath
@@ -352,36 +354,22 @@ export class Orchestrator {
    * worktree is genuinely gone.
    */
   async deleteTask(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<void> {
-    const task = this.store.get(id)
-    if (!task) return
-    if (task.kind === "main") {
-      throw new CannotDeleteMainTaskError()
-    }
-    const force = opts?.force === true
-    if (task.worktreePath) {
-      if (!force) {
-        let dirty = false
-        try {
-          dirty = await this.worktrees.isDirty(task.worktreePath)
-        } catch {
-          // Can't determine dirtiness (e.g. the path is already gone) —
-          // treat as clean and let remove() handle the missing-dir case.
-        }
-        if (dirty) throw new DirtyWorktreeError(task.id)
-      }
-      try {
-        // deleteBranch: a deleted task shouldn't leave its loser branch piling
-        // up (branch cleanup is best-effort inside remove(), never blocks it).
-        await this.worktrees.remove(task.worktreePath, { force, deleteBranch: true })
-      } catch (err) {
-        // Keep the index entry — see method doc. Surfacing instead of
-        // the old console.warn-and-continue means a failed cleanup no
-        // longer silently orphans the worktree.
-        throw new WorktreeRemoveFailedError(task.id, err)
-      }
-    }
-    await this.store.remove(task.id)
-    this.worktreeCoordinator.forget(task.id)
+    await this.deletions.deleteNow(id, opts)
+  }
+
+  /** Persist a deletion request after the normal safety checks. */
+  async prepareTaskDeletion(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<boolean> {
+    return this.deletions.prepare(id, opts)
+  }
+
+  /** Transition a queued/resumed deletion to running. */
+  async beginTaskDeletion(id: TaskId | string): Promise<boolean> {
+    return this.deletions.begin(id)
+  }
+
+  /** Execute physical cleanup and retain a visible error on failure. */
+  async finishTaskDeletion(id: TaskId | string): Promise<void> {
+    return this.deletions.finish(id)
   }
 
   /** Land a task's branch back into its base repo — executor + cleanup in `land.ts`. */

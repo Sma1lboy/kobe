@@ -112,6 +112,10 @@ function materializingSubtitle(): string {
   return t("tasks.subtitle.materializing")
 }
 
+function deletionSubtitle(failed: boolean): string {
+  return failed ? t("tasks.subtitle.deleteFailed") : t("tasks.subtitle.deleting")
+}
+
 /**
  * True when this task runs on a user-added (custom) engine, which has no
  * transcript store for the activity monitor to read — so liveness simply
@@ -145,7 +149,8 @@ export function rowIsLoading(opts: RowLoadingInputs): boolean {
   const hasActivity = activityState !== undefined
   const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
   const materializing = opts.job !== undefined
-  return materializing || (!untrackedCustomEngine && activityState === "running")
+  const deleting = task.deletion?.phase === "queued" || task.deletion?.phase === "running"
+  return deleting || materializing || (!untrackedCustomEngine && activityState === "running")
 }
 
 /**
@@ -216,6 +221,8 @@ export function buildSidebarRowView(opts: {
   // genuine daemon-side liveness fact, not engine telemetry, so the spinner
   // never lies here even for a custom engine.
   const materializing = opts.job !== undefined
+  const deleting = task.deletion?.phase === "queued" || task.deletion?.phase === "running"
+  const deleteFailed = task.deletion?.phase === "error"
   const loading = rowIsLoading({
     task,
     activity: opts.activity,
@@ -227,11 +234,13 @@ export function buildSidebarRowView(opts: {
     ? REDUCED_MOTION_SPINNER_FRAMES
     : (engineEntry(task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES)
   const spinner = spinnerFrames[opts.spinnerFrame % spinnerFrames.length] ?? spinnerFrames[0]
-  const tone = materializing
-    ? "primary"
-    : untrackedCustomEngine
-      ? "textMuted"
-      : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? "textMuted")))
+  const tone = deleteFailed
+    ? "error"
+    : deleting || materializing
+      ? "primary"
+      : untrackedCustomEngine
+        ? "textMuted"
+        : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? "textMuted")))
   // Subtitle priority: the materializing word while a worktree job runs
   // (there is no branch on disk yet), then a non-normal activity word (rate
   // limited / needs permission / error), then the branch, then — for an
@@ -240,17 +249,20 @@ export function buildSidebarRowView(opts: {
   // neutral dash. Persisted task lifecycle belongs to the board, not this
   // runtime-activity projection.
   const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : "—"
-  const subtitleText = materializing
-    ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
-    : activityLabel
-      ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
-      : branch.length > 0
-        ? opts.truncateBranch(branch, opts.subtitleBudget)
-        : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
+  const subtitleText =
+    deleting || deleteFailed
+      ? opts.truncateBranch(deletionSubtitle(deleteFailed), opts.subtitleBudget)
+      : materializing
+        ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
+        : activityLabel
+          ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
+          : branch.length > 0
+            ? opts.truncateBranch(branch, opts.subtitleBudget)
+            : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
   // Untracked custom engine gets a distinct dim dot. Normal tasks fall back
   // to the hollow idle circle because the client deliberately removes an
   // explicit `idle` activity entry; absence is therefore the idle projection.
-  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "○")
+  const restGlyph = deleteFailed ? "✕" : untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "○")
   const restProjectGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "★")
   return {
     isMain,
