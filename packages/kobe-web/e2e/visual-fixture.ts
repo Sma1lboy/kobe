@@ -14,7 +14,7 @@ export const VISUAL_HOME = join(VISUAL_ROOT, "home")
 export const VISUAL_REPO = join(VISUAL_ROOT, "fixture-repo")
 
 /** Bump when the fixture shape changes so warm reuse rebuilds. */
-const FIXTURE_VERSION = "1"
+const FIXTURE_VERSION = "2"
 const FIXTURE_MARKER = join(VISUAL_ROOT, "fixture-ok")
 
 // Inlined into the PTY command: the child runs under `/bin/sh -lc`, and a
@@ -99,10 +99,14 @@ async function seedStartupState(): Promise<void> {
     skillVersion = undefined
   }
 
-  const state: Record<string, string | boolean> = {
+  const state: Record<string, string | boolean | string[]> = {
     "app.lastRunVersion": packageJson.version,
     onboarded: true,
     skillHintSeen: "1",
+    // The Worktrees page audits saved projects rather than task rows. Keep
+    // the fixture repo in this independent registry so that visual journey
+    // exercises the real daemon-backed audit instead of its empty state.
+    savedRepos: [VISUAL_REPO],
   }
   if (skillVersion) state[`skillHintSeen:v${skillVersion}`] = "1"
   const stateDir = join(XDG_CONFIG_HOME, "kobe")

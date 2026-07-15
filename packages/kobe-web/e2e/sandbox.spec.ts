@@ -90,8 +90,9 @@ test("Kanban fixture detail opens and returns through the real OpenTUI", async (
     await pressTerminal(terminal, "c")
     await expect(buffer).toContainText("Backlog fixture")
 
-    // The first cursor key anchors the board's selection on the first card.
-    await pressTerminal(terminal, "ArrowDown")
+    // Kanban opens focused on the fixture task's linked card; move to the
+    // independent Backlog card before opening its editable detail drawer.
+    await pressTerminal(terminal, "ArrowLeft")
     await pressTerminal(terminal, "Enter")
     await expect(buffer).toContainText("#1")
     await expect(buffer).toContainText("Waiting to start.")
