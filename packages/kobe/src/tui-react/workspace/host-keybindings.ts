@@ -17,6 +17,7 @@
  */
 
 import { useRenderer } from "@opentui/react"
+import type { Binding } from "../../tui/lib/keymap-dispatch"
 import { HelpDialog } from "../component/help-dialog"
 import type { FocusContextValue, PaneId } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
@@ -43,6 +44,7 @@ export type WorkspaceKeybindingDeps = {
   openKanban: () => void
   searchActive: boolean
   selectedId: string | null
+  openTaskWorktree: (id: string) => void
   openSettings: () => void
   closeSettings: () => void
   createTask: () => void
@@ -50,6 +52,24 @@ export type WorkspaceKeybindingDeps = {
   cycleVendor: (id: string) => void
   toggleZen: () => void
   jumpToNextAttention: () => void
+}
+
+/**
+ * Keep the global prefix action and the sidebar's direct action wired to the
+ * same selected-task opener. The catalogue alone only makes a chord visible
+ * in Help; a host must register its handler for the chord to do anything.
+ */
+export function workspaceOpenWorktreeBindings(deps: Pick<WorkspaceKeybindingDeps, "selectedId" | "openTaskWorktree">): {
+  global: Binding[]
+  sidebar: Binding[]
+} {
+  const openSelected = (): void => {
+    if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
+  }
+  return {
+    global: bindByIds({ "task.openEditor": openSelected }),
+    sidebar: bindByIds({ "tasks.openWorktree": openSelected }),
+  }
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -100,6 +120,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     kanbanOpen: deps.kanbanOpen,
   }
   const pagesClosed = workspacePagesClosed(pages)
+  const openWorktreeBindings = workspaceOpenWorktreeBindings(deps)
 
   useBindings(() => ({
     enabled: pagesClosed,
@@ -118,6 +139,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
       }),
+      ...openWorktreeBindings.global,
     ],
   }))
   useBindings(() => ({
@@ -150,21 +172,24 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
   // the new-task dialog — same chord-leak class).
   useBindings(() => ({
     enabled: pagesClosed && focus.focused === "sidebar" && !deps.searchActive,
-    bindings: bindByIds({
-      "task.new": () => deps.createTask(),
-      "tasks.renameBranch": () => {
-        const id = deps.selectedId
-        if (id) deps.renameBranch(id)
-      },
-      "tasks.cycleEngine": () => {
-        const id = deps.selectedId
-        if (id) deps.cycleVendor(id)
-      },
-      // Right arrow — the tmux Tasks pane's "go right into the engine"
-      // gesture (tasks.focusEngine), same row, pure-TUI equivalent: focus
-      // the workspace terminal.
-      "tasks.focusEngine": () => focus.setFocused("workspace"),
-    }),
+    bindings: [
+      ...bindByIds({
+        "task.new": () => deps.createTask(),
+        "tasks.renameBranch": () => {
+          const id = deps.selectedId
+          if (id) deps.renameBranch(id)
+        },
+        "tasks.cycleEngine": () => {
+          const id = deps.selectedId
+          if (id) deps.cycleVendor(id)
+        },
+        // Right arrow — the tmux Tasks pane's "go right into the engine"
+        // gesture (tasks.focusEngine), same row, pure-TUI equivalent: focus
+        // the workspace terminal.
+        "tasks.focusEngine": () => focus.setFocused("workspace"),
+      }),
+      ...openWorktreeBindings.sidebar,
+    ],
   }))
   // Page-level close keys for the settings swap — mirrors settings/host.tsx's
   // standalone page (no enclosing dialog stack to own esc/Ctrl+C, so the
