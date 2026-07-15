@@ -159,4 +159,38 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("closed-tab")
     expect(text).toContain("unavailable")
   })
+
+  it("caps the card viewport at four items and follows the cursor", async () => {
+    const manyTasks = Array.from(
+      { length: 5 },
+      (_, index): Task => ({
+        ...tasks[0],
+        id: toTaskId(`task-${index + 1}`),
+        title: `Item ${index + 1}`,
+        repo: `/tmp/project-${index + 1}`,
+      }),
+    )
+    const manyItems = manyTasks.map(
+      (task, index): AttentionInboxItem => ({
+        taskId: task.id,
+        tabId: null,
+        state: "permission_needed",
+        unread: true,
+        at: now + index,
+      }),
+    )
+    const { frame, mockInput } = await renderComponent(
+      <Probe tasks={manyTasks} items={manyItems} onOpen={() => {}} onDelete={() => {}} />,
+      { providers: { kv: true }, width: 60, height: 40 },
+    )
+
+    expect(await frame()).toContain("Item 4")
+    expect(await frame()).not.toContain("Item 5")
+
+    act(() => {
+      for (let index = 0; index < 4; index++) mockInput.pressKey("j")
+    })
+    expect(await frame()).toContain("Item 5")
+    expect(await frame()).not.toContain("Item 1")
+  })
 })
