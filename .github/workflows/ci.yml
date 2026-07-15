@@ -152,13 +152,24 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests (kobe package)
-        # `bun run test` = test:fast (all non-daemon/-behavior/-render dirs)
-        # + test:socket (test/daemon, unix-socket protocol/lifecycle/pty-sweep
-        # suite — previously not covered by any hardcoded dir whitelist here).
-        # New test/ subdirectories are picked up automatically; no whitelist
-        # to update when one is added.
+        # All non-daemon/-behavior/-render tests. The socket suite runs in the
+        # next step so its sibling-package daemon coverage can be uploaded.
         working-directory: packages/kobe
-        run: bun run test
+        run: bun run test:fast
+
+      - name: Daemon socket tests with coverage
+        # Existing socket/protocol/lifecycle tests execute source from the
+        # sibling kobe-daemon workspace. Collect that execution once here so
+        # Codecov does not treat tested daemon changes as uncovered.
+        working-directory: packages/kobe
+        run: bun run test:socket:coverage
+
+      - name: Upload daemon coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/kobe/coverage-daemon/lcov.info
+          fail_ci_if_error: false
 
       - name: Build (kobe package)
         run: bun run build
