@@ -6,6 +6,13 @@ const BODY = "Make status, project, and next action easy to scan."
 
 type VisualJourney = (terminal: Locator, buffer: Locator) => Promise<void>
 
+async function pressTerminal(terminal: Locator, key: string): Promise<void> {
+  // Keep each browser key event targeted at xterm. Page-level keyboard events
+  // can be consumed by the browser after a dialog changes the active element.
+  await terminal.focus()
+  await terminal.press(key)
+}
+
 async function waitForVisualPty(harness: Locator, buffer: Locator): Promise<void> {
   try {
     await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
@@ -43,17 +50,19 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await page.keyboard.press("F1")
+    await pressTerminal(terminal, "F1")
     await expect(buffer).toContainText("keybindings")
     await expect(buffer).toContainText("Global")
-    await page.keyboard.press("Escape")
+    await pressTerminal(terminal, "Escape")
+    await expect(buffer).not.toContainText("keybindings")
 
-    await page.keyboard.press("Control+Q")
-    await page.keyboard.press("s")
+    // The fixture starts with sidebar focus. Avoid Ctrl+Q here: browser PTYs
+    // may reserve the flow-control character before it reaches OpenTUI.
+    await pressTerminal(terminal, "s")
     await expect(buffer).toContainText("Settings")
     await expect(buffer).toContainText("General")
     await expect(buffer).toContainText("Engines")
-    await page.keyboard.press("Escape")
+    await pressTerminal(terminal, "Escape")
     await expect(buffer).toContainText("Visual Fixture")
   })
 })
@@ -63,21 +72,20 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await page.keyboard.press("Control+Q")
-    await page.keyboard.press("c")
+    await pressTerminal(terminal, "c")
 
     await expect(buffer).toContainText("Kanban")
     await expect(buffer).toContainText("Backlog fixture")
     await expect(buffer).toContainText("In progress fixture")
     await expect(buffer).toContainText("Done fixture")
 
-    await page.keyboard.press("n")
+    await pressTerminal(terminal, "n")
     await expect(buffer).toContainText("NEW STORY")
     await expect(buffer).toContainText("TITLE")
     await expect(buffer).toContainText("DESCRIPTION")
 
     await page.keyboard.type(TITLE)
-    await page.keyboard.press("Enter")
+    await pressTerminal(terminal, "Enter")
     await page.keyboard.type(BODY)
     await expect(buffer).toContainText(TITLE)
     await expect(buffer).toContainText(BODY)
