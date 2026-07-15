@@ -160,6 +160,20 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("unavailable")
   })
 
+  it("shows one unavailable label when the source task was deleted", async () => {
+    const { frame } = await renderComponent(
+      <Probe
+        items={[{ taskId: "deleted-task", tabId: null, state: "error", unread: true, at: 10 }]}
+        onOpen={() => {}}
+        onDelete={() => {}}
+      />,
+      { providers: { kv: true }, width: 60, height: 16 },
+    )
+    const text = await frame()
+    expect(text).toContain("deleted-task")
+    expect(text.match(/unavailable/g)).toHaveLength(1)
+  })
+
   it("caps the card viewport at four items and follows the cursor", async () => {
     const manyTasks = Array.from(
       { length: 5 },

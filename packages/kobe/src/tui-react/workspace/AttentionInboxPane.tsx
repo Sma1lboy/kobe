@@ -138,7 +138,7 @@ export function AttentionInboxPane(props: {
             const task = props.tasks.find((candidate) => candidate.id === item.taskId)
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
-            const project = task ? sidebarProjectLabel(task.repo, repos) : t("workspace.inbox.unavailable")
+            const project = task ? sidebarProjectLabel(task.repo, repos) : ""
             return (
               <box
                 key={attentionInboxKey(item)}
