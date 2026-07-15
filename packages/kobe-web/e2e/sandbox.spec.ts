@@ -1,12 +1,12 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 import { VISUAL_PTY_PORT, VISUAL_RUN_ID } from "./visual-fixture.ts"
 
 const TITLE = "Improve Kanban card hierarchy"
 const BODY = "Make status, project, and next action easy to scan."
 
-test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => {
-  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+type VisualJourney = (terminal: Locator, buffer: Locator) => Promise<void>
 
+async function withVisualTui(page: Page, run: VisualJourney): Promise<void> {
   // Warm mode needs a fresh session per run (a reused tab would resume the
   // previous TUI mid-Kanban); hermetic mode keeps the stable id.
   const runId = process.env.KOBE_VISUAL_KEEP === "1" ? `${VISUAL_RUN_ID}-${Date.now()}` : VISUAL_RUN_ID
@@ -20,9 +20,41 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
     await expect(buffer).toContainText("PROJECTS", { timeout: 45_000 })
     await expect(buffer).toContainText("TASKS")
     await expect(buffer).toContainText("Visual Fixture")
+    await run(terminal, buffer)
+  } finally {
+    // Kill this run's TUI so warm mode never accumulates PTY children.
+    await page.request
+      .post(`http://127.0.0.1:${VISUAL_PTY_PORT}/pty/close`, { data: { tab: `visual-${runId}` } })
+      .catch(() => {})
+  }
+}
 
+test("workspace help and settings render in the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+
+  await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await page.keyboard.press("Control+H")
+    await page.keyboard.press("F1")
+    await expect(buffer).toContainText("keybindings")
+    await expect(buffer).toContainText("Global")
+    await page.keyboard.press("Escape")
+
+    await page.keyboard.press("Control+Q")
+    await page.keyboard.press("s")
+    await expect(buffer).toContainText("Settings")
+    await expect(buffer).toContainText("General")
+    await expect(buffer).toContainText("Engines")
+    await page.keyboard.press("Escape")
+    await expect(buffer).toContainText("Visual Fixture")
+  })
+})
+
+test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+
+  await withVisualTui(page, async (terminal, buffer) => {
+    await terminal.click({ position: { x: 24, y: 24 } })
+    await page.keyboard.press("Control+Q")
     await page.keyboard.press("c")
 
     await expect(buffer).toContainText("Kanban")
@@ -50,10 +82,5 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
       caret: "hide",
       fullPage: false,
     })
-  } finally {
-    // Kill this run's TUI so warm mode never accumulates PTY children.
-    await page.request
-      .post(`http://127.0.0.1:${VISUAL_PTY_PORT}/pty/close`, { data: { tab: `visual-${runId}` } })
-      .catch(() => {})
-  }
+  })
 })
