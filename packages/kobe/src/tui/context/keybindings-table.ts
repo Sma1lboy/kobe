@@ -247,9 +247,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "f4" },
   },
   {
-    // Jump to the next task that needs attention (P0) — walks the sidebar
-    // order to the next task whose daemon engine-state is permission_needed /
-    // error (plus any unread needs_input/error mark) and selects it. `f7`
+    // Jump to the next unread durable Inbox episode. Read episodes remain in
+    // the Inbox dialog until work restarts or the user deletes them, but F7
+    // does not revisit them. `f7`
     // continues kobe's F-row (F2 rename / F3 split / F4 pane-cycle / F5 reset
     // / F6 zen) — the only chord tier that fires from inside the embedded
     // terminal without stealing an engine chord. NOT `ctrl+g`: that's the
@@ -261,7 +261,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "global",
     keys: ["f7"],
     category: "Navigation",
-    description: "Jump to the next task waiting for input",
+    description: "Open the next unread Inbox item",
     hint: { keys: "f7" },
   },
   {

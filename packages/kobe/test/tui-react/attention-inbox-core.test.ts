@@ -15,6 +15,15 @@ const item = (
 ): AttentionInboxItem => ({ taskId, tabId, state, unread: true, at })
 
 describe("attention inbox ordering", () => {
+  test("puts every unread episode before retained read episodes", () => {
+    const readPermission = { ...item("a", "tab-1", "permission_needed", 1), unread: false }
+    const unreadCompletion = item("b", "tab-1", "turn_complete", 2)
+    expect(sortAttentionInbox([readPermission, unreadCompletion], ["a", "b"])).toEqual([
+      unreadCompletion,
+      readPermission,
+    ])
+  })
+
   test("prioritizes input and failures over completions, then oldest first", () => {
     const ordered = sortAttentionInbox(
       [
@@ -28,16 +37,22 @@ describe("attention inbox ordering", () => {
     expect(ordered.map(attentionInboxKey)).toEqual(["a\u0000tab-1", "b\u0000tab-2", "a\u0000tab-2", "b\u0000tab-1"])
   })
 
-  test("F7 cycles task and chat-tab episodes without removing them", () => {
-    const items = [item("a", "tab-1", "error", 8), item("b", "tab-2", "turn_complete", 9)]
+  test("F7 cycles only unread task and chat-tab episodes without removing them", () => {
+    const read = { ...item("c", "tab-3", "permission_needed", 7), unread: false }
+    const items = [read, item("a", "tab-1", "error", 8), item("b", "tab-2", "turn_complete", 9)]
     const target = nextAttentionInboxTarget(items, ["a", "b"], { taskId: "a", tabId: "tab-1" })
     expect(target?.taskId).toBe("b")
-    expect(items).toHaveLength(2)
+    expect(items).toHaveLength(3)
   })
 
-  test("does not pretend the only current episode is a new target", () => {
+  test("returns the only current unread episode so F7 can mark it read", () => {
     const items = [item("a", "tab-1", "error", 8)]
-    expect(nextAttentionInboxTarget(items, ["a"], { taskId: "a", tabId: "tab-1" })).toBeNull()
+    expect(nextAttentionInboxTarget(items, ["a"], { taskId: "a", tabId: "tab-1" })).toBe(items[0])
+  })
+
+  test("returns null when every retained episode has already been read", () => {
+    const read = { ...item("a", "tab-1", "error", 8), unread: false }
+    expect(nextAttentionInboxTarget([read], ["a"], { taskId: null, tabId: null })).toBeNull()
   })
 
   test("retains unavailable task episodes in the sorted list but skips them for F7", () => {

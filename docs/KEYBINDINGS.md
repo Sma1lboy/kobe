@@ -45,7 +45,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
-| `F7` | Jump to the next retained Inbox episode — permission/input, error/rate-limit, or turn completion — across every project and the current task's other tabs. Opening marks it read but does not remove it. |
+| `F7` | Open the next unread Inbox episode across every project and the current task's other tabs. Opening marks it read but does not remove it; read episodes remain available in the Inbox dialog. |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
@@ -74,7 +74,8 @@ branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
-The Inbox is a modal dialog opened with the proposed `prefix+i` sequence. Inside
+The Inbox is a modal dialog opened with the proposed `prefix+i` sequence. Unread
+episodes sort ahead of retained read episodes. Inside
 the dialog, `j/k` selects, `enter` jumps to the task/chat tab, and `d` deletes
 that attention episode. Opening marks its unread dot read; only a newer turn in
 the same tab or `d` removes it. Owner decision (2026-07-15): `d` is direct and

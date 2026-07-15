@@ -20,13 +20,15 @@ export function isAttentionInboxItemAvailable(
   return task !== undefined && !task.archived && (item.tabId === null || hasTab(item.tabId))
 }
 
-/** Actionable states first, then oldest episode, with task order as a stable tie-breaker. */
+/** Unread episodes first, then actionable state and age, with task order as a stable tie-breaker. */
 export function sortAttentionInbox(
   items: readonly AttentionInboxItem[],
   taskOrder: readonly string[],
 ): AttentionInboxItem[] {
   const taskIndex = new Map(taskOrder.map((id, index) => [id, index]))
   return [...items].sort((a, b) => {
+    const unread = Number(b.unread) - Number(a.unread)
+    if (unread !== 0) return unread
     const priority = STATE_PRIORITY[a.state] - STATE_PRIORITY[b.state]
     if (priority !== 0) return priority
     const age = a.at - b.at
@@ -39,8 +41,8 @@ export function sortAttentionInbox(
 }
 
 /**
- * Pick the next retained episode without consuming it. Items for tasks that
- * are no longer jumpable stay in the Inbox UI but are excluded from F7.
+ * Pick the next unread episode. Read and unavailable episodes stay in the
+ * Inbox dialog but are excluded from F7.
  */
 export function nextAttentionInboxTarget(
   items: readonly AttentionInboxItem[],
@@ -49,11 +51,15 @@ export function nextAttentionInboxTarget(
   isAvailable: (item: AttentionInboxItem) => boolean = () => true,
 ): AttentionInboxItem | null {
   const liveTasks = new Set(taskOrder)
-  const ordered = sortAttentionInbox(items, taskOrder).filter((item) => liveTasks.has(item.taskId) && isAvailable(item))
+  const ordered = sortAttentionInbox(items, taskOrder).filter(
+    (item) => item.unread && liveTasks.has(item.taskId) && isAvailable(item),
+  )
   if (ordered.length === 0) return null
   const currentKey = current.taskId === null ? null : attentionInboxKey(current)
   const currentIndex = currentKey === null ? -1 : ordered.findIndex((item) => attentionInboxKey(item) === currentKey)
   if (currentIndex < 0) return ordered[0] ?? null
-  if (ordered.length === 1) return null
+  // The sole unread episode may already be the current tab. Returning it lets
+  // F7 mark it read instead of leaving an unvisitable item stuck in the queue.
+  if (ordered.length === 1) return ordered[0] ?? null
   return ordered[(currentIndex + 1) % ordered.length] ?? null
 }
