@@ -15,6 +15,7 @@ import type { Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId } from "../types/task.ts"
 import type { UpdateInfo } from "../version.ts"
 import type {
+  AttentionInboxItem,
   DaemonConnectionState,
   EngineTabStateMap,
   TaskEngineState,
@@ -32,6 +33,7 @@ export interface ReadSignals {
   readonly daemonStaleAcc: ReadableState<boolean>
   readonly engineStateAcc: ReadableState<ReadonlyMap<string, TaskEngineState>>
   readonly engineTabStateAcc: ReadableState<EngineTabStateMap>
+  readonly attentionInboxAcc: ReadableState<readonly AttentionInboxItem[]>
   readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
@@ -106,6 +108,11 @@ export function engineStateSignalOp(s: ReadSignals): ReadableState<ReadonlyMap<s
  */
 export function engineTabStatesSignalOp(s: ReadSignals): ReadableState<EngineTabStateMap> {
   return s.engineTabStateAcc
+}
+
+/** Durable unresolved attention episodes; reading never consumes them. */
+export function attentionInboxSignalOp(s: ReadSignals): ReadableState<readonly AttentionInboxItem[]> {
+  return s.attentionInboxAcc
 }
 
 /**
