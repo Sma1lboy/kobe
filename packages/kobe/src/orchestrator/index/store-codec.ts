@@ -16,7 +16,7 @@
  * store class stays under the file-size cap.
  */
 
-import type { Task, TaskPRStatus, TaskStatus } from "../../types/task.ts"
+import type { Task, TaskDeletionState, TaskPRStatus, TaskStatus } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { coerceVendorId } from "../../types/vendor.ts"
 import { LockfileError, acquire } from "./lockfile.ts"
@@ -130,6 +130,7 @@ function coerceTask(value: unknown): Task | null {
       : v.status === "done" && !archived
         ? "in_progress"
         : v.status
+  const deletion = coerceDeletion(v.deletion)
 
   return {
     id: toTaskId(v.id),
@@ -149,8 +150,29 @@ function coerceTask(value: unknown): Task | null {
     // Engine reasoning/effort level — must survive the load coercion or the
     // task forgets its effort on every daemon restart.
     ...(typeof v.modelEffort === "string" && v.modelEffort.length > 0 ? { modelEffort: v.modelEffort } : {}),
+    ...(deletion ? { deletion } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
+  }
+}
+
+function coerceDeletion(value: unknown): TaskDeletionState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const v = value as Record<string, unknown>
+  if (
+    (v.phase !== "queued" && v.phase !== "running" && v.phase !== "error") ||
+    typeof v.force !== "boolean" ||
+    typeof v.requestedAt !== "string" ||
+    v.requestedAt.length === 0 ||
+    (v.error !== undefined && typeof v.error !== "string")
+  ) {
+    return undefined
+  }
+  return {
+    phase: v.phase,
+    force: v.force,
+    requestedAt: v.requestedAt,
+    ...(typeof v.error === "string" ? { error: v.error } : {}),
   }
 }
 

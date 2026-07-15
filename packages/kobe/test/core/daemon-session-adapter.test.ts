@@ -117,4 +117,25 @@ describe("daemon session adapter", () => {
     } as unknown as DaemonRpcClient
     await expect(terminalSpecAdapter(missing, "task-5")).rejects.toThrow("has no worktree")
   })
+
+  it("refuses engine and terminal specs for a task being deleted", async () => {
+    const deleting = {
+      request: vi.fn(
+        async <T>() =>
+          ({
+            task: {
+              id: "task-6",
+              repo: "/repo/kobe",
+              vendor: "claude",
+              worktreePath: "/worktrees/task-6",
+              deletion: { phase: "running", force: false, requestedAt: "2026-07-15T00:00:00.000Z" },
+            },
+          }) as T,
+      ),
+    } as unknown as DaemonRpcClient
+
+    await expect(engineSpecAdapter(deleting, "task-6")).rejects.toThrow("TASK_DELETING")
+    await expect(terminalSpecAdapter(deleting, "task-6")).rejects.toThrow("TASK_DELETING")
+    expect(mocks.ensureEngine).not.toHaveBeenCalled()
+  })
 })

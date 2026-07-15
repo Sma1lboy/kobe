@@ -3,6 +3,7 @@
  * create-before-snapshot path is testable without mounting the full PTY host.
  */
 
+import { TaskDeletingError } from "../../orchestrator/errors.ts"
 import type { Task } from "../../types/task.ts"
 
 type ActivateWorkspaceTaskOptions = {
@@ -18,6 +19,10 @@ type ActivateWorkspaceTaskOptions = {
 
 export async function activateWorkspaceTask(opts: ActivateWorkspaceTaskOptions, id: string): Promise<boolean> {
   const task = opts.getTask(id)
+  if (task?.deletion) {
+    opts.reportError(new TaskDeletingError(id))
+    return false
+  }
   // A create RPC can resolve before the daemon's task snapshot causes the
   // workspace host to render. An unknown task is therefore not proof that the
   // id is invalid — materialize by the authoritative RPC id and let the daemon
@@ -52,11 +57,11 @@ export function firstSelectableTask(
   lastActiveId?: string | null,
 ): Task | undefined {
   const alive = (id: string | null | undefined): Task | undefined =>
-    id ? tasks.find((task) => task.id === id && !task.archived) : undefined
+    id ? tasks.find((task) => task.id === id && !task.archived && !task.deletion) : undefined
   const active = alive(activeId) ?? alive(lastActiveId)
   if (active) return active
-  const unarchived = tasks.filter((task) => !task.archived)
+  const unarchived = tasks.filter((task) => !task.archived && !task.deletion)
   if (unarchived.length > 0)
     return unarchived.reduce((newest, task) => (task.updatedAt > newest.updatedAt ? task : newest))
-  return tasks[0]
+  return tasks.find((task) => !task.deletion)
 }

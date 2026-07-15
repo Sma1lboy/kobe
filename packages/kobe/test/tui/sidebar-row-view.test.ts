@@ -182,6 +182,35 @@ describe("buildSidebarRowView", () => {
     expect(v).toMatchObject({ loading: true, tone: "primary", subtitleText: "materializing" })
   })
 
+  it("spins with a deleting subtitle while durable cleanup is queued or running", () => {
+    const v = buildSidebarRowView({
+      task: task({
+        deletion: { phase: "running", force: true, requestedAt: "2026-07-15T00:00:00.000Z" },
+      }),
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(v).toMatchObject({ loading: true, tone: "primary", subtitleText: "deleting", materializing: false })
+  })
+
+  it("renders a durable deletion failure without animation", () => {
+    const v = buildSidebarRowView({
+      task: task({
+        deletion: {
+          phase: "error",
+          force: false,
+          requestedAt: "2026-07-15T00:00:00.000Z",
+          error: "locked",
+        },
+      }),
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(v).toMatchObject({ loading: false, stateGlyph: "✕", tone: "error", subtitleText: "delete failed" })
+  })
+
   it("falls back to a neutral dash for a project with no resolvable branch", () => {
     const v = buildSidebarRowView({
       task: task({ kind: "main", branch: "", status: "backlog" }),

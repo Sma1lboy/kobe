@@ -282,6 +282,8 @@ export interface SerializedTask {
   readonly position?: number
   /** Engine reasoning/effort level, when the vendor supports one. */
   readonly modelEffort?: string
+  /** Durable daemon-owned background deletion state. */
+  readonly deletion?: DaemonTask["deletion"]
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -301,6 +303,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     prStatus: task.prStatus,
     position: task.position,
     modelEffort: task.modelEffort,
+    deletion: task.deletion,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

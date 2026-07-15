@@ -97,6 +97,34 @@ describe("pure-TUI workspace task activation", () => {
     expect(focusWorkspace).toHaveBeenCalledOnce()
   })
 
+  test("refuses to activate a task whose background deletion was accepted", async () => {
+    const deleting = {
+      ...task("deleting", "/worktrees/deleting"),
+      deletion: { phase: "queued" as const, force: false, requestedAt: "2026-07-15T00:00:00.000Z" },
+    }
+    const reportError = vi.fn()
+    const ensureWorktree = vi.fn(async () => "/worktrees/deleting")
+    const selectTask = vi.fn()
+
+    await expect(
+      activateWorkspaceTask(
+        {
+          getTask: () => deleting,
+          ensureWorktree,
+          selectTask,
+          focusWorkspace: vi.fn(),
+          reportError,
+        },
+        deleting.id,
+      ),
+    ).resolves.toBe(false)
+    expect(reportError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("TASK_DELETING") }),
+    )
+    expect(ensureWorktree).not.toHaveBeenCalled()
+    expect(selectTask).not.toHaveBeenCalled()
+  })
+
   test("a superseded activation resolves without stealing selection or focus", async () => {
     const selectTask = vi.fn()
     const focusWorkspace = vi.fn()

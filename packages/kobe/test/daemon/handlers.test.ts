@@ -1,6 +1,3 @@
-import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
-import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
-import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
   type DaemonHandlerContext,
@@ -9,9 +6,8 @@ import {
   shapeDaemonError,
 } from "@sma1lboy/kobe-daemon/daemon/server"
 import { describe, expect, it } from "vitest"
-import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
-import type { Orchestrator } from "../../src/orchestrator/core.ts"
 import type { Task } from "../../src/types/task.ts"
+import { fakeCtx } from "./handler-test-context.ts"
 
 /**
  * RPC dispatch seam tests (registry in `kobe-daemon/src/daemon/handlers.ts`).
@@ -61,51 +57,6 @@ const SERIALIZED_TASK = {
   prStatus: undefined,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-02T00:00:00.000Z",
-}
-
-interface Recorded {
-  readonly published: Array<{ channel: string; payload: unknown }>
-  readonly reported: Array<{ taskId: string; kind: string; detail?: unknown }>
-  readonly issueCalls: Array<{ method: string; repo: unknown; op?: unknown }>
-  readonly cleared: string[]
-  stopped: number
-}
-
-/** Build a handler context around a partial fake Orchestrator — no socket. */
-function fakeCtx(orch: Record<string, unknown> = {}): { ctx: DaemonHandlerContext; rec: Recorded } {
-  const rec: Recorded = { published: [], reported: [], issueCalls: [], cleared: [], stopped: 0 }
-  const ctx: DaemonHandlerContext = {
-    runtime: daemonRuntime,
-    orch: { listTasks: () => [], ...orch } as unknown as Orchestrator,
-    bus: {
-      publish: (channel: string, payload: unknown) => rec.published.push({ channel, payload }),
-    } as unknown as DaemonEventBus,
-    activity: {
-      report: (taskId: string, kind: string, detail?: unknown) => rec.reported.push({ taskId, kind, detail }),
-      clearTask: (taskId: string) => rec.cleared.push(taskId),
-    } as unknown as DaemonActivityRegistry,
-    issues: {
-      list: async (repo: unknown) => {
-        rec.issueCalls.push({ method: "list", repo })
-        return { repoRoot: String(repo), exists: false, nextId: 1, issues: [] }
-      },
-      mutate: async (repo: unknown, op: unknown) => {
-        rec.issueCalls.push({ method: "mutate", repo, op })
-        return { repoRoot: String(repo), exists: true, nextId: 2, issues: [] }
-      },
-    } as unknown as IssuesStore,
-    daemon: {
-      startedAt: new Date("2026-06-01T00:00:00.000Z"),
-      socketPath: "/tmp/fake/daemon.sock",
-      pid: 4242,
-      guiCount: () => 1,
-      stopSoon: async () => {
-        rec.stopped++
-      },
-    },
-    clientId: 7,
-  }
-  return { ctx, rec }
 }
 
 function dispatch(name: string, payload: unknown, ctx: DaemonHandlerContext): Promise<unknown> {
@@ -273,16 +224,24 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.reorder", { moves: [{ position: 1 }] }, ctx)).rejects.toThrow("taskId is required")
     })
 
-    it("task.delete clears the task's transient activity after the orchestrator delete", async () => {
-      const deleted: unknown[] = []
+    it("task.delete durably prepares, clears activity, and enqueues background cleanup", async () => {
+      const prepared: unknown[] = []
       const { ctx, rec } = fakeCtx({
-        deleteTask: async (id: string, opts: unknown) => {
-          deleted.push([id, opts])
+        prepareTaskDeletion: async (id: string, opts: unknown) => {
+          prepared.push([id, opts])
+          return true
         },
       })
       await expect(dispatch("task.delete", { taskId: "t1", force: true }, ctx)).resolves.toEqual({})
-      expect(deleted).toEqual([["t1", { force: true }]])
+      expect(prepared).toEqual([["t1", { force: true }]])
       expect(rec.cleared).toEqual(["t1"])
+      expect(rec.deletions).toEqual(["t1"])
+    })
+
+    it("task.delete does not enqueue an unknown task", async () => {
+      const { ctx, rec } = fakeCtx({ prepareTaskDeletion: async () => false })
+      await expect(dispatch("task.delete", { taskId: "missing" }, ctx)).resolves.toEqual({})
+      expect(rec.deletions).toEqual([])
     })
 
     it("task.move rejects a bogus direction with the legacy wording", async () => {

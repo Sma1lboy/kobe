@@ -81,6 +81,16 @@ export interface TaskPRStatus {
   readonly lastError?: string
 }
 
+export type TaskDeletionPhase = "queued" | "running" | "error"
+
+/** Durable state for daemon-owned background worktree cleanup. */
+export interface TaskDeletionState {
+  readonly phase: TaskDeletionPhase
+  readonly force: boolean
+  readonly requestedAt: string
+  readonly error?: string
+}
+
 /**
  * One task. Stored in `~/.kobe/tasks.json` as part of {@link TaskIndex}.
  *
@@ -142,6 +152,8 @@ export interface Task {
    * vendor-correct flag (see `interactive-command.ts`).
    */
   readonly modelEffort?: string
+  /** Present while background deletion is queued/running or after it failed. */
+  readonly deletion?: TaskDeletionState
   readonly createdAt: string
   readonly updatedAt: string
 }

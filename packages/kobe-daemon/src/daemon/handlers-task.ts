@@ -89,8 +89,11 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
-      await ctx.orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
+      const accepted = await ctx.orch.prepareTaskDeletion(taskId, {
+        force: optionalBoolean(payload, "force"),
+      })
       ctx.activity.clearTask(taskId)
+      if (accepted) ctx.deletions.enqueue(taskId)
       return {}
     },
   },

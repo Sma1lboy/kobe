@@ -42,6 +42,7 @@ import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import { TaskDeletionRunner } from "./task-deletion-runner.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
@@ -184,6 +185,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
     return runtime.latestTranscriptMtime(task.vendor ?? runtime.defaultTaskVendor, task.worktreePath)
   }
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
+  const deletions = new TaskDeletionRunner(orch, runtime, (taskId) => activity.clearTask(taskId))
 
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
@@ -255,6 +257,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       options.homeDir,
     )
   })
+  deletions.resume(orch.listTasks())
 
   // Warm the active-task channel with the orchestrator's restored focus
   // (seeded from the persisted `lastActive` record — state/last-active.ts).
@@ -343,6 +346,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       runtime,
       bus,
       activity,
+      deletions,
       issues,
       daemon: {
         startedAt,

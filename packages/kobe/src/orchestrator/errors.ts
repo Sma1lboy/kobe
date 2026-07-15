@@ -71,6 +71,16 @@ export class WorktreeRemoveFailedError extends Error {
   }
 }
 
+/** Stable wire-visible marker for attempts to reactivate a deleting task. */
+export const TASK_DELETING_CODE = "TASK_DELETING"
+
+export class TaskDeletingError extends Error {
+  constructor(public readonly taskId: string) {
+    super(`${TASK_DELETING_CODE}: task ${taskId} is being deleted`)
+    this.name = "TaskDeletingError"
+  }
+}
+
 /**
  * Stable sentinel embedded in {@link MainCheckoutDirtyError}'s message — the
  * `name` field doesn't survive the daemon wire, so a caller across the boundary

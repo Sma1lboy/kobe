@@ -44,6 +44,12 @@ export interface Task {
    *  drawer's engine+effort picker. The task does not reverse-reference its
    *  issue; the issue→task link lives on {@link Issue.taskId}. */
   modelEffort?: string
+  deletion?: {
+    phase: "queued" | "running" | "error"
+    force: boolean
+    requestedAt: string
+    error?: string
+  }
   createdAt: string
   updatedAt: string
 }
