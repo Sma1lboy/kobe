@@ -86,14 +86,18 @@ export function groupAttentionInbox(
     const repo = buckets.get(key)?.repo
     return repo ? [repo] : []
   })
-  return keys.map((key) => {
-    const bucket = buckets.get(key) as { repo: string | null; items: AttentionInboxItem[] }
-    return {
-      key,
-      repo: bucket.repo,
-      label: bucket.repo ? sidebarProjectLabel(bucket.repo, repos) : null,
-      items: bucket.items,
-    }
+  return keys.flatMap((key) => {
+    const bucket = buckets.get(key)
+    return bucket
+      ? [
+          {
+            key,
+            repo: bucket.repo,
+            label: bucket.repo ? sidebarProjectLabel(bucket.repo, repos) : null,
+            items: bucket.items,
+          },
+        ]
+      : []
   })
 }
 
