@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Run parallel coding agents from any terminal.</strong><br/>
-  kobe is an SSH-friendly TUI for turning AI coding work into isolated git worktrees and persistent tmux sessions.
+  kobe is an SSH-friendly TUI for turning AI coding work into isolated git worktrees and persistent hosted engine sessions.
 </p>
 
 <p align="center">
@@ -28,12 +28,11 @@ https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
 
 
 
-kobe opens into a tmux workspace with:
+kobe opens into a PureTUI workspace with:
 
-- **Tasks** - create, switch, archive, rename, retarget.
-- **Engine** - the live AI CLI session.
-- **Ops** - changed files, previews, `@file` mentions, PR prompts.
-- **Shell** - a normal shell inside the task worktree.
+- **Sidebar** - create, switch, archive, rename, and organize tasks.
+- **Workspace** - live engine or shell tabs, with persistent sessions and splits.
+- **Files** - changed files, previews, diffs, and PR actions.
 
 ---
 
@@ -48,10 +47,10 @@ https://github.com/user-attachments/assets/11fcc3e5-7d20-403d-82df-3e5d156d1dba
 AI agents are useful one at a time. kobe is for when you want five attempts running at once.
 
 ```text
-Task = git worktree + tmux session + branch
+Task = git worktree + hosted engine sessions + branch
 ```
 
-Create a task, send it to `claude`, `codex`, or `copilot`, detach, reattach, compare the worktree, keep the good branch, archive the rest. It runs where your code already lives: your laptop, a devbox, a VPS, or any machine you can SSH into.
+Create a task, send it to `claude`, `codex`, or `copilot`, close and reopen the TUI, compare the worktree, keep the good branch, archive the rest. It runs where your code already lives: your laptop, a devbox, a VPS, or any machine you can SSH into.
 
 ```bash
 ssh devbox
@@ -62,14 +61,14 @@ kobe
 ## Why try it
 
 - **Made for SSH/devboxes** - no browser, VNC, or desktop app; the terminal is the product.
-- **Persistent by default** - agents live in tmux, so disconnects do not kill the work.
+- **Persistent by default** - a standalone PTY Host owns engine sessions, so disconnects and daemon restarts do not kill the work.
 - **Safe parallelism** - every attempt gets its own branch and worktree.
 - **Real environment** - agents run next to your dependencies, services, credentials, and build cache.
 - **Scriptable fan-out** - `kobe api` lets another agent or shell script spawn more tasks.
 
 ## Install
 
-Requirements: [Bun](https://bun.sh) `>= 1.3.11`, `tmux`, and at least one engine CLI on `PATH` (`claude`, `codex`, or `copilot`).
+Requirements: [Bun](https://bun.sh) `>= 1.3.11`, git, and at least one engine CLI on `PATH` (`claude`, `codex`, or `copilot`).
 
 ```bash
 bun install -g @sma1lboy/kobe
@@ -82,24 +81,33 @@ Or:
 bunx @sma1lboy/kobe
 ```
 
-First task: press `n`, choose a repo/base branch/engine, then prompt the engine pane. kobe creates the worktree under:
+First task: press `n`, choose a repo/base branch/engine, then prompt the workspace terminal. By default, kobe creates the worktree under:
 
 ```text
-<repo>/.claude/worktrees/<task-slug>/
+~/.kobe/worktrees/<repo-key>/<task-slug>/
 ```
 
 ## Useful keys
 
 | Key | Action |
 |---|---|
-| `ctrl+h/j/k/l` | Move between Tasks, engine, Ops, and shell panes. |
-| `ctrl+q` | Detach; tasks keep running in tmux. |
-| `ctrl+t` | New ChatTab on the same task/worktree. |
-| `ctrl+[` / `ctrl+]` | Previous / next ChatTab. |
-| `F2` | Rename the current ChatTab. |
-| tmux `prefix f` | Open the new-task dialog. |
+| `F1` | Show the full live keybinding reference. |
+| `ctrl+q` | Focus the Sidebar; from the Sidebar, quit. |
+| `F2` | Rename the active tab or split. |
+| `F3` | Focus the next split. |
+| `F4` | Cycle pane focus forward. |
+| `F5` | Confirm and reset the active terminal. |
+| `F6` | Toggle zen mode. |
+| `F7` | Jump to the next task or tab waiting for attention. |
+| `ctrl+t` / `ctrl+e` | Open an engine tab / choose an engine or shell. |
+| `ctrl+w` | Close the active split, otherwise close the tab. |
+| `ctrl+[` / `ctrl+]` | Switch to the previous / next tab. |
+| `ctrl+a`, then `j` / `k` | Cycle pane focus backward / forward. |
+| `ctrl+a`, then `f` | Quick-fork a child task. |
+| `ctrl+a`, then `\\` / `=` | Split right / down. |
 
-More: [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
+`F1` is authoritative and reflects the active scope and user overrides. More:
+[`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
 
 ## Browser dashboard
 
@@ -131,7 +139,7 @@ npx skills add Sma1lboy/kobe --skill kobe --agent claude-code
 
 ```bash
 kobe doctor   # read-only diagnosis
-kobe reset    # reset daemon + kobe tmux sessions; does not delete worktrees
+kobe reset    # reset daemon + Hosted PTY runtime; does not delete worktrees
 ```
 
 ## Develop
@@ -153,8 +161,8 @@ Three test layers (contract: [`docs/HARNESS.md`](./docs/HARNESS.md)):
 ```bash
 bun run test                                   # unit + socket suites (fast, CI-gated)
 bun run build && bun run test:behavior         # black-box: the BUILT CLI in a temp home
-                                               # + scratch tmux, driven via send-keys /
-                                               # capture-pane (CI-gated, `behavior` job)
+                                               # + isolated daemon and Hosted PTY runtime
+                                               # (CI-gated, `behavior` job)
 cd packages/kobe && bun run coverage           # v8 coverage report (text + json-summary)
 ```
 
