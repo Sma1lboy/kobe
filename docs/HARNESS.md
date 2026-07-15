@@ -15,9 +15,10 @@ matters.
 
 The render track is a required macOS CI/release gate. It uses Bun's native
 OpenTUI renderer and carries the same 50% per-touched-file floor as Vitest for
-`.tsx` components and React-owning hooks. It also runs the committed visual
-journey through the browser harness. The Ubuntu V8 coverage job remains the
-fast/unit track; it does not pretend Node can execute OpenTUI components.
+`.tsx` components and React-owning hooks. The separate required visual gate
+runs the committed browser journey on macOS Intel, where node-pty can spawn
+the real terminal child. The Ubuntu V8 coverage job remains the fast/unit
+track; it does not pretend Node can execute OpenTUI components.
 
 ## Behavioral self-test
 
@@ -69,7 +70,7 @@ Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
 (real git repo, real task, three issues via `kobe api`), drive the real TUI
 through the harness (workspace → F1 help → Settings, then Kanban → New Story),
 lock the completed intake with `kanban-new-issue.png`, and tear everything
-down. CI and release run this exact command on macOS. Ports derive from
+down. CI and release run this exact command on macOS Intel. Ports derive from
 `KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails fast — never reuse a
 stray server, and never point the fixture at a real HOME or the shared
 `.dev-sandbox/home`. Local Terminal screenshots, native `kobe-web` pages such
