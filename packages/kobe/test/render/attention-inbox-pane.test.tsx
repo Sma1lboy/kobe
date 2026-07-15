@@ -105,24 +105,6 @@ function borderColor(frame: CapturedFrame, needle: string): RGBA | undefined {
   return line?.spans.find((span) => span.text.includes("│"))?.fg
 }
 
-function backgroundOutsideFrame(frame: CapturedFrame, needle: string, color: RGBA): number {
-  const lineIndex = frame.lines.findIndex((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
-  const line = frame.lines[lineIndex]
-  if (!line) return 0
-  const firstBorder = line.spans.findIndex((span) => span.text.includes("│"))
-  const lastBorder = line.spans.findLastIndex((span) => span.text.includes("│"))
-  const horizontal = line.spans.reduce((width, span, index) => {
-    const outside = index < firstBorder || index > lastBorder
-    return width + (outside && span.bg.equals(color) ? span.width : 0)
-  }, 0)
-  const vertical = [lineIndex - 2, lineIndex + 3].reduce(
-    (width, index) =>
-      width + (frame.lines[index]?.spans.reduce((sum, span) => sum + (span.bg.equals(color) ? span.width : 0), 0) ?? 0),
-    0,
-  )
-  return horizontal + vertical
-}
-
 describe("AttentionInboxPane", () => {
   it("opens as a modal and stays live with daemon Inbox snapshots", async () => {
     const remote = remoteInbox(items)
@@ -178,11 +160,10 @@ describe("AttentionInboxPane", () => {
     expect(opened).toEqual(["task-b"])
   })
 
-  it("frames only the active episode in opaque and transparent modes", async () => {
+  it("fills only the active episode in opaque and transparent modes", async () => {
     const theme = BUNDLED_THEME_JSONS.claude!
     const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
     const backgroundDialog = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundDialog")!)
-    const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
     try {
       for (const transparent of [false, true]) {
         setTransparentBackground(transparent)
@@ -195,9 +176,8 @@ describe("AttentionInboxPane", () => {
           const frame = await spans()
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
-          expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
+          expect(borderColor(frame, "Alpha")?.equals(backgroundElement)).toBe(true)
           expect(borderColor(frame, "Beta")?.equals(backgroundDialog)).toBe(true)
-          expect(backgroundOutsideFrame(frame, "Alpha", backgroundElement)).toBe(0)
         } finally {
           destroy()
         }

@@ -142,19 +142,15 @@ export function AttentionInboxPane(props: {
               <box
                 key={attentionInboxKey(item)}
                 border={true}
-                borderColor={active ? theme.primary : theme.backgroundDialog}
+                borderColor={active ? theme.backgroundElement : theme.backgroundDialog}
+                backgroundColor={active ? theme.backgroundElement : undefined}
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
                   setCursor(absoluteIndex)
                   props.onOpen(item, tab.available)
                 }}
               >
-                <box
-                  flexDirection="column"
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={active ? theme.backgroundElement : undefined}
-                >
+                <box flexDirection="column" paddingLeft={1} paddingRight={1}>
                   <box flexDirection="row">
                     <text fg={theme.focusAccent} wrapMode="none">
                       {item.unread ? "• " : "  "}
