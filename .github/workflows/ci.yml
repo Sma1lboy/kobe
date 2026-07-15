@@ -152,26 +152,10 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests (kobe package)
-        # All non-daemon/-behavior/-render tests. The socket suite runs in the
-        # next step so its sibling-package daemon coverage can be uploaded.
+        # All non-daemon/-behavior/-render tests. The coverage job runs the
+        # daemon socket suite and uploads its sibling-package coverage.
         working-directory: packages/kobe
         run: bun run test:fast
-
-      - name: Daemon socket tests with coverage
-        # Existing socket/protocol/lifecycle tests execute source from the
-        # sibling kobe-daemon workspace. Collect that execution once here so
-        # Codecov does not treat tested daemon changes as uncovered.
-        working-directory: packages/kobe
-        run: bun run test:socket:coverage
-
-      - name: Upload daemon coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: packages/kobe/coverage-daemon/lcov.info
-          flags: daemon
-          name: daemon
-          fail_ci_if_error: false
 
       - name: Build (kobe package)
         run: bun run build
@@ -224,6 +208,13 @@ jobs:
         working-directory: packages/kobe
         run: bun run coverage
 
+      - name: Daemon socket coverage
+        # Existing socket/protocol/lifecycle tests execute source from the
+        # sibling kobe-daemon workspace. Collect that execution in this job so
+        # all coverage reports reach Codecov in one atomic upload.
+        working-directory: packages/kobe
+        run: bun run test:socket:coverage
+
       - name: Render-track coverage (kobe package .tsx)
         # bun test + @opentui/react's testRender (docs/HARNESS.md "render
         # track") — the only runner that can execute opentui components at
@@ -242,9 +233,8 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: packages/kobe/coverage/lcov.info,packages/kobe/coverage-render/lcov.info
-          flags: kobe
-          name: kobe
+          files: packages/kobe/coverage/lcov.info,packages/kobe/coverage-render/lcov.info,packages/kobe/coverage-daemon/lcov.info
+          name: combined
           fail_ci_if_error: false
 
       - name: Touched files must meet the coverage floor
