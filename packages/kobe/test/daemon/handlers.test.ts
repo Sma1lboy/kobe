@@ -15,8 +15,7 @@ import { fakeCtx } from "./handler-test-context.ts"
  * WHY these matter: the daemon's dispatch used to be a ~275-line switch in
  * `server.ts` with ZERO direct tests — the only proof the RPC surface worked
  * was the end-to-end socket suite. The registry makes the seam testable
- * WITHOUT a socket: build the registry, hand it a fake Orchestrator through
- * the context, dispatch a request, assert the payload. These tests pin the
+ * WITHOUT a socket: dispatch through a fake context and assert the payload. These tests pin the
  * WIRE CONTRACT — success payload shapes (including which calls return `{}`
  * vs an object), validation-error wording (`"repo is required"`), and the
  * unknown-request error — so a future handler edit that drifts the on-wire
