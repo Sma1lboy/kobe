@@ -6,6 +6,7 @@ import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { useEffect } from "react"
 import { type AttentionInboxItem, RemoteOrchestrator } from "../../src/client/remote-orchestrator"
 import { useKV } from "../../src/tui-react/context/kv"
+import { setTransparentBackground } from "../../src/tui-react/context/theme"
 import { useDialog } from "../../src/tui-react/ui/dialog"
 import { AttentionInboxDialog, AttentionInboxPane } from "../../src/tui-react/workspace/AttentionInboxPane"
 import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
@@ -99,6 +100,11 @@ function backgroundWidth(frame: CapturedFrame, needle: string, color: RGBA): num
   return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.text.length : 0), 0) ?? 0
 }
 
+function borderColor(frame: CapturedFrame, needle: string): RGBA | undefined {
+  const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
+  return line?.spans.find((span) => span.text.includes("│"))?.fg
+}
+
 describe("AttentionInboxPane", () => {
   it("opens as a modal and stays live with daemon Inbox snapshots", async () => {
     const remote = remoteInbox(items)
@@ -154,20 +160,31 @@ describe("AttentionInboxPane", () => {
     expect(opened).toEqual(["task-b"])
   })
 
-  it("frames only the active episode", async () => {
-    const { spans, destroy } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
-      providers: { kv: true },
-      width: 60,
-      height: 24,
-    })
-    const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(BUNDLED_THEME_JSONS.claude!, "backgroundElement")!)
-
+  it("frames only the active episode in opaque and transparent modes", async () => {
+    const theme = BUNDLED_THEME_JSONS.claude!
+    const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
+    const backgroundDialog = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundDialog")!)
+    const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
     try {
-      const frame = await spans()
-      expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
-      expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
+      for (const transparent of [false, true]) {
+        setTransparentBackground(transparent)
+        const { spans, destroy } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
+          providers: { kv: true },
+          width: 60,
+          height: 24,
+        })
+        try {
+          const frame = await spans()
+          expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
+          expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
+          expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
+          expect(borderColor(frame, "Beta")?.equals(backgroundDialog)).toBe(true)
+        } finally {
+          destroy()
+        }
+      }
     } finally {
-      destroy()
+      setTransparentBackground(true)
     }
   })
 
