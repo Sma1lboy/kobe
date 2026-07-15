@@ -24,9 +24,10 @@ Default prefix actions:
 | Sequence | Action |
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task |
+| `ctrl+a`, `i` | Open the attention Inbox dialog (PROPOSED; awaiting owner confirmation) |
 | `ctrl+a`, `y` | Resume a prior engine Session |
-| `ctrl+a`, `j` | Cycle focus backward (Inbox → Files → Workspace → Sidebar) |
-| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files → Inbox) |
+| `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
+| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
@@ -73,12 +74,12 @@ branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
-The bottom-right Inbox is a separate focused surface. Its pane-local bindings
-are `j/k` to select, `enter` to jump to the task/chat tab, and `d` to delete
-that attention episode. Opening an episode marks its unread dot read; only a
-newer turn in the same tab or `d` removes it. Owner decision (2026-07-15): `d` is direct and
-Inbox-scoped because deletion is a frequent, explicit cleanup action there;
-it cannot shadow chat input or embedded-terminal shortcuts outside the pane.
+The Inbox is a modal dialog opened with the proposed `prefix+i` sequence. Inside
+the dialog, `j/k` selects, `enter` jumps to the task/chat tab, and `d` deletes
+that attention episode. Opening marks its unread dot read; only a newer turn in
+the same tab or `d` removes it. Owner decision (2026-07-15): `d` is direct and
+dialog-scoped because deletion is a frequent, explicit cleanup action there;
+it cannot shadow chat input or embedded-terminal shortcuts outside the dialog.
 
 ## User customization
 

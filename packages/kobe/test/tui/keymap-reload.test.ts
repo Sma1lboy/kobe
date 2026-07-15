@@ -30,6 +30,8 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("focus.previous")?.prefixKeys).toEqual(["j"])
     expect(findBinding("focus.next")?.keys).toEqual(["f4"])
     expect(findBinding("focus.next")?.prefixKeys).toEqual(["k"])
+    expect(findBinding("inbox.show")?.keys).toEqual([])
+    expect(findBinding("inbox.show")?.prefixKeys).toEqual(["i"])
   })
 
   test("non-ChatPane bindings retain their direct Ctrl chords", () => {

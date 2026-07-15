@@ -1,22 +1,23 @@
 /** @jsxImportSource @opentui/react */
 
 import { TextAttributes } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
-import type { AttentionInboxItem } from "../../client/remote-orchestrator"
+import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
 import { DEFAULT_TASK_VENDOR } from "../../types/task"
 import { bindByIds } from "../context/keybindings"
-import type { KVContext } from "../context/kv"
+import { type KVContext, useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
+import { useAccessor } from "../lib/use-accessor"
+import { type DialogContext, useDialog } from "../ui/dialog"
 import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
-export const ATTENTION_INBOX_HEIGHT = 8
-export const ATTENTION_INBOX_BORDER: Array<"left" | "right" | "bottom"> = ["left", "right", "bottom"]
-const MAX_ROWS = 4
+const MAX_DIALOG_ROWS = 10
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -47,19 +48,20 @@ export function AttentionInboxPane(props: {
   items: readonly AttentionInboxItem[]
   tasks: readonly Task[]
   kv: KVContext
-  focused: boolean
-  onOpen: (item: AttentionInboxItem) => void
+  onOpen: (item: AttentionInboxItem, available: boolean) => void
   onDelete: (item: AttentionInboxItem) => void
-  onRequestFocus: () => void
+  onClose: () => void
 }) {
   const { theme } = useTheme()
   const t = useT()
+  const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
   const taskOrder = props.tasks.map((task) => task.id)
   const ordered = sortAttentionInbox(props.items, taskOrder)
+  const maxRows = Math.max(1, Math.min(MAX_DIALOG_ROWS, dimensions.height - 8))
   const safeCursor = Math.min(cursor, Math.max(0, ordered.length - 1))
-  const windowStart = Math.max(0, Math.min(safeCursor - MAX_ROWS + 1, ordered.length - MAX_ROWS))
-  const visible = ordered.slice(windowStart, windowStart + MAX_ROWS)
+  const windowStart = Math.max(0, Math.min(safeCursor - maxRows + 1, ordered.length - maxRows))
+  const visible = ordered.slice(windowStart, windowStart + maxRows)
 
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
@@ -74,13 +76,17 @@ export function AttentionInboxPane(props: {
     return ordered[safeCursor]
   }
 
+  function open(item: AttentionInboxItem): void {
+    const task = props.tasks.find((candidate) => candidate.id === item.taskId)
+    props.onOpen(item, tabLabel(item, task, props.kv).available)
+  }
+
   useBindings(() => ({
-    enabled: props.focused,
     bindings: bindByIds({
       "inbox.nav": (_event, slot) => move((slot ?? 0) % 2 === 0 ? 1 : -1),
       "inbox.open": () => {
         const item = selected()
-        if (item) props.onOpen(item)
+        if (item) open(item)
       },
       "inbox.delete": () => {
         const item = selected()
@@ -90,21 +96,26 @@ export function AttentionInboxPane(props: {
   }))
 
   return (
-    <box flexDirection="column" flexGrow={1} onMouseUp={props.onRequestFocus}>
-      <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
-        <text fg={props.focused ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-          {t("workspace.inbox.title")}
+    <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" flexShrink={0} justifyContent="space-between">
+        <box flexDirection="row">
+          <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
+            {t("workspace.inbox.title")}
+          </text>
+          <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="none" onMouseUp={props.onClose}>
+          esc
         </text>
-        <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
       </box>
       {ordered.length === 0 ? (
-        <box flexGrow={1} paddingLeft={1}>
+        <box paddingTop={1} paddingBottom={1}>
           <text fg={theme.textMuted} wrapMode="none">
             {t("workspace.inbox.empty")}
           </text>
         </box>
       ) : (
-        <box flexDirection="column" flexGrow={1}>
+        <box flexDirection="column" paddingTop={1} paddingBottom={1}>
           {visible.map((item, index) => {
             const absoluteIndex = windowStart + index
             const active = absoluteIndex === safeCursor
@@ -121,8 +132,7 @@ export function AttentionInboxPane(props: {
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
                   setCursor(absoluteIndex)
-                  props.onRequestFocus()
-                  props.onOpen(item)
+                  props.onOpen(item, tab.available)
                 }}
               >
                 <text fg={theme.focusAccent} wrapMode="none">
@@ -137,7 +147,7 @@ export function AttentionInboxPane(props: {
           })}
         </box>
       )}
-      <box flexDirection="row" flexShrink={0} paddingLeft={1} gap={1}>
+      <box flexDirection="row" flexShrink={0} gap={2}>
         <text fg={theme.textMuted} wrapMode="none">
           {t("workspace.inbox.openHint")}
         </text>
@@ -147,4 +157,32 @@ export function AttentionInboxPane(props: {
       </box>
     </box>
   )
+}
+
+export type AttentionInboxDialogProps = {
+  orchestrator: RemoteOrchestrator
+  onOpen: (item: AttentionInboxItem, available: boolean) => void
+  onDelete: (item: AttentionInboxItem) => void
+}
+
+export function AttentionInboxDialog(props: AttentionInboxDialogProps) {
+  const dialog = useDialog()
+  const kv = useKV()
+  const items = useAccessor(props.orchestrator.attentionInboxSignal())
+  const tasks = useAccessor(props.orchestrator.tasksSignal())
+  return (
+    <AttentionInboxPane
+      items={items}
+      tasks={tasks}
+      kv={kv}
+      onOpen={props.onOpen}
+      onDelete={props.onDelete}
+      onClose={() => dialog.clear()}
+    />
+  )
+}
+
+AttentionInboxDialog.show = (dialog: DialogContext, props: AttentionInboxDialogProps): void => {
+  dialog.replace(() => <AttentionInboxDialog {...props} />)
+  dialog.setSize("medium")
 }

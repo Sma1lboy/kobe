@@ -102,7 +102,12 @@ type StackEntry = { key: number; element: () => ReactNode; onClose?: () => void 
 let entrySeq = 0
 
 export type DialogContext = {
-  clear(): void
+  /**
+   * Empty the stack. Pass `refocus: false` when the dialog action itself
+   * navigates to a different pane, so the deferred restore cannot pull native
+   * focus back to the pane that was active before the dialog opened.
+   */
+  clear(options?: { refocus?: boolean }): void
   /**
    * Replace the current dialog (if any) with a new one. The body stays a
    * thunk for Solid-API parity; it is evaluated inside the provider's
@@ -185,11 +190,12 @@ export function DialogProvider(props: { children?: ReactNode }) {
 
   const value = useMemo<DialogContext>(
     () => ({
-      clear() {
+      clear(options) {
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
         setStack([])
-        refocus()
+        if (options?.refocus === false) focusRef.current = null
+        else refocus()
       },
       replace(thunk, onClose) {
         captureFocusIfFirst()

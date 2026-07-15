@@ -243,7 +243,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f4"],
     prefixKeys: ["k"],
     category: "Navigation",
-    description: "Focus next pane (sidebar → workspace → files → inbox)",
+    description: "Focus next pane (sidebar → workspace → files)",
     hint: { keys: "f4" },
   },
   {

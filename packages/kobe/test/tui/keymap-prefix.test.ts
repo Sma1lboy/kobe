@@ -44,6 +44,7 @@ describe("PureTUI prefix dispatch", () => {
           bindings: bindByIds({
             "focus.previous": () => calls.push("previous"),
             "focus.next": () => calls.push("next"),
+            "inbox.show": () => calls.push("inbox"),
           }),
         }),
       },
@@ -53,7 +54,9 @@ describe("PureTUI prefix dispatch", () => {
     expect(dispatchKeyEvent(stack, event("j"), 101)).toBe(true)
     expect(dispatchKeyEvent(stack, event("a", true), 102)).toBe(true)
     expect(dispatchKeyEvent(stack, event("k"), 103)).toBe(true)
-    expect(calls).toEqual(["previous", "next"])
+    expect(dispatchKeyEvent(stack, event("a", true), 104)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("i"), 105)).toBe(true)
+    expect(calls).toEqual(["previous", "next", "inbox"])
 
     for (const key of ["h", "j", "k", "l"]) {
       expect(dispatchKeyEvent(stack, event(key, true), 104)).toBe(false)

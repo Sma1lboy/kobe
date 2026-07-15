@@ -2,6 +2,14 @@ import type { KobeBinding } from "./keybindings-table.ts"
 
 export const INBOX_BINDINGS: readonly KobeBinding[] = [
   {
+    id: "inbox.show",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["i"],
+    category: "Global",
+    description: "Open attention Inbox",
+  },
+  {
     id: "inbox.nav",
     scope: "inbox",
     keys: ["j", "k", "down", "up"],
