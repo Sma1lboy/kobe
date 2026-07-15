@@ -1,4 +1,5 @@
 import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
+import type { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
@@ -10,6 +11,9 @@ export interface RecordedHandlerEffects {
   readonly reported: Array<{ taskId: string; kind: string; detail?: unknown }>
   readonly issueCalls: Array<{ method: string; repo: unknown; op?: unknown }>
   readonly cleared: string[]
+  readonly inboxRecords: Array<{ taskId: string; kind: string; detail?: unknown; tabId?: string }>
+  readonly inboxDeleted: Array<{ taskId: string; tabId: string | null }>
+  readonly inboxTaskDeleted: string[]
   readonly deletions: string[]
   stopped: number
 }
@@ -24,6 +28,9 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     reported: [],
     issueCalls: [],
     cleared: [],
+    inboxRecords: [],
+    inboxDeleted: [],
+    inboxTaskDeleted: [],
     deletions: [],
     stopped: 0,
   }
@@ -37,6 +44,24 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       report: (taskId: string, kind: string, detail?: unknown) => rec.reported.push({ taskId, kind, detail }),
       clearTask: (taskId: string) => rec.cleared.push(taskId),
     } as unknown as DaemonActivityRegistry,
+    inbox: {
+      record: (taskId: string, kind: string, detail?: unknown, tabId?: string) => {
+        rec.inboxRecords.push({ taskId, kind, detail, tabId })
+        return Promise.resolve()
+      },
+      deleteEpisode: (taskId: string, tabId: string | null) => {
+        rec.inboxDeleted.push({ taskId, tabId })
+        return Promise.resolve(true)
+      },
+      deleteTask: (taskId: string) => {
+        rec.inboxTaskDeleted.push(taskId)
+        return Promise.resolve()
+      },
+      deleteTaskBestEffort: (taskId: string) => {
+        rec.inboxTaskDeleted.push(taskId)
+        return Promise.resolve()
+      },
+    } as unknown as AttentionInboxStore,
     deletions: {
       enqueue: (taskId: string) => rec.deletions.push(taskId),
     },

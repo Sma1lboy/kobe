@@ -18,6 +18,7 @@ import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
+import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import {
   type ClientState,
   type DaemonClientConnection,
@@ -185,8 +186,11 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
     return runtime.latestTranscriptMtime(task.vendor ?? runtime.defaultTaskVendor, task.worktreePath)
   }
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
-  const deletions = new TaskDeletionRunner(orch, runtime, (taskId) => activity.clearTask(taskId))
-
+  const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
+  await inbox.init()
+  const clearTaskState = (taskId: string) =>
+    inbox.deleteTaskBestEffort(taskId).finally(() => activity.clearTask(taskId))
+  const deletions = new TaskDeletionRunner(orch, runtime, clearTaskState)
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
   // isolate. Handlers reach it through DaemonHandlerContext.issues.
@@ -346,6 +350,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       runtime,
       bus,
       activity,
+      inbox,
       deletions,
       issues,
       daemon: {

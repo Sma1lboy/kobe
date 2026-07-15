@@ -154,6 +154,9 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
+  // Explicitly dismiss one durable attention episode. Viewing/jumping never
+  // calls this; only the Inbox pane's user action does.
+  | "attention.dismiss"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
