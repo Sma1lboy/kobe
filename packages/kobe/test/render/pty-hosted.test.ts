@@ -47,6 +47,27 @@ function text(pty: HostedTaskPty): string {
     .join("\n")
 }
 
+class DelayedRepaintPty extends HostedTaskPty {
+  readonly repaintWaits: number[] = []
+  readonly resizeTimes: number[] = []
+  repaintObservedAt: number | null = null
+
+  protected override sendResize(cols: number, rows: number): void {
+    this.resizeTimes.push(Date.now())
+    super.sendResize(cols, rows)
+  }
+
+  protected override nextDataOrTimeout(ms: number): Promise<void> {
+    this.repaintWaits.push(ms)
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.repaintObservedAt = Date.now()
+        resolve()
+      }, 300)
+    })
+  }
+}
+
 async function until(cond: () => boolean, label: string, ms = 5000): Promise<void> {
   const start = Date.now()
   while (!cond()) {
@@ -164,22 +185,21 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     b.kill()
   })
 
-  test("waits for a delayed shrink repaint before restoring the reattach size", async () => {
-    // Regression for 052e57e: macOS can deliver the first WINCH repaint
-    // after the old 200ms bound. Restoring sooner makes this child observe
-    // the original size and skip its only repaint; the 500ms bound lets the
-    // delayed shrink observation write its marker before the restore.
-    const cmd = [
-      "/bin/sh",
-      "-c",
-      'cur=$(stty size); trap \'sleep 0.3; new=$(stty size); if [ "$new" != "$cur" ]; then cur=$new; echo DELAYED-REPAINT; fi\' WINCH; echo ready; while :; do sleep 0.05; done',
-    ]
-    const a = new HostedTaskPty({ taskId: "smoke::t3-delayed", cwd: dir, command: cmd, cols: 60, rows: 12 })
+  test("waits 500ms for a delayed repaint before restoring the reattach size", async () => {
+    // Regression for 052e57e: a macOS repaint can arrive after the old
+    // 200ms bound. This deterministic delayed-repaint handle holds the
+    // shrink stage for 300ms, so the test both pins the 500ms contract and
+    // proves the original size is restored only after that repaint settles.
+    const a = new HostedTaskPty({ taskId: "smoke::t3-delayed", ...OPTS })
+    a.write("ready\n")
     await until(() => text(a).includes("ready"), "first delayed-repaint attach sees output")
     a.detach()
 
-    const b = new HostedTaskPty({ taskId: "smoke::t3-delayed", cwd: dir, command: cmd, cols: 60, rows: 12 })
-    await until(() => text(b).includes("DELAYED-REPAINT"), "delayed shrink repaint arrives before the size restore")
+    const b = new DelayedRepaintPty({ taskId: "smoke::t3-delayed", ...OPTS })
+    await until(() => b.resizeTimes.length === 2, "delayed repaint settles before the size restore")
+    expect(b.repaintWaits).toEqual([500])
+    expect(b.repaintObservedAt).not.toBeNull()
+    expect(b.resizeTimes[1]).toBeGreaterThanOrEqual(b.repaintObservedAt ?? Infinity)
     b.kill()
   })
 

@@ -402,7 +402,7 @@ export class HostedTaskPty extends XtermTaskPty {
     void this.client?.request("pty.write", { key: this.taskId, data }).catch(() => this.remoteGone())
   }
 
-  private sendResize(cols: number, rows: number): void {
+  protected sendResize(cols: number, rows: number): void {
     void this.client?.request("pty.resize", { key: this.taskId, cols, rows }).catch(() => {})
   }
 
@@ -410,7 +410,7 @@ export class HostedTaskPty extends XtermTaskPty {
   private dataWaiter: (() => void) | null = null
 
   /** Resolve on the next inbound `pty.data` frame, or after `ms`. */
-  private nextDataOrTimeout(ms: number): Promise<void> {
+  protected nextDataOrTimeout(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         this.dataWaiter = null
