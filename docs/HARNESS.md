@@ -70,6 +70,22 @@ as `/board`, render-test frames, and `dev:mock` cannot approve visual changes;
 `test:e2e` (dev:mock) stays a PTY-transport smoke only. Failure artifacts land
 in `packages/kobe-web/test-results/` (actual/diff/trace).
 
+## Terminal endurance probe
+
+`perf:golden` stays the fast release doctor. For multi-tab retention and
+park/wake regressions, run the non-CI hosted-PTY soak on a development machine:
+
+```bash
+cd packages/kobe
+bun run pty:soak -- --tabs=50 --cycles=5 --lines=1200
+```
+
+It creates a disposable `KOBE_HOME_DIR`, drives long output through real hosted
+shells, parks every tab, lets them keep emitting while hidden, then proves each
+wake sees its exact delta. It fails on lost markers or any full-replay fallback,
+not timing. `--tabs` accepts up to 100; the printed temporary home is retained
+for post-failure inspection and never points at production state.
+
 ## Regression policy
 
 - A bug fix includes a test that fails for the reported defect and passes with

@@ -28,7 +28,7 @@ import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { SerializeAddon } from "@xterm/addon-serialize"
-import { type ParkedScreen, type TaskPtyOpts, defaultShell } from "./pty-types"
+import { type ParkedScreen, type PtyDetachOpts, type TaskPtyOpts, defaultShell } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
 import { xtermCursorHidden } from "./xterm-refresh"
 
@@ -376,7 +376,7 @@ export class HostedTaskPty extends XtermTaskPty {
     }
   }
 
-  detach(): void {
+  detach(opts: PtyDetachOpts = {}): void {
     const client = this.client
     this.cleanup()
     // The host keeps ONE sink per (key, connection) — shared by every local
@@ -384,7 +384,15 @@ export class HostedTaskPty extends XtermTaskPty {
     // local viewer; sending it with a sibling still attached would starve
     // the survivor's stream.
     const siblings = hostedByKey.get(this.taskId)?.size ?? 0
-    if (client && siblings === 0) void client.request("pty.detach", { key: this.taskId }).catch(() => {})
+    if (client && siblings === 0) {
+      void client
+        .request("pty.detach", {
+          key: this.taskId,
+          parked: opts.parked === true,
+          parkedScreenBytes: opts.parkedScreenBytes,
+        })
+        .catch(() => {})
+    }
     this.silentDispose()
   }
 

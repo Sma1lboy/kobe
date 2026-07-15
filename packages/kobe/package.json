@@ -42,6 +42,7 @@
     "check-i18n": "bun run scripts/check-i18n.ts",
     "test": "bun run test:fast && bun run test:socket",
     "perf:golden": "bun scripts/perf-golden.ts",
+    "pty:soak": "bun scripts/pty-soak.ts",
     "test:fast": "vitest run --passWithNoTests --minWorkers=1 --maxWorkers=8",
     "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon --pool forks --minWorkers=1 --maxWorkers=4 --passWithNoTests",
     "test:socket:coverage": "KOBE_INCLUDE_SOCKET=1 KOBE_COVERAGE_DAEMON=1 vitest run test/daemon --coverage --pool forks --minWorkers=1 --maxWorkers=4 --passWithNoTests",

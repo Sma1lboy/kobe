@@ -198,10 +198,18 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
         ptys.kill(requireString(objectPayload(req.payload), "key"))
         return {}
       case "pty.detach":
-        ptys.detach(requireString(objectPayload(req.payload), "key"), client)
+        {
+          const payload = objectPayload(req.payload)
+          ptys.detach(
+            requireString(payload, "key"),
+            client,
+            payload.parked === true,
+            typeof payload.parkedScreenBytes === "number" ? payload.parkedScreenBytes : 0,
+          )
+        }
         return {}
       case "pty.list":
-        return { sessions: ptys.list() }
+        return { pid: process.pid, rssBytes: process.memoryUsage().rss, sessions: ptys.list(), stats: ptys.stats() }
       case "pty.warm": {
         const payload = objectPayload(req.payload)
         ptys.warm(
