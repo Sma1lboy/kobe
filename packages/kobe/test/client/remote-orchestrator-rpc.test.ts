@@ -97,11 +97,11 @@ describe("RemoteOrchestrator RPC wire mapping", () => {
   })
 
   it("dismissAttention targets exactly one task+tab episode", async () => {
-    await expect(orch.dismissAttention("t1", "tab-2")).resolves.toBe(true)
-    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1", tabId: "tab-2" })
+    await expect(orch.dismissAttention("t1", "tab-2", 42)).resolves.toBe(true)
+    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1", tabId: "tab-2", at: 42 })
 
-    await orch.dismissAttention("t1", null)
-    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1" })
+    await orch.dismissAttention("t1", null, 43)
+    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1", at: 43 })
   })
 
   it("markAttentionRead targets the exact episode timestamp", async () => {

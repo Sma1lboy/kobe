@@ -1,15 +1,14 @@
+import { attentionInboxItemKey } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { AttentionInboxItem } from "../../client/remote-orchestrator"
 import type { Task } from "../../types/task"
+
+export const attentionInboxKey = attentionInboxItemKey
 
 const STATE_PRIORITY: Record<AttentionInboxItem["state"], number> = {
   permission_needed: 0,
   error: 1,
   rate_limited: 1,
   turn_complete: 2,
-}
-
-export function attentionInboxKey(item: { taskId: string | null; tabId: string | null }): string {
-  return `${item.taskId}\u0000${item.tabId ?? ""}`
 }
 
 export function isAttentionInboxItemAvailable(
@@ -36,7 +35,7 @@ export function sortAttentionInbox(
     const task =
       (taskIndex.get(a.taskId) ?? Number.MAX_SAFE_INTEGER) - (taskIndex.get(b.taskId) ?? Number.MAX_SAFE_INTEGER)
     if (task !== 0) return task
-    return attentionInboxKey(a).localeCompare(attentionInboxKey(b))
+    return attentionInboxItemKey(a).localeCompare(attentionInboxItemKey(b))
   })
 }
 
@@ -55,8 +54,9 @@ export function nextAttentionInboxTarget(
     (item) => item.unread && liveTasks.has(item.taskId) && isAvailable(item),
   )
   if (ordered.length === 0) return null
-  const currentKey = current.taskId === null ? null : attentionInboxKey(current)
-  const currentIndex = currentKey === null ? -1 : ordered.findIndex((item) => attentionInboxKey(item) === currentKey)
+  const currentKey = current.taskId === null ? null : attentionInboxItemKey(current)
+  const currentIndex =
+    currentKey === null ? -1 : ordered.findIndex((item) => attentionInboxItemKey(item) === currentKey)
   if (currentIndex < 0) return ordered[0] ?? null
   // The sole unread episode may already be the current tab. Returning it lets
   // F7 mark it read instead of leaving an unvisitable item stuck in the queue.

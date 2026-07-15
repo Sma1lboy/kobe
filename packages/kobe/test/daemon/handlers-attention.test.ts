@@ -29,16 +29,23 @@ describe("attention.dismiss handler", () => {
 
   it("deletes exactly one task+tab episode", async () => {
     const { ctx, rec } = fakeCtx()
-    await expect(dispatch("attention.dismiss", { taskId: "t1", tabId: "tab-2" }, ctx)).resolves.toEqual({
+    await expect(dispatch("attention.dismiss", { taskId: "t1", tabId: "tab-2", at: 42 }, ctx)).resolves.toEqual({
       deleted: true,
     })
-    expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: "tab-2" }])
+    expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: "tab-2", at: 42 }])
   })
 
   it("supports a legacy task-level episode", async () => {
     const { ctx, rec } = fakeCtx()
     await dispatch("attention.dismiss", { taskId: "t1" }, ctx)
     expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: null }])
+  })
+
+  it("rejects a malformed optional dismiss timestamp", async () => {
+    const { ctx } = fakeCtx()
+    await expect(dispatch("attention.dismiss", { taskId: "t1", at: "old" }, ctx)).rejects.toThrow(
+      "at must be a finite number",
+    )
   })
 
   it("records normalized engine events with their chat-tab identity", async () => {

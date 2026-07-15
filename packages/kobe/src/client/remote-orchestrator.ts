@@ -435,8 +435,8 @@ export class RemoteOrchestrator {
     return deleteTaskOp(this.client, id, opts)
   }
 
-  dismissAttention(taskId: TaskId | string, tabId: string | null): Promise<boolean> {
-    return dismissAttentionOp(this.client, taskId, tabId)
+  dismissAttention(taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> {
+    return dismissAttentionOp(this.client, taskId, tabId, at)
   }
 
   markAttentionRead(taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> {

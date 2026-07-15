@@ -12,7 +12,7 @@ export interface RecordedHandlerEffects {
   readonly issueCalls: Array<{ method: string; repo: unknown; op?: unknown }>
   readonly cleared: string[]
   readonly inboxRecords: Array<{ taskId: string; kind: string; detail?: unknown; tabId?: string }>
-  readonly inboxDeleted: Array<{ taskId: string; tabId: string | null }>
+  readonly inboxDeleted: Array<{ taskId: string; tabId: string | null; at?: number }>
   readonly inboxRead: Array<{ taskId: string; tabId: string | null; at: number }>
   readonly inboxTaskDeleted: string[]
   readonly deletions: string[]
@@ -51,8 +51,8 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         rec.inboxRecords.push({ taskId, kind, detail, tabId })
         return Promise.resolve()
       },
-      deleteEpisode: (taskId: string, tabId: string | null) => {
-        rec.inboxDeleted.push({ taskId, tabId })
+      deleteEpisode: (taskId: string, tabId: string | null, at?: number) => {
+        rec.inboxDeleted.push({ taskId, tabId, ...(at !== undefined ? { at } : {}) })
         return Promise.resolve(true)
       },
       markRead: (taskId: string, tabId: string | null, at: number) => {

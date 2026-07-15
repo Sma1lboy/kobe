@@ -91,10 +91,12 @@ export async function dismissAttentionOp(
   client: KobeDaemonClient,
   taskId: TaskId | string,
   tabId: string | null,
+  at: number,
 ): Promise<boolean> {
   const res = await client.request<{ deleted: boolean }>("attention.dismiss", {
     taskId: String(taskId),
     ...(tabId !== null ? { tabId } : {}),
+    at,
   })
   return res.deleted
 }

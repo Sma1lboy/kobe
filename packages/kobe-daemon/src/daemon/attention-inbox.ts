@@ -12,7 +12,14 @@ import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { AttentionInboxItem, AttentionInboxState, EngineActivityDetail, EngineActivityKind } from "./contracts.ts"
+import {
+  type AttentionInboxItem,
+  type AttentionInboxState,
+  type EngineActivityDetail,
+  type EngineActivityKind,
+  attentionInboxItemKey,
+  isAttentionInboxState,
+} from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 
@@ -23,10 +30,6 @@ interface AttentionInboxFile {
 
 export function defaultAttentionInboxPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "attention-inbox.json")
-}
-
-function itemKey(taskId: string, tabId: string | null): string {
-  return `${taskId}\0${tabId ?? ""}`
 }
 
 function stateFor(kind: EngineActivityKind, detail?: EngineActivityDetail): AttentionInboxState | null {
@@ -41,13 +44,7 @@ function normalizeItem(value: unknown): AttentionInboxItem | null {
   const item = value as Partial<AttentionInboxItem>
   if (typeof item.taskId !== "string" || item.taskId.length === 0) return null
   if (item.tabId !== null && typeof item.tabId !== "string") return null
-  if (
-    item.state !== "turn_complete" &&
-    item.state !== "permission_needed" &&
-    item.state !== "error" &&
-    item.state !== "rate_limited"
-  )
-    return null
+  if (!isAttentionInboxState(item.state)) return null
   if (typeof item.at !== "number" || !Number.isFinite(item.at)) return null
   return {
     taskId: item.taskId,
@@ -93,20 +90,19 @@ export class AttentionInboxStore {
   async init(): Promise<void> {
     await this.enqueue(async () => {
       this.items.clear()
-      for (const item of await readStore(this.path)) this.items.set(itemKey(item.taskId, item.tabId), item)
+      for (const item of await readStore(this.path)) this.items.set(attentionInboxItemKey(item), item)
       this.publish()
     })
   }
 
   snapshot(): AttentionInboxItem[] {
-    return [...this.items.values()].sort(
-      (a, b) => a.at - b.at || a.taskId.localeCompare(b.taskId) || (a.tabId ?? "").localeCompare(b.tabId ?? ""),
-    )
+    return [...this.items.values()].sort(compareItems)
   }
 
   async record(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail, tabId?: string): Promise<void> {
     await this.enqueue(async () => {
-      const key = itemKey(taskId, tabId ?? null)
+      const normalizedTabId = tabId || null
+      const key = attentionInboxItemKey({ taskId, tabId: normalizedTabId })
       const next = new Map(this.items)
       if (kind === "turn-start") {
         if (!next.delete(key)) return
@@ -115,7 +111,7 @@ export class AttentionInboxStore {
         if (!state) return
         next.set(key, {
           taskId,
-          tabId: tabId ?? null,
+          tabId: normalizedTabId,
           state,
           ...(detail ? { detail } : {}),
           unread: true,
@@ -129,7 +125,7 @@ export class AttentionInboxStore {
   /** Mark only the episode the caller actually opened, not a newer replacement. */
   async markRead(taskId: string, tabId: string | null, at: number): Promise<boolean> {
     return await this.enqueue(async () => {
-      const key = itemKey(taskId, tabId)
+      const key = attentionInboxItemKey({ taskId, tabId })
       const item = this.items.get(key)
       if (!item || item.at !== at || !item.unread) return false
       const next = new Map(this.items)
@@ -139,10 +135,14 @@ export class AttentionInboxStore {
     })
   }
 
-  async deleteEpisode(taskId: string, tabId: string | null): Promise<boolean> {
+  /** Delete only the episode the caller saw; omitted `at` keeps old clients compatible. */
+  async deleteEpisode(taskId: string, tabId: string | null, at?: number): Promise<boolean> {
     return await this.enqueue(async () => {
+      const key = attentionInboxItemKey({ taskId, tabId })
+      const item = this.items.get(key)
+      if (!item || (at !== undefined && item.at !== at)) return false
       const next = new Map(this.items)
-      if (!next.delete(itemKey(taskId, tabId))) return false
+      next.delete(key)
       await this.commit(next)
       return true
     })
@@ -177,16 +177,18 @@ export class AttentionInboxStore {
 
   /** Serialize mutations so concurrent hook/RPC writes cannot clobber the file. */
   private async commit(next: ReadonlyMap<string, AttentionInboxItem>): Promise<void> {
-    const items = [...next.values()].sort(
-      (a, b) => a.at - b.at || a.taskId.localeCompare(b.taskId) || (a.tabId ?? "").localeCompare(b.tabId ?? ""),
-    )
+    const items = [...next.values()].sort(compareItems)
     await writeStore(this.path, items)
     this.items.clear()
-    for (const item of items) this.items.set(itemKey(item.taskId, item.tabId), item)
+    for (const item of items) this.items.set(attentionInboxItemKey(item), item)
     this.bus.publish("attention.inbox", { items })
   }
 
   private publish(): void {
     this.bus.publish("attention.inbox", { items: this.snapshot() })
   }
+}
+
+function compareItems(a: AttentionInboxItem, b: AttentionInboxItem): number {
+  return a.at - b.at || a.taskId.localeCompare(b.taskId) || (a.tabId ?? "").localeCompare(b.tabId ?? "")
 }

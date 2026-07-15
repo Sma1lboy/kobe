@@ -8,7 +8,11 @@
  */
 
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
-import type { NoticeEventPayload, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import {
+  type NoticeEventPayload,
+  type SerializedTask,
+  isAttentionInboxState,
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { UpdateInfo } from "../version.ts"
 import {
@@ -157,10 +161,7 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       return (
         typeof p.taskId === "string" &&
         (p.tabId === null || typeof p.tabId === "string") &&
-        (p.state === "turn_complete" ||
-          p.state === "permission_needed" ||
-          p.state === "error" ||
-          p.state === "rate_limited") &&
+        isAttentionInboxState(p.state) &&
         (p.unread === undefined || typeof p.unread === "boolean") &&
         typeof p.at === "number"
       )

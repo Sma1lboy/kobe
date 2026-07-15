@@ -42,6 +42,7 @@ import { InboxUnavailableDialog } from "./InboxUnavailableDialog"
 import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
+import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
@@ -231,8 +232,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   function openInboxItem(item: AttentionInboxItem, knownAvailable?: boolean): void {
-    void orch.markAttentionRead(item.taskId, item.tabId, item.at).catch(notifyError)
-    const task = tasks.find((candidate) => candidate.id === item.taskId)
+    notifyInboxRpcFailure(orch.markAttentionRead(item.taskId, item.tabId, item.at), "mark read", notifyError)
+    const task = orch.getTask(item.taskId)
     const available =
       knownAvailable ??
       isAttentionInboxItemAvailable(item, task, (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined)
@@ -250,7 +251,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     AttentionInboxDialog.show(dialog, {
       orchestrator: orch,
       onOpen: openInboxItem,
-      onDelete: (item) => void orch.dismissAttention(item.taskId, item.tabId).catch(notifyError),
+      onDelete: (item) =>
+        notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyError),
     })
   }
 

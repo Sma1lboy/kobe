@@ -9,7 +9,8 @@ export const ATTENTION_HANDLERS: readonly DaemonRequestHandler[] = [
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const tabId = optionalString(payload, "tabId") ?? null
-      return { deleted: await ctx.inbox.deleteEpisode(taskId, tabId) }
+      const at = payload.at === undefined ? undefined : requireNumber(payload, "at")
+      return { deleted: await ctx.inbox.deleteEpisode(taskId, tabId, at) }
     },
   },
   {

@@ -6,6 +6,7 @@
  * component relies on.
  */
 import { describe, expect, it } from "bun:test"
+import type { Renderable } from "@opentui/core"
 import { useEffect } from "react"
 import { useBindings } from "../../src/tui-react/lib/keymap"
 import { DialogProvider, useDialog } from "../../src/tui-react/ui/dialog"
@@ -297,5 +298,34 @@ describe("DialogProvider", () => {
     const text = await frame()
     expect(text).not.toContain("dialog B")
     expect(dialogRef.current?.stack.length).toBe(0)
+  })
+
+  it("clear can suppress restoring focus to the pane behind the dialog", async () => {
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    let input: Renderable | null = null
+    const { frame, renderer } = await renderComponent(
+      <DialogProvider>
+        <input
+          ref={(value) => {
+            input = value
+          }}
+          focused={true}
+          value="pane input"
+        />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+            dialog.push(() => <text>dialog A</text>)
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("dialog A")
+    expect(input).not.toBeNull()
+
+    act(() => dialogRef.current?.clear({ refocus: false }))
+    await settle()
+    expect(await frame()).not.toContain("dialog A")
+    expect(renderer.currentFocusedRenderable).not.toBe(input)
   })
 })
