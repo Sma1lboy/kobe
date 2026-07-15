@@ -24,7 +24,6 @@ const serializedTask = {
 
 function fakeClient() {
   const request = vi.fn(async (method: string) => {
-    if (method === "attention.dismiss") return { deleted: true }
     if (method === "task.ensureWorktree") return { worktreePath: "/wt" }
     if (method === "worktree.discoverAdoptable") return { worktrees: [] }
     if (method.startsWith("task.") || method === "worktree.adopt") return { task: serializedTask }
@@ -93,14 +92,6 @@ describe("RemoteOrchestrator RPC wire mapping", () => {
     expect(request).toHaveBeenCalledWith("task.move", { taskId: "t1", direction: "up" })
     await orch.moveTask("t1", 1)
     expect(request).toHaveBeenCalledWith("task.move", { taskId: "t1", direction: "down" })
-  })
-
-  it("dismissAttention targets exactly one task+tab episode", async () => {
-    await expect(orch.dismissAttention("t1", "tab-2")).resolves.toBe(true)
-    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1", tabId: "tab-2" })
-
-    await orch.dismissAttention("t1", null)
-    expect(request).toHaveBeenCalledWith("attention.dismiss", { taskId: "t1" })
   })
 
   it("worktree adoption RPCs", async () => {

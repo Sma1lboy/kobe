@@ -15,11 +15,11 @@ import { useRenderer } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useRef, useState } from "react"
 import { useLatest } from "../lib/use-latest"
 
-/** The primary panes in kobe's layout. */
-export type PaneId = "sidebar" | "workspace" | "files" | "inbox" | "terminal"
+/** The four primary panes in kobe's layout. */
+export type PaneId = "sidebar" | "workspace" | "files" | "terminal"
 
 /** Cycle order — used by `tab` / `shift+tab`. */
-export const PANE_ORDER = ["sidebar", "workspace", "files", "inbox", "terminal"] as const satisfies readonly PaneId[]
+export const PANE_ORDER = ["sidebar", "workspace", "files", "terminal"] as const satisfies readonly PaneId[]
 
 export type FocusContextValue = {
   /** The currently focused pane. */

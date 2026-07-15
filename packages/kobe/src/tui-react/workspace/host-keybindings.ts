@@ -29,7 +29,7 @@ import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed
 // Cycle order for focus.next — the host's real panes, NOT the context's
 // PANE_ORDER: that includes "terminal", which this host never mounts, and
 // cycling focus onto an unmounted pane would strand it.
-const PANE_CYCLE = ["sidebar", "workspace", "files", "inbox"] as const satisfies readonly PaneId[]
+const PANE_CYCLE = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
 
 export type WorkspaceKeybindingDeps = {
   focus: FocusContextValue

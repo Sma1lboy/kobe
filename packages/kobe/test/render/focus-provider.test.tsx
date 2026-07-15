@@ -62,10 +62,7 @@ describe("FocusProvider", () => {
     act(() => setFocusedFn?.("files"))
     expect(await frame()).toContain("focused:files")
 
-    act(() => cycleFn?.(1)) // files -> inbox
-    expect(await frame()).toContain("focused:inbox")
-
-    act(() => cycleFn?.(1)) // inbox -> terminal
+    act(() => cycleFn?.(1)) // files -> terminal (PANE_ORDER: sidebar, workspace, files, terminal)
     expect(await frame()).toContain("focused:terminal")
 
     act(() => cycleFn?.(1)) // terminal wraps back to sidebar

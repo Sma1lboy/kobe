@@ -16,13 +16,6 @@ export const en = {
   attention: {
     none: "No tasks waiting for input",
   },
-  inbox: {
-    title: "INBOX",
-    empty: "No pending attention",
-    unavailable: "unavailable",
-    openHint: "enter open",
-    deleteHint: "d delete",
-  },
   terminalComing: "Embedded terminal is starting...",
 }
 
@@ -37,13 +30,6 @@ export const zh: typeof en = {
   },
   attention: {
     none: "没有等待输入的任务",
-  },
-  inbox: {
-    title: "收件箱",
-    empty: "暂无待处理",
-    unavailable: "目标不可用",
-    openHint: "enter 打开",
-    deleteHint: "d 删除",
   },
   terminalComing: "嵌入终端正在启动……",
 }

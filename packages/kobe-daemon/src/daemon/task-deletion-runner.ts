@@ -13,7 +13,7 @@ export class TaskDeletionRunner implements TaskDeletionScheduler {
   constructor(
     private readonly orch: DaemonOrchestrator,
     private readonly runtime: Pick<DaemonRuntimeAdapter, "tearDownTaskSession">,
-    private readonly clearTaskState: (taskId: string) => void | Promise<void>,
+    private readonly clearActivity: (taskId: string) => void,
   ) {}
 
   enqueue(taskId: string): void {
@@ -38,7 +38,7 @@ export class TaskDeletionRunner implements TaskDeletionScheduler {
 
   private async run(taskId: string): Promise<void> {
     if (!(await this.orch.beginTaskDeletion(taskId))) return
-    await this.clearTaskState(taskId)
+    this.clearActivity(taskId)
     await this.runtime.tearDownTaskSession(taskId).catch((err) => logDaemonError("task-deletion-session-teardown", err))
     await this.orch.finishTaskDeletion(taskId)
   }
