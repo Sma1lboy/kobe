@@ -56,8 +56,10 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
     await pressTerminal(terminal, "Escape")
     await expect(buffer).not.toContainText("keybindings")
 
-    // The fixture starts with sidebar focus. Avoid Ctrl+Q here: browser PTYs
-    // may reserve the flow-control character before it reaches OpenTUI.
+    // Re-anchor the sidebar scope after the modal closes before sending its
+    // local shortcut. Avoid Ctrl+Q here: browser PTYs may reserve the
+    // flow-control character before it reaches OpenTUI.
+    await terminal.click({ position: { x: 24, y: 24 } })
     await pressTerminal(terminal, "s")
     await expect(buffer).toContainText("Settings")
     await expect(buffer).toContainText("General")
