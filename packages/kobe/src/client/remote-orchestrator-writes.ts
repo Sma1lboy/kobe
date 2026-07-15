@@ -94,7 +94,7 @@ export async function dismissAttentionOp(
 ): Promise<boolean> {
   const res = await client.request<{ deleted: boolean }>("attention.dismiss", {
     taskId: String(taskId),
-    ...(tabId ? { tabId } : {}),
+    ...(tabId !== null ? { tabId } : {}),
   })
   return res.deleted
 }

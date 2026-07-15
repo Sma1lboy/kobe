@@ -31,4 +31,16 @@ describe("attention.dismiss handler", () => {
     await dispatch("engine.reportEvent", { taskId: "t1", tabId: "tab-3", kind: "awaiting-input" }, ctx)
     expect(rec.inboxRecords).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: undefined, tabId: "tab-3" }])
   })
+
+  it("does not drop the engine event when Inbox persistence fails", async () => {
+    const { ctx, rec } = fakeCtx()
+    ctx.inbox.record = async () => {
+      throw new Error("disk full")
+    }
+
+    await expect(
+      dispatch("engine.reportEvent", { taskId: "t1", tabId: "tab-3", kind: "turn-complete" }, ctx),
+    ).resolves.toEqual({})
+    expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])
+  })
 })

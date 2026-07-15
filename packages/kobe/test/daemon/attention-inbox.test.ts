@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
@@ -73,5 +73,52 @@ describe("daemon attention inbox", () => {
     await store.deleteTask("task-1")
 
     expect(store.snapshot().map((item) => item.taskId)).toEqual(["task-2"])
+  })
+
+  it("classifies waiting, rate limits, billing failures, and other failures", async () => {
+    const { store } = await create()
+    await store.record("task-1", "awaiting-input", { waiting: "input" }, "tab-1")
+    await store.record("task-1", "turn-failed", { failure: "rate_limit" }, "tab-2")
+    await store.record("task-1", "turn-failed", { failure: "billing" }, "tab-3")
+    await store.record("task-1", "turn-failed", { failure: "other" }, "tab-4")
+
+    expect(Object.fromEntries(store.snapshot().map((item) => [item.tabId, item.state]))).toEqual({
+      "tab-1": "permission_needed",
+      "tab-2": "rate_limited",
+      "tab-3": "error",
+      "tab-4": "error",
+    })
+  })
+
+  it("boots with an empty Inbox when the persisted JSON is corrupt", async () => {
+    dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-corrupt-"))
+    const path = join(dir, "attention-inbox.json")
+    await writeFile(path, "{not-json", "utf8")
+    const bus = new DaemonEventBus()
+    const store = new AttentionInboxStore(path, bus)
+
+    await expect(store.init()).resolves.toBeUndefined()
+    expect(store.snapshot()).toEqual([])
+    expect(bus.snapshot()).toContainEqual({ channel: "attention.inbox", payload: { items: [] } })
+  })
+
+  it("keeps memory unchanged when an atomic write fails", async () => {
+    dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-blocked-"))
+    const blocker = join(dir, "not-a-directory")
+    await writeFile(blocker, "blocked", "utf8")
+    const store = new AttentionInboxStore(join(blocker, "attention-inbox.json"), new DaemonEventBus())
+    await store.init()
+
+    await expect(store.record("task-1", "turn-complete", undefined, "tab-1")).rejects.toThrow()
+    expect(store.snapshot()).toEqual([])
+  })
+
+  it("keeps task deletion live when Inbox cleanup fails", async () => {
+    const { store } = await create()
+    store.deleteTask = async () => {
+      throw new Error("disk full")
+    }
+
+    await expect(store.deleteTaskBestEffort("task-1")).resolves.toBeUndefined()
   })
 })

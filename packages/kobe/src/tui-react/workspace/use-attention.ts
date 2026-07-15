@@ -7,7 +7,8 @@
  *     The selected task already surfaces its own state in the middle column, so
  *     it's skipped. Gated by the `notifications.crossTask.enabled` preference.
  *  2. Jump-to-next — F7 walks the daemon-owned durable Inbox. Jumping never
- *     consumes an episode; only a same-tab turn-start or explicit delete does.
+ *     consumes an episode; removal comes from same-tab turn-start, explicit
+ *     episode deletion, or explicit hard-delete of the containing task.
  *
  * State is engine-owned and vendor-neutral: `TaskEngineState.state` and the
  * Inbox state are the only inputs, so there are no Claude/Codex strings here.
@@ -19,7 +20,7 @@ import { attentionKindFor } from "../../tui/lib/notify-state"
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
-import { nextAttentionInboxTarget } from "./attention-inbox-core"
+import { isAttentionInboxItemAvailable, nextAttentionInboxTarget } from "./attention-inbox-core"
 import { activeTabIdFor, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
 
 const CROSS_TASK_KEY = "notifications.crossTask.enabled"
@@ -70,7 +71,12 @@ export function useAttention(args: {
         taskId: selectedId,
         tabId: selectedId ? activeTabIdFor(selectedId) : null,
       },
-      (item) => item.tabId === null || knownTaskTab(kv, item.taskId, item.tabId) !== undefined,
+      (item) =>
+        isAttentionInboxItemAvailable(
+          item,
+          tasks.find((task) => task.id === item.taskId),
+          (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined,
+        ),
     )
     if (!target) {
       notif.notify({ kind: "done", taskId: selectedId ?? "", tabId: "", title: noTasksMessage })

@@ -71,8 +71,8 @@ export interface ChannelPayloads {
   }
   /**
    * Full durable attention queue. Viewing never consumes an item: an episode
-   * leaves only after a newer `turn-start` for the same task+tab or an explicit
-   * `attention.dismiss` RPC. Full snapshots make reconnect/replay stateless.
+   * leaves only after a newer same-tab `turn-start`, explicit dismissal, or an
+   * explicit hard-delete of its task. Full snapshots make reconnect stateless.
    */
   "attention.inbox": { items: AttentionInboxItem[] }
   /**

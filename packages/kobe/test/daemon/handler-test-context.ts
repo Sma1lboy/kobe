@@ -57,6 +57,10 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         rec.inboxTaskDeleted.push(taskId)
         return Promise.resolve()
       },
+      deleteTaskBestEffort: (taskId: string) => {
+        rec.inboxTaskDeleted.push(taskId)
+        return Promise.resolve()
+      },
     } as unknown as AttentionInboxStore,
     deletions: {
       enqueue: (taskId: string) => rec.deletions.push(taskId),

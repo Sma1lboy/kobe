@@ -379,7 +379,9 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // tab stay task-level.
         const tabId = optionalString(payload, "tabId")
         ctx.activity.report(taskId, kind, detail, tabId)
-        await ctx.inbox.record(taskId, kind, detail, tabId)
+        await ctx.inbox
+          .record(taskId, kind, detail, tabId)
+          .catch((err) => logDaemonError("attention-inbox-record", err))
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the

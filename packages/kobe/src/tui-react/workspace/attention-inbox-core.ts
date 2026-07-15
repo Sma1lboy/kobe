@@ -1,4 +1,5 @@
 import type { AttentionInboxItem } from "../../client/remote-orchestrator"
+import type { Task } from "../../types/task"
 
 const STATE_PRIORITY: Record<AttentionInboxItem["state"], number> = {
   permission_needed: 0,
@@ -9,6 +10,14 @@ const STATE_PRIORITY: Record<AttentionInboxItem["state"], number> = {
 
 export function attentionInboxKey(item: { taskId: string | null; tabId: string | null }): string {
   return `${item.taskId}\u0000${item.tabId ?? ""}`
+}
+
+export function isAttentionInboxItemAvailable(
+  item: AttentionInboxItem,
+  task: Pick<Task, "archived"> | undefined,
+  hasTab: (tabId: string) => boolean,
+): boolean {
+  return task !== undefined && !task.archived && (item.tabId === null || hasTab(item.tabId))
 }
 
 /** Actionable states first, then oldest episode, with task order as a stable tie-breaker. */

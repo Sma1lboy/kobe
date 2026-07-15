@@ -188,9 +188,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init()
-  const clearTaskState = (taskId: string) => inbox.deleteTask(taskId).then(() => activity.clearTask(taskId))
+  const clearTaskState = (taskId: string) =>
+    inbox.deleteTaskBestEffort(taskId).finally(() => activity.clearTask(taskId))
   const deletions = new TaskDeletionRunner(orch, runtime, clearTaskState)
-
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
   // isolate. Handlers reach it through DaemonHandlerContext.issues.

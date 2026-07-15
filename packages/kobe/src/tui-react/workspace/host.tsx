@@ -38,6 +38,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { ATTENTION_INBOX_HEIGHT, AttentionInboxPane } from "./AttentionInboxPane"
+import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { useQuickFork } from "./quick-fork"
@@ -230,9 +231,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   function openInboxItem(item: AttentionInboxItem): void {
-    const task = tasks.find((candidate) => candidate.id === item.taskId && !candidate.archived)
-    const tabAvailable = item.tabId === null || knownTaskTab(kv, item.taskId, item.tabId) !== undefined
-    if (!task || !tabAvailable) {
+    const task = tasks.find((candidate) => candidate.id === item.taskId)
+    const available = isAttentionInboxItemAvailable(
+      item,
+      task,
+      (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined,
+    )
+    if (!available) {
       notifyInfo(t("workspace.inbox.unavailable"))
       return
     }

@@ -11,7 +11,7 @@ import type { KVContext } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { attentionInboxKey, sortAttentionInbox } from "./attention-inbox-core"
+import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 export const ATTENTION_INBOX_HEIGHT = 8
@@ -35,11 +35,10 @@ function tabLabel(
   task: Task | undefined,
   kv: KVContext,
 ): { label: string; available: boolean } {
-  if (!item.tabId) return { label: "", available: task !== undefined && !task.archived }
-  const tab = knownTaskTab(kv, item.taskId, item.tabId)
+  const tab = item.tabId ? knownTaskTab(kv, item.taskId, item.tabId) : undefined
   return {
-    label: tab ? tabTitle(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : item.tabId,
-    available: task !== undefined && !task.archived && tab !== undefined,
+    label: tab ? tabTitle(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : (item.tabId ?? ""),
+    available: isAttentionInboxItemAvailable(item, task, () => tab !== undefined),
   }
 }
 

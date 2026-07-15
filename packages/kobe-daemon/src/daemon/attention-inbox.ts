@@ -3,9 +3,9 @@
  *
  * Live engine activity and Inbox retention are deliberately different state:
  * activity may idle on session close/archive, while an unresolved episode must
- * remain until that exact task+tab starts another turn or the user dismisses
- * it. The store persists a full snapshot so daemon/TUI reconnects cannot
- * consume work by accident.
+ * remain until that exact task+tab starts another turn, the user dismisses it,
+ * or the containing task is explicitly hard-deleted. The store persists a
+ * full snapshot so daemon/TUI reconnects cannot consume work by accident.
  */
 
 import { randomUUID } from "node:crypto"
@@ -13,6 +13,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import type { AttentionInboxItem, AttentionInboxState, EngineActivityDetail, EngineActivityKind } from "./contracts.ts"
+import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 
 interface AttentionInboxFile {
@@ -32,7 +33,7 @@ function stateFor(kind: EngineActivityKind, detail?: EngineActivityDetail): Atte
   if (kind === "turn-complete") return "turn_complete"
   if (kind === "awaiting-input") return "permission_needed"
   if (kind !== "turn-failed") return null
-  return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
+  return detail?.failure === "rate_limit" ? "rate_limited" : "error"
 }
 
 function normalizeItem(value: unknown): AttentionInboxItem | null {
@@ -64,7 +65,8 @@ async function readStore(path: string): Promise<AttentionInboxItem[]> {
     return parsed.items.map(normalizeItem).filter((item): item is AttentionInboxItem => item !== null)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
-    throw err
+    logDaemonError("attention-inbox-load", err)
+    return []
   }
 }
 
@@ -103,12 +105,13 @@ export class AttentionInboxStore {
   async record(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail, tabId?: string): Promise<void> {
     await this.enqueue(async () => {
       const key = itemKey(taskId, tabId ?? null)
+      const next = new Map(this.items)
       if (kind === "turn-start") {
-        if (!this.items.delete(key)) return
+        if (!next.delete(key)) return
       } else {
         const state = stateFor(kind, detail)
         if (!state) return
-        this.items.set(key, {
+        next.set(key, {
           taskId,
           tabId: tabId ?? null,
           state,
@@ -116,28 +119,35 @@ export class AttentionInboxStore {
           at: this.now(),
         })
       }
-      await this.persistAndPublish()
+      await this.commit(next)
     })
   }
 
   async deleteEpisode(taskId: string, tabId: string | null): Promise<boolean> {
     return await this.enqueue(async () => {
-      if (!this.items.delete(itemKey(taskId, tabId))) return false
-      await this.persistAndPublish()
+      const next = new Map(this.items)
+      if (!next.delete(itemKey(taskId, tabId))) return false
+      await this.commit(next)
       return true
     })
   }
 
   async deleteTask(taskId: string): Promise<void> {
     await this.enqueue(async () => {
+      const next = new Map(this.items)
       let changed = false
-      for (const [key, item] of this.items) {
+      for (const [key, item] of next) {
         if (item.taskId !== taskId) continue
-        this.items.delete(key)
+        next.delete(key)
         changed = true
       }
-      if (changed) await this.persistAndPublish()
+      if (changed) await this.commit(next)
     })
+  }
+
+  /** Task deletion must continue even when Inbox persistence is unavailable. */
+  async deleteTaskBestEffort(taskId: string): Promise<void> {
+    await this.deleteTask(taskId).catch((err) => logDaemonError("attention-inbox-task-delete", err))
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -149,9 +159,14 @@ export class AttentionInboxStore {
     return run
   }
 
-  private async persistAndPublish(): Promise<void> {
-    const items = this.snapshot()
+  /** Serialize mutations so concurrent hook/RPC writes cannot clobber the file. */
+  private async commit(next: ReadonlyMap<string, AttentionInboxItem>): Promise<void> {
+    const items = [...next.values()].sort(
+      (a, b) => a.at - b.at || a.taskId.localeCompare(b.taskId) || (a.tabId ?? "").localeCompare(b.tabId ?? ""),
+    )
     await writeStore(this.path, items)
+    this.items.clear()
+    for (const item of items) this.items.set(itemKey(item.taskId, item.tabId), item)
     this.bus.publish("attention.inbox", { items })
   }
 

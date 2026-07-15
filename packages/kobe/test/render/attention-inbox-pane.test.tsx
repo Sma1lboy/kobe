@@ -60,6 +60,17 @@ function Probe(props: {
 }
 
 describe("AttentionInboxPane", () => {
+  it("renders the empty Inbox state", async () => {
+    const { frame } = await renderComponent(<Probe items={[]} onOpen={() => {}} onDelete={() => {}} />, {
+      providers: { kv: true },
+      width: 46,
+      height: 8,
+    })
+    const text = await frame()
+    expect(text).toContain("INBOX 0")
+    expect(text).toContain("No pending attention")
+  })
+
   it("renders retained episodes and exposes pane-local navigation/open/delete", async () => {
     const opened: string[] = []
     const deleted: string[] = []

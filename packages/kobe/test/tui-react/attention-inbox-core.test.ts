@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { AttentionInboxItem } from "../../src/client/remote-orchestrator"
 import {
   attentionInboxKey,
+  isAttentionInboxItemAvailable,
   nextAttentionInboxTarget,
   sortAttentionInbox,
 } from "../../src/tui-react/workspace/attention-inbox-core"
@@ -57,5 +58,12 @@ describe("attention inbox ordering", () => {
         (candidate) => candidate.tabId === "open",
       ),
     ).toBe(open)
+  })
+
+  test("uses one availability rule for archived tasks and closed tabs", () => {
+    const open = item("live", "open", "error", 8)
+    expect(isAttentionInboxItemAvailable(open, { archived: false }, (id) => id === "open")).toBe(true)
+    expect(isAttentionInboxItemAvailable(open, { archived: true }, () => true)).toBe(false)
+    expect(isAttentionInboxItemAvailable(open, { archived: false }, () => false)).toBe(false)
   })
 })
