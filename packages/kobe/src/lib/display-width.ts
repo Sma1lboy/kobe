@@ -45,6 +45,9 @@ export function charWidth(cp: number): number {
     (cp >= 0xfe30 && cp <= 0xfe6f) || // CJK compatibility forms
     (cp >= 0xff00 && cp <= 0xff60) || // Fullwidth forms
     (cp >= 0xffe0 && cp <= 0xffe6) || // Fullwidth signs
+    cp === 0x1f004 || // Mahjong Tile Red Dragon (RGI emoji, EAW=W)
+    cp === 0x1f0cf || // Playing Card Black Joker (RGI emoji, EAW=W)
+    (cp >= 0x1f200 && cp <= 0x1f2ff) || // Enclosed Ideographic Supplement (EAW=W)
     (cp >= 0x1f300 && cp <= 0x1faff) || // emoji, symbols & pictographs
     (cp >= 0x20000 && cp <= 0x3fffd) // CJK Unified Ext B and beyond
   ) {
