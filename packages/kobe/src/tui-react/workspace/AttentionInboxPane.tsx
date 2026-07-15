@@ -205,11 +205,11 @@ export function AttentionInboxPane(props: {
                 backgroundColor={theme.primary}
                 paddingTop={1}
                 paddingBottom={1}
-                paddingLeft={1}
-                paddingRight={1}
+                paddingLeft={2}
+                paddingRight={2}
                 onMouseUp={onMouseUp}
               >
-                <box flexDirection="column" paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+                <box flexDirection="column" backgroundColor={theme.backgroundElement}>
                   {content}
                 </box>
               </box>
