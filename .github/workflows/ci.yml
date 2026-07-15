@@ -169,6 +169,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/kobe/coverage-daemon/lcov.info
+          flags: daemon
+          name: daemon
           fail_ci_if_error: false
 
       - name: Build (kobe package)
@@ -241,6 +243,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/kobe/coverage/lcov.info,packages/kobe/coverage-render/lcov.info
+          flags: kobe
+          name: kobe
           fail_ci_if_error: false
 
       - name: Touched files must meet the coverage floor
