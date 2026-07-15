@@ -57,7 +57,7 @@ export function AttentionInboxPane(props: {
   onDelete: (item: AttentionInboxItem) => void
   onClose: () => void
 }) {
-  const { theme, transparentBackground } = useTheme()
+  const { theme } = useTheme()
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
@@ -72,7 +72,6 @@ export function AttentionInboxPane(props: {
   const windowStart = Math.max(0, Math.min(safeCursor - maxVisibleCards + 1, ordered.length - maxVisibleCards))
   const visible = ordered.slice(windowStart, windowStart + maxVisibleCards)
   const repos = [...new Set(props.tasks.map((task) => task.repo))]
-  const idleCardBorder = transparentBackground ? theme.border : theme.borderSubtle
 
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
@@ -143,10 +142,10 @@ export function AttentionInboxPane(props: {
               <box
                 key={attentionInboxKey(item)}
                 border={true}
-                borderColor={active ? theme.primary : idleCardBorder}
+                borderColor={active ? theme.primary : theme.backgroundDialog}
                 paddingLeft={1}
                 paddingRight={1}
-                backgroundColor={theme.backgroundElement}
+                backgroundColor={active ? theme.backgroundElement : undefined}
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
                   setCursor(absoluteIndex)

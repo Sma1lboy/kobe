@@ -1,12 +1,15 @@
 /** @jsxImportSource @opentui/react */
 
 import { describe, expect, it } from "bun:test"
+import { type CapturedFrame, RGBA } from "@opentui/core"
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { useEffect } from "react"
 import { type AttentionInboxItem, RemoteOrchestrator } from "../../src/client/remote-orchestrator"
 import { useKV } from "../../src/tui-react/context/kv"
 import { useDialog } from "../../src/tui-react/ui/dialog"
 import { AttentionInboxDialog, AttentionInboxPane } from "../../src/tui-react/workspace/AttentionInboxPane"
+import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
+import { resolveThemeSlotHex } from "../../src/tui/context/theme/hex"
 import type { Task } from "../../src/types/task"
 import { toTaskId } from "../../src/types/task"
 import { act, renderComponent } from "./harness"
@@ -91,6 +94,11 @@ function DialogProbe(props: { orchestrator: RemoteOrchestrator }) {
   return <box />
 }
 
+function backgroundWidth(frame: CapturedFrame, needle: string, color: RGBA): number {
+  const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
+  return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.text.length : 0), 0) ?? 0
+}
+
 describe("AttentionInboxPane", () => {
   it("opens as a modal and stays live with daemon Inbox snapshots", async () => {
     const remote = remoteInbox(items)
@@ -144,6 +152,23 @@ describe("AttentionInboxPane", () => {
     act(() => mockInput.pressEnter())
     expect(deleted).toEqual(["task-b"])
     expect(opened).toEqual(["task-b"])
+  })
+
+  it("frames only the active episode", async () => {
+    const { spans, destroy } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
+      providers: { kv: true },
+      width: 60,
+      height: 24,
+    })
+    const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(BUNDLED_THEME_JSONS.claude!, "backgroundElement")!)
+
+    try {
+      const frame = await spans()
+      expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
+      expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
+    } finally {
+      destroy()
+    }
   })
 
   it("keeps a closed chat tab visible as unavailable", async () => {
