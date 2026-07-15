@@ -38,9 +38,10 @@ const tasks: Task[] = [
   },
 ]
 
+const now = Date.now()
 const items: AttentionInboxItem[] = [
-  { taskId: "task-b", tabId: null, state: "turn_complete", unread: false, at: 10 },
-  { taskId: "task-a", tabId: null, state: "permission_needed", unread: true, at: 20 },
+  { taskId: "task-b", tabId: null, state: "turn_complete", unread: false, at: now - 2 * 60 * 60 * 1000 },
+  { taskId: "task-a", tabId: null, state: "permission_needed", unread: true, at: now - 2 * 60 * 1000 },
 ]
 
 function Probe(props: {
@@ -127,6 +128,8 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("Beta")
     expect(text).toContain("project-a")
     expect(text).toContain("project-b")
+    expect(text).toContain("2m")
+    expect(text).toContain("2h")
     expect(text).toContain("• ? Alpha")
 
     act(() => mockInput.pressKey("j"))

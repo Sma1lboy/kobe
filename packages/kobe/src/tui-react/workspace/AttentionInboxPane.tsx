@@ -4,6 +4,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { relativeAgeMs } from "../../tui/history/message-core"
 import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
 import { DEFAULT_TASK_VENDOR } from "../../types/task"
@@ -23,6 +24,7 @@ import {
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_DIALOG_ROWS = 10
+const AGE_REFRESH_MS = 30_000
 
 type InboxViewRow =
   | { kind: "project"; group: AttentionInboxGroup }
@@ -65,6 +67,7 @@ export function AttentionInboxPane(props: {
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
   const groups = groupAttentionInbox(props.items, props.tasks)
   const ordered = groups.flatMap((group) => group.items)
   const rows: InboxViewRow[] = []
@@ -82,6 +85,11 @@ export function AttentionInboxPane(props: {
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
   }, [cursor, safeCursor])
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   function move(delta: 1 | -1): void {
     if (ordered.length === 0) return
@@ -170,8 +178,17 @@ export function AttentionInboxPane(props: {
                   {item.unread ? "• " : "  "}
                 </text>
                 <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
-                <text fg={tab.available ? theme.text : theme.textMuted} wrapMode="none">
+                <text
+                  fg={tab.available ? theme.text : theme.textMuted}
+                  wrapMode="none"
+                  flexBasis={0}
+                  flexGrow={1}
+                  flexShrink={1}
+                >
                   {`${title}${tab.label ? ` · ${tab.label}` : ""}${tab.available ? "" : ` · ${t("workspace.inbox.unavailable")}`}`}
+                </text>
+                <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                  {relativeAgeMs(item.at, now)}
                 </text>
               </box>
             )
