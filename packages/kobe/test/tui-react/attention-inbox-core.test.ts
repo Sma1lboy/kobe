@@ -3,10 +3,13 @@ import type { AttentionInboxItem } from "../../src/client/remote-orchestrator"
 import {
   attentionInboxCounts,
   attentionInboxKey,
+  groupAttentionInbox,
   isAttentionInboxItemAvailable,
   nextAttentionInboxTarget,
   sortAttentionInbox,
 } from "../../src/tui-react/workspace/attention-inbox-core"
+import type { Task } from "../../src/types/task"
+import { toTaskId } from "../../src/types/task"
 
 const item = (
   taskId: string,
@@ -14,6 +17,18 @@ const item = (
   state: AttentionInboxItem["state"],
   at: number,
 ): AttentionInboxItem => ({ taskId, tabId, state, unread: true, at })
+
+const task = (id: string, repo: string): Task => ({
+  id: toTaskId(id),
+  title: id,
+  repo,
+  branch: id,
+  worktreePath: `/tmp/${id}`,
+  status: "in_progress",
+  archived: false,
+  createdAt: "2026-07-15T00:00:00.000Z",
+  updatedAt: "2026-07-15T00:00:00.000Z",
+})
 
 describe("attention inbox ordering", () => {
   test("counts retained episodes separately from unread episodes", () => {
@@ -24,6 +39,24 @@ describe("attention inbox ordering", () => {
       unread: 1,
     })
     expect(attentionInboxCounts([])).toEqual({ total: 0, unread: 0 })
+  })
+
+  test("groups episodes by project order with collision-safe labels", () => {
+    const groups = groupAttentionInbox(
+      [
+        item("task-b", null, "turn_complete", 4),
+        item("task-missing", null, "error", 1),
+        item("task-a2", null, "permission_needed", 3),
+        item("task-a1", null, "turn_complete", 2),
+      ],
+      [task("task-a1", "/work/acme/app"), task("task-a2", "/work/acme/app"), task("task-b", "/work/other/app")],
+    )
+
+    expect(groups.map((group) => [group.label, group.items.map((entry) => entry.taskId)])).toEqual([
+      ["acme/app", ["task-a2", "task-a1"]],
+      ["other/app", ["task-b"]],
+      [null, ["task-missing"]],
+    ])
   })
 
   test("puts every unread episode before retained read episodes", () => {

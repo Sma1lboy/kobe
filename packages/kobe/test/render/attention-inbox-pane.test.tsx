@@ -17,7 +17,7 @@ const tasks: Task[] = [
   {
     id: toTaskId("task-a"),
     title: "Alpha",
-    repo: "/tmp/a",
+    repo: "/tmp/project-a",
     branch: "a",
     worktreePath: "/tmp/a",
     status: "in_progress",
@@ -28,7 +28,7 @@ const tasks: Task[] = [
   {
     id: toTaskId("task-b"),
     title: "Beta",
-    repo: "/tmp/b",
+    repo: "/tmp/project-b",
     branch: "b",
     worktreePath: "/tmp/b",
     status: "in_progress",
@@ -125,6 +125,8 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("INBOX 2")
     expect(text).toContain("Alpha")
     expect(text).toContain("Beta")
+    expect(text).toContain("project-a")
+    expect(text).toContain("project-b")
     expect(text).toContain("• ? Alpha")
 
     act(() => mockInput.pressKey("j"))

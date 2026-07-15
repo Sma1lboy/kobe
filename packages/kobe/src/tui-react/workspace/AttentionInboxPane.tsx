@@ -14,10 +14,19 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
-import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
+import {
+  type AttentionInboxGroup,
+  attentionInboxKey,
+  groupAttentionInbox,
+  isAttentionInboxItemAvailable,
+} from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_DIALOG_ROWS = 10
+
+type InboxViewRow =
+  | { kind: "project"; group: AttentionInboxGroup }
+  | { kind: "item"; item: AttentionInboxItem; itemIndex: number }
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -56,12 +65,19 @@ export function AttentionInboxPane(props: {
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
-  const taskOrder = props.tasks.map((task) => task.id)
-  const ordered = sortAttentionInbox(props.items, taskOrder)
+  const groups = groupAttentionInbox(props.items, props.tasks)
+  const ordered = groups.flatMap((group) => group.items)
+  const rows: InboxViewRow[] = []
+  let itemIndex = 0
+  for (const group of groups) {
+    rows.push({ kind: "project", group })
+    for (const item of group.items) rows.push({ kind: "item", item, itemIndex: itemIndex++ })
+  }
   const maxRows = Math.max(1, Math.min(MAX_DIALOG_ROWS, dimensions.height - 8))
   const safeCursor = Math.min(cursor, Math.max(0, ordered.length - 1))
-  const windowStart = Math.max(0, Math.min(safeCursor - maxRows + 1, ordered.length - maxRows))
-  const visible = ordered.slice(windowStart, windowStart + maxRows)
+  const activeRowIndex = rows.findIndex((row) => row.kind === "item" && row.itemIndex === safeCursor)
+  const windowStart = Math.max(0, Math.min(activeRowIndex - maxRows + 1, rows.length - maxRows))
+  const visible = rows.slice(windowStart, windowStart + maxRows)
 
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
@@ -116,8 +132,23 @@ export function AttentionInboxPane(props: {
         </box>
       ) : (
         <box flexDirection="column" paddingTop={1} paddingBottom={1}>
-          {visible.map((item, index) => {
-            const absoluteIndex = windowStart + index
+          {visible.map((row) => {
+            if (row.kind === "project") {
+              return (
+                <box key={row.group.key} flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
+                  <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
+                    {row.group.label ?? t("workspace.inbox.unavailable")}
+                  </text>
+                  <text fg={theme.borderSubtle} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+                    {"─".repeat(120)}
+                  </text>
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                    {row.group.items.length}
+                  </text>
+                </box>
+              )
+            }
+            const { item, itemIndex: absoluteIndex } = row
             const active = absoluteIndex === safeCursor
             const task = props.tasks.find((candidate) => candidate.id === item.taskId)
             const tab = tabLabel(item, task, props.kv)
