@@ -143,43 +143,47 @@ export function AttentionInboxPane(props: {
                 key={attentionInboxKey(item)}
                 border={true}
                 borderColor={active ? theme.primary : theme.backgroundDialog}
-                paddingLeft={1}
-                paddingRight={1}
-                backgroundColor={active ? theme.backgroundElement : undefined}
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
                   setCursor(absoluteIndex)
                   props.onOpen(item, tab.available)
                 }}
               >
-                <box flexDirection="row">
-                  <text fg={theme.focusAccent} wrapMode="none">
-                    {item.unread ? "• " : "  "}
-                  </text>
-                  <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
-                  <text
-                    fg={tab.available ? theme.text : theme.textMuted}
-                    attributes={active ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                    flexBasis={0}
-                    flexGrow={1}
-                    flexShrink={1}
-                  >
-                    {`${title}${tab.label ? ` · ${tab.label}` : ""}`}
-                  </text>
-                </box>
-                <box flexDirection="row" paddingLeft={4} gap={1}>
-                  <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-                    {project}
-                  </text>
-                  {!tab.available ? (
-                    <text fg={theme.warning} wrapMode="none" flexShrink={0}>
-                      {t("workspace.inbox.unavailable")}
+                <box
+                  flexDirection="column"
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={active ? theme.backgroundElement : undefined}
+                >
+                  <box flexDirection="row">
+                    <text fg={theme.focusAccent} wrapMode="none">
+                      {item.unread ? "• " : "  "}
                     </text>
-                  ) : null}
-                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                    {relativeAgeMs(item.at, now)}
-                  </text>
+                    <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
+                    <text
+                      fg={tab.available ? theme.text : theme.textMuted}
+                      attributes={active ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      flexBasis={0}
+                      flexGrow={1}
+                      flexShrink={1}
+                    >
+                      {`${title}${tab.label ? ` · ${tab.label}` : ""}`}
+                    </text>
+                  </box>
+                  <box flexDirection="row" paddingLeft={4} gap={1}>
+                    <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+                      {project}
+                    </text>
+                    {!tab.available ? (
+                      <text fg={theme.warning} wrapMode="none" flexShrink={0}>
+                        {t("workspace.inbox.unavailable")}
+                      </text>
+                    ) : null}
+                    <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                      {relativeAgeMs(item.at, now)}
+                    </text>
+                  </box>
                 </box>
               </box>
             )

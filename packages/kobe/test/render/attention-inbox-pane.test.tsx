@@ -97,12 +97,30 @@ function DialogProbe(props: { orchestrator: RemoteOrchestrator }) {
 
 function backgroundWidth(frame: CapturedFrame, needle: string, color: RGBA): number {
   const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
-  return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.text.length : 0), 0) ?? 0
+  return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.width : 0), 0) ?? 0
 }
 
 function borderColor(frame: CapturedFrame, needle: string): RGBA | undefined {
   const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
   return line?.spans.find((span) => span.text.includes("│"))?.fg
+}
+
+function backgroundOutsideFrame(frame: CapturedFrame, needle: string, color: RGBA): number {
+  const lineIndex = frame.lines.findIndex((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
+  const line = frame.lines[lineIndex]
+  if (!line) return 0
+  const firstBorder = line.spans.findIndex((span) => span.text.includes("│"))
+  const lastBorder = line.spans.findLastIndex((span) => span.text.includes("│"))
+  const horizontal = line.spans.reduce((width, span, index) => {
+    const outside = index < firstBorder || index > lastBorder
+    return width + (outside && span.bg.equals(color) ? span.width : 0)
+  }, 0)
+  const vertical = [lineIndex - 2, lineIndex + 3].reduce(
+    (width, index) =>
+      width + (frame.lines[index]?.spans.reduce((sum, span) => sum + (span.bg.equals(color) ? span.width : 0), 0) ?? 0),
+    0,
+  )
+  return horizontal + vertical
 }
 
 describe("AttentionInboxPane", () => {
@@ -179,6 +197,7 @@ describe("AttentionInboxPane", () => {
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
           expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
           expect(borderColor(frame, "Beta")?.equals(backgroundDialog)).toBe(true)
+          expect(backgroundOutsideFrame(frame, "Alpha", backgroundElement)).toBe(0)
         } finally {
           destroy()
         }
