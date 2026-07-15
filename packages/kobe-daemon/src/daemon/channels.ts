@@ -6,7 +6,7 @@
  * import path for the wire protocol.
  */
 
-import type { EngineActivityDetail, TaskActivityState, UpdateInfo } from "./contracts.ts"
+import type { AttentionInboxItem, EngineActivityDetail, TaskActivityState, UpdateInfo } from "./contracts.ts"
 import type { RepoIssues } from "./issues-store.ts"
 import type { SerializedTask } from "./protocol.ts"
 
@@ -69,6 +69,12 @@ export interface ChannelPayloads {
     detail?: EngineActivityDetail
     at: number
   }
+  /**
+   * Full durable attention queue. Viewing never consumes an item: an episode
+   * leaves only after a newer `turn-start` for the same task+tab or an explicit
+   * `attention.dismiss` RPC. Full snapshots make reconnect/replay stateless.
+   */
+  "attention.inbox": { items: AttentionInboxItem[] }
   /**
    * The user's persisted VISUAL prefs (`state.json`'s `activeTheme` /
    * `transparentBackground` / `focusAccent` / `activeSortMode`), pushed
@@ -254,6 +260,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "active-task",
   "update",
   "engine-state",
+  "attention.inbox",
   "ui-prefs",
   "keybindings",
   "task.jobs",

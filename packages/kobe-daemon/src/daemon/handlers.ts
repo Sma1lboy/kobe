@@ -34,11 +34,13 @@
  */
 
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
+import type { AttentionInboxStore } from "./attention-inbox.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
+import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
 import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
 import type { IssuesStore } from "./issues-store.ts"
@@ -80,6 +82,8 @@ export interface DaemonHandlerContext {
   readonly bus: DaemonEventBus
   /** Transient engine-activity state (`engine.reportEvent`, `task.delete`). */
   readonly activity: DaemonActivityRegistry
+  /** Durable attention episodes; independent from transient activity cleanup. */
+  readonly inbox: AttentionInboxStore
   /** Starts deduplicated durable background deletion after RPC acceptance. */
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
@@ -250,6 +254,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     // wire-load-bearing), so grouping them via spread is safe.
     ...TASK_HANDLERS,
     ...WORKTREE_HANDLERS,
+    ...ATTENTION_HANDLERS,
     {
       name: "issue.list",
       async handle(payload, ctx) {
@@ -372,7 +377,9 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // Which engine tab the event came from — the inherited KOBE_TAB_ID env
         // the hook process reported. Optional: sessions kobe didn't spawn as a
         // tab stay task-level.
-        ctx.activity.report(taskId, kind, detail, optionalString(payload, "tabId"))
+        const tabId = optionalString(payload, "tabId")
+        ctx.activity.report(taskId, kind, detail, tabId)
+        await ctx.inbox.record(taskId, kind, detail, tabId)
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the

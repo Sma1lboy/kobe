@@ -8,7 +8,13 @@
  */
 
 import { interactiveEngineCommand, withClaudeSessionId } from "../../engine/interactive-command"
-import { type EngineTab, type TabsState, initialTabs, rehydrateTabs } from "../../tui/workspace/terminal-tabs-core"
+import {
+  type EngineTab,
+  type TabsState,
+  type TerminalTab,
+  initialTabs,
+  rehydrateTabs,
+} from "../../tui/workspace/terminal-tabs-core"
 import type { VendorId } from "../../types/vendor"
 import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
 
@@ -19,6 +25,13 @@ export const tabsByTask = new Map<string, TabsState>()
  *  jump's "where am I" input. Null when the task never mounted tabs. */
 export function activeTabIdFor(taskId: string): string | null {
   return tabsByTask.get(taskId)?.activeId ?? null
+}
+
+/** Resolve a tab from live process state or its restart snapshot. */
+export function knownTaskTab(kv: TabsSnapshotKv, taskId: string, tabId: string): TerminalTab | undefined {
+  const saved = kv.store[terminalTabsKey(taskId)] as TabsState | null | undefined
+  const state = tabsByTask.get(taskId) ?? (saved && Array.isArray(saved.tabs) ? saved : null)
+  return state?.tabs.find((tab) => tab.id === tabId)
 }
 
 /**

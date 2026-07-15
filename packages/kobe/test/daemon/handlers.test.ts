@@ -97,6 +97,7 @@ describe("daemon handler registry", () => {
       "worktree.list",
       "worktree.remove",
       "engine.reportEvent",
+      "attention.dismiss",
       "session.deliver",
       "notice.send",
       "note.file",
@@ -235,6 +236,7 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.delete", { taskId: "t1", force: true }, ctx)).resolves.toEqual({})
       expect(prepared).toEqual([["t1", { force: true }]])
       expect(rec.cleared).toEqual(["t1"])
+      expect(rec.inboxTaskDeleted).toEqual(["t1"])
       expect(rec.deletions).toEqual(["t1"])
     })
 
@@ -242,6 +244,7 @@ describe("daemon handler registry", () => {
       const { ctx, rec } = fakeCtx({ prepareTaskDeletion: async () => false })
       await expect(dispatch("task.delete", { taskId: "missing" }, ctx)).resolves.toEqual({})
       expect(rec.deletions).toEqual([])
+      expect(rec.inboxTaskDeleted).toEqual(["missing"])
     })
 
     it("task.move rejects a bogus direction with the legacy wording", async () => {
@@ -249,6 +252,22 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.move", { taskId: "t1", direction: "sideways" }, ctx)).rejects.toThrow(
         "direction must be up or down",
       )
+    })
+  })
+
+  describe("attention.dismiss", () => {
+    it("deletes exactly one task+tab episode", async () => {
+      const { ctx, rec } = fakeCtx()
+      await expect(dispatch("attention.dismiss", { taskId: "t1", tabId: "tab-2" }, ctx)).resolves.toEqual({
+        deleted: true,
+      })
+      expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: "tab-2" }])
+    })
+
+    it("supports a legacy task-level episode", async () => {
+      const { ctx, rec } = fakeCtx()
+      await dispatch("attention.dismiss", { taskId: "t1" }, ctx)
+      expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: null }])
     })
   })
 
@@ -394,12 +413,20 @@ describe("daemon handler registry", () => {
       )
       expect(result).toEqual({})
       expect(rec.reported).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: { waiting: "permission" } }])
+      expect(rec.inboxRecords).toEqual([
+        { taskId: "t1", kind: "awaiting-input", detail: { waiting: "permission" }, tabId: undefined },
+      ])
     })
 
     it("an explicit taskId wins over cwd resolution", async () => {
       const { ctx, rec } = fakeCtx({ listTasks: () => [TASK] })
-      await dispatch("engine.reportEvent", { kind: "turn-complete", taskId: "direct", cwd: TASK.worktreePath }, ctx)
+      await dispatch(
+        "engine.reportEvent",
+        { kind: "turn-complete", taskId: "direct", tabId: "tab-3", cwd: TASK.worktreePath },
+        ctx,
+      )
       expect(rec.reported).toEqual([{ taskId: "direct", kind: "turn-complete", detail: undefined }])
+      expect(rec.inboxRecords).toEqual([{ taskId: "direct", kind: "turn-complete", detail: undefined, tabId: "tab-3" }])
     })
 
     it("an unmatched cwd is silently dropped (returns {} with no report)", async () => {
@@ -408,6 +435,7 @@ describe("daemon handler registry", () => {
         dispatch("engine.reportEvent", { kind: "turn-start", cwd: "/somewhere/else" }, ctx),
       ).resolves.toEqual({})
       expect(rec.reported).toEqual([])
+      expect(rec.inboxRecords).toEqual([])
     })
 
     it("rejects an unknown kind and a missing kind with the exact wording", async () => {

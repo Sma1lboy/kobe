@@ -93,6 +93,9 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         force: optionalBoolean(payload, "force"),
       })
       ctx.activity.clearTask(taskId)
+      // A hard task delete is an explicit user deletion, so it is the one
+      // lifecycle action allowed to cascade its durable Inbox episodes.
+      await ctx.inbox.deleteTask(taskId)
       if (accepted) ctx.deletions.enqueue(taskId)
       return {}
     },
