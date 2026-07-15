@@ -38,7 +38,7 @@ kobe opens into a PureTUI workspace with:
 
 ## Choose your AI engine
 
-Use **Settings → Engine** to pick which AI CLI kobe should run for a task: `claude`, `codex`, `gemini`, `copilot`, or your own command.
+Use **Settings → Engine** to pick which AI CLI kobe should run for a task: `claude`, `codex`, `copilot`, or your own command.
 
 https://github.com/user-attachments/assets/11fcc3e5-7d20-403d-82df-3e5d156d1dba
 
@@ -114,7 +114,7 @@ First task: press `n`, choose a repo/base branch/engine, then prompt the workspa
 Prefer a browser? The same tasks, sessions, and terminals are available in a local web UI:
 
 ```bash
-kobe web                 # http://localhost:5173
+kobe web                 # http://localhost:5174
 kobe web --port 5180
 ```
 
@@ -152,7 +152,7 @@ bun run lint
 bun run test
 ```
 
-Start with [`HANDOFF.md`](./HANDOFF.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
+Start with [`AGENTS.md`](./AGENTS.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
 
 ### Testing & coverage
 
