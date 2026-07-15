@@ -88,8 +88,8 @@ jobs:
         run: bun run test:render
 
   visual-ground-truth:
-    # Keep the browser → PTY → OpenTUI baseline gate on macOS Intel: node-pty
-    # cannot currently spawn even /bin/sh on the arm64 hosted runner.
+    # node-pty's macOS x64 prebuild ships an unsigned spawn-helper. Sign the
+    # native pair below before exercising the real browser → PTY → OpenTUI path.
     runs-on: macos-15-intel
     steps:
       - name: Checkout
@@ -102,6 +102,11 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Ad-hoc sign node-pty's macOS native pair
+        run: |
+          find node_modules/.bun -type f \( -name pty.node -o -name spawn-helper \) -path '*/node-pty/prebuilds/darwin-*/*' -print0 \
+            | xargs -0 codesign --force --sign -
 
       - name: Install Chromium for the visual ground-truth harness
         working-directory: packages/kobe-web

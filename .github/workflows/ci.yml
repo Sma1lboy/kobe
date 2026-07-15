@@ -224,9 +224,8 @@ jobs:
           fail_ci_if_error: false
 
   visual-ground-truth:
-    # node-pty's macOS arm64 spawn path currently fails before the child shell
-    # starts (posix_spawnp); macos-15-intel keeps the real browser/PTy/OpenTUI
-    # contract hard-gated on the supported Intel native helper.
+    # node-pty's macOS x64 prebuild ships an unsigned spawn-helper. Sign the
+    # native pair below before exercising the real browser → PTY → OpenTUI path.
     runs-on: macos-15-intel
     steps:
       - name: Checkout
@@ -239,6 +238,11 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Ad-hoc sign node-pty's macOS native pair
+        run: |
+          find node_modules/.bun -type f \( -name pty.node -o -name spawn-helper \) -path '*/node-pty/prebuilds/darwin-*/*' -print0 \
+            | xargs -0 codesign --force --sign -
 
       - name: Install Chromium for the visual ground-truth harness
         working-directory: packages/kobe-web
