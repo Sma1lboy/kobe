@@ -185,12 +185,11 @@ describe("AttentionInboxPane", () => {
   it("fills only the active episode in opaque and transparent modes", async () => {
     const theme = BUNDLED_THEME_JSONS.claude!
     const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
-    const backgroundDialog = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundDialog")!)
     const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
     try {
       for (const transparent of [false, true]) {
         setTransparentBackground(transparent)
-        const { spans, destroy } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
+        const { spans, destroy, mockInput } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
           providers: { kv: true },
           width: 60,
           height: 24,
@@ -200,7 +199,12 @@ describe("AttentionInboxPane", () => {
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
           expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
-          expect(borderColor(frame, "Beta")?.equals(backgroundDialog)).toBe(true)
+          expect(borderColor(frame, "Beta")).toBeUndefined()
+
+          act(() => mockInput.pressKey("j"))
+          const moved = await spans()
+          expect(borderColor(moved, "Alpha")).toBeUndefined()
+          expect(borderColor(moved, "Beta")?.equals(primary)).toBe(true)
         } finally {
           destroy()
         }
