@@ -12,7 +12,6 @@ import type { NoticeEventPayload, SerializedTask } from "@sma1lboy/kobe-daemon/d
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { UpdateInfo } from "../version.ts"
 import {
-  type AttentionInboxItem,
   type OrchestratorSignals,
   type TaskEngineState,
   type TaskJobState,
@@ -143,32 +142,6 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       else nextTabs.delete(p.taskId)
       signals.setEngineTabStateSig(nextTabs)
     }
-    return
-  }
-  if (name === "attention.inbox") {
-    const items = (payload as { items?: unknown } | undefined)?.items
-    if (!Array.isArray(items)) {
-      logClientError("orch", `dropped attention.inbox event: items is not an array (${describePayload(items)})`)
-      return
-    }
-    const valid = items.every((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item)) return false
-      const p = item as Partial<AttentionInboxItem>
-      return (
-        typeof p.taskId === "string" &&
-        (p.tabId === null || typeof p.tabId === "string") &&
-        (p.state === "turn_complete" ||
-          p.state === "permission_needed" ||
-          p.state === "error" ||
-          p.state === "rate_limited") &&
-        typeof p.at === "number"
-      )
-    })
-    if (!valid) {
-      logClientError("orch", `dropped attention.inbox event: malformed item (${describePayload(items)})`)
-      return
-    }
-    signals.setAttentionInboxSig(items as AttentionInboxItem[])
     return
   }
   if (name === "task.jobs") {

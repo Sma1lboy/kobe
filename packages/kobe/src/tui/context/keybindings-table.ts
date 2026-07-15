@@ -66,11 +66,10 @@
 
 import { CHAT_BINDINGS } from "./keybindings-chat.ts"
 import { FILES_BINDINGS } from "./keybindings-files.ts"
-import { INBOX_BINDINGS } from "./keybindings-inbox.ts"
 import { SIDEBAR_BINDINGS } from "./keybindings-sidebar.ts"
 
 /** Pane scopes used to gate where a binding is active. */
-export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "inbox" | "terminal"
+export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "terminal"
 
 /**
  * Friendly-chord display override, read by the help dialog (F1) and the
@@ -243,7 +242,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f4"],
     prefixKeys: ["k"],
     category: "Navigation",
-    description: "Focus next pane (sidebar → workspace → files → inbox)",
+    description: "Focus next pane (sidebar → workspace → files)",
     hint: { keys: "f4" },
   },
   {
@@ -303,9 +302,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
   // ─── Files ────────────────────────────────────────────────────────────
   // Moved to keybindings-files.ts (file-size cap) — same entries, same order.
   ...FILES_BINDINGS,
-
-  // ─── Attention Inbox ─────────────────────────────────────────────────
-  ...INBOX_BINDINGS,
 
   // ─── Terminal ─────────────────────────────────────────────────────────
   {

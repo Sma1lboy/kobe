@@ -124,23 +124,6 @@ export interface EngineActivityDetail {
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
 
-/** States retained as unresolved Inbox episodes until a newer same-tab turn starts. */
-export type AttentionInboxState = Extract<
-  TaskActivityState,
-  "turn_complete" | "permission_needed" | "error" | "rate_limited"
->
-
-/** One daemon-owned, durable attention episode for a task's engine tab. */
-export interface AttentionInboxItem {
-  readonly taskId: string
-  /** `null` for hook events that predate or lack a tab identity. */
-  readonly tabId: string | null
-  readonly state: AttentionInboxState
-  readonly detail?: EngineActivityDetail
-  /** Event time, epoch milliseconds. Stable across daemon/TUI restarts. */
-  readonly at: number
-}
-
 export interface UpdateInfo {
   readonly current: string
   readonly latest: string

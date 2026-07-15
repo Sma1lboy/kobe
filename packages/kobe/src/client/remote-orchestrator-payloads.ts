@@ -16,7 +16,6 @@
 
 import type {
   ChannelName,
-  ChannelPayloads,
   NoticeEventPayload,
   SerializedTask,
   SubscribeRole,
@@ -40,9 +39,6 @@ export interface TaskEngineState {
  *  same channel's `tabId`-carrying events. Sparse — only tabs with a live
  *  non-idle state; sessions without a tab identity stay task-level only. */
 export type EngineTabStateMap = ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>
-
-/** Durable daemon-owned attention episode, pushed as a full snapshot. */
-export type AttentionInboxItem = ChannelPayloads["attention.inbox"]["items"][number]
 
 /**
  * A long daemon operation currently IN FLIGHT for a task, accumulated from
@@ -254,7 +250,6 @@ export interface OrchestratorSignals {
   readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
   readonly engineTabStateAcc: ReadableState<EngineTabStateMap>
   readonly setEngineTabStateSig: (next: EngineTabStateMap) => void
-  readonly setAttentionInboxSig: (next: readonly AttentionInboxItem[]) => void
   readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>

@@ -17,7 +17,7 @@ const CHIP_WIDTH = 40
 const RIGHT_MARGIN = 2
 const BOTTOM_MARGIN = 2
 
-export function ToastOverlay(props: { bottomOffset?: number } = {}) {
+export function ToastOverlay() {
   const { theme } = useTheme()
   const dims = useTerminalDimensions()
   const notif = useNotifications()
@@ -29,7 +29,7 @@ export function ToastOverlay(props: { bottomOffset?: number } = {}) {
   // the overlay sits on top of the layout without taking flow space;
   // `zIndex` keeps it above the panes but below the dialog backdrop (3000).
   const left = Math.max(0, dims.width - CHIP_WIDTH - RIGHT_MARGIN)
-  const top = Math.max(0, dims.height - BOTTOM_MARGIN - (props.bottomOffset ?? 0) - MAX_VISIBLE - 1)
+  const top = Math.max(0, dims.height - BOTTOM_MARGIN - MAX_VISIBLE - 1)
 
   return (
     <box position="absolute" zIndex={2500} left={left} top={top} width={CHIP_WIDTH} flexDirection="column" gap={0}>
