@@ -22,7 +22,7 @@ import { ModalScopeContext, useBindings } from "../lib/keymap"
 import { useLatest } from "../lib/use-latest"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
-export type DialogPlacement = "center" | "upper-quarter"
+export type DialogPlacement = "center" | "upper-fifth"
 
 const DIALOG_CONTENT_OPACITY = 0.5
 const TRANSPARENT_DIALOG_CONTENT_OPACITY = 0.75
@@ -47,15 +47,15 @@ export function Dialog(props: {
   // Vertical headroom around the card so it never lands flush against
   // the terminal's top/bottom edge.
   const VERTICAL_MARGIN = 2
-  const upperQuarter = props.placement === "upper-quarter"
+  const upperFifth = props.placement === "upper-fifth"
   // The content's first row sits one cell below the card top because the card
-  // owns paddingTop=1. Back the card up by that cell so an upper-quarter
-  // dialog's header lands at exactly one quarter of the viewport.
-  const headerTop = Math.max(VERTICAL_MARGIN, Math.floor(dimensions.height / 4))
-  const cardTop = upperQuarter ? Math.max(VERTICAL_MARGIN, headerTop - 1) : 0
+  // owns paddingTop=1. Back the card up by that cell so an upper-fifth
+  // dialog's header lands at exactly one fifth of the viewport.
+  const headerTop = Math.max(VERTICAL_MARGIN, Math.floor(dimensions.height / 5))
+  const cardTop = upperFifth ? Math.max(VERTICAL_MARGIN, headerTop - 1) : 0
   const maxCardHeight = Math.max(
     8,
-    upperQuarter ? dimensions.height - cardTop - VERTICAL_MARGIN : dimensions.height - VERTICAL_MARGIN * 2,
+    upperFifth ? dimensions.height - cardTop - VERTICAL_MARGIN : dimensions.height - VERTICAL_MARGIN * 2,
   )
 
   return (
@@ -74,8 +74,8 @@ export function Dialog(props: {
       height={dimensions.height}
       alignItems="center"
       // Most dialogs stay centered. Attention queues may opt into an upper
-      // anchor so their header aligns with the viewport's first quarter.
-      justifyContent={upperQuarter ? "flex-start" : "center"}
+      // anchor so their header aligns with the viewport's first fifth.
+      justifyContent={upperFifth ? "flex-start" : "center"}
       paddingTop={cardTop}
       position="absolute"
       zIndex={3000}

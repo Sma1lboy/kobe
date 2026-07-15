@@ -41,21 +41,21 @@ describe("DialogProvider", () => {
     expect(text).toContain("dialog A")
   })
 
-  it("can anchor a dialog header at the viewport's upper quarter", async () => {
+  it("can anchor a dialog header at the viewport's upper fifth", async () => {
     const height = 24
     const { frame } = await renderComponent(
       <DialogProvider>
         <Driver
           onMount={(dialog) => {
-            dialog.replace(() => <text>UPPER QUARTER</text>)
-            dialog.setPlacement("upper-quarter")
+            dialog.replace(() => <text>UPPER FIFTH</text>)
+            dialog.setPlacement("upper-fifth")
           }}
         />
       </DialogProvider>,
       { width: 80, height },
     )
-    const headerRow = (await frame()).split("\n").findIndex((line) => line.includes("UPPER QUARTER"))
-    expect(headerRow).toBe(Math.floor(height / 4))
+    const headerRow = (await frame()).split("\n").findIndex((line) => line.includes("UPPER FIFTH"))
+    expect(headerRow).toBe(Math.floor(height / 5))
   })
 
   it("resets upper placement when a different dialog replaces it", async () => {
@@ -67,17 +67,17 @@ describe("DialogProvider", () => {
           onMount={(dialog) => {
             dialogRef.current = dialog
             dialog.replace(() => <text>UPPER FIRST</text>)
-            dialog.setPlacement("upper-quarter")
+            dialog.setPlacement("upper-fifth")
           }}
         />
       </DialogProvider>,
       { width: 80, height },
     )
-    expect((await frame()).split("\n").findIndex((line) => line.includes("UPPER FIRST"))).toBe(Math.floor(height / 4))
+    expect((await frame()).split("\n").findIndex((line) => line.includes("UPPER FIRST"))).toBe(Math.floor(height / 5))
 
     act(() => dialogRef.current?.replace(() => <text>CENTER NEXT</text>))
     const centeredRow = (await frame()).split("\n").findIndex((line) => line.includes("CENTER NEXT"))
-    expect(centeredRow).toBeGreaterThan(Math.floor(height / 4))
+    expect(centeredRow).toBeGreaterThan(Math.floor(height / 5))
   })
 
   // Regression (owner report 2026-07-09): the translucent full-screen

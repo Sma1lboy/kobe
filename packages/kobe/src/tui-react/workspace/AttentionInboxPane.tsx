@@ -185,5 +185,5 @@ export function AttentionInboxDialog(props: AttentionInboxDialogProps) {
 AttentionInboxDialog.show = (dialog: DialogContext, props: AttentionInboxDialogProps): void => {
   dialog.replace(() => <AttentionInboxDialog {...props} />)
   dialog.setSize("medium")
-  dialog.setPlacement("upper-quarter")
+  dialog.setPlacement("upper-fifth")
 }
