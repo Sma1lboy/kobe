@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -131,11 +131,26 @@ describe("runDoctorSubcommand", () => {
     expect(mocks.inspectLegacyTmux).toHaveBeenCalledTimes(1)
   })
 
-  it("help describes a read-only daemon, Hosted PTY, and legacy tmux diagnosis", async () => {
+  it("help describes a read-only daemon, Hosted PTY, engines, git, and legacy tmux diagnosis", async () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     await runDoctorSubcommand(["--help"])
-    expect(writeSpy.mock.calls.join("")).toContain("daemon / Hosted PTY / legacy tmux / state")
+    expect(writeSpy.mock.calls.join("")).toContain("daemon / Hosted PTY / engines / git / legacy tmux / state")
+    expect(writeSpy.mock.calls.join("")).toContain("--report")
     expect(mocks.request).not.toHaveBeenCalled()
     writeSpy.mockRestore()
+  })
+
+  it("--report writes a bundle file and points the user at it", async () => {
+    mocks.request.mockRejectedValue(new Error("not running"))
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(home)
+
+    await runDoctorSubcommand(["--report"])
+
+    expect(output()).toContain("report written:")
+    expect(existsSync(join(home, "kobe-doctor-report.txt"))).toBe(true)
+    const bundle = readFileSync(join(home, "kobe-doctor-report.txt"), "utf8")
+    expect(bundle).toContain("# kobe doctor report")
+    expect(bundle).toContain("## diagnosis")
+    cwdSpy.mockRestore()
   })
 })

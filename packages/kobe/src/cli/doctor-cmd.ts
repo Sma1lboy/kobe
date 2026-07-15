@@ -12,6 +12,15 @@ import {
   defaultPtyHostSocketPath,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { readPidFile } from "@sma1lboy/kobe-daemon/daemon/server"
+import {
+  type BinaryStatus,
+  type ClaudeAccount,
+  type CodexAccount,
+  type CopilotAccount,
+  detectClaudeAccount,
+  detectCodexAccount,
+  detectCopilotAccount,
+} from "../engine/account-detect.ts"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
@@ -105,6 +114,56 @@ function terminalDoctorLines(): string[] {
   return [`terminal: TERM=${show(process.env.TERM)}  TERM_PROGRAM=${program}  COLORTERM=${show(process.env.COLORTERM)}`]
 }
 
+/** `git --version` if git is on PATH, else a not-found marker. */
+async function gitDoctorLine(): Promise<string> {
+  try {
+    const proc = Bun.spawn(["git", "--version"], { stdin: "ignore", stdout: "pipe", stderr: "ignore" })
+    const text = (await new Response(proc.stdout).text()).trim()
+    return (await proc.exited) === 0 && text ? `git:      ✓ ${text}` : "git:      ✗ not found on PATH"
+  } catch {
+    return "git:      ✗ not found on PATH"
+  }
+}
+
+function binaryLabel(binary: BinaryStatus): string {
+  return binary.found ? `✓ ${binary.path}` : `✗ ${binary.error}`
+}
+
+function claudeAccountLabel(account: ClaudeAccount): string {
+  if (account.kind === "none") return "no account"
+  return `logged in (${account.email}${account.organization ? `, ${account.organization}` : ""})`
+}
+
+function codexAccountLabel(account: CodexAccount): string {
+  if (account.kind === "chatgpt") return `logged in (${account.email}${account.plan ? `, ${account.plan}` : ""})`
+  if (account.kind === "apikey") return "API key"
+  return "no account"
+}
+
+function copilotAccountLabel(account: CopilotAccount): string {
+  if (account.kind === "token") return `token (${account.source})`
+  if (account.kind === "oauth") return "logged in"
+  return "no account"
+}
+
+/** One "engines:" block: per-vendor CLI binary + account state (read-only). */
+async function engineDoctorLines(): Promise<string[]> {
+  const [claude, codex, copilot] = await Promise.all([
+    detectClaudeAccount(),
+    detectCodexAccount(),
+    detectCopilotAccount(),
+  ])
+  const lines = ["engines:"]
+  const row = (name: string, binary: BinaryStatus, account: string, err?: string): void => {
+    lines.push(`  ${name.padEnd(8)}${binaryLabel(binary)}${binary.found ? ` — ${account}` : ""}`)
+    if (err) lines.push(`          ⚠ ${err}`)
+  }
+  row("claude", claude.binary, claudeAccountLabel(claude.account), claude.accountError)
+  row("codex", codex.binary, codexAccountLabel(codex.account), codex.accountError)
+  row("copilot", copilot.binary, copilotAccountLabel(copilot.account), copilot.accountError)
+  return lines
+}
+
 async function appendUnavailableProcess(
   out: string[],
   label: string,
@@ -118,26 +177,8 @@ async function appendUnavailableProcess(
   if (existsSync(socketPath)) out.push(`          orphan socket file present: ${socketPath}`)
 }
 
-export async function runDoctorSubcommand(argv: readonly string[] = []): Promise<void> {
-  if (argv.some((arg) => arg === "--help" || arg === "-h" || arg === "help")) {
-    process.stdout.write(
-      [
-        "Usage: kobe doctor",
-        "",
-        "Read-only diagnosis of the daemon / Hosted PTY / legacy tmux / state. Takes no options.",
-        "",
-      ].join("\n"),
-    )
-    return
-  }
-  const unknown = argv.find((arg) => arg.length > 0)
-  if (unknown !== undefined) {
-    process.stderr.write(
-      `kobe doctor: unexpected argument "${unknown}"\n\nUsage: kobe doctor   (read-only; takes no options)\n`,
-    )
-    process.exit(2)
-  }
-
+/** Assemble the full read-only diagnosis as printable lines. */
+async function collectDoctorLines(): Promise<string[]> {
   const daemonSocket = defaultDaemonSocketPath()
   const daemonLog = defaultDaemonLogPath()
   const ptySocket = defaultPtyHostSocketPath()
@@ -150,6 +191,9 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     `  home:   ${homeDir()}`,
     "",
     ...terminalDoctorLines(),
+    await gitDoctorLine(),
+    "",
+    ...(await engineDoctorLines()),
     "",
   ]
 
@@ -219,5 +263,38 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   out.push(`state.json: ${describeFile(statePath)}`)
   out.push(`daemon.log: ${describeFile(daemonLog)}`)
   out.push(`pty-host.log: ${describeFile(ptyLog)}`)
+  return out
+}
+
+export async function runDoctorSubcommand(argv: readonly string[] = []): Promise<void> {
+  if (argv.some((arg) => arg === "--help" || arg === "-h" || arg === "help")) {
+    process.stdout.write(
+      [
+        "Usage: kobe doctor [--report]",
+        "",
+        "Read-only diagnosis of the daemon / Hosted PTY / engines / git / legacy tmux / state.",
+        "",
+        "Options:",
+        "  --report      Also write a bug bundle (diagnosis + recent logs + env) to a file",
+        "  -h, --help    Print this help",
+        "",
+      ].join("\n"),
+    )
+    return
+  }
+  const report = argv.some((arg) => arg === "--report")
+  const unknown = argv.find((arg) => arg.length > 0 && arg !== "--report")
+  if (unknown !== undefined) {
+    process.stderr.write(`kobe doctor: unexpected argument "${unknown}"\n\nUsage: kobe doctor [--report]\n`)
+    process.exit(2)
+  }
+
+  const out = await collectDoctorLines()
   console.log(out.join("\n"))
+  if (report) {
+    const { writeReportBundle } = await import("./doctor-report.ts")
+    const path = writeReportBundle(out)
+    console.log(`\nreport written: ${path}`)
+    console.log("attach this file to a bug report — it includes recent daemon + pty-host logs and env.")
+  }
 }

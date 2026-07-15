@@ -414,6 +414,11 @@ async function main(): Promise<void> {
     await runDoctorSubcommand(rest)
     return
   }
+  if (subcommand === "config") {
+    const { runConfigSubcommand } = await import("./config-cmd.ts")
+    await runConfigSubcommand(rest)
+    return
+  }
   if (subcommand === "reset") {
     const { runResetSubcommand } = await import("./reset-cmd.ts")
     await runResetSubcommand(rest)
