@@ -10,7 +10,7 @@ import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useRef, useState } from "react"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { type AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
@@ -37,12 +37,16 @@ import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
+import { AttentionInboxDialog } from "./AttentionInboxPane"
+import { InboxUnavailableDialog } from "./InboxUnavailableDialog"
+import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
+import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
-import { forgetTaskTabs } from "./terminal-tabs-shared"
+import { forgetTaskTabs, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
@@ -65,7 +69,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
-  const engineTabStates = useAccessor(orch.engineTabStatesSignal())
+  const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
@@ -106,12 +110,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { jumpToNextAttention } = useAttention({
     tasks,
     engineState,
-    engineTabStates,
+    inboxItems,
     selectedId,
     kv,
     notif,
-    selectTask,
-    focusWorkspace: () => focus.setFocused("workspace"),
+    openAttention: openInboxItem,
     noTasksMessage: t("workspace.attention.none"),
   })
 
@@ -228,6 +231,31 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openDiffTabFn.current?.(relPath, label, base)
   }
 
+  function openInboxItem(item: AttentionInboxItem, knownAvailable?: boolean): void {
+    notifyInboxRpcFailure(orch.markAttentionRead(item.taskId, item.tabId, item.at), "mark read", notifyError)
+    const task = orch.getTask(item.taskId)
+    const available =
+      knownAvailable ??
+      isAttentionInboxItemAvailable(item, task, (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined)
+    if (!available) {
+      InboxUnavailableDialog.show(dialog, t("workspace.inbox.unavailableTitle"), t("workspace.inbox.unavailableBody"))
+      return
+    }
+    if (dialog.stack.length > 0) dialog.clear({ refocus: false })
+    selectTask(item.taskId)
+    if (item.tabId) requestTabActivation(item.taskId, item.tabId)
+    focus.setFocused("workspace")
+  }
+
+  function showInbox(): void {
+    AttentionInboxDialog.show(dialog, {
+      orchestrator: orch,
+      onOpen: openInboxItem,
+      onDelete: (item) =>
+        notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyError),
+    })
+  }
+
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
   // `kobe settings` window. Theme/transparent/focus accent changes apply
   // centrally via host-boot's UiPrefsSync, so there's no workspace-pane
@@ -276,6 +304,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     cycleVendor: (id) => void cycleVendor(id),
     toggleZen,
     jumpToNextAttention,
+    openInbox: showInbox,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus

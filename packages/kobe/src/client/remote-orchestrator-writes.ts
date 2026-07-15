@@ -86,6 +86,36 @@ export async function deleteTaskOp(
   await client.request("task.delete", { taskId: String(id), force: opts?.force })
 }
 
+/** Explicitly delete one durable attention episode. */
+export async function dismissAttentionOp(
+  client: KobeDaemonClient,
+  taskId: TaskId | string,
+  tabId: string | null,
+  at: number,
+): Promise<boolean> {
+  const res = await client.request<{ deleted: boolean }>("attention.dismiss", {
+    taskId: String(taskId),
+    ...(tabId !== null ? { tabId } : {}),
+    at,
+  })
+  return res.deleted
+}
+
+/** Persist that the user opened this exact attention episode. */
+export async function markAttentionReadOp(
+  client: KobeDaemonClient,
+  taskId: TaskId | string,
+  tabId: string | null,
+  at: number,
+): Promise<boolean> {
+  const res = await client.request<{ updated: boolean }>("attention.read", {
+    taskId: String(taskId),
+    ...(tabId !== null ? { tabId } : {}),
+    at,
+  })
+  return res.updated
+}
+
 /** Land a task's branch back into its base repo (`task.land`). Merge or
  *  squash; optionally delete the branch / archive the task after. The daemon
  *  throws with a `LAND_CONFLICT`/`MAIN_CHECKOUT_DIRTY` sentinel in the message

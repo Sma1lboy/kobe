@@ -15,7 +15,7 @@ import { useRenderer } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useRef, useState } from "react"
 import { useLatest } from "../lib/use-latest"
 
-/** The four primary panes in kobe's layout. */
+/** The primary panes in kobe's layout. */
 export type PaneId = "sidebar" | "workspace" | "files" | "terminal"
 
 /** Cycle order — used by `tab` / `shift+tab`. */

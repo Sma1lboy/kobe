@@ -14,7 +14,16 @@ export const en = {
     selectTask: "Select a task with a worktree",
   },
   attention: {
-    none: "No tasks waiting for input",
+    none: "No unread Inbox items",
+  },
+  inbox: {
+    title: "INBOX",
+    empty: "No pending attention",
+    unavailable: "unavailable",
+    unavailableTitle: "Chat tab unavailable",
+    unavailableBody: "This task or chat tab no longer exists. The Inbox item stays here until you delete it.",
+    openHint: "enter open",
+    deleteHint: "d delete",
   },
   terminalComing: "Embedded terminal is starting...",
 }
@@ -29,7 +38,16 @@ export const zh: typeof en = {
     selectTask: "请选择一个带 worktree 的任务",
   },
   attention: {
-    none: "没有等待输入的任务",
+    none: "收件箱没有未读内容",
+  },
+  inbox: {
+    title: "收件箱",
+    empty: "暂无待处理",
+    unavailable: "目标不可用",
+    unavailableTitle: "聊天标签页不可用",
+    unavailableBody: "这个任务或聊天标签页已不存在。该条目会保留在收件箱中，直到你手动删除。",
+    openHint: "enter 打开",
+    deleteHint: "d 删除",
   },
   terminalComing: "嵌入终端正在启动……",
 }

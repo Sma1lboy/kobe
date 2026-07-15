@@ -124,6 +124,37 @@ export interface EngineActivityDetail {
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
 
+/** States retained as unresolved Inbox episodes until a newer same-tab turn starts. */
+export const ATTENTION_INBOX_STATES = [
+  "turn_complete",
+  "permission_needed",
+  "error",
+  "rate_limited",
+] as const satisfies readonly TaskActivityState[]
+
+export type AttentionInboxState = (typeof ATTENTION_INBOX_STATES)[number]
+
+export function isAttentionInboxState(value: unknown): value is AttentionInboxState {
+  return typeof value === "string" && (ATTENTION_INBOX_STATES as readonly string[]).includes(value)
+}
+
+export function attentionInboxItemKey(item: { taskId: string | null; tabId: string | null }): string {
+  return `${item.taskId}\0${item.tabId ?? ""}`
+}
+
+/** One daemon-owned, durable attention episode for a task's engine tab. */
+export interface AttentionInboxItem {
+  readonly taskId: string
+  /** `null` for hook events that predate or lack a tab identity. */
+  readonly tabId: string | null
+  readonly state: AttentionInboxState
+  readonly detail?: EngineActivityDetail
+  /** Cleared only when this exact episode is opened; survives reconnects. */
+  readonly unread: boolean
+  /** Event time, epoch milliseconds. Stable across daemon/TUI restarts. */
+  readonly at: number
+}
+
 export interface UpdateInfo {
   readonly current: string
   readonly latest: string

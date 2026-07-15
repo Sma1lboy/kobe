@@ -66,10 +66,11 @@
 
 import { CHAT_BINDINGS } from "./keybindings-chat.ts"
 import { FILES_BINDINGS } from "./keybindings-files.ts"
+import { INBOX_BINDINGS } from "./keybindings-inbox.ts"
 import { SIDEBAR_BINDINGS } from "./keybindings-sidebar.ts"
 
 /** Pane scopes used to gate where a binding is active. */
-export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "terminal"
+export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "inbox" | "terminal"
 
 /**
  * Friendly-chord display override, read by the help dialog (F1) and the
@@ -246,9 +247,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "f4" },
   },
   {
-    // Jump to the next task that needs attention (P0) — walks the sidebar
-    // order to the next task whose daemon engine-state is permission_needed /
-    // error (plus any unread needs_input/error mark) and selects it. `f7`
+    // Jump to the next unread durable Inbox episode. Read episodes remain in
+    // the Inbox dialog until work restarts or the user deletes them, but F7
+    // does not revisit them. `f7`
     // continues kobe's F-row (F2 rename / F3 split / F4 pane-cycle / F5 reset
     // / F6 zen) — the only chord tier that fires from inside the embedded
     // terminal without stealing an engine chord. NOT `ctrl+g`: that's the
@@ -260,7 +261,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "global",
     keys: ["f7"],
     category: "Navigation",
-    description: "Jump to the next task waiting for input",
+    description: "Open the next unread Inbox item",
     hint: { keys: "f7" },
   },
   {
@@ -302,6 +303,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
   // ─── Files ────────────────────────────────────────────────────────────
   // Moved to keybindings-files.ts (file-size cap) — same entries, same order.
   ...FILES_BINDINGS,
+
+  // ─── Attention Inbox ─────────────────────────────────────────────────
+  ...INBOX_BINDINGS,
 
   // ─── Terminal ─────────────────────────────────────────────────────────
   {

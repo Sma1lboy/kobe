@@ -50,6 +50,7 @@ export type WorkspaceKeybindingDeps = {
   cycleVendor: (id: string) => void
   toggleZen: () => void
   jumpToNextAttention: () => void
+  openInbox: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -117,6 +118,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // f7 — reserved from terminal passthrough too, so "jump to the
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
+        "inbox.show": () => deps.openInbox(),
       }),
     ],
   }))

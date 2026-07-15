@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config"
 
 const includeBehavior = process.env.KOBE_INCLUDE_BEHAVIOR === "1"
 const includeSocket = process.env.KOBE_INCLUDE_SOCKET === "1"
+const includeDaemonCoverage = process.env.KOBE_COVERAGE_DAEMON === "1"
 // test/render/** is the bun-test-only render track (see test/render/harness.tsx
 // + docs/HARNESS.md "render track") — it uses bun:test APIs vitest can't
 // resolve, and mounts real opentui Solid components vitest's node
@@ -43,9 +44,14 @@ export default defineConfig({
     // them in the denominator made the % measure the runtime, not the tests.
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts"],
+      // Daemon tests live under this package but execute source from the
+      // sibling kobe-daemon workspace. The opt-in socket-coverage track must
+      // explicitly allow and include that external root; ordinary kobe
+      // coverage keeps its existing package-local scope.
+      allowExternal: includeDaemonCoverage,
+      include: includeDaemonCoverage ? [path.resolve(__dirname, "../kobe-daemon/src/**/*.ts")] : ["src/**/*.ts"],
       reporter: ["text-summary", "json-summary", "lcov"],
-      reportsDirectory: "./coverage",
+      reportsDirectory: includeDaemonCoverage ? "./coverage-daemon" : "./coverage",
     },
   },
 })

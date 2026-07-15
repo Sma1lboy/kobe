@@ -44,6 +44,7 @@
     "perf:golden": "bun scripts/perf-golden.ts",
     "test:fast": "vitest run --passWithNoTests --minWorkers=1 --maxWorkers=8",
     "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon --pool forks --minWorkers=1 --maxWorkers=4 --passWithNoTests",
+    "test:socket:coverage": "KOBE_INCLUDE_SOCKET=1 KOBE_COVERAGE_DAEMON=1 vitest run test/daemon --coverage --pool forks --minWorkers=1 --maxWorkers=4 --passWithNoTests",
     "test:behavior": "KOBE_INCLUDE_BEHAVIOR=1 vitest run test/behavior --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
     "test:render": "bun test test/render --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage-render",
     "coverage": "vitest run --coverage --passWithNoTests",

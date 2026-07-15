@@ -10,9 +10,10 @@ import { type CapturedFrame, RGBA } from "@opentui/core"
 import { useEffect } from "react"
 import { ToastOverlay } from "../../src/tui-react/component/toast-overlay"
 import { useNotifications } from "../../src/tui-react/context/notifications"
+import { type InboxRpcAction, notifyInboxRpcFailure } from "../../src/tui-react/workspace/inbox-rpc-errors"
 import { BUNDLED_THEME_JSONS } from "../../src/tui/context/theme/bundled"
 import { resolveThemeSlotHex } from "../../src/tui/context/theme/hex"
-import { renderComponent } from "./harness"
+import { act, renderComponent } from "./harness"
 
 // The notifications provider reads a one-shot state.json snapshot for the
 // sound/toast toggles; point it at a throwaway dir so the test never touches
@@ -24,6 +25,19 @@ function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: str
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once notify.
   useEffect(() => {
     notif.notify({ kind: props.kind, taskId: "t1", tabId: "tab1", title: props.title })
+  }, [])
+  return <ToastOverlay />
+}
+
+function InboxRejectProbe(props: { action: InboxRpcAction; onReady: (reject: () => void) => void }) {
+  const notif = useNotifications()
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once test control.
+  useEffect(() => {
+    props.onReady(() => {
+      notifyInboxRpcFailure(Promise.reject(new Error("daemon exploded")), props.action, (title) => {
+        notif.notify({ kind: "error", taskId: "t1", tabId: "tab1", title })
+      })
+    })
   }, [])
   return <ToastOverlay />
 }
@@ -54,6 +68,27 @@ describe("ToastOverlay", () => {
     const text = await frame()
     expect(text).toContain("clone failed")
     expect(text).toContain("✕")
+  })
+
+  it.each([
+    ["mark read", "Couldn't mark read: daemon exploded"],
+    ["dismiss", "Couldn't dismiss: daemon exploded"],
+  ] as const)("renders a string error toast when Inbox %s RPC rejects", async (action, expected) => {
+    let reject = () => {}
+    const { frame } = await renderComponent(
+      <InboxRejectProbe
+        action={action}
+        onReady={(run) => {
+          reject = run
+        }}
+      />,
+      { providers: { notifications: true } },
+    )
+    await act(async () => {
+      reject()
+      await Promise.resolve()
+    })
+    expect(await frame()).toContain(expected)
   })
 
   it.each([
