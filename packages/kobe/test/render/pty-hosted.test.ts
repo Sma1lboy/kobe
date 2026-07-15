@@ -198,8 +198,9 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     const b = new DelayedRepaintPty({ taskId: "smoke::t3-delayed", ...OPTS })
     await until(() => b.resizeTimes.length === 2, "delayed repaint settles before the size restore")
     expect(b.repaintWaits).toEqual([500])
-    expect(b.repaintObservedAt).not.toBeNull()
-    expect(b.resizeTimes[1]).toBeGreaterThanOrEqual(b.repaintObservedAt ?? Infinity)
+    const repaintObservedAt = b.repaintObservedAt
+    expect(repaintObservedAt).not.toBeNull()
+    expect(b.resizeTimes[1]).toBeGreaterThanOrEqual(repaintObservedAt!)
     b.kill()
   })
 
