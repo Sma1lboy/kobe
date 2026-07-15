@@ -18,6 +18,8 @@ export const en = {
   },
   inbox: {
     title: "INBOX",
+    unread: "Unread",
+    all: "All",
     empty: "No pending attention",
     unavailable: "unavailable",
     openHint: "enter open",
@@ -40,6 +42,8 @@ export const zh: typeof en = {
   },
   inbox: {
     title: "收件箱",
+    unread: "未读",
+    all: "全部",
     empty: "暂无待处理",
     unavailable: "目标不可用",
     openHint: "enter 打开",

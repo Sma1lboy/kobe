@@ -130,6 +130,27 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("No pending attention")
   })
 
+  it("switches between unread and all episodes", async () => {
+    const { destroy, frame, mockMouse } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
+      providers: { kv: true },
+      width: 60,
+      height: 24,
+    })
+    try {
+      const initial = (await frame()).split("\n")
+      const headerY = initial.findIndex((line) => line.includes("Unread 1 / All 2"))
+      await act(async () => mockMouse.click(initial[headerY]!.indexOf("Unread"), headerY))
+      expect(await frame()).toContain("Alpha")
+      expect(await frame()).not.toContain("Beta")
+
+      const unread = (await frame()).split("\n")
+      await act(async () => mockMouse.click(unread[headerY]!.indexOf("All"), headerY))
+      expect(await frame()).toContain("Beta")
+    } finally {
+      destroy()
+    }
+  })
+
   it("renders retained episodes and exposes dialog-local navigation/open/delete", async () => {
     const opened: string[] = []
     const deleted: string[] = []
@@ -143,6 +164,7 @@ describe("AttentionInboxPane", () => {
     )
     const text = await frame()
     expect(text).toContain("INBOX 2")
+    expect(text).toContain("Unread 1 / All 2")
     expect(text).toContain("Alpha")
     expect(text).toContain("Beta")
     expect(text).toContain("project-a")
@@ -164,6 +186,7 @@ describe("AttentionInboxPane", () => {
     const theme = BUNDLED_THEME_JSONS.claude!
     const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
     const backgroundDialog = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundDialog")!)
+    const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
     try {
       for (const transparent of [false, true]) {
         setTransparentBackground(transparent)
@@ -176,7 +199,7 @@ describe("AttentionInboxPane", () => {
           const frame = await spans()
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
-          expect(borderColor(frame, "Alpha")?.equals(backgroundElement)).toBe(true)
+          expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
           expect(borderColor(frame, "Beta")?.equals(backgroundDialog)).toBe(true)
         } finally {
           destroy()

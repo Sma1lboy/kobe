@@ -23,6 +23,7 @@ const MAX_VISIBLE_CARDS = 4
 const CARD_ROWS_WITH_GAP = 5
 const DIALOG_CHROME_ROWS = 7
 const AGE_REFRESH_MS = 30_000
+type InboxFilter = "unread" | "all"
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -61,9 +62,12 @@ export function AttentionInboxPane(props: {
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
+  const [filter, setFilter] = useState<InboxFilter>("all")
   const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
-  const ordered = sortAttentionInbox(props.items, taskOrder)
+  const allItems = sortAttentionInbox(props.items, taskOrder)
+  const unreadCount = allItems.filter((item) => item.unread).length
+  const ordered = filter === "unread" ? allItems.filter((item) => item.unread) : allItems
   const maxVisibleCards = Math.max(
     1,
     Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
@@ -117,7 +121,26 @@ export function AttentionInboxPane(props: {
           <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             {t("workspace.inbox.title")}
           </text>
-          <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
+          <text fg={theme.textMuted} wrapMode="none">{` ${allItems.length}  `}</text>
+          <text
+            fg={filter === "unread" ? theme.focusAccent : theme.textMuted}
+            attributes={filter === "unread" ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            onMouseUp={() => setFilter("unread")}
+          >
+            {`${t("workspace.inbox.unread")} ${unreadCount}`}
+          </text>
+          <text fg={theme.textMuted} wrapMode="none">
+            {" / "}
+          </text>
+          <text
+            fg={filter === "all" ? theme.focusAccent : theme.textMuted}
+            attributes={filter === "all" ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            onMouseUp={() => setFilter("all")}
+          >
+            {`${t("workspace.inbox.all")} ${allItems.length}`}
+          </text>
         </box>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={props.onClose}>
           esc
@@ -142,7 +165,7 @@ export function AttentionInboxPane(props: {
               <box
                 key={attentionInboxKey(item)}
                 border={true}
-                borderColor={active ? theme.backgroundElement : theme.backgroundDialog}
+                borderColor={active ? theme.primary : theme.backgroundDialog}
                 backgroundColor={active ? theme.backgroundElement : undefined}
                 onMouseUp={(event: { stopPropagation(): void }) => {
                   event.stopPropagation()
