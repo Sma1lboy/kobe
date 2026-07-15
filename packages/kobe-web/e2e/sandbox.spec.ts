@@ -67,6 +67,44 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
   })
 })
 
+test("worktree audit opens and returns through the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+
+  await withVisualTui(page, async (terminal, buffer) => {
+    await terminal.click({ position: { x: 24, y: 24 } })
+    await pressTerminal(terminal, "x")
+
+    await expect(buffer).toContainText("Worktrees")
+    await expect(buffer).toContainText("fixture-repo", { timeout: 45_000 })
+
+    await pressTerminal(terminal, "Escape")
+    await expect(buffer).toContainText("Visual Fixture")
+  })
+})
+
+test("Kanban fixture detail opens and returns through the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+
+  await withVisualTui(page, async (terminal, buffer) => {
+    await terminal.click({ position: { x: 24, y: 24 } })
+    await pressTerminal(terminal, "c")
+    await expect(buffer).toContainText("Backlog fixture")
+
+    // The first cursor key anchors the board's selection on the first card.
+    await pressTerminal(terminal, "ArrowDown")
+    await pressTerminal(terminal, "Enter")
+    await expect(buffer).toContainText("#1")
+    await expect(buffer).toContainText("Waiting to start.")
+    await expect(buffer).toContainText("WORKSPACE")
+
+    await pressTerminal(terminal, "Escape")
+    await expect(buffer).toContainText("Kanban")
+    await expect(buffer).toContainText("Backlog fixture")
+    await pressTerminal(terminal, "Escape")
+    await expect(buffer).toContainText("Visual Fixture")
+  })
+})
+
 test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => {
   test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
