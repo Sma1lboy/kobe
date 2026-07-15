@@ -69,6 +69,13 @@ export type TerminalProps = {
   taskId: string | null
   focused?: boolean
   /**
+   * Whether this mounted terminal represents the visible chat tab / active
+   * split leaf for macOS IME placement. Unlike `focused`, this stays true when
+   * keyboard ownership moves to Sidebar or Files. Inactive split leaves pass
+   * false so background output cannot steal the shared anchor.
+   */
+  imeAnchorActive?: boolean
+  /**
    * Ask the host to focus this pane (mouse click). Needed because opentui
    * mouse events don't bubble to the workspace wrapper's `onMouseUp`, and
    * this pane's own selection handlers consume the click — so a bare click
@@ -214,6 +221,9 @@ export function Terminal(props: TerminalProps) {
   /* --------- reset (F5, confirm-gated) ---------- */
 
   const dialog = useDialog()
+  // A modal input owns the native cursor while it is open. Side-pane focus
+  // does not: the visible terminal remains the stable IME fallback there.
+  const imeAnchorActive = (props.imeAnchorActive ?? true) && dialog.stack.length === 0
   const resetTaskIdRef = useLatest(props.taskId)
   const resetCwdRef = useLatest(props.cwd)
   const mountedRef = useRef(true)
@@ -275,18 +285,18 @@ export function Terminal(props: TerminalProps) {
     }
   }, [pty, bodyGeometry])
 
-  // Keep the native host cursor INVISIBLE (the visible cursor is the
-  // inline inverse cell in `cursorRows`) but ANCHORED to the embedded
-  // cursor's screen cell — the OS IME candidate window follows the real
-  // terminal cursor. A transient PTY cursor-hide retains the last position;
-  // the renderer-output adapter restores it at the end of every diff frame.
+  // Keep the native host cursor INVISIBLE (the visible cursor is the inline
+  // inverse cell in `cursorRows`) but ANCHORED to the visible chat terminal's
+  // screen cell — even while Sidebar or Files owns keyboard focus. A transient
+  // PTY cursor-hide retains the last position; the renderer-output adapter
+  // restores it at the end of every diff frame.
   useEffect(() => {
     // Dependency-only invalidation keys — see use-terminal-geometry.ts;
     // screenX/screenY are read imperatively, non-reactive geometry.
     void dims
     void geomTick
     if (!renderer) return
-    if (!focused) {
+    if (!imeAnchorActive) {
       imeScreenAnchorRetention.update(null, null)
       if (imeAnchorController.release(imeAnchorOwner)) renderer.setCursorPosition(0, 0, false)
       return
@@ -309,7 +319,17 @@ export function Terminal(props: TerminalProps) {
     }
     imeAnchorController.claim(imeAnchorOwner, { x: 0, y: 0 })
     renderer.setCursorPosition(0, 0, false)
-  }, [renderer, focused, bodyEl, visibleImeCursor, dims, geomTick, imeAnchorOwner, imeScreenAnchorRetention, pty])
+  }, [
+    renderer,
+    imeAnchorActive,
+    bodyEl,
+    visibleImeCursor,
+    dims,
+    geomTick,
+    imeAnchorOwner,
+    imeScreenAnchorRetention,
+    pty,
+  ])
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
   // gains focus next.

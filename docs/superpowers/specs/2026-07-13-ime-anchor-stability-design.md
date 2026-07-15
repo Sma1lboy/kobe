@@ -64,7 +64,14 @@ cursor.
 Separately, the terminal retains the last non-null PTY cursor for IME anchoring.
 Transient `CSI ? 25 l` / `CSI ? 25 h` redraw intervals no longer send the
 anchor to `(0, 0)`. The retained cursor is cleared when the PTY identity
-changes, focus leaves the pane, or the pane unmounts.
+changes or the pane unmounts.
+
+Keyboard focus and IME-anchor ownership are independent. Moving keyboard
+focus from Workspace to Sidebar or Files leaves the visible chat terminal's
+anchor active, because its PTY can keep repainting in the background. Within a
+split tab, only the active leaf owns the anchor; inactive leaves may render but
+cannot move it. A modal dialog suppresses the terminal anchor so its own input
+can control native cursor placement.
 
 Each mounted terminal owns a unique token. Anchor updates claim ownership;
 release clears the global anchor only when the releasing token is still the
@@ -75,9 +82,12 @@ claimed by the newly focused leaf.
 
 When no terminal owns the anchor, the output adapter passes bytes through
 unchanged. If the cursor has never been observed or is outside a historical
-scrollback viewport, a focused pane keeps the prior valid screen anchor rather
-than inventing an origin coordinate. On focus loss, KOBE parks the native
-cursor at the origin as before; no IME composition belongs to that pane then.
+scrollback viewport, the active visible terminal keeps the prior valid screen
+anchor rather than inventing an origin coordinate. Switching to a content
+file/preview tab unmounts the terminal and releases its owner; returning to a
+chat tab claims the selected PTY's current coordinate. Switching chat tabs or
+split leaves transfers ownership without allowing stale cleanup or background
+output to clear the new anchor.
 
 ## Verification
 
@@ -89,6 +99,12 @@ cursor at the origin as before; no IME composition belongs to that pane then.
   anchor.
 - Cursor-retention test: a transient null PTY cursor preserves the IME anchor
   while the visual cursor remains null; a PTY identity change clears it.
+- Focus-transition test: Sidebar/Files keyboard focus does not clear the
+  visible chat terminal's anchor.
+- Tab/split tests: chat PTY switches replace retained coordinates, content
+  tabs release and reclaim on return, and inactive split output cannot steal
+  ownership.
+- Modal test: an open dialog suppresses the terminal anchor.
 - Existing terminal IME key-forwarding render tests remain green.
 - Pre-PR gates: lint, typecheck, fast + socket tests, render tests, build, and
   behavior tests.

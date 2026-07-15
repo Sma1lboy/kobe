@@ -261,6 +261,7 @@ export function TerminalSplit(props: {
 
   const renderLeaf = (leaf: SplitLeaf<LeafCommand>, divider?: "left" | "top"): ReactNode => {
     const focusThis = (): void => setActiveLeaf(leaf.id)
+    const imeAnchorActive = activeLeaf === leaf.id
     const focused = leafFocused(leaf.id)
     const body = (
       <>
@@ -272,6 +273,7 @@ export function TerminalSplit(props: {
           onExit={() => onLeafExit(leaf.id)}
           resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
           focused={focused}
+          imeAnchorActive={imeAnchorActive}
           onRequestFocus={() => {
             props.onRequestFocus?.()
             focusThis()
@@ -376,6 +378,7 @@ export function TerminalSplit(props: {
       onExit={props.onExit}
       resetToken={props.resetToken}
       focused={props.focused}
+      imeAnchorActive={true}
       onRequestFocus={props.onRequestFocus}
     />
   )
