@@ -187,7 +187,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   }
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
-  await inbox.init()
+  await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
   const clearTaskState = (taskId: string) =>
     inbox.deleteTaskBestEffort(taskId).finally(() => activity.clearTask(taskId))
   const deletions = new TaskDeletionRunner(orch, runtime, clearTaskState)
