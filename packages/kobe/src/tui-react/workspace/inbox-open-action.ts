@@ -1,10 +1,7 @@
-import type { AttentionInboxItem } from "../../client/remote-orchestrator"
+import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 
-type InboxOpenRpc = {
-  markAttentionRead(taskId: string, tabId: string | null, at: number): Promise<unknown>
-  dismissAttention(taskId: string, tabId: string | null, at: number): Promise<unknown>
-}
+type InboxOpenRpc = Pick<RemoteOrchestrator, "markAttentionRead" | "dismissAttention">
 
 /** Mark a live item read; an unavailable item is stale UI state and is dismissed instead. */
 export function requestInboxItemOpen(
