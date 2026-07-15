@@ -164,6 +164,25 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     b.kill()
   })
 
+  test("waits for a delayed shrink repaint before restoring the reattach size", async () => {
+    // Regression for 052e57e: macOS can deliver the first WINCH repaint
+    // after the old 200ms bound. Restoring sooner makes this child observe
+    // the original size and skip its only repaint; the 500ms bound lets the
+    // delayed shrink observation write its marker before the restore.
+    const cmd = [
+      "/bin/sh",
+      "-c",
+      'cur=$(stty size); trap \'sleep 0.3; new=$(stty size); if [ "$new" != "$cur" ]; then cur=$new; echo DELAYED-REPAINT; fi\' WINCH; echo ready; while :; do sleep 0.05; done',
+    ]
+    const a = new HostedTaskPty({ taskId: "smoke::t3-delayed", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => text(a).includes("ready"), "first delayed-repaint attach sees output")
+    a.detach()
+
+    const b = new HostedTaskPty({ taskId: "smoke::t3-delayed", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => text(b).includes("DELAYED-REPAINT"), "delayed shrink repaint arrives before the size restore")
+    b.kill()
+  })
+
   test("a second viewer on the same key doesn't steal the stream, and its detach doesn't starve the first", async () => {
     // Regression (0.7.86 O(1) dispatch): the key→handle map was single-slot,
     // so a second attach silently replaced the first handle's route — the
