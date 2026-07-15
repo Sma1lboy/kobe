@@ -1,8 +1,17 @@
-# kobe — Phase 0 → Phase 1 Plan
+# kobe — archived Phase 0 → Phase 1 delivery record
 
-> Read [`DESIGN.md`](./DESIGN.md) first. This document operationalizes it: what to build, in what order, by whom, with what dependencies.
+> **Status: closed.** Phase 1 shipped as v0.1.0 on 2026-05-09. This file is a
+> preserved delivery record for its dependency graph, gates, and prompt seeds;
+> it is not an active implementation plan.
 >
-> **Stack** (locked): TypeScript + `@opentui/core` + `@opentui/react` + React 19 + Bun. (Solid TUI removed 2026-07-07; `solid-js` kept only as reactive-signals primitives in the orchestrator/client core.)
+> For current implementation decisions, read [`DESIGN.md`](./DESIGN.md),
+> [`ARCHITECTURE.md`](./ARCHITECTURE.md), and
+> [`HARNESS.md`](./HARNESS.md). Shipped behavior lives in the
+> [`CHANGELOG`](../packages/kobe/CHANGELOG.md).
+>
+> Names, stack details, estimates, and instructions below are historical
+> snapshots. In particular, references to Solid, tmux fallback paths, or
+> direct-main work are not current policy.
 >
 > Plan model: **streams** that run in parallel, converging at named **integration points** where everything must land for a demoable milestone. Each stream is sized for one Claude Code agent in one focused session (~600–1500 LoC).
 

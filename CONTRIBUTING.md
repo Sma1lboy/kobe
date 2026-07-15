@@ -31,14 +31,18 @@ bun install
 
 This is a Bun-workspaces monorepo:
 
-- [`packages/kobe/`](./packages/kobe) — the TUI itself, published as `@sma1lboy/kobe`. Almost all work happens here.
-- [`packages/branding/`](./packages/branding) — Remotion render pipeline for brand assets. Private, never published.
+- [`packages/kobe/`](./packages/kobe) — the published CLI and PureTUI.
+- [`packages/kobe-daemon/`](./packages/kobe-daemon) — daemon protocol/server and Hosted PTY runtime.
+- [`packages/kobe-web/`](./packages/kobe-web) — browser dashboard and PTY sidecar.
+- [`packages/branding/`](./packages/branding) — Remotion render pipeline for brand assets.
+
+The current ownership map is in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 Run package scripts from the root via `bun --filter @sma1lboy/kobe <script>`, or `cd packages/kobe` first. Most common scripts are also aliased at the root (`bun run dev`, `bun run test`, etc.).
 
 ### Reference repos (optional but recommended)
 
-kobe deliberately borrows ideas from a set of reference projects cloned into `refs/` (gitignored). If you're touching engine adapters, stream rendering, or status/usage derivation, clone the relevant refs first — see the "Reference repos" section in [`CLAUDE.md`](./CLAUDE.md) for the list and what each one is for. **Never edit anything inside `refs/`** — it's read-only study material.
+kobe deliberately borrows ideas from a set of reference projects cloned into `refs/` (gitignored). If you're touching engine adapters, stream rendering, or status/usage derivation, clone the relevant refs first — see the "Reference repos" section in [`AGENTS.md`](./AGENTS.md) for the list and what each one is for. **Never edit anything inside `refs/`** — it's read-only study material.
 
 ## Development
 
@@ -56,15 +60,17 @@ Debugging the daemon? Read `<KOBE_HOME>/.kobe/daemon.log` first — the daemon's
 ## Checks — run before every PR
 
 ```bash
+bun run lint          # formatting and static checks
 bun run typecheck     # tsc --noEmit
-bun run lint          # biome check . (bun run lint:fix to auto-fix)
 bun run test          # fast Vitest suite + Unix-socket daemon suite
-bun run build         # the publish gate runs this too
+bun run build
+bun run test:behavior # built CLI against an isolated daemon and Hosted PTY
 ```
 
-CI (`.github/workflows/ci.yml`) runs typecheck + tests + build on every PR. Note that lint is in `ci.yml` but **not** in the release gate, so run it locally.
-
-There is also a behavioral suite — `bun run test:behavior` — which drives the built CLI against an isolated daemon and hosted PTY engine. It runs in CI; use it locally for packaged-path and session-lifecycle changes. See [`docs/HARNESS.md`](./docs/HARNESS.md) for the philosophy: unit tests prove functions work, behavioral tests prove the *product* works.
+For a native OpenTUI visual change, also run `bun run visual`; it is the only
+visual acceptance path and drives `/harness → xterm.js → PTY → real OpenTUI`.
+CI runs the full required matrix. The exact track selection and current gates
+live in [`docs/HARNESS.md`](./docs/HARNESS.md).
 
 ## Making changes
 
@@ -96,13 +102,15 @@ Default the bump to `patch` — kobe is pre-1.0 and ships features as patches; a
 
 ## Work tracking
 
-There is no external issue tracker. Everything is repo-local:
+The product backlog is local. Everything used for normal development is
+repo-local:
 
-- **Backlog**: [`docs/issues.json`](./docs/issues.json) — see [`docs/WORK-TRACKING.md`](./docs/WORK-TRACKING.md) for the shape.
+- **Backlog**: the daemon-owned issue store — see [`docs/WORK-TRACKING.md`](./docs/WORK-TRACKING.md).
 - **Shipped behavior**: [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md), via changesets.
 - **Durable design decisions**: Markdown in `docs/`.
 
-For bugs and feature requests from outside the repo, use [GitHub issues](https://github.com/Sma1lboy/kobe/issues).
+GitHub Issues are reserved for inbound user reports; do not create them for
+normal project planning.
 
 ## Pull request checklist
 
