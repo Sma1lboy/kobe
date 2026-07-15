@@ -20,6 +20,7 @@ import { describe, expect, test } from "bun:test"
 import { useState } from "react"
 import { modalActive } from "../../src/tui-react/lib/keymap"
 import { Terminal } from "../../src/tui-react/panes/terminal/Terminal"
+import { imeAnchorController } from "../../src/tui/lib/ime-anchor-output"
 import { type ScriptedPtyRegistry, createScriptedPtyRegistry } from "../../src/tui/panes/terminal/pty-scripted"
 import { type RenderHandle, act, renderComponent } from "./harness"
 
@@ -81,10 +82,46 @@ function SwitchHost(props: {
   return <Terminal cwd={target.cwd} taskId={target.taskId} focused registry={props.harness.registry} />
 }
 
-function UnmountHost(props: { harness: ScriptedPtyRegistry; api: { hide?: () => void } }) {
+function UnmountHost(props: {
+  harness: ScriptedPtyRegistry
+  api: { hide?: () => void; setShown?: (shown: boolean) => void }
+}) {
   const [shown, setShown] = useState(true)
   props.api.hide = () => setShown(false)
+  props.api.setShown = setShown
   return shown ? <Terminal cwd="/wt" taskId="t1" focused registry={props.harness.registry} /> : <box />
+}
+
+function FocusHost(props: { harness: ScriptedPtyRegistry; api: { setFocused?: (focused: boolean) => void } }) {
+  const [focused, setFocused] = useState(true)
+  props.api.setFocused = setFocused
+  return <Terminal cwd="/wt" taskId="t1" focused={focused} registry={props.harness.registry} />
+}
+
+function SplitAnchorHost(props: {
+  harness: ScriptedPtyRegistry
+  api: { setActive?: (leaf: "left" | "right") => void }
+}) {
+  const [active, setActive] = useState<"left" | "right">("left")
+  props.api.setActive = setActive
+  return (
+    <box flexDirection="row" flexGrow={1}>
+      <Terminal
+        cwd="/wt"
+        taskId="left"
+        focused={false}
+        imeAnchorActive={active === "left"}
+        registry={props.harness.registry}
+      />
+      <Terminal
+        cwd="/wt"
+        taskId="right"
+        focused={false}
+        imeAnchorActive={active === "right"}
+        registry={props.harness.registry}
+      />
+    </box>
+  )
 }
 
 describe("Terminal pane on a scripted fake PTY", () => {
@@ -280,6 +317,100 @@ describe("Terminal pane on a scripted fake PTY", () => {
 
     expect(harness.ptys.length).toBe(1)
     expect(harness.last().killed).toBe(false)
+  })
+
+  test("keeps the visible terminal's IME anchor when keyboard focus moves to another pane", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { setFocused?: (focused: boolean) => void } = {}
+    const { aframe: frame } = await mountTerminal(<FocusHost harness={harness} api={api} />)
+    await frame()
+    const anchoredWhileFocused = imeAnchorController.current()
+    expect(anchoredWhileFocused).not.toBeNull()
+
+    await act(async () => api.setFocused?.(false))
+    await frame()
+
+    expect(imeAnchorController.current()).toEqual(anchoredWhileFocused)
+  })
+
+  test("transfers IME ownership between split leaves without background output stealing it", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { setActive?: (leaf: "left" | "right") => void } = {}
+    const { aframe: frame } = await mountTerminal(<SplitAnchorHost harness={harness} api={api} />)
+    await frame()
+    expect(harness.ptys).toHaveLength(2)
+
+    await act(async () => {
+      harness.ptys[0]?.setCursor({ x: 2, y: 0 })
+      harness.ptys[1]?.setCursor({ x: 7, y: 0 })
+      harness.ptys[0]?.feed("left prompt$ ")
+      harness.ptys[1]?.feed("right prompt$ ")
+    })
+    await frame()
+    const leftAnchor = imeAnchorController.current()
+    expect(leftAnchor).not.toBeNull()
+
+    await act(async () => harness.ptys[1]?.feed("background output"))
+    await frame()
+    expect(imeAnchorController.current()).toEqual(leftAnchor)
+
+    await act(async () => api.setActive?.("right"))
+    await frame()
+    expect(imeAnchorController.current()).not.toEqual(leftAnchor)
+  })
+
+  test("releases a chat terminal anchor while a content tab replaces it, then reclaims it on return", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { setShown?: (shown: boolean) => void } = {}
+    const { aframe: frame } = await mountTerminal(<UnmountHost harness={harness} api={api} />)
+    await frame()
+    expect(imeAnchorController.current()).not.toBeNull()
+
+    await act(async () => api.setShown?.(false))
+    await frame()
+    expect(imeAnchorController.current()).toBeNull()
+
+    await act(async () => api.setShown?.(true))
+    await frame()
+    expect(imeAnchorController.current()).not.toBeNull()
+  })
+
+  test("replaces the retained IME coordinate when switching chat-tab PTYs", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { switchTo?: (taskId: string, cwd: string) => void } = {}
+    const { aframe: frame } = await mountTerminal(<SwitchHost harness={harness} api={api} />)
+    await frame()
+    await act(async () => {
+      harness.last().setCursor({ x: 24, y: 0 })
+      harness.last().feed("a very long first chat prompt$ ")
+    })
+    await frame()
+    const firstAnchor = imeAnchorController.current()
+    expect(firstAnchor).not.toBeNull()
+
+    await act(async () => api.switchTo?.("t2", "/wt-2"))
+    await frame()
+    await act(async () => {
+      harness.last().setCursor({ x: 1, y: 0 })
+      harness.last().feed("$ ")
+    })
+    await frame()
+
+    expect(harness.ptys).toHaveLength(2)
+    expect(imeAnchorController.current()).not.toEqual(firstAnchor)
+  })
+
+  test("yields the terminal IME anchor while a modal dialog owns input", async () => {
+    const harness = createScriptedPtyRegistry()
+    const { aframe: frame, mockInput } = await mountTerminal(
+      <Terminal cwd="/wt" taskId="t1" focused registry={harness.registry} />,
+    )
+    await frame()
+    expect(imeAnchorController.current()).not.toBeNull()
+
+    act(() => mockInput.pressKey("F5"))
+    expect(await frame()).toMatch(/Reset terminal|重置终端/)
+    expect(imeAnchorController.current()).toBeNull()
   })
 
   test("a reset after resize applies the current geometry to the fresh PTY", async () => {
