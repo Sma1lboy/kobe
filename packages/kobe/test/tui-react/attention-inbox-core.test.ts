@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import type { AttentionInboxItem } from "../../src/client/remote-orchestrator"
 import {
+  attentionInboxCounts,
   attentionInboxKey,
   isAttentionInboxItemAvailable,
   nextAttentionInboxTarget,
@@ -15,6 +16,16 @@ const item = (
 ): AttentionInboxItem => ({ taskId, tabId, state, unread: true, at })
 
 describe("attention inbox ordering", () => {
+  test("counts retained episodes separately from unread episodes", () => {
+    expect(
+      attentionInboxCounts([item("a", null, "error", 1), { ...item("b", null, "turn_complete", 2), unread: false }]),
+    ).toEqual({
+      total: 2,
+      unread: 1,
+    })
+    expect(attentionInboxCounts([])).toEqual({ total: 0, unread: 0 })
+  })
+
   test("puts every unread episode before retained read episodes", () => {
     const readPermission = { ...item("a", "tab-1", "permission_needed", 1), unread: false }
     const unreadCompletion = item("b", "tab-1", "turn_complete", 2)

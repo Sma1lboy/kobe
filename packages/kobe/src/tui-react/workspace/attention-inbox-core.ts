@@ -4,6 +4,12 @@ import type { Task } from "../../types/task"
 
 export const attentionInboxKey = attentionInboxItemKey
 
+export function attentionInboxCounts(items: readonly AttentionInboxItem[]): { total: number; unread: number } {
+  let unread = 0
+  for (const item of items) if (item.unread) unread++
+  return { total: items.length, unread }
+}
+
 const STATE_PRIORITY: Record<AttentionInboxItem["state"], number> = {
   permission_needed: 0,
   error: 1,

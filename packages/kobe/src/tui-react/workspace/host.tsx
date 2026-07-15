@@ -39,7 +39,7 @@ import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx
 import { useDialog } from "../ui/dialog"
 import { AttentionInboxDialog } from "./AttentionInboxPane"
 import { InboxUnavailableDialog } from "./InboxUnavailableDialog"
-import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
+import { attentionInboxCounts, isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
@@ -70,6 +70,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const inboxItems = useAccessor(orch.attentionInboxSignal())
+  const inboxCounts = attentionInboxCounts(inboxItems)
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
@@ -394,6 +395,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           projectFilter={projectFilter}
           onProjectFilterChange={setProjectFilter}
           onSearchActiveChange={setSearchActive}
+          headerStatus={{
+            label: `${t("workspace.inbox.title")} ${inboxCounts.total}`,
+            emphasize: inboxCounts.unread > 0,
+          }}
+          onHeaderStatusClick={showInbox}
           zenActive={zen}
           onZenClick={toggleZen}
         />
