@@ -31,6 +31,7 @@ import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
 import { performInit } from "./remote-orchestrator-connect.ts"
 import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
 import {
+  type AttentionInboxItem,
   type DaemonConnectionState,
   type EngineTabStateMap,
   type OrchestratorSignals,
@@ -44,6 +45,7 @@ import {
 import {
   type ReadSignals,
   activeTaskSignalOp,
+  attentionInboxSignalOp,
   daemonStaleSignalOp,
   daemonVersionSignalOp,
   engineStateSignalOp,
@@ -68,6 +70,7 @@ import {
   createTaskOp,
   deleteTaskOp,
   discoverAdoptableWorktreesOp,
+  dismissAttentionOp,
   ensureMainTaskOp,
   ensureWorktreeOp,
   forgetProjectOp,
@@ -87,6 +90,7 @@ import {
 } from "./remote-orchestrator-writes.ts"
 
 export type {
+  AttentionInboxItem,
   DaemonConnectionState,
   EngineTabStateMap,
   RemoteOrchestratorOptions,
@@ -122,6 +126,8 @@ export class RemoteOrchestrator {
   private readonly setEngineStateSig = (next: ReadonlyMap<string, TaskEngineState>) => this.engineStateAcc.set(next)
   private readonly engineTabStateAcc = createStateCell<EngineTabStateMap>(new Map())
   private readonly setEngineTabStateSig = (next: EngineTabStateMap) => this.engineTabStateAcc.set(next)
+  private readonly attentionInboxAcc = createStateCell<readonly AttentionInboxItem[]>([])
+  private readonly setAttentionInboxSig = (next: readonly AttentionInboxItem[]) => this.attentionInboxAcc.set(next)
   private readonly taskJobsAcc = createStateCell<ReadonlyMap<string, TaskJobState>>(new Map())
   private readonly setTaskJobsSig = (next: ReadonlyMap<string, TaskJobState>) => this.taskJobsAcc.set(next)
   private readonly worktreeChangesAcc = createStateCell<WorktreeChangesMap | null>(null)
@@ -169,6 +175,7 @@ export class RemoteOrchestrator {
       setEngineStateSig: this.setEngineStateSig,
       engineTabStateAcc: this.engineTabStateAcc,
       setEngineTabStateSig: this.setEngineTabStateSig,
+      setAttentionInboxSig: this.setAttentionInboxSig,
       taskJobsAcc: this.taskJobsAcc,
       setTaskJobsSig: this.setTaskJobsSig,
       worktreeChangesAcc: this.worktreeChangesAcc,
@@ -188,6 +195,7 @@ export class RemoteOrchestrator {
       daemonStaleAcc: this.daemonStaleAcc,
       engineStateAcc: this.engineStateAcc,
       engineTabStateAcc: this.engineTabStateAcc,
+      attentionInboxAcc: this.attentionInboxAcc,
       taskJobsAcc: this.taskJobsAcc,
       worktreeChangesAcc: this.worktreeChangesAcc,
       transcriptActivityAcc: this.transcriptActivityAcc,
@@ -323,6 +331,10 @@ export class RemoteOrchestrator {
     return engineTabStatesSignalOp(this.reads)
   }
 
+  attentionInboxSignal(): ReadableState<readonly AttentionInboxItem[]> {
+    return attentionInboxSignalOp(this.reads)
+  }
+
   taskJobsSignal(): ReadableState<ReadonlyMap<string, TaskJobState>> {
     return taskJobsSignalOp(this.reads)
   }
@@ -420,6 +432,10 @@ export class RemoteOrchestrator {
 
   deleteTask(id: TaskId | string, opts?: { force?: boolean }): Promise<void> {
     return deleteTaskOp(this.client, id, opts)
+  }
+
+  dismissAttention(taskId: TaskId | string, tabId: string | null): Promise<boolean> {
+    return dismissAttentionOp(this.client, taskId, tabId)
   }
 
   /** Land a task's branch back into its base repo (`task.land`). Throws with a

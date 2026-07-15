@@ -25,8 +25,8 @@ Default prefix actions:
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task |
 | `ctrl+a`, `y` | Resume a prior engine Session |
-| `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
-| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
+| `ctrl+a`, `j` | Cycle focus backward (Inbox → Files → Workspace → Sidebar) |
+| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files → Inbox) |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
@@ -44,7 +44,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
-| `F7` | Jump to the next waiting task/tab — permission, question dialog, error, or unseen turn-completion, across every project and the current task's other tabs (2026-07-12 owner call; targets: `nextAttentionTarget` in `tui/lib/notify-state.ts`, tab identity via the launch script's exported `KOBE_TASK_ID`/`KOBE_TAB_ID`) |
+| `F7` | Jump to the next retained Inbox episode — permission/input, error/rate-limit, or turn completion — across every project and the current task's other tabs. Jumping does not consume the episode. |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
@@ -72,6 +72,12 @@ branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
+
+The bottom-right Inbox is a separate focused surface. Its pane-local bindings
+are `j/k` to select, `enter` to jump to the task/chat tab, and `d` to delete
+that attention episode. Owner decision (2026-07-15): `d` is direct and
+Inbox-scoped because deletion is a frequent, explicit cleanup action there;
+it cannot shadow chat input or embedded-terminal shortcuts outside the pane.
 
 ## User customization
 
