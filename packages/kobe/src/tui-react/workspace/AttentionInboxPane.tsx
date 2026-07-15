@@ -202,14 +202,16 @@ export function AttentionInboxPane(props: {
             return active ? (
               <box
                 key={`${attentionInboxKey(item)}:active`}
-                border={true}
-                borderColor={theme.primary}
-                backgroundColor={theme.backgroundElement}
+                backgroundColor={theme.primary}
+                paddingTop={1}
+                paddingBottom={1}
                 paddingLeft={1}
                 paddingRight={1}
                 onMouseUp={onMouseUp}
               >
-                {content}
+                <box flexDirection="column" paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+                  {content}
+                </box>
               </box>
             ) : (
               <box key={`${attentionInboxKey(item)}:idle`} paddingLeft={2} paddingRight={2} onMouseUp={onMouseUp}>

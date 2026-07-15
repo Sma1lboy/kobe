@@ -100,11 +100,6 @@ function backgroundWidth(frame: CapturedFrame, needle: string, color: RGBA): num
   return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.width : 0), 0) ?? 0
 }
 
-function borderColor(frame: CapturedFrame, needle: string): RGBA | undefined {
-  const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
-  return line?.spans.find((span) => span.text.includes("│"))?.fg
-}
-
 describe("AttentionInboxPane", () => {
   it("opens as a modal and stays live with daemon Inbox snapshots", async () => {
     const remote = remoteInbox(items)
@@ -198,13 +193,13 @@ describe("AttentionInboxPane", () => {
           const frame = await spans()
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
-          expect(borderColor(frame, "Alpha")?.equals(primary)).toBe(true)
-          expect(borderColor(frame, "Beta")).toBeUndefined()
+          expect(backgroundWidth(frame, "Alpha", primary)).toBeGreaterThan(0)
+          expect(backgroundWidth(frame, "Beta", primary)).toBe(0)
 
           act(() => mockInput.pressKey("j"))
           const moved = await spans()
-          expect(borderColor(moved, "Alpha")).toBeUndefined()
-          expect(borderColor(moved, "Beta")?.equals(primary)).toBe(true)
+          expect(backgroundWidth(moved, "Alpha", primary)).toBe(0)
+          expect(backgroundWidth(moved, "Beta", primary)).toBeGreaterThan(0)
         } finally {
           destroy()
         }
