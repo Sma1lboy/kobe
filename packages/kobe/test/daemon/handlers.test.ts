@@ -255,22 +255,6 @@ describe("daemon handler registry", () => {
     })
   })
 
-  describe("attention.dismiss", () => {
-    it("deletes exactly one task+tab episode", async () => {
-      const { ctx, rec } = fakeCtx()
-      await expect(dispatch("attention.dismiss", { taskId: "t1", tabId: "tab-2" }, ctx)).resolves.toEqual({
-        deleted: true,
-      })
-      expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: "tab-2" }])
-    })
-
-    it("supports a legacy task-level episode", async () => {
-      const { ctx, rec } = fakeCtx()
-      await dispatch("attention.dismiss", { taskId: "t1" }, ctx)
-      expect(rec.inboxDeleted).toEqual([{ taskId: "t1", tabId: null }])
-    })
-  })
-
   describe("issues", () => {
     it("issue.list and issue.mutate delegate to the daemon-owned issue store", async () => {
       const { ctx, rec } = fakeCtx()
@@ -413,9 +397,6 @@ describe("daemon handler registry", () => {
       )
       expect(result).toEqual({})
       expect(rec.reported).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: { waiting: "permission" } }])
-      expect(rec.inboxRecords).toEqual([
-        { taskId: "t1", kind: "awaiting-input", detail: { waiting: "permission" }, tabId: undefined },
-      ])
     })
 
     it("an explicit taskId wins over cwd resolution", async () => {

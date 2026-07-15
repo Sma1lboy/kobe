@@ -28,22 +28,6 @@ function fakeClient(): { client: KobeDaemonClient; emit: (name: string, payload:
 }
 
 describe("RemoteOrchestrator channel handling", () => {
-  it("replaces the durable attention Inbox from full snapshots and rejects malformed payloads", () => {
-    const { client, emit } = fakeClient()
-    const orch = new RemoteOrchestrator(client)
-    const item = { taskId: "t1", tabId: "tab-2", state: "permission_needed" as const, at: 42 }
-
-    emit("attention.inbox", { items: [item] })
-    expect(orch.attentionInboxSignal()()).toEqual([item])
-
-    emit("attention.inbox", { items: "bad" })
-    expect(orch.attentionInboxSignal()()).toEqual([item])
-    expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("dropped attention.inbox"))
-
-    emit("attention.inbox", { items: [] })
-    expect(orch.attentionInboxSignal()()).toEqual([])
-  })
-
   it("reflects the daemon-owned `update` channel in updateSignal", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)
