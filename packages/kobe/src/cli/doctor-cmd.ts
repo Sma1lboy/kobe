@@ -17,7 +17,21 @@ import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
 import { inspectLegacyTmux, legacyTmuxDoctorLines } from "./legacy-tmux.ts"
 
-type PtySessionStatus = { alive?: boolean }
+type PtySessionStatus = { alive?: boolean; parked?: boolean }
+
+type PtyInventory = {
+  pid?: number
+  rssBytes?: number
+  sessions?: PtySessionStatus[]
+  stats?: {
+    ringBytes?: number
+    ringCapacityBytes?: number
+    parkedSessions?: number
+    parkedScreenBytes?: number
+    parkRestoreDeltas?: number
+    parkRestoreFallbacks?: number
+  }
+}
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -161,12 +175,28 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   }
   out.push("")
 
-  const inventory = await requestIfReachable<{ sessions?: PtySessionStatus[] }>(ptySocket, "pty.list")
+  const inventory = await requestIfReachable<PtyInventory>(ptySocket, "pty.list")
   if (inventory) {
     const sessions = inventory.sessions ?? []
+    const parked = inventory.stats?.parkedSessions ?? sessions.filter((session) => session.parked).length
     out.push(
-      `pty host: ✓ running (${sessions.length} session(s), ${sessions.filter((session) => session.alive).length} live)`,
+      `pty host: ✓ running (${sessions.length} session(s), ${sessions.filter((session) => session.alive).length} live, ${parked} parked)`,
     )
+    if (typeof inventory.pid === "number" && typeof inventory.rssBytes === "number") {
+      out.push(`         pid ${inventory.pid}, ${fmtBytes(inventory.rssBytes)} RSS`)
+    }
+    const stats = inventory.stats
+    if (stats && typeof stats.ringBytes === "number" && typeof stats.ringCapacityBytes === "number") {
+      out.push(`         ring: ${fmtBytes(stats.ringBytes)} / ${fmtBytes(stats.ringCapacityBytes)}`)
+    }
+    if (stats && typeof stats.parkedScreenBytes === "number") {
+      out.push(`         parked screens: ${fmtBytes(stats.parkedScreenBytes)}`)
+    }
+    if (stats && typeof stats.parkRestoreDeltas === "number" && typeof stats.parkRestoreFallbacks === "number") {
+      out.push(
+        `         park wakes: ${stats.parkRestoreDeltas} delta, ${stats.parkRestoreFallbacks} full replay fallback`,
+      )
+    }
   } else {
     await appendUnavailableProcess(out, "pty host", defaultPtyHostPidPath(), ptySocket)
   }

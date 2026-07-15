@@ -27,6 +27,9 @@
 import { StringDecoder } from "node:string_decoder"
 import type { DaemonFrame } from "./protocol.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
+import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
+
+export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
 
 /** Everything `pty.open` needs to spawn a session's child on first open. */
 export interface PtySpawnSpec {
@@ -71,17 +74,6 @@ export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
 /** Let a cooperative terminal child shut down before escalating to SIGKILL. */
 const TERMINATION_GRACE_MS = 500
 
-/** One session's inventory row — what `pty.list` reports. */
-export interface PtySessionInfo {
-  readonly key: string
-  readonly alive: boolean
-  readonly pid: number | null
-  readonly command: readonly string[]
-  /** Last OSC 0/2 window title the child set ("" until it sets one) —
-   *  the live foreground-process name, same stream the TUI tab strip reads. */
-  readonly title: string
-}
-
 interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
   key: string
@@ -105,17 +97,16 @@ interface PtySessionState {
   readonly titleDecoder: StringDecoder
   /** Attached connections, keyed by connection identity (the server's ClientState). */
   readonly sinks: Map<object, PtySink>
+  /** A detached TUI still holds a serialized screen for an exact-delta wake. */
+  parked: boolean
+  parkedScreenBytes: number
 }
-
-/** A complete OSC 0/2 window-title sequence (BEL- or ST-terminated). */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the raw ESC/BEL title wire encoding is the whole point
-const OSC_TITLE_RE = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g
-/** Titles are short — a longer carry isn't an in-progress title sequence. */
-const TITLE_CARRY_CAP = 1024
 
 export class PtyHost {
   private readonly sessions = new Map<string, PtySessionState>()
   private readonly opts: PtyHostOptions
+  private parkRestoreDeltas = 0
+  private parkRestoreFallbacks = 0
   /**
    * One pre-initialized spare shell (`pty.warm`) kept OUTSIDE the session
    * map — invisible to `list`/`sweepTasks`/`liveCount` (it must not pin
@@ -159,6 +150,8 @@ export class PtyHost {
       this.resize(key, spec.cols, spec.rows)
     }
     session.sinks.set(token, sink)
+    session.parked = false
+    session.parkedScreenBytes = 0
     // Delta replay: a parking client recorded the monotonic offset it had
     // consumed; when that offset is still inside the ring window AND the
     // child is the same incarnation it parked against (`sincePid`), replay
@@ -180,6 +173,10 @@ export class PtyHost {
     ) {
       replay = replay.subarray(sinceOffset - windowStart)
       sinceValid = true
+    }
+    if (sinceOffset !== undefined && sincePid !== undefined) {
+      if (sinceValid) this.parkRestoreDeltas++
+      else this.parkRestoreFallbacks++
     }
     return {
       replay: replay.toString("base64"),
@@ -274,13 +271,29 @@ export class PtyHost {
   }
 
   /** Detach one connection from one session; the child keeps running. */
-  detach(key: string, token: object): void {
-    this.sessions.get(key)?.sinks.delete(token)
+  detach(key: string, token: object, parked = false, parkedScreenBytes = 0): void {
+    const session = this.sessions.get(key)
+    if (!session) return
+    session.sinks.delete(token)
+    // One socket has one sink per key. Only the final detach describes the
+    // session's current visibility; a second attached client is still live.
+    if (session.sinks.size === 0) {
+      session.parked = parked
+      session.parkedScreenBytes = parked ? Math.max(0, parkedScreenBytes) : 0
+    }
   }
 
   /** Detach one connection from EVERY session (socket closed). */
   detachClient(token: object): void {
-    for (const session of this.sessions.values()) session.sinks.delete(token)
+    for (const session of this.sessions.values()) {
+      session.sinks.delete(token)
+      // A socket vanished without an explicit park detach, so no local
+      // registry is guaranteed to retain a restorable screen.
+      if (session.sinks.size === 0) {
+        session.parked = false
+        session.parkedScreenBytes = 0
+      }
+    }
   }
 
   /** Session inventory — lets a fresh TUI discover background sessions. */
@@ -291,7 +304,31 @@ export class PtyHost {
       pid: s.proc?.pid ?? null,
       command: s.command,
       title: s.title,
+      parked: s.parked,
+      parkedScreenBytes: s.parkedScreenBytes,
     }))
+  }
+
+  /** Retention facts for diagnostics; no terminal bytes leave the host. */
+  stats(): PtyHostStats {
+    let ringBytes = 0
+    let parkedSessions = 0
+    let parkedScreenBytes = 0
+    for (const session of this.sessions.values()) {
+      ringBytes += session.bytes
+      if (session.parked) {
+        parkedSessions++
+        parkedScreenBytes += session.parkedScreenBytes
+      }
+    }
+    return {
+      ringBytes,
+      ringCapacityBytes: this.sessions.size * (this.opts.scrollbackCap ?? DEFAULT_SCROLLBACK_CAP),
+      parkedSessions,
+      parkedScreenBytes,
+      parkRestoreDeltas: this.parkRestoreDeltas,
+      parkRestoreFallbacks: this.parkRestoreFallbacks,
+    }
   }
 
   /**
@@ -343,6 +380,8 @@ export class PtyHost {
       titleCarry: "",
       titleDecoder: new StringDecoder("utf8"),
       sinks: new Map(),
+      parked: false,
+      parkedScreenBytes: 0,
     }
     try {
       session.proc = Bun.spawn(argv, {
@@ -374,30 +413,9 @@ export class PtyHost {
     return session
   }
 
-  /**
-   * Keep the LAST complete OSC 0/2 title per session — the one VT fact the
-   * host tracks (a plain string scan, not escape-code emulation), so
-   * `pty.list` can report each child's live process name without a TUI
-   * attached. An unterminated tail is carried into the next chunk (capped).
-   */
-  private scanTitle(session: PtySessionState, buf: Buffer): void {
-    const text = session.titleCarry + session.titleDecoder.write(buf)
-    let last: string | null = null
-    let end = 0
-    OSC_TITLE_RE.lastIndex = 0
-    for (let m = OSC_TITLE_RE.exec(text); m; m = OSC_TITLE_RE.exec(text)) {
-      last = m[1] ?? ""
-      end = m.index + m[0].length
-    }
-    if (last !== null) session.title = last
-    const rest = text.slice(end)
-    const esc = rest.lastIndexOf("\x1b")
-    session.titleCarry = esc === -1 ? "" : rest.slice(esc, esc + TITLE_CARRY_CAP)
-  }
-
   private onData(session: PtySessionState, data: string | Uint8Array): void {
     const buf = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data)
-    this.scanTitle(session, buf)
+    scanOscTitle(session, buf)
     session.chunks.push(buf)
     session.bytes += buf.byteLength
     session.totalBytes += buf.byteLength

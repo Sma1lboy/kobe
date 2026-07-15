@@ -28,7 +28,7 @@ import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { SerializeAddon } from "@xterm/addon-serialize"
-import { type ParkedScreen, type TaskPtyOpts, defaultShell } from "./pty-types"
+import { type ParkedScreen, type PtyDetachOpts, type TaskPtyOpts, defaultShell } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
 import { xtermCursorHidden } from "./xterm-refresh"
 
@@ -262,9 +262,11 @@ export class HostedTaskPty extends XtermTaskPty {
         // reads the already-restored size, sees "unchanged", and skips
         // the repaint (measured: 2 zero-gap resizes → 1 signal at the
         // final size). Wait for the child's shrink repaint to actually
-        // arrive before restoring; the timeout covers children that
-        // don't repaint on WINCH at all (a plain shell).
-        await this.nextDataOrTimeout(200)
+        // arrive before restoring; macOS can schedule a shell's trap one
+        // tick later than the resize frame, so leave a bounded half-second
+        // for it. The timeout still covers children that do not repaint on
+        // WINCH at all (a plain shell).
+        await this.nextDataOrTimeout(500)
         if (!this.killed) this.sendResize(this.cols, this.rows)
       }
     } catch (err) {
@@ -376,7 +378,7 @@ export class HostedTaskPty extends XtermTaskPty {
     }
   }
 
-  detach(): void {
+  detach(opts: PtyDetachOpts = {}): void {
     const client = this.client
     this.cleanup()
     // The host keeps ONE sink per (key, connection) — shared by every local
@@ -384,7 +386,15 @@ export class HostedTaskPty extends XtermTaskPty {
     // local viewer; sending it with a sibling still attached would starve
     // the survivor's stream.
     const siblings = hostedByKey.get(this.taskId)?.size ?? 0
-    if (client && siblings === 0) void client.request("pty.detach", { key: this.taskId }).catch(() => {})
+    if (client && siblings === 0) {
+      void client
+        .request("pty.detach", {
+          key: this.taskId,
+          parked: opts.parked === true,
+          parkedScreenBytes: opts.parkedScreenBytes,
+        })
+        .catch(() => {})
+    }
     this.silentDispose()
   }
 
@@ -392,7 +402,7 @@ export class HostedTaskPty extends XtermTaskPty {
     void this.client?.request("pty.write", { key: this.taskId, data }).catch(() => this.remoteGone())
   }
 
-  private sendResize(cols: number, rows: number): void {
+  protected sendResize(cols: number, rows: number): void {
     void this.client?.request("pty.resize", { key: this.taskId, cols, rows }).catch(() => {})
   }
 
@@ -400,7 +410,7 @@ export class HostedTaskPty extends XtermTaskPty {
   private dataWaiter: (() => void) | null = null
 
   /** Resolve on the next inbound `pty.data` frame, or after `ms`. */
-  private nextDataOrTimeout(ms: number): Promise<void> {
+  protected nextDataOrTimeout(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         this.dataWaiter = null
