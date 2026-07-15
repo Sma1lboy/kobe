@@ -22,11 +22,17 @@ import { ModalScopeContext, useBindings } from "../lib/keymap"
 import { useLatest } from "../lib/use-latest"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
+export type DialogPlacement = "center" | "upper-quarter"
 
 const DIALOG_CONTENT_OPACITY = 0.5
 const TRANSPARENT_DIALOG_CONTENT_OPACITY = 0.75
 
-export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose: () => void }) {
+export function Dialog(props: {
+  children?: ReactNode
+  size?: DialogSize
+  placement?: DialogPlacement
+  onClose: () => void
+}) {
   const dimensions = useTerminalDimensions()
   const { theme } = useTheme()
   const renderer = useRenderer()
@@ -41,7 +47,16 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
   // Vertical headroom around the card so it never lands flush against
   // the terminal's top/bottom edge.
   const VERTICAL_MARGIN = 2
-  const maxCardHeight = Math.max(8, dimensions.height - VERTICAL_MARGIN * 2)
+  const upperQuarter = props.placement === "upper-quarter"
+  // The content's first row sits one cell below the card top because the card
+  // owns paddingTop=1. Back the card up by that cell so an upper-quarter
+  // dialog's header lands at exactly one quarter of the viewport.
+  const headerTop = Math.max(VERTICAL_MARGIN, Math.floor(dimensions.height / 4))
+  const cardTop = upperQuarter ? Math.max(VERTICAL_MARGIN, headerTop - 1) : 0
+  const maxCardHeight = Math.max(
+    8,
+    upperQuarter ? dimensions.height - cardTop - VERTICAL_MARGIN : dimensions.height - VERTICAL_MARGIN * 2,
+  )
 
   return (
     <box
@@ -58,9 +73,10 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
       width={dimensions.width}
       height={dimensions.height}
       alignItems="center"
-      // Center short cards; tall cards clip to maxCardHeight instead of
-      // overflowing (children that need scrolling wrap their own scrollbox).
-      justifyContent="center"
+      // Most dialogs stay centered. Attention queues may opt into an upper
+      // anchor so their header aligns with the viewport's first quarter.
+      justifyContent={upperQuarter ? "flex-start" : "center"}
+      paddingTop={cardTop}
       position="absolute"
       zIndex={3000}
       left={0}
@@ -119,6 +135,8 @@ export type DialogContext = {
   readonly stack: readonly StackEntry[]
   readonly size: DialogSize
   setSize(size: DialogSize): void
+  readonly placement: DialogPlacement
+  setPlacement(placement: DialogPlacement): void
 }
 
 const ctx = createContext<DialogContext | null>(null)
@@ -126,6 +144,7 @@ const ctx = createContext<DialogContext | null>(null)
 export function DialogProvider(props: { children?: ReactNode }) {
   const [stack, setStack] = useState<readonly StackEntry[]>([])
   const [size, setSize] = useState<DialogSize>("medium")
+  const [placement, setPlacement] = useState<DialogPlacement>("center")
   const renderer = useRenderer()
   const { transparentBackground } = useTheme()
 
@@ -193,6 +212,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
       clear(options) {
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
+        setPlacement("center")
         setStack([])
         if (options?.refocus === false) focusRef.current = null
         else refocus()
@@ -201,6 +221,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
         captureFocusIfFirst()
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
+        setPlacement("center")
         setStack([{ key: ++entrySeq, element: thunk, onClose }])
       },
       push(thunk, onClose) {
@@ -220,8 +241,12 @@ export function DialogProvider(props: { children?: ReactNode }) {
         return size
       },
       setSize,
+      get placement() {
+        return placement
+      },
+      setPlacement,
     }),
-    [size, refocus, captureFocusIfFirst],
+    [size, placement, refocus, captureFocusIfFirst],
   )
 
   const top = stack.at(-1)
@@ -243,7 +268,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
           // cut off — regardless of effect-commit order.
           <ModalScopeContext value={MODAL_SCOPE}>
             <ModalBarrier dismissTop={dismissTop} />
-            <Dialog key={top.key} onClose={() => value.clear()} size={size}>
+            <Dialog key={top.key} onClose={() => value.clear()} size={size} placement={placement}>
               {top.element()}
             </Dialog>
           </ModalScopeContext>
