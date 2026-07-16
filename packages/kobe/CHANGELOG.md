@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.7
+
+### Patch Changes
+
+- 24a3c85: Restore pane focus and keyboard shortcuts immediately when a dialog closes, even if the workspace rerendered while the dialog was open.
+- 8aaaaf3: Tab turn chips + background-tab notifications now fire from engine hooks (sub-second) instead of waiting on the 3–6 s screen-quiescence poll. The daemon's per-tab engine-state push drives the strip's ●/✓/! chip directly — hook-wins per tab, with the quiescence poll unchanged as the fallback when hooks aren't installed. New `?` (warning) chip for a tab blocked on a permission prompt or question dialog. The daemon also arms a per-tab lapse watchdog so a missed Stop can't pin a tab at ● forever.
+- 11170f0: Redesigned the attention Inbox cards around identity-first scanning: line 1 leads with `project › tab` (the "where") plus a colored state word (done / needs input / error / rate limited) and age right-stuck; the task title moves to line 2. The corner-bracket frame is replaced by the sidebar's selection-bar language (▌ + row tint on the active card only), and the tighter two-line cards fit six episodes per screen instead of four.
+- a5f00e9: The attention Inbox is now a queue that drains: opening an episode removes it (no more read/unread lifecycle or Unread/All filter), a fresh event on the same task+tab replaces the stale one at the latest position, and the list reads oldest → latest top-down. The header badge counts pending episodes. Toasts got the matching two-line card treatment: semantic accent bar + bold title row + optional muted context line (task title for tab toasts, project for cross-task toasts).
+- 8468198: Visiting a tab now resolves its pending Inbox episodes automatically — switching to (or landing on) the tab an episode points at removes it from the queue, no explicit open needed. Task-level episodes resolve on any visit to the task, and an episode that arrives while its target tab is already on screen resolves immediately.
+- 8f395e9: Restore the main workspace's editor-open shortcuts: sidebar `o` and the global `prefix + o` sequence now open the selected task worktree in the detected editor.
+- ca00ec1: Engine session identity now flows end to end: hooks report their session_id/transcript_path, the daemon stores the latest-known id per task and per tab (carried forward across events that omit it), and `TaskEngineState` exposes it. Bare shell tabs (the ctrl+e "shell" pick) get the task/tab identity exported into the shell, so a user-typed `claude` reports tab-precise activity and its live sessionId — sessions kobe never spawned are no longer anonymous.
+- 24a3c85: Keep the unread Inbox count visible in the Tasks header, dismiss unavailable entries directly, and show retained episodes as compact two-line rows with a focus frame on the active item, source project, and live relative age.
+
 ## 0.8.6
 
 ### Patch Changes
