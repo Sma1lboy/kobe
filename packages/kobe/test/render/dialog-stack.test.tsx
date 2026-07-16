@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "bun:test"
 import type { Renderable } from "@opentui/core"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useBindings } from "../../src/tui-react/lib/keymap"
 import { DialogProvider, useDialog } from "../../src/tui-react/ui/dialog"
 import { act, renderComponent, settle } from "./harness"
@@ -242,6 +242,51 @@ describe("DialogProvider", () => {
     act(() => mockInput.pressKey("j"))
     await settle()
     expect(background).toBe(2)
+  })
+
+  // Regression (owner report 2026-07-16): if the workspace host rendered
+  // while a dialog was open, it cached dialogOpen=true into its pane-focus
+  // and shortcut gates. Escape removed the modal barrier, but the unchanged
+  // DialogContext value did not render consumers again; clicking a pane was
+  // the only thing that woke the shortcuts back up.
+  it("rerenders dialog consumers after escape so pane gates recover without a click", async () => {
+    let background = 0
+    let rerenderWhileOpen: (() => void) | undefined
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    function GatedBackground() {
+      const dialog = useDialog()
+      const [, setTick] = useState(0)
+      const dialogOpen = dialog.stack.length > 0
+      rerenderWhileOpen = () => setTick((tick) => tick + 1)
+      useBindings(() => ({
+        enabled: !dialogOpen,
+        bindings: [{ key: "j", cmd: () => background++ }],
+      }))
+      return <text>{dialogOpen ? "pane gated" : "pane ready"}</text>
+    }
+    const { frame, mockInput } = await renderComponent(
+      <DialogProvider>
+        <GatedBackground />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("pane ready")
+
+    act(() => dialogRef.current?.push(() => <text>dialog A</text>))
+    expect(await frame()).toContain("dialog A")
+    act(() => rerenderWhileOpen?.())
+    expect(await frame()).toContain("pane gated")
+
+    act(() => mockInput.pressEscape())
+    await settle()
+    expect(await frame()).toContain("pane ready")
+    act(() => mockInput.pressKey("j"))
+    await settle()
+    expect(background).toBe(1)
   })
 
   // The other half of the modal contract: bindings registered BY the dialog

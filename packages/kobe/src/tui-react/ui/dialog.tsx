@@ -235,6 +235,11 @@ export function DialogProvider(props: { children?: ReactNode }) {
         if (stackRef.current.length <= 1) refocus()
       },
       get stack() {
+        // Read the render snapshot so React/Biome can see that context
+        // identity intentionally follows stack transitions. Return the ref
+        // so imperative holders of an older context object still see the
+        // latest stack, preserving the existing API contract.
+        void stack
         return stackRef.current
       },
       get size() {
@@ -246,7 +251,13 @@ export function DialogProvider(props: { children?: ReactNode }) {
       },
       setPlacement,
     }),
-    [size, placement, refocus, captureFocusIfFirst],
+    // `stack` is intentionally a dependency even though the public getter
+    // reads stackRef. Consumers derive pane focus / binding gates from
+    // `dialog.stack.length`; without a new context value on push/pop, a host
+    // that happened to render while the modal was open could keep those
+    // gates disabled after Escape removed the barrier. A later pane click
+    // appeared to "fix" focus only because it forced that host to render.
+    [stack, size, placement, refocus, captureFocusIfFirst],
   )
 
   const top = stack.at(-1)
