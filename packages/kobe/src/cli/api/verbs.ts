@@ -359,7 +359,8 @@ export const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "collect",
-    summary: "Read-only comparison snapshot of several tasks (identity, branch, .running, uncommitted .changes).",
+    summary:
+      "Read-only comparison snapshot of several tasks: identity, branch, .running, uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
     flags: [
       { name: "task-ids", type: "csv", placeholder: "a,b,c", description: "Comma-separated task ids." },
       F.repo(false),

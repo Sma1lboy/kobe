@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 4 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 5 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -57,6 +57,7 @@ kobe api list --pretty
 | `pin --task-id ID [--pinned=false]` | Pin/unpin |
 | `set-active --task-id ID` / `--none` | Change shared active task |
 | `ensure-worktree --task-id ID` | Materialize without starting an engine |
+| `land --task-id ID [--strategy merge\|squash] [--delete-branch] [--then-archive]` | Merge the task's branch into the base repo's current branch |
 | `delete --task-id ID [--force]` | Destructive task + Worktree removal |
 | `discover-adoptable --repo PATH` | Find untracked Worktrees |
 | `adopt --repo PATH --worktree PATH` | Import a Worktree |
@@ -94,3 +95,21 @@ explicit count. Give each task a scoped prompt, report returned IDs, then use
 `collect` to compare. Do not recursively fan out from spawned tasks. Do not
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.
+
+### Closing a round
+
+After comparing attempts, finish the round instead of leaving tasks behind:
+
+```bash
+# Land the winner: merge its branch into the base repo's CURRENT branch.
+# Verify the base checkout is on the intended branch first.
+kobe api land --task-id <winner> --then-archive
+
+# Archive the losers (non-destructive; branches survive).
+kobe api archive --task-id <loser1>
+kobe api archive --task-id <loser2>
+```
+
+`land` refuses a dirty base checkout; on merge conflict it aborts cleanly and
+returns the conflicted files for manual resolution. Only `delete` destroys a
+Worktree — never use it on a loser without explicit user authorization.

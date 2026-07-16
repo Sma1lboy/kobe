@@ -23,6 +23,7 @@ export async function createTaskOp(
     baseRef?: string
     vendor?: VendorId
     modelEffort?: string
+    groupId?: string
   },
 ): Promise<Task> {
   // The daemon's `task.create` payload spells effort as `effort`; the task

@@ -52,9 +52,35 @@ describe("collect handler", () => {
         readWorktreeChanges: async () => {
           throw new Error("must not run")
         },
+        readBranchSignals: async () => {
+          throw new Error("must not run")
+        },
       }),
-    })) as { tasks: Array<{ changes: unknown }> }
+    })) as { tasks: Array<{ changes: unknown; base: unknown }> }
     expect(result.tasks[0].changes).toEqual({ added: 0, deleted: 0 })
+    expect(result.tasks[0].base).toEqual({ baseRef: null, ahead: null, diff: null })
+  })
+
+  it("reports committed base signals and the task's groupId", async () => {
+    const client = new FakeClient({
+      "task.get": () => ({ task: taskFixture({ groupId: "g1" }) }),
+    })
+    const result = (await invokeVerb("collect", ["--task-ids", "a"], {
+      client,
+      runtime: stubRuntime({
+        readBranchSignals: async () => ({
+          baseRef: "origin/main",
+          ahead: 3,
+          diff: { files: 4, insertions: 120, deletions: 8 },
+        }),
+      }),
+    })) as { tasks: Array<{ groupId?: string; base: { baseRef: string | null; ahead: number | null } }> }
+    expect(result.tasks[0].groupId).toBe("g1")
+    expect(result.tasks[0].base).toEqual({
+      baseRef: "origin/main",
+      ahead: 3,
+      diff: { files: 4, insertions: 120, deletions: 8 },
+    })
   })
 
   it("filters repo collection to unarchived tasks", async () => {

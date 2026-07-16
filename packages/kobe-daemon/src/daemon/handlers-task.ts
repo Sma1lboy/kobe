@@ -42,6 +42,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         baseRef: optionalString(payload, "baseRef"),
         vendor: optionalVendor(payload, "vendor"),
         modelEffort: optionalString(payload, "effort"),
+        groupId: optionalString(payload, "groupId"),
       })
       return { taskId: task.id, task: serializeTask(task) }
     },

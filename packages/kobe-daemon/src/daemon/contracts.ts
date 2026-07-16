@@ -39,6 +39,7 @@ export interface DaemonTask {
   readonly prStatus?: TaskPRStatus
   readonly position?: number
   readonly modelEffort?: string
+  readonly groupId?: string
   readonly deletion?: TaskDeletionState
   readonly createdAt: string
   readonly updatedAt: string
@@ -73,6 +74,7 @@ export interface DaemonOrchestrator {
     baseRef?: string
     vendor?: VendorId
     modelEffort?: string
+    groupId?: string
   }): Promise<DaemonTask>
   ensureMainTask(repo: string): Promise<DaemonTask>
   ensureWorktree(id: string): Promise<string>

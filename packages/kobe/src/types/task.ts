@@ -152,6 +152,13 @@ export interface Task {
    * vendor-correct flag (see `interactive-command.ts`).
    */
   readonly modelEffort?: string
+  /**
+   * Fan-out round marker: every sibling created by one `kobe api fan-out`
+   * call shares a ULID, so the round survives the CLI call that created it
+   * (grouping, aggregate notifications, round-level operations). Optional +
+   * additive: single tasks never get one.
+   */
+  readonly groupId?: string
   /** Present while background deletion is queued/running or after it failed. */
   readonly deletion?: TaskDeletionState
   readonly createdAt: string
