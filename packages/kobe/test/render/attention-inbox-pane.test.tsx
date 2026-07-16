@@ -170,10 +170,14 @@ describe("AttentionInboxPane", () => {
     expect(opened).toEqual(["task-a"])
   })
 
-  it("marks only the active card (selection bar + row tint), stable in opaque and transparent modes", async () => {
+  it("marks only the active card with the SHARED sidebar cursor chrome, stable in opaque and transparent modes", async () => {
+    // One cursor vocabulary across navigable lists: the Inbox routes
+    // through resolveRowSelectionChrome, so its bar color (theme.text) and
+    // row tint match the sidebar's cursor row exactly — regressing to a
+    // pane-local color scheme is what this pins against.
     const theme = BUNDLED_THEME_JSONS.claude!
     const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
-    const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
+    const cursorMarker = RGBA.fromHex(resolveThemeSlotHex(theme, "text")!)
     try {
       for (const transparent of [false, true]) {
         setTransparentBackground(transparent)
@@ -185,9 +189,9 @@ describe("AttentionInboxPane", () => {
         try {
           const frame = await spans()
           // Active card (cursor starts on the OLDEST episode — Beta's 2h):
-          // ▌ bar in primary + backgroundElement row tint; inactive card:
-          // no bar, no tint (transparent stays transparent).
-          expect(selectionBarColor(frame, "Beta")?.equals(primary)).toBe(true)
+          // ▌ bar in the shared cursor color + backgroundElement row tint;
+          // inactive card: no bar, no tint (transparent stays transparent).
+          expect(selectionBarColor(frame, "Beta")?.equals(cursorMarker)).toBe(true)
           expect(selectionBarColor(frame, "Alpha")).toBeUndefined()
           expect(backgroundWidth(frame, "Beta", backgroundElement)).toBeGreaterThan(0)
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBe(0)
@@ -197,7 +201,7 @@ describe("AttentionInboxPane", () => {
           act(() => mockInput.pressKey("j"))
           const moved = await spans()
           expect(selectionBarColor(moved, "Beta")).toBeUndefined()
-          expect(selectionBarColor(moved, "Alpha")?.equals(primary)).toBe(true)
+          expect(selectionBarColor(moved, "Alpha")?.equals(cursorMarker)).toBe(true)
           expect(backgroundWidth(moved, "Alpha", backgroundElement)).toBeGreaterThan(0)
           // Moving the cursor must not shift card geometry.
           expect(lineIndex(moved, "Alpha")).toBe(alphaY)

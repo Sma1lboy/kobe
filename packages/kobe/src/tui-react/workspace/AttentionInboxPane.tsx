@@ -16,6 +16,7 @@ import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
 import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
@@ -156,6 +157,11 @@ export function AttentionInboxPane(props: {
             // are runtime data (repo basename, engine-registry tab title) —
             // no vendor strings live here.
             const identity = tab.label ? `${project} › ${tab.label}` : project || title
+            // ONE cursor vocabulary across every navigable list: the shared
+            // sidebar row chrome (▌ marker + row tint). Toast accent bars
+            // are a different semantic (status color) and deliberately
+            // don't route through this.
+            const selection = resolveRowSelectionChrome(theme, { cursor: active })
             const onMouseUp = (event: { stopPropagation(): void }) => {
               event.stopPropagation()
               setCursor(absoluteIndex)
@@ -166,16 +172,16 @@ export function AttentionInboxPane(props: {
                 key={attentionInboxKey(item)}
                 flexDirection="row"
                 paddingRight={2}
-                backgroundColor={active ? theme.backgroundElement : undefined}
+                backgroundColor={selection.backgroundColor}
                 onMouseUp={onMouseUp}
               >
                 {/* Selection bar — the sidebar's rail language, not a frame. */}
                 <box flexDirection="column" flexShrink={0} paddingRight={1}>
-                  <text fg={active ? theme.primary : undefined} wrapMode="none">
-                    {active ? "▌" : " "}
+                  <text fg={selection.markerColor} wrapMode="none">
+                    {selection.marker}
                   </text>
-                  <text fg={active ? theme.primary : undefined} wrapMode="none">
-                    {active ? "▌" : " "}
+                  <text fg={selection.markerColor} wrapMode="none">
+                    {selection.marker}
                   </text>
                 </box>
                 <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
