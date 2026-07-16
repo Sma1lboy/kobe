@@ -5,7 +5,7 @@
  * selected task worktree through the detected editor.
  */
 
-import { chmod, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { type BehaviorEnv, DIST_CLI, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
@@ -37,6 +37,9 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
     env = await makeBehaviorEnv()
     repo = await makeScratchRepo(env)
     marker = join(env.home, "editor-opens.log")
+    const stateDir = join(env.home, ".config", "kobe")
+    await mkdir(stateDir, { recursive: true })
+    await writeFile(join(stateDir, "state.json"), JSON.stringify({ onboarded: true }))
     const codeShim = join(env.bin, "code")
     await writeFile(codeShim, `#!/bin/sh\nprintf '%s\\n' "$1" >> "${marker}"\n`)
     await chmod(codeShim, 0o755)
