@@ -135,6 +135,21 @@ describe("TabStrip native terminal-title status", () => {
     await destroy()
   })
 
+  it("renders the hook-only needs_input state as a ? chip", async () => {
+    // `needs_input` reaches the strip only via the hook-driven merge
+    // (permission prompt / question dialog) — unlike `unknown`, it is a
+    // real actionable state and MUST render.
+    const { text, destroy } = await renderStrip({
+      tab: codexTab,
+      turnStates: new Map([[codexTab.id, "needs_input"]]),
+      liveTitles: new Map(),
+      turnVendors: new Map([[codexTab.id, "codex"]]),
+      vendor: "codex",
+    })
+    expect(text).toContain("? codex 26")
+    await destroy()
+  })
+
   it("does not render an unknown-state question-mark placeholder", async () => {
     const { text, destroy } = await renderStrip({
       tab: shellTab,

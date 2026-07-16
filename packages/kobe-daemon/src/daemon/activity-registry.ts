@@ -117,18 +117,26 @@ export class DaemonActivityRegistry {
       entry.lapse = this.armLapse(taskId, at)
     }
     this.activity.set(taskId, entry)
-    // Per-tab ledger (the F7 attention jump's tab precision). The task-level
-    // entry above stays the last-event-wins rollup every existing consumer
-    // reads; this map only adds "which tab". reduceActivity ignores `prev`, so
-    // one reduction serves both levels. Idle deletes the entry — a closed/
-    // ended tab must not linger as a candidate.
-    // ponytail: no per-tab lapse watchdog — a missed Stop pins a tab at
-    // `running`, which is never an attention candidate, so it's harmless;
-    // add per-tab arming if tab badges ever key off `running`.
+    // Per-tab ledger (the F7 attention jump's tab precision + the tab
+    // strip's hook-driven chip). The task-level entry above stays the
+    // last-event-wins rollup every existing consumer reads; this map only
+    // adds "which tab". reduceActivity ignores `prev`, so one reduction
+    // serves both levels. Idle deletes the entry — a closed/ended tab must
+    // not linger as a candidate. Tab entries get their OWN lapse watchdog
+    // (a copy, not the shared task entry): the tab chip keys off `running`
+    // now, so a missed Stop must not pin the ● — same probe-then-idle
+    // heartbeat as the task level, publishing a per-tab idle so hook-wins
+    // subscribers fall back to the quiescence poll.
     if (tabId) {
       const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
+      const prevTab = tabs.get(tabId)
+      if (prevTab?.lapse) clearTimeout(prevTab.lapse)
       if (state === "idle") tabs.delete(tabId)
-      else tabs.set(tabId, entry)
+      else {
+        const tabEntry: ActivityEntry = { state, detail, at }
+        if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
+        tabs.set(tabId, tabEntry)
+      }
       if (tabs.size > 0) this.tabActivity.set(taskId, tabs)
       else this.tabActivity.delete(taskId)
     }
@@ -151,6 +159,45 @@ export class DaemonActivityRegistry {
     }, this.staleMs)
     timer.unref?.()
     return timer
+  }
+
+  /** Per-tab sibling of {@link armLapse} — same probe-then-idle heartbeat,
+   *  scoped to one (taskId, tabId) entry. */
+  private armTabLapse(taskId: string, tabId: string, at: number): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => {
+      void this.handleTabLapse(taskId, tabId, at)
+    }, this.staleMs)
+    timer.unref?.()
+    return timer
+  }
+
+  /** Per-tab sibling of {@link handleLapse}: same supersede guards (re-read
+   *  before AND after the probe, match on `at`), same liveness heartbeat;
+   *  on a genuine lapse the tab entry is deleted and a per-tab idle is
+   *  published so subscribers drop the hook claim for that tab. */
+  private async handleTabLapse(taskId: string, tabId: string, at: number): Promise<void> {
+    const before = this.tabActivity.get(taskId)?.get(tabId)
+    if (!before || before.at !== at) return
+
+    let mtime: number | undefined
+    try {
+      mtime = await this.livenessAt(taskId)
+    } catch {
+      mtime = undefined
+    }
+
+    const tabs = this.tabActivity.get(taskId)
+    const cur = tabs?.get(tabId)
+    if (!tabs || !cur || cur.at !== at) return
+
+    if (mtime !== undefined && mtime > this.now() - this.staleMs) {
+      cur.lapse = this.armTabLapse(taskId, tabId, at)
+      return
+    }
+
+    tabs.delete(tabId)
+    if (tabs.size === 0) this.tabActivity.delete(taskId)
+    this.bus.publish("engine-state", { taskId, tabId, state: "idle", at: this.now() })
   }
 
   /**
@@ -202,7 +249,8 @@ export class DaemonActivityRegistry {
     const tabs = this.tabActivity.get(taskId)
     this.tabActivity.delete(taskId)
     if (tabs) {
-      for (const tabId of tabs.keys()) {
+      for (const [tabId, tabEntry] of tabs) {
+        if (tabEntry.lapse) clearTimeout(tabEntry.lapse)
         this.bus.publish("engine-state", { taskId, tabId, state: "idle", at: this.now() })
       }
     }
@@ -234,6 +282,11 @@ export class DaemonActivityRegistry {
   close(): void {
     for (const entry of this.activity.values()) {
       if (entry.lapse) clearTimeout(entry.lapse)
+    }
+    for (const tabs of this.tabActivity.values()) {
+      for (const entry of tabs.values()) {
+        if (entry.lapse) clearTimeout(entry.lapse)
+      }
     }
     this.activity.clear()
     this.tabActivity.clear()

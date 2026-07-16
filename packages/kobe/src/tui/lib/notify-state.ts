@@ -88,6 +88,52 @@ export function attentionKindFor(state: string): NotificationKind | null {
 }
 
 /**
+ * Tab-chip vocabulary (`ChatTabTurnState`) → notification kind. The chip
+ * sibling of {@link attentionKindFor}: `done`/`error`/`needs_input` notify,
+ * everything else (idle/running/unknown) is not an attention edge. String→
+ * string for the same reason.
+ */
+export function chipAttentionKind(turn: string): NotificationKind | null {
+  if (turn === "done") return "done"
+  if (turn === "error") return "error"
+  if (turn === "needs_input") return "needs_input"
+  return null
+}
+
+/**
+ * Rising-edge detector shared by both notifiers (the ONE notification
+ * module's core). Diffs `prev` → `next` and returns the keys whose value
+ * transitioned INTO an attention state, per `kindFor`. Two rules, both
+ * load-bearing:
+ *
+ *  - Seed: `prev === null` (first observation, or a fresh subscribe whose
+ *    replay includes sticky states like `turn_complete`) returns [] — the
+ *    caller seeds its prev map and must NOT re-fire toasts for replayed
+ *    history. Mirrors `use-attention.ts`'s original prevStates convention.
+ *  - Edge: an unchanged value never notifies; only a transition does.
+ *
+ * `skip` excludes the key whose state is already on screen (the selected
+ * task for the task-level notifier, the active tab for the tab-level one) —
+ * the disjointness that makes double-toasting impossible by construction.
+ */
+export function attentionEdges(
+  prev: ReadonlyMap<string, string> | null,
+  next: ReadonlyMap<string, string>,
+  skip: string | null,
+  kindFor: (state: string) => NotificationKind | null,
+): readonly { key: string; kind: NotificationKind }[] {
+  if (prev === null) return []
+  const out: { key: string; kind: NotificationKind }[] = []
+  for (const [key, state] of next) {
+    if (key === skip) continue
+    if (prev.get(key) === state) continue
+    const kind = kindFor(state)
+    if (kind) out.push({ key, kind })
+  }
+  return out
+}
+
+/**
  * OSC 9 desktop-notification escape. iTerm2 / kitty / WezTerm / Ghostty render
  * it as a native OS notification; every other terminal ignores an unknown OSC
  * silently. Zero deps, and — crucially — it travels down the SSH stream to the

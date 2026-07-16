@@ -69,6 +69,7 @@ import {
   tabPtyKey,
   tabPtyKeyFor,
 } from "../../tui/workspace/terminal-tabs-core"
+import type { HookTabState } from "../../tui/workspace/turn-state-merge"
 import { EnginePickerDialog } from "../component/engine-picker-dialog"
 import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
@@ -86,9 +87,10 @@ import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { terminalTabsKey } from "./terminal-tabs-persist"
 import { tabActivationListeners, tabsByTask, takeTabActivation } from "./terminal-tabs-shared"
+import { useTabDialogs } from "./use-tab-dialogs"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
-import { useTurnPolls } from "./use-turn-polls"
+import { useTabTurnState } from "./use-tab-turn-state"
 
 export interface TerminalTabsProps {
   taskId: string
@@ -122,6 +124,9 @@ export interface TerminalTabsProps {
   initialPrompt?: string
   /** This worktree's slice of the daemon's `transcript.activity` push. */
   sharedActivity?: TranscriptActivity | null
+  /** This task's slice of the daemon's per-tab `engine-state` push —
+   *  hook-wins over the quiescence poll (see `use-tab-turn-state`). */
+  hookTabStates?: ReadonlyMap<string, HookTabState>
   focused: boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
@@ -247,17 +252,15 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   /* --------- auto-naming + existence tracking (tmux naming pass), mount-only --- */
   useTabNaming({ stateRef, propsRef, update })
 
-  /* --------- per-tab turn state --------- */
-  const { turnStates, liveTitles, turnVendors } = useTurnPolls({
+  /* --------- per-tab turn state (hook-first, poll-fallback) --------- */
+  const { turnStates, liveTitles, turnVendors } = useTabTurnState({
     taskId: props.taskId,
     worktree: props.worktree,
     vendor: props.vendor,
     state,
     sharedActivity: props.sharedActivity,
-    onBackgroundDone: (tabId) => {
-      const current = state.tabs.find((tb) => tb.id === tabId)
-      if (current) notif.notify({ kind: "done", taskId: props.taskId, tabId, title: tabTitle(current, props.vendor) })
-    },
+    hookTabStates: props.hookTabStates,
+    notif,
   })
 
   // Visiting a tab clears its unread mark (toast already auto-dismisses).
@@ -329,40 +332,21 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     if (fresh.activeId === active.id) setResetToken((n) => n + 1)
   }
 
-  const requestRename = (): void => {
-    if (!active) return
-    void RenameTaskDialog.show(dialog, tabTitle(active, props.vendor, liveTitles.get(active.id)), {
-      dialogTitle: t("terminal.tab.renameTitle"),
-      fieldLabel: t("terminal.tab.renameField"),
-      submitLabel: t("terminal.tab.renameSubmit"),
-      allowEmpty: true,
-    }).then((title) => {
-      if (title === undefined) return
-      update(renameActiveTab(state, title))
-    })
-  }
-
-  const requestChooseEngine = (): void => {
-    void (async () => {
-      const available = await availableEngineIds()
-      const picked = await EnginePickerDialog.show(dialog, available, props.vendor, { allowShell: true })
-      if (picked === undefined) return
-      // "shell" = a plain terminal tab (kind "command"): no session pin, no
-      // vendor preference write, closes itself on exit. Null label so the
-      // tab is named by its live foreground process ("zsh", "vim"…).
-      if (picked === "shell") {
-        update(openCommandTab(state, [defaultShell()], null))
-        return
-      }
-      update(pinSession(addTab(state, picked), picked))
-      props.onChooseEngine?.(picked)
-      try {
-        setRepoLastActiveVendor(resolveMainRepoRoot(props.worktree), picked)
-      } catch {
-        /* best-effort: a stale worktree path must not block the new tab */
-      }
-    })()
-  }
+  // Rename / choose-engine / quick-fork dialog flows — extracted verbatim
+  // (file-size cap split); recreated per render for state freshness.
+  const { requestRename, requestChooseEngine, requestQuickFork } = useTabDialogs({
+    dialog,
+    t,
+    state,
+    active,
+    vendor: props.vendor,
+    worktree: props.worktree,
+    liveTitles,
+    update,
+    pinSession,
+    onChooseEngine: props.onChooseEngine,
+    onQuickFork: props.onQuickFork,
+  })
 
   /** What a plain ctrl+t tab should run — the full preference chain.
    *  Always CONCRETE: the tab pins the vendor it actually spawns. The old
@@ -374,27 +358,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     } catch {
       return props.vendor
     }
-  }
-
-  /** Quick-fork (issue #17, ctrl+f): open the same composer `<prefix> f`
-   *  uses, seeded from THIS task's repo/branch/engine. Repo is fixed (not
-   *  editable here — same constraint quick-task/host.tsx documents); the
-   *  parent creates the child task on submit. */
-  const requestQuickFork = (): void => {
-    void (async () => {
-      let repo: string
-      try {
-        repo = resolveMainRepoRoot(props.worktree)
-      } catch {
-        return
-      }
-      const detected = await availableEngineIds()
-      const defaultVendor = quickForkDefaultVendor(repo, detected)
-      const engines = detected.length > 0 ? detected : [defaultVendor]
-      const result = await QuickTaskComposer.show(dialog, quickForkComposerOptions(repo, engines, defaultVendor))
-      if (result === undefined) return
-      props.onQuickFork?.(repo, result)
-    })()
   }
 
   useBindings(() => ({
