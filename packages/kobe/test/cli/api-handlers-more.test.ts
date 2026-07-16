@@ -50,6 +50,7 @@ function stubRuntime(): ApiRuntime {
     resolveRepoRoot: async (p) => p,
     defaultVendor: async () => undefined,
     readWorktreeChanges: async () => ({ added: 0, deleted: 0 }),
+    readBranchSignals: async () => ({ baseRef: null, ahead: null, diff: null }),
     tearDownSession: async () => {},
   }
 }

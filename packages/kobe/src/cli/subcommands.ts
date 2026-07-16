@@ -21,6 +21,7 @@ export const TOP_LEVEL_SUBCOMMANDS = [
   "api",
   "daemon",
   "doctor",
+  "config",
   "reset",
   "theme",
   "skill",

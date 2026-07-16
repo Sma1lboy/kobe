@@ -134,6 +134,32 @@ describe("load() recovery", () => {
     expect(withoutPr?.prStatus).toBeUndefined()
   })
 
+  it("persists a fan-out groupId across reload and drops non-string values", async () => {
+    await primeDir()
+    const base = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      title: "ok",
+      repo: "/r",
+      branch: "b",
+      worktreePath: "",
+      status: "backlog",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }
+    await writeManifest(
+      JSON.stringify({
+        version: 3,
+        tasks: [
+          { ...base, groupId: "01GROUPULID" },
+          { ...base, id: "01ARZ3NDEKTSV4RRFFQ69G5FB0", groupId: 42 },
+        ],
+      }),
+    )
+    const [grouped, malformed] = (await store.load()).tasks
+    expect(grouped?.groupId).toBe("01GROUPULID")
+    expect(malformed?.groupId).toBeUndefined()
+  })
+
   it("preserves valid deletion state and drops malformed deletion state", async () => {
     await primeDir()
     const base = {

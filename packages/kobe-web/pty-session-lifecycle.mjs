@@ -122,13 +122,19 @@ export function createPtySessionManager({
     }
     const [cmd, ...args] = spec.command
     const spawnEnv = typeof env === "function" ? env() : env
-    const pty = spawnPty(cmd, args, {
-      name: "xterm-256color",
-      cols,
-      rows,
-      cwd: spec.cwd,
-      env: spawnEnv,
-    })
+    let pty
+    try {
+      pty = spawnPty(cmd, args, {
+        name: "xterm-256color",
+        cols,
+        rows,
+        cwd: spec.cwd,
+        env: spawnEnv,
+      })
+    } catch (error) {
+      const path = typeof spawnEnv.PATH === "string" && spawnEnv.PATH ? "set" : "missing"
+      throw new Error(`PTY spawn failed (command ${cmd}, cwd ${spec.cwd}, PATH ${path}): ${error instanceof Error ? error.message : String(error)}`)
+    }
     const entry = {
       pty,
       scrollback: createScrollback(scrollbackCap),

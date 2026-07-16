@@ -43,6 +43,8 @@ export interface CreateTaskInput {
   readonly vendor?: VendorId
   /** Reasoning/effort level for the engine, when the vendor supports one. */
   readonly modelEffort?: string
+  /** Fan-out round marker shared by all siblings of one fan-out call. */
+  readonly groupId?: string
 }
 
 export type Unsubscribe = () => void
@@ -210,6 +212,7 @@ export class Orchestrator {
       kind: "task",
       vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
       ...(input.modelEffort ? { modelEffort: input.modelEffort } : {}),
+      ...(input.groupId ? { groupId: input.groupId } : {}),
     })
     // Remember the optional baseRef on a side-map so `ensureWorktree`
     // can use it. Not on the Task itself: base-ref is one-shot input

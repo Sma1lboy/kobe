@@ -23,6 +23,7 @@ export async function createTaskOp(
     baseRef?: string
     vendor?: VendorId
     modelEffort?: string
+    groupId?: string
   },
 ): Promise<Task> {
   // The daemon's `task.create` payload spells effort as `effort`; the task
@@ -84,6 +85,36 @@ export async function deleteTaskOp(
   opts?: { force?: boolean },
 ): Promise<void> {
   await client.request("task.delete", { taskId: String(id), force: opts?.force })
+}
+
+/** Explicitly delete one durable attention episode. */
+export async function dismissAttentionOp(
+  client: KobeDaemonClient,
+  taskId: TaskId | string,
+  tabId: string | null,
+  at: number,
+): Promise<boolean> {
+  const res = await client.request<{ deleted: boolean }>("attention.dismiss", {
+    taskId: String(taskId),
+    ...(tabId !== null ? { tabId } : {}),
+    at,
+  })
+  return res.deleted
+}
+
+/** Persist that the user opened this exact attention episode. */
+export async function markAttentionReadOp(
+  client: KobeDaemonClient,
+  taskId: TaskId | string,
+  tabId: string | null,
+  at: number,
+): Promise<boolean> {
+  const res = await client.request<{ updated: boolean }>("attention.read", {
+    taskId: String(taskId),
+    ...(tabId !== null ? { tabId } : {}),
+    at,
+  })
+  return res.updated
 }
 
 /** Land a task's branch back into its base repo (`task.land`). Merge or

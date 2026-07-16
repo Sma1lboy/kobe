@@ -124,6 +124,12 @@ export interface ApiRuntime {
   defaultVendor(repo?: string): Promise<VendorId | undefined>
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
+  /** Committed work vs the branch's base: ahead count + diffstat (`collect`). */
+  readBranchSignals(worktreePath: string): Promise<{
+    baseRef: string | null
+    ahead: number | null
+    diff: { files: number; insertions: number; deletions: number } | null
+  }>
   /**
    * Stop every hosted session for a task, mirroring the TUI's delete/archive
    * teardown. Run only after the matching `task.delete`/`task.archive` RPC

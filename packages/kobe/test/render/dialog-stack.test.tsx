@@ -6,7 +6,8 @@
  * component relies on.
  */
 import { describe, expect, it } from "bun:test"
-import { useEffect } from "react"
+import type { Renderable } from "@opentui/core"
+import { useEffect, useState } from "react"
 import { useBindings } from "../../src/tui-react/lib/keymap"
 import { DialogProvider, useDialog } from "../../src/tui-react/ui/dialog"
 import { act, renderComponent, settle } from "./harness"
@@ -39,6 +40,45 @@ describe("DialogProvider", () => {
     const text = await frame()
     expect(text).toContain("base content")
     expect(text).toContain("dialog A")
+  })
+
+  it("can anchor a dialog header at the viewport's upper fifth", async () => {
+    const height = 24
+    const { frame } = await renderComponent(
+      <DialogProvider>
+        <Driver
+          onMount={(dialog) => {
+            dialog.replace(() => <text>UPPER FIFTH</text>)
+            dialog.setPlacement("upper-fifth")
+          }}
+        />
+      </DialogProvider>,
+      { width: 80, height },
+    )
+    const headerRow = (await frame()).split("\n").findIndex((line) => line.includes("UPPER FIFTH"))
+    expect(headerRow).toBe(Math.floor(height / 5))
+  })
+
+  it("resets upper placement when a different dialog replaces it", async () => {
+    const height = 24
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    const { frame } = await renderComponent(
+      <DialogProvider>
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+            dialog.replace(() => <text>UPPER FIRST</text>)
+            dialog.setPlacement("upper-fifth")
+          }}
+        />
+      </DialogProvider>,
+      { width: 80, height },
+    )
+    expect((await frame()).split("\n").findIndex((line) => line.includes("UPPER FIRST"))).toBe(Math.floor(height / 5))
+
+    act(() => dialogRef.current?.replace(() => <text>CENTER NEXT</text>))
+    const centeredRow = (await frame()).split("\n").findIndex((line) => line.includes("CENTER NEXT"))
+    expect(centeredRow).toBeGreaterThan(Math.floor(height / 5))
   })
 
   // Regression (owner report 2026-07-09): the translucent full-screen
@@ -204,6 +244,51 @@ describe("DialogProvider", () => {
     expect(background).toBe(2)
   })
 
+  // Regression (owner report 2026-07-16): if the workspace host rendered
+  // while a dialog was open, it cached dialogOpen=true into its pane-focus
+  // and shortcut gates. Escape removed the modal barrier, but the unchanged
+  // DialogContext value did not render consumers again; clicking a pane was
+  // the only thing that woke the shortcuts back up.
+  it("rerenders dialog consumers after escape so pane gates recover without a click", async () => {
+    let background = 0
+    let rerenderWhileOpen: (() => void) | undefined
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    function GatedBackground() {
+      const dialog = useDialog()
+      const [, setTick] = useState(0)
+      const dialogOpen = dialog.stack.length > 0
+      rerenderWhileOpen = () => setTick((tick) => tick + 1)
+      useBindings(() => ({
+        enabled: !dialogOpen,
+        bindings: [{ key: "j", cmd: () => background++ }],
+      }))
+      return <text>{dialogOpen ? "pane gated" : "pane ready"}</text>
+    }
+    const { frame, mockInput } = await renderComponent(
+      <DialogProvider>
+        <GatedBackground />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("pane ready")
+
+    act(() => dialogRef.current?.push(() => <text>dialog A</text>))
+    expect(await frame()).toContain("dialog A")
+    act(() => rerenderWhileOpen?.())
+    expect(await frame()).toContain("pane gated")
+
+    act(() => mockInput.pressEscape())
+    await settle()
+    expect(await frame()).toContain("pane ready")
+    act(() => mockInput.pressKey("j"))
+    await settle()
+    expect(background).toBe(1)
+  })
+
   // The other half of the modal contract: bindings registered BY the dialog
   // body must stay reachable above the barrier. Precedence is declared
   // (ModalScopeContext membership + the barrier's modalOwner slot in
@@ -258,5 +343,34 @@ describe("DialogProvider", () => {
     const text = await frame()
     expect(text).not.toContain("dialog B")
     expect(dialogRef.current?.stack.length).toBe(0)
+  })
+
+  it("clear can suppress restoring focus to the pane behind the dialog", async () => {
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    let input: Renderable | null = null
+    const { frame, renderer } = await renderComponent(
+      <DialogProvider>
+        <input
+          ref={(value) => {
+            input = value
+          }}
+          focused={true}
+          value="pane input"
+        />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+            dialog.push(() => <text>dialog A</text>)
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("dialog A")
+    expect(input).not.toBeNull()
+
+    act(() => dialogRef.current?.clear({ refocus: false }))
+    await settle()
+    expect(await frame()).not.toContain("dialog A")
+    expect(renderer.currentFocusedRenderable).not.toBe(input)
   })
 })

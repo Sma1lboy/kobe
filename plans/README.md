@@ -17,7 +17,8 @@ Audit base: `81969596` (`0.8.2` release commit). Source changes are intentionall
 
 ## Execution policy
 
-- Work directly on `main` only because the owner explicitly requested it in the `/loop` invocation.
+- Land follow-up changes through the repository's PR-only mainline; this
+  historical audit does not authorize direct commits to `main`.
 - Complete and verify one coherent batch before the next: security, terminal correctness, async workspace correctness, accessibility/performance, architecture.
 - Add patch changesets for user-visible fixes. Combine notes only when one commit intentionally ships a single behavior group.
 - Stage only named files; preserve unrelated `.codex/` and landing-page assets.

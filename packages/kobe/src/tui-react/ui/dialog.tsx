@@ -22,11 +22,17 @@ import { ModalScopeContext, useBindings } from "../lib/keymap"
 import { useLatest } from "../lib/use-latest"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
+export type DialogPlacement = "center" | "upper-fifth"
 
 const DIALOG_CONTENT_OPACITY = 0.5
 const TRANSPARENT_DIALOG_CONTENT_OPACITY = 0.75
 
-export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose: () => void }) {
+export function Dialog(props: {
+  children?: ReactNode
+  size?: DialogSize
+  placement?: DialogPlacement
+  onClose: () => void
+}) {
   const dimensions = useTerminalDimensions()
   const { theme } = useTheme()
   const renderer = useRenderer()
@@ -41,7 +47,16 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
   // Vertical headroom around the card so it never lands flush against
   // the terminal's top/bottom edge.
   const VERTICAL_MARGIN = 2
-  const maxCardHeight = Math.max(8, dimensions.height - VERTICAL_MARGIN * 2)
+  const upperFifth = props.placement === "upper-fifth"
+  // The content's first row sits one cell below the card top because the card
+  // owns paddingTop=1. Back the card up by that cell so an upper-fifth
+  // dialog's header lands at exactly one fifth of the viewport.
+  const headerTop = Math.max(VERTICAL_MARGIN, Math.floor(dimensions.height / 5))
+  const cardTop = upperFifth ? Math.max(VERTICAL_MARGIN, headerTop - 1) : 0
+  const maxCardHeight = Math.max(
+    8,
+    upperFifth ? dimensions.height - cardTop - VERTICAL_MARGIN : dimensions.height - VERTICAL_MARGIN * 2,
+  )
 
   return (
     <box
@@ -58,9 +73,10 @@ export function Dialog(props: { children?: ReactNode; size?: DialogSize; onClose
       width={dimensions.width}
       height={dimensions.height}
       alignItems="center"
-      // Center short cards; tall cards clip to maxCardHeight instead of
-      // overflowing (children that need scrolling wrap their own scrollbox).
-      justifyContent="center"
+      // Most dialogs stay centered. Attention queues may opt into an upper
+      // anchor so their header aligns with the viewport's first fifth.
+      justifyContent={upperFifth ? "flex-start" : "center"}
+      paddingTop={cardTop}
       position="absolute"
       zIndex={3000}
       left={0}
@@ -102,7 +118,12 @@ type StackEntry = { key: number; element: () => ReactNode; onClose?: () => void 
 let entrySeq = 0
 
 export type DialogContext = {
-  clear(): void
+  /**
+   * Empty the stack. Pass `refocus: false` when the dialog action itself
+   * navigates to a different pane, so the deferred restore cannot pull native
+   * focus back to the pane that was active before the dialog opened.
+   */
+  clear(options?: { refocus?: boolean }): void
   /**
    * Replace the current dialog (if any) with a new one. The body stays a
    * thunk for Solid-API parity; it is evaluated inside the provider's
@@ -114,6 +135,8 @@ export type DialogContext = {
   readonly stack: readonly StackEntry[]
   readonly size: DialogSize
   setSize(size: DialogSize): void
+  readonly placement: DialogPlacement
+  setPlacement(placement: DialogPlacement): void
 }
 
 const ctx = createContext<DialogContext | null>(null)
@@ -121,6 +144,7 @@ const ctx = createContext<DialogContext | null>(null)
 export function DialogProvider(props: { children?: ReactNode }) {
   const [stack, setStack] = useState<readonly StackEntry[]>([])
   const [size, setSize] = useState<DialogSize>("medium")
+  const [placement, setPlacement] = useState<DialogPlacement>("center")
   const renderer = useRenderer()
   const { transparentBackground } = useTheme()
 
@@ -185,16 +209,19 @@ export function DialogProvider(props: { children?: ReactNode }) {
 
   const value = useMemo<DialogContext>(
     () => ({
-      clear() {
+      clear(options) {
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
+        setPlacement("center")
         setStack([])
-        refocus()
+        if (options?.refocus === false) focusRef.current = null
+        else refocus()
       },
       replace(thunk, onClose) {
         captureFocusIfFirst()
         for (const item of stackRef.current) item.onClose?.()
         setSize("medium")
+        setPlacement("center")
         setStack([{ key: ++entrySeq, element: thunk, onClose }])
       },
       push(thunk, onClose) {
@@ -208,14 +235,29 @@ export function DialogProvider(props: { children?: ReactNode }) {
         if (stackRef.current.length <= 1) refocus()
       },
       get stack() {
+        // Read the render snapshot so React/Biome can see that context
+        // identity intentionally follows stack transitions. Return the ref
+        // so imperative holders of an older context object still see the
+        // latest stack, preserving the existing API contract.
+        void stack
         return stackRef.current
       },
       get size() {
         return size
       },
       setSize,
+      get placement() {
+        return placement
+      },
+      setPlacement,
     }),
-    [size, refocus, captureFocusIfFirst],
+    // `stack` is intentionally a dependency even though the public getter
+    // reads stackRef. Consumers derive pane focus / binding gates from
+    // `dialog.stack.length`; without a new context value on push/pop, a host
+    // that happened to render while the modal was open could keep those
+    // gates disabled after Escape removed the barrier. A later pane click
+    // appeared to "fix" focus only because it forced that host to render.
+    [stack, size, placement, refocus, captureFocusIfFirst],
   )
 
   const top = stack.at(-1)
@@ -237,7 +279,7 @@ export function DialogProvider(props: { children?: ReactNode }) {
           // cut off — regardless of effect-commit order.
           <ModalScopeContext value={MODAL_SCOPE}>
             <ModalBarrier dismissTop={dismissTop} />
-            <Dialog key={top.key} onClose={() => value.clear()} size={size}>
+            <Dialog key={top.key} onClose={() => value.clear()} size={size} placement={placement}>
               {top.element()}
             </Dialog>
           </ModalScopeContext>

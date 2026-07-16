@@ -150,6 +150,9 @@ function coerceTask(value: unknown): Task | null {
     // Engine reasoning/effort level — must survive the load coercion or the
     // task forgets its effort on every daemon restart.
     ...(typeof v.modelEffort === "string" && v.modelEffort.length > 0 ? { modelEffort: v.modelEffort } : {}),
+    // Fan-out round marker — must survive the load coercion or siblings
+    // lose their grouping on every daemon restart.
+    ...(typeof v.groupId === "string" && v.groupId.length > 0 ? { groupId: v.groupId } : {}),
     ...(deletion ? { deletion } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,

@@ -17,11 +17,11 @@ import { Unicode11Addon } from "@xterm/addon-unicode11"
 import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
 import { persistedScrollbackRows } from "../../../state/scrollback"
 import { encodeWheel } from "./keys-pure"
+import { PtyListeners } from "./pty-listeners"
 import {
   type CursorPos,
   DEFAULT_COLS,
   DEFAULT_ROWS,
-  type DataListener,
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
@@ -42,9 +42,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   readonly taskId: string
   readonly cwd: string
   protected readonly term: XtermHeadless
-  private readonly listeners = new Set<DataListener>()
-  private readonly exitListeners = new Set<() => void>()
-  private readonly titleListeners = new Set<(title: string) => void>()
+  private readonly listeners = new PtyListeners()
   private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
   /** Output arrived while nobody was subscribed — snapshot is stale and
@@ -128,13 +126,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       onTitle: (title) => {
         if (!title || title === this._title) return
         this._title = title
-        for (const cb of this.titleListeners) {
-          try {
-            cb(title)
-          } catch {
-            /* one listener must not break the others */
-          }
-        }
+        this.listeners.publishTitle(title)
       },
     })
   }
@@ -164,14 +156,11 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       cb()
       return () => {}
     }
-    this.exitListeners.add(cb)
-    return () => {
-      this.exitListeners.delete(cb)
-    }
+    return this.listeners.addExit(cb)
   }
 
   onTitleChange(cb: (title: string) => void): () => void {
-    this.titleListeners.add(cb)
+    const off = this.listeners.addTitle(cb)
     if (this._title) {
       try {
         cb(this._title)
@@ -179,9 +168,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
         /* one listener must not break the others */
       }
     }
-    return () => {
-      this.titleListeners.delete(cb)
-    }
+    return off
   }
 
   paste(text: string): void {
@@ -219,12 +206,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     return false
   }
 
-  onData(cb: DataListener): () => void {
+  onData(cb: (snapshot: readonly TerminalRow[], cursor: CursorPos | null) => void): () => void {
     // Refresh BEFORE registering so a lazily-deferred snapshot doesn't
     // double-notify the new subscriber (once from the rebuild's listener
     // loop, once from the prime below).
     this.ensureFreshSnapshot()
-    this.listeners.add(cb)
+    const off = this.listeners.addData(cb)
     this._unwatchedSince = null
     if (this.snapshot.length > 0) {
       try {
@@ -234,8 +221,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       }
     }
     return () => {
-      this.listeners.delete(cb)
-      if (this.listeners.size === 0 && this._unwatchedSince === null) this._unwatchedSince = Date.now()
+      off()
+      if (this.listeners.dataCount === 0 && this._unwatchedSince === null) this._unwatchedSince = Date.now()
     }
   }
 
@@ -340,7 +327,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   private queueRefresh(): void {
     // No subscriber → don't pay the full grid+scrollback conversion at
     // output cadence; mark stale and rebuild on capture()/subscribe.
-    if (this.listeners.size === 0) {
+    if (this.listeners.dataCount === 0) {
       this.snapshotDirty = true
       return
     }
@@ -451,13 +438,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   }
 
   private publishSnapshot(): void {
-    for (const cb of this.listeners) {
-      try {
-        cb(this.snapshot, this.cursor)
-      } catch {
-        /* one listener must not break the others */
-      }
-    }
+    this.listeners.publishData(this.snapshot, this.cursor)
   }
 
   /** Free the emulator's cell buffers NOW instead of waiting for GC — the
@@ -484,9 +465,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
         /* best effort */
       }
     }
-    const exitCbs = [...this.exitListeners]
-    this.listeners.clear()
-    this.exitListeners.clear()
+    const exitCbs = this.listeners.drainExits()
+    this.listeners.clearData()
     for (const cb of exitCbs) {
       try {
         cb()
@@ -506,8 +486,6 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this._killed = true
     this.refreshTracker.dispose()
     this.disposeEmulator()
-    this.listeners.clear()
-    this.exitListeners.clear()
-    this.titleListeners.clear()
+    this.listeners.clearAll()
   }
 }

@@ -1,126 +1,78 @@
+# kobe
+
 <p align="center">
-  <img src="docs/assets/brand/bracket-chip.gif" alt="kobe" width="720" />
+  <img src="docs/assets/brand/bracket-chip.gif" width="640" alt="kobe — TUI orchestrator for any coding CLI" />
 </p>
 
 <p align="center">
-  <strong>Run parallel coding agents from any terminal.</strong><br/>
-  kobe is an SSH-friendly TUI for turning AI coding work into isolated git worktrees and persistent hosted engine sessions.
+  <strong>One terminal. Many agents. Every attempt on its own branch.</strong><br />
+  kobe runs parallel <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, and <a href="https://github.com/github/copilot-cli">Copilot</a> sessions,<br />
+  each in an isolated git worktree — and they keep working after you disconnect.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@sma1lboy/kobe"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg" alt="npm version" /></a>
-  <a href="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml"><img src="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <a href="https://app.codecov.io/gh/Sma1lboy/kobe"><img src="https://codecov.io/gh/Sma1lboy/kobe/branch/main/graph/badge.svg" alt="coverage" /></a>
-  <a href="./packages/kobe/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-latest-blue" alt="changelog" /></a>
+  <a href="https://www.npmjs.com/package/@sma1lboy/kobe"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Fkobe?style=flat-square&label=npm&color=c96442" alt="npm version" /></a>
+  <a href="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sma1lboy/kobe/ci.yml?branch=main&style=flat-square" alt="build" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
 </p>
-<img width="2559" height="1510" alt="image" src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" />
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" alt="kobe workspace — task sidebar, embedded engine session, file tree and terminal" />
+</p>
 
-## A quick look
+AI agents are useful one at a time. kobe is for when you want five attempts running at once: create a task, send it to an engine, compare the worktrees, merge the branch that wins, archive the rest. It runs where your code already lives — laptop, devbox, VPS, anything you can SSH into.
 
+## Highlights
 
-
-
+- **Safe parallelism** — agents never trample each other or your checkout; each task gets a private worktree and branch.
+- **Sessions survive you** — quit the TUI, drop SSH, restart the daemon; reattach and the screen comes back.
+- **Real engines, real environment** — kobe embeds the actual interactive CLIs next to your dependencies, services, and credentials. No API wrappers, no re-rendered streams.
+- **Any engine** — `claude`, `codex`, `copilot`, or any command you add via `kobe config`, picked per task.
+- **Terminal first** — no browser or desktop app required. Notifications and clipboard ride SSH to your local terminal.
+- **Scriptable** — `kobe api` lets a shell script, or another agent, fan out and collect tasks headlessly.
 
 https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
 
-
-
-
-
-kobe opens into a PureTUI workspace with:
-
-- **Sidebar** - create, switch, archive, rename, and organize tasks.
-- **Workspace** - live engine or shell tabs, with persistent sessions and splits.
-- **Files** - changed files, previews, diffs, and PR actions.
-
----
-
-## Choose your AI engine
-
-Use **Settings → Engine** to pick which AI CLI kobe should run for a task: `claude`, `codex`, `copilot`, or your own command.
-
-https://github.com/user-attachments/assets/11fcc3e5-7d20-403d-82df-3e5d156d1dba
-
----
-
-AI agents are useful one at a time. kobe is for when you want five attempts running at once.
-
-```text
-Task = git worktree + hosted engine sessions + branch
-```
-
-Create a task, send it to `claude`, `codex`, or `copilot`, close and reopen the TUI, compare the worktree, keep the good branch, archive the rest. It runs where your code already lives: your laptop, a devbox, a VPS, or any machine you can SSH into.
-
-```bash
-ssh devbox
-cd repo
-kobe
-```
-
-## Why try it
-
-- **Made for SSH/devboxes** - no browser, VNC, or desktop app; the terminal is the product.
-- **Persistent by default** - a standalone PTY Host owns engine sessions, so disconnects and daemon restarts do not kill the work.
-- **Safe parallelism** - every attempt gets its own branch and worktree.
-- **Real environment** - agents run next to your dependencies, services, credentials, and build cache.
-- **Scriptable fan-out** - `kobe api` lets another agent or shell script spawn more tasks.
-
 ## Install
 
-Requirements: [Bun](https://bun.sh) `>= 1.3.11`, git, and at least one engine CLI on `PATH` (`claude`, `codex`, or `copilot`).
+Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI on `PATH`.
 
 ```bash
 bun install -g @sma1lboy/kobe
-kobe
-```
 
-Or:
-
-```bash
+# or try it without installing
 bunx @sma1lboy/kobe
 ```
 
-First task: press `n`, choose a repo/base branch/engine, then prompt the workspace terminal. By default, kobe creates the worktree under:
-
-```text
-~/.kobe/worktrees/<repo-key>/<task-slug>/
-```
-
-## Useful keys
-
-| Key | Action |
-|---|---|
-| `F1` | Show the full live keybinding reference. |
-| `ctrl+q` | Focus the Sidebar; from the Sidebar, quit. |
-| `F2` | Rename the active tab or split. |
-| `F3` | Focus the next split. |
-| `F4` | Cycle pane focus forward. |
-| `F5` | Confirm and reset the active terminal. |
-| `F6` | Toggle zen mode. |
-| `F7` | Jump to the next task or tab waiting for attention. |
-| `ctrl+t` / `ctrl+e` | Open an engine tab / choose an engine or shell. |
-| `ctrl+w` | Close the active split, otherwise close the tab. |
-| `ctrl+[` / `ctrl+]` | Switch to the previous / next tab. |
-| `ctrl+a`, then `j` / `k` | Cycle pane focus backward / forward. |
-| `ctrl+a`, then `f` | Quick-fork a child task. |
-| `ctrl+a`, then `\\` / `=` | Split right / down. |
-
-`F1` is authoritative and reflects the active scope and user overrides. More:
-[`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
-
-## Browser dashboard
-
-Prefer a browser? The same tasks, sessions, and terminals are available in a local web UI:
+## First run
 
 ```bash
-kobe web                 # http://localhost:5174
-kobe web --port 5180
+ssh devbox        # optional
+cd your-repo
+kobe
 ```
 
-It talks to the same daemon as the TUI, so tasks created in either surface show up in both. Architecture lives in [`docs/design/web-dashboard.md`](./docs/design/web-dashboard.md).
+Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.kobe/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
 
-## Fan out
+## How it works
+
+```text
+Task = git worktree + hosted engine session + branch
+```
+
+1. **The daemon** owns tasks, worktrees, and state — the TUI, the web dashboard, and `kobe api` are all clients of the same one.
+2. **The PTY host** is a separate long-lived process that owns the engine sessions, tmux-server style. It outlives the TUI *and* the daemon, which is why disconnects and restarts never kill your work.
+3. **The TUI** just attaches: sidebar for tasks, workspace tabs for engines and shells (with splits and quick-fork), a files pane for diffs and PR actions.
+
+## Beyond the TUI
+
+The same tasks from a browser — `kobe web` serves a local dashboard on the daemon the TUI uses, so both surfaces stay in sync:
+
+```bash
+kobe web            # http://localhost:5174
+```
+
+And headless, for scripts or other agents:
 
 ```bash
 kobe api fan-out \
@@ -129,44 +81,33 @@ kobe api fan-out \
   --prompt "Try three approaches to simplify the auth flow."
 ```
 
-Install the companion skill so Claude Code knows when to use `kobe api`:
+Install the companion skill so Claude Code knows how to drive `kobe api` itself:
 
 ```bash
-npx skills add Sma1lboy/kobe --skill kobe --agent claude-code
+kobe skill install
 ```
 
 ## If it gets stuck
 
 ```bash
-kobe doctor   # read-only diagnosis
-kobe reset    # reset daemon + Hosted PTY runtime; does not delete worktrees
+kobe doctor            # read-only diagnosis: daemon, PTY host, engines, git
+kobe doctor --report   # write a bundle you can attach to a bug report
+kobe reset             # stop the runtimes; never touches your worktrees
+kobe config            # open kobe's config file in your editor
 ```
+
+More in [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md).
 
 ## Develop
 
 ```bash
 bun install
-bun run dev:sandbox
-bun run typecheck
-bun run lint
+bun run dev:sandbox    # run against a throwaway home, not your real ~/.kobe
 bun run test
 ```
 
-Start with [`AGENTS.md`](./AGENTS.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
+Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md); shipped behavior lives in the [changelog](./packages/kobe/CHANGELOG.md).
 
-### Testing & coverage
+## License
 
-Three test layers (contract: [`docs/HARNESS.md`](./docs/HARNESS.md)):
-
-```bash
-bun run test                                   # unit + socket suites (fast, CI-gated)
-bun run build && bun run test:behavior         # black-box: the BUILT CLI in a temp home
-                                               # + isolated daemon and Hosted PTY runtime
-                                               # (CI-gated, `behavior` job)
-cd packages/kobe && bun run coverage           # v8 coverage report (text + json-summary)
-```
-
-Two hard rules keep regressions from coming back:
-
-- **Every bug fix ships a regression test** that fails before the fix and passes after, commented with the issue it pins. Environment-shaped bugs (terminal bytes, PATH state, packaged-vs-dev) get pinned in `test/behavior/`, not in a mocked unit test.
-- **Per-touched-file coverage floor on PRs** — every `packages/kobe/src` **`.ts`** file a PR touches must meet the line-coverage floor (default 50%, `scripts/coverage-gate.mjs`); `coverage-exemption: <reason>` in the PR body opts out with a paper trail. Coverage scope is unit-testable `.ts` logic — opentui `.tsx` components can't run under vitest and are pinned by the behavior suite instead. There is deliberately no repo-wide % gate.
+[MIT](./LICENSE) © Jackson Chen

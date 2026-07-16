@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.6
+
+### Patch Changes
+
+- fd70a95: Add a shortcut-opened attention Inbox dialog for chat tabs that need attention, with persistent unread dots and an explanatory notice for tabs that no longer exist. F7 visits only unread episodes, while read episodes retain permission requests, failures, rate limits, and completions until that tab starts working again or the user explicitly deletes them.
+- 659ecdd: `kobe config` opens your kobe config file (`state.json` — theme, locale, engine + editor prefs) in your editor ($VISUAL / $EDITOR, else your configured editor, else nvim/vim/emacs/nano); `kobe config --path` just prints the path. `kobe doctor` now also reports the engine CLIs (claude / codex / copilot binary + account) and the local `git` version, and gains `kobe doctor --report`, which writes a `kobe-doctor-report.txt` bundle (diagnosis + recent daemon/pty-host logs + non-secret env) you can attach to a bug report.
+- 4fcbc7f: Fan-out grows up: a mid-loop `task.create` failure no longer orphans the already-created siblings — every failure path now reports through `PARTIAL_FANOUT` (stdout + exit 3) with the created taskIds, and the dispatcher contract is pinned by tests. Each fan-out round stamps a shared `groupId` on its tasks (persisted, on the wire, and in `collect` output) and sibling titles get a `#i/N` ordinal — explicit `--title`s at create time, prompt-derived names via the auto-title pass — so five attempts at one prompt no longer converge on identical sidebar rows. `collect` adds a committed-work view per task: `base.ahead` (commits over the base branch) and `base.diff` (files/+/− vs the merge-base), so picking a winner no longer reads `+0 −0` the moment an attempt commits. The kobe agent skill (v5) now teaches the round's closing moves: `land` the winner (`--then-archive`), archive the losers.
+- 7348481: Move task worktree cleanup into a durable daemon background job so deleting a large task returns control immediately, survives daemon restarts, and keeps failures visible and retryable in the sidebar.
+- 28f1b90: Keep the macOS input-method candidate window anchored to the visible chat terminal when keyboard focus moves to Tasks or Files, while transferring ownership safely across chat tabs, content tabs, split leaves, PTY changes, and dialogs.
+- 3b68388: Strengthen PureTUI terminal lifecycle diagnostics, endurance verification, and render acceptance coverage.
+- af68204: Fix the Kanban visual ground-truth gate breaking at midnight: issue `created` stamps can now be pinned via `KOBE_ISSUES_TODAY` (valid `YYYY-MM-DD` only, never set in production), and the visual fixture pins `2026-07-15` to match the committed screenshots.
+
 ## 0.8.5
 
 ### Patch Changes

@@ -159,6 +159,18 @@ describe("createPtySessionManager", () => {
     ])
   })
 
+  it("includes command, cwd, and PATH state when a native PTY spawn fails", async () => {
+    const { manager } = setup({
+      spawnPty: () => {
+        throw new Error("posix_spawnp failed")
+      },
+    })
+
+    await expect(
+      manager.attachSocket({ ws: new FakeSocket(), tabId: "tab", taskId: "task", mode: "engine", cols: 80, rows: 24 }),
+    ).rejects.toThrow("PTY spawn failed (command engine, cwd /repo/task, PATH missing): posix_spawnp failed")
+  })
+
   it("replays scrollback before joining live fanout", async () => {
     const { manager, ptys } = setup()
     const first = new FakeSocket()

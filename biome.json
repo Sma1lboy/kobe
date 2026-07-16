@@ -11,6 +11,7 @@
       "refs/**",
       "**/dist/**",
       "**/coverage/**",
+      "**/coverage-daemon/**",
       "**/node_modules/**",
       "bun.lock",
       "packages/branding/**",

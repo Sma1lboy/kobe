@@ -12,6 +12,8 @@
 import type { ChannelName } from "./channels.ts"
 import type { DaemonTask } from "./contracts.ts"
 
+export { attentionInboxItemKey, isAttentionInboxState } from "./contracts.ts"
+
 export {
   CHANNEL_NAMES,
   type ChannelName,
@@ -154,6 +156,11 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
+  // Explicitly dismiss the durable attention episode at the supplied event
+  // timestamp. Viewing/jumping never calls this; only the Inbox action does.
+  | "attention.dismiss"
+  // Mark the exact opened episode read; `at` guards against stale opens.
+  | "attention.read"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
@@ -282,6 +289,8 @@ export interface SerializedTask {
   readonly position?: number
   /** Engine reasoning/effort level, when the vendor supports one. */
   readonly modelEffort?: string
+  /** Fan-out round marker shared by the siblings of one fan-out call. */
+  readonly groupId?: string
   /** Durable daemon-owned background deletion state. */
   readonly deletion?: DaemonTask["deletion"]
   readonly createdAt: string
@@ -303,6 +312,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     prStatus: task.prStatus,
     position: task.position,
     modelEffort: task.modelEffort,
+    groupId: task.groupId,
     deletion: task.deletion,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
