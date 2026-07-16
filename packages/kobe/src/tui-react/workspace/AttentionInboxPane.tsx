@@ -161,8 +161,17 @@ export function AttentionInboxPane(props: {
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
             const project = task ? sidebarProjectLabel(task.repo, repos) : ""
+            const frameColor = active ? theme.primary : theme.borderSubtle
             const content = (
-              <box key={`${attentionInboxKey(item)}:content`} flexDirection="column">
+              <box
+                key={`${attentionInboxKey(item)}:content`}
+                flexDirection="column"
+                flexBasis={0}
+                flexGrow={1}
+                flexShrink={1}
+                paddingLeft={1}
+                paddingRight={1}
+              >
                 <box flexDirection="row">
                   <text fg={theme.focusAccent} wrapMode="none">
                     {item.unread ? "• " : "  "}
@@ -199,23 +208,27 @@ export function AttentionInboxPane(props: {
               setCursor(absoluteIndex)
               props.onOpen(item, tab.available)
             }
-            return active ? (
-              <box
-                key={`${attentionInboxKey(item)}:active`}
-                backgroundColor={theme.primary}
-                paddingTop={1}
-                paddingBottom={1}
-                paddingLeft={2}
-                paddingRight={2}
-                onMouseUp={onMouseUp}
-              >
-                <box flexDirection="column" backgroundColor={theme.backgroundElement}>
+            return (
+              <box key={attentionInboxKey(item)} paddingLeft={2} paddingRight={2}>
+                <box flexDirection="row" backgroundColor={theme.backgroundElement} onMouseUp={onMouseUp}>
+                  <box flexDirection="column" flexShrink={0}>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌜
+                    </text>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌞
+                    </text>
+                  </box>
                   {content}
+                  <box flexDirection="column" flexShrink={0}>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌝
+                    </text>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌟
+                    </text>
+                  </box>
                 </box>
-              </box>
-            ) : (
-              <box key={`${attentionInboxKey(item)}:idle`} paddingLeft={2} paddingRight={2} onMouseUp={onMouseUp}>
-                {content}
               </box>
             )
           })}
