@@ -385,7 +385,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const transcriptPath = optionalString(payload, "transcriptPath")
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
         ctx.activity.report(taskId, kind, detail, tabId, session)
-        // Keep cwd-inferred activity, but only exact kobe tab identity belongs in the navigable Inbox.
+        // Kobe tabs provide task+tab IDs; keep cwd-inferred activity visible without making it Inbox-navigable.
         if (explicitId && tabId) {
           await ctx.inbox
             .record(taskId, kind, detail, tabId)

@@ -99,10 +99,14 @@ export class AttentionInboxStore {
     return [...this.items.values()].sort(compareItems)
   }
 
-  async record(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail, tabId?: string): Promise<void> {
+  async record(
+    taskId: string,
+    kind: EngineActivityKind,
+    detail: EngineActivityDetail | undefined,
+    tabId: string,
+  ): Promise<void> {
     await this.enqueue(async () => {
-      const normalizedTabId = tabId || null
-      const key = attentionInboxItemKey({ taskId, tabId: normalizedTabId })
+      const key = attentionInboxItemKey({ taskId, tabId })
       const next = new Map(this.items)
       if (kind === "turn-start") {
         if (!next.delete(key)) return
@@ -115,7 +119,7 @@ export class AttentionInboxStore {
         next.delete(key)
         next.set(key, {
           taskId,
-          tabId: normalizedTabId,
+          tabId,
           state,
           ...(detail ? { detail } : {}),
           // Every stored episode is pending by definition (opening removes
