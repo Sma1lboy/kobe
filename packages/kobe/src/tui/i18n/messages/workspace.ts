@@ -14,7 +14,7 @@ export const en = {
     selectTask: "Select a task with a worktree",
   },
   attention: {
-    none: "No pending Inbox items",
+    none: "No available Inbox items",
   },
   inbox: {
     title: "INBOX",
@@ -42,7 +42,7 @@ export const zh: typeof en = {
     selectTask: "请选择一个带 worktree 的任务",
   },
   attention: {
-    none: "收件箱没有待处理内容",
+    none: "收件箱中没有可打开的项目",
   },
   inbox: {
     title: "收件箱",

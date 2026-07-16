@@ -7,7 +7,7 @@ export const INBOX_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     prefixKeys: ["i"],
     category: "Global",
-    description: "Open attention Inbox",
+    description: "Open Inbox",
   },
   {
     id: "inbox.nav",
@@ -22,7 +22,7 @@ export const INBOX_BINDINGS: readonly KobeBinding[] = [
     scope: "inbox",
     keys: ["return"],
     category: "Inbox",
-    description: "Open the selected task and chat tab",
+    description: "Open the selected Task and Terminal Tab",
     hint: { keys: "enter" },
   },
   {
@@ -30,7 +30,7 @@ export const INBOX_BINDINGS: readonly KobeBinding[] = [
     scope: "inbox",
     keys: ["d"],
     category: "Inbox",
-    description: "Delete the selected attention episode",
+    description: "Remove the selected Inbox item",
     hint: { keys: "d" },
   },
 ]
