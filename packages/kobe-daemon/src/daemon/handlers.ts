@@ -385,10 +385,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const transcriptPath = optionalString(payload, "transcriptPath")
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
         ctx.activity.report(taskId, kind, detail, tabId, session)
-        // Activity remains cwd-aware so externally-started engines can light up
-        // the tracked project row. The Inbox is tab navigation, though: only a
-        // kobe-spawned tab carries BOTH exact identity fields. A cwd-inferred
-        // external session has neither and must not create a task-level episode.
+        // Keep cwd-inferred activity, but only exact kobe tab identity belongs in the navigable Inbox.
         if (explicitId && tabId) {
           await ctx.inbox
             .record(taskId, kind, detail, tabId)
