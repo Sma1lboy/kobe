@@ -46,6 +46,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { warmHostedShell } from "../../tui/panes/terminal/pty-hosted"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { shellIdentityInput } from "../../tui/workspace/terminal-tab-spawn"
 import {
   type EngineTab,
   type TabSpawn,
@@ -286,7 +287,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
 
   const activeSpawn = (): TabSpawn =>
     active.kind === "command"
-      ? { command: active.command }
+      ? {
+          command: active.command,
+          // A BARE shell tab (ctrl+e "shell" pick — the tab IS the user's
+          // shell, no editor purpose) gets the identity export typed in, so
+          // a user-typed engine's hooks report tab-precise events +
+          // sessionId. Editor/one-off command tabs skip it (meaningless for
+          // nvim, and the argv isn't a prompt to type into).
+          ...(active.purpose !== "editor" && active.command.length === 1 && active.command[0] === defaultShell()
+            ? { initialInput: shellIdentityInput(props.taskId, active.id) }
+            : {}),
+        }
       : active.kind === "content"
         ? // Content tabs have no PTY (a read-only preview); the render below
           // never mounts a Terminal for them, so this spawn is never used.

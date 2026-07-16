@@ -401,7 +401,7 @@ export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTri
 
 // Shell-wrapping helpers moved to `./terminal-tab-spawn` for the file-size
 // cap; re-exported here so existing importers keep one entry point.
-export { type TabSpawn, shellCommandLine, shellSpawn } from "./terminal-tab-spawn"
+export { type TabSpawn, shellCommandLine, shellIdentityInput, shellSpawn } from "./terminal-tab-spawn"
 
 /**
  * Rehydrate a persisted tab snapshot (issue #22). A tab is a TERMINAL
