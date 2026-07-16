@@ -16,7 +16,7 @@
 
 import { useEffect, useRef } from "react"
 import type { AttentionInboxItem, TaskEngineState } from "../../client/remote-orchestrator"
-import { attentionKindFor } from "../../tui/lib/notify-state"
+import { attentionEdges, attentionKindFor } from "../../tui/lib/notify-state"
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
@@ -44,21 +44,19 @@ export function useAttention(args: {
   const prevStates = useRef<Map<string, string> | null>(null)
 
   useEffect(() => {
-    const prev = prevStates.current
     const next = new Map<string, string>()
     for (const [id, es] of engineState) next.set(id, es.state)
 
-    if (prev && kv.get(CROSS_TASK_KEY, true) !== false) {
-      for (const [id, state] of next) {
-        if (id === selectedId) continue // the selected task shows its own state
-        if (prev.get(id) === state) continue // no transition
-        const kind = attentionKindFor(state)
-        if (!kind) continue
-        const title = tasks.find((t) => t.id === id)?.title ?? id
-        notif.notify({ kind, taskId: id, tabId: "", title })
-      }
-    }
+    // Edge detection is the shared framework-free `attentionEdges` (the ONE
+    // notification module): seed rule inside (prev===null → no toasts), the
+    // selected task skipped (its state is already on the middle column).
+    const edges = attentionEdges(prevStates.current, next, selectedId, attentionKindFor)
     prevStates.current = next
+    if (kv.get(CROSS_TASK_KEY, true) === false) return
+    for (const { key: id, kind } of edges) {
+      const title = tasks.find((t) => t.id === id)?.title ?? id
+      notif.notify({ kind, taskId: id, tabId: "", title })
+    }
   }, [engineState, selectedId, tasks, kv, notif])
 
   function jumpToNextAttention(): void {
