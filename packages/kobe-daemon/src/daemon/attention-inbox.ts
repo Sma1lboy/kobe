@@ -2,10 +2,11 @@
  * Durable, daemon-owned attention Inbox.
  *
  * Live engine activity and Inbox retention are deliberately different state:
- * activity may idle on session close/archive, while an unresolved episode must
- * remain until that exact task+tab starts another turn, the user dismisses it,
- * or the containing task is explicitly hard-deleted. The store persists a
- * full snapshot so daemon/TUI reconnects cannot consume work by accident.
+ * activity may idle on session close/archive, while a pending episode remains
+ * until its target is visited/opened, the user dismisses it, that task+tab
+ * starts another turn, or the containing task is explicitly hard-deleted. The
+ * store persists a full snapshot so daemon/TUI reconnects cannot consume work
+ * by accident.
  */
 
 import { randomUUID } from "node:crypto"
@@ -51,7 +52,8 @@ function normalizeItem(value: unknown): AttentionInboxItem | null {
     tabId: item.tabId,
     state: item.state,
     ...(item.detail ? { detail: item.detail } : {}),
-    // Snapshots written before unread tracking are unresolved by definition.
+    // All retained episodes are pending. Preserve the compatibility field
+    // when loading snapshots, but the queue model no longer reads it.
     unread: item.unread !== false,
     at: item.at,
   }

@@ -24,7 +24,7 @@ Default prefix actions:
 | Sequence | Action |
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task |
-| `ctrl+a`, `i` | Open the attention Inbox dialog (PROPOSED; awaiting owner confirmation) |
+| `ctrl+a`, `i` | Open the attention Inbox dialog |
 | `ctrl+a`, `y` | Resume a prior engine Session |
 | `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
 | `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
@@ -46,7 +46,7 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
 | `F6` | Toggle zen mode |
-| `F7` | Open the next unread Inbox episode across every project and the current task's other tabs. Opening marks it read but does not remove it; read episodes remain available in the Inbox dialog. |
+| `F7` | Open the next available pending Inbox episode across every project and the current task's other tabs. Opening or visiting its target removes the episode from the queue. |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
@@ -75,13 +75,15 @@ branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
-The Inbox is a modal dialog opened with the proposed `prefix+i` sequence. Unread
-episodes sort ahead of retained read episodes. Inside
-the dialog, `j/k` selects, `enter` jumps to the task/chat tab, and `d` deletes
-that attention episode. Opening marks its unread dot read; only a newer turn in
-the same tab or `d` removes it. Owner decision (2026-07-15): `d` is direct and
-dialog-scoped because deletion is a frequent, explicit cleanup action there;
-it cannot shadow chat input or embedded-terminal shortcuts outside the dialog.
+The Inbox is a modal dialog opened with `prefix+i`. Every row is a pending
+episode, ordered oldest first. Inside the dialog, `j/k` selects, `enter` jumps
+to the task/chat tab and removes that episode from the queue, and `d` deletes
+it without navigating. Landing on a task/chat tab also resolves matching
+episodes because visiting means handled. A newer episode for the same task and
+tab replaces the older one and moves to the end of the queue. Owner decision
+(2026-07-15): `d` is direct and dialog-scoped because deletion is a frequent,
+explicit cleanup action there; it cannot shadow chat input or
+embedded-terminal shortcuts outside the dialog.
 
 ## User customization
 

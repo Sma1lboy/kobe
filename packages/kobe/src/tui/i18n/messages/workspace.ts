@@ -14,12 +14,10 @@ export const en = {
     selectTask: "Select a task with a worktree",
   },
   attention: {
-    none: "No unread Inbox items",
+    none: "No pending Inbox items",
   },
   inbox: {
     title: "INBOX",
-    unread: "Unread",
-    all: "All",
     empty: "No pending attention",
     unavailable: "unavailable",
     openHint: "enter open",
@@ -44,12 +42,10 @@ export const zh: typeof en = {
     selectTask: "请选择一个带 worktree 的任务",
   },
   attention: {
-    none: "收件箱没有未读内容",
+    none: "收件箱没有待处理内容",
   },
   inbox: {
     title: "收件箱",
-    unread: "未读",
-    all: "全部",
     empty: "暂无待处理",
     unavailable: "目标不可用",
     openHint: "enter 打开",

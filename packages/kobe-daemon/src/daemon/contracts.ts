@@ -126,7 +126,7 @@ export interface EngineActivityDetail {
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
 
-/** States retained as unresolved Inbox episodes until a newer same-tab turn starts. */
+/** States retained as pending Inbox episodes until handled or replaced by a newer same-tab event. */
 export const ATTENTION_INBOX_STATES = [
   "turn_complete",
   "permission_needed",
@@ -151,7 +151,7 @@ export interface AttentionInboxItem {
   readonly tabId: string | null
   readonly state: AttentionInboxState
   readonly detail?: EngineActivityDetail
-  /** Cleared only when this exact episode is opened; survives reconnects. */
+  /** Compatibility field ignored by the queue model; new episodes set it to `true`. */
   readonly unread: boolean
   /** Event time, epoch milliseconds. Stable across daemon/TUI restarts. */
   readonly at: number

@@ -102,7 +102,7 @@ export async function dismissAttentionOp(
   return res.deleted
 }
 
-/** Persist that the user opened this exact attention episode. */
+/** Legacy compatibility alias: resolving this exact episode removes it. */
 export async function markAttentionReadOp(
   client: KobeDaemonClient,
   taskId: TaskId | string,

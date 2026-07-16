@@ -39,7 +39,7 @@ function notifications(notify: NotificationsContext["notify"]): NotificationsCon
 afterEach(() => tabsByTask.clear())
 
 describe("useAttention", () => {
-  it("jumps from the current chat tab to the next unread live task", async () => {
+  it("jumps from the current chat tab to the next pending live task", async () => {
     const tasks = [task("task-a", "Alpha"), task("task-b", "Beta"), task("task-c", "Archived", true)]
     const opened: AttentionInboxItem[] = []
     let jump: (() => void) | undefined
@@ -58,7 +58,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications(() => {}),
         openAttention: (item) => opened.push(item),
-        noTasksMessage: "No unread attention",
+        noTasksMessage: "No pending attention",
       }).jumpToNextAttention
       return <text>ready</text>
     }
@@ -84,7 +84,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No unread attention",
+        noTasksMessage: "No pending attention",
       }).jumpToNextAttention
       return <text>ready</text>
     }
@@ -92,7 +92,7 @@ describe("useAttention", () => {
     await renderComponent(<Probe />)
     act(() => jump?.())
 
-    expect(notices).toEqual([{ kind: "done", taskId: "task-a", tabId: "", title: "No unread attention" }])
+    expect(notices).toEqual([{ kind: "done", taskId: "task-a", tabId: "", title: "No pending attention" }])
   })
 
   it("notifies only on a non-selected task's rising attention edge", async () => {
@@ -113,7 +113,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No unread attention",
+        noTasksMessage: "No pending attention",
       })
       return <text>ready</text>
     }
@@ -144,7 +144,7 @@ describe("useAttention", () => {
         kv: kv(false),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No unread attention",
+        noTasksMessage: "No pending attention",
       })
       return <text>ready</text>
     }
