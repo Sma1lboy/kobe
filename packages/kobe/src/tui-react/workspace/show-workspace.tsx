@@ -27,6 +27,8 @@ export function ShowWorkspace(props: {
   onDiffTabReady: (open: (relPath: string, label: string, base?: string) => void) => void
   onQuickFork: (repo: string, result: QuickTaskResult) => void
   initialPrompt?: string
+  /** The user landed on a tab of the selected task — resolve its episodes. */
+  onTabVisited?: (taskId: string, tabId: string) => void
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
@@ -80,6 +82,10 @@ export function ShowWorkspace(props: {
       // sub-second chip/notification source (poll stays as fallback).
       hookTabStates={props.task ? engineTabStates.get(props.task.id) : undefined}
       taskTitle={props.task?.title}
+      onTabVisited={(tabId) => {
+        const taskId = props.task?.id
+        if (taskId) props.onTabVisited?.(taskId, tabId)
+      }}
     />
   )
 }

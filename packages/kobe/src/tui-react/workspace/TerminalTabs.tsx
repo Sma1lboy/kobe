@@ -130,6 +130,9 @@ export interface TerminalTabsProps {
   hookTabStates?: ReadonlyMap<string, HookTabState>
   /** Task title — background-toast context line (under the tab label). */
   taskTitle?: string
+  /** The user landed on a tab (switch or mount) — the host resolves any
+   *  pending Inbox episode targeting it. */
+  onTabVisited?: (tabId: string) => void
   focused: boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
@@ -267,10 +270,13 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     notif,
   })
 
-  // Visiting a tab clears its unread mark (toast already auto-dismisses).
+  // Visiting a tab clears its unread mark (toast already auto-dismisses)
+  // and reports the visit upstream — the host resolves any pending Inbox
+  // episode targeting this tab (visited = handled, no explicit open needed).
   // biome-ignore lint/correctness/useExhaustiveDependencies: fires only on a real activeId transition, matching the Solid `on(...)` guard; `notif`/`taskId` are stable for this component's lifetime.
   useEffect(() => {
     notif.markRead(props.taskId, state.activeId)
+    propsRef.current.onTabVisited?.(state.activeId)
   }, [state.activeId])
 
   /** Auto-close (issue #16): a tab closes itself when its process exits

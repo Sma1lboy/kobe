@@ -8,6 +8,20 @@ export function attentionInboxCounts(items: readonly AttentionInboxItem[]): { to
   return { total: items.length }
 }
 
+/**
+ * Episodes RESOLVED by the user landing on their target: visiting a tab (or
+ * selecting a task) means its pending attention was seen — the episode
+ * leaves the queue without an explicit open. Tab-scoped episodes match the
+ * exact (task, tab); task-level episodes (tabId null) match any visit to
+ * the task.
+ */
+export function visitResolvedEpisodes(
+  items: readonly AttentionInboxItem[],
+  visit: { taskId: string; tabId: string | null },
+): AttentionInboxItem[] {
+  return items.filter((item) => item.taskId === visit.taskId && (item.tabId === null || item.tabId === visit.tabId))
+}
+
 export function isAttentionInboxItemAvailable(
   item: AttentionInboxItem,
   task: Pick<Task, "archived"> | undefined,

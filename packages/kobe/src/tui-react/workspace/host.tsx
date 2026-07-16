@@ -38,7 +38,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { AttentionInboxDialog } from "./AttentionInboxPane"
-import { attentionInboxCounts, isAttentionInboxItemAvailable } from "./attention-inbox-core"
+import { attentionInboxCounts, isAttentionInboxItemAvailable, visitResolvedEpisodes } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestInboxItemOpen } from "./inbox-open-action"
@@ -47,7 +47,7 @@ import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
-import { forgetTaskTabs, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
+import { activeTabIdFor, forgetTaskTabs, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
@@ -254,6 +254,28 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     })
   }
 
+  // Visiting a tab RESOLVES its pending Inbox episodes (visited = handled —
+  // an episode must not linger after the user has already looked at its
+  // target). Fires on tab switches and on task selection (TerminalTabs
+  // reports its active tab on mount). Latest-items ref: the callback is
+  // handed down once per render but must see the current queue.
+  const inboxItemsRef = useLatest(inboxItems)
+  const notifyErrorRef = useLatest(notifyError)
+  function resolveVisitedEpisodes(taskId: string, tabId: string): void {
+    for (const item of visitResolvedEpisodes(inboxItemsRef.current, { taskId, tabId })) {
+      notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
+    }
+  }
+  // The same rule for episodes that ARRIVE while their target is already on
+  // screen (a turn finishing on the tab the user is watching) — without
+  // this, an episode for the visible tab lingers until the next switch.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the queue push only; selection/tab reads go through the current render's values.
+  useEffect(() => {
+    if (!selectedId) return
+    const activeTab = activeTabIdFor(selectedId)
+    if (activeTab) resolveVisitedEpisodes(selectedId, activeTab)
+  }, [inboxItems])
+
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
   // `kobe settings` window. Theme/transparent/focus accent changes apply
   // centrally via host-boot's UiPrefsSync, so there's no workspace-pane
@@ -433,6 +455,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           }}
           onQuickFork={quickFork.onQuickFork}
           initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
+          onTabVisited={resolveVisitedEpisodes}
         />
       </box>
 
