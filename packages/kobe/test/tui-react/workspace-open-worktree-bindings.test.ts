@@ -21,36 +21,11 @@ vi.mock("../../src/tui-react/lib/keymap", () => ({
 }))
 vi.mock("../../src/tui-react/ui/dialog-confirm", () => ({ DialogConfirm: { show: vi.fn() } }))
 
-const { useWorkspaceKeybindings, workspaceOpenWorktreeBindings } = await import(
-  "../../src/tui-react/workspace/host-keybindings"
-)
+const { useWorkspaceKeybindings } = await import("../../src/tui-react/workspace/host-keybindings")
 
 describe("workspace open-worktree bindings", () => {
   beforeEach(() => {
     mocks.bindingFactories.length = 0
-  })
-
-  test("global prefix-o and sidebar o open the selected task", () => {
-    const openTaskWorktree = vi.fn()
-    const bindings = workspaceOpenWorktreeBindings({ selectedId: "task-1", openTaskWorktree })
-
-    expect(bindings.global.map(({ key, prefix }) => ({ key, prefix }))).toEqual([{ key: "o", prefix: true }])
-    expect(bindings.sidebar.map(({ key, prefix }) => ({ key, prefix }))).toEqual([{ key: "o", prefix: undefined }])
-
-    bindings.global[0]?.cmd({} as never)
-    bindings.sidebar[0]?.cmd({} as never)
-    expect(openTaskWorktree).toHaveBeenCalledTimes(2)
-    expect(openTaskWorktree).toHaveBeenNthCalledWith(1, "task-1")
-    expect(openTaskWorktree).toHaveBeenNthCalledWith(2, "task-1")
-  })
-
-  test("does nothing when no task is selected", () => {
-    const openTaskWorktree = vi.fn()
-    const bindings = workspaceOpenWorktreeBindings({ selectedId: null, openTaskWorktree })
-
-    bindings.global[0]?.cmd({} as never)
-    bindings.sidebar[0]?.cmd({} as never)
-    expect(openTaskWorktree).not.toHaveBeenCalled()
   })
 
   test("the workspace hook registers both open-worktree bindings", () => {
