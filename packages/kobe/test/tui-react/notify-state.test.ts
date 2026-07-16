@@ -73,10 +73,15 @@ describe("shouldShowToast", () => {
 })
 
 describe("attentionKindFor", () => {
-  it("maps the three attention transitions and ignores the rest", () => {
+  it("maps every Inbox-episode transition and ignores the rest", () => {
     expect(attentionKindFor("permission_needed")).toBe("needs_input")
     expect(attentionKindFor("error")).toBe("error")
     expect(attentionKindFor("turn_complete")).toBe("done")
+    // rate_limited is an ATTENTION_INBOX_STATE — a non-selected task that hits
+    // it becomes a pending Inbox episode, so it MUST announce itself. It maps
+    // to "error" (red) like the per-tab chip notifier (activityTurnState),
+    // keeping the two notifiers symmetric instead of silently dropping it.
+    expect(attentionKindFor("rate_limited")).toBe("error")
     expect(attentionKindFor("running")).toBeNull()
     expect(attentionKindFor("idle")).toBeNull()
   })

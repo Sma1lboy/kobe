@@ -78,15 +78,19 @@ export function shouldShowToast(kind: NotificationKind, toastEnabled: boolean): 
 /**
  * Cross-task attention (WorkspaceRoot rising-edge notify). The daemon's
  * `TaskActivityState` is engine-normalized (no vendor strings); we map the
- * three attention-worthy transitions to a {@link NotificationKind} and treat
+ * attention-worthy transitions to a {@link NotificationKind} and treat
  * everything else as "no notification". A `null` return means "don't notify".
- * `permission_needed` → `needs_input` (yellow), `error` → `error` (red), and
- * `turn_complete` → `done` (green). Kept as a string→string map so the caller
- * (which owns the daemon state type) doesn't import the notify enum names.
+ * `permission_needed` → `needs_input` (yellow), `error`/`rate_limited` →
+ * `error` (red), and `turn_complete` → `done` (green). These are exactly the
+ * daemon's `ATTENTION_INBOX_STATES`, so a state that becomes a pending Inbox
+ * episode always announces itself — `rate_limited` maps to `error` here the
+ * same way the per-tab chip notifier does (`activityTurnState`), keeping the
+ * two notifiers symmetric. Kept as a string→string map so the caller (which
+ * owns the daemon state type) doesn't import the notify enum names.
  */
 export function attentionKindFor(state: string): NotificationKind | null {
   if (state === "permission_needed") return "needs_input"
-  if (state === "error") return "error"
+  if (state === "error" || state === "rate_limited") return "error"
   if (state === "turn_complete") return "done"
   return null
 }
