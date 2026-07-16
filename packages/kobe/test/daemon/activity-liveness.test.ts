@@ -110,6 +110,59 @@ describe("activity registry liveness watchdog", () => {
     expect(probe).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * Per-tab watchdog (turn-state consolidation): the tab strip's chip now
+   * keys off the hook-driven per-tab `running`, so a missed Stop pinning a
+   * tab entry would pin the ● indefinitely. The tab entry gets its own
+   * probe-then-idle heartbeat; on lapse the daemon publishes a per-tab idle
+   * so hook-wins subscribers fall back to the quiescence poll.
+   */
+  it("lapses a silent per-tab entry and publishes a tabId-scoped idle", async () => {
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(0))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+    const tabEvents: { tabId?: string; state: TaskActivityState }[] = []
+    bus.onPublish((event) => {
+      if (event.channel !== "engine-state") return
+      const payload = event.payload as EngineStatePayload & { tabId?: string }
+      if (payload.tabId) tabEvents.push({ tabId: payload.tabId, state: payload.state })
+    })
+
+    registry.report("t", "turn-start", undefined, "tab-1")
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    expect(tabEvents).toEqual([
+      { tabId: "tab-1", state: "running" },
+      { tabId: "tab-1", state: "idle" },
+    ])
+    // The lapsed tab entry must not linger in the replay set.
+    expect(registry.currentNonIdle().filter((p) => "tabId" in p && p.tabId)).toEqual([])
+  })
+
+  it("keeps an alive per-tab running entry lit across windows (heartbeat)", async () => {
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(Date.now()))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start", undefined, "tab-1")
+    await vi.advanceTimersByTimeAsync(TTL)
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    const tabs = registry.currentNonIdle().filter((p) => "tabId" in p && p.tabId)
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]?.state).toBe("running")
+  })
+
+  it("sticky per-tab states (turn_complete) never lapse", async () => {
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(0))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-complete", undefined, "tab-1")
+    await vi.advanceTimersByTimeAsync(TTL * 3)
+
+    const tabs = registry.currentNonIdle().filter((p) => "tabId" in p && p.tabId)
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]?.state).toBe("turn_complete")
+  })
+
   it("never idles after the entry was cleared during the probe await", async () => {
     let resolveProbe: ((v: number) => void) | undefined
     const probe: ActivityLivenessProbe = vi.fn(

@@ -28,6 +28,10 @@ export const TURN_GLYPHS: Record<ChatTabTurnState, string> = {
   running: "●",
   done: "✓",
   error: "!",
+  // Hook-only "blocked on the user" state — same ?/warning pairing as the
+  // sidebar's permission_needed badge (row-view.ts). No collision with
+  // `unknown`: that placeholder is never rendered (skip below).
+  needs_input: "?",
   unknown: "?",
   idle: "○",
 }
@@ -98,7 +102,9 @@ export function TabStrip(props: {
               ? theme.success
               : turn === "error"
                 ? theme.error
-                : theme.textMuted
+                : turn === "needs_input"
+                  ? theme.warning
+                  : theme.textMuted
         return (
           <box key={tab.id} flexDirection="row" gap={0} onMouseUp={() => props.onSelect(tab.id)}>
             {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○. Shown

@@ -121,6 +121,8 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       tabId?: string
       state?: TaskActivityState
       detail?: EngineActivityDetail
+      sessionId?: string
+      transcriptPath?: string
       at?: number
     }
     if (typeof p?.taskId !== "string" || typeof p.state !== "string") {
@@ -130,7 +132,13 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       )
       return
     }
-    const entry: TaskEngineState = { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 }
+    const entry: TaskEngineState = {
+      state: p.state,
+      detail: p.detail,
+      ...(typeof p.sessionId === "string" && p.sessionId ? { sessionId: p.sessionId } : {}),
+      ...(typeof p.transcriptPath === "string" && p.transcriptPath ? { transcriptPath: p.transcriptPath } : {}),
+      at: typeof p.at === "number" ? p.at : 0,
+    }
     // Accumulate per-task into a fresh Map (new ref → re-render). A tabId-
     // carrying event updates BOTH levels: the daemon publishes one event per
     // report, and the task entry is its last-event-wins rollup.

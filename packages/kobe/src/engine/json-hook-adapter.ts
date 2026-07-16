@@ -15,7 +15,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import type { VendorId } from "../types/vendor.ts"
-import type { EngineHookAdapter } from "./hook-adapter.ts"
+import type { EngineHookAdapter, EngineSessionRef } from "./hook-adapter.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "./hook-events.ts"
 import { type HookEventSpec, isObject, mergeActivityHooks, mergeWorktreeWatchHook } from "./json-hooks.ts"
 
@@ -71,6 +71,13 @@ export abstract class JsonHookAdapter implements EngineHookAdapter {
     _kind: EngineActivityKind,
     _payload: Record<string, unknown>,
   ): EngineActivityDetail | undefined {
+    return undefined
+  }
+
+  /** Default: no session identity in the payload. Claude overrides (its
+   *  hooks pipe `session_id`/`transcript_path`); codex session extraction is
+   *  a documented follow-up. */
+  sessionFromPayload(_payload: Record<string, unknown>): EngineSessionRef | undefined {
     return undefined
   }
 

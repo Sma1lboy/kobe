@@ -11,7 +11,9 @@
 import { describe, expect, it } from "vitest"
 import {
   addUnread,
+  attentionEdges,
   attentionKindFor,
+  chipAttentionKind,
   osc9,
   removeUnread,
   shouldShowToast,
@@ -77,6 +79,53 @@ describe("attentionKindFor", () => {
     expect(attentionKindFor("turn_complete")).toBe("done")
     expect(attentionKindFor("running")).toBeNull()
     expect(attentionKindFor("idle")).toBeNull()
+  })
+})
+
+describe("chipAttentionKind", () => {
+  it("maps the chip vocabulary's attention states and ignores the rest", () => {
+    expect(chipAttentionKind("done")).toBe("done")
+    expect(chipAttentionKind("error")).toBe("error")
+    expect(chipAttentionKind("needs_input")).toBe("needs_input")
+    expect(chipAttentionKind("running")).toBeNull()
+    expect(chipAttentionKind("idle")).toBeNull()
+    expect(chipAttentionKind("unknown")).toBeNull()
+  })
+})
+
+describe("attentionEdges", () => {
+  // The seed rule is the replay-safety requirement: a fresh subscriber's
+  // replayed sticky turn_complete may paint the ✓ chip but must NEVER
+  // re-fire a toast — prev===null means "seed only, no notifications".
+  it("returns nothing on the seed observation (prev === null)", () => {
+    const next = new Map([["tab-1", "done"]])
+    expect(attentionEdges(null, next, null, chipAttentionKind)).toEqual([])
+  })
+
+  it("fires only on a transition INTO an attention state", () => {
+    const prev = new Map([["tab-1", "running"]])
+    const next = new Map([["tab-1", "done"]])
+    expect(attentionEdges(prev, next, null, chipAttentionKind)).toEqual([{ key: "tab-1", kind: "done" }])
+    // Unchanged value — no edge, no repeat toast.
+    expect(attentionEdges(next, next, null, chipAttentionKind)).toEqual([])
+  })
+
+  it("skips the on-screen key (active tab / selected task)", () => {
+    const prev = new Map([
+      ["tab-1", "running"],
+      ["tab-2", "running"],
+    ])
+    const next = new Map([
+      ["tab-1", "done"],
+      ["tab-2", "needs_input"],
+    ])
+    expect(attentionEdges(prev, next, "tab-1", chipAttentionKind)).toEqual([{ key: "tab-2", kind: "needs_input" }])
+  })
+
+  it("works with the task-level kind mapper too", () => {
+    const prev = new Map([["task-a", "running"]])
+    const next = new Map([["task-a", "permission_needed"]])
+    expect(attentionEdges(prev, next, null, attentionKindFor)).toEqual([{ key: "task-a", kind: "needs_input" }])
   })
 })
 

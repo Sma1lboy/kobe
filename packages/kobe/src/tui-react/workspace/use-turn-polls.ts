@@ -22,8 +22,7 @@
  * changes, and the 2s lazy-attach tick + title-store pushes call it
  * directly — no render-tick state, so a no-change tick re-renders nothing
  * (the inner setStates are identity-stable). Values only needed inside long-lived detector
- * closures (`sharedActivity`, `onBackgroundDone`, the latest `state` for
- * the active-tab check) ride refs refreshed every render — the closures
+ * closures (`sharedActivity`, the latest `state`) ride refs refreshed every render — the closures
  * are created once per attach and must not go stale between renders,
  * mirroring `ops/host.tsx`'s `sharedMapRef` convention. The `turnPolls` Map
  * lives in a ref so it persists across renders without becoming React state
@@ -54,8 +53,6 @@ export function useTurnPolls(deps: {
   vendor: VendorId
   state: TabsState
   sharedActivity?: TranscriptActivity | null
-  /** A background tab's turn just landed ✓ — notification hook. */
-  onBackgroundDone: (tabId: string) => void
 }): {
   turnStates: ReadonlyMap<string, ChatTabTurnState>
   /** tabId → live foreground-process display name (engine binary when the
@@ -82,7 +79,6 @@ export function useTurnPolls(deps: {
   // once per attach, must never go stale between renders) and for the
   // stable reconcile callback below.
   const sharedActivityRef = useLatest(deps.sharedActivity)
-  const onBackgroundDoneRef = useLatest(deps.onBackgroundDone)
   const stateRef = useLatest(deps.state)
   const taskIdRef = useLatest(deps.taskId)
   const worktreeRef = useLatest(deps.worktree)
@@ -162,12 +158,10 @@ export function useTurnPolls(deps: {
               .map((row) => row.map((chunk) => chunk.text).join(""))
               .join("\n")
           },
+          // Pure state production — background-attention notification edges
+          // are detected downstream on the merged map (`use-tab-turn-state`).
           setTurnState: async (turn) => {
             setTurnStates((prev) => new Map(prev).set(tabId, turn))
-            // Background completion rides the standard notification path
-            // (unread + toast) — the PTY-world version of noticing a ✓
-            // land on an unfocused tmux window.
-            if (turn === "done" && stateRef.current.activeId !== tabId) onBackgroundDoneRef.current(tabId)
           },
         },
       )

@@ -31,6 +31,7 @@ export function ShowWorkspace(props: {
   const { theme } = useTheme()
   const t = useT()
   const transcriptActivity = useAccessor(props.orchestrator.transcriptActivityStore())
+  const engineTabStates = useAccessor(props.orchestrator.engineTabStatesSignal())
   if (!props.worktree) {
     return (
       <box flexGrow={1} alignItems="center" justifyContent="center">
@@ -75,6 +76,9 @@ export function ShowWorkspace(props: {
       // This worktree's slice of the daemon transcript.activity push
       // (issue #24) — flips the tab turn-status loops to shared mode.
       sharedActivity={transcriptActivity?.get(path) ?? null}
+      // This task's slice of the hook-driven per-tab engine state — the
+      // sub-second chip/notification source (poll stays as fallback).
+      hookTabStates={props.task ? engineTabStates.get(props.task.id) : undefined}
     />
   )
 }

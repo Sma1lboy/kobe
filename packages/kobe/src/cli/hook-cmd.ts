@@ -24,7 +24,7 @@
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { createEngineHookAdapter } from "../engine/hook-adapter.ts"
+import { type EngineSessionRef, createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { EngineActivityDetail } from "../engine/hook-events.ts"
 import { isEngineActivityKind } from "../engine/hook-events.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
@@ -233,6 +233,14 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
       detail = adapter.activityDetailFromPayload(verb, payload)
       if (detail) break
     }
+    // Session identity (session_id/transcript_path in Claude's payload) —
+    // same first-answer dispatch as `detail`. Lets the daemon pin "which
+    // engine session is live" per task/tab, including user-typed engines.
+    let session: EngineSessionRef | undefined
+    for (const adapter of activityHookAdapters()) {
+      session = adapter.sessionFromPayload(payload)
+      if (session) break
+    }
 
     const client = await connectIfRunning() // NON-spawning by contract
     if (!client) return
@@ -243,6 +251,8 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
         kind: verb,
         ...(envTabId ? { tabId: envTabId } : {}),
         ...(detail ? { detail } : {}),
+        ...(session ? { sessionId: session.sessionId } : {}),
+        ...(session?.transcriptPath ? { transcriptPath: session.transcriptPath } : {}),
       })
     } finally {
       client.close()

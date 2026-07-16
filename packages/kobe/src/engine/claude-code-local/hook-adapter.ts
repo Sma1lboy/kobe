@@ -25,6 +25,7 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+import type { EngineSessionRef } from "../hook-adapter.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "../hook-events.ts"
 import { JsonHookAdapter, editJsonSettings } from "../json-hook-adapter.ts"
 import {
@@ -153,6 +154,19 @@ export class ClaudeHookAdapter extends JsonHookAdapter {
       return { waiting: payload.notification_type === "elicitation_dialog" ? "input" : "permission" }
     }
     return undefined
+  }
+
+  /** Claude pipes `session_id` + `transcript_path` on every hook payload —
+   *  the live session identity for whatever fired the hook, INCLUDING
+   *  user-typed `claude` sessions kobe never spawned. */
+  override sessionFromPayload(payload: Record<string, unknown>): EngineSessionRef | undefined {
+    if (typeof payload.session_id !== "string" || !payload.session_id) return undefined
+    return {
+      sessionId: payload.session_id,
+      ...(typeof payload.transcript_path === "string" && payload.transcript_path
+        ? { transcriptPath: payload.transcript_path }
+        : {}),
+    }
   }
 
   /** Claude is the only engine that ever wrote the legacy `WorktreeCreate`

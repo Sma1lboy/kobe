@@ -15,7 +15,9 @@ import * as codexHistory from "@/engine/codex-local/history"
 import type { VendorId } from "@/types/vendor"
 import { engineEntry } from "./registry.ts"
 
-export type ChatTabTurnState = "idle" | "running" | "done" | "error" | "unknown"
+/** `needs_input` is hook-only (permission prompt / question dialog) — the
+ *  quiescence poll can't observe it; only `turn-state-merge.ts` produces it. */
+export type ChatTabTurnState = "idle" | "running" | "done" | "error" | "needs_input" | "unknown"
 
 export interface TurnCompletionMarker {
   /**

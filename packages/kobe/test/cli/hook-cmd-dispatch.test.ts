@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     supportsHooks: vi.fn(() => true),
     supportsWorktreeSync: vi.fn(() => true),
     activityDetailFromPayload: vi.fn(() => undefined as unknown),
+    sessionFromPayload: vi.fn(() => undefined as unknown),
     globalSettingsPath: vi.fn((): string | null => "/fake/.claude/settings.json"),
     installActivityHooks: vi.fn(),
     installWorktreeWatchHook: vi.fn(),
@@ -57,6 +58,7 @@ beforeEach(() => {
   mocks.adapter.supportsHooks.mockClear().mockReturnValue(true)
   mocks.adapter.supportsWorktreeSync.mockClear().mockReturnValue(true)
   mocks.adapter.activityDetailFromPayload.mockClear().mockReturnValue(undefined)
+  mocks.adapter.sessionFromPayload.mockClear().mockReturnValue(undefined)
   mocks.adapter.globalSettingsPath.mockClear().mockReturnValue("/fake/.claude/settings.json")
   mocks.adapter.installActivityHooks.mockClear()
   mocks.adapter.installWorktreeWatchHook.mockClear()
@@ -128,6 +130,19 @@ describe("runHookSubcommand — activity verbs", () => {
     expect(mocks.request).toHaveBeenCalledWith(
       "engine.reportEvent",
       expect.objectContaining({ kind: "turn-failed", detail: { failureClass: "rate-limit" } }),
+    )
+  })
+
+  // Why: sessionId is how kobe pins "which engine session is live here" —
+  // including user-typed engines. The adapter extracts it from the payload;
+  // the dispatcher must forward it (and transcriptPath) on the RPC.
+  it("forwards the adapter's session identity on the RPC", async () => {
+    mocks.adapter.sessionFromPayload.mockReturnValue({ sessionId: "sess-9", transcriptPath: "/tmp/sess-9.jsonl" })
+    stubStdin({ cwd: "/some/task/worktree", session_id: "sess-9" })
+    await runHookSubcommand(["turn-complete"])
+    expect(mocks.request).toHaveBeenCalledWith(
+      "engine.reportEvent",
+      expect.objectContaining({ kind: "turn-complete", sessionId: "sess-9", transcriptPath: "/tmp/sess-9.jsonl" }),
     )
   })
 

@@ -135,4 +135,42 @@ describe("daemon activity state", () => {
 
     registry.close()
   })
+
+  // Why: sessionId is the "which engine session is live here" resolver —
+  // including user-typed `claude` (cwd-matched, no tabId). It must ride the
+  // payload, survive events that omit it (older `kobe hook` binaries), and
+  // replay to late subscribers, or session discovery silently regresses.
+  it("stores the reporting session's identity, carries it forward, and replays it", () => {
+    const bus = new DaemonEventBus()
+    const registry = new DaemonActivityRegistry(bus, 1_000)
+    const published: Array<{ state: string; sessionId?: string; transcriptPath?: string }> = []
+    bus.onPublish((event) => {
+      if (event.channel === "engine-state") {
+        const p = event.payload as { state: string; sessionId?: string; transcriptPath?: string }
+        published.push({ state: p.state, sessionId: p.sessionId, transcriptPath: p.transcriptPath })
+      }
+    })
+
+    registry.report("task-1", "turn-start", undefined, "tab-1", {
+      id: "sess-abc",
+      transcriptPath: "/tmp/sess-abc.jsonl",
+    })
+    expect(published[0]).toEqual({ state: "running", sessionId: "sess-abc", transcriptPath: "/tmp/sess-abc.jsonl" })
+
+    // An event WITHOUT session info keeps the latest-known id (carry-forward)
+    // on both the task rollup and the tab entry.
+    registry.report("task-1", "turn-complete", undefined, "tab-1")
+    expect(published[1]).toEqual({
+      state: "turn_complete",
+      sessionId: "sess-abc",
+      transcriptPath: "/tmp/sess-abc.jsonl",
+    })
+
+    // Replay (late subscriber) carries it too — task rollup + tab entry.
+    const replayed = registry.currentNonIdle()
+    expect(replayed).toHaveLength(2)
+    for (const p of replayed) expect((p as { sessionId?: string }).sessionId).toBe("sess-abc")
+
+    registry.close()
+  })
 })

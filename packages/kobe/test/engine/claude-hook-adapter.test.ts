@@ -57,6 +57,31 @@ describe("activityDetailFromPayload", () => {
   })
 })
 
+/**
+ * Session identity extraction — Claude pipes `session_id`/`transcript_path`
+ * on every hook payload; this is what lets kobe pin a live sessionId per
+ * task/tab, including user-typed `claude` sessions it never spawned. Type
+ * guards matter: a malformed payload must yield undefined, never throw
+ * (hooks run on every turn boundary machine-wide).
+ */
+describe("sessionFromPayload", () => {
+  const adapter = new ClaudeHookAdapter()
+
+  it("extracts session_id + transcript_path", () => {
+    expect(
+      adapter.sessionFromPayload({ session_id: "abc-123", transcript_path: "/tmp/abc-123.jsonl", cwd: "/wt" }),
+    ).toEqual({ sessionId: "abc-123", transcriptPath: "/tmp/abc-123.jsonl" })
+  })
+
+  it("omits transcriptPath when absent, and returns undefined without a session_id", () => {
+    expect(adapter.sessionFromPayload({ session_id: "abc" })).toEqual({ sessionId: "abc" })
+    expect(adapter.sessionFromPayload({})).toBeUndefined()
+    expect(adapter.sessionFromPayload({ session_id: 42 })).toBeUndefined()
+    expect(adapter.sessionFromPayload({ session_id: "" })).toBeUndefined()
+    expect(adapter.sessionFromPayload({ session_id: "abc", transcript_path: 7 })).toEqual({ sessionId: "abc" })
+  })
+})
+
 interface SettingsShape extends Record<string, unknown> {
   hooks?: { Stop?: unknown[]; PostToolUse?: unknown; WorktreeCreate?: unknown[] }
   model?: string

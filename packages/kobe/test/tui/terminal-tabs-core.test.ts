@@ -26,6 +26,7 @@ import {
   setTabSpawned,
   setTabSplit,
   shellCommandLine,
+  shellIdentityInput,
   shellSpawn,
   tabExitAction,
   tabPtyKey,
@@ -413,6 +414,17 @@ describe("terminal tabs state", () => {
     })
     // Empty env = the plain line, no `env` noise.
     expect(shellSpawn(["claude"], "/bin/zsh", {}).initialInput).toBe("claude\r")
+  })
+
+  // Why: a BARE shell tab (ctrl+e "shell") must hand a user-typed engine
+  // the same identity env engine tabs get, or its hooks land task-level
+  // only (no tabId, no per-tab sessionId). The export line is typed input
+  // (leading space + clear), NOT the PTY environment — same inheritance
+  // path as shellSpawn's env prefix.
+  it("shellIdentityInput builds the typed export line for bare shell tabs", () => {
+    expect(shellIdentityInput("t1", "tab-4")).toBe(" export KOBE_TASK_ID=t1 KOBE_TAB_ID=tab-4 && clear\r")
+    // Hostile ids stay one shell word each.
+    expect(shellIdentityInput("t 1", "tab-4")).toBe(" export KOBE_TASK_ID='t 1' KOBE_TAB_ID=tab-4 && clear\r")
   })
 
   // Why: the F7 attention jump's tab precision — the launch script exports
