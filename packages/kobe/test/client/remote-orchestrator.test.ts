@@ -153,6 +153,33 @@ describe("RemoteOrchestrator channel handling", () => {
     expect(orch.engineStateSignal()()).toBe(after)
   })
 
+  // sessionId/transcriptPath ride the engine-state payload (additive
+  // optional fields — an old daemon simply omits them). They land on both
+  // the task-level entry and the per-tab map so "which engine session is
+  // live here" resolves at either granularity.
+  it("accumulates sessionId/transcriptPath from engine-state into both levels", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+
+    emit("engine-state", {
+      taskId: "t1",
+      tabId: "tab-1",
+      state: "running",
+      sessionId: "sess-1",
+      transcriptPath: "/tmp/sess-1.jsonl",
+      at: 10,
+    })
+    const taskEntry = orch.engineStateSignal()().get("t1")
+    expect(taskEntry?.sessionId).toBe("sess-1")
+    expect(taskEntry?.transcriptPath).toBe("/tmp/sess-1.jsonl")
+    const tabEntry = orch.engineTabStatesSignal()().get("t1")?.get("tab-1")
+    expect(tabEntry?.sessionId).toBe("sess-1")
+
+    // Old-daemon payload (no session fields) still parses — fields absent.
+    emit("engine-state", { taskId: "t2", state: "running", at: 11 })
+    expect(orch.engineStateSignal()().get("t2")?.sessionId).toBeUndefined()
+  })
+
   // `task.jobs` — long daemon operations (worktree materialisation). The
   // map holds only IN-FLIGHT jobs: `running` adds, the terminal phases
   // remove, so every attached pane can show a "materializing" row while a

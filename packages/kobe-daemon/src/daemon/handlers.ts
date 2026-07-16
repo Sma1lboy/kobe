@@ -378,7 +378,13 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // the hook process reported. Optional: sessions kobe didn't spawn as a
         // tab stay task-level.
         const tabId = optionalString(payload, "tabId")
-        ctx.activity.report(taskId, kind, detail, tabId)
+        // The engine's own session identity, from its hook payload (Claude
+        // pipes session_id/transcript_path). Optional + additive: an old
+        // `kobe hook` simply omits it.
+        const sessionId = optionalString(payload, "sessionId")
+        const transcriptPath = optionalString(payload, "transcriptPath")
+        const session = sessionId ? { id: sessionId, transcriptPath } : undefined
+        ctx.activity.report(taskId, kind, detail, tabId, session)
         await ctx.inbox
           .record(taskId, kind, detail, tabId)
           .catch((err) => logDaemonError("attention-inbox-record", err))

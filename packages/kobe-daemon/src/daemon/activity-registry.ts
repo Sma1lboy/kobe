@@ -68,10 +68,19 @@ export function resolveEngineStateTtlMs(): number {
  */
 export type ActivityLivenessProbe = (taskId: string) => Promise<number | undefined>
 
+/** The reporting engine's own session identity (from its hook payload). */
+export interface EngineSessionInfo {
+  readonly id: string
+  readonly transcriptPath?: string
+}
+
 interface ActivityEntry {
   state: TaskActivityState
   detail?: EngineActivityDetail
   at: number
+  /** Carried forward across events that omit it — most hooks pipe it, but
+   *  the latest-known id must survive an event from an older `kobe hook`. */
+  session?: EngineSessionInfo
   lapse?: ReturnType<typeof setTimeout>
 }
 
@@ -102,12 +111,18 @@ export class DaemonActivityRegistry {
     private readonly livenessAt: ActivityLivenessProbe = () => Promise.resolve(undefined),
   ) {}
 
-  report(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail, tabId?: string): void {
+  report(
+    taskId: string,
+    kind: EngineActivityKind,
+    detail?: EngineActivityDetail,
+    tabId?: string,
+    session?: EngineSessionInfo,
+  ): void {
     const prev = this.activity.get(taskId)
     if (prev?.lapse) clearTimeout(prev.lapse)
     const state = reduceActivity(prev?.state, kind, detail)
     const at = this.now()
-    const entry: ActivityEntry = { state, detail, at }
+    const entry: ActivityEntry = { state, detail, at, session: session ?? prev?.session }
     // Safety net: only `running` is policed by the lapse watchdog — a missed
     // Stop/SessionEnd must not pin it forever, so it lapses to idle once the
     // engine genuinely goes silent (heartbeat probe below). Sticky states
@@ -133,7 +148,7 @@ export class DaemonActivityRegistry {
       if (prevTab?.lapse) clearTimeout(prevTab.lapse)
       if (state === "idle") tabs.delete(tabId)
       else {
-        const tabEntry: ActivityEntry = { state, detail, at }
+        const tabEntry: ActivityEntry = { state, detail, at, session: session ?? prevTab?.session }
         if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
         tabs.set(tabId, tabEntry)
       }
@@ -304,6 +319,8 @@ export class DaemonActivityRegistry {
       ...(tabId ? { tabId } : {}),
       state: entry.state,
       ...(entry.detail ? { detail: entry.detail } : {}),
+      ...(entry.session ? { sessionId: entry.session.id } : {}),
+      ...(entry.session?.transcriptPath ? { transcriptPath: entry.session.transcriptPath } : {}),
       at: entry.at,
     }
   }

@@ -33,6 +33,12 @@ import type { UpdateInfo } from "../version.ts"
 export interface TaskEngineState {
   readonly state: TaskActivityState
   readonly detail?: EngineActivityDetail
+  /** The engine's OWN session id (latest-known, from its hook payload) —
+   *  resolves "which engine session is live here" even for user-typed
+   *  engines kobe never spawned. Absent on old daemons. */
+  readonly sessionId?: string
+  /** The session's transcript file, when the hook payload named it. */
+  readonly transcriptPath?: string
   readonly at: number
 }
 

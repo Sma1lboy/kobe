@@ -67,6 +67,12 @@ export interface ChannelPayloads {
     tabId?: string
     state: TaskActivityState
     detail?: EngineActivityDetail
+    /** The engine's OWN session id, from its hook payload (Claude pipes
+     *  `session_id`). Latest-known, carried forward across events that omit
+     *  it. Covers user-typed engines too (cwd-matched to the task). */
+    sessionId?: string
+    /** The session's transcript file, when the hook payload names it. */
+    transcriptPath?: string
     at: number
   }
   /**

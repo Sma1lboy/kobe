@@ -23,6 +23,12 @@ import type { VendorId } from "../types/vendor.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "./hook-events.ts"
 import { engineEntry } from "./registry.ts"
 
+/** An engine session's own identity, as reported by its hook payload. */
+export interface EngineSessionRef {
+  readonly sessionId: string
+  readonly transcriptPath?: string
+}
+
 export interface EngineHookAdapter {
   readonly vendor: VendorId
   /** Whether this engine has a wired hook mechanism (false → install is a no-op). */
@@ -48,6 +54,17 @@ export interface EngineHookAdapter {
     kind: EngineActivityKind,
     payload: Record<string, unknown>,
   ): EngineActivityDetail | undefined
+  /**
+   * Extract the engine's own session identity from a hook stdin payload
+   * (Claude pipes `session_id` + `transcript_path` on every hook). The
+   * daemon stores it per (task, tab?) so any consumer can resolve "which
+   * engine session is live here" — including sessions kobe didn't spawn
+   * (a user-typed `claude` reaches the daemon via the cwd map). Same
+   * first-non-undefined dispatch as {@link activityDetailFromPayload};
+   * undefined when the payload isn't this engine's or carries no id.
+   * Pure; must never throw.
+   */
+  sessionFromPayload(payload: Record<string, unknown>): EngineSessionRef | undefined
   /**
    * Install kobe's activity hooks into a SHARED settings file (the user's
    * global `~/.claude/settings.json`) so the engine, in ANY session, reports
@@ -111,6 +128,9 @@ export class NoopHookAdapter implements EngineHookAdapter {
     return "" // no wired hooks → never consulted
   }
   activityDetailFromPayload(): EngineActivityDetail | undefined {
+    return undefined // no wired hooks → no payload this adapter understands
+  }
+  sessionFromPayload(): EngineSessionRef | undefined {
     return undefined // no wired hooks → no payload this adapter understands
   }
   async installActivityHooks(): Promise<void> {
