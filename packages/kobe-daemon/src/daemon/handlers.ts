@@ -374,9 +374,8 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const taskId = explicitId ?? (cwd ? matchTaskByCwd(ctx.orch.listTasks(), cwd) : undefined)
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
-        // Which engine tab the event came from — the inherited KOBE_TAB_ID env
-        // the hook process reported. Optional: sessions kobe didn't spawn as a
-        // tab stay task-level.
+        // Which engine tab the event came from — the inherited KOBE_TAB_ID env.
+        // Sessions outside a Kobe tab remain activity-only via the report below.
         const tabId = optionalString(payload, "tabId")
         // The engine's own session identity, from its hook payload (Claude
         // pipes session_id/transcript_path). Optional + additive: an old
@@ -385,9 +384,12 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const transcriptPath = optionalString(payload, "transcriptPath")
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
         ctx.activity.report(taskId, kind, detail, tabId, session)
-        await ctx.inbox
-          .record(taskId, kind, detail, tabId)
-          .catch((err) => logDaemonError("attention-inbox-record", err))
+        // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
+        if (explicitId && tabId) {
+          await ctx.inbox
+            .record(taskId, kind, detail, tabId)
+            .catch((err) => logDaemonError("attention-inbox-record", err))
+        }
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the

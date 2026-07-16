@@ -1,2 +1,7 @@
 [install]
 exact = true
+
+[test]
+# Render coverage owns the Kobe package UI surface. Daemon sources have their
+# own Vitest coverage report and must not be re-reported as uncovered here.
+coveragePathIgnorePatterns = ["../kobe-daemon/**"]

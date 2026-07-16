@@ -54,6 +54,31 @@ describe("attention.dismiss handler", () => {
     expect(rec.inboxRecords).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: undefined, tabId: "tab-3" }])
   })
 
+  it("keeps cwd-matched external engine events out of the Inbox", async () => {
+    const { ctx, rec } = fakeCtx({ listTasks: () => [{ id: "t1", worktreePath: "/repo" }] })
+    await dispatch("engine.reportEvent", { cwd: "/repo/src", kind: "turn-complete" }, ctx)
+
+    expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])
+    expect(rec.inboxRecords).toEqual([])
+  })
+
+  it("rejects an orphaned tabId without exact task identity", async () => {
+    const { ctx, rec } = fakeCtx({ listTasks: () => [{ id: "t1", worktreePath: "/repo" }] })
+    // This value makes the test distinguish the intended AND gate from an accidental OR.
+    await dispatch("engine.reportEvent", { cwd: "/repo/src", tabId: "tab-9", kind: "turn-complete" }, ctx)
+
+    expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])
+    expect(rec.inboxRecords).toEqual([])
+  })
+
+  it("requires a tabId before recording an explicitly attributed event", async () => {
+    const { ctx, rec } = fakeCtx()
+    await dispatch("engine.reportEvent", { taskId: "t1", kind: "turn-complete" }, ctx)
+
+    expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])
+    expect(rec.inboxRecords).toEqual([])
+  })
+
   it("does not drop the engine event when Inbox persistence fails", async () => {
     const { ctx, rec } = fakeCtx()
     ctx.inbox.record = async () => {
