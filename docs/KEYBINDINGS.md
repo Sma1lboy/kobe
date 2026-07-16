@@ -28,6 +28,7 @@ Default prefix actions:
 | `ctrl+a`, `y` | Resume a prior engine Session |
 | `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
 | `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
+| `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |

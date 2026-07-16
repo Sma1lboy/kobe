@@ -43,6 +43,7 @@ import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
+import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
@@ -294,6 +295,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openKanban: () => setKanbanOpen(true),
     searchActive,
     selectedId,
+    openTaskWorktree: (id) =>
+      void requestTaskWorktreeOpen(id, {
+        taskPath: tasks.find((task) => task.id === id)?.worktreePath,
+        ensureWorktree: orch.ensureWorktree.bind(orch),
+        notifyError,
+        noEditorMessage: t("tasks.toast.noEditor"),
+        openFailedMessage: (label) => t("tasks.toast.openWorktreeFailed", { label }),
+      }),
     openSettings,
     closeSettings,
     createTask: () => void createTask(),

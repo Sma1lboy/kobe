@@ -43,6 +43,7 @@ export type WorkspaceKeybindingDeps = {
   openKanban: () => void
   searchActive: boolean
   selectedId: string | null
+  openTaskWorktree: (id: string) => void
   openSettings: () => void
   closeSettings: () => void
   createTask: () => void
@@ -119,6 +120,9 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
+        "task.openEditor": () => {
+          if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
+        },
       }),
     ],
   }))
@@ -154,6 +158,9 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     enabled: pagesClosed && focus.focused === "sidebar" && !deps.searchActive,
     bindings: bindByIds({
       "task.new": () => deps.createTask(),
+      "tasks.openWorktree": () => {
+        if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
+      },
       "tasks.renameBranch": () => {
         const id = deps.selectedId
         if (id) deps.renameBranch(id)
