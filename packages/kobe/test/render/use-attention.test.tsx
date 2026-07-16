@@ -69,7 +69,7 @@ describe("useAttention", () => {
     expect(opened.map((item) => item.taskId)).toEqual(["task-b"])
   })
 
-  it("shows the fallback toast when no pending episode is available", async () => {
+  it("shows the fallback toast when no Inbox item is available", async () => {
     const notices: Parameters<NotificationsContext["notify"]>[0][] = []
     let jump: (() => void) | undefined
 

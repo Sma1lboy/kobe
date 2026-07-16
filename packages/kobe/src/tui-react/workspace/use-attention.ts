@@ -6,8 +6,8 @@
  *     crossed into an attention state (permission_needed / error / turn_complete).
  *     The selected task already surfaces its own state in the middle column, so
  *     it's skipped. Gated by the `notifications.crossTask.enabled` preference.
- *  2. Jump-to-next — F7 walks available pending episodes in the daemon-owned
- *     durable Inbox. Opening or visiting the target resolves the episode and
+ *  2. Jump-to-next — F7 walks available pending items in the daemon-owned
+ *     durable Inbox. Opening or visiting the target resolves the item and
  *     removes it from the queue.
  *
  * State is engine-owned and vendor-neutral: `TaskEngineState.state` and the
@@ -34,7 +34,7 @@ export function useAttention(args: {
   kv: KVContext
   notif: NotificationsContext
   openAttention: (item: AttentionInboxItem) => void
-  /** i18n'd toast shown when the chord finds no available pending Inbox episode. */
+  /** i18n'd toast shown when the chord finds no available Inbox item. */
   noTasksMessage: string
 }): { jumpToNextAttention: () => void } {
   const { tasks, engineState, inboxItems, selectedId, kv, notif, openAttention, noTasksMessage } = args

@@ -2,11 +2,11 @@
  * Durable, daemon-owned attention Inbox.
  *
  * Live engine activity and Inbox retention are deliberately different state:
- * activity may idle on session close/archive, while a pending episode remains
- * until its target is visited/opened, the user dismisses it, that task+tab
- * starts another turn, or the containing task is explicitly hard-deleted. The
- * store persists a full snapshot so daemon/TUI reconnects cannot consume work
- * by accident.
+ * activity may idle on session close/archive, while the durable queue survives
+ * daemon restarts. An item leaves when its target is visited/opened, the user
+ * removes it, that Task and Terminal Tab start another turn, or the containing
+ * Task is hard-deleted. A newer attention event for the same target replaces
+ * the older item at the end of the queue.
  */
 
 import { randomUUID } from "node:crypto"
