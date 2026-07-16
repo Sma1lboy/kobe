@@ -128,4 +128,32 @@ describe("runApiSubcommand", () => {
     expect(stderrJson().error.message).toContain("boom from daemon")
     expect(fake.closed).toBe(1)
   })
+
+  test("PARTIAL_FANOUT emits the full result payload to STDOUT and exits 3", async () => {
+    // The whole point of exit 3: scripts must receive the created taskIds on
+    // stdout (not a bare error on stderr) so partially-spawned tasks are
+    // never orphaned. This is the dispatcher half of the contract — a
+    // refactor that reroutes PARTIAL_FANOUT through the generic error path
+    // would exit 1 with no taskIds and silently break every consumer.
+    // First create fails ⇒ zero tasks reach the (real-runtime) delivery
+    // stage, so the test never touches a PTY host — it exercises exactly the
+    // handler-throws-PARTIAL → dispatcher-emit seam.
+    fake.request.mockImplementation(async (name: string) => {
+      if (name === "task.create") throw new Error("create exploded")
+      return { tasks: [] }
+    })
+    await expect(runApiSubcommand(["fan-out", "--repo", "/repo/x", "--prompt", "go", "--count", "2"])).rejects.toThrow(
+      "exit(3)",
+    )
+    expect(stderrSpy).not.toHaveBeenCalled()
+    const out = JSON.parse(stdoutText()) as {
+      count: number
+      requested: number
+      failures: Array<{ error: { code: string } }>
+    }
+    expect(out.count).toBe(0)
+    expect(out.requested).toBe(2)
+    expect(out.failures[0]?.error.code).toBe("CREATE_FAILED")
+    expect(fake.closed).toBeGreaterThanOrEqual(1)
+  })
 })

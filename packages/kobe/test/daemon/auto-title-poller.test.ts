@@ -34,8 +34,8 @@ afterEach(() => {
 })
 
 /** Create a task, then stamp a worktreePath on it (createTask leaves it empty). */
-async function makeTask(opts: { title?: string; worktree?: string }) {
-  const task = await orch.createTask({ repo: "/repo", title: opts.title })
+async function makeTask(opts: { title?: string; worktree?: string; groupId?: string }) {
+  const task = await orch.createTask({ repo: "/repo", title: opts.title, groupId: opts.groupId })
   if (opts.worktree !== undefined) await store.update(task.id, { worktreePath: opts.worktree })
   return task.id
 }
@@ -99,5 +99,26 @@ describe("runAutoTitlePass", () => {
 
     expect(renamed).toEqual([])
     expect(orch.getTask(id)?.title).toBe("User chose this")
+  })
+
+  test("appends #i/N to fan-out siblings whose derived titles would collide", async () => {
+    // Fan-out siblings share their first prompt, so the deriver returns the
+    // SAME title for each — the group ordinal is what keeps them tellable
+    // apart in the sidebar.
+    const a = await makeTask({ worktree: "/wt/a", groupId: "g1" })
+    const b = await makeTask({ worktree: "/wt/b", groupId: "g1" })
+    const solo = await makeTask({ worktree: "/wt/solo" })
+
+    await runAutoTitlePass(orch, async () => "same prompt title")
+
+    expect(orch.getTask(a)?.title).toBe("same prompt title #1/2")
+    expect(orch.getTask(b)?.title).toBe("same prompt title #2/2")
+    expect(orch.getTask(solo)?.title).toBe("same prompt title")
+  })
+
+  test("a lone group member (siblings archived/deleted away) gets no ordinal", async () => {
+    const only = await makeTask({ worktree: "/wt/only", groupId: "g-solo" })
+    await runAutoTitlePass(orch, async () => "derived")
+    expect(orch.getTask(only)?.title).toBe("derived")
   })
 })

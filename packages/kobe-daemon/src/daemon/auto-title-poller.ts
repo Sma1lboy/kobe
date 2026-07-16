@@ -57,15 +57,17 @@ export async function runAutoTitlePass(
   defaultVendor: VendorId = "claude",
 ): Promise<AutoTitled[]> {
   const renamed: AutoTitled[] = []
-  for (const task of orch.listTasks()) {
+  const snapshot = orch.listTasks()
+  for (const task of snapshot) {
     // Archived tasks are settled — never re-derive their title. Skipped
     // before any disk read; un-archiving re-includes them on the next tick
     // (the live store reflects `archived` immediately). Matches the sidebar's
     // canonical `t.archived` predicate (tui/panes/sidebar/groups.ts).
     if (task.archived || task.title !== placeholderTitle || !task.worktreePath) continue
     try {
-      const title = await derive(task.worktreePath, task.vendor ?? defaultVendor)
-      if (!title) continue
+      const derived = await derive(task.worktreePath, task.vendor ?? defaultVendor)
+      if (!derived) continue
+      const title = withGroupOrdinal(derived, task.id, task.groupId, snapshot)
       // Re-check under the live store: the user may have manually renamed
       // (or the detach-time path may have named it) between the snapshot
       // above and this await. `setTitle` is also a no-op if unchanged.
@@ -78,6 +80,26 @@ export async function runAutoTitlePass(
     }
   }
   return renamed
+}
+
+/**
+ * Fan-out siblings share their first prompt, so their derived titles would
+ * converge onto the SAME name — disambiguate with the task's `#i/N` ordinal
+ * inside its group (creation order = tasks.json array order). Tasks without
+ * a groupId (every non-fan-out task) pass through untouched.
+ */
+function withGroupOrdinal(
+  title: string,
+  taskId: string,
+  groupId: string | undefined,
+  snapshot: readonly { id: string; groupId?: string }[],
+): string {
+  if (!groupId) return title
+  const siblings = snapshot.filter((t) => t.groupId === groupId)
+  if (siblings.length < 2) return title
+  const ordinal = siblings.findIndex((t) => t.id === taskId)
+  if (ordinal < 0) return title
+  return `${title} #${ordinal + 1}/${siblings.length}`
 }
 
 /**

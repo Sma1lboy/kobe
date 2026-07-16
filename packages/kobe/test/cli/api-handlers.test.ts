@@ -166,6 +166,79 @@ describe("fan-out handler", () => {
     expect(client.requests).toEqual([])
   })
 
+  it("stamps a shared groupId and #i/N titles on every sibling", async () => {
+    const client = fanClient()
+    const { deliver } = recordingDelivery()
+    const result = (await invokeVerb(
+      "fan-out",
+      ["--repo", "/repo/x", "--prompt", "go", "--count", "2", "--title", "auth attempt"],
+      { client, runtime: stubRuntime({ deliverPrompt: deliver }) },
+    )) as { groupId: string }
+    const creates = client.requests.filter((r) => r.name === "task.create").map((r) => r.payload) as Array<
+      Record<string, string>
+    >
+    expect(creates).toHaveLength(2)
+    expect(creates[0].groupId).toBe(creates[1].groupId)
+    expect(creates[0].groupId).toBe(result.groupId)
+    expect(creates.map((p) => p.title)).toEqual(["auth attempt #1/2", "auth attempt #2/2"])
+  })
+
+  it("leaves a single-task title un-suffixed and titleless siblings placeholder", async () => {
+    const client = fanClient()
+    const { deliver } = recordingDelivery()
+    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "1", "--title", "solo"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    const creates = client.requests.filter((r) => r.name === "task.create").map((r) => r.payload) as Array<
+      Record<string, string | undefined>
+    >
+    expect(creates[0].title).toBe("solo")
+    // No --title → no title in the payload: the daemon's placeholder +
+    // auto-title pass (which appends the group ordinal) owns naming.
+    expect(creates[1].title).toBeUndefined()
+    expect(creates[2].title).toBeUndefined()
+  })
+
+  it("carries already-created taskIds when a mid-loop create fails (no orphans)", async () => {
+    const client = new FakeClient({
+      "task.create": (_payload, index) => {
+        if (index === 2) throw new ApiError("store exploded", "RPC_ERROR")
+        return { taskId: `t${index + 1}`, task: taskFixture({ id: `t${index + 1}` }) }
+      },
+    })
+    const { calls, deliver } = recordingDelivery()
+    try {
+      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
+        client,
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect.unreachable("should throw")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      expect((error as ApiError).code).toBe("PARTIAL_FANOUT")
+      const data = (error as ApiError).data as {
+        count: number
+        requested: number
+        tasks: Array<{ taskId: string }>
+        failures: Array<{ taskId?: string; error: { code: string } }>
+      }
+      // The two tasks created before the failure are real and delivered —
+      // their ids MUST reach the caller so a retry doesn't double-spawn.
+      expect(data.count).toBe(2)
+      expect(data.requested).toBe(3)
+      expect(data.tasks.map((t) => t.taskId)).toEqual(["t1", "t2"])
+      expect(data.failures).toEqual([
+        { ok: false, vendor: "claude", error: { message: "store exploded", code: "RPC_ERROR" } },
+      ])
+      expect(calls).toHaveLength(2)
+    }
+  })
+
   it("reports every id on partial delivery failure", async () => {
     const deliver: ApiRuntime["deliverPrompt"] = async (_client, target) => {
       if (target.id === "t2") throw new ApiError("boom", "SESSION_FAILED")
