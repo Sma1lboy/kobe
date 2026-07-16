@@ -17,6 +17,7 @@
 import { useEffect, useRef } from "react"
 import type { AttentionInboxItem, TaskEngineState } from "../../client/remote-orchestrator"
 import { attentionEdges, attentionKindFor } from "../../tui/lib/notify-state"
+import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
@@ -53,9 +54,18 @@ export function useAttention(args: {
     const edges = attentionEdges(prevStates.current, next, selectedId, attentionKindFor)
     prevStates.current = next
     if (kv.get(CROSS_TASK_KEY, true) === false) return
+    const repos = [...new Set(tasks.map((t) => t.repo))]
     for (const { key: id, kind } of edges) {
-      const title = tasks.find((t) => t.id === id)?.title ?? id
-      notif.notify({ kind, taskId: id, tabId: "", title })
+      const task = tasks.find((t) => t.id === id)
+      // Toast identity mirrors the Inbox card: task title leads, project
+      // (repo label) is the context body line.
+      notif.notify({
+        kind,
+        taskId: id,
+        tabId: "",
+        title: task?.title ?? id,
+        body: task ? sidebarProjectLabel(task.repo, repos) : undefined,
+      })
     }
   }, [engineState, selectedId, tasks, kv, notif])
 

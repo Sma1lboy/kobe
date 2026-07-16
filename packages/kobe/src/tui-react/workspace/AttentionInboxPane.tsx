@@ -70,12 +70,11 @@ export function AttentionInboxPane(props: {
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
-  const [filter, setFilter] = useState<InboxFilter>("all")
   const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
-  const allItems = sortAttentionInbox(props.items, taskOrder)
-  const unreadCount = allItems.filter((item) => item.unread).length
-  const ordered = filter === "unread" ? allItems.filter((item) => item.unread) : allItems
+  // Every episode in the Inbox is pending by definition (opening one removes
+  // it — no read/unread lifecycle). Oldest first: the queue drains top-down.
+  const ordered = sortAttentionInbox(props.items, taskOrder)
   const maxVisibleCards = Math.max(
     1,
     Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
@@ -129,26 +128,7 @@ export function AttentionInboxPane(props: {
           <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             {t("workspace.inbox.title")}
           </text>
-          <text fg={theme.textMuted} wrapMode="none">{` ${allItems.length}  `}</text>
-          <text
-            fg={filter === "unread" ? theme.focusAccent : theme.textMuted}
-            attributes={filter === "unread" ? TextAttributes.BOLD : undefined}
-            wrapMode="none"
-            onMouseUp={() => setFilter("unread")}
-          >
-            {`${t("workspace.inbox.unread")} ${unreadCount}`}
-          </text>
-          <text fg={theme.textMuted} wrapMode="none">
-            {" / "}
-          </text>
-          <text
-            fg={filter === "all" ? theme.focusAccent : theme.textMuted}
-            attributes={filter === "all" ? TextAttributes.BOLD : undefined}
-            wrapMode="none"
-            onMouseUp={() => setFilter("all")}
-          >
-            {`${t("workspace.inbox.all")} ${allItems.length}`}
-          </text>
+          <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
         </box>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={props.onClose}>
           esc
@@ -200,9 +180,6 @@ export function AttentionInboxPane(props: {
                 </box>
                 <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
                   <box flexDirection="row">
-                    <text fg={theme.focusAccent} wrapMode="none" flexShrink={0}>
-                      {item.unread ? "• " : "  "}
-                    </text>
                     <text
                       fg={tab.available ? theme.text : theme.textMuted}
                       attributes={active ? TextAttributes.BOLD : undefined}
@@ -220,7 +197,7 @@ export function AttentionInboxPane(props: {
                       {`  ${relativeAgeMs(item.at, now)}`}
                     </text>
                   </box>
-                  <box flexDirection="row" paddingLeft={2}>
+                  <box flexDirection="row">
                     <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
                       {title}
                     </text>
@@ -236,7 +213,7 @@ export function AttentionInboxPane(props: {
           })}
         </box>
       )}
-      <box flexDirection="row" flexShrink={0} gap={2}>
+      <box flexDirection="row" flexShrink={0} gap={2} paddingTop={1}>
         <text fg={theme.textMuted} wrapMode="none">
           {t("workspace.inbox.openHint")}
         </text>

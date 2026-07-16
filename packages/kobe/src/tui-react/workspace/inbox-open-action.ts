@@ -1,18 +1,20 @@
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 
-type InboxOpenRpc = Pick<RemoteOrchestrator, "markAttentionRead" | "dismissAttention">
+type InboxOpenRpc = Pick<RemoteOrchestrator, "dismissAttention">
 
-/** Mark a live item read; an unavailable item is stale UI state and is dismissed instead. */
+/**
+ * Opening an episode RESOLVES it: the item is removed from the Inbox
+ * (no read/unread lifecycle — owner call 2026-07-16). A fresh event on the
+ * same task+tab re-records it as a new episode at the latest position.
+ * Unavailable items are stale UI state and resolve the same way.
+ */
 export function requestInboxItemOpen(
   item: AttentionInboxItem,
   available: boolean,
   rpc: InboxOpenRpc,
   notifyError: (message: string) => void,
 ): boolean {
-  const request = available
-    ? rpc.markAttentionRead(item.taskId, item.tabId, item.at)
-    : rpc.dismissAttention(item.taskId, item.tabId, item.at)
-  notifyInboxRpcFailure(request, available ? "mark read" : "dismiss", notifyError)
+  notifyInboxRpcFailure(rpc.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyError)
   return available
 }

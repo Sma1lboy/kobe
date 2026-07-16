@@ -401,8 +401,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onProjectFilterChange={setProjectFilter}
           onSearchActiveChange={setSearchActive}
           headerStatus={{
-            label: `${t("workspace.inbox.title")} ${inboxCounts.unread}`,
-            emphasize: inboxCounts.unread > 0,
+            label: `${t("workspace.inbox.title")} ${inboxCounts.total}`,
+            emphasize: inboxCounts.total > 0,
           }}
           onHeaderStatusClick={showInbox}
           zenActive={zen}

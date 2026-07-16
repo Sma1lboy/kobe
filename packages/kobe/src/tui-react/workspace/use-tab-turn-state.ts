@@ -33,6 +33,8 @@ export function useTabTurnState(deps: {
   sharedActivity?: TranscriptActivity | null
   /** This task's slice of the daemon's per-tab engine-state push. */
   hookTabStates?: ReadonlyMap<string, HookTabState>
+  /** Task title — the toast's context line under the tab label. */
+  taskTitle?: string
   notif: NotificationsContext
 }): {
   turnStates: ReadonlyMap<string, ChatTabTurnState>
@@ -51,6 +53,7 @@ export function useTabTurnState(deps: {
   const notifRef = useLatest(deps.notif)
   const vendorRef = useLatest(deps.vendor)
   const taskIdRef = useLatest(deps.taskId)
+  const taskTitleRef = useLatest(deps.taskTitle)
   useEffect(() => {
     const next = new Map<string, string>()
     for (const [tabId, turn] of turnStates) next.set(tabId, turn)
@@ -59,7 +62,15 @@ export function useTabTurnState(deps: {
     for (const { key: tabId, kind } of edges) {
       const tab: TerminalTab | undefined = stateRef.current.tabs.find((tb) => tb.id === tabId)
       if (!tab) continue
-      notifRef.current.notify({ kind, taskId: taskIdRef.current, tabId, title: tabTitle(tab, vendorRef.current) })
+      notifRef.current.notify({
+        kind,
+        taskId: taskIdRef.current,
+        tabId,
+        // Toast identity mirrors the Inbox card: tab label leads, task
+        // title is the context body line.
+        title: tabTitle(tab, vendorRef.current),
+        body: taskTitleRef.current,
+      })
     }
   }, [turnStates])
 

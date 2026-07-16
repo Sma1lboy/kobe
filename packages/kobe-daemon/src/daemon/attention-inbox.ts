@@ -109,11 +109,17 @@ export class AttentionInboxStore {
       } else {
         const state = stateFor(kind, detail)
         if (!state) return
+        // Dedupe rule (owner 2026-07-16): one pending episode per task+tab —
+        // a fresh event REPLACES the stale one and takes the latest position
+        // (delete-then-set so the fresh `at` re-sorts it to the queue tail).
+        next.delete(key)
         next.set(key, {
           taskId,
           tabId: normalizedTabId,
           state,
           ...(detail ? { detail } : {}),
+          // Every stored episode is pending by definition (opening removes
+          // it). Kept on the wire for old-client compatibility only.
           unread: true,
           at: this.now(),
         })
@@ -122,17 +128,13 @@ export class AttentionInboxStore {
     })
   }
 
-  /** Mark only the episode the caller actually opened, not a newer replacement. */
+  /**
+   * Legacy RPC (pre queue-drain model): opening now DELETES the episode
+   * (`deleteEpisode` via attention.dismiss). Kept for old clients whose
+   * open still calls attention.markRead — treat it as the same resolve.
+   */
   async markRead(taskId: string, tabId: string | null, at: number): Promise<boolean> {
-    return await this.enqueue(async () => {
-      const key = attentionInboxItemKey({ taskId, tabId })
-      const item = this.items.get(key)
-      if (!item || item.at !== at || !item.unread) return false
-      const next = new Map(this.items)
-      next.set(key, { ...item, unread: false })
-      await this.commit(next)
-      return true
-    })
+    return await this.deleteEpisode(taskId, tabId, at)
   }
 
   /** Delete only the episode the caller saw; omitted `at` keeps old clients compatible. */

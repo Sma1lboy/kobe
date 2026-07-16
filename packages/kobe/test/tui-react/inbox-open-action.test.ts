@@ -10,20 +10,21 @@ const item: AttentionInboxItem = {
   at: 123,
 }
 
+// Opening RESOLVES the episode (queue-drain model, owner 2026-07-16): both
+// the available and the unavailable path dismiss it from the daemon store;
+// only navigation differs (an unavailable target can't be jumped to).
 describe("requestInboxItemOpen", () => {
-  it("marks an available item read and allows navigation", () => {
-    const rpc = { markAttentionRead: vi.fn().mockResolvedValue(undefined), dismissAttention: vi.fn() }
+  it("resolves an available item and allows navigation", () => {
+    const rpc = { dismissAttention: vi.fn().mockResolvedValue(undefined) }
 
     expect(requestInboxItemOpen(item, true, rpc, vi.fn())).toBe(true)
-    expect(rpc.markAttentionRead).toHaveBeenCalledWith("task-1", "tab-2", 123)
-    expect(rpc.dismissAttention).not.toHaveBeenCalled()
+    expect(rpc.dismissAttention).toHaveBeenCalledWith("task-1", "tab-2", 123)
   })
 
-  it("dismisses an unavailable item without navigating", () => {
-    const rpc = { markAttentionRead: vi.fn(), dismissAttention: vi.fn().mockResolvedValue(undefined) }
+  it("resolves an unavailable item without navigating", () => {
+    const rpc = { dismissAttention: vi.fn().mockResolvedValue(undefined) }
 
     expect(requestInboxItemOpen(item, false, rpc, vi.fn())).toBe(false)
     expect(rpc.dismissAttention).toHaveBeenCalledWith("task-1", "tab-2", 123)
-    expect(rpc.markAttentionRead).not.toHaveBeenCalled()
   })
 })

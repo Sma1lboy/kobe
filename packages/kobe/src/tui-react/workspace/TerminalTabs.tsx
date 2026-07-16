@@ -128,6 +128,8 @@ export interface TerminalTabsProps {
   /** This task's slice of the daemon's per-tab `engine-state` push —
    *  hook-wins over the quiescence poll (see `use-tab-turn-state`). */
   hookTabStates?: ReadonlyMap<string, HookTabState>
+  /** Task title — background-toast context line (under the tab label). */
+  taskTitle?: string
   focused: boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
@@ -261,6 +263,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     state,
     sharedActivity: props.sharedActivity,
     hookTabStates: props.hookTabStates,
+    taskTitle: props.taskTitle,
     notif,
   })
 

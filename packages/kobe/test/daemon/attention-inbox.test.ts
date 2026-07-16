@@ -72,22 +72,45 @@ describe("daemon attention inbox", () => {
     ])
   })
 
-  it("persists read state and ignores a stale open after a replacement episode", async () => {
+  it("resolves an episode on open and ignores a stale open after a replacement", async () => {
+    // Queue-drain model (owner 2026-07-16): opening REMOVES the episode
+    // (markRead is a legacy alias for delete); a fresh event re-records at
+    // the latest position, and a stale open (old `at`) must not eat it.
     let now = 100
     const { store, path } = await create(() => now)
     await store.record("task-1", "turn-complete", undefined, "tab-1")
 
     expect(await store.markRead("task-1", "tab-1", 100)).toBe(true)
-    expect(store.snapshot()[0]?.unread).toBe(false)
+    expect(store.snapshot()).toHaveLength(0)
 
     now = 200
     await store.record("task-1", "turn-failed", { failure: "other" }, "tab-1")
     expect(await store.markRead("task-1", "tab-1", 100)).toBe(false)
-    expect(store.snapshot()[0]).toMatchObject({ at: 200, unread: true })
+    expect(store.snapshot()[0]).toMatchObject({ at: 200 })
 
     const reloaded = new AttentionInboxStore(path, new DaemonEventBus())
     await reloaded.init()
-    expect(reloaded.snapshot()[0]).toMatchObject({ at: 200, unread: true })
+    expect(reloaded.snapshot()[0]).toMatchObject({ at: 200 })
+  })
+
+  it("replaces a stale episode with the fresh one at the latest position", async () => {
+    let now = 100
+    const { store } = await create(() => now)
+    await store.record("task-1", "turn-complete", undefined, "tab-1")
+    now = 150
+    await store.record("task-2", "turn-complete", undefined, "tab-1")
+
+    // A fresh event on task-1/tab-1 replaces the old episode — dedupe keeps
+    // ONE pending entry per task+tab and re-stamps it to the queue tail.
+    now = 200
+    await store.record("task-1", "awaiting-input", { waiting: "permission" }, "tab-1")
+    const snapshot = store.snapshot()
+    expect(snapshot).toHaveLength(2)
+    expect(snapshot.map((item) => [item.taskId, item.at])).toEqual([
+      ["task-2", 150],
+      ["task-1", 200],
+    ])
+    expect(snapshot[1]).toMatchObject({ state: "permission_needed" })
   })
 
   it("treats pre-unread snapshots as unread", async () => {

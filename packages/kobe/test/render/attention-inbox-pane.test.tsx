@@ -134,28 +134,7 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("No pending attention")
   })
 
-  it("switches between unread and all episodes", async () => {
-    const { destroy, frame, mockMouse } = await renderComponent(<Probe onOpen={() => {}} onDelete={() => {}} />, {
-      providers: { kv: true },
-      width: 60,
-      height: 24,
-    })
-    try {
-      const initial = (await frame()).split("\n")
-      const headerY = initial.findIndex((line) => line.includes("Unread 1 / All 2"))
-      await act(async () => mockMouse.click(initial[headerY]!.indexOf("Unread"), headerY))
-      expect(await frame()).toContain("Alpha")
-      expect(await frame()).not.toContain("Beta")
-
-      const unread = (await frame()).split("\n")
-      await act(async () => mockMouse.click(unread[headerY]!.indexOf("All"), headerY))
-      expect(await frame()).toContain("Beta")
-    } finally {
-      destroy()
-    }
-  })
-
-  it("renders retained episodes and exposes dialog-local navigation/open/delete", async () => {
+  it("renders pending episodes oldest-first and exposes dialog-local navigation/open/delete", async () => {
     const opened: string[] = []
     const deleted: string[] = []
     const { frame, mockInput } = await renderComponent(
@@ -168,25 +147,27 @@ describe("AttentionInboxPane", () => {
     )
     const text = await frame()
     expect(text).toContain("INBOX 2")
-    expect(text).toContain("Unread 1 / All 2")
+    // No read/unread lifecycle — the header is just the pending count.
+    expect(text).not.toContain("Unread")
     expect(text).toContain("Alpha")
     expect(text).toContain("Beta")
     expect(text).toContain("2m")
     expect(text).toContain("2h")
     // Identity-first card: line 1 leads with `project` (plus `› tab` when
     // the episode carries one) + the state word; the task title is line 2.
-    expect(text).toContain("• project-a")
     expect(text).toContain("? needs input")
     expect(text).toContain("✓ done")
     const alphaIdentity = text.indexOf("project-a")
     expect(alphaIdentity).toBeLessThan(text.indexOf("Alpha"))
-    expect(text.indexOf("Alpha")).toBeLessThan(text.indexOf("Beta"))
+    // Queue drains top-down: Beta's episode (2h) is OLDER than Alpha's (2m),
+    // so it renders first.
+    expect(text.indexOf("Beta")).toBeLessThan(text.indexOf("Alpha"))
 
     act(() => mockInput.pressKey("j"))
     act(() => mockInput.pressKey("d"))
     act(() => mockInput.pressEnter())
-    expect(deleted).toEqual(["task-b"])
-    expect(opened).toEqual(["task-b"])
+    expect(deleted).toEqual(["task-a"])
+    expect(opened).toEqual(["task-a"])
   })
 
   it("marks only the active card (selection bar + row tint), stable in opaque and transparent modes", async () => {
@@ -203,20 +184,21 @@ describe("AttentionInboxPane", () => {
         })
         try {
           const frame = await spans()
-          // Active card: ▌ bar in primary + backgroundElement row tint;
-          // inactive card: no bar, no tint (transparent stays transparent).
-          expect(selectionBarColor(frame, "Alpha")?.equals(primary)).toBe(true)
-          expect(selectionBarColor(frame, "Beta")).toBeUndefined()
-          expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
-          expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
+          // Active card (cursor starts on the OLDEST episode — Beta's 2h):
+          // ▌ bar in primary + backgroundElement row tint; inactive card:
+          // no bar, no tint (transparent stays transparent).
+          expect(selectionBarColor(frame, "Beta")?.equals(primary)).toBe(true)
+          expect(selectionBarColor(frame, "Alpha")).toBeUndefined()
+          expect(backgroundWidth(frame, "Beta", backgroundElement)).toBeGreaterThan(0)
+          expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBe(0)
           const alphaY = lineIndex(frame, "Alpha")
           const betaY = lineIndex(frame, "Beta")
 
           act(() => mockInput.pressKey("j"))
           const moved = await spans()
-          expect(selectionBarColor(moved, "Alpha")).toBeUndefined()
-          expect(selectionBarColor(moved, "Beta")?.equals(primary)).toBe(true)
-          expect(backgroundWidth(moved, "Beta", backgroundElement)).toBeGreaterThan(0)
+          expect(selectionBarColor(moved, "Beta")).toBeUndefined()
+          expect(selectionBarColor(moved, "Alpha")?.equals(primary)).toBe(true)
+          expect(backgroundWidth(moved, "Alpha", backgroundElement)).toBeGreaterThan(0)
           // Moving the cursor must not shift card geometry.
           expect(lineIndex(moved, "Alpha")).toBe(alphaY)
           expect(lineIndex(moved, "Beta")).toBe(betaY)

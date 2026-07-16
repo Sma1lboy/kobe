@@ -79,6 +79,7 @@ export function ShowWorkspace(props: {
       // This task's slice of the hook-driven per-tab engine state — the
       // sub-second chip/notification source (poll stays as fallback).
       hookTabStates={props.task ? engineTabStates.get(props.task.id) : undefined}
+      taskTitle={props.task?.title}
     />
   )
 }

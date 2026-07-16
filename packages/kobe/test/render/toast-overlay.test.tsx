@@ -20,11 +20,11 @@ import { act, renderComponent } from "./harness"
 // (or depends on) a real ~/.config/kobe/state.json.
 process.env.KOBE_HOME_DIR = process.env.KOBE_HOME_DIR ?? "/tmp/kobe-render-test-home"
 
-function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: string }) {
+function NotifyProbe(props: { kind: "done" | "needs_input" | "error"; title: string; body?: string }) {
   const notif = useNotifications()
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once notify.
   useEffect(() => {
-    notif.notify({ kind: props.kind, taskId: "t1", tabId: "tab1", title: props.title })
+    notif.notify({ kind: props.kind, taskId: "t1", tabId: "tab1", title: props.title, body: props.body })
   }, [])
   return <ToastOverlay />
 }
@@ -68,6 +68,38 @@ describe("ToastOverlay", () => {
     const text = await frame()
     expect(text).toContain("clone failed")
     expect(text).toContain("✕")
+  })
+
+  // The two-line card: title row (glyph + bold title) + a muted context
+  // body. Cross-task toasts pass the project label, tab toasts the task
+  // title — the toast mirrors the Inbox card's identity/context split.
+  it("renders the optional body as a second muted context line", async () => {
+    const theme = BUNDLED_THEME_JSONS.claude!
+    const mutedHex = resolveThemeSlotHex(theme, "textMuted")
+    const { frame, spans } = await renderComponent(
+      <NotifyProbe kind="done" title="claude 2" body="Smoke issueasdas" />,
+      { providers: { notifications: true } },
+    )
+    const text = await frame()
+    expect(text).toContain("claude 2")
+    expect(text).toContain("Smoke issueasdas")
+    // Body sits under the title, not on the same row.
+    const lines = text.split("\n")
+    const titleY = lines.findIndex((line) => line.includes("claude 2"))
+    const bodyY = lines.findIndex((line) => line.includes("Smoke issueasdas"))
+    expect(bodyY).toBe(titleY + 1)
+    const bodySpan = findSpan(await spans(), "Smoke issueasdas")
+    expect(bodySpan?.fg.equals(RGBA.fromHex(mutedHex!))).toBe(true)
+  })
+
+  it("marks the card with a semantic accent bar", async () => {
+    const theme = BUNDLED_THEME_JSONS.claude!
+    const successHex = resolveThemeSlotHex(theme, "success")
+    const { spans } = await renderComponent(<NotifyProbe kind="done" title="turn done" body="ctx" />, {
+      providers: { notifications: true },
+    })
+    const barSpan = findSpan(await spans(), "▌")
+    expect(barSpan?.fg.equals(RGBA.fromHex(successHex!))).toBe(true)
   })
 
   it.each([

@@ -69,7 +69,7 @@ describe("useAttention", () => {
     expect(opened.map((item) => item.taskId)).toEqual(["task-b"])
   })
 
-  it("shows the fallback toast when no unread episode is available", async () => {
+  it("shows the fallback toast when no pending episode is available", async () => {
     const notices: Parameters<NotificationsContext["notify"]>[0][] = []
     let jump: (() => void) | undefined
 
@@ -77,7 +77,9 @@ describe("useAttention", () => {
       jump = useAttention({
         tasks: [task("task-a", "Alpha")],
         engineState: new Map(),
-        inboxItems: [inboxItem("task-a", null, false)],
+        // Queue-drain model: an empty Inbox is the only "nothing to visit"
+        // state (opened episodes are removed, not retained as read).
+        inboxItems: [],
         selectedId: "task-a",
         kv: kv(),
         notif: notifications((notice) => notices.push(notice)),
@@ -122,7 +124,7 @@ describe("useAttention", () => {
     act(() => setEngineState?.(new Map([["task-b", { state: "permission_needed", at: 2 }]])))
     await rerender()
 
-    expect(notices).toEqual([{ kind: "needs_input", taskId: "task-b", tabId: "", title: "Beta" }])
+    expect(notices).toEqual([{ kind: "needs_input", taskId: "task-b", tabId: "", title: "Beta", body: "task-b" }])
   })
 
   it("honors the disabled cross-task notification preference", async () => {

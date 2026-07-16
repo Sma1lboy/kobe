@@ -16,6 +16,8 @@ export interface Toast {
   readonly taskId: string
   readonly tabId: string
   readonly title: string
+  /** Optional context line under the title (task title, project…). */
+  readonly body?: string
 }
 
 export interface NotifyInput {
@@ -23,6 +25,8 @@ export interface NotifyInput {
   readonly taskId: string
   readonly tabId: string
   readonly title: string
+  /** Optional context line under the title (task title, project…). */
+  readonly body?: string
 }
 
 export const TOAST_DURATION_MS = 4500
