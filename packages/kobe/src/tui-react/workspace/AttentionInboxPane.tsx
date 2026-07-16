@@ -4,6 +4,8 @@ import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { relativeAgeMs } from "../../tui/history/message-core"
+import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
 import { DEFAULT_TASK_VENDOR } from "../../types/task"
@@ -17,7 +19,11 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
-const MAX_DIALOG_ROWS = 10
+const MAX_VISIBLE_CARDS = 4
+const CARD_ROWS_WITH_GAP = 5
+const DIALOG_CHROME_ROWS = 7
+const AGE_REFRESH_MS = 30_000
+type InboxFilter = "unread" | "all"
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -56,16 +62,29 @@ export function AttentionInboxPane(props: {
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
+  const [filter, setFilter] = useState<InboxFilter>("all")
+  const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
-  const ordered = sortAttentionInbox(props.items, taskOrder)
-  const maxRows = Math.max(1, Math.min(MAX_DIALOG_ROWS, dimensions.height - 8))
+  const allItems = sortAttentionInbox(props.items, taskOrder)
+  const unreadCount = allItems.filter((item) => item.unread).length
+  const ordered = filter === "unread" ? allItems.filter((item) => item.unread) : allItems
+  const maxVisibleCards = Math.max(
+    1,
+    Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
+  )
   const safeCursor = Math.min(cursor, Math.max(0, ordered.length - 1))
-  const windowStart = Math.max(0, Math.min(safeCursor - maxRows + 1, ordered.length - maxRows))
-  const visible = ordered.slice(windowStart, windowStart + maxRows)
+  const windowStart = Math.max(0, Math.min(safeCursor - maxVisibleCards + 1, ordered.length - maxVisibleCards))
+  const visible = ordered.slice(windowStart, windowStart + maxVisibleCards)
+  const repos = [...new Set(props.tasks.map((task) => task.repo))]
 
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
   }, [cursor, safeCursor])
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   function move(delta: 1 | -1): void {
     if (ordered.length === 0) return
@@ -102,7 +121,26 @@ export function AttentionInboxPane(props: {
           <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             {t("workspace.inbox.title")}
           </text>
-          <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
+          <text fg={theme.textMuted} wrapMode="none">{` ${allItems.length}  `}</text>
+          <text
+            fg={filter === "unread" ? theme.focusAccent : theme.textMuted}
+            attributes={filter === "unread" ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            onMouseUp={() => setFilter("unread")}
+          >
+            {`${t("workspace.inbox.unread")} ${unreadCount}`}
+          </text>
+          <text fg={theme.textMuted} wrapMode="none">
+            {" / "}
+          </text>
+          <text
+            fg={filter === "all" ? theme.focusAccent : theme.textMuted}
+            attributes={filter === "all" ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            onMouseUp={() => setFilter("all")}
+          >
+            {`${t("workspace.inbox.all")} ${allItems.length}`}
+          </text>
         </box>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={props.onClose}>
           esc
@@ -115,33 +153,82 @@ export function AttentionInboxPane(props: {
           </text>
         </box>
       ) : (
-        <box flexDirection="column" paddingTop={1} paddingBottom={1}>
+        <box flexDirection="column" gap={1} paddingTop={1} paddingBottom={1}>
           {visible.map((item, index) => {
             const absoluteIndex = windowStart + index
             const active = absoluteIndex === safeCursor
             const task = props.tasks.find((candidate) => candidate.id === item.taskId)
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
-            return (
+            const project = task ? sidebarProjectLabel(task.repo, repos) : ""
+            const frameColor = active ? theme.primary : theme.borderSubtle
+            const content = (
               <box
-                key={attentionInboxKey(item)}
-                flexDirection="row"
+                key={`${attentionInboxKey(item)}:content`}
+                flexDirection="column"
+                flexBasis={0}
+                flexGrow={1}
+                flexShrink={1}
                 paddingLeft={1}
                 paddingRight={1}
-                backgroundColor={active ? theme.backgroundElement : undefined}
-                onMouseUp={(event: { stopPropagation(): void }) => {
-                  event.stopPropagation()
-                  setCursor(absoluteIndex)
-                  props.onOpen(item, tab.available)
-                }}
               >
-                <text fg={theme.focusAccent} wrapMode="none">
-                  {item.unread ? "• " : "  "}
-                </text>
-                <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
-                <text fg={tab.available ? theme.text : theme.textMuted} wrapMode="none">
-                  {`${title}${tab.label ? ` · ${tab.label}` : ""}${tab.available ? "" : ` · ${t("workspace.inbox.unavailable")}`}`}
-                </text>
+                <box flexDirection="row">
+                  <text fg={theme.focusAccent} wrapMode="none">
+                    {item.unread ? "• " : "  "}
+                  </text>
+                  <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
+                  <text
+                    fg={tab.available ? theme.text : theme.textMuted}
+                    attributes={active ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                    flexBasis={0}
+                    flexGrow={1}
+                    flexShrink={1}
+                  >
+                    {`${title}${tab.label ? ` · ${tab.label}` : ""}`}
+                  </text>
+                </box>
+                <box flexDirection="row" paddingLeft={4} gap={1}>
+                  <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+                    {project}
+                  </text>
+                  {!tab.available ? (
+                    <text fg={theme.warning} wrapMode="none" flexShrink={0}>
+                      {t("workspace.inbox.unavailable")}
+                    </text>
+                  ) : null}
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                    {relativeAgeMs(item.at, now)}
+                  </text>
+                </box>
+              </box>
+            )
+            const onMouseUp = (event: { stopPropagation(): void }) => {
+              event.stopPropagation()
+              setCursor(absoluteIndex)
+              props.onOpen(item, tab.available)
+            }
+            return (
+              <box key={attentionInboxKey(item)} paddingLeft={2} paddingRight={2}>
+                <box flexDirection="row" backgroundColor={theme.backgroundElement} onMouseUp={onMouseUp}>
+                  <box flexDirection="column" flexShrink={0}>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌜
+                    </text>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌞
+                    </text>
+                  </box>
+                  {content}
+                  <box flexDirection="column" flexShrink={0}>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌝
+                    </text>
+                    <text fg={frameColor} wrapMode="none">
+                      ⌟
+                    </text>
+                  </box>
+                </box>
               </box>
             )
           })}

@@ -38,10 +38,10 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { AttentionInboxDialog } from "./AttentionInboxPane"
-import { InboxUnavailableDialog } from "./InboxUnavailableDialog"
-import { isAttentionInboxItemAvailable } from "./attention-inbox-core"
+import { attentionInboxCounts, isAttentionInboxItemAvailable } from "./attention-inbox-core"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
+import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
@@ -70,6 +70,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const inboxItems = useAccessor(orch.attentionInboxSignal())
+  const inboxCounts = attentionInboxCounts(inboxItems)
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
@@ -232,15 +233,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   function openInboxItem(item: AttentionInboxItem, knownAvailable?: boolean): void {
-    notifyInboxRpcFailure(orch.markAttentionRead(item.taskId, item.tabId, item.at), "mark read", notifyError)
     const task = orch.getTask(item.taskId)
     const available =
       knownAvailable ??
       isAttentionInboxItemAvailable(item, task, (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined)
-    if (!available) {
-      InboxUnavailableDialog.show(dialog, t("workspace.inbox.unavailableTitle"), t("workspace.inbox.unavailableBody"))
-      return
-    }
+    if (!requestInboxItemOpen(item, available, orch, notifyError)) return
     if (dialog.stack.length > 0) dialog.clear({ refocus: false })
     selectTask(item.taskId)
     if (item.tabId) requestTabActivation(item.taskId, item.tabId)
@@ -394,6 +391,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           projectFilter={projectFilter}
           onProjectFilterChange={setProjectFilter}
           onSearchActiveChange={setSearchActive}
+          headerStatus={{
+            label: `${t("workspace.inbox.title")} ${inboxCounts.unread}`,
+            emphasize: inboxCounts.unread > 0,
+          }}
+          onHeaderStatusClick={showInbox}
           zenActive={zen}
           onZenClick={toggleZen}
         />
