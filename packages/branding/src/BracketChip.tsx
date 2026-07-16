@@ -67,7 +67,7 @@ export const BracketChip: React.FC = () => {
         TUI ORCHESTRATOR FOR ANY CODING CLI
       </div>
       <div style={{ marginTop: 12, color: colors.muted, fontSize: 16, letterSpacing: 3, opacity: 0.7 }}>
-        CLAUDE · CODEX · COPILOT · GEMINI · YOUR OWN
+        CLAUDE · CODEX · COPILOT · YOUR OWN
       </div>
     </AbsoluteFill>
   )
