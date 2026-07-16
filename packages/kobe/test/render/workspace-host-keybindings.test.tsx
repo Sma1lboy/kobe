@@ -30,6 +30,7 @@ function Probe(props: { opened: string[] }) {
     toggleZen: () => {},
     jumpToNextAttention: () => {},
     openInbox: () => {},
+    enterMoveMode: () => {},
   })
   return <text>ready</text>
 }

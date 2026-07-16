@@ -29,6 +29,7 @@ Default prefix actions:
 | `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
 | `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
+| `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits — owner picked prefix+m 2026-07-16) |
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |

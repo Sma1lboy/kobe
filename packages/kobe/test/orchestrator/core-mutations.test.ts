@@ -178,11 +178,35 @@ describe("moveTask", () => {
     expect(order).toEqual(["c", "a"])
   })
 
-  it("no-ops for main rows", async () => {
-    const main = await makeMainTask()
-    const before = orch.listTasks().map((t) => t.id)
-    await orch.moveTask(main.id, 1)
-    expect(orch.listTasks().map((t) => t.id)).toEqual(before)
+  // Projects render stored order (owner 2026-07-16), so main rows are
+  // movable — among each other only, never mixing into the task partition.
+  it("moves a main row among other main rows, leaving tasks in place", async () => {
+    const regular = await makeTask({ title: "reg" })
+    const mainA = await makeMainTask()
+    const mainB = await store.create({
+      repo: "/repo-b",
+      title: "repo-b",
+      branch: "",
+      worktreePath: "/repo-b",
+      status: "backlog",
+      kind: "main",
+    })
+
+    const mainIds = () =>
+      orch
+        .listTasks()
+        .filter((t) => t.kind === "main")
+        .map((t) => String(t.id))
+    await orch.moveTask(mainB.id, -1)
+    const after = mainIds()
+    expect(after.indexOf(String(mainB.id))).toBeLessThan(after.indexOf(String(mainA.id)))
+    // The regular task partition is untouched.
+    expect(orch.getTask(regular.id)?.title).toBe("reg")
+    // Moving past the top of the partition is a harmless no-op.
+    for (const _ of after) await orch.moveTask(mainB.id, -1)
+    const pinnedTop = orch.listTasks().map((t) => t.id)
+    await orch.moveTask(mainB.id, -1)
+    expect(orch.listTasks().map((t) => t.id)).toEqual(pinnedTop)
   })
 })
 

@@ -112,19 +112,23 @@ export class TaskEditor {
   }
 
   /**
-   * Move a regular task up/down within its visible ordering partition.
-   * Main project rows stay sorted by repo name and are not manually moved.
+   * Move a task up/down within its visible ordering partition. Main
+   * (project) rows move among each other — the sidebar's PROJECTS section
+   * renders stored order (owner 2026-07-16), so reordering the store IS
+   * reordering the list. Regular tasks keep their partition (archived +
+   * pinned flags) so a move can't jump groups.
    */
   async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
     const task = this.requireTask(id)
-    if (task.kind === "main") return
+    const isMain = task.kind === "main"
     const groupIds = this.store
       .list()
-      .filter(
-        (t) =>
-          (t.kind ?? "task") !== "main" &&
-          t.archived === task.archived &&
-          (t.pinned ?? false) === (task.pinned ?? false),
+      .filter((t) =>
+        isMain
+          ? (t.kind ?? "task") === "main"
+          : (t.kind ?? "task") !== "main" &&
+            t.archived === task.archived &&
+            (t.pinned ?? false) === (task.pinned ?? false),
       )
       .map((t) => String(t.id))
     await this.store.move(task.id, delta, groupIds)

@@ -333,6 +333,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     toggleZen,
     jumpToNextAttention,
     openInbox: showInbox,
+    // prefix+m — global entry into the sidebar's move mode: focus the
+    // sidebar, highlight the current selection, j/k reorders, enter/esc
+    // exits. Falls back to the first task when nothing is selected.
+    enterMoveMode: () => {
+      const target = selectedId ?? tasks[0]?.id
+      if (!target) return
+      focus.setFocused("sidebar")
+      setSelectedId(String(target))
+      setMoveMode(true)
+    },
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus

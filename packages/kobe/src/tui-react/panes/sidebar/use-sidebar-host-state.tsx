@@ -48,7 +48,8 @@ export interface SidebarHostState {
   readonly notifyInfo: (message: string) => void
   /**
    * The Sidebar's local-merge/move request (`m`): select the row and toggle
-   * move mode. No-ops on a `main` (project-root) row — main rows don't move.
+   * move mode. Works for regular tasks AND `main` (project) rows — projects
+   * render stored order, so moving a main row reorders the PROJECTS section.
    */
   readonly onLocalMergeRequest: (id: string) => void
 }
@@ -83,7 +84,7 @@ export function useSidebarHostState(args: {
   const [moveMode, setMoveMode] = useState(false)
   const onLocalMergeRequest = (id: string): void => {
     const task = tasks.find((t) => t.id === id)
-    if (!task || task.kind === "main") return
+    if (!task) return
     setSelectedId(id)
     setMoveMode((cur) => !cur)
   }

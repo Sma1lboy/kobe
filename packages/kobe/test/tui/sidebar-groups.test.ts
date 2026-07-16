@@ -65,9 +65,10 @@ describe("sidebar task ordering", () => {
     expect(ids(rows)).toEqual(["pinned-new", "pinned-old", "new", "old"])
   })
 
-  it("projects sit tight in recent mode — alphabetised, not reshuffled by use", () => {
-    // alpha's repo basename is "alpha", zeta's is "zeta"; zeta was used more
-    // recently, but projects stay alphabetised in recent mode (no reshuffle).
+  it("projects sit tight in recent mode — stored order, not reshuffled by use", () => {
+    // Projects render STORED order (save order; owner 2026-07-16): zeta was
+    // saved first and used more recently, but neither recency nor alphabet
+    // reshuffles the projects section — only move mode reorders it.
     const rows = buildRows(
       [
         task({
@@ -90,8 +91,8 @@ describe("sidebar task ordering", () => {
       "",
       "recent",
     )
-    // alpha before zeta despite zeta being more recent.
-    expect(ids(rows)).toEqual(["a", "z", "reg"])
+    // zeta first — stored order wins over both alphabet and recency.
+    expect(ids(rows)).toEqual(["z", "a", "reg"])
   })
 
   it("shows one project row when stale duplicate main tasks share a repo", () => {

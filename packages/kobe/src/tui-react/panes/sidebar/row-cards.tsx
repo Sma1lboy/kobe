@@ -233,6 +233,7 @@ function RowLine(props: {
 }
 
 export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
+  const t = useT()
   const shared = props.shared
   const task = props.row.task
   useEffect(() => {
@@ -240,7 +241,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
     void shared.branchTick
     pollCurrentBranch(task.repo)
   }, [task.repo, shared.branchTick])
-  const { theme, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
+  const { theme, isCursor, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
     mainBranch: currentBranch(task.repo),
   })
   const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
@@ -256,6 +257,11 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
               {spacedTitle(rowView.titleText, shared.titleBudget)}
             </text>
+            {shared.moveMode && isCursor ? (
+              <text fg={theme.warning} wrapMode="none">
+                {t("tasks.moveChip")}
+              </text>
+            ) : null}
           </box>
         </RowLine>
         <RowLine selection={selection}>

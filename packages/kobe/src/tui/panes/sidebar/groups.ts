@@ -127,11 +127,11 @@ export function buildRows(
     if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
-  // Projects "sit tight": always alphabetised by repo basename so two repos
-  // with the same prefix sit predictably (kobe < kobe-fork) and the project
-  // list never reshuffles when the user toggles recent sort. Only the worktree
-  // groups respond to `recent`.
-  main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
+  // Projects keep their STORED order (owner 2026-07-16): tasks.json order =
+  // save order, so a newly-added repo lands at the end and the list never
+  // reshuffles on its own. Manual reordering goes through move mode
+  // (`moveTask` covers main rows within the projects partition). `recent`
+  // sort still only affects the task groups — projects sit tight.
   if (sortMode === "recent") {
     pinnedRegular.sort(compareRecent)
     regular.sort(compareRecent)
@@ -208,13 +208,12 @@ export function buildProjectOptions(tasks: readonly Task[], view: SidebarView): 
     byKey.set(key, next)
   }
   const repos = [...byKey.values()].map((entry) => entry.repo)
-  return [...byKey.values()]
-    .map((entry) => ({
-      repo: entry.repo,
-      label: sidebarProjectLabel(entry.repo, repos),
-      count: entry.count,
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label))
+  // Stored order — matches the sidebar's PROJECTS section (no re-sort).
+  return [...byKey.values()].map((entry) => ({
+    repo: entry.repo,
+    label: sidebarProjectLabel(entry.repo, repos),
+    count: entry.count,
+  }))
 }
 
 export function cursorIndexForProjectScope(rows: readonly SidebarRow[], projectFilter?: string | null): number {

@@ -52,6 +52,8 @@ export type WorkspaceKeybindingDeps = {
   toggleZen: () => void
   jumpToNextAttention: () => void
   openInbox: () => void
+  /** prefix+m — focus the sidebar and enter move mode on the current selection. */
+  enterMoveMode: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -120,6 +122,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
+        "task.moveMode": () => deps.enterMoveMode(),
         "task.openEditor": () => {
           if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
         },
