@@ -6,7 +6,6 @@
  * Settings, worktrees, and update surfaces swap in-process instead of exiting.
  */
 
-import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -14,7 +13,6 @@ import { useEffect, useRef, useState } from "react"
 import { type AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
-import { detectWorktreeOpener, openWorktree } from "../../tui/lib/worktree-opener"
 import { buildPRPrompt } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
@@ -45,6 +43,7 @@ import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
+import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
@@ -120,28 +119,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openAttention: openInboxItem,
     noTasksMessage: t("workspace.attention.none"),
   })
-
-  async function openTaskWorktree(id: string): Promise<void> {
-    const task = tasks.find((candidate) => candidate.id === id)
-    let path = task?.worktreePath
-    if (!path || !existsSync(path)) {
-      try {
-        path = await orch.ensureWorktree(id)
-      } catch (err) {
-        notifyError(`Couldn't create worktree: ${err instanceof Error ? err.message : String(err)}`)
-        return
-      }
-    }
-    if (!path || !existsSync(path)) return
-    const opener = detectWorktreeOpener()
-    if (!opener) {
-      notifyError(t("tasks.toast.noEditor"))
-      return
-    }
-    if (!openWorktree(path, opener)) {
-      notifyError(t("tasks.toast.openWorktreeFailed", { label: opener.label }))
-    }
-  }
 
   // Task-action callbacks (new/archive/delete/rename/branch/engine/pin/move)
   // — the shared lib/task-actions flows live in host-task-actions.ts.
@@ -318,7 +295,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openKanban: () => setKanbanOpen(true),
     searchActive,
     selectedId,
-    openTaskWorktree: (id) => void openTaskWorktree(id),
+    openTaskWorktree: (id) =>
+      void requestTaskWorktreeOpen(id, {
+        taskPath: tasks.find((task) => task.id === id)?.worktreePath,
+        ensureWorktree: orch.ensureWorktree.bind(orch),
+        notifyError,
+        noEditorMessage: t("tasks.toast.noEditor"),
+        openFailedMessage: (label) => t("tasks.toast.openWorktreeFailed", { label }),
+      }),
     openSettings,
     closeSettings,
     createTask: () => void createTask(),

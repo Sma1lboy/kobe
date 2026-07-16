@@ -77,6 +77,7 @@ describe("workspace open-worktree bindings", () => {
       cycleVendor,
       toggleZen: vi.fn(),
       jumpToNextAttention: vi.fn(),
+      openInbox: vi.fn(),
     })
 
     const registrations = mocks.bindingFactories.map((factory) => factory())
