@@ -14,13 +14,19 @@ export const VISUAL_HOME = join(VISUAL_ROOT, "home")
 export const VISUAL_REPO = join(VISUAL_ROOT, "fixture-repo")
 
 /** Bump when the fixture shape changes so warm reuse rebuilds. */
-const FIXTURE_VERSION = "2"
+const FIXTURE_VERSION = "3"
 const FIXTURE_MARKER = join(VISUAL_ROOT, "fixture-ok")
+
+// Kanban cards render their `created` date, so the screenshot gate breaks at
+// every midnight unless the stamp is pinned. Must match the committed
+// sandbox.spec.ts-snapshots; whichever process starts the daemon wins, so the
+// pin rides both VISUAL_ENV and the PTY command.
+const VISUAL_TODAY = "2026-07-15"
 
 // Inlined into the PTY command: the child runs under `/bin/sh -lc`, and a
 // login shell or env-passing gap must NEVER let it fall back to the shared
 // `.dev-sandbox/home` (the owner's live environment).
-export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} bun run dev:sandbox`
+export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} KOBE_ISSUES_TODAY=${VISUAL_TODAY} bun run dev:sandbox`
 
 const XDG_CONFIG_HOME = join(VISUAL_HOME, ".config")
 const XDG_DATA_HOME = join(VISUAL_HOME, ".local", "share")
@@ -57,6 +63,7 @@ export const VISUAL_ENV: Record<string, string> = {
   KOBE_HOME_DIR: VISUAL_HOME,
   KOBE_SANDBOX_HOME_DIR: VISUAL_HOME,
   KOBE_DAEMON_WEB_PORT: String(VISUAL_DAEMON_PORT),
+  KOBE_ISSUES_TODAY: VISUAL_TODAY,
 }
 
 function assertSafeVisualRoot(): void {

@@ -78,6 +78,11 @@ function emptyStore(): IssuesStoreFile {
 }
 
 function todayStamp(): string {
+  // KOBE_ISSUES_TODAY pins the stamp for visual-fixture determinism: the
+  // Kanban screenshot gate renders `created` on every card, so a real clock
+  // shifts the snapshot at each midnight. Never set in production.
+  const pinned = process.env.KOBE_ISSUES_TODAY
+  if (pinned && /^\d{4}-\d{2}-\d{2}$/.test(pinned)) return pinned
   const d = new Date()
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
