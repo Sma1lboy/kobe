@@ -26,6 +26,15 @@ describe("attention inbox store invariants", () => {
     expect(await store.markRead("task-1", "tab-1", 100)).toBe(true)
   })
 
+  it("rejects an empty tab identity before writing an episode", async () => {
+    dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-invariants-"))
+    const store = new AttentionInboxStore(join(dir, "attention-inbox.json"), new DaemonEventBus())
+    await store.init()
+
+    await expect(store.record("task-1", "turn-complete", undefined, "")).rejects.toThrow("tabId is required")
+    expect(store.snapshot()).toEqual([])
+  })
+
   it("does not delete a replacement episode through a stale dismiss action", async () => {
     let now = 100
     dir = await mkdtemp(join(tmpdir(), "kobe-attention-inbox-invariants-"))

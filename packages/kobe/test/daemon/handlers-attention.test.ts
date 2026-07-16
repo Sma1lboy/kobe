@@ -64,6 +64,7 @@ describe("attention.dismiss handler", () => {
 
   it("rejects an orphaned tabId without exact task identity", async () => {
     const { ctx, rec } = fakeCtx({ listTasks: () => [{ id: "t1", worktreePath: "/repo" }] })
+    // This value makes the test distinguish the intended AND gate from an accidental OR.
     await dispatch("engine.reportEvent", { cwd: "/repo/src", tabId: "tab-9", kind: "turn-complete" }, ctx)
 
     expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])

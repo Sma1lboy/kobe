@@ -105,6 +105,7 @@ export class AttentionInboxStore {
     detail: EngineActivityDetail | undefined,
     tabId: string,
   ): Promise<void> {
+    if (!tabId) throw new Error("AttentionInboxStore.record: tabId is required")
     await this.enqueue(async () => {
       const key = attentionInboxItemKey({ taskId, tabId })
       const next = new Map(this.items)
@@ -141,7 +142,7 @@ export class AttentionInboxStore {
     return await this.deleteEpisode(taskId, tabId, at)
   }
 
-  /** Delete only the episode the caller saw; omitted `at` keeps old clients compatible. */
+  /** Nullable tabId addresses legacy task-level data only; new writes require a tab. */
   async deleteEpisode(taskId: string, tabId: string | null, at?: number): Promise<boolean> {
     return await this.enqueue(async () => {
       const key = attentionInboxItemKey({ taskId, tabId })
