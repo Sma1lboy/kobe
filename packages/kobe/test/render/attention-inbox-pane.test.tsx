@@ -100,9 +100,9 @@ function backgroundWidth(frame: CapturedFrame, needle: string, color: RGBA): num
   return line?.spans.reduce((width, span) => width + (span.bg?.equals(color) ? span.width : 0), 0) ?? 0
 }
 
-function cornerColor(frame: CapturedFrame, needle: string): RGBA | undefined {
+function selectionBarColor(frame: CapturedFrame, needle: string): RGBA | undefined {
   const line = frame.lines.find((candidate) => candidate.spans.some((span) => span.text.includes(needle)))
-  return line?.spans.find((span) => span.text.includes("⌜"))?.fg
+  return line?.spans.find((span) => span.text.includes("▌"))?.fg
 }
 
 function lineIndex(frame: CapturedFrame, needle: string): number {
@@ -171,12 +171,15 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("Unread 1 / All 2")
     expect(text).toContain("Alpha")
     expect(text).toContain("Beta")
-    expect(text).toContain("project-a")
-    expect(text).toContain("project-b")
     expect(text).toContain("2m")
     expect(text).toContain("2h")
-    expect(text).toContain("• ? Alpha")
-    expect(text).not.toContain("project-a ─")
+    // Identity-first card: line 1 leads with `project` (plus `› tab` when
+    // the episode carries one) + the state word; the task title is line 2.
+    expect(text).toContain("• project-a")
+    expect(text).toContain("? needs input")
+    expect(text).toContain("✓ done")
+    const alphaIdentity = text.indexOf("project-a")
+    expect(alphaIdentity).toBeLessThan(text.indexOf("Alpha"))
     expect(text.indexOf("Alpha")).toBeLessThan(text.indexOf("Beta"))
 
     act(() => mockInput.pressKey("j"))
@@ -186,11 +189,10 @@ describe("AttentionInboxPane", () => {
     expect(opened).toEqual(["task-b"])
   })
 
-  it("keeps corner-frame geometry stable in opaque and transparent modes", async () => {
+  it("marks only the active card (selection bar + row tint), stable in opaque and transparent modes", async () => {
     const theme = BUNDLED_THEME_JSONS.claude!
     const backgroundElement = RGBA.fromHex(resolveThemeSlotHex(theme, "backgroundElement")!)
     const primary = RGBA.fromHex(resolveThemeSlotHex(theme, "primary")!)
-    const borderSubtle = RGBA.fromHex(resolveThemeSlotHex(theme, "borderSubtle")!)
     try {
       for (const transparent of [false, true]) {
         setTransparentBackground(transparent)
@@ -201,19 +203,21 @@ describe("AttentionInboxPane", () => {
         })
         try {
           const frame = await spans()
+          // Active card: ▌ bar in primary + backgroundElement row tint;
+          // inactive card: no bar, no tint (transparent stays transparent).
+          expect(selectionBarColor(frame, "Alpha")?.equals(primary)).toBe(true)
+          expect(selectionBarColor(frame, "Beta")).toBeUndefined()
           expect(backgroundWidth(frame, "Alpha", backgroundElement)).toBeGreaterThan(0)
-          expect(backgroundWidth(frame, "Beta", backgroundElement)).toBeGreaterThan(0)
-          expect(backgroundWidth(frame, "Alpha", primary)).toBe(0)
-          expect(backgroundWidth(frame, "Beta", primary)).toBe(0)
-          expect(cornerColor(frame, "Alpha")?.equals(primary)).toBe(true)
-          expect(cornerColor(frame, "Beta")?.equals(borderSubtle)).toBe(true)
+          expect(backgroundWidth(frame, "Beta", backgroundElement)).toBe(0)
           const alphaY = lineIndex(frame, "Alpha")
           const betaY = lineIndex(frame, "Beta")
 
           act(() => mockInput.pressKey("j"))
           const moved = await spans()
-          expect(cornerColor(moved, "Alpha")?.equals(borderSubtle)).toBe(true)
-          expect(cornerColor(moved, "Beta")?.equals(primary)).toBe(true)
+          expect(selectionBarColor(moved, "Alpha")).toBeUndefined()
+          expect(selectionBarColor(moved, "Beta")?.equals(primary)).toBe(true)
+          expect(backgroundWidth(moved, "Beta", backgroundElement)).toBeGreaterThan(0)
+          // Moving the cursor must not shift card geometry.
           expect(lineIndex(moved, "Alpha")).toBe(alphaY)
           expect(lineIndex(moved, "Beta")).toBe(betaY)
         } finally {
@@ -253,9 +257,9 @@ describe("AttentionInboxPane", () => {
     expect(text.match(/unavailable/g)).toHaveLength(1)
   })
 
-  it("caps the card viewport at four items and follows the cursor", async () => {
+  it("caps the card viewport at six items and follows the cursor", async () => {
     const manyTasks = Array.from(
-      { length: 5 },
+      { length: 7 },
       (_, index): Task => ({
         ...tasks[0],
         id: toTaskId(`task-${index + 1}`),
@@ -277,13 +281,13 @@ describe("AttentionInboxPane", () => {
       { providers: { kv: true }, width: 60, height: 40 },
     )
 
-    expect(await frame()).toContain("Item 4")
-    expect(await frame()).not.toContain("Item 5")
+    expect(await frame()).toContain("Item 6")
+    expect(await frame()).not.toContain("Item 7")
 
     act(() => {
-      for (let index = 0; index < 4; index++) mockInput.pressKey("j")
+      for (let index = 0; index < 6; index++) mockInput.pressKey("j")
     })
-    expect(await frame()).toContain("Item 5")
+    expect(await frame()).toContain("Item 7")
     expect(await frame()).not.toContain("Item 1")
   })
 })

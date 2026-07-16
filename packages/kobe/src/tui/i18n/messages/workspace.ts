@@ -24,6 +24,12 @@ export const en = {
     unavailable: "unavailable",
     openHint: "enter open",
     deleteHint: "d delete",
+    state: {
+      done: "done",
+      needsInput: "needs input",
+      error: "error",
+      rateLimited: "rate limited",
+    },
   },
   terminalComing: "Embedded terminal is starting...",
 }
@@ -48,6 +54,12 @@ export const zh: typeof en = {
     unavailable: "目标不可用",
     openHint: "enter 打开",
     deleteHint: "d 删除",
+    state: {
+      done: "完成",
+      needsInput: "需要输入",
+      error: "出错",
+      rateLimited: "限流",
+    },
   },
   terminalComing: "嵌入终端正在启动……",
 }

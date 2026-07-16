@@ -19,8 +19,8 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
-const MAX_VISIBLE_CARDS = 4
-const CARD_ROWS_WITH_GAP = 5
+const MAX_VISIBLE_CARDS = 6
+const CARD_ROWS_WITH_GAP = 3
 const DIALOG_CHROME_ROWS = 7
 const AGE_REFRESH_MS = 30_000
 type InboxFilter = "unread" | "all"
@@ -36,6 +36,14 @@ function itemGlyph(state: AttentionInboxItem["state"]): string {
   if (state === "turn_complete") return "✓"
   if (state === "rate_limited") return "⌛"
   return "!"
+}
+
+/** i18n key suffix for the state word shown next to the glyph. */
+function itemStateKey(state: AttentionInboxItem["state"]): string {
+  if (state === "permission_needed") return "workspace.inbox.state.needsInput"
+  if (state === "turn_complete") return "workspace.inbox.state.done"
+  if (state === "rate_limited") return "workspace.inbox.state.rateLimited"
+  return "workspace.inbox.state.error"
 }
 
 function tabLabel(
@@ -161,72 +169,66 @@ export function AttentionInboxPane(props: {
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
             const project = task ? sidebarProjectLabel(task.repo, repos) : ""
-            const frameColor = active ? theme.primary : theme.borderSubtle
-            const content = (
-              <box
-                key={`${attentionInboxKey(item)}:content`}
-                flexDirection="column"
-                flexBasis={0}
-                flexGrow={1}
-                flexShrink={1}
-                paddingLeft={1}
-                paddingRight={1}
-              >
-                <box flexDirection="row">
-                  <text fg={theme.focusAccent} wrapMode="none">
-                    {item.unread ? "• " : "  "}
-                  </text>
-                  <text fg={itemColor(item.state, theme)} wrapMode="none">{`${itemGlyph(item.state)} `}</text>
-                  <text
-                    fg={tab.available ? theme.text : theme.textMuted}
-                    attributes={active ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                    flexBasis={0}
-                    flexGrow={1}
-                    flexShrink={1}
-                  >
-                    {`${title}${tab.label ? ` · ${tab.label}` : ""}`}
-                  </text>
-                </box>
-                <box flexDirection="row" paddingLeft={4} gap={1}>
-                  <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-                    {project}
-                  </text>
-                  {!tab.available ? (
-                    <text fg={theme.warning} wrapMode="none" flexShrink={0}>
-                      {t("workspace.inbox.unavailable")}
-                    </text>
-                  ) : null}
-                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                    {relativeAgeMs(item.at, now)}
-                  </text>
-                </box>
-              </box>
-            )
+            const stateColor = itemColor(item.state, theme)
+            // Identity line: `project › tab` — WHERE the episode happened is
+            // the primary key a user scans for (which project, which tab),
+            // so it leads; the task title is context on line 2. Both labels
+            // are runtime data (repo basename, engine-registry tab title) —
+            // no vendor strings live here.
+            const identity = tab.label ? `${project} › ${tab.label}` : project || title
             const onMouseUp = (event: { stopPropagation(): void }) => {
               event.stopPropagation()
               setCursor(absoluteIndex)
               props.onOpen(item, tab.available)
             }
             return (
-              <box key={attentionInboxKey(item)} paddingLeft={2} paddingRight={2}>
-                <box flexDirection="row" backgroundColor={theme.backgroundElement} onMouseUp={onMouseUp}>
-                  <box flexDirection="column" flexShrink={0}>
-                    <text fg={frameColor} wrapMode="none">
-                      ⌜
+              <box
+                key={attentionInboxKey(item)}
+                flexDirection="row"
+                paddingRight={2}
+                backgroundColor={active ? theme.backgroundElement : undefined}
+                onMouseUp={onMouseUp}
+              >
+                {/* Selection bar — the sidebar's rail language, not a frame. */}
+                <box flexDirection="column" flexShrink={0} paddingRight={1}>
+                  <text fg={active ? theme.primary : undefined} wrapMode="none">
+                    {active ? "▌" : " "}
+                  </text>
+                  <text fg={active ? theme.primary : undefined} wrapMode="none">
+                    {active ? "▌" : " "}
+                  </text>
+                </box>
+                <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
+                  <box flexDirection="row">
+                    <text fg={theme.focusAccent} wrapMode="none" flexShrink={0}>
+                      {item.unread ? "• " : "  "}
                     </text>
-                    <text fg={frameColor} wrapMode="none">
-                      ⌞
+                    <text
+                      fg={tab.available ? theme.text : theme.textMuted}
+                      attributes={active ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      flexBasis={0}
+                      flexGrow={1}
+                      flexShrink={1}
+                    >
+                      {identity}
+                    </text>
+                    <text fg={stateColor} wrapMode="none" flexShrink={0}>
+                      {` ${itemGlyph(item.state)} ${t(itemStateKey(item.state))}`}
+                    </text>
+                    <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+                      {`  ${relativeAgeMs(item.at, now)}`}
                     </text>
                   </box>
-                  {content}
-                  <box flexDirection="column" flexShrink={0}>
-                    <text fg={frameColor} wrapMode="none">
-                      ⌝
+                  <box flexDirection="row" paddingLeft={2}>
+                    <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+                      {title}
                     </text>
-                    <text fg={frameColor} wrapMode="none">
-                      ⌟
-                    </text>
+                    {!tab.available ? (
+                      <text fg={theme.warning} wrapMode="none" flexShrink={0}>
+                        {t("workspace.inbox.unavailable")}
+                      </text>
+                    ) : null}
                   </box>
                 </box>
               </box>
