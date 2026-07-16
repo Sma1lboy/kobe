@@ -31,7 +31,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.8.5",
+      "version": "0.8.6",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -140,6 +140,7 @@
   },
   "trustedDependencies": [
     "electron",
+    "node-pty",
   ],
   "packages": {
     "@acemir/cssom": ["@acemir/cssom@0.9.31", "", {}, "sha512-ZnR3GSaH+/vJ0YlHau21FjfLYjMpYVIzTD8M8vIEQvIGxeOXyXdzCI140rrCY862p/C/BbzWsjc1dgnM9mkoTA=="],
