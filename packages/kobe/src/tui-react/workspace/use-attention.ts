@@ -3,7 +3,8 @@
  *
  *  1. Rising-edge notify — diff the previous vs current daemon `engineState`
  *     map each render and fire `notify()` for any NON-selected task that just
- *     crossed into an attention state (permission_needed / error / turn_complete).
+ *     crossed into an attention state (permission_needed / error / rate_limited
+ *     / turn_complete — the daemon's `ATTENTION_INBOX_STATES`).
  *     The selected task already surfaces its own state in the middle column, so
  *     it's skipped. Gated by the `notifications.crossTask.enabled` preference.
  *  2. Jump-to-next — F7 walks available pending items in the daemon-owned
