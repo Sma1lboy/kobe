@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { charWidth, displayWidth } from "../../src/lib/display-width.ts"
 
+/**
+ * Cell-width contract for `charWidth`/`displayWidth`. These feed the
+ * `kobe export` table renderer and the embedded-terminal cursor overlay, so an
+ * under-counted wide glyph drifts every cell to its right by one column — the
+ * exact misalignment the module exists to prevent.
+ */
 describe("charWidth", () => {
   it("counts plain ASCII / Latin as one cell", () => {
     expect(charWidth("a".codePointAt(0) as number)).toBe(1)
@@ -48,6 +54,20 @@ describe("charWidth", () => {
     expect(charWidth(0xfe19)).toBe(2) // presentation form for vertical horizontal ellipsis (0xfe10–0xfe19)
     expect(charWidth(0xfe30)).toBe(2) // CJK compatibility form (0xfe30–0xfe6f)
   })
+
+  it("counts the Enclosed Ideographic Supplement block as two cells", () => {
+    // Whole block (U+1F200–U+1F2FF) is East-Asian-Width = Wide; it sits just
+    // below the emoji range and was previously counted as one cell.
+    expect(charWidth(0x1f200)).toBe(2) // 🈀 square hiragana hoka
+    expect(charWidth(0x1f21a)).toBe(2) // 🈚 squared CJK "no charge"
+    expect(charWidth(0x1f22f)).toBe(2) // 🈯 squared CJK "reserved"
+    expect(charWidth(0x1f250)).toBe(2) // 🉐 circled ideograph "advantage"
+  })
+
+  it("counts the isolated Mahjong / playing-card emoji as two cells", () => {
+    expect(charWidth(0x1f004)).toBe(2) // 🀄 mahjong tile red dragon
+    expect(charWidth(0x1f0cf)).toBe(2) // 🃏 playing card black joker
+  })
 })
 
 describe("displayWidth", () => {
@@ -78,5 +98,10 @@ describe("displayWidth", () => {
     const ext = "𠀀" // U+20000, one wide code point stored as a surrogate pair
     expect(ext.length).toBe(2) // two UTF-16 units
     expect(displayWidth(ext)).toBe(2) // still two cells, not four
+  })
+
+  it("sums wide enclosed-ideograph glyphs over code points, not UTF-16 units", () => {
+    expect(displayWidth("🈚x")).toBe(3) // wide (2) + ascii (1)
+    expect(displayWidth("🀄🃏")).toBe(4)
   })
 })
