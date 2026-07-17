@@ -59,11 +59,17 @@ export function subtitleBudgetFor(width: number): number {
 
 /**
  * Fit the active project filter into the PROJECTS header. Besides the
- * translated section label, the row reserves two padding cells, two gaps,
- * and one divider cell. The label itself is measured in terminal cells so a
- * wide CJK glyph cannot paint past the sidebar edge.
+ * translated section label, the row reserves two padding cells and two gaps,
+ * plus one safety cell for the divider (which Yoga may shrink to zero). The
+ * label itself is measured in terminal cells so a wide CJK glyph cannot paint
+ * past the sidebar edge.
  */
-export function truncateProjectFilterLabel(label: string, sectionLabel: string, width: number): string {
+export function truncateProjectFilterLabel(opts: {
+  readonly label: string
+  readonly sectionLabel: string
+  readonly width: number
+}): string {
+  const { label, sectionLabel, width } = opts
   const reservedCells = displayWidth(sectionLabel) + 5
   return truncateEndCells(label, Math.max(0, width - reservedCells), charWidth)
 }

@@ -131,11 +131,11 @@ export function Sidebar(props: SidebarProps) {
   }, [projectFilter, projectOptions])
   const projectFilterRepo = projectFilterOption?.repo ?? null
   const effectiveWidth = props.width ?? SIDEBAR_WIDTH
-  const projectFilterLabel = truncateProjectFilterLabel(
-    projectFilterOption?.label ?? "all",
-    t("tasks.header.projects"),
-    effectiveWidth,
-  )
+  const projectFilterLabel = truncateProjectFilterLabel({
+    label: projectFilterOption?.label ?? "all",
+    sectionLabel: t("tasks.header.projects"),
+    width: effectiveWidth,
+  })
 
   // Identity-reconciled row list (docs/DESIGN.md §5.5): keep previous row
   // objects (and the previous ARRAY when nothing changed) so daemon

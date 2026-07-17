@@ -59,9 +59,19 @@ describe("line budgets", () => {
   })
 
   it("fits the active project filter beside the PROJECTS header", () => {
-    expect(truncateProjectFilterLabel("shushu-internship-resume", "PROJECTS", 30)).toBe("shushu-internshi…")
-    expect(truncateProjectFilterLabel("长项目名称", "PROJECTS", 17)).toBe("长…")
-    expect(truncateProjectFilterLabel("anything", "PROJECTS", 12)).toBe("")
+    expect(truncateProjectFilterLabel({ label: "kobe", sectionLabel: "PROJECTS", width: 30 })).toBe("kobe")
+    expect(truncateProjectFilterLabel({ label: "shushu-internship-resume", sectionLabel: "PROJECTS", width: 30 })).toBe(
+      "shushu-internshi…",
+    )
+    expect(truncateProjectFilterLabel({ label: "长项目名称", sectionLabel: "PROJECTS", width: 17 })).toBe("长…")
+    // Exact boundary: four label cells fit at width 17; one fewer cell
+    // reserves the ellipsis instead of painting a fifth cell.
+    expect(truncateProjectFilterLabel({ label: "kobe", sectionLabel: "PROJECTS", width: 17 })).toBe("kobe")
+    expect(truncateProjectFilterLabel({ label: "kobe", sectionLabel: "PROJECTS", width: 16 })).toBe("ko…")
+    expect(truncateProjectFilterLabel({ label: "all", sectionLabel: "PROJECTS", width: 16 })).toBe("all")
+    // At this degenerate width even one suffix cell would overflow; containment
+    // takes precedence. Production's sidebar inner width is 30 cells.
+    expect(truncateProjectFilterLabel({ label: "anything", sectionLabel: "PROJECTS", width: 12 })).toBe("")
   })
 })
 
