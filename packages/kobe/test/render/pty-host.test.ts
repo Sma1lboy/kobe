@@ -16,7 +16,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import type { DaemonFrame } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { PtyHost } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import { PtyHost, foldOscTitle } from "@sma1lboy/kobe-daemon/daemon/pty-host"
 
 const hosts: PtyHost[] = []
 
@@ -279,5 +279,50 @@ describe("PtyHost", () => {
 
     await until(() => dataText(frames).includes("program="))
     expect(dataText(frames)).toContain("program=unset version=unset")
+  })
+})
+
+// The pure title/carry fold behind scanOscTitle. Driving this directly
+// (instead of through a real PTY) is the only way to pin CROSS-CHUNK carry:
+// a real child's writes don't split at chosen byte boundaries, yet a PTY
+// read boundary can fall anywhere — including inside a title's terminator.
+// Regression pin for b8737857, whose introducer-anchored carry was lost in
+// the #334 extraction to pty-observability.ts.
+describe("foldOscTitle", () => {
+  const ESC = "\x1b"
+  const BEL = "\x07"
+
+  test("captures a BEL- and an ST-terminated title in one chunk", () => {
+    expect(foldOscTitle("", `${ESC}]0;bel${BEL}`)).toEqual({ title: "bel", carry: "" })
+    expect(foldOscTitle("", `${ESC}]2;st${ESC}\\`)).toEqual({ title: "st", carry: "" })
+  })
+
+  test("last title in the chunk wins; no title closed → null", () => {
+    expect(foldOscTitle("", `${ESC}]2;first${BEL}output${ESC}]0;second${BEL}`)).toEqual({
+      title: "second",
+      carry: "",
+    })
+    expect(foldOscTitle("", "plain output, no escapes").title).toBeNull()
+    expect(foldOscTitle("", `text ${ESC}[0m more`)).toEqual({ title: null, carry: "" })
+  })
+
+  test("a title split mid-body across chunks completes on the next chunk", () => {
+    const first = foldOscTitle("", `${ESC}]0;my-ti`)
+    expect(first).toEqual({ title: null, carry: `${ESC}]0;my-ti` })
+    expect(foldOscTitle(first.carry, `tle${BEL}`)).toEqual({ title: "my-title", carry: "" })
+  })
+
+  test("a title whose ST terminator splits across chunks is still captured", () => {
+    // Pre-fix, lastIndexOf(ESC) kept only the terminator's lone ESC and
+    // dropped the whole `ESC ]0;title` introducer — the title was lost.
+    const first = foldOscTitle("", `${ESC}]0;split-st${ESC}`)
+    expect(first).toEqual({ title: null, carry: `${ESC}]0;split-st${ESC}` })
+    expect(foldOscTitle(first.carry, "\\")).toEqual({ title: "split-st", carry: "" })
+  })
+
+  test("a title whose introducer splits across chunks is still captured", () => {
+    const first = foldOscTitle("", `done${ESC}`)
+    expect(first).toEqual({ title: null, carry: ESC })
+    expect(foldOscTitle(first.carry, `]2;boot${BEL}`)).toEqual({ title: "boot", carry: "" })
   })
 })

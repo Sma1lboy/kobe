@@ -30,6 +30,8 @@ import { embeddedTerminalEnv } from "./pty-env.js"
 import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
 
 export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
+// Re-exported for the cross-chunk title-boundary tests (pure fold).
+export { foldOscTitle } from "./pty-observability.ts"
 
 /** Everything `pty.open` needs to spawn a session's child on first open. */
 export interface PtySpawnSpec {

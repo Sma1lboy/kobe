@@ -11,7 +11,7 @@
  * shape here is one a real crash can produce.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -55,13 +55,33 @@ describe("load() recovery", () => {
     expect(store.list()).toEqual([])
   })
 
-  it("corrupt JSON recovers empty with a warning, leaving the file in place", async () => {
+  it("corrupt JSON recovers empty with a warning, backing the original bytes up first", async () => {
+    // Why the backup matters: the next save read-merge-writes from the empty
+    // recovery base and REPLACES the corrupt file — without the copy, the
+    // tasks its bytes still held are gone for good (ported from PR #276).
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     await primeDir()
     await writeManifest("{ not json !!!")
     const index = await store.load()
     expect(index.tasks).toEqual([])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("corrupted"))
+
+    const backups = (await readdir(join(home, ".kobe"))).filter((name) => name.startsWith("tasks.json.corrupt-"))
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+    expect(await readFile(join(home, ".kobe", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
+
+    // The save that would have destroyed the bytes leaves the backup intact
+    // (the save path may add its own backup — count only grows, bytes stay).
+    await store.create({
+      repo: "/r",
+      title: "after-recovery",
+      branch: "",
+      worktreePath: "",
+      status: "backlog",
+      kind: "task",
+      vendor: "claude",
+    })
+    expect(await readFile(join(home, ".kobe", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
     warn.mockRestore()
   })
 

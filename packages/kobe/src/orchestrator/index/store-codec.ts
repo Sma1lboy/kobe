@@ -16,6 +16,7 @@
  * store class stays under the file-size cap.
  */
 
+import { copyFile } from "node:fs/promises"
 import type { Task, TaskDeletionState, TaskPRStatus, TaskStatus } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { coerceVendorId } from "../../types/vendor.ts"
@@ -52,6 +53,24 @@ export async function acquireWithRetry(lockPath: string): Promise<void> {
 }
 
 const CURRENT_VERSION = 3 as const
+
+/**
+ * Copy a corrupt manifest's ORIGINAL bytes aside before the store recovers
+ * to an empty index. Without this, the next save read-merge-writes from the
+ * empty recovery base and REPLACES the corrupt file — permanently
+ * destroying whatever tasks its bytes still held (ported from PR #276).
+ * Best-effort: a backup failure must never block startup/save; returns the
+ * backup path for the caller's warn line, or null when the copy failed.
+ */
+export async function backupCorruptManifest(path: string, now: () => Date = () => new Date()): Promise<string | null> {
+  const backupPath = `${path}.corrupt-${now().toISOString().replaceAll(":", "-")}`
+  try {
+    await copyFile(path, backupPath)
+    return backupPath
+  } catch {
+    return null
+  }
+}
 
 /**
  * Normalize an arbitrary JSON value into a v3 cache. Migrates v1 / v2

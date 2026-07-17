@@ -25,7 +25,7 @@ import { dirname, join } from "node:path"
 import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { release } from "./lockfile.ts"
-import { acquireWithRetry, normalizeIndex } from "./store-codec.ts"
+import { acquireWithRetry, backupCorruptManifest, normalizeIndex } from "./store-codec.ts"
 import { ulid } from "./ulid.ts"
 
 export interface TaskIndexStoreOptions {
@@ -128,8 +128,14 @@ export class TaskIndexStore {
     try {
       parsed = JSON.parse(raw)
     } catch (err) {
+      // Back the original bytes up FIRST: the next save read-merge-writes
+      // from this empty recovery base and replaces the corrupt file, so
+      // without a copy the user's tasks are gone for good (PR #276).
+      const backup = await backupCorruptManifest(this.path)
       console.warn(
-        `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index. The stale file is left in place.`,
+        `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index.${
+          backup ? ` Original bytes backed up to ${backup}.` : " Backup copy failed; the stale file is left in place."
+        }`,
       )
       this.cache = { version: CURRENT_VERSION, tasks: [] }
       this.loaded = true
@@ -217,7 +223,10 @@ export class TaskIndexStore {
       parsed = JSON.parse(raw)
     } catch {
       // A corrupt on-disk file is recovered as empty by load(); don't let it
-      // block a save here either. Our merged write replaces it.
+      // block a save here either — but our merged write is about to REPLACE
+      // the corrupt bytes, so copy them aside first (covers a file that
+      // corrupted after load, which the load-time backup never saw).
+      await backupCorruptManifest(this.path)
       return []
     }
     return normalizeIndex(parsed, this.path).tasks
