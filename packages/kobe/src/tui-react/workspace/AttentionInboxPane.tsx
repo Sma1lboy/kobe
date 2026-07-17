@@ -2,7 +2,7 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { relativeAgeMs } from "../../tui/history/message-core"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
@@ -73,9 +73,27 @@ export function AttentionInboxPane(props: {
   const [cursor, setCursor] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
+  const { availableItems, unavailableItems } = useMemo(() => {
+    const tasksById = new Map<string, Task>(props.tasks.map((task) => [task.id, task]))
+    const available: AttentionInboxItem[] = []
+    const unavailable: AttentionInboxItem[] = []
+    for (const item of props.items) {
+      const task = tasksById.get(item.taskId)
+      const itemAvailable = isAttentionInboxItemAvailable(
+        item,
+        task,
+        (tabId) => knownTaskTab(props.kv, item.taskId, tabId) !== undefined,
+      )
+      if (itemAvailable) available.push(item)
+      else unavailable.push(item)
+    }
+    return { availableItems: available, unavailableItems: unavailable }
+  }, [props.items, props.tasks, props.kv])
   // Every episode in the Inbox is pending by definition (opening one removes
-  // it — no read/unread lifecycle). Oldest first: the queue drains top-down.
-  const ordered = sortAttentionInbox(props.items, taskOrder)
+  // it — no read/unread lifecycle). Unavailable targets are hidden
+  // synchronously, then dismissed below so stale rows never flash onscreen.
+  // Oldest first: the queue drains top-down.
+  const ordered = sortAttentionInbox(availableItems, taskOrder)
   const maxVisibleCards = Math.max(
     1,
     Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
@@ -88,6 +106,10 @@ export function AttentionInboxPane(props: {
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
   }, [cursor, safeCursor])
+
+  useEffect(() => {
+    for (const item of unavailableItems) props.onDelete(item)
+  }, [unavailableItems, props.onDelete])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS)
@@ -187,7 +209,7 @@ export function AttentionInboxPane(props: {
                 <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
                   <box flexDirection="row">
                     <text
-                      fg={tab.available ? theme.text : theme.textMuted}
+                      fg={theme.text}
                       attributes={active ? TextAttributes.BOLD : undefined}
                       wrapMode="none"
                       flexBasis={0}
@@ -207,11 +229,6 @@ export function AttentionInboxPane(props: {
                     <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
                       {title}
                     </text>
-                    {!tab.available ? (
-                      <text fg={theme.warning} wrapMode="none" flexShrink={0}>
-                        {t("workspace.inbox.unavailable")}
-                      </text>
-                    ) : null}
                   </box>
                 </box>
               </box>

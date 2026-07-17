@@ -51,8 +51,8 @@ export function sortAttentionInbox(
 }
 
 /**
- * Pick the next pending episode (oldest first). Unavailable episodes stay in
- * the Inbox dialog but are excluded from F7.
+ * Pick the next pending episode (oldest first). Unavailable episodes are
+ * excluded while the Inbox pane's silent cleanup drains them.
  */
 export function nextAttentionInboxTarget(
   items: readonly AttentionInboxItem[],
