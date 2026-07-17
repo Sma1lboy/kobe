@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest"
 import { latestTranscriptMtimeForWorktree as claudeMtime } from "../../src/engine/claude-code-local/history.ts"
 import {
   type HistoryDeps as CodexDeps,
+  findLatestRolloutForWorktree as codexFindLatest,
   latestTranscriptMtimeForWorktree as codexMtime,
 } from "../../src/engine/codex-local/history.ts"
 import {
@@ -46,14 +47,36 @@ describe("codex latestTranscriptMtimeForWorktree", () => {
     }
   }
 
-  it("returns the newest-by-filename rollout matching the worktree cwd", async () => {
+  it("returns the newest-mtime rollout matching the worktree cwd, skipping other worktrees", async () => {
     const files = {
       "rollout-2026-05-29T01-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl": { cwd: "/wt", mtimeMs: 1000 },
       "rollout-2026-05-29T02-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl": { cwd: "/wt", mtimeMs: 2000 },
       "rollout-2026-05-29T03-00-00-cccccccc-cccc-cccc-cccc-cccccccccccc.jsonl": { cwd: "/other", mtimeMs: 3000 },
     }
-    // Newest filename (03:00, /other) is skipped; first /wt match is 02:00.
+    // Newest filename (03:00, /other) belongs to another worktree and is
+    // skipped; the max mtime among /wt's rollouts is 02:00's 2000.
     expect(await codexMtime("/wt", deps(files))).toBe(2000)
+  })
+
+  it("returns the max mtime even when an older-by-filename rollout is the active one", async () => {
+    // Filename order is CREATION order. A resumed older session appended to
+    // after a newer, idle rollout was created carries the higher mtime — the
+    // Ops badge and turn detector want that newest ACTIVITY, i.e. the max
+    // mtime, not whichever rollout was created most recently. This mirrors
+    // the Claude/Copilot readers. The pre-fix "first cwd match by filename"
+    // returned the newer-but-idle 3000-mtime file's 3000 here.
+    const files = {
+      // Older filename, but the session the agent is actively appending to.
+      "rollout-2026-05-29T01-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl": { cwd: "/wt", mtimeMs: 9000 },
+      // Newer filename, idle since creation.
+      "rollout-2026-05-29T02-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl": { cwd: "/wt", mtimeMs: 3000 },
+    }
+    expect(await codexMtime("/wt", deps(files))).toBe(9000)
+    // findLatestRolloutForWorktree surfaces the PATH of that active rollout —
+    // the file the turn detector then reads for the completion marker.
+    const found = await codexFindLatest("/wt", deps(files))
+    expect(found?.mtimeMs).toBe(9000)
+    expect(found?.path).toContain("rollout-2026-05-29T01-00-00-aaaaaaaa")
   })
 
   it("returns 0 when no rollout matches the worktree", async () => {
