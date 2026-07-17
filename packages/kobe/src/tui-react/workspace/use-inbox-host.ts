@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
@@ -7,6 +7,7 @@ import type { DialogContext } from "../ui/dialog"
 import { AttentionInboxDialog } from "./AttentionInboxPane"
 import {
   attentionInboxCounts,
+  attentionInboxKey,
   isAttentionInboxItemAvailable,
   partitionAttentionInboxAvailability,
   visitResolvedEpisodes,
@@ -14,6 +15,14 @@ import {
 import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 import { activeTabIdFor, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
+
+function episodeKey(item: AttentionInboxItem): string {
+  return `${attentionInboxKey(item)}\0${item.at}`
+}
+
+function episodeSignature(items: readonly AttentionInboxItem[]): string {
+  return items.map(episodeKey).sort().join("\n")
+}
 
 export function useInboxHost(args: {
   orchestrator: RemoteOrchestrator
@@ -38,15 +47,29 @@ export function useInboxHost(args: {
   )
   const counts = attentionInboxCounts(availableItems)
   const notifyErrorRef = useLatest(args.notifyError)
+  const unavailableItemsRef = useLatest(unavailableItems)
+  const unavailableSignature = episodeSignature(unavailableItems)
+  const attemptedUnavailable = useRef(new Set<string>())
 
   // The host is always mounted, unlike the Inbox dialog. Hide unavailable
   // targets from its count immediately, then remove their durable records in
-  // the background so opening the dialog is never required for cleanup.
+  // the background so opening the dialog is never required for cleanup. Each
+  // episode is attempted once while unavailable: unrelated KV writes rebuild
+  // the partition but must not repeat the RPC or its failure toast.
   useEffect(() => {
-    for (const item of unavailableItems) {
+    const currentItems = unavailableItemsRef.current
+    if (episodeSignature(currentItems) !== unavailableSignature) return
+    const currentKeys = new Set(currentItems.map(episodeKey))
+    for (const attempted of attemptedUnavailable.current) {
+      if (!currentKeys.has(attempted)) attemptedUnavailable.current.delete(attempted)
+    }
+    for (const item of currentItems) {
+      const key = episodeKey(item)
+      if (attemptedUnavailable.current.has(key)) continue
+      attemptedUnavailable.current.add(key)
       notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
     }
-  }, [unavailableItems, orch])
+  }, [unavailableSignature, orch])
 
   function openItem(item: AttentionInboxItem, knownAvailable?: boolean): void {
     const task = orch.getTask(item.taskId)
@@ -70,19 +93,28 @@ export function useInboxHost(args: {
   }
 
   const availableItemsRef = useLatest(availableItems)
+  const availableSignature = episodeSignature(availableItems)
+  const selectedIdRef = useLatest(args.selectedId)
   function resolveVisited(taskId: string, tabId: string): void {
     for (const item of visitResolvedEpisodes(availableItemsRef.current, { taskId, tabId })) {
       notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
     }
   }
 
-  // Resolve episodes that arrive while their target is already visible.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the queue push only; selection/tab reads use the current render.
+  // Resolve episodes that arrive while their target is already visible. The
+  // stable signature changes for queue episodes or availability, not for an
+  // unrelated KV context rebuild; selection/tab reads use the current render.
   useEffect(() => {
-    if (!args.selectedId) return
-    const activeTab = activeTabIdFor(args.selectedId)
-    if (activeTab) resolveVisited(args.selectedId, activeTab)
-  }, [availableItems])
+    const currentItems = availableItemsRef.current
+    if (episodeSignature(currentItems) !== availableSignature) return
+    const selectedId = selectedIdRef.current
+    if (!selectedId) return
+    const activeTab = activeTabIdFor(selectedId)
+    if (!activeTab) return
+    for (const item of visitResolvedEpisodes(currentItems, { taskId: selectedId, tabId: activeTab })) {
+      notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
+    }
+  }, [availableSignature, orch])
 
   return { availableItems, counts, openItem, show, resolveVisited }
 }
