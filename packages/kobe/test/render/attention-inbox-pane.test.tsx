@@ -216,7 +216,7 @@ describe("AttentionInboxPane", () => {
     }
   })
 
-  it("silently clears a closed Terminal Tab before rendering the queue", async () => {
+  it("hides a closed Terminal Tab before rendering the queue", async () => {
     const deleted: string[] = []
     const { frame } = await renderComponent(
       <Probe
@@ -231,10 +231,10 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("Alpha")
     expect(text).not.toContain("closed-tab")
     expect(text).not.toContain("unavailable")
-    expect(deleted).toEqual(["task-a:closed-tab"])
+    expect(deleted).toEqual([])
   })
 
-  it("silently clears an item whose source Task was deleted", async () => {
+  it("hides an item whose source Task was deleted", async () => {
     const deleted: string[] = []
     const { frame } = await renderComponent(
       <Probe
@@ -249,7 +249,7 @@ describe("AttentionInboxPane", () => {
     expect(text).toContain("No pending attention")
     expect(text).not.toContain("deleted-task")
     expect(text).not.toContain("unavailable")
-    expect(deleted).toEqual(["deleted-task"])
+    expect(deleted).toEqual([])
   })
 
   it("caps the card viewport at six items and follows the cursor", async () => {

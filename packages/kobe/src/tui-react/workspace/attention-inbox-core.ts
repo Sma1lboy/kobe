@@ -30,6 +30,24 @@ export function isAttentionInboxItemAvailable(
   return task !== undefined && !task.archived && (item.tabId === null || hasTab(item.tabId))
 }
 
+export function partitionAttentionInboxAvailability(
+  items: readonly AttentionInboxItem[],
+  tasks: readonly Pick<Task, "id" | "archived">[],
+  hasTab: (taskId: string, tabId: string) => boolean,
+): { availableItems: AttentionInboxItem[]; unavailableItems: AttentionInboxItem[] } {
+  const tasksById = new Map<string, Pick<Task, "id" | "archived">>(tasks.map((task) => [task.id, task]))
+  const availableItems: AttentionInboxItem[] = []
+  const unavailableItems: AttentionInboxItem[] = []
+  for (const item of items) {
+    const available = isAttentionInboxItemAvailable(item, tasksById.get(item.taskId), (tabId) =>
+      hasTab(item.taskId, tabId),
+    )
+    if (available) availableItems.push(item)
+    else unavailableItems.push(item)
+  }
+  return { availableItems, unavailableItems }
+}
+
 /**
  * Oldest first — the Inbox is a queue that drains top-down (opening an
  * episode removes it; a fresh event re-records at the latest position).

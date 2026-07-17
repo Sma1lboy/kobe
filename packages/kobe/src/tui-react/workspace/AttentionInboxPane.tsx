@@ -17,7 +17,12 @@ import { useBindings } from "../lib/keymap"
 import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
-import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
+import {
+  attentionInboxKey,
+  isAttentionInboxItemAvailable,
+  partitionAttentionInboxAvailability,
+  sortAttentionInbox,
+} from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_VISIBLE_CARDS = 6
@@ -73,25 +78,19 @@ export function AttentionInboxPane(props: {
   const [cursor, setCursor] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
-  const { availableItems, unavailableItems } = useMemo(() => {
-    const tasksById = new Map<string, Task>(props.tasks.map((task) => [task.id, task]))
-    const available: AttentionInboxItem[] = []
-    const unavailable: AttentionInboxItem[] = []
-    for (const item of props.items) {
-      const task = tasksById.get(item.taskId)
-      const itemAvailable = isAttentionInboxItemAvailable(
-        item,
-        task,
-        (tabId) => knownTaskTab(props.kv, item.taskId, tabId) !== undefined,
-      )
-      if (itemAvailable) available.push(item)
-      else unavailable.push(item)
-    }
-    return { availableItems: available, unavailableItems: unavailable }
-  }, [props.items, props.tasks, props.kv])
+  const { availableItems } = useMemo(
+    () =>
+      partitionAttentionInboxAvailability(
+        props.items,
+        props.tasks,
+        (taskId, tabId) => knownTaskTab(props.kv, taskId, tabId) !== undefined,
+      ),
+    [props.items, props.tasks, props.kv],
+  )
   // Every episode in the Inbox is pending by definition (opening one removes
   // it — no read/unread lifecycle). Unavailable targets are hidden
-  // synchronously, then dismissed below so stale rows never flash onscreen.
+  // synchronously; the always-mounted Workspace host dismisses them in the
+  // background so stale rows never flash onscreen.
   // Oldest first: the queue drains top-down.
   const ordered = sortAttentionInbox(availableItems, taskOrder)
   const maxVisibleCards = Math.max(
@@ -106,10 +105,6 @@ export function AttentionInboxPane(props: {
   useEffect(() => {
     if (cursor !== safeCursor) setCursor(safeCursor)
   }, [cursor, safeCursor])
-
-  useEffect(() => {
-    for (const item of unavailableItems) props.onDelete(item)
-  }, [unavailableItems, props.onDelete])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS)
