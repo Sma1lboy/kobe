@@ -11,8 +11,8 @@ function dispatch(name: DaemonRequestName, payload: unknown, ctx: DaemonHandlerC
   return dispatchDaemonRequest(createDaemonHandlerRegistry(), name, payload, ctx)
 }
 
-describe("attention.dismiss handler", () => {
-  it("marks the exact opened episode read", async () => {
+describe("attention Inbox handlers", () => {
+  it("resolves the exact item through the legacy attention.read alias", async () => {
     const { ctx, rec } = fakeCtx()
     await expect(dispatch("attention.read", { taskId: "t1", tabId: "tab-2", at: 42 }, ctx)).resolves.toEqual({
       updated: true,
@@ -48,7 +48,7 @@ describe("attention.dismiss handler", () => {
     )
   })
 
-  it("records normalized engine events with their chat-tab identity", async () => {
+  it("records normalized engine events with their Terminal Tab identity", async () => {
     const { ctx, rec } = fakeCtx()
     await dispatch("engine.reportEvent", { taskId: "t1", tabId: "tab-3", kind: "awaiting-input" }, ctx)
     expect(rec.inboxRecords).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: undefined, tabId: "tab-3" }])

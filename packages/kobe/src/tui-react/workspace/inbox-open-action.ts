@@ -4,9 +4,9 @@ import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 type InboxOpenRpc = Pick<RemoteOrchestrator, "dismissAttention">
 
 /**
- * Opening an episode RESOLVES it: the item is removed from the Inbox
+ * Opening an item RESOLVES it: the item is removed from the Inbox
  * (no read/unread lifecycle — owner call 2026-07-16). A fresh event on the
- * same task+tab re-records it as a new episode at the latest position.
+ * same Task and Terminal Tab records a new item at the latest position.
  * Unavailable items are stale UI state and resolve the same way.
  */
 export function requestInboxItemOpen(

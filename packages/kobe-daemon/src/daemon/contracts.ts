@@ -126,7 +126,8 @@ export interface EngineActivityDetail {
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
 
-/** States retained as pending Inbox episodes until handled or replaced by a newer same-tab event. */
+/** States represented by pending Inbox items until handled or the same
+ * Terminal Tab starts another turn. */
 export const ATTENTION_INBOX_STATES = [
   "turn_complete",
   "permission_needed",

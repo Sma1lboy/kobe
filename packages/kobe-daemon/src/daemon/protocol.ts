@@ -156,10 +156,10 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
-  // Explicitly dismiss the durable attention episode at the supplied event
-  // timestamp. Viewing/jumping never calls this; only the Inbox action does.
+  // Remove the durable Inbox item at the supplied event timestamp. Explicit
+  // removal, opening, and visiting the target all use this guarded operation.
   | "attention.dismiss"
-  // Mark the exact opened episode read; `at` guards against stale opens.
+  // Legacy alias for resolving the exact item; `at` guards stale clients.
   | "attention.read"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.

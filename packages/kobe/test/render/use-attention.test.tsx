@@ -39,7 +39,7 @@ function notifications(notify: NotificationsContext["notify"]): NotificationsCon
 afterEach(() => tabsByTask.clear())
 
 describe("useAttention", () => {
-  it("jumps from the current chat tab to the next pending live task", async () => {
+  it("jumps from the current Terminal Tab to the next available Inbox item", async () => {
     const tasks = [task("task-a", "Alpha"), task("task-b", "Beta"), task("task-c", "Archived", true)]
     const opened: AttentionInboxItem[] = []
     let jump: (() => void) | undefined
@@ -58,7 +58,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications(() => {}),
         openAttention: (item) => opened.push(item),
-        noTasksMessage: "No pending attention",
+        noTasksMessage: "No available Inbox items",
       }).jumpToNextAttention
       return <text>ready</text>
     }
@@ -69,7 +69,7 @@ describe("useAttention", () => {
     expect(opened.map((item) => item.taskId)).toEqual(["task-b"])
   })
 
-  it("shows the fallback toast when no pending episode is available", async () => {
+  it("shows the fallback toast when no Inbox item is available", async () => {
     const notices: Parameters<NotificationsContext["notify"]>[0][] = []
     let jump: (() => void) | undefined
 
@@ -84,7 +84,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No pending attention",
+        noTasksMessage: "No available Inbox items",
       }).jumpToNextAttention
       return <text>ready</text>
     }
@@ -92,7 +92,7 @@ describe("useAttention", () => {
     await renderComponent(<Probe />)
     act(() => jump?.())
 
-    expect(notices).toEqual([{ kind: "done", taskId: "task-a", tabId: "", title: "No pending attention" }])
+    expect(notices).toEqual([{ kind: "done", taskId: "task-a", tabId: "", title: "No available Inbox items" }])
   })
 
   it("notifies only on a non-selected task's rising attention edge", async () => {
@@ -113,7 +113,7 @@ describe("useAttention", () => {
         kv: kv(),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No pending attention",
+        noTasksMessage: "No available Inbox items",
       })
       return <text>ready</text>
     }
@@ -144,7 +144,7 @@ describe("useAttention", () => {
         kv: kv(false),
         notif: notifications((notice) => notices.push(notice)),
         openAttention: () => {},
-        noTasksMessage: "No pending attention",
+        noTasksMessage: "No available Inbox items",
       })
       return <text>ready</text>
     }
