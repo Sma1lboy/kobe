@@ -190,7 +190,7 @@ export function SidebarPanel(props: {
                 fg={props.projectFilterRepo ? theme.text : theme.textMuted}
                 attributes={props.projectFilterRepo ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
-                flexShrink={0}
+                flexShrink={1}
               >
                 {props.projectFilterLabel}
               </text>

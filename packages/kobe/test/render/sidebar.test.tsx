@@ -183,4 +183,44 @@ describe("Sidebar", () => {
       destroy()
     }
   })
+
+  it("keeps a long active project filter inside the sidebar header", async () => {
+    const longRepo = "/repo/shushu-internship-resume"
+    const otherRepo = "/repo/kobe"
+    const longProject = task({
+      id: "main-long",
+      title: "shushu-internship-resume",
+      repo: longRepo,
+      kind: "main",
+      worktreePath: longRepo,
+    })
+    const otherProject = task({
+      id: "main-other",
+      title: "kobe",
+      repo: otherRepo,
+      kind: "main",
+      worktreePath: otherRepo,
+    })
+    const scopedTask = task({ repo: longRepo, worktreePath: `${longRepo}/.kobe/worktrees/alpha` })
+    const { destroy, spans } = await renderComponent(
+      <Sidebar
+        width={30}
+        tasks={[longProject, otherProject, scopedTask]}
+        selectedId={scopedTask.id}
+        onSelect={() => {}}
+        projectFilter={longRepo}
+        worktreeChanges={new Map()}
+      />,
+      { width: 40, height: 18 },
+    )
+
+    try {
+      const projectHeader = findLine(await spans(), "PROJECTS")
+      const headerText = projectHeader?.spans.map((span) => span.text).join("") ?? ""
+      expect(headerText).toContain("shushu-internshi…")
+      expect(headerText).not.toContain("shushu-internship-resume")
+    } finally {
+      destroy()
+    }
+  })
 })
