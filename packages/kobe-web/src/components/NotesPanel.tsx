@@ -50,11 +50,42 @@ export function NotesPanel({
   // Track the task the current buffer belongs to, so an in-flight load or
   // a queued autosave for a previous task never writes to the new one.
   const loadedTaskRef = useRef<string | null>(null)
+  // The newest un-persisted edit, kept so a task switch or an unmount that
+  // lands inside the autosave debounce window can FLUSH it instead of dropping
+  // it. Carries its own taskId so a flush always writes to the task the text
+  // actually belongs to, never the task we're navigating to.
+  const pendingSaveRef = useRef<{ taskId: string; value: string } | null>(null)
+
+  // Persist the pending edit right now, cancelling the debounce. A no-op when
+  // nothing is pending. The success/error reflection stays target-guarded so a
+  // flush for a task we've since left saves the data without stamping a stale
+  // status onto the task now on screen.
+  const flushPendingSave = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    const pending = pendingSaveRef.current
+    if (!pending) return
+    pendingSaveRef.current = null
+    const { taskId: target, value } = pending
+    void saveNotes(target, value)
+      .then(() => {
+        if (loadedTaskRef.current === target) setSaveState("saved")
+      })
+      .catch(() => {
+        if (loadedTaskRef.current === target) setSaveState("error")
+      })
+  }, [])
 
   // Load on task change.
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
+    // Repoint the ref BEFORE flushing so the outgoing task's queued save can't
+    // reflect a stale "saved" onto the incoming task (the flush is target-
+    // guarded on this ref). The flush persists an edit made in the last
+    // <debounce ms — the old clearTimeout here silently dropped it.
     loadedTaskRef.current = taskId
+    flushPendingSave()
     setSaveState("idle")
     // Clear the buffer + drop to Edit mode immediately so the previous task's
     // content (or a stale preview render) can't show during the async reload.
@@ -78,14 +109,15 @@ export function NotesPanel({
     return () => {
       cancelled = true
     }
-  }, [taskId])
+  }, [taskId, flushPendingSave])
 
-  // Cleanup any pending debounce on unmount.
+  // Flush (not drop) any pending autosave on unmount, so edits made in the last
+  // <debounce ms before the panel closes still reach the server.
   useEffect(() => {
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
+      flushPendingSave()
     }
-  }, [])
+  }, [flushPendingSave])
 
   const onChange = useCallback(
     (value: string) => {
@@ -93,19 +125,13 @@ export function NotesPanel({
       if (!taskId) return
       const target = taskId
       setSaveState("saving")
+      // Stash the newest edit so a flush (task switch / unmount) can persist it
+      // even if the debounce hasn't fired yet.
+      pendingSaveRef.current = { taskId: target, value }
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        saveNotes(target, value)
-          .then(() => {
-            // Only reflect success if we're still on the same task.
-            if (loadedTaskRef.current === target) setSaveState("saved")
-          })
-          .catch(() => {
-            if (loadedTaskRef.current === target) setSaveState("error")
-          })
-      }, AUTOSAVE_DEBOUNCE_MS)
+      debounceRef.current = setTimeout(flushPendingSave, AUTOSAVE_DEBOUNCE_MS)
     },
-    [taskId],
+    [taskId, flushPendingSave],
   )
 
   return (
