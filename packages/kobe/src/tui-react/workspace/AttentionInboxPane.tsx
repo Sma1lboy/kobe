@@ -2,7 +2,7 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { relativeAgeMs } from "../../tui/history/message-core"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
@@ -17,7 +17,12 @@ import { useBindings } from "../lib/keymap"
 import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
-import { attentionInboxKey, isAttentionInboxItemAvailable, sortAttentionInbox } from "./attention-inbox-core"
+import {
+  attentionInboxKey,
+  isAttentionInboxItemAvailable,
+  partitionAttentionInboxAvailability,
+  sortAttentionInbox,
+} from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_VISIBLE_CARDS = 6
@@ -73,9 +78,21 @@ export function AttentionInboxPane(props: {
   const [cursor, setCursor] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const taskOrder = props.tasks.map((task) => task.id)
+  const { availableItems } = useMemo(
+    () =>
+      partitionAttentionInboxAvailability(
+        props.items,
+        props.tasks,
+        (taskId, tabId) => knownTaskTab(props.kv, taskId, tabId) !== undefined,
+      ),
+    [props.items, props.tasks, props.kv],
+  )
   // Every episode in the Inbox is pending by definition (opening one removes
-  // it — no read/unread lifecycle). Oldest first: the queue drains top-down.
-  const ordered = sortAttentionInbox(props.items, taskOrder)
+  // it — no read/unread lifecycle). Unavailable targets are hidden
+  // synchronously; the always-mounted Workspace host dismisses them in the
+  // background so stale rows never flash onscreen.
+  // Oldest first: the queue drains top-down.
+  const ordered = sortAttentionInbox(availableItems, taskOrder)
   const maxVisibleCards = Math.max(
     1,
     Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
@@ -187,7 +204,7 @@ export function AttentionInboxPane(props: {
                 <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
                   <box flexDirection="row">
                     <text
-                      fg={tab.available ? theme.text : theme.textMuted}
+                      fg={theme.text}
                       attributes={active ? TextAttributes.BOLD : undefined}
                       wrapMode="none"
                       flexBasis={0}
@@ -207,11 +224,6 @@ export function AttentionInboxPane(props: {
                     <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
                       {title}
                     </text>
-                    {!tab.available ? (
-                      <text fg={theme.warning} wrapMode="none" flexShrink={0}>
-                        {t("workspace.inbox.unavailable")}
-                      </text>
-                    ) : null}
                   </box>
                 </box>
               </box>

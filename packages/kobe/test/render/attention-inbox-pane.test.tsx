@@ -77,6 +77,7 @@ function remoteInbox(initial: AttentionInboxItem[]) {
     onLifecycle: () => () => {},
   } as unknown as KobeDaemonClient
   const orchestrator = new RemoteOrchestrator(client)
+  star?.({ name: "task.snapshot", payload: { tasks } })
   const emit = (next: AttentionInboxItem[]) => star?.({ name: "attention.inbox", payload: { items: next } })
   emit(initial)
   return { orchestrator, emit }
@@ -215,32 +216,40 @@ describe("AttentionInboxPane", () => {
     }
   })
 
-  it("keeps a closed chat tab visible as unavailable", async () => {
+  it("hides a closed Terminal Tab before rendering the queue", async () => {
+    const deleted: string[] = []
     const { frame } = await renderComponent(
       <Probe
-        items={[{ taskId: "task-a", tabId: "closed-tab", state: "error", unread: true, at: 10 }]}
+        items={[items[1], { taskId: "task-a", tabId: "closed-tab", state: "error", unread: true, at: 10 }]}
         onOpen={() => {}}
-        onDelete={() => {}}
+        onDelete={(item) => deleted.push(`${item.taskId}:${item.tabId}`)}
       />,
       { providers: { kv: true }, width: 60, height: 16 },
     )
     const text = await frame()
-    expect(text).toContain("closed-tab")
-    expect(text).toContain("unavailable")
+    expect(text).toContain("INBOX 1")
+    expect(text).toContain("Alpha")
+    expect(text).not.toContain("closed-tab")
+    expect(text).not.toContain("unavailable")
+    expect(deleted).toEqual([])
   })
 
-  it("shows one unavailable label when the source task was deleted", async () => {
+  it("hides an item whose source Task was deleted", async () => {
+    const deleted: string[] = []
     const { frame } = await renderComponent(
       <Probe
         items={[{ taskId: "deleted-task", tabId: null, state: "error", unread: true, at: 10 }]}
         onOpen={() => {}}
-        onDelete={() => {}}
+        onDelete={(item) => deleted.push(item.taskId)}
       />,
       { providers: { kv: true }, width: 60, height: 16 },
     )
     const text = await frame()
-    expect(text).toContain("deleted-task")
-    expect(text.match(/unavailable/g)).toHaveLength(1)
+    expect(text).toContain("INBOX 0")
+    expect(text).toContain("No pending attention")
+    expect(text).not.toContain("deleted-task")
+    expect(text).not.toContain("unavailable")
+    expect(deleted).toEqual([])
   })
 
   it("caps the card viewport at six items and follows the cursor", async () => {
