@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
 
 import { describe, expect, it } from "bun:test"
+import { useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../src/client/remote-orchestrator"
 import { createStateCell } from "../../src/lib/external-store"
 import { type KVContext, useKV } from "../../src/tui-react/context/kv"
@@ -52,6 +53,17 @@ function Probe(props: {
   props.onReady?.(inbox)
   props.onKvReady?.(kv)
   return <text>{`INBOX ${inbox.counts.total}`}</text>
+}
+
+function StatefulProbe(props: {
+  orchestrator: RemoteOrchestrator
+  initialItems: readonly AttentionInboxItem[]
+  selectedId: string
+  onSetItems: (setItems: (items: readonly AttentionInboxItem[]) => void) => void
+}) {
+  const [items, setItems] = useState(props.initialItems)
+  props.onSetItems(setItems)
+  return <Probe orchestrator={props.orchestrator} items={items} selectedId={props.selectedId} />
 }
 
 function fakeOrchestrator(
@@ -135,6 +147,10 @@ describe("Inbox host", () => {
 
     act(() => controller?.resolveVisited(task.id, "tab-1"))
     expect(dismissed.filter((entry) => entry[2] === 10)).toHaveLength(3)
+
+    const selectedBeforeStaleOpen = selected.length
+    act(() => controller?.openItem({ taskId: "deleted", tabId: null, state: "error", unread: true, at: 12 }))
+    expect(selected).toHaveLength(selectedBeforeStaleOpen)
   })
 
   it("resolves an episode that arrives for the currently visible task", async () => {
@@ -192,5 +208,48 @@ describe("Inbox host", () => {
     await Promise.resolve()
     expect(dismissed).toEqual([[task.id, "closed", 30]])
     expect(errors).toHaveLength(1)
+  })
+
+  it("does not resolve the same visible episode twice when another episode arrives", async () => {
+    const first: AttentionInboxItem = {
+      taskId: task.id,
+      tabId: null,
+      state: "turn_complete",
+      unread: true,
+      at: 40,
+    }
+    const dismissed: Array<[string, string | null, number]> = []
+    const tabs = initialTabs()
+    const second: AttentionInboxItem = {
+      taskId: task.id,
+      tabId: tabs.activeId,
+      state: "permission_needed",
+      unread: true,
+      at: 41,
+    }
+    let setItems: ((items: readonly AttentionInboxItem[]) => void) | undefined
+    tabsByTask.set(task.id, tabs)
+    try {
+      const { frame } = await renderComponent(
+        <StatefulProbe
+          orchestrator={fakeOrchestrator([first, second], dismissed)}
+          initialItems={[first]}
+          selectedId={task.id}
+          onSetItems={(next) => {
+            setItems = next
+          }}
+        />,
+        { providers: { dialog: true, kv: true }, width: 30, height: 5 },
+      )
+      await frame()
+      act(() => setItems?.([first, second]))
+      await frame()
+      expect(dismissed).toEqual([
+        [task.id, null, 40],
+        [task.id, tabs.activeId, 41],
+      ])
+    } finally {
+      tabsByTask.delete(task.id)
+    }
   })
 })

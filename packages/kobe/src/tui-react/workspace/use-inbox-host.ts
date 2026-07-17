@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
 import type { Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
@@ -95,10 +95,29 @@ export function useInboxHost(args: {
   const availableItemsRef = useLatest(availableItems)
   const availableSignature = episodeSignature(availableItems)
   const selectedIdRef = useLatest(args.selectedId)
+  const attemptedResolved = useRef(new Set<string>())
+  const resolveEpisodes = useCallback(
+    (items: readonly AttentionInboxItem[], visit: { taskId: string; tabId: string }) => {
+      const currentKeys = new Set(items.map(episodeKey))
+      for (const attempted of attemptedResolved.current) {
+        if (!currentKeys.has(attempted)) attemptedResolved.current.delete(attempted)
+      }
+      for (const item of visitResolvedEpisodes(items, visit)) {
+        const key = episodeKey(item)
+        if (attemptedResolved.current.has(key)) continue
+        attemptedResolved.current.add(key)
+        notifyInboxRpcFailure(
+          orch.dismissAttention(item.taskId, item.tabId, item.at),
+          "dismiss",
+          notifyErrorRef.current,
+        )
+      }
+    },
+    [orch],
+  )
+
   function resolveVisited(taskId: string, tabId: string): void {
-    for (const item of visitResolvedEpisodes(availableItemsRef.current, { taskId, tabId })) {
-      notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
-    }
+    resolveEpisodes(availableItemsRef.current, { taskId, tabId })
   }
 
   // Resolve episodes that arrive while their target is already visible. The
@@ -111,10 +130,8 @@ export function useInboxHost(args: {
     if (!selectedId) return
     const activeTab = activeTabIdFor(selectedId)
     if (!activeTab) return
-    for (const item of visitResolvedEpisodes(currentItems, { taskId: selectedId, tabId: activeTab })) {
-      notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", notifyErrorRef.current)
-    }
-  }, [availableSignature, orch])
+    resolveEpisodes(currentItems, { taskId: selectedId, tabId: activeTab })
+  }, [availableSignature, resolveEpisodes])
 
   return { availableItems, counts, openItem, show, resolveVisited }
 }
