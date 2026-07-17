@@ -148,7 +148,13 @@ export async function readWorkspace(
 
 export function parseWorkspaceYaml(raw: string): CopilotWorkspaceMeta {
   const out: Record<string, string> = {}
-  for (const line of raw.split("\n")) {
+  for (const rawLine of raw.split("\n")) {
+    // Strip a trailing CR so a CRLF workspace.yaml (what the Copilot CLI
+    // writes on Windows) doesn't leave `\r` on every value — the greedy
+    // `.*$` below would otherwise keep it, breaking the `cwd` worktree match
+    // and the quote-strip. Mirrors the sibling porcelain parsers
+    // (git-parsers.ts, worktree-list.ts) and this file's own foldEvents.
+    const line = rawLine.replace(/\r$/, "")
     const match = line.match(/^([A-Za-z_]+):\s*(.*)$/)
     if (!match) continue
     const key = match[1]

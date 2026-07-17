@@ -14,6 +14,36 @@ describe("parseWorkspaceYaml", () => {
     expect(meta.cwd).toBe("/work/tree")
     expect(meta.updatedAt).toBe("2026-05-01T00:00:00Z")
   })
+
+  it("strips a trailing CR so a CRLF workspace.yaml still matches the worktree", () => {
+    // The Copilot CLI writes CRLF line endings on Windows. Without stripping
+    // the CR, `cwd` keeps a trailing "\r" (breaking the worktree comparison)
+    // and a quoted value fails the endsWith('"') quote-strip.
+    const meta = parseWorkspaceYaml('id: abc123\r\ncwd: "/work/tree"\r\nupdated_at: 2026-05-01T00:00:00Z\r\n')
+    expect(meta.id).toBe("abc123")
+    expect(meta.cwd).toBe("/work/tree")
+    expect(meta.updatedAt).toBe("2026-05-01T00:00:00Z")
+  })
+})
+
+describe("listSessionIdsForWorktree — CRLF workspace.yaml", () => {
+  it("matches a worktree whose workspace.yaml uses CRLF line endings", async () => {
+    const dirs: Record<string, string> = {
+      "crlf/workspace.yaml": "id: crlf\r\ncwd: /wt\r\nupdated_at: 2026-01-01T00:00:00Z\r\n",
+    }
+    const deps: CopilotHistoryDeps = {
+      copilotDir: () => "/home/.copilot",
+      readdir: async (p) => (p.endsWith("session-state") ? ["crlf"] : []),
+      readFile: async (p) => {
+        const key = Object.keys(dirs).find((k) => p.endsWith(k))
+        if (!key) throw new Error("missing")
+        return dirs[key]
+      },
+      stat: async () => ({ mtimeMs: 0 }),
+      rm: async () => {},
+    }
+    expect(await listSessionIdsForWorktree("/wt", deps)).toEqual(["crlf"])
+  })
 })
 
 describe("listSessionIdsForWorktree", () => {
