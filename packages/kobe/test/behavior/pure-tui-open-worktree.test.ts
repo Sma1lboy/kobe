@@ -15,17 +15,38 @@ const nodePty = await import("node-pty").then(
   () => null,
 )
 
-async function waitForInvocations(marker: string, count: number): Promise<string[]> {
-  const deadline = Date.now() + 10_000
+async function readInvocations(marker: string): Promise<string[]> {
+  return readFile(marker, "utf8").then(
+    (text) => text.trim().split("\n").filter(Boolean),
+    () => [],
+  )
+}
+
+/**
+ * Press `keys` REPEATEDLY until the editor shim records more invocations
+ * than `base`. A single early keypress can land before the sidebar's
+ * async selection adoption makes the `o` handler live (the handler gates
+ * on `selectedId`) — on a slow CI runner that keypress is silently
+ * dropped and a fixed one-shot wait then flakes (the recurring
+ * `expected [] to deeply equal [repo]` failure). Retrying the press is
+ * the deterministic harness-level fix; assertions below use set/count
+ * semantics so extra presses can't break them.
+ */
+async function pressUntilInvoked(
+  child: { write(data: string): void },
+  keys: string,
+  marker: string,
+  base: number,
+): Promise<string[]> {
+  const deadline = Date.now() + 15_000
+  let lines: string[] = []
   while (Date.now() < deadline) {
-    const lines = await readFile(marker, "utf8").then(
-      (text) => text.trim().split("\n").filter(Boolean),
-      () => [],
-    )
-    if (lines.length >= count) return lines
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    child.write(keys)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    lines = await readInvocations(marker)
+    if (lines.length > base) return lines
   }
-  return []
+  return lines
 }
 
 describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
@@ -64,17 +85,21 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
       raw += chunk
     })
     try {
+      // Wait for the task list to actually hydrate (the scratch repo's row),
+      // not just the PROJECTS header — the `o` handler needs a selection.
       const deadline = Date.now() + 30_000
-      while (!raw.includes("PROJECTS") && Date.now() < deadline) {
+      while (!(raw.includes("PROJECTS") && raw.includes("scratch-repo")) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       expect(raw).toContain("PROJECTS")
 
-      child.write("o")
-      expect(await waitForInvocations(marker, 1)).toEqual([repo])
+      const direct = await pressUntilInvoked(child, "o", marker, 0)
+      expect(direct.length).toBeGreaterThan(0)
+      expect(new Set(direct)).toEqual(new Set([repo]))
 
-      child.write("\x01o")
-      expect(await waitForInvocations(marker, 2)).toEqual([repo, repo])
+      const prefixed = await pressUntilInvoked(child, "\x01o", marker, direct.length)
+      expect(prefixed.length).toBeGreaterThan(direct.length)
+      expect(new Set(prefixed)).toEqual(new Set([repo]))
     } finally {
       data.dispose()
       child.kill()
