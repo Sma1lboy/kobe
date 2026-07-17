@@ -19,6 +19,7 @@ import {
   titleBudgetFor,
   toneColor,
   truncateBranchLabel,
+  truncateProjectFilterLabel,
   viewTabLabelKey,
 } from "../../src/tui/panes/sidebar/view-core"
 
@@ -55,6 +56,12 @@ describe("line budgets", () => {
     expect(projectScrollMaxHeightFor(16, 5)).toBe(4)
     // Degenerate terminal still yields the 2-cell floor.
     expect(projectScrollMaxHeightFor(3, 5)).toBe(2)
+  })
+
+  it("fits the active project filter beside the PROJECTS header", () => {
+    expect(truncateProjectFilterLabel("shushu-internship-resume", "PROJECTS", 30)).toBe("shushu-internshi…")
+    expect(truncateProjectFilterLabel("长项目名称", "PROJECTS", 17)).toBe("长…")
+    expect(truncateProjectFilterLabel("anything", "PROJECTS", 12)).toBe("")
   })
 })
 

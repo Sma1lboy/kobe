@@ -47,6 +47,7 @@ import {
   searchQueryKeystroke,
   subtitleBudgetFor,
   titleBudgetFor,
+  truncateProjectFilterLabel,
 } from "../../../tui/panes/sidebar/view-core"
 import { useT } from "../../i18n"
 import { modalActive } from "../../lib/keymap"
@@ -129,7 +130,12 @@ export function Sidebar(props: SidebarProps) {
     return projectOptions.find((option) => sidebarProjectKey(option.repo) === key) ?? null
   }, [projectFilter, projectOptions])
   const projectFilterRepo = projectFilterOption?.repo ?? null
-  const projectFilterLabel = projectFilterOption?.label ?? "all"
+  const effectiveWidth = props.width ?? SIDEBAR_WIDTH
+  const projectFilterLabel = truncateProjectFilterLabel(
+    projectFilterOption?.label ?? "all",
+    t("tasks.header.projects"),
+    effectiveWidth,
+  )
 
   // Identity-reconciled row list (docs/DESIGN.md §5.5): keep previous row
   // objects (and the previous ARRAY when nothing changed) so daemon
@@ -176,7 +182,6 @@ export function Sidebar(props: SidebarProps) {
   }
 
   // Two-line card budgets from the live width (view-core math).
-  const effectiveWidth = props.width ?? SIDEBAR_WIDTH
   const titleBudget = titleBudgetFor(effectiveWidth)
   const subtitleBudget = subtitleBudgetFor(effectiveWidth)
 

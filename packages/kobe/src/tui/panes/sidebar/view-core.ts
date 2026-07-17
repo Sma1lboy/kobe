@@ -6,7 +6,8 @@
  * (theme-core / lookup / message-core precedent).
  */
 
-import { truncateEnd } from "../../lib/truncate"
+import { charWidth, displayWidth } from "../../../lib/display-width"
+import { truncateEnd, truncateEndCells } from "../../lib/truncate"
 import type { SidebarView } from "./groups"
 import type { SidebarTone } from "./row-view"
 
@@ -54,6 +55,17 @@ export function titleBudgetFor(width: number): number {
  */
 export function subtitleBudgetFor(width: number): number {
   return Math.max(6, width - 16)
+}
+
+/**
+ * Fit the active project filter into the PROJECTS header. Besides the
+ * translated section label, the row reserves two padding cells, two gaps,
+ * and one divider cell. The label itself is measured in terminal cells so a
+ * wide CJK glyph cannot paint past the sidebar edge.
+ */
+export function truncateProjectFilterLabel(label: string, sectionLabel: string, width: number): string {
+  const reservedCells = displayWidth(sectionLabel) + 5
+  return truncateEndCells(label, Math.max(0, width - reservedCells), charWidth)
 }
 
 /**
