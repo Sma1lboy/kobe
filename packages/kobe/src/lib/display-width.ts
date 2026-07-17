@@ -16,6 +16,7 @@ export function charWidth(cp: number): number {
   // Zero-width: combining marks + bidi/format controls + variation selectors.
   if (
     (cp >= 0x0300 && cp <= 0x036f) || // combining diacritical marks
+    (cp >= 0x1160 && cp <= 0x11ff) || // conjoining Hangul Jamo (medial/final) — fold onto the leading jamo's cell
     (cp >= 0x1ab0 && cp <= 0x1aff) || // combining diacritical marks extended
     (cp >= 0x1dc0 && cp <= 0x1dff) || // combining diacritical marks supplement
     (cp >= 0x200b && cp <= 0x200f) || // zero-width space … LTR/RTL marks
@@ -23,13 +24,14 @@ export function charWidth(cp: number): number {
     (cp >= 0x2060 && cp <= 0x2064) || // word joiner … invisible operators
     (cp >= 0x20d0 && cp <= 0x20ff) || // combining marks for symbols
     (cp >= 0xfe00 && cp <= 0xfe0f) || // variation selectors
+    (cp >= 0xfe20 && cp <= 0xfe2f) || // combining half marks
     cp === 0xfeff // zero-width no-break space (BOM)
   ) {
     return 0
   }
   // Wide: East Asian Wide + Fullwidth + the common emoji / pictograph blocks.
   if (
-    (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
+    (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo (leading/choseong) — medial/final fold to zero above
     cp === 0x2329 ||
     cp === 0x232a || // angle brackets
     (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals … Kangxi … CJK symbols
