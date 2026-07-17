@@ -112,6 +112,20 @@ describe("landTask", () => {
     expect(status).toBe("")
   })
 
+  test("merge refuses a branch with nothing to land (already merged / no commits ahead)", async () => {
+    // `feat` branches off main but adds no commits of its own, so it is fully
+    // merged into main from the start. `git merge --no-ff` exits 0 ("Already up
+    // to date.") without creating a commit — landTask must reject this rather
+    // than report a fake success on the unchanged base commit.
+    git(["branch", "feat"], repo)
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
+
+    await expect(landTask(task("feat"))).rejects.toThrow(/nothing to land/)
+    // Base checkout must be untouched — no phantom merge commit.
+    const after = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
+    expect(after).toBe(head)
+  })
+
   test("refuses a dirty base checkout", async () => {
     git(["checkout", "-b", "feat"], repo)
     write("b.txt", "feature\n")
