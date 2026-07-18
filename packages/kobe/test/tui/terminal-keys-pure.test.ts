@@ -78,9 +78,10 @@ describe("key routing tables", () => {
     // Owner decision 2026-07-06: ctrl+q escape hatch + tab management +
     // splits + reset, plus f4 (focus.next pane cycle — the one cross-pane
     // chord besides ctrl+q reachable from inside the terminal). Anything
-    // beyond this list steals a chord from the engine CLI. f6 (issue #18,
-    // workspace.zenToggle) added 2026-07-07 for the same reason as f4;
-    // f7 (attention.next — jump to the next waiting task) same rationale.
+    // beyond this list steals a chord from the engine CLI. f6 was the zen
+    // toggle 2026-07-07..17, released back to the shell when zen moved to
+    // prefix-only prefix+z; f7 (attention.next — jump to the next waiting
+    // task) same rationale as f4.
     // NOT ctrl+g for attention.next: that's the engine's readline abort —
     // it moved to f7 so ctrl+g passes through to the engine again.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
@@ -98,7 +99,6 @@ describe("key routing tables", () => {
         "f3",
         "f4",
         "f5",
-        "f6",
         "f7",
       ].sort(),
     )

@@ -33,7 +33,7 @@ Default prefix actions:
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
-| `ctrl+a`, `z` | Toggle zen mode (F6 stays the direct alias — the prefix key passes through to the embedded shell, so only the F-row fires from inside the terminal; owner call 2026-07-17) |
+| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17 — the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 `ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct.
@@ -47,7 +47,6 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `F3` | Focus next split |
 | `F4` | Cycle focus forward |
 | `F5` | Confirm and reset the active terminal |
-| `F6` | Toggle zen mode |
 | `F7` | Jump to the next available Inbox item across all projects, Tasks, and Terminal Tabs. Visiting its target removes the item from the queue. |
 | `ctrl+t` | New engine tab |
 | `ctrl+e` | New tab with engine/shell picker |

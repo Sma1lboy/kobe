@@ -263,13 +263,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Jump to the next available durable Inbox item. Opening or visiting the
     // target resolves it and removes it from the queue. `f7`
-    // continues kobe's F-row (F2 rename / F3 split / F4 pane-cycle / F5 reset
-    // / F6 zen) — the only chord tier that fires from inside the embedded
+    // continues kobe's F-row (F2 rename / F3 split / F4 pane-cycle / F5
+    // reset) — the only chord tier that fires from inside the embedded
     // terminal without stealing an engine chord. NOT `ctrl+g`: that's the
     // engine/readline abort-editing chord, and reserving it ate the user's
     // ctrl+g inside claude — kobe must not swallow the engine's own keys.
     // In RESERVED_GLOBAL_CHORDS so it fires identically from inside the
-    // embedded terminal, same tier as focus.next (f4) / zenToggle (f6).
+    // embedded terminal, same tier as focus.next (f4).
     id: "attention.next",
     scope: "global",
     keys: ["f7"],
@@ -280,18 +280,17 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
     // the sidebar's ☯ ZEN chip is the click-based exit affordance, this is
-    // the keyboard one. `prefix+z` is the mnemonic form (owner call
-    // 2026-07-17); `f6` stays the direct alias in RESERVED_GLOBAL_CHORDS
-    // (panes/terminal/keys-pure.ts) because ctrl+a passes through to the
-    // embedded shell, so only the F-row fires from inside the terminal —
-    // same dual shape as focus.next (f4 / prefix+l).
+    // the keyboard one. Prefix-only `prefix+z` (owner call 2026-07-17,
+    // dropping the old f6 direct chord entirely — f6 now passes through
+    // to the embedded shell). Trade-off: no zen chord fires from inside
+    // the terminal pane, since ctrl+a passes through there; exit zen via
+    // the sidebar's ☯ ZEN chip or from any non-terminal pane.
     id: "workspace.zenToggle",
     scope: "global",
-    keys: ["f6"],
+    keys: [],
     prefixKeys: ["z"],
     category: "Navigation",
     description: "Toggle zen mode (hide the files column)",
-    hint: { keys: "f6" },
   },
   {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on

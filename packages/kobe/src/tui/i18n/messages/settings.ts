@@ -50,7 +50,7 @@ export const en = {
     crossTask: "Notify for background tasks",
     zen: "Zen mode",
     zenHint:
-      "The `zen` chip (above the file list), `prefix`+z, and F6 collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
+      "The `zen` chip (above the file list) and `prefix`+z collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
     zenKeepTasks: "Keep Tasks pane in zen mode",
     editor: "Editor",
     editorHint:
@@ -190,7 +190,7 @@ export const zh: typeof en = {
     crossTask: "为后台任务发送通知",
     zen: "禅模式",
     zenHint:
-      "`zen` 标记（文件列表上方）、`prefix`+z 和 F6 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
+      "`zen` 标记（文件列表上方）和 `prefix`+z 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
     zenKeepTasks: "禅模式下保留 Tasks 面板",
     editor: "编辑器",
     editorHint:

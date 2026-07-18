@@ -187,8 +187,8 @@ const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
   { id: "focus.next" }, // f4
   // Terminal reset (confirm-gated).
   { id: "terminal.reset" }, // f5
-  // Zen toggle — F6 continues the F2-F5 row (rename/split/pane-cycle/reset).
-  { id: "workspace.zenToggle" }, // f6
+  // Zen toggle moved to prefix-only prefix+z (owner call 2026-07-17) —
+  // f6 is no longer reserved and passes through to the shell.
   // Jump to the next waiting task. NOT ctrl+g (the engine/readline
   // abort-editing chord) — see docs/KEYBINDINGS.md.
   { id: "attention.next" }, // f7

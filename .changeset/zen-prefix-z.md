@@ -2,4 +2,4 @@
 "@sma1lboy/kobe": patch
 ---
 
-Zen mode gains `prefix+z` as its mnemonic chord. `F6` stays the direct alias so the toggle still fires from inside the embedded terminal, where the prefix key passes through to the shell.
+Zen mode is now `prefix+z` (prefix-only). The old `F6` direct chord is released back to the embedded shell; inside the terminal pane use the sidebar's ☯ ZEN chip.

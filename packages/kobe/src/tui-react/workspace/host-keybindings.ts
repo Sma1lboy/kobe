@@ -114,9 +114,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.
         "focus.next": () => cyclePane(1),
-        // f6 — reserved from terminal passthrough (keys-pure.ts), same
-        // tier as focus.next so it fires from every pane including inside
-        // the embedded terminal.
+        // prefix+z only (owner call 2026-07-17) — not reachable from
+        // inside the terminal pane, where the prefix key passes through.
         "workspace.zenToggle": () => deps.toggleZen(),
         // f7 — reserved from terminal passthrough too, so "jump to the
         // next waiting task" works even while focused inside the engine.
