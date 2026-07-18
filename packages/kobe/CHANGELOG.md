@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.9
+
+### Patch Changes
+
+- 8be6f60: fix: drop the extra paddingTop inside the bordered sidebar and file panes so their headers align with the workspace tab strip
+- dc61232: Pane cycling prefix chords are now `prefix+h` (backward) and `prefix+l` (forward) instead of j/k — the three panes are laid out horizontally, so the left/right vim keys match the spatial direction. `F4` stays the direct forward alias; user YAML overrides still rebind either direction independently.
+- 7392a7e: feat: image/binary files in the ops preview render a metadata card (type + size) instead of mojibake; `o` opens the file in the system viewer (macOS `open` / Linux `xdg-open` / Windows `start`) for local worktrees.
+- b030786: fix: the sidebar project filter now scopes the PROJECTS list too, so the header's all/project label matches what is shown; the header stays visible while a filter is active
+- b232131: fix: clip the terminal tab strip and scroll the active tab into view — an overflowing row of tabs no longer overdraws the pane's right border
+- 2af9c18: Zen mode is now `prefix+z` (prefix-only). The old `F6` direct chord is released back to the embedded shell; inside the terminal pane use the sidebar's ☯ ZEN chip.
+
 ## 0.8.8
 
 ### Patch Changes
