@@ -66,6 +66,25 @@ describe("keyEventToShellBytes", () => {
     expect(keyEventToShellBytes(evt({ name: "c", ctrl: true, sequence: "\x03", raw: "\x03" } as never))).toBe("\x03")
   })
 
+  it("keeps the typed uppercase for shift+letter keystrokes on both wire formats", () => {
+    // Regression (2026-07-18): shift+letter became a bindable chord and
+    // Shift+Z on kitty terminals typed lowercase "z" — the CSI-u path
+    // synthesized from `name` ("z"), dropping the shift. The parser puts
+    // the typed TEXT in `sequence` ("Z"); with no ctrl/alt that is the
+    // byte to forward.
+    expect(keyEventToShellBytes(evt({ name: "z", shift: true, sequence: "Z", raw: "\x1b[122:90;2u" } as never))).toBe(
+      "Z",
+    )
+    // Legacy wire (raw == sequence == "Z") already forwarded verbatim.
+    expect(keyEventToShellBytes(evt({ name: "z", shift: true, sequence: "Z", raw: "Z" } as never))).toBe("Z")
+    // Synthetic events (no sequence): uppercase is synthesized from shift.
+    expect(keyEventToShellBytes(evt({ name: "z", shift: true }))).toBe("Z")
+    // shift+tab must still emit the back-tab CSI, not a literal tab.
+    expect(keyEventToShellBytes(evt({ name: "tab", shift: true, sequence: "\t", raw: "\x1b[9;2u" } as never))).toBe(
+      "\x1b[Z",
+    )
+  })
+
   it("returns null for unknown multi-char names and nameless events", () => {
     expect(keyEventToShellBytes(evt({ name: "pageup" }))).toBeNull()
     expect(keyEventToShellBytes(evt({ name: "" }))).toBeNull()

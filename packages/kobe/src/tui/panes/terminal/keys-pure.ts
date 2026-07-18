@@ -51,6 +51,14 @@ export function keyEventToShellBytes(evt: KeyEvent): string | null {
   const kittyWire =
     (typeof e.raw === "string" && KITTY_CSI_U_RE.test(e.raw)) || (seq != null && KITTY_CSI_U_RE.test(seq))
   if (seq != null && !kittyWire) return seq
+  // Kitty wire, but the parser already extracted the typed TEXT into
+  // `sequence` (shift+z → "Z", shift+1 → "!"). With no ctrl/alt/meta a
+  // printable single char IS the byte to type — synthesis would drop the
+  // shift and forward lowercase (measured: Shift+Z typed "z" on kitty
+  // terminals). ctrl chords keep synthesizing (ctrl+c carries sequence
+  // "c", which lies), and control chars like "\t" (shift+tab) fall
+  // through so the back-tab CSI still wins.
+  if (seq != null && seq.length === 1 && seq >= " " && seq !== "\x7f" && !evt.ctrl && !e.option && !e.meta) return seq
   return synthesizeShellBytes(evt)
 }
 
@@ -104,6 +112,9 @@ function synthesizeShellBytes(evt: KeyEvent): string | null {
           // Unknown ctrl chord: dropping beats typing a stray literal.
           return null
         }
+        // Synthetic shifted letter (no sequence to forward): type the
+        // uppercase form, not the lowercase key name.
+        if (evt.shift && name >= "a" && name <= "z") return name.toUpperCase()
         return name
       }
       return null
