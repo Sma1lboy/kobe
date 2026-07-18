@@ -83,7 +83,6 @@ export function SidebarPanel(props: {
       minHeight={0}
       flexDirection="column"
       backgroundColor={theme.backgroundPanel}
-      paddingTop={1}
       paddingBottom={1}
       paddingLeft={0}
       paddingRight={0}

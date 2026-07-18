@@ -396,7 +396,7 @@ export function FileTree(props: FileTreeProps) {
   // ---------- render ----------
   const loaded = (tab === "all" && allFiles != null) || (tab === "changes" && changes != null)
   return (
-    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
+    <box flexDirection="column" flexGrow={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
       <FileTreeHeaderView
         tab={tab}
         scope={scope}
