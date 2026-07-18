@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.10
+
+### Patch Changes
+
+- c13beec: Create PR in the Files pane moved from bare `p` to `ctrl+p` — lowercase letters stay reserved for frequent navigation; an action that fires a PR prompt earns a modifier.
+- c3c0e48: Fix the bottom-left HUD streaming `shift+p → shift+p` on every uppercase character typed into the embedded terminal — shift+letter chords are typing, not modifier chords, and no longer land HUD entries.
+- fe36805: Add Kimi Code as a built-in engine vendor: `kimi` is detected when the CLI is installed (PATH or `~/.kimi-code/bin/kimi`) and joins the engine list/cycle; Settings → Accounts shows its binary + OAuth login state (`~/.kimi-code/credentials/kimi-code.json`). Like copilot it launches and tracks turns without transcript-history integration yet.
+- 0ec31b3: Uppercase letters are now distinct bindable chords: a shifted keypress matches `shift+<letter>` first and falls back to the bare letter, so `Z` can be bound apart from `z`. Keybinding YAML accepts `shift+p` or the bare-uppercase sugar `P`; `sidebar.goto` / `sidebar.pin` / `sidebar.localMerge` now carry explicit shift chords and become user-rebindable. Shift combined with other modifiers on a letter (`ctrl+shift+p`) stays rejected — legacy terminals send the same byte with and without shift.
+- a7d4a19: Fix Shift+letter typing lowercase into the embedded terminal on kitty-protocol terminals — the CSI-u re-encode path synthesized from the lowercase key name and dropped the shift; the typed text ("Z") now forwards as-is.
+
 ## 0.8.9
 
 ### Patch Changes
