@@ -52,7 +52,7 @@ describe("HelpDialog", () => {
     expect(text).toContain("prefix + o")
   })
 
-  it("shows only relative prefix+j/k pane navigation", async () => {
+  it("shows only relative prefix+h/l pane navigation", async () => {
     const { frame } = await renderComponent(<Harness />, {
       providers: { dialog: true },
       width: 100,
@@ -60,11 +60,11 @@ describe("HelpDialog", () => {
     })
 
     const text = await frame()
-    expect(text).toContain("prefix + j")
-    expect(text).toContain("prefix + k")
+    expect(text).toContain("prefix + h")
+    expect(text).toContain("prefix + l")
     expect(text).toContain("prefix + i")
-    expect(text).not.toContain("prefix + h")
-    expect(text).not.toContain("prefix + l")
+    expect(text).not.toContain("prefix + j")
+    expect(text).not.toContain("prefix + k")
     expect(text).not.toContain("Jump to pane")
   })
 
