@@ -44,6 +44,18 @@ describe("charWidth", () => {
     expect(charWidth(0x11ff)).toBe(0) // range ceiling
   })
 
+  it("counts the CJK-region combining sound / tone marks as zero", () => {
+    // U+3099/U+309A are the nonspacing (semi-)voiced sound marks that NFD
+    // decomposition splits off precomposed voiced kana (が = か + U+3099);
+    // U+302A–U+302F are ideographic / Hangul tone marks. All fold onto the
+    // preceding glyph's cell, matching xterm's wcwidth combining table.
+    expect(charWidth(0x3099)).toBe(0) // combining voiced sound mark
+    expect(charWidth(0x309a)).toBe(0) // combining semi-voiced sound mark
+    expect(charWidth(0x302a)).toBe(0) // ideographic tone mark (range floor)
+    expect(charWidth(0x302f)).toBe(0) // range ceiling
+    expect(charWidth(0x3041)).toBe(2) // ぁ — wide kana just past the sound marks
+  })
+
   it("counts combining half marks (U+FE20–U+FE2F) as zero", () => {
     expect(charWidth(0xfe20)).toBe(0)
     expect(charWidth(0xfe26)).toBe(0) // combining conjoining macron
@@ -85,6 +97,16 @@ describe("displayWidth", () => {
     // or `kobe export` table must occupy the same width either way.
     const precomposed = "한글" // U+D55C U+AE00
     const decomposed = precomposed.normalize("NFD")
+    expect(decomposed.length).toBeGreaterThan(precomposed.length) // genuinely decomposed
+    expect(displayWidth(precomposed)).toBe(4)
+    expect(displayWidth(decomposed)).toBe(4)
+  })
+
+  it("measures decomposed (NFD) voiced kana the same as precomposed", () => {
+    // Same macOS-NFD case as Hangul: a Japanese filename with voiced kana
+    // (が ぱ) must occupy its precomposed width, not gain a cell per mark.
+    const precomposed = "がぱ" // U+304C U+3071
+    const decomposed = precomposed.normalize("NFD") // か+U+3099, は+U+309A
     expect(decomposed.length).toBeGreaterThan(precomposed.length) // genuinely decomposed
     expect(displayWidth(precomposed)).toBe(4)
     expect(displayWidth(decomposed)).toBe(4)
