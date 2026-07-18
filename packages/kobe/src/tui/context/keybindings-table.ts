@@ -280,13 +280,15 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
     // the sidebar's ☯ ZEN chip is the click-based exit affordance, this is
-    // the keyboard one. `f6` sits in RESERVED_GLOBAL_CHORDS (panes/terminal/
-    // keys-pure.ts) so it fires identically from inside the embedded
-    // terminal, continuing the F2 (rename) / F3 (split) / F4 (pane cycle) /
-    // F5 (reset) row.
+    // the keyboard one. `prefix+z` is the mnemonic form (owner call
+    // 2026-07-17); `f6` stays the direct alias in RESERVED_GLOBAL_CHORDS
+    // (panes/terminal/keys-pure.ts) because ctrl+a passes through to the
+    // embedded shell, so only the F-row fires from inside the terminal —
+    // same dual shape as focus.next (f4 / prefix+l).
     id: "workspace.zenToggle",
     scope: "global",
     keys: ["f6"],
+    prefixKeys: ["z"],
     category: "Navigation",
     description: "Toggle zen mode (hide the files column)",
     hint: { keys: "f6" },

@@ -33,6 +33,7 @@ Default prefix actions:
 | `ctrl+a`, `\\` | Split right |
 | `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
+| `ctrl+a`, `z` | Toggle zen mode (F6 stays the direct alias — the prefix key passes through to the embedded shell, so only the F-row fires from inside the terminal; owner call 2026-07-17) |
 
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 `ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct.
