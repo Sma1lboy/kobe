@@ -87,11 +87,41 @@ export async function runWorktreeGit(
   }
 }
 
-function joinedWorktreePath(worktreePath: string, relPath: string): string | null {
+/**
+ * Absolute path of `relPath` inside the Worktree, or `null` for invalid
+ * relative paths (absolute / `..`-escaping). Exported for callers that hand
+ * the file to something outside the read seam (e.g. the system viewer).
+ */
+export function worktreeFilePath(worktreePath: string, relPath: string): string | null {
   if (!worktreePath || !relPath || relPath.startsWith("/")) return null
   const parts = relPath.split("/")
   if (parts.some((part) => part === "..")) return null
   return `${worktreePath.replace(/\/+$/, "")}/${parts.filter(Boolean).join("/")}`
+}
+
+/**
+ * Byte size of a Worktree file, or `null` when unreadable. Goes through the
+ * ExecHost (`wc -c`) so it works for local AND remote worktrees with one
+ * code path.
+ * ponytail: `wc` is absent on native Windows — size degrades to null there;
+ * switch to an ExecHost `stat` member if Windows support ever matters.
+ */
+export async function worktreeFileSize(
+  worktreePath: string,
+  relPath: string,
+  deps: WorktreeContentDeps = {},
+): Promise<number | null> {
+  const path = worktreeFilePath(worktreePath, relPath)
+  if (!path) return null
+  const exec = (deps.execForPath ?? execHostForWorktreePath)(worktreePath)
+  try {
+    const res = await exec.run(["wc", "-c", path])
+    if (res.exitCode !== 0) return null
+    const n = Number.parseInt(res.stdout.trim().split(/\s+/)[0] ?? "", 10)
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -103,7 +133,7 @@ export async function readWorktreeFile(
   relPath: string,
   deps: WorktreeContentDeps = {},
 ): Promise<string | null> {
-  const path = joinedWorktreePath(worktreePath, relPath)
+  const path = worktreeFilePath(worktreePath, relPath)
   if (!path) return null
   const exec = (deps.execForPath ?? execHostForWorktreePath)(worktreePath)
   try {
