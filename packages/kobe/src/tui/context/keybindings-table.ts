@@ -232,11 +232,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // ctrl/prefix+h/j/k/l map (owner call 2026-07-14). Keeping previous
     // and next as separate ids lets users rebind either direction without
     // preserving a positional slot contract. Direct ctrl+h/j/k/l remain
-    // available to the embedded engine.
+    // available to the embedded engine. prefix+h/l, not j/k — the three
+    // panes sit side by side, so the chords read left/right (owner call
+    // 2026-07-17).
     id: "focus.previous",
     scope: "global",
     keys: [],
-    prefixKeys: ["j"],
+    prefixKeys: ["h"],
     category: "Navigation",
     description: "Focus previous pane (files → workspace → sidebar)",
   },
@@ -244,7 +246,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // Forward pane cycle — walks sidebar → workspace → files → wrap.
     // `f4` stays the direct alias and sits in RESERVED_GLOBAL_CHORDS
     // (panes/terminal/keys-pure.ts), so it fires identically from inside
-    // the embedded terminal; prefix+k is the relative navigation form.
+    // the embedded terminal; prefix+l is the relative navigation form.
     // NOT `tab` (tried 2026-07-06, cut same day): the cycle path always
     // lands on the workspace terminal, which must keep tab as shell /
     // engine completion — so tab-cycling both trapped there every lap AND
@@ -253,7 +255,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     id: "focus.next",
     scope: "global",
     keys: ["f4"],
-    prefixKeys: ["k"],
+    prefixKeys: ["l"],
     category: "Navigation",
     description: "Focus next pane (sidebar → workspace → files)",
     hint: { keys: "f4" },

@@ -95,14 +95,14 @@ describe("applyUserKeybindings", () => {
   test("lets previous and next pane cycling be rebound independently", () => {
     fileState.doc = {
       bindings: {
-        "focus.previous": { prefix: "h" },
-        "focus.next": { prefix: "l" },
+        "focus.previous": { prefix: "j" },
+        "focus.next": { prefix: "k" },
       },
     }
     const report = userKb.reloadUserKeybindings()
 
-    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["h"])
-    expect(findBinding("focus.next")?.prefixKeys).toEqual(["l"])
+    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["j"])
+    expect(findBinding("focus.next")?.prefixKeys).toEqual(["k"])
     expect(report.warnings).toEqual([])
   })
 

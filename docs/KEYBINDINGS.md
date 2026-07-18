@@ -26,8 +26,8 @@ Default prefix actions:
 | `ctrl+a`, `f` | Quick-fork a child task |
 | `ctrl+a`, `i` | Open the Inbox dialog |
 | `ctrl+a`, `y` | Resume a prior engine Session |
-| `ctrl+a`, `j` | Cycle focus backward (Files → Workspace → Sidebar) |
-| `ctrl+a`, `k` | Cycle focus forward (Sidebar → Workspace → Files) |
+| `ctrl+a`, `h` | Cycle focus backward (Files → Workspace → Sidebar) |
+| `ctrl+a`, `l` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
 | `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits — owner picked prefix+m 2026-07-16) |
 | `ctrl+a`, `\\` | Split right |
@@ -58,11 +58,15 @@ innermost split when a tab is split; otherwise it closes the tab. `F2` renames
 the active split when split, otherwise the tab.
 
 Owner decision (2026-07-14): cross-pane navigation is relative and prefix-only.
-`prefix+j` moves backward, `prefix+k` moves forward, and `F4` remains the
-direct forward-cycle alias. The former absolute `focus.numeric` action and its
-`ctrl+h/j/k/l` / `prefix+h/j/k/l` chords are removed so those Ctrl bytes reach
-the embedded engine. Existing `focus.numeric` YAML entries are rejected as an
-unknown binding instead of being silently migrated to different semantics.
+`F4` remains the direct forward-cycle alias. The former absolute
+`focus.numeric` action and its `ctrl+h/j/k/l` / `prefix+h/j/k/l` chords are
+removed so those Ctrl bytes reach the embedded engine. Existing
+`focus.numeric` YAML entries are rejected as an unknown binding instead of
+being silently migrated to different semantics.
+
+Owner decision (2026-07-17): the relative chords are `prefix+h` (backward) and
+`prefix+l` (forward), not j/k — the three panes are laid out horizontally, so
+left/right vim keys match the spatial direction.
 
 ## Sidebar and Files
 

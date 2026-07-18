@@ -20,16 +20,17 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("app.quit")?.prefixKeys).toBeUndefined()
   })
 
-  test("navigation keeps ctrl+q direct and uses only relative prefix j/k pane cycling", () => {
+  test("navigation keeps ctrl+q direct and uses only relative prefix h/l pane cycling", () => {
     // Owner call 2026-07-14: release ctrl+h/j/k/l to the embedded engine
     // and replace the four absolute prefix targets with relative cycling.
+    // Owner call 2026-07-17: h/l (left/right) — the panes sit side by side.
     expect(findBinding("focus.sidebar")?.keys).toEqual(["ctrl+q"])
     expect(findBinding("focus.sidebar")?.prefixKeys).toBeUndefined()
     expect(findBinding("focus.numeric")).toBeUndefined()
     expect(findBinding("focus.previous")?.keys).toEqual([])
-    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["j"])
+    expect(findBinding("focus.previous")?.prefixKeys).toEqual(["h"])
     expect(findBinding("focus.next")?.keys).toEqual(["f4"])
-    expect(findBinding("focus.next")?.prefixKeys).toEqual(["k"])
+    expect(findBinding("focus.next")?.prefixKeys).toEqual(["l"])
     expect(findBinding("inbox.show")?.keys).toEqual([])
     expect(findBinding("inbox.show")?.prefixKeys).toEqual(["i"])
   })

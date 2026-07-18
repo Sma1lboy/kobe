@@ -4,8 +4,8 @@ import { applyPrefixKeymapOverrides, extractPrefixKeybindings } from "../../src/
 const keymap = [
   { id: "chat.tab.new", scope: "workspace", keys: [], prefixKeys: ["t"] },
   { id: "task.new", scope: "sidebar", keys: ["n"] },
-  { id: "focus.previous", scope: "global", keys: [], prefixKeys: ["j"] },
-  { id: "focus.next", scope: "global", keys: ["f4"], prefixKeys: ["k"] },
+  { id: "focus.previous", scope: "global", keys: [], prefixKeys: ["h"] },
+  { id: "focus.next", scope: "global", keys: ["f4"], prefixKeys: ["l"] },
 ]
 
 describe("PureTUI prefix settings", () => {
@@ -77,12 +77,12 @@ describe("PureTUI prefix settings", () => {
       prefixKeys: row.prefixKeys && [...row.prefixKeys],
     }))
     const result = applyPrefixKeymapOverrides(copy, [
-      { id: "focus.previous", keys: ["h"] },
-      { id: "focus.next", keys: ["l"] },
+      { id: "focus.previous", keys: ["j"] },
+      { id: "focus.next", keys: ["k"] },
     ])
 
-    expect(copy[2]?.prefixKeys).toEqual(["h"])
-    expect(copy[3]?.prefixKeys).toEqual(["l"])
+    expect(copy[2]?.prefixKeys).toEqual(["j"])
+    expect(copy[3]?.prefixKeys).toEqual(["k"])
     expect(result.warnings).toEqual([])
   })
 })

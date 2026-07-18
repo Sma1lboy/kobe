@@ -35,7 +35,7 @@ afterEach(() => {
 })
 
 describe("PureTUI prefix dispatch", () => {
-  test("routes default prefix+j/k to previous/next without reclaiming ctrl+h/j/k/l", () => {
+  test("routes default prefix+h/l to previous/next without reclaiming ctrl+h/j/k/l", () => {
     const calls: string[] = []
     const stack: RegisteredBinding[] = [
       {
@@ -51,9 +51,9 @@ describe("PureTUI prefix dispatch", () => {
     ]
 
     expect(dispatchKeyEvent(stack, event("a", true), 100)).toBe(true)
-    expect(dispatchKeyEvent(stack, event("j"), 101)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("h"), 101)).toBe(true)
     expect(dispatchKeyEvent(stack, event("a", true), 102)).toBe(true)
-    expect(dispatchKeyEvent(stack, event("k"), 103)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("l"), 103)).toBe(true)
     expect(dispatchKeyEvent(stack, event("a", true), 104)).toBe(true)
     expect(dispatchKeyEvent(stack, event("i"), 105)).toBe(true)
     expect(calls).toEqual(["previous", "next", "inbox"])
