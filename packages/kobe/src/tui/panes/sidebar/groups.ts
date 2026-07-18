@@ -82,9 +82,10 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * Search preserves the main → pinned → regular ordering so users
  * filtering inside a long list still see the same predictable shape.
  *
- * `projectFilter` narrows only regular task rows. Main project rows stay in
- * their separate PROJECTS section so the filter does not recreate repo
- * grouping; it just scopes the flat TASKS section.
+ * `projectFilter` scopes BOTH sections to the one repo (owner 2026-07-17):
+ * the filter label lives on the PROJECTS header, so the PROJECTS list must
+ * agree with it — main rows outside the filtered repo are hidden along with
+ * their tasks.
  *
  * Why two passes rather than a single sort: the regular-task ordering
  * is owned by the orchestrator (createdAt-derived ULID order), and
@@ -118,6 +119,7 @@ export function buildRows(
   for (const t of filtered) {
     if (t.kind === "main") {
       const key = sidebarProjectKey(t.repo)
+      if (projectKey && key !== projectKey) continue
       if (seenMainRepos.has(key)) continue
       seenMainRepos.add(key)
       main.push(t)

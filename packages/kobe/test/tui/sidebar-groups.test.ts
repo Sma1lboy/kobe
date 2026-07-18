@@ -124,7 +124,7 @@ describe("sidebar task ordering", () => {
     expect(ids(rows)).toEqual(["project-a", "project-b"])
   })
 
-  it("keeps project rows visible while filtering regular tasks to one project", () => {
+  it("scopes both the project rows and regular tasks to the filtered project", () => {
     const rows = buildRows(
       [
         task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
@@ -138,7 +138,7 @@ describe("sidebar task ordering", () => {
       "/repo/kobe",
     )
 
-    expect(ids(rows)).toEqual(["project-kobe", "project-pochi", "kobe-a"])
+    expect(ids(rows)).toEqual(["project-kobe", "kobe-a"])
   })
 
   it("composes project filtering with recent task ordering", () => {
@@ -232,8 +232,8 @@ describe("sidebar project filter cursor", () => {
       "/repo/kobe",
     )
 
-    expect(ids(rows)).toEqual(["project-kobe", "project-marketing", "kobe-a"])
-    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(2)
+    expect(ids(rows)).toEqual(["project-kobe", "kobe-a"])
+    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(1)
   })
 
   it("falls back to the project main row when the filtered project has no tasks in view", () => {
@@ -249,7 +249,7 @@ describe("sidebar project filter cursor", () => {
       "/repo/kobe",
     )
 
-    expect(ids(rows)).toEqual(["project-kobe", "project-marketing"])
+    expect(ids(rows)).toEqual(["project-kobe"])
     expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(0)
   })
 

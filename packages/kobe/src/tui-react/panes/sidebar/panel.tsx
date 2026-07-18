@@ -87,14 +87,11 @@ export function SidebarPanel(props: {
       paddingLeft={0}
       paddingRight={0}
     >
-      <box
-        flexDirection="row"
-        justifyContent="space-between"
-        gap={1}
-        paddingBottom={1}
-        paddingLeft={1}
-        paddingRight={1}
-      >
+      {/* Fixed header rows are flexShrink={0}: opentui boxes default to
+          flexShrink=1, so on overflow Yoga collapses whichever padding row
+          it rounds against — the layout jitter fixed 2026-07-17. Only the
+          task scrollbox absorbs overflow. */}
+      <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} paddingLeft={1} paddingRight={1}>
         <box flexDirection="row" gap={1}>
           {/* The outer pane border owns keyboard focus. Keep the brand neutral
               so it cannot compete with that one global focus signal. */}
@@ -125,7 +122,7 @@ export function SidebarPanel(props: {
       </box>
 
       {props.searchMode ? (
-        <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
+        <box flexDirection="row" gap={0} flexShrink={0} paddingBottom={1} paddingLeft={1}>
           <text fg={theme.info} wrapMode="none">
             /
           </text>
@@ -149,7 +146,7 @@ export function SidebarPanel(props: {
         </box>
       ) : null}
 
-      <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" gap={2} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
         {VIEW_TABS.map((tab) => {
           const active = props.view === tab.view
           return (
@@ -166,7 +163,9 @@ export function SidebarPanel(props: {
         })}
       </box>
 
-      {props.projectRows.length > 0 ? (
+      {/* Filter active ⇒ keep the header (and its filter label) visible even
+          when the filtered repo has no main row to show. */}
+      {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (
         <box flexDirection="column" flexShrink={0}>
           <box
             flexDirection="row"
@@ -220,7 +219,7 @@ export function SidebarPanel(props: {
       <SectionHeader
         label={t("tasks.header.tasks")}
         suffix={props.sortMode === "default" ? undefined : props.sortMode}
-        topPad={props.projectRows.length > 0}
+        topPad={props.projectRows.length > 0 || props.projectFilterRepo !== null}
       />
       <scrollbox
         ref={props.setTaskScrollRef}
