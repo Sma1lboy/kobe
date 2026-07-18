@@ -36,6 +36,9 @@ export const en = {
   footer: {
     openHint: "↵ open · d diff",
   },
+  toast: {
+    prOnTargetBranch: "Already on the target branch ({branch}) — create the PR from a task branch",
+  },
 }
 
 export const zh: typeof en = {
@@ -70,5 +73,8 @@ export const zh: typeof en = {
   },
   footer: {
     openHint: "↵ 打开 · d 差异",
+  },
+  toast: {
+    prOnTargetBranch: "当前就在目标分支（{branch}）— 请在任务分支上创建 PR",
   },
 }

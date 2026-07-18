@@ -51,8 +51,6 @@ export type FileTreeController = {
   openCurrent: () => void
   /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
   mentionCurrent?: () => void
-  /** `p` — inject the Create PR prompt into the engine pane (Ops host only). */
-  createPR?: () => void
   /** Hand the current row off to the OS default app (audio, video, PDF). */
   openExternal: () => void
   /** Force a reload of the current tab's data. */
@@ -99,7 +97,6 @@ export function fileTreeBindings(opts: FileTreeController): Binding[] {
     },
     "files.open": () => opts.openCurrent(),
     "files.mention": () => opts.mentionCurrent?.(),
-    "files.createPR": () => opts.createPR?.(),
     "files.openExternal": () => opts.openExternal(),
     "files.refresh": () => opts.refresh(),
     "files.scope": () => opts.toggleScope?.(),

@@ -78,9 +78,18 @@ open Worktree, `c` Kanban, `a` archive, `d` delete, `r` rename, `b` rename
 branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
-preview, `e` open in the configured editor, `[`/`]` switch file tabs, and
-`ctrl+p` Create PR (owner call 2026-07-17: lowercase letters are for frequent
-navigation — an action that fires a PR prompt earns a modifier).
+preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
+
+Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
+call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
+chord was unreachable from where the owner actually sits — on the sidebar
+`ctrl+p` is the project filter, and inside the terminal it passes through to
+the engine — so his muscle memory went to the prefix route, which was unbound
+(HUD showed `ctrl+a + shift+p ∅`). Both `p` and `shift+p` are bound because
+"PR" reads uppercase and the capital press must land. The handler also guards
+the target branch: firing it on a session sitting on the PR base (a project
+main session) surfaces a toast instead of sending the engine a doomed
+`gh pr create`.
 
 Uppercase letters are distinct chords: a keypress with shift is matched as
 `shift+<letter>` first, falling back to the bare letter, so `P` (written

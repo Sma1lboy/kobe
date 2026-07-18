@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
-import { buildPRPrompt } from "../../tui/ops/pr-prompt"
+import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
 import { openExternally } from "../../tui/panes/filetree/open-external"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -178,13 +178,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // have changed — a stale continuation must not deliver into the new task.
   const selectedWorktreeRef = useLatest(worktree)
 
-  /** FileTree corner `pr` action — the Ops pane's createPR verbatim, with
-   *  the tmux send-keys half swapped for a PTY paste+submit. */
+  /** FileTree `pr` chip + prefix+p — PTY paste+submit of the PR prompt.
+   *  On the target branch (a project main session) it toasts instead. */
   async function createPR(): Promise<void> {
     const wt = worktree
     const send = sendToEngineFn.current
     if (!wt || !send) return
-    const prompt = await buildPRPrompt(wt)
+    const state = await gatherPRPromptState(wt)
+    if (state.branch === state.targetBranch)
+      return notifyError(t("files.toast.prOnTargetBranch", { branch: state.branch }))
+    const prompt = await buildPRPrompt(wt, state)
     if (selectedWorktreeRef.current !== wt || sendToEngineFn.current !== send) return
     send(prompt)
   }
@@ -298,6 +301,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     toggleZen,
     jumpToNextAttention,
     openInbox: inbox.show,
+    createPR: () => void createPR(),
     // prefix+m — global entry into the sidebar's move mode: focus the
     // sidebar, highlight the current selection, j/k reorders, enter/esc
     // exits. Falls back to the first task when nothing is selected.

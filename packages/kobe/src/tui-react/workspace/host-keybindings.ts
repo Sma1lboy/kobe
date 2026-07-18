@@ -54,6 +54,8 @@ export type WorkspaceKeybindingDeps = {
   openInbox: () => void
   /** prefix+m — focus the sidebar and enter move mode on the current selection. */
   enterMoveMode: () => void
+  /** prefix+p / prefix+P — send the Create PR prompt into the engine pane. */
+  createPR: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -122,6 +124,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
         "task.moveMode": () => deps.enterMoveMode(),
+        "files.createPR": () => deps.createPR(),
         "task.openEditor": () => {
           if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
         },

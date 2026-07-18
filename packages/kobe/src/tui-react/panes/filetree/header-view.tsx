@@ -8,6 +8,8 @@
  */
 
 import { TextAttributes } from "@opentui/core"
+import { formatChord } from "../../../tui/lib/chord-glyphs"
+import { currentPrefixConfiguration } from "../../../tui/lib/keymap-dispatch"
 import type { GitScope } from "../../../tui/panes/filetree/git"
 import { type FileTreeTab, TAB_ORDER, tabLabelKey } from "../../../tui/panes/filetree/keys-core"
 import { useTheme } from "../../context/theme"
@@ -31,10 +33,15 @@ export type FileTreeHeaderProps = {
 export function FileTreeHeaderView(props: FileTreeHeaderProps) {
   const { theme } = useTheme()
   const t = useT()
+  // Create PR is a global prefix chord (prefix+p) — render the live prefix
+  // key so the hint follows a user-remapped prefix. Null when the prefix is
+  // disabled: the chip stays clickable, just without a chord label.
+  const prefixKey = currentPrefixConfiguration().key
+  const createPRChord = prefixKey ? `[${formatChord(prefixKey)} P]` : null
   return (
     <>
       {/* Action row — sits above the All / Changes tabs so it's reachable
-         from both tabs. Zen toggle sits left of Create PR (bound to ctrl+p). */}
+         from both tabs. Zen toggle sits left of Create PR (prefix+p). */}
       {props.onZenToggle || props.onCreatePR ? (
         <box flexDirection="row" justifyContent="flex-end" gap={2} paddingBottom={1} flexShrink={0}>
           {props.onZenToggle ? (
@@ -68,9 +75,11 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
                 props.onCreatePR?.()
               }}
             >
-              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [^P]
-              </text>
+              {createPRChord ? (
+                <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+                  {createPRChord}
+                </text>
+              ) : null}
               <text fg={theme.text} wrapMode="none">
                 {t("files.actions.createPR")}
               </text>
