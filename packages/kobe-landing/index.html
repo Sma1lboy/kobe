@@ -14,264 +14,137 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#141413;}
-  ::selection{background:rgba(204,120,92,0.3);color:#eae7df}
-  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-  .engine-pill{cursor:pointer;border-radius:9px;padding:9px 16px;font-size:13.5px;transition:all .15s;border:1px solid #34302a;background:#1a1917;color:#a39d92;}
-  .engine-pill[data-active="true"]{border-color:rgba(204,120,92,0.5);background:rgba(204,120,92,0.12);color:#e6c1b1;}
-  .reveal{opacity:0;transform:translateY(20px);transition:opacity .7s ease,transform .7s ease;}
-  .reveal.in{opacity:1;transform:none;}
-  .why-row{display:grid;grid-template-columns:1fr 1fr;gap:54px;align-items:center;margin-bottom:64px;}
-  .why-row .illo{min-height:230px;border:1px solid #2c2823;border-radius:14px;background:#171614;padding:24px;display:flex;flex-direction:column;justify-content:center;gap:12px;}
-  .why-row.rev .txt{order:2}.why-row.rev .illo{order:1}
-  @media(max-width:760px){.why-row{grid-template-columns:1fr;gap:24px;margin-bottom:44px;}.why-row .txt,.why-row.rev .txt{order:1}.why-row .illo,.why-row.rev .illo{order:2}}
-  @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
-  .hero-grid{display:grid;grid-template-columns:1.02fr 0.98fr;gap:50px;align-items:center;}
-  .hero-art{position:relative;display:flex;justify-content:center;align-items:center;}
-  .hero-art .halo{position:absolute;inset:-12% -6%;background:radial-gradient(ellipse 60% 58% at 55% 50%,rgba(204,120,92,0.18),transparent 70%);filter:blur(12px);pointer-events:none;}
-  .hero-art .frame{position:relative;width:100%;max-width:600px;aspect-ratio:1200/430;overflow:hidden;border-radius:12px;animation:floaty 6s ease-in-out infinite;}
-  .hero-art img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
-  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-  @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:30px;}.hero-art .frame{max-width:520px;aspect-ratio:auto;}.hero-art img{height:auto;}}
-  @media(prefers-reduced-motion:reduce){.hero-art .frame{animation:none;}}
-</style>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div style="background:#141413;color:#d6d0c6;font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden;position:relative;">
+<div class="bg-grid"></div>
 
-  <!-- subtle grid bg -->
-  <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:64px 64px;pointer-events:none;mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,#000 30%,transparent 80%);"></div>
+<!-- NAV · N8 terminal command -->
+<header class="nav-term">
+  <pre class="nav-term__line"><span class="prompt">$</span> <a class="bin" href="/" style="text-decoration:none;">kobe</a><a href="#workflow" data-i18n="nav.workflow">--workflow</a><a href="#install" data-i18n="nav.install">--install</a><a href="/changelog" data-i18n="nav.changelog">--changelog</a><span class="caret" aria-hidden="true">▮</span></pre>
+  <div class="nav-side">
+    <button id="langToggle" class="lang-btn">中文</button>
+    <a class="gh-link" href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+      <span class="gh-stars">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;color:var(--color-warn);"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
+        <span id="starCount">–</span>
+      </span>
+    </a>
+  </div>
+</header>
 
-  <!-- NAV -->
-  <nav style="position:relative;max-width:1180px;margin:0 auto;padding:26px 40px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-0.01em;">
-      <span style="color:#cc785c;">[</span>
-      <span style="color:#eae7df;">kobe</span>
-      <span style="color:#cc785c;">]</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:30px;font-size:13.5px;color:#8a847a;">
-      <a href="#workspace" data-i18n="nav.workspace" style="color:#8a847a;text-decoration:none;">workspace</a>
-      <a href="#why" data-i18n="nav.why" style="color:#8a847a;text-decoration:none;">why</a>
-      <a href="#engines" data-i18n="nav.engines" style="color:#8a847a;text-decoration:none;">engines</a>
-      <a href="#install" data-i18n="nav.install" style="color:#8a847a;text-decoration:none;">install</a>
-      <a href="/changelog" data-i18n="nav.changelog" style="color:#8a847a;text-decoration:none;">changelog</a>
-      <button id="langToggle" style="background:none;border:1px solid #34302a;border-radius:8px;padding:6px 10px;color:#8a847a;font-family:inherit;font-size:12px;cursor:pointer;">中文</button>
-      <a href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener" style="color:#eae7df;text-decoration:none;border:1px solid #34302a;padding:7px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span>GitHub</span>
-        <span style="display:flex;align-items:center;gap:4px;border-left:1px solid #34302a;padding-left:8px;color:#a39d92;">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="#d6a85c" aria-hidden="true" style="flex:none;"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
-          <span id="starCount">–</span>
-        </span>
-      </a>
-    </div>
-  </nav>
+<!-- HERO -->
+<section class="hero wrap">
+  <h1 data-i18n-html="hero.title">Run parallel coding agents from any <span class="acc">terminal</span>.</h1>
+  <p class="hero-sub" data-i18n="hero.sub">kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.</p>
+  <div class="hero-row">
+    <button id="copyBtn" class="copy-cmd">
+      <span class="ps">$</span>
+      <span>bun install -g @sma1lboy/kobe</span>
+      <span id="copyLabel" class="hint">click to copy</span>
+    </button>
+    <a class="btn-primary" href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted">Get started ↗</a>
+  </div>
+  <p class="hero-req" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</p>
 
-  <!-- HERO -->
-  <header style="position:relative;max-width:1180px;margin:0 auto;padding:60px 40px 40px;">
-    <div class="hero-grid">
-      <div>
-        <h1 data-i18n-html="hero.title" style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(38px,5vw,62px);line-height:1.0;letter-spacing:-0.03em;margin-bottom:24px;color:#eae7df;">
-          Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.
-        </h1>
-        <p data-i18n="hero.sub" style="font-size:16.5px;line-height:1.6;color:#a39d92;max-width:48ch;margin-bottom:34px;">
-          kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
-        </p>
+  <div class="quicklook">
+    <figure>
+      <video src="assets/quicklook.mp4" poster="assets/quicklook-poster.jpg" autoplay muted loop playsinline preload="metadata" fetchpriority="high" aria-label="kobe quick look — driving parallel coding tasks from the terminal"></video>
+    </figure>
+    <div class="equation">
+      <div class="equation-inner">
+        <span class="lhs" data-i18n="workspace.equation">one task =</span>
+        <span class="chip">git worktree</span>
+        <span class="op">+</span>
+        <span class="chip" data-i18n="workspace.sessions">hosted engine session</span>
+        <span class="op">+</span>
+        <span class="chip">branch</span>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
-          <button id="copyBtn" style="display:flex;align-items:center;gap:14px;background:#1a1917;border:1px solid #34302a;border-radius:11px;padding:14px 18px;cursor:pointer;font-family:inherit;font-size:14.5px;color:#eae7df;">
-            <span style="color:#cc785c;">$</span>
-            <span>bun install -g @sma1lboy/kobe</span>
-            <span id="copyLabel" style="color:#6b655c;border-left:1px solid #34302a;padding-left:14px;font-size:12px;">click to copy</span>
-          </button>
-          <a href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 22px;font-size:14.5px;">Get started ↗</a>
-        </div>
-        <div data-i18n="hero.requirements" style="font-size:12.5px;color:#6b655c;">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</div>
-      </div>
-      <div class="hero-art">
-        <div class="halo"></div>
-        <div class="frame"><img src="assets/task-streams.gif" alt="kobe — parallel task streams converging into one orchestrator" width="1200" height="630" /></div>
-      </div>
-    </div>
-  </header>
+<!-- NARRATIVE WORKFLOW · three stages -->
+<section id="workflow" class="stages wrap">
 
-  <!-- TUI WORKSPACE MOCKUP -->
-  <section id="workspace" style="position:relative;max-width:1180px;margin:56px auto 0;padding:0 40px;">
-    <div style="text-align:center;margin-bottom:22px;">
-      <span data-i18n="workspace.kicker" style="color:#cc785c;font-size:13px;">// a quick look</span>
-    </div>
-    <div style="border:1px solid #2c2823;border-radius:14px;overflow:hidden;background:#0e0d0c;box-shadow:0 40px 100px -30px rgba(0,0,0,0.7);">
-      <video src="assets/quicklook.mp4" poster="assets/quicklook-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="kobe quick look — driving parallel coding tasks from the terminal" style="display:block;width:100%;height:auto;"></video>
-    </div>
-    <!-- equation strip -->
-    <div style="margin-top:22px;display:flex;justify-content:center;">
-      <div style="display:flex;align-items:center;gap:14px;font-size:14px;color:#8a847a;flex-wrap:wrap;justify-content:center;">
-        <span data-i18n="workspace.equation" style="color:#6b655c;">one task =</span>
-        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">git worktree</span>
-        <span style="color:#534d45;">+</span>
-        <span data-i18n="workspace.sessions" style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">hosted engine sessions</span>
-        <span style="color:#534d45;">+</span>
-        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">branch</span>
+  <article class="stage">
+    <div class="stage-txt">
+      <span class="stage-no" data-i18n="s1.no">1.0 · FAN OUT</span>
+      <h2 data-i18n="s1.title">One prompt becomes five isolated attempts.</h2>
+      <p data-i18n="s1.body">Type the task once. kobe spawns each attempt in its own git worktree on its own branch, running whichever engine CLI you point it at — claude, codex, gemini, copilot, or your own command. Parallel agents never touch each other's files.</p>
+      <div class="engine-pills" id="enginePills">
+        <button class="engine-pill" data-engine="claude" data-active="true">claude</button>
+        <button class="engine-pill" data-engine="codex" data-active="false">codex</button>
+        <button class="engine-pill" data-engine="gemini" data-active="false">gemini</button>
+        <button class="engine-pill" data-engine="copilot" data-active="false">copilot</button>
+        <button class="engine-pill" data-engine="your own command" data-active="false" data-i18n="s1.ownCmd">your own command</button>
       </div>
     </div>
-  </section>
+    <div class="stage-vis">
+      <pre class="term-out"><span class="ps">$</span> kobe new <span class="a">"simplify auth"</span> --engine <span id="fanEngineName">claude</span> --fan 3
+<span class="ok">✓</span> 3 worktrees · 3 branches · 3 sessions
+<span id="fanLines"></span></pre>
+    </div>
+  </article>
 
-  <!-- WHY -->
-  <section id="why" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px;">
-    <div class="reveal" style="margin-bottom:58px;max-width:60ch;">
-      <span data-i18n="why.kicker" style="color:#cc785c;font-size:13px;">// why kobe</span>
-      <h2 data-i18n-html="why.title" style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(28px,3.8vw,44px);line-height:1.05;letter-spacing:-0.02em;color:#eae7df;margin:12px 0 14px;">One attempt is a coin flip.<br>Run five and keep the winner.</h2>
-      <p data-i18n="why.sub" style="font-size:16px;line-height:1.6;color:#a39d92;">kobe gives every attempt its own worktree, branch, and persistent session — so parallel agents never step on each other, and a dropped SSH connection never kills the work.</p>
+  <article class="stage">
+    <div class="stage-txt">
+      <span class="stage-no" data-i18n="s2.no">2.0 · WALK AWAY</span>
+      <h2 data-i18n="s2.title">Close the laptop. Work keeps running.</h2>
+      <p data-i18n="s2.body">Agents run in hosted PTYs on the machine where your code lives — your laptop, a devbox, a VPS, anything you can SSH into. The standalone PTY Host keeps sessions alive when kobe exits, the daemon restarts, or SSH drops.</p>
+      <p data-i18n="s2.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
     </div>
-    <!-- row 1: safe parallelism -->
-    <div class="why-row reveal">
-      <div class="txt">
-        <div data-i18n="why.r1.label" style="color:#cc785c;font-size:12px;margin-bottom:10px;">01 — safe parallelism</div>
-        <h3 data-i18n="why.r1.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Every attempt is isolated.</h3>
-        <p data-i18n="why.r1.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">One prompt fans out into separate worktrees and branches. Five tries run at once and never touch each other's files — compare the diffs, keep the good one, archive the rest.</p>
-      </div>
-      <div class="illo">
-        <div style="align-self:center;border:1px solid #34302a;background:#1a1917;border-radius:8px;padding:7px 13px;font-size:12.5px;color:#e6c1b1;">prompt <span style="color:#d98c72;">"simplify auth"</span></div>
-        <div style="align-self:center;color:#534d45;font-size:11px;">↓ fan out into 3 worktrees</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div style="display:flex;align-items:center;gap:9px;border:1px solid #2c2823;background:#1a1917;border-radius:8px;padding:9px 12px;font-size:12.5px;"><span style="width:8px;height:8px;border-radius:50%;background:#9aca86;box-shadow:0 0 6px #9aca86;flex:none;"></span><span style="color:#c4bdb1;">try/claude-a</span><span style="margin-left:auto;color:#6b655c;font-size:11px;">running</span></div>
-          <div style="display:flex;align-items:center;gap:9px;border:1px solid #2c2823;background:#1a1917;border-radius:8px;padding:9px 12px;font-size:12.5px;"><span style="width:8px;height:8px;border-radius:50%;border:1.5px solid #d6a85c;flex:none;"></span><span style="color:#c4bdb1;">try/codex-b</span><span style="margin-left:auto;color:#6b655c;font-size:11px;">running</span></div>
-          <div style="display:flex;align-items:center;gap:9px;border:1px solid rgba(154,202,134,0.35);background:rgba(154,202,134,0.07);border-radius:8px;padding:9px 12px;font-size:12.5px;"><span style="color:#9aca86;flex:none;">✓</span><span style="color:#e6c1b1;">try/claude-c</span><span style="margin-left:auto;color:#9aca86;font-size:11px;">kept</span></div>
-        </div>
-      </div>
+    <div class="stage-vis">
+      <pre class="term-out"><span class="ps">$</span> exit
+<span class="d">Connection to devbox closed.</span>
+<span class="d">▸ 41 minutes later, from anywhere</span>
+<span class="ps">$</span> ssh devbox && kobe
+<span class="ok">●</span> 3 sessions live · running 41m
+<span class="d">  attached — right where you left off</span></pre>
     </div>
+  </article>
 
-    <!-- row 2: persistent -->
-    <div class="why-row rev reveal">
-      <div class="txt">
-        <div data-i18n="why.r2.label" style="color:#cc785c;font-size:12px;margin-bottom:10px;">02 — persistent by default</div>
-        <h3 data-i18n="why.r2.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Close kobe. Work keeps running.</h3>
-        <p data-i18n="why.r2.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">Agents run in Hosted PTYs on the machine where your code lives. The standalone PTY Host keeps them alive when kobe exits, the daemon restarts, or SSH drops — reopen kobe and pick up where you left off.</p>
-      </div>
-      <div class="illo">
-        <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
-          <div style="border:1px dashed #34302a;border-radius:9px;padding:12px 14px;text-align:center;color:#6b655c;font-size:12px;opacity:0.7;"><span data-i18n="why.r2.diagram.client">kobe</span><br><span data-i18n="why.r2.diagram.detached" style="color:#cc785c;font-size:11px;">✕ detached</span></div>
-          <div style="color:#534d45;font-size:13px;letter-spacing:2px;">╌╌╌</div>
-          <div style="border:1px solid rgba(154,202,134,0.4);background:rgba(154,202,134,0.06);border-radius:9px;padding:12px 14px;text-align:center;color:#c4bdb1;font-size:12px;"><span data-i18n="why.r2.diagram.host">standalone PTY Host</span><br><span data-i18n="why.r2.diagram.live" style="color:#9aca86;font-size:11px;">● sessions live</span></div>
-        </div>
-        <div style="margin-top:10px;border:1px solid #2c2823;background:#1a1917;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#8a847a;">
-          <div><span style="color:#9aca86;">●</span> 3 agents working…</div>
-          <div style="color:#6b655c;margin-top:3px;">running for 41m · 0 lost on reconnect</div>
-        </div>
-      </div>
+  <article class="stage">
+    <div class="stage-txt">
+      <span class="stage-no" data-i18n="s3.no">3.0 · KEEP THE WINNER</span>
+      <h2 data-i18n="s3.title">Compare the diffs. Land the best one.</h2>
+      <p data-i18n="s3.body">Reopen kobe and every attempt is where you left it, each on its own branch. Review the diffs side by side, merge the branch you like, archive the rest. One attempt is a coin flip — five is a choice.</p>
     </div>
-
-    <!-- row 3: real environment -->
-    <div class="why-row reveal">
-      <div class="txt">
-        <div data-i18n="why.r3.label" style="color:#cc785c;font-size:12px;margin-bottom:10px;">03 — real environment</div>
-        <h3 data-i18n="why.r3.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Not a sandboxed approximation.</h3>
-        <p data-i18n="why.r3.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">Agents run right next to your real dependencies, services, credentials, and build cache. What passes for the agent passes for you — because it's the same machine.</p>
-      </div>
-      <div class="illo">
-        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">deps</span>
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">services</span>
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">$PATH</span>
-        </div>
-        <div style="align-self:center;border:1px solid rgba(204,120,92,0.4);background:rgba(204,120,92,0.1);border-radius:9px;padding:10px 18px;font-size:13px;color:#e6c1b1;">● agent</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">secrets</span>
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">build cache</span>
-          <span style="border:1px solid #2c2823;border-radius:7px;padding:6px 11px;font-size:12px;color:#a39d92;">local DB</span>
-        </div>
-      </div>
+    <div class="stage-vis">
+      <pre class="term-out"><span class="ps">$</span> kobe changes try/claude-c
+<span class="ok">+118</span> <span class="del">−204</span> · 6 files
+<span class="ps">$</span> kobe land try/claude-c
+<span class="ok">✓</span> try/claude-c <span class="ok">merged to main</span>
+<span class="d">○ try/claude-a  archived</span>
+<span class="d">○ try/codex-b   archived</span></pre>
     </div>
+  </article>
 
-    <!-- row 4: ssh / devbox -->
-    <div class="why-row rev reveal">
-      <div class="txt">
-        <div data-i18n="why.r4.label" style="color:#cc785c;font-size:12px;margin-bottom:10px;">04 — terminal-native</div>
-        <h3 data-i18n="why.r4.title" style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:23px;letter-spacing:-0.01em;color:#eae7df;margin-bottom:11px;">Runs where your code already lives.</h3>
-        <p data-i18n="why.r4.body" style="font-size:14.5px;line-height:1.65;color:#8a847a;">Your laptop, a devbox, a VPS — anything you can SSH into. No browser, no VNC, no desktop app to babysit. The terminal is the product.</p>
-      </div>
-      <div class="illo" style="padding:0;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:7px;padding:10px 13px;border-bottom:1px solid #26221d;background:#1a1917;">
-          <span style="width:10px;height:10px;border-radius:50%;background:#cc785c;"></span>
-          <span style="width:10px;height:10px;border-radius:50%;background:#d6a85c;"></span>
-          <span style="width:10px;height:10px;border-radius:50%;background:#9aca86;"></span>
-        </div>
-        <div style="padding:16px;font-size:13px;line-height:1.9;color:#c4bdb1;">
-          <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">ssh</span> devbox</div>
-          <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">cd</span> repo &amp;&amp; kobe<span style="display:inline-block;width:8px;height:14px;background:#9aca86;vertical-align:middle;margin-left:3px;animation:blink 1.1s steps(1) infinite;"></span></div>
-          <div style="color:#6b655c;font-size:11.5px;margin-top:10px;">no browser · no VNC · no desktop app</div>
-        </div>
-      </div>
+</section>
+
+<!-- INSTALL / CTA -->
+<section id="install" class="install wrap">
+  <div class="install-final">
+    <h2 data-i18n="install.title">Spin it up where your code lives.</h2>
+    <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.</p>
+    <pre class="term-out install-term"><span class="ps">$</span> bun install -g @sma1lboy/kobe
+<span class="ps">$</span> ssh devbox && cd repo
+<span class="ps">$</span> kobe
+<span class="d">3 attempts running. Go do something else.</span></pre>
+    <div class="install-actions">
+      <a class="btn-primary" href="https://www.npmjs.com/package/@sma1lboy/kobe" data-i18n="install.npm">Install from npm ↗</a>
+      <a class="btn-quiet" href="https://github.com/Sma1lboy/kobe" data-i18n="install.star">Star on GitHub ↗</a>
     </div>
-  </section>
+  </div>
 
-  <!-- ENGINES -->
-  <section id="engines" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;">
-      <div>
-        <span data-i18n="engines.kicker" style="color:#cc785c;font-size:13px;">// choose your engine</span>
-        <h2 data-i18n="engines.title" style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(28px,3.6vw,40px);letter-spacing:-0.02em;margin:14px 0 18px;color:#eae7df;">Bring whatever CLI you already trust.</h2>
-        <p data-i18n="engines.body" style="font-size:15px;line-height:1.65;color:#a39d92;margin-bottom:28px;">Settings → Engine picks which AI CLI kobe runs for a task. Switch per task, or point it at your own command. Every attempt gets its own branch and worktree — compare the results, keep the good one, archive the rest.</p>
-        <div id="enginePills" style="display:flex;flex-wrap:wrap;gap:10px;">
-          <div class="engine-pill" data-engine="claude" data-active="true">claude</div>
-          <div class="engine-pill" data-engine="codex" data-active="false">codex</div>
-          <div class="engine-pill" data-engine="gemini" data-active="false">gemini</div>
-          <div class="engine-pill" data-engine="copilot" data-active="false">copilot</div>
-          <div class="engine-pill" data-engine="your own command" data-active="false">your own command</div>
-        </div>
-      </div>
-      <div style="border:1px solid #2c2823;border-radius:13px;background:#171614;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid #26221d;background:#1a1917;color:#6b655c;font-size:11.5px;letter-spacing:0.06em;">
-          <span style="width:9px;height:9px;border-radius:50%;background:#cc785c;flex:none;"></span> NEW TASK
-        </div>
-        <div style="padding:18px;">
-          <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:11px;">
-            <span style="color:#6b655c;">prompt</span><span style="color:#d98c72;">"simplify auth"</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12.5px;padding-bottom:14px;border-bottom:1px solid #26221d;">
-            <span style="color:#6b655c;">engine</span>
-            <span style="display:flex;align-items:center;gap:8px;"><span id="fanEngine" style="color:#e6c1b1;border:1px solid rgba(204,120,92,0.4);background:rgba(204,120,92,0.12);border-radius:7px;padding:4px 11px;">claude</span><span style="color:#8a847a;">× 3</span></span>
-          </div>
-          <div style="color:#6b655c;font-size:11px;margin:13px 0 9px;">↳ spawns 3 isolated worktrees</div>
-          <div id="fanLanes" style="display:flex;flex-direction:column;gap:8px;"></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- INSTALL / CTA -->
-  <section id="install" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px 110px;">
-    <div style="border:1px solid #2c2823;border-radius:18px;background:radial-gradient(ellipse 80% 120% at 50% 0%,rgba(204,120,92,0.1),transparent 70%),#171614;padding:56px 40px;text-align:center;">
-      <h2 data-i18n="install.title" style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(30px,4.2vw,48px);letter-spacing:-0.02em;margin-bottom:16px;color:#eae7df;">Spin it up where your code lives.</h2>
-      <p data-i18n="install.body" style="font-size:15.5px;color:#a39d92;max-width:48ch;margin:0 auto 34px;">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.</p>
-      <div style="display:inline-flex;flex-direction:column;gap:2px;text-align:left;border:1px solid #34302a;border-radius:12px;background:#141413;padding:18px 22px;font-size:14px;margin-bottom:30px;">
-        <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">ssh</span> devbox</div>
-        <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">cd</span> repo</div>
-        <div><span style="color:#6b655c;">$</span> kobe<span style="display:inline-block;width:8px;height:15px;background:#9aca86;vertical-align:middle;margin-left:4px;animation:blink 1.1s steps(1) infinite;"></span></div>
-      </div>
-      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
-        <a href="https://www.npmjs.com/package/@sma1lboy/kobe" data-i18n="install.npm" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 24px;font-size:14.5px;">Install from npm ↗</a>
-        <a href="https://github.com/Sma1lboy/kobe" data-i18n="install.star" style="background:#1a1917;border:1px solid #34302a;color:#eae7df;text-decoration:none;font-weight:500;border-radius:11px;padding:14px 24px;font-size:14.5px;">Star on GitHub ↗</a>
-      </div>
-    </div>
-
-    <!-- footer -->
-    <div style="margin-top:60px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;border-top:1px solid #26221d;padding-top:28px;">
-      <div style="display:flex;align-items:center;gap:9px;color:#6b655c;font-size:13px;font-weight:600;">
-        <span style="color:#cc785c;">[</span><span style="color:#a39d92;">kobe</span><span style="color:#cc785c;">]</span>
-        <span data-i18n="footer.tagline" style="font-weight:400;margin-left:4px;">parallel coding agents, terminal-native.</span>
-      </div>
-      <div style="display:flex;gap:24px;font-size:13px;color:#6b655c;">
-        <a href="https://github.com/Sma1lboy/kobe" style="color:#6b655c;text-decoration:none;">GitHub</a>
-        <a href="https://www.npmjs.com/package/@sma1lboy/kobe" style="color:#6b655c;text-decoration:none;">npm</a>
-        <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings" style="color:#6b655c;text-decoration:none;">Keybindings</a>
-      </div>
-    </div>
-  </section>
-
-</div>
+  <!-- FOOTER · Ft4 dense colophon -->
+  <footer class="foot-dense">
+    <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">parallel coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+  </footer>
+</section>
 
 <script>
   // EN / 中文 — one page, two language versions. Terminal-mock content
@@ -280,62 +153,52 @@
     var zh = {
       'meta.title': 'kobe — 终端原生的并行 AI 编码代理',
       'meta.desc': 'kobe 是本地优先的 TUI 编排器，支持 Claude Code、Codex 等。用隔离的 git worktree 和常驻 Hosted PTY 会话，在任何终端并行运行 AI 编码代理。',
-      'nav.workspace': '工作区', 'nav.why': '为什么', 'nav.engines': '引擎', 'nav.install': '安装', 'nav.changelog': '更新日志',
-      'hero.title': '在任何<span style="color:#cc785c;">终端</span>里并行运行 AI 编码代理。',
+      'nav.workflow': '--工作流', 'nav.install': '--安装', 'nav.changelog': '--更新日志',
+      'hero.title': '在任何<span class="acc">终端</span>里并行运行 AI 编码代理。',
       'hero.sub': 'kobe 把 AI 编码工作放进隔离的 git worktree 和常驻托管引擎会话。AI 代理一次跑一个已经很有用——kobe 是为你想同时跑五个尝试的时候准备的。',
       'hero.getStarted': '快速上手 ↗',
       'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
       'copy.hint': '点击复制', 'copy.done': '✓ 已复制',
-      'workspace.kicker': '// 快速一览', 'workspace.equation': '一个任务 =', 'workspace.sessions': '托管引擎会话',
-      'why.kicker': '// 为什么选 kobe',
-      'why.title': '一次尝试是掷硬币。<br>跑五个，留下赢家。',
-      'why.sub': 'kobe 给每次尝试独立的 worktree、分支和常驻会话——并行代理互不干扰，SSH 断线也不会杀掉工作。',
-      'why.r1.label': '01 — 安全的并行', 'why.r1.title': '每次尝试都相互隔离。',
-      'why.r1.body': '一条 prompt 扇出成多个独立的 worktree 和分支。五个尝试同时进行、互不碰文件——比较 diff，留下好的，归档其余。',
-      'why.r2.label': '02 — 默认常驻', 'why.r2.title': '退出 kobe，工作继续跑。',
-      'why.r2.body': '代理运行在代码所在机器的 Hosted PTY 中。独立 PTY Host 会在 kobe 退出、daemon 重启或 SSH 断线后继续持有会话——重新打开 kobe，就能从原处继续。',
-      'why.r2.diagram.client': 'kobe', 'why.r2.diagram.detached': '✕ 已分离',
-      'why.r2.diagram.host': '独立 PTY Host', 'why.r2.diagram.live': '● 会话仍存活',
-      'why.r3.label': '03 — 真实环境', 'why.r3.title': '不是沙箱里的近似品。',
-      'why.r3.body': '代理就跑在你真实的依赖、服务、凭证和构建缓存旁边。代理跑通的对你也跑通——因为就是同一台机器。',
-      'why.r4.label': '04 — 终端原生', 'why.r4.title': '跑在你代码已经在的地方。',
-      'why.r4.body': '笔记本、devbox、VPS——任何能 SSH 上去的机器。没有浏览器、没有 VNC、没有需要看管的桌面应用。终端就是产品。',
-      'engines.kicker': '// 选择你的引擎', 'engines.title': '带上你已经信任的那个 CLI。',
-      'engines.body': '设置 → Engine 决定 kobe 为任务运行哪个 AI CLI。可以按任务切换，也可以指向你自己的命令。每次尝试都有自己的分支和 worktree——比较结果，留下好的，归档其余。',
+      'workspace.equation': '一个任务 =', 'workspace.sessions': '托管引擎会话',
+      's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成五个隔离的尝试。',
+      's1.body': '任务只输入一次。kobe 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎 CLI——claude、codex、gemini、copilot，或你自己的命令。并行代理互不碰文件。',
+      's1.ownCmd': '你自己的命令',
+      's2.no': '2.0 · 离开', 's2.title': '合上笔记本，工作继续跑。',
+      's2.body': '代理运行在代码所在机器的 Hosted PTY 中——笔记本、devbox、VPS，任何能 SSH 上去的机器。独立 PTY Host 会在 kobe 退出、daemon 重启或 SSH 断线后继续持有会话。',
+      's2.body2': '而且是你的真实机器：真实的依赖、服务、凭证和构建缓存。代理跑通的对你也跑通。',
+      's3.no': '3.0 · 留下赢家', 's3.title': '比较 diff，合入最好的那个。',
+      's3.body': '重新打开 kobe，每个尝试都在原处，各在各的分支上。并排看 diff，合并你满意的分支，归档其余。一次尝试是掷硬币——五次是选择。',
       'install.title': '在你代码所在的地方跑起来。',
       'install.body': '笔记本、devbox、VPS，或任何能 SSH 上去的机器。没有浏览器、没有 VNC、没有桌面应用。',
       'install.npm': '从 npm 安装 ↗', 'install.star': '去 GitHub 点个 Star ↗',
-      'footer.tagline': '终端原生的并行 AI 编码代理。', 'footer.keybindings': '快捷键',
+      'footer.tagline': '终端原生的并行 AI 编码代理。',
+      'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Space Grotesk 与 JetBrains Mono。MIT 许可。',
+      'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
       'meta.title': 'kobe — parallel coding agents, terminal-native',
       'meta.desc': 'kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.',
-      'nav.workspace': 'workspace', 'nav.why': 'why', 'nav.engines': 'engines', 'nav.install': 'install', 'nav.changelog': 'changelog',
-      'hero.title': 'Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.',
+      'nav.workflow': '--workflow', 'nav.install': '--install', 'nav.changelog': '--changelog',
+      'hero.title': 'Run parallel coding agents from any <span class="acc">terminal</span>.',
       'hero.sub': 'kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.',
       'hero.getStarted': 'Get started ↗',
       'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
       'copy.hint': 'click to copy', 'copy.done': '✓ copied',
-      'workspace.kicker': '// a quick look', 'workspace.equation': 'one task =', 'workspace.sessions': 'hosted engine sessions',
-      'why.kicker': '// why kobe',
-      'why.title': 'One attempt is a coin flip.<br>Run five and keep the winner.',
-      'why.sub': 'kobe gives every attempt its own worktree, branch, and persistent session — so parallel agents never step on each other, and a dropped SSH connection never kills the work.',
-      'why.r1.label': '01 — safe parallelism', 'why.r1.title': 'Every attempt is isolated.',
-      'why.r1.body': "One prompt fans out into separate worktrees and branches. Five tries run at once and never touch each other's files — compare the diffs, keep the good one, archive the rest.",
-      'why.r2.label': '02 — persistent by default', 'why.r2.title': 'Close kobe. Work keeps running.',
-      'why.r2.body': 'Agents run in Hosted PTYs on the machine where your code lives. The standalone PTY Host keeps them alive when kobe exits, the daemon restarts, or SSH drops — reopen kobe and pick up where you left off.',
-      'why.r2.diagram.client': 'kobe', 'why.r2.diagram.detached': '✕ detached',
-      'why.r2.diagram.host': 'standalone PTY Host', 'why.r2.diagram.live': '● sessions live',
-      'why.r3.label': '03 — real environment', 'why.r3.title': 'Not a sandboxed approximation.',
-      'why.r3.body': "Agents run right next to your real dependencies, services, credentials, and build cache. What passes for the agent passes for you — because it's the same machine.",
-      'why.r4.label': '04 — terminal-native', 'why.r4.title': 'Runs where your code already lives.',
-      'why.r4.body': 'Your laptop, a devbox, a VPS — anything you can SSH into. No browser, no VNC, no desktop app to babysit. The terminal is the product.',
-      'engines.kicker': '// choose your engine', 'engines.title': 'Bring whatever CLI you already trust.',
-      'engines.body': 'Settings → Engine picks which AI CLI kobe runs for a task. Switch per task, or point it at your own command. Every attempt gets its own branch and worktree — compare the results, keep the good one, archive the rest.',
+      'workspace.equation': 'one task =', 'workspace.sessions': 'hosted engine session',
+      's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes five isolated attempts.',
+      's1.body': 'Type the task once. kobe spawns each attempt in its own git worktree on its own branch, running whichever engine CLI you point it at — claude, codex, gemini, copilot, or your own command. Parallel agents never touch each other\'s files.',
+      's1.ownCmd': 'your own command',
+      's2.no': '2.0 · WALK AWAY', 's2.title': 'Close the laptop. Work keeps running.',
+      's2.body': 'Agents run in hosted PTYs on the machine where your code lives — your laptop, a devbox, a VPS, anything you can SSH into. The standalone PTY Host keeps sessions alive when kobe exits, the daemon restarts, or SSH drops.',
+      's2.body2': 'And it\'s your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.',
+      's3.no': '3.0 · KEEP THE WINNER', 's3.title': 'Compare the diffs. Land the best one.',
+      's3.body': 'Reopen kobe and every attempt is where you left it, each on its own branch. Review the diffs side by side, merge the branch you like, archive the rest. One attempt is a coin flip — five is a choice.',
       'install.title': 'Spin it up where your code lives.',
       'install.body': 'Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.',
       'install.npm': 'Install from npm ↗', 'install.star': 'Star on GitHub ↗',
-      'footer.tagline': 'parallel coding agents, terminal-native.', 'footer.keybindings': 'Keybindings',
+      'footer.tagline': 'parallel coding agents, terminal-native.',
+      'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.',
+      'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
     };
     var dicts = { en: en, zh: zh };
     var lang = 'en';
@@ -417,51 +280,24 @@
       .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
   })();
 
-  // scroll-reveal for .reveal elements
-  (function () {
-    var els = document.querySelectorAll('.reveal');
-    if (!els.length) return;
-    var reduce = false;
-    try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
-    if (reduce || !('IntersectionObserver' in window)) {
-      els.forEach(function (el) { el.classList.add('in'); });
-      return;
-    }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
-      });
-    }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
-    els.forEach(function (el) { io.observe(el); });
-  })();
-
-  // engine selector → updates the visual fan-out (engine + spawned worktree lanes)
+  // engine selector → updates the stage-1 fan-out (engine chip + spawned worktree lanes)
   (function () {
     var branchMap = {
       'claude': 'claude', 'codex': 'codex', 'gemini': 'gemini',
       'copilot': 'copilot', 'your own command': 'my-cli',
     };
-    var engineEl = document.getElementById('fanEngine');
-    var lanesEl = document.getElementById('fanLanes');
+    var engineEl = document.getElementById('fanEngineName');
+    var linesEl = document.getElementById('fanLines');
     var pills = document.querySelectorAll('.engine-pill');
-    if (!engineEl || !lanesEl) return;
+    if (!engineEl || !linesEl) return;
 
     function render(engine) {
       var slug = branchMap[engine] || engine;
       engineEl.textContent = engine;
-      var suffixes = ['a', 'b', 'c'];
-      var states = [
-        { c: '#9aca86', glow: '0 0 6px #9aca86', label: 'running' },
-        { c: '#d6a85c', glow: 'none', label: 'running' },
-        { c: '#9aca86', glow: '0 0 6px #9aca86', label: 'running' },
-      ];
-      lanesEl.innerHTML = suffixes.map(function (s, i) {
-        var st = states[i];
-        return '<div style="display:flex;align-items:center;gap:9px;border:1px solid #2c2823;background:#1a1917;border-radius:8px;padding:9px 12px;font-size:12.5px;">' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:' + st.c + ';box-shadow:' + st.glow + ';flex:none;"></span>' +
-          '<span style="color:#c4bdb1;">try/' + slug + '-' + s + '</span>' +
-          '<span style="margin-left:auto;color:#6b655c;font-size:11px;">worktree · ' + st.label + '</span></div>';
-      }).join('');
+      var pad = function (s) { return (s + '              ').slice(0, 15); };
+      linesEl.innerHTML = ['a', 'b', 'c'].map(function (s) {
+        return '<span class="ok">●</span> ' + pad('try/' + slug + '-' + s) + '<span class="d">running</span>';
+      }).join('\n');
     }
 
     pills.forEach(function (pill) {

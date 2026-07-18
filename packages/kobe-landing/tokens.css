@@ -1,0 +1,48 @@
+/* Hallmark · tokens — kobe landing. Brand palette preserved (terracotta on warm dark), converted to OKLCH. */
+:root {
+  --color-paper: oklch(17.5% 0.003 100);
+  --color-paper-2: oklch(20% 0.004 95);
+  --color-paper-3: oklch(18.6% 0.004 95);
+  --color-well: oklch(14% 0.003 95);
+  --color-ink: oklch(92.5% 0.011 95);
+  --color-ink-2: oklch(85.7% 0.014 95);
+  --color-ink-3: oklch(80% 0.017 90);
+  --color-muted: oklch(69.5% 0.015 90);
+  --color-faint: oklch(60.5% 0.014 90);
+  --color-dim: oklch(49.5% 0.014 90);
+  --color-ghost: oklch(41% 0.013 85);
+  --color-rule: oklch(25.7% 0.01 85);
+  --color-rule-2: oklch(29% 0.011 85);
+  --color-rule-3: oklch(23.4% 0.01 85);
+  --color-accent: oklch(65% 0.107 41);
+  --color-accent-2: oklch(70.5% 0.095 41);
+  --color-accent-soft: oklch(83.5% 0.045 45);
+  --color-accent-ink: oklch(14% 0.02 45);
+  --color-accent-wash: oklch(65% 0.107 41 / 0.12);
+  --color-accent-line: oklch(65% 0.107 41 / 0.45);
+  --color-ok: oklch(78.5% 0.1 136);
+  --color-ok-wash: oklch(78.5% 0.1 136 / 0.07);
+  --color-ok-line: oklch(78.5% 0.1 136 / 0.38);
+  --color-warn: oklch(75.5% 0.104 79);
+  --color-focus: oklch(70.5% 0.095 41);
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "JetBrains Mono", ui-monospace, monospace;
+
+  --space-2xs: 0.5rem; --space-xs: 0.75rem; --space-sm: 1rem;
+  --space-md: 1.5rem; --space-lg: 2rem; --space-xl: 3rem;
+  --space-2xl: 4.5rem; --space-3xl: 7rem;
+
+  --text-2xs: 0.6875rem; --text-xs: 0.75rem; --text-sm: 0.8125rem;
+  --text-md: 0.84375rem; --text-lg: 0.90625rem; --text-xl: 1.03125rem;
+  --text-h3: 1.4375rem;
+  --text-h2: clamp(1.75rem, 3.6vw, 2.625rem);
+  --text-display: clamp(2.375rem, 5vw, 3.875rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 180ms;
+  --rule-hair: 1px;
+  --radius-card: 13px; --radius-btn: 10px; --radius-chip: 8px; --radius-dot: 50%;
+  --page-gutter: clamp(20px, 4vw, 40px);
+  --page-max: 1180px;
+}
