@@ -31,6 +31,7 @@ function Probe(props: { opened: string[] }) {
     jumpToNextAttention: () => {},
     openInbox: () => {},
     enterMoveMode: () => {},
+    createPR: () => {},
   })
   return <text>ready</text>
 }

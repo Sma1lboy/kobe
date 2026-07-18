@@ -124,7 +124,7 @@ async function loadTemplate(worktree: string): Promise<string> {
   }
 }
 
-export async function buildPRPrompt(worktree: string): Promise<string> {
-  const [template, state] = await Promise.all([loadTemplate(worktree), gatherPRPromptState(worktree)])
-  return renderPRPrompt(template, state)
+export async function buildPRPrompt(worktree: string, state?: PRPromptState): Promise<string> {
+  const [template, resolved] = await Promise.all([loadTemplate(worktree), state ?? gatherPRPromptState(worktree)])
+  return renderPRPrompt(template, resolved)
 }

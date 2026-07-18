@@ -108,18 +108,20 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "a" },
   },
   {
-    // Ops-pane action on the Changes tab. This is the v0.5 Create PR
-    // button rehomed into the file-changes surface: the chord sends
-    // the PR prompt into the engine pane instead of rendering an outer
-    // monitor button. ctrl+p, not bare `p` (owner call 2026-07-17):
-    // lowercase letters are for frequent navigation; an action that
-    // fires a PR prompt earns a modifier. No clash with
-    // sidebar.projectFilter's ctrl+p — different pane scope.
+    // Ops-pane action on the Changes tab: sends the PR prompt into the
+    // engine pane. prefix+p / prefix+P, no direct chord (owner call
+    // 2026-07-18): the old files-scoped ctrl+p was unreachable from the
+    // sidebar (ctrl+p = project filter there) and from the terminal
+    // (passes through to the engine) — the owner's muscle memory went
+    // straight to the prefix route, which was unbound. shift+p rides
+    // along because "PR" reads uppercase: the capital press lands too.
+    // Registered by the workspace host (host-keybindings.ts), not the
+    // FileTree pane, so it fires from any pane focus.
     id: "files.createPR",
-    scope: "files",
-    keys: ["ctrl+p"],
+    scope: "global",
+    keys: [],
+    prefixKeys: ["p", "shift+p"],
     category: "Files",
     description: "Create PR from the current task",
-    hint: { keys: "ctrl+p" },
   },
 ]

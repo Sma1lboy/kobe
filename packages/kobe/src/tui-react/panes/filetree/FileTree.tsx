@@ -353,7 +353,6 @@ export function FileTree(props: FileTreeProps) {
         if (!row || row.kind === "dir") return
         props.onMention?.(row.path)
       },
-      createPR: props.onCreatePR,
       openExternal: () => {
         const row = rows[cursorIndex]
         if (!row || row.kind === "dir") return
