@@ -19,10 +19,10 @@
  * three; it flows through Task metadata and selectors and resolves its
  * launch command from `engineCommand.<id>`.
  */
-export type VendorId = "claude" | "codex" | "copilot" | (string & {})
+export type VendorId = "claude" | "codex" | "copilot" | "kimi" | (string & {})
 
-/** The three first-party engines that ship with kobe (cycle order). */
-export const BUILTIN_VENDORS = ["claude", "codex", "copilot"] as const
+/** The first-party engines that ship with kobe (cycle order). */
+export const BUILTIN_VENDORS = ["claude", "codex", "copilot", "kimi"] as const
 export type BuiltinVendorId = (typeof BUILTIN_VENDORS)[number]
 
 /**
@@ -33,9 +33,9 @@ export type BuiltinVendorId = (typeof BUILTIN_VENDORS)[number]
  */
 export const ALL_VENDORS: readonly VendorId[] = [...BUILTIN_VENDORS]
 
-/** True when `id` is one of the three first-party engines (not a custom one). */
+/** True when `id` is one of the first-party engines (not a custom one). */
 export function isBuiltinVendor(id: string | undefined): id is BuiltinVendorId {
-  return id === "claude" || id === "codex" || id === "copilot"
+  return id === "claude" || id === "codex" || id === "copilot" || id === "kimi"
 }
 
 /** Next vendor in {@link ALL_VENDORS} order, wrapping around. */

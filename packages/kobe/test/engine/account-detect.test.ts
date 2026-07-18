@@ -17,6 +17,7 @@ function deps(over: Partial<DetectDeps> = {}): DetectDeps {
     findClaudeBinary: async () => "/bin/claude",
     findCodexBinary: async () => "/bin/codex",
     findCopilotBinary: async () => "/bin/copilot",
+    findKimiBinary: async () => "/bin/kimi",
     ...over,
   }
 }
@@ -80,17 +81,24 @@ describe("detectAvailableVendors", () => {
   }
 
   it("lists every vendor whose binary resolves, in cycle order", async () => {
-    expect(await detectAvailableVendors(deps())).toEqual(["claude", "codex", "copilot"])
+    expect(await detectAvailableVendors(deps())).toEqual(["claude", "codex", "copilot", "kimi"])
   })
 
   it("excludes vendors whose binary is missing", async () => {
-    const only = await detectAvailableVendors(deps({ findClaudeBinary: notFound, findCopilotBinary: notFound }))
+    const only = await detectAvailableVendors(
+      deps({ findClaudeBinary: notFound, findCopilotBinary: notFound, findKimiBinary: notFound }),
+    )
     expect(only).toEqual(["codex"])
   })
 
   it("returns [] when no engine CLI is found", async () => {
     const none = await detectAvailableVendors(
-      deps({ findClaudeBinary: notFound, findCodexBinary: notFound, findCopilotBinary: notFound }),
+      deps({
+        findClaudeBinary: notFound,
+        findCodexBinary: notFound,
+        findCopilotBinary: notFound,
+        findKimiBinary: notFound,
+      }),
     )
     expect(none).toEqual([])
   })

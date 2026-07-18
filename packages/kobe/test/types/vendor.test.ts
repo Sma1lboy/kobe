@@ -12,7 +12,8 @@ describe("nextVendor", () => {
   it("walks ALL_VENDORS in order and wraps", () => {
     expect(nextVendor("claude")).toBe("codex")
     expect(nextVendor("codex")).toBe("copilot")
-    expect(nextVendor("copilot")).toBe("claude")
+    expect(nextVendor("copilot")).toBe("kimi")
+    expect(nextVendor("kimi")).toBe("claude")
   })
 })
 

@@ -48,6 +48,7 @@ import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local
 import { CodexBinaryNotFoundError, findCodexBinary } from "./codex-local/binary"
 import { CopilotBinaryNotFoundError, findCopilotBinary } from "./copilot-local/binary"
 import { readTextFileSyncBounded } from "./file-bounds"
+import { KimiBinaryNotFoundError, findKimiBinary } from "./kimi-local/binary"
 
 export type ClaudeAccount =
   | {
@@ -66,6 +67,15 @@ export type CopilotAccount =
   | { kind: "oauth" }
   | { kind: "none" }
 
+/**
+ * Kimi Code stores an OAuth token bundle at
+ * `~/.kimi-code/credentials/kimi-code.json` (`access_token` +
+ * `refresh_token` + `expires_at`; verified on a live install 2026-07-18).
+ * The JWT payload has no email claim — only opaque ids — so a logged-in
+ * account is reported without one.
+ */
+export type KimiAccount = { kind: "oauth" } | { kind: "none" }
+
 export type BinaryStatus = { found: true; path: string } | { found: false; error: string }
 
 export interface EngineAccountStatus<A> {
@@ -83,6 +93,7 @@ export interface DetectDeps {
   findClaudeBinary(): Promise<string>
   findCodexBinary(): Promise<string>
   findCopilotBinary(): Promise<string>
+  findKimiBinary(): Promise<string>
 }
 
 const defaultDeps: DetectDeps = {
@@ -108,6 +119,9 @@ const defaultDeps: DetectDeps = {
   findCopilotBinary() {
     return findCopilotBinary()
   },
+  findKimiBinary() {
+    return findKimiBinary()
+  },
 }
 
 /** Resolve the path to claude-code's global config (`~/.claude.json` by default). */
@@ -128,6 +142,13 @@ export function copilotConfigPath(env: (k: string) => string | undefined, home: 
   const override = env("COPILOT_HOME")?.trim()
   const dir = override ?? path.join(home, ".copilot")
   return path.join(dir, "config.json")
+}
+
+/** Resolve kimi's OAuth credential file (`~/.kimi-code/credentials/kimi-code.json`). */
+export function kimiCredentialsPath(env: (k: string) => string | undefined, home: string): string {
+  const override = env("KIMI_CODE_HOME")?.trim()
+  const dir = override ?? path.join(home, ".kimi-code")
+  return path.join(dir, "credentials", "kimi-code.json")
 }
 
 /**
@@ -161,7 +182,8 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
     if (
       err instanceof ClaudeBinaryNotFoundError ||
       err instanceof CodexBinaryNotFoundError ||
-      err instanceof CopilotBinaryNotFoundError
+      err instanceof CopilotBinaryNotFoundError ||
+      err instanceof KimiBinaryNotFoundError
     ) {
       return { found: false, error: "not found on PATH" }
     }
@@ -198,6 +220,7 @@ async function probeAvailableVendors(deps: DetectDeps): Promise<readonly VendorI
     ["claude", () => deps.findClaudeBinary()],
     ["codex", () => deps.findCodexBinary()],
     ["copilot", () => deps.findCopilotBinary()],
+    ["kimi", () => deps.findKimiBinary()],
   ]
   const detected = await Promise.all(
     probes.map(async ([vendor, probe]) => ((await probeBinary(probe)).found ? vendor : null)),
@@ -393,6 +416,28 @@ export async function detectCopilotAccount(
   ) {
     return { binary, account: { kind: "oauth" } }
   }
+  return { binary, account: { kind: "none" } }
+}
+
+export async function detectKimiAccount(deps: DetectDeps = defaultDeps): Promise<EngineAccountStatus<KimiAccount>> {
+  const binary = await probeBinary(() => deps.findKimiBinary())
+  const credPath = kimiCredentialsPath(deps.env, deps.home())
+  let raw: string | null
+  try {
+    raw = deps.readFile(credPath)
+  } catch (err) {
+    return { binary, account: { kind: "none" }, accountError: `read ${credPath}: ${errorMessage(err)}` }
+  }
+  if (raw === null) return { binary, account: { kind: "none" } }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (err) {
+    return { binary, account: { kind: "none" }, accountError: `parse ${credPath}: ${errorMessage(err)}` }
+  }
+  if (!isRecord(parsed)) return { binary, account: { kind: "none" } }
+  const token = parsed.access_token
+  if (typeof token === "string" && token.length > 0) return { binary, account: { kind: "oauth" } }
   return { binary, account: { kind: "none" } }
 }
 

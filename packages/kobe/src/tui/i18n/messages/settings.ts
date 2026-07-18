@@ -95,6 +95,7 @@ export const en = {
     chatgptLogin: "● ChatGPT login: {email}",
     tokenConfigured: "● Token configured ({source})",
     copilotDetected: "● Copilot login detected",
+    kimiDetected: "● Kimi login detected",
   },
   keybindings: {
     title: "Keybindings",
@@ -234,6 +235,7 @@ export const zh: typeof en = {
     chatgptLogin: "● ChatGPT 登录: {email}",
     tokenConfigured: "● 已配置 Token ({source})",
     copilotDetected: "● 检测到 Copilot 登录",
+    kimiDetected: "● 检测到 Kimi 登录",
   },
   keybindings: {
     title: "快捷键",

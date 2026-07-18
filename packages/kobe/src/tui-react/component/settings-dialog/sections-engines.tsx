@@ -9,7 +9,13 @@
 
 import { TextAttributes } from "@opentui/core"
 import type { ReactNode } from "react"
-import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
+import type {
+  ClaudeAccount,
+  CodexAccount,
+  CopilotAccount,
+  EngineAccountStatus,
+  KimiAccount,
+} from "../../../engine/account-detect"
 import type { VendorId } from "../../../types/task"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
@@ -156,6 +162,7 @@ export function AccountsSettingsSection(props: {
   claudeStatus: EngineAccountStatus<ClaudeAccount> | null
   codexStatus: EngineAccountStatus<CodexAccount> | null
   copilotStatus: EngineAccountStatus<CopilotAccount> | null
+  kimiStatus: EngineAccountStatus<KimiAccount> | null
 }) {
   const { theme } = useTheme()
   const t = useT()
@@ -208,6 +215,15 @@ export function AccountsSettingsSection(props: {
           if (a.kind === "token")
             return <text fg={theme.success}>{t("settings.accounts.tokenConfigured", { source: a.source })}</text>
           if (a.kind === "oauth") return <text fg={theme.success}>{t("settings.accounts.copilotDetected")}</text>
+          return notLoggedIn
+        }}
+      />
+      <AccountBlock
+        name="kimi"
+        status={props.kimiStatus}
+        accountLine={(s) => {
+          const a = s.account as KimiAccount
+          if (a.kind === "oauth") return <text fg={theme.success}>{t("settings.accounts.kimiDetected")}</text>
           return notLoggedIn
         }}
       />

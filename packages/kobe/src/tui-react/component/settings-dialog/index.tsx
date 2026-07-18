@@ -25,9 +25,11 @@ import {
   type CodexAccount,
   type CopilotAccount,
   type EngineAccountStatus,
+  type KimiAccount,
   detectClaudeAccount,
   detectCodexAccount,
   detectCopilotAccount,
+  detectKimiAccount,
 } from "../../../engine/account-detect"
 import { submitFeedback } from "../../../lib/feedback"
 import {
@@ -99,6 +101,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [claudeStatus, setClaudeStatus] = useState<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = useState<EngineAccountStatus<CodexAccount> | null>(null)
   const [copilotStatus, setCopilotStatus] = useState<EngineAccountStatus<CopilotAccount> | null>(null)
+  const [kimiStatus, setKimiStatus] = useState<EngineAccountStatus<KimiAccount> | null>(null)
   const accountsProbed = useRef(false)
   useEffect(() => {
     if (section !== "accounts" || accountsProbed.current) return
@@ -106,6 +109,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     void detectClaudeAccount().then((s) => setClaudeStatus(s))
     void detectCodexAccount().then((s) => setCodexStatus(s))
     void detectCopilotAccount().then((s) => setCopilotStatus(s))
+    void detectKimiAccount().then((s) => setKimiStatus(s))
   }, [section])
 
   /**
@@ -389,6 +393,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               claudeStatus={claudeStatus}
               codexStatus={codexStatus}
               copilotStatus={copilotStatus}
+              kimiStatus={kimiStatus}
             />
           ) : null}
           {section === "keys" ? <KeybindingsSettingsSection /> : null}

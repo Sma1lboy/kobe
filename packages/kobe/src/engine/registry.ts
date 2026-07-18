@@ -34,9 +34,11 @@ import {
   type CopilotAccount,
   type DetectDeps,
   type EngineAccountStatus,
+  type KimiAccount,
   detectClaudeAccount,
   detectCodexAccount,
   detectCopilotAccount,
+  detectKimiAccount,
 } from "./account-detect.ts"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
@@ -74,7 +76,7 @@ export interface EngineHistoryReader {
 }
 
 /** Any built-in engine's account shape (each union already has a `none` arm). */
-export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount
+export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount | KimiAccount
 
 export interface EngineRegistryEntry {
   readonly vendor: VendorId
@@ -183,8 +185,8 @@ const copilotHistoryReader: EngineHistoryReader = {
   latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
-/** The three first-party entries — registered here and nowhere else. */
-const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntry> = {
+/** The first-party entries — registered here and nowhere else. */
+const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineRegistryEntry> = {
   claude: {
     vendor: "claude",
     builtin: true,
@@ -232,6 +234,20 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     createHookAdapter: () => new NoopHookAdapter("copilot"),
     // Copilot persists no turn-completion marker kobe can read yet.
     createTurnDetector: () => new UnknownTurnDetector("copilot"),
+  },
+  kimi: {
+    vendor: "kimi",
+    builtin: true,
+    displayName: "Kimi",
+    defaultCommand: ["kimi"],
+    // Kimi persists sessions under ~/.kimi-code/sessions/wd_*/session_*/
+    // (wire.jsonl protocol stream) but the message-record shape is
+    // unverified against a real conversation, so no history reader yet —
+    // EMPTY_HISTORY keeps auto-title/recap honest instead of mis-parsing.
+    history: EMPTY_HISTORY,
+    detectAccount: (deps) => detectKimiAccount(deps),
+    createHookAdapter: () => new NoopHookAdapter("kimi"),
+    createTurnDetector: () => new UnknownTurnDetector("kimi"),
   },
 }
 
