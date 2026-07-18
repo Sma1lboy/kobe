@@ -150,6 +150,45 @@ describe("TabStrip native terminal-title status", () => {
     await destroy()
   })
 
+  it("clips overflowing tabs and scrolls the active tab into view", async () => {
+    // Six renamed tabs at a 30-cell viewport: the row is far wider than the
+    // strip. With the LAST tab active the window must scroll right — the
+    // active title fully visible, the first tab clipped out — instead of
+    // overdrawing past the strip's right edge (the pane-border bug).
+    const tabs: TerminalTab[] = Array.from({ length: 6 }, (_, i) => ({
+      kind: "command",
+      id: `tab-${i}`,
+      title: `session-number-${i}`,
+      ordinal: i,
+      command: ["zsh"],
+    }))
+    let handle: RenderHandle | undefined
+    await act(async () => {
+      handle = await renderComponent(
+        <TabStrip
+          tabs={tabs}
+          activeId="tab-5"
+          turnStates={new Map()}
+          onSelect={() => {}}
+          vendor="claude"
+          liveTitles={new Map()}
+          turnVendors={new Map()}
+        />,
+        { width: 30, height: 3 },
+      )
+    })
+    if (!handle) throw new Error("mount failed")
+    const mounted = handle
+    let text = ""
+    await act(async () => {
+      text = await mounted.frame()
+    })
+    expect(text).toContain("session-number-5")
+    expect(text).not.toContain("session-number-0")
+    for (const line of text.split("\n")) expect(line.length).toBeLessThanOrEqual(30)
+    await act(async () => mounted.destroy())
+  })
+
   it("does not render an unknown-state question-mark placeholder", async () => {
     const { text, destroy } = await renderStrip({
       tab: shellTab,
