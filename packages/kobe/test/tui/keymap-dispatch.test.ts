@@ -657,4 +657,71 @@ describe("dispatchKeyEvent", () => {
       expect(consoleError).not.toHaveBeenCalled()
     })
   })
+
+  describe("shift+letter chords", () => {
+    // matchKey mints [shift+z, z] for an uppercase keypress: the shifted
+    // form is a distinct bindable chord, the bare letter is the fallback
+    // so pre-existing bare-letter bindings keep catching uppercase.
+
+    test("Shift+Z fires a shift+z binding", () => {
+      let fired = false
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "shift+z", () => {
+          fired = true
+        }),
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("z", { shift: true }))).toBe(true)
+      expect(fired).toBe(true)
+    })
+
+    test("Shift+Z falls back to a bare z binding when no shift+z is registered", () => {
+      let fired = false
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "z", () => {
+          fired = true
+        }),
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("z", { shift: true }))).toBe(true)
+      expect(fired).toBe(true)
+    })
+
+    test("shift+z wins over bare z within one entry regardless of registration order", () => {
+      const calls: string[] = []
+      const stack: RegisteredBinding[] = [
+        {
+          id: 1,
+          config: () => ({
+            bindings: [
+              { key: "z", cmd: () => calls.push("bare") },
+              { key: "shift+z", cmd: () => calls.push("shifted") },
+            ],
+          }),
+        },
+      ]
+      dispatchKeyEvent(stack, makeEvt("z", { shift: true }))
+      expect(calls).toEqual(["shifted"])
+    })
+
+    test("plain z does NOT fire a shift+z binding", () => {
+      let fired = false
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "shift+z", () => {
+          fired = true
+        }),
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("z"))).toBe(false)
+      expect(fired).toBe(false)
+    })
+
+    test("ctrl+shift+letter still drops shift (legacy terminals cannot distinguish)", () => {
+      let fired = false
+      const stack: RegisteredBinding[] = [
+        makeReg(1, "ctrl+z", () => {
+          fired = true
+        }),
+      ]
+      expect(dispatchKeyEvent(stack, makeEvt("z", { ctrl: true, shift: true }))).toBe(true)
+      expect(fired).toBe(true)
+    })
+  })
 })

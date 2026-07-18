@@ -137,15 +137,27 @@ export function matchKey(evt: KeyEvent): string[] {
   //   - `evt.option` → `alt+`. Option on macOS / Alt elsewhere. macOS Option+K
   //                    arrives as `ESC k` which opentui surfaces as
   //                    `option=true`, name=`k` → `alt+k`.
-  //   - shift+letter is just uppercase, so we only emit `shift+` for
-  //     non-letter keys (`shift+tab`, `shift+enter`, etc.).
+  //   - shift+letter arrives as `{name:"z", shift:true}` (both the legacy
+  //     and kitty parser paths). With NO other modifier we mint `shift+z`
+  //     FIRST and plain `z` as a FALLBACK candidate, so `Z` can be bound
+  //     apart from `z` while every existing bare-letter binding (and the
+  //     evt.shift-discriminating handlers) keeps catching uppercase.
+  //     Candidate ORDER is the precedence contract — dispatch tries
+  //     `shift+z` against a whole bindings entry before falling back.
+  //     With ctrl/cmd/alt also held, shift on a single char stays DROPPED:
+  //     legacy terminals send ctrl+shift+z and ctrl+z as the same C0 byte,
+  //     so such chords would only fire on kitty-protocol terminals.
   const mods: string[] = []
   if (evt.ctrl) mods.push("ctrl")
   if (evt.meta) mods.push("cmd")
   if (evt.option) mods.push("alt")
+  const bareShiftChar = evt.shift && name !== undefined && name.length === 1 && mods.length === 0
   if (evt.shift && name && name.length > 1) mods.push("shift")
 
-  if (mods.length === 0) return base
+  if (mods.length === 0) {
+    if (bareShiftChar) return [...base.map((n) => `shift+${n}`), ...base]
+    return base
+  }
   const prefix = `${mods.join("+")}+`
   // When modifiers are present, return ONLY the prefixed forms. A plain
   // `{ key: "k" }` binding must NOT catch `ctrl+k` — otherwise pane-local
@@ -277,7 +289,16 @@ function dispatchMode(
     if (!reg) continue
     const cfg = reg.config()
     if (cfg.enabled === false) continue
-    const hit = cfg.bindings.find((binding) => Boolean(binding.prefix) === prefix && candidates.includes(binding.key))
+    // Candidate ORDER is a precedence contract: matchKey lists the most
+    // specific form first (`shift+z` before the bare `z` fallback), so an
+    // entry holding both a `shift+z` and a `z` binding must fire the
+    // shift-specific one — registration order within the entry must not
+    // decide. Candidates are ≤3 strings, so the nested scan stays O(1).
+    let hit: Binding | undefined
+    for (const candidate of candidates) {
+      hit = cfg.bindings.find((binding) => Boolean(binding.prefix) === prefix && binding.key === candidate)
+      if (hit) break
+    }
     if (hit) {
       if (!cfg.modal && isDev()) warnShadowedMatch(snapshot, i, candidates, prefix)
       hit.cmd(evt, hit.slot)

@@ -102,10 +102,10 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         }
         ctrl.selectCurrent()
       },
-      // gg chord (top) / Shift+G (bottom); shift is discriminated via evt.
-      "sidebar.goto": (evt) => {
+      // Slot pair [top, bottom]: slot 0 = gg double-tap, slot 1 = bottom.
+      "sidebar.goto": (_evt, slot) => {
         if (moveModeOn()) return
-        if (evt.shift) ctrl.pressShiftG()
+        if ((slot ?? 0) % 2 === 1) ctrl.pressShiftG()
         else ctrl.pressG()
       },
       "sidebar.delete": () => {
@@ -118,8 +118,9 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         const id = cursorTaskId()
         if (id !== undefined) optsRef.current.onArchiveRequest?.(id)
       },
-      "sidebar.localMerge": (evt) => {
-        if (!evt.shift) return
+      // Chord is an explicit shift+m now — no evt.shift gate, so a user
+      // rebind to any chord keeps working.
+      "sidebar.localMerge": () => {
         const id = cursorTaskId()
         if (id !== undefined) optsRef.current.onLocalMergeRequest?.(id)
       },
@@ -128,9 +129,10 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         const id = cursorTaskId()
         if (id !== undefined) optsRef.current.onRenameRequest?.(id)
       },
-      "sidebar.pin": (evt) => {
+      // Chord is an explicit shift+p now — no evt.shift gate, so a user
+      // rebind to any chord keeps working.
+      "sidebar.pin": () => {
         if (moveModeOn()) return
-        if (!evt.shift) return
         const id = cursorTaskId()
         if (id !== undefined) optsRef.current.onPinRequest?.(id)
       },

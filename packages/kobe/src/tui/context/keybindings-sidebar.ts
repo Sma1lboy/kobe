@@ -30,9 +30,12 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "enter" },
   },
   {
+    // Slot pair [top, bottom]: slot 0 (g) arms/completes the gg
+    // double-tap, slot 1 (shift+g) jumps to the bottom. Previously a
+    // single "g" row with an evt.shift gate (un-rebindable).
     id: "sidebar.goto",
     scope: "sidebar",
-    keys: ["g"],
+    keys: ["g", "shift+g"],
     category: "Sidebar",
     description: "Top / bottom of list (gg or shift-G)",
   },
@@ -53,23 +56,26 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "a" },
   },
   {
+    // Explicit shift+m chord (matchKey mints `shift+m` from Shift+M) —
+    // previously keys: ["m"] with an evt.shift gate in the handler, which
+    // made the id un-rebindable (FIXED_BINDING_IDS).
     id: "sidebar.localMerge",
     scope: "sidebar",
-    keys: ["m"],
+    keys: ["shift+m"],
     category: "Sidebar",
     description: "Reorder task (Shift+M, then j/k)",
     hint: { keys: "M" },
   },
   {
-    // Capital P pins / unpins a regular task. Lowercase `p` falls
-    // through to a no-op (the handler gates on evt.shift) so a
-    // mistyped lowercase doesn't churn the flag. Pinned regular tasks
-    // float to the top of the sidebar's flat list, just below the
-    // saved-repo "main" rows. `kind: "main"` rows ignore the chord —
-    // they're implicitly pinned.
+    // Capital P pins / unpins a regular task — an explicit shift+p chord
+    // (previously keys: ["p"] + an evt.shift gate, which kept the id in
+    // FIXED_BINDING_IDS). A mistyped lowercase `p` matches nothing, so it
+    // can't churn the flag. Pinned regular tasks float to the top of the
+    // sidebar's flat list, just below the saved-repo "main" rows.
+    // `kind: "main"` rows ignore the chord — they're implicitly pinned.
     id: "sidebar.pin",
     scope: "sidebar",
-    keys: ["p"],
+    keys: ["shift+p"],
     category: "Sidebar",
     description: "Pin / unpin task at top (Shift+P)",
     hint: { keys: "P" },

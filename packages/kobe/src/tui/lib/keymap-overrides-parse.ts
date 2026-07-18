@@ -34,9 +34,10 @@
  *     dispatcher's order: ctrl, cmd, alt, shift.
  *   - aliases: control/ctl→ctrl, command/meta/super/win→cmd,
  *     option/opt→alt, esc→escape, pgup/pgdn→pageup/pagedown.
- *   - `shift+<single char>` is rejected: terminals deliver shift+letter as
- *     a plain (uppercase) character, never as a shift-modified event, so
- *     such a chord can never match.
+ *   - `shift+z` (or the sugar `Z`) is a valid chord: matchKey mints a
+ *     `shift+<char>` candidate from an uppercase keypress. Shift COMBINED
+ *     with other modifiers on a single char (`ctrl+shift+z`) is rejected —
+ *     legacy terminals send the same byte with and without shift there.
  *   - left/right ARROW keys are just `left` / `right`; left vs right
  *     MODIFIER keys cannot be told apart by terminal protocols, so there
  *     is no `lctrl`/`rcmd` syntax.
@@ -121,6 +122,13 @@ export type NormalizeChordOpts = {
  * `matchKey()` mints, or explain why it can't work.
  */
 export function normalizeChord(raw: string, opts?: NormalizeChordOpts): ChordResult {
+  // A BARE single uppercase letter is sugar for the shift+ form ("P" →
+  // shift+p) — checked on the raw string BEFORE the lowercase pass erases
+  // the case information. Only the modifier-less spelling gets the sugar:
+  // "Control+T" has always meant ctrl+t (chords are case-insensitive), so
+  // an uppercase letter AFTER modifiers stays plain.
+  const rawTrimmed = raw.trim()
+  const upperLetterKey = rawTrimmed.length === 1 && rawTrimmed >= "A" && rawTrimmed <= "Z"
   const trimmed = raw.trim().toLowerCase()
   if (!trimmed) return { error: "empty chord" }
 
@@ -148,10 +156,16 @@ export function normalizeChord(raw: string, opts?: NormalizeChordOpts): ChordRes
   }
 
   key = KEY_ALIASES[key] ?? key
+  if (upperLetterKey) mods.add("shift")
 
-  if (mods.has("shift") && key.length === 1 && !opts?.allowShiftCharacter) {
+  // Bare `shift+<char>` matches (matchKey mints `shift+z` from an
+  // uppercase keypress), but shift COMBINED with other modifiers on a
+  // single char cannot: legacy terminals send ctrl+shift+z and ctrl+z as
+  // the same C0 byte, so such a chord would only fire on kitty-protocol
+  // terminals. The tmux-layer resolver opts in via allowShiftCharacter.
+  if (mods.has("shift") && mods.size > 1 && key.length === 1 && !opts?.allowShiftCharacter) {
     return {
-      error: `"${raw}": shift+<character> can never match — terminals deliver shift+letter as a plain character, not a modifier event`,
+      error: `"${raw}": shift with other modifiers on a single character can never match — legacy terminals send the same byte with and without shift`,
     }
   }
 

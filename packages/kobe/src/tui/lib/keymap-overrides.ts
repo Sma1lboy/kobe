@@ -51,11 +51,10 @@ export type AppliedOverride = {
 
 /** Ids whose event-shape or handler contract cannot be expressed by a rebind. */
 export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
-  "sidebar.goto":
-    "gg vs Shift+G is discriminated via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't carry both halves",
-  "sidebar.pin": "fires on Shift+P via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't work",
-  "sidebar.localMerge":
-    "fires on Shift+M via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't work",
+  // sidebar.goto / sidebar.pin / sidebar.localMerge left this list
+  // 2026-07-17: shift+<letter> chords are expressible now (matchKey mints
+  // `shift+g` from an uppercase keypress), so their rows carry explicit
+  // shift+ chords instead of evt.shift gates in the handlers.
   "chat.question.nav":
     "the question picker has no live registration site (display-only row) — rebinding would change Help without changing behavior",
   "chat.question.pick-number":
@@ -95,6 +94,7 @@ function pairContract(first: string, second: string): SlotContract {
  * reload, since the reload path resets and re-applies from scratch).
  */
 export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
+  "sidebar.goto": pairContract("top (double-tap)", "bottom"),
   "sidebar.nav": pairContract("down", "up"),
   "files.nav": pairContract("down", "up"),
   "sidebar.search.nav": pairContract("down", "up"),
@@ -163,8 +163,11 @@ export function applyKeymapOverrides(
 
     // Boundary rule (docs/KEYBINDINGS.md): a bare single character on a
     // scope whose focused surface accepts typed text would steal input.
+    // `shift+<char>` is the same keystroke as typing the uppercase char,
+    // so it falls under the same rule (shift is not a real modifier here).
     const keys = entry.keys.filter((chord) => {
-      if (chord.length === 1 && NO_BARE_LETTER_SCOPES.has(row.scope)) {
+      const typedChar = chord.length === 1 || (chord.startsWith("shift+") && chord.length === "shift+".length + 1)
+      if (typedChar && NO_BARE_LETTER_SCOPES.has(row.scope)) {
         warnings.push(
           `${entry.id}: "${chord}" dropped — a bare character on a ${row.scope}-scope binding would steal typed input (add a modifier)`,
         )

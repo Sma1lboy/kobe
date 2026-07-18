@@ -59,7 +59,10 @@ describe("normalizeChord", () => {
     }
   })
 
-  test("rejects shift+<single char> — terminals deliver it as a plain character", () => {
+  test("accepts bare shift+<char>; rejects shift with other modifiers on a single char", () => {
+    expect(chordOf("shift+p")).toBe("shift+p")
+    expect(chordOf("P")).toBe("shift+p") // bare uppercase letter is sugar
+    expect(chordOf("p")).toBe("p")
     const r = normalizeChord("ctrl+shift+t")
     expect("error" in r).toBe(true)
   })
@@ -124,7 +127,7 @@ describe("extractKeybindingOverrides", () => {
 
   test("an entry whose chords ALL fail keeps the default (no entry emitted)", () => {
     const { entries, warnings } = extractKeybindingOverrides(
-      { bindings: { "app.quit": ["shift+q", "hyper+q"] } },
+      { bindings: { "app.quit": ["ctrl+shift+q", "hyper+q"] } },
       "linux",
     )
     expect(entries).toEqual([])
@@ -145,7 +148,8 @@ describe("applyKeymapOverrides", () => {
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
       { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k" } },
       { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
-      { id: "sidebar.goto", scope: "sidebar", keys: ["g"] }, // FIXED (evt.shift gate)
+      { id: "sidebar.goto", scope: "sidebar", keys: ["g", "shift+g"] }, // slot pair [top, bottom]
+      { id: "chat.question.nav", scope: "workspace", keys: ["j", "k"] }, // FIXED (display-only)
       { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
       { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p" } },
     ]
@@ -173,7 +177,7 @@ describe("applyKeymapOverrides", () => {
     const keymap = makeKeymap()
     const { applied, warnings } = applyKeymapOverrides(keymap, [
       { id: "nope.nothing", keys: ["ctrl+x"] },
-      { id: "sidebar.goto", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS (evt.shift gate)
+      { id: "chat.question.nav", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS (display-only)
       { id: "chat.send", keys: ["ctrl+m"] }, // doc-only
     ])
     expect(applied).toEqual([])
@@ -181,7 +185,7 @@ describe("applyKeymapOverrides", () => {
     expect(warnings[0]).toMatch(/unknown binding id/)
     expect(warnings[1]).toMatch(/not customizable/)
     expect(warnings[2]).toMatch(/doc-only/)
-    expect(keymap.find((b) => b.id === "sidebar.goto")?.keys).toEqual(["g"])
+    expect(keymap.find((b) => b.id === "chat.question.nav")?.keys).toEqual(["j", "k"])
   })
 
   test("boundary rule: bare characters are dropped on workspace/global scope, kept on sidebar/files", () => {
