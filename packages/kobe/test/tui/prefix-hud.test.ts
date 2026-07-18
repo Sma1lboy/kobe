@@ -121,6 +121,19 @@ describe("prefix HUD feed", () => {
     expect(prefixHudState().entries).toHaveLength(0)
   })
 
+  test("a shift+letter chord does not land an entry — it is just typing uppercase", () => {
+    // Regression: after shift+letter became bindable, the terminal
+    // passthrough's shift+p chord streamed `shift+p → shift+p` HUD noise
+    // on every uppercase character typed into the embedded engine.
+    const stack: RegisteredBinding[] = [
+      { id: 1, config: () => ({ enabled: true, bindings: [{ key: "shift+p", cmd: () => {}, id: "sidebar.pin" }] }) },
+    ]
+
+    dispatchKeyEvent(stack, { ...event("p"), shift: true }, 100)
+
+    expect(prefixHudState().entries).toHaveLength(0)
+  })
+
   test("a prefix binding without an id falls back to its chord as the action", () => {
     const stack = [registration(1, "t")]
 

@@ -380,10 +380,12 @@ export function dispatchKeyEvent(
 
     const direct = dispatchMode(snapshot, evt as KeyEvent, candidates, false)
     if (direct) {
-      // Direct chords land in the HUD too — but only modifier chords
+      // Direct chords land in the HUD too — but only REAL modifier chords
       // (ctrl+t, alt+…): plain pane letters (sidebar j/k) would stream
-      // noise on every navigation keypress.
-      if (direct.key.includes("+")) {
+      // noise on every navigation keypress, and shift+letter is just
+      // typing an uppercase character (terminal passthrough included) —
+      // same noise class as the bare letters.
+      if (direct.key.includes("+") && !direct.key.startsWith("shift+")) {
         prefixHudPush({ prefixKey: "", stroke: direct.key, action: direct.id ?? direct.key, at: now })
       }
       evt.preventDefault()
