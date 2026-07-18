@@ -395,7 +395,7 @@ export function FileTree(props: FileTreeProps) {
   // ---------- render ----------
   const loaded = (tab === "all" && allFiles != null) || (tab === "changes" && changes != null)
   return (
-    <box flexDirection="column" flexGrow={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
+    <box flexDirection="column" flexGrow={1} paddingLeft={0} paddingRight={0}>
       <FileTreeHeaderView
         tab={tab}
         scope={scope}
@@ -451,7 +451,7 @@ export function FileTree(props: FileTreeProps) {
       {/* Footer hint — shown only when a worktree is loaded so the
          "no task" placeholder stays clean. */}
       {props.worktreePath != null ? (
-        <box flexDirection="row" paddingTop={1} flexShrink={0}>
+        <box flexDirection="row" justifyContent="flex-end" paddingTop={1} flexShrink={0}>
           <text fg={theme.textMuted} wrapMode="none">
             {t("files.footer.openHint")}
           </text>

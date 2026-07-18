@@ -310,7 +310,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   // `bindByIds`, following user overrides).
   ...SIDEBAR_BINDINGS,
 
-  // ─── Workspace (tmux) + Workspace (chat) ─────────────────────────────
+  // ─── Workspace (chat) ────────────────────────────────────────────────
   // Moved to keybindings-chat.ts (file-size cap) — same entries, same order.
   ...CHAT_BINDINGS,
 
