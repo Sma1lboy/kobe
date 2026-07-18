@@ -109,14 +109,17 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
   },
   {
     // Ops-pane action on the Changes tab. This is the v0.5 Create PR
-    // button rehomed into the file-changes surface: pressing `p` sends
+    // button rehomed into the file-changes surface: the chord sends
     // the PR prompt into the engine pane instead of rendering an outer
-    // monitor button.
+    // monitor button. ctrl+p, not bare `p` (owner call 2026-07-17):
+    // lowercase letters are for frequent navigation; an action that
+    // fires a PR prompt earns a modifier. No clash with
+    // sidebar.projectFilter's ctrl+p — different pane scope.
     id: "files.createPR",
     scope: "files",
-    keys: ["p"],
+    keys: ["ctrl+p"],
     category: "Files",
     description: "Create PR from the current task",
-    hint: { keys: "p" },
+    hint: { keys: "ctrl+p" },
   },
 ]

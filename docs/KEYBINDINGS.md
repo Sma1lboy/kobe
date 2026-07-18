@@ -78,7 +78,15 @@ open Worktree, `c` Kanban, `a` archive, `d` delete, `r` rename, `b` rename
 branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
-preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
+preview, `e` open in the configured editor, `[`/`]` switch file tabs, and
+`ctrl+p` Create PR (owner call 2026-07-17: lowercase letters are for frequent
+navigation — an action that fires a PR prompt earns a modifier).
+
+Uppercase letters are distinct chords: a keypress with shift is matched as
+`shift+<letter>` first, falling back to the bare letter, so `P` (written
+`shift+p` or just `P` in YAML) can be bound apart from `p`. Shift combined
+with other modifiers on a letter (`ctrl+shift+p`) stays invalid — legacy
+terminals send the same byte with and without shift there.
 
 The Inbox is a modal dialog opened with `prefix+i`. Every row is a pending
 item, ordered oldest first. Inside the dialog, `j/k` selects. `enter` opens the

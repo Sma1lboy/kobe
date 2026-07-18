@@ -34,7 +34,7 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
   return (
     <>
       {/* Action row — sits above the All / Changes tabs so it's reachable
-         from both tabs. Zen toggle sits left of Create PR (bound to `p`). */}
+         from both tabs. Zen toggle sits left of Create PR (bound to ctrl+p). */}
       {props.onZenToggle || props.onCreatePR ? (
         <box flexDirection="row" justifyContent="flex-end" gap={2} paddingBottom={1} flexShrink={0}>
           {props.onZenToggle ? (
@@ -69,7 +69,7 @@ export function FileTreeHeaderView(props: FileTreeHeaderProps) {
               }}
             >
               <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [P]
+                [^P]
               </text>
               <text fg={theme.text} wrapMode="none">
                 {t("files.actions.createPR")}
