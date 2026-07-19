@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.11
+
+### Patch Changes
+
+- d43e725: Create PR is now `prefix+p` / `prefix+P` from any pane (the files-scoped `ctrl+p` is gone — it was unreachable from the sidebar and the terminal, which is where the muscle memory actually fired). The files-pane chip hint follows the configured prefix key, and firing Create PR on a session already sitting on the target branch (e.g. a project main session) now surfaces a toast instead of sending the engine a doomed `gh pr create`.
+- 7a6577d: Files pane footer hint (`↵ open · d diff`) is right-aligned and sits flush to the pane bottom (removed the stray blank row beneath it).
+
 ## 0.8.10
 
 ### Patch Changes
