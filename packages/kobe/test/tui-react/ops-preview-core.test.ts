@@ -98,4 +98,12 @@ describe("binary detection helpers", () => {
     expect(formatBytes(1536)).toBe("1.5 KB")
     expect(formatBytes(2 * 1024 * 1024)).toBe("2.0 MB")
   })
+
+  test("formatBytes promotes at the unit boundary instead of rendering 1024", () => {
+    // v rounds up to 1024 KB → must roll over to 1.0 MB, not "1024 KB".
+    expect(formatBytes(1024 * 1024 - 512)).toBe("1.0 MB")
+    expect(formatBytes(1024 * 1024 * 1024 - 1)).toBe("1.0 GB")
+    // Just below the round-up threshold stays in the smaller unit.
+    expect(formatBytes(1024 * 1024 - 513)).toBe("1023 KB")
+  })
 })
