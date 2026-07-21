@@ -10,7 +10,12 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { applyJitter, exponentialBackoff, maybeStartScheduledRun } from "../../src/lib/poll-scheduling.ts"
+import {
+  applyJitter,
+  decodeCapturedChunks,
+  exponentialBackoff,
+  maybeStartScheduledRun,
+} from "../../src/lib/poll-scheduling.ts"
 
 const CFG = { timeoutMs: 30, slowRetryMs: 60_000, minIntervalMs: 0 }
 
@@ -132,5 +137,23 @@ describe("exponentialBackoff", () => {
   test("caps at capMs and clamps negative attempts to the base", () => {
     expect(exponentialBackoff(1000, 10, 5000)).toBe(5000)
     expect(exponentialBackoff(1000, -1, 60_000)).toBe(1000)
+  })
+})
+
+describe("decodeCapturedChunks", () => {
+  test("joins bytes before decoding so a split multi-byte UTF-8 char survives", () => {
+    // "文档" — each char is 3 UTF-8 bytes. A stdout pipe can split the buffer on
+    // any byte boundary, so slice the first char mid-sequence across two chunks.
+    const buf = Buffer.from("文档", "utf8")
+    const chunks = [buf.subarray(0, 2), buf.subarray(2)]
+    expect(decodeCapturedChunks(chunks)).toBe("文档")
+    // Per-chunk decoding (the old `String(chunk)` path) would corrupt the split char.
+    expect(String(chunks[0]) + String(chunks[1])).not.toBe("文档")
+  })
+  test("accepts string chunks and preserves ASCII round-trips", () => {
+    expect(decodeCapturedChunks([Buffer.from("ab"), "cd", Buffer.from("ef")])).toBe("abcdef")
+  })
+  test("returns an empty string for no chunks", () => {
+    expect(decodeCapturedChunks([])).toBe("")
   })
 })

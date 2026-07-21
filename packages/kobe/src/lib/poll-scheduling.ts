@@ -135,6 +135,19 @@ export interface SpawnCaptureResult {
 }
 
 /**
+ * Decode captured stdout chunks to one UTF-8 string. Chunks MUST be joined as
+ * bytes before decoding: a stdout pipe splits on an arbitrary byte boundary
+ * (~64 KB), so a multi-byte UTF-8 sequence (a non-ASCII path with
+ * `core.quotepath=false`, or any commit message / diff body git never quotes)
+ * can straddle two chunks. Decoding each chunk on its own — `String(chunk)` —
+ * turns the split character into replacement bytes (`�`); concatenating
+ * the raw bytes first decodes it intact. Pure — exported for unit tests.
+ */
+export function decodeCapturedChunks(chunks: readonly (Buffer | string)[]): string {
+  return Buffer.concat(chunks.map((c) => (typeof c === "string" ? Buffer.from(c) : c))).toString("utf8")
+}
+
+/**
  * Async spawn that collects stdout and resolves on close. Never rejects —
  * a spawn error (missing cwd, binary not on PATH) or an abort resolves
  * with `status: null` so callers branch on status, mirroring the
@@ -147,12 +160,12 @@ export function spawnCapture(
   opts: { readonly cwd: string; readonly env?: NodeJS.ProcessEnv; readonly signal: AbortSignal },
 ): Promise<SpawnCaptureResult> {
   return new Promise((resolve) => {
-    let out = ""
+    const chunks: (Buffer | string)[] = []
     let settled = false
     const finish = (status: number | null): void => {
       if (settled) return
       settled = true
-      resolve({ status, stdout: out })
+      resolve({ status, stdout: decodeCapturedChunks(chunks) })
     }
     const child = spawn(cmd, args.slice(), {
       cwd: opts.cwd,
@@ -162,7 +175,7 @@ export function spawnCapture(
       killSignal: "SIGKILL",
     })
     child.stdout?.on("data", (chunk: Buffer | string) => {
-      out += String(chunk)
+      chunks.push(chunk)
     })
     child.on("error", () => finish(null))
     child.on("close", (code) => finish(code))
