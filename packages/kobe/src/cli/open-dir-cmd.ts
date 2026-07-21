@@ -5,8 +5,9 @@
  * Deliberately NO project association: no saved repo, no main task, no
  * worktree/branch — the task pins the directory itself, and deleting it
  * later only drops the index entry (the directory is never touched).
- * Reopening the same directory reuses (and unarchives) the existing dir
- * task. Prefers a RUNNING daemon (live TUIs see the row immediately);
+ * Every invocation creates a NEW task — same directory twice is two
+ * parallel sessions, distinguished by a random title suffix. Prefers a
+ * RUNNING daemon (live TUIs see the row immediately);
  * falls back to the in-process orchestrator, persisting focus for the
  * daemon the TUI is about to boot.
  */

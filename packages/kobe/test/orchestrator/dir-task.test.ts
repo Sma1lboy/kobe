@@ -5,7 +5,8 @@
  * worktreePath. Every guarantee here is a data-loss guard — deletion must
  * only ever drop the index entry (never `git worktree remove` the user's
  * directory), no project/main task may be minted as a side effect, and
- * reopening must reuse the existing row instead of stacking duplicates.
+ * every open is a NEW task (parallel sessions in one directory) with a
+ * randomly-suffixed title so the rows stay distinguishable.
  */
 
 import { mkdtemp, rm } from "node:fs/promises"
@@ -55,13 +56,18 @@ describe("openDirectoryTask", () => {
     expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(0)
   })
 
-  it("is idempotent per path and unarchives on reopen", async () => {
+  it("opening the same directory twice creates two distinct tasks with distinct titles", async () => {
     const first = await orch.openDirectoryTask({ dir })
-    await orch.setArchived(first.id, true)
-    const again = await orch.openDirectoryTask({ dir })
-    expect(again.id).toBe(first.id)
-    expect(again.archived).toBe(false)
-    expect(orch.listTasks()).toHaveLength(1)
+    const second = await orch.openDirectoryTask({ dir })
+    expect(second.id).not.toBe(first.id)
+    expect(second.title).not.toBe(first.title)
+    expect(orch.listTasks()).toHaveLength(2)
+  })
+
+  it("titles carry the directory basename plus a random suffix", async () => {
+    const task = await orch.openDirectoryTask({ dir })
+    const base = dir.split("/").filter(Boolean).at(-1)
+    expect(task.title).toMatch(new RegExp(`^${base}-[a-z0-9]{4}$`))
   })
 
   it("ensureWorktree returns the pinned directory without touching git", async () => {
