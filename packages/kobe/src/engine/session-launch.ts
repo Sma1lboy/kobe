@@ -85,7 +85,7 @@ export function engineLaunchLine(engineCommand: string, init?: EngineInitLaunch)
 
 export interface EngineSessionLaunchTask {
   readonly id: string
-  readonly kind?: "main" | "task"
+  readonly kind?: "main" | "task" | "dir"
   readonly vendor?: VendorId
   readonly repo?: string
 }

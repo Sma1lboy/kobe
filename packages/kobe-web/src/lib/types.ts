@@ -5,7 +5,7 @@
  * packages/kobe-daemon/src/daemon/protocol.ts (SerializedTask + ChannelPayloads).
  */
 
-export type TaskKind = "main" | "task"
+export type TaskKind = "main" | "task" | "dir"
 export type TaskStatus = string
 export type Vendor = string | undefined
 

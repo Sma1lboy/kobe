@@ -31,7 +31,7 @@ export interface DaemonTask {
   readonly repo: string
   readonly branch: string
   readonly worktreePath: string
-  readonly kind?: "main" | "task"
+  readonly kind?: "main" | "task" | "dir"
   readonly status: TaskStatus
   readonly archived: boolean
   readonly pinned?: boolean
@@ -77,6 +77,8 @@ export interface DaemonOrchestrator {
     groupId?: string
   }): Promise<DaemonTask>
   ensureMainTask(repo: string): Promise<DaemonTask>
+  /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`). */
+  openDirectoryTask(input: { dir: string; vendor?: VendorId }): Promise<DaemonTask>
   ensureWorktree(id: string): Promise<string>
   forgetProject(repo: string): Promise<void>
   setTitle(id: string, title: string): Promise<void>

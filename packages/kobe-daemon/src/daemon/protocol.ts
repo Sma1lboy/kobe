@@ -128,6 +128,8 @@ export type DaemonRequestName =
   // push per batch; the TUI never reads `position`.
   | "task.reorder"
   | "task.ensureMain"
+  // Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
+  | "task.openDir"
   | "project.forget"
   | "task.ensureWorktree"
   | "task.setActive"
@@ -279,7 +281,7 @@ export interface SerializedTask {
   readonly repo: string
   readonly branch: string
   readonly worktreePath: string
-  readonly kind: "main" | "task"
+  readonly kind: "main" | "task" | "dir"
   readonly status: DaemonTask["status"]
   readonly archived: boolean
   readonly pinned: boolean

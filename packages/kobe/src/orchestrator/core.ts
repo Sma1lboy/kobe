@@ -222,6 +222,33 @@ export class Orchestrator {
   }
 
   /**
+   * Open an existing directory as a standalone `kind: "dir"` task
+   * (`kobe .`). Deliberately NO project association: no main task is
+   * ensured, no worktree or branch is created — the task pins the
+   * directory itself and deletion later only drops the index entry.
+   * Idempotent per canonical path: reopening returns the existing dir
+   * task (unarchiving it) instead of stacking duplicates.
+   */
+  async openDirectoryTask(input: { readonly dir: string; readonly vendor?: VendorId }): Promise<Task> {
+    if (!input.dir) throw new Error("openDirectoryTask: dir is required")
+    const dir = canonPath(input.dir)
+    const existing = this.store.list().find((t) => t.kind === "dir" && canonPath(t.worktreePath) === dir)
+    if (existing) {
+      if (existing.archived) await this.editor.setArchived(existing.id, false)
+      return this.store.get(existing.id) ?? existing
+    }
+    return this.store.create({
+      repo: dir,
+      title: titleFromRepo(dir),
+      branch: "",
+      worktreePath: dir,
+      status: "backlog",
+      kind: "dir",
+      vendor: input.vendor ?? resolvePreferredVendor(),
+    })
+  }
+
+  /**
    * Ensure a `kind: "main"` task exists for the given repo. Idempotent.
    * The main task is pinned to the repo root (no `git worktree add`)
    * and lives at the top of the sidebar.
@@ -268,6 +295,8 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.deletion) throw new TaskDeletingError(String(task.id))
     if (task.kind === "main") return repoWorkingDir(task.repo)
+    // A dir task pins a user-owned directory — never prune/re-materialise it.
+    if (task.kind === "dir") return task.worktreePath
     if (task.worktreePath) {
       if (await this.worktrees.pathExists(task.worktreePath)) return task.worktreePath
       // Recorded path is gone: prune git's dangling registration (else `worktree

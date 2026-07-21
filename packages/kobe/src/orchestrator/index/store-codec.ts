@@ -133,7 +133,7 @@ function coerceTask(value: unknown): Task | null {
   // so the sidebar's ✓ glyph only ever means "user archived this as
   // complete." Archived `done` rows are left alone.
   const archived = typeof v.archived === "boolean" ? v.archived : false
-  const kind: Task["kind"] = v.kind === "main" ? "main" : "task"
+  const kind: Task["kind"] = v.kind === "main" ? "main" : v.kind === "dir" ? "dir" : "task"
   // A `main` (project root) task has NO session lifecycle that maintains
   // its status — nothing ever flips it to in_progress on a turn start or
   // back to backlog on a turn end. So a persisted in_progress/done on a
