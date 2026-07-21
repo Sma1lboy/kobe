@@ -97,7 +97,7 @@ export interface TerminalTabsProps {
   taskId: string
   worktree: string
   repo?: string
-  taskKind?: "main" | "task"
+  taskKind?: "main" | "task" | "dir"
   command: readonly string[]
   /** Task's current engine + effort — used to build a per-tab command when
    *  a tab pins its own vendor via `chooseEngine`. */

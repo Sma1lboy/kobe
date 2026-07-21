@@ -52,6 +52,7 @@ export interface LandDeps {
  */
 export async function landTaskWithCleanup(task: Task, opts: LandTaskOpts, deps: LandDeps): Promise<LandResult> {
   if (task.kind === "main") throw new Error("landTask: a main task has no branch to land")
+  if (task.kind === "dir") throw new Error("landTask: a directory task has no kobe-managed branch to land")
   const result = await landTask(task, { strategy: opts.strategy })
   if (opts.deleteBranch) await deps.worktrees.deleteBranch(task.repo, result.branch, { force: true })
   if (opts.archive) await deps.setArchived(task.id, true)

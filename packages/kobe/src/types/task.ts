@@ -116,9 +116,13 @@ export interface Task {
    * `branch === ""`. Regular `"task"` tasks live in a per-task
    * worktree under `~/.kobe/worktrees/<repo-key>/<slug>/` (or repo-local
    * `.kobe/worktrees` / legacy `.claude/worktrees` for older records).
+   * `"dir"` tasks (`kobe .`) pin an arbitrary existing directory the
+   * user opened directly: `worktreePath === repo`, `branch === ""`, no
+   * project association, and deletion only drops the index entry — the
+   * directory itself is never removed.
    * Optional on disk: records without it normalize to `"task"` at load time.
    */
-  readonly kind?: "main" | "task"
+  readonly kind?: "main" | "task" | "dir"
   readonly status: TaskStatus
   /**
    * Archive flag — orthogonal to `status`. The sidebar splits tasks

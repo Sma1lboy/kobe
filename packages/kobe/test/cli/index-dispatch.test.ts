@@ -17,6 +17,7 @@ const spies = vi.hoisted(() => ({
   skill: vi.fn(async () => {}),
   hook: vi.fn(async () => {}),
   addRemote: vi.fn(async () => {}),
+  openDirectory: vi.fn(async () => {}),
   startTui: vi.fn(async () => {}),
   onboarding: vi.fn(async () => false),
 }))
@@ -35,6 +36,11 @@ vi.mock("../../src/cli/web-cmd.ts", () => ({ runWebSubcommand: spies.web }))
 vi.mock("../../src/cli/skill-cmd.ts", () => ({ runSkillSubcommand: spies.skill }))
 vi.mock("../../src/cli/hook-cmd.ts", () => ({ runHookSubcommand: spies.hook }))
 vi.mock("../../src/cli/add-remote.ts", () => ({ runAddRemote: spies.addRemote }))
+vi.mock("../../src/cli/open-dir-cmd.ts", async (importOriginal) => ({
+  // Real isPathLikeArg (the routing predicate under test), spied executor.
+  ...(await importOriginal<typeof import("../../src/cli/open-dir-cmd.ts")>()),
+  runOpenDirectory: spies.openDirectory,
+}))
 vi.mock("../../src/cli/onboarding.ts", () => ({ maybeRunOnboarding: spies.onboarding }))
 vi.mock("../../src/tui/index.tsx", () => ({ startTui: spies.startTui }))
 
@@ -146,5 +152,18 @@ describe("public subcommand routing", () => {
   test("add --remote forwards remaining flags", async () => {
     await runCli("add", "--remote", "--host", "box")
     expect(spies.addRemote).toHaveBeenCalledWith(["--host", "box"])
+  })
+
+  test.each([".", "..", "./x", "/abs/path", "~/x"])("kobe %s routes to open-directory", async (arg) => {
+    await runCli(arg)
+    expect(spies.openDirectory).toHaveBeenCalledWith(arg)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  test("a bare word is still an unknown command, not a directory guess", async () => {
+    await runCli("statsu")
+    expect(spies.openDirectory).not.toHaveBeenCalled()
+    expect(errorSpy).toHaveBeenCalledWith("kobe: unknown command 'statsu'")
+    expect(exitSpy).toHaveBeenCalledWith(2)
   })
 })
