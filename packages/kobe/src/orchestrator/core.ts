@@ -11,7 +11,7 @@ import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
-import { canonPath, normalizeMainRepo, titleFromRepo } from "./core-helpers.ts"
+import { canonPath, normalizeMainRepo, randomDirTaskSuffix, titleFromRepo } from "./core-helpers.ts"
 import { DirtyWorktreeError, TaskDeletingError, TaskNotFoundError, WorktreeRemoveFailedError } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { type LandResult, type LandTaskOpts, landTaskWithCleanup } from "./land.ts"
@@ -226,20 +226,16 @@ export class Orchestrator {
    * (`kobe .`). Deliberately NO project association: no main task is
    * ensured, no worktree or branch is created — the task pins the
    * directory itself and deletion later only drops the index entry.
-   * Idempotent per canonical path: reopening returns the existing dir
-   * task (unarchiving it) instead of stacking duplicates.
+   * Every call creates a NEW task (owner 2026-07-20): opening the same
+   * directory twice is two parallel sessions in it, so the title gets a
+   * random suffix (`kobe-af3x`) to tell the rows apart.
    */
   async openDirectoryTask(input: { readonly dir: string; readonly vendor?: VendorId }): Promise<Task> {
     if (!input.dir) throw new Error("openDirectoryTask: dir is required")
     const dir = canonPath(input.dir)
-    const existing = this.store.list().find((t) => t.kind === "dir" && canonPath(t.worktreePath) === dir)
-    if (existing) {
-      if (existing.archived) await this.editor.setArchived(existing.id, false)
-      return this.store.get(existing.id) ?? existing
-    }
     return this.store.create({
       repo: dir,
-      title: titleFromRepo(dir),
+      title: `${titleFromRepo(dir)}-${randomDirTaskSuffix()}`,
       branch: "",
       worktreePath: dir,
       status: "backlog",
