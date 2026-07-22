@@ -94,4 +94,17 @@ describe("terminal grid selection", () => {
     const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
     expect(painted.map((c) => c.text).join("")).toBe("g")
   })
+
+  it("keeps zero-width marks attached before, inside, and after a selection", () => {
+    const decomposed = "a\u0301b\u0301c\u0301"
+    const rows = [row(decomposed)]
+    const range = { anchor: { row: 0, col: 1 }, head: { row: 0, col: 1 } }
+
+    expect(displayWidth(decomposed)).toBe(3)
+    expect(extractSelection(rows, range)).toBe("b\u0301")
+    const out = overlaySelection(rows, range, 0, 3)[0]
+    expect(out.map((c) => c.text).join("")).toBe(decomposed)
+    const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+    expect(painted.map((c) => c.text).join("")).toBe("b\u0301")
+  })
 })
