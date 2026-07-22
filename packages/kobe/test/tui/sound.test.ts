@@ -57,6 +57,25 @@ afterEach(() => {
   rmSync(pathDir, { recursive: true, force: true })
 })
 
+describe("pathDirs", () => {
+  test("splits a Windows PATH on ';' without shattering drive-letter colons", async () => {
+    vi.resetModules()
+    const { pathDirs } = await import("../../src/tui/lib/sound")
+    // The old hard-coded ':' split turned "C:\\Windows\\System32" into
+    // ["C", "\\Windows\\System32"], so powershell.exe was never found.
+    expect(pathDirs("C:\\Windows\\System32;C:\\Program Files\\PowerShell", ";")).toEqual([
+      "C:\\Windows\\System32",
+      "C:\\Program Files\\PowerShell",
+    ])
+  })
+
+  test("splits a POSIX PATH on ':' and drops empty entries", async () => {
+    vi.resetModules()
+    const { pathDirs } = await import("../../src/tui/lib/sound")
+    expect(pathDirs("/usr/local/bin:/usr/bin::/bin", ":")).toEqual(["/usr/local/bin", "/usr/bin", "/bin"])
+  })
+})
+
 describe("pulse", () => {
   test("spawns the player found on PATH with the sound file (afplay: bare argv)", async () => {
     writeFileSync(join(pathDir, "afplay"), "#!/bin/sh\n")

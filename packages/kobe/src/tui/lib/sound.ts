@@ -24,7 +24,7 @@
 
 import { existsSync, mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, isAbsolute, join, resolve } from "node:path"
+import { basename, delimiter, isAbsolute, join, resolve } from "node:path"
 import pulseAssetRaw from "../asset/pulse.wav" with { type: "file" }
 
 // Bun's `with { type: "file" }` import returns an absolute path in dev
@@ -71,10 +71,22 @@ function args(player: Player, file: string, volume: number): string[] {
 let cachedPlayer: Player | null | undefined
 let cachedPath: Promise<string> | undefined
 
+/**
+ * Directories on a PATH string, split on the platform's list delimiter
+ * (`;` on Windows, `:` elsewhere) and stripped of empty entries. Splitting
+ * on a hard-coded `:` shattered every Windows entry on its drive-letter
+ * colon (`C:\Windows\System32` → `["C", "\\Windows\\System32"]`), so no real
+ * directory ever matched and `powershell.exe` was never found — the chime
+ * went permanently silent on Windows with only the terminal BEL left. The
+ * delimiter is injectable so that win32 split is unit-testable on a POSIX host.
+ */
+export function pathDirs(rawPath: string, delim: string = delimiter): string[] {
+  return rawPath.split(delim).filter(Boolean)
+}
+
 function pickPlayer(): Player | null {
   if (cachedPlayer !== undefined) return cachedPlayer
-  const path = process.env.PATH ?? ""
-  const segments = path.split(":").filter(Boolean)
+  const segments = pathDirs(process.env.PATH ?? "")
   cachedPlayer = PLAYERS.find((p) => segments.some((dir) => existsSync(join(dir, p)))) ?? null
   return cachedPlayer
 }
