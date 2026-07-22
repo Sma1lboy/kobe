@@ -1,9 +1,0 @@
-name: "kobe-lunar-launch"
-brief: "kobe 首发宣发图：在月球表面使用 terminal-native TUI 同时驾驶多个 AI coding agent。"
-style: "lunar-launch-hero"
-content:
-  headline: "kobe"
-  subject: "a first-launch social hero image for kobe: on the moon, a smaller suited adult mission operator sits or stands in the right-side midground using a rugged terminal workstation running kobe; pull the camera back so the operator is not a giant close-up and the terminal screen is the main subject; match the provided real kobe interface structure with a left task rail, large central Claude Code engine pane, right file tree, lower-right shell pane, tmux borders, orange focus accents, keyboard footer, and branch/worktree context; include a large dramatic visible launch lockup reading \"kobe\" and \"parallel agents, one terminal\" inside the top-left black sky safe area, with the full kobe word fully visible and not cropped"
-deliverables:
-  - id: "hero-card"
-    size: [2400, 1260]
