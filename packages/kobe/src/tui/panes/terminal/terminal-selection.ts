@@ -16,6 +16,7 @@
  * refresh untouched.
  */
 
+import { charWidth } from "../../../lib/display-width"
 import { ATTR, type Chunk } from "./sgr"
 
 export type CellPoint = { readonly row: number; readonly col: number }
@@ -47,6 +48,53 @@ function rowText(row: readonly Chunk[]): string {
   return s
 }
 
+/** Terminal-cell width of text, preserving zero-width combining marks. */
+function textCells(text: string): number {
+  let cells = 0
+  for (const ch of text) cells += charWidth(ch.codePointAt(0) as number)
+  return cells
+}
+
+type CellSlice = { readonly before: string; readonly selected: string; readonly after: string }
+
+/**
+ * Split text around a terminal-cell span. A wide glyph is kept whole when
+ * either of its two cells intersects the span; zero-width marks stay attached
+ * to the preceding glyph instead of becoming independently selectable.
+ */
+function sliceTextByCells(text: string, from: number, to: number): CellSlice {
+  let before = ""
+  let selected = ""
+  let after = ""
+  let col = 0
+  let lastPart: keyof CellSlice = "before"
+
+  for (const ch of text) {
+    const width = charWidth(ch.codePointAt(0) as number)
+    if (width === 0) {
+      if (lastPart === "selected") selected += ch
+      else if (lastPart === "after") after += ch
+      else before += ch
+      continue
+    }
+
+    const end = col + width
+    if (end <= from) {
+      before += ch
+      lastPart = "before"
+    } else if (col >= to) {
+      after += ch
+      lastPart = "after"
+    } else {
+      selected += ch
+      lastPart = "selected"
+    }
+    col = end
+  }
+
+  return { before, selected, after }
+}
+
 /**
  * Extract the selected text: per-row slice by span, trailing whitespace
  * trimmed per line (terminal rows are space-padded to the grid width),
@@ -57,9 +105,9 @@ export function extractSelection(rows: readonly (readonly Chunk[])[], range: Sel
   const lines: string[] = []
   for (let r = Math.max(0, start.row); r <= Math.min(rows.length - 1, end.row); r++) {
     const text = rowText(rows[r] ?? [])
-    const span = rowSpan(range, r, Math.max(text.length, 1))
+    const span = rowSpan(range, r, Math.max(textCells(text), 1))
     if (!span) continue
-    lines.push(Array.from(text).slice(span[0], span[1]).join("").trimEnd())
+    lines.push(sliceTextByCells(text, span[0], span[1]).selected.trimEnd())
   }
   return lines.join("\n")
 }
@@ -69,19 +117,14 @@ function overlayRowSpan(row: readonly Chunk[], from: number, to: number): Chunk[
   const out: Chunk[] = []
   let col = 0
   for (const chunk of row) {
-    const chars = Array.from(chunk.text)
     const start = col
-    const end = start + chars.length
+    const end = start + textCells(chunk.text)
     col = end
     if (end <= from || start >= to) {
       out.push(chunk)
       continue
     }
-    const cutA = Math.max(from - start, 0)
-    const cutB = Math.min(to - start, chars.length)
-    const before = chars.slice(0, cutA).join("")
-    const selected = chars.slice(cutA, cutB).join("")
-    const after = chars.slice(cutB).join("")
+    const { before, selected, after } = sliceTextByCells(chunk.text, from - start, to - start)
     if (before) out.push({ ...chunk, text: before })
     out.push({ ...chunk, text: selected, attributes: (chunk.attributes ?? 0) | ATTR.INVERSE })
     if (after) out.push({ ...chunk, text: after })
