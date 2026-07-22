@@ -186,11 +186,12 @@ const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
   // engine CLI, e.g. emacs-style forward-char on ctrl+f).
   "ctrl+e", // chat.tab.chooseEngine
   "ctrl+f", // chat.fork.new
-  // Split panes inside the tab (tmux % / "): prefix-only since #308.
+  // Split panes inside the tab (tmux % / "): direct chords restored
+  // (owner call 2026-07-22), so they derive from the table again.
   // Reserving ctrl+\ costs the embedded shell SIGQUIT — accepted trade,
   // documented in docs/KEYBINDINGS.md.
-  "ctrl+\\", // workspace.split.right
-  "ctrl+=", // workspace.split.down
+  { id: "workspace.split.right" }, // ctrl+\
+  { id: "workspace.split.down" }, // ctrl+=
   { id: "workspace.split.focus-next" }, // f3 — still a direct default
   // Pane cycle: the one cross-pane chord besides ctrl+q that works from
   // inside the terminal — without it, workspace → files always costs two
