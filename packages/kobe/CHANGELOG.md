@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.15
+
+### Patch Changes
+
+- b2df533: Fix garbled non-ASCII output from the background git helpers on large repos: the shared capture helper decoded each stdout chunk on its own, so a multi-byte UTF-8 character split across a ~64 KB pipe boundary turned into replacement glyphs (`�`). The bytes are now joined before decoding, so a non-ASCII path (with `core.quotepath=false`) or any git output that carries raw UTF-8 comes through intact in the sidebar change chip, file counts, and PR prompt.
+- 263386a: Fix the binary/image preview size line rounding up to a bogus "1024 KB" (or "1024 MB") at a unit boundary instead of promoting to "1.0 MB" (or "1.0 GB") — file sizes within half a kilobyte of the next unit now roll over to the larger unit as expected.
+- 384c34e: Fix cell-width measurement for NFD-decomposed Japanese kana and the CJK tone marks so a voiced-kana filename no longer drifts every later column out of alignment: the combining katakana-hiragana (semi-)voiced sound marks (U+3099/U+309A, which macOS splits off precomposed が/ぱ in NFD filenames) and the ideographic/Hangul tone marks (U+302A–U+302F) sat inside the wide Hiragana/CJK-symbols ranges and were each counted as one extra cell, so a decomposed kana measured up to twice its true width in the `kobe export` table and the embedded-terminal cursor overlay. They now fold to zero width like the already-handled Hangul jamo and combining half marks, matching xterm's own wcwidth table.
+- 4fa4da8: Fixed a bug where adding a remote (`ssh://`) project silently broke live engine activity for every task — the worktree auto-adoption check fed the remote project's synthetic key into a path helper that only accepts absolute paths, throwing and dropping the entire engine event, so task status, transcript, and telemetry stopped updating until the remote project was removed.
+- 510c652: Fix the notification chime never playing on Windows: player discovery split `PATH` on a hard-coded `:`, which shattered every Windows entry on its drive-letter colon (`C:\Windows\System32`) so no directory ever matched and `powershell.exe` was never found — the audible ding is now discovered using the platform's list delimiter (`;` on Windows, `:` elsewhere), while POSIX behavior is unchanged.
+
 ## 0.8.14
 
 ### Patch Changes
