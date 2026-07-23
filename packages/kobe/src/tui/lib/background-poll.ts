@@ -41,6 +41,7 @@ import { type PollScheduleState, maybeStartScheduledRun } from "../../lib/poll-s
 
 export {
   computeNextAllowedAt,
+  decodeCapturedChunks,
   shouldPoll,
   spawnCapture,
   type SpawnCaptureResult,
