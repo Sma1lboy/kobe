@@ -23,6 +23,8 @@ export function charWidth(cp: number): number {
     (cp >= 0x202a && cp <= 0x202e) || // bidi embedding / override
     (cp >= 0x2060 && cp <= 0x2064) || // word joiner … invisible operators
     (cp >= 0x20d0 && cp <= 0x20ff) || // combining marks for symbols
+    (cp >= 0x302a && cp <= 0x302f) || // ideographic + Hangul tone marks (xterm wcwidth: combining, zero-width)
+    (cp >= 0x3099 && cp <= 0x309a) || // combining katakana-hiragana (semi-)voiced sound marks (NFD-decomposed が/ぱ)
     (cp >= 0xfe00 && cp <= 0xfe0f) || // variation selectors
     (cp >= 0xfe20 && cp <= 0xfe2f) || // combining half marks
     cp === 0xfeff // zero-width no-break space (BOM)
@@ -34,8 +36,8 @@ export function charWidth(cp: number): number {
     (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo (leading/choseong) — medial/final fold to zero above
     cp === 0x2329 ||
     cp === 0x232a || // angle brackets
-    (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals … Kangxi … CJK symbols
-    (cp >= 0x3041 && cp <= 0x33ff) || // Hiragana … Katakana … CJK compat
+    (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals … Kangxi … CJK symbols — tone marks 302A–302F fold to zero above
+    (cp >= 0x3041 && cp <= 0x33ff) || // Hiragana … Katakana … CJK compat — sound marks 3099/309A fold to zero above
     (cp >= 0x3400 && cp <= 0x4dbf) || // CJK Unified Ext A
     (cp >= 0x4e00 && cp <= 0x9fff) || // CJK Unified Ideographs
     (cp >= 0xa000 && cp <= 0xa4cf) || // Yi Syllables
