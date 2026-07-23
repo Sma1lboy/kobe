@@ -36,7 +36,7 @@ describe("active product copy", () => {
       ["packages/kobe-web/README.md", ["kobe-sandbox tmux socket"]],
       ["packages/kobe-desktop/README.md", ["does not kill the daemon or tmux sessions"]],
       [".claude/skills/release/SKILL.md", ["needs tmux", "apt-installed tmux"]],
-      ["workspace/products/kobe/kobe/brand.meta.yaml", ["git worktrees, tmux sessions", "persistent tmux sessions"]],
+      ["marketing/brand.meta.yaml", ["git worktrees, tmux sessions", "persistent tmux sessions"]],
     ]
 
     for (const [path, stalePhrases] of filesAndStalePhrases) {
@@ -45,7 +45,7 @@ describe("active product copy", () => {
     }
 
     expect(read("packages/kobe-web/src/components/ToolsPanel.tsx")).toContain("Its Hosted PTY sessions will be stopped")
-    expect(read("workspace/products/kobe/kobe/brand.meta.yaml")).toContain("persistent hosted engine sessions")
+    expect(read("marketing/brand.meta.yaml")).toContain("persistent hosted engine sessions")
   })
 
   test("current design guidance names the live runtime and migration gaps", () => {

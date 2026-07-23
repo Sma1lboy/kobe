@@ -79,7 +79,7 @@ export interface VerbSpec {
 export interface PromptTarget {
   readonly id: string
   readonly worktreePath: string
-  readonly kind?: "main" | "task"
+  readonly kind?: "main" | "task" | "dir"
   readonly vendor?: VendorId
   readonly modelEffort?: string
   readonly repo?: string

@@ -200,6 +200,9 @@ export function buildProjectOptions(tasks: readonly Task[], view: SidebarView): 
   const wantArchived = view === "archived"
   const byKey = new Map<string, { repo: string; count: number }>()
   for (const task of tasks) {
+    // A standalone `dir` task has no project — it must not mint a
+    // phantom entry in the project-filter list.
+    if (task.kind === "dir") continue
     const key = sidebarProjectKey(task.repo)
     const next = byKey.get(key) ?? { repo: task.repo, count: 0 }
     if (task.kind === "main") {

@@ -191,6 +191,15 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     },
   },
   {
+    name: "task.openDir",
+    web: true,
+    async handle(payload, ctx) {
+      const dir = requireString(payload, "dir")
+      const task = await ctx.orch.openDirectoryTask({ dir, vendor: optionalVendor(payload, "vendor") })
+      return { taskId: task.id, task: serializeTask(task) }
+    },
+  },
+  {
     name: "task.ensureMain",
     web: true,
     async handle(payload, ctx) {

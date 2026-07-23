@@ -171,10 +171,11 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // RIGHT; `ctrl+=` reads as horizontal strokes → new leaf BELOW.
     // Both need the kitty keyboard protocol (legacy terminals can't
     // encode ctrl+=; ctrl+\ would be SIGQUIT) — see docs/KEYBINDINGS.md.
+    // Direct-only (owner call 2026-07-22): back off the prefix, same
+    // reasoning as the tab-management rows and ctrl+e.
     id: "workspace.split.right",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["\\"],
+    keys: ["ctrl+\\"],
     category: "Workspace",
     description: "Split right",
     hint: { keys: "ctrl+\\" },
@@ -182,8 +183,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
   {
     id: "workspace.split.down",
     scope: "workspace",
-    keys: [],
-    prefixKeys: ["="],
+    keys: ["ctrl+="],
     category: "Workspace",
     description: "Split down",
     hint: { keys: "ctrl+=" },

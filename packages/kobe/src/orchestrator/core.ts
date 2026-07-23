@@ -11,7 +11,7 @@ import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
-import { canonPath, normalizeMainRepo, titleFromRepo } from "./core-helpers.ts"
+import { canonPath, normalizeMainRepo, randomDirTaskSuffix, titleFromRepo } from "./core-helpers.ts"
 import { DirtyWorktreeError, TaskDeletingError, TaskNotFoundError, WorktreeRemoveFailedError } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { type LandResult, type LandTaskOpts, landTaskWithCleanup } from "./land.ts"
@@ -222,6 +222,29 @@ export class Orchestrator {
   }
 
   /**
+   * Open an existing directory as a standalone `kind: "dir"` task
+   * (`kobe .`). Deliberately NO project association: no main task is
+   * ensured, no worktree or branch is created — the task pins the
+   * directory itself and deletion later only drops the index entry.
+   * Every call creates a NEW task (owner 2026-07-20): opening the same
+   * directory twice is two parallel sessions in it, so the title gets a
+   * random suffix (`kobe-af3x`) to tell the rows apart.
+   */
+  async openDirectoryTask(input: { readonly dir: string; readonly vendor?: VendorId }): Promise<Task> {
+    if (!input.dir) throw new Error("openDirectoryTask: dir is required")
+    const dir = canonPath(input.dir)
+    return this.store.create({
+      repo: dir,
+      title: `${titleFromRepo(dir)}-${randomDirTaskSuffix()}`,
+      branch: "",
+      worktreePath: dir,
+      status: "backlog",
+      kind: "dir",
+      vendor: input.vendor ?? resolvePreferredVendor(),
+    })
+  }
+
+  /**
    * Ensure a `kind: "main"` task exists for the given repo. Idempotent.
    * The main task is pinned to the repo root (no `git worktree add`)
    * and lives at the top of the sidebar.
@@ -268,6 +291,8 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.deletion) throw new TaskDeletingError(String(task.id))
     if (task.kind === "main") return repoWorkingDir(task.repo)
+    // A dir task pins a user-owned directory — never prune/re-materialise it.
+    if (task.kind === "dir") return task.worktreePath
     if (task.worktreePath) {
       if (await this.worktrees.pathExists(task.worktreePath)) return task.worktreePath
       // Recorded path is gone: prune git's dangling registration (else `worktree

@@ -85,6 +85,9 @@ export class TaskEditor {
     if (task.kind === "main") {
       throw new Error("setBranch: a main task tracks the repo's own branch; rename it with git directly")
     }
+    if (task.kind === "dir") {
+      throw new Error("setBranch: a directory task tracks its own checkout; rename branches with git directly")
+    }
     if (task.branch === trimmed) return
     if (task.worktreePath) {
       await this.worktrees.renameBranch(task.worktreePath, task.branch, trimmed)

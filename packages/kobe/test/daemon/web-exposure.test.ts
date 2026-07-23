@@ -34,6 +34,7 @@ const EXPOSED: readonly DaemonRequestName[] = [
   "task.status",
   "task.reorder",
   "task.ensureMain",
+  "task.openDir",
   "task.ensureWorktree",
   "task.setActive",
   "worktree.discoverAdoptable",

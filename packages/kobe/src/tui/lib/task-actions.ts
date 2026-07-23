@@ -253,7 +253,12 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   }
   const ok = await ctx.confirm({
     title: `Delete "${task.title}"?`,
-    body: "Removes the task entry and its worktree. Its hosted sessions are stopped.",
+    // A `dir` task pins the user's own directory — deletion only drops the
+    // task entry; the directory is never touched.
+    body:
+      task.kind === "dir"
+        ? "Removes the task entry. The directory itself stays on disk. Its hosted sessions are stopped."
+        : "Removes the task entry and its worktree. Its hosted sessions are stopped.",
     cancelLabel: "cancel",
     confirmLabel: "delete",
   })

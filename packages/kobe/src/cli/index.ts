@@ -31,6 +31,9 @@ import { matchPathGlob } from "../lib/path-glob.ts"
 import { expandTilde } from "../lib/path-home.ts"
 import { type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
+// Static: open-dir-cmd's own imports are cheap (node builtins); the heavy
+// orchestrator/TUI imports stay dynamic inside runOpenDirectory itself.
+import { isPathLikeArg, runOpenDirectory } from "./open-dir-cmd.ts"
 import { topLevelUsage } from "./usage.ts"
 
 const ADD_USAGE =
@@ -449,6 +452,13 @@ async function main(): Promise<void> {
     // Always exits 0; never spawns the daemon.
     const { runHookSubcommand } = await import("./hook-cmd.ts")
     await runHookSubcommand(rest)
+    return
+  }
+  // `kobe .` / `kobe <path>` — the `code .` gesture: open the directory as
+  // a standalone dir task. Path syntax only (checked by the predicate), so
+  // typos still hit the unknown-command error below with no import cost.
+  if (subcommand !== undefined && isPathLikeArg(subcommand)) {
+    await runOpenDirectory(subcommand)
     return
   }
   // An unrecognized subcommand is a CLI error, not a TUI launch — a typo

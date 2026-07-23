@@ -84,6 +84,7 @@ describe("daemon handler registry", () => {
       "task.status",
       "task.reorder",
       "task.ensureMain",
+      "task.openDir",
       "project.forget",
       "task.ensureWorktree",
       "task.setActive",

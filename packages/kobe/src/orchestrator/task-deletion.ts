@@ -23,7 +23,10 @@ export class TaskDeletionCoordinator {
     if (task.deletion?.phase === "queued" || task.deletion?.phase === "running") return true
 
     const force = opts?.force === true
-    if (task.worktreePath && !force) {
+    // A `dir` task pins a user-owned directory that deletion never touches,
+    // so the dirty-worktree gate (a prompt about work that would be lost)
+    // doesn't apply — only the index entry goes away.
+    if (task.worktreePath && !force && task.kind !== "dir") {
       let dirty = false
       try {
         dirty = await this.worktrees.isDirty(task.worktreePath)
@@ -58,7 +61,10 @@ export class TaskDeletionCoordinator {
     const task = this.store.get(id)
     if (!task?.deletion || task.deletion.phase !== "running") return
     try {
-      if (task.worktreePath) {
+      // NEVER remove a `dir` task's directory: it is the user's own
+      // directory (`kobe .`), not a kobe-managed worktree. Deleting the
+      // task must only drop the index entry.
+      if (task.worktreePath && task.kind !== "dir") {
         await this.worktrees.remove(task.worktreePath, {
           force: task.deletion.force,
           deleteBranch: true,

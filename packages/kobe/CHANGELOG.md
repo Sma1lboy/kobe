@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.14
+
+### Patch Changes
+
+- c4c17f3: Split panes fire on their direct chords again — `ctrl+\` splits right, `ctrl+=` splits down. The prefix strokes (`ctrl+a \` / `ctrl+a =`) are dropped, same owner call as the tab-management and engine-picker rows.
+
+## 0.8.13
+
+### Patch Changes
+
+- ac5eaf1: Fix embedded-terminal copy selection around Chinese, emoji, and other wide glyphs: highlighting and clipboard extraction now map mouse columns by terminal-cell width, so selections no longer overpaint blank space or omit text at their boundaries.
+
+## 0.8.12
+
+### Patch Changes
+
+- 220c512: `kobe .` (or `kobe <path>`) opens a directory as a standalone task — no project association, no worktree or branch created. The new `kind:"dir"` task pins the directory itself, can be archived like any task, and deleting it only removes the task entry: the directory on disk is never touched. Opening the same directory again creates another independent task (parallel sessions in one directory); titles get a short random suffix to keep the rows distinguishable.
+
 ## 0.8.11
 
 ### Patch Changes

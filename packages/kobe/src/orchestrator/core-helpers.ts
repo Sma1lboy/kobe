@@ -23,6 +23,15 @@ export function canonPath(p: string): string {
   }
 }
 
+/**
+ * Short random suffix for `kind:"dir"` task titles (`kobe .`): every open
+ * of the same directory is a NEW task, so the rows need distinct titles.
+ * 4 base36 chars ≈ 1.7M combinations — plenty for a sidebar list.
+ */
+export function randomDirTaskSuffix(): string {
+  return Math.random().toString(36).slice(2, 6).padEnd(4, "0")
+}
+
 export function titleFromRepo(repo: string): string {
   const segs = repo.split(/[/\\]/).filter(Boolean)
   return segs.length > 0 ? (segs[segs.length - 1] ?? repo) : repo

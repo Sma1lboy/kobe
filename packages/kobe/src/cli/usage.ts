@@ -16,6 +16,7 @@ export function topLevelUsage(): string {
     "Usage: kobe [command] [options]",
     "",
     "Run with no command to launch PureTUI.",
+    "Run `kobe .` (or `kobe <path>`) to open a directory as a standalone task.",
     "",
     "Commands:",
     "  web [options]           Launch the browser dashboard",
