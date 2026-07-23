@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.14
+
+### Patch Changes
+
+- c4c17f3: Split panes fire on their direct chords again — `ctrl+\` splits right, `ctrl+=` splits down. The prefix strokes (`ctrl+a \` / `ctrl+a =`) are dropped, same owner call as the tab-management and engine-picker rows.
+
+## 0.8.13
+
+### Patch Changes
+
+- ac5eaf1: Fix embedded-terminal copy selection around Chinese, emoji, and other wide glyphs: highlighting and clipboard extraction now map mouse columns by terminal-cell width, so selections no longer overpaint blank space or omit text at their boundaries.
+
 ## 0.8.12
 
 ### Patch Changes

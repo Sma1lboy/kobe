@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { displayWidth } from "../../src/lib/display-width"
 import { ATTR, type Chunk } from "../../src/tui/panes/terminal/sgr"
 import {
   extractSelection,
@@ -52,5 +53,58 @@ describe("terminal grid selection", () => {
     const range = { anchor: { row: 0, col: 0 }, head: { row: 0, col: 5 } }
     const out = overlaySelection(short, range, 0, 10)
     expect(out[0].map((c) => c.text).join("")).toBe("ab    ")
+  })
+
+  it("extracts a CJK range by terminal cells in either drag direction", () => {
+    const cjk = [row("唯一需要区分的是：")]
+    const forward = { anchor: { row: 0, col: 4 }, head: { row: 0, col: 9 } }
+    const backward = { anchor: forward.head, head: forward.anchor }
+
+    expect(extractSelection(cjk, forward)).toBe("需要区")
+    expect(extractSelection(cjk, backward)).toBe("需要区")
+  })
+
+  it("highlights whole wide glyphs without over-padding the row", () => {
+    const cjk = [row("你a")]
+    const range = { anchor: { row: 0, col: 0 }, head: { row: 0, col: 4 } }
+    const out = overlaySelection(cjk, range, 0, 5)[0]
+    const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+
+    expect(painted.map((c) => c.text).join("")).toBe("你a  ")
+    expect(displayWidth(out.map((c) => c.text).join(""))).toBe(5)
+  })
+
+  it("selects a whole wide glyph when the range hits its trailing cell", () => {
+    const cjk = [row("你a")]
+    const range = { anchor: { row: 0, col: 1 }, head: { row: 0, col: 1 } }
+
+    // A zero-width drag is normally filtered by the hook; the pure overlay
+    // still defines how a one-cell range inside a wide glyph is painted.
+    const out = overlaySelection(cjk, range, 0, 3)[0]
+    const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+    expect(painted.map((c) => c.text).join("")).toBe("你")
+  })
+
+  it("keeps emoji cell coordinates aligned across styled chunks", () => {
+    const styled: readonly (readonly Chunk[])[] = [[{ text: "🚀", fg: [1, 2, 3] }, { text: "go" }]]
+    const range = { anchor: { row: 0, col: 2 }, head: { row: 0, col: 2 } }
+
+    expect(extractSelection(styled, range)).toBe("g")
+    const out = overlaySelection(styled, range, 0, 4)[0]
+    const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+    expect(painted.map((c) => c.text).join("")).toBe("g")
+  })
+
+  it("keeps zero-width marks attached before, inside, and after a selection", () => {
+    const decomposed = "a\u0301b\u0301c\u0301"
+    const rows = [row(decomposed)]
+    const range = { anchor: { row: 0, col: 1 }, head: { row: 0, col: 1 } }
+
+    expect(displayWidth(decomposed)).toBe(3)
+    expect(extractSelection(rows, range)).toBe("b\u0301")
+    const out = overlaySelection(rows, range, 0, 3)[0]
+    expect(out.map((c) => c.text).join("")).toBe(decomposed)
+    const painted = out.filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+    expect(painted.map((c) => c.text).join("")).toBe("b\u0301")
   })
 })

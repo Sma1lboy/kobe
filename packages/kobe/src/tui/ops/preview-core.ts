@@ -53,7 +53,9 @@ export function formatBytes(n: number): string {
   const units = ["KB", "MB", "GB", "TB"]
   let v = n / 1024
   let i = 0
-  while (v >= 1024 && i < units.length - 1) {
+  // Promote at 1023.5, not 1024: once v rounds up to 1024 it would render as
+  // "1024 KB" instead of "1.0 MB" at the unit boundary (Math.round rounds .5 up).
+  while (v >= 1023.5 && i < units.length - 1) {
     v /= 1024
     i++
   }
