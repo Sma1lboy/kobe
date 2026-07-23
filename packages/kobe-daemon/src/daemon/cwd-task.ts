@@ -157,7 +157,11 @@ export function findAdoptableWorktree(
   const repos = new Set<string>()
   const known = new Set<string>()
   for (const t of tasks) {
-    if (t.repo) repos.add(normalize(t.repo))
+    // A remote-project repo key (`ssh://…`) is not an absolute path and has no
+    // local managed worktree root, so it can never host an adoptable on-disk
+    // worktree — and feeding it to `managedWorktreeRootsFor` below throws.
+    // Skip it: a single remote project must not reject the whole event handler.
+    if (t.repo && path.isAbsolute(t.repo)) repos.add(normalize(t.repo))
     if (t.worktreePath) known.add(normalize(t.worktreePath))
   }
   for (const repo of repos) {
