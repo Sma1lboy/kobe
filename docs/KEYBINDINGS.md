@@ -30,13 +30,13 @@ Default prefix actions:
 | `ctrl+a`, `l` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
 | `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits — owner picked prefix+m 2026-07-16) |
-| `ctrl+a`, `\\` | Split right |
-| `ctrl+a`, `=` | Split down |
 | `ctrl+a`, `w` | Close active split |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17 — the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
-`ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct.
+`ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct. Splits are
+direct again — `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
+their prefix strokes are dropped, same reasoning as the tab rows.
 
 ## Navigation and workspace defaults
 
@@ -52,6 +52,8 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 | `ctrl+e` | New tab with engine/shell picker |
 | `ctrl+w` | Close active split, otherwise close tab |
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
+| `ctrl+\` | Split right |
+| `ctrl+=` | Split down |
 
 Context resolves intentional overlap. For example, `ctrl+w` closes the
 innermost split when a tab is split; otherwise it closes the tab. `F2` renames

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.14
+
+### Patch Changes
+
+- c4c17f3: Split panes fire on their direct chords again — `ctrl+\` splits right, `ctrl+=` splits down. The prefix strokes (`ctrl+a \` / `ctrl+a =`) are dropped, same owner call as the tab-management and engine-picker rows.
+
 ## 0.8.13
 
 ### Patch Changes

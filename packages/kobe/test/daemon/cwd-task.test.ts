@@ -193,4 +193,16 @@ describe("findAdoptableWorktree", () => {
   it("ignores a sibling-prefix repo (/repo vs /repo-other)", () => {
     expect(findAdoptableWorktree(tasks(), "/repo-other/.kobe/worktrees/x")).toBeUndefined()
   })
+
+  it("skips a remote-project repo key (ssh://…) without throwing", () => {
+    // A remote main task's `repo` is a synthetic `ssh://user@host` key, not an
+    // absolute path — it has no local managed worktree root. It must be skipped,
+    // not fed to `managedWorktreeRootsFor` (which throws on non-absolute paths),
+    // so a single remote project never rejects the whole engine.reportEvent path.
+    const withRemote = [...tasks(), { id: "remote", repo: "ssh://user@host:22", worktreePath: "/remote/base" }]
+    const wt = path.join(worktreeRootFor("/repo"), "external")
+    expect(() => findAdoptableWorktree(withRemote, wt)).not.toThrow()
+    // The local repo's worktree is still adoptable alongside the remote task.
+    expect(findAdoptableWorktree(withRemote, wt)).toEqual({ repo: "/repo", worktreePath: wt })
+  })
 })
