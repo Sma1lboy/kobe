@@ -72,7 +72,9 @@ export type TerminalProps = {
    * Whether this mounted terminal represents the visible chat tab / active
    * split leaf for macOS IME placement. Unlike `focused`, this stays true when
    * keyboard ownership moves to Sidebar or Files. Inactive split leaves pass
-   * false so background output cannot steal the shared anchor.
+   * false so background output cannot steal the shared anchor. An explicit
+   * true also designates the sole unfocused attachment-paste target; omission
+   * remains IME-compatible but fails closed for attachment routing.
    */
   imeAnchorActive?: boolean
   /**
@@ -224,6 +226,7 @@ export function Terminal(props: TerminalProps) {
   // A modal input owns the native cursor while it is open. Side-pane focus
   // does not: the visible terminal remains the stable IME fallback there.
   const imeAnchorActive = (props.imeAnchorActive ?? true) && dialog.stack.length === 0
+  const unfocusedAttachmentTarget = props.imeAnchorActive === true && dialog.stack.length === 0
   const resetTaskIdRef = useLatest(props.taskId)
   const resetCwdRef = useLatest(props.cwd)
   const mountedRef = useRef(true)
@@ -251,10 +254,9 @@ export function Terminal(props: TerminalProps) {
 
   useTerminalBindings({
     focused,
-    // IME anchor ownership already identifies the visible ChatTab's active
-    // leaf while Sidebar or Files owns keyboard focus. Reuse that single
-    // target for attachment drops so split siblings never receive duplicates.
-    unfocusedAttachmentTarget: imeAnchorActive,
+    // TerminalSplit explicitly assigns IME ownership to its active leaf.
+    // Require that explicit signal here so standalone/future mounts fail closed.
+    unfocusedAttachmentTarget,
     write: (data) => {
       if (!pty || pty.killed) return
       pty.write(data)

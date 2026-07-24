@@ -35,8 +35,8 @@ export { DEFAULT_PAGE_SIZE, TRAPPED_KEYS, keyEventToShellBytes }
 export type TerminalBindingsOpts = {
   /** Whether the terminal pane currently has focus. */
   focused: boolean
-  /** Capture image/PDF path pastes while unfocused (the visible engine leaf only). */
-  unfocusedAttachmentTarget?: boolean
+  /** Whether this caller explicitly owns image/PDF path pastes while unfocused. */
+  unfocusedAttachmentTarget: boolean
   /** Forward a byte sequence to the underlying PTY. */
   write: (data: string) => void
   /** Deliver pasted text (backend applies bracketed-paste wrapping). */
@@ -111,9 +111,7 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
       if (evt.defaultPrevented || modalActive()) return
       const text = decodePasteBytes(evt.bytes)
       if (text.length === 0) return
-      if (!optsRef.current.focused) {
-        if (!optsRef.current.unfocusedAttachmentTarget || !asAttachmentPaths(text)) return
-      }
+      if (!optsRef.current.focused && (!optsRef.current.unfocusedAttachmentTarget || !asAttachmentPaths(text))) return
       optsRef.current.paste(text)
       evt.preventDefault()
     }

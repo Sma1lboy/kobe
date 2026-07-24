@@ -11,11 +11,11 @@
  */
 import { describe, expect, it } from "bun:test"
 import { resolve } from "node:path"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Terminal } from "../../src/tui-react/panes/terminal/Terminal"
 import { useTerminalBindings } from "../../src/tui-react/panes/terminal/keys"
 import { DialogProvider, useDialog } from "../../src/tui-react/ui/dialog"
-import { createScriptedPtyRegistry } from "../../src/tui/panes/terminal/pty-scripted"
+import { type ScriptedPtyRegistry, createScriptedPtyRegistry } from "../../src/tui/panes/terminal/pty-scripted"
 import { act, renderComponent, settle } from "./harness"
 
 const IMAGE_PATH = resolve(import.meta.dir, "../../../../public/assets/logos/cursor-block.png")
@@ -27,13 +27,39 @@ function PasteProbe(props: {
 }) {
   useTerminalBindings({
     focused: props.focused === true,
-    unfocusedAttachmentTarget: props.target,
+    unfocusedAttachmentTarget: props.target === true,
     write: () => {},
     paste: (text) => props.pastes.push(text),
     scroll: () => {},
     reset: () => {},
   })
   return <box />
+}
+
+function ActiveLeafTerminals(props: {
+  harness: ScriptedPtyRegistry
+  api: { setActive?: (leaf: "left" | "right") => void }
+}) {
+  const [active, setActive] = useState<"left" | "right">("left")
+  props.api.setActive = setActive
+  return (
+    <box flexDirection="row" flexGrow={1}>
+      <Terminal
+        cwd="/wt"
+        taskId="left"
+        focused={false}
+        imeAnchorActive={active === "left"}
+        registry={props.harness.registry}
+      />
+      <Terminal
+        cwd="/wt"
+        taskId="right"
+        focused={false}
+        imeAnchorActive={active === "right"}
+        registry={props.harness.registry}
+      />
+    </box>
+  )
 }
 
 function DialogDriver(props: { onMount: (dialog: ReturnType<typeof useDialog>) => void }) {
@@ -58,34 +84,48 @@ describe("terminal pane — unfocused attachment paste", () => {
     expect(harness.last().pastes).toEqual([IMAGE_PATH])
   })
 
-  it("leaves ordinary text and non-target terminals untouched", async () => {
+  it("leaves ordinary text untouched even on the designated target", async () => {
     const pastes: string[] = []
-    const { renderer } = await renderComponent(<PasteProbe pastes={pastes} />)
+    const { renderer } = await renderComponent(<PasteProbe target pastes={pastes} />)
 
-    act(() => {
-      renderer.keyInput.processPaste(new TextEncoder().encode(IMAGE_PATH))
-      renderer.keyInput.processPaste(new TextEncoder().encode("explain this failure"))
-    })
+    act(() => renderer.keyInput.processPaste(new TextEncoder().encode("explain this failure")))
     await settle()
 
     expect(pastes).toHaveLength(0)
   })
 
-  it("delivers to only the designated terminal when multiple leaves are mounted", async () => {
-    const targetPastes: string[] = []
-    const siblingPastes: string[] = []
-    const { renderer } = await renderComponent(
-      <>
-        <PasteProbe pastes={siblingPastes} />
-        <PasteProbe target pastes={targetPastes} />
-      </>,
-    )
+  it("leaves attachment paths untouched on a non-target terminal", async () => {
+    const pastes: string[] = []
+    const { renderer } = await renderComponent(<PasteProbe pastes={pastes} />)
 
     act(() => renderer.keyInput.processPaste(new TextEncoder().encode(IMAGE_PATH)))
     await settle()
 
-    expect(targetPastes).toEqual([IMAGE_PATH])
-    expect(siblingPastes).toHaveLength(0)
+    expect(pastes).toHaveLength(0)
+  })
+
+  it("follows active-leaf ownership across multiple mounted Terminals", async () => {
+    const harness = createScriptedPtyRegistry()
+    const api: { setActive?: (leaf: "left" | "right") => void } = {}
+    const { renderer, frame } = await renderComponent(<ActiveLeafTerminals harness={harness} api={api} />, {
+      providers: { dialog: true },
+    })
+    await frame()
+    expect(harness.ptys).toHaveLength(2)
+
+    act(() => renderer.keyInput.processPaste(new TextEncoder().encode(IMAGE_PATH)))
+    await settle()
+
+    expect(harness.ptys[0]?.pastes).toEqual([IMAGE_PATH])
+    expect(harness.ptys[1]?.pastes).toHaveLength(0)
+
+    act(() => api.setActive?.("right"))
+    await frame()
+    act(() => renderer.keyInput.processPaste(new TextEncoder().encode(IMAGE_PATH)))
+    await settle()
+
+    expect(harness.ptys[0]?.pastes).toEqual([IMAGE_PATH])
+    expect(harness.ptys[1]?.pastes).toEqual([IMAGE_PATH])
   })
 
   it("keeps the focused terminal's normal paste behavior", async () => {
