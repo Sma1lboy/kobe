@@ -251,6 +251,10 @@ export function Terminal(props: TerminalProps) {
 
   useTerminalBindings({
     focused,
+    // IME anchor ownership already identifies the visible ChatTab's active
+    // leaf while Sidebar or Files owns keyboard focus. Reuse that single
+    // target for attachment drops so split siblings never receive duplicates.
+    unfocusedAttachmentTarget: imeAnchorActive,
     write: (data) => {
       if (!pty || pty.killed) return
       pty.write(data)
