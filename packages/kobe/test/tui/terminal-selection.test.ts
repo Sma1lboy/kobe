@@ -36,6 +36,29 @@ describe("terminal grid selection", () => {
     expect(extractSelection(ROWS, { anchor: { row: 1, col: 6 }, head: { row: 1, col: 0 } })).toBe("charlie")
   })
 
+  it("keeps the empty first line when a multi-row drag anchors past a short row's text", () => {
+    // Real snapshot rows are TRIMMED, not grid-padded, and the mouse column is
+    // clamped to the grid width — so a drag can anchor in the blank padding
+    // past a short first line (here col 5, past "ab"). That row is still part
+    // of the selection (overlaySelection highlights it), so the copy must keep
+    // it as an empty line, preserving the newline into the next row.
+    const rows = [row("ab"), row("cdef")]
+    const range = { anchor: { row: 0, col: 5 }, head: { row: 1, col: 2 } }
+    expect(extractSelection(rows, range)).toBe("\ncde")
+    // overlaySelection (grid width 8) does highlight that first row — the two
+    // sides must agree on which rows are selected.
+    const painted = overlaySelection(rows, range, 0, 8)[0].filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+    expect(painted.length).toBeGreaterThan(0)
+  })
+
+  it("preserves an interior blank line across a multi-row selection", () => {
+    // A wholly-blank middle row (trimmed to empty) must survive as "" so the
+    // reading-order line structure — and its newlines — is intact.
+    const rows = [row("first"), row(""), row("third")]
+    const range = { anchor: { row: 0, col: 0 }, head: { row: 2, col: 4 } }
+    expect(extractSelection(rows, range)).toBe("first\n\nthird")
+  })
+
   it("overlaySelection inverses exactly the selected cells of visible rows", () => {
     const range = { anchor: { row: 1, col: 8 }, head: { row: 1, col: 12 } }
     // Viewport starting at absolute row 1 → the selected row is index 0.
