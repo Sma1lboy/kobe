@@ -41,7 +41,6 @@ Task = git worktree + hosted engine sessions + branch
 - `packages/kobe-daemon/` — Unix-socket daemon protocol/server, browser
   transport, and standalone PTY Host implementation.
 - `packages/kobe-web/` — browser dashboard SPA and browser-side PTY transport.
-- `packages/kobe-desktop/` — desktop wrapper.
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
 
 ## 3. Launch and lifetime
