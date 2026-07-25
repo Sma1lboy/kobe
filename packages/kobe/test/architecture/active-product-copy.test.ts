@@ -34,7 +34,6 @@ describe("active product copy", () => {
     const filesAndStalePhrases: Array<[string, string[]]> = [
       ["packages/kobe-web/src/components/ToolsPanel.tsx", ["tmux session and engine"]],
       ["packages/kobe-web/README.md", ["kobe-sandbox tmux socket"]],
-      ["packages/kobe-desktop/README.md", ["does not kill the daemon or tmux sessions"]],
       [".claude/skills/release/SKILL.md", ["needs tmux", "apt-installed tmux"]],
       ["marketing/brand.meta.yaml", ["git worktrees, tmux sessions", "persistent tmux sessions"]],
     ]

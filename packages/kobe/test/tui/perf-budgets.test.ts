@@ -1,9 +1,21 @@
 /**
  * Deterministic operation-count performance budgets for retained PureTUI
  * hot paths. Wall-clock benchmarks remain local and opt-in.
+ *
+ * These budgets describe the PRODUCTION path, so `KOBE_DEV` must be pinned
+ * off. Otherwise the dev-only `warnShadowedMatch` diagnostic in
+ * `keymap-dispatch` scans the whole binding stack after every hit and the
+ * dispatch budget fails — and it fails only on a developer's machine, since
+ * `KOBE_DEV=1` is exported by `bun run dev` and inherited by any test run
+ * started from inside a kobe session. CI never sees it.
  */
 
-import { describe, expect, test } from "vitest"
+import { beforeAll, describe, expect, test, vi } from "vitest"
+
+beforeAll(() => {
+  vi.stubEnv("KOBE_DEV", "0")
+  return () => vi.unstubAllEnvs()
+})
 import { computeNextAllowedAt, shouldPoll } from "../../src/lib/poll-scheduling"
 import { type Binding, type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 import { buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view"

@@ -357,6 +357,14 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       previousCursor,
       cursorHidden ? null : { x: active.cursorX, y: active.baseY + active.cursorY - currentMeta.start },
     )
+    // Frozen-scrollback view for the VERIFY pass only. The rebuild path below
+    // may re-anchor mid-pass, so it derives its own `anchorAlive`/`absBase`;
+    // this one reads the anchor as it stands on entry.
+    const verifyAnchor = this.anchor
+    const verifyFrozen =
+      active.type !== "alternate" && verifyAnchor !== undefined && !verifyAnchor.isDisposed
+        ? { baseY: active.baseY, absBase: this.anchorId - verifyAnchor.line, cache: this.scrollbackCache }
+        : null
     if (
       dirtyRowsMatchSnapshot(
         active,
@@ -365,6 +373,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
         currentMeta,
         this.refreshTracker.peek(),
         cursorHidden,
+        verifyFrozen,
       )
     ) {
       this.snapshotDirty = false

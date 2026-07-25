@@ -41,7 +41,13 @@ Task = git worktree + hosted engine sessions + branch
 - `packages/kobe-daemon/` — Unix-socket daemon protocol/server, browser
   transport, and standalone PTY Host implementation.
 - `packages/kobe-web/` — browser dashboard SPA and browser-side PTY transport.
-- `packages/kobe-desktop/` — desktop wrapper.
+  **Frozen (2026-07-25):** no new features. It survives because its `/harness`
+  route is the only sanctioned visual ground truth for OpenTUI work, not
+  because the SPA is a product surface. Every extra GUI consumer is another
+  lifetime the daemon has to refcount, which is where the orphan/OOM
+  incidents came from. Fix bugs and keep `/harness` working; take new
+  surface work to the TUI. The `kobe-desktop` Electron shell was removed the
+  same day for the same reason.
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
 
 ## 3. Launch and lifetime
