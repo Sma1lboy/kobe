@@ -15,7 +15,7 @@ The TUI is the product; engine adapters are execution backends (Claude Code is t
 **Read in order before doing anything:**
 1. [`HANDOFF.md`](./HANDOFF.md) — freshest handoff, current risks, open follow-ups. Local + gitignored; absent on a fresh clone is fine, just skip it.
 2. [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy, decisions, tech-stack lock-in.
-3. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — source-tree map, ownership boundaries, and the `refs/` reference projects (§2).
+3. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — source-tree map, ownership boundaries, and the `refs/` reference projects (§7).
 4. [`docs/PLAN.md`](./docs/PLAN.md) — phase/wave plan + gate history (**phase status lives here, not in this file**).
 5. [`docs/HARNESS.md`](./docs/HARNESS.md) — agent self-test contract. **Load-bearing.**
 6. [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md) — pane-scope rules; read before adding/moving any chord.
@@ -32,19 +32,7 @@ The docs are the source of truth. **If docs and implementation disagree, surface
 - **Language:** respond in whatever language the user writes in. Don't assume their name — let them introduce themselves.
 - **Daemon** is a long-lived background process, refcounted on attached GUIs (mechanics: [`docs/design/daemon.md`](./docs/design/daemon.md)). Boundaries: background consumers subscribe with `role: "pane"`; attached TUI clients and open browser SSE streams hold GUI lifetime; hosted engine PTYs belong to the separate PTY host and survive daemon restarts; read `<KOBE_HOME>/.kobe/daemon.log` first when debugging; **after editing daemon/orchestrator/engine code, `kobe daemon restart`** — Bun doesn't hot-reload.
 - **Per-repo init:** a repo can ship `.kobe/init.sh` (runs before the engine, in the worktree) + `.kobe/init-prompt.md` (the engine's first message); repo files win over the per-user state.json override. Mechanics: [`src/state/repo-init.ts`](./packages/kobe/src/state/repo-init.ts).
-- **Reference repos** (`refs/`, gitignored, **read-only**): clone before development — what each is for + when to consult lives in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §2.
-
-```bash
-mkdir -p refs && cd refs
-ln -s /Users/jacksonc/i/agent-deck agent-deck   # if you have it locally
-git clone --depth 1 https://github.com/winfunc/opcode.git
-git clone --depth 1 https://github.com/tanbiralam/claude-code.git
-git clone --depth 1 https://github.com/sirmalloc/ccstatusline.git
-git clone --depth 1 https://github.com/openai/codex.git
-git clone --depth 1 https://github.com/friuns2/codexui.git
-git clone --depth 1 https://github.com/warpdotdev/warp.git
-# conductor is image-only — see docs/DESIGN.md §1
-```
+- **Reference repos** (`refs/`, gitignored, **read-only**): clone before development — the clone list, what each is for, and when to consult it all live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §7.
 
 ## Work tracking — local only
 
@@ -52,10 +40,12 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 
 ## Hard rules (non-negotiable)
 
-### PR-only mainline (2026-07-03)
-- ALL development lands via pull request: feature branch → commits → `gh pr create` → CI green (typecheck/test, behavior, file-size-cap, coverage-cap, Review CI) → `gh pr merge --squash --delete-branch`. **NEVER push commits directly to `main`.**
-- Sole exception: the `chore: release — X.Y.Z` commit + tag pushed by `scripts/release.sh` (see [`docs/RELEASING.md`](./docs/RELEASING.md)).
-- Rationale: the PR gates are the enforcement point for the hard rules below — direct pushes bypass them.
+### How work lands on `main`
+- **Default: PR.** Feature branch → commits → `gh pr create` → CI green (typecheck/test, behavior, file-size-cap, coverage-cap, Review CI) → `gh pr merge --squash --delete-branch`. The PR gates are where the hard rules below get enforced, so unattended/agent-driven work always takes this path.
+- **Owner-supervised local iteration may skip the PR** (2026-07-10): work in a worktree, get green, then merge/cherry-pick into local `main`. Same quality gates (lint, typecheck, tests, changeset) still apply. Only when the owner is in the loop that turn.
+- A direct push to `main` needs the owner to say so **in that turn** — never inferred, never carried over to the next task.
+- `scripts/release.sh` pushes its own `chore: release — X.Y.Z` commit + tag (see [`docs/RELEASING.md`](./docs/RELEASING.md)).
+- Never force-push; `git fetch` before pushing.
 
 ### Commits
 - Commit at the end of each stream when green (per-stream commits are pre-authorized). Message: `<type>: <summary>` + a 2-3 sentence body.
@@ -104,14 +94,4 @@ Diagrams in `docs/` go in a ` ```mermaid ` fence (renders natively in GitHub + V
 
 ## Agent skills
 
-### Issue tracker
-
-Skill-driven flows (`to-issues`/`triage`/`to-prd`/`qa`) use local markdown under `.scratch/<feature>/` (gitignored); the daemon issue store stays the product backlog and GitHub Issues stay inbound-user-reports-only. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default vocabulary, unchanged (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`), as `Status:` lines in issue files. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: root `CONTEXT.md` (strict glossary with banned synonyms) + `docs/adr/`. See `docs/agents/domain.md`.
+Skill-driven flows (`to-issues`/`triage`/`to-prd`/`qa`) scribble in gitignored `.scratch/<feature>/` markdown — that's scratch, not the backlog. The daemon issue store stays the product backlog; GitHub Issues stay inbound-user-reports-only. Mechanics: [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md), [`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md), [`docs/agents/domain.md`](./docs/agents/domain.md).

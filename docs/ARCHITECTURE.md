@@ -121,3 +121,17 @@ project before changing a boundary it demonstrates:
 - `warp` — terminal interaction and layout patterns
 
 Reference code informs decisions but is never edited or copied wholesale.
+
+Clone them before development:
+
+```bash
+mkdir -p refs && cd refs
+ln -s /Users/jacksonc/i/agent-deck agent-deck   # if you have it locally
+git clone --depth 1 https://github.com/winfunc/opcode.git
+git clone --depth 1 https://github.com/tanbiralam/claude-code.git
+git clone --depth 1 https://github.com/sirmalloc/ccstatusline.git
+git clone --depth 1 https://github.com/openai/codex.git
+git clone --depth 1 https://github.com/friuns2/codexui.git
+git clone --depth 1 https://github.com/warpdotdev/warp.git
+# conductor is image-only — see docs/DESIGN.md §1
+```
