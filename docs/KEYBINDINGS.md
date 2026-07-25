@@ -70,6 +70,10 @@ Owner decision (2026-07-17): the relative chords are `prefix+h` (backward) and
 `prefix+l` (forward), not j/k — the three panes are laid out horizontally, so
 left/right vim keys match the spatial direction.
 
+Owner decision (2026-07-25): focus movement is a cursor, not a ring. It clamps
+at both ends (sidebar on the left, files on the right) instead of wrapping —
+`prefix+h` from the sidebar and `prefix+l`/`F4` from files are no-ops.
+
 ## Sidebar and Files
 
 Bare letters are owned only while their surface has focus and no text input or

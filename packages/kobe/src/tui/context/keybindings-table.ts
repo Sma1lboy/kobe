@@ -243,7 +243,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Focus previous pane (files → workspace → sidebar)",
   },
   {
-    // Forward pane cycle — walks sidebar → workspace → files → wrap.
+    // Forward pane move — walks sidebar → workspace → files, clamped at
+    // the ends (cursor semantics, owner call 2026-07-25 — no wrap).
     // `f4` stays the direct alias and sits in RESERVED_GLOBAL_CHORDS
     // (panes/terminal/keys-pure.ts), so it fires identically from inside
     // the embedded terminal; prefix+l is the relative navigation form.

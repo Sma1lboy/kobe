@@ -6,9 +6,10 @@ import { useDialog } from "../../src/tui-react/ui/dialog"
 import { useWorkspaceKeybindings } from "../../src/tui-react/workspace/host-keybindings"
 import { renderComponent, settle } from "./harness"
 
-function Probe(props: { opened: string[] }) {
+function Probe(props: { opened: string[]; focusLog?: string[] }) {
   const focus = useFocus()
   const dialog = useDialog()
+  props.focusLog?.splice(0, props.focusLog.length, focus.focused)
   useWorkspaceKeybindings({
     focus,
     dialog,
@@ -51,5 +52,31 @@ describe("workspace host editor bindings", () => {
     await settle()
 
     expect(opened).toEqual(["task-1", "task-1"])
+  })
+
+  it("clamps focus movement at both ends instead of wrapping", async () => {
+    const focusLog: string[] = []
+    const { mockInput } = await renderComponent(<Probe opened={[]} focusLog={focusLog} />, {
+      providers: { focus: true, dialog: true },
+    })
+
+    async function prefixStroke(key: string) {
+      mockInput.pressKey("a", { ctrl: true })
+      await settle()
+      await mockInput.typeText(key)
+      await settle()
+    }
+
+    // Boot focus is sidebar (left end) — prefix+h must not wrap to files.
+    await prefixStroke("h")
+    expect(focusLog[0]).toBe("sidebar")
+
+    // Walk right to the files end, then prefix+l must not wrap to sidebar.
+    await prefixStroke("l")
+    expect(focusLog[0]).toBe("workspace")
+    await prefixStroke("l")
+    expect(focusLog[0]).toBe("files")
+    await prefixStroke("l")
+    expect(focusLog[0]).toBe("files")
   })
 })

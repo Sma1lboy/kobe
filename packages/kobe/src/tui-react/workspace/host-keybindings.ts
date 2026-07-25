@@ -89,10 +89,13 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     if (ok) exitApp()
   }
 
+  // Cursor semantics, not a ring (owner call 2026-07-25): focus movement
+  // clamps at both ends — sidebar ← workspace → files — instead of
+  // wrapping, so "previous" from the sidebar never jumps to files.
   function cyclePane(delta: 1 | -1): void {
     const idx = PANE_CYCLE.indexOf(focus.focused as (typeof PANE_CYCLE)[number])
-    const next = (idx + delta + PANE_CYCLE.length) % PANE_CYCLE.length
-    focus.setFocused(PANE_CYCLE[next] as PaneId)
+    const next = Math.min(Math.max(idx + delta, 0), PANE_CYCLE.length - 1)
+    if (next !== idx) focus.setFocused(PANE_CYCLE[next] as PaneId)
   }
 
   // One named predicate instead of inline `dialog.stack.length === 0 && …`
