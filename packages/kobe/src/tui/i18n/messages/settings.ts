@@ -71,7 +71,7 @@ export const en = {
     worktreeBaseField: "path",
     terminal: "Terminal",
     terminalHint:
-      "Scrollback: how many rows of history each embedded terminal keeps (100–100000). Applies to terminals opened after the change.",
+      "Scrollback: how many rows of history each embedded terminal keeps (100–100000). Applies to terminals opened after the change. Larger values cost proportionally more CPU per redraw — 1000 rows is roughly 2× the cost of 50.",
     scrollbackRow: "scrollback: {rows} rows  (enter to edit)",
     scrollbackTitle: "Terminal scrollback rows (100–100000)",
     scrollbackField: "rows",
@@ -211,7 +211,8 @@ export const zh: typeof en = {
     worktreeBaseTitle: "自定义工作树位置（留空 = 默认；$project_dir = 项目根目录）",
     worktreeBaseField: "路径",
     terminal: "终端",
-    terminalHint: "回滚缓冲：每个内嵌终端保留多少行历史（100–100000）。对修改后新打开的终端生效。",
+    terminalHint:
+      "回滚缓冲：每个内嵌终端保留多少行历史（100–100000）。对修改后新打开的终端生效。调大会按比例增加每次重绘的 CPU——1000 行约为 50 行的 2 倍。",
     scrollbackRow: "回滚行数: {rows} 行  (enter 编辑)",
     scrollbackTitle: "终端回滚行数（100–100000）",
     scrollbackField: "行数",
