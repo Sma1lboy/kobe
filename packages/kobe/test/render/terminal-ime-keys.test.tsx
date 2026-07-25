@@ -27,6 +27,7 @@ function Probe(opts: { writes: string[]; globalHits: string[]; focused: boolean 
   }))
   useTerminalBindings({
     focused: opts.focused,
+    unfocusedAttachmentTarget: false,
     write: (d: string) => opts.writes.push(d),
     paste: () => {},
     scroll: () => {},

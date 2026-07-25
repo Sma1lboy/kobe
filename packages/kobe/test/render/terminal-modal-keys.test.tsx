@@ -21,6 +21,7 @@ function TerminalProbe(props: { writes: string[] }) {
   // up (border stays lit); that unchanged focus is what made the leak.
   useTerminalBindings({
     focused: true,
+    unfocusedAttachmentTarget: false,
     write: (d: string) => props.writes.push(d),
     paste: () => {},
     scroll: () => {},

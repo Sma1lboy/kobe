@@ -14,9 +14,10 @@
  * the raw keypress/paste listeners on the renderer).
  */
 
-import type { KeyEvent } from "@opentui/core"
+import { type KeyEvent, decodePasteBytes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useEffect, useMemo, useRef } from "react"
+import { asAttachmentPaths } from "../../../tui/lib/attachments"
 import {
   DEFAULT_PAGE_SIZE,
   PASSTHROUGH_CHORDS,
@@ -34,6 +35,8 @@ export { DEFAULT_PAGE_SIZE, TRAPPED_KEYS, keyEventToShellBytes }
 export type TerminalBindingsOpts = {
   /** Whether the terminal pane currently has focus. */
   focused: boolean
+  /** Whether this caller explicitly owns image/PDF path pastes while unfocused. */
+  unfocusedAttachmentTarget: boolean
   /** Forward a byte sequence to the underlying PTY. */
   write: (data: string) => void
   /** Deliver pasted text (backend applies bracketed-paste wrapping). */
@@ -105,9 +108,10 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
       evt.preventDefault()
     }
     const forwardPaste = (evt: { bytes: Uint8Array; defaultPrevented: boolean; preventDefault(): void }) => {
-      if (!optsRef.current.focused || evt.defaultPrevented || modalActive()) return
-      const text = new TextDecoder().decode(evt.bytes)
+      if (evt.defaultPrevented || modalActive()) return
+      const text = decodePasteBytes(evt.bytes)
       if (text.length === 0) return
+      if (!optsRef.current.focused && (!optsRef.current.unfocusedAttachmentTarget || !asAttachmentPaths(text))) return
       optsRef.current.paste(text)
       evt.preventDefault()
     }
