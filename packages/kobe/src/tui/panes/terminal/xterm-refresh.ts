@@ -103,6 +103,30 @@ function sameMeta(a: SnapshotMeta, b: SnapshotMeta): boolean {
   return a.type === b.type && a.baseY === b.baseY && a.length === b.length && a.start === b.start
 }
 
+/**
+ * The rebuild path's absolute-id view of frozen scrollback, handed to the
+ * verify path so it can skip rows that provably cannot have changed.
+ *
+ * Why this is needed: a synchronized-output engine (DECSET 2026 — which is
+ * what claude and codex actually emit) closes every frame with a refresh
+ * event carrying no range, which lands here as `{kind:"all"}`. With dirty=ALL
+ * the loop below has no range to narrow to, so it re-verified the ENTIRE
+ * window — viewport plus up to `scrollbackRows` frozen rows — on every single
+ * refresh, both when the frame changed and when it didn't. At the default
+ * 1000-row scrollback that measured 0.63ms per refresh proving nothing had
+ * changed (3.9% of a core against the 62.5Hz coalesce cap), and it is paid
+ * BEFORE reaching the viewport rows that actually differ, so streaming frames
+ * pay it too.
+ */
+export interface FrozenScrollback {
+  /** Rows below this index have scrolled out of the viewport. */
+  readonly baseY: number
+  /** Offset turning a buffer index into the anchor-relative absolute line id. */
+  readonly absBase: number
+  /** The rebuild path's absolute-id -> row cache. */
+  readonly cache: ReadonlyMap<number, TerminalRow>
+}
+
 /** Exact, allocation-light proof that xterm's dirty rows still render to the published snapshot. */
 export function dirtyRowsMatchSnapshot(
   active: ActiveBufferLike,
@@ -111,6 +135,7 @@ export function dirtyRowsMatchSnapshot(
   currentMeta: SnapshotMeta,
   dirty: DirtyRows | null,
   cursorHidden: boolean,
+  frozen: FrozenScrollback | null = null,
 ): boolean {
   if (!previousMeta || !sameMeta(previousMeta, currentMeta) || !dirty) return false
   let first = currentMeta.start
@@ -123,6 +148,20 @@ export function dirtyRowsMatchSnapshot(
   for (let y = first; y <= last; y++) {
     const row = snapshot[y - currentMeta.start]
     if (!row) return false
+    // xterm never edits a line that has scrolled out of the viewport — it
+    // only trims from the top or appends at the bottom. So a frozen row the
+    // rebuild path already cached under its ABSOLUTE line id cannot have
+    // changed in place, and re-deriving it from the buffer is pure waste.
+    //
+    // The identity compare is what keeps this sound across a shift: in a
+    // saturated buffer `baseY`/`length`/`start` all stay constant while
+    // content scrolls, so `sameMeta` above cannot see the move. But the
+    // absolute id -> snapshot index mapping DOES move, so `cache.get()`
+    // returns some other row (or nothing) and the compare fails, dropping us
+    // into the full rebuild that re-derives the shifted window. That is the
+    // same anchor the rebuild loop trusts, so the two paths agree by
+    // construction.
+    if (frozen && y < frozen.baseY && frozen.cache.get(frozen.absBase + y) === row) continue
     const minLast = !cursorHidden && y === cursorY ? active.cursorX - 1 : -1
     if (!xtermLineMatchesChunks(active.getLine(y), row, minLast)) return false
   }

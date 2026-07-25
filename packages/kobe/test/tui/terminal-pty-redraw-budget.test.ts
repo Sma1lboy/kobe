@@ -62,6 +62,37 @@ describe("XtermTaskPty redraw budget", () => {
     pty.kill()
   })
 
+  /**
+   * The frozen-scrollback fast path in `dirtyRowsMatchSnapshot` skips
+   * re-deriving rows below `baseY` that the rebuild path already cached under
+   * an absolute line id. Its one hazard: once the window saturates,
+   * `baseY`/`length`/`start` all stay CONSTANT while content scrolls, so
+   * `sameMeta` cannot see the move — only the absolute-id identity compare
+   * can. If that compare ever went away, a saturated buffer would publish a
+   * stale window forever.
+   */
+  it("still detects a shift once the scrollback window is saturated", async () => {
+    const pty = makePty() // rows 10 + scrollback 20 -> saturates at 30 lines
+    const text = (rows: readonly TerminalRow[]) => rows.map((r) => r.map((c) => c.text).join("")).join("\n")
+
+    for (let i = 0; i < 60; i++) pty.pump(`line-${i}\r\n`)
+    await settle()
+    const saturated = pty.capture()
+    expect(text(saturated)).toContain("line-59")
+    const topBefore = text(saturated).split("\n")[0]
+
+    // A sync-marked frame, which is what forces dirty={kind:"all"} — exactly
+    // the case the fast path short-circuits.
+    pty.pump("\x1b[?2026hline-60\r\n\x1b[?2026l")
+    await settle()
+
+    const shifted = pty.capture()
+    expect(shifted).not.toBe(saturated)
+    expect(text(shifted)).toContain("line-60")
+    expect(text(shifted).split("\n")[0]).not.toBe(topBefore)
+    pty.kill()
+  })
+
   it("publishes real text changes exactly once", async () => {
     const pty = makePty()
     const onData = vi.fn<(rows: readonly TerminalRow[], cursor: CursorPos | null) => void>()
