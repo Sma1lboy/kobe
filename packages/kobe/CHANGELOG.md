@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.16
+
+### Patch Changes
+
+- 1bea659: Let the visible ChatTab accept dragged image and PDF paths while Sidebar or Files retains keyboard focus, without submitting the prompt or stealing focus.
+
 ## 0.8.15
 
 ### Patch Changes
