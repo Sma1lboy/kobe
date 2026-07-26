@@ -67,16 +67,17 @@ describe("resolveNodePtyHostSpawn", () => {
     const spawn = await resolveNodePtyHostSpawn(
       win({
         exists: diskWith(NODE, ENTRY),
-        bundle: async (entry, outDir) => {
-          seen.push([norm(entry), norm(outDir)])
+        bundle: async (entry, outFile) => {
+          seen.push([norm(entry), norm(outFile)])
           return { success: true, logs: [] }
         },
       }),
     )
     expect(norm(spawn?.[1] ?? "")).toBe(CACHE)
-    // The cache MUST stay inside the daemon package: the bundle imports
-    // node-pty externally, so it resolves against that package's node_modules.
-    expect(seen).toEqual([[ENTRY, "/pkg/.cache"]])
+    // The bundler is asked for the exact file that gets spawned, and the cache
+    // MUST stay inside the daemon package: the bundle imports node-pty
+    // externally, so it resolves against that package's node_modules.
+    expect(seen).toEqual([[ENTRY, CACHE]])
   })
 
   test("names both candidates when neither the bundle nor the source entry exists", async () => {

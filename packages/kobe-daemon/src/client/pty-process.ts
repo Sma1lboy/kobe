@@ -7,7 +7,8 @@
  */
 
 import { existsSync } from "node:fs"
-import { delimiter, dirname, join, resolve } from "node:path"
+import { rename, rm } from "node:fs/promises"
+import { basename, delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultPtyHostLogPath, defaultPtyHostPidPath, defaultPtyHostSocketPath } from "../daemon/paths.ts"
@@ -30,8 +31,9 @@ export interface NodePtyHostResolution {
   readonly moduleDir?: string
   readonly exists?: (path: string) => boolean
   readonly env?: Readonly<Record<string, string | undefined>>
-  /** Bundles the dev entry. Injected to keep the unit test off the bundler. */
-  readonly bundle?: (entry: string, outDir: string) => Promise<{ success: boolean; logs: readonly unknown[] }>
+  /** Lands a node bundle of `entry` at `outFile`. Injected to keep the unit
+   *  test off the bundler; landing it atomically is the impl's business. */
+  readonly bundle?: (entry: string, outFile: string) => Promise<{ success: boolean; logs: readonly unknown[] }>
 }
 
 /**
@@ -63,15 +65,27 @@ export function resolveNodeBinary(
   return null
 }
 
-function bundleWithBun(entry: string, outDir: string) {
-  return Bun.build({
+async function bundleWithBun(entry: string, outFile: string) {
+  // Build to a pid-unique sibling, then rename into place. Two kobe instances
+  // can reach this together — both find no host, both rebuild the same
+  // absolute path — and node must never load a half-written module. rename is
+  // atomic on one volume, and node's Windows rename replaces the destination
+  // rather than failing on it.
+  const staging = `${outFile}.${process.pid}.tmp`
+  const built = await Bun.build({
     entrypoints: [entry],
-    outdir: outDir,
+    outdir: dirname(staging),
     target: "node",
     format: "esm",
-    naming: PTY_HOST_NODE_BUNDLE,
+    naming: basename(staging),
     external: ["node-pty"],
   })
+  if (!built.success) {
+    await rm(staging, { force: true }).catch(() => {})
+    return built
+  }
+  await rename(staging, outFile)
+  return built
 }
 
 /**
@@ -109,7 +123,7 @@ export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}):
     throw new Error(`kobe: no Windows PTY host found (looked for ${packaged} and ${entry})`)
   }
   const cache = resolve(here, PTY_HOST_NODE_DEV_CACHE)
-  const built = await bundle(entry, dirname(cache))
+  const built = await bundle(entry, cache)
   if (!built.success) {
     throw new Error(`kobe: could not build the Windows PTY host — ${built.logs.map(String).join("; ")}`)
   }
