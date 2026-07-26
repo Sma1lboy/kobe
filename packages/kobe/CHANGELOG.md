@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.18
+
+### Patch Changes
+
+- 597da5b: 引擎选择弹窗（ctrl+e 新建标签页）支持 `h`/`l` 左右切换，与 `←`/`→` 等价；提示文案同步更新。
+- 424da70: Inbox now doubles as a recent-tasks switcher: pending attention episodes stay on top (ATTENTION), followed by a RECENT section listing the tasks you last touched. Enter opens either — an episode lands on its tab and resolves, a recent row just selects the task. Tasks with a pending episode and the task you're already on are not repeated in RECENT.
+- 27eeacf: Inbox RECENT is now ordered by where you actually were, not by what changed: landing on a tab records a visit (one entry per task, remembering the tab), and the section sorts by that log — a background mutation like a PR-status refresh no longer reshuffles it. Opening a recent row returns you to the tab you left, and a row whose engine is still working shows a quiet running pulse.
+
 ## 0.8.17
 
 ### Patch Changes
