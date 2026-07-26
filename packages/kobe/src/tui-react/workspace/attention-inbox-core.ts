@@ -2,6 +2,7 @@ import { attentionInboxItemKey } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { AttentionInboxItem } from "../../client/remote-orchestrator"
 import { compareRecent } from "../../tui/panes/sidebar/groups"
 import type { Task } from "../../types/task"
+import { type InboxVisit, inboxVisitIndex } from "./inbox-visits"
 
 export const attentionInboxKey = attentionInboxItemKey
 
@@ -75,28 +76,51 @@ export const INBOX_RECENT_LIMIT = 5
 export type InboxRow =
   | { readonly kind: "header"; readonly id: string; readonly section: "attention" | "recent" }
   | { readonly kind: "attention"; readonly id: string; readonly item: AttentionInboxItem }
-  | { readonly kind: "recent"; readonly id: string; readonly task: Task }
+  | {
+      readonly kind: "recent"
+      readonly id: string
+      readonly task: Task
+      /** The tab you were last on in this task, when one was recorded. */
+      readonly tabId: string | null
+      /** Last visit time, or the task's own mtime when never visited. */
+      readonly at: number
+    }
 
 /**
  * The Inbox reads as ONE list with two sections: every pending episode
  * (unread by definition — opening one removes it) sits on top, oldest
  * first so the queue drains top-down, then the tasks you most recently
- * touched. A task with a pending episode is not repeated below; neither
+ * VISITED. A task with a pending episode is not repeated below; neither
  * is the task you're already on.
+ *
+ * Visit order comes from the log (`inbox-visits.ts`), not `updatedAt` —
+ * "where was I" is not "what changed". Never-visited tasks still appear,
+ * ranked below every visited one by their own mtime, so a fresh install
+ * has a useful RECENT section before the log fills up.
  */
 export function inboxRows(
   items: readonly AttentionInboxItem[],
   tasks: readonly Task[],
-  options: { selectedId?: string | null; recentLimit?: number } = {},
+  options: {
+    selectedId?: string | null
+    recentLimit?: number
+    visits?: readonly InboxVisit[]
+  } = {},
 ): InboxRow[] {
   const attention = sortAttentionInbox(
     items,
     tasks.map((task) => task.id),
   )
   const pending = new Set(attention.map((item) => item.taskId))
+  const visited = inboxVisitIndex(options.visits ?? [])
+  const visitRank = new Map([...visited.keys()].map((taskId, index) => [taskId, index]))
   const recent = tasks
     .filter((task) => !task.archived && !pending.has(task.id) && task.id !== options.selectedId)
-    .sort(compareRecent)
+    .sort((a, b) => {
+      const rankA = visitRank.get(a.id) ?? Number.MAX_SAFE_INTEGER
+      const rankB = visitRank.get(b.id) ?? Number.MAX_SAFE_INTEGER
+      return rankA === rankB ? compareRecent(a, b) : rankA - rankB
+    })
     .slice(0, options.recentLimit ?? INBOX_RECENT_LIMIT)
   const rows: InboxRow[] = []
   if (attention.length > 0) {
@@ -105,9 +129,23 @@ export function inboxRows(
   }
   if (recent.length > 0) {
     rows.push({ kind: "header", id: "header:recent", section: "recent" })
-    for (const task of recent) rows.push({ kind: "recent", id: `r:${task.id}`, task })
+    for (const task of recent) {
+      const visit = visited.get(task.id)
+      rows.push({
+        kind: "recent",
+        id: `r:${task.id}`,
+        task,
+        tabId: visit?.tabId ?? null,
+        at: visit?.at ?? taskMtime(task),
+      })
+    }
   }
   return rows
+}
+
+function taskMtime(task: Task): number {
+  const parsed = Date.parse(task.updatedAt || task.createdAt)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 /** Cursor movement that steps over section headers, wrapping both ways. */

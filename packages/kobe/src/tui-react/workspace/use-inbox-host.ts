@@ -14,6 +14,7 @@ import {
 } from "./attention-inbox-core"
 import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
+import { writeInboxVisit } from "./inbox-visits"
 import { activeTabIdFor, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
 
 function episodeKey(item: AttentionInboxItem): string {
@@ -83,10 +84,11 @@ export function useInboxHost(args: {
     args.focusWorkspace()
   }
 
-  /** RECENT rows carry no episode — just land on the task. */
-  function openTask(taskId: string): void {
+  /** RECENT rows carry no episode — land on the task and its last tab. */
+  function openTask(taskId: string, tabId: string | null): void {
     if (args.dialog.stack.length > 0) args.dialog.clear({ refocus: false })
     args.selectTask(taskId)
+    if (tabId) requestTabActivation(taskId, tabId)
     args.focusWorkspace()
   }
 
@@ -125,8 +127,15 @@ export function useInboxHost(args: {
     [orch],
   )
 
+  /**
+   * One landing = two records: the episode it resolves, and the visit that
+   * feeds the Inbox's RECENT order. Recording HERE (rather than off task
+   * selection) is what makes RECENT tab-accurate — you come back to the tab
+   * you left, not to the task's default one.
+   */
   function resolveVisited(taskId: string, tabId: string): void {
     resolveEpisodes(availableItemsRef.current, { taskId, tabId })
+    writeInboxVisit(args.kv, { taskId, tabId, at: Date.now() })
   }
 
   // Resolve episodes that arrive while their target is already visible. The

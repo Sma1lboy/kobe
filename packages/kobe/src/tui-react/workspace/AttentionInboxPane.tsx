@@ -2,9 +2,12 @@
 
 import { type RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
-import { useEffect, useMemo, useState } from "react"
-import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import type { AttentionInboxItem, RemoteOrchestrator, TaskEngineState } from "../../client/remote-orchestrator"
+import { engineEntry } from "../../engine/registry"
+import { DEFAULT_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../engine/spinner-frames"
 import { relativeAgeMs } from "../../tui/history/message-core"
+import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../tui/lib/spinner-frame-store"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
@@ -25,6 +28,7 @@ import {
   nextSelectableRow,
   partitionAttentionInboxAvailability,
 } from "./attention-inbox-core"
+import { readInboxVisits } from "./inbox-visits"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_VISIBLE_CARDS = 6
@@ -53,6 +57,12 @@ function itemStateKey(state: AttentionInboxItem["state"]): string {
   return "workspace.inbox.state.error"
 }
 
+/** Engine-registry tab title for a (task, tab) pair — "" when unknown. */
+function taskTabLabel(taskId: string, tabId: string | null, task: Task | undefined, kv: KVContext): string {
+  const tab = tabId ? knownTaskTab(kv, taskId, tabId) : undefined
+  return tab ? tabTitle(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : (tabId ?? "")
+}
+
 function tabLabel(
   item: AttentionInboxItem,
   task: Task | undefined,
@@ -60,9 +70,47 @@ function tabLabel(
 ): { label: string; available: boolean } {
   const tab = item.tabId ? knownTaskTab(kv, item.taskId, item.tabId) : undefined
   return {
-    label: tab ? tabTitle(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : (item.tabId ?? ""),
+    label: taskTabLabel(item.taskId, item.tabId, task, kv),
     available: isAttentionInboxItemAvailable(item, task, () => tab !== undefined),
   }
+}
+
+/**
+ * The only badge a RECENT row carries: is this task's engine still working?
+ * Every OTHER activity state (done / error / needs input / rate limited)
+ * already surfaced as an episode, so that task is sitting in ATTENTION
+ * above — running is the one thing this section can tell you that the
+ * queue can't. Frames are engine-owned (vendor registry), motion respects
+ * the reduced-motion preference.
+ */
+function runningBadge(opts: {
+  activity: TaskEngineState | undefined
+  task: Task
+  frame: number
+  reducedMotion: boolean
+  theme: ReturnType<typeof useTheme>["theme"]
+  t: ReturnType<typeof useT>
+}): { glyph: string; label: string; color: RGBA } | undefined {
+  if (opts.activity?.state !== "running") return undefined
+  const frames = opts.reducedMotion
+    ? REDUCED_MOTION_SPINNER_FRAMES
+    : (engineEntry(opts.task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES)
+  return {
+    glyph: frames[opts.frame % frames.length] ?? frames[0] ?? "⠋",
+    label: opts.t("workspace.inbox.state.running"),
+    color: opts.theme.textMuted,
+  }
+}
+
+const NOOP_SUBSCRIBE = () => () => {}
+const ZERO_FRAME = () => 0
+
+/** Shared 10Hz pulse, subscribed only while a row actually animates. */
+function useSpinnerFrame(active: boolean): number {
+  return useSyncExternalStore(
+    active ? subscribeSpinnerFrame : NOOP_SUBSCRIBE,
+    active ? spinnerFrameSnapshot : ZERO_FRAME,
+  )
 }
 
 /**
@@ -139,12 +187,13 @@ export function AttentionInboxPane(props: {
   tasks: readonly Task[]
   kv: KVContext
   selectedId?: string | null
+  engineStates?: ReadonlyMap<string, TaskEngineState>
   onOpen: (item: AttentionInboxItem, available: boolean) => void
-  onOpenTask: (taskId: string) => void
+  onOpenTask: (taskId: string, tabId: string | null) => void
   onDelete: (item: AttentionInboxItem) => void
   onClose: () => void
 }) {
-  const { theme } = useTheme()
+  const { theme, reducedMotion } = useTheme()
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
@@ -163,11 +212,20 @@ export function AttentionInboxPane(props: {
   // set and always leads; recent tasks trail it. Unavailable targets are
   // hidden synchronously; the always-mounted Workspace host dismisses them
   // in the background so stale rows never flash onscreen.
+  // RECENT is ordered by the visit log, not `updatedAt` — see inbox-visits.
+  // Parsing yields a fresh array, and the KV context identity only changes
+  // on a real write — memoizing on it keeps `rows` stable across the 10Hz
+  // spinner tick.
+  const visits = useMemo(() => readInboxVisits(props.kv), [props.kv])
   const rows = useMemo(
-    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId }),
-    [availableItems, props.tasks, props.selectedId],
+    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId, visits }),
+    [availableItems, props.tasks, props.selectedId, visits],
   )
   const attentionCount = rows.filter((row) => row.kind === "attention").length
+  const anyRunning = rows.some(
+    (row) => row.kind === "recent" && props.engineStates?.get(row.task.id)?.state === "running",
+  )
+  const spinnerFrame = useSpinnerFrame(anyRunning && !reducedMotion)
   // ponytail: headers are one line, cards three — the window budgets every
   // row as a card. Conservative by a couple of rows, never overflows.
   const maxVisibleCards = Math.max(
@@ -199,7 +257,7 @@ export function AttentionInboxPane(props: {
 
   function open(row: InboxRow): void {
     if (row.kind === "recent") {
-      props.onOpenTask(row.task.id)
+      props.onOpenTask(row.task.id, row.tabId)
       return
     }
     if (row.kind !== "attention") return
@@ -262,12 +320,23 @@ export function AttentionInboxPane(props: {
               // A `main` task IS its repo — the sidebar shows the basename
               // instead of the stored title, so the Inbox matches.
               const title = row.task.kind === "main" ? project : row.task.title
+              const tab = taskTabLabel(row.task.id, row.tabId, row.task, props.kv)
+              // Same identity grammar as an episode row: `project › tab`
+              // once we know which tab you were last on, task title below.
               return (
                 <InboxCard
                   key={row.id}
-                  identity={title === project ? project : `${project} › ${title}`}
-                  subtitle={row.task.branch || row.task.repo}
-                  age={relativeAgeMs(Date.parse(row.task.updatedAt || row.task.createdAt) || now, now)}
+                  identity={tab ? `${project} › ${tab}` : title === project ? project : `${project} › ${title}`}
+                  subtitle={title}
+                  badge={runningBadge({
+                    activity: props.engineStates?.get(row.task.id),
+                    task: row.task,
+                    frame: spinnerFrame,
+                    reducedMotion,
+                    theme,
+                    t,
+                  })}
+                  age={relativeAgeMs(row.at, now)}
                   active={active}
                   onOpen={openRow}
                 />
@@ -317,7 +386,7 @@ export type AttentionInboxDialogProps = {
   orchestrator: RemoteOrchestrator
   selectedId?: string | null
   onOpen: (item: AttentionInboxItem, available: boolean) => void
-  onOpenTask: (taskId: string) => void
+  onOpenTask: (taskId: string, tabId: string | null) => void
   onDelete: (item: AttentionInboxItem) => void
 }
 
@@ -326,12 +395,14 @@ export function AttentionInboxDialog(props: AttentionInboxDialogProps) {
   const kv = useKV()
   const items = useAccessor(props.orchestrator.attentionInboxSignal())
   const tasks = useAccessor(props.orchestrator.tasksSignal())
+  const engineStates = useAccessor(props.orchestrator.engineStateSignal())
   return (
     <AttentionInboxPane
       items={items}
       tasks={tasks}
       kv={kv}
       selectedId={props.selectedId}
+      engineStates={engineStates}
       onOpen={props.onOpen}
       onOpenTask={props.onOpenTask}
       onDelete={props.onDelete}
