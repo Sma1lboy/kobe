@@ -31,6 +31,18 @@ function windowsBashCandidates(env) {
 /** Named in the spawn error when Git for Windows is missing entirely. */
 const WINDOWS_BASH_FALLBACK = "C:\\Program Files\\Git\\bin\\bash.exe"
 
+/**
+ * Can the Windows process API spawn this argv0? Only a drive-absolute or UNC
+ * path qualifies. A `$SHELL` inherited from a Git Bash parent is an MSYS path
+ * (`/usr/bin/bash`) that CreateProcess cannot resolve — and asking the
+ * filesystem is not enough to rule it out, because on a POSIX host that path
+ * genuinely exists and on Windows it would silently resolve against the
+ * current drive.
+ */
+function isWindowsSpawnable(shellPath) {
+  return /^[A-Za-z]:[\\/]/.test(shellPath) || shellPath.startsWith("\\\\")
+}
+
 /** @type {Map<string, string>} */
 const cache = new Map()
 
@@ -41,33 +53,35 @@ const cache = new Map()
  * @param {string} [options.fallback] Shell to use on POSIX when `$SHELL` is unset.
  * @param {NodeJS.Platform} [options.platform]
  * @param {Readonly<Record<string, string | undefined>>} [options.env]
+ * @param {(path: string) => boolean} [options.exists] Filesystem probe; injected by tests
+ *   so a `platform: "win32"` resolution does not consult the host's real disk.
  * @returns {string}
  */
 export function resolveLoginShell(options = {}) {
   const fallback = options.fallback ?? "/bin/bash"
   const platform = options.platform ?? process.platform
   const env = options.env ?? process.env
-  // Only the ambient (real platform + real env) answer is cacheable; the
-  // injected forms exist for tests and must stay honest.
-  const cacheable = platform === process.platform && env === process.env
+  const exists = options.exists ?? existsSync
+  // Only the fully ambient answer is cacheable; every injected form exists for
+  // tests and must stay honest.
+  const cacheable = platform === process.platform && env === process.env && options.exists === undefined
   if (cacheable) {
     const hit = cache.get(fallback)
     if (hit) return hit
   }
-  const resolved = resolveUncached(fallback, platform, env)
+  const resolved = resolveUncached(fallback, platform, env, exists)
   if (cacheable) cache.set(fallback, resolved)
   return resolved
 }
 
-function resolveUncached(fallback, platform, env) {
+function resolveUncached(fallback, platform, env, exists) {
   const explicit = env.SHELL?.trim()
   if (platform !== "win32") return explicit || fallback
-  // A SHELL inherited from a Git Bash parent is an MSYS path (`/usr/bin/bash`)
-  // that the Windows process API cannot spawn, so only honour one the Windows
-  // filesystem can actually see.
-  if (explicit && existsSync(explicit)) return explicit
+  // Honour an explicit SHELL only when it is BOTH shaped like something
+  // CreateProcess can launch and actually present.
+  if (explicit && isWindowsSpawnable(explicit) && exists(explicit)) return explicit
   for (const candidate of windowsBashCandidates(env)) {
-    if (existsSync(candidate)) return candidate
+    if (exists(candidate)) return candidate
   }
   // Deliberately NOT bare `bash.exe`: System32\bash.exe is the WSL launcher,
   // which would drop the session into a Linux filesystem that cannot see the
