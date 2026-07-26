@@ -1,4 +1,5 @@
 import { parse } from "@ansi-tools/parser"
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { Chunk } from "./sgr"
 
 /** One rendered row: a list of opentui-ready style runs. */
@@ -172,7 +173,7 @@ export const DEFAULT_ROWS = 24
 export const PIPE_SCROLLBACK_LIMIT = 200_000
 
 export function defaultShell(): string {
-  return process.env.SHELL ?? "/bin/bash"
+  return resolveLoginShell()
 }
 
 /**

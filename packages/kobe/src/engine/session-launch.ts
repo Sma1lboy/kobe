@@ -1,3 +1,4 @@
+import { toPosixPath } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { worktreeInitMarkerPath } from "../env.ts"
 import { quoteShellArg, quoteShellArgv } from "../lib/shell-command.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
@@ -67,7 +68,9 @@ export function engineLaunchLine(engineCommand: string, init?: EngineInitLaunch)
   const script = init?.initScript?.trim()
   if (!script) return tail
   const group = boundedInitGroup(script, resolveRepoInitTimeoutSeconds(init?.timeoutSeconds))
-  const markerPath = init?.markerPath
+  // The marker is interpolated INTO the script, so it must be in the form the
+  // shell reads paths in — Git Bash rejects a backslash path in `[ -f ]`.
+  const markerPath = init?.markerPath && toPosixPath(init.markerPath)
   if (!markerPath) return SIGINT_GUARD + [group, tail].join("\n")
   const marker = quoteShellArg(markerPath)
   const markerDir = quoteShellArg(markerDirOf(markerPath))

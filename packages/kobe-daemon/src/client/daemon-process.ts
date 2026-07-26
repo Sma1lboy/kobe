@@ -41,7 +41,15 @@ export function spawnDetachedDaemon(
   } catch {
     stdio = "ignore"
   }
-  const child = spawn(command, [...args], { detached: true, stdio, env })
+  // On Windows `detached: true` means DETACHED_PROCESS: the child gets its OWN
+  // console, which the OS renders as a stray terminal window next to the TUI,
+  // retitling itself after whatever the hosted PTY happens to be running. libuv
+  // gives DETACHED_PROCESS precedence over CREATE_NO_WINDOW, so `windowsHide`
+  // cannot suppress it — the flag itself has to go. Nothing is lost: `detached`
+  // only buys POSIX setsid, and an unref'd Windows child already outlives its
+  // parent. POSIX keeps detaching exactly as before.
+  const detach = process.platform === "win32" ? { windowsHide: true } : { detached: true }
+  const child = spawn(command, [...args], { ...detach, stdio, env })
   child.unref()
   if (logFd !== undefined) {
     try {

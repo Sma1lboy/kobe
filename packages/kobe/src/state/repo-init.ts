@@ -57,7 +57,11 @@ const INIT_PROMPT_REL = join(".kobe", "init-prompt.md")
 function repoFileScript(worktreePath: string): string | undefined {
   // Run the committed file by relative path: cwd is the worktree, so
   // `sh .kobe/init.sh` works even when the file isn't chmod +x.
-  return existsSync(join(worktreePath, INIT_SCRIPT_REL)) ? `sh ${INIT_SCRIPT_REL}` : undefined
+  //
+  // The literal, NOT `INIT_SCRIPT_REL`: this string is read by the shell, and
+  // `join` yields `.kobe\init.sh` on Windows, where bash takes `\i` as an
+  // escape. The `existsSync` probe above keeps using the native separator.
+  return existsSync(join(worktreePath, INIT_SCRIPT_REL)) ? "sh .kobe/init.sh" : undefined
 }
 
 function repoFilePrompt(worktreePath: string): string | undefined {

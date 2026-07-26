@@ -26,6 +26,7 @@
     "./daemon/lifetime": "./src/daemon/lifetime.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
     "./daemon/paths": "./src/daemon/paths.ts",
+    "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/runtime": "./src/daemon/runtime.ts",

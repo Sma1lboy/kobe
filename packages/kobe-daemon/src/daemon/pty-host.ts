@@ -25,6 +25,7 @@
  */
 
 import { StringDecoder } from "node:string_decoder"
+import { resolveLoginShell } from "./platform-shell.js"
 import type { DaemonFrame } from "./protocol.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
@@ -38,7 +39,7 @@ export interface PtySpawnSpec {
   readonly cwd: string
   /** Explicit argv (engine sessions). Falls back to `shell`. */
   readonly command?: readonly string[]
-  /** Shell override; defaults to the daemon's `$SHELL` or /bin/bash. */
+  /** Shell override; defaults to `resolveLoginShell()`. */
   readonly shell?: string
   readonly cols: number
   readonly rows: number
@@ -190,11 +191,6 @@ export class PtyHost {
     }
   }
 
-  /** The bare-shell argv a spec resolves to when it has no command. */
-  private static shellArgv(shell: string | undefined): string {
-    return shell ?? process.env.SHELL ?? "/bin/bash"
-  }
-
   /**
    * Keep one idle shell pre-spawned for `cwd`. A live spare for the same
    * cwd+shell is kept; anything else is replaced (single slot — the most
@@ -202,7 +198,7 @@ export class PtyHost {
    * `onSessionStart` so it never cancels the host's idle-exit.
    */
   warm(cwd: string, shell?: string, cols = 80, rows = 24): void {
-    const argv0 = PtyHost.shellArgv(shell)
+    const argv0 = shell ?? resolveLoginShell()
     if (this.spare?.alive && this.spare.cwd === cwd && this.spare.command[0] === argv0) return
     const old = this.spare
     this.spare = null
@@ -220,7 +216,7 @@ export class PtyHost {
   private adoptSpare(key: string, spec: PtySpawnSpec): PtySessionState | null {
     const spare = this.spare
     if (!spare?.alive || spare.cwd !== spec.cwd) return null
-    const want = spec.command && spec.command.length > 0 ? spec.command : [PtyHost.shellArgv(spec.shell)]
+    const want = spec.command && spec.command.length > 0 ? spec.command : [spec.shell ?? resolveLoginShell()]
     if (want.length !== 1 || want[0] !== spare.command[0]) return null
     this.spare = null
     spare.key = key
@@ -366,7 +362,7 @@ export class PtyHost {
   /** `spare` skips `onSessionStart` — a warm shell must not pin the host
    *  open (its adoption fires the callback instead). */
   private spawn(key: string, spec: PtySpawnSpec, spare = false): PtySessionState {
-    const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [PtyHost.shellArgv(spec.shell)]
+    const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? resolveLoginShell()]
     const session: PtySessionState = {
       key,
       cwd: spec.cwd,
