@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.17
+
+### Patch Changes
+
+- 561e094: Pane focus movement (`prefix+h` / `prefix+l` / `F4`) is now a cursor, not a ring: it clamps at the sidebar and files ends instead of wrapping around.
+- b87f101: Settings → General → Terminal now states what a larger scrollback costs: redraw CPU scales with the setting, and 1000 rows is roughly 2× the cost of 50. The number was previously invisible, so raising it looked free.
+- 108a863: Terminal panes no longer re-verify frozen scrollback on every refresh. Engines that emit synchronized-output frames (DECSET 2026 — both Claude Code and Codex do) force a full-window dirty mark, which made the redraw-dedupe check walk the entire scrollback before reaching the viewport rows that actually changed. It now skips rows the rebuild path already cached under an absolute line id, cutting a streaming redraw from 0.94ms to 0.46ms at the default 1000-row scrollback.
+
 ## 0.8.16
 
 ### Patch Changes
