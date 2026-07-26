@@ -2,7 +2,7 @@
  * PtyHost — daemon-hosted PTY sessions (protocol v4).
  *
  * The tmux-persistence replacement for the embedded terminal: the daemon
- * owns the raw PTY child (`Bun.spawn(..., { terminal })`) plus a capped
+ * owns the raw PTY child (spawned through a `PtyDriver`) plus a capped
  * byte ring buffer per session key, so an engine session keeps running
  * when the TUI exits and replays its screen when a TUI reattaches. VT
  * emulation stays in the TUI (xterm-headless) — this module never parses
@@ -27,6 +27,7 @@
 import { StringDecoder } from "node:string_decoder"
 import { resolveLoginShell } from "./platform-shell.js"
 import type { DaemonFrame } from "./protocol.ts"
+import { type PtyChild, type PtyDriver, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
 
@@ -69,6 +70,8 @@ export interface PtyHostOptions {
   readonly onSessionEnd?: () => void
   /** Ring-buffer cap in bytes per session. Default {@link DEFAULT_SCROLLBACK_CAP}. */
   readonly scrollbackCap?: number
+  /** How children spawn. Default Bun's; the Windows host injects node-pty's. */
+  readonly driver?: PtyDriver
   readonly log?: (event: string, message: string) => void
 }
 
@@ -81,7 +84,7 @@ interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
   key: string
   readonly cwd: string
-  proc: ReturnType<typeof Bun.spawn> | null
+  proc: PtyChild | null
   alive: boolean
   chunks: Buffer[]
   bytes: number
@@ -224,7 +227,7 @@ export class PtyHost {
       spare.cols = spec.cols
       spare.rows = spec.rows
       try {
-        spare.proc?.terminal?.resize(spec.cols, spec.rows)
+        spare.proc?.resize(spec.cols, spec.rows)
       } catch {
         this.markExited(spare)
         return null
@@ -241,7 +244,7 @@ export class PtyHost {
     const session = this.sessions.get(key)
     if (!session?.alive || data.length === 0) return
     try {
-      session.proc?.terminal?.write(data)
+      session.proc?.write(data)
     } catch {
       // A terminal stream error is not proof the subprocess exited. Bun's
       // `proc.exited` promise below is the single source of truth.
@@ -254,7 +257,7 @@ export class PtyHost {
     session.cols = cols
     session.rows = rows
     try {
-      session.proc?.terminal?.resize(cols, rows)
+      session.proc?.resize(cols, rows)
     } catch {
       // See write(): wait for `proc.exited`, not the PTY stream state.
     }
@@ -382,7 +385,8 @@ export class PtyHost {
       parkedScreenBytes: 0,
     }
     try {
-      session.proc = Bun.spawn(argv, {
+      session.proc = (this.opts.driver ?? bunTerminalDriver)({
+        argv,
         cwd: spec.cwd,
         env: embeddedTerminalEnv(process.env, {
           TERM: "xterm-256color",
@@ -391,12 +395,9 @@ export class PtyHost {
           BASH_SILENCE_DEPRECATION_WARNING: "1",
           KOBE_TERMINAL_PTY: "1",
         }),
-        terminal: {
-          cols: spec.cols,
-          rows: spec.rows,
-          name: "xterm-256color",
-          data: (_terminal, data) => this.onData(session, data),
-        },
+        cols: spec.cols,
+        rows: spec.rows,
+        onData: (data) => this.onData(session, data),
       })
       void session.proc.exited.then(
         () => this.markExited(session),
@@ -437,7 +438,7 @@ export class PtyHost {
     if (!session.alive) return
     session.alive = false
     try {
-      session.proc?.terminal?.close()
+      session.proc?.close()
     } catch {
       /* already closed */
     }

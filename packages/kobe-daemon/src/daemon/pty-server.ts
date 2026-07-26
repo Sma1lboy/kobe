@@ -28,8 +28,9 @@ import { StringDecoder } from "node:string_decoder"
 import { ClientWriter } from "./client-writer.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { objectPayload, requireString } from "./handler-validators.ts"
-import { defaultPtyHostPidPath, defaultPtyHostSocketPath } from "./paths.ts"
+import { defaultPtyHostPidPath, defaultPtyHostSocketPath, isWindowsPipePath } from "./paths.ts"
 import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine } from "./protocol.ts"
+import type { PtyDriver } from "./pty-driver.ts"
 import { PtyHost } from "./pty-host.ts"
 
 /**
@@ -52,6 +53,8 @@ export interface PtyHostServerOptions {
   readonly pidPath?: string
   /** Grace before a zero-live-session host exits; `0` uses the default. */
   readonly idleExitMs?: number
+  /** How PTY children get spawned. Defaults to Bun's; the node host passes node-pty's. */
+  readonly driver?: PtyDriver
   /** Called after close() when the host stops itself (idle / daemon.stop). */
   readonly onStop?: () => void
   readonly log?: (event: string, message: string) => void
@@ -100,10 +103,14 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
     onSessionEnd: () => {
       if (ptys.liveCount() === 0) armIdle()
     },
+    driver: options.driver,
     log,
   })
 
-  await mkdir(dirname(socketPath), { recursive: true })
+  // A Windows named pipe lives in the `\\.\pipe` namespace, not the
+  // filesystem — there is no parent directory to create.
+  const pipeSocket = isWindowsPipePath(socketPath)
+  if (!pipeSocket) await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
   // Never unlink before listen: an already-running host keeps its socket
   // alive after unlink, so a second host could bind the same pathname,
@@ -147,7 +154,9 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       await ptys.killAll()
       for (const client of Array.from(clients)) client.socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))
-      await unlink(socketPath).catch(() => {})
+      // A named pipe is reclaimed with its last handle; only a filesystem
+      // socket leaves a node behind to remove.
+      if (!pipeSocket) await unlink(socketPath).catch(() => {})
       await unlink(pidPath).catch(() => {})
     },
   }

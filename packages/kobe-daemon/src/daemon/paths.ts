@@ -124,10 +124,35 @@ export function defaultClientLogPath(homeDir = process.env.KOBE_HOME_DIR ?? home
  * tiny and stable and must keep running. Same resolution/fitting rules
  * as {@link defaultDaemonSocketPath}.
  */
+/**
+ * True for a Windows named pipe pathname. Callers that treat a socket path as
+ * a filesystem entry (mkdir the parent, unlink on shutdown) must skip those
+ * steps for a pipe — `\\.\pipe` is a namespace, not a directory, and the pipe
+ * itself dies with the process that created it.
+ */
+export function isWindowsPipePath(path: string): boolean {
+  return path.startsWith("\\\\.\\pipe\\") || path.startsWith("//./pipe/")
+}
+
+/**
+ * Windows named pipe for a host role.
+ *
+ * The Windows PTY host runs under node rather than Bun (Bun rejects its
+ * `terminal` spawn option there — see pty-driver.ts), and node cannot bind a
+ * filesystem AF_UNIX socket on Windows: `listen()` fails with EACCES. Named
+ * pipes are the platform's equivalent, Bun's client connects to one without
+ * changes, and the wire protocol is untouched — only the pathname differs.
+ * Tagged per home so sandbox and production hosts never collide.
+ */
+export function windowsPipePath(homeDir: string, role: string): string {
+  return `\\\\.\\pipe\\kobe-${shortHomeTag(homeDir)}-${role}`
+}
+
 export function defaultPtyHostSocketPath(homeDir?: string): string {
   const override = process.env.KOBE_PTY_SOCKET_PATH
   if (override && override.length > 0) return override
   const explicit = homeDir ?? process.env.KOBE_HOME_DIR
+  if (process.platform === "win32") return windowsPipePath(explicit || homedir(), "pty")
   if (explicit && explicit.length > 0) {
     return fitSocketPath(join(explicit, ".kobe", "pty.sock"), explicit, "pty")
   }
