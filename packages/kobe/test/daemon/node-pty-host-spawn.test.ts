@@ -12,6 +12,10 @@ const DIR = "/pkg/src/client"
 const PACKAGED = "/pkg/src/client/pty-host-node.mjs"
 const ENTRY = "/pkg/src/daemon/pty-host-node-entry.ts"
 const CACHE = "/pkg/.cache/pty-host-node.mjs"
+// One PATH entry keeps the fixture free of the host's path delimiter.
+const PATH_DIR = "/tools/bin"
+const NODE = "/tools/bin/node.EXE"
+const ENV = { PATH: PATH_DIR, PATHEXT: ".EXE;.CMD" }
 
 /**
  * `node:path` resolves with the HOST's separators, so these assertions must
@@ -28,7 +32,8 @@ const diskWith = (...present: string[]) => {
 const win = (over: NodePtyHostResolution = {}): NodePtyHostResolution => ({
   platform: "win32",
   moduleDir: DIR,
-  exists: diskWith(),
+  env: ENV,
+  exists: diskWith(NODE),
   bundle: async () => ({ success: true, logs: [] }),
   ...over,
 })
@@ -43,14 +48,16 @@ describe("resolveNodePtyHostSpawn", () => {
     let bundled = false
     const spawn = await resolveNodePtyHostSpawn(
       win({
-        exists: diskWith(PACKAGED, ENTRY),
+        exists: diskWith(NODE, PACKAGED, ENTRY),
         bundle: async () => {
           bundled = true
           return { success: true, logs: [] }
         },
       }),
     )
-    expect(spawn?.[0]).toBe("node")
+    // An absolute node, not the bare name: the detached child must not depend
+    // on how PATH looks by the time it starts.
+    expect(norm(spawn?.[0] ?? "")).toBe(NODE)
     expect(norm(spawn?.[1] ?? "")).toBe(PACKAGED)
     expect(bundled).toBe(false)
   })
@@ -59,7 +66,7 @@ describe("resolveNodePtyHostSpawn", () => {
     const seen: Array<[string, string]> = []
     const spawn = await resolveNodePtyHostSpawn(
       win({
-        exists: diskWith(ENTRY),
+        exists: diskWith(NODE, ENTRY),
         bundle: async (entry, outDir) => {
           seen.push([norm(entry), norm(outDir)])
           return { success: true, logs: [] }
@@ -80,9 +87,24 @@ describe("resolveNodePtyHostSpawn", () => {
   test("surfaces bundler logs instead of returning a path to a file that was never written", async () => {
     await expect(
       resolveNodePtyHostSpawn(
-        win({ exists: diskWith(ENTRY), bundle: async () => ({ success: false, logs: ["boom"] }) }),
+        win({ exists: diskWith(NODE, ENTRY), bundle: async () => ({ success: false, logs: ["boom"] }) }),
       ),
     ).rejects.toThrow(/could not build the Windows PTY host — boom/)
+  })
+
+  test("says node is missing rather than letting the spawn fail into a 5s timeout", async () => {
+    // `bun install -g @sma1lboy/kobe` never brings node along, and without
+    // this the only symptom is a pty host that never answers.
+    await expect(resolveNodePtyHostSpawn(win({ exists: diskWith(PACKAGED, ENTRY) }))).rejects.toThrow(
+      /no node was found on PATH/,
+    )
+  })
+
+  test("accepts a shim that only exists under a later PATHEXT entry", async () => {
+    // Volta/fnm publish node.cmd, not node.exe.
+    const shim = `${PATH_DIR}/node.CMD`
+    const spawn = await resolveNodePtyHostSpawn(win({ exists: diskWith(shim, PACKAGED) }))
+    expect(norm(spawn?.[0] ?? "")).toBe(shim)
   })
 })
 

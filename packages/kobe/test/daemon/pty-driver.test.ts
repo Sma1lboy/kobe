@@ -62,6 +62,24 @@ describe("PtyHost driver seam", () => {
     })
   })
 
+  test("a child that exits on its own releases the pty handle and tells every sink", async () => {
+    const rec = recordingDriver()
+    const host = new PtyHost({ driver: rec.driver })
+    const frames: Array<{ name?: string; payload?: unknown }> = []
+    host.open("t::tab-1", { cwd: "/wt", command: ["bash"], cols: 80, rows: 24 }, {}, (frame) => frames.push(frame))
+    expect(host.liveCount()).toBe(1)
+
+    rec.settleExit()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(host.liveCount()).toBe(0)
+    // close() is the driver's "release the handle" hook — skipping it leaks a
+    // ConPTY pseudoconsole per session on Windows.
+    expect(rec.calls).toContain("close")
+    expect(frames).toContainEqual({ type: "event", name: "pty.exit", payload: { key: "t::tab-1", pid: 4242 } })
+  })
+
   test("a driver that throws leaves a dead session instead of taking the host down", () => {
     const host = new PtyHost({
       driver: () => {

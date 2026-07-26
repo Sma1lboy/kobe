@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { resolveNodeBinary } from "@sma1lboy/kobe-daemon/client/pty-process"
 import {
   defaultDaemonLogPath,
   defaultDaemonPidPath,
@@ -243,6 +244,17 @@ async function collectDoctorLines(): Promise<string[]> {
     }
   } else {
     await appendUnavailableProcess(out, "pty host", defaultPtyHostPidPath(), ptySocket)
+  }
+  // Windows runs the PTY host under node (Bun has no PTY there). A kobe
+  // installed with `bun install -g` may have no node at all, and the only
+  // symptom is a host that never comes up — say so here instead.
+  if (process.platform === "win32") {
+    const node = resolveNodeBinary()
+    out.push(
+      node
+        ? `         node: ✓ ${node} (the Windows PTY host runs under it)`
+        : "         node: ✗ not found on PATH — the Windows PTY host cannot start\n         → install Node.js from https://nodejs.org",
+    )
   }
   out.push("")
 

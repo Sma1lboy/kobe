@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { dirname, resolve } from "node:path"
+import { delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultPtyHostLogPath, defaultPtyHostPidPath, defaultPtyHostSocketPath } from "../daemon/paths.ts"
@@ -29,8 +29,38 @@ export interface NodePtyHostResolution {
   /** Directory this module resolves its siblings against. */
   readonly moduleDir?: string
   readonly exists?: (path: string) => boolean
+  readonly env?: Readonly<Record<string, string | undefined>>
   /** Bundles the dev entry. Injected to keep the unit test off the bundler. */
   readonly bundle?: (entry: string, outDir: string) => Promise<{ success: boolean; logs: readonly unknown[] }>
+}
+
+/**
+ * Locate `node` on PATH, returning its absolute path.
+ *
+ * The Windows PTY host is a node program, but kobe itself runs under Bun — and
+ * `bun install -g @sma1lboy/kobe` never brings node along. Without this the
+ * spawn fails silently into the host's log and `ensurePtyHostReachable` only
+ * reports a 5s timeout, which says nothing about the actual cause. Resolving
+ * to an absolute path also stops the detached child from depending on however
+ * PATH looks by the time it starts.
+ */
+export function resolveNodeBinary(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  exists: (path: string) => boolean = existsSync,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const dirs = (env.PATH ?? env.Path ?? "").split(delimiter).filter((dir) => dir.length > 0)
+  // PATHEXT is what makes a bare `node` runnable on Windows; node.exe is the
+  // real one, but a Volta/fnm shim may only put node.cmd on PATH.
+  const suffixes =
+    platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter((ext) => ext.length > 0) : [""]
+  for (const dir of dirs) {
+    for (const suffix of suffixes) {
+      const candidate = join(dir, `node${suffix}`)
+      if (exists(candidate)) return candidate
+    }
+  }
+  return null
 }
 
 function bundleWithBun(entry: string, outDir: string) {
@@ -63,8 +93,16 @@ export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}):
   const exists = deps.exists ?? existsSync
   const bundle = deps.bundle ?? bundleWithBun
 
+  const node = resolveNodeBinary(deps.env ?? process.env, exists, platform)
+  if (!node) {
+    throw new Error(
+      "kobe: the Windows PTY host runs under node, but no node was found on PATH. " +
+        "Install Node.js (https://nodejs.org) and restart kobe — engine and terminal sessions cannot start without it.",
+    )
+  }
+
   const packaged = resolve(here, PTY_HOST_NODE_BUNDLE)
-  if (exists(packaged)) return ["node", packaged]
+  if (exists(packaged)) return [node, packaged]
 
   const entry = resolve(here, PTY_HOST_NODE_ENTRY)
   if (!exists(entry)) {
@@ -75,7 +113,7 @@ export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}):
   if (!built.success) {
     throw new Error(`kobe: could not build the Windows PTY host — ${built.logs.map(String).join("; ")}`)
   }
-  return ["node", cache]
+  return [node, cache]
 }
 
 /**

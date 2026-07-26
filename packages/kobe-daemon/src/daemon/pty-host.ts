@@ -80,6 +80,23 @@ export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
 /** Let a cooperative terminal child shut down before escalating to SIGKILL. */
 const TERMINATION_GRACE_MS = 500
 
+/** True if `exited` settled inside `ms`; false on timeout. Rejection counts as
+ *  settled — an exit is an exit however the runtime reports it. */
+async function settledWithin(exited: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const settled = await Promise.race([
+    exited.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), ms)
+    }),
+  ])
+  if (timer) clearTimeout(timer)
+  return settled
+}
+
 interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
   key: string
@@ -460,22 +477,15 @@ export class PtyHost {
       return
     }
     this.signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const exited = await Promise.race([
-      proc.exited.then(
-        () => true,
-        () => true,
-      ),
-      new Promise<false>((resolve) => {
-        timer = setTimeout(() => resolve(false), TERMINATION_GRACE_MS)
-      }),
-    ])
-    if (timer) clearTimeout(timer)
-    if (!exited) this.signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
-    try {
-      await proc.exited
-    } catch {
-      /* process exit remains the lifecycle boundary even on a runtime error */
+    if (!(await settledWithin(proc.exited, TERMINATION_GRACE_MS))) {
+      this.signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
+      // BOUNDED on purpose. Bun's `proc.exited` always settles, so an
+      // unbounded await was safe; the node-pty driver's resolves only when
+      // ConPTY delivers onExit, and a wedged one would hang killAll() — and
+      // with it the host's shutdown and `kobe reset`. A child that outlives
+      // SIGKILL is already beyond this process's reach; reporting the session
+      // dead is strictly better than never returning.
+      await settledWithin(proc.exited, TERMINATION_GRACE_MS)
     }
     this.markExited(session)
   }
