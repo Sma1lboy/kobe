@@ -85,15 +85,43 @@ export function defaultEngineCommand(vendor: VendorId | undefined): readonly str
 
 /**
  * Split a command string into argv, honouring single/double quotes so a
- * flag value with a space survives (`claude --append-system-prompt "be
- * terse"`). Whitespace-separated otherwise. Returns `[]` for blank input.
+ * flag value with a space survives — in BOTH the separated form
+ * (`claude --append-system-prompt "be terse"`) and the attached form
+ * (`claude --append-system-prompt="be terse"`, the common CLI idiom).
+ * Whitespace-separated otherwise. A quote may open anywhere in a token and
+ * its content concatenates with the surrounding unquoted text, matching a
+ * shell's word-splitting; the other quote kind is literal inside a quoted
+ * span (`--x='a "b" c'` → `--x=a "b" c`). An unterminated quote runs to the
+ * end of the string. Pure, total, never throws. Returns `[]` for blank input.
  */
 export function parseEngineCommand(command: string): string[] {
   const out: string[] = []
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g
-  for (let m = re.exec(command); m !== null; m = re.exec(command)) {
-    out.push(m[1] ?? m[2] ?? m[3] ?? "")
+  let token = ""
+  let hasToken = false // distinguishes an empty quoted arg ("") from no arg
+  let quote: '"' | "'" | null = null
+  for (const ch of command) {
+    if (quote) {
+      if (ch === quote) quote = null
+      else token += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      hasToken = true
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (hasToken) {
+        out.push(token)
+        token = ""
+        hasToken = false
+      }
+      continue
+    }
+    token += ch
+    hasToken = true
   }
+  if (hasToken) out.push(token)
   return out
 }
 

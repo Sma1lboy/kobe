@@ -24,6 +24,28 @@ describe("parseEngineCommand", () => {
     expect(parseEngineCommand("codex --x 'a b c'")).toEqual(["codex", "--x", "a b c"])
   })
 
+  it('keeps a quote attached to a flag (--flag="value with spaces") as one element', () => {
+    // The common CLI idiom: a quote opens mid-token and concatenates with the
+    // `--flag=` prefix rather than starting a fresh, mis-split argv element.
+    expect(parseEngineCommand('claude --append-system-prompt="be terse"')).toEqual([
+      "claude",
+      "--append-system-prompt=be terse",
+    ])
+    expect(parseEngineCommand("codex --x='a b c'")).toEqual(["codex", "--x=a b c"])
+  })
+
+  it("treats the other quote kind as literal inside a quoted span", () => {
+    expect(parseEngineCommand("claude --x='a \"b\" c'")).toEqual(["claude", '--x=a "b" c'])
+  })
+
+  it("concatenates adjacent quoted and unquoted spans within one token", () => {
+    expect(parseEngineCommand('a"b c"d')).toEqual(["ab cd"])
+  })
+
+  it("runs an unterminated quote to the end of the string", () => {
+    expect(parseEngineCommand('claude "be terse')).toEqual(["claude", "be terse"])
+  })
+
   it("collapses extra whitespace and ignores leading/trailing spaces", () => {
     expect(parseEngineCommand("  spaced   out ")).toEqual(["spaced", "out"])
   })
