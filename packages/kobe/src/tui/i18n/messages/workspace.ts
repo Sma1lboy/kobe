@@ -21,6 +21,10 @@ export const en = {
     empty: "No pending attention",
     openHint: "enter open",
     deleteHint: "d delete",
+    section: {
+      attention: "ATTENTION",
+      recent: "RECENT",
+    },
     state: {
       done: "done",
       needsInput: "needs input",
@@ -48,6 +52,10 @@ export const zh: typeof en = {
     empty: "暂无待处理",
     openHint: "enter 打开",
     deleteHint: "d 删除",
+    section: {
+      attention: "待处理",
+      recent: "最近使用",
+    },
     state: {
       done: "完成",
       needsInput: "需要输入",

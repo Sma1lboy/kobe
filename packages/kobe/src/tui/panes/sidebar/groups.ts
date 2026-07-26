@@ -155,7 +155,8 @@ export function buildRows(
   return rows
 }
 
-function compareRecent(a: Task, b: Task): number {
+/** Most-recently-touched first. Shared with the Inbox's RECENT section. */
+export function compareRecent(a: Task, b: Task): number {
   const byTime = taskTime(b) - taskTime(a)
   if (byTime !== 0) return byTime
   return String(b.id).localeCompare(String(a.id))

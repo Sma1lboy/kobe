@@ -83,10 +83,19 @@ export function useInboxHost(args: {
     args.focusWorkspace()
   }
 
+  /** RECENT rows carry no episode — just land on the task. */
+  function openTask(taskId: string): void {
+    if (args.dialog.stack.length > 0) args.dialog.clear({ refocus: false })
+    args.selectTask(taskId)
+    args.focusWorkspace()
+  }
+
   function show(): void {
     AttentionInboxDialog.show(args.dialog, {
       orchestrator: orch,
+      selectedId: args.selectedId,
       onOpen: openItem,
+      onOpenTask: openTask,
       onDelete: (item) =>
         notifyInboxRpcFailure(orch.dismissAttention(item.taskId, item.tabId, item.at), "dismiss", args.notifyError),
     })

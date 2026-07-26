@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 
-import { TextAttributes } from "@opentui/core"
+import { type RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useState } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator } from "../../client/remote-orchestrator"
@@ -18,10 +18,12 @@ import { useAccessor } from "../lib/use-accessor"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
 import {
-  attentionInboxKey,
+  type InboxRow,
+  clampSelectableRow,
+  inboxRows,
   isAttentionInboxItemAvailable,
+  nextSelectableRow,
   partitionAttentionInboxAvailability,
-  sortAttentionInbox,
 } from "./attention-inbox-core"
 import { knownTaskTab } from "./terminal-tabs-shared"
 
@@ -29,7 +31,6 @@ const MAX_VISIBLE_CARDS = 6
 const CARD_ROWS_WITH_GAP = 3
 const DIALOG_CHROME_ROWS = 7
 const AGE_REFRESH_MS = 30_000
-type InboxFilter = "unread" | "all"
 
 function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof useTheme>["theme"]) {
   if (state === "permission_needed") return theme.warning
@@ -64,11 +65,82 @@ function tabLabel(
   }
 }
 
+/**
+ * ONE card grammar for both sections: line 1 is WHERE (`project › tab` for
+ * an episode, `project › task` for a recent task) plus its state badge and
+ * age, line 2 is the context line. The attention badge is the only colored
+ * ink — recent rows stay quiet so pending work still reads first.
+ */
+function InboxCard(props: {
+  identity: string
+  subtitle: string
+  badge?: { glyph: string; label: string; color: RGBA }
+  age: string
+  active: boolean
+  onOpen: () => void
+}) {
+  const { theme } = useTheme()
+  // ONE cursor vocabulary across every navigable list: the shared sidebar
+  // row chrome (▌ marker + row tint). Toast accent bars are a different
+  // semantic (status color) and deliberately don't route through this.
+  const selection = resolveRowSelectionChrome(theme, { cursor: props.active })
+  return (
+    <box
+      flexDirection="row"
+      paddingRight={2}
+      backgroundColor={selection.backgroundColor}
+      onMouseUp={(event: { stopPropagation(): void }) => {
+        event.stopPropagation()
+        props.onOpen()
+      }}
+    >
+      {/* Selection bar — the sidebar's rail language, not a frame. */}
+      <box flexDirection="column" flexShrink={0} paddingRight={1}>
+        <text fg={selection.markerColor} wrapMode="none">
+          {selection.marker}
+        </text>
+        <text fg={selection.markerColor} wrapMode="none">
+          {selection.marker}
+        </text>
+      </box>
+      <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
+        <box flexDirection="row">
+          <text
+            fg={theme.text}
+            attributes={props.active ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            flexBasis={0}
+            flexGrow={1}
+            flexShrink={1}
+          >
+            {props.identity}
+          </text>
+          {props.badge ? (
+            <text fg={props.badge.color} wrapMode="none" flexShrink={0}>
+              {` ${props.badge.glyph} ${props.badge.label}`}
+            </text>
+          ) : null}
+          <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+            {`  ${props.age}`}
+          </text>
+        </box>
+        <box flexDirection="row">
+          <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+            {props.subtitle}
+          </text>
+        </box>
+      </box>
+    </box>
+  )
+}
+
 export function AttentionInboxPane(props: {
   items: readonly AttentionInboxItem[]
   tasks: readonly Task[]
   kv: KVContext
+  selectedId?: string | null
   onOpen: (item: AttentionInboxItem, available: boolean) => void
+  onOpenTask: (taskId: string) => void
   onDelete: (item: AttentionInboxItem) => void
   onClose: () => void
 }) {
@@ -77,7 +149,6 @@ export function AttentionInboxPane(props: {
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
   const [now, setNow] = useState(() => Date.now())
-  const taskOrder = props.tasks.map((task) => task.id)
   const { availableItems } = useMemo(
     () =>
       partitionAttentionInboxAvailability(
@@ -88,18 +159,24 @@ export function AttentionInboxPane(props: {
     [props.items, props.tasks, props.kv],
   )
   // Every episode in the Inbox is pending by definition (opening one removes
-  // it — no read/unread lifecycle). Unavailable targets are hidden
-  // synchronously; the always-mounted Workspace host dismisses them in the
-  // background so stale rows never flash onscreen.
-  // Oldest first: the queue drains top-down.
-  const ordered = sortAttentionInbox(availableItems, taskOrder)
+  // it — no read/unread lifecycle), so the attention section IS the unread
+  // set and always leads; recent tasks trail it. Unavailable targets are
+  // hidden synchronously; the always-mounted Workspace host dismisses them
+  // in the background so stale rows never flash onscreen.
+  const rows = useMemo(
+    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId }),
+    [availableItems, props.tasks, props.selectedId],
+  )
+  const attentionCount = rows.filter((row) => row.kind === "attention").length
+  // ponytail: headers are one line, cards three — the window budgets every
+  // row as a card. Conservative by a couple of rows, never overflows.
   const maxVisibleCards = Math.max(
     1,
     Math.min(MAX_VISIBLE_CARDS, Math.floor((dimensions.height - DIALOG_CHROME_ROWS) / CARD_ROWS_WITH_GAP)),
   )
-  const safeCursor = Math.min(cursor, Math.max(0, ordered.length - 1))
-  const windowStart = Math.max(0, Math.min(safeCursor - maxVisibleCards + 1, ordered.length - maxVisibleCards))
-  const visible = ordered.slice(windowStart, windowStart + maxVisibleCards)
+  const safeCursor = clampSelectableRow(rows, cursor)
+  const windowStart = Math.max(0, Math.min(safeCursor - maxVisibleCards + 1, rows.length - maxVisibleCards))
+  const visible = rows.slice(windowStart, windowStart + maxVisibleCards)
   const repos = [...new Set(props.tasks.map((task) => task.repo))]
 
   useEffect(() => {
@@ -112,29 +189,35 @@ export function AttentionInboxPane(props: {
   }, [])
 
   function move(delta: 1 | -1): void {
-    if (ordered.length === 0) return
-    setCursor((current) => (current + delta + ordered.length) % ordered.length)
+    if (rows.length === 0) return
+    setCursor(nextSelectableRow(rows, safeCursor, delta))
   }
 
-  function selected(): AttentionInboxItem | undefined {
-    return ordered[safeCursor]
+  function selected(): InboxRow | undefined {
+    return rows[safeCursor]
   }
 
-  function open(item: AttentionInboxItem): void {
-    const task = props.tasks.find((candidate) => candidate.id === item.taskId)
-    props.onOpen(item, tabLabel(item, task, props.kv).available)
+  function open(row: InboxRow): void {
+    if (row.kind === "recent") {
+      props.onOpenTask(row.task.id)
+      return
+    }
+    if (row.kind !== "attention") return
+    const task = props.tasks.find((candidate) => candidate.id === row.item.taskId)
+    props.onOpen(row.item, tabLabel(row.item, task, props.kv).available)
   }
 
   useBindings(() => ({
     bindings: bindByIds({
       "inbox.nav": (_event, slot) => move((slot ?? 0) % 2 === 0 ? 1 : -1),
       "inbox.open": () => {
-        const item = selected()
-        if (item) open(item)
+        const row = selected()
+        if (row) open(row)
       },
+      // Only episodes are dismissible — a recent task has nothing to drop.
       "inbox.delete": () => {
-        const item = selected()
-        if (item) props.onDelete(item)
+        const row = selected()
+        if (row?.kind === "attention") props.onDelete(row.item)
       },
     }),
   }))
@@ -146,13 +229,13 @@ export function AttentionInboxPane(props: {
           <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             {t("workspace.inbox.title")}
           </text>
-          <text fg={theme.textMuted} wrapMode="none">{` ${ordered.length}`}</text>
+          <text fg={theme.textMuted} wrapMode="none">{` ${attentionCount}`}</text>
         </box>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={props.onClose}>
           esc
         </text>
       </box>
-      {ordered.length === 0 ? (
+      {rows.length === 0 ? (
         <box paddingTop={1} paddingBottom={1}>
           <text fg={theme.textMuted} wrapMode="none">
             {t("workspace.inbox.empty")}
@@ -160,73 +243,60 @@ export function AttentionInboxPane(props: {
         </box>
       ) : (
         <box flexDirection="column" gap={1} paddingTop={1} paddingBottom={1}>
-          {visible.map((item, index) => {
+          {visible.map((row, index) => {
             const absoluteIndex = windowStart + index
+            if (row.kind === "header") {
+              return (
+                <text key={row.id} fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
+                  {t(`workspace.inbox.section.${row.section}`)}
+                </text>
+              )
+            }
             const active = absoluteIndex === safeCursor
+            const openRow = () => {
+              setCursor(absoluteIndex)
+              open(row)
+            }
+            if (row.kind === "recent") {
+              const project = sidebarProjectLabel(row.task.repo, repos)
+              // A `main` task IS its repo — the sidebar shows the basename
+              // instead of the stored title, so the Inbox matches.
+              const title = row.task.kind === "main" ? project : row.task.title
+              return (
+                <InboxCard
+                  key={row.id}
+                  identity={title === project ? project : `${project} › ${title}`}
+                  subtitle={row.task.branch || row.task.repo}
+                  age={relativeAgeMs(Date.parse(row.task.updatedAt || row.task.createdAt) || now, now)}
+                  active={active}
+                  onOpen={openRow}
+                />
+              )
+            }
+            const item = row.item
             const task = props.tasks.find((candidate) => candidate.id === item.taskId)
             const tab = tabLabel(item, task, props.kv)
             const title = task?.title ?? item.taskId
             const project = task ? sidebarProjectLabel(task.repo, repos) : ""
-            const stateColor = itemColor(item.state, theme)
             // Identity line: `project › tab` — WHERE the episode happened is
             // the primary key a user scans for (which project, which tab),
             // so it leads; the task title is context on line 2. Both labels
             // are runtime data (repo basename, engine-registry tab title) —
             // no vendor strings live here.
-            const identity = tab.label ? `${project} › ${tab.label}` : project || title
-            // ONE cursor vocabulary across every navigable list: the shared
-            // sidebar row chrome (▌ marker + row tint). Toast accent bars
-            // are a different semantic (status color) and deliberately
-            // don't route through this.
-            const selection = resolveRowSelectionChrome(theme, { cursor: active })
-            const onMouseUp = (event: { stopPropagation(): void }) => {
-              event.stopPropagation()
-              setCursor(absoluteIndex)
-              props.onOpen(item, tab.available)
-            }
             return (
-              <box
-                key={attentionInboxKey(item)}
-                flexDirection="row"
-                paddingRight={2}
-                backgroundColor={selection.backgroundColor}
-                onMouseUp={onMouseUp}
-              >
-                {/* Selection bar — the sidebar's rail language, not a frame. */}
-                <box flexDirection="column" flexShrink={0} paddingRight={1}>
-                  <text fg={selection.markerColor} wrapMode="none">
-                    {selection.marker}
-                  </text>
-                  <text fg={selection.markerColor} wrapMode="none">
-                    {selection.marker}
-                  </text>
-                </box>
-                <box flexDirection="column" flexBasis={0} flexGrow={1} flexShrink={1}>
-                  <box flexDirection="row">
-                    <text
-                      fg={theme.text}
-                      attributes={active ? TextAttributes.BOLD : undefined}
-                      wrapMode="none"
-                      flexBasis={0}
-                      flexGrow={1}
-                      flexShrink={1}
-                    >
-                      {identity}
-                    </text>
-                    <text fg={stateColor} wrapMode="none" flexShrink={0}>
-                      {` ${itemGlyph(item.state)} ${t(itemStateKey(item.state))}`}
-                    </text>
-                    <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-                      {`  ${relativeAgeMs(item.at, now)}`}
-                    </text>
-                  </box>
-                  <box flexDirection="row">
-                    <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-                      {title}
-                    </text>
-                  </box>
-                </box>
-              </box>
+              <InboxCard
+                key={row.id}
+                identity={tab.label ? `${project} › ${tab.label}` : project || title}
+                subtitle={title}
+                badge={{
+                  glyph: itemGlyph(item.state),
+                  label: t(itemStateKey(item.state)),
+                  color: itemColor(item.state, theme),
+                }}
+                age={relativeAgeMs(item.at, now)}
+                active={active}
+                onOpen={openRow}
+              />
             )
           })}
         </box>
@@ -245,7 +315,9 @@ export function AttentionInboxPane(props: {
 
 export type AttentionInboxDialogProps = {
   orchestrator: RemoteOrchestrator
+  selectedId?: string | null
   onOpen: (item: AttentionInboxItem, available: boolean) => void
+  onOpenTask: (taskId: string) => void
   onDelete: (item: AttentionInboxItem) => void
 }
 
@@ -259,7 +331,9 @@ export function AttentionInboxDialog(props: AttentionInboxDialogProps) {
       items={items}
       tasks={tasks}
       kv={kv}
+      selectedId={props.selectedId}
       onOpen={props.onOpen}
+      onOpenTask={props.onOpenTask}
       onDelete={props.onDelete}
       onClose={() => dialog.clear()}
     />
