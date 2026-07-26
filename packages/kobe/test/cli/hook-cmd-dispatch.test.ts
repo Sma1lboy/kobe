@@ -52,6 +52,15 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "kobe-hook-"))
   process.env.KOBE_HOME_DIR = home
 
+  // Engine tabs launch as `env KOBE_TASK_ID=… KOBE_TAB_ID=… <engine>`, so a
+  // test run started from inside a kobe engine tab inherits both and the
+  // dispatcher reports THAT tab's identity instead of resolving the payload
+  // cwd. Pin them off: these assertions describe the no-ambient-identity
+  // path, and without this they fail only on a developer's machine — CI,
+  // which has no kobe session, never sees it.
+  vi.stubEnv("KOBE_TASK_ID", undefined)
+  vi.stubEnv("KOBE_TAB_ID", undefined)
+
   mocks.connectIfRunning.mockReset().mockResolvedValue({ request: mocks.request, close: mocks.close })
   mocks.request.mockReset().mockResolvedValue({})
   mocks.close.mockReset()
@@ -71,6 +80,7 @@ afterEach(() => {
   else process.env.KOBE_HOME_DIR = originalHome
   rmSync(home, { recursive: true, force: true })
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe("runHookSubcommand — activity verbs", () => {
