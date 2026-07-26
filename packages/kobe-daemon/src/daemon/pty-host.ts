@@ -30,6 +30,7 @@ import type { DaemonFrame } from "./protocol.ts"
 import { type PtyChild, type PtyDriver, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
+import { settledWithin, signalProcessGroup } from "./pty-terminate.ts"
 
 export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
 // Re-exported for the cross-chunk title-boundary tests (pure fold).
@@ -79,23 +80,6 @@ export interface PtyHostOptions {
 export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
 /** Let a cooperative terminal child shut down before escalating to SIGKILL. */
 const TERMINATION_GRACE_MS = 500
-
-/** True if `exited` settled inside `ms`; false on timeout. Rejection counts as
- *  settled — an exit is an exit however the runtime reports it. */
-async function settledWithin(exited: Promise<unknown>, ms: number): Promise<boolean> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const settled = await Promise.race([
-    exited.then(
-      () => true,
-      () => true,
-    ),
-    new Promise<false>((resolve) => {
-      timer = setTimeout(() => resolve(false), ms)
-    }),
-  ])
-  if (timer) clearTimeout(timer)
-  return settled
-}
 
 interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
@@ -476,9 +460,9 @@ export class PtyHost {
       this.markExited(session)
       return
     }
-    this.signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
+    signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
     if (!(await settledWithin(proc.exited, TERMINATION_GRACE_MS))) {
-      this.signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
+      signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
       // BOUNDED on purpose. Bun's `proc.exited` always settles, so an
       // unbounded await was safe; the node-pty driver's resolves only when
       // ConPTY delivers onExit, and a wedged one would hang killAll() — and
@@ -488,21 +472,5 @@ export class PtyHost {
       await settledWithin(proc.exited, TERMINATION_GRACE_MS)
     }
     this.markExited(session)
-  }
-
-  private signalProcessGroup(pid: number, signal: NodeJS.Signals, fallback: () => void): void {
-    if (process.platform !== "win32" && pid > 1) {
-      try {
-        process.kill(-pid, signal)
-        return
-      } catch {
-        // Some runtimes do not make the PTY child its own group leader.
-      }
-    }
-    try {
-      fallback()
-    } catch {
-      /* already gone */
-    }
   }
 }
