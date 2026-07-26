@@ -17,7 +17,7 @@ export const en = {
     renameField: "tab title",
     renameSubmit: "rename",
     chooseEngineTitle: "New tab — engine or shell",
-    chooseEngineHint: "←/→ choose, enter confirm, esc cancel",
+    chooseEngineHint: "←/→ or h/l choose, enter confirm, esc cancel",
     cannotCloseLast: "Cannot close the only tab",
   },
   split: {
@@ -47,7 +47,7 @@ export const zh: typeof en = {
     renameField: "标签页名称",
     renameSubmit: "重命名",
     chooseEngineTitle: "新建标签页 —— 引擎或 shell",
-    chooseEngineHint: "←/→ 选择，enter 确认，esc 取消",
+    chooseEngineHint: "←/→ 或 h/l 选择，enter 确认，esc 取消",
     cannotCloseLast: "无法关闭唯一的标签页",
   },
   split: {

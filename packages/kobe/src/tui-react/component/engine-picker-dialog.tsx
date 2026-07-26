@@ -55,6 +55,8 @@ export function EnginePickerDialogView(props: {
     bindings: [
       { key: "left", cmd: () => cycle(-1) },
       { key: "right", cmd: () => cycle(1) },
+      { key: "h", cmd: () => cycle(-1) },
+      { key: "l", cmd: () => cycle(1) },
       { key: "return", cmd: () => commit(pick) },
     ],
   }))
