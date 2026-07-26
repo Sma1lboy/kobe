@@ -18,6 +18,23 @@ const DAEMON_START_ARGS = ["daemon", "start"] as const
 const DAEMON_HELLO_TIMEOUT_MS = 3000
 
 /**
+ * How a background child is cut loose from this process.
+ *
+ * On Windows `detached: true` means DETACHED_PROCESS: the child gets its OWN
+ * console, which the OS renders as a stray terminal window next to the TUI,
+ * retitling itself after whatever the hosted PTY happens to be running. libuv
+ * gives DETACHED_PROCESS precedence over CREATE_NO_WINDOW, so `windowsHide`
+ * cannot suppress it — the flag itself has to go. Nothing is lost: `detached`
+ * only buys POSIX setsid, and an unref'd Windows child already outlives its
+ * parent. POSIX keeps detaching exactly as before.
+ */
+export function detachOptions(
+  platform: NodeJS.Platform = process.platform,
+): { windowsHide: true } | { detached: true } {
+  return platform === "win32" ? { windowsHide: true } : { detached: true }
+}
+
+/**
  * Spawn the detached daemon child with stdout/stderr appended to
  * `logPath`, so a crash leaves a trace. Previously the daemon ran with
  * `stdio: "ignore"` and any crash output went to `/dev/null` — the
@@ -41,15 +58,7 @@ export function spawnDetachedDaemon(
   } catch {
     stdio = "ignore"
   }
-  // On Windows `detached: true` means DETACHED_PROCESS: the child gets its OWN
-  // console, which the OS renders as a stray terminal window next to the TUI,
-  // retitling itself after whatever the hosted PTY happens to be running. libuv
-  // gives DETACHED_PROCESS precedence over CREATE_NO_WINDOW, so `windowsHide`
-  // cannot suppress it — the flag itself has to go. Nothing is lost: `detached`
-  // only buys POSIX setsid, and an unref'd Windows child already outlives its
-  // parent. POSIX keeps detaching exactly as before.
-  const detach = process.platform === "win32" ? { windowsHide: true } : { detached: true }
-  const child = spawn(command, [...args], { ...detach, stdio, env })
+  const child = spawn(command, [...args], { ...detachOptions(), stdio, env })
   child.unref()
   if (logFd !== undefined) {
     try {

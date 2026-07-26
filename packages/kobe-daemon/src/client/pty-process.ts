@@ -23,6 +23,27 @@ const PTY_HOST_NODE_BUNDLE = "pty-host-node.mjs"
 const PTY_HOST_NODE_DEV_CACHE = "../../.cache/pty-host-node.mjs"
 const PTY_HOST_NODE_ENTRY = "../daemon/pty-host-node-entry.ts"
 
+export interface NodePtyHostResolution {
+  /** Real platform by default; injected so the Windows path is testable on CI. */
+  readonly platform?: NodeJS.Platform
+  /** Directory this module resolves its siblings against. */
+  readonly moduleDir?: string
+  readonly exists?: (path: string) => boolean
+  /** Bundles the dev entry. Injected to keep the unit test off the bundler. */
+  readonly bundle?: (entry: string, outDir: string) => Promise<{ success: boolean; logs: readonly unknown[] }>
+}
+
+function bundleWithBun(entry: string, outDir: string) {
+  return Bun.build({
+    entrypoints: [entry],
+    outdir: outDir,
+    target: "node",
+    format: "esm",
+    naming: PTY_HOST_NODE_BUNDLE,
+    external: ["node-pty"],
+  })
+}
+
 /**
  * Windows runs the PTY host under NODE, not Bun: Bun rejects its `terminal`
  * spawn option there, and a Bun-hosted node-pty session can be read but never
@@ -35,26 +56,22 @@ const PTY_HOST_NODE_ENTRY = "../daemon/pty-host-node-entry.ts"
  *  - dev from source: no dist, so bundle the entry on demand into the daemon
  *    package's `.cache/` (gitignored) and run that.
  */
-export async function resolveNodePtyHostSpawn(): Promise<string[] | null> {
-  if (process.platform !== "win32") return null
-  const here = dirname(fileURLToPath(import.meta.url))
+export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}): Promise<string[] | null> {
+  const platform = deps.platform ?? process.platform
+  if (platform !== "win32") return null
+  const here = deps.moduleDir ?? dirname(fileURLToPath(import.meta.url))
+  const exists = deps.exists ?? existsSync
+  const bundle = deps.bundle ?? bundleWithBun
 
   const packaged = resolve(here, PTY_HOST_NODE_BUNDLE)
-  if (existsSync(packaged)) return ["node", packaged]
+  if (exists(packaged)) return ["node", packaged]
 
   const entry = resolve(here, PTY_HOST_NODE_ENTRY)
-  if (!existsSync(entry)) {
+  if (!exists(entry)) {
     throw new Error(`kobe: no Windows PTY host found (looked for ${packaged} and ${entry})`)
   }
   const cache = resolve(here, PTY_HOST_NODE_DEV_CACHE)
-  const built = await Bun.build({
-    entrypoints: [entry],
-    outdir: dirname(cache),
-    target: "node",
-    format: "esm",
-    naming: PTY_HOST_NODE_BUNDLE,
-    external: ["node-pty"],
-  })
+  const built = await bundle(entry, dirname(cache))
   if (!built.success) {
     throw new Error(`kobe: could not build the Windows PTY host — ${built.logs.map(String).join("; ")}`)
   }

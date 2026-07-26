@@ -148,11 +148,11 @@ export function windowsPipePath(homeDir: string, role: string): string {
   return `\\\\.\\pipe\\kobe-${shortHomeTag(homeDir)}-${role}`
 }
 
-export function defaultPtyHostSocketPath(homeDir?: string): string {
+export function defaultPtyHostSocketPath(homeDir?: string, platform: NodeJS.Platform = process.platform): string {
   const override = process.env.KOBE_PTY_SOCKET_PATH
   if (override && override.length > 0) return override
   const explicit = homeDir ?? process.env.KOBE_HOME_DIR
-  if (process.platform === "win32") return windowsPipePath(explicit || homedir(), "pty")
+  if (platform === "win32") return windowsPipePath(explicit || homedir(), "pty")
   if (explicit && explicit.length > 0) {
     return fitSocketPath(join(explicit, ".kobe", "pty.sock"), explicit, "pty")
   }
