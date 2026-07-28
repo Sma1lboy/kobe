@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kobe — plugins</title>
+<meta name="description" content="The kobe plugin marketplace — shareable workflow packages built on the kobe CLI. Every public GitHub repo tagged kobe-plugin, listed automatically.">
+<link rel="canonical" href="https://kobe.sma1lboy.me/plugins">
+<meta property="og:title" content="kobe — plugins">
+<meta property="og:description" content="Shareable workflow packages for kobe. Every public GitHub repo tagged kobe-plugin, listed automatically.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kobe.sma1lboy.me/plugins">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:opsz,wght@9..40,300..700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:     oklch(97.8% 0.007 85);
+  --surface:   oklch(99.4% 0.003 90);
+  --well:      oklch(22% 0.02 50);
+  --well-2:    oklch(27% 0.022 50);
+  --well-ink:  oklch(88% 0.015 85);
+  --ink:       oklch(25% 0.02 60);
+  --ink-soft:  oklch(35% 0.02 55);
+  --muted:     oklch(50% 0.02 60);
+  --faint:     oklch(62% 0.018 65);
+  --line:      oklch(88% 0.014 80);
+  --line-2:    oklch(83% 0.018 75);
+  --accent:    oklch(62% 0.13 45);
+  --accent-2:  oklch(70% 0.11 50);
+  --accent-wash: oklch(62% 0.13 45 / .1);
+  --accent-line: oklch(62% 0.13 45 / .4);
+  --ok:        oklch(58% 0.12 145);
+  --warn:      oklch(62% 0.11 80);
+  --radius:    12px;
+  --radius-lg: 22px;
+  --font-display:'Fraunces', Georgia, serif;
+  --font-sans:'DM Sans', system-ui, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, monospace;
+  --ease-out: cubic-bezier(0.16,1,0.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper)}
+body{color:var(--ink-soft);font-family:var(--font-sans);font-weight:380;font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:oklch(62% 0.13 45/.22)}
+a{color:inherit;text-decoration:none}
+button,input,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px)}
+.acc{color:var(--accent);font-style:italic}
+
+/* ============ NAV — glass pill, terminal grammar (shared with the home page) ============ */
+.navbar{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:2px;padding:6px 8px;border-radius:999px;background:oklch(100% 0 0/.55);backdrop-filter:blur(16px) saturate(1.3);border:1px solid oklch(100% 0 0/.8);box-shadow:0 10px 36px oklch(40% 0.04 60/.16);font-family:var(--font-mono);font-size:12.5px;max-width:calc(100vw - 24px)}
+.navbar .ps{color:var(--accent);padding-left:8px}
+.navbar .bin{font-weight:700;color:var(--ink);padding:8px 6px 8px 4px}
+.navbar a.nl{color:var(--ink-soft);padding:8px 10px;border-radius:999px;transition:background 140ms,color 140ms;white-space:nowrap}
+.navbar a.nl:hover{background:oklch(100% 0 0/.85);color:var(--ink)}
+.navbar a.nl[aria-current="page"]{background:var(--accent-wash);color:var(--accent)}
+.navbar .caret{display:inline-block;width:7px;height:14px;background:var(--accent);margin:0 4px 0 2px;animation:blink 1.1s steps(1) infinite;vertical-align:-2px}
+@keyframes blink{50%{opacity:0}}
+.lang-btn{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-2);background:transparent;color:var(--ink-soft);border-radius:999px;padding:6px 12px;margin-left:6px;transition:all 140ms}
+.lang-btn:hover{border-color:var(--accent-line);color:var(--ink)}
+.gh-link{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:500;background:var(--ink);color:oklch(97% 0.008 85);border-radius:999px;padding:8px 15px;margin-left:6px;transition:transform 120ms,box-shadow 160ms;white-space:nowrap}
+.gh-link:hover{transform:translateY(-1px);box-shadow:0 6px 18px oklch(25% 0.02 60/.3)}
+.gh-stars{display:inline-flex;align-items:center;gap:4px;color:oklch(85% 0.06 85)}
+@media(max-width:820px){.navbar a.nl{display:none}}
+
+/* ============ PAGE HEAD ============ */
+.head{padding:clamp(112px,14vh,152px) 0 0;text-align:center}
+.kicker{display:inline-block;font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--ink-soft);background:var(--surface);border:1px solid var(--line-2);padding:8px 18px;border-radius:999px}
+h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(38px,5.6vw,70px);font-weight:380;letter-spacing:-.028em;line-height:1.02;color:var(--ink);max-width:17ch;margin:24px auto 20px}
+.head-sub{font-size:clamp(15px,1.5vw,17px);max-width:60ch;color:var(--ink-soft);margin:0 auto}
+.head-term{max-width:640px;margin:34px auto 0;text-align:left}
+.rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* dark terminal block — same well as the home page */
+.term-frame{border-radius:var(--radius-lg);overflow:hidden;background:linear-gradient(180deg,oklch(24% 0.021 50),var(--well) 60%);border:1px solid oklch(32% 0.024 50);box-shadow:0 22px 52px oklch(42% 0.06 50/.2)}
+.tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
+.tbar i{width:9px;height:9px;border-radius:50%;background:oklch(42% 0.02 55)}
+.tbar i.r{background:oklch(65% 0.16 25)}
+.tbar i.y{background:oklch(78% 0.13 85)}
+.tbar i.g{background:oklch(72% 0.14 145)}
+.tbar span{margin-left:8px;letter-spacing:.04em}
+.term-out{color:var(--well-ink);padding:20px 24px;font-family:var(--font-mono);font-size:12.5px;line-height:1.95;overflow-x:auto;white-space:pre}
+.term-out .ps{color:oklch(75% 0.13 50)}
+.term-out .a{color:oklch(85% 0.07 60)}
+.term-out .k{color:oklch(78% 0.09 60)}
+.term-out .s{color:oklch(80% 0.11 145)}
+.term-out .d{color:oklch(58% 0.02 70)}
+
+/* ============ SECTION SHELL ============ */
+.sec{padding:clamp(64px,8vw,96px) 0 0}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+.sec-no{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:12px}
+.sec h2{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(26px,3.2vw,38px);font-weight:400;letter-spacing:-.018em;line-height:1.12;color:var(--ink)}
+.sec-lede{font-size:15px;color:var(--muted);max-width:60ch;margin-top:10px}
+
+/* ============ MARKETPLACE CONTROLS ============ */
+.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:26px 0 14px}
+.field{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line-2);border-radius:999px;padding:10px 18px;transition:border-color 140ms}
+.field:focus-within{border-color:var(--accent-line)}
+.field .ps{font-family:var(--font-mono);color:var(--accent);font-size:13px}
+.field input{border:0;background:transparent;color:var(--ink);font-family:var(--font-mono);font-size:13px;width:min(30vw,240px);outline:0}
+.field input::placeholder{color:var(--faint)}
+.field select{border:0;background:transparent;color:var(--ink);font-family:var(--font-mono);font-size:12.5px;outline:0}
+.field label{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.06em;color:var(--faint)}
+.count{font-family:var(--font-mono);font-size:12px;color:var(--faint);margin-left:auto}
+@media(max-width:560px){.field input{width:auto;flex:1;min-width:0}.controls .field:first-child{flex:1 1 100%}.count{margin-left:0}}
+
+.notice{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);background:oklch(62% 0.11 80/.08);border:1px solid oklch(62% 0.11 80/.3);border-radius:var(--radius);padding:12px 16px;margin-bottom:26px}
+.notice[hidden]{display:none} /* class selector out-specifies the UA [hidden] rule */
+.notice .mk{font-family:var(--font-mono);color:var(--warn);flex:none}
+.notice.err{background:var(--accent-wash);border-color:var(--accent-line)}
+.notice.err .mk{color:var(--accent)}
+
+/* ============ PLUGIN CARDS ============ */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+.card{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:22px 24px;transition:border-color 160ms,transform 160ms var(--ease-out),box-shadow 200ms}
+.card:hover{border-color:var(--line-2);transform:translateY(-2px);box-shadow:0 14px 34px oklch(40% 0.04 60/.1)}
+.card-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.card-name{font-family:var(--font-mono);font-size:14px;font-weight:500;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.card-name:hover{color:var(--accent)}
+.card-name .owner{color:var(--faint);font-weight:400}
+.card-stars{flex:none;display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.card-stars svg{fill:oklch(70% 0.11 80)}
+.card-desc{font-size:14px;color:var(--muted);flex:1;overflow-wrap:anywhere}
+.card-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11.5px;color:var(--faint)}
+.card-meta .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:none}
+.card-meta .sep{color:var(--line-2)}
+.tag-first{border:1px solid var(--accent-line);background:var(--accent-wash);color:var(--accent);border-radius:999px;padding:2px 9px;font-size:10.5px;letter-spacing:.04em}
+.card-install{display:flex;align-items:center;gap:9px;width:100%;text-align:left;font-family:var(--font-mono);font-size:11.5px;color:var(--ink-soft);background:transparent;border:1px dashed var(--line-2);border-radius:999px;padding:9px 15px;transition:border-color 140ms,color 140ms,background 140ms}
+.card-install:hover{border-style:solid;border-color:var(--accent-line);color:var(--ink);background:var(--accent-wash)}
+.card-install .ps{color:var(--accent);flex:none}
+.card-install .cmd{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);height:170px;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+.empty{font-family:var(--font-mono);font-size:13px;color:var(--faint);padding:34px 0}
+
+/* ============ PUBLISH ============ */
+.publish{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(28px,4.5vw,56px);align-items:start;margin-top:26px}
+@media(max-width:880px){.publish{grid-template-columns:1fr}}
+.steps{list-style:none;counter-reset:s}
+.steps li{counter-increment:s;position:relative;padding:0 0 22px 44px;font-size:15px;color:var(--muted)}
+.steps li::before{content:counter(s);position:absolute;left:0;top:-1px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;color:var(--accent);background:var(--accent-wash);border:1px solid var(--accent-line)}
+.steps li::after{content:"";position:absolute;left:13.5px;top:32px;bottom:4px;width:1px;background:var(--line-2)}
+.steps li:last-child{padding-bottom:0}
+.steps li:last-child::after{display:none}
+.steps b{color:var(--ink);font-weight:600}
+code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash);border:1px solid oklch(62% 0.13 45/.18);border-radius:5px;padding:1px 6px;color:oklch(46% 0.11 45);overflow-wrap:anywhere}
+
+/* ============ FOOTER ============ */
+.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:32px 0;margin-top:clamp(70px,9vw,110px);font-size:13px;color:var(--faint)}
+.foot-dense p{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);line-height:1.8}
+.foot-dense .mark{font-family:var(--font-mono);color:var(--accent)}
+.foot-dense a{border-bottom:1px solid var(--line-2);transition:color 140ms,border-color 140ms}
+.foot-dense a:hover{color:var(--ink);border-color:var(--accent-line)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .rise{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV · terminal command in a glass pill -->
+<header class="navbar">
+  <span class="ps">$</span>
+  <a class="bin" href="/">kobe</a>
+  <a class="nl" href="/#workflow" data-i18n="nav.workflow">--primitives</a>
+  <a class="nl" href="/#install" data-i18n="nav.install">--install</a>
+  <a class="nl" href="/plugins" aria-current="page" data-i18n="nav.plugins">--plugins</a>
+  <a class="nl" href="/changelog" data-i18n="nav.changelog">--changelog</a>
+  <span class="caret" aria-hidden="true"></span>
+  <button id="langToggle" class="lang-btn">中文</button>
+  <a class="gh-link" href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+    <span class="gh-stars">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
+      <span id="starCount">–</span>
+    </span>
+  </a>
+</header>
+
+<!-- HEAD -->
+<section class="head wrap">
+  <p class="kicker rise" style="animation-delay:.06s" data-i18n-html="plug.kicker">a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API</p>
+  <h1 class="rise" style="animation-delay:.16s" data-i18n-html="plug.title">Workflow, packaged and <span class="acc">shareable</span>.</h1>
+  <p class="head-sub rise" style="animation-delay:.28s" data-i18n="plug.sub">A kobe plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole kobe CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.</p>
+  <figure class="term-frame head-term rise" style="animation-delay:.4s"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
+  <pre class="term-out"><span class="ps">$</span> kobe plugin install owner/repo<span class="d">[/subdir]</span>
+<span class="ps">$</span> kobe plugin list
+<span class="d">notify · github-start · worktree-include</span></pre></figure>
+</section>
+
+<!-- MARKETPLACE -->
+<section id="marketplace" class="sec wrap">
+  <div class="sec-head">
+    <div>
+      <span class="sec-no" data-i18n="mk.no">01 · MARKETPLACE</span>
+      <h2 data-i18n-html="mk.title">Everything tagged <span class="acc">kobe-plugin</span>.</h2>
+      <p class="sec-lede" data-i18n="mk.lede">This list is not curated by hand. It is every public GitHub repository carrying the kobe-plugin topic, fetched live when you open the page.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="field">
+      <span class="ps" aria-hidden="true">/</span>
+      <input id="q" type="search" autocomplete="off" placeholder="filter plugins…" aria-label="Filter plugins">
+    </div>
+    <div class="field">
+      <label for="sort" data-i18n="mk.sortLabel">SORT</label>
+      <select id="sort">
+        <option value="stars" data-i18n="mk.sortStars">stars</option>
+        <option value="pushed" data-i18n="mk.sortPushed">recently pushed</option>
+        <option value="newest" data-i18n="mk.sortNewest">newest</option>
+      </select>
+    </div>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="notice" id="disclaimer">
+    <span class="mk" aria-hidden="true">!</span>
+    <span data-i18n="mk.disclaimer">These are community repositories, listed automatically and reviewed by nobody. A plugin runs with your shell's privileges — read the manifest before you install.</span>
+  </div>
+
+  <div class="grid" id="grid" aria-live="polite">
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+  </div>
+</section>
+
+<!-- PUBLISH -->
+<section id="publish" class="sec wrap">
+  <span class="sec-no" data-i18n="pub.no">02 · PUBLISH</span>
+  <h2 data-i18n="pub.title">Ship yours in three steps.</h2>
+  <div class="publish">
+    <ol class="steps">
+      <li data-i18n-html="pub.s1"><b>Put a manifest in a public repo.</b> A <code>kobe-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.</li>
+      <li data-i18n-html="pub.s2"><b>Add the GitHub topic <code>kobe-plugin</code>.</b> Repo page → the gear next to About → Topics.</li>
+      <li data-i18n-html="pub.s3"><b>Done.</b> It shows up on this page on the next load, and anyone can run <code>kobe plugin install you/your-repo</code>.</li>
+    </ol>
+    <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>kobe-plugin.toml</span></div>
+    <pre class="term-out"><span class="k">id</span> = <span class="s">"notify"</span>
+<span class="k">name</span> = <span class="s">"Notify"</span>
+<span class="k">version</span> = <span class="s">"0.1.0"</span>
+<span class="k">min_kobe_version</span> = <span class="s">"0.8.0"</span>
+
+<span class="a">[[actions]]</span>
+<span class="k">id</span> = <span class="s">"test"</span>
+<span class="k">name</span> = <span class="s">"Send a test notification"</span>
+<span class="k">run</span> = <span class="s">"./notify.sh test"</span>
+
+<span class="a">[[events]]</span>
+<span class="k">on</span> = <span class="s">"agent.turn-complete"</span>
+<span class="k">run</span> = <span class="s">"./notify.sh turn-complete"</span></pre></figure>
+  </div>
+</section>
+
+<!-- FOOTER · dense colophon -->
+<footer class="foot-dense">
+  <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+</footer>
+
+<script>
+  // EN / 中文 — same dictionary shape as the home page, same localStorage key.
+  var KOBE_I18N = (function () {
+    var zh = {
+      'meta.title': 'kobe — 插件',
+      'meta.desc': 'kobe 插件市场——基于 kobe CLI 的可分享工作流包。所有带 kobe-plugin 话题的公开 GitHub 仓库，自动列出。',
+      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.changelog': '--更新日志',
+      'plug.kicker': '一个目录 · 一份 <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · 整个 CLI 就是 API',
+      'plug.title': '把工作流打包，<span class="acc">拿去分享</span>。',
+      'plug.sub': 'kobe 插件就是一个带 kobe-plugin.toml 清单的目录。没有另一套插件 SDK 要学：整个 kobe CLI 就是插件 API——你能用脚本对机群做的事，就能打包给别人。',
+      'mk.no': '01 · 插件市场',
+      'mk.title': '所有带 <span class="acc">kobe-plugin</span> 话题的仓库。',
+      'mk.lede': '这份列表不是人工挑的。它是所有打了 kobe-plugin 话题的公开 GitHub 仓库，在你打开页面时实时拉取。',
+      'mk.sortLabel': '排序', 'mk.sortStars': '星标', 'mk.sortPushed': '最近推送', 'mk.sortNewest': '最新创建',
+      'mk.disclaimer': '这些是社区仓库，自动收录，无人审核。插件以你 shell 的权限运行——安装前先读一遍清单。',
+      'mk.filterPlaceholder': '过滤插件…',
+      'mk.offline': 'GitHub API 暂时读不到（多半是限流）。下面是本仓库自带的第一方示例插件。',
+      'mk.empty': '还没有公开仓库打上 kobe-plugin 话题。下面是本仓库自带的第一方示例插件——第一个列在这里的可以是你的。',
+      'mk.copy': '复制安装命令', 'mk.copied': '✓ 已复制',
+      'mk.count': '个插件', 'mk.none': '没有匹配的插件。',
+      'mk.firstParty': '第一方',
+      'pub.no': '02 · 发布',
+      'pub.title': '三步发布你自己的插件。',
+      'pub.s1': '<b>把清单放进一个公开仓库。</b>仓库根目录放一份 <code>kobe-plugin.toml</code>——如果一个仓库里放好几个插件，也可以放在子目录里。',
+      'pub.s2': '<b>加上 GitHub 话题 <code>kobe-plugin</code>。</b>仓库页 → About 旁边的齿轮 → Topics。',
+      'pub.s3': '<b>就这样。</b>下次有人打开这个页面时它就出现了，任何人都能跑 <code>kobe plugin install you/your-repo</code>。',
+      'footer.tagline': '终端原生的编码代理图工程。',
+      'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Fraunces、DM Sans 与 JetBrains Mono。MIT 许可。',
+      'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
+    };
+    var en = {
+      'meta.title': 'kobe — plugins',
+      'meta.desc': 'The kobe plugin marketplace — shareable workflow packages built on the kobe CLI. Every public GitHub repo tagged kobe-plugin, listed automatically.',
+      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.changelog': '--changelog',
+      'plug.kicker': 'a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API',
+      'plug.title': 'Workflow, packaged and <span class="acc">shareable</span>.',
+      'plug.sub': 'A kobe plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole kobe CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.',
+      'mk.no': '01 · MARKETPLACE',
+      'mk.title': 'Everything tagged <span class="acc">kobe-plugin</span>.',
+      'mk.lede': 'This list is not curated by hand. It is every public GitHub repository carrying the kobe-plugin topic, fetched live when you open the page.',
+      'mk.sortLabel': 'SORT', 'mk.sortStars': 'stars', 'mk.sortPushed': 'recently pushed', 'mk.sortNewest': 'newest',
+      'mk.disclaimer': "These are community repositories, listed automatically and reviewed by nobody. A plugin runs with your shell's privileges — read the manifest before you install.",
+      'mk.filterPlaceholder': 'filter plugins…',
+      'mk.offline': "Couldn't reach the GitHub API (usually rate limiting). Showing the first-party example plugins that ship in this repo.",
+      'mk.empty': 'No public repository carries the kobe-plugin topic yet. Below are the first-party examples that ship in this repo — the first one listed here could be yours.',
+      'mk.copy': 'copy install command', 'mk.copied': '✓ copied',
+      'mk.count': 'plugins', 'mk.none': 'No plugins match that filter.',
+      'mk.firstParty': 'first-party',
+      'pub.no': '02 · PUBLISH',
+      'pub.title': 'Ship yours in three steps.',
+      'pub.s1': '<b>Put a manifest in a public repo.</b> A <code>kobe-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.',
+      'pub.s2': '<b>Add the GitHub topic <code>kobe-plugin</code>.</b> Repo page → the gear next to About → Topics.',
+      'pub.s3': '<b>Done.</b> It shows up on this page on the next load, and anyone can run <code>kobe plugin install you/your-repo</code>.',
+      'footer.tagline': 'graph engineering for coding agents, terminal-native.',
+      'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.',
+      'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
+    };
+    var dicts = { en: en, zh: zh };
+    var lang = 'en';
+    try {
+      var fromUrl = new URLSearchParams(location.search).get('lang');
+      var stored = localStorage.getItem('kobe_lang');
+      var nav = (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+      lang = fromUrl === 'zh' || fromUrl === 'en' ? fromUrl : stored === 'zh' || stored === 'en' ? stored : nav;
+    } catch (e) {}
+
+    var listeners = [];
+    function t(key) { return dicts[lang][key] || dicts.en[key] || ''; }
+
+    function apply() {
+      document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+      document.title = t('meta.title');
+      var desc = document.querySelector('meta[name="description"]');
+      if (desc) desc.setAttribute('content', t('meta.desc'));
+      document.querySelectorAll('[data-i18n]').forEach(function (el) {
+        var v = t(el.getAttribute('data-i18n'));
+        if (v) el.textContent = v;
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
+        var v = t(el.getAttribute('data-i18n-html'));
+        if (v) el.innerHTML = v;
+      });
+      var q = document.getElementById('q');
+      if (q) { q.placeholder = t('mk.filterPlaceholder'); q.setAttribute('aria-label', t('mk.filterPlaceholder')); }
+      var toggle = document.getElementById('langToggle');
+      if (toggle) toggle.textContent = lang === 'zh' ? 'EN' : '中文';
+      listeners.forEach(function (fn) { fn(); });
+    }
+
+    var toggleBtn = document.getElementById('langToggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        try { localStorage.setItem('kobe_lang', lang); } catch (e) {}
+        apply();
+      });
+    }
+    apply();
+
+    return { t: t, lang: function () { return lang; }, onChange: function (fn) { listeners.push(fn); } };
+  })();
+
+  // live GitHub star count (shared with the home page; cache for instant paint)
+  (function () {
+    var el = document.getElementById('starCount');
+    if (!el) return;
+    function render(n) { el.textContent = n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
+    try { var c = JSON.parse(localStorage.getItem('kobe_stars') || 'null'); if (c && typeof c.n === 'number') render(c.n); } catch (e) {}
+    fetch('https://api.github.com/repos/Sma1lboy/kobe')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (!d || typeof d.stargazers_count !== 'number') return; render(d.stargazers_count); try { localStorage.setItem('kobe_stars', JSON.stringify({ n: d.stargazers_count })); } catch (e) {} })
+      .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
+  })();
+
+  // ── Marketplace: every public repo with the kobe-plugin topic, filtered + sorted client-side ──
+  (function () {
+    var grid = document.getElementById('grid');
+    var countEl = document.getElementById('count');
+    var qEl = document.getElementById('q');
+    var sortEl = document.getElementById('sort');
+    if (!grid) return;
+
+    // first-party examples that live in this repo — also the offline fallback,
+    // since monorepo subdirectories can never carry a GitHub topic of their own.
+    var SEED = [
+      { ref: 'Sma1lboy/kobe/plugins/notify', url: 'https://github.com/Sma1lboy/kobe/tree/main/plugins/notify', name: 'notify', owner: 'Sma1lboy', firstParty: true,
+        desc: { en: 'Desktop or ntfy notifications when an agent finishes a turn or needs your input.', zh: '代理跑完一轮或需要你介入时，发桌面通知 / ntfy 推送。' } },
+      { ref: 'Sma1lboy/kobe/plugins/github-start', url: 'https://github.com/Sma1lboy/kobe/tree/main/plugins/github-start', name: 'github-start', owner: 'Sma1lboy', firstParty: true,
+        desc: { en: 'Start a kobe task straight from a GitHub issue or pull request.', zh: '直接从一个 GitHub issue 或 PR 起一个 kobe 任务。' } },
+      { ref: 'Sma1lboy/kobe/plugins/worktree-include', url: 'https://github.com/Sma1lboy/kobe/tree/main/plugins/worktree-include', name: 'worktree-include', owner: 'Sma1lboy', firstParty: true,
+        desc: { en: 'Copy gitignored files matching .worktreeinclude into every new worktree.', zh: '把 .worktreeinclude 匹配到的 gitignore 文件复制进每个新建的 worktree。' } },
+    ];
+
+    var items = [];
+
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+    function relTime(iso) {
+      if (!iso) return '';
+      var days = Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
+      var loc = KOBE_I18N.lang() === 'zh' ? 'zh-CN' : 'en';
+      try {
+        var rtf = new Intl.RelativeTimeFormat(loc, { numeric: 'auto' });
+        if (Math.abs(days) < 31) return rtf.format(-days, 'day');
+        if (Math.abs(days) < 365) return rtf.format(-Math.round(days / 30), 'month');
+        return rtf.format(-Math.round(days / 365), 'year');
+      } catch (e) { return days + 'd'; }
+    }
+
+    function fromApi(r) {
+      return {
+        ref: r.full_name,
+        // only follow github.com links, whatever the API hands back
+        url: /^https:\/\/github\.com\//.test(r.html_url || '') ? r.html_url : 'https://github.com/' + r.full_name,
+        name: r.name,
+        owner: (r.owner && r.owner.login) || String(r.full_name || '').split('/')[0],
+        desc: r.description || '',
+        stars: r.stargazers_count,
+        lang: r.language,
+        pushed: r.pushed_at,
+        created: r.created_at,
+      };
+    }
+
+    function descOf(it) {
+      return typeof it.desc === 'string' ? it.desc : (it.desc[KOBE_I18N.lang()] || it.desc.en);
+    }
+
+    function card(it) {
+      var cmd = 'kobe plugin install ' + it.ref;
+      var meta = [];
+      if (it.firstParty) meta.push('<span class="tag-first">' + esc(KOBE_I18N.t('mk.firstParty')) + '</span>');
+      if (it.lang) meta.push('<span class="dot" aria-hidden="true"></span>' + esc(it.lang));
+      if (it.pushed) meta.push((meta.length ? '<span class="sep">·</span> ' : '') + esc(relTime(it.pushed)));
+      return '<article class="card">' +
+        '<div class="card-top">' +
+          '<a class="card-name" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
+            '<span class="owner">' + esc(it.owner) + '/</span>' + esc(it.name) + '</a>' +
+          (typeof it.stars === 'number'
+            ? '<span class="card-stars"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>' + it.stars.toLocaleString() + '</span>'
+            : '') +
+        '</div>' +
+        '<p class="card-desc">' + esc(descOf(it)) + '</p>' +
+        (meta.length ? '<div class="card-meta">' + meta.join(' ') + '</div>' : '') +
+        '<button class="card-install" data-cmd="' + esc(cmd) + '" title="' + esc(KOBE_I18N.t('mk.copy')) + '">' +
+          '<span class="ps" aria-hidden="true">$</span><span class="cmd">' + esc(cmd) + '</span></button>' +
+      '</article>';
+    }
+
+    function render() {
+      var q = (qEl.value || '').trim().toLowerCase();
+      var mode = sortEl.value;
+      var list = items.filter(function (it) {
+        return !q || (it.ref + ' ' + descOf(it)).toLowerCase().indexOf(q) !== -1;
+      });
+      var key = mode === 'pushed' ? 'pushed' : mode === 'newest' ? 'created' : 'stars';
+      list.sort(function (a, b) {
+        var av = key === 'stars' ? (a.stars || 0) : Date.parse(a[key] || 0) || 0;
+        var bv = key === 'stars' ? (b.stars || 0) : Date.parse(b[key] || 0) || 0;
+        return bv - av;
+      });
+      countEl.textContent = list.length + ' ' + KOBE_I18N.t('mk.count');
+      grid.innerHTML = list.length
+        ? list.map(card).join('')
+        : '<p class="empty">' + esc(KOBE_I18N.t('mk.none')) + '</p>';
+    }
+
+    // Seed-only listings get their own banner, and the community disclaimer is
+    // hidden — nothing community-published is on screen to disclaim.
+    function seedNotice(key, isErr) {
+      var host = document.getElementById('disclaimer');
+      host.hidden = true;
+      var n = document.createElement('div');
+      n.className = isErr ? 'notice err' : 'notice';
+      n.innerHTML = '<span class="mk" aria-hidden="true">!</span><span></span>';
+      var msg = n.lastChild;
+      function say() { msg.textContent = KOBE_I18N.t(key); }
+      say();
+      KOBE_I18N.onChange(say);
+      host.insertAdjacentElement('beforebegin', n);
+    }
+
+    qEl.addEventListener('input', render);
+    sortEl.addEventListener('change', render);
+    KOBE_I18N.onChange(function () { if (items.length) render(); });
+
+    // copy a card's install command (delegated — cards are re-rendered on every filter)
+    grid.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.card-install');
+      if (!btn) return;
+      var cmd = btn.getAttribute('data-cmd');
+      try { if (navigator.clipboard) navigator.clipboard.writeText(cmd); } catch (err) {}
+      var label = btn.querySelector('.cmd');
+      label.textContent = KOBE_I18N.t('mk.copied');
+      setTimeout(function () { label.textContent = cmd; }, 1500);
+    });
+
+    fetch('https://api.github.com/search/repositories?q=topic:kobe-plugin&sort=stars&order=desc&per_page=100')
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (d) {
+        var repos = (d && d.items) || [];
+        // First-party examples live in monorepo subdirs, which can never carry
+        // the topic themselves — always keep them alongside community repos.
+        items = SEED.concat(repos.map(fromApi));
+        if (!repos.length) seedNotice('mk.empty', false);
+        render();
+      })
+      .catch(function () { items = SEED; seedNotice('mk.offline', true); render(); });
+  })();
+</script>
+</body>
+</html>

@@ -166,6 +166,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   <a class="bin" href="/">kobe</a>
   <a class="nl" href="#workflow" data-i18n="nav.workflow">--primitives</a>
   <a class="nl" href="#install" data-i18n="nav.install">--install</a>
+  <a class="nl" href="/plugins" data-i18n="nav.plugins">--plugins</a>
   <a class="nl" href="/changelog" data-i18n="nav.changelog">--changelog</a>
   <span class="caret" aria-hidden="true"></span>
   <button id="langToggle" class="lang-btn">中文</button>
@@ -323,7 +324,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
 
 <!-- FOOTER · dense colophon -->
 <footer class="foot-dense">
-  <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+  <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/plugins" data-i18n="footer.plugins">plugins</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
 </footer>
 
 <script>
@@ -333,7 +334,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
     var zh = {
       'meta.title': 'kobe — 把编码代理跑成一张图，终端原生',
       'meta.desc': 'kobe 是本地优先的图工程 TUI：把多个 AI 编码代理跑成一张由隔离尝试组成的图——git worktree、托管引擎会话、显式结果上报——最后合入赢家。',
-      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.changelog': '--更新日志',
+      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.changelog': '--更新日志',
       'hero.kicker': '提示词工程 → 上下文工程 → <span class="acc">图工程</span>',
       'hero.title': '装在你 shell 里的 agent <span class="acc">多路复用器</span>。',
       'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。kobe 是这张图的终端原生运行时。',
@@ -357,12 +358,12 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
       'final.line': '所有支流终会汇合。判断权在你手里。',
       'footer.tagline': '终端原生的编码代理图工程。',
       'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Fraunces、DM Sans 与 JetBrains Mono。MIT 许可。',
-      'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
+      'footer.plugins': '插件', 'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
       'meta.title': 'kobe — run coding agents as a graph, terminal-native',
       'meta.desc': 'kobe is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.',
-      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.changelog': '--changelog',
+      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.changelog': '--changelog',
       'hero.kicker': 'prompt engineering → context engineering → <span class="acc">graph engineering</span>',
       'hero.title': 'The agent <span class="acc">multiplexer</span> in your shell.',
       'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.',
@@ -386,7 +387,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
       'final.line': 'Every stream converges. You keep the judgment.',
       'footer.tagline': 'graph engineering for coding agents, terminal-native.',
       'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.',
-      'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
+      'footer.plugins': 'plugins', 'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
     };
     var dicts = { en: en, zh: zh };
     var lang = 'en';
