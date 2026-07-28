@@ -361,6 +361,7 @@ export function Sidebar(props: SidebarProps) {
     titleBudget,
     subtitleBudget,
     engineState: props.engineState,
+    engineLifecycle: props.engineLifecycle,
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
     moveMode: props.moveMode,

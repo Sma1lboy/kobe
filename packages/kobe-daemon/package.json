@@ -18,6 +18,7 @@
     "./daemon/conflict-collector": "./src/daemon/conflict-collector.ts",
     "./daemon/crash-log": "./src/daemon/crash-log.ts",
     "./daemon/cwd-task": "./src/daemon/cwd-task.ts",
+    "./daemon/engine-events-log": "./src/daemon/engine-events-log.ts",
     "./daemon/event-bus": "./src/daemon/event-bus.ts",
     "./daemon/file-watch-trigger": "./src/daemon/file-watch-trigger.ts",
     "./daemon/issues-store": "./src/daemon/issues-store.ts",

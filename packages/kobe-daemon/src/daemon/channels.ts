@@ -222,6 +222,13 @@ export interface ChannelPayloads {
    */
   "tab.open": TabOpenPayload
   /**
+   * LOW-FREQUENCY agent-lifecycle signals the TUI renders (compaction in
+   * progress, subagent activity). Deliberately excludes the tool family —
+   * that volume stays plugin-only via the PluginHost's direct feed. EVENT
+   * channel: consumers dedupe on `at`.
+   */
+  "engine.lifecycle": EngineLifecyclePayload
+  /**
    * One toast for the attached UIs (`kobe api notify` → `notice.send` →
    * here). EVENT channel, not state: last-value replay hands a late
    * subscriber only the most recent notice — consumers dedupe on `at`
@@ -273,6 +280,15 @@ export interface SessionDeliverPayload {
   readonly source: "note" | "dispatcher"
 }
 
+/** The `engine.lifecycle` channel payload — one low-frequency agent-lifecycle signal. */
+export interface EngineLifecyclePayload {
+  readonly taskId: string
+  readonly kind: "pre-compact" | "post-compact" | "subagent-start" | "subagent-stop"
+  readonly tabId?: string
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+}
+
 /** The `tab.open` channel payload — one "open a terminal tab running argv". */
 export interface TabOpenPayload {
   readonly taskId: string
@@ -310,6 +326,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "transcript.activity",
   "session.deliver",
   "tab.open",
+  "engine.lifecycle",
   "notice.event",
   "usage.snapshot",
 ]

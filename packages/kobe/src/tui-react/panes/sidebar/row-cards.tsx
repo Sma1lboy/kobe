@@ -50,6 +50,7 @@ export type SidebarRowCardSharedProps = {
   readonly titleBudget: number
   readonly subtitleBudget: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
+  readonly engineLifecycle?: ReadonlyMap<string, { readonly compacting: boolean; readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   readonly moveMode?: boolean
@@ -198,6 +199,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
   const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
   const changes = useChanges(shared, task)
   const activity = shared.engineState?.get(task.id)
+  const lifecycle = shared.engineLifecycle?.get(task.id)
   const job = shared.taskJobs?.get(task.id)
   const { mainBranch } = opts
   // Live line-2 cluster width (pin / PR chip / ±stats, each + its 1-cell
@@ -227,6 +229,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
     return buildSidebarRowView({
       task,
       activity,
+      lifecycle,
       job,
       spinnerFrame: 0,
       subtitleBudget,
@@ -235,7 +238,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       reducedMotion,
       completionSeen,
     })
-  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, t])
+  }, [task, activity, lifecycle, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object and never subscribe, so an idle row does zero per-frame work.
   const frame = useSpinnerFrame(baseView.loading && !reducedMotion)

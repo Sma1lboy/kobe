@@ -25,12 +25,13 @@ import { LOCALES, type LocaleId } from "../../i18n/catalog"
 
 export type NavLevel = "sidebar" | "body"
 
-export type SectionId = "general" | "engines" | "accounts" | "keys" | "feedback" | "dev"
+export type SectionId = "general" | "engines" | "accounts" | "plugins" | "keys" | "feedback" | "dev"
 
 export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "engines", label: "Engines" },
   { id: "accounts", label: "Accounts" },
+  { id: "plugins", label: "Plugins" },
   { id: "keys", label: "Keybindings" },
   { id: "feedback", label: "Feedback" },
   { id: "dev", label: "Dev" },
@@ -62,6 +63,7 @@ export type SettingsRow =
   | { id: "scrollback-rows"; kind: "scrollbackRows" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
+  | { id: string; kind: "pluginToggle"; pluginId: string }
   | { id: "feedback-title"; kind: "feedbackTitle" }
   | { id: "feedback-body"; kind: "feedbackBody" }
   | { id: "feedback-send"; kind: "feedbackSend" }
@@ -93,12 +95,18 @@ export function splitStyleRowId(style: SplitStyle): string {
   return `split-style:${style}`
 }
 
+export function pluginRowId(pluginId: string): string {
+  return `plugin:${pluginId}`
+}
+
 /** Everything the registry needs to lay out every section's rows. */
 export type SettingsRowsInput = {
   themeNames: readonly string[]
   focusAccentSlots: readonly FocusAccentSlot[]
   /** Built-ins + user-registered custom engines, in display order. */
   engineList: readonly VendorId[]
+  /** Registered plugin ids (`~/.kobe/plugins.json`), in registry order. */
+  pluginIds: readonly string[]
   hasDaemon: boolean
 }
 
@@ -141,6 +149,15 @@ export function engineRows(engineList: readonly VendorId[]): SettingsRow[] {
   ]
 }
 
+/**
+ * Plugins section: one enable/disable row per registered plugin, in
+ * registry order. Empty registry → zero rows (the view shows the
+ * install hint instead).
+ */
+export function pluginRows(pluginIds: readonly string[]): SettingsRow[] {
+  return pluginIds.map((pluginId): SettingsRow => ({ id: pluginRowId(pluginId), kind: "pluginToggle", pluginId }))
+}
+
 export function feedbackRows(): SettingsRow[] {
   return [
     { id: "feedback-title", kind: "feedbackTitle" },
@@ -178,6 +195,8 @@ export function sectionRows(section: SectionId, input: SettingsRowsInput): Setti
     case "accounts":
     case "keys":
       return []
+    case "plugins":
+      return pluginRows(input.pluginIds)
     case "feedback":
       return feedbackRows()
     case "dev":

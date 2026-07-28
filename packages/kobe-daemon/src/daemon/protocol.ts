@@ -20,6 +20,7 @@ export {
   type ChannelName,
   type ChannelPayloads,
   type NoticeEventPayload,
+  type EngineLifecyclePayload,
   type SessionDeliverPayload,
   type TabOpenPayload,
   type TranscriptActivityPayload,
@@ -174,6 +175,8 @@ export type DaemonRequestName =
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
   | "session.deliver"
+  // Read one task's recent engine lifecycle events (the TUI event feed).
+  | "task.recentEvents"
   // Plugin panes: publish a `tab.open` channel event asking the TUI hosting
   // the task to open a terminal tab running argv. Same trust boundary as
   // `pty.open`; the daemon only validates + publishes.

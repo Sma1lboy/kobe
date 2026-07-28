@@ -67,17 +67,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
+  const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
   const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
 
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
-  // Task-lifecycle UI state (issue #20 — parity with the tmux Tasks pane):
-  // the project filter and the sidebar-search gate that mutes host letter
-  // chords while the user types a query. Move mode, the global sort pref,
-  // and the toast helpers live in the shared useSidebarHostState below.
-  // KNOWN GAP vs the Tasks pane: this host does NOT follow live `ui-prefs`
-  // pushes for sortMode/projectFilter (deliberate for now).
+  // Task-lifecycle UI state (issue #20): project filter + sidebar-search gate
+  // muting host letter chords while typing. Move mode / sort pref / toasts
+  // live in useSidebarHostState below. KNOWN GAP vs the Tasks pane: no live
+  // `ui-prefs` follow for sortMode/projectFilter (deliberate for now).
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
   const [searchActive, setSearchActive] = useState(false)
 
@@ -381,6 +380,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onSelect={selectTask}
           onActivate={(id) => void activateTask(id)}
           engineState={engineState}
+          engineLifecycle={engineLifecycle}
           taskJobs={taskJobs}
           worktreeChanges={worktreeChanges}
           focused={activePane === "sidebar"}

@@ -92,18 +92,10 @@ export interface DaemonHandlerContext {
   readonly issues: IssuesStore
   /** Rate-limited cache in front of the engine quota probes. */
   readonly quotaUsage: QuotaUsageCache
-  /** Plugin runtime sink for agent-lifecycle events (absent in tests / when
-   *  plugins are disabled) — a direct feed, deliberately NOT a bus channel. */
-  readonly plugins?: {
-    handleEngineReport(report: {
-      readonly kind: string
-      readonly taskId: string
-      readonly detail?: Record<string, unknown>
-      readonly vendor?: string
-      readonly tabId?: string
-      readonly sessionId?: string
-    }): void
-  }
+  /** Per-task recent engine events (`task.recentEvents`; absent in older tests). */
+  readonly engineEvents?: import("./engine-events-log.ts").EngineEventLog
+  /** Plugin sink for agent-lifecycle events — a direct feed, deliberately NOT a bus channel. */
+  readonly plugins?: Pick<import("../plugins/runtime.ts").PluginHost, "handleEngineReport">
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
   readonly daemon: {
     readonly startedAt: Date
@@ -309,6 +301,14 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "task.recentEvents",
+      async handle(payload, ctx) {
+        const taskId = requireString(payload, "taskId")
+        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
+        return { events: ctx.engineEvents?.recent(taskId) ?? [] }
+      },
+    },
+    {
       name: "tab.open",
       async handle(payload, ctx) {
         // Plugin panes: `kobe plugin pane open` asks the TUI hosting the
@@ -430,6 +430,24 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
               .catch((err) => logDaemonError("attention-inbox-record", err))
           }
         }
+        // Per-task recent-events buffer (TUI event feed) + the low-frequency
+        // `engine.lifecycle` channel (sidebar compaction glyph / subagent mark).
+        const vendor = optionalString(payload, "engine")
+        ctx.engineEvents?.append(taskId, {
+          kind,
+          ...(tabId ? { tabId } : {}),
+          ...(vendor ? { vendor } : {}),
+          ...(detail ? { detail } : {}),
+          at: Date.now(),
+        })
+        if (
+          kind === "pre-compact" ||
+          kind === "post-compact" ||
+          kind === "subagent-start" ||
+          kind === "subagent-stop"
+        ) {
+          ctx.bus.publish("engine.lifecycle", { taskId, kind, ...(tabId ? { tabId } : {}), at: Date.now() })
+        }
         // Plugin event hooks: every report becomes one agent-lifecycle event
         // (docs/design/plugin-events.md); dispatch fans out only to plugins
         // that declared the event.
@@ -437,7 +455,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           kind,
           taskId,
           ...(detail ? { detail: detail as unknown as Record<string, unknown> } : {}),
-          ...(optionalString(payload, "engine") ? { vendor: optionalString(payload, "engine") } : {}),
+          ...(vendor ? { vendor } : {}),
           ...(tabId ? { tabId } : {}),
           ...(sessionId ? { sessionId } : {}),
         })

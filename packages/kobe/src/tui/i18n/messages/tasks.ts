@@ -35,6 +35,7 @@ export const en = {
     rateLimited: "rate limited",
     permissionNeeded: "needs permission",
     error: "error",
+    compacting: "compacting context",
   },
   /** Row-view special subtitle words */
   subtitle: {
@@ -111,6 +112,7 @@ export const zh: typeof en = {
     rateLimited: "请求受限",
     permissionNeeded: "等待授权",
     error: "错误",
+    compacting: "正在压缩上下文",
   },
   subtitle: {
     noTracking: "不跟踪活动",

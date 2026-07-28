@@ -18,6 +18,7 @@ import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-eve
 import type { UpdateInfo } from "../version.ts"
 import {
   type AttentionInboxItem,
+  type EngineLifecycleState,
   type OrchestratorSignals,
   type TaskEngineState,
   type TaskJobState,
@@ -69,6 +70,17 @@ function pruneEngineState(tasks: readonly SerializedTask[], signals: Orchestrato
       nextTabs.delete(key)
     }
     if (nextTabs) signals.setEngineTabStateSig(nextTabs)
+  }
+  // Same guard for the transient lifecycle marks (compacting / subagents).
+  const lifecycle = signals.engineLifecycleAcc()
+  if (lifecycle.size > 0) {
+    let nextLifecycle: Map<string, EngineLifecycleState> | null = null
+    for (const key of lifecycle.keys()) {
+      if (live.has(key)) continue
+      if (!nextLifecycle) nextLifecycle = new Map(lifecycle)
+      nextLifecycle.delete(key)
+    }
+    if (nextLifecycle) signals.setEngineLifecycleSig(nextLifecycle)
   }
 }
 
@@ -149,6 +161,13 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     if (p.state === "idle") next.delete(p.taskId)
     else next.set(p.taskId, entry)
     signals.setEngineStateSig(next)
+    // A turn ending (or the session going idle) also ends any transient
+    // lifecycle marks — the safety net for a missed post-compact/stop event.
+    if ((p.state === "idle" || p.state === "turn_complete") && signals.engineLifecycleAcc().has(p.taskId)) {
+      const lifecycle = new Map(signals.engineLifecycleAcc())
+      lifecycle.delete(p.taskId)
+      signals.setEngineLifecycleSig(lifecycle)
+    }
     if (typeof p.tabId === "string" && p.tabId) {
       const nextTabs = new Map(signals.engineTabStateAcc())
       const tabs = new Map(nextTabs.get(p.taskId) ?? [])
@@ -272,6 +291,30 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       return
     }
     signals.setTabOpenSig(p as TabOpenPayload)
+    return
+  }
+  if (name === "engine.lifecycle") {
+    const p = payload as { taskId?: string; kind?: string } | undefined
+    if (typeof p?.taskId !== "string" || typeof p.kind !== "string") {
+      logClientError("orch", `dropped engine.lifecycle event: malformed payload (${describePayload(payload)})`)
+      return
+    }
+    const prev = signals.engineLifecycleAcc()
+    const cur = prev.get(p.taskId) ?? { compacting: false, subagents: 0 }
+    const entry =
+      p.kind === "pre-compact"
+        ? { ...cur, compacting: true }
+        : p.kind === "post-compact"
+          ? { ...cur, compacting: false }
+          : p.kind === "subagent-start"
+            ? { ...cur, subagents: cur.subagents + 1 }
+            : p.kind === "subagent-stop"
+              ? { ...cur, subagents: Math.max(0, cur.subagents - 1) }
+              : cur
+    const map = new Map(prev)
+    if (!entry.compacting && entry.subagents === 0) map.delete(p.taskId)
+    else map.set(p.taskId, entry)
+    signals.setEngineLifecycleSig(map)
     return
   }
   if (name === "notice.event") {

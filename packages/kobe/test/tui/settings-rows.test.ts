@@ -45,6 +45,7 @@ function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
     themeNames: ["claude", "gruvbox", "tokyonight"],
     focusAccentSlots: SLOTS,
     engineList: [...ALL_VENDORS],
+    pluginIds: ["example.notify", "acme.layout"],
     hasDaemon: true,
     ...overrides,
   }

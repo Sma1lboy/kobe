@@ -178,6 +178,9 @@ export function anyRowLoading(
 export function buildSidebarRowView(opts: {
   readonly task: Task
   readonly activity?: TaskEngineState
+  /** Transient lifecycle marks (`engine.lifecycle` channel): a compacting
+   *  word on line 2 and a `◇N` subagent prefix ahead of the branch. */
+  readonly lifecycle?: { readonly compacting: boolean; readonly subagents: number }
   /**
    * A long daemon operation in flight for this task, from the orchestrator's
    * `task.jobs` map (today: `ensureWorktree`). Presence means "running" —
@@ -255,6 +258,12 @@ export function buildSidebarRowView(opts: {
   // neutral dash. Persisted task lifecycle belongs to the board, not this
   // runtime-activity projection.
   const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : "—"
+  // Transient lifecycle marks: mid-turn compaction replaces the branch word
+  // (it outranks the branch, not the failure/waiting words); subagent
+  // activity rides as a compact `◇N` prefix ahead of the branch.
+  const compacting = opts.lifecycle?.compacting === true
+  const subagents = opts.lifecycle?.subagents ?? 0
+  const branchWithMarks = subagents > 0 && branch.length > 0 ? `◇${subagents} ${branch}` : branch
   const subtitleText =
     deleting || deleteFailed
       ? opts.truncateBranch(deletionSubtitle(deleteFailed), opts.subtitleBudget)
@@ -262,9 +271,11 @@ export function buildSidebarRowView(opts: {
         ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
         : activityLabel
           ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
-          : branch.length > 0
-            ? opts.truncateBranch(branch, opts.subtitleBudget)
-            : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
+          : compacting
+            ? opts.truncateBranch(t("tasks.activity.compacting"), opts.subtitleBudget)
+            : branchWithMarks.length > 0
+              ? opts.truncateBranch(branchWithMarks, opts.subtitleBudget)
+              : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
   // Untracked custom engine gets a distinct dim dot. Normal tasks fall back
   // to the hollow idle circle because the client deliberately removes an
   // explicit `idle` activity entry; absence is therefore the idle projection.

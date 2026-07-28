@@ -20,17 +20,6 @@ import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@o
 import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type KobeOrchestrator, RemoteOrchestrator, type UsageSnapshotMap } from "../../../client/remote-orchestrator"
-import {
-  type ClaudeAccount,
-  type CodexAccount,
-  type CopilotAccount,
-  type EngineAccountStatus,
-  type KimiAccount,
-  detectClaudeAccount,
-  detectCodexAccount,
-  detectCopilotAccount,
-  detectKimiAccount,
-} from "../../../engine/account-detect"
 import { createStateCell } from "../../../lib/external-store"
 import { submitFeedback } from "../../../lib/feedback"
 import {
@@ -55,7 +44,9 @@ import { SettingsCursorElContext } from "./rows"
 import { AccountsSettingsSection, EngineSettingsSection } from "./sections-engines"
 import { GeneralSettingsSection, SettingsSectionSidebar } from "./sections-general"
 import { DevSettingsSection, FeedbackSettingsSection, KeybindingsSettingsSection } from "./sections-misc"
+import { PluginSettingsSection } from "./sections-plugins"
 import { useEngineSettings } from "./use-engine-settings"
+import { useAccountProbes, usePluginSettings } from "./use-section-data"
 import { useSettingsPrefs } from "./use-settings-prefs"
 
 export type SettingsDialogProps = {
@@ -106,22 +97,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const remote = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
   const usage = useAccessor(remote ? remote.usageSnapshotSignal() : EMPTY_USAGE_SIGNAL)
 
-  // Account detection: read-only fs/env probes, lazily run the
-  // first time the Accounts section is opened so a settings open that
-  // never visits it pays nothing.
-  const [claudeStatus, setClaudeStatus] = useState<EngineAccountStatus<ClaudeAccount> | null>(null)
-  const [codexStatus, setCodexStatus] = useState<EngineAccountStatus<CodexAccount> | null>(null)
-  const [copilotStatus, setCopilotStatus] = useState<EngineAccountStatus<CopilotAccount> | null>(null)
-  const [kimiStatus, setKimiStatus] = useState<EngineAccountStatus<KimiAccount> | null>(null)
-  const accountsProbed = useRef(false)
-  useEffect(() => {
-    if (section !== "accounts" || accountsProbed.current) return
-    accountsProbed.current = true
-    void detectClaudeAccount().then((s) => setClaudeStatus(s))
-    void detectCodexAccount().then((s) => setCodexStatus(s))
-    void detectCopilotAccount().then((s) => setCopilotStatus(s))
-    void detectKimiAccount().then((s) => setKimiStatus(s))
-  }, [section])
+  // Lazily-probed section data (accounts / plugins) — see ./use-section-data.
+  const accounts = useAccountProbes(section)
+  const plugins = usePluginSettings(section)
 
   /**
    * The active section's ordered navigable rows (the row registry).
@@ -133,6 +111,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       themeNames,
       focusAccentSlots: FOCUS_ACCENT_SLOTS,
       engineList: engines.engineList(),
+      pluginIds: plugins.rows.map((p) => p.id),
       hasDaemon,
     })
   }
@@ -266,6 +245,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     scrollbackRows: () => void prefs.editScrollbackRows(),
     engine: (row) => void engines.editEngine(row.vendor),
     engineAdd: () => void engines.addEngineFlow(),
+    pluginToggle: (row) => plugins.toggle(row.pluginId),
     feedbackTitle: () => setBodyRow(0),
     feedbackBody: () => setBodyRow(1),
     feedbackSend: () => void sendFeedback(),
@@ -403,11 +383,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
           ) : null}
           {section === "accounts" ? (
             <AccountsSettingsSection
-              claudeStatus={claudeStatus}
-              codexStatus={codexStatus}
-              copilotStatus={copilotStatus}
-              kimiStatus={kimiStatus}
+              claudeStatus={accounts.claude}
+              codexStatus={accounts.codex}
+              copilotStatus={accounts.copilot}
+              kimiStatus={accounts.kimi}
             />
+          ) : null}
+          {section === "plugins" ? (
+            <PluginSettingsSection {...cursorProps} plugins={plugins.rows} toggle={plugins.toggle} />
           ) : null}
           {section === "keys" ? <KeybindingsSettingsSection /> : null}
           {section === "feedback" ? (

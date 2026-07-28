@@ -54,6 +54,17 @@ export function startPluginHost(
   return host
 }
 
+/** The server's one-liner: start a host iff `options.plugins` is set. */
+export function maybeStartPluginHost(
+  bus: { onPublish(sink: (event: ChannelEvent) => void): () => void },
+  options: { readonly homeDir?: string; readonly plugins?: { readonly binPath: string } },
+  socketPath: string,
+  log: (line: string) => void,
+): PluginHost | null {
+  if (!options.plugins) return null
+  return startPluginHost(bus, { homeDir: options.homeDir, socketPath, binPath: options.plugins.binPath, log })
+}
+
 export class PluginHost {
   private readonly opts: PluginHostOptions
   private readonly reducer = new PluginEventReducer()

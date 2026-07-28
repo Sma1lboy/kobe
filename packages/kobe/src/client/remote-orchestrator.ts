@@ -34,8 +34,10 @@ import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
 import {
   type AttentionInboxItem,
   type DaemonConnectionState,
+  type EngineLifecycleMap,
   type EngineTabStateMap,
   type OrchestratorSignals,
+  type RecentTaskEvent,
   type RemoteOrchestratorOptions,
   type TaskEngineState,
   type TaskJobState,
@@ -95,7 +97,10 @@ import {
 export type {
   AttentionInboxItem,
   DaemonConnectionState,
+  EngineLifecycleMap,
+  EngineLifecycleState,
   EngineTabStateMap,
+  RecentTaskEvent,
   RemoteOrchestratorOptions,
   TaskEngineState,
   TaskJobState,
@@ -131,6 +136,7 @@ export class RemoteOrchestrator {
   private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
   private readonly noticeAcc = createStateCell<NoticeEventPayload | null>(null)
   private readonly tabOpenAcc = createStateCell<TabOpenPayload | null>(null)
+  private readonly engineLifecycleAcc = createStateCell<EngineLifecycleMap>(new Map())
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
   private readonly keybindingsRevAcc = createStateCell<number | null>(null)
   private readonly connectionStateAcc = createStateCell<DaemonConnectionState>("online")
@@ -177,6 +183,8 @@ export class RemoteOrchestrator {
       setTranscriptActivitySig: this.transcriptActivityAcc.set,
       setNoticeSig: this.noticeAcc.set,
       setTabOpenSig: this.tabOpenAcc.set,
+      engineLifecycleAcc: this.engineLifecycleAcc,
+      setEngineLifecycleSig: this.engineLifecycleAcc.set,
       setUiPrefsSig: this.uiPrefsAcc.set,
       setKeybindingsRevSig: this.keybindingsRevAcc.set,
       setConnectionState: this.connectionStateAcc.set,
@@ -325,21 +333,13 @@ export class RemoteOrchestrator {
     return engineTabStatesSignalOp(this.reads)
   }
 
-  attentionInboxSignal(): ReadableState<readonly AttentionInboxItem[]> {
-    return attentionInboxSignalOp(this.reads)
-  }
+  readonly attentionInboxSignal = (): ReadableState<readonly AttentionInboxItem[]> => attentionInboxSignalOp(this.reads)
 
-  taskJobsSignal(): ReadableState<ReadonlyMap<string, TaskJobState>> {
-    return taskJobsSignalOp(this.reads)
-  }
+  readonly taskJobsSignal = (): ReadableState<ReadonlyMap<string, TaskJobState>> => taskJobsSignalOp(this.reads)
 
-  worktreeChangesSignal(): ReadableState<WorktreeChangesMap | null> {
-    return worktreeChangesSignalOp(this.reads)
-  }
+  readonly worktreeChangesSignal = (): ReadableState<WorktreeChangesMap | null> => worktreeChangesSignalOp(this.reads)
 
-  usageSnapshotSignal(): ReadableState<UsageSnapshotMap | null> {
-    return usageSnapshotSignalOp(this.reads)
-  }
+  readonly usageSnapshotSignal = (): ReadableState<UsageSnapshotMap | null> => usageSnapshotSignalOp(this.reads)
 
   transcriptActivitySignal(): ReadableState<TranscriptActivityMap | null> {
     return transcriptActivitySignalOp(this.reads)
@@ -355,21 +355,21 @@ export class RemoteOrchestrator {
   /** Latest `tab.open` request (plugin panes) — consumers dedupe on `at`. */
   readonly tabOpenStore = (): ExternalStore<TabOpenPayload | null> => this.tabOpenAcc
 
-  uiPrefsSignal(): ReadableState<UiPrefsPayload | null> {
-    return uiPrefsSignalOp(this.reads)
+  /** Transient per-task lifecycle marks (compacting / subagent activity). */
+  readonly engineLifecycleSignal = (): ReadableState<EngineLifecycleMap> => this.engineLifecycleAcc
+
+  /** One task's recent engine events (the event feed; newest last). */
+  recentTaskEvents(id: TaskId | string): Promise<{ events: readonly RecentTaskEvent[] }> {
+    return this.client.request("task.recentEvents", { taskId: String(id) })
   }
 
-  uiPrefsStore(): ExternalStore<UiPrefsPayload | null> {
-    return uiPrefsStoreOp(this.reads)
-  }
+  readonly uiPrefsSignal = (): ReadableState<UiPrefsPayload | null> => uiPrefsSignalOp(this.reads)
 
-  keybindingsRevSignal(): ReadableState<number | null> {
-    return keybindingsRevSignalOp(this.reads)
-  }
+  readonly uiPrefsStore = (): ExternalStore<UiPrefsPayload | null> => uiPrefsStoreOp(this.reads)
 
-  keybindingsRevStore(): ExternalStore<number | null> {
-    return keybindingsRevStoreOp(this.reads)
-  }
+  readonly keybindingsRevSignal = (): ReadableState<number | null> => keybindingsRevSignalOp(this.reads)
+
+  readonly keybindingsRevStore = (): ExternalStore<number | null> => keybindingsRevStoreOp(this.reads)
 
   listTasks(): Task[] {
     return listTasksOp(this.reads)

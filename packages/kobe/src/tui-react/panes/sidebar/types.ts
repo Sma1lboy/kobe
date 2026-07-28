@@ -62,6 +62,8 @@ export type SidebarProps = SidebarTaskCallbacks & {
   zenActive?: boolean
   onZenClick?: () => void
   engineState?: ReadonlyMap<string, TaskEngineState>
+  /** Transient per-task lifecycle marks (compacting / subagent activity). */
+  engineLifecycle?: ReadonlyMap<string, { readonly compacting: boolean; readonly subagents: number }>
   taskJobs?: ReadonlyMap<string, TaskJobState>
   worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   /**

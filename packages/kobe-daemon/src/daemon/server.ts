@@ -17,7 +17,7 @@ import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
-import { startPluginHost } from "../plugins/runtime.ts"
+import { maybeStartPluginHost } from "../plugins/runtime.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import {
@@ -31,6 +31,7 @@ import { ClientWriter } from "./client-writer.ts"
 import { startDaemonCollectors } from "./collectors.ts"
 import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
+import { EngineEventLog } from "./engine-events-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
   type DaemonHandlerContext,
@@ -182,6 +183,8 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // vendor usage APIs are themselves rate-limited). Shared by the usage
   // poller (collectors) and the rate-limit resume scheduler (handlers).
   const quotaUsage = new QuotaUsageCache(runtime, bus)
+  // Per-task recent engine events (the TUI event feed / task.recentEvents).
+  const engineEvents = new EngineEventLog()
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -267,14 +270,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options, quotaUsage)
 
   // Plugin runtime: startup hooks + channel-derived event hooks (plugins/runtime.ts).
-  const pluginHost = options.plugins
-    ? startPluginHost(bus, {
-        homeDir: options.homeDir,
-        socketPath,
-        binPath: options.plugins.binPath,
-        log: (line) => logDaemonInfo("plugin-host", line),
-      })
-    : null
+  const pluginHost = maybeStartPluginHost(bus, options, socketPath, (line) => logDaemonInfo("plugin-host", line))
 
   let webServer: DaemonWebServer | null = null
   // Why the web transport isn't listening (port taken, bind failed). Surfaced
@@ -352,6 +348,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       deletions,
       issues,
       quotaUsage,
+      engineEvents,
       ...(pluginHost ? { plugins: pluginHost } : {}),
       daemon: {
         startedAt,

@@ -101,7 +101,7 @@ describe("mergeActivityHooks (global, cwd-based)", () => {
     // The user's PostToolUse group is preserved; kobe's tool-post group is
     // appended beside it (the pure merge installs the full map — the tool
     // family gate lives in JsonHookAdapter.installActivityHooks).
-    expect(out.hooks?.PostToolUse?.[0]).toEqual(userSettings.hooks.PostToolUse[0])
+    expect((out.hooks?.PostToolUse as unknown[])[0]).toEqual(userSettings.hooks.PostToolUse[0])
     expect(JSON.stringify(out.hooks?.PostToolUse)).toContain("tool-post")
     // kobe's Stop coexists with the user's Stop hook (both kept).
     expect(JSON.stringify(out.hooks?.Stop)).toContain("turn-complete")

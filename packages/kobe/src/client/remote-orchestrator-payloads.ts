@@ -163,6 +163,20 @@ export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChanges
  */
 export type UsageSnapshotMap = ReadonlyMap<string, EngineQuotaUsage>
 
+/** Folded `engine.lifecycle` state per task — the sidebar's transient
+ *  "compacting" glyph + subagent activity mark. */
+export type EngineLifecycleState = { readonly compacting: boolean; readonly subagents: number }
+export type EngineLifecycleMap = ReadonlyMap<string, EngineLifecycleState>
+
+/** One entry of the `task.recentEvents` feed (daemon EngineEventLog wire shape). */
+export interface RecentTaskEvent {
+  readonly kind: string
+  readonly tabId?: string
+  readonly vendor?: string
+  readonly detail?: Record<string, unknown>
+  readonly at: number
+}
+
 /**
  * Parse a `usage.snapshot` wire payload into a vendor→usage map. Returns
  * `null` for a malformed payload (the event is then ignored — never clobber
@@ -322,6 +336,8 @@ export interface OrchestratorSignals {
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setNoticeSig: (next: NoticeEventPayload | null) => void
   readonly setTabOpenSig: (next: TabOpenPayload | null) => void
+  readonly engineLifecycleAcc: ReadableState<EngineLifecycleMap>
+  readonly setEngineLifecycleSig: (next: EngineLifecycleMap) => void
   readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   readonly setKeybindingsRevSig: (next: number | null) => void
   readonly setConnectionState: (next: DaemonConnectionState) => void

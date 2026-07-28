@@ -1,3 +1,4 @@
+import { EngineEventLog } from "@sma1lboy/kobe-daemon/daemon/engine-events-log"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
   type DaemonHandlerContext,
@@ -100,6 +101,7 @@ describe("daemon handler registry", () => {
       "attention.dismiss",
       "attention.read",
       "session.deliver",
+      "task.recentEvents",
       "tab.open",
       "notice.send",
       "note.file",
@@ -108,6 +110,33 @@ describe("daemon handler registry", () => {
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()
     expect(registry.has("subscribe")).toBe(false)
     expect(registry.size).toBe(rpcNames.length)
+  })
+
+  describe("engine.reportEvent lifecycle kinds", () => {
+    it("buffers every kind, publishes engine.lifecycle for low-frequency ones, and skips the badge", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      const log = new EngineEventLog()
+      ;(ctx as { engineEvents?: EngineEventLog }).engineEvents = log
+      await dispatch("engine.reportEvent", { taskId: "t1", kind: "pre-compact" }, ctx)
+      await dispatch("engine.reportEvent", { taskId: "t1", kind: "tool-post", detail: { tool: { name: "Bash" } } }, ctx)
+      // Lifecycle-only kinds never touch the activity badge or the inbox.
+      expect(rec.reported).toHaveLength(0)
+      expect(rec.inboxRecords).toHaveLength(0)
+      // Only the low-frequency kind broadcast on engine.lifecycle (no tool spam).
+      const lifecycle = rec.published.filter((p) => p.channel === "engine.lifecycle")
+      expect(lifecycle).toHaveLength(1)
+      expect(lifecycle[0]?.payload).toMatchObject({ taskId: "t1", kind: "pre-compact" })
+      // Both kinds landed in the recent-events buffer, readable over RPC.
+      const res = (await dispatch("task.recentEvents", { taskId: "t1" }, ctx)) as { events: { kind: string }[] }
+      expect(res.events.map((e) => e.kind)).toEqual(["pre-compact", "tool-post"])
+    })
+
+    it("state kinds still hit the badge and never the lifecycle channel", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      await dispatch("engine.reportEvent", { taskId: "t1", kind: "turn-complete" }, ctx)
+      expect(rec.reported.map((r) => r.kind)).toEqual(["turn-complete"])
+      expect(rec.published.filter((p) => p.channel === "engine.lifecycle")).toHaveLength(0)
+    })
   })
 
   describe("tab.open", () => {
