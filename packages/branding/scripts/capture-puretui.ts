@@ -45,22 +45,64 @@ const run = async (file: string, args: readonly string[], cwd: string) => {
   return stdout.trim()
 }
 
+// A real "before" file so a replay's engine edits produce an honest
+// modified-file diff (not just an added file) in the Files pane.
+const FIXTURE_SESSION_TS = `export type Session = { token: string; expiresAt: number }
+
+let current: Session | null = null
+
+export async function getSession(now: number): Promise<Session> {
+  if (current === null) {
+    current = await refresh(now)
+    // eagerly refresh once more so the token window is always fresh
+    current = await refresh(now)
+    return current
+  }
+  if (current.expiresAt - now < 30_000) {
+    const renewed = await refresh(now)
+    if (renewed.expiresAt > current.expiresAt) current = renewed
+    current = await refresh(now)
+  }
+  return current
+}
+
+async function refresh(now: number): Promise<Session> {
+  return { token: \`tok_\${now.toString(36)}\`, expiresAt: now + 15 * 60_000 }
+}
+`
+
 const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   const fixtureRepo = join(demoRoot, "fixture-repo")
-  await mkdir(fixtureRepo, { recursive: true })
+  await mkdir(join(fixtureRepo, "src"), { recursive: true })
   await run("git", ["init", "-q", "-b", "main"], fixtureRepo)
   await run("git", ["config", "user.email", "capture@kobe.local"], fixtureRepo)
   await run("git", ["config", "user.name", "kobe capture"], fixtureRepo)
   await writeFile(join(fixtureRepo, "README.md"), "# PureTUI replay fixture\n")
-  await run("git", ["add", "README.md"], fixtureRepo)
+  await writeFile(join(fixtureRepo, "src", "session.ts"), FIXTURE_SESSION_TS)
+  await run("git", ["add", "-A"], fixtureRepo)
   await run("git", ["commit", "-q", "-m", "fixture"], fixtureRepo)
+  // Self-remote so `origin/main` resolves: the Files pane's Branch (vs-base)
+  // scope needs a base ref, and a committed engine edit is invisible in
+  // working-tree scope.
+  await run("git", ["remote", "add", "origin", fixtureRepo], fixtureRepo)
+  await run("git", ["fetch", "-q", "origin"], fixtureRepo)
+  await run("git", ["remote", "set-head", "origin", "main"], fixtureRepo)
   return fixtureRepo
 }
 
 const prepareCaptureState = async (demoRoot: string, fixtureRepo: string, claudeCommand?: string): Promise<void> => {
   const configDir = join(demoRoot, "home", ".config", "kobe")
   await mkdir(configDir, { recursive: true })
-  const state: Record<string, unknown> = { onboarded: true, skillHintSeen: "1", savedRepos: [fixtureRepo] }
+  // `skillHintSeen:vN` mutes the versioned skill-update prompt (the capture
+  // keeps the user's real HOME, whose installed skill may be stale). If the
+  // boot wait times out on that prompt after a KOBE_SKILL_VERSION bump,
+  // update N here to match `src/lib/skill-install.ts`.
+  const state: Record<string, unknown> = {
+    onboarded: true,
+    skillHintSeen: "1",
+    "skillHintSeen:v6": "1",
+    savedRepos: [fixtureRepo],
+  }
   const captureClaudeCommand = claudeCommand?.trim()
   if (captureClaudeCommand) state["engineCommand.claude"] = captureClaudeCommand
   await writeFile(join(configDir, "state.json"), `${JSON.stringify(state, null, 2)}\n`)

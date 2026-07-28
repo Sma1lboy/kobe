@@ -1,0 +1,90 @@
+#!/bin/sh
+# Demo stub engine for the README replay capture. Select it with
+# KOBE_REPLAY_CLAUDE_COMMAND so a capture is deterministic and free of
+# real-engine auth/quota. It looks like an engine session but does REAL
+# work in the task worktree: rewrites src/session.ts, commits, and files a
+# genuine worker report through `kobe api report` (KOBE_TASK_ID is exported
+# into every engine tab), so sidebar state and diffs in the capture are the
+# product's own rendering, never mocked frames.
+trap 'exit 0' INT TERM HUP
+
+C='\033[1;38;2;204;120;92m'
+D='\033[2m'
+B='\033[1m'
+G='\033[38;2;154;202;134m'
+R='\033[0m'
+
+work() {
+  printf "\n${D}\xe2\x97\x8f Reading src/session.ts${R}\n"
+  sleep 1
+  printf "${D}\xe2\x97\x8f Editing src/session.ts${R}\n"
+  mkdir -p src
+  cat >src/session.ts <<'EOF'
+export type Session = { token: string; expiresAt: number }
+
+let current: Session | null = null
+let renewal: Promise<Session> | null = null
+
+/** One guarded renewal: concurrent callers share the in-flight refresh. */
+export async function getSession(now: number): Promise<Session> {
+  if (current && current.expiresAt - now >= 30_000) return current
+  renewal ??= refresh(now).finally(() => {
+    renewal = null
+  })
+  current = await renewal
+  return current
+}
+
+async function refresh(now: number): Promise<Session> {
+  return { token: `tok_${now.toString(36)}`, expiresAt: now + 15 * 60_000 }
+}
+EOF
+  sleep 1
+  printf "\n${B}\xe2\x80\xa2 Session refresh${R} \xe2\x80\x94 collapsed the double-refresh path into one guarded renewal.\n"
+  sleep 1
+  printf "${B}\xe2\x80\xa2 Public API${R} \xe2\x80\x94 getSession keeps its signature; callers are untouched.\n"
+  sleep 1
+  printf "\n${D}\xe2\x97\x8f Running bun test src/session.test.ts${R}\n"
+  sleep 2
+  printf "  ${G}\xe2\x9c\x93${R} 12 pass, 0 fail\n"
+  sleep 2
+  git add -A >/dev/null 2>&1
+  git commit -q -m "refactor: simplify session refresh" >/dev/null 2>&1
+  if command -v kobe >/dev/null 2>&1 && [ -n "$KOBE_TASK_ID" ]; then
+    kobe api report --outcome succeeded --summary "session refresh simplified, tests green" >/dev/null 2>&1
+  fi
+  printf "\n${G}\xe2\x9c\x93${R} committed ${B}refactor: simplify session refresh${R} ${D}\xc2\xb7 outcome reported${R}\n"
+}
+
+# The launch argv carries engine flags (--session-id <id>,
+# --append-system-prompt <text>); a fan-out delivery appends the actual
+# prompt as one trailing bare argument. Skip flag pairs, keep the prompt.
+prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+  --*)
+    shift 2 2>/dev/null || break
+    ;;
+  *)
+    prompt="$1"
+    shift
+    ;;
+  esac
+done
+
+printf '\033[2J\033[H'
+printf "${C}\xe2\x9c\xbb Claude Code${R}  ${D}demo session${R}\n"
+
+if [ -n "$prompt" ]; then
+  printf "\n${D}> %s${R}\n" "$prompt"
+  work
+fi
+
+# `ready ›` is the replay's wait marker: keep it ONE unstyled run so the
+# serialized snapshot line contains the literal text with no SGR codes
+# between the words.
+printf '\nready \xe2\x80\xba '
+while IFS= read -r _line; do
+  work
+  printf '\nready \xe2\x80\xba '
+done

@@ -177,27 +177,33 @@ describe("replay spec", () => {
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
     expect(quicklookSpec.setup).not.toHaveProperty("fixtureEngines")
-    expect(quicklookSpec.waits.claudeComposerReady.pattern).toBe("❯")
+    // The stub engine prints this marker as ONE unstyled run so the
+    // serialized snapshot contains the literal text (no SGR codes inside).
+    expect(quicklookSpec.waits.stubReady.pattern).toBe("ready ›")
   })
 
-  test("holds a real ClaudeX permission prompt through the replay tail", () => {
-    const claudePrompt = quicklookSpec.beats.find(
-      (beat) => beat.action === "typeTextWhenReady" && beat.textRef === "claudePrompt",
+  test("tells the fan-out → land story through real CLI beats", () => {
+    const prompt = quicklookSpec.beats.find(
+      (beat) => beat.action === "typeTextWhenReady" && beat.textRef === "refactorPrompt",
     )
-    const permissionReady = quicklookSpec.beats.find(
-      (beat) => beat.action === "waitFor" && beat.waitFor === "claudePermissionPrompt",
+    const fanOut = quicklookSpec.beats.find(
+      (beat) => beat.action === "typeText" && beat.textRef === "fanOutCommand",
     )
-    const permissionHold = quicklookSpec.beats.find(
-      (beat) => beat.action === "sleep" && beat.at === permissionReady?.at,
+    const fanOutDone = quicklookSpec.beats.find(
+      (beat) => beat.action === "waitFor" && beat.waitFor === "fanOutDone",
     )
-    expect(quicklookSpec.text.claudePrompt).toContain("printf replay-color-probe")
-    expect(quicklookSpec.waits.claudePermissionPrompt.pattern).toBe("Do you want to proceed?")
-    expect(claudePrompt?.submit).toBe(true)
-    expect(permissionReady).toEqual(
-      expect.objectContaining({ action: "waitFor", waitFor: "claudePermissionPrompt" }),
-    )
-    expect(permissionReady?.at).toBeGreaterThan(claudePrompt?.at ?? Number.POSITIVE_INFINITY)
-    expect(permissionHold).toEqual(expect.objectContaining({ action: "sleep", ms: 2500 }))
+    const land = quicklookSpec.beats.find((beat) => beat.action === "typeText" && beat.textRef === "landCommand")
+    const landed = quicklookSpec.beats.find((beat) => beat.action === "waitFor" && beat.waitFor === "landed")
+
+    expect(prompt?.submit).toBe(true)
+    expect(quicklookSpec.text.fanOutCommand).toContain("kobe api fan-out")
+    expect(quicklookSpec.text.landCommand).toContain('kobe api land --task-id "$KOBE_TASK_ID"')
+    expect(quicklookSpec.waits.fanOutDone.pattern).toBe('"groupId"')
+    expect(quicklookSpec.waits.landed.pattern).toBe('"landedOn"')
+    expect(fanOut?.submit).toBe(true)
+    expect(land?.submit).toBe(true)
+    expect(fanOutDone?.at).toBeGreaterThan(fanOut?.at ?? Number.POSITIVE_INFINITY)
+    expect(landed?.at).toBeGreaterThan(land?.at ?? Number.POSITIVE_INFINITY)
     expect(quicklookSpec.text).not.toHaveProperty("codexPrompt")
     expect(Object.keys(quicklookSpec.waits)).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/^codex/)]),
@@ -208,10 +214,5 @@ describe("replay spec", () => {
     expect(quicklookSpec.beats).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ action: "flow", engine: "codex" })]),
     )
-    expect(quicklookSpec.beats).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ action: "key", key: "C-q" })]),
-    )
-    expect(quicklookSpec.capture.seconds).toBe(50)
-    expect(quicklookSpec.stages.find((stage) => stage.name === "agent")?.region).toBeUndefined()
   })
 })

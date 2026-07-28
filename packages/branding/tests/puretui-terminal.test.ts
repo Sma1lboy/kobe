@@ -467,12 +467,13 @@ describe("capture PureTUI CLI", () => {
 
     expect(received).toMatchObject({
       fixtureRepo: join(root, "demo", "fixture-repo"),
-      seedTasks: [{ title: "fix flaky turn-detector test", status: "in_progress" }],
+      seedTasks: [{ title: "fix flaky retry test", status: "in_progress" }],
     })
     expect(received).not.toHaveProperty("pathPrefix")
     expect(await Bun.file(join(root, "demo", "home", ".config", "kobe", "state.json")).json()).toEqual({
       onboarded: true,
       skillHintSeen: "1",
+      "skillHintSeen:v6": "1",
       savedRepos: [join(root, "demo", "fixture-repo")],
     })
   })
