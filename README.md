@@ -1,13 +1,13 @@
-# kobe — run parallel AI coding agents from one terminal
+# kobe — the agent multiplexer in your shell
 
 <p align="center">
   <img src="docs/assets/brand/bracket-chip.gif" width="640" alt="kobe — TUI orchestrator for any coding CLI" />
 </p>
 
 <p align="center">
-  <strong>One terminal. Many agents. Every attempt on its own branch.</strong><br />
-  kobe is an open-source terminal UI for running <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, and <a href="https://github.com/github/copilot-cli">Copilot</a> in parallel,<br />
-  each session in an isolated git worktree — and they keep working after you disconnect.
+  <strong>Multiplex your agents like you multiplex your terminals.</strong><br />
+  kobe is an open-source agent multiplexer: it runs <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, and <a href="https://github.com/github/copilot-cli">Copilot</a> in parallel,<br />
+  each session on its own git worktree and branch — attach, detach, reattach; they keep working after you disconnect.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
   <img src="docs/assets/workspace.png" alt="kobe workspace — task sidebar, embedded engine session, file tree and terminal" />
 </p>
 
-AI coding agents are useful one at a time. kobe is for when you want five attempts running at once: fan a prompt across several agents, compare the worktrees, merge the branch that wins, archive the rest. It runs where your code already lives — laptop, devbox, VPS, anything you can SSH into — with no desktop app and no browser required.
+Terminal multiplexers let one terminal hold many shells that survive you. kobe does the same for AI coding agents: one TUI holds many engine sessions, each isolated on its own git worktree and branch, all alive after you close the laptop lid on your SSH connection. Fan a prompt across five attempts, walk away, come back, merge the winner, archive the rest. It runs where your code already lives — laptop, devbox, VPS — with no desktop app and no browser required.
 
 ## Why kobe
 
