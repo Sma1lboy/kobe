@@ -348,6 +348,9 @@ function IssueDetailDialogView(
           <box gap={0}>
             {sectionHeader(t("kanban.detail.engine"), "engine", "←/→")}
             <box flexDirection="row" gap={1}>
+              {/* No fill on chips: border cells share the box bg, so a
+                  backgroundElement fill halos AROUND the border line — the
+                  primary border + bold text alone mark selection. */}
               {props.engines.map((engine) => {
                 const selected = engine === vendor
                 return (
@@ -355,7 +358,6 @@ function IssueDetailDialogView(
                     key={engine}
                     border={true}
                     borderColor={selected ? theme.primary : theme.borderSubtle}
-                    backgroundColor={selected ? theme.backgroundElement : undefined}
                     paddingLeft={2}
                     paddingRight={2}
                     onMouseUp={() => {
@@ -418,7 +420,6 @@ function IssueDetailDialogView(
                     key={String(option)}
                     border={true}
                     borderColor={active ? theme.primary : theme.borderSubtle}
-                    backgroundColor={active ? theme.backgroundElement : undefined}
                     paddingLeft={2}
                     paddingRight={2}
                     onMouseUp={() => {
@@ -455,7 +456,6 @@ function IssueDetailDialogView(
               <box
                 border={true}
                 borderColor={field === "open" ? theme.primary : theme.borderSubtle}
-                backgroundColor={theme.backgroundElement}
                 paddingLeft={2}
                 paddingRight={2}
                 onMouseUp={() => {
