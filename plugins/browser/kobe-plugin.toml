@@ -5,6 +5,12 @@ min_kobe_version = "0.8.24"
 description = "A real Chromium browser rendered as terminal cells (carbonyl) in a pane tab"
 platforms = ["macos", "linux"]
 
+# Self-provisioning: `kobe plugin install` runs this in the checkout, so
+# carbonyl (and its platform Chromium binary) lands inside the plugin's own
+# directory — nothing global, nothing downloaded at pane-open time.
+[[build]]
+command = ["npm", "install", "--no-audit", "--no-fund"]
+
 [[panes]]
 id = "browse"
 title = "Browser"

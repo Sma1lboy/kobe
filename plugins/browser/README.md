@@ -7,12 +7,16 @@ embedded terminal with no graphics-protocol support. Mouse, keyboard,
 scrolling, even video.
 
 ```bash
-npm i -g carbonyl        # one-time (or let the npx fallback fetch it)
-kobe plugin install Sma1lboy/kobe/plugins/browser
+kobe plugin install Sma1lboy/kobe/plugins/browser    # self-provisions carbonyl into the plugin dir
 
 kobe plugin pane open examples.browser.browse                          # last URL / home
 kobe plugin action invoke examples.browser.open localhost:5173         # open a URL
 ```
+
+The install's `[[build]]` step runs `npm install` inside the plugin's own
+checkout, so Chromium lives under `~/.kobe/plugins/examples.browser/` —
+nothing global. (A `kobe plugin link` skips build; the pane self-provisions
+on first open instead.)
 
 Set a home page: `echo 'BROWSER_HOME=https://news.ycombinator.com' >
 "$(kobe plugin config-dir examples.browser)/.env"`. Bind a chord yourself in
