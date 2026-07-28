@@ -1,4 +1,4 @@
-# kobe
+# kobe — run parallel AI coding agents from one terminal
 
 <p align="center">
   <img src="docs/assets/brand/bracket-chip.gif" width="640" alt="kobe — TUI orchestrator for any coding CLI" />
@@ -6,8 +6,8 @@
 
 <p align="center">
   <strong>One terminal. Many agents. Every attempt on its own branch.</strong><br />
-  kobe runs parallel <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, and <a href="https://github.com/github/copilot-cli">Copilot</a> sessions,<br />
-  each in an isolated git worktree — and they keep working after you disconnect.
+  kobe is an open-source terminal UI for running <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, and <a href="https://github.com/github/copilot-cli">Copilot</a> in parallel,<br />
+  each session in an isolated git worktree — and they keep working after you disconnect.
 </p>
 
 <p align="center">
@@ -17,19 +17,19 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" alt="kobe workspace — task sidebar, embedded engine session, file tree and terminal" />
+  <img src="docs/assets/workspace.png" alt="kobe workspace — task sidebar, embedded engine session, file tree and terminal" />
 </p>
 
-AI agents are useful one at a time. kobe is for when you want five attempts running at once: create a task, send it to an engine, compare the worktrees, merge the branch that wins, archive the rest. It runs where your code already lives — laptop, devbox, VPS, anything you can SSH into.
+AI coding agents are useful one at a time. kobe is for when you want five attempts running at once: fan a prompt across several agents, compare the worktrees, merge the branch that wins, archive the rest. It runs where your code already lives — laptop, devbox, VPS, anything you can SSH into — with no desktop app and no browser required.
 
-## Highlights
+## Why kobe
 
-- **Safe parallelism** — agents never trample each other or your checkout; each task gets a private worktree and branch.
-- **Sessions survive you** — quit the TUI, drop SSH, restart the daemon; reattach and the screen comes back.
+- **Safe parallelism** — every task is `git worktree + engine session + branch`. Agents never trample each other or your checkout.
+- **Sessions survive you** — quit the TUI, drop SSH, restart the daemon; reattach and the screen comes back. A separate PTY host owns the sessions, so nothing you close kills them.
 - **Real engines, real environment** — kobe embeds the actual interactive CLIs next to your dependencies, services, and credentials. No API wrappers, no re-rendered streams.
 - **Any engine** — `claude`, `codex`, `copilot`, or any command you add via `kobe config`, picked per task.
-- **Terminal first** — no browser or desktop app required. Notifications and clipboard ride SSH to your local terminal.
-- **Scriptable** — `kobe api` lets a shell script, or another agent, fan out and collect tasks headlessly.
+- **Terminal first** — notifications and clipboard ride SSH back to your local terminal.
+- **Agents orchestrating agents** — `kobe api` lets a script, or another AI agent, fan out tasks, supervise them, and collect the results headlessly.
 
 https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
 
@@ -54,6 +54,46 @@ kobe
 
 Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.kobe/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
 
+> **If kobe saves you an afternoon, [star the repo](https://github.com/Sma1lboy/kobe/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
+
+## Graph engineering: fan out, supervise, observe, fan in
+
+Running many agents well is not prompt engineering — it's [graph engineering](https://kobe.sma1lboy.me). Nodes are isolated attempts, edges are dependencies, and the gates are your judgment. kobe gives you a primitive for each step:
+
+**Fan out** — one prompt, N isolated attempts, one command:
+
+```bash
+kobe api fan-out --repo "$PWD" \
+  --agents claude:2,codex:2,copilot:1 \
+  --prompt "Try independent approaches to simplify the auth flow."
+```
+
+**Supervise** — workers report an explicit outcome; coordinators block until the round settles. Silence is a checkpoint, never a verdict:
+
+```bash
+kobe api report --outcome succeeded --summary "auth flow simplified"   # inside an attempt
+kobe api await --task-ids a,b,c --timeout-secs 900                     # from the orchestrator
+```
+
+**Observe** — read the engine's own structured session, never scrape a TUI screen:
+
+```bash
+kobe api read-output --task-id <id>    # paged history, honest terminal fallback
+```
+
+**Fan in** — compare attempts, annotate diffs line-by-line and send the notes back to the agent as a prompt, then land the winner:
+
+```bash
+kobe api collect --task-ids a,b,c      # read-only comparison snapshot
+kobe api land --task-id a              # merge the winning branch
+```
+
+Install the companion skill so Claude Code can drive this loop itself — an agent orchestrating agents while you keep the gates:
+
+```bash
+kobe skill install
+```
+
 ## How it works
 
 ```text
@@ -61,31 +101,37 @@ Task = git worktree + hosted engine session + branch
 ```
 
 1. **The daemon** owns tasks, worktrees, and state — the TUI, the web dashboard, and `kobe api` are all clients of the same one.
-2. **The PTY host** is a separate long-lived process that owns the engine sessions, tmux-server style. It outlives the TUI *and* the daemon, which is why disconnects and restarts never kill your work.
-3. **The TUI** just attaches: sidebar for tasks, workspace tabs for engines and shells (with splits and quick-fork), a files pane for diffs and PR actions.
+2. **The PTY host** is a separate long-lived process that owns the engine sessions. It outlives the TUI *and* the daemon, which is why disconnects and restarts never kill your work.
+3. **The TUI** just attaches: sidebar for tasks, workspace tabs for engines and shells (with splits and quick-fork), a files pane for diffs, review notes, and PR actions.
 
-## Beyond the TUI
-
-The same tasks from a browser — `kobe web` serves a local dashboard on the daemon the TUI uses, so both surfaces stay in sync:
+The same tasks are available from a browser — `kobe web` serves a local dashboard on the daemon the TUI uses, so both surfaces stay in sync:
 
 ```bash
 kobe web            # http://localhost:5174
 ```
 
-And headless, for scripts or other agents:
+## kobe vs desktop agent IDEs
 
-```bash
-kobe api fan-out \
-  --repo "$PWD" \
-  --agents claude:2,codex:1 \
-  --prompt "Try three approaches to simplify the auth flow."
-```
+Tools like Conductor and orca wrap parallel agents in an Electron desktop app. kobe makes the opposite bet: **the terminal is the product.**
 
-Install the companion skill so Claude Code knows how to drive `kobe api` itself:
+| | kobe | desktop agent IDEs |
+|---|---|---|
+| Runs where your code lives | ✅ any box you can SSH into | local app reaching out remotely |
+| Survives disconnect | ✅ daemon + PTY host on the host machine | depends on the app staying open |
+| Install | `bunx @sma1lboy/kobe` — zero-install trial | download a desktop app |
+| Agent-to-agent orchestration | ✅ `kobe api` + companion skill | varies |
+| UI | terminal (TUI) + optional local web dashboard | Electron |
 
-```bash
-kobe skill install
-```
+If your workflow is already SSH + terminal, kobe fits it instead of replacing it. If you want a desktop app, those tools are good — different bet.
+
+## Use cases worth stealing
+
+- **Competing implementations**: fan the same refactor to Claude and Codex, keep whichever diff reads better.
+- **Long-running work from a laptop**: kick off tasks on a devbox over SSH, close everything, reattach after dinner.
+- **Agent-driven delivery**: your local Claude Code session uses `kobe api` to spawn, supervise, and merge remote attempts — you only review the final diff.
+- **Review with leverage**: annotate an attempt's diff line-by-line in the TUI, send all notes back as one prompt, get a corrected attempt.
+
+If you write about developer tools, this README plus the [landing page](https://kobe.sma1lboy.me) (which links right back here) should give you everything you need — architecture details live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## If it gets stuck
 
