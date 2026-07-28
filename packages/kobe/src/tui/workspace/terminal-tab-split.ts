@@ -140,6 +140,19 @@ export function splitLeafNames(
  * (rename dialog prefill, notification titles) — so it reads the
  * module-level `t()` rather than `useT()`.
  */
+/**
+ * First-prompt junk guard: a conversation whose opening prompt was a menu
+ * answer ("1", "y", "ok") or bare punctuation must not name the tab — treat
+ * it as absent so the vendor default ("claude 2") applies. Display-side on
+ * purpose: already-persisted junk autoTitles heal without a migration.
+ */
+export function meaningfulAutoTitle(autoTitle: string | null | undefined): string | null {
+  const trimmed = (autoTitle ?? "").trim()
+  if (trimmed.length < 3) return null
+  if (/^[\d\s\p{P}\p{S}]+$/u.test(trimmed)) return null
+  return trimmed
+}
+
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
   // Manual rename always wins; a conversation's first-prompt title beats
   // the numbered default; a multi-leaf SPLIT tab is a "group N" (its
@@ -158,7 +171,8 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // relabelled every inherit-mode tab the moment a new tab switched the
   // task engine, while their PTYs kept running the old one.
   if (liveName) return `${liveName} ${tab.ordinal}`
-  if (tab.autoTitle) return tab.autoTitle
+  const auto = meaningfulAutoTitle(tab.autoTitle)
+  if (auto) return auto
   const name =
     tab.kind === "engine"
       ? (engineEntry(tab.vendor ?? taskVendor).defaultCommand[0] ?? SHELL_LEAF_NAME)

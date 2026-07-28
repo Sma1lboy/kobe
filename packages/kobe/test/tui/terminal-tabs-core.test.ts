@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { initialSplit, removeLeaf, splitActive } from "../../src/tui/workspace/split-core"
+import { meaningfulAutoTitle, tabTitle } from "../../src/tui/workspace/terminal-tab-split"
 import {
   type EngineTab,
   type TabsState,
@@ -255,6 +256,15 @@ describe("terminal tabs state", () => {
     s = renameActiveTab(s, "my name")
     expect(s.tabs[0].title).toBe("my name")
     expect(s.tabs[0].autoTitle).toBe("fix the resize race")
+  })
+
+  it("junk first-prompt autoTitles ('1', 'ok', '?!') fall back to the vendor default", () => {
+    const s = setTabAutoTitle(initialTabs(), "tab-1", "1")
+    expect(tabTitle(s.tabs[0], "claude")).toBe("claude 1")
+    expect(meaningfulAutoTitle("ok")).toBeNull()
+    expect(meaningfulAutoTitle("?!")).toBeNull()
+    expect(meaningfulAutoTitle("123")).toBeNull()
+    expect(meaningfulAutoTitle(" fix the race ")).toBe("fix the race")
   })
 
   // Why: the last-tab in-place recycle used to reset to bare initialTabs(),
