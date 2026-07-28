@@ -63,6 +63,14 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   function toggleCrossTask(): void {
     kv.set("notifications.crossTask.enabled", !crossTaskEnabled())
   }
+  // Sidebar hover tooltips: opt-in, default OFF (owner call 2026-07-28) —
+  // the item info they show is nice-to-have, not essential.
+  function sidebarHoverEnabled(): boolean {
+    return kv.get("sidebar.hover.enabled", false) === true
+  }
+  function toggleSidebarHover(): void {
+    kv.set("sidebar.hover.enabled", !sidebarHoverEnabled())
+  }
 
   // Appearance: how split leaves draw — full box frames or single dividers.
   function splitStyle(): SplitStyle {
@@ -240,6 +248,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleSound,
     crossTaskEnabled,
     toggleCrossTask,
+    sidebarHoverEnabled,
+    toggleSidebarHover,
     splitStyle,
     selectSplitStyle,
     zenKeepsTasks,

@@ -180,6 +180,14 @@ function RowBody(props: {
  * the framework-free row view — identical between the project and task
  * cards; only `mainBranch` (project rows poll the repo HEAD) differs.
  */
+/**
+ * Task ids whose CURRENT `turn_complete` the user has already looked at
+ * (selected while complete) — the herdr "seen" bit driving ● → ✓. Session
+ * scope is deliberate: a fresh attach starts everything unseen. Cleared the
+ * moment the activity state moves off `turn_complete`.
+ */
+const completionSeenIds = new Set<string>()
+
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
   const t = useT()
   const themeCtx = useTheme()
@@ -191,8 +199,25 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
   const changes = useChanges(shared, task)
   const activity = shared.engineState?.get(task.id)
   const job = shared.taskJobs?.get(task.id)
-  const { subtitleBudget } = shared
   const { mainBranch } = opts
+  // Live line-2 cluster width (pin / PR chip / ±stats, each + its 1-cell
+  // gap): subtracted from the base budget so a quiet row's branch runs the
+  // full rail while a busy row still never collides with its cluster.
+  const isMain = task.kind === "main"
+  const clusterCells =
+    (!isMain && task.pinned === true ? 2 : 0) +
+    (!isMain && prCheckChip(task) ? 2 : 0) +
+    (changes.added > 0 ? `+${changes.added}`.length + 1 : 0) +
+    (changes.deleted > 0 ? `−${changes.deleted}`.length + 1 : 0)
+  const subtitleBudget = Math.max(6, shared.subtitleBudget - clusterCells)
+  // Deterministic render-time bookkeeping, not an effect: the same render
+  // that shows a selected+complete row must already draw the digested ✓.
+  if (activity?.state === "turn_complete") {
+    if (isSelected) completionSeenIds.add(task.id)
+  } else {
+    completionSeenIds.delete(task.id)
+  }
+  const completionSeen = completionSeenIds.has(task.id)
   // Memoized on the real inputs so the 10Hz spinner tick (a fresh `shared`
   // object every render) doesn't re-derive idle rows.
   const baseView = useMemo(() => {
@@ -208,8 +233,9 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       truncateBranch: truncateBranchLabel,
       mainBranch,
       reducedMotion,
+      completionSeen,
     })
-  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, t])
+  }, [task, activity, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object and never subscribe, so an idle row does zero per-frame work.
   const frame = useSpinnerFrame(baseView.loading && !reducedMotion)
@@ -286,6 +312,8 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
   const chip = prCheckChip(task)
 
   return (
+    // Two-line card + 1-cell spacer between tasks (owner call 2026-07-27,
+    // settled after trying herdr's gap-0 density: tasks read better apart).
     <box flexDirection="column" gap={0} paddingBottom={1}>
       <RowBody row={props.row} shared={shared} selection={selection}>
         <RowLine selection={selection}>

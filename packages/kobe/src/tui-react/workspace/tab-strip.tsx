@@ -103,7 +103,10 @@ export function TabStrip(props: {
     const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, props.turnVendors.get(tab.id), liveTitle)
     const chipShown = !nativeStatusVisible && turn !== "unknown" && props.turnStates.has(tab.id)
     const title = tabTitle(tab, props.vendor, liveTitle)
-    return { tab, turn, chipShown, title, cells: (chipShown ? 2 : 0) + displayWidth(title) }
+    // Active tab renders as a padded accent chip (+2 cells, herdr-style
+    // highlight 2026-07-27) — the scroll math must see the same width.
+    const active = tab.id === props.activeId
+    return { tab, turn, chipShown, title, cells: (active ? 2 : 0) + (chipShown ? 2 : 0) + displayWidth(title) }
   })
   const stripRef = useRef<BoxRenderable | null>(null)
   // Viewport cells (strip width minus the 1-cell left padding); 0 until
@@ -156,22 +159,40 @@ export function TabStrip(props: {
                   : turn === "needs_input"
                     ? theme.warning
                     : theme.textMuted
+          const active = tab.id === props.activeId
           return (
-            <box key={tab.id} flexDirection="row" gap={0} flexShrink={0} onMouseUp={() => props.onSelect(tab.id)}>
+            <box
+              key={tab.id}
+              flexDirection="row"
+              gap={0}
+              flexShrink={0}
+              paddingLeft={active ? 1 : 0}
+              paddingRight={active ? 1 : 0}
+              backgroundColor={active ? theme.focusAccent : undefined}
+              onMouseUp={() => props.onSelect(tab.id)}
+            >
               {/* Turn chip — tmux CHAT_TAB_STATUS_FORMAT's ●/✓/!/?/○. Shown
                   only once the turn detector has an actionable reading for the
                   tab. We deliberately skip absent and "unknown" readings: both
                   are placeholders with no information, so let the real state
                   (or the engine's native title) speak. Hidden while an
-                  engine-owned live title is visibly carrying the same status. */}
+                  engine-owned live title is visibly carrying the same status.
+                  On the active chip every glyph flips to the contrast fg —
+                  tone colors don't survive on the accent fill. */}
               {chipShown ? (
-                <text fg={turnColor} attributes={pulse ? TextAttributes.BOLD : undefined} wrapMode="none">
+                <text
+                  // `backgroundElement`, not `background`: the latter is
+                  // alpha-0 in transparent mode → invisible text on the fill.
+                  fg={active ? theme.backgroundElement : turnColor}
+                  attributes={pulse ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                >
                   {`${TURN_GLYPHS[turn]} `}
                 </text>
               ) : null}
               <text
-                fg={pulse ? theme.success : tab.id === props.activeId ? theme.focusAccent : theme.textMuted}
-                attributes={pulse || tab.id === props.activeId ? TextAttributes.BOLD : undefined}
+                fg={active ? theme.backgroundElement : pulse ? theme.success : theme.textMuted}
+                attributes={pulse || active ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
               >
                 {title}

@@ -28,7 +28,8 @@ export function sidebarHoverTooltipLines(hover: SidebarHover): SidebarHoverToolt
   const out: SidebarHoverTooltipLine[] = []
   out.push({ text: task.kind === "main" ? repoBasename(task.repo) : task.title, bold: true })
   if (task.branch.length > 0) out.push({ text: `⎇ ${task.branch}` })
-  if (task.worktreePath.length > 0) out.push({ text: task.worktreePath, dim: true })
+  // No worktree path line (owner call 2026-07-28): it's noise here — the
+  // path lives in the workspace header when the task is selected.
   return out
 }
 

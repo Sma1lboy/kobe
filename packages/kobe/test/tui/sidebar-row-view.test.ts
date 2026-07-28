@@ -76,12 +76,22 @@ describe("buildSidebarRowView", () => {
     expect(projections[0]).toEqual({ loading: false, stateGlyph: "○", tone: "textMuted", subtitleText: "—" })
   })
 
-  it("keeps turn-complete as the visible row badge", () => {
+  it("keeps turn-complete as the visible row badge, digesting ● → ✓ once seen", () => {
     expect(view({ status: "in_progress" }, { state: "turn_complete", at: 1 })).toMatchObject({
       loading: false,
-      stateGlyph: "✓",
+      stateGlyph: "●",
       tone: "primary",
     })
+    expect(
+      buildSidebarRowView({
+        task: task({ status: "in_progress" }),
+        activity: { state: "turn_complete", at: 1 },
+        spinnerFrame: 0,
+        subtitleBudget: 80,
+        truncateBranch: (branch) => branch,
+        completionSeen: true,
+      }),
+    ).toMatchObject({ loading: false, stateGlyph: "✓", tone: "success" })
   })
 
   it("does not use stale in-progress status for main project rows", () => {
@@ -95,7 +105,7 @@ describe("buildSidebarRowView", () => {
   it("uses activity states before persisted lifecycle status", () => {
     expect(view({ status: "done" }, { state: "permission_needed", at: 1 })).toMatchObject({
       loading: false,
-      stateGlyph: "?",
+      stateGlyph: "◉",
       tone: "warning",
     })
   })

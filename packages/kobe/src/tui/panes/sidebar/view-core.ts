@@ -11,8 +11,9 @@ import { truncateEnd, truncateEndCells } from "../../lib/truncate"
 import type { SidebarView } from "./groups"
 import type { SidebarTone } from "./row-view"
 
-/** Default width of the PureTUI task-list rail. */
-export const SIDEBAR_WIDTH = 32
+/** Default width of the PureTUI task-list rail (32 → 26 → 24, owner calls
+ * 2026-07-27/28 — the herdr-density pass kept shrinking it). */
+export const SIDEBAR_WIDTH = 24
 
 /** Polling interval for the per-main-row git branch refresh. */
 export const MAIN_BRANCH_POLL_MS = 2_000
@@ -42,19 +43,22 @@ export function cycleViewTarget(cur: SidebarView, delta: -1 | 1): SidebarView | 
 }
 
 /**
- * Two-line card budgets. Line 1: container pad (4) + accent edge (1) +
- * badge + its gap (2) + scrollbar (1) + right pad (1) = 9 reserved.
+ * Two-line card budgets. Line 1: selection marker (1) + badge (1) +
+ * spacedTitle's leading space (1) + right pad (1) + one breathing cell =
+ * 5 reserved (the move chip may still shrink the title via flex).
  */
 export function titleBudgetFor(width: number): number {
-  return Math.max(6, width - 9)
+  return Math.max(6, width - 5)
 }
 
 /**
- * Line 2: the title reserve plus the badge-column indent (2) and a reserve
- * for the right-aligned `+N −M` chip (~6) ≈ 16 reserved.
+ * Line 2 BASE budget: marker (1) + badge-column indent (2) + right pad (1)
+ * + one breathing cell = 5 reserved — same as the title line. No static
+ * cluster reserve: the cards subtract the LIVE pin/PR/`+N −M` width per
+ * row, so a branch on a quiet row runs the full rail width.
  */
 export function subtitleBudgetFor(width: number): number {
-  return Math.max(6, width - 16)
+  return Math.max(6, width - 5)
 }
 
 /**

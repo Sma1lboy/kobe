@@ -364,18 +364,18 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
       {/* Tasks sidebar stays visible in zen (tmux parity) — its
           ☯ ZEN chip is also the exit affordance. */}
+      {/* Borderless rail (owner call 2026-07-27): no frame, no divider —
+          opentui coerces a full frame if borderColor is ever set, so the box
+          carries no border prop at all. The workspace frame's left edge is
+          the only boundary; sidebar focus shows on the KOBE brand text. */}
       <box
         width={SIDEBAR_WIDTH}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
-        borderColor={focus.focused === "sidebar" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
-          // The host box is SIDEBAR_WIDTH *including* its 2 border cells;
-          // without this, Sidebar's imperative self-width (32) overflows the
-          // inner 30 and the cursor row's background paints over the border.
-          width={SIDEBAR_WIDTH - 2}
+          width={SIDEBAR_WIDTH}
           tasks={tasks}
           selectedId={selectedId}
           onSelect={selectTask}
@@ -385,6 +385,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           worktreeChanges={worktreeChanges}
           focused={activePane === "sidebar"}
           onHoverChange={(hover) => setSidebarHover(hover)}
+          hoverEnabled={kv.get("sidebar.hover.enabled", false) === true}
           // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
           // fire these; the flows are the shared lib/task-actions bodies.
           onAddTask={() => void createTask()}

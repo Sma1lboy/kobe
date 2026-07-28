@@ -69,4 +69,10 @@ export type SidebarProps = SidebarTaskCallbacks & {
    * renders its own local fallback tooltip for standalone/tmux pane hosts.
    */
   onHoverChange?: (hover: SidebarHover | null) => void
+  /**
+   * Hover tooltips are opt-in (owner call 2026-07-28): absent/false means
+   * mouse hover never opens the item tooltip. Hosts read the
+   * `sidebar.hover.enabled` setting (default off).
+   */
+  hoverEnabled?: boolean
 }

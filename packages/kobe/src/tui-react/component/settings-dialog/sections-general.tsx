@@ -140,6 +140,7 @@ export function GeneralSettingsSection(
   const toastRow = rowIdx("toast")
   const soundRow = rowIdx("sound")
   const crossTaskRow = rowIdx("cross-task")
+  const sidebarHoverRow = rowIdx("sidebar-hover")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
   const editorKindRow = rowIdx("editor-kind")
   const editorCustomRow = rowIdx("editor-custom")
@@ -267,6 +268,14 @@ export function GeneralSettingsSection(
             bold={true}
           >
             {`${check(prefs.crossTaskEnabled())} ${t("settings.general.crossTask")}`}
+          </Row>
+          <Row
+            cursor={isBodyCursor(sidebarHoverRow)}
+            onMouseUp={activate(sidebarHoverRow, prefs.toggleSidebarHover)}
+            fg={prefs.sidebarHoverEnabled() ? theme.accent : theme.textMuted}
+            bold={true}
+          >
+            {`${check(prefs.sidebarHoverEnabled())} ${t("settings.general.sidebarHover")}`}
           </Row>
         </SubSection>
         <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>

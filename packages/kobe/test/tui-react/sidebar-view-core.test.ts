@@ -39,9 +39,9 @@ describe("view tabs", () => {
 })
 
 describe("line budgets", () => {
-  it("reserves 9 cells for the title line and 16 for the subtitle, floored at 6", () => {
-    expect(titleBudgetFor(32)).toBe(23)
-    expect(subtitleBudgetFor(32)).toBe(16)
+  it("reserves 5 cells on both lines (cards subtract live clusters), floored at 6", () => {
+    expect(titleBudgetFor(24)).toBe(19)
+    expect(subtitleBudgetFor(24)).toBe(19)
     // A collapsed pane never produces a <=0 budget.
     expect(titleBudgetFor(4)).toBe(6)
     expect(subtitleBudgetFor(10)).toBe(6)

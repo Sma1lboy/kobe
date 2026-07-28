@@ -53,6 +53,7 @@ export type SettingsRow =
   | { id: "toast"; kind: "toast" }
   | { id: "sound"; kind: "sound" }
   | { id: "cross-task"; kind: "crossTask" }
+  | { id: "sidebar-hover"; kind: "sidebarHover" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
   | { id: "editor-kind"; kind: "editorKind" }
   | { id: "editor-custom"; kind: "editorCustom" }
@@ -118,6 +119,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "toast", kind: "toast" },
     { id: "sound", kind: "sound" },
     { id: "cross-task", kind: "crossTask" },
+    { id: "sidebar-hover", kind: "sidebarHover" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },
     { id: "editor-kind", kind: "editorKind" },
     { id: "editor-custom", kind: "editorCustom" },

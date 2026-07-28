@@ -46,19 +46,20 @@ function MockScene() {
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
+      {/* Borderless rail — mirrors workspace/host.tsx (2026-07-27). */}
       <box
         width={SIDEBAR_WIDTH}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
-        borderColor={focus.focused === "sidebar" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
         <Sidebar
-          width={SIDEBAR_WIDTH - 2}
+          width={SIDEBAR_WIDTH}
           tasks={tasks}
           selectedId={selectedId}
           onSelect={setSelectedId}
           focused={focus.focused === "sidebar"}
+          hoverEnabled={true}
           sortMode="default"
           headerStatus={{ label: "v0.0.0-mock", emphasize: false }}
         />

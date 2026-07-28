@@ -199,6 +199,12 @@ export function buildSidebarRowView(opts: {
   readonly mainBranch?: string
   /** Accessibility: swap the engine spinner for the slow pulsing dot. */
   readonly reducedMotion?: boolean
+  /**
+   * herdr "seen" bit: the user has selected this task since its current
+   * `turn_complete` fired, so the badge digests ● → ✓. Callers track it;
+   * absent means unseen.
+   */
+  readonly completionSeen?: boolean
 }): SidebarRowView {
   const { task } = opts
   const isMain = task.kind === "main"
@@ -207,7 +213,7 @@ export function buildSidebarRowView(opts: {
   const branch = isMain ? (opts.mainBranch ?? "") : task.branch
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
-  const activityBadge = activityBadgeFor(activityState)
+  const activityBadge = activityBadgeFor(activityState, opts.completionSeen === true)
   const activityLabel = activityLabelFor(activityState)
   // A custom-engine task with no genuine activity signal has nothing to
   // animate — the monitor can't read its transcript (monitor/activity.ts),
@@ -295,18 +301,25 @@ export function withSpinnerFrame(view: SidebarRowView, frame: () => number): Sid
   return { ...view, stateGlyph: spinner, projectGlyph: spinner }
 }
 
+/**
+ * herdr-style status circles (2026-07-27): ◉ blocked-on-user, ● turn done
+ * (not yet viewed), ✓ done and viewed, ○ idle. `completionSeen` is the
+ * herdr "seen" bit — a completed turn the user has selected since it
+ * finished digests from the attention dot to the quiet check.
+ */
 function activityBadgeFor(
   state: TaskActivityState | undefined,
-): { glyph: string; tone: "primary" | "warning" | "error" } | null {
+  completionSeen: boolean,
+): { glyph: string; tone: "primary" | "warning" | "error" | "success" } | null {
   switch (state) {
     case "rate_limited":
       return { glyph: "◷", tone: "warning" }
     case "permission_needed":
-      return { glyph: "?", tone: "warning" }
+      return { glyph: "◉", tone: "warning" }
     case "error":
       return { glyph: "✕", tone: "error" }
     case "turn_complete":
-      return { glyph: "✓", tone: "primary" }
+      return completionSeen ? { glyph: "✓", tone: "success" } : { glyph: "●", tone: "primary" }
     default:
       return null
   }

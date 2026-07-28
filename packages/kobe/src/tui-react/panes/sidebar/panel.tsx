@@ -83,6 +83,9 @@ export function SidebarPanel(props: {
       minHeight={0}
       flexDirection="column"
       backgroundColor={theme.backgroundPanel}
+      // 1, not 0: the neighbouring panes' top FRAME border eats their row 0,
+      // so the borderless rail needs one padding row to align with them.
+      paddingTop={1}
       paddingBottom={1}
       paddingLeft={0}
       paddingRight={0}
@@ -93,9 +96,13 @@ export function SidebarPanel(props: {
           task scrollbox absorbs overflow. */}
       <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} paddingLeft={1} paddingRight={1}>
         <box flexDirection="row" gap={1}>
-          {/* The outer pane border owns keyboard focus. Keep the brand neutral
-              so it cannot compete with that one global focus signal. */}
-          <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+          {/* Borderless rail: the brand text IS the sidebar's focus signal
+              (accent when focused) — there is no pane frame to carry it. */}
+          <text
+            fg={props.focused ? theme.focusAccent : theme.textMuted}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
             KOBE
           </text>
           {status ? (
@@ -146,19 +153,31 @@ export function SidebarPanel(props: {
         </box>
       ) : null}
 
-      <box flexDirection="row" gap={2} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
         {VIEW_TABS.map((tab) => {
           const active = props.view === tab.view
+          // herdr-style tab highlight (2026-07-27): the active tab is a
+          // filled accent chip, not just brighter text.
           return (
-            <text
+            <box
               key={tab.view}
-              fg={active ? theme.text : theme.textMuted}
-              attributes={active ? TextAttributes.BOLD : undefined}
-              wrapMode="none"
+              flexShrink={0}
+              paddingLeft={1}
+              paddingRight={1}
+              backgroundColor={active ? theme.focusAccent : undefined}
               onMouseUp={() => props.setView(tab.view)}
             >
-              {t(viewTabLabelKey(tab.view))}
-            </text>
+              <text
+                // Contrast fg on the accent fill: `background` is alpha-0 in
+                // transparent mode (invisible text); `backgroundElement`
+                // stays opaque in every mode.
+                fg={active ? theme.backgroundElement : theme.textMuted}
+                attributes={active ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+              >
+                {t(viewTabLabelKey(tab.view))}
+              </text>
+            </box>
           )
         })}
       </box>

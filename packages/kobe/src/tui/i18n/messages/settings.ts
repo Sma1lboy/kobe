@@ -49,6 +49,7 @@ export const en = {
     toast: "Toast",
     sound: "Sound",
     crossTask: "Notify for background tasks",
+    sidebarHover: "Task hover tooltips",
     zen: "Zen mode",
     zenHint:
       "The `zen` chip (above the file list) and `prefix`+z collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
@@ -191,6 +192,7 @@ export const zh: typeof en = {
     toast: "Toast 弹窗",
     sound: "声音",
     crossTask: "为后台任务发送通知",
+    sidebarHover: "任务悬停提示",
     zen: "禅模式",
     zenHint:
       "`zen` 标记（文件列表上方）和 `prefix`+z 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",

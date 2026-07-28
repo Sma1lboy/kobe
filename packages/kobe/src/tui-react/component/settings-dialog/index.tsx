@@ -256,6 +256,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     toast: () => prefs.toggleToast(),
     sound: () => prefs.toggleSound(),
     crossTask: () => prefs.toggleCrossTask(),
+    sidebarHover: () => prefs.toggleSidebarHover(),
     splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),
     editorKind: () => prefs.cycleEditorKind(),

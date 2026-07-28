@@ -192,7 +192,11 @@ export function Sidebar(props: SidebarProps) {
   const [hover, setLocalHover] = useState<SidebarHover | null>(null)
   const hoverRef = useLatest(hover)
   const onHoverChangeRef = useLatest(props.onHoverChange)
+  const hoverEnabledRef = useLatest(props.hoverEnabled === true)
   const setHover = useCallback((next: SidebarHover | null): void => {
+    // Opt-in feature (default off): never OPEN a tooltip while disabled;
+    // clears still pass so a mid-toggle tooltip can't get stuck.
+    if (next !== null && !hoverEnabledRef.current) return
     setLocalHover(next)
     onHoverChangeRef.current?.(next)
   }, [])
