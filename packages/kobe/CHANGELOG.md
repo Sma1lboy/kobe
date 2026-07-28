@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.22
+
+### Patch Changes
+
+- 915e9fd: fix: story-dialog chips (engine, after-start, session) drop their backgroundElement fill — border cells share the box background, so the fill haloed around the border line; selection now reads as primary border + bold text alone.
+- 778f058: fix: Changes-tab paths now truncate from the head so the filename (suffix) always survives — the path budget was computed from the full terminal width instead of the narrow files-pane width, so long paths right-clipped and showed only the leading directories.
+
 ## 0.8.21
 
 ### Patch Changes
