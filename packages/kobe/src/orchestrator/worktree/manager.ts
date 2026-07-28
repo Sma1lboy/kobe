@@ -379,6 +379,32 @@ export class GitWorktreeManager implements WorktreeManager {
   }
 
   /**
+   * Whether `branch` has a configured upstream (i.e. it tracks / was pushed
+   * to a remote). Auto branch-follow refuses to touch such a branch —
+   * `branch -m` would orphan the remote branch and break any open PR.
+   * Throws on git failure: an unreadable probe is ambiguity, not "no".
+   */
+  async branchHasUpstream(worktreePath: string, branch: string): Promise<boolean> {
+    requireAbsolute("path", worktreePath)
+    const exec = this.execDeps.execForPath(worktreePath)
+    const out = await this.runGit(exec, ["for-each-ref", "--format=%(upstream)", `refs/heads/${branch}`], {
+      cwd: worktreePath,
+    })
+    return out.stdout.trim().length > 0
+  }
+
+  /** Whether a local `refs/heads/<branch>` exists in the repo owning `worktreePath`. */
+  async hasLocalBranch(worktreePath: string, branch: string): Promise<boolean> {
+    requireAbsolute("path", worktreePath)
+    const exec = this.execDeps.execForPath(worktreePath)
+    const out = await this.runGit(exec, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
+      cwd: worktreePath,
+      allowFail: true,
+    })
+    return out.exitCode === 0
+  }
+
+  /**
    * Rename a branch in-place. Used by the orchestrator's lazy
    * branch-naming flow: a fresh worktree is allocated on a temp
    * `kobe/tmp-<ulid>` branch, claude is asked to suggest a slug, and

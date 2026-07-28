@@ -54,19 +54,44 @@ export class TaskEditor {
    * derivation, so a later title change (or a manual `setBranch`) is never
    * clobbered. Skipped for `main` (no branch) and for not-yet-materialised
    * tasks (their branch is derived fresh from the title in `ensureWorktree`,
-   * so no rename is needed). Best-effort: a git rename failure is logged, not
-   * thrown — the title update already committed and must stand.
+   * so no rename is needed).
+   *
+   * Safety rails (best-effort — a rail bailing or a git failure is logged /
+   * swallowed, never thrown; the title update already committed and must
+   * stand, and the placeholder branch simply stays):
+   *   - never rename a branch that has an upstream (`branch -m` would orphan
+   *     the remote branch / any open PR); an unreadable probe counts as
+   *     ambiguity and also keeps the old name;
+   *   - a collision with an existing local branch resolves to a `-2`, `-3`…
+   *     suffixed unique name instead of failing.
    */
   private async followBranchToTitle(taskBefore: Task, newTitle: string): Promise<void> {
     if (taskBefore.kind === "main" || !taskBefore.worktreePath) return
     if (!isPlaceholderDerivedBranch(taskBefore.branch, taskBefore.id)) return
-    const nextBranch = autoBranch(newTitle, taskBefore.id)
-    if (nextBranch === taskBefore.branch) return
+    const base = autoBranch(newTitle, taskBefore.id)
+    if (base === taskBefore.branch) return
     try {
+      if (await this.worktrees.branchHasUpstream(taskBefore.worktreePath, taskBefore.branch)) return
+      const nextBranch = await this.uniqueFollowBranch(taskBefore, base)
+      if (!nextBranch) return
       await this.setBranch(taskBefore.id, nextBranch)
     } catch (err) {
       console.error(`[kobe] follow-branch-to-title failed for ${taskBefore.id}:`, err)
     }
+  }
+
+  /**
+   * `base` if it's free, else the first free `base-2` … `base-9`, else null
+   * (keep the placeholder). The `-<id6>` suffix in {@link autoBranch} makes a
+   * collision near-impossible, so a short bounded scan is plenty.
+   */
+  private async uniqueFollowBranch(task: Task, base: string): Promise<string | null> {
+    if (!(await this.worktrees.hasLocalBranch(task.worktreePath, base))) return base
+    for (let n = 2; n <= 9; n += 1) {
+      const candidate = `${base}-${n}`
+      if (!(await this.worktrees.hasLocalBranch(task.worktreePath, candidate))) return candidate
+    }
+    return null
   }
 
   /**
