@@ -11,7 +11,15 @@
  */
 
 import { samePrStatus } from "../monitor/pr-status.ts"
-import type { Task, TaskId, TaskPRStatus, TaskStatus, TaskWorkerReport, VendorId } from "../types/task.ts"
+import type {
+  Task,
+  TaskId,
+  TaskPRStatus,
+  TaskQuotaResumeState,
+  TaskStatus,
+  TaskWorkerReport,
+  VendorId,
+} from "../types/task.ts"
 import { IllegalTransitionError, TaskNotFoundError } from "./errors.ts"
 import type { TaskIndexStore } from "./index/store.ts"
 import { autoBranch, isPlaceholderDerivedBranch } from "./title.ts"
@@ -232,5 +240,17 @@ export class TaskEditor {
   async setWorkerReport(id: TaskId | string, report: TaskWorkerReport): Promise<void> {
     const task = this.requireTask(id)
     await this.store.update(task.id, { workerReport: report })
+  }
+
+  /**
+   * Arm (or clear, with `null`) the daemon's rate-limit auto-resume schedule.
+   * No-op when the stored schedule already matches — the sweep and the hook
+   * path may both try to write, and a redundant call must not churn a
+   * write + broadcast.
+   */
+  async setQuotaResume(id: TaskId | string, state: TaskQuotaResumeState | null): Promise<void> {
+    const task = this.requireTask(id)
+    if ((task.quotaResume?.resumeAt ?? null) === (state?.resumeAt ?? null)) return
+    await this.store.update(task.id, { quotaResume: state ?? undefined })
   }
 }

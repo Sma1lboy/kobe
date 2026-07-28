@@ -10,6 +10,14 @@ export interface TaskDeletionState {
   readonly error?: string
 }
 
+/** Durable rate-limit auto-resume schedule (mirrors kobe/types/task.ts). */
+export interface TaskQuotaResumeState {
+  /** ISO-8601 time the provider's exhausted quota window resets. */
+  readonly resumeAt: string
+  /** ISO-8601 time the rate limit was observed and this schedule written. */
+  readonly requestedAt: string
+}
+
 export interface TaskPRStatus {
   readonly provider: "github" | "gitlab" | "bitbucket" | "unknown"
   readonly lifecycle: "creating" | "open" | "ready_to_merge" | "merged" | "closed" | "unknown"
@@ -53,6 +61,7 @@ export interface DaemonTask {
   readonly groupId?: string
   readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
+  readonly quotaResume?: TaskQuotaResumeState
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -103,6 +112,8 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
   setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
+  /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
+  setQuotaResume(id: string, state: TaskQuotaResumeState | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
   deleteTask(id: string, options?: { force?: boolean }): Promise<void>
   prepareTaskDeletion(id: string, options?: { force?: boolean }): Promise<boolean>

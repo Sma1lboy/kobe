@@ -1,8 +1,10 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
+  deliverToHostedKey,
   ensureHostedEngine,
   ensureHostedSessionHost,
+  findHostedEngineKey,
   hostedTaskKeys,
   killHostedSessions,
   listHostedSessions,
@@ -12,6 +14,7 @@ import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
+import type { VendorId } from "../types/task.ts"
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
@@ -59,6 +62,33 @@ export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
 export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
   return { cwd: worktreePath, command: [process.env.SHELL?.trim() || "/bin/zsh", "-il"] }
+}
+
+/**
+ * Deliver a prompt into a task's LIVE hosted engine session only — never
+ * spawns one. Used by the daemon's quota-resume runner: resuming a dead
+ * engine would start a fresh context-less session and burn quota on it, so
+ * "no alive engine" returns false and the schedule is dropped instead.
+ */
+export async function deliverPromptToLiveEngineAdapter(
+  task: { readonly id: string; readonly vendor?: VendorId; readonly worktreePath: string },
+  prompt: string,
+): Promise<boolean> {
+  const host = await openHostedSessionHost()
+  if (!host) return false
+  try {
+    const sessions = await listHostedSessions(host.rpc)
+    const engineBin = interactiveEngineCommand(task.vendor)[0]
+    const key = findHostedEngineKey(sessions, task.id, engineBin)
+    if (!key) return false
+    const delivered = await deliverToHostedKey(host.rpc, key, task.worktreePath, prompt)
+    await host.rpc.request("pty.detach", { key }).catch(() => {})
+    return delivered
+  } catch {
+    return false
+  } finally {
+    host.close()
+  }
 }
 
 export async function tearDownTaskSessionAdapter(taskId: string): Promise<void> {

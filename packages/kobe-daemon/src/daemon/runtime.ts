@@ -48,6 +48,20 @@ export interface DaemonRuntimeAdapter {
   terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
   tearDownTaskSession(taskId: string): Promise<void>
+  /**
+   * Engine-owned subscription-quota probe: epoch-ms reset time of the
+   * vendor's currently exhausted quota window, or null when none/unknowable.
+   * Null means "don't schedule" — the rate-limit badge stays for the user.
+   */
+  quotaResetAtMs(vendor: VendorId): Promise<number | null>
+  /**
+   * Deliver a prompt into a task's LIVE hosted engine session only (never
+   * spawns). Returns false when no alive engine session exists.
+   */
+  deliverPromptToLiveEngine(
+    task: { readonly id: string; readonly vendor?: VendorId; readonly worktreePath: string },
+    prompt: string,
+  ): Promise<boolean>
   settingsSnapshot(): Response
   settingsPatch(request: Request): Promise<Response>
   handleDiffRequest(request: Request, url: URL): Promise<Response | null>

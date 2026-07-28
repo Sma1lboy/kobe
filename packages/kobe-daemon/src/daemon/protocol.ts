@@ -331,6 +331,8 @@ export interface SerializedTask {
   readonly workerReport?: DaemonTask["workerReport"]
   /** Durable daemon-owned background deletion state. */
   readonly deletion?: DaemonTask["deletion"]
+  /** Durable rate-limit auto-resume schedule. */
+  readonly quotaResume?: DaemonTask["quotaResume"]
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -353,6 +355,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     groupId: task.groupId,
     workerReport: task.workerReport,
     deletion: task.deletion,
+    quotaResume: task.quotaResume,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

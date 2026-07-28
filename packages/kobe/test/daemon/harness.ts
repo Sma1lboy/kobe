@@ -48,6 +48,7 @@ export function fakeOrchestrator(overrides: Record<string, unknown> = {}): Orche
       return () => {}
     },
     listTasks: () => [],
+    getTask: () => undefined,
     ...overrides,
   } as unknown as Orchestrator
 }

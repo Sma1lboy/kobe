@@ -16,12 +16,15 @@ import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
 import {
   type HostedSessionRpc,
+  deliverToHostedKey,
   ensureHostedSessionHost,
+  findHostedEngineKey,
   hostedTaskKeys,
   isHostedTaskKey,
   killHostedSessions,
   listHostedSessions,
   openHostedSessionHost,
+  writeHostedPrompt,
 } from "../../engine/hosted-session.ts"
 import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DeliveredPrompt } from "./types.ts"
@@ -32,11 +35,6 @@ import type { DeliveredPrompt } from "./types.ts"
  * records requests instead of opening a socket.
  */
 export type PtyHostRpc = HostedSessionRpc
-
-/** Delay between bracketed paste and submit CR so the engine reads two tty events. */
-const SUBMIT_DELAY_MS = 150
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * A key belongs to `taskId` when its segment before the first `::` matches
@@ -50,28 +48,12 @@ export const isTaskKey = isHostedTaskKey
  * the single source of truth both delivery and liveness route through, so
  * "no engine" NEVER falls through to spawning a second one.
  *
- * Preference order among a task's alive sessions:
- *   1. `<taskId>::tab-1` — the deterministic engine tab. This alone is
- *      enough (the TUI never puts a shell there), so delivery needs no
- *      extra state from the API.
- *   2. a session whose `command[0]` matches `engineBin` (the vendor's own
- *      launch binary) — covers a reattached/renumbered engine. Skips bare
- *      shell tabs (`tab-2`+), which must never receive a prompt.
- *
  * `engineBin` is vendor-neutral: the caller passes
  * `interactiveEngineCommand(vendor)[0]` (or `undefined` when the vendor is
- * unknown, e.g. teardown/liveness — then only rule 1 applies).
+ * unknown, e.g. teardown/liveness — then only the `tab-1` rule applies).
+ * Shared with the daemon's quota-resume path — see `hosted-session.ts`.
  */
-export function findEngineKey(sessions: readonly PtySessionInfo[], taskId: string, engineBin?: string): string | null {
-  const mine = sessions.filter((s) => s.alive && isTaskKey(s.key, taskId))
-  const tab1 = mine.find((s) => s.key === `${taskId}::tab-1`)
-  if (tab1) return tab1.key
-  if (engineBin) {
-    const byCommand = mine.find((s) => s.command[0] === engineBin)
-    if (byCommand) return byCommand.key
-  }
-  return null
-}
+export const findEngineKey = findHostedEngineKey
 
 /** All alive session keys for `taskId` — every tab, for teardown. */
 export const taskKeys = hostedTaskKeys
@@ -86,24 +68,14 @@ export const ensurePtyHost = ensureHostedSessionHost
 export const listSessions = listHostedSessions
 
 /**
- * Deliver `prompt` into an existing hosted engine session and submit it.
- * `pty.open` REATTACHES (spec ignored for a live key — never spawns), then
- * we write the bracketed prompt, wait, and write the CR — the pty twin of
- * `pasteAndSubmit`'s bracketed+deferred-Enter. Returns whether the session
- * was alive to receive it.
+ * Deliver `prompt` into an existing hosted engine session and submit it —
+ * the bracketed+deferred-Enter pty twin of `pasteAndSubmit`, shared with the
+ * daemon's quota-resume path (see `hosted-session.ts`). Returns whether the
+ * session was alive to receive it.
  */
-export async function deliverToKey(rpc: PtyHostRpc, key: string, cwd: string, prompt: string): Promise<boolean> {
-  const open = await rpc.request<PtyOpenResult>("pty.open", { key, cwd, cols: 80, rows: 24 })
-  if (!open.alive) return false
-  await writePrompt(rpc, key, prompt)
-  return true
-}
+export const deliverToKey = deliverToHostedKey
 
-async function writePrompt(rpc: PtyHostRpc, key: string, prompt: string): Promise<void> {
-  await rpc.request("pty.write", { key, data: `\x1b[200~${prompt}\x1b[201~` })
-  await sleep(SUBMIT_DELAY_MS)
-  await rpc.request("pty.write", { key, data: "\r" })
-}
+const writePrompt = writeHostedPrompt
 
 /**
  * Deliver to an existing canonical hosted engine, or create it once with

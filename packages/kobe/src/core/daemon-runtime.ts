@@ -23,6 +23,7 @@ import { handleHistoryRequest } from "../web/history.ts"
 import { handleNotesRequest } from "../web/notes.ts"
 import { handleThemesRequest } from "../web/themes.ts"
 import {
+  deliverPromptToLiveEngineAdapter,
   engineSpecAdapter,
   ensureTaskSessionAdapter,
   tearDownTaskSessionAdapter,
@@ -65,6 +66,8 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   terminalSpec: terminalSpecAdapter,
   ensureTaskSession: ensureTaskSessionAdapter,
   tearDownTaskSession: tearDownTaskSessionAdapter,
+  quotaResetAtMs: (vendor) => engineEntry(vendor).quotaResetAtMs?.() ?? Promise.resolve(null),
+  deliverPromptToLiveEngine: deliverPromptToLiveEngineAdapter,
   settingsSnapshot: daemonSettingsSnapshot,
   settingsPatch: daemonSettingsPatch,
   handleDiffRequest,

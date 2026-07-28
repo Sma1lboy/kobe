@@ -60,6 +60,54 @@ export async function killHostedSessions(rpc: HostedSessionRpc, keys: readonly s
   for (const key of keys) await rpc.request("pty.kill", { key }).catch(() => {})
 }
 
+/**
+ * Pick the ALIVE engine session key for `taskId`, or `null` when none.
+ * Preference order: the deterministic `<taskId>::tab-1` engine tab, then a
+ * session whose `command[0]` matches `engineBin` (a reattached/renumbered
+ * engine). Bare shell tabs never match — they must never receive a prompt.
+ */
+export function findHostedEngineKey(
+  sessions: readonly PtySessionInfo[],
+  taskId: string,
+  engineBin?: string,
+): string | null {
+  const mine = sessions.filter((s) => s.alive && isHostedTaskKey(s.key, taskId))
+  const tab1 = mine.find((s) => s.key === `${taskId}::tab-1`)
+  if (tab1) return tab1.key
+  if (engineBin) {
+    const byCommand = mine.find((s) => s.command[0] === engineBin)
+    if (byCommand) return byCommand.key
+  }
+  return null
+}
+
+/** Delay between bracketed paste and submit CR so the engine reads two tty events. */
+const SUBMIT_DELAY_MS = 150
+
+/** Bracketed-paste the prompt, wait, then submit — the pty twin of `pasteAndSubmit`. */
+export async function writeHostedPrompt(rpc: HostedSessionRpc, key: string, prompt: string): Promise<void> {
+  await rpc.request("pty.write", { key, data: `\x1b[200~${prompt}\x1b[201~` })
+  await new Promise((resolve) => setTimeout(resolve, SUBMIT_DELAY_MS))
+  await rpc.request("pty.write", { key, data: "\r" })
+}
+
+/**
+ * Deliver `prompt` into an existing hosted engine session and submit it.
+ * `pty.open` REATTACHES (spec ignored for a live key — never spawns).
+ * Returns whether the session was alive to receive it.
+ */
+export async function deliverToHostedKey(
+  rpc: HostedSessionRpc,
+  key: string,
+  cwd: string,
+  prompt: string,
+): Promise<boolean> {
+  const open = await rpc.request<PtyOpenResult>("pty.open", { key, cwd, cols: 80, rows: 24 })
+  if (!open.alive) return false
+  await writeHostedPrompt(rpc, key, prompt)
+  return true
+}
+
 /** Open or reattach one engine session and immediately release this client. */
 export async function ensureHostedEngine(
   rpc: HostedSessionRpc,

@@ -43,6 +43,7 @@ import {
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
+import { fetchClaudeQuotaResetAtMs } from "./claude-code-local/quota.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
@@ -136,6 +137,13 @@ export interface EngineRegistryEntry {
     readonly ownsStatus: boolean
     readonly launchArgs?: readonly string[]
   }
+  /**
+   * Subscription-quota probe: epoch-ms reset time of the currently EXHAUSTED
+   * quota window, or null when none / unknowable. Drives the daemon's
+   * rate-limit auto-resume schedule. Omit for engines without a readable
+   * quota API (the schedule is simply never armed for them).
+   */
+  readonly quotaResetAtMs?: () => Promise<number | null>
 }
 
 /**
@@ -200,6 +208,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     identity: claudeIdentity,
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
     terminalTitle: { ownsStatus: true },
+    quotaResetAtMs: () => fetchClaudeQuotaResetAtMs(),
   },
   codex: {
     vendor: "codex",

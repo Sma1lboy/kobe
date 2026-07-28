@@ -372,6 +372,11 @@ export class Orchestrator {
     return this.editor.setWorkerReport(id, report)
   }
 
+  /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
+  async setQuotaResume(id: TaskId | string, state: NonNullable<Task["quotaResume"]> | null): Promise<void> {
+    return this.editor.setQuotaResume(id, state)
+  }
+
   /**
    * Permanently remove a task. Refuses to delete `kind: "main"`
    * tasks (the user removes the repo from saved repos instead).

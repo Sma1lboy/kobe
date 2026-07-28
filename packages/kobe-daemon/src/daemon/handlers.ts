@@ -53,6 +53,7 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
+import { scheduleQuotaResume } from "./quota-resume.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
 
@@ -405,6 +406,18 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
               }
             })
             .catch((err) => logDaemonError("status-rules", err))
+          // A turn actually started (the user resumed manually, or our own
+          // continue prompt landed) — any pending auto-resume is now stale.
+          if (ctx.orch.getTask(taskId)?.quotaResume) {
+            void ctx.orch.setQuotaResume(taskId, null).catch((err) => logDaemonError("quota-resume", err))
+          }
+        }
+        // Real subscription-quota limit → ask the engine's quota probe when
+        // the window resets and arm the durable auto-resume schedule.
+        // Fire-and-forget: the probe does network I/O and must not delay the
+        // hook RPC. `billing` is excluded — it needs a human, not a timer.
+        if (kind === "turn-failed" && detail?.failure === "rate_limit") {
+          void scheduleQuotaResume(ctx.orch, ctx.runtime, taskId).catch((err) => logDaemonError("quota-resume", err))
         }
         return {}
       },
