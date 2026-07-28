@@ -81,10 +81,18 @@ describe("PluginHost", () => {
       await waitFor(() => existsSync(join(root, "event.txt")))
       expect(readFileSync(join(root, "event.txt"), "utf8")).toBe("task.created:example.probe:kobe-test-bin")
 
-      await waitFor(() => existsSync(pluginLogPath("example.probe", home)))
-      const log = readFileSync(pluginLogPath("example.probe", home), "utf8").trimEnd().split("\n")
-      expect(log.length).toBeGreaterThanOrEqual(2)
-      expect(JSON.parse(log[0] as string)).toMatchObject({ exitCode: 0 })
+      // The log line lands AFTER each hook process exits — later than the
+      // file the hook itself writes — so wait for both entries, not just
+      // the log file's existence (CI-speed race, release 0.8.24 #1).
+      const logLines = () => {
+        try {
+          return readFileSync(pluginLogPath("example.probe", home), "utf8").trimEnd().split("\n")
+        } catch {
+          return []
+        }
+      }
+      await waitFor(() => logLines().length >= 2)
+      expect(JSON.parse(logLines()[0] as string)).toMatchObject({ exitCode: 0 })
     } finally {
       host.stop()
     }
