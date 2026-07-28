@@ -116,8 +116,12 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     // and the session is still interactive.
     const b = new HostedTaskPty({ taskId: "smoke::t1", ...OPTS })
     await until(() => text(b).includes("persist-me"), "reattach replays scrollback")
+    // The replay came in the open response, not as live frames — the park
+    // sweep's quiet clock must still read "never streamed".
+    expect(b.lastOutputAtMs()).toBeNull()
     b.write("after-reattach\n")
     await until(() => text(b).includes("after-reattach"), "reattached session interactive")
+    expect(b.lastOutputAtMs()).not.toBeNull() // live echo stamps the quiet clock
 
     // kill() ends the REMOTE child: the next open spawns fresh (a child
     // that prints then parks, so the exit race can't eat the output).
@@ -182,6 +186,32 @@ describe("HostedTaskPty over a real pty-host socket", () => {
     const b = new HostedTaskPty({ taskId: "smoke::t3", cwd: dir, command: cmd, cols: 60, rows: 12 })
     await until(() => text(b).includes("REPAINT"), "same-size reattach wiggles a SIGWINCH out of the child")
     expect(b.deadOnAttach).toBe(false)
+    b.kill()
+  })
+
+  test("an actively-streaming reattach keeps a real gap between the wiggle's resizes", async () => {
+    // Regression (2026-07-27 "input box gone"): a streaming child's ordinary
+    // output frame lands milliseconds after the shrink and resolved the
+    // data-wait, so the restore raced back into zero-gap coalescing — one
+    // SIGWINCH at the unchanged size, no repaint. The floor must hold the
+    // two resizes apart even when data arrives instantly.
+    const cmd = ["/bin/sh", "-c", "echo ready; while :; do echo tick; sleep 0.02; done"]
+    const a = new HostedTaskPty({ taskId: "smoke::t3-stream", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => text(a).includes("ready"), "streaming session starts")
+    a.detach()
+
+    class ResizeTimesPty extends HostedTaskPty {
+      readonly resizeTimes: number[] = []
+      protected override sendResize(cols: number, rows: number): void {
+        this.resizeTimes.push(Date.now())
+        super.sendResize(cols, rows)
+      }
+    }
+    const b = new ResizeTimesPty({ taskId: "smoke::t3-stream", cwd: dir, command: cmd, cols: 60, rows: 12 })
+    await until(() => b.resizeTimes.length === 2, "wiggle restores the size")
+    // 140, not 150: timer clocks can fire a hair early — the point is
+    // "a real gap", not the exact constant.
+    expect(b.resizeTimes[1]! - b.resizeTimes[0]!).toBeGreaterThanOrEqual(140)
     b.kill()
   })
 
