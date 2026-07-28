@@ -1,0 +1,16 @@
+id = "examples.browser"
+name = "Browser"
+version = "0.1.0"
+min_kobe_version = "0.8.24"
+description = "A real Chromium browser rendered as terminal cells (carbonyl) in a pane tab"
+platforms = ["macos", "linux"]
+
+[[panes]]
+id = "browse"
+title = "Browser"
+command = ["sh", "$KOBE_PLUGIN_ROOT/browse.sh"]
+
+[[actions]]
+id = "open"
+title = "Open a URL in the browser pane"
+command = ["sh", "open.sh"]
