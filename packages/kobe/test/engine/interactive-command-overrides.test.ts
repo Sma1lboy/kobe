@@ -136,4 +136,17 @@ describe("withClaudeSessionId", () => {
       expect(withClaudeSessionId(argv, "claude")).toEqual({ argv, sessionId: null })
     }
   })
+
+  it("honors the attached --flag=value form of a session control (parseEngineCommand keeps it one token)", () => {
+    for (const arg of ["--session-id=abc123", "--resume=abc123", "--from-pr=42"]) {
+      const argv = ["claude", arg]
+      expect(withClaudeSessionId(argv, "claude")).toEqual({ argv, sessionId: null })
+    }
+  })
+
+  it("does not mistake an unrelated attached flag for a session control", () => {
+    const { argv, sessionId } = withClaudeSessionId(["claude", "--append-system-prompt=be terse"], "claude")
+    expect(sessionId).not.toBeNull()
+    expect(argv).toEqual(["claude", "--append-system-prompt=be terse", "--session-id", sessionId])
+  })
 })
