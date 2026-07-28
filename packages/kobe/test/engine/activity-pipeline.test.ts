@@ -91,10 +91,10 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
     expect(row.subtitleText).toBe("feature/sidebar") // running keeps the branch
   })
 
-  it("turn done: Stop shows the checkmark", () => {
+  it("turn done: Stop shows the unseen-completion dot", () => {
     const row = rowAfterClaudeHook("Stop", { cwd: "/repo/kobe/worktrees/sidebar" })
     expect(row.loading).toBe(false)
-    expect(row.stateGlyph).toBe("✓")
+    expect(row.stateGlyph).toBe("●")
     expect(row.tone).toBe("primary")
   })
 
@@ -120,12 +120,12 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
     expect(row.subtitleText).toBe("error")
   })
 
-  it("waiting on permission: the Notification permission hook shows the ? badge", () => {
+  it("waiting on permission: the Notification permission hook shows the ◉ badge", () => {
     const row = rowAfterClaudeHook("Notification", {
       message: "Claude needs your permission to use Bash",
     })
     expect(row.loading).toBe(false)
-    expect(row.stateGlyph).toBe("?")
+    expect(row.stateGlyph).toBe("◉")
     expect(row.tone).toBe("warning")
     expect(row.subtitleText).toBe("needs permission")
   })
