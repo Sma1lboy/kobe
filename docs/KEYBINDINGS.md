@@ -113,15 +113,14 @@ queue. Owner decision (2026-07-15): `d` is direct and dialog-scoped because
 removal is a frequent, explicit cleanup action there; it cannot shadow input
 or embedded-terminal shortcuts outside the dialog.
 
-## Proposed — pending owner sign-off
-
-Diff review notes in the read-only diff content tab (workspace focus, diff
-kind only, inert elsewhere): `j/k` (and arrows) line cursor, `v` range
+Diff review notes live in the read-only diff content tab (workspace focus,
+diff kind only, inert elsewhere): `j/k` (and arrows) line cursor, `v` range
 anchor, `c` note dialog, `s` send all unsent notes to the engine session.
-Plain letters scoped to the focused diff tab, following the same raw-binding
-precedent as the preview's `o` (system open); none are registered in the
-central table yet. NOT settled — placement (direct vs prefix, letter choice,
-what they may shadow) needs the owner's call before these are recorded above.
+Owner decision (2026-07-27): plain direct letters, diff-tab-scoped — they
+follow the same raw-binding precedent as the preview's `o` (system open), so
+they cannot shadow the composer, embedded terminals, or any other pane. The
+central table carries documentation-only rows (`diff.review.*`) so F1 and
+the legend list them.
 
 ## User customization
 
