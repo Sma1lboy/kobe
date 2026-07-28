@@ -37,7 +37,7 @@ function stdoutText(): string {
   return stdoutSpy.mock.calls.map((c) => String(c[0])).join("")
 }
 
-function stderrJson(): { error: { message: string; code: string } } {
+function stderrJson(): { error: { message: string; code: string; hint?: string; nextCommandArgs?: string[] } } {
   return JSON.parse(stderrSpy.mock.calls.map((c) => String(c[0])).join(""))
 }
 
@@ -69,9 +69,12 @@ describe("runApiSubcommand", () => {
     expect(exitSpy).not.toHaveBeenCalled()
   })
 
-  test("unknown verb → BAD_VERB, exit 2", async () => {
+  test("unknown verb → BAD_VERB, exit 2, with the schema recovery step", async () => {
     await expect(runApiSubcommand(["frobnicate"])).rejects.toThrow("exit(2)")
-    expect(stderrJson().error.code).toBe("BAD_VERB")
+    const err = stderrJson().error
+    expect(err.code).toBe("BAD_VERB")
+    expect(err.hint).toBeTruthy()
+    expect(err.nextCommandArgs).toEqual(["api", "schema"])
   })
 
   test("verb --help prints the verb's flag help without running it", async () => {
@@ -112,6 +115,17 @@ describe("runApiSubcommand", () => {
     const err = stderrJson().error
     expect(err.code).toBe("BAD_DAEMON")
     expect(err.message).toContain("socket refused")
+    expect(err.nextCommandArgs).toEqual(["daemon", "status"])
+  })
+
+  test("a daemon 'task not found' RPC error maps to TASK_NOT_FOUND with the list recovery step", async () => {
+    fake.request.mockRejectedValue(new Error("task not found: kb-dead"))
+    await expect(runApiSubcommand(["get-task", "--task-id", "kb-dead"])).rejects.toThrow("exit(1)")
+    const err = stderrJson().error
+    expect(err.code).toBe("TASK_NOT_FOUND")
+    expect(err.message).toContain("kb-dead")
+    expect(err.hint).toBeTruthy()
+    expect(err.nextCommandArgs).toEqual(["api", "list"])
   })
 
   test("a daemon-backed verb runs against the session and always closes it", async () => {

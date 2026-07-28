@@ -21,7 +21,10 @@ kobe api <verb> --help
 ```
 
 Do not guess flags. Commands emit one JSON object; errors use
-`{"error":{"message","code"}}` on stderr. Add `--pretty` for readable output.
+`{"error":{"message","code",...}}` on stderr. Common rejections also carry
+`hint` (what to do) and `nextCommandArgs` (argv for the same `kobe`
+executable — run `kobe <args...>` verbatim to recover, e.g. `["api","list"]`
+after `TASK_NOT_FOUND`). Add `--pretty` for readable output.
 
 ## Common operations
 

@@ -71,13 +71,16 @@ describe("parseAgentsSpec", () => {
     expect(parseAgentsSpec(" claude:1 , , codex:2 ")).toEqual(["claude", "codex", "codex"])
   })
 
-  it("rejects an unknown vendor", () => {
+  it("rejects an unknown vendor with the fan-out help recovery step", () => {
     try {
       parseAgentsSpec("bogus:2")
       expect.unreachable("should have thrown")
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError)
       expect((err as ApiError).code).toBe("BAD_FLAG")
+      expect((err as ApiError).message).toContain("must be one of")
+      expect((err as ApiError).data?.nextCommandArgs).toEqual(["api", "fan-out", "--help"])
+      expect((err as ApiError).data?.hint).toBeTruthy()
     }
   })
 
@@ -209,13 +212,14 @@ describe("validateAgainstSpec", () => {
     expect(() => validateAgainstSpec(add, flags)).toThrow(/unknown flag --bogus/)
   })
 
-  it("rejects a missing required flag with MISSING_FLAG", () => {
+  it("rejects a missing required flag with MISSING_FLAG + the verb's help recovery step", () => {
     const { flags } = parseFlags(["--title", "t"])
     try {
       validateAgainstSpec(add, flags)
       expect.unreachable("should have thrown")
     } catch (err) {
       expect((err as ApiError).code).toBe("MISSING_FLAG")
+      expect((err as ApiError).data?.nextCommandArgs).toEqual(["api", "add", "--help"])
     }
   })
 
