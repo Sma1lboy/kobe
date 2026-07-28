@@ -27,7 +27,7 @@ const read = (path: string) => readFileSync(join(ROOT, path), "utf8")
 const STALE_CLAIMS: Array<[path: string, phrases: string[]]> = [
   [
     "packages/kobe-landing/index.html",
-    ["persistent tmux sessions", "tmux session", "Close your laptop", "合上笔记本", "需要 Bun ≥ 1.3.11、tmux"],
+    ["persistent tmux sessions", "tmux session", "Close your laptop", "close the laptop", "合上笔记本", "需要 Bun ≥ 1.3.11、tmux"],
   ],
   ["packages/kobe-web/src/components/ToolsPanel.tsx", ["tmux session and engine"]],
   ["packages/kobe-web/README.md", ["kobe-sandbox tmux socket"]],

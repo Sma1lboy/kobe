@@ -124,4 +124,41 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     category: "Files",
     description: "Create PR from the current task",
   },
+  // ─── Diff review (read-only diff content tab) ─────────────────────────
+  // Owner sign-off 2026-07-27: plain letters, diff-tab-scoped raw bindings
+  // (registered by preview-review.tsx like the preview's `o`), inert
+  // everywhere else so they can't shadow input or embedded terminals.
+  // Rows here are documentation-only (`keys: []`) so F1 lists them.
+  {
+    id: "diff.review.cursor",
+    scope: "workspace",
+    keys: [],
+    category: "Diff review",
+    description: "Move the line cursor over the diff",
+    hint: { keys: "j/k" },
+  },
+  {
+    id: "diff.review.range",
+    scope: "workspace",
+    keys: [],
+    category: "Diff review",
+    description: "Toggle range anchor at the cursor",
+    hint: { keys: "v" },
+  },
+  {
+    id: "diff.review.note",
+    scope: "workspace",
+    keys: [],
+    category: "Diff review",
+    description: "Add a review note at the cursor",
+    hint: { keys: "c" },
+  },
+  {
+    id: "diff.review.send",
+    scope: "workspace",
+    keys: [],
+    category: "Diff review",
+    description: "Send all unsent review notes to the engine",
+    hint: { keys: "s" },
+  },
 ]

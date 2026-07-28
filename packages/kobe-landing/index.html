@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>kobe — parallel coding agents, terminal-native</title>
-<meta name="description" content="kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.">
+<title>kobe — run coding agents as a graph, terminal-native</title>
+<meta name="description" content="kobe is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
 <link rel="canonical" href="https://kobe.sma1lboy.me/">
-<meta property="og:title" content="kobe — parallel coding agents, terminal-native">
-<meta property="og:description" content="Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.">
+<meta property="og:title" content="kobe — run coding agents as a graph, terminal-native">
+<meta property="og:description" content="Run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kobe.sma1lboy.me/">
 <meta name="twitter:card" content="summary_large_image">
@@ -22,7 +22,7 @@
 
 <!-- NAV · N8 terminal command -->
 <header class="nav-term">
-  <pre class="nav-term__line"><span class="prompt">$</span> <a class="bin" href="/" style="text-decoration:none;">kobe</a><a href="#workflow" data-i18n="nav.workflow">--workflow</a><a href="#install" data-i18n="nav.install">--install</a><a href="/changelog" data-i18n="nav.changelog">--changelog</a><span class="caret" aria-hidden="true">▮</span></pre>
+  <pre class="nav-term__line"><span class="prompt">$</span> <a class="bin" href="/" style="text-decoration:none;">kobe</a><a href="#workflow" data-i18n="nav.workflow">--primitives</a><a href="#install" data-i18n="nav.install">--install</a><a href="/changelog" data-i18n="nav.changelog">--changelog</a><span class="caret" aria-hidden="true">▮</span></pre>
   <div class="nav-side">
     <button id="langToggle" class="lang-btn">中文</button>
     <a class="gh-link" href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener">
@@ -38,8 +38,9 @@
 
 <!-- HERO -->
 <section class="hero wrap">
-  <h1 data-i18n-html="hero.title">Run parallel coding agents from any <span class="acc">terminal</span>.</h1>
-  <p class="hero-sub" data-i18n="hero.sub">kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.</p>
+  <p class="hero-kicker" data-i18n-html="hero.kicker">prompt engineering → context engineering → <span class="acc">graph engineering</span></p>
+  <h1 data-i18n-html="hero.title">Run coding agents as a <span class="acc">graph</span> — from any terminal.</h1>
+  <p class="hero-sub" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.</p>
   <div class="hero-row">
     <button id="copyBtn" class="copy-cmd">
       <span class="ps">$</span>
@@ -56,7 +57,7 @@
     </figure>
     <div class="equation">
       <div class="equation-inner">
-        <span class="lhs" data-i18n="workspace.equation">one task =</span>
+        <span class="lhs" data-i18n="workspace.equation">one node =</span>
         <span class="chip">git worktree</span>
         <span class="op">+</span>
         <span class="chip" data-i18n="workspace.sessions">hosted engine session</span>
@@ -67,24 +68,25 @@
   </div>
 </section>
 
-<!-- NARRATIVE WORKFLOW · three stages -->
+<!-- NARRATIVE WORKFLOW · the four primitives of graph engineering -->
 <section id="workflow" class="stages wrap">
 
   <article class="stage">
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s1.no">1.0 · FAN OUT</span>
-      <h2 data-i18n="s1.title">One prompt becomes five isolated attempts.</h2>
-      <p data-i18n="s1.body">Type the task once. kobe spawns each attempt in its own git worktree on its own branch, running whichever engine CLI you point it at — claude, codex, gemini, copilot, or your own command. Parallel agents never touch each other's files.</p>
+      <h2 data-i18n="s1.title">One prompt becomes N isolated attempts.</h2>
+      <p data-i18n="s1.body">Fan-out is the first primitive, and isolation is the point. kobe spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other's files.</p>
       <div class="engine-pills" id="enginePills">
         <button class="engine-pill" data-engine="claude" data-active="true">claude</button>
         <button class="engine-pill" data-engine="codex" data-active="false">codex</button>
-        <button class="engine-pill" data-engine="gemini" data-active="false">gemini</button>
         <button class="engine-pill" data-engine="copilot" data-active="false">copilot</button>
+        <button class="engine-pill" data-engine="kimi" data-active="false">kimi</button>
         <button class="engine-pill" data-engine="your own command" data-active="false" data-i18n="s1.ownCmd">your own command</button>
       </div>
     </div>
     <div class="stage-vis">
-      <pre class="term-out"><span class="ps">$</span> kobe new <span class="a">"simplify auth"</span> --engine <span id="fanEngineName">claude</span> --fan 3
+      <pre class="term-out"><span class="ps">$</span> kobe api fan-out --prompt <span class="a">"simplify auth"</span> \
+    --vendor <span id="fanEngineName">claude</span> --count 3
 <span class="ok">✓</span> 3 worktrees · 3 branches · 3 sessions
 <span id="fanLines"></span></pre>
     </div>
@@ -92,10 +94,25 @@
 
   <article class="stage">
     <div class="stage-txt">
-      <span class="stage-no" data-i18n="s2.no">2.0 · WALK AWAY</span>
-      <h2 data-i18n="s2.title">Close kobe. Work keeps running.</h2>
-      <p data-i18n="s2.body">Agents run in hosted PTYs on the machine where your code lives — your laptop, a devbox, a VPS, anything you can SSH into. The standalone PTY Host keeps sessions alive when kobe exits, the daemon restarts, or SSH drops.</p>
-      <p data-i18n="s2.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
+      <span class="stage-no" data-i18n="s2.no">2.0 · SUPERVISE</span>
+      <h2 data-i18n="s2.title">Silence is not a status. Attempts report.</h2>
+      <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in kobe every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
+    </div>
+    <div class="stage-vis">
+      <pre class="term-out"><span class="d"># inside an attempt, as its last act</span>
+<span class="ps">$</span> kobe api report --outcome succeeded
+<span class="d"># in your orchestrator</span>
+<span class="ps">$</span> kobe api await --task-ids a,b,c
+<span class="ok">✓</span> a succeeded  <span class="ok">✓</span> b succeeded  <span class="del">✗</span> c failed</pre>
+    </div>
+  </article>
+
+  <article class="stage">
+    <div class="stage-txt">
+      <span class="stage-no" data-i18n="s3.no">3.0 · OBSERVE</span>
+      <h2 data-i18n="s3.title">Read the session, never scrape the screen.</h2>
+      <p data-i18n="s3.body">kobe reads each engine's own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.</p>
+      <p data-i18n="s3.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
     </div>
     <div class="stage-vis">
       <pre class="term-out"><span class="ps">$</span> exit
@@ -109,17 +126,18 @@
 
   <article class="stage">
     <div class="stage-txt">
-      <span class="stage-no" data-i18n="s3.no">3.0 · KEEP THE WINNER</span>
-      <h2 data-i18n="s3.title">Compare the diffs. Land the best one.</h2>
-      <p data-i18n="s3.body">Reopen kobe and every attempt is where you left it, each on its own branch. Review the diffs side by side, merge the branch you like, archive the rest. One attempt is a coin flip — five is a choice.</p>
+      <span class="stage-no" data-i18n="s4.no">4.0 · FAN IN</span>
+      <h2 data-i18n="s4.title">Compare the attempts. Merge the winner.</h2>
+      <p data-i18n="s4.body">Fan-in is a human gate. Pull a read-only snapshot of every attempt — branch, diffstat, running state — review them side by side, merge the branch you like, archive the rest. One attempt is a coin flip — N is a choice.</p>
     </div>
     <div class="stage-vis">
-      <pre class="term-out"><span class="ps">$</span> kobe changes try/claude-c
-<span class="ok">+118</span> <span class="del">−204</span> · 6 files
-<span class="ps">$</span> kobe land try/claude-c
-<span class="ok">✓</span> try/claude-c <span class="ok">merged to main</span>
-<span class="d">○ try/claude-a  archived</span>
-<span class="d">○ try/codex-b   archived</span></pre>
+      <pre class="term-out"><span class="ps">$</span> kobe api collect --task-ids a,b,c
+a  <span class="ok">+118</span> <span class="del">−204</span> · 6 files
+b  <span class="ok">+301</span> <span class="del">−12</span>  · 14 files
+c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
+<span class="ps">$</span> kobe api land --task-id a
+<span class="ok">✓</span> kobe/simplify-auth-a <span class="ok">merged to main</span>
+<span class="d">○ b archived   ○ c archived</span></pre>
     </div>
   </article>
 
@@ -129,7 +147,7 @@
 <section id="install" class="install wrap">
   <div class="install-final">
     <h2 data-i18n="install.title">Spin it up where your code lives.</h2>
-    <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.</p>
+    <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.</p>
     <pre class="term-out install-term"><span class="ps">$</span> bun install -g @sma1lboy/kobe
 <span class="ps">$</span> ssh devbox && cd repo
 <span class="ps">$</span> kobe
@@ -142,7 +160,7 @@
 
   <!-- FOOTER · Ft4 dense colophon -->
   <footer class="foot-dense">
-    <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">parallel coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+    <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
   </footer>
 </section>
 
@@ -151,52 +169,58 @@
   // (commands, branch names, TUI chrome) deliberately stays English.
   var KOBE_I18N = (function () {
     var zh = {
-      'meta.title': 'kobe — 终端原生的并行 AI 编码代理',
-      'meta.desc': 'kobe 是本地优先的 TUI 编排器，支持 Claude Code、Codex 等。用隔离的 git worktree 和常驻 Hosted PTY 会话，在任何终端并行运行 AI 编码代理。',
-      'nav.workflow': '--工作流', 'nav.install': '--安装', 'nav.changelog': '--更新日志',
-      'hero.title': '在任何<span class="acc">终端</span>里并行运行 AI 编码代理。',
-      'hero.sub': 'kobe 把 AI 编码工作放进隔离的 git worktree 和常驻托管引擎会话。AI 代理一次跑一个已经很有用——kobe 是为你想同时跑五个尝试的时候准备的。',
+      'meta.title': 'kobe — 把编码代理跑成一张图，终端原生',
+      'meta.desc': 'kobe 是本地优先的图工程 TUI：把多个 AI 编码代理跑成一张由隔离尝试组成的图——git worktree、托管引擎会话、显式结果上报——最后合入赢家。',
+      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.changelog': '--更新日志',
+      'hero.kicker': '提示词工程 → 上下文工程 → <span class="acc">图工程</span>',
+      'hero.title': '在任何终端里，把编码代理跑成一张<span class="acc">图</span>。',
+      'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。kobe 是这张图的终端原生运行时。',
       'hero.getStarted': '快速上手 ↗',
       'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
       'copy.hint': '点击复制', 'copy.done': '✓ 已复制',
-      'workspace.equation': '一个任务 =', 'workspace.sessions': '托管引擎会话',
-      's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成五个隔离的尝试。',
-      's1.body': '任务只输入一次。kobe 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎 CLI——claude、codex、gemini、copilot，或你自己的命令。并行代理互不碰文件。',
+      'workspace.equation': '一个节点 =', 'workspace.sessions': '托管引擎会话',
+      's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成 N 个隔离的尝试。',
+      's1.body': '扇出是第一个原语，而隔离正是重点。kobe 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎——claude、codex、copilot、kimi，或你自己的命令。独立节点，没有共享状态，代理之间互不碰文件。',
       's1.ownCmd': '你自己的命令',
-      's2.no': '2.0 · 离开', 's2.title': '退出 kobe，工作继续跑。',
-      's2.body': '代理运行在代码所在机器的 Hosted PTY 中——笔记本、devbox、VPS，任何能 SSH 上去的机器。独立 PTY Host 会在 kobe 退出、daemon 重启或 SSH 断线后继续持有会话。',
-      's2.body2': '而且是你的真实机器：真实的依赖、服务、凭证和构建缓存。代理跑通的对你也跑通。',
-      's3.no': '3.0 · 留下赢家', 's3.title': '比较 diff，合入最好的那个。',
-      's3.body': '重新打开 kobe，每个尝试都在原处，各在各的分支上。并排看 diff，合并你满意的分支，归档其余。一次尝试是掷硬币——五次是选择。',
+      's2.no': '2.0 · 监督', 's2.title': '沉默不是一种状态。尝试要报告。',
+      's2.body': '在一排终端机群里，安静的代理可能在思考，也可能已经挂了。所以在 kobe 里，每个尝试结束时都显式上报结果——succeeded 或 failed——编排代理可以阻塞等待整批尝试出结果。代理编排代理，有真正的完成语义。',
+      's3.no': '3.0 · 观察', 's3.title': '读会话本身，不刮终端屏幕。',
+      's3.body': 'kobe 直接读每个引擎自己的会话数据——历史、token、上下文——而不是抓取终端文本。每个会话都运行在代码所在机器的 Hosted PTY 里、由 daemon 托管：退出 TUI、断开 SSH，这张图继续跑。从任何地方重新接上。',
+      's3.body2': '而且是你的真实机器：真实的依赖、服务、凭证和构建缓存。代理跑通的对你也跑通。',
+      's4.no': '4.0 · 扇入', 's4.title': '比较尝试，合入赢家。',
+      's4.body': '扇入是一道人工门。拉一份所有尝试的只读快照——分支、diff 统计、运行状态——并排审阅，合入你满意的分支，归档其余。一次尝试是掷硬币——N 次是选择。',
       'install.title': '在你代码所在的地方跑起来。',
-      'install.body': '笔记本、devbox、VPS，或任何能 SSH 上去的机器。没有浏览器、没有 VNC、没有桌面应用。',
+      'install.body': '笔记本、devbox、VPS，或任何能 SSH 上去的机器。没有浏览器、没有 VNC、没有桌面应用。优化唯一重要的指标：你每小时注意力换来的已合并代码。',
       'install.npm': '从 npm 安装 ↗', 'install.star': '去 GitHub 点个 Star ↗',
-      'footer.tagline': '终端原生的并行 AI 编码代理。',
+      'footer.tagline': '终端原生的编码代理图工程。',
       'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Space Grotesk 与 JetBrains Mono。MIT 许可。',
       'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
-      'meta.title': 'kobe — parallel coding agents, terminal-native',
-      'meta.desc': 'kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent hosted engine sessions — from any terminal.',
-      'nav.workflow': '--workflow', 'nav.install': '--install', 'nav.changelog': '--changelog',
-      'hero.title': 'Run parallel coding agents from any <span class="acc">terminal</span>.',
-      'hero.sub': 'kobe turns AI coding work into isolated git worktrees and persistent hosted engine sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.',
+      'meta.title': 'kobe — run coding agents as a graph, terminal-native',
+      'meta.desc': 'kobe is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.',
+      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.changelog': '--changelog',
+      'hero.kicker': 'prompt engineering → context engineering → <span class="acc">graph engineering</span>',
+      'hero.title': 'Run coding agents as a <span class="acc">graph</span> — from any terminal.',
+      'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.',
       'hero.getStarted': 'Get started ↗',
       'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
       'copy.hint': 'click to copy', 'copy.done': '✓ copied',
-      'workspace.equation': 'one task =', 'workspace.sessions': 'hosted engine session',
-      's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes five isolated attempts.',
-      's1.body': 'Type the task once. kobe spawns each attempt in its own git worktree on its own branch, running whichever engine CLI you point it at — claude, codex, gemini, copilot, or your own command. Parallel agents never touch each other\'s files.',
+      'workspace.equation': 'one node =', 'workspace.sessions': 'hosted engine session',
+      's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes N isolated attempts.',
+      's1.body': 'Fan-out is the first primitive, and isolation is the point. kobe spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other\'s files.',
       's1.ownCmd': 'your own command',
-      's2.no': '2.0 · WALK AWAY', 's2.title': 'Close kobe. Work keeps running.',
-      's2.body': 'Agents run in hosted PTYs on the machine where your code lives — your laptop, a devbox, a VPS, anything you can SSH into. The standalone PTY Host keeps sessions alive when kobe exits, the daemon restarts, or SSH drops.',
-      's2.body2': 'And it\'s your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.',
-      's3.no': '3.0 · KEEP THE WINNER', 's3.title': 'Compare the diffs. Land the best one.',
-      's3.body': 'Reopen kobe and every attempt is where you left it, each on its own branch. Review the diffs side by side, merge the branch you like, archive the rest. One attempt is a coin flip — five is a choice.',
+      's2.no': '2.0 · SUPERVISE', 's2.title': 'Silence is not a status. Attempts report.',
+      's2.body': 'In a fleet of terminals, a quiet agent could be thinking or could be dead. So in kobe every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.',
+      's3.no': '3.0 · OBSERVE', 's3.title': 'Read the session, never scrape the screen.',
+      's3.body': 'kobe reads each engine\'s own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.',
+      's3.body2': 'And it\'s your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.',
+      's4.no': '4.0 · FAN IN', 's4.title': 'Compare the attempts. Merge the winner.',
+      's4.body': 'Fan-in is a human gate. Pull a read-only snapshot of every attempt — branch, diffstat, running state — review them side by side, merge the branch you like, archive the rest. One attempt is a coin flip — N is a choice.',
       'install.title': 'Spin it up where your code lives.',
-      'install.body': 'Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.',
+      'install.body': 'Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.',
       'install.npm': 'Install from npm ↗', 'install.star': 'Star on GitHub ↗',
-      'footer.tagline': 'parallel coding agents, terminal-native.',
+      'footer.tagline': 'graph engineering for coding agents, terminal-native.',
       'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.',
       'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
     };
@@ -280,11 +304,11 @@
       .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
   })();
 
-  // engine selector → updates the stage-1 fan-out (engine chip + spawned worktree lanes)
+  // engine selector → updates the stage-1 fan-out (vendor flag + spawned worktree lanes)
   (function () {
     var branchMap = {
-      'claude': 'claude', 'codex': 'codex', 'gemini': 'gemini',
-      'copilot': 'copilot', 'your own command': 'my-cli',
+      'claude': 'claude', 'codex': 'codex', 'copilot': 'copilot',
+      'kimi': 'kimi', 'your own command': 'my-cli',
     };
     var engineEl = document.getElementById('fanEngineName');
     var linesEl = document.getElementById('fanLines');
@@ -293,10 +317,10 @@
 
     function render(engine) {
       var slug = branchMap[engine] || engine;
-      engineEl.textContent = engine;
-      var pad = function (s) { return (s + '              ').slice(0, 15); };
+      engineEl.textContent = engine === 'your own command' ? 'my-cli' : engine;
+      var pad = function (s) { return (s + '              ').slice(0, 16); };
       linesEl.innerHTML = ['a', 'b', 'c'].map(function (s) {
-        return '<span class="ok">●</span> ' + pad('try/' + slug + '-' + s) + '<span class="d">running</span>';
+        return '<span class="ok">●</span> ' + pad('kobe/' + slug + '-' + s) + '<span class="d">running</span>';
       }).join('\n');
     }
 
