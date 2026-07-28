@@ -280,26 +280,25 @@ export function engineEntry(vendor: VendorId): EngineRegistryEntry {
 }
 
 /**
- * Match a live terminal window title (OSC 0/2 — `TaskPtyLike.onTitleChange`)
- * to the engine whose CLI set it. This is how a shell tab where the USER
- * typed `claude` joins the same turn-status management as a kobe-launched
- * engine tab (owner model 2026-07-07: every tab is a shell; an engine is
- * just a process running in it). Two engine-owned signals, checked per
- * built-in entry so neutral layers never hard-code vendor strings:
- *   - the product name anywhere in the title  (claude sets "✳ Claude Code")
- *   - the launch binary as a whole word       (zsh-preexec-style "claude")
- * Custom engines aren't matched — kobe knows nothing about their titles.
+ * True when `vendor`'s adapter ships a REAL transcript-store reader —
+ * i.e. its `history` is not the documented {@link EMPTY_HISTORY} sentinel.
+ * Neutral layers (e.g. `kobe api read-output`) use this to label an
+ * `engine_unsupported` fallback honestly instead of confusing "engine has
+ * no reader" with "reader found no sessions". Lives here so the sentinel
+ * comparison stays inside the engine-owned module.
  */
-export function vendorFromTerminalTitle(title: string | null | undefined): VendorId | null {
-  if (!title) return null
-  const lower = title.toLowerCase()
-  for (const entry of Object.values(BUILTIN_ENGINES)) {
-    if (entry.identity && lower.includes(entry.identity.productName.toLowerCase())) return entry.vendor
-    const bin = entry.defaultCommand[0]?.toLowerCase()
-    if (bin && new RegExp(`(^|\\s)${bin}(\\s|$)`).test(lower)) return entry.vendor
-  }
-  return null
+export function supportsStructuredHistory(vendor: VendorId): boolean {
+  return engineEntry(vendor).history !== EMPTY_HISTORY
 }
+
+/*
+ * `vendorFromTerminalTitle` lived here (removed 2026-07-27). It matched a
+ * live OSC title against each engine's product name / binary by substring,
+ * which is how a shell tab where the user typed `claude` joined turn-status
+ * management — and also how a claude session whose activity summary said
+ * "codex" became a codex tab. Identity now comes from the process tree:
+ * `engine/foreground.ts` + `tui/workspace/live-engine.ts`.
+ */
 
 /**
  * Display name for a live terminal title: an engine's own title collapses
@@ -308,9 +307,13 @@ export function vendorFromTerminalTitle(title: string | null | undefined): Vendo
  * for a process no matter how it was started or what decoration the CLI
  * put in its title. Non-engine titles pass through raw (vim, htop, a
  * cwd-titling shell) — that's the dynamic real-terminal behavior.
+ *
+ * `vendor` is the PROCESS identity (`live-engine.ts`), not something read
+ * back out of the title: deriving it from the title itself is what
+ * labelled a claude tab "codex" whenever claude's activity summary
+ * mentioned codex.
  */
-export function titleDisplayName(title: string): string {
-  const vendor = vendorFromTerminalTitle(title)
+export function titleDisplayName(title: string, vendor: VendorId | null): string {
   return vendor ? (engineEntry(vendor).defaultCommand[0] ?? vendor) : title
 }
 

@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 5 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 6 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -21,7 +21,10 @@ kobe api <verb> --help
 ```
 
 Do not guess flags. Commands emit one JSON object; errors use
-`{"error":{"message","code"}}` on stderr. Add `--pretty` for readable output.
+`{"error":{"message","code",...}}` on stderr. Common rejections also carry
+`hint` (what to do) and `nextCommandArgs` (argv for the same `kobe`
+executable — run `kobe <args...>` verbatim to recover, e.g. `["api","list"]`
+after `TASK_NOT_FOUND`). Add `--pretty` for readable output.
 
 ## Common operations
 
@@ -95,6 +98,31 @@ explicit count. Give each task a scoped prompt, report returned IDs, then use
 `collect` to compare. Do not recursively fan out from spawned tasks. Do not
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.
+
+### Supervising a round (report / await)
+
+Outcomes are explicit, never inferred. The contract has two sides:
+
+**Worker side** — every fan-out prompt should end with an instruction like:
+"when finished, run `kobe api report --outcome succeeded --summary '<one
+line>'` (or `--outcome failed`)". Inside a task the target resolves
+automatically ($KOBE_TASK_ID, else the cwd's worktree); pass `--task-id`
+only from outside. The verdict is stored verbatim on the task as
+`workerReport` — it is the worker's claim, not kobe-verified, so verify the
+winner's actual diff before landing.
+
+**Coordinator side** — block until the round settles instead of polling:
+
+```bash
+kobe api await --task-ids <id1>,<id2>,<id3> --timeout-secs 900
+```
+
+Returns every task's outcome as JSON once all have reported. A timeout
+(`"timedOut": true`, exit 0) is a CHECKPOINT, not a failure: silence never
+proves a worker died — it may be mid-turn or waiting on a permission prompt.
+On timeout, inspect (`collect`, `get-task`), nudge (`send`), or simply
+`await` again. Never mark an unreported task failed just because it is
+silent, and never auto-retry it.
 
 ### Closing a round
 

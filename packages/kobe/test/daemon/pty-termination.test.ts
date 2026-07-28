@@ -1,4 +1,4 @@
-import { settledWithin, signalProcessGroup } from "@sma1lboy/kobe-daemon/daemon/pty-terminate"
+import { settledWithin, signalProcessGroup } from "@sma1lboy/kobe-daemon/daemon/pty-termination"
 import { describe, expect, test } from "vitest"
 
 describe("settledWithin", () => {

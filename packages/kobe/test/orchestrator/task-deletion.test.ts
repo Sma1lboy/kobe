@@ -79,9 +79,29 @@ describe("durable background task deletion", () => {
 
     await expect(orch.prepareTaskDeletion(task.id)).rejects.toThrow(DirtyWorktreeError)
     expect(orch.getTask(task.id)?.deletion).toBeUndefined()
+    // The refusal is a true preflight: nothing destructive has run — no
+    // worktree removal was even attempted, and (since the daemon runner only
+    // tears down sessions AFTER a deletion is queued) no session teardown
+    // could have happened either.
+    expect(worktrees.remove).not.toHaveBeenCalled()
     await expect(orch.prepareTaskDeletion(task.id, { force: true })).resolves.toBe(true)
     expect(worktrees.isDirty).toHaveBeenCalledTimes(1)
     expect(orch.getTask(task.id)?.deletion?.force).toBe(true)
+  })
+
+  it("orphaned worktree (dirty probe fails) still queues and completes cleanup", async () => {
+    // An orphan — the dir vanished out-of-band — makes `isDirty` throw
+    // (ENOENT / "not a git repository"). That must NOT block deletion: the
+    // probe failure is swallowed, the deletion queues, and `remove()`
+    // resolves the missing path itself (best-effort metadata prune).
+    const task = await makeTask("/wt/gone")
+    worktrees.isDirty.mockRejectedValue(new Error("ENOENT: no such file or directory"))
+
+    await expect(orch.prepareTaskDeletion(task.id)).resolves.toBe(true)
+    await orch.beginTaskDeletion(task.id)
+    await orch.finishTaskDeletion(task.id)
+    expect(worktrees.remove).toHaveBeenCalledWith("/wt/gone", { force: false, deleteBranch: true })
+    expect(orch.getTask(task.id)).toBeUndefined()
   })
 
   it("rejects focus and worktree materialization once deletion is accepted", async () => {

@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { DetectDeps } from "../../src/engine/account-detect.ts"
-import { EMPTY_HISTORY, engineEntry, getCapabilities } from "../../src/engine/registry.ts"
+import { EMPTY_HISTORY, engineEntry, getCapabilities, supportsStructuredHistory } from "../../src/engine/registry.ts"
 
 /** A DetectDeps with every binary found and no files/env, overridable per test. */
 function deps(over: Partial<DetectDeps> = {}): DetectDeps {
@@ -44,6 +44,11 @@ describe("engineEntry — built-in vendors", () => {
     const detector = entry.createTurnDetector()
     expect(detector.vendor).toBe("claude")
     expect(detector.supportsCompletionMarkers()).toBe(true)
+    // Structured-history support mirrors the EMPTY_HISTORY sentinel:
+    // real readers report true, kimi/custom engines report false.
+    expect(supportsStructuredHistory("claude")).toBe(true)
+    expect(supportsStructuredHistory("kimi")).toBe(false)
+    expect(supportsStructuredHistory("my-custom-engine")).toBe(false)
     // Claude is the only engine declaring user-slash directories — the TUI
     // gates its `.claude/{commands,skills}/` loader on this, not a vendor string.
   })

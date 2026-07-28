@@ -23,10 +23,25 @@ export class ApiError extends Error {
     readonly code: string,
     /** Extra context merged into the error JSON — e.g. `taskId` when a
      *  create succeeded but delivery failed, so a script doesn't lose the
-     *  already-created (engine-burning) task. */
+     *  already-created (engine-burning) task.
+     *
+     *  Self-healing convention: rejection sites SHOULD include
+     *  - `hint` — one sentence telling the agent what to do next, and
+     *  - `nextCommandArgs` — argv for the same `kobe` executable (no
+     *    executable name) the agent can run verbatim to recover, e.g.
+     *    `["api", "schema"]` or `["daemon", "status"]`.
+     *  Both are additive: the envelope stays `{error:{message,code,...}}`. */
     readonly data?: Record<string, unknown>,
   ) {
     super(message)
+  }
+}
+
+/** The `hint` + `nextCommandArgs` pair pointing an agent at a verb's own `--help`. */
+export function helpStep(verbName: string): Record<string, unknown> {
+  return {
+    hint: `run the verb's --help for its exact flag contract, then retry`,
+    nextCommandArgs: ["api", verbName, "--help"],
   }
 }
 

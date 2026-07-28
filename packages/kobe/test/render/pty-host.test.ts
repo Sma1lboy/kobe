@@ -132,6 +132,36 @@ describe("PtyHost", () => {
     expect(host.stats().parkRestoreFallbacks).toBe(1)
   })
 
+  test("peek reads the ring without attaching, spawning, or resizing", async () => {
+    const host = makeHost()
+    // Peeking a key that was never opened must not bring a session into being.
+    expect(host.peek("t9::tab1")).toMatchObject({ exists: false, alive: false, pid: null })
+    expect(host.list()).toEqual([])
+
+    const token = {}
+    host.open("t1::tab1", SPEC, token, collector().sink)
+    host.write("t1::tab1", "peek-me\n")
+    await until(() => host.stats().ringBytes > 0)
+    host.detachClient(token)
+
+    // A detached (background) session peeks fine: full ring, no reattach.
+    const full = host.peek("t1::tab1")
+    expect(full.exists).toBe(true)
+    expect(full.alive).toBe(true)
+    await until(() => Buffer.from(host.peek("t1::tab1").data, "base64").toString("utf8").includes("peek-me"))
+
+    // Delta read from the reported offset returns only newer bytes.
+    const offset = host.peek("t1::tab1").offset
+    host.open("t1::tab1", SPEC, token, collector().sink)
+    host.write("t1::tab1", "later\n")
+    await until(() => {
+      const delta = host.peek("t1::tab1", offset)
+      return delta.sinceValid && Buffer.from(delta.data, "base64").toString("utf8").includes("later")
+    })
+    const delta = host.peek("t1::tab1", offset)
+    expect(Buffer.from(delta.data, "base64").toString("utf8")).not.toContain("peek-me")
+  })
+
   test("kill ends the child, notifies sinks, and forgets the session", async () => {
     let ended = 0
     const host = makeHost({ onSessionEnd: () => ended++ })

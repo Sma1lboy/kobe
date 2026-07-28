@@ -1,11 +1,10 @@
 /**
  * Ending a PTY child — the escalation, and the bounded waits around it.
  *
- * Split out of `pty-host.ts` because it is a different concern from the
- * session registry: nothing here knows what a session is, only how to make a
- * process stop and how long to wait for proof. Both helpers are pure over
- * their arguments, which is also what makes the platform behaviour below
- * testable without spawning anything.
+ * Split from `pty-host.ts` (file-size cap), and a separate concern besides:
+ * nothing here knows what a session is, only how to make a process stop and
+ * how long to wait for proof. Both helpers are pure over their arguments,
+ * which is what makes the platform behaviour below testable without spawning.
  */
 
 /**
@@ -33,14 +32,16 @@ export async function settledWithin(exited: Promise<unknown>, ms: number): Promi
 }
 
 /**
- * Signal a child's whole process group, falling back to the child alone.
+ * POSIX process-group signaling for PTY children. A hosted engine spawns its
+ * own subtree (shell → engine → helpers); signaling the negative pid reaches
+ * the whole group, with a per-process fallback for runtimes that do not make
+ * the PTY child a group leader.
  *
- * The group form is what reaches an engine's own subprocesses; POSIX gets it
- * via `kill(-pid)`. Windows has no process groups to signal and no signals at
- * all — the fallback there ends up in node-pty's `kill()`, which ignores the
- * signal and calls `TerminateProcess`. That makes even the SIGTERM step a hard
- * kill on Windows, so an engine never gets to flush; tracked separately rather
- * than papered over here.
+ * Windows has neither process groups to signal nor signals at all — the
+ * fallback there lands in node-pty's `kill()`, which ignores the signal and
+ * calls `TerminateProcess`. That makes even the SIGTERM step a hard kill on
+ * Windows, so an engine never gets to flush; tracked separately rather than
+ * papered over here.
  */
 export function signalProcessGroup(
   pid: number,

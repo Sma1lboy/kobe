@@ -29,6 +29,11 @@ export class FakeClient implements DaemonRpc {
     return {}
   }
 
+  /** Push one channel event to current listeners (a live daemon publish). */
+  emit<C extends ChannelName>(channel: C, payload: ChannelPayloads[C]): void {
+    for (const handler of this.handlers.get(channel) ?? []) handler(payload)
+  }
+
   onChannel<C extends ChannelName>(channel: C, handler: (payload: ChannelPayloads[C]) => void): () => void {
     let handlers = this.handlers.get(channel)
     if (!handlers) {

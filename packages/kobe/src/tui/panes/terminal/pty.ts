@@ -67,6 +67,10 @@ export class BunTerminalTaskPty extends XtermTaskPty {
     if (opts.initialInput) this.transportWrite(opts.initialInput)
   }
 
+  get shellPid(): number | null {
+    return this.proc.pid ?? null
+  }
+
   protected transportWrite(data: string): void {
     this.proc.terminal?.write(data)
   }

@@ -1,6 +1,7 @@
-/** Read-only PTY-host inventory types and OSC title tracking. */
+/** Read-only PTY-host inventory types, ring peeks, and OSC title tracking. */
 
 import type { StringDecoder } from "node:string_decoder"
+import type { PtyPeekResult } from "./protocol.ts"
 
 /** One session's inventory row — what `pty.list` reports. */
 export interface PtySessionInfo {
@@ -81,4 +82,40 @@ export function scanOscTitle(session: PtyTitleState, buf: Buffer): void {
   const { title, carry } = foldOscTitle(session.titleCarry, session.titleDecoder.write(buf))
   if (title !== null) session.title = title
   session.titleCarry = carry
+}
+
+/** The ring-buffer fields `peekRing` reads off a host session (structural
+ *  subset of the host's PtySessionState — pure, so it stays testable). */
+export interface PtyRingView {
+  readonly alive: boolean
+  readonly chunks: readonly Buffer[]
+  /** Bytes currently held in the ring (after trimming). */
+  readonly bytes: number
+  /** Total bytes the child has ever written (monotonic). */
+  readonly totalBytes: number
+  readonly proc: { readonly pid: number } | null
+}
+
+/**
+ * Read-only ring peek — the pure half of `pty.peek`. Returns the full ring
+ * (or the exact delta since `sinceOffset` when it is still inside the ring
+ * window) without attaching, spawning, or resizing anything.
+ */
+export function peekRing(session: PtyRingView | undefined, sinceOffset?: number): PtyPeekResult {
+  if (!session) return { exists: false, alive: false, pid: null, offset: 0, data: "", sinceValid: false }
+  const windowStart = session.totalBytes - session.bytes
+  let buf = Buffer.concat(session.chunks as Buffer[])
+  let sinceValid = false
+  if (sinceOffset !== undefined && sinceOffset >= windowStart && sinceOffset <= session.totalBytes) {
+    buf = buf.subarray(sinceOffset - windowStart)
+    sinceValid = true
+  }
+  return {
+    exists: true,
+    alive: session.alive,
+    pid: session.proc?.pid ?? null,
+    offset: session.totalBytes,
+    data: buf.toString("base64"),
+    sinceValid,
+  }
 }

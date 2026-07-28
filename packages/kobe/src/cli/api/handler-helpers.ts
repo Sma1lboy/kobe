@@ -20,3 +20,26 @@ export async function simpleRpc(ctx: VerbContext, name: string, payload: Record<
   // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
   return daemonOf(ctx).request(name as any, payload)
 }
+
+/**
+ * `pty-list` — inventory of the standalone pty host's sessions (key, pid,
+ * command, live OSC window title — the same "实时进程名" stream the TUI tab
+ * strip shows). Talks to the PTY HOST socket, not the daemon (offline verb),
+ * and never spawns a host: no host running simply means no sessions.
+ * Moved here from `verbs.ts` verbatim to keep that file under the size cap.
+ */
+export async function handlePtyList(): Promise<unknown> {
+  const [{ KobeDaemonClient }, { defaultPtyHostSocketPath }] = await Promise.all([
+    import("@sma1lboy/kobe-daemon/client"),
+    import("@sma1lboy/kobe-daemon/daemon/paths"),
+  ])
+  const client = new KobeDaemonClient(defaultPtyHostSocketPath())
+  try {
+    await client.connect()
+    return await client.request("pty.list", {})
+  } catch {
+    return { sessions: [] }
+  } finally {
+    client.close()
+  }
+}

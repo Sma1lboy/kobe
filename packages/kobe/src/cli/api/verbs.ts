@@ -4,10 +4,11 @@
 
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
 import type { TaskStatus } from "../../types/task.ts"
-import { ALL_VENDORS, type VendorId } from "../../types/vendor.ts"
-import { FANOUT_CAP } from "./flags.ts"
-import { simpleRpc } from "./handler-helpers.ts"
+import type { VendorId } from "../../types/vendor.ts"
+import { F, FANOUT_CAP } from "./flags.ts"
+import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
+import { OUTCOME_VERBS } from "./handlers-outcome.ts"
 import {
   add,
   adopt,
@@ -15,15 +16,16 @@ import {
   deleteTask,
   dispatch,
   getTask,
-  issueUpdate,
   land,
   list,
   note,
   send,
   setActive,
 } from "./handlers-tasks.ts"
+import { READ_OUTPUT_VERB } from "./read-output.ts"
 import { fullSchema, groupSchema, schemaIndex, verbSchema } from "./schema.ts"
 import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./types.ts"
+import { ISSUE_VERBS } from "./verbs-issues.ts"
 
 /**
  * The `schema` verb's handler — LEVELED so it never dumps everything by
@@ -39,28 +41,6 @@ import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./type
  * module that itself imports `VERBS` back from here would still be
  * `undefined` at that point (load-order circular-import hazard).
  */
-/**
- * `pty-list` — inventory of the standalone pty host's sessions (key, pid,
- * command, live OSC window title — the same "实时进程名" stream the TUI tab
- * strip shows). Talks to the PTY HOST socket, not the daemon (offline verb),
- * and never spawns a host: no host running simply means no sessions.
- */
-async function handlePtyList(): Promise<unknown> {
-  const [{ KobeDaemonClient }, { defaultPtyHostSocketPath }] = await Promise.all([
-    import("@sma1lboy/kobe-daemon/client"),
-    import("@sma1lboy/kobe-daemon/daemon/paths"),
-  ])
-  const client = new KobeDaemonClient(defaultPtyHostSocketPath())
-  try {
-    await client.connect()
-    return await client.request("pty.list", {})
-  } catch {
-    return { sessions: [] }
-  } finally {
-    client.close()
-  }
-}
-
 async function handleSchema(ctx: VerbContext): Promise<unknown> {
   const verbName = ctx.args.str("verb")
   if (verbName) {
@@ -76,41 +56,6 @@ async function handleSchema(ctx: VerbContext): Promise<unknown> {
 
 /** Allowed `--status` values, mirrored from {@link TaskStatus}. */
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
-const ISSUE_STATUSES = ["open", "doing", "hold", "done"] as const
-type IssueStatus = (typeof ISSUE_STATUSES)[number]
-
-// Reusable flag fragments.
-const F = {
-  repo: (required = true): FlagSpec => ({
-    name: "repo",
-    type: "string",
-    required,
-    placeholder: "PATH",
-    description: "Repo root (git toplevel). Relative paths resolve against $PWD.",
-  }),
-  taskId: (required = true): FlagSpec => ({
-    name: "task-id",
-    type: "string",
-    required,
-    placeholder: "ID",
-    description: "Target task id (from `list` / `add`).",
-  }),
-  vendor: (): FlagSpec => ({
-    name: "vendor",
-    type: "enum",
-    values: ALL_VENDORS,
-    placeholder: "V",
-    description: "Engine vendor for the task.",
-  }),
-  title: (): FlagSpec => ({ name: "title", type: "string", placeholder: "T", description: "Human task title." }),
-  prompt: (required: boolean, desc: string): FlagSpec => ({
-    name: "prompt",
-    type: "string",
-    required,
-    placeholder: "TEXT",
-    description: desc,
-  }),
-}
 
 /** Output the alias → canonical map so callers (and the schema) stay in sync. */
 export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
@@ -122,9 +67,10 @@ export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "a
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
-  read: ["list", "get-task", "collect", "pty-list"],
+  read: ["list", "get-task", "collect", "pty-list", "read-output"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
+  supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   lifecycle: ["archive", "pin", "land", "delete"],
@@ -261,57 +207,7 @@ export const VERBS: readonly VerbSpec[] = [
     offline: true,
     handler: feedback,
   },
-  {
-    name: "issue-list",
-    summary: "List daemon-owned issues for a repo.",
-    flags: [F.repo()],
-    handler: (ctx) => simpleRpc(ctx, "issue.list", { repoRoot: ctx.args.requirePath("repo") }),
-  },
-  {
-    name: "issue-create",
-    summary: "Create a daemon-owned issue for a repo.",
-    flags: [
-      F.repo(),
-      { name: "title", type: "string", required: true, placeholder: "T", description: "Issue title." },
-      { name: "body", type: "string", placeholder: "TEXT", description: "Issue body." },
-    ],
-    handler: (ctx) =>
-      simpleRpc(ctx, "issue.mutate", {
-        repoRoot: ctx.args.requirePath("repo"),
-        op: { type: "create", title: ctx.args.require("title"), body: ctx.args.str("body") },
-      }),
-  },
-  {
-    name: "issue-set-status",
-    summary: "Set a daemon-owned issue's status.",
-    flags: [
-      F.repo(),
-      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
-      { name: "status", type: "enum", required: true, values: ISSUE_STATUSES, description: "New issue status." },
-    ],
-    handler: (ctx) =>
-      simpleRpc(ctx, "issue.mutate", {
-        repoRoot: ctx.args.requirePath("repo"),
-        op: { type: "setStatus", id: ctx.args.int("id"), status: ctx.args.requireEnum<IssueStatus>("status") },
-      }),
-  },
-  {
-    name: "issue-update",
-    summary: "Update a daemon-owned issue's title, body, and/or linked task.",
-    flags: [
-      F.repo(),
-      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
-      { name: "title", type: "string", placeholder: "T", description: "New title." },
-      { name: "body", type: "string", placeholder: "TEXT", description: "New body." },
-      {
-        name: "task",
-        type: "string",
-        placeholder: "TASK_ID",
-        description: "Link the issue to this task (kanban: In progress). Pass `none` to unlink.",
-      },
-    ],
-    handler: issueUpdate,
-  },
+  ...ISSUE_VERBS,
   {
     name: "notify",
     summary:
@@ -367,6 +263,10 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: collect,
   },
+  // Supervision (worker `report` / coordinator `await`) — specs + handlers
+  // live in ./handlers-outcome.ts; spread keeps this table the single index.
+  ...OUTCOME_VERBS,
+  READ_OUTPUT_VERB,
   {
     name: "rename",
     summary: "Set a task's title.",

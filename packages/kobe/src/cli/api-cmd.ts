@@ -32,7 +32,10 @@
  *
  * ## Output contract
  *   - success → one JSON object to stdout, `\n` terminated, exit 0
- *   - error   → `{ "error": { "message", "code" } }` to stderr, exit ≠ 0
+ *   - error   → `{ "error": { "message", "code", ...data } }` to stderr, exit ≠ 0.
+ *     High-traffic rejections additionally carry `hint` (what to do) and
+ *     `nextCommandArgs` (argv for the same `kobe` executable, runnable
+ *     verbatim) so an agent caller can self-heal without parsing prose.
  *   - `--pretty` → indent stdout JSON (humans only)
  *   - `--help`   → render that verb's usage to stdout, exit 0
  *
@@ -48,6 +51,7 @@
  *   - `./api/handler-helpers.ts`  — daemonOf / simpleRpc
  *   - `./api/handlers-tasks.ts`   — task CRUD + prompt-delivery handlers
  *   - `./api/handlers-fanout.ts`  — fan-out / collect / feedback handlers
+ *   - `./api/handlers-outcome.ts` — supervision verbs (worker `report` / coordinator `await`)
  *   - `./api/verbs.ts`            — the VERBS table binding specs to handlers
  */
 
@@ -87,6 +91,30 @@ function makeContext(verb: VerbSpec, flags: Flags, client: DaemonRpc | null, run
   return { args: new VerbArgs(verb, flags), client, runtime }
 }
 
+const SCHEMA_STEP = {
+  hint: "list every valid verb + flag as JSON, then retry with a real verb",
+  nextCommandArgs: ["api", "schema"],
+} as const
+
+/**
+ * Normalize any handler/RPC failure into an {@link ApiError} so the emitted
+ * envelope is always `{error:{message,code,...}}`. The daemon reports an
+ * unknown task id as a prose `task not found: <id>` RPC error — map it to a
+ * typed `TASK_NOT_FOUND` with the recovery command, since a stale task id is
+ * the single most common scripted-caller failure.
+ */
+export function toApiError(err: unknown): ApiError {
+  if (err instanceof ApiError) return err
+  const message = errorMessage(err)
+  if (/task not found/i.test(message)) {
+    return new ApiError(message, "TASK_NOT_FOUND", {
+      hint: "that task id does not exist (deleted or mistyped) — list live tasks and retry with a real id",
+      nextCommandArgs: ["api", "list"],
+    })
+  }
+  return new ApiError(message, "RPC_ERROR")
+}
+
 /**
  * Parse + validate + run ONE verb against an injected client/runtime —
  * the unit-test (and embedding) entry. Throws {@link ApiError} instead of
@@ -98,11 +126,15 @@ export async function invokeVerb(
   deps: { client: DaemonRpc | null; runtime?: ApiRuntime },
 ): Promise<unknown> {
   const verb = findVerb(verbName)
-  if (!verb) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB")
+  if (!verb) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB", SCHEMA_STEP)
   const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
   const parsed = parseFlags(argv, booleanFlags)
   validateAgainstSpec(verb, parsed.flags)
-  return verb.handler(makeContext(verb, parsed.flags, deps.client, deps.runtime ?? defaultApiRuntime))
+  try {
+    return await verb.handler(makeContext(verb, parsed.flags, deps.client, deps.runtime ?? defaultApiRuntime))
+  } catch (err) {
+    throw toApiError(err)
+  }
 }
 
 export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
@@ -113,7 +145,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     return
   }
   const verb = findVerb(verbName)
-  if (!verb) fail(`unknown verb: ${verbName}\n${apiUsage()}`, "BAD_VERB", 2)
+  if (!verb) fail(`unknown verb: ${verbName}\n${apiUsage()}`, "BAD_VERB", 2, SCHEMA_STEP)
 
   const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
   let parsed: ParsedArgs
@@ -141,7 +173,10 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     try {
       session = await openDaemonSession()
     } catch (err) {
-      fail(`could not reach or start the kobe daemon: ${errorMessage(err)}`, "BAD_DAEMON", 2)
+      fail(`could not reach or start the kobe daemon: ${errorMessage(err)}`, "BAD_DAEMON", 2, {
+        hint: "check whether the daemon is up (and why it is not), then retry the same command",
+        nextCommandArgs: ["daemon", "status"],
+      })
     }
   }
 
@@ -157,8 +192,8 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
       session?.close()
       process.exit(3)
     }
-    if (err instanceof ApiError) fail(err.message, err.code, 1, err.data)
-    fail(errorMessage(err), "RPC_ERROR", 1)
+    const apiErr = toApiError(err)
+    fail(apiErr.message, apiErr.code, 1, apiErr.data)
   } finally {
     session?.close()
   }

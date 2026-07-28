@@ -122,6 +122,14 @@ export interface TaskPtyLike {
    */
   onTitleChange(cb: (title: string) => void): () => void
   /**
+   * Pid of this PTY's own child (the tab's shell), or null before it
+   * spawned / after it died. The root of the process-tree walk that
+   * answers "which engine is running in this tab" (`engine/foreground.ts`)
+   * — the identity signal that replaced guessing from the OSC title.
+   * Backends with no real child (mocks, scripted fixtures) omit it.
+   */
+  readonly shellPid?: number | null
+  /**
    * Route a mouse-wheel tick the way a real terminal emulator would:
    * the app enabled mouse tracking → encode an SGR wheel event at
    * (col,row) (1-based, pane-local) and forward it — the app scrolls

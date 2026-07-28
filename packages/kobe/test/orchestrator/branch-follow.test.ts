@@ -102,6 +102,65 @@ describe("branch follows title", () => {
     expect(gitBranches()).toContain(afterFirst)
   })
 
+  test("does not rename a placeholder branch that has an upstream", async () => {
+    const task = await orch.createTask({ repo })
+    await orch.ensureWorktree(task.id)
+    const placeholderBranch = autoBranch("(new task)", task.id)
+
+    // Publish the placeholder branch: bare remote + push -u.
+    const remote = path.join(tmpRoot, "remote.git")
+    for (const args of [
+      ["init", "--quiet", "--bare", remote],
+      ["-C", repo, "remote", "add", "origin", remote],
+      ["-C", repo, "push", "--quiet", "-u", "origin", placeholderBranch],
+    ]) {
+      const r = spawnSync("git", args, { encoding: "utf8" })
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
+    }
+
+    await orch.setTitle(task.id, "Pushed already")
+
+    // Title lands, branch is left alone — renaming would orphan the remote.
+    expect(orch.getTask(task.id)?.title).toBe("Pushed already")
+    expect(orch.getTask(task.id)?.branch).toBe(placeholderBranch)
+    expect(gitBranches()).toContain(placeholderBranch)
+  })
+
+  test("resolves a collision with an existing branch to a -2 suffix", async () => {
+    const task = await orch.createTask({ repo })
+    await orch.ensureWorktree(task.id)
+    const wanted = autoBranch("Fix login flow", task.id)
+
+    // Occupy the exact name the follow would pick.
+    const r = spawnSync("git", ["-C", repo, "branch", wanted], { encoding: "utf8" })
+    if (r.status !== 0) throw new Error(`git branch failed: ${r.stderr}`)
+
+    await orch.setTitle(task.id, "Fix login flow")
+
+    expect(orch.getTask(task.id)?.branch).toBe(`${wanted}-2`)
+    expect(gitBranches()).toContain(`${wanted}-2`)
+    // The pre-existing branch was never touched.
+    expect(gitBranches()).toContain(wanted)
+  })
+
+  test("keeps the old name when the upstream probe fails (ambiguity)", async () => {
+    const task = await orch.createTask({ repo })
+    await orch.ensureWorktree(task.id)
+    const placeholderBranch = autoBranch("(new task)", task.id)
+
+    // Force the probe to throw: an unreadable probe must not be read as
+    // "no upstream". Reaching into the orchestrator's manager is deliberate —
+    // there is no git state that makes for-each-ref fail deterministically.
+    const worktrees = (orch as unknown as { worktrees: { branchHasUpstream: () => Promise<boolean> } }).worktrees
+    worktrees.branchHasUpstream = () => Promise.reject(new Error("probe boom"))
+
+    await orch.setTitle(task.id, "Probe failed")
+
+    expect(orch.getTask(task.id)?.title).toBe("Probe failed")
+    expect(orch.getTask(task.id)?.branch).toBe(placeholderBranch)
+    expect(gitBranches()).toContain(placeholderBranch)
+  })
+
   test("a not-yet-materialised task derives its branch from the new title on ensureWorktree", async () => {
     const task = await orch.createTask({ repo })
     // No worktree yet: setTitle records the title, the branch stays empty.

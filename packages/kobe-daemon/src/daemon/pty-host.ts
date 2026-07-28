@@ -26,11 +26,11 @@
 
 import { StringDecoder } from "node:string_decoder"
 import { resolveLoginShell } from "./platform-shell.js"
-import type { DaemonFrame } from "./protocol.ts"
+import type { DaemonFrame, PtyPeekResult } from "./protocol.ts"
 import { type PtyChild, type PtyDriver, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
-import { type PtyHostStats, type PtySessionInfo, scanOscTitle } from "./pty-observability.ts"
-import { settledWithin, signalProcessGroup } from "./pty-terminate.ts"
+import { type PtyHostStats, type PtySessionInfo, peekRing, scanOscTitle } from "./pty-observability.ts"
+import { settledWithin, signalProcessGroup } from "./pty-termination.ts"
 
 export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
 // Re-exported for the cross-chunk title-boundary tests (pure fold).
@@ -309,6 +309,11 @@ export class PtyHost {
       parked: s.parked,
       parkedScreenBytes: s.parkedScreenBytes,
     }))
+  }
+
+  /** Read-only ring peek (`pty.peek`) — no attach, no spawn, no resize. */
+  peek(key: string, sinceOffset?: number): PtyPeekResult {
+    return peekRing(this.sessions.get(key), sinceOffset)
   }
 
   /** Retention facts for diagnostics; no terminal bytes leave the host. */

@@ -81,6 +81,21 @@ export interface TaskPRStatus {
   readonly lastError?: string
 }
 
+/**
+ * A worker's SELF-REPORTED terminal outcome (`kobe api report`). The field
+ * name carries the provenance: this is the worker's claim, never verified by
+ * kobe — kobe only stores and relays it so a coordinator can supervise a
+ * fan-out without inferring outcomes from prose or exit codes.
+ */
+export interface TaskWorkerReport {
+  /** Explicit terminal outcome — never inferred. */
+  readonly outcome: "succeeded" | "failed"
+  /** Optional one-line worker summary of what happened. */
+  readonly summary?: string
+  /** ISO-8601 timestamp stamped by the daemon when the report arrived. */
+  readonly reportedAt: string
+}
+
 export type TaskDeletionPhase = "queued" | "running" | "error"
 
 /** Durable state for daemon-owned background worktree cleanup. */
@@ -163,6 +178,12 @@ export interface Task {
    * additive: single tasks never get one.
    */
   readonly groupId?: string
+  /**
+   * The worker's self-reported terminal outcome, when one was filed
+   * (`kobe api report`). Worker report, not kobe-verified — see
+   * {@link TaskWorkerReport}. A later report overwrites an earlier one.
+   */
+  readonly workerReport?: TaskWorkerReport
   /** Present while background deletion is queued/running or after it failed. */
   readonly deletion?: TaskDeletionState
   readonly createdAt: string

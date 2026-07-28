@@ -15,7 +15,8 @@
  * the ring-buffer cap bounds what a session can queue.
  *
  * Requests served: `hello` (reachability probe), `pty.open/write/resize/
- * kill/detach/list`, `pty.warm` (pre-spawn one idle shell for adoption),
+ * kill/detach/list`, `pty.peek` (read-only ring snapshot — no attach),
+ * `pty.warm` (pre-spawn one idle shell for adoption),
  * `pty.sweep` (daemon janitor: kill sessions of archived tasks),
  * `daemon.stop` (reset teardown — shared with `stopDaemonProcess`'s
  * graceful path).
@@ -219,6 +220,13 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
         return {}
       case "pty.list":
         return { pid: process.pid, rssBytes: process.memoryUsage().rss, sessions: ptys.list(), stats: ptys.stats() }
+      case "pty.peek": {
+        const payload = objectPayload(req.payload)
+        return ptys.peek(
+          requireString(payload, "key"),
+          typeof payload.sinceOffset === "number" ? payload.sinceOffset : undefined,
+        )
+      }
       case "pty.warm": {
         const payload = objectPayload(req.payload)
         ptys.warm(

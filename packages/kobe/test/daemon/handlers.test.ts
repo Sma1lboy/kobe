@@ -3,7 +3,6 @@ import {
   type DaemonHandlerContext,
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
-  shapeDaemonError,
 } from "@sma1lboy/kobe-daemon/daemon/server"
 import { describe, expect, it } from "vitest"
 import type { Task } from "../../src/types/task.ts"
@@ -82,6 +81,7 @@ describe("daemon handler registry", () => {
       "task.pin",
       "task.move",
       "task.status",
+      "task.report",
       "task.reorder",
       "task.ensureMain",
       "task.openDir",
@@ -239,6 +239,23 @@ describe("daemon handler registry", () => {
       expect(rec.cleared).toEqual(["t1"])
       expect(rec.inboxTaskDeleted).toEqual(["t1"])
       expect(rec.deletions).toEqual(["t1"])
+    })
+
+    it("task.delete refuses a dirty worktree before any destructive step", async () => {
+      // The dirty-worktree preflight lives in prepareTaskDeletion; when it
+      // throws, the handler must abort BEFORE the destructive tail: no
+      // activity clear, no Inbox cascade, and — critically — no background
+      // deletion enqueued (the deletion runner is the only place session/PTY
+      // teardown happens, so no enqueue == no teardown).
+      const { ctx, rec } = fakeCtx({
+        prepareTaskDeletion: async () => {
+          throw new Error("refused: DIRTY_WORKTREE")
+        },
+      })
+      await expect(dispatch("task.delete", { taskId: "t1" }, ctx)).rejects.toThrow("DIRTY_WORKTREE")
+      expect(rec.cleared).toEqual([])
+      expect(rec.inboxTaskDeleted).toEqual([])
+      expect(rec.deletions).toEqual([])
     })
 
     it("task.delete does not enqueue an unknown task", async () => {
@@ -479,23 +496,5 @@ describe("daemon handler registry", () => {
     })
   })
 
-  describe("error shaping (one place decides the wire error)", () => {
-    it("an unknown request keeps the legacy message", async () => {
-      const { ctx } = fakeCtx()
-      // e.g. a v2 client's removed `daemon.web.start` must still get this.
-      await expect(dispatch("daemon.web.start", {}, ctx)).rejects.toThrow("unknown daemon request: daemon.web.start")
-    })
-
-    it("shapeDaemonError matches the historical on-the-wire shape exactly", () => {
-      // Error instance → message + name ("Error" serializes onto the wire).
-      expect(shapeDaemonError(new Error("boom"))).toEqual({ message: "boom", name: "Error" })
-      const typed = new TypeError("bad type")
-      expect(shapeDaemonError(typed)).toEqual({ message: "bad type", name: "TypeError" })
-      // Non-Error throw → String() coercion, name undefined (dropped by
-      // JSON.stringify, so the key never appears on the wire — pinned here).
-      const shaped = shapeDaemonError("plain string")
-      expect(shaped).toEqual({ message: "plain string", name: undefined })
-      expect(JSON.stringify(shaped)).toBe('{"message":"plain string"}')
-    })
-  })
+  // "error shaping" moved to handlers-error-shape.test.ts (file-size cap).
 })
