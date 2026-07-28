@@ -13,46 +13,194 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="tokens.css">
-<link rel="stylesheet" href="styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:opsz,wght@9..40,300..700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:     oklch(97.8% 0.007 85);
+  --surface:   oklch(99.4% 0.003 90);
+  --well:      oklch(22% 0.02 50);
+  --well-2:    oklch(27% 0.022 50);
+  --well-ink:  oklch(88% 0.015 85);
+  --ink:       oklch(25% 0.02 60);
+  --ink-soft:  oklch(35% 0.02 55);
+  --muted:     oklch(50% 0.02 60);
+  --faint:     oklch(62% 0.018 65);
+  --line:      oklch(88% 0.014 80);
+  --line-2:    oklch(83% 0.018 75);
+  --accent:    oklch(62% 0.13 45);
+  --accent-2:  oklch(70% 0.11 50);
+  --accent-wash: oklch(62% 0.13 45 / .1);
+  --accent-line: oklch(62% 0.13 45 / .4);
+  --ok:        oklch(58% 0.12 145);
+  --warn:      oklch(62% 0.11 80);
+  --radius:    12px;
+  --radius-lg: 22px;
+  --font-display:'Fraunces', Georgia, serif;
+  --font-sans:'DM Sans', system-ui, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, monospace;
+  --ease-out: cubic-bezier(0.16,1,0.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper)}
+body{color:var(--ink-soft);font-family:var(--font-sans);font-weight:380;font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:oklch(62% 0.13 45/.22)}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px)}
+.acc{color:var(--accent);font-style:italic}
+
+/* ============ NAV — glass pill, terminal grammar ============ */
+.navbar{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:2px;padding:6px 8px;border-radius:999px;background:oklch(100% 0 0/.55);backdrop-filter:blur(16px) saturate(1.3);border:1px solid oklch(100% 0 0/.8);box-shadow:0 10px 36px oklch(40% 0.04 60/.16);font-family:var(--font-mono);font-size:12.5px;max-width:calc(100vw - 24px)}
+.navbar .ps{color:var(--accent);padding-left:8px}
+.navbar .bin{font-weight:700;color:var(--ink);padding:8px 6px 8px 4px}
+.navbar a.nl{color:var(--ink-soft);padding:8px 10px;border-radius:999px;transition:background 140ms,color 140ms;white-space:nowrap}
+.navbar a.nl:hover{background:oklch(100% 0 0/.85);color:var(--ink)}
+.navbar .caret{display:inline-block;width:7px;height:14px;background:var(--accent);margin:0 4px 0 2px;animation:blink 1.1s steps(1) infinite;vertical-align:-2px}
+@keyframes blink{50%{opacity:0}}
+.lang-btn{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-2);background:transparent;color:var(--ink-soft);border-radius:999px;padding:6px 12px;margin-left:6px;transition:all 140ms}
+.lang-btn:hover{border-color:var(--accent-line);color:var(--ink)}
+.gh-link{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:500;background:var(--ink);color:oklch(97% 0.008 85);border-radius:999px;padding:8px 15px;margin-left:6px;transition:transform 120ms,box-shadow 160ms;white-space:nowrap}
+.gh-link:hover{transform:translateY(-1px);box-shadow:0 6px 18px oklch(25% 0.02 60/.3)}
+.gh-stars{display:inline-flex;align-items:center;gap:4px;color:oklch(85% 0.06 85)}
+@media(max-width:820px){.navbar a.nl{display:none}}
+
+/* ============ HERO ============ */
+.hero{position:relative;overflow:hidden;text-align:center}
+.hero-bg{position:absolute;inset:0;background:url('hero-fanout.png') center 60%/cover no-repeat;animation:kenburns 32s ease-in-out infinite alternate;will-change:transform}
+@keyframes kenburns{from{transform:scale(1.02)}to{transform:scale(1.09)}}
+.hero-veil{position:absolute;inset:0;background:linear-gradient(180deg, oklch(90% 0.03 210/.2) 0%, transparent 28%, transparent 60%, var(--paper) 96%)}
+.hero-inner{position:relative;z-index:2;padding:clamp(120px,15vh,160px) 20px 0;display:flex;flex-direction:column;align-items:center}
+.hero-kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--ink-soft);background:oklch(100% 0 0/.45);border:1px solid oklch(100% 0 0/.8);backdrop-filter:blur(10px);padding:8px 18px;border-radius:999px}
+.hero-kicker .acc{font-style:normal;font-weight:700}
+h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px,6.6vw,88px);font-weight:380;letter-spacing:-.028em;line-height:1.0;color:var(--ink);max-width:16ch;margin:26px 0 22px;text-shadow:0 1px 30px oklch(95% 0.02 210/.8)}
+.hero-sub{font-size:clamp(15px,1.5vw,17.5px);max-width:56ch;color:var(--ink-soft);text-shadow:0 1px 18px oklch(95% 0.02 210/.9)}
+.hero-row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:36px}
+.copy-cmd{display:inline-flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:13.5px;color:var(--ink);background:oklch(100% 0 0/.55);border:1px solid oklch(100% 0 0/.85);backdrop-filter:blur(14px);border-radius:999px;padding:13px 20px;box-shadow:0 14px 40px oklch(40% 0.04 60/.18);transition:transform 140ms var(--ease-out),box-shadow 200ms}
+.copy-cmd:hover{transform:translateY(-2px);box-shadow:0 20px 50px oklch(40% 0.04 60/.24)}
+.copy-cmd:active{transform:scale(.98)}
+.copy-cmd .ps{color:var(--accent);font-weight:700}
+.copy-cmd .hint{font-size:11px;color:var(--faint);border-left:1px solid var(--line-2);padding-left:12px}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;border-radius:999px;font-size:14.5px;font-weight:520;padding:14px 26px;background:var(--ink);color:oklch(97% 0.008 85);transition:transform 140ms var(--ease-out),box-shadow 200ms}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px oklch(25% 0.02 60/.3)}
+.btn-quiet{display:inline-flex;align-items:center;gap:8px;border-radius:999px;font-size:14.5px;font-weight:480;padding:14px 26px;background:transparent;color:var(--ink);border:1px solid var(--line-2);transition:transform 140ms,background 140ms,border-color 140ms}
+.btn-quiet:hover{transform:translateY(-2px);background:var(--surface);border-color:var(--faint)}
+.hero-req{font-size:12.5px;color:var(--muted);margin-top:20px;text-shadow:0 1px 14px oklch(95% 0.02 210/.9)}
+.rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* quicklook video — floats over the hero fade */
+.quicklook{position:relative;z-index:2;max-width:980px;margin:54px auto 0;padding:0 20px}
+.ql-frame{border-radius:var(--radius-lg);overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
+.tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
+.tbar i{width:9px;height:9px;border-radius:50%;background:oklch(42% 0.02 55)}
+.tbar i.r{background:oklch(65% 0.16 25)}
+.tbar i.y{background:oklch(78% 0.13 85)}
+.tbar i.g{background:oklch(72% 0.14 145)}
+.tbar span{margin-left:8px;letter-spacing:.04em}
+.ql-frame video{display:block;width:100%}
+.equation{display:flex;justify-content:center;margin-top:26px}
+.equation-inner{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:center;font-family:var(--font-mono);font-size:12.5px;color:var(--muted);background:oklch(100% 0 0/.55);border:1px solid oklch(100% 0 0/.85);backdrop-filter:blur(12px);border-radius:999px;padding:8px 10px 8px 18px;box-shadow:0 10px 30px oklch(40% 0.04 60/.12)}
+.equation .chip{background:var(--accent-wash);border:1px solid oklch(62% 0.13 45/.22);border-radius:999px;padding:5px 13px;color:oklch(46% 0.11 45)}
+.equation .op{color:var(--accent);font-weight:700}
+.equation .lhs{font-weight:500;color:var(--ink-soft)}
+
+/* ============ STAGES ============ */
+.stages{padding:clamp(84px,10vw,120px) 0 20px}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,4.5vw,64px);align-items:center;padding:clamp(38px,5vw,58px) 0}
+.stage+.stage{position:relative}
+.stage+.stage::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--line-2) 22%,var(--line-2) 78%,transparent)}
+.stage+.stage::after{content:"";position:absolute;top:0;left:50%;width:7px;height:7px;transform:translate(-50%,-50%) rotate(45deg);background:var(--paper);border:1px solid var(--accent-line)}
+@media(max-width:880px){.stage{grid-template-columns:1fr}}
+.stage:nth-child(even) .stage-txt{order:2}
+@media(max-width:880px){.stage:nth-child(even) .stage-txt{order:0}}
+.stage-no{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:14px}
+.stage h2{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(26px,3.2vw,38px);font-weight:400;letter-spacing:-.018em;line-height:1.12;color:var(--ink);margin-bottom:14px}
+.stage p{font-size:15px;color:var(--muted);max-width:54ch}
+.stage p+p{margin-top:12px}
+.engine-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+.engine-pill{font-family:var(--font-mono);font-size:12px;padding:8px 16px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--muted);transition:all 140ms}
+.engine-pill:hover{color:var(--ink);border-color:var(--faint);transform:translateY(-1px)}
+.engine-pill[data-active="true"]{background:var(--accent-wash);border-color:var(--accent-line);color:var(--accent);font-weight:500}
+.term-frame{border-radius:var(--radius-lg);overflow:hidden;background:linear-gradient(180deg,oklch(24% 0.021 50),var(--well) 60%);border:1px solid oklch(32% 0.024 50);box-shadow:0 22px 52px oklch(42% 0.06 50/.2)}
+.term-out{color:var(--well-ink);padding:20px 24px;font-family:var(--font-mono);font-size:12.5px;line-height:1.95;overflow-x:auto;white-space:pre}
+.term-out .ps{color:oklch(75% 0.13 50)}
+.term-out .a{color:oklch(85% 0.07 60)}
+.term-out .ok{color:oklch(80% 0.13 145)}
+.term-out .del{color:oklch(72% 0.13 25)}
+.term-out .d{color:oklch(58% 0.02 70)}
+
+/* ============ INSTALL ============ */
+.install{padding:clamp(70px,9vw,110px) 0 0}
+.install-final{max-width:820px;margin:0 auto;text-align:center;position:relative;z-index:2}
+.install-final h2{font-family:var(--font-display);font-size:clamp(30px,4.2vw,50px);font-weight:400;letter-spacing:-.02em;line-height:1.08;color:var(--ink);margin-bottom:16px}
+.install-final>p{color:var(--muted);font-size:16px;max-width:58ch;margin:0 auto 40px}
+.install-term{text-align:left}
+.install-actions{display:flex;gap:14px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+
+/* final band with image */
+.final-band{position:relative;overflow:hidden;margin-top:clamp(70px,9vw,110px);padding:clamp(90px,11vw,140px) 0}
+.final-bg{position:absolute;inset:0;background:url('cand-5-rivers.png') center 50%/cover no-repeat;transform:scale(1.05)}
+.final-veil{position:absolute;inset:0;background:linear-gradient(180deg,var(--paper) 0%,oklch(97.8% 0.007 85/.5) 30%,oklch(97.8% 0.007 85/.35) 60%,oklch(97.8% 0.007 85/.88) 100%)}
+.final-band .wrap{position:relative;z-index:2;text-align:center}
+.final-band .h2f{font-family:var(--font-display);font-size:clamp(30px,4.6vw,56px);font-weight:400;letter-spacing:-.02em;color:var(--ink);max-width:20ch;margin:0 auto;text-shadow:0 1px 26px oklch(97% 0.01 85/.9)}
+
+/* ============ FOOTER ============ */
+.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:32px 0;font-size:13px;color:var(--faint)}
+.foot-dense p{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);line-height:1.8}
+.foot-dense .mark{font-family:var(--font-mono);color:var(--accent)}
+.foot-dense a{border-bottom:1px solid var(--line-2);transition:color 140ms,border-color 140ms}
+.foot-dense a:hover{color:var(--ink);border-color:var(--accent-line)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .rise{opacity:1;transform:none}
+}
+</style>
 </head>
 <body>
-<div class="bg-grid"></div>
 
-<!-- NAV · N8 terminal command -->
-<header class="nav-term">
-  <pre class="nav-term__line"><span class="prompt">$</span> <a class="bin" href="/" style="text-decoration:none;">kobe</a><a href="#workflow" data-i18n="nav.workflow">--primitives</a><a href="#install" data-i18n="nav.install">--install</a><a href="/changelog" data-i18n="nav.changelog">--changelog</a><span class="caret" aria-hidden="true">▮</span></pre>
-  <div class="nav-side">
-    <button id="langToggle" class="lang-btn">中文</button>
-    <a class="gh-link" href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      <span>GitHub</span>
-      <span class="gh-stars">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;color:var(--color-warn);"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
-        <span id="starCount">–</span>
-      </span>
-    </a>
-  </div>
+<!-- NAV · terminal command in a glass pill -->
+<header class="navbar">
+  <span class="ps">$</span>
+  <a class="bin" href="/">kobe</a>
+  <a class="nl" href="#workflow" data-i18n="nav.workflow">--primitives</a>
+  <a class="nl" href="#install" data-i18n="nav.install">--install</a>
+  <a class="nl" href="/changelog" data-i18n="nav.changelog">--changelog</a>
+  <span class="caret" aria-hidden="true"></span>
+  <button id="langToggle" class="lang-btn">中文</button>
+  <a class="gh-link" href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+    <span class="gh-stars">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
+      <span id="starCount">–</span>
+    </span>
+  </a>
 </header>
 
 <!-- HERO -->
-<section class="hero wrap">
-  <p class="hero-kicker" data-i18n-html="hero.kicker">prompt engineering → context engineering → <span class="acc">graph engineering</span></p>
-  <h1 data-i18n-html="hero.title">The agent <span class="acc">multiplexer</span> in your shell.</h1>
-  <p class="hero-sub" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.</p>
-  <div class="hero-row">
-    <button id="copyBtn" class="copy-cmd">
-      <span class="ps">$</span>
-      <span>bun install -g @sma1lboy/kobe</span>
-      <span id="copyLabel" class="hint">click to copy</span>
-    </button>
-    <a class="btn-primary" href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted">Get started ↗</a>
+<section class="hero">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="hero-veil" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <p class="hero-kicker rise" style="animation-delay:.08s" data-i18n-html="hero.kicker">prompt engineering → context engineering → <span class="acc">graph engineering</span></p>
+    <h1 class="rise" style="animation-delay:.2s" data-i18n-html="hero.title">The agent <span class="acc">multiplexer</span> in your shell.</h1>
+    <p class="hero-sub rise" style="animation-delay:.34s" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.</p>
+    <div class="hero-row rise" style="animation-delay:.48s">
+      <button id="copyBtn" class="copy-cmd">
+        <span class="ps">$</span>
+        <span>bun install -g @sma1lboy/kobe</span>
+        <span id="copyLabel" class="hint">click to copy</span>
+      </button>
+      <a class="btn-primary" href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted">Get started ↗</a>
+    </div>
+    <p class="hero-req rise" style="animation-delay:.58s" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</p>
   </div>
-  <p class="hero-req" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</p>
 
-  <div class="quicklook">
-    <figure>
+  <div class="quicklook rise" style="animation-delay:.7s">
+    <figure class="ql-frame">
+      <div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>kobe — quick look</span></div>
       <video src="assets/quicklook.mp4" poster="assets/quicklook-poster.jpg" autoplay muted loop playsinline preload="metadata" fetchpriority="high" aria-label="kobe quick look — driving parallel coding tasks from the terminal"></video>
     </figure>
     <div class="equation">
@@ -85,10 +233,11 @@
       </div>
     </div>
     <div class="stage-vis">
+      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>fan-out</span></div>
       <pre class="term-out"><span class="ps">$</span> kobe api fan-out --prompt <span class="a">"simplify auth"</span> \
     --vendor <span id="fanEngineName">claude</span> --count 3
 <span class="ok">✓</span> 3 worktrees · 3 branches · 3 sessions
-<span id="fanLines"></span></pre>
+<span id="fanLines"></span></pre></figure>
     </div>
   </article>
 
@@ -99,11 +248,12 @@
       <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in kobe every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
     </div>
     <div class="stage-vis">
+      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>report · await</span></div>
       <pre class="term-out"><span class="d"># inside an attempt, as its last act</span>
 <span class="ps">$</span> kobe api report --outcome succeeded
 <span class="d"># in your orchestrator</span>
 <span class="ps">$</span> kobe api await --task-ids a,b,c
-<span class="ok">✓</span> a succeeded  <span class="ok">✓</span> b succeeded  <span class="del">✗</span> c failed</pre>
+<span class="ok">✓</span> a succeeded  <span class="ok">✓</span> b succeeded  <span class="del">✗</span> c failed</pre></figure>
     </div>
   </article>
 
@@ -115,12 +265,13 @@
       <p data-i18n="s3.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
     </div>
     <div class="stage-vis">
+      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>reattach</span></div>
       <pre class="term-out"><span class="ps">$</span> exit
 <span class="d">Connection to devbox closed.</span>
 <span class="d">▸ 41 minutes later, from anywhere</span>
 <span class="ps">$</span> ssh devbox && kobe
 <span class="ok">●</span> 3 sessions live · running 41m
-<span class="d">  attached — right where you left off</span></pre>
+<span class="d">  attached — right where you left off</span></pre></figure>
     </div>
   </article>
 
@@ -131,13 +282,14 @@
       <p data-i18n="s4.body">Fan-in is a human gate. Pull a read-only snapshot of every attempt — branch, diffstat, running state — review them side by side, merge the branch you like, archive the rest. One attempt is a coin flip — N is a choice.</p>
     </div>
     <div class="stage-vis">
+      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>collect · land</span></div>
       <pre class="term-out"><span class="ps">$</span> kobe api collect --task-ids a,b,c
 a  <span class="ok">+118</span> <span class="del">−204</span> · 6 files
 b  <span class="ok">+301</span> <span class="del">−12</span>  · 14 files
 c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
 <span class="ps">$</span> kobe api land --task-id a
 <span class="ok">✓</span> kobe/simplify-auth-a <span class="ok">merged to main</span>
-<span class="d">○ b archived   ○ c archived</span></pre>
+<span class="d">○ b archived   ○ c archived</span></pre></figure>
     </div>
   </article>
 
@@ -148,21 +300,31 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
   <div class="install-final">
     <h2 data-i18n="install.title">Spin it up where your code lives.</h2>
     <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.</p>
-    <pre class="term-out install-term"><span class="ps">$</span> bun install -g @sma1lboy/kobe
+    <figure class="term-frame install-term"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
+    <pre class="term-out"><span class="ps">$</span> bun install -g @sma1lboy/kobe
 <span class="ps">$</span> ssh devbox && cd repo
 <span class="ps">$</span> kobe
-<span class="d">3 attempts running. Go do something else.</span></pre>
+<span class="d">3 attempts running. Go do something else.</span></pre></figure>
     <div class="install-actions">
       <a class="btn-primary" href="https://www.npmjs.com/package/@sma1lboy/kobe" data-i18n="install.npm">Install from npm ↗</a>
       <a class="btn-quiet" href="https://github.com/Sma1lboy/kobe" data-i18n="install.star">Star on GitHub ↗</a>
     </div>
   </div>
-
-  <!-- FOOTER · Ft4 dense colophon -->
-  <footer class="foot-dense">
-    <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
-  </footer>
 </section>
+
+<!-- FINAL IMAGE BAND -->
+<div class="final-band" aria-hidden="true">
+  <div class="final-bg"></div>
+  <div class="final-veil"></div>
+  <div class="wrap">
+    <p class="h2f" data-i18n="final.line">Every stream converges. You keep the judgment.</p>
+  </div>
+</div>
+
+<!-- FOOTER · dense colophon -->
+<footer class="foot-dense">
+  <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+</footer>
 
 <script>
   // EN / 中文 — one page, two language versions. Terminal-mock content
@@ -192,8 +354,9 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
       'install.title': '在你代码所在的地方跑起来。',
       'install.body': '笔记本、devbox、VPS，或任何能 SSH 上去的机器。没有浏览器、没有 VNC、没有桌面应用。优化唯一重要的指标：你每小时注意力换来的已合并代码。',
       'install.npm': '从 npm 安装 ↗', 'install.star': '去 GitHub 点个 Star ↗',
+      'final.line': '所有支流终会汇合。判断权在你手里。',
       'footer.tagline': '终端原生的编码代理图工程。',
-      'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Space Grotesk 与 JetBrains Mono。MIT 许可。',
+      'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Fraunces、DM Sans 与 JetBrains Mono。MIT 许可。',
       'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
@@ -220,8 +383,9 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
       'install.title': 'Spin it up where your code lives.',
       'install.body': 'Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.',
       'install.npm': 'Install from npm ↗', 'install.star': 'Star on GitHub ↗',
+      'final.line': 'Every stream converges. You keep the judgment.',
       'footer.tagline': 'graph engineering for coding agents, terminal-native.',
-      'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Space Grotesk and JetBrains Mono. MIT licensed.',
+      'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.',
       'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
     };
     var dicts = { en: en, zh: zh };
