@@ -12,9 +12,11 @@
  * for its lifetime), so there's no refresh tick.
  */
 
-import { useEffect, useMemo, useState } from "react"
+import type { DiffRenderable } from "@opentui/core"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { execHostForWorktreePath } from "../../exec/resolve"
 import { openWithSystemViewer } from "../../lib/open-external"
+import type { DiffReviewApi } from "../../tui/ops/diff-comments"
 import { type PreviewData, filetypeOf, formatBytes, loadPreviewData } from "../../tui/ops/preview-core"
 import { buildSyntaxStyle } from "../../tui/ops/preview-syntax"
 import { worktreeFilePath } from "../../worktree/content"
@@ -22,6 +24,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
+import { useDiffReview } from "./preview-review"
 
 export interface OpsPreviewArgs {
   readonly worktree: string
@@ -39,6 +42,9 @@ export interface OpsPreviewArgs {
   /** Whether this preview has keyboard focus — gates its close chords when
    *  hosted as a tab (a standalone process is always focused). */
   readonly focused?: boolean
+  /** Line-anchored review notes (diff kind only) — supplied by the
+   *  workspace content-tab host; absent for the standalone entrypoint. */
+  readonly review?: DiffReviewApi
 }
 
 export function PreviewScreen(props: OpsPreviewArgs) {
@@ -67,6 +73,17 @@ export function PreviewScreen(props: OpsPreviewArgs) {
   // System-open (`o`) only makes sense for a LOCAL worktree — the file the
   // OS viewer would open doesn't exist on this machine for a remote one.
   const canSystemOpen = data?.kind === "binary" && !execHostForWorktreePath(props.worktree).isRemote
+
+  // Review overlay (line-anchored notes) — inert unless the host supplied
+  // `review` AND the preview is a diff. Owns its own (PROPOSED) chords.
+  const diffRef = useRef<DiffRenderable | null>(null)
+  const review = useDiffReview({
+    review: props.review,
+    relPath: props.relPath,
+    diffText: data?.kind === "diff" ? data.text : null,
+    focused: props.focused ?? true,
+    diffRef,
+  })
 
   const onClose = props.onClose ?? (() => process.exit(0))
   useBindings(() => ({
@@ -120,11 +137,24 @@ export function PreviewScreen(props: OpsPreviewArgs) {
             </text>
           </box>
         ) : data.kind === "diff" ? (
-          <diff diff={data.text} view="unified" filetype={filetype} syntaxStyle={style} showLineNumbers={true} />
+          // wrapMode "none" pins visual rows to logical diff lines — the
+          // review overlay's row↔line mapping depends on it.
+          <diff
+            ref={(r: DiffRenderable | null) => {
+              diffRef.current = r
+            }}
+            diff={data.text}
+            view="unified"
+            wrapMode="none"
+            filetype={filetype}
+            syntaxStyle={style}
+            showLineNumbers={true}
+          />
         ) : (
           <code content={data.text} filetype={filetype} syntaxStyle={style} />
         )}
       </box>
+      {review.footer}
     </box>
   )
 }

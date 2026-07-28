@@ -43,6 +43,7 @@ import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
 import { type ReactNode, useEffect, useRef, useState } from "react"
+import { buildDiffReview } from "../../tui/ops/diff-comments"
 import { warmHostedShell } from "../../tui/panes/terminal/pty-hosted"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -238,7 +239,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // Parent handoffs — mount-once effects, extracted to use-tab-handoffs.ts
   // (file-size cap split). The quick-fork initial prompt no longer needs a
   // delivery effect: it rides the first spawn's argv (engineTabSpawn).
-  useTabHandoffs({
+  const { sendToEngine } = useTabHandoffs({
     stateRef,
     propsRef,
     update,
@@ -460,6 +461,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           base={active.base}
           focused={props.focused}
           onClose={() => closeExitedTab(active.id)}
+          // Line-anchored review notes: per-task, kv-persisted, sent to the
+          // engine session over the same PTY paste path as the PR prompt.
+          review={buildDiffReview(kv, props.taskId, sendToEngine)}
         />
       ) : (
         <TerminalSplit

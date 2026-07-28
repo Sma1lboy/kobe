@@ -39,11 +39,47 @@ export interface TabHandoffIO {
 }
 
 /**
- * Hand the parent the editor-tab / engine-send imperative handles once per
- * mount — remounting on task/worktree switch re-fires it.
+ * Paste `text` into the task's engine tab PTY and submit — the active tab
+ * when it's an engine, else the first engine tab. Reads everything through
+ * the latest-render refs, so one closure stays valid for the mount's life.
  */
-export function useTabHandoffs(io: TabHandoffIO): void {
-  const { stateRef, propsRef, update, engineTabSpawnRef } = io
+function buildEngineSend(
+  io: Pick<TabHandoffIO, "stateRef" | "propsRef" | "engineTabSpawnRef">,
+): (text: string) => void {
+  const { stateRef, propsRef, engineTabSpawnRef } = io
+  return (text) => {
+    const activeTab = stateRef.current.tabs.find((tab) => tab.id === stateRef.current.activeId)
+    const target = activeTab?.kind === "engine" ? activeTab : stateRef.current.tabs.find((t) => t.kind === "engine")
+    if (!target) return
+    const reg = getDefaultPtyRegistry()
+    const key = tabPtyKey(propsRef.current.taskId, target.id)
+    let pty = reg.get(key)
+    if (!pty && target.kind === "engine") {
+      // Parked background tab (issue #28): the host still runs the
+      // session — re-acquire reattaches + replays, then the paste lands.
+      // Default geometry until the tab is next mounted; the engine
+      // rewraps on the real resize like any terminal.
+      try {
+        pty = reg.acquire(key, propsRef.current.worktree, { ...engineTabSpawnRef.current(target) })
+      } catch {
+        return
+      }
+    }
+    if (!pty || pty.killed) return
+    pty.paste(text)
+    pty.write("\r")
+  }
+}
+
+/**
+ * Hand the parent the editor-tab / engine-send imperative handles once per
+ * mount — remounting on task/worktree switch re-fires it. Returns the same
+ * engine-send closure so the owning component can use it directly (the diff
+ * review's send-notes action).
+ */
+export function useTabHandoffs(io: TabHandoffIO): { sendToEngine: (text: string) => void } {
+  const { stateRef, propsRef, update } = io
+  const sendToEngine = buildEngineSend(io)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
   useEffect(() => {
@@ -73,28 +109,8 @@ export function useTabHandoffs(io: TabHandoffIO): void {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once handoff; the callback reads propsRef/stateRef for freshness.
   useEffect(() => {
-    propsRef.current.onEngineSendReady?.((text) => {
-      // Active tab when it's an engine; else the first engine tab.
-      const activeTab = stateRef.current.tabs.find((tab) => tab.id === stateRef.current.activeId)
-      const target = activeTab?.kind === "engine" ? activeTab : stateRef.current.tabs.find((t) => t.kind === "engine")
-      if (!target) return
-      const reg = getDefaultPtyRegistry()
-      const key = tabPtyKey(propsRef.current.taskId, target.id)
-      let pty = reg.get(key)
-      if (!pty && target.kind === "engine") {
-        // Parked background tab (issue #28): the host still runs the
-        // session — re-acquire reattaches + replays, then the paste lands.
-        // Default geometry until the tab is next mounted; the engine
-        // rewraps on the real resize like any terminal.
-        try {
-          pty = reg.acquire(key, propsRef.current.worktree, { ...engineTabSpawnRef.current(target) })
-        } catch {
-          return
-        }
-      }
-      if (!pty || pty.killed) return
-      pty.paste(text)
-      pty.write("\r")
-    })
+    propsRef.current.onEngineSendReady?.(sendToEngine)
   }, [])
+
+  return { sendToEngine }
 }
