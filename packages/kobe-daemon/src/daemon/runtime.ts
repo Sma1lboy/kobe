@@ -34,6 +34,9 @@ export interface DaemonRuntimeAdapter {
   readonly placeholderTaskTitle: string
   isTaskStatus(value: unknown): value is DaemonTask["status"]
   isEngineActivityKind(value: string): value is EngineActivityKind
+  /** True for kinds that change the activity badge state; false for
+   *  lifecycle-only kinds (tool/compact/subagent) that only feed plugins. */
+  affectsActivityState(value: string): boolean
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>

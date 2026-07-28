@@ -15,7 +15,7 @@ import { type FSWatcher, appendFileSync, mkdirSync, readFileSync, watch } from "
 import { dirname } from "node:path"
 import type { ChannelEvent } from "../daemon/event-bus.ts"
 import { buildPluginEnv } from "./env.ts"
-import { type PluginEvent, PluginEventReducer } from "./events.ts"
+import { type PluginEvent, PluginEventReducer, lifecycleEventFor } from "./events.ts"
 import {
   PLUGIN_MANIFEST_FILENAME,
   type PluginCommandSpec,
@@ -88,6 +88,35 @@ export class PluginHost {
   handleChannel(event: ChannelEvent): void {
     if (this.stopped) return
     for (const derived of this.reducer.reduce(event)) this.dispatch(derived)
+  }
+
+  /**
+   * Direct feed from `engine.reportEvent` (NOT a bus channel — lifecycle
+   * kinds like tool.* would spam every attached client; plugins are the only
+   * consumer, and dispatch already fans out only to hooks that declared the
+   * event). One engine hook report → one plugin event.
+   */
+  handleEngineReport(report: {
+    readonly kind: string
+    readonly taskId: string
+    readonly detail?: Record<string, unknown>
+    readonly vendor?: string
+    readonly tabId?: string
+    readonly sessionId?: string
+  }): void {
+    if (this.stopped) return
+    const event = lifecycleEventFor(report.kind, report.detail as { waiting?: string } | undefined)
+    if (!event) return
+    this.dispatch({
+      event,
+      taskId: report.taskId,
+      task: this.reducer.contextFor(report.taskId),
+      ...(report.vendor ? { vendor: report.vendor } : {}),
+      ...(report.tabId ? { tabId: report.tabId } : {}),
+      ...(report.sessionId ? { sessionId: report.sessionId } : {}),
+      ...(report.detail ? { detail: report.detail } : {}),
+      at: Date.now(),
+    })
   }
 
   private dispatch(event: PluginEvent): void {

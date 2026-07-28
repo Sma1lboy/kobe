@@ -2,7 +2,7 @@
 
 import type { DaemonRuntimeAdapter } from "@sma1lboy/kobe-daemon/daemon/runtime"
 import { availableEngineIds } from "../engine/account-detect.ts"
-import { isEngineActivityKind } from "../engine/hook-events.ts"
+import { affectsActivityState, isEngineActivityKind } from "../engine/hook-events.ts"
 import { engineDisplayName, kobeApiInvocation } from "../engine/interactive-command.ts"
 import { engineEntry } from "../engine/registry.ts"
 import { createEngineTurnDetector } from "../engine/turn-detector.ts"
@@ -42,6 +42,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   placeholderTaskTitle: PLACEHOLDER_TASK_TITLE,
   isTaskStatus,
   isEngineActivityKind,
+  affectsActivityState,
   checkLatestVersion,
   latestTranscriptMtime,
   deriveTitleFromSession,

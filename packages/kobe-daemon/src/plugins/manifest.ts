@@ -15,17 +15,37 @@ export type PluginPlatform = "macos" | "linux" | "windows"
 
 export const PLUGIN_PLATFORMS: readonly PluginPlatform[] = ["macos", "linux", "windows"]
 
-/** Discrete plugin-facing event names derived from daemon channels (see plugins/events.ts). */
+/** Discrete plugin-facing event names — the product layer derived from
+ *  daemon channels plus the normalized agent lifecycle
+ *  (docs/design/plugin-events.md; see plugins/events.ts). */
 export const PLUGIN_EVENT_NAMES = [
+  // Product layer
   "task.created",
   "task.deleted",
   "worktree.created",
+  // Reduced activity-state transitions (deduped per task+tab)
   "agent.turn-complete",
   "agent.permission-needed",
   "agent.rate-limited",
   "agent.error",
   "agent.running",
   "agent.idle",
+  // Agent lifecycle (one event per engine hook report)
+  "session.start",
+  "session.end",
+  "turn.prompt",
+  "turn.complete",
+  "turn.failed",
+  "turn.interrupted",
+  "tool.pre",
+  "tool.post",
+  "tool.failed",
+  "attention.permission",
+  "attention.question",
+  "context.pre-compact",
+  "context.post-compact",
+  "subagent.start",
+  "subagent.stop",
 ] as const
 
 export type PluginEventName = (typeof PLUGIN_EVENT_NAMES)[number]

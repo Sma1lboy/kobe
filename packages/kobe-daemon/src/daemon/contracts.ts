@@ -158,12 +158,24 @@ export type EngineActivityKind =
   | "turn-start"
   | "turn-complete"
   | "turn-failed"
+  | "turn-interrupted"
   | "awaiting-input"
   | "session-end"
+  // Lifecycle-only kinds — plugin-facing, never folded into the activity badge.
+  | "tool-pre"
+  | "tool-post"
+  | "tool-failed"
+  | "pre-compact"
+  | "post-compact"
+  | "subagent-start"
+  | "subagent-stop"
 
 export interface EngineActivityDetail {
   readonly failure?: "rate_limit" | "billing" | "other"
   readonly waiting?: "permission" | "input"
+  readonly tool?: { readonly name?: string; readonly id?: string }
+  readonly compact?: { readonly trigger?: "manual" | "auto" }
+  readonly subagent?: { readonly type?: string; readonly id?: string }
   readonly note?: string
 }
 

@@ -92,6 +92,18 @@ export interface DaemonHandlerContext {
   readonly issues: IssuesStore
   /** Rate-limited cache in front of the engine quota probes. */
   readonly quotaUsage: QuotaUsageCache
+  /** Plugin runtime sink for agent-lifecycle events (absent in tests / when
+   *  plugins are disabled) — a direct feed, deliberately NOT a bus channel. */
+  readonly plugins?: {
+    handleEngineReport(report: {
+      readonly kind: string
+      readonly taskId: string
+      readonly detail?: Record<string, unknown>
+      readonly vendor?: string
+      readonly tabId?: string
+      readonly sessionId?: string
+    }): void
+  }
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
   readonly daemon: {
     readonly startedAt: Date
@@ -405,13 +417,30 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const sessionId = optionalString(payload, "sessionId")
         const transcriptPath = optionalString(payload, "transcriptPath")
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
-        ctx.activity.report(taskId, kind, detail, tabId, session)
-        // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
-        if (explicitId && tabId) {
-          await ctx.inbox
-            .record(taskId, kind, detail, tabId)
-            .catch((err) => logDaemonError("attention-inbox-record", err))
+        // Lifecycle-only kinds (tool/compact/subagent) skip the badge + inbox
+        // entirely — folding them into engine-state would broadcast every
+        // tool call to every client. They still reach plugins below.
+        const isStateKind = ctx.runtime.affectsActivityState(kind)
+        if (isStateKind) {
+          ctx.activity.report(taskId, kind, detail, tabId, session)
+          // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
+          if (explicitId && tabId) {
+            await ctx.inbox
+              .record(taskId, kind, detail, tabId)
+              .catch((err) => logDaemonError("attention-inbox-record", err))
+          }
         }
+        // Plugin event hooks: every report becomes one agent-lifecycle event
+        // (docs/design/plugin-events.md); dispatch fans out only to plugins
+        // that declared the event.
+        ctx.plugins?.handleEngineReport({
+          kind,
+          taskId,
+          ...(detail ? { detail: detail as unknown as Record<string, unknown> } : {}),
+          ...(optionalString(payload, "engine") ? { vendor: optionalString(payload, "engine") } : {}),
+          ...(tabId ? { tabId } : {}),
+          ...(sessionId ? { sessionId } : {}),
+        })
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the

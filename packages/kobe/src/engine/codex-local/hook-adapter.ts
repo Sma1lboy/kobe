@@ -29,6 +29,7 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+import type { EngineActivityDetail, EngineActivityKind } from "../hook-events.ts"
 import { JsonHookAdapter } from "../json-hook-adapter.ts"
 import type { HookEventSpec } from "../json-hooks.ts"
 
@@ -38,6 +39,16 @@ const EVENT_MAP: readonly HookEventSpec[] = [
   { event: "SessionStart", verb: "session-start" },
   { event: "UserPromptSubmit", verb: "turn-start" },
   { event: "Stop", verb: "turn-complete" },
+  // Lifecycle-only verbs (docs/design/plugin-events.md). Codex ships both
+  // compact hooks natively; SessionEnd/Subagent* are documented upstream but
+  // absent from the pinned protocol — left out until verified.
+  { event: "PreCompact", verb: "pre-compact" },
+  { event: "PostCompact", verb: "post-compact" },
+  // Tool family: gated (see JsonHookAdapter.gatedVerbs) + behind Codex's own
+  // hook trust prompt. Failures arrive folded into tool_response, so there is
+  // no tool-failed row.
+  { event: "PreToolUse", verb: "tool-pre" },
+  { event: "PostToolUse", verb: "tool-post" },
 ]
 
 /** The Codex events kobe owns — used to replace only these in a merge. */
@@ -54,5 +65,20 @@ export class CodexHookAdapter extends JsonHookAdapter {
 
   globalSettingsPath(): string {
     return codexHooksPath()
+  }
+
+  /** Codex spells the tool fields `tool_name`/`tool_response`; compaction
+   *  carries the same `trigger` values as Claude. */
+  override activityDetailFromPayload(
+    kind: EngineActivityKind,
+    payload: Record<string, unknown>,
+  ): EngineActivityDetail | undefined {
+    if (kind === "tool-pre" || kind === "tool-post") {
+      return { tool: { ...(typeof payload.tool_name === "string" ? { name: payload.tool_name } : {}) } }
+    }
+    if (kind === "pre-compact" || kind === "post-compact") {
+      return { compact: { trigger: payload.trigger === "manual" ? "manual" : "auto" } }
+    }
+    return undefined
   }
 }

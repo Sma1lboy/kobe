@@ -91,8 +91,23 @@ export abstract class JsonHookAdapter implements EngineHookAdapter {
     /* no-op unless overridden */
   }
 
-  async installActivityHooks(settingsFilePath: string): Promise<void> {
-    await editJsonSettings(settingsFilePath, (cur) => mergeActivityHooks(cur, true, this.eventMap))
+  /** Verbs installed only when something asked for them (tool.* plugin
+   *  hooks) — every tool call machine-wide spawns `kobe hook`, so the family
+   *  stays out of the engine config until a plugin actually subscribes. */
+  protected gatedVerbs(): ReadonlySet<string> {
+    return new Set(["tool-pre", "tool-post", "tool-failed"])
+  }
+
+  async installActivityHooks(settingsFilePath: string, opts: { toolEvents?: boolean } = {}): Promise<void> {
+    const gated = this.gatedVerbs()
+    await editJsonSettings(settingsFilePath, (cur) =>
+      mergeActivityHooks(cur, true, this.eventMap, undefined, {
+        // Phase 0 (docs/design/plugin-events.md): tag the report with the
+        // vendor so `kobe hook` decodes with the right adapter, not a guess.
+        extraArgs: ["--engine", this.vendor],
+        buildFilter: (spec) => opts.toolEvents === true || !gated.has(spec.verb),
+      }),
+    )
   }
 
   async removeActivityHooks(settingsFilePath: string): Promise<void> {

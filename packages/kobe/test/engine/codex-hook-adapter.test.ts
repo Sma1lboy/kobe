@@ -35,10 +35,14 @@ describe("CodexHookAdapter", () => {
     expect(adapter.activityDetailFromPayload("turn-failed", { error_type: "rate_limit" })).toBeUndefined()
   })
 
-  it("owns exactly the three events Codex can deliver safely", () => {
-    expect([...KOBE_CODEX_HOOK_EVENTS].sort()).toEqual(["SessionStart", "Stop", "UserPromptSubmit"].sort())
-    // The verbs with no clean Codex signal are NOT installed.
-    for (const absent of ["StopFailure", "Notification", "SessionEnd"]) {
+  it("owns exactly the events Codex can deliver safely", () => {
+    expect([...KOBE_CODEX_HOOK_EVENTS].sort()).toEqual(
+      ["SessionStart", "Stop", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse"].sort(),
+    )
+    // The verbs with no clean Codex signal are NOT installed: no StopFailure
+    // equivalent, no Notification, and SessionEnd/Subagent* are documented
+    // upstream but absent from the pinned protocol.
+    for (const absent of ["StopFailure", "Notification", "SessionEnd", "SubagentStart", "PostToolUseFailure"]) {
       expect(KOBE_CODEX_HOOK_EVENTS).not.toContain(absent)
     }
   })

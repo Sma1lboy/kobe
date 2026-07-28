@@ -73,7 +73,7 @@ export interface EngineHookAdapter {
    * already in place), merge-safe (preserves the user's own hooks), and must
    * never throw fatally.
    */
-  installActivityHooks(settingsFilePath: string): Promise<void>
+  installActivityHooks(settingsFilePath: string, opts?: { toolEvents?: boolean }): Promise<void>
   /** Remove the activity hooks this adapter installed. Idempotent. */
   removeActivityHooks(settingsFilePath: string): Promise<void>
 

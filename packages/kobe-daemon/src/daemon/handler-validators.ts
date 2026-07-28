@@ -60,9 +60,34 @@ export function optionalActivityDetail(payload: Record<string, unknown>): Engine
   const raw = payload.detail
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
   const d = raw as Record<string, unknown>
-  const out: { failure?: "rate_limit" | "billing" | "other"; waiting?: "permission" | "input"; note?: string } = {}
+  const out: {
+    failure?: "rate_limit" | "billing" | "other"
+    waiting?: "permission" | "input"
+    tool?: { name?: string; id?: string }
+    compact?: { trigger?: "manual" | "auto" }
+    subagent?: { type?: string; id?: string }
+    note?: string
+  } = {}
   if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
   if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
   if (typeof d.note === "string") out.note = d.note
+  const tool = d.tool as Record<string, unknown> | undefined
+  if (tool && typeof tool === "object" && !Array.isArray(tool)) {
+    out.tool = {
+      ...(typeof tool.name === "string" ? { name: tool.name } : {}),
+      ...(typeof tool.id === "string" ? { id: tool.id } : {}),
+    }
+  }
+  const compact = d.compact as Record<string, unknown> | undefined
+  if (compact && typeof compact === "object" && !Array.isArray(compact)) {
+    out.compact = compact.trigger === "manual" || compact.trigger === "auto" ? { trigger: compact.trigger } : {}
+  }
+  const subagent = d.subagent as Record<string, unknown> | undefined
+  if (subagent && typeof subagent === "object" && !Array.isArray(subagent)) {
+    out.subagent = {
+      ...(typeof subagent.type === "string" ? { type: subagent.type } : {}),
+      ...(typeof subagent.id === "string" ? { id: subagent.id } : {}),
+    }
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }

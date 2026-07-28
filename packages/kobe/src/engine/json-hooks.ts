@@ -57,15 +57,30 @@ function isKobeActivityGroup(group: unknown, markers: readonly string[]): boolea
   )
 }
 
+/** Optional knobs shared by the build/merge pair. */
+export interface ActivityHookOpts {
+  /** Extra argv appended after the verb (e.g. `--engine claude`, so `kobe
+   *  hook` decodes the payload with the RIGHT adapter instead of guessing).
+   *  Marker matching keys on the `hook <verb>` substring, so tagged and
+   *  legacy untagged installs merge/remove identically. */
+  readonly extraArgs?: readonly string[]
+  /** When present, only specs passing the filter are INSTALLED; every spec
+   *  still participates in removal (so disabling a gated family cleans up). */
+  readonly buildFilter?: (spec: HookEventSpec) => boolean
+}
+
 /** Build the activity hook groups kobe installs, pointing each event at
  *  `kobe hook <verb>` (cwd-based; no task id). `inv` is injectable for tests. */
 export function buildActivityHooks(
   eventMap: readonly HookEventSpec[],
   inv: readonly string[] = kobeHookInvocation(),
+  opts: ActivityHookOpts = {},
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const { event, matcher, verb } of eventMap) {
-    const command = quoteShellArgv([...inv, "hook", verb])
+  for (const spec of eventMap) {
+    if (opts.buildFilter && !opts.buildFilter(spec)) continue
+    const { event, matcher, verb } = spec
+    const command = quoteShellArgv([...inv, "hook", verb, ...(opts.extraArgs ?? [])])
     const group: Record<string, unknown> = { hooks: [{ type: "command", command }] }
     if (matcher) group.matcher = matcher
     // Accumulate — one event may carry several matcher-scoped specs (e.g.
@@ -88,11 +103,12 @@ export function mergeActivityHooks(
   install: boolean,
   eventMap: readonly HookEventSpec[],
   inv: readonly string[] = kobeHookInvocation(),
+  opts: ActivityHookOpts = {},
 ): Record<string, unknown> {
   const markers = activityMarkers(eventMap)
   const { hooks: rawHooks, ...restSettings } = current
   const hooks: Record<string, unknown> = isObject(rawHooks) ? { ...rawHooks } : {}
-  const built = install ? buildActivityHooks(eventMap, inv) : {}
+  const built = install ? buildActivityHooks(eventMap, inv, opts) : {}
   for (const { event } of eventMap) {
     const prior = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : []
     const kept = prior.filter((g) => !isKobeActivityGroup(g, markers))

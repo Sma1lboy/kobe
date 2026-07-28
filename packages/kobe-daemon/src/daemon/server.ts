@@ -352,6 +352,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       deletions,
       issues,
       quotaUsage,
+      ...(pluginHost ? { plugins: pluginHost } : {}),
       daemon: {
         startedAt,
         socketPath,

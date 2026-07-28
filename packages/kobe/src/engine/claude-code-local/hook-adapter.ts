@@ -53,6 +53,18 @@ const EVENT_MAP: readonly HookEventSpec[] = [
   // turn_complete already covers and would escalate every idle session.
   { event: "Notification", matcher: "elicitation_dialog", verb: "awaiting-input" },
   { event: "SessionEnd", verb: "session-end" },
+  // Lifecycle-only verbs (docs/design/plugin-events.md) — forwarded to plugin
+  // event hooks, never folded into the activity badge.
+  { event: "PreCompact", verb: "pre-compact" },
+  { event: "PostCompact", verb: "post-compact" },
+  { event: "SubagentStart", verb: "subagent-start" },
+  { event: "SubagentStop", verb: "subagent-stop" },
+  // Tool family: gated — installed only while an enabled plugin declares a
+  // tool.* hook (JsonHookAdapter.gatedVerbs), because these fire on EVERY
+  // tool call of every session machine-wide.
+  { event: "PreToolUse", verb: "tool-pre" },
+  { event: "PostToolUse", verb: "tool-post" },
+  { event: "PostToolUseFailure", verb: "tool-failed" },
 ]
 
 /** The events kobe owns — used to replace only these in a merge. Deduped:
@@ -152,6 +164,25 @@ export class ClaudeHookAdapter extends JsonHookAdapter {
     if (kind === "turn-failed") return { failure: failureFromErrorType(payload.error_type) }
     if (kind === "awaiting-input") {
       return { waiting: payload.notification_type === "elicitation_dialog" ? "input" : "permission" }
+    }
+    if (kind === "tool-pre" || kind === "tool-post" || kind === "tool-failed") {
+      return {
+        tool: {
+          ...(typeof payload.tool_name === "string" ? { name: payload.tool_name } : {}),
+          ...(typeof payload.tool_use_id === "string" ? { id: payload.tool_use_id } : {}),
+        },
+      }
+    }
+    if (kind === "pre-compact" || kind === "post-compact") {
+      return { compact: { trigger: payload.trigger === "manual" ? "manual" : "auto" } }
+    }
+    if (kind === "subagent-start" || kind === "subagent-stop") {
+      return {
+        subagent: {
+          ...(typeof payload.agent_type === "string" ? { type: payload.agent_type } : {}),
+          ...(typeof payload.agent_id === "string" ? { id: payload.agent_id } : {}),
+        },
+      }
     }
     return undefined
   }

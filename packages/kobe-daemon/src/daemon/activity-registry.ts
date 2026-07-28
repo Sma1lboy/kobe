@@ -3,13 +3,15 @@ import type { DaemonEventBus } from "./event-bus.ts"
 import type { ChannelPayloads } from "./protocol.ts"
 
 function reduceActivity(
-  _previous: TaskActivityState | undefined,
+  previous: TaskActivityState | undefined,
   kind: EngineActivityKind,
   detail?: EngineActivityDetail,
 ): TaskActivityState {
   switch (kind) {
     case "session-start":
     case "session-end":
+    // Kimi fires Interrupt INSTEAD of Stop on a user interrupt.
+    case "turn-interrupted":
       return "idle"
     case "turn-start":
       return "running"
@@ -22,6 +24,10 @@ function reduceActivity(
       // blocked on the user (`detail.waiting` keeps which). Mirrors
       // kobe/src/engine/hook-events.ts.
       return "permission_needed"
+    default:
+      // Lifecycle-only kinds never reach the registry (the handler gates on
+      // affectsActivityState); a direct call is a state no-op.
+      return previous ?? "idle"
   }
 }
 

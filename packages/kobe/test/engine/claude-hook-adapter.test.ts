@@ -98,7 +98,11 @@ describe("mergeActivityHooks (global, cwd-based)", () => {
     }
     const out = mergeActivityHooks(userSettings, true, ["kobe"]) as SettingsShape
     expect(out.model).toBe("opus") // untouched
-    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse) // untouched
+    // The user's PostToolUse group is preserved; kobe's tool-post group is
+    // appended beside it (the pure merge installs the full map — the tool
+    // family gate lives in JsonHookAdapter.installActivityHooks).
+    expect(out.hooks?.PostToolUse?.[0]).toEqual(userSettings.hooks.PostToolUse[0])
+    expect(JSON.stringify(out.hooks?.PostToolUse)).toContain("tool-post")
     // kobe's Stop coexists with the user's Stop hook (both kept).
     expect(JSON.stringify(out.hooks?.Stop)).toContain("turn-complete")
     expect(JSON.stringify(out.hooks?.Stop)).toContain("user-old-stop")
@@ -153,7 +157,21 @@ describe("mergeActivityHooks (global, cwd-based)", () => {
 
   it("KOBE_HOOK_EVENTS lists exactly the events it installs", () => {
     expect([...KOBE_HOOK_EVENTS].sort()).toEqual(
-      ["Notification", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"].sort(),
+      [
+        "Notification",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "StopFailure",
+        "UserPromptSubmit",
+        "PreCompact",
+        "PostCompact",
+        "SubagentStart",
+        "SubagentStop",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+      ].sort(),
     )
   })
 })
@@ -255,6 +273,7 @@ describe("mergeWorktreeWatchHook (PostToolUse observer)", () => {
     const withActivity = mergeActivityHooks({}, true, ["kobe"])
     const both = mergeWorktreeWatchHook(withActivity, true, ["kobe"]) as SettingsShape
     expect(both.hooks?.Stop).toHaveLength(1)
-    expect(both.hooks?.PostToolUse).toHaveLength(1)
+    // kobe's tool-post activity group + the worktree-watch observer coexist.
+    expect(both.hooks?.PostToolUse).toHaveLength(2)
   })
 })

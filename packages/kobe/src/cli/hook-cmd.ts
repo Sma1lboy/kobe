@@ -21,9 +21,12 @@
  * JSON payload.
  */
 
+import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { PLUGIN_MANIFEST_FILENAME, parsePluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { loadPluginRegistry } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { type EngineSessionRef, createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { EngineActivityDetail } from "../engine/hook-events.ts"
 import { isEngineActivityKind } from "../engine/hook-events.ts"
@@ -225,19 +228,22 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     const envTaskId = process.env.KOBE_TASK_ID
     const envTabId = process.env.KOBE_TAB_ID
     // Payload → neutral detail is the engine adapter's job (it owns the
-    // vendor's payload vocabulary, e.g. Claude's `error_type` classes). The
-    // installed hook command carries no vendor id, so ask each adapter with
-    // wired hooks (only Claude today) and take the first answer.
+    // vendor's payload vocabulary, e.g. Claude's `error_type` classes).
+    // Current installs tag the command with `--engine <vendor>` so the RIGHT
+    // adapter decodes; legacy untagged installs fall back to asking each
+    // adapter and taking the first answer (fine for the pre-tool verb set).
+    const engine = flagValue(rest, "--engine")
+    const adapters = activityHookAdapters().filter((a) => !engine || a.vendor === engine)
     let detail: EngineActivityDetail | undefined
-    for (const adapter of activityHookAdapters()) {
+    for (const adapter of adapters) {
       detail = adapter.activityDetailFromPayload(verb, payload)
       if (detail) break
     }
     // Session identity (session_id/transcript_path in Claude's payload) —
-    // same first-answer dispatch as `detail`. Lets the daemon pin "which
-    // engine session is live" per task/tab, including user-typed engines.
+    // same dispatch as `detail`. Lets the daemon pin "which engine session
+    // is live" per task/tab, including user-typed engines.
     let session: EngineSessionRef | undefined
-    for (const adapter of activityHookAdapters()) {
+    for (const adapter of adapters) {
       session = adapter.sessionFromPayload(payload)
       if (session) break
     }
@@ -249,6 +255,7 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
       await client.request("engine.reportEvent", {
         ...(effectiveTaskId ? { taskId: effectiveTaskId } : { cwd }),
         kind: verb,
+        ...(engine ? { engine } : {}),
         ...(envTabId ? { tabId: envTabId } : {}),
         ...(detail ? { detail } : {}),
         ...(session ? { sessionId: session.sessionId } : {}),
@@ -327,10 +334,11 @@ export async function ensureGlobalKobeHooks(): Promise<void> {
     //    each written into the ENGINE's own settings file (Claude's
     //    ~/.claude/settings.json, Codex's ~/.codex/hooks.json) so every session
     //    of that engine reports.
+    const toolEvents = pluginsWantToolEvents()
     for (const a of activityHookAdapters()) {
       const enginePath = a.globalSettingsPath()
       if (!enginePath) continue
-      await a.installActivityHooks(enginePath)
+      await a.installActivityHooks(enginePath, { toolEvents })
       // PostToolUse(Bash) observer: a `git worktree add` in ANY session adopts
       // the new worktree as a task immediately (no session needed). Pure
       // observer — unlike the removed WorktreeCreate provider hook, it can't
@@ -342,6 +350,31 @@ export async function ensureGlobalKobeHooks(): Promise<void> {
   } catch {
     /* best-effort — never block launch */
   }
+}
+
+/**
+ * The tool-family volume gate (docs/design/plugin-events.md §Phase 2): the
+ * PreToolUse/PostToolUse hooks spawn `kobe hook` on EVERY tool call of every
+ * session machine-wide, so they're written into the engine config only while
+ * an enabled plugin actually declares a `tool.*` event hook. Synced on every
+ * launch (this runs from ensureGlobalKobeHooks), so installing/removing such
+ * a plugin takes effect on the next kobe start.
+ */
+function pluginsWantToolEvents(): boolean {
+  try {
+    for (const entry of loadPluginRegistry().plugins) {
+      if (!entry.enabled) continue
+      try {
+        const text = readFileSync(join(entry.root, PLUGIN_MANIFEST_FILENAME), "utf8")
+        if (parsePluginManifest(text).manifest.events.some((e) => e.on.startsWith("tool."))) return true
+      } catch {
+        /* unreadable manifest → doesn't vote */
+      }
+    }
+  } catch {
+    /* registry unreadable → no tool hooks */
+  }
+  return false
 }
 
 /**

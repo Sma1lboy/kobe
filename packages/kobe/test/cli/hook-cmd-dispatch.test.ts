@@ -255,7 +255,11 @@ describe("kobe hook setup (deprecated cleanup)", () => {
 describe("ensureGlobalKobeHooks (default-ON global install)", () => {
   it("installs activity + worktree-watch hooks into each engine's own settings file, then cleans the removed WorktreeCreate hook", async () => {
     await ensureGlobalKobeHooks()
-    expect(mocks.adapter.installActivityHooks).toHaveBeenCalledWith("/fake/.claude/settings.json")
+    // toolEvents:false — no enabled plugin declares a tool.* hook in this
+    // test home, so the gated tool family stays out of the engine config.
+    expect(mocks.adapter.installActivityHooks).toHaveBeenCalledWith("/fake/.claude/settings.json", {
+      toolEvents: false,
+    })
     expect(mocks.adapter.installWorktreeWatchHook).toHaveBeenCalledWith("/fake/.claude/settings.json")
     // The WorktreeCreate provider-hook cleanup runs on every launch.
     expect(mocks.adapter.removeWorktreeSyncHook).toHaveBeenCalledWith(join(homedir(), ".claude", "settings.json"))

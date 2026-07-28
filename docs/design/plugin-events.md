@@ -1,6 +1,6 @@
 # Unified agent lifecycle events — the plugin event stream
 
-Status: design (2026-07-28). Extends [plugins.md](./plugins.md) §Events.
+Status: SHIPPED for Claude Code + Codex (2026-07-28; Kimi adapter pending). Extends [plugins.md](./plugins.md) §Events.
 Goal: one engine-agnostic event taxonomy covering the WHOLE product
 lifecycle — kobe's task/worktree layer plus the engine's session/turn/tool
 layer — so a plugin can hook any point of the flow without knowing which
@@ -41,8 +41,8 @@ stateDiagram-v2
             Waiting --> Thinking: (user answers)
         }
         Turn --> Idle: turn.complete / turn.failed / turn.interrupted
-        Idle --> Compacting: context.pre_compact
-        Compacting --> Idle: context.post_compact
+        Idle --> Compacting: context.pre-compact
+        Compacting --> Idle: context.post-compact
     }
     SessionLive --> [*]: session.end
     WorktreeReady --> [*]: task.deleted
@@ -55,7 +55,7 @@ Subagents run the inner `Turn` machine nested one level
 
 Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 `F` emulatable by watching session files, `—` absent. Status: ✅ shipped,
-🔜 planned phase, 💤 deferred.
+💤 deferred.
 
 ### Product layer (kobe-owned, engine-independent)
 
@@ -69,39 +69,38 @@ Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 
 | Event | C | X | K | Status | Payload notes |
 |---|---|---|---|---|---|
-| `session.start` | N | N | N | ✅ (`agent.running` proxy; explicit verb 🔜) | `source: startup\|resume\|clear\|compact` as detail, not separate events |
-| `session.end` | N | N* | N | 🔜 | *Codex: documented upstream, absent from the pinned protocol — version-gate |
+| `session.start` | N | N | N | ✅ | `source: startup\|resume\|clear\|compact` as detail, not separate events |
+| `session.end` | N | N* | N | ✅ (Claude) | *Codex: documented upstream, absent from the pinned protocol — version-gate |
 
 ### B. Turn
 
 | Event | C | X | K | Status |
 |---|---|---|---|---|
-| `turn.prompt` | N | N | N | ✅ (as `agent.running`) |
+| `turn.prompt` | N | N | N | ✅ |
 | `turn.complete` | N | N | N | ✅ (`agent.turn-complete`) |
 | `turn.failed` | N | F | N | ✅ (`agent.error` / `agent.rate-limited`) |
-| `turn.interrupted` | — | F | N | 🔜 — on Kimi, `Stop` does NOT fire after an interrupt, so without this verb an interrupted Kimi turn strands in `running` |
+| `turn.interrupted` | — | F | N | ✅ verb wired — on Kimi, `Stop` does NOT fire after an interrupt, so without this verb an interrupted Kimi turn strands in `running` |
 
 ### C. Tool — the biggest gap, full native tri-engine coverage
 
 | Event | C | X | K | Status |
 |---|---|---|---|---|
-| `tool.pre` | N | N | N | 🔜 phase 2 |
-| `tool.post` | N | N | N | 🔜 phase 2 |
-| `tool.failed` | N | — (folded into tool_response) | N | 🔜 phase 2 |
+| `tool.pre` | N | N | N | ✅ (gated install) |
+| `tool.post` | N | N | N | ✅ (gated install) |
+| `tool.failed` | N | — (folded into tool_response) | N | ✅ (Claude, gated) |
 
 Normalized payload: `{ toolName, toolUseId, input?, output?, ok }` — the
 vendor field spellings (`tool_result` / `tool_response` / `tool_output`)
 are the adapter's problem, never the plugin's. Note kobe's existing
 `worktree-created` detection is ALREADY a hard-coded `PostToolUse` observer
-(`cli/hook-cmd.ts`); phase 2 turns that special case into an instance of
-the general mechanism.
+(`cli/hook-cmd.ts`); the general mechanism now ships alongside it.
 
 ### D. Attention
 
 | Event | C | X | K | Status |
 |---|---|---|---|---|
-| `attention.permission` | N | N† | N | 🔜 (today collapsed into `agent.permission-needed`, Claude-only) |
-| `attention.question` (elicitation) | N | F | F | 🔜 |
+| `attention.permission` | N | N† | N | ✅ (Claude; Codex opt-in deferred) |
+| `attention.question` (elicitation) | N | F | F | ✅ (Claude) |
 | `attention.notification` | N | — | N | 💤 |
 
 † Codex `PermissionRequest` hooks are SYNCHRONOUS: exit 0 + empty stdout is
@@ -113,13 +112,13 @@ read, connect-if-running, always exit 0).
 
 | Event | C | X | K | Status |
 |---|---|---|---|---|
-| `context.pre_compact` / `context.post_compact` | N | N | N | 🔜 phase 1 — `trigger: manual\|auto`; Kimi adds token counts |
+| `context.pre-compact` / `context.post-compact` | N | N | N | ✅ — `trigger: manual\|auto` |
 
 ### F. Subagent
 
 | Event | C | X | K | Status |
 |---|---|---|---|---|
-| `subagent.start` / `subagent.stop` | N | N* | N | 🔜 phase 1 — `{ agentType, agentId }`; feeds the nested-subagent-rows rule (CLAUDE.md §Engine-owned UI data) |
+| `subagent.start` / `subagent.stop` | N | N* | N | ✅ (Claude) — `{ type, id }`; feeds the nested-subagent-rows rule (CLAUDE.md §Engine-owned UI data) |
 
 ## Payload envelope (plugin-facing)
 
@@ -155,27 +154,25 @@ then be responsible for keeping synchronous across three vendors. The
 observer stream still covers the high-value tweaks the ecosystem actually
 builds: notify, log, mirror state, auto-file, auto-bootstrap, dashboards.
 
-## Rollout plan
+## Implementation notes (shipped shape)
 
-- **Phase 0 (prereq): vendor-tagged hook reports.** `kobe hook` currently
-  lets adapters guess by payload shape (first non-undefined wins) — fine for
-  6 verbs, silently wrong once three engines fire tool events with different
-  field spellings. Emit `kobe hook <verb> --engine <vendor>` in the installed
-  hook commands (marker matching tolerates extra argv; existing installs
-  keep working, re-install upgrades).
-- **Phase 1: uniform cheap verbs.** `context.pre/post_compact`,
-  `subagent.start/stop`, `turn.interrupted`, explicit `session.start/end`
-  plugin events. Adapter + verb-list + daemon pass-through + plugin event
-  names; no volume risk.
-- **Phase 2: tool family.** Needs a volume gate: these are GLOBAL hooks
-  firing on every tool call of every session machine-wide, and each firing
-  is a process spawn + socket round-trip. Gate = the `worktree-created`
-  precedent (cheap in-process pre-filter before daemon contact) plus
-  daemon-side: only fan out to plugins that declared a `tool.*` hook, and
-  document the cost in the authoring guide. Optional manifest matcher
-  (`on = "tool.post"`, `tool = "Bash"`) mirrors the engines' native matchers.
-- **Phase 3: attention split** (`attention.permission` vs `question` vs
-  `notification`) + Codex PermissionRequest opt-in.
+- **Vendor-tagged reports (done).** Installed hook commands carry
+  `--engine <vendor>`; `kobe hook` decodes with exactly that adapter (legacy
+  untagged installs fall back to first-answer guessing until re-install).
+- **Verb transport (done).** New normalized verbs ride the existing
+  `kobe hook` → `engine.reportEvent` path. Lifecycle-only kinds are gated by
+  `affectsActivityState` — they never touch the activity badge, inbox, or
+  `engine-state` broadcast; the handler feeds them straight to the PluginHost
+  (a direct sink, deliberately NOT a bus channel, so tool volume reaches only
+  plugins that declared the hook).
+- **Tool-family volume gate (done).** The PreToolUse/PostToolUse(/Failure)
+  hooks are written into engine config ONLY while an enabled plugin declares
+  a `tool.*` event (checked on every launch in `ensureGlobalKobeHooks`;
+  install/remove such a plugin → takes effect on the next kobe start). A
+  future manifest matcher (`tool = "Bash"`) can narrow further.
+- **Attention split (done for Claude).** `awaiting-input` maps to
+  `attention.permission` vs `attention.question` by `detail.waiting`. Codex
+  PermissionRequest opt-in and `attention.notification` remain deferred.
 - **Kimi adapter**: currently `NoopHookAdapter`; Kimi's hooks config is TOML
   (`~/.kimi-code/config.toml [[hooks]]`, strict keys, 30s timeout). A
   same-shape adapter is small; wire.jsonl watching covers the F-gaps.
