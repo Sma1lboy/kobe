@@ -61,6 +61,8 @@ h1, h2, h3 { overflow-wrap: anywhere; min-width: 0; }
 
 /* ---- hero ---- */
 .hero { position: relative; padding-top: var(--space-2xl); padding-bottom: var(--space-xl); }
+.hero-kicker { font-size: var(--text-sm); color: var(--color-faint); letter-spacing: 0.06em; margin-bottom: var(--space-sm); }
+.hero-kicker .acc { color: var(--color-accent); }
 .hero h1 {
   font-family: var(--font-display); font-weight: 700;
   font-size: var(--text-display); line-height: 1.02; letter-spacing: -0.03em;
