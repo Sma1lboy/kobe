@@ -50,6 +50,11 @@ export function autoBranch(title: string, taskId: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 32)
+    // Re-trim after the cap: the 32-char slice can land on a `-` and
+    // re-introduce a trailing hyphen that the template below would then
+    // double into `kobe/<slug>--<suffix>`. Only trailing can reappear —
+    // the slice keeps the already-leading-trimmed prefix.
+    .replace(/-+$/, "")
   const suffix = taskId.slice(-6).toLowerCase()
   const base = slug || "task"
   return `kobe/${base}-${suffix}`

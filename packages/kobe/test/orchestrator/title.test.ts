@@ -27,6 +27,15 @@ describe("autoBranch", () => {
     expect(slug.length).toBeLessThanOrEqual(32)
     expect(slug).toBe("fix-the-very-long-feature-name-t")
   })
+
+  it("never emits a double hyphen when the 32-char cap lands on a word boundary", () => {
+    // The trailing-hyphen trim runs BEFORE the .slice(0, 32) cap, so a slice
+    // that ends on a `-` used to survive into the template as `kobe/<slug>--<id>`.
+    // Reachable whenever char 33 is a word boundary: 31 slug chars + a space + a word.
+    const branch = autoBranch(`${"a".repeat(31)} bar`, "01HXQQQQQQ")
+    expect(branch).toBe(`kobe/${"a".repeat(31)}-qqqqqq`)
+    expect(branch).not.toContain("--")
+  })
 })
 
 describe("deriveTitleFromPrompt", () => {
