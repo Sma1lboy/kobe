@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
-import type { DaemonOrchestrator, DaemonTask } from "../../../kobe-daemon/src/daemon/contracts.ts"
+import type { DaemonOrchestrator, DaemonTask, EngineQuotaUsage } from "../../../kobe-daemon/src/daemon/contracts.ts"
 import {
   QUOTA_RESUME_CONTINUE_PROMPT,
   dueQuotaResumes,
+  exhaustedResetAtMs,
   scheduleQuotaResume,
   startQuotaResumeRunner,
 } from "../../../kobe-daemon/src/daemon/quota-resume.ts"
+import type { QuotaUsageCache } from "../../../kobe-daemon/src/daemon/quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "../../../kobe-daemon/src/daemon/runtime.ts"
 
 const NOW = Date.parse("2026-07-27T12:00:00.000Z")
@@ -65,37 +67,68 @@ function fakeOrch(tasks: DaemonTask[]): DaemonOrchestrator & { setQuotaResume: R
   } as unknown as DaemonOrchestrator & { setQuotaResume: ReturnType<typeof vi.fn> }
 }
 
+const RUNTIME = { defaultTaskVendor: "claude" } as unknown as DaemonRuntimeAdapter
+
+function fakeCache(usage: EngineQuotaUsage | null): QuotaUsageCache & { get: ReturnType<typeof vi.fn> } {
+  return { get: vi.fn(async () => usage) } as unknown as QuotaUsageCache & { get: ReturnType<typeof vi.fn> }
+}
+
+const exhaustedUsage = (resetsAt: number): EngineQuotaUsage => ({
+  windows: [{ kind: "session", label: "5h", percent: 100, resetsAt }],
+  capturedAt: NOW,
+})
+
+describe("exhaustedResetAtMs", () => {
+  it("returns the earliest future reset among exhausted windows only", () => {
+    const usage: EngineQuotaUsage = {
+      windows: [
+        { kind: "session", label: "5h", percent: 40, resetsAt: NOW + 1000 },
+        { kind: "weekly_all", label: "7d", percent: 100, resetsAt: NOW + 5000 },
+        { kind: "weekly_scoped", label: "Fable", percent: 100, resetsAt: NOW + 2000 },
+      ],
+      capturedAt: NOW,
+    }
+    expect(exhaustedResetAtMs(usage, NOW)).toBe(NOW + 2000)
+  })
+
+  it("returns null when nothing is exhausted or resets are missing/past", () => {
+    const usage: EngineQuotaUsage = {
+      windows: [
+        { kind: "session", label: "5h", percent: 99, resetsAt: NOW + 1000 },
+        { kind: "weekly_all", label: "7d", percent: 100, resetsAt: null },
+        { kind: "weekly_scoped", label: "Fable", percent: 100, resetsAt: NOW - 1000 },
+      ],
+      capturedAt: NOW,
+    }
+    expect(exhaustedResetAtMs(usage, NOW)).toBeNull()
+  })
+})
+
 describe("scheduleQuotaResume", () => {
-  it("arms the schedule from the engine-owned probe's reset time", async () => {
+  it("arms the schedule from the cached usage's exhausted reset time", async () => {
     const orch = fakeOrch([task("t1")])
-    const runtime = {
-      defaultTaskVendor: "claude",
-      quotaResetAtMs: vi.fn(async () => NOW + 5000),
-    } as unknown as DaemonRuntimeAdapter
-    await scheduleQuotaResume(orch, runtime, "t1", () => NOW)
+    const cache = fakeCache(exhaustedUsage(NOW + 5000))
+    await scheduleQuotaResume(orch, RUNTIME, cache, "t1", () => NOW)
+    expect(cache.get).toHaveBeenCalledWith("claude", 0)
     expect(orch.setQuotaResume).toHaveBeenCalledWith("t1", {
       resumeAt: new Date(NOW + 5000).toISOString(),
       requestedAt: new Date(NOW).toISOString(),
     })
   })
 
-  it("arms nothing when the probe cannot produce a reset time", async () => {
+  it("arms nothing when the cache has no usage or nothing is exhausted", async () => {
     const orch = fakeOrch([task("t1")])
-    const runtime = {
-      defaultTaskVendor: "claude",
-      quotaResetAtMs: vi.fn(async () => null),
-    } as unknown as DaemonRuntimeAdapter
-    await scheduleQuotaResume(orch, runtime, "t1", () => NOW)
+    await scheduleQuotaResume(orch, RUNTIME, fakeCache(null), "t1", () => NOW)
+    await scheduleQuotaResume(orch, RUNTIME, fakeCache({ windows: [], capturedAt: NOW }), "t1", () => NOW)
     expect(orch.setQuotaResume).not.toHaveBeenCalled()
   })
 
   it("ignores unknown and deleting tasks", async () => {
-    const quotaResetAtMs = vi.fn(async () => NOW + 5000)
+    const cache = fakeCache(exhaustedUsage(NOW + 5000))
     const orch = fakeOrch([task("deleting", { deletion: { phase: "queued", force: false, requestedAt: PAST } })])
-    const runtime = { defaultTaskVendor: "claude", quotaResetAtMs } as unknown as DaemonRuntimeAdapter
-    await scheduleQuotaResume(orch, runtime, "missing", () => NOW)
-    await scheduleQuotaResume(orch, runtime, "deleting", () => NOW)
-    expect(quotaResetAtMs).not.toHaveBeenCalled()
+    await scheduleQuotaResume(orch, RUNTIME, cache, "missing", () => NOW)
+    await scheduleQuotaResume(orch, RUNTIME, cache, "deleting", () => NOW)
+    expect(cache.get).not.toHaveBeenCalled()
   })
 })
 

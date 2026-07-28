@@ -2,6 +2,7 @@ import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activi
 import type { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
+import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
 import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
@@ -71,6 +72,13 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     deletions: {
       enqueue: (taskId: string) => rec.deletions.push(taskId),
     },
+    // A cache that never fetches: handler tests exercise the RPC surface,
+    // not the probe cadence (quota-usage-cache has its own suite).
+    quotaUsage: {
+      peek: () => null,
+      get: () => Promise.resolve(null),
+      refreshIfDue: () => Promise.resolve(),
+    } as unknown as QuotaUsageCache,
     issues: {
       list: async (repo: unknown) => {
         rec.issueCalls.push({ method: "list", repo })

@@ -37,6 +37,27 @@ export interface LifetimeClient {
   readonly holdsLifetime: boolean
 }
 
+/**
+ * Grace before a subscriber-less daemon self-stops (refcounted lazy
+ * shutdown). The window absorbs reconnect races — `manualReconnect()`
+ * force-disconnects then re-subscribes, briefly dropping to zero — so a
+ * blip doesn't tear the daemon down. Override via `KOBE_DAEMON_IDLE_GRACE_MS`.
+ */
+const DEFAULT_IDLE_GRACE_MS = 3000
+
+/** First-gui window for AUTOSPAWNED daemons (`KOBE_DAEMON_AUTOSPAWNED`) —
+ *  generous enough for a slow TUI boot to attach, short enough that a
+ *  daemon born from a stray helper (an agent's `kobe api` inside an
+ *  engine tab) never becomes a week-old zombie holding the socket. */
+export const FIRST_GUI_GRACE_MS = 60_000
+
+export function resolveIdleGraceMs(): number {
+  const raw = process.env.KOBE_DAEMON_IDLE_GRACE_MS
+  if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
+}
+
 /** Schedule `fn` after `ms`; returns a cancel function. The default uses an
  *  unref'd `setTimeout` (so a pending grace never keeps the process alive);
  *  tests inject a manual clock. */

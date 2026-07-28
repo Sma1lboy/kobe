@@ -14,8 +14,9 @@
  *    watching is the whole point.
  */
 
-import type { DaemonOrchestrator, DaemonTask } from "./contracts.ts"
+import type { DaemonOrchestrator, DaemonTask, EngineQuotaUsage } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
+import type { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 
 /** Engine-neutral continuation instruction typed into the resumed session. */
@@ -36,21 +37,39 @@ export function dueQuotaResumes(tasks: readonly DaemonTask[], nowMs: number): Da
 }
 
 /**
- * Probe the vendor's quota API and arm the task's resume schedule. Called
- * fire-and-forget from `engine.reportEvent` on a rate-limit failure. A probe
- * that can't produce a reset time arms nothing — the sticky `rate_limited`
+ * The earliest future reset among EXHAUSTED windows, or null when nothing is
+ * exhausted / no window carries a usable timestamp. Only exhausted windows
+ * count: an allowed window's `resetsAt` is just rolling-window metadata, and
+ * scheduling on it would resume long before the actual limit clears.
+ */
+export function exhaustedResetAtMs(usage: EngineQuotaUsage, nowMs: number): number | null {
+  const candidates = usage.windows
+    .filter((w) => w.percent >= 100 && w.resetsAt != null && w.resetsAt > nowMs)
+    .map((w) => w.resetsAt as number)
+  return candidates.length > 0 ? Math.min(...candidates) : null
+}
+
+/**
+ * Read the vendor's usage (through the rate-limited cache — a rate-limit
+ * event storm collapses onto one upstream fetch) and arm the task's resume
+ * schedule. Called fire-and-forget from `engine.reportEvent` on a rate-limit
+ * failure. No usable reset time arms nothing — the sticky `rate_limited`
  * badge keeps the task visible to the user, exactly as before this feature.
  */
 export async function scheduleQuotaResume(
   orch: DaemonOrchestrator,
   runtime: DaemonRuntimeAdapter,
+  cache: QuotaUsageCache,
   taskId: string,
   now: () => number = Date.now,
 ): Promise<void> {
   const task = orch.getTask(taskId)
   if (!task || !task.worktreePath || task.deletion) return
 
-  const resetAtMs = await runtime.quotaResetAtMs(task.vendor ?? runtime.defaultTaskVendor)
+  // maxAge 0 = want the freshest view (the limit was JUST hit); the cache's
+  // per-vendor fetch floor still bounds the upstream request rate.
+  const usage = await cache.get(task.vendor ?? runtime.defaultTaskVendor, 0)
+  const resetAtMs = usage ? exhaustedResetAtMs(usage, now()) : null
   if (resetAtMs == null) return
 
   // A reset already in the past still gets a schedule (the next sweep tick

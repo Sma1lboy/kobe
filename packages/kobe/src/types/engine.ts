@@ -68,6 +68,29 @@ export interface PermissionModeChoice {
 }
 
 /**
+ * One rolling quota window from an engine's subscription-usage probe,
+ * already normalized to engine-neutral display facts. `kind` keeps the
+ * vendor's raw window kind (e.g. `session` / `weekly_all` / `weekly_scoped`)
+ * for policy decisions; `label` is what a UI prints ("5h", "7d", a scoped
+ * model's display name).
+ */
+export interface EngineQuotaWindow {
+  readonly kind: string
+  readonly label: string
+  /** Integer utilization percent, 0..100. */
+  readonly percent: number
+  /** Epoch-ms window reset, or null when the vendor didn't report one. */
+  readonly resetsAt: number | null
+}
+
+/** Snapshot of an engine account's subscription-quota windows. */
+export interface EngineQuotaUsage {
+  readonly windows: readonly EngineQuotaWindow[]
+  /** Epoch-ms fetch time — consumers derive staleness from this. */
+  readonly capturedAt: number
+}
+
+/**
  * Vendor-supplied capability surface — the single way the TUI asks
  * "what does this engine know / offer?". No module outside the adapter
  * should hard-code `~/.claude/...` paths or model-id literals.

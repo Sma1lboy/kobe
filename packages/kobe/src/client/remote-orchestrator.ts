@@ -39,6 +39,7 @@ import {
   type TaskEngineState,
   type TaskJobState,
   type TranscriptActivityMap,
+  type UsageSnapshotMap,
   type WorktreeChangesMap,
   shouldLogReconnectAttempt,
 } from "./remote-orchestrator-payloads.ts"
@@ -63,6 +64,7 @@ import {
   uiPrefsSignalOp,
   uiPrefsStoreOp,
   updateSignalOp,
+  usageSnapshotSignalOp,
   worktreeChangesSignalOp,
 } from "./remote-orchestrator-reads.ts"
 import {
@@ -99,6 +101,7 @@ export type {
   TaskJobState,
   TranscriptActivity,
   TranscriptActivityMap,
+  UsageSnapshotMap,
   WorktreeChangesMap,
 } from "./remote-orchestrator-payloads.ts"
 export {
@@ -113,37 +116,23 @@ export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
 
 export class RemoteOrchestrator {
   private readonly tasksAcc = createStateCell<Task[]>([])
-  private readonly setTasks = (next: Task[]) => this.tasksAcc.set(next)
   private readonly activeTaskAcc = createStateCell<string | null>(null)
-  private readonly setActiveTaskSig = (next: string | null) => this.activeTaskAcc.set(next)
   private readonly updateAcc = createStateCell<UpdateInfo | null>(null)
-  private readonly setUpdateSig = (next: UpdateInfo | null) => this.updateAcc.set(next)
   private readonly daemonVersionAcc = createStateCell<string | null>(null)
-  private readonly setDaemonVersionSig = (next: string | null) => this.daemonVersionAcc.set(next)
   private readonly daemonStaleAcc = mapReadableState(this.daemonVersionAcc, (version) =>
     isDaemonVersionStale(version ?? undefined, CURRENT_VERSION),
   )
   private readonly engineStateAcc = createStateCell<ReadonlyMap<string, TaskEngineState>>(new Map())
-  private readonly setEngineStateSig = (next: ReadonlyMap<string, TaskEngineState>) => this.engineStateAcc.set(next)
   private readonly engineTabStateAcc = createStateCell<EngineTabStateMap>(new Map())
-  private readonly setEngineTabStateSig = (next: EngineTabStateMap) => this.engineTabStateAcc.set(next)
   private readonly attentionInboxAcc = createStateCell<readonly AttentionInboxItem[]>([])
-  private readonly setAttentionInboxSig = (next: readonly AttentionInboxItem[]) => this.attentionInboxAcc.set(next)
   private readonly taskJobsAcc = createStateCell<ReadonlyMap<string, TaskJobState>>(new Map())
-  private readonly setTaskJobsSig = (next: ReadonlyMap<string, TaskJobState>) => this.taskJobsAcc.set(next)
   private readonly worktreeChangesAcc = createStateCell<WorktreeChangesMap | null>(null)
-  private readonly setWorktreeChangesSig = (next: WorktreeChangesMap | null) => this.worktreeChangesAcc.set(next)
+  private readonly usageSnapshotAcc = createStateCell<UsageSnapshotMap | null>(null)
   private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
-  private readonly setTranscriptActivitySig = (next: TranscriptActivityMap | null) =>
-    this.transcriptActivityAcc.set(next)
   private readonly noticeAcc = createStateCell<NoticeEventPayload | null>(null)
-  private readonly setNoticeSig = (next: NoticeEventPayload | null) => this.noticeAcc.set(next)
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
-  private readonly setUiPrefsSig = (next: UiPrefsPayload | null) => this.uiPrefsAcc.set(next)
   private readonly keybindingsRevAcc = createStateCell<number | null>(null)
-  private readonly setKeybindingsRevSig = (next: number | null) => this.keybindingsRevAcc.set(next)
   private readonly connectionStateAcc = createStateCell<DaemonConnectionState>("online")
-  private readonly setConnectionState = (next: DaemonConnectionState) => this.connectionStateAcc.set(next)
   private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
   /** Per-channel subscribe filter; `undefined` = subscribe to all channels. */
@@ -168,25 +157,27 @@ export class RemoteOrchestrator {
     this.subscribesTasks = !options.channels || options.channels.includes("task.snapshot")
     this.signals = {
       tasksAcc: this.tasksAcc,
-      setTasks: this.setTasks,
-      setActiveTaskSig: this.setActiveTaskSig,
-      setUpdateSig: this.setUpdateSig,
-      setDaemonVersionSig: this.setDaemonVersionSig,
+      setTasks: this.tasksAcc.set,
+      setActiveTaskSig: this.activeTaskAcc.set,
+      setUpdateSig: this.updateAcc.set,
+      setDaemonVersionSig: this.daemonVersionAcc.set,
       engineStateAcc: this.engineStateAcc,
-      setEngineStateSig: this.setEngineStateSig,
+      setEngineStateSig: this.engineStateAcc.set,
       engineTabStateAcc: this.engineTabStateAcc,
-      setEngineTabStateSig: this.setEngineTabStateSig,
-      setAttentionInboxSig: this.setAttentionInboxSig,
+      setEngineTabStateSig: this.engineTabStateAcc.set,
+      setAttentionInboxSig: this.attentionInboxAcc.set,
       taskJobsAcc: this.taskJobsAcc,
-      setTaskJobsSig: this.setTaskJobsSig,
+      setTaskJobsSig: this.taskJobsAcc.set,
       worktreeChangesAcc: this.worktreeChangesAcc,
-      setWorktreeChangesSig: this.setWorktreeChangesSig,
+      setWorktreeChangesSig: this.worktreeChangesAcc.set,
+      usageSnapshotAcc: this.usageSnapshotAcc,
+      setUsageSnapshotSig: this.usageSnapshotAcc.set,
       transcriptActivityAcc: this.transcriptActivityAcc,
-      setTranscriptActivitySig: this.setTranscriptActivitySig,
-      setNoticeSig: this.setNoticeSig,
-      setUiPrefsSig: this.setUiPrefsSig,
-      setKeybindingsRevSig: this.setKeybindingsRevSig,
-      setConnectionState: this.setConnectionState,
+      setTranscriptActivitySig: this.transcriptActivityAcc.set,
+      setNoticeSig: this.noticeAcc.set,
+      setUiPrefsSig: this.uiPrefsAcc.set,
+      setKeybindingsRevSig: this.keybindingsRevAcc.set,
+      setConnectionState: this.connectionStateAcc.set,
     }
     this.reads = {
       tasksAcc: this.tasksAcc,
@@ -199,6 +190,7 @@ export class RemoteOrchestrator {
       attentionInboxAcc: this.attentionInboxAcc,
       taskJobsAcc: this.taskJobsAcc,
       worktreeChangesAcc: this.worktreeChangesAcc,
+      usageSnapshotAcc: this.usageSnapshotAcc,
       transcriptActivityAcc: this.transcriptActivityAcc,
       transcriptActivityStoreInner: this.transcriptActivityAcc,
       noticeAcc: this.noticeAcc,
@@ -226,7 +218,7 @@ export class RemoteOrchestrator {
     //     lazy-shutdown — panes alone never hold it alive), so it only retries
     //     a plain connect, never `ensureReachable`.
     this.client.onLifecycle("close", () => {
-      this.setConnectionState("disconnected")
+      this.connectionStateAcc.set("disconnected")
       const spawnDaemon = this.role === "gui"
       logClient(
         "orch",
@@ -342,6 +334,10 @@ export class RemoteOrchestrator {
 
   worktreeChangesSignal(): ReadableState<WorktreeChangesMap | null> {
     return worktreeChangesSignalOp(this.reads)
+  }
+
+  usageSnapshotSignal(): ReadableState<UsageSnapshotMap | null> {
+    return usageSnapshotSignalOp(this.reads)
   }
 
   transcriptActivitySignal(): ReadableState<TranscriptActivityMap | null> {

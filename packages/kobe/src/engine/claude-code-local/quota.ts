@@ -19,6 +19,7 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { spawnCapture } from "../../lib/poll-scheduling.ts"
+import type { EngineQuotaUsage, EngineQuotaWindow } from "../../types/engine.ts"
 
 const OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 const OAUTH_BETA_HEADER = "oauth-2025-04-20"
@@ -31,6 +32,7 @@ interface UsageLimit {
   readonly kind?: string
   readonly percent?: number
   readonly resets_at?: number | string | null
+  readonly scope?: { readonly model?: { readonly display_name?: string | null } | null } | null
 }
 
 export interface ClaudeUsagePayload {
@@ -51,29 +53,51 @@ export function parseResetsAtMs(value: number | string | null | undefined): numb
   return Number.isNaN(parsed) ? null : parsed
 }
 
-/** A limit is exhausted at/above this utilization percentage. */
-const EXHAUSTED_PERCENT = 100
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, Math.round(value)))
+
+/** Display label for a raw window kind ("5h" / "7d" / a scoped model name). */
+function windowLabel(kind: string, scopeModel: string | null | undefined): string {
+  if (kind === "weekly_scoped" && scopeModel) return scopeModel
+  return kind.startsWith("weekly") || kind.startsWith("seven_day") ? "7d" : "5h"
+}
 
 /**
- * The earliest future reset among EXHAUSTED windows, or null when nothing is
- * exhausted / no window carries a usable timestamp. Only exhausted windows
- * count: an allowed window's `resets_at` is just rolling-window metadata, and
- * scheduling on it would resume long before the actual limit clears.
+ * Normalize a usage response into engine-neutral quota windows. Prefers the
+ * generalized `limits[]` array (Anthropic adds/removes top-level codenames
+ * freely, but `limits[]` rows stay a stable `{kind, percent, resets_at,
+ * scope}` shape); falls back to the legacy `five_hour`/`seven_day` fields.
  */
-export function quotaResetAtMs(payload: ClaudeUsagePayload, nowMs: number): number | null {
-  const candidates: number[] = []
-  const consider = (percent: number | undefined, resetsAt: number | string | null | undefined): void => {
-    if (typeof percent !== "number" || percent < EXHAUSTED_PERCENT) return
-    const at = parseResetsAtMs(resetsAt)
-    if (at != null && at > nowMs) candidates.push(at)
+export function usageFromClaudePayload(payload: ClaudeUsagePayload, capturedAt: number): EngineQuotaUsage {
+  const windows: EngineQuotaWindow[] = []
+  if (payload.limits?.length) {
+    for (const limit of payload.limits) {
+      if (typeof limit.kind !== "string" || typeof limit.percent !== "number") continue
+      windows.push({
+        kind: limit.kind,
+        label: windowLabel(limit.kind, limit.scope?.model?.display_name),
+        percent: clampPercent(limit.percent),
+        resetsAt: parseResetsAtMs(limit.resets_at),
+      })
+    }
+  } else {
+    if (typeof payload.five_hour?.utilization === "number") {
+      windows.push({
+        kind: "session",
+        label: "5h",
+        percent: clampPercent(payload.five_hour.utilization),
+        resetsAt: parseResetsAtMs(payload.five_hour.resets_at),
+      })
+    }
+    if (typeof payload.seven_day?.utilization === "number") {
+      windows.push({
+        kind: "weekly_all",
+        label: "7d",
+        percent: clampPercent(payload.seven_day.utilization),
+        resetsAt: parseResetsAtMs(payload.seven_day.resets_at),
+      })
+    }
   }
-  for (const limit of payload.limits ?? []) consider(limit.percent, limit.resets_at)
-  // Legacy top-level windows (older deployments without `limits[]`).
-  if (!payload.limits?.length) {
-    consider(payload.five_hour?.utilization, payload.five_hour?.resets_at)
-    consider(payload.seven_day?.utilization, payload.seven_day?.resets_at)
-  }
-  return candidates.length > 0 ? Math.min(...candidates) : null
+  return { windows, capturedAt }
 }
 
 interface OAuthCredentials {
@@ -137,11 +161,13 @@ async function readAccessToken(): Promise<string | null> {
 }
 
 /**
- * Epoch-ms reset time of the exhausted quota window, or null when it can't be
- * determined (no login, expired token, network failure, nothing exhausted).
- * Never throws — a failed probe just means no auto-resume schedule.
+ * Snapshot of the account's quota windows, or null when it can't be fetched
+ * (no login, expired token, network failure). Never throws. Callers own the
+ * fetch CADENCE — this endpoint is itself rate-limited, so nothing here may
+ * be called on a hot path; the daemon's usage cache is the only production
+ * caller and it enforces min-interval + backoff.
  */
-export async function fetchClaudeQuotaResetAtMs(now: () => number = Date.now): Promise<number | null> {
+export async function fetchClaudeQuotaUsage(now: () => number = Date.now): Promise<EngineQuotaUsage | null> {
   const token = await readAccessToken().catch(() => null)
   if (!token) return null
 
@@ -158,7 +184,7 @@ export async function fetchClaudeQuotaResetAtMs(now: () => number = Date.now): P
       signal: controller.signal,
     })
     if (!response.ok) return null
-    return quotaResetAtMs((await response.json()) as ClaudeUsagePayload, now())
+    return usageFromClaudePayload((await response.json()) as ClaudeUsagePayload, now())
   } catch {
     return null
   } finally {

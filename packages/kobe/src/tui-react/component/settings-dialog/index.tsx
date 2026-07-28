@@ -19,7 +19,7 @@ import { errorMessage } from "@/lib/error-message"
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
+import { type KobeOrchestrator, RemoteOrchestrator, type UsageSnapshotMap } from "../../../client/remote-orchestrator"
 import {
   type ClaudeAccount,
   type CodexAccount,
@@ -31,6 +31,7 @@ import {
   detectCopilotAccount,
   detectKimiAccount,
 } from "../../../engine/account-detect"
+import { createStateCell } from "../../../lib/external-store"
 import { submitFeedback } from "../../../lib/feedback"
 import {
   type NavLevel,
@@ -47,6 +48,7 @@ import type { KVContext } from "../../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../context/theme"
 import { type LocaleId, currentLang, setLocaleLang, useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
+import { useAccessor } from "../../lib/use-accessor"
 import { type DialogContext, useDialog } from "../../ui/dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./actions"
 import { SettingsCursorElContext } from "./rows"
@@ -76,6 +78,9 @@ export type SettingsDialogProps = {
   standalone?: boolean
 }
 
+/** Stable empty cell for hosts without a daemon connection (hook-order safety). */
+const EMPTY_USAGE_SIGNAL = createStateCell<UsageSnapshotMap | null>(null)
+
 export function SettingsDialog(props: SettingsDialogProps) {
   const dialog = useDialog()
   const themeCtx = useTheme()
@@ -94,6 +99,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   const prefs = useSettingsPrefs(props.kv, dialog)
   const engines = useEngineSettings(props.kv, dialog, (max) => setBodyRow((r) => Math.max(0, Math.min(r, max))))
+
+  // Daemon-pushed per-vendor quota snapshots (General's top-right dashboard).
+  // Only the RemoteOrchestrator has the channel; a local orchestrator (tests,
+  // direct mode) reads the empty fallback cell and the dashboard stays hidden.
+  const remote = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
+  const usage = useAccessor(remote ? remote.usageSnapshotSignal() : EMPTY_USAGE_SIGNAL)
 
   // Account detection: read-only fs/env probes, lazily run the
   // first time the Accounts section is opened so a settings open that
@@ -373,6 +384,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleTransparent={toggleTransparent}
               toggleReducedMotion={toggleReducedMotion}
               selectFocusAccent={selectFocusAccent}
+              usage={usage}
             />
           ) : null}
           {section === "engines" ? (

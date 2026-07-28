@@ -10,6 +10,22 @@ export interface TaskDeletionState {
   readonly error?: string
 }
 
+/** One engine-neutral quota window (mirrors kobe/types/engine.ts). */
+export interface EngineQuotaWindow {
+  readonly kind: string
+  readonly label: string
+  /** Integer utilization percent, 0..100. */
+  readonly percent: number
+  /** Epoch-ms window reset, or null when the vendor didn't report one. */
+  readonly resetsAt: number | null
+}
+
+/** Snapshot of an engine account's quota windows (mirrors kobe/types/engine.ts). */
+export interface EngineQuotaUsage {
+  readonly windows: readonly EngineQuotaWindow[]
+  readonly capturedAt: number
+}
+
 /** Durable rate-limit auto-resume schedule (mirrors kobe/types/task.ts). */
 export interface TaskQuotaResumeState {
   /** ISO-8601 time the provider's exhausted quota window resets. */

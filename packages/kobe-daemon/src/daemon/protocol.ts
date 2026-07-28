@@ -13,6 +13,7 @@ import type { ChannelName } from "./channels.ts"
 import type { DaemonTask } from "./contracts.ts"
 
 export { attentionInboxItemKey, isAttentionInboxState } from "./contracts.ts"
+export type { EngineQuotaUsage, EngineQuotaWindow } from "./contracts.ts"
 
 export {
   CHANNEL_NAMES,
