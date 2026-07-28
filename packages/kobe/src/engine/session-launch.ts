@@ -1,3 +1,4 @@
+import { toPosixPath } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { worktreeInitMarkerPath } from "../env.ts"
 import { quoteShellArg, quoteShellArgv } from "../lib/shell-command.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
@@ -16,6 +17,10 @@ export interface EngineInitLaunch {
   readonly initScript?: string
   readonly markerPath?: string
   readonly timeoutSeconds?: number
+  /** Which shell dialect the marker path is written for. Defaults to the real
+   *  platform; injected so the Windows conversion is assertable on a POSIX
+   *  runner, where it would otherwise be an identity no-op. */
+  readonly platform?: NodeJS.Platform
 }
 
 export const REPO_INIT_TIMEOUT_SECONDS = 120
@@ -67,7 +72,9 @@ export function engineLaunchLine(engineCommand: string, init?: EngineInitLaunch)
   const script = init?.initScript?.trim()
   if (!script) return tail
   const group = boundedInitGroup(script, resolveRepoInitTimeoutSeconds(init?.timeoutSeconds))
-  const markerPath = init?.markerPath
+  // The marker is interpolated INTO the script, so it must be in the form the
+  // shell reads paths in — Git Bash rejects a backslash path in `[ -f ]`.
+  const markerPath = init?.markerPath && toPosixPath(init.markerPath, init.platform)
   if (!markerPath) return SIGINT_GUARD + [group, tail].join("\n")
   const marker = quoteShellArg(markerPath)
   const markerDir = quoteShellArg(markerDirOf(markerPath))

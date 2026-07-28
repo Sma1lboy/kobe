@@ -86,7 +86,29 @@ if (!result.success) {
   process.exit(1)
 }
 
+// The Windows PTY host, as a NODE program. Bun rejects its `terminal` spawn
+// option on Windows, and a Bun-hosted node-pty session cannot be written to,
+// so that one process runs under node (see kobe-daemon/daemon/pty-driver.ts).
+// Emitted unconditionally — the npm tarball is built once and installed on
+// every OS, so this file must exist in it regardless of the build machine.
+const ptyHostNode = await Bun.build({
+  entrypoints: ["../kobe-daemon/src/daemon/pty-host-node-entry.ts"],
+  outdir: "./dist/cli",
+  target: "node",
+  format: "esm",
+  naming: "pty-host-node.mjs",
+  // node-pty is a native module resolved from the installed package's own
+  // node_modules; bundling its napi loader would break that lookup.
+  external: ["node-pty"],
+})
+
+if (!ptyHostNode.success) {
+  console.error("pty-host node build failed:")
+  for (const log of ptyHostNode.logs) console.error(log)
+  process.exit(1)
+}
+
 for (const file of OUT_FILES) await chmod(file, 0o755)
 await copyWebUi()
 
-console.log(`built ${OUT_FILES.join(", ")}`)
+console.log(`built ${OUT_FILES.join(", ")}, ./dist/cli/pty-host-node.mjs`)

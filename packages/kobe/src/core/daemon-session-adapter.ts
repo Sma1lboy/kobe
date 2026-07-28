@@ -1,4 +1,5 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
   ensureHostedEngine,
@@ -44,7 +45,7 @@ function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptInte
   return buildEngineSessionLaunch({
     task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
     worktreePath,
-    shell: process.env.SHELL?.trim() || "/bin/zsh",
+    shell: resolveLoginShell({ fallback: "/bin/zsh" }),
     argv: interactiveEngineCommand(task.vendor, task.modelEffort),
     promptIntent,
   })
@@ -58,7 +59,7 @@ export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
 
 export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
-  return { cwd: worktreePath, command: [process.env.SHELL?.trim() || "/bin/zsh", "-il"] }
+  return { cwd: worktreePath, command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"] }
 }
 
 export async function tearDownTaskSessionAdapter(taskId: string): Promise<void> {

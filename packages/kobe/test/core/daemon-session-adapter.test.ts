@@ -1,4 +1,5 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -82,7 +83,7 @@ describe("daemon session adapter", () => {
     expect(engine.command).toEqual(["/bin/zsh", "-ilc", "claude 'repo prompt'"])
     await expect(terminalSpecAdapter(link(), "task-2")).resolves.toEqual({
       cwd: "/worktrees/story",
-      command: [process.env.SHELL?.trim() || "/bin/zsh", "-il"],
+      command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
     })
   })
 
