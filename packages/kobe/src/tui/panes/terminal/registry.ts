@@ -262,6 +262,12 @@ export class PtyRegistry {
   get size(): number {
     return this.map.size
   }
+
+  /** Every live PTY, keyed. The live-engine probe walks these shells'
+   *  process trees to answer "which engine runs in this tab". */
+  entries(): readonly (readonly [string, TaskPty])[] {
+    return [...this.map]
+  }
 }
 
 /**

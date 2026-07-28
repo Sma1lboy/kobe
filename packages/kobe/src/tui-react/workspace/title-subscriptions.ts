@@ -32,6 +32,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { titleDisplayName } from "../../engine/registry"
 import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { getDefaultLiveEngines } from "../../tui/workspace/live-engine"
 import { useLatest } from "../lib/use-latest"
 
 /** A registry lookup — injectable so tests drive a fake PTY set. */
@@ -57,13 +58,32 @@ export interface TitleSubscriptions {
 export function createTitleSubscriptions(
   lookup: PtyLookup = getDefaultPtyRegistry().get.bind(getDefaultPtyRegistry()),
 ): TitleSubscriptions {
-  /** ptyKey → { the subscribed PTY instance, its unsub, latest display title }. */
-  const subs = new Map<string, { pty: TaskPtyLike; unsub: () => void; title: string }>()
+  /** ptyKey → { the subscribed PTY instance, its unsub, the raw OSC title,
+   *  and the display title it collapses to under the CURRENT live vendor }. */
+  type Entry = { pty: TaskPtyLike; unsub: () => void; raw: string; title: string }
+  const subs = new Map<string, Entry>()
   const listeners = new Set<() => void>()
 
   const emit = (): void => {
     for (const l of listeners) l()
   }
+
+  /** Recompute one entry's display title; true when it moved. The vendor
+   *  comes from the process tree, so this must also re-run when the LIVE
+   *  ENGINE changes, not only when the title does (an engine's launch title
+   *  lands before the first probe resolves what it is). */
+  const applyDisplay = (key: string, entry: Entry): boolean => {
+    const display = titleDisplayName(entry.raw, getDefaultLiveEngines().get(key))
+    if (entry.title === display) return false
+    entry.title = display
+    return true
+  }
+
+  const unsubLive = getDefaultLiveEngines().subscribe(() => {
+    let changed = false
+    for (const [key, entry] of subs) changed = applyDisplay(key, entry) || changed
+    if (changed) emit()
+  })
 
   return {
     reconcile(ptyKeys) {
@@ -88,12 +108,10 @@ export function createTitleSubscriptions(
         if (!pty) continue
         // onTitleChange fires immediately with the current title (mock + real
         // both do), so `title` is seeded synchronously here.
-        const entry = { pty, unsub: () => {}, title: "" }
+        const entry: Entry = { pty, unsub: () => {}, raw: "", title: "" }
         entry.unsub = pty.onTitleChange((raw) => {
-          const display = titleDisplayName(raw)
-          if (entry.title === display) return
-          entry.title = display
-          emit()
+          entry.raw = raw
+          if (applyDisplay(key, entry)) emit()
         })
         subs.set(key, entry)
         changed = true
@@ -111,6 +129,7 @@ export function createTitleSubscriptions(
       }
     },
     dispose() {
+      unsubLive()
       for (const sub of subs.values()) sub.unsub()
       subs.clear()
       listeners.clear()

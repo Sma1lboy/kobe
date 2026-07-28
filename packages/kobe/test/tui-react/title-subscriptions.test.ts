@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { titleDisplayName, vendorFromTerminalTitle } from "../../src/engine/registry"
+import { titleDisplayName } from "../../src/engine/registry"
 import { createTitleSubscriptions } from "../../src/tui-react/workspace/title-subscriptions"
 import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types"
 
@@ -66,17 +66,17 @@ describe("createTitleSubscriptions", () => {
     expect(store.get("k1")).toBe("zsh")
   })
 
-  // The store normalizes raw OSC titles to display names (titleDisplayName),
-  // and `use-turn-polls` feeds those into `targetFor` → `vendorFromTerminalTitle`.
-  // Vendor resolution MUST survive that normalization, or a user-typed engine
-  // gets no turn detector.
-  it("stores display names that still resolve to the same vendor as the raw title", () => {
-    for (const raw of ["✳ Claude Code", "claude", "codex — session", "vim", "zsh"]) {
+  // Identity now comes from the process tree (`live-engine.ts`), never from
+  // the title, so with no live engine every title passes through RAW —
+  // including one that merely mentions an engine name. That collision
+  // ("✳ …codex…" in a claude session) was the old title-matching bug.
+  it("passes titles through raw when no live engine claims the pty", () => {
+    for (const raw of ["✳ Claude Code", "claude", "fixing the codex tab bug", "vim", "zsh"]) {
       const pty = fakePty(raw)
       const store = createTitleSubscriptions((key) => (key === "k" ? pty : null))
       store.reconcile(["k"])
-      expect(store.get("k")).toBe(titleDisplayName(raw))
-      expect(vendorFromTerminalTitle(store.get("k") ?? "")).toBe(vendorFromTerminalTitle(raw))
+      expect(store.get("k")).toBe(raw)
+      expect(titleDisplayName(raw, null)).toBe(raw)
     }
   })
 

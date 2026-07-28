@@ -37,6 +37,7 @@ import { engineEntry } from "../../engine/registry"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { startTurnStatusPoll } from "../../tui/ops/activity-monitor"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { getDefaultLiveEngines } from "../../tui/workspace/live-engine"
 import type { TabsState } from "../../tui/workspace/terminal-tabs-core"
 import { soloKey, targetFor } from "../../tui/workspace/turn-target"
 import type { VendorId } from "../../types/vendor"
@@ -92,6 +93,7 @@ export function useTurnPolls(deps: {
     const attached = new Set<string>()
     const turnPolls = turnPollsRef.current
     const titleStore = titleStoreRef.current
+    const liveEngines = getDefaultLiveEngines()
     if (!titleStore) return
     const taskId = taskIdRef.current
     const state = stateRef.current
@@ -121,7 +123,7 @@ export function useTurnPolls(deps: {
     // `targetFor` reads the store by the tab's solo ptyKey (the same key it
     // resolves for the title lookup).
     for (const tab of state.tabs) {
-      const target = targetFor(taskId, tab, vendorRef.current, (key) => titleStore.get(key))
+      const target = targetFor(taskId, tab, vendorRef.current, (key) => liveEngines.get(key))
       if (!target) continue
       const existing = turnPolls.get(tab.id)
       if (existing && existing.vendor === target.vendor && existing.key === target.key) {
@@ -214,6 +216,13 @@ export function useTurnPolls(deps: {
       active = false
       unsub?.()
     }
+  }, [reconcile])
+
+  // The live-engine probe flipping a tab's identity (a user-typed `claude`
+  // came up, or exited back to the prompt) attaches/detaches its detector
+  // on the spot instead of waiting out the attach tick.
+  useEffect(() => {
+    return getDefaultLiveEngines().subscribe(reconcile)
   }, [reconcile])
 
   // Lazy attach retry — a tab's PTY spawns after mount.

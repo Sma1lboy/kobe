@@ -12,7 +12,6 @@
  * see `turn-polls.ts`'s header for the full rationale.
  */
 
-import { vendorFromTerminalTitle } from "@/engine/registry"
 import type { VendorId } from "@/types/vendor"
 import { leaves } from "./split-core"
 import { type TerminalTab, hasEngineLeaf, splitLeafPtyKey, tabPtyKey } from "./terminal-tabs-core"
@@ -32,20 +31,24 @@ export function soloKey(taskId: string, tab: TerminalTab): string | null {
 /**
  * What (if anything) to run a turn detector against for this tab: a
  * kobe-launched engine → its pinned vendor at the tab key; anything else
- * with a solo PTY whose live title matches an engine → that vendor.
- * `titleOf` reads the caller's own title cache (a Map in both runtimes).
+ * with a solo PTY running an engine process → that vendor.
+ *
+ * `vendorOf` is the live process identity (`live-engine.ts`, a process-tree
+ * walk). It used to be a window-title match, which mis-identified a claude
+ * session as codex whenever its activity summary said "codex" — a title is
+ * text for humans, not identity.
  */
 export function targetFor(
   taskId: string,
   tab: TerminalTab,
   taskVendor: VendorId,
-  titleOf: (key: string) => string | undefined,
+  vendorOf: (key: string) => VendorId | null,
 ): { vendor: VendorId; key: string } | null {
   if (tab.kind === "engine" && hasEngineLeaf(tab.splitTree)) {
     return { vendor: tab.vendor ?? taskVendor, key: tabPtyKey(taskId, tab.id) }
   }
   const key = soloKey(taskId, tab)
   if (!key) return null
-  const vendor = vendorFromTerminalTitle(titleOf(key))
+  const vendor = vendorOf(key)
   return vendor ? { vendor, key } : null
 }

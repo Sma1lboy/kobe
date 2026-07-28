@@ -156,6 +156,13 @@ export class HostedTaskPty extends XtermTaskPty {
   /** A pid-tagged `pty.exit` that arrived before our open response —
    *  parked, then resolved against the response's pid in `openRemote`. */
   private pendingExitPid: number | null = null
+
+  /** See {@link TaskPtyLike.shellPid}. The host runs on the SAME machine
+   *  as this process, so its pid is walkable here (a remote-project host
+   *  would need the walk to happen host-side — not wired yet). */
+  get shellPid(): number | null {
+    return this.sessionPid ?? null
+  }
   /** SerializeAddon riding our emulator — `capturePark` reads it. */
   private readonly serializer = new SerializeAddon()
   /** Monotonic host byte offset this handle has consumed: the open
