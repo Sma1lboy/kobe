@@ -17,6 +17,39 @@ export const FANOUT_CAP = 10
 /** Both fan-out plan parsers are only reachable from `fan-out`, so their errors point at its help. */
 const FANOUT_STEP = helpStep("fan-out")
 
+/** Reusable flag fragments shared across the verb tables (`verbs.ts`, `verbs-issues.ts`). */
+export const F = {
+  repo: (required = true): FlagSpec => ({
+    name: "repo",
+    type: "string",
+    required,
+    placeholder: "PATH",
+    description: "Repo root (git toplevel). Relative paths resolve against $PWD.",
+  }),
+  taskId: (required = true): FlagSpec => ({
+    name: "task-id",
+    type: "string",
+    required,
+    placeholder: "ID",
+    description: "Target task id (from `list` / `add`).",
+  }),
+  vendor: (): FlagSpec => ({
+    name: "vendor",
+    type: "enum",
+    values: ALL_VENDORS,
+    placeholder: "V",
+    description: "Engine vendor for the task.",
+  }),
+  title: (): FlagSpec => ({ name: "title", type: "string", placeholder: "T", description: "Human task title." }),
+  prompt: (required: boolean, desc: string): FlagSpec => ({
+    name: "prompt",
+    type: "string",
+    required,
+    placeholder: "TEXT",
+    description: desc,
+  }),
+}
+
 /**
  * Parse argv into a flag map + `--pretty` / `--help` booleans. Accepts both
  * `--key=value` and `--key value`. `booleanFlags` (from the verb spec) may be

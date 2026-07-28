@@ -197,6 +197,11 @@ export type DaemonRequestName =
   | "pty.detach"
   | "pty.list"
   | "pty.sweep"
+  // Read-only ring-buffer peek for one session key: no attach, no spawn,
+  // no resize — the observation primitive `kobe api read-output` uses for
+  // its bounded terminal fallback. Older hosts reject the verb; callers
+  // treat that as "no terminal data".
+  | "pty.peek"
   // Pre-spawn one idle shell for a cwd so the next `pty.open` whose spec
   // is that bare shell adopts it (already rc-initialized) instead of
   // paying shell startup. Best-effort; older hosts reject the verb.
@@ -273,6 +278,30 @@ export interface PtyOpenResult {
    *  False/absent means `replay` is the full ring (offset trimmed away,
    *  or an old host). */
   readonly sinceValid?: boolean
+}
+
+/**
+ * `pty.peek` response — a read-only ring-buffer snapshot for one session
+ * key. Unlike `pty.open` it never attaches, spawns, or resizes, so it is
+ * safe for pure observation (`kobe api read-output` terminal fallback).
+ */
+export interface PtyPeekResult {
+  /** False when no session exists under the key (nothing was spawned). */
+  readonly exists: boolean
+  readonly alive: boolean
+  /** The session child's pid (null when spawn failed or `exists` is false).
+   *  Callers pin pagination to it: a different pid = a new incarnation. */
+  readonly pid: number | null
+  /** Monotonic total bytes the child has ever written — the caller's next
+   *  `sinceOffset`. */
+  readonly offset: number
+  /** Ring bytes (base64): the full ring, or exactly the delta since the
+   *  request's `sinceOffset` when `sinceValid`. */
+  readonly data: string
+  /** True when `data` is the exact delta since `sinceOffset` (still inside
+   *  the ring window); false means the offset was trimmed away and `data`
+   *  is the full ring. */
+  readonly sinceValid: boolean
 }
 
 export interface DaemonError {

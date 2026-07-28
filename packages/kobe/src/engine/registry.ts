@@ -279,6 +279,18 @@ export function engineEntry(vendor: VendorId): EngineRegistryEntry {
   return isBuiltinVendor(vendor) ? BUILTIN_ENGINES[vendor] : customEngineEntry(vendor)
 }
 
+/**
+ * True when `vendor`'s adapter ships a REAL transcript-store reader —
+ * i.e. its `history` is not the documented {@link EMPTY_HISTORY} sentinel.
+ * Neutral layers (e.g. `kobe api read-output`) use this to label an
+ * `engine_unsupported` fallback honestly instead of confusing "engine has
+ * no reader" with "reader found no sessions". Lives here so the sentinel
+ * comparison stays inside the engine-owned module.
+ */
+export function supportsStructuredHistory(vendor: VendorId): boolean {
+  return engineEntry(vendor).history !== EMPTY_HISTORY
+}
+
 /*
  * `vendorFromTerminalTitle` lived here (removed 2026-07-27). It matched a
  * live OSC title against each engine's product name / binary by substring,
