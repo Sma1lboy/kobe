@@ -73,16 +73,37 @@ export const bunTerminalDriver: PtyDriver = (request) => {
   }
 }
 
+/** The slice of node-pty's child this driver drives. */
+export interface NodePtyChild {
+  readonly pid: number
+  onData(listener: (data: string) => void): unknown
+  onExit(listener: (event: { exitCode: number }) => void): unknown
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+}
+
+/** node-pty's `spawn`, narrowed to what this driver passes it. */
+export type NodePtySpawn = (
+  file: string,
+  args: readonly string[],
+  options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> },
+) => NodePtyChild
+
 /**
  * `node-pty` (ConPTY on Windows). Async because node-pty is a native module
  * loaded only by the host that actually needs it — importing it eagerly would
  * drag a napi binding into every Bun-hosted daemon on every platform.
+ *
+ * `spawn` is injectable so the translation below — event wiring, the exit
+ * promise, env narrowing — is unit-testable on a runner where the native
+ * binding was never built.
  */
-export async function nodePtyDriver(): Promise<PtyDriver> {
-  const { spawn } = await import("node-pty")
+export async function nodePtyDriver(spawn?: NodePtySpawn): Promise<PtyDriver> {
+  const spawnPty = spawn ?? ((await import("node-pty")).spawn as unknown as NodePtySpawn)
   return (request) => {
     const [file, ...args] = request.argv
-    const child = spawn(file ?? "", args, {
+    const child = spawnPty(file ?? "", args, {
       name: TERMINAL_NAME,
       cols: request.cols,
       rows: request.rows,

@@ -1,5 +1,10 @@
+import { delimiter } from "node:path"
 import { detachOptions } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { type NodePtyHostResolution, resolveNodePtyHostSpawn } from "@sma1lboy/kobe-daemon/client/pty-process"
+import {
+  type NodePtyHostResolution,
+  resolveNodeBinary,
+  resolveNodePtyHostSpawn,
+} from "@sma1lboy/kobe-daemon/client/pty-process"
 import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { describe, expect, test } from "vitest"
 
@@ -106,6 +111,38 @@ describe("resolveNodePtyHostSpawn", () => {
     const shim = `${PATH_DIR}/node.CMD`
     const spawn = await resolveNodePtyHostSpawn(win({ exists: diskWith(shim, PACKAGED) }))
     expect(norm(spawn?.[0] ?? "")).toBe(shim)
+  })
+})
+
+describe("resolveNodeBinary", () => {
+  test("returns null when PATH is empty or unset rather than a bare name", () => {
+    // A bare "node" would defer the failure to spawn time, where it surfaces
+    // only as a pty host that never answers.
+    expect(resolveNodeBinary({}, diskWith(NODE), "win32")).toBeNull()
+    expect(resolveNodeBinary({ PATH: "" }, diskWith(NODE), "win32")).toBeNull()
+  })
+
+  test("reads Path when PATH is absent — Windows env casing is not guaranteed", () => {
+    expect(norm(resolveNodeBinary({ Path: PATH_DIR, PATHEXT: ".EXE" }, diskWith(NODE), "win32") ?? "")).toBe(NODE)
+  })
+
+  test("POSIX looks for a bare node, with no extension appended", () => {
+    const posixNode = "/usr/local/bin/node"
+    expect(norm(resolveNodeBinary({ PATH: "/usr/local/bin" }, diskWith(posixNode), "linux") ?? "")).toBe(posixNode)
+    // …and must not invent an extension that only exists on Windows.
+    expect(resolveNodeBinary({ PATH: "/usr/local/bin" }, diskWith("/usr/local/bin/node.EXE"), "linux")).toBeNull()
+  })
+
+  test("scans PATH in order and takes the first directory that has one", () => {
+    const first = "/a/node.EXE"
+    const second = "/b/node.EXE"
+    const env = { PATH: ["/a", "/b"].join(delimiter), PATHEXT: ".EXE" }
+    expect(norm(resolveNodeBinary(env, diskWith(first, second), "win32") ?? "")).toBe(first)
+    expect(norm(resolveNodeBinary(env, diskWith(second), "win32") ?? "")).toBe(second)
+  })
+
+  test("falls back to a default PATHEXT when the env does not set one", () => {
+    expect(norm(resolveNodeBinary({ PATH: PATH_DIR }, diskWith(NODE), "win32") ?? "")).toBe(NODE)
   })
 })
 

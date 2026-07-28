@@ -17,6 +17,10 @@ export interface EngineInitLaunch {
   readonly initScript?: string
   readonly markerPath?: string
   readonly timeoutSeconds?: number
+  /** Which shell dialect the marker path is written for. Defaults to the real
+   *  platform; injected so the Windows conversion is assertable on a POSIX
+   *  runner, where it would otherwise be an identity no-op. */
+  readonly platform?: NodeJS.Platform
 }
 
 export const REPO_INIT_TIMEOUT_SECONDS = 120
@@ -70,7 +74,7 @@ export function engineLaunchLine(engineCommand: string, init?: EngineInitLaunch)
   const group = boundedInitGroup(script, resolveRepoInitTimeoutSeconds(init?.timeoutSeconds))
   // The marker is interpolated INTO the script, so it must be in the form the
   // shell reads paths in — Git Bash rejects a backslash path in `[ -f ]`.
-  const markerPath = init?.markerPath && toPosixPath(init.markerPath)
+  const markerPath = init?.markerPath && toPosixPath(init.markerPath, init.platform)
   if (!markerPath) return SIGINT_GUARD + [group, tail].join("\n")
   const marker = quoteShellArg(markerPath)
   const markerDir = quoteShellArg(markerDirOf(markerPath))
