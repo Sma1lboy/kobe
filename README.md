@@ -31,7 +31,7 @@ Terminal multiplexers let one terminal hold many shells that survive you. kobe d
 - **Terminal first** — notifications and clipboard ride SSH back to your local terminal.
 - **Agents orchestrating agents** — `kobe api` lets a script, or another AI agent, fan out tasks, supervise them, and collect the results headlessly.
 
-https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
+https://github.com/Sma1lboy/kobe/raw/main/docs/assets/demo.mp4
 
 ## Install
 
