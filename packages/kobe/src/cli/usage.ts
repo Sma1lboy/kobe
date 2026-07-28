@@ -33,6 +33,7 @@ export function topLevelUsage(): string {
     "  reset [--hard]           Stop runtimes; optionally wipe task/UI state",
     "  theme <verb>            Manage user themes (list|add|remove)",
     "  skill <verb>            Install the kobe agent skill (install|status|command)",
+    "  plugin <verb>           Install and run plugins (install|link|list|action|…)",
     "  feedback                Send feedback to GitHub Discussions",
     "  update [version|list]   Self-update kobe, or browse versions with `list`",
     "",

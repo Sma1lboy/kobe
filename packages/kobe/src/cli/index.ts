@@ -446,6 +446,11 @@ async function main(): Promise<void> {
     await runSkillSubcommand(rest)
     return
   }
+  if (subcommand === "plugin") {
+    const { runPluginSubcommand } = await import("./plugin-cmd.ts")
+    await runPluginSubcommand(rest)
+    return
+  }
   if (subcommand === "hook") {
     // Internal: fired by an engine's hooks inside a task worktree to report a
     // normalized activity event to the daemon (event-driven task state).

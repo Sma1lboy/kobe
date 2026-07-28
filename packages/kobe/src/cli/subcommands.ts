@@ -25,6 +25,7 @@ export const TOP_LEVEL_SUBCOMMANDS = [
   "reset",
   "theme",
   "skill",
+  "plugin",
   "feedback",
   "update",
 ] as const

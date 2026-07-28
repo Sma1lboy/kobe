@@ -1,0 +1,11 @@
+id = "examples.github-start"
+name = "GitHub Start"
+version = "0.1.0"
+min_kobe_version = "0.8.22"
+description = "Create a kobe task (worktree + engine session) from a GitHub issue or PR"
+platforms = ["macos", "linux", "windows"]
+
+[[actions]]
+id = "start"
+title = "Start a task from a GitHub issue/PR URL"
+command = ["node", "start.js"]

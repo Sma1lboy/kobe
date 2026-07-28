@@ -17,6 +17,7 @@ import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
+import { startPluginHost } from "../plugins/runtime.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import {
@@ -90,6 +91,8 @@ export interface DaemonServerOptions {
   readonly webHost?: string
   /** Optional static web UI directory served by the daemon web transport. */
   readonly webStaticDir?: string
+  /** Enable the plugin runtime; `binPath` becomes plugins' KOBE_BIN_PATH. Omitted in tests. */
+  readonly plugins?: { readonly binPath: string }
 }
 
 export interface DaemonServer {
@@ -263,6 +266,16 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // so a gui-less daemon never polls npm / git / gh for nobody.
   const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options, quotaUsage)
 
+  // Plugin runtime: startup hooks + channel-derived event hooks (plugins/runtime.ts).
+  const pluginHost = options.plugins
+    ? startPluginHost(bus, {
+        homeDir: options.homeDir,
+        socketPath,
+        binPath: options.plugins.binPath,
+        log: (line) => logDaemonInfo("plugin-host", line),
+      })
+    : null
+
   let webServer: DaemonWebServer | null = null
   // Why the web transport isn't listening (port taken, bind failed). Surfaced
   // via daemon.status so `kobe daemon status` reports the real reason instead
@@ -282,6 +295,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       webServer?.close()
       webServer = null
       stopCollectors()
+      pluginHost?.stop()
       activity.close()
       // Hosted PTYs are deliberately NOT touched here: they live in the
       // standalone `kobe pty-host` process, so `kobe daemon restart` never

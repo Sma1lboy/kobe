@@ -39,7 +39,9 @@ Task = git worktree + hosted engine sessions + branch
     workspace cores.
   - `src/tui-react/` — the only UI implementation: React 19 over opentui.
 - `packages/kobe-daemon/` — Unix-socket daemon protocol/server, browser
-  transport, and standalone PTY Host implementation.
+  transport, standalone PTY Host implementation, and the plugin core
+  (`src/plugins/`: manifest, registry, event derivation, daemon-side host —
+  see [docs/design/plugins.md](./design/plugins.md)).
 - `packages/kobe-web/` — browser dashboard SPA and browser-side PTY transport.
   **Frozen (2026-07-25):** no new features. It survives because its `/harness`
   route is the only sanctioned visual ground truth for OpenTUI work, not
@@ -49,6 +51,8 @@ Task = git worktree + hosted engine sessions + branch
   surface work to the TUI. The `kobe-desktop` Electron shell was removed the
   same day for the same reason.
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
+- `plugins/` — first-party example plugins (installable via
+  `kobe plugin install Sma1lboy/kobe/plugins/<name>`).
 
 ## 3. Launch and lifetime
 
@@ -111,6 +115,9 @@ from creating duplicate children.
 - PTY Host socket/pid/log: derived independently from the same home
 - Engine conversation history: engine-owned locations such as
   `~/.claude/projects/**`
+- Plugins: registry `<KOBE_HOME>/.kobe/plugins.json` (CLI-written,
+  daemon-watched); per-plugin checkout/config/state/log under
+  `<KOBE_HOME>/.kobe/plugins/<id>/`
 
 Never treat browser storage as authoritative for local product state.
 

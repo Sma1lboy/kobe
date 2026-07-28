@@ -1,0 +1,27 @@
+id = "examples.notify"
+name = "Notify"
+version = "0.1.0"
+min_kobe_version = "0.8.22"
+description = "Desktop (and optional ntfy push) notifications when an agent finishes, errors, or needs you"
+platforms = ["macos", "linux"]
+
+[[events]]
+on = "agent.turn-complete"
+command = ["sh", "notify.sh"]
+
+[[events]]
+on = "agent.permission-needed"
+command = ["sh", "notify.sh"]
+
+[[events]]
+on = "agent.rate-limited"
+command = ["sh", "notify.sh"]
+
+[[events]]
+on = "agent.error"
+command = ["sh", "notify.sh"]
+
+[[actions]]
+id = "test"
+title = "Send a test notification"
+command = ["sh", "notify.sh", "test"]

@@ -123,6 +123,9 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     webPort: resolveDaemonWebPort(),
     webHost: process.env.KOBE_WEB_HOST,
     webStaticDir: process.env.KOBE_DAEMON_WEB_STATIC_DIR,
+    // Plugin callbacks exec the packaged `kobe`, resolved on PATH at spawn
+    // time; a dev checkout without one still runs, plugins just log ENOENT.
+    plugins: { binPath: "kobe" },
     onStop: async () => {
       await core.close()
     },

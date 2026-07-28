@@ -29,28 +29,35 @@
     "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
-    "./daemon/quota-usage-cache": "./src/daemon/quota-usage-cache.ts",
-    "./daemon/runtime": "./src/daemon/runtime.ts",
     "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",
     "./daemon/pty-host": "./src/daemon/pty-host.ts",
     "./daemon/pty-observability": "./src/daemon/pty-observability.ts",
     "./daemon/pty-server": "./src/daemon/pty-server.ts",
     "./daemon/pty-termination": "./src/daemon/pty-termination.ts",
+    "./daemon/quota-usage-cache": "./src/daemon/quota-usage-cache.ts",
+    "./daemon/runtime": "./src/daemon/runtime.ts",
     "./daemon/server": "./src/daemon/server.ts",
     "./daemon/transcript-activity-collector": "./src/daemon/transcript-activity-collector.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
     "./daemon/web-rpc-allowlist": "./src/daemon/web-rpc-allowlist.ts",
     "./daemon/web-server": "./src/daemon/web-server.ts",
     "./daemon/web-session": "./src/daemon/web-session.ts",
-    "./daemon/worktree-changes-collector": "./src/daemon/worktree-changes-collector.ts"
+    "./daemon/worktree-changes-collector": "./src/daemon/worktree-changes-collector.ts",
+    "./plugins/env": "./src/plugins/env.ts",
+    "./plugins/events": "./src/plugins/events.ts",
+    "./plugins/manifest": "./src/plugins/manifest.ts",
+    "./plugins/plugin-paths": "./src/plugins/plugin-paths.ts",
+    "./plugins/registry": "./src/plugins/registry.ts",
+    "./plugins/runtime": "./src/plugins/runtime.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "smol-toml": "^1.7.1"
   },
   "devDependencies": {
     "@tsconfig/bun": "1.0.10",
