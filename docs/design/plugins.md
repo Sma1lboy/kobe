@@ -58,6 +58,11 @@ warning, not an error, for forward compat).
 
 ## Events (v1)
 
+The full engine-agnostic lifecycle taxonomy (session/turn/tool/attention/
+compaction/subagent across Claude Code, Codex, and Kimi Code) and its
+rollout phases live in [plugin-events.md](./plugin-events.md); the table
+below is what ships today.
+
 Derived from daemon push channels by `plugins/events.ts` (channels are
 last-value state; the reducer emits edges, and the first `task.snapshot`
 after daemon start is baseline — no replay storms):
