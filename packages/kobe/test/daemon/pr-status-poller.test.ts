@@ -18,6 +18,7 @@ import {
   type PrViewResult,
   type PrViewRunner,
   SETTLED_BACKOFF_MS,
+  decodeSpawnChunks,
   isPrPollable,
   pickPr,
   runPrStatusPass as runPrStatusPassRaw,
@@ -270,5 +271,27 @@ describe("runPrStatusPass", () => {
     expect(schedule.get(id)?.failures).toBe(0)
     expect(schedule.get(id)?.nextAllowedAt).toBe(1_000 + NO_REMOTE_BACKOFF_MS)
     expect(orch.getTask(id)?.prStatus).toBeUndefined()
+  })
+})
+
+describe("decodeSpawnChunks — join bytes before decoding the gh payload", () => {
+  test("a multi-byte char split across two chunks decodes intact", () => {
+    // "更" = U+66F4 = E6 9B B4 — a pipe chunk boundary can land mid-sequence.
+    const bytes = Buffer.from("更新", "utf8")
+    const first = bytes.subarray(0, 1)
+    const rest = bytes.subarray(1)
+    expect(decodeSpawnChunks([first, rest])).toBe("更新")
+    // The old per-chunk path (`String(chunk)` on each) would corrupt the split.
+    expect(String(first) + String(rest)).not.toBe("更新")
+  })
+
+  test("an emoji straddling a boundary survives", () => {
+    const bytes = Buffer.from("🚀", "utf8") // F0 9F 9A 80
+    expect(decodeSpawnChunks([bytes.subarray(0, 2), bytes.subarray(2)])).toBe("🚀")
+  })
+
+  test("ASCII, mixed string/Buffer chunks, and empty input are unchanged", () => {
+    expect(decodeSpawnChunks([Buffer.from("ab"), "cd"])).toBe("abcd")
+    expect(decodeSpawnChunks([])).toBe("")
   })
 })

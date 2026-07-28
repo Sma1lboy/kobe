@@ -140,18 +140,32 @@ interface GhSpawnResult {
   readonly spawnError: boolean
 }
 
+/**
+ * Decode captured spawn chunks to one UTF-8 string. Chunks MUST be joined as
+ * bytes before decoding: a stdout pipe splits on an arbitrary byte boundary
+ * (~64 KB), so a multi-byte UTF-8 sequence — a non-ASCII PR title inside the
+ * `gh … --json` payload — can straddle two chunks. Decoding each chunk on its
+ * own (`String(chunk)`) turns the split character into replacement bytes
+ * (`�`); concatenating the raw bytes first decodes it intact. Mirrors
+ * `@sma1lboy/kobe`'s `decodeCapturedChunks` — the daemon can't import across
+ * the package boundary (see the file header). Pure — exported for unit tests.
+ */
+export function decodeSpawnChunks(chunks: readonly (Buffer | string)[]): string {
+  return Buffer.concat(chunks.map((c) => (typeof c === "string" ? Buffer.from(c) : c))).toString("utf8")
+}
+
 /** Spawn `gh` capturing stdout AND stderr (needed to classify the failure).
  * Never rejects: a spawn error or abort resolves with `status: null` so the
  * caller branches on the captured signals rather than a thrown error. */
 function spawnGh(args: readonly string[], cwd: string, signal: AbortSignal): Promise<GhSpawnResult> {
   return new Promise((resolve) => {
-    let out = ""
-    let err = ""
+    const outChunks: (Buffer | string)[] = []
+    const errChunks: (Buffer | string)[] = []
     let settled = false
     const finish = (status: number | null, spawnError: boolean): void => {
       if (settled) return
       settled = true
-      resolve({ status, stdout: out, stderr: err, spawnError })
+      resolve({ status, stdout: decodeSpawnChunks(outChunks), stderr: decodeSpawnChunks(errChunks), spawnError })
     }
     const child = spawn("gh", args.slice(), {
       cwd,
@@ -160,10 +174,10 @@ function spawnGh(args: readonly string[], cwd: string, signal: AbortSignal): Pro
       killSignal: "SIGKILL",
     })
     child.stdout?.on("data", (chunk: Buffer | string) => {
-      out += String(chunk)
+      outChunks.push(chunk)
     })
     child.stderr?.on("data", (chunk: Buffer | string) => {
-      err += String(chunk)
+      errChunks.push(chunk)
     })
     // An abort (our timeout) also surfaces as an `error` event — don't count
     // that as a spawn failure; the caller reads `timedOut` separately.
