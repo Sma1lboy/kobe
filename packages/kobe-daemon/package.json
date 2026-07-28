@@ -26,13 +26,16 @@
     "./daemon/lifetime": "./src/daemon/lifetime.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
     "./daemon/paths": "./src/daemon/paths.ts",
+    "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/runtime": "./src/daemon/runtime.ts",
+    "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",
     "./daemon/pty-host": "./src/daemon/pty-host.ts",
     "./daemon/pty-observability": "./src/daemon/pty-observability.ts",
     "./daemon/pty-server": "./src/daemon/pty-server.ts",
+    "./daemon/pty-termination": "./src/daemon/pty-termination.ts",
     "./daemon/server": "./src/daemon/server.ts",
     "./daemon/transcript-activity-collector": "./src/daemon/transcript-activity-collector.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
@@ -45,7 +48,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "chokidar": "^5.0.0"
+    "chokidar": "^5.0.0",
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@tsconfig/bun": "1.0.10",

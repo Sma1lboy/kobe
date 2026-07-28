@@ -85,3 +85,7 @@ HANDOFF.md
 
 # Per-run artefacts from background agent sessions — runtime state, not source.
 .agent-runs/
+
+# Dev-only bundle of the Windows node PTY host (built on demand; shipped
+# builds emit it into dist/cli instead).
+packages/kobe-daemon/.cache/

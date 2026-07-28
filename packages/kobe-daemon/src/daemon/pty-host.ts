@@ -2,7 +2,7 @@
  * PtyHost — daemon-hosted PTY sessions (protocol v4).
  *
  * The tmux-persistence replacement for the embedded terminal: the daemon
- * owns the raw PTY child (`Bun.spawn(..., { terminal })`) plus a capped
+ * owns the raw PTY child (spawned through a `PtyDriver`) plus a capped
  * byte ring buffer per session key, so an engine session keeps running
  * when the TUI exits and replays its screen when a TUI reattaches. VT
  * emulation stays in the TUI (xterm-headless) — this module never parses
@@ -25,10 +25,12 @@
  */
 
 import { StringDecoder } from "node:string_decoder"
+import { resolveLoginShell } from "./platform-shell.js"
 import type { DaemonFrame, PtyPeekResult } from "./protocol.ts"
+import { type PtyChild, type PtyDriver, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type PtyHostStats, type PtySessionInfo, peekRing, scanOscTitle } from "./pty-observability.ts"
-import { signalProcessGroup } from "./pty-termination.ts"
+import { settledWithin, signalProcessGroup } from "./pty-termination.ts"
 
 export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
 // Re-exported for the cross-chunk title-boundary tests (pure fold).
@@ -39,7 +41,7 @@ export interface PtySpawnSpec {
   readonly cwd: string
   /** Explicit argv (engine sessions). Falls back to `shell`. */
   readonly command?: readonly string[]
-  /** Shell override; defaults to the daemon's `$SHELL` or /bin/bash. */
+  /** Shell override; defaults to `resolveLoginShell()`. */
   readonly shell?: string
   readonly cols: number
   readonly rows: number
@@ -69,6 +71,8 @@ export interface PtyHostOptions {
   readonly onSessionEnd?: () => void
   /** Ring-buffer cap in bytes per session. Default {@link DEFAULT_SCROLLBACK_CAP}. */
   readonly scrollbackCap?: number
+  /** How children spawn. Default Bun's; the Windows host injects node-pty's. */
+  readonly driver?: PtyDriver
   readonly log?: (event: string, message: string) => void
 }
 
@@ -81,7 +85,7 @@ interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
   key: string
   readonly cwd: string
-  proc: ReturnType<typeof Bun.spawn> | null
+  proc: PtyChild | null
   alive: boolean
   chunks: Buffer[]
   bytes: number
@@ -191,11 +195,6 @@ export class PtyHost {
     }
   }
 
-  /** The bare-shell argv a spec resolves to when it has no command. */
-  private static shellArgv(shell: string | undefined): string {
-    return shell ?? process.env.SHELL ?? "/bin/bash"
-  }
-
   /**
    * Keep one idle shell pre-spawned for `cwd`. A live spare for the same
    * cwd+shell is kept; anything else is replaced (single slot — the most
@@ -203,7 +202,7 @@ export class PtyHost {
    * `onSessionStart` so it never cancels the host's idle-exit.
    */
   warm(cwd: string, shell?: string, cols = 80, rows = 24): void {
-    const argv0 = PtyHost.shellArgv(shell)
+    const argv0 = shell ?? resolveLoginShell()
     if (this.spare?.alive && this.spare.cwd === cwd && this.spare.command[0] === argv0) return
     const old = this.spare
     this.spare = null
@@ -221,7 +220,7 @@ export class PtyHost {
   private adoptSpare(key: string, spec: PtySpawnSpec): PtySessionState | null {
     const spare = this.spare
     if (!spare?.alive || spare.cwd !== spec.cwd) return null
-    const want = spec.command && spec.command.length > 0 ? spec.command : [PtyHost.shellArgv(spec.shell)]
+    const want = spec.command && spec.command.length > 0 ? spec.command : [spec.shell ?? resolveLoginShell()]
     if (want.length !== 1 || want[0] !== spare.command[0]) return null
     this.spare = null
     spare.key = key
@@ -229,7 +228,7 @@ export class PtyHost {
       spare.cols = spec.cols
       spare.rows = spec.rows
       try {
-        spare.proc?.terminal?.resize(spec.cols, spec.rows)
+        spare.proc?.resize(spec.cols, spec.rows)
       } catch {
         this.markExited(spare)
         return null
@@ -246,7 +245,7 @@ export class PtyHost {
     const session = this.sessions.get(key)
     if (!session?.alive || data.length === 0) return
     try {
-      session.proc?.terminal?.write(data)
+      session.proc?.write(data)
     } catch {
       // A terminal stream error is not proof the subprocess exited. Bun's
       // `proc.exited` promise below is the single source of truth.
@@ -259,7 +258,7 @@ export class PtyHost {
     session.cols = cols
     session.rows = rows
     try {
-      session.proc?.terminal?.resize(cols, rows)
+      session.proc?.resize(cols, rows)
     } catch {
       // See write(): wait for `proc.exited`, not the PTY stream state.
     }
@@ -372,7 +371,7 @@ export class PtyHost {
   /** `spare` skips `onSessionStart` — a warm shell must not pin the host
    *  open (its adoption fires the callback instead). */
   private spawn(key: string, spec: PtySpawnSpec, spare = false): PtySessionState {
-    const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [PtyHost.shellArgv(spec.shell)]
+    const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? resolveLoginShell()]
     const session: PtySessionState = {
       key,
       cwd: spec.cwd,
@@ -392,7 +391,8 @@ export class PtyHost {
       parkedScreenBytes: 0,
     }
     try {
-      session.proc = Bun.spawn(argv, {
+      session.proc = (this.opts.driver ?? bunTerminalDriver())({
+        argv,
         cwd: spec.cwd,
         env: embeddedTerminalEnv(process.env, {
           TERM: "xterm-256color",
@@ -401,12 +401,9 @@ export class PtyHost {
           BASH_SILENCE_DEPRECATION_WARNING: "1",
           KOBE_TERMINAL_PTY: "1",
         }),
-        terminal: {
-          cols: spec.cols,
-          rows: spec.rows,
-          name: "xterm-256color",
-          data: (_terminal, data) => this.onData(session, data),
-        },
+        cols: spec.cols,
+        rows: spec.rows,
+        onData: (data) => this.onData(session, data),
       })
       void session.proc.exited.then(
         () => this.markExited(session),
@@ -447,7 +444,7 @@ export class PtyHost {
     if (!session.alive) return
     session.alive = false
     try {
-      session.proc?.terminal?.close()
+      session.proc?.close()
     } catch {
       /* already closed */
     }
@@ -469,22 +466,15 @@ export class PtyHost {
       return
     }
     signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const exited = await Promise.race([
-      proc.exited.then(
-        () => true,
-        () => true,
-      ),
-      new Promise<false>((resolve) => {
-        timer = setTimeout(() => resolve(false), TERMINATION_GRACE_MS)
-      }),
-    ])
-    if (timer) clearTimeout(timer)
-    if (!exited) signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
-    try {
-      await proc.exited
-    } catch {
-      /* process exit remains the lifecycle boundary even on a runtime error */
+    if (!(await settledWithin(proc.exited, TERMINATION_GRACE_MS))) {
+      signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
+      // BOUNDED on purpose. Bun's `proc.exited` always settles, so an
+      // unbounded await was safe; the node-pty driver's resolves only when
+      // ConPTY delivers onExit, and a wedged one would hang killAll() — and
+      // with it the host's shutdown and `kobe reset`. A child that outlives
+      // SIGKILL is already beyond this process's reach; reporting the session
+      // dead is strictly better than never returning.
+      await settledWithin(proc.exited, TERMINATION_GRACE_MS)
     }
     this.markExited(session)
   }

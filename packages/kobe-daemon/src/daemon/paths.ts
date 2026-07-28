@@ -67,6 +67,14 @@ export function fitSocketPath(naturalPath: string, homeDir: string, role: string
  * the previous code unconditionally placed the socket there — which
  * collapsed the test-daemon and production-daemon sockets to the same
  * path, defeating `KOBE_HOME_DIR=...` isolation.
+ *
+ * NOTE — this stays a filesystem socket on Windows, unlike the PTY host's
+ * (see {@link defaultPtyHostSocketPath}). The two differ for one reason: the
+ * runtime that binds them. The daemon runs under Bun, which binds AF_UNIX on
+ * Windows 10+ fine; the PTY host runs under node, which cannot (`listen`
+ * fails EACCES) and needs a named pipe. So the split is NOT about the
+ * platform — moving either process to the other runtime means moving its
+ * path form with it.
  */
 export function defaultDaemonSocketPath(homeDir?: string): string {
   const override = process.env.KOBE_DAEMON_SOCKET_PATH
@@ -124,10 +132,39 @@ export function defaultClientLogPath(homeDir = process.env.KOBE_HOME_DIR ?? home
  * tiny and stable and must keep running. Same resolution/fitting rules
  * as {@link defaultDaemonSocketPath}.
  */
-export function defaultPtyHostSocketPath(homeDir?: string): string {
+/**
+ * True for a Windows named pipe pathname. Callers that treat a socket path as
+ * a filesystem entry (mkdir the parent, unlink on shutdown) must skip those
+ * steps for a pipe — `\\.\pipe` is a namespace, not a directory, and the pipe
+ * itself dies with the process that created it.
+ */
+export function isWindowsPipePath(path: string): boolean {
+  return path.startsWith("\\\\.\\pipe\\") || path.startsWith("//./pipe/")
+}
+
+/**
+ * Windows named pipe for a host role.
+ *
+ * The Windows PTY host runs under node rather than Bun (Bun rejects its
+ * `terminal` spawn option there — see pty-driver.ts), and node cannot bind a
+ * filesystem AF_UNIX socket on Windows: `listen()` fails with EACCES. Named
+ * pipes are the platform's equivalent, Bun's client connects to one without
+ * changes, and the wire protocol is untouched — only the pathname differs.
+ * Tagged per home so sandbox and production hosts never collide.
+ *
+ * The trigger is the RUNTIME, not the platform: the daemon stays on a unix
+ * socket on Windows because Bun can bind one there (see
+ * {@link defaultDaemonSocketPath}).
+ */
+export function windowsPipePath(homeDir: string, role: string): string {
+  return `\\\\.\\pipe\\kobe-${shortHomeTag(homeDir)}-${role}`
+}
+
+export function defaultPtyHostSocketPath(homeDir?: string, platform: NodeJS.Platform = process.platform): string {
   const override = process.env.KOBE_PTY_SOCKET_PATH
   if (override && override.length > 0) return override
   const explicit = homeDir ?? process.env.KOBE_HOME_DIR
+  if (platform === "win32") return windowsPipePath(explicit || homedir(), "pty")
   if (explicit && explicit.length > 0) {
     return fitSocketPath(join(explicit, ".kobe", "pty.sock"), explicit, "pty")
   }

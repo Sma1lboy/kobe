@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "vitest"
-import { buildEngineSessionLaunch, engineSessionKey } from "../../src/engine/session-launch.ts"
+import { buildEngineSessionLaunch, engineLaunchLine, engineSessionKey } from "../../src/engine/session-launch.ts"
 
 const tempDirs: string[] = []
 
@@ -67,6 +67,32 @@ describe("hosted engine session launch", () => {
     expect(script).toContain("sleep 7;")
     expect(script).toContain("worktree-init")
     expect(script.indexOf("sh .kobe/init.sh")).toBeLessThan(script.indexOf("claude 'read the repo docs'"))
+  })
+
+  test("writes the init marker in the form the shell reads, not the OS's", () => {
+    // The marker is interpolated into a POSIX script that Git Bash runs.
+    // `[ -f 'C:\wt\.kobe\worktree-init\ab12' ]` reads `\w` as an escape, so
+    // the gate would never match and repo init would re-run on every launch.
+    const script = engineLaunchLine("claude", {
+      initScript: "echo hi",
+      markerPath: "C:\\wt\\.kobe\\worktree-init\\ab12",
+      platform: "win32",
+    })
+
+    expect(script).toContain("[ ! -f '/c/wt/.kobe/worktree-init/ab12' ]")
+    expect(script).toContain("mkdir -p '/c/wt/.kobe/worktree-init'")
+    expect(script).not.toContain("\\wt\\")
+  })
+
+  test("leaves a POSIX marker path exactly as it is", () => {
+    const script = engineLaunchLine("claude", {
+      initScript: "echo hi",
+      markerPath: "/repo/.kobe/worktree-init/ab12",
+      platform: "linux",
+    })
+
+    expect(script).toContain("[ ! -f '/repo/.kobe/worktree-init/ab12' ]")
+    expect(script).toContain("mkdir -p '/repo/.kobe/worktree-init'")
   })
 
   test("injects the worktree protocol only for regular tasks", () => {

@@ -1,0 +1,14 @@
+# Keep every text file LF in the working tree, on every OS.
+#
+# Windows checkouts default to `core.autocrlf=true`, which rewrites the tree to
+# CRLF. Biome is configured for LF, so without this a Windows contributor's very
+# first `bun run lint` reports every line of every file as changed — and any
+# `lint:fix` would commit a whole-repo line-ending churn.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp4 binary
+*.woff2 binary
