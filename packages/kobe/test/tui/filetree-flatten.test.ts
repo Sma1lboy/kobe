@@ -62,6 +62,25 @@ describe("statusRows / truncatePathTail", () => {
     ])
   })
 
+  test("renders an untracked dir collapsed with a count, children only when expanded", () => {
+    const entries = [
+      {
+        path: "assets/",
+        status: "?" as const,
+        added: 2,
+        deleted: 0,
+        children: [{ path: "assets/x.png", status: "?" as const }],
+      },
+    ]
+    expect(statusRows(entries)).toEqual([
+      { kind: "status", path: "assets/", status: "?", added: 2, deleted: 0, fileCount: 1, expanded: false },
+    ])
+    expect(statusRows(entries, new Set(["assets/"]))).toEqual([
+      { kind: "status", path: "assets/", status: "?", added: 2, deleted: 0, fileCount: 1, expanded: true },
+      { kind: "status", path: "assets/x.png", status: "?", added: undefined, deleted: undefined, child: true },
+    ])
+  })
+
   test("keeps the path TAIL when truncating (the filename carries the meaning)", () => {
     const truncated = truncatePathTail("src/components/sidebar/Sidebar.tsx", 20)
     expect(truncated.endsWith("Sidebar.tsx")).toBe(true)

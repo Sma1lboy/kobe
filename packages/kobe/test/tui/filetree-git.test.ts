@@ -27,6 +27,7 @@ vi.mock("../../src/worktree/content", async (importOriginal) => {
 })
 
 import {
+  attachUntrackedChildren,
   buildTree,
   listFiles,
   parseNameStatus,
@@ -117,12 +118,36 @@ describe("parseStatusEntries", () => {
     expect(parseStatusEntries("!! ignored.txt\n")).toEqual([])
   })
 
-  test("skips a trailing-slash directory row defensively", () => {
-    expect(parseStatusEntries("?? dir/\n")).toEqual([])
+  test("keeps an untracked directory row as a collapsed entry", () => {
+    expect(parseStatusEntries("?? dir/\n")).toEqual([{ path: "dir/", status: "?" }])
+  })
+
+  test("skips a trailing-slash row for any tracked status defensively", () => {
+    expect(parseStatusEntries("D  dir/\n")).toEqual([])
   })
 
   test("empty input yields no entries", () => {
     expect(parseStatusEntries("")).toEqual([])
+  })
+})
+
+describe("attachUntrackedChildren", () => {
+  test("attaches the untracked files beneath each untracked dir row", () => {
+    const entries = [
+      { path: "a.ts", status: "M" as const },
+      { path: "assets/", status: "?" as const },
+    ]
+    attachUntrackedChildren(entries, ["assets/x.png", "assets/sub/y.png", "loose.txt"])
+    expect(entries[1]).toEqual({
+      path: "assets/",
+      status: "?",
+      children: [
+        { path: "assets/x.png", status: "?" },
+        { path: "assets/sub/y.png", status: "?" },
+      ],
+    })
+    // Non-dir rows are untouched.
+    expect(entries[0]).toEqual({ path: "a.ts", status: "M" })
   })
 })
 
@@ -182,6 +207,30 @@ describe("statusFiles", () => {
     })
     const rows = await statusFiles("/repo")
     expect(rows).toEqual([{ path: "a.ts", status: "M", added: 3, deleted: 1 }])
+  })
+
+  test("collapses an untracked dir to one row with children + summed counts", async () => {
+    runGit.mockImplementation(async (_cwd, args) => {
+      if (args[0] === "status") return ok(" M a.ts\n?? assets/\n")
+      if (args[0] === "diff") return ok("3\t1\ta.ts\n")
+      if (args[0] === "ls-files") return ok("assets/x.txt\nassets/y.bin\n")
+      throw new Error(`unexpected args ${args.join(" ")}`)
+    })
+    readFile.mockImplementation(async (_cwd, rel) => (rel === "assets/x.txt" ? "one\ntwo\n" : "\u0000binary"))
+    const rows = await statusFiles("/repo")
+    expect(rows).toEqual([
+      { path: "a.ts", status: "M", added: 3, deleted: 1 },
+      {
+        path: "assets/",
+        status: "?",
+        added: 2,
+        deleted: 0,
+        children: [
+          { path: "assets/x.txt", status: "?", added: 2, deleted: 0 },
+          { path: "assets/y.bin", status: "?" },
+        ],
+      },
+    ])
   })
 
   test("falls back to the cached diff when `diff HEAD` fails (unborn branch)", async () => {

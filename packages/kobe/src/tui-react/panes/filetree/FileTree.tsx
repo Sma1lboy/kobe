@@ -288,7 +288,10 @@ export function FileTree(props: FileTreeProps) {
     if (tab === "all") {
       if (tree != null) flattenTree(tree, expandedDirs, 0, next)
     } else if (tab === "changes") {
-      if (changes != null) next.push(...statusRows(changes))
+      // `expandedDirs` doubles as the Changes-tab untracked-dir expansion set —
+      // status dir paths carry a trailing `/`, so the keys never collide with
+      // the All tab's slash-less dir paths.
+      if (changes != null) next.push(...statusRows(changes, expandedDirs))
     }
     const reconciled = reconcileRows(prevRows.current, next)
     prevRows.current = reconciled
@@ -315,10 +318,11 @@ export function FileTree(props: FileTreeProps) {
     else setExpandedDirs((prev) => toggleDir(prev, action.path))
   }
 
-  /** Shared enter/click activation: dirs toggle, files open. Stable (reads
+  /** Shared enter/click activation: dirs (All-tab dirs AND untracked-dir
+   *  status rows, whose paths end `/`) toggle, files open. Stable (reads
    *  the open handler via ref) so the memoized rows share ONE callback. */
   const activateRow = useCallback((row: Row): void => {
-    if (row.kind === "dir") setExpandedDirs((prev) => toggleDir(prev, row.path))
+    if (row.kind === "dir" || row.path.endsWith("/")) setExpandedDirs((prev) => toggleDir(prev, row.path))
     else onOpenFileRef.current(row.path)
   }, [])
 
@@ -354,13 +358,14 @@ export function FileTree(props: FileTreeProps) {
       },
       mentionCurrent: () => {
         const row = rows[cursorIndex]
-        // Only files make sense as an @mention; dirs are ignored.
-        if (!row || row.kind === "dir") return
+        // Only files make sense as an @mention; dirs (incl. untracked-dir
+        // status rows) are ignored.
+        if (!row || row.kind === "dir" || row.path.endsWith("/")) return
         props.onMention?.(row.path)
       },
       openExternal: () => {
         const row = rows[cursorIndex]
-        if (!row || row.kind === "dir") return
+        if (!row || row.kind === "dir" || row.path.endsWith("/")) return
         if (!props.worktreePath) return
         openExternally(`${props.worktreePath}/${row.path}`)
       },
@@ -376,7 +381,7 @@ export function FileTree(props: FileTreeProps) {
       },
       openDiff: () => {
         const row = rows[cursorIndex]
-        if (!row || row.kind === "dir") return
+        if (!row || row.kind === "dir" || row.path.endsWith("/")) return
         // Branch scope diffs vs the resolved base; working scope vs HEAD.
         props.onOpenDiff?.(row.path, scope === "branch" && base != null ? base : undefined)
       },

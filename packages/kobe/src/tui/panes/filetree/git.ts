@@ -56,6 +56,9 @@ export type StatusEntry = {
   added?: number | null
   /** Lines deleted vs HEAD. `null` for binary or unknown. */
   deleted?: number | null
+  /** Untracked DIRECTORY rows only (path ends `/`): the untracked files
+   * beneath it, rendered when the row is expanded. */
+  children?: StatusEntry[]
 }
 
 /** A row from `git diff HEAD --numstat`. */
@@ -120,12 +123,13 @@ export async function listFiles(worktreePath: string, signal?: AbortSignal): Pro
  * like `R  old -> new` — we keep only the "new" path and report `R`.
  */
 export async function statusFiles(worktreePath: string, signal?: AbortSignal): Promise<StatusEntry[]> {
-  // `--untracked-files=all`: without it, `git status --porcelain` collapses a
-  // fully-untracked directory into ONE `?? dir/` row, which the Changes tab
-  // then renders as a bare directory (no +/- stats, no file to open). `-uall`
-  // expands it to the individual untracked files — matching the All tab's
-  // `git ls-files --others` enumeration and respecting .gitignore the same way.
-  const out = await runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath, signal)
+  // Default untracked mode: git collapses a FULLY-untracked directory into one
+  // `?? dir/` row (it never does this for a directory that also holds tracked
+  // files). We keep that row as a single collapsed entry — an untracked asset
+  // dump shouldn't drown the tracked changes — and attach the files beneath it
+  // as `children` (one `ls-files --others` pass) so the row can expand on
+  // demand and carry a file count + summed line count.
+  const out = await runGit(["status", "--porcelain"], worktreePath, signal)
   const entries = parseStatusEntries(out)
   // Merge in `git diff HEAD --numstat` so each row carries +/- counts.
   // Untracked files don't appear in `git diff` output — for those we
@@ -155,13 +159,30 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
     if (s) return { ...e, added: s.added, deleted: s.deleted }
     return e
   })
+  // Attach the files beneath each untracked-directory row. Failures leave the
+  // dir row bare (no children, no count) — still a valid collapsed entry.
+  if (merged.some(isUntrackedDir)) {
+    try {
+      const others = (await runGit(["ls-files", "--others", "--exclude-standard", "--full-name"], worktreePath, signal))
+        .split("\n")
+        .filter((l) => l.length > 0)
+      attachUntrackedChildren(merged, others)
+    } catch {
+      // ls-files failed — dir rows render without a count.
+    }
+  }
   // Untracked files never appear in `git diff --numstat`, so the merge above
   // leaves their `added` blank. Count their lines on disk (all lines are
   // "added" against nothing; deleted stays 0) so the Changes tab shows how big
   // each new file is. Unreadable/binary reads fall through to blank rather than
   // guessing. Runs in parallel — a big untracked drop is rare but shouldn't
   // serialize dozens of reads.
-  const untracked = merged.filter((e) => e.status === "?" && e.added == null)
+  const untracked: StatusEntry[] = []
+  for (const e of merged) {
+    if (e.status !== "?") continue
+    if (e.children) untracked.push(...e.children)
+    else if (e.added == null && !e.path.endsWith("/")) untracked.push(e)
+  }
   if (untracked.length > 0) {
     await Promise.all(
       untracked.map(async (e) => {
@@ -173,7 +194,41 @@ export async function statusFiles(worktreePath: string, signal?: AbortSignal): P
       }),
     )
   }
+  // Roll the children's counts up onto their directory row so the collapsed
+  // row still says how big the drop is. All-binary children leave it blank.
+  for (const e of merged) {
+    if (!e.children) continue
+    let sum = 0
+    let counted = false
+    for (const c of e.children) {
+      if (c.added != null) {
+        sum += c.added
+        counted = true
+      }
+    }
+    if (counted) {
+      e.added = sum
+      e.deleted = 0
+    }
+  }
   return merged
+}
+
+/** An untracked-directory status row (default-mode `?? dir/`). */
+export function isUntrackedDir(e: StatusEntry): boolean {
+  return e.status === "?" && e.path.endsWith("/")
+}
+
+/**
+ * Attach to each untracked-directory entry the untracked files beneath it,
+ * from one `git ls-files --others --exclude-standard` listing. Pure —
+ * exported for unit tests. Mutates the entries in place.
+ */
+export function attachUntrackedChildren(entries: StatusEntry[], others: readonly string[]): void {
+  for (const e of entries) {
+    if (!isUntrackedDir(e)) continue
+    e.children = others.filter((p) => p.startsWith(e.path)).map((p) => ({ path: p, status: "?" as const }))
+  }
 }
 
 /**
@@ -401,11 +456,10 @@ export function parseStatusEntries(raw: string): StatusEntry[] {
     }
     const path = row.path
     if (path.length === 0) continue
-    // Defensive: the Changes tab is a flat list of FILES. `-uall` expands
-    // untracked directories to their files, but skip any trailing-slash dir
-    // row that still slips through (older git, a future flag) so a directory
-    // never renders as a change entry.
-    if (path.endsWith("/")) continue
+    // Trailing-slash rows: an untracked DIRECTORY (default-mode `?? dir/`) is
+    // kept as a collapsed entry — {@link statusFiles} attaches its files as
+    // children. Any other dir row would be garbage; skip defensively.
+    if (path.endsWith("/") && status !== "?") continue
     out.push({ path, status })
   }
   return out

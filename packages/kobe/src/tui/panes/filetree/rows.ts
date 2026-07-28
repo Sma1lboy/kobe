@@ -35,6 +35,11 @@ export type Row =
       status: FileStatus
       added: number | null | undefined
       deleted: number | null | undefined
+      /** Untracked-directory rows only: file count + expansion state. */
+      fileCount?: number
+      expanded?: boolean
+      /** True for a file row emitted under an expanded untracked dir. */
+      child?: boolean
     }
 
 /** Flatten the visible portion of a built tree into render rows. */
@@ -69,15 +74,37 @@ export function truncatePathTail(path: string, max: number): string {
   return truncateStart(path, max)
 }
 
-/** Map a status entry list to Changes-tab rows. */
-export function statusRows(entries: readonly StatusEntry[]): Row[] {
-  return entries.map((e) => ({
-    kind: "status" as const,
-    path: e.path,
-    status: e.status,
-    added: e.added,
-    deleted: e.deleted,
-  }))
+const NO_EXPANSION: ReadonlySet<string> = new Set()
+
+/**
+ * Map a status entry list to Changes-tab rows. An entry carrying `children`
+ * (an untracked directory) renders as one collapsed row with a file count;
+ * when its path is in `expanded`, its children follow as indented file rows.
+ */
+export function statusRows(entries: readonly StatusEntry[], expanded: ReadonlySet<string> = NO_EXPANSION): Row[] {
+  const out: Row[] = []
+  for (const e of entries) {
+    if (e.children == null) {
+      out.push({ kind: "status", path: e.path, status: e.status, added: e.added, deleted: e.deleted })
+      continue
+    }
+    const isOpen = expanded.has(e.path)
+    out.push({
+      kind: "status",
+      path: e.path,
+      status: e.status,
+      added: e.added,
+      deleted: e.deleted,
+      fileCount: e.children.length,
+      expanded: isOpen,
+    })
+    if (isOpen) {
+      for (const c of e.children) {
+        out.push({ kind: "status", path: c.path, status: c.status, added: c.added, deleted: c.deleted, child: true })
+      }
+    }
+  }
+  return out
 }
 
 /** Identity key for a row — kind + path is unique within one tab's list. */
@@ -99,7 +126,14 @@ function rowEquals(a: Row, b: Row): boolean {
     }
     case "status": {
       const o = b as Extract<Row, { kind: "status" }>
-      return a.status === o.status && a.added === o.added && a.deleted === o.deleted
+      return (
+        a.status === o.status &&
+        a.added === o.added &&
+        a.deleted === o.deleted &&
+        a.fileCount === o.fileCount &&
+        a.expanded === o.expanded &&
+        a.child === o.child
+      )
     }
   }
 }
@@ -134,7 +168,9 @@ export function sameFileList(a: string[] | null, b: string[] | null): boolean {
   return true
 }
 
-/** Content equality for the `changes` signal (status + numstat rows). */
+/** Content equality for the `changes` signal (status + numstat rows).
+ * Compares one level of untracked-dir `children` too — a refresh that only
+ * adds/removes files inside a collapsed dir must still notify. */
 export function sameStatusEntries(a: StatusEntry[] | null, b: StatusEntry[] | null): boolean {
   if (a === b) return true
   if (a == null || b == null) return false
@@ -143,6 +179,18 @@ export function sameStatusEntries(a: StatusEntry[] | null, b: StatusEntry[] | nu
     const x = a[i] as StatusEntry
     const y = b[i] as StatusEntry
     if (x.path !== y.path || x.status !== y.status || x.added !== y.added || x.deleted !== y.deleted) return false
+    const xc = x.children
+    const yc = y.children
+    if ((xc == null) !== (yc == null)) return false
+    if (xc && yc) {
+      if (xc.length !== yc.length) return false
+      for (let j = 0; j < xc.length; j++) {
+        const cx = xc[j] as StatusEntry
+        const cy = yc[j] as StatusEntry
+        if (cx.path !== cy.path || cx.status !== cy.status || cx.added !== cy.added || cx.deleted !== cy.deleted)
+          return false
+      }
+    }
   }
   return true
 }

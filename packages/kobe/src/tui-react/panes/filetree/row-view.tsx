@@ -86,7 +86,15 @@ export const FileTreeRowView = memo(function FileTreeRowView(props: FileTreeRowP
       </box>
     )
   }
-  // Changes row: status char + path + +N -N stats.
+  // Changes row: status char + path + +N -N stats. An untracked-directory
+  // row (fileCount set) renders collapsed with a ▸/▾ marker and a file
+  // count, in muted text — an asset dump shouldn't shout over tracked
+  // changes; its children indent two cells when expanded.
+  const isUntrackedDir = row.fileCount !== undefined
+  const marker = isUntrackedDir ? (row.expanded ? "▾ " : "▸ ") : ""
+  const countSuffix = isUntrackedDir ? ` (${row.fileCount})` : ""
+  const indent = row.child ? "  " : ""
+  const pathBudget = props.pathBudget - marker.length - countSuffix.length - indent.length
   const tone = statusToken(row.status)
   const statusColor =
     tone === "success"
@@ -105,8 +113,8 @@ export const FileTreeRowView = memo(function FileTreeRowView(props: FileTreeRowP
         <text fg={statusColor} wrapMode="none">
           {row.status}
         </text>
-        <text fg={theme.text} wrapMode="none" flexGrow={1}>
-          {truncatePathTail(row.path, props.pathBudget)}
+        <text fg={isUntrackedDir ? theme.textMuted : theme.text} wrapMode="none" flexGrow={1}>
+          {`${indent}${marker}${truncatePathTail(row.path, pathBudget)}${countSuffix}`}
         </text>
         {props.statWidths.added > 0 ? (
           <text fg={theme.success} wrapMode="none">
