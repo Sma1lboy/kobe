@@ -159,6 +159,15 @@ export interface TaskPtyLike {
    */
   unwatchedSinceMs?(): number | null
   /**
+   * Epoch ms of the last LIVE output chunk (replays excluded), null before
+   * any. The park sweep's QUIET signal: an actively-streaming session must
+   * not be parked — its delta outruns the host ring (degraded wake), the
+   * park can split an escape sequence (serialize carries no parser state),
+   * and the degraded wake's repaint wiggle coalesces under a live stream.
+   * Backends without it are treated as quiet.
+   */
+  lastOutputAtMs?(): number | null
+  /**
    * Snapshot everything a parked tab needs for a lossless wake (see
    * {@link ParkedScreen}) — the park sweep calls this right before
    * `detach()` and hands the result to the next `acquire()` as

@@ -56,6 +56,11 @@ export type AcquireOpts = Omit<TaskPtyOpts, "taskId" | "cwd">
 export const PARK_AFTER_MS = 120_000
 /** Cadence of the park sweep. */
 const PARK_SWEEP_MS = 30_000
+/** A session that produced output within this window is ACTIVE — never park
+ *  it (see `TaskPtyLike.lastOutputAtMs`: an active stream defeats all three
+ *  legs of the lossless wake). It stays resident and the next sweep
+ *  re-checks. */
+export const PARK_QUIET_MS = 30_000
 
 /**
  * Factory for the underlying `TaskPty`. Defaults to `createTaskPty`
@@ -107,6 +112,13 @@ export class PtyRegistry {
       if (!pty.detach || !pty.unwatchedSinceMs) continue
       const since = pty.unwatchedSinceMs()
       if (since === null || now - since < idleMs) continue
+      // Quiet gate: a hidden tab whose child is still streaming (claude
+      // working in the background) keeps its emulator resident — parking
+      // it is exactly the "input box gone on wake" bug (2026-07-10 and
+      // again 2026-07-27): the delta outruns the 512KB host ring, and the
+      // degraded wake's repaint wiggle coalesces under an active stream.
+      const lastOut = pty.lastOutputAtMs?.() ?? null
+      if (lastOut !== null && now - lastOut < PARK_QUIET_MS) continue
       const screen = pty.capturePark?.() ?? null
       try {
         pty.detach({

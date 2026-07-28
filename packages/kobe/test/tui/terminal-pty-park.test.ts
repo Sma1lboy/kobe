@@ -17,12 +17,14 @@ import { describe, expect, it } from "vitest"
 import { MockTaskPty } from "../../src/tui/panes/terminal/pty-mock"
 import type { ParkedScreen, TaskPtyOpts } from "../../src/tui/panes/terminal/pty-types"
 import { XtermTaskPty } from "../../src/tui/panes/terminal/pty-xterm-base"
-import { PtyRegistry } from "../../src/tui/panes/terminal/registry"
+import { PARK_QUIET_MS, PtyRegistry } from "../../src/tui/panes/terminal/registry"
 
 /** Persistent-backend stand-in: detachable, with the real unwatched clock. */
 class ParkableFakePty extends MockTaskPty {
   detached = false
   private unwatchedSince: number | null
+  /** Test seam: last live output — null (never) unless a test sets it. */
+  lastOutputAt: number | null = null
   /** Test seam: park-state capture, overridden per test. */
   capturePark: (() => ParkedScreen | null) | undefined
 
@@ -37,6 +39,10 @@ class ParkableFakePty extends MockTaskPty {
 
   unwatchedSinceMs(): number | null {
     return this.unwatchedSince
+  }
+
+  lastOutputAtMs(): number | null {
+    return this.lastOutputAt
   }
 }
 
@@ -70,6 +76,26 @@ describe("PtyRegistry.parkIdle", () => {
     expect(reg.parkIdle(IDLE, NOW)).toEqual([])
     expect(fakes.every((f) => !f.detached)).toBe(true)
     expect(reg.size).toBe(2)
+  })
+
+  it("never parks a hidden handle whose child is still streaming (quiet gate)", () => {
+    // An active stream defeats the lossless wake three ways (ring overflow,
+    // split escape sequence, coalesced repaint wiggle) — the sweep must
+    // leave it resident and re-check next round.
+    let fake: ParkableFakePty | undefined
+    const reg = new PtyRegistry((opts) => {
+      fake = new ParkableFakePty(opts, NOW - IDLE - 1)
+      fake.lastOutputAt = NOW - 1_000 // streamed a second ago
+      return fake
+    })
+    reg.acquire("t::tab-1", "/wt")
+    expect(reg.parkIdle(IDLE, NOW)).toEqual([])
+    expect(fake?.detached).toBe(false)
+
+    // Once the stream has been quiet past the window, it parks normally.
+    if (fake) fake.lastOutputAt = NOW - PARK_QUIET_MS
+    expect(reg.parkIdle(IDLE, NOW)).toEqual(["t::tab-1"])
+    expect(fake?.detached).toBe(true)
   })
 
   it("never parks a non-persistent backend (no detach — dropping it would kill the shell)", () => {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.20
+
+### Patch Changes
+
+- f959042: Agent-driven fan-out gets an honest completion contract: a worker files an explicit verdict with `kobe api report --outcome succeeded|failed` (stored verbatim on the task as `workerReport` — the worker's claim, never kobe-verified or inferred from prose/exit codes), and a coordinator blocks poll-free on `kobe api await --task-ids a,b,c` until every task settles or the timeout returns a `timedOut: true` checkpoint (exit 0 — silence never proves worker death). The agent skill (v6) now teaches both sides of the contract.
+- 0d5b903: feat: `kobe api read-output` — structured, cursor-paged read of a task's engine session output. Auto-selects the engine adapter's own transcript history (bounded pages, deterministic pagination, opaque source-pinned cursors, no transcript-path leakage) and falls back to a bounded terminal tail with a typed `fallbackReason` (`engine_unsupported` / `history_missing` / `history_unreadable`); a changed session or process incarnation returns a typed `SOURCE_CHANGED` error instead of silently switching. Backed by a new read-only `pty.peek` host verb that snapshots a session's ring buffer without attaching, spawning, or resizing.
+- 111e83f: `kobe api` rejections are now self-healing for agent callers: high-traffic errors (unknown verb, unknown/invalid task id, daemon unreachable, malformed flags on the fan-out path, bad `--vendor`/enum values) carry a machine-actionable `hint` plus `nextCommandArgs` — argv for the same `kobe` executable the caller can run verbatim to recover (e.g. `["api","list"]` after the new typed `TASK_NOT_FOUND`). The envelope stays `{"error":{"message","code",...}}`, so existing consumers are unaffected.
+- c83bf54: Harden the auto branch-follow that renames a placeholder task's branch from its first prompt: never rename a branch that has an upstream (or when the probe fails — ambiguity keeps the old name), and resolve a collision with an existing local branch to a `-2`/`-3`… suffixed unique name instead of silently keeping the placeholder.
+- 6d614dd: Line-anchored review notes in the diff tab: move a line cursor over the read-only diff (j/k), mark a range (v), attach a short note (c — the shared text-prompt dialog), and send every unsent note for the task to its engine session as one batched prompt (s). Notes are per-task, kv-persisted (they survive pane switches and TUI restarts), and the prompt format (File / Line-or-range / quote-escaped User comment) is a pure shared function with unit tests. Chords are proposed pending owner sign-off.
+- e85b72d: Diff review keys (j/k, v, c, s) settled and listed in F1 help
+- 0ac48e7: test: lock in the task/worktree removal ordering — a dirty non-force delete is refused by the preflight before any session/PTY teardown (daemon handler, CLI verb, and orchestrator levels), orphaned worktrees still fall through to cleanup, and force semantics are unchanged.
+
 ## 0.8.19
 
 ### Patch Changes

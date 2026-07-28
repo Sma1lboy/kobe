@@ -23,119 +23,21 @@
  * flushed after the replay, so nothing is lost or reordered.
  */
 
-import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
-import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
-import type { PtyDataEventPayload, PtyExitEventPayload, PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { SerializeAddon } from "@xterm/addon-serialize"
-import { type ParkedScreen, type PtyDetachOpts, type TaskPtyOpts, defaultShell } from "./pty-types"
+import { getSharedPtyClient, routeAdd, routeCount, routeRemove } from "./pty-hosted-client"
+import type { ParkedScreen, PtyDetachOpts, TaskPtyOpts } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
 import { xtermCursorHidden } from "./xterm-refresh"
 
-/**
- * One shared pty-host connection for every HostedTaskPty in this process
- * (the host speaks the daemon frame grammar, so the same client class
- * works). Spawns the host if none is running — the terminal pane is the
- * product; it may resurrect an idle-exited host.
- */
-let shared: Promise<KobeDaemonClient> | null = null
+export { warmHostedShell } from "./pty-hosted-client"
 
-/**
- * Key → live handles, for O(1) inbound routing. The client's `emit()` walks
- * its whole `pty.data`/`pty.exit` handler Set per frame, so one `on()` per
- * open tab made every interactive `claude` chunk cost N handler calls +
- * N key-compares (N-1 pure rejections) on the busiest path. Instead we
- * install ONE dispatcher per shared client (see `installDispatch`) that
- * does a single map lookup. Each handle adds itself here on open and the
- * `cleanup()` teardown route (`detach`/`kill`/`park`/socket-close all pass
- * through it) removes it — so a dead tab never receives a stray chunk.
- *
- * A SET per key, not a single handle: two live handles for one key are
- * legal (a second viewer of the same session), and a single-slot map let
- * the newcomer silently STEAL the route — the first handle froze on its
- * last frame with the child still streaming (the "UI is gone but it's
- * still running" bug). Every handle for the key gets every frame; each
- * keeps its own xterm.
- */
-const hostedByKey = new Map<string, Set<HostedTaskPty>>()
-
-/** Register `handle` as a live route for its key. */
-function routeAdd(handle: HostedTaskPty): void {
-  let set = hostedByKey.get(handle.taskId)
-  if (!set) {
-    set = new Set()
-    hostedByKey.set(handle.taskId, set)
-  }
-  set.add(handle)
-}
-
-/** Drop `handle` from the route table. Returns how many siblings remain. */
-function routeRemove(handle: HostedTaskPty): number {
-  const set = hostedByKey.get(handle.taskId)
-  if (!set) return 0
-  set.delete(handle)
-  if (set.size === 0) hostedByKey.delete(handle.taskId)
-  return set.size
-}
-
-/** Guards the one-time dispatcher install per client instance. */
-const dispatchInstalled = new WeakSet<KobeDaemonClient>()
-
-/**
- * Install the single per-frame router on a shared client. Both `pty.data`
- * and `pty.exit` fan out to exactly one map lookup; unknown keys (a dead
- * handle's late frame, a key from another process) drop silently — the same
- * behavior the old per-handle `payload.key === this.taskId` guard gave, but
- * O(1) instead of O(open-tabs).
- */
-function installDispatch(client: KobeDaemonClient): void {
-  if (dispatchInstalled.has(client)) return
-  dispatchInstalled.add(client)
-  client.on("pty.data", (frame) => {
-    const payload = frame.payload as PtyDataEventPayload
-    const handles = hostedByKey.get(payload.key)
-    if (handles) for (const handle of handles) handle.feedFrame(payload.data)
-  })
-  client.on("pty.exit", (frame) => {
-    const payload = frame.payload as PtyExitEventPayload
-    const handles = hostedByKey.get(payload.key)
-    // Copy: remoteExited → cleanup mutates the set mid-iteration.
-    if (handles) for (const handle of [...handles]) handle.remoteExited(payload.pid)
-  })
-}
-
-function getSharedPtyClient(): Promise<KobeDaemonClient> {
-  if (shared) return shared
-  const p = (async () => {
-    const socketPath = await ensurePtyHostReachable()
-    const client = new KobeDaemonClient(socketPath)
-    await client.connect()
-    installDispatch(client)
-    client.onLifecycle("close", () => {
-      if (shared === p) shared = null
-    })
-    return client
-  })()
-  p.catch(() => {
-    if (shared === p) shared = null
-  })
-  shared = p
-  return p
-}
-
-/**
- * Ask the pty host to pre-spawn one idle shell for `cwd` (`pty.warm`) so
- * the next shell-wrapped engine tab adopts an ALREADY-initialized shell
- * (rc files done) instead of paying shell startup. Fire-and-forget and
- * best-effort: a host that predates the verb (or no hosted backend at
- * all) simply means the next spawn is cold.
- */
-export function warmHostedShell(cwd: string, shell: string = defaultShell()): void {
-  if ((process.env.KOBE_TERMINAL_BACKEND ?? "hosted") !== "hosted") return
-  void getSharedPtyClient()
-    .then((client) => client.request("pty.warm", { cwd, shell }))
-    .catch(() => {})
-}
+/** Minimum gap between the repaint wiggle's shrink and restore resizes —
+ *  zero-gap TIOCSWINSZ pairs coalesce into ONE SIGWINCH at the unchanged
+ *  final size, which size-comparing apps (claude) ignore. */
+const WIGGLE_MIN_GAP_MS = 150
 
 export class HostedTaskPty extends XtermTaskPty {
   private client: KobeDaemonClient | null = null
@@ -272,8 +174,12 @@ export class HostedTaskPty extends XtermTaskPty {
         // arrive before restoring; macOS can schedule a shell's trap one
         // tick later than the resize frame, so leave a bounded half-second
         // for it. The timeout still covers children that do not repaint on
-        // WINCH at all (a plain shell).
-        await this.nextDataOrTimeout(500)
+        // WINCH at all (a plain shell). The data-wait alone is defeated by
+        // an ACTIVELY-STREAMING child — its ordinary output frame lands ms
+        // after the shrink and races the restore back into the coalescing
+        // ("input box gone", 2026-07-27) — so a floor keeps a real gap
+        // between the two TIOCSWINSZ (see WIGGLE_MIN_GAP_MS).
+        await Promise.all([this.nextDataOrTimeout(500), new Promise((r) => setTimeout(r, WIGGLE_MIN_GAP_MS))])
         if (!this.killed) this.sendResize(this.cols, this.rows)
       }
     } catch (err) {
@@ -392,7 +298,7 @@ export class HostedTaskPty extends XtermTaskPty {
     // handle for the key. Detach the host side only when we were the LAST
     // local viewer; sending it with a sibling still attached would starve
     // the survivor's stream.
-    const siblings = hostedByKey.get(this.taskId)?.size ?? 0
+    const siblings = routeCount(this.taskId)
     if (client && siblings === 0) {
       void client
         .request("pty.detach", {
@@ -416,6 +322,14 @@ export class HostedTaskPty extends XtermTaskPty {
   /** One-shot resolver armed by {@link nextDataOrTimeout}. */
   private dataWaiter: (() => void) | null = null
 
+  /** See `TaskPtyLike.lastOutputAtMs` — live frames only (replays arrive in
+   *  the open response, never through {@link feedFrame}). */
+  private _lastOutputAt: number | null = null
+
+  lastOutputAtMs(): number | null {
+    return this._lastOutputAt
+  }
+
   /** Resolve on the next inbound `pty.data` frame, or after `ms`. */
   protected nextDataOrTimeout(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
@@ -437,6 +351,7 @@ export class HostedTaskPty extends XtermTaskPty {
    */
   feedFrame(dataB64: string): void {
     this.dataWaiter?.()
+    this._lastOutputAt = Date.now()
     const buf = Buffer.from(dataB64, "base64")
     // Frames only count once the open response set the baseline: anything
     // routed to us earlier (a sibling handle's stream) is already inside
