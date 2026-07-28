@@ -7,7 +7,9 @@
  * here.
  */
 
+import type { TaskWorkerReport } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
+import { matchTaskByCwd } from "./cwd-task.ts"
 import { optionalBoolean, optionalString, optionalVendor, requireString } from "./handler-validators.ts"
 import type { DaemonHandlerContext, DaemonRequestHandler } from "./handlers.ts"
 import { serializeTask } from "./protocol.ts"
@@ -167,6 +169,34 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         }
       }
       return {}
+    },
+  },
+  {
+    name: "task.report",
+    async handle(payload, ctx) {
+      // A worker's explicit terminal outcome (`kobe api report`). Stored
+      // VERBATIM as the task's `workerReport` — worker report, not
+      // kobe-verified: the daemon never infers, upgrades, or gates it. The
+      // store write fans out on `task.snapshot`, which is what a
+      // coordinator's `kobe api await` settles on. `taskId` wins when
+      // present; otherwise `cwd` resolves by worktree path like
+      // `engine.reportEvent` — but an unmatched report is an ERROR here,
+      // not a silent drop: losing a worker's verdict must be loud.
+      const outcome = requireString(payload, "outcome")
+      if (outcome !== "succeeded" && outcome !== "failed") {
+        throw new Error("outcome must be succeeded or failed")
+      }
+      const explicitId = optionalString(payload, "taskId")
+      const cwd = optionalString(payload, "cwd")
+      const taskId = explicitId ?? (cwd ? matchTaskByCwd(ctx.orch.listTasks(), cwd) : undefined)
+      if (!taskId) throw new Error("task.report: taskId is required (or a cwd inside a task's worktree)")
+      const report: TaskWorkerReport = {
+        outcome,
+        summary: optionalString(payload, "summary"),
+        reportedAt: new Date().toISOString(),
+      }
+      await ctx.orch.setWorkerReport(taskId, report)
+      return { taskId, workerReport: report }
     },
   },
   {

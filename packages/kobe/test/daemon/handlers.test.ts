@@ -3,7 +3,6 @@ import {
   type DaemonHandlerContext,
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
-  shapeDaemonError,
 } from "@sma1lboy/kobe-daemon/daemon/server"
 import { describe, expect, it } from "vitest"
 import type { Task } from "../../src/types/task.ts"
@@ -82,6 +81,7 @@ describe("daemon handler registry", () => {
       "task.pin",
       "task.move",
       "task.status",
+      "task.report",
       "task.reorder",
       "task.ensureMain",
       "task.openDir",
@@ -496,23 +496,5 @@ describe("daemon handler registry", () => {
     })
   })
 
-  describe("error shaping (one place decides the wire error)", () => {
-    it("an unknown request keeps the legacy message", async () => {
-      const { ctx } = fakeCtx()
-      // e.g. a v2 client's removed `daemon.web.start` must still get this.
-      await expect(dispatch("daemon.web.start", {}, ctx)).rejects.toThrow("unknown daemon request: daemon.web.start")
-    })
-
-    it("shapeDaemonError matches the historical on-the-wire shape exactly", () => {
-      // Error instance → message + name ("Error" serializes onto the wire).
-      expect(shapeDaemonError(new Error("boom"))).toEqual({ message: "boom", name: "Error" })
-      const typed = new TypeError("bad type")
-      expect(shapeDaemonError(typed)).toEqual({ message: "bad type", name: "TypeError" })
-      // Non-Error throw → String() coercion, name undefined (dropped by
-      // JSON.stringify, so the key never appears on the wire — pinned here).
-      const shaped = shapeDaemonError("plain string")
-      expect(shaped).toEqual({ message: "plain string", name: undefined })
-      expect(JSON.stringify(shaped)).toBe('{"message":"plain string"}')
-    })
-  })
+  // "error shaping" moved to handlers-error-shape.test.ts (file-size cap).
 })

@@ -51,6 +51,7 @@
  *   - `./api/handler-helpers.ts`  — daemonOf / simpleRpc
  *   - `./api/handlers-tasks.ts`   — task CRUD + prompt-delivery handlers
  *   - `./api/handlers-fanout.ts`  — fan-out / collect / feedback handlers
+ *   - `./api/handlers-outcome.ts` — supervision verbs (worker `report` / coordinator `await`)
  *   - `./api/verbs.ts`            — the VERBS table binding specs to handlers
  */
 

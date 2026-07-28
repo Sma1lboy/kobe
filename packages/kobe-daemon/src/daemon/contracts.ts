@@ -25,6 +25,17 @@ export interface TaskPRStatus {
   readonly lastError?: string
 }
 
+/**
+ * A worker's SELF-REPORTED terminal outcome (`task.report`). The field name
+ * carries the provenance: this is the worker's claim, never verified by kobe.
+ */
+export interface TaskWorkerReport {
+  readonly outcome: "succeeded" | "failed"
+  readonly summary?: string
+  /** ISO-8601, stamped by the daemon when the report arrived. */
+  readonly reportedAt: string
+}
+
 export interface DaemonTask {
   readonly id: string
   readonly title: string
@@ -40,6 +51,7 @@ export interface DaemonTask {
   readonly position?: number
   readonly modelEffort?: string
   readonly groupId?: string
+  readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
   readonly createdAt: string
   readonly updatedAt: string
@@ -89,6 +101,8 @@ export interface DaemonOrchestrator {
   setArchived(id: string, archived?: boolean): Promise<void>
   setStatus(id: string, status: TaskStatus): Promise<void>
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
+  /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
+  setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
   deleteTask(id: string, options?: { force?: boolean }): Promise<void>
   prepareTaskDeletion(id: string, options?: { force?: boolean }): Promise<boolean>

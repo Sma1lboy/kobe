@@ -8,7 +8,7 @@ import { type ReadableState, type StateCell, createStateCell } from "../lib/exte
 import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-active.ts"
 import { getRemoteRepoConfig, getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
-import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
+import type { Task, TaskId, TaskPRStatus, TaskStatus, TaskWorkerReport, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { canonPath, normalizeMainRepo, randomDirTaskSuffix, titleFromRepo } from "./core-helpers.ts"
@@ -365,6 +365,11 @@ export class Orchestrator {
   /** Set (or clear, with `null`) a task's PR status — driven by the daemon's collector. */
   async setPRStatus(id: TaskId | string, prStatus: TaskPRStatus | null): Promise<void> {
     return this.editor.setPRStatus(id, prStatus)
+  }
+
+  /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
+  async setWorkerReport(id: TaskId | string, report: TaskWorkerReport): Promise<void> {
+    return this.editor.setWorkerReport(id, report)
   }
 
   /**

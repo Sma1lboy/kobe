@@ -6,8 +6,9 @@ import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
 import type { TaskStatus } from "../../types/task.ts"
 import { ALL_VENDORS, type VendorId } from "../../types/vendor.ts"
 import { FANOUT_CAP } from "./flags.ts"
-import { simpleRpc } from "./handler-helpers.ts"
+import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
+import { OUTCOME_VERBS } from "./handlers-outcome.ts"
 import {
   add,
   adopt,
@@ -39,28 +40,6 @@ import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./type
  * module that itself imports `VERBS` back from here would still be
  * `undefined` at that point (load-order circular-import hazard).
  */
-/**
- * `pty-list` — inventory of the standalone pty host's sessions (key, pid,
- * command, live OSC window title — the same "实时进程名" stream the TUI tab
- * strip shows). Talks to the PTY HOST socket, not the daemon (offline verb),
- * and never spawns a host: no host running simply means no sessions.
- */
-async function handlePtyList(): Promise<unknown> {
-  const [{ KobeDaemonClient }, { defaultPtyHostSocketPath }] = await Promise.all([
-    import("@sma1lboy/kobe-daemon/client"),
-    import("@sma1lboy/kobe-daemon/daemon/paths"),
-  ])
-  const client = new KobeDaemonClient(defaultPtyHostSocketPath())
-  try {
-    await client.connect()
-    return await client.request("pty.list", {})
-  } catch {
-    return { sessions: [] }
-  } finally {
-    client.close()
-  }
-}
-
 async function handleSchema(ctx: VerbContext): Promise<unknown> {
   const verbName = ctx.args.str("verb")
   if (verbName) {
@@ -125,6 +104,7 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   read: ["list", "get-task", "collect", "pty-list"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
+  supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   lifecycle: ["archive", "pin", "land", "delete"],
@@ -367,6 +347,9 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: collect,
   },
+  // Supervision (worker `report` / coordinator `await`) — specs + handlers
+  // live in ./handlers-outcome.ts; spread keeps this table the single index.
+  ...OUTCOME_VERBS,
   {
     name: "rename",
     summary: "Set a task's title.",
