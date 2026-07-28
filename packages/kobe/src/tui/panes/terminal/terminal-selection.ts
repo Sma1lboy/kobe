@@ -97,8 +97,18 @@ function sliceTextByCells(text: string, from: number, to: number): CellSlice {
 
 /**
  * Extract the selected text: per-row slice by span, trailing whitespace
- * trimmed per line (terminal rows are space-padded to the grid width),
- * lines joined with \n.
+ * trimmed per line, lines joined with \n.
+ *
+ * Snapshot rows are TRIMMED, not grid-padded (`xtermLineToChunks` drops
+ * trailing blank cells), so a row's text can be shorter than the grid. The
+ * mouse column, however, is clamped to the grid width — a drag can anchor in
+ * the blank padding past a short line. When that happens on a multi-row
+ * selection's FIRST row, its selected slice is empty. The loop only visits
+ * rows within `[start.row, end.row]`, so a null span here always means "in
+ * selection, empty slice" (rowSpan's out-of-range null can't occur inside
+ * these bounds) — it must still contribute an empty line so the newline
+ * survives, matching what `overlaySelection` highlights. Dropping it collapsed
+ * two visibly-selected lines into one on copy.
  */
 export function extractSelection(rows: readonly (readonly Chunk[])[], range: SelectionRange): string {
   const { start, end } = orderRange(range)
@@ -106,8 +116,7 @@ export function extractSelection(rows: readonly (readonly Chunk[])[], range: Sel
   for (let r = Math.max(0, start.row); r <= Math.min(rows.length - 1, end.row); r++) {
     const text = rowText(rows[r] ?? [])
     const span = rowSpan(range, r, Math.max(textCells(text), 1))
-    if (!span) continue
-    lines.push(sliceTextByCells(text, span[0], span[1]).selected.trimEnd())
+    lines.push(span ? sliceTextByCells(text, span[0], span[1]).selected.trimEnd() : "")
   }
   return lines.join("\n")
 }
