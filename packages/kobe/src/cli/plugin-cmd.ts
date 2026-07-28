@@ -161,6 +161,18 @@ function shq(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`
 }
 
+/** Resolve `<plugin-id>.<pane-id>` (plugin ids may contain dots — longest registered prefix wins). */
+function resolvePaneQualified(qualified: string): { pluginId: string; entrypoint: string } {
+  const hit = loadAll()
+    .filter(({ entry, manifest }) => manifest && qualified.startsWith(`${entry.id}.`))
+    .sort((a, b) => b.entry.id.length - a.entry.id.length)
+    .find(({ entry, manifest }) =>
+      (manifest as PluginManifest).panes.some((p) => p.id === qualified.slice(entry.id.length + 1)),
+    )
+  if (!hit) throw new PluginCliError(`no pane \`${qualified}\`; see \`kobe plugin list\``)
+  return { pluginId: hit.entry.id, entrypoint: qualified.slice(hit.entry.id.length + 1) }
+}
+
 async function openPane(pluginId: string, entrypoint: string, taskFlag: string | undefined): Promise<void> {
   const loaded = loadAll().find(({ entry }) => entry.id === pluginId)
   if (!loaded?.manifest) throw new PluginCliError(`no plugin \`${pluginId}\` (or its manifest is unreadable)`)
@@ -262,10 +274,16 @@ export async function runPluginSubcommand(rest: string[]): Promise<void> {
       case "pane": {
         const [sub, ...paneArgs] = args
         if (sub === "open") {
-          const pluginId = flagValue(paneArgs, "--plugin")
-          const entrypoint = flagValue(paneArgs, "--entrypoint")
+          const positional = paneArgs.find((a) => !a.startsWith("-") && a !== flagValue(paneArgs, "--task"))
+          let pluginId = flagValue(paneArgs, "--plugin")
+          let entrypoint = flagValue(paneArgs, "--entrypoint")
           if (!pluginId || !entrypoint) {
-            throw new PluginCliError("pane open needs --plugin <id> --entrypoint <pane-id> [--task <task-id>]")
+            if (!positional) {
+              throw new PluginCliError(
+                "pane open needs <plugin-id.pane-id> (or --plugin <id> --entrypoint <pane-id>) [--task <task-id>]",
+              )
+            }
+            ;({ pluginId, entrypoint } = resolvePaneQualified(positional))
           }
           await openPane(pluginId, entrypoint, flagValue(paneArgs, "--task"))
           return

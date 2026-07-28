@@ -151,6 +151,27 @@ binding's original pane scope and modal rules.
 Positional groups must preserve their documented slot count/order. Invalid or
 unknown entries are ignored with warnings shown in Settings → Keybindings.
 
+### Plugin chords (`plugins:` section)
+
+Bind a chord to an installed plugin's pane or action (docs/design/plugins.md):
+
+```yaml
+plugins:
+  ctrl+g: pane:examples.lazygit.git
+  f6: action:examples.notify.test
+darwin:
+  plugins:
+    cmd+g: pane:examples.lazygit.git   # platform overlay wins per chord
+```
+
+Resolution (owner sign-off 2026-07-28): kobe ships **no default plugin
+chords** — every plugin chord is the user's own placement call, so the
+catalogue/help surfaces don't list them. They register at the workspace-host
+level with the same open-page gating as global rows; a chord that shadows a
+catalogue binding applies with a warning. Fire path is a detached
+`kobe plugin pane open|action invoke` — chord-fired actions have no
+terminal, so interactive pickers belong in panes.
+
 ## Adding or moving a chord
 
 Chord placement is an owner decision. Before treating a new or moved binding

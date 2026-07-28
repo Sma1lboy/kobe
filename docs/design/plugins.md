@@ -128,12 +128,17 @@ plugins. Trust: same boundary as `pty.open` — the daemon socket already
 grants argv execution. herdr's overlay/popup/split placements are tolerated
 in the manifest with a warning and open as tabs for now.
 
+## Keybindings
+
+Users bind their own chords to plugin panes/actions via the `plugins:`
+section of `~/.kobe/settings/keybindings.yaml`
+(`ctrl+g: pane:examples.lazygit.git`) — kobe ships no default plugin chords.
+Mechanics + resolution record: docs/KEYBINDINGS.md §Plugin chords.
+
 ## Deferred (v2+, deliberate)
 
 - **Pane placements** beyond `tab` (overlay / popup / split) and Windows pane
   support (the v1 wrap is `sh -lc`).
-- **Keybindings → plugin actions** — chord placement needs owner sign-off
-  per docs/KEYBINDINGS.md; actions are CLI-invocable meanwhile.
 - **Link handlers** — needs the terminal URL-click plumbing.
 - **Richer context JSON** (active task, selection) on action invokes.
 - **`plugin update`** — reinstall replaces the checkout, same as herdr v1.

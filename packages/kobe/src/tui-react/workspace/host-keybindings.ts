@@ -25,6 +25,7 @@ import { pageCloseBindings, useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
+import { usePluginKeybindings } from "./use-plugin-keybindings"
 
 // Cycle order for focus.next — the host's real panes, NOT the context's
 // PANE_ORDER: that includes "terminal", which this host never mounts, and
@@ -191,4 +192,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     enabled: settingsCloseKeysEnabled(pages),
     bindings: pageCloseBindings(deps.closeSettings),
   }))
+  // User `plugins:` chords — same open-page gating as the workspace rows.
+  // Registered LAST so the catalogue registrations keep their positional
+  // order (workspace-open-worktree-bindings.test indexes registrations).
+  usePluginKeybindings(pagesClosed)
 }

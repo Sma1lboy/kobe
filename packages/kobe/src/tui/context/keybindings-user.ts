@@ -25,6 +25,7 @@
 import { readKeybindingsFile, resetKeybindingsFileCache } from "../../state/keybindings-file"
 import { DEFAULT_PREFIX_CONFIGURATION, configurePrefix, resetPrefixConfiguration } from "../lib/keymap-dispatch"
 import { type AppliedOverride, applyKeymapOverrides, extractKeybindingOverrides } from "../lib/keymap-overrides"
+import { type PluginKeyBinding, extractPluginKeybindings } from "../lib/keymap-plugin-bindings"
 import { applyPrefixKeymapOverrides, extractPrefixKeybindings } from "../lib/keymap-prefix-overrides"
 import { KobeKeymap, bumpKeymapVersion, resetKeymapToDefaults } from "./keybindings"
 
@@ -35,6 +36,8 @@ export type UserKeybindingsReport = {
   exists: boolean
   /** Overrides that landed in the workspace keymap. */
   applied: AppliedOverride[]
+  /** User chords bound to plugin panes/actions (`plugins:` section). */
+  plugins: PluginKeyBinding[]
   /** Everything that didn't parse / validate / apply, human-readable. */
   warnings: string[]
 }
@@ -51,7 +54,7 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   if (cached) return cached
   const file = readKeybindingsFile()
   if (!file.exists) {
-    cached = { path: file.path, exists: false, applied: [], warnings: [] }
+    cached = { path: file.path, exists: false, applied: [], plugins: [], warnings: [] }
     return cached
   }
 
@@ -74,9 +77,24 @@ export function applyUserKeybindings(): UserKeybindingsReport {
   warnings.push(...prefixResult.warnings)
   applied.push(...prefixResult.applied)
 
+  // User chords → plugin panes/actions. Collisions with catalogue chords are
+  // the user's own placement call — warn, still apply (host-level plugin
+  // bindings sit above pane bindings in the keymap stack).
+  const plugins = extractPluginKeybindings(file.doc, process.platform)
+  warnings.push(...plugins.warnings)
+  for (const p of plugins.entries) {
+    const owner = KobeKeymap.find((row) => row.keys.includes(p.chord))
+    if (owner) warnings.push(`plugins: ${p.chord} shadows ${owner.id}`)
+  }
+
   for (const w of warnings) console.warn(`[kobe/keybindings] ${w}`)
-  cached = { path: file.path, exists: true, applied, warnings }
+  cached = { path: file.path, exists: true, applied, plugins: plugins.entries, warnings }
   return cached
+}
+
+/** The user's plugin chords (loading the config first if needed). */
+export function pluginKeybindings(): readonly PluginKeyBinding[] {
+  return userKeybindingsReport().plugins
 }
 
 /** Report from the boot-time load (loading first if needed). */
