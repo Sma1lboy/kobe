@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.25
+
+### Patch Changes
+
+- 9579f71: `kobe plugin search [query]` browses the marketplace from the CLI: one GitHub search over the `kobe-plugin` topic (sorted by stars) merged with the first-party examples, with an offline fallback to the first-party list.
+
 ## 0.8.24
 
 ### Patch Changes
