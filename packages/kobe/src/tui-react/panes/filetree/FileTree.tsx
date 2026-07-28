@@ -87,14 +87,18 @@ export type FileTreeProps = {
   onZenToggle?: () => void
   /** Whether the pane has keyboard focus. Defaults to `true`. */
   focused?: boolean
+  /** CONTENT width (cells) of the box this pane renders in. The pane is a
+   *  narrow column inside the workspace, so the Changes-tab path budget must
+   *  come from this, not the full terminal width — otherwise tail-keeping
+   *  truncation never fires and long paths right-clip, losing the filename.
+   *  Defaults to the terminal width for hosts that give the pane full width. */
+  paneWidth?: number
 }
 
 export function FileTree(props: FileTreeProps) {
   const { theme } = useTheme()
   const t = useT()
-  // Pane width — in the Ops pane each FileTree runs in its own tmux pane
-  // process, so `useTerminalDimensions` tracks THIS pane's size and reflows
-  // the Changes-tab path truncation on resize.
+  // Fallback width when the host doesn't pass `paneWidth` (full-width hosts).
   const dims = useTerminalDimensions()
 
   // ---------- pane state ----------
@@ -300,7 +304,8 @@ export function FileTree(props: FileTreeProps) {
   }, [rows])
 
   const statWidths = useMemo(() => computeStatWidths(rows), [rows])
-  const pathBudget = useMemo(() => computePathBudget(dims.width, statWidths), [dims.width, statWidths])
+  const paneWidth = props.paneWidth ?? dims.width
+  const pathBudget = useMemo(() => computePathBudget(paneWidth, statWidths), [paneWidth, statWidths])
 
   // ---------- key bindings ----------
   function applyNav(action: NavAction | null): void {

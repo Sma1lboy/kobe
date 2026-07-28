@@ -448,6 +448,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         >
           <FileTree
             worktreePath={worktree}
+            paneWidth={worktreeToolsWidth - 2 /* box border */}
             prBaseRef={selectedTask?.prStatus?.baseRef}
             focused={activePane === "files"}
             onOpenFile={(relPath) => void openFileInEditor(relPath)}
