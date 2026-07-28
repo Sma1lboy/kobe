@@ -59,6 +59,10 @@ export const en = {
     sessionLabel: "SESSION",
     openAction: "Open the linked session ↵",
     openLegend: "enter/ctrl+enter open the linked session · tab fields · esc save & close",
+    /** EVENTS feed under a linked story — the engine's recent lifecycle events. */
+    eventsLabel: "EVENTS",
+    eventsLoading: "Loading events…",
+    eventsNone: "No engine events recorded yet.",
     doneNote: "Done stories have nothing left to start · esc save & close",
     /** Toast after a background start. `{title}` = the spawned task title. */
     startedBackground: "Started in background: {title}",
@@ -117,6 +121,9 @@ export const zh: typeof en = {
     sessionLabel: "会话",
     openAction: "打开关联会话 ↵",
     openLegend: "enter/ctrl+enter 打开已关联会话 · tab 切字段 · esc 保存关闭",
+    eventsLabel: "事件",
+    eventsLoading: "正在加载事件…",
+    eventsNone: "暂无引擎事件记录。",
     doneNote: "已完成的 story 无需启动 · esc 保存关闭",
     startedBackground: "已在后台启动:{title}",
     newStory: "新建 STORY",

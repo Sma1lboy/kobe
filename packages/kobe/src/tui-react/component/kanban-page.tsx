@@ -181,6 +181,7 @@ export function KanbanPage(props: {
       engines,
       defaultVendor: quickForkDefaultVendor(board.repoRoot, engines),
       engineLabel: engineDisplayName,
+      orchestrator: props.orchestrator,
     }).then(async (outcome) => {
       if (!outcome) return
       const patch = { title: outcome.title, body: outcome.body }

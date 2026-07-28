@@ -26,6 +26,7 @@ import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { usePaste } from "@opentui/react"
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { type ReactNode, useRef, useState } from "react"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { ISSUE_CHAT_PLACEMENTS, type IssueChatPlacement, withImagePlaceholders } from "../../state/issue-chat"
 import { stripNewlines } from "../../tui/component/new-task-dialog/state"
 import { asAttachmentPaths, captureClipboardAttachment } from "../../tui/lib/attachments"
@@ -34,6 +35,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { IssueEventsSection, SectionHeader } from "./issue-detail-parts"
 
 export interface IssueDetailOptions {
   readonly issue: Issue
@@ -45,6 +47,9 @@ export interface IssueDetailOptions {
   readonly engines: readonly VendorId[]
   readonly defaultVendor: VendorId
   readonly engineLabel: (vendor: VendorId) => string
+  /** Live daemon connection — the linked story's EVENTS feed reads from it.
+   *  Absent (mocks, offline): the feed renders its empty state. */
+  readonly orchestrator?: RemoteOrchestrator | null
 }
 
 /** Every outcome carries the drafted title/body — the page saves a dirty
@@ -242,25 +247,9 @@ function IssueDetailDialogView(
           : theme.textMuted
 
   /** Section header: BOLD CAPS, primary when its field is focused. */
-  const sectionHeader = (label: string, ownField: Field | null, hint?: string): ReactNode => {
-    const focused = ownField !== null && field === ownField
-    return (
-      <box flexDirection="row" gap={2}>
-        <text
-          fg={focused ? theme.primary : theme.textMuted}
-          attributes={focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD}
-          wrapMode="none"
-        >
-          {label}
-        </text>
-        {hint ? (
-          <text fg={theme.textMuted} wrapMode="none">
-            {hint}
-          </text>
-        ) : null}
-      </box>
-    )
-  }
+  const sectionHeader = (label: string, ownField: Field | null, hint?: string): ReactNode => (
+    <SectionHeader label={label} hint={hint} focused={ownField !== null && field === ownField} />
+  )
 
   // Focused/selected frames light up PRIMARY — the same accent the kanban
   // card cursor and the pane focus grammar use, not the generic borderActive.
@@ -473,6 +462,8 @@ function IssueDetailDialogView(
               </box>
             </box>
           </box>
+          {/* EVENTS — what the linked session's engine has been doing. */}
+          <IssueEventsSection taskId={linkedTaskId} orchestrator={props.orchestrator ?? null} />
           <box paddingBottom={1}>
             <text fg={theme.textMuted}>{t("kanban.detail.openLegend")}</text>
           </box>
