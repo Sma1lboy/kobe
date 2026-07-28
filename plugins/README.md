@@ -8,6 +8,7 @@ any of them straight from this repo:
 kobe plugin install Sma1lboy/kobe/plugins/notify            # desktop/ntfy notifications on agent events
 kobe plugin install Sma1lboy/kobe/plugins/github-start      # start a task from a GitHub issue/PR
 kobe plugin install Sma1lboy/kobe/plugins/worktree-include  # copy .env-style files into new worktrees
+kobe plugin install Sma1lboy/kobe/plugins/linear-start      # start a task from a Linear issue (fzf picker)
 ```
 
 These are examples to copy, not a standard library: fork one, change the id,

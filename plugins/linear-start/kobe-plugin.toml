@@ -1,0 +1,11 @@
+id = "examples.linear-start"
+name = "Linear Start"
+version = "0.1.0"
+min_kobe_version = "0.8.22"
+description = "Pick a Linear issue and start a kobe task on the issue's branch, with the issue as the first prompt"
+platforms = ["macos", "linux"]
+
+[[actions]]
+id = "start"
+title = "Start a task from a Linear issue"
+command = ["node", "start.js"]
