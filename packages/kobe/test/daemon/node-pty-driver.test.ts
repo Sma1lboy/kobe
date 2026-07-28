@@ -1,5 +1,11 @@
-import type { NodePtyChild, NodePtySpawn, PtySpawnRequest } from "@sma1lboy/kobe-daemon/daemon/pty-driver"
-import { nodePtyDriver } from "@sma1lboy/kobe-daemon/daemon/pty-driver"
+import type {
+  BunTerminalProc,
+  BunTerminalSpawn,
+  NodePtyChild,
+  NodePtySpawn,
+  PtySpawnRequest,
+} from "@sma1lboy/kobe-daemon/daemon/pty-driver"
+import { bunTerminalDriver, nodePtyDriver } from "@sma1lboy/kobe-daemon/daemon/pty-driver"
 import { describe, expect, test } from "vitest"
 
 /**
@@ -141,5 +147,105 @@ describe("nodePtyDriver", () => {
     expect(() => proc.close()).not.toThrow()
     expect(() => proc.close()).not.toThrow()
     expect(pty.calls).toEqual([])
+  })
+})
+
+/** The driver every macOS and Linux user runs — `Bun` is not a global here. */
+function fakeBunTerminal(withHandle = true) {
+  const calls: string[] = []
+  let emit: (data: Uint8Array) => void = () => {}
+  let spawnArgs: { argv: string[]; options: Record<string, unknown> } | null = null
+  let settleExit: (code: number) => void = () => {}
+
+  const proc: BunTerminalProc = {
+    pid: 777,
+    exited: new Promise<number>((resolve) => {
+      settleExit = resolve
+    }),
+    terminal: withHandle
+      ? {
+          write: (data) => calls.push(`write:${data}`),
+          resize: (cols, rows) => calls.push(`resize:${cols}x${rows}`),
+          close: () => calls.push("close"),
+        }
+      : undefined,
+    kill: (signal) => calls.push(`kill:${signal}`),
+  }
+  const spawn: BunTerminalSpawn = (argv, options) => {
+    spawnArgs = { argv, options: options as unknown as Record<string, unknown> }
+    emit = options.terminal.data.bind(null, null) as (data: Uint8Array) => void
+    return proc
+  }
+  return {
+    spawn,
+    calls,
+    emitData: (text: string) => emit(new TextEncoder().encode(text)),
+    settleExit,
+    get spawnArgs() {
+      return spawnArgs
+    },
+  }
+}
+
+describe("bunTerminalDriver", () => {
+  test("passes argv as a copy, with cwd, env and the terminal geometry", () => {
+    const bun = fakeBunTerminal()
+    const argv = ["/bin/zsh", "-ilc", "claude"]
+    bunTerminalDriver(bun.spawn)(request({ argv, cwd: "/wt/task-1", env: { TERM: "xterm-256color" } }))
+
+    expect(bun.spawnArgs?.argv).toEqual(argv)
+    // A copy, not the caller's array — the spec's argv is readonly.
+    expect(bun.spawnArgs?.argv).not.toBe(argv)
+    expect(bun.spawnArgs?.options).toMatchObject({ cwd: "/wt/task-1", env: { TERM: "xterm-256color" } })
+    expect(bun.spawnArgs?.options.terminal).toMatchObject({ cols: 100, rows: 30, name: "xterm-256color" })
+  })
+
+  test("keeps undefined env entries — unlike node-pty, Bun accepts them", () => {
+    const bun = fakeBunTerminal()
+    bunTerminalDriver(bun.spawn)(request({ env: { KEEP: "yes", UNSET: undefined } }))
+    expect(bun.spawnArgs?.options.env).toEqual({ KEEP: "yes", UNSET: undefined })
+  })
+
+  test("routes Bun's (terminal, data) callback to the request's onData", () => {
+    const bun = fakeBunTerminal()
+    const seen: string[] = []
+    bunTerminalDriver(bun.spawn)(request({ onData: (d) => seen.push(Buffer.from(d as Uint8Array).toString()) }))
+
+    bun.emitData("chunk-1")
+    expect(seen).toEqual(["chunk-1"])
+  })
+
+  test("forwards io to the terminal handle and the signal to the proc", () => {
+    const bun = fakeBunTerminal()
+    const proc = bunTerminalDriver(bun.spawn)(request())
+
+    proc.write("ls\r")
+    proc.resize(120, 40)
+    proc.close()
+    // Bun DOES distinguish the signals, so they must arrive as sent.
+    proc.kill("SIGTERM")
+    proc.kill("SIGKILL")
+    expect(bun.calls).toEqual(["write:ls\r", "resize:120x40", "close", "kill:SIGTERM", "kill:SIGKILL"])
+  })
+
+  test("tolerates a terminal handle that is already gone", () => {
+    // Bun drops it once the child exits; a detaching client's last write must
+    // not throw past the host and take the session's cleanup with it.
+    const bun = fakeBunTerminal(false)
+    const proc = bunTerminalDriver(bun.spawn)(request())
+
+    expect(() => proc.write("late")).not.toThrow()
+    expect(() => proc.resize(80, 24)).not.toThrow()
+    expect(() => proc.close()).not.toThrow()
+    expect(bun.calls).toEqual([])
+  })
+
+  test("exposes the proc's pid and its exited promise unchanged", async () => {
+    const bun = fakeBunTerminal()
+    const proc = bunTerminalDriver(bun.spawn)(request())
+    expect(proc.pid).toBe(777)
+
+    bun.settleExit(0)
+    await expect(proc.exited).resolves.toBe(0)
   })
 })

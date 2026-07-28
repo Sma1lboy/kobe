@@ -80,6 +80,22 @@ describe("PtyHost driver seam", () => {
     expect(frames).toContainEqual({ type: "event", name: "pty.exit", payload: { key: "t::tab-1", pid: 4242 } })
   })
 
+  test("escalates to SIGKILL and still finishes when the child never reports exiting", async () => {
+    // The node-pty driver's `exited` settles only when ConPTY delivers onExit.
+    // An unbounded await here used to hang killAll(), and with it the host's
+    // shutdown and `kobe reset`.
+    const rec = recordingDriver()
+    const host = new PtyHost({ driver: rec.driver })
+    host.open("t::tab-1", { cwd: "/wt", command: ["bash"], cols: 80, rows: 24 }, {}, () => {})
+
+    await host.kill("t::tab-1")
+
+    // SIGTERM, then SIGKILL when the grace lapses — and the handle is still
+    // released, so a forced kill leaks no ConPTY pseudoconsole.
+    expect(rec.calls).toEqual(["kill:SIGTERM", "kill:SIGKILL", "close"])
+    expect(host.liveCount()).toBe(0)
+  }, 5000)
+
   test("a driver that throws leaves a dead session instead of taking the host down", () => {
     const host = new PtyHost({
       driver: () => {

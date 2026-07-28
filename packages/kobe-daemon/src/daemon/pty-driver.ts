@@ -47,29 +47,62 @@ export type PtyDriver = (request: PtySpawnRequest) => PtyChild
 
 const TERMINAL_NAME = "xterm-256color"
 
-/** `Bun.spawn(..., { terminal })` — the default on macOS and Linux. */
-export const bunTerminalDriver: PtyDriver = (request) => {
-  const proc = Bun.spawn([...request.argv], {
-    cwd: request.cwd,
-    env: request.env,
-    terminal: {
-      cols: request.cols,
-      rows: request.rows,
-      name: TERMINAL_NAME,
-      data: (_terminal: unknown, data: Uint8Array) => request.onData(data),
-    },
+/** The terminal handle Bun hangs off a spawned proc. Absent once it exits. */
+export interface BunTerminalHandle {
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  close(): void
+}
+
+/** The slice of `Bun.spawn`'s result this driver drives. */
+export interface BunTerminalProc {
+  readonly pid: number
+  readonly exited: Promise<unknown>
+  readonly terminal?: BunTerminalHandle
+  kill(signal: NodeJS.Signals): void
+}
+
+export interface BunTerminalOptions {
+  cwd: string
+  env: Record<string, string | undefined>
+  terminal: { cols: number; rows: number; name: string; data: (terminal: unknown, data: Uint8Array) => void }
+}
+
+export type BunTerminalSpawn = (argv: string[], options: BunTerminalOptions) => BunTerminalProc
+
+/**
+ * `Bun.spawn(..., { terminal })` — the default on macOS and Linux.
+ *
+ * `spawn` is injectable for the same reason node-pty's is: `Bun` is not a
+ * global under the test runner, so the translation below could not otherwise
+ * be asserted anywhere — and this is the driver almost every kobe user runs.
+ */
+export function bunTerminalDriver(spawn?: BunTerminalSpawn): PtyDriver {
+  const spawnTerminal =
+    spawn ??
     // biome-ignore lint/suspicious/noExplicitAny: `terminal` is absent from Bun's public SpawnOptions type.
-  } as any)
-  return {
-    pid: proc.pid,
-    exited: proc.exited,
-    // biome-ignore lint/suspicious/noExplicitAny: same untyped `terminal` handle.
-    write: (data) => void (proc as any).terminal?.write(data),
-    // biome-ignore lint/suspicious/noExplicitAny: same untyped `terminal` handle.
-    resize: (cols, rows) => void (proc as any).terminal?.resize(cols, rows),
-    // biome-ignore lint/suspicious/noExplicitAny: same untyped `terminal` handle.
-    close: () => void (proc as any).terminal?.close(),
-    kill: (signal) => proc.kill(signal),
+    ((argv, options) => (Bun.spawn as any)(argv, options) as BunTerminalProc)
+  return (request) => {
+    const proc = spawnTerminal([...request.argv], {
+      cwd: request.cwd,
+      env: request.env,
+      terminal: {
+        cols: request.cols,
+        rows: request.rows,
+        name: TERMINAL_NAME,
+        data: (_terminal: unknown, data: Uint8Array) => request.onData(data),
+      },
+    })
+    return {
+      pid: proc.pid,
+      exited: proc.exited,
+      // The handle disappears when the child exits, so every use is optional —
+      // a late write from a detaching client must not throw past the host.
+      write: (data) => proc.terminal?.write(data),
+      resize: (cols, rows) => proc.terminal?.resize(cols, rows),
+      close: () => proc.terminal?.close(),
+      kill: (signal) => proc.kill(signal),
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import { delimiter } from "node:path"
 import { detachOptions } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import {
   type NodePtyHostResolution,
+  bundleWithBun,
   resolveNodeBinary,
   resolveNodePtyHostSpawn,
 } from "@sma1lboy/kobe-daemon/client/pty-process"
@@ -111,6 +112,59 @@ describe("resolveNodePtyHostSpawn", () => {
     const shim = `${PATH_DIR}/node.CMD`
     const spawn = await resolveNodePtyHostSpawn(win({ exists: diskWith(shim, PACKAGED) }))
     expect(norm(spawn?.[0] ?? "")).toBe(shim)
+  })
+})
+
+describe("bundleWithBun", () => {
+  const io = (buildOk: boolean) => {
+    const calls: string[] = []
+    return {
+      calls,
+      io: {
+        build: async (config: { outdir: string; naming: string; external: string[]; target: string }) => {
+          calls.push(`build:${norm(config.outdir)}/${config.naming}`)
+          calls.push(`target:${config.target}`)
+          calls.push(`external:${config.external.join(",")}`)
+          return { success: buildOk, logs: buildOk ? [] : ["boom"] }
+        },
+        rename: async (from: string, to: string) => {
+          calls.push(`rename:${norm(from)}->${norm(to)}`)
+        },
+        discard: async (path: string) => {
+          calls.push(`discard:${norm(path)}`)
+        },
+      },
+    }
+  }
+
+  test("builds to a pid-unique sibling and renames it into place", async () => {
+    const { calls, io: fake } = io(true)
+    const result = await bundleWithBun("/pkg/entry.ts", CACHE, fake)
+
+    expect(result.success).toBe(true)
+    const staging = `${CACHE}.${process.pid}.tmp`
+    // Never built straight to CACHE: another instance may be spawning it.
+    expect(calls).toContain(`build:/pkg/.cache/${staging.split("/").pop()}`)
+    expect(calls).toContain(`rename:${staging}->${CACHE}`)
+    expect(calls.some((c) => c.startsWith("discard:"))).toBe(false)
+  })
+
+  test("keeps the bundle node-targeted with node-pty external", async () => {
+    // Inlining node-pty's napi loader would break its resolution from the
+    // installed package; a bun target would not run under node at all.
+    const { calls, io: fake } = io(true)
+    await bundleWithBun("/pkg/entry.ts", CACHE, fake)
+    expect(calls).toContain("target:node")
+    expect(calls).toContain("external:node-pty")
+  })
+
+  test("discards the partial and never renames when the build fails", async () => {
+    const { calls, io: fake } = io(false)
+    const result = await bundleWithBun("/pkg/entry.ts", CACHE, fake)
+
+    expect(result.success).toBe(false)
+    expect(calls).toContain(`discard:${CACHE}.${process.pid}.tmp`)
+    expect(calls.some((c) => c.startsWith("rename:"))).toBe(false)
   })
 })
 

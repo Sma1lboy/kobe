@@ -386,7 +386,7 @@ export class PtyHost {
       parkedScreenBytes: 0,
     }
     try {
-      session.proc = (this.opts.driver ?? bunTerminalDriver)({
+      session.proc = (this.opts.driver ?? bunTerminalDriver())({
         argv,
         cwd: spec.cwd,
         env: embeddedTerminalEnv(process.env, {

@@ -65,14 +65,39 @@ export function resolveNodeBinary(
   return null
 }
 
-async function bundleWithBun(entry: string, outFile: string) {
+export interface BundleIo {
+  build: (config: {
+    entrypoints: string[]
+    outdir: string
+    target: string
+    format: string
+    naming: string
+    external: string[]
+  }) => Promise<{ success: boolean; logs: readonly unknown[] }>
+  rename: (from: string, to: string) => Promise<void>
+  discard: (path: string) => Promise<void>
+}
+
+/** Injected so the staging→rename dance is assertable without a bundler. */
+export async function bundleWithBun(entry: string, outFile: string, io?: BundleIo) {
+  const {
+    build,
+    rename: move,
+    discard,
+  } = io ?? {
+    // Lazy: `Bun` is not a global under the test runner, and this default is
+    // never evaluated when `io` is supplied.
+    build: (config: Parameters<BundleIo["build"]>[0]) => Bun.build(config as Parameters<typeof Bun.build>[0]),
+    rename,
+    discard: (path: string) => rm(path, { force: true }),
+  }
   // Build to a pid-unique sibling, then rename into place. Two kobe instances
   // can reach this together — both find no host, both rebuild the same
   // absolute path — and node must never load a half-written module. rename is
   // atomic on one volume, and node's Windows rename replaces the destination
   // rather than failing on it.
   const staging = `${outFile}.${process.pid}.tmp`
-  const built = await Bun.build({
+  const built = await build({
     entrypoints: [entry],
     outdir: dirname(staging),
     target: "node",
@@ -81,10 +106,12 @@ async function bundleWithBun(entry: string, outFile: string) {
     external: ["node-pty"],
   })
   if (!built.success) {
-    await rm(staging, { force: true }).catch(() => {})
+    // Leaving the partial behind would have the next run rename garbage into
+    // the path the host is spawned from.
+    await discard(staging).catch(() => {})
     return built
   }
-  await rename(staging, outFile)
+  await move(staging, outFile)
   return built
 }
 
