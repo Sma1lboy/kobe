@@ -161,6 +161,24 @@ describe("setPRStatus", () => {
   })
 })
 
+describe("setQuotaResume", () => {
+  const schedule = { resumeAt: "2026-07-27T17:00:00.000Z", requestedAt: "2026-07-27T12:00:00.000Z" }
+
+  it("arms, diffs on resumeAt (no redundant write), and clears with null", async () => {
+    const t = await makeTask()
+    await orch.setQuotaResume(t.id, schedule)
+    expect(orch.getTask(t.id)?.quotaResume).toEqual(schedule)
+
+    const before = orch.getTask(t.id)?.updatedAt
+    await orch.setQuotaResume(t.id, { ...schedule, requestedAt: "2026-07-27T12:30:00.000Z" }) // same resumeAt → no-op
+    expect(orch.getTask(t.id)?.updatedAt).toBe(before)
+
+    await orch.setQuotaResume(t.id, null)
+    expect(orch.getTask(t.id)?.quotaResume).toBeUndefined()
+    await orch.setQuotaResume(t.id, null) // already clear → guarded no-op
+  })
+})
+
 describe("moveTask", () => {
   it("moves a task within its partition and skips archived/pinned siblings", async () => {
     const a = await makeTask({ title: "a" })

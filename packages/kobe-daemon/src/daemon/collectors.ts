@@ -16,6 +16,7 @@ import {
   startKeybindingsWatcher,
 } from "./keybindings-watcher.ts"
 import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
+import { DEFAULT_QUOTA_RESUME_TICK_MS, startQuotaResumeRunner } from "./quota-resume.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import {
   DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
@@ -38,6 +39,7 @@ export interface DaemonCollectorOptions {
   readonly keybindingsDebounceMs?: number
   readonly worktreeChangesTickMs?: number
   readonly transcriptActivityTickMs?: number
+  readonly quotaResumeTickMs?: number
 }
 
 /**
@@ -137,11 +139,20 @@ export function startDaemonCollectors(
     hasSubscribers,
   )
 
+  // Quota-resume runner: deliberately NOT gated on `hasSubscribers` — its
+  // whole job is resuming rate-limited engines while nobody is attached.
+  const stopQuotaResumeRunner = startQuotaResumeRunner(
+    orch,
+    runtime,
+    options.quotaResumeTickMs ?? DEFAULT_QUOTA_RESUME_TICK_MS,
+  )
+
   // Same teardown order server.ts's close() used before the extraction.
   return () => {
     if (updateTimer) clearInterval(updateTimer)
     stopAutoTitlePoller()
     stopPrStatusPoller()
+    stopQuotaResumeRunner()
     stopUiPrefsWatcher()
     stopKeybindingsWatcher()
     stopWorktreeChangesCollector()

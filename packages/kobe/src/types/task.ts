@@ -107,6 +107,19 @@ export interface TaskDeletionState {
 }
 
 /**
+ * Durable schedule for the daemon's rate-limit auto-resume: the engine hit
+ * its subscription quota and the provider reported when the window resets.
+ * The daemon's quota-resume runner delivers a continue prompt into the
+ * task's live engine session once `resumeAt` passes, then clears this.
+ */
+export interface TaskQuotaResumeState {
+  /** ISO-8601 time the provider's exhausted window resets. */
+  readonly resumeAt: string
+  /** ISO-8601 time the rate limit was observed and this schedule written. */
+  readonly requestedAt: string
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of {@link TaskIndex}.
  *
  * Field invariants:
@@ -186,6 +199,8 @@ export interface Task {
   readonly workerReport?: TaskWorkerReport
   /** Present while background deletion is queued/running or after it failed. */
   readonly deletion?: TaskDeletionState
+  /** Present while a rate-limited engine waits for its quota window to reset. */
+  readonly quotaResume?: TaskQuotaResumeState
   readonly createdAt: string
   readonly updatedAt: string
 }
