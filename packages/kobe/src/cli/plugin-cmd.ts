@@ -36,6 +36,7 @@ function printUsage(out: NodeJS.WriteStream): void {
       "  install <owner/repo[/subdir]> [--yes] [--ref <rev>]   clone from GitHub, preview, build, register",
       "  link <dir>                                            register a local plugin directory (dev)",
       "  list                                                  installed + linked plugins",
+      "  search [query]                                        browse the marketplace (GitHub topic kobe-plugin)",
       "  enable <id> | disable <id>                            toggle a plugin without unregistering it",
       "  unlink <id>                                           unregister a linked plugin (files untouched)",
       "  uninstall <id-or-spec>                                unregister + remove the managed checkout",
@@ -244,6 +245,11 @@ export async function runPluginSubcommand(rest: string[]): Promise<void> {
       case "list":
         listPlugins()
         return
+      case "search": {
+        const { searchMarketplace } = await import("./plugin-search.ts")
+        await searchMarketplace(args.find((a) => !a.startsWith("-")))
+        return
+      }
       case "enable":
       case "disable": {
         if (!args[0]) throw new PluginCliError(`${command} needs a plugin id`)
