@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.24
+
+### Patch Changes
+
+- 4c6895c: Plugin keybindings: a `plugins:` section in `~/.kobe/settings/keybindings.yaml` binds user-chosen chords to plugin panes or actions (`ctrl+g: pane:examples.lazygit.git`, `f6: action:examples.notify.test`), with platform overlays and live reload. No default chords ship; chords fire a detached `kobe plugin` invocation, and `kobe plugin pane open` now also accepts a positional `<plugin-id>.<pane-id>`.
+- 1e2379c: Unified agent lifecycle events for plugins (docs/design/plugin-events.md): plugin `[[events]]` hooks can now subscribe to the full normalized lifecycle — `session.start/end`, `turn.prompt/complete/failed/interrupted`, `tool.pre/post/failed`, `attention.permission/question`, `context.pre-compact/post-compact`, `subagent.start/stop` — engine-agnostic across Claude Code and Codex. Installed hook commands are vendor-tagged (`--engine`), lifecycle-only kinds bypass the activity badge and reach only subscribing plugins, and the high-volume tool hooks are written into engine config only while an enabled plugin declares a `tool.*` event.
+- 9b866fa: Plugin panes v1: a `[[panes]]` manifest section plus `kobe plugin pane open --plugin <id> --entrypoint <pane-id>` opens the pane's command as a self-closing terminal tab in the task workspace of the running TUI (new `tab.open` RPC + channel; cwd is the task worktree, `$KOBE_PLUGIN_ROOT` expands in commands). Ships an `examples.lazygit` pane plugin and an `examples.linear-start` action plugin (fzf-pick a Linear issue → task on its branch).
+- 8949ddf: Plugin system v1: a plugin is a directory with a `kobe-plugin.toml` manifest — no SDK, the whole `kobe` CLI is the plugin API (herdr-isomorphic manifest: `[[build]]`/`[[startup]]`/`[[actions]]`/`[[events]]`). New `kobe plugin` command (install from GitHub shorthand with preview+confirm, link for local authoring, list/enable/disable/unlink/uninstall/config-dir/log, action list/invoke); the daemon runs startup hooks and fires event hooks (`task.created`, `worktree.created`, `agent.turn-complete`, `agent.permission-needed`, …) derived from its push channels, with a file-watched registry so installs apply without a daemon restart. First-party examples under `plugins/` (notify, github-start, worktree-include); marketplace = GitHub topic `kobe-plugin`, browsable at kobe.sma1lboy.me/plugins.html. Design doc: docs/design/plugins.md.
+- 5b8c9ff: Plugin/lifecycle UI surfaces: the sidebar now shows a "compacting context" word and a `◇N` subagent-activity mark on task rows (new low-frequency `engine.lifecycle` channel); Settings gains a Plugins section (installed list, enable/disable applied live via the daemon's registry watch, declared actions/events/panes, last hook run from the plugin log); the daemon keeps a per-task recent-engine-events ring buffer readable via the new `task.recentEvents` RPC.
+- a73220a: Story drawer: a linked story now shows an EVENTS section — the last 12 engine lifecycle events of its session (relative age, event kind, tool name / compaction trigger / subagent type, vendor), newest first. Fetched once when the drawer opens; a daemon with nothing recorded reads as "no engine events yet".
+
 ## 0.8.23
 
 ### Patch Changes
