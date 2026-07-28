@@ -17,6 +17,7 @@ import {
 } from "./keybindings-watcher.ts"
 import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
 import { DEFAULT_QUOTA_RESUME_TICK_MS, startQuotaResumeRunner } from "./quota-resume.ts"
+import { type QuotaUsageCache, startQuotaUsagePoller } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import {
   DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
@@ -40,6 +41,7 @@ export interface DaemonCollectorOptions {
   readonly worktreeChangesTickMs?: number
   readonly transcriptActivityTickMs?: number
   readonly quotaResumeTickMs?: number
+  readonly quotaUsageTickMs?: number
 }
 
 /**
@@ -84,6 +86,7 @@ export function startDaemonCollectors(
   bus: DaemonEventBus,
   hasSubscribers: () => boolean,
   options: DaemonCollectorOptions,
+  quotaUsage?: QuotaUsageCache,
 ): () => void {
   const checkUpdate = options.checkUpdate ?? runtime.checkLatestVersion
   const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
@@ -147,12 +150,31 @@ export function startDaemonCollectors(
     options.quotaResumeTickMs ?? DEFAULT_QUOTA_RESUME_TICK_MS,
   )
 
+  // Usage poller (Settings dashboard): gated on subscribers — the resume
+  // scheduler does its own on-demand cache reads. Vendors in play = every
+  // non-archived task's vendor + the default. Cadence lives in the cache.
+  const stopQuotaUsagePoller = quotaUsage
+    ? startQuotaUsagePoller(
+        quotaUsage,
+        () => [
+          runtime.defaultTaskVendor,
+          ...orch
+            .listTasks()
+            .filter((t) => !t.archived)
+            .map((t) => t.vendor ?? runtime.defaultTaskVendor),
+        ],
+        hasSubscribers,
+        options.quotaUsageTickMs,
+      )
+    : () => {}
+
   // Same teardown order server.ts's close() used before the extraction.
   return () => {
     if (updateTimer) clearInterval(updateTimer)
     stopAutoTitlePoller()
     stopPrStatusPoller()
     stopQuotaResumeRunner()
+    stopQuotaUsagePoller()
     stopUiPrefsWatcher()
     stopKeybindingsWatcher()
     stopWorktreeChangesCollector()

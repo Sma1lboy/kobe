@@ -6,7 +6,13 @@
  * import path for the wire protocol.
  */
 
-import type { AttentionInboxItem, EngineActivityDetail, TaskActivityState, UpdateInfo } from "./contracts.ts"
+import type {
+  AttentionInboxItem,
+  EngineActivityDetail,
+  EngineQuotaUsage,
+  TaskActivityState,
+  UpdateInfo,
+} from "./contracts.ts"
 import type { RepoIssues } from "./issues-store.ts"
 import type { SerializedTask } from "./protocol.ts"
 
@@ -215,6 +221,19 @@ export interface ChannelPayloads {
    * and drop stale replays.
    */
   "notice.event": NoticeEventPayload
+  /**
+   * Per-vendor subscription-quota snapshots from the daemon's usage cache
+   * (Settings usage dashboard; the quota-resume scheduler reads the cache
+   * directly). STATE channel, full-map-replace like `worktree.changes`:
+   * keys are vendor ids, the payload is the whole map, republished only
+   * when a vendor's snapshot changed. Vendors without a quota probe (or
+   * whose probe can't read a login) simply never appear — "claude-only"
+   * is a data fact, not a type. Consumers derive staleness from each
+   * snapshot's `capturedAt`; the cache owns all fetch cadence.
+   */
+  "usage.snapshot": {
+    usage: Record<string, EngineQuotaUsage>
+  }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -274,6 +293,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "transcript.activity",
   "session.deliver",
   "notice.event",
+  "usage.snapshot",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)

@@ -29,6 +29,7 @@
     "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
+    "./daemon/quota-usage-cache": "./src/daemon/quota-usage-cache.ts",
     "./daemon/runtime": "./src/daemon/runtime.ts",
     "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",

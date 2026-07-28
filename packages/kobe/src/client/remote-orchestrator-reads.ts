@@ -21,6 +21,7 @@ import type {
   TaskEngineState,
   TaskJobState,
   TranscriptActivityMap,
+  UsageSnapshotMap,
   WorktreeChangesMap,
 } from "./remote-orchestrator-payloads.ts"
 
@@ -36,6 +37,7 @@ export interface ReadSignals {
   readonly attentionInboxAcc: ReadableState<readonly AttentionInboxItem[]>
   readonly taskJobsAcc: ReadableState<ReadonlyMap<string, TaskJobState>>
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
+  readonly usageSnapshotAcc: ReadableState<UsageSnapshotMap | null>
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly transcriptActivityStoreInner: ExternalStore<TranscriptActivityMap | null>
   readonly noticeAcc: ReadableState<NoticeEventPayload | null>
@@ -142,6 +144,15 @@ export function taskJobsSignalOp(s: ReadSignals): ReadableState<ReadonlyMap<stri
  */
 export function worktreeChangesSignalOp(s: ReadSignals): ReadableState<WorktreeChangesMap | null> {
   return s.worktreeChangesAcc
+}
+
+/**
+ * Per-vendor quota snapshots pushed on the `usage.snapshot` channel
+ * (Settings usage dashboard). `null` until the daemon's cache has fetched
+ * at least once; consumers derive staleness from each `capturedAt`.
+ */
+export function usageSnapshotSignalOp(s: ReadSignals): ReadableState<UsageSnapshotMap | null> {
+  return s.usageSnapshotAcc
 }
 
 /**

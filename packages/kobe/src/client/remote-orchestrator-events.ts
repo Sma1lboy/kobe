@@ -24,8 +24,10 @@ import {
   describePayload,
   deserializeTask,
   parseTranscriptActivityPayload,
+  parseUsageSnapshotPayload,
   parseWorktreeChangesPayload,
   sameTranscriptActivityMap,
+  sameUsageSnapshotMap,
   sameWorktreeChangesMap,
 } from "./remote-orchestrator-payloads.ts"
 
@@ -210,6 +212,18 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       next.delete(p.taskId)
       signals.setTaskJobsSig(next)
     }
+    return
+  }
+  if (name === "usage.snapshot") {
+    const next = parseUsageSnapshotPayload(payload)
+    if (!next) {
+      // malformed → never clobber a good map, but log the drop.
+      logClientError("orch", `dropped usage.snapshot event: malformed usage payload (${describePayload(payload)})`)
+      return
+    }
+    const current = signals.usageSnapshotAcc()
+    if (current && sameUsageSnapshotMap(current, next)) return
+    signals.setUsageSnapshotSig(next)
     return
   }
   if (name === "worktree.changes") {

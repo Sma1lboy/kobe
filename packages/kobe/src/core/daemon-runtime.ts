@@ -66,7 +66,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   terminalSpec: terminalSpecAdapter,
   ensureTaskSession: ensureTaskSessionAdapter,
   tearDownTaskSession: tearDownTaskSessionAdapter,
-  quotaResetAtMs: (vendor) => engineEntry(vendor).quotaResetAtMs?.() ?? Promise.resolve(null),
+  quotaUsage: (vendor) => engineEntry(vendor).quotaUsage?.() ?? Promise.resolve(null),
   deliverPromptToLiveEngine: deliverPromptToLiveEngineAdapter,
   settingsSnapshot: daemonSettingsSnapshot,
   settingsPatch: daemonSettingsPatch,

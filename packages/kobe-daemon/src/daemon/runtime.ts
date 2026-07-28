@@ -3,6 +3,7 @@ import type {
   DaemonOrchestrator,
   DaemonTask,
   EngineActivityKind,
+  EngineQuotaUsage,
   UpdateInfo,
   VendorId,
   WorktreeChanges,
@@ -49,11 +50,12 @@ export interface DaemonRuntimeAdapter {
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
   tearDownTaskSession(taskId: string): Promise<void>
   /**
-   * Engine-owned subscription-quota probe: epoch-ms reset time of the
-   * vendor's currently exhausted quota window, or null when none/unknowable.
-   * Null means "don't schedule" — the rate-limit badge stays for the user.
+   * Engine-owned subscription-quota probe: snapshot of the vendor account's
+   * usage windows, or null when unknowable (no login, no quota API, network
+   * failure). The probe hits the vendor's own rate-limited API — ONLY the
+   * daemon's QuotaUsageCache may call this; everything else reads the cache.
    */
-  quotaResetAtMs(vendor: VendorId): Promise<number | null>
+  quotaUsage(vendor: VendorId): Promise<EngineQuotaUsage | null>
   /**
    * Deliver a prompt into a task's LIVE hosted engine session only (never
    * spawns). Returns false when no alive engine session exists.

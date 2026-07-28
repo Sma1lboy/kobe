@@ -1,17 +1,35 @@
 /**
  * Terminal progress glyphs. The partial-block vocabulary is lifted from
  * Claude Code's design-system ProgressBar (refs/claude-code
- * `src/components/design-system/ProgressBar.tsx`); kobe currently ships
- * only the INDETERMINATE form — a comet sweeping a fixed-width track —
- * because the one long-job consumer (worktree materializing) has no ratio
- * to render. Add the determinate ratio→blocks form when a real ratio
- * consumer appears.
+ * `src/components/design-system/ProgressBar.tsx`): an INDETERMINATE comet
+ * sweep (worktree materializing) and a DETERMINATE ratio→blocks meter
+ * (the Settings usage dashboard).
  */
 
 /** Comet profile, head-first: full block, then two tapering tails. */
 const COMET = ["█", "▋", "▍"] as const
 
 export const SWEEP_WIDTH = 8
+
+/** Eighth-block ramp for the determinate meter's fractional cell. */
+const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"] as const
+
+/**
+ * Determinate meter: `ratio` (0..1, clamped) rendered as full blocks plus
+ * one eighth-block fractional cell, padded with light shade to exactly
+ * `width` chars — so a row of meters aligns without a background color.
+ */
+export function ratioBar(ratio: number, width = SWEEP_WIDTH): string {
+  const cells = Math.min(1, Math.max(0, ratio)) * width
+  let full = Math.floor(cells)
+  let eighth = Math.round((cells - full) * 8)
+  if (eighth === 8) {
+    full += 1
+    eighth = 0
+  }
+  const partial = full < width ? (EIGHTHS[eighth] ?? "") : ""
+  return `${"█".repeat(full)}${partial}`.padEnd(width, "░")
+}
 
 /**
  * One frame of the indeterminate sweep: a 3-cell comet crossing a

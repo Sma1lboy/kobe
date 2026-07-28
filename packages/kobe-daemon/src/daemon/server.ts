@@ -39,9 +39,10 @@ import {
   shapeDaemonError,
 } from "./handlers.ts"
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
-import { DaemonLifetime } from "./lifetime.ts"
+import { DaemonLifetime, FIRST_GUI_GRACE_MS, resolveIdleGraceMs } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
+import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
@@ -58,27 +59,6 @@ export {
 } from "./handlers.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 export type { DaemonClientConnection } from "./client-connection.ts"
-
-/**
- * Grace before a subscriber-less daemon self-stops (refcounted lazy
- * shutdown). The window absorbs reconnect races — `manualReconnect()`
- * force-disconnects then re-subscribes, briefly dropping to zero — so a
- * blip doesn't tear the daemon down. Override via `KOBE_DAEMON_IDLE_GRACE_MS`.
- */
-const DEFAULT_IDLE_GRACE_MS = 3000
-
-/** First-gui window for AUTOSPAWNED daemons (`KOBE_DAEMON_AUTOSPAWNED`) —
- *  generous enough for a slow TUI boot to attach, short enough that a
- *  daemon born from a stray helper (an agent's `kobe api` inside an
- *  engine tab) never becomes a week-old zombie holding the socket. */
-const FIRST_GUI_GRACE_MS = 60_000
-
-function resolveIdleGraceMs(): number {
-  const raw = process.env.KOBE_DAEMON_IDLE_GRACE_MS
-  if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
-  const n = Number(raw)
-  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
-}
 
 export interface DaemonServerOptions {
   /** Product/runtime behavior injected by the kobe composition root. */
@@ -195,6 +175,10 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // git common-dir, sharing the server's homeDir so sandbox/test homes
   // isolate. Handlers reach it through DaemonHandlerContext.issues.
   const issues = new IssuesStore(defaultIssuesStorePath(options.homeDir))
+  // Sole caller of the engine quota probes — owns the fetch cadence (the
+  // vendor usage APIs are themselves rate-limited). Shared by the usage
+  // poller (collectors) and the rate-limit resume scheduler (handlers).
+  const quotaUsage = new QuotaUsageCache(runtime, bus)
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -277,7 +261,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // keybindings watchers, worktree-changes / transcript-activity / pr-status)
   // — wired in collectors.ts; per-tick work is gated on attached subscribers
   // so a gui-less daemon never polls npm / git / gh for nobody.
-  const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options)
+  const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options, quotaUsage)
 
   let webServer: DaemonWebServer | null = null
   // Why the web transport isn't listening (port taken, bind failed). Surfaced
@@ -353,6 +337,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       inbox,
       deletions,
       issues,
+      quotaUsage,
       daemon: {
         startedAt,
         socketPath,

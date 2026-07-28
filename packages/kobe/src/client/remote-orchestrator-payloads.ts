@@ -17,6 +17,8 @@
 import type {
   ChannelName,
   ChannelPayloads,
+  EngineQuotaUsage,
+  EngineQuotaWindow,
   NoticeEventPayload,
   SerializedTask,
   SubscribeRole,
@@ -154,6 +156,54 @@ export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChanges
 }
 
 /**
+ * Per-vendor quota snapshots from the `usage.snapshot` channel. `null`
+ * means "no daemon-collected data yet" (older daemon, or the cache hasn't
+ * fetched) — the Settings dashboard then renders nothing.
+ */
+export type UsageSnapshotMap = ReadonlyMap<string, EngineQuotaUsage>
+
+/**
+ * Parse a `usage.snapshot` wire payload into a vendor→usage map. Returns
+ * `null` for a malformed payload (the event is then ignored — never clobber
+ * a good map with garbage). Windows are re-validated field-by-field: this is
+ * a trust boundary, and one bad row drops the payload, not the field.
+ */
+export function parseUsageSnapshotPayload(payload: unknown): Map<string, EngineQuotaUsage> | null {
+  const usage = (payload as { usage?: unknown } | undefined)?.usage
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null
+  const map = new Map<string, EngineQuotaUsage>()
+  for (const [vendor, value] of Object.entries(usage as Record<string, unknown>)) {
+    const snapshot = value as { windows?: unknown; capturedAt?: unknown } | undefined
+    if (typeof snapshot?.capturedAt !== "number" || !Array.isArray(snapshot.windows)) return null
+    const windows: EngineQuotaWindow[] = []
+    for (const raw of snapshot.windows) {
+      const w = raw as { kind?: unknown; label?: unknown; percent?: unknown; resetsAt?: unknown } | undefined
+      if (typeof w?.kind !== "string" || typeof w.label !== "string" || typeof w.percent !== "number") return null
+      if (w.resetsAt !== null && typeof w.resetsAt !== "number") return null
+      windows.push({ kind: w.kind, label: w.label, percent: w.percent, resetsAt: w.resetsAt })
+    }
+    map.set(vendor, { windows, capturedAt: snapshot.capturedAt })
+  }
+  return map
+}
+
+/** Value equality for two usage maps (gate re-renders on real changes). */
+export function sameUsageSnapshotMap(a: UsageSnapshotMap, b: UsageSnapshotMap): boolean {
+  if (a.size !== b.size) return false
+  for (const [vendor, usage] of a) {
+    const other = b.get(vendor)
+    if (!other || other.capturedAt !== usage.capturedAt || other.windows.length !== usage.windows.length) return false
+    for (let i = 0; i < usage.windows.length; i++) {
+      const x = usage.windows[i]
+      const y = other.windows[i]
+      if (!x || !y || x.kind !== y.kind || x.label !== y.label || x.percent !== y.percent || x.resetsAt !== y.resetsAt)
+        return false
+    }
+  }
+  return true
+}
+
+/**
  * One worktree's daemon-collected transcript facts (perf — deduplicate
  * per-Ops-pane polling), from the `transcript.activity` channel: the newest
  * engine-transcript mtime plus the engine-owned latest-completion marker
@@ -265,6 +315,8 @@ export interface OrchestratorSignals {
   readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
   readonly worktreeChangesAcc: ReadableState<WorktreeChangesMap | null>
   readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
+  readonly usageSnapshotAcc: ReadableState<UsageSnapshotMap | null>
+  readonly setUsageSnapshotSig: (next: UsageSnapshotMap | null) => void
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setNoticeSig: (next: NoticeEventPayload | null) => void

@@ -21,6 +21,7 @@ export const en = {
     dev: "Dev",
   },
   general: {
+    usage: "USAGE",
     theme: "Theme",
     themeHint: "l to enter list · j/k to highlight · enter to apply",
     language: "Language",
@@ -163,6 +164,7 @@ export const zh: typeof en = {
     dev: "开发",
   },
   general: {
+    usage: "用量",
     theme: "主题",
     themeHint: "l 进入列表 · j/k 高亮 · enter 应用",
     language: "语言",

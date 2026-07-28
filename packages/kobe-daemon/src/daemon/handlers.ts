@@ -54,6 +54,7 @@ import {
   serializeTask,
 } from "./protocol.ts"
 import { scheduleQuotaResume } from "./quota-resume.ts"
+import type { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
 
@@ -89,6 +90,8 @@ export interface DaemonHandlerContext {
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
   readonly issues: IssuesStore
+  /** Rate-limited cache in front of the engine quota probes. */
+  readonly quotaUsage: QuotaUsageCache
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
   readonly daemon: {
     readonly startedAt: Date
@@ -417,7 +420,9 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // Fire-and-forget: the probe does network I/O and must not delay the
         // hook RPC. `billing` is excluded — it needs a human, not a timer.
         if (kind === "turn-failed" && detail?.failure === "rate_limit") {
-          void scheduleQuotaResume(ctx.orch, ctx.runtime, taskId).catch((err) => logDaemonError("quota-resume", err))
+          void scheduleQuotaResume(ctx.orch, ctx.runtime, ctx.quotaUsage, taskId).catch((err) =>
+            logDaemonError("quota-resume", err),
+          )
         }
         return {}
       },
