@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.23
+
+### Patch Changes
+
+- f763e5e: fix: the Changes tab now collapses a fully-untracked directory into one muted row with a file count and summed line count (enter/click expands it into its files), instead of flooding the list with one `?` row per file and drowning the tracked changes.
+
 ## 0.8.22
 
 ### Patch Changes
