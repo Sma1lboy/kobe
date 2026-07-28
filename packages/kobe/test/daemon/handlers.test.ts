@@ -241,6 +241,23 @@ describe("daemon handler registry", () => {
       expect(rec.deletions).toEqual(["t1"])
     })
 
+    it("task.delete refuses a dirty worktree before any destructive step", async () => {
+      // The dirty-worktree preflight lives in prepareTaskDeletion; when it
+      // throws, the handler must abort BEFORE the destructive tail: no
+      // activity clear, no Inbox cascade, and — critically — no background
+      // deletion enqueued (the deletion runner is the only place session/PTY
+      // teardown happens, so no enqueue == no teardown).
+      const { ctx, rec } = fakeCtx({
+        prepareTaskDeletion: async () => {
+          throw new Error("refused: DIRTY_WORKTREE")
+        },
+      })
+      await expect(dispatch("task.delete", { taskId: "t1" }, ctx)).rejects.toThrow("DIRTY_WORKTREE")
+      expect(rec.cleared).toEqual([])
+      expect(rec.inboxTaskDeleted).toEqual([])
+      expect(rec.deletions).toEqual([])
+    })
+
     it("task.delete does not enqueue an unknown task", async () => {
       const { ctx, rec } = fakeCtx({ prepareTaskDeletion: async () => false })
       await expect(dispatch("task.delete", { taskId: "missing" }, ctx)).resolves.toEqual({})

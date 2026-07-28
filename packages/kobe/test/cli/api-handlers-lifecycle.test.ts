@@ -180,6 +180,23 @@ describe("task lifecycle handlers", () => {
     expect(killed).toEqual(["t1"])
     expect(order).toEqual(["rpc", "kill"])
   })
+
+  it("does not stop hosted sessions when the delete RPC is refused (dirty worktree)", async () => {
+    // Non-force delete of a dirty worktree: the daemon's preflight rejects
+    // the RPC, so the CLI-side session teardown (which runs AFTER the RPC)
+    // must never fire — the session stays alive alongside the surviving
+    // worktree instead of the worst-of-both dead-session/live-worktree state.
+    const client = new FakeClient({
+      "task.delete": () => {
+        throw new Error("refused: DIRTY_WORKTREE")
+      },
+    })
+    const { killed, tearDownSession } = recordingTearDown()
+    await expect(
+      invokeVerb("delete", ["--task-id", "t1"], { client, runtime: stubRuntime({ tearDownSession }) }),
+    ).rejects.toThrow("DIRTY_WORKTREE")
+    expect(killed).toEqual([])
+  })
 })
 
 describe("adopt handler", () => {
