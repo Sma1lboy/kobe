@@ -39,22 +39,22 @@ export const BracketChip: React.FC = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 24,
-          fontSize: 180,
+          gap: 18,
+          fontSize: 120,
           fontWeight: 700,
-          letterSpacing: -4,
+          letterSpacing: -3,
           color: colors.fg,
         }}
       >
         <span style={{ color: colors.blue, transform: `translateX(${leftX}px)`, opacity: leftOpacity }}>[</span>
-        <span style={{ minWidth: 480, textAlign: "center", display: "inline-block" }}>
+        <span style={{ minWidth: 320, textAlign: "center", display: "inline-block" }}>
           <span>{typed}</span>
           <span
             style={{
               display: "inline-block",
-              width: 14,
-              height: 140,
-              marginLeft: 8,
+              width: 10,
+              height: 92,
+              marginLeft: 6,
               verticalAlign: "middle",
               background: colors.green,
               opacity: cursorOn ? 1 : 0,
@@ -63,10 +63,10 @@ export const BracketChip: React.FC = () => {
         </span>
         <span style={{ color: colors.blue, transform: `translateX(${rightX}px)`, opacity: rightOpacity }}>]</span>
       </div>
-      <div style={{ marginTop: 32, color: colors.muted, fontSize: 22, letterSpacing: 4 }}>
-        TUI ORCHESTRATOR FOR ANY CODING CLI
+      <div style={{ marginTop: 20, color: colors.muted, fontSize: 20, letterSpacing: 5 }}>
+        THE AGENT MULTIPLEXER IN YOUR SHELL
       </div>
-      <div style={{ marginTop: 12, color: colors.muted, fontSize: 16, letterSpacing: 3, opacity: 0.7 }}>
+      <div style={{ marginTop: 10, color: colors.muted, fontSize: 14, letterSpacing: 3, opacity: 0.7 }}>
         CLAUDE · CODEX · COPILOT · YOUR OWN
       </div>
     </AbsoluteFill>

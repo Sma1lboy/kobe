@@ -3,7 +3,7 @@ owner:
   kind: repo
   id: kobe
 domain: promo
-revision: 5
+revision: 6
 accepted:
   - id: cursor-block
     concept: "cursor block"
@@ -128,3 +128,14 @@ accepted:
     duration_seconds: 54.0
     checksum_sha256: d96108b738f61511a31aa49a89d2aa79d096ab72f05df91896896d176e065a02
     accepted_at: "2026-07-02"
+  - id: bracket-chip-banner
+    concept: "[ kobe ] bracket chip — banner ratio, multiplexer slogan"
+    round: "readme-banner · r1"
+    modality: image
+    asset_type: banner
+    path: docs/assets/brand/bracket-chip.gif
+    source: .studio/out/readme-banner/bracket-chip-banner.gif
+    mime_type: image/gif
+    size: [1600, 400]
+    checksum_sha256: fb03a9c5f553ace44fc5b1814bf86c3a1ba2417f92d02b22c09db6d49e8b2faf
+    accepted_at: "2026-07-28"

@@ -1,7 +1,7 @@
 # kobe — the agent multiplexer in your shell
 
 <p align="center">
-  <img src="docs/assets/brand/bracket-chip.gif" width="640" alt="kobe — TUI orchestrator for any coding CLI" />
+  <img src="docs/assets/brand/bracket-chip.gif" alt="kobe — the agent multiplexer in your shell" />
 </p>
 
 <p align="center">
