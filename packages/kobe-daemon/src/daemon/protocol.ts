@@ -21,6 +21,7 @@ export {
   type ChannelPayloads,
   type NoticeEventPayload,
   type SessionDeliverPayload,
+  type TabOpenPayload,
   type TranscriptActivityPayload,
   type UiPrefsPayload,
   type WorktreeChangesPayload,
@@ -173,6 +174,10 @@ export type DaemonRequestName =
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
   | "session.deliver"
+  // Plugin panes: publish a `tab.open` channel event asking the TUI hosting
+  // the task to open a terminal tab running argv. Same trust boundary as
+  // `pty.open`; the daemon only validates + publishes.
+  | "tab.open"
   // Broadcast one toast to every attached UI over the `notice.event`
   // channel (`kobe api notify`). The daemon only validates + publishes.
   | "notice.send"

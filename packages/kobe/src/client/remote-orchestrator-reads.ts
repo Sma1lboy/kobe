@@ -41,7 +41,6 @@ export interface ReadSignals {
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly transcriptActivityStoreInner: ExternalStore<TranscriptActivityMap | null>
   readonly noticeAcc: ReadableState<NoticeEventPayload | null>
-  readonly noticeStoreInner: ExternalStore<NoticeEventPayload | null>
   readonly uiPrefsAcc: ReadableState<UiPrefsPayload | null>
   readonly uiPrefsStoreInner: ExternalStore<UiPrefsPayload | null>
   readonly keybindingsRevAcc: ReadableState<number | null>
@@ -171,11 +170,6 @@ export function transcriptActivitySignalOp(s: ReadSignals): ReadableState<Transc
 /** Framework-free twin of {@link transcriptActivitySignalOp} — see uiPrefsStoreOp. */
 export function transcriptActivityStoreOp(s: ReadSignals): ExternalStore<TranscriptActivityMap | null> {
   return s.transcriptActivityStoreInner
-}
-
-/** Latest `notice.event` broadcast (a toast) — consumers dedupe on `at`. */
-export function noticeStoreOp(s: ReadSignals): ExternalStore<NoticeEventPayload | null> {
-  return s.noticeStoreInner
 }
 
 /**

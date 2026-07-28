@@ -43,6 +43,7 @@ function printUsage(out: NodeJS.WriteStream): void {
       "  log <id> [-n <count>]                                 tail the plugin's command-run log",
       "  action list [--plugin <id>]                           declared actions",
       "  action invoke <plugin-id.action-id>                   run an action now",
+      "  pane open --plugin <id> --entrypoint <pane-id>        open a plugin pane as a terminal tab",
       "",
       "Marketplace: https://github.com/topics/kobe-plugin — docs: docs/design/plugins.md",
       "",
@@ -155,6 +156,46 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
   process.exit(res.status ?? 1)
 }
 
+/** POSIX single-quote for embedding in an `sh -lc` script. */
+function shq(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`
+}
+
+async function openPane(pluginId: string, entrypoint: string, taskFlag: string | undefined): Promise<void> {
+  const loaded = loadAll().find(({ entry }) => entry.id === pluginId)
+  if (!loaded?.manifest) throw new PluginCliError(`no plugin \`${pluginId}\` (or its manifest is unreadable)`)
+  if (!loaded.entry.enabled) throw new PluginCliError(`\`${pluginId}\` is disabled`)
+  const pane = loaded.manifest.panes.find((p) => p.id === entrypoint)
+  if (!pane) throw new PluginCliError(`no pane \`${entrypoint}\` in \`${pluginId}\`; declare it under [[panes]]`)
+
+  // The tab's PTY runs in the task worktree (kobe's pane grammar — a pane is
+  // about the task, e.g. lazygit); a plugin referencing its own files writes
+  // `$KOBE_PLUGIN_ROOT/...` in the manifest command, expanded here. The env
+  // contract rides one `sh -lc` script so no tab/PTY schema learns plugins.
+  const env = buildPluginEnv({
+    socketPath: defaultDaemonSocketPath(),
+    binPath: "kobe",
+    pluginId: loaded.entry.id,
+    pluginRoot: loaded.entry.root,
+    extra: { KOBE_PLUGIN_ENTRYPOINT_ID: pane.id },
+  })
+  const pairs = Object.entries(env).filter(([k]) => k.startsWith("KOBE_")) as [string, string][]
+  const argv = pane.command.map((a) => a.replace(/\$\{?KOBE_PLUGIN_ROOT\}?/g, loaded.entry.root))
+  const script = `exec env ${pairs.map(([k, v]) => shq(`${k}=${v}`)).join(" ")} ${argv.map(shq).join(" ")}`
+
+  const { openDaemonSession } = await import("./daemon-session.ts")
+  const { resolveActiveTaskId } = await import("./api/runtime.ts")
+  const session = await openDaemonSession({ mode: "start" })
+  try {
+    const taskId = taskFlag ?? (await resolveActiveTaskId(session.client))
+    if (!taskId) throw new PluginCliError("no active task; pass --task <id>")
+    await session.client.request("tab.open", { taskId, argv: ["sh", "-lc", script], title: pane.title })
+    console.log(`opened pane ${pluginId}.${pane.id} in task ${taskId}`)
+  } finally {
+    session.close()
+  }
+}
+
 function tailLog(id: string, count: number): void {
   requireEntry(id)
   let text: string
@@ -216,6 +257,21 @@ export async function runPluginSubcommand(rest: string[]): Promise<void> {
       case "log": {
         if (!args[0]) throw new PluginCliError("log needs a plugin id")
         tailLog(args[0], Number.parseInt(flagValue(args, "-n") ?? "20", 10) || 20)
+        return
+      }
+      case "pane": {
+        const [sub, ...paneArgs] = args
+        if (sub === "open") {
+          const pluginId = flagValue(paneArgs, "--plugin")
+          const entrypoint = flagValue(paneArgs, "--entrypoint")
+          if (!pluginId || !entrypoint) {
+            throw new PluginCliError("pane open needs --plugin <id> --entrypoint <pane-id> [--task <task-id>]")
+          }
+          await openPane(pluginId, entrypoint, flagValue(paneArgs, "--task"))
+          return
+        }
+        printUsage(process.stderr)
+        process.exit(2)
         return
       }
       case "action": {

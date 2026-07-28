@@ -215,6 +215,13 @@ export interface ChannelPayloads {
    */
   "session.deliver": SessionDeliverPayload
   /**
+   * One "open a terminal tab running argv in task X" (plugin panes:
+   * `kobe plugin pane open` → `tab.open` RPC → here → the TUI hosting the
+   * task opens a CommandTab). EVENT channel like `notice.event`: consumers
+   * dedupe on `at` and drop stale replays.
+   */
+  "tab.open": TabOpenPayload
+  /**
    * One toast for the attached UIs (`kobe api notify` → `notice.send` →
    * here). EVENT channel, not state: last-value replay hands a late
    * subscriber only the most recent notice — consumers dedupe on `at`
@@ -266,6 +273,16 @@ export interface SessionDeliverPayload {
   readonly source: "note" | "dispatcher"
 }
 
+/** The `tab.open` channel payload — one "open a terminal tab running argv". */
+export interface TabOpenPayload {
+  readonly taskId: string
+  /** Argv the tab's PTY spawns verbatim (no shell wrap on this side). */
+  readonly argv: readonly string[]
+  readonly title: string
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+}
+
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
 
@@ -292,6 +309,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "worktree.changes",
   "transcript.activity",
   "session.deliver",
+  "tab.open",
   "notice.event",
   "usage.snapshot",
 ]

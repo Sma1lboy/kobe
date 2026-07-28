@@ -58,6 +58,26 @@ export function takeTabActivation(taskId: string): string | null {
 }
 
 /**
+ * Cross-component "open a command tab" request (`tab.open` — plugin panes).
+ * pendingTabActivation's twin: consumed by the mounted TerminalTabs via the
+ * same listener set, or on mount for a task selected later.
+ */
+let pendingTabOpen: { taskId: string; argv: readonly string[]; title: string } | null = null
+
+export function requestTabOpen(taskId: string, argv: readonly string[], title: string): void {
+  pendingTabOpen = { taskId, argv, title }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending tab-open for this task, or null. */
+export function takeTabOpen(taskId: string): { argv: readonly string[]; title: string } | null {
+  if (pendingTabOpen?.taskId !== taskId) return null
+  const request = pendingTabOpen
+  pendingTabOpen = null
+  return request
+}
+
+/**
  * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
  * `tabsByTask` entry (module-level, otherwise only-grows) and its
  * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never

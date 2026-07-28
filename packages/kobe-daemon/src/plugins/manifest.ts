@@ -47,6 +47,12 @@ export interface PluginEventHook extends PluginCommandSpec {
   readonly on: PluginEventName
 }
 
+export interface PluginPane extends PluginCommandSpec {
+  /** Local id (no dots), like actions. */
+  readonly id: string
+  readonly title: string
+}
+
 export interface PluginManifest {
   readonly id: string
   readonly name: string
@@ -58,6 +64,7 @@ export interface PluginManifest {
   readonly startup: readonly PluginCommandSpec[]
   readonly actions: readonly PluginAction[]
   readonly events: readonly PluginEventHook[]
+  readonly panes: readonly PluginPane[]
 }
 
 export interface ParsedPluginManifest {
@@ -177,6 +184,28 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
     seen.add(a.id)
   }
 
+  // Panes open as terminal tabs in the task workspace (v1's only placement);
+  // an unknown `placement` value is tolerated with a warning for forward
+  // compat with herdr-style overlay/popup/split.
+  const panes = asTableArray(raw.panes, "panes").map((t, i) => {
+    const paneId = asString(t.id, `panes[${i}].id`)
+    if (!LOCAL_ID_RE.test(paneId)) fail(`pane id \`${paneId}\` may not contain dots`)
+    if (t.placement !== undefined && t.placement !== "tab") {
+      warnings.push(`pane \`${paneId}\` placement \`${String(t.placement)}\` is not supported yet; opening as a tab`)
+    }
+    return {
+      id: paneId,
+      title: asString(t.title, `panes[${i}].title`),
+      command: asCommand(t.command, `panes[${i}].command`),
+      platforms: asPlatforms(t.platforms, `panes[${i}].platforms`),
+    }
+  })
+  const paneSeen = new Set<string>()
+  for (const p of panes) {
+    if (paneSeen.has(p.id)) fail(`duplicate pane id \`${p.id}\``)
+    paneSeen.add(p.id)
+  }
+
   const events = asTableArray(raw.events, "events").flatMap((t, i) => {
     const on = asString(t.on, `events[${i}].on`)
     const hook = {
@@ -191,7 +220,7 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
   })
 
   return {
-    manifest: { id, name, version, minKobeVersion, description, platforms, build, startup, actions, events },
+    manifest: { id, name, version, minKobeVersion, description, platforms, build, startup, actions, events, panes },
     warnings,
   }
 }

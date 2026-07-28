@@ -297,6 +297,24 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "tab.open",
+      async handle(payload, ctx) {
+        // Plugin panes: `kobe plugin pane open` asks the TUI hosting the
+        // task to open a terminal tab running argv. Same trust boundary as
+        // `pty.open` (the socket already grants argv execution); the daemon
+        // only validates + broadcasts, the TUI owns the actual tab.
+        const taskId = requireString(payload, "taskId")
+        const title = requireString(payload, "title")
+        const argv = (payload as { argv?: unknown }).argv
+        if (!Array.isArray(argv) || argv.length === 0 || !argv.every((a) => typeof a === "string" && a.length > 0)) {
+          throw new Error("argv must be a non-empty array of strings")
+        }
+        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
+        ctx.bus.publish("tab.open", { taskId, argv, title, at: Date.now() })
+        return { ok: true }
+      },
+    },
+    {
       name: "notice.send",
       async handle(payload, ctx) {
         // `kobe api notify`: one toast for every attached UI. The daemon

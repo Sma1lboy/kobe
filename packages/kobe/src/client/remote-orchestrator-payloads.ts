@@ -22,6 +22,7 @@ import type {
   NoticeEventPayload,
   SerializedTask,
   SubscribeRole,
+  TabOpenPayload,
   UiPrefsPayload,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
@@ -320,6 +321,7 @@ export interface OrchestratorSignals {
   readonly transcriptActivityAcc: ReadableState<TranscriptActivityMap | null>
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setNoticeSig: (next: NoticeEventPayload | null) => void
+  readonly setTabOpenSig: (next: TabOpenPayload | null) => void
   readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   readonly setKeybindingsRevSig: (next: number | null) => void
   readonly setConnectionState: (next: DaemonConnectionState) => void

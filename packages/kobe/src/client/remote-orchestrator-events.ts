@@ -11,6 +11,7 @@ import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import {
   type NoticeEventPayload,
   type SerializedTask,
+  type TabOpenPayload,
   isAttentionInboxState,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
@@ -257,6 +258,20 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     const current = signals.transcriptActivityAcc()
     if (current && sameTranscriptActivityMap(current, next)) return
     signals.setTranscriptActivitySig(next)
+    return
+  }
+  if (name === "tab.open") {
+    const p = payload as Partial<TabOpenPayload> | undefined
+    if (
+      typeof p?.taskId !== "string" ||
+      typeof p.at !== "number" ||
+      typeof p.title !== "string" ||
+      !Array.isArray(p.argv)
+    ) {
+      logClientError("orch", `dropped tab.open event: malformed payload (${describePayload(payload)})`)
+      return
+    }
+    signals.setTabOpenSig(p as TabOpenPayload)
     return
   }
   if (name === "notice.event") {

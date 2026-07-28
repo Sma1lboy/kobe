@@ -20,6 +20,7 @@ import {
   type ChannelName,
   type NoticeEventPayload,
   type SubscribeRole,
+  type TabOpenPayload,
   type UiPrefsPayload,
   isDaemonVersionStale,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
@@ -55,7 +56,6 @@ import {
   keybindingsRevSignalOp,
   keybindingsRevStoreOp,
   listTasksOp,
-  noticeStoreOp,
   subscribeTasksOp,
   taskJobsSignalOp,
   tasksSignalOp,
@@ -130,6 +130,7 @@ export class RemoteOrchestrator {
   private readonly usageSnapshotAcc = createStateCell<UsageSnapshotMap | null>(null)
   private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
   private readonly noticeAcc = createStateCell<NoticeEventPayload | null>(null)
+  private readonly tabOpenAcc = createStateCell<TabOpenPayload | null>(null)
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
   private readonly keybindingsRevAcc = createStateCell<number | null>(null)
   private readonly connectionStateAcc = createStateCell<DaemonConnectionState>("online")
@@ -175,6 +176,7 @@ export class RemoteOrchestrator {
       transcriptActivityAcc: this.transcriptActivityAcc,
       setTranscriptActivitySig: this.transcriptActivityAcc.set,
       setNoticeSig: this.noticeAcc.set,
+      setTabOpenSig: this.tabOpenAcc.set,
       setUiPrefsSig: this.uiPrefsAcc.set,
       setKeybindingsRevSig: this.keybindingsRevAcc.set,
       setConnectionState: this.connectionStateAcc.set,
@@ -194,7 +196,6 @@ export class RemoteOrchestrator {
       transcriptActivityAcc: this.transcriptActivityAcc,
       transcriptActivityStoreInner: this.transcriptActivityAcc,
       noticeAcc: this.noticeAcc,
-      noticeStoreInner: this.noticeAcc,
       uiPrefsAcc: this.uiPrefsAcc,
       uiPrefsStoreInner: this.uiPrefsAcc,
       keybindingsRevAcc: this.keybindingsRevAcc,
@@ -349,9 +350,10 @@ export class RemoteOrchestrator {
   }
 
   /** Latest daemon-broadcast notice (`notice.event`) — consumers dedupe on `at`. */
-  noticeStore(): ExternalStore<NoticeEventPayload | null> {
-    return noticeStoreOp(this.reads)
-  }
+  readonly noticeStore = (): ExternalStore<NoticeEventPayload | null> => this.noticeAcc
+
+  /** Latest `tab.open` request (plugin panes) — consumers dedupe on `at`. */
+  readonly tabOpenStore = (): ExternalStore<TabOpenPayload | null> => this.tabOpenAcc
 
   uiPrefsSignal(): ReadableState<UiPrefsPayload | null> {
     return uiPrefsSignalOp(this.reads)

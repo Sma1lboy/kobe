@@ -100,6 +100,7 @@ describe("daemon handler registry", () => {
       "attention.dismiss",
       "attention.read",
       "session.deliver",
+      "tab.open",
       "notice.send",
       "note.file",
     ]
@@ -107,6 +108,28 @@ describe("daemon handler registry", () => {
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()
     expect(registry.has("subscribe")).toBe(false)
     expect(registry.size).toBe(rpcNames.length)
+  })
+
+  describe("tab.open", () => {
+    it("publishes a tab.open event for a known task", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: (id: string) => (id === "t1" ? TASK : undefined) })
+      const before = Date.now()
+      const result = await dispatch("tab.open", { taskId: "t1", argv: ["sh", "-lc", "true"], title: "demo" }, ctx)
+      expect(result).toEqual({ ok: true })
+      const event = rec.published[0] as { channel: string; payload: Record<string, unknown> }
+      expect(event.channel).toBe("tab.open")
+      expect(event.payload).toMatchObject({ taskId: "t1", argv: ["sh", "-lc", "true"], title: "demo" })
+      expect(event.payload.at as number).toBeGreaterThanOrEqual(before)
+    })
+
+    it("rejects an unknown task and a malformed argv", async () => {
+      const { ctx } = fakeCtx({ getTask: () => undefined })
+      await expect(dispatch("tab.open", { taskId: "nope", argv: ["x"], title: "t" }, ctx)).rejects.toThrow(
+        /task not found/,
+      )
+      const { ctx: ctx2 } = fakeCtx({ getTask: () => TASK })
+      await expect(dispatch("tab.open", { taskId: "t1", argv: [], title: "t" }, ctx2)).rejects.toThrow(/argv/)
+    })
   })
 
   describe("notice.send", () => {

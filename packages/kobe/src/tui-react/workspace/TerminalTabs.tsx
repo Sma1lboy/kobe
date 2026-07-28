@@ -88,7 +88,7 @@ import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { terminalTabsKey } from "./terminal-tabs-persist"
-import { tabActivationListeners, tabsByTask, takeTabActivation } from "./terminal-tabs-shared"
+import { tabActivationListeners, tabsByTask, takeTabActivation, takeTabOpen } from "./terminal-tabs-shared"
 import { useTabDialogs } from "./use-tab-dialogs"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
@@ -195,9 +195,13 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   useEffect(() => {
     const consume = (): void => {
       const tabId = takeTabActivation(propsRef.current.taskId)
-      if (!tabId) return
-      const s = stateRef.current
-      if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
+      if (tabId) {
+        const s = stateRef.current
+        if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
+      }
+      // Plugin panes (`tab.open`): open a command tab running the argv.
+      const open = takeTabOpen(propsRef.current.taskId)
+      if (open) updateRef.current(openCommandTab(stateRef.current, open.argv, open.title))
     }
     consume()
     tabActivationListeners.add(consume)

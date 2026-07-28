@@ -45,6 +45,11 @@ command = ["sh", "notify.sh", "test"]
 [[events]]                       # fired by the daemon on derived events
 on = "agent.turn-complete"
 command = ["sh", "notify.sh"]
+
+[[panes]]                        # a terminal tab in the task workspace
+id = "git"
+title = "lazygit"
+command = ["lazygit"]            # cwd = the task worktree; use $KOBE_PLUGIN_ROOT/... for plugin files
 ```
 
 `command` is argv — never run through a shell. Parsing/validation:
@@ -110,10 +115,23 @@ first-party examples in [`plugins/`](../../plugins/) seed the list. No
 submission, no review queue. If the unauthenticated search rate limit ever
 bites, the upgrade path is herdr's ~400-line Cloudflare worker index.
 
+## Panes (v1: placement = tab)
+
+`kobe plugin pane open --plugin <id> --entrypoint <pane-id> [--task <id>]`
+(defaults to the active task) → `tab.open` RPC → the daemon validates and
+broadcasts a `tab.open` channel event → the TUI hosting the task opens a
+self-closing CommandTab running the pane's argv. The tab's cwd is the task
+worktree (a pane is about the task — lazygit, file viewers); `$KOBE_PLUGIN_ROOT`
+in command elements is expanded by the CLI, and the plugin env contract rides
+an `env` prefix inside one `sh -lc` script, so no tab/PTY schema knows about
+plugins. Trust: same boundary as `pty.open` — the daemon socket already
+grants argv execution. herdr's overlay/popup/split placements are tolerated
+in the manifest with a warning and open as tabs for now.
+
 ## Deferred (v2+, deliberate)
 
-- **Panes** (plugin-owned terminal panes / overlays) — big tui-react surface;
-  needs its own design pass.
+- **Pane placements** beyond `tab` (overlay / popup / split) and Windows pane
+  support (the v1 wrap is `sh -lc`).
 - **Keybindings → plugin actions** — chord placement needs owner sign-off
   per docs/KEYBINDINGS.md; actions are CLI-invocable meanwhile.
 - **Link handlers** — needs the terminal URL-click plumbing.

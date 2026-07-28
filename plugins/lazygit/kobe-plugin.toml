@@ -1,0 +1,11 @@
+id = "examples.lazygit"
+name = "Lazygit"
+version = "0.1.0"
+min_kobe_version = "0.8.22"
+description = "Open lazygit on the task's worktree in a terminal tab"
+platforms = ["macos", "linux"]
+
+[[panes]]
+id = "git"
+title = "lazygit"
+command = ["lazygit"]

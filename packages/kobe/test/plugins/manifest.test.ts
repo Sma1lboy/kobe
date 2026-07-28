@@ -71,6 +71,18 @@ describe("parsePluginManifest", () => {
     expect(warnings.some((w) => w.includes("platforms"))).toBe(true)
   })
 
+  it("parses [[panes]] and warns on unsupported placement", () => {
+    const base = 'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_kobe_version = "0.1.0"\nplatforms = ["macos"]\n'
+    const { manifest, warnings } = parsePluginManifest(
+      `${base}[[panes]]\nid = "git"\ntitle = "lazygit"\ncommand = ["lazygit"]\nplacement = "overlay"`,
+    )
+    expect(manifest.panes[0]).toMatchObject({ id: "git", title: "lazygit", command: ["lazygit"] })
+    expect(warnings.some((w) => w.includes("placement"))).toBe(true)
+    expect(() => parsePluginManifest(`${base}[[panes]]\nid = "a.b"\ntitle = "T"\ncommand = ["true"]`)).toThrow(
+      /may not contain dots/,
+    )
+  })
+
   it("rejects a command that is not an argv array", () => {
     expect(() =>
       parsePluginManifest(
