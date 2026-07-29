@@ -1,6 +1,6 @@
 {
   "name": "kobe-web",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "imports": {
@@ -73,6 +73,9 @@
     "vitest": "^4.1.10"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "lightningcss"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
   }
 }

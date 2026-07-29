@@ -1,6 +1,6 @@
 {
   "name": "@sma1lboy/kobe-daemon",
-  "version": "0.7.11",
+  "version": "0.7.12",
   "description": "Daemon server, protocol, lifecycle, and socket client for kobe.",
   "type": "module",
   "private": true,
