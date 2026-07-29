@@ -103,14 +103,16 @@ describe("key routing tables", () => {
     // task) same rationale as f4.
     // NOT ctrl+g for attention.next: that's the engine's readline abort —
     // it moved to f7 so ctrl+g passes through to the engine again.
-    // ctrl+<digit> joined 2026-07-29 (owner request): jump to the Nth task
-    // from anywhere, which only works if the digits don't reach the engine.
-    // The cost is the shell's ctrl+digit control bytes (ctrl+3 = ESC,
-    // ctrl+8 = DEL); the real escape/backspace keys are untouched.
+    // ctrl+<digit> joined 2026-07-29 (owner request): jump to the task
+    // showing that digit, which only works if the digits don't reach the
+    // engine. ctrl+1 is NOT here — the legacy terminal protocol can't
+    // encode it (verified on the owner's terminal), so the rows print
+    // 2…9,0 instead. The cost is the shell's ctrl+digit control bytes
+    // (ctrl+3 = ESC, ctrl+8 = DEL); the real escape/backspace keys are
+    // untouched.
     expect([...RESERVED_GLOBAL_CHORDS].sort()).toEqual(
       [
         "ctrl+0",
-        "ctrl+1",
         "ctrl+2",
         "ctrl+3",
         "ctrl+4",

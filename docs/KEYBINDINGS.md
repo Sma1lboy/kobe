@@ -54,7 +54,7 @@ their prefix strokes are dropped, same reasoning as the tab rows.
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 | `ctrl+\` | Split right |
 | `ctrl+=` | Split down |
-| `ctrl+1` … `ctrl+9`, `ctrl+0` | Jump to the Nth task in the sidebar's visible list (`ctrl+0` = 10th) |
+| `ctrl+2` … `ctrl+9`, `ctrl+0` | Jump to the row printing that digit in the sidebar |
 
 Context resolves intentional overlap. For example, `ctrl+w` closes the
 innermost split when a tab is split; otherwise it closes the tab. `F2` renames
@@ -74,18 +74,26 @@ left/right vim keys match the spatial direction.
 Owner decision (2026-07-29): `ctrl+<digit>` jumps straight to a task, and is
 GLOBAL rather than sidebar-scoped — the whole value is switching tasks without
 leaving the engine pane, so the digits are reserved out of the terminal
-passthrough (`RESERVED_GLOBAL_CHORDS`). The index follows the sidebar's CURRENT
-visible order (project filter, sort, search all apply), so a digit means what
-the eye reads; a digit past the end of the list does nothing rather than
-clamping to the last task.
+passthrough (`RESERVED_GLOBAL_CHORDS`). The cost is the embedded shell's
+ctrl+digit control bytes; the real escape and backspace keys are untouched.
 
-Terminal reality worth knowing: `ctrl+<digit>` is only a distinct keystroke
-under the kitty keyboard protocol, which opentui negotiates and iTerm2 / kitty
-/ WezTerm deliver. On a legacy terminal `ctrl+1`, `ctrl+9` and `ctrl+0` send
-nothing at all, and `ctrl+3` / `ctrl+8` are byte-identical to escape /
-backspace — so there the chords simply do nothing instead of stealing those
-keys. The cost of reserving them is the embedded shell's ctrl+digit control
-bytes; the real escape and backspace keys are untouched.
+**Each row prints the digit that jumps to it** (`panes/sidebar/jump-digits.ts`
+— one list feeds the chord table, the handler, and the renderer). That is what
+makes the feature usable rather than clever:
+
+- `ctrl+1` does not exist. The legacy terminal protocol has no encoding for it
+  (only ctrl+2…ctrl+8 map to C0 bytes; 1, 9 and 0 send nothing), verified on
+  the owner's terminal — so the first row prints, and answers to, `2`. Nobody
+  computes an offset because the number is right there.
+- Under the **`recent`** sort the list reorders as you switch, so the digits
+  reorder with it. Reading them off the screen is the intended interaction:
+  the digit is "where this task sits right now", not a permanent address. The
+  task you are in sits at the top, so the digits read as distance from where
+  you are. Want fixed addresses instead? `t` switches the sidebar to the
+  **`default`** sort, whose order is stored and never reshuffles on its own.
+- A row past the ninth prints no digit, and a chord with no row does nothing —
+  a jump that silently lands somewhere else is worse than one that does
+  nothing.
 
 Owner decision (2026-07-25): focus movement is a cursor, not a ring. It clamps
 at both ends (sidebar on the left, files on the right) instead of wrapping —

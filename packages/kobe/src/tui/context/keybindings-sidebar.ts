@@ -6,6 +6,7 @@
  * display rules).
  */
 
+import { TASK_JUMP_CHORDS } from "../panes/sidebar/jump-digits.ts"
 import type { KobeBinding } from "./keybindings-table.ts"
 
 export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
@@ -218,17 +219,17 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     // modifier-prefixed chords are the global tier (docs/KEYBINDINGS.md).
     // Reserved out of the terminal passthrough in keys-pure.ts.
     //
-    // Terminal reality: ctrl+digit is only a DISTINCT key under the kitty
-    // keyboard protocol (opentui negotiates it; iTerm2/kitty/WezTerm
-    // deliver it). On a legacy terminal ctrl+1/9/0 send nothing at all and
-    // ctrl+3 / ctrl+8 are indistinguishable from escape / backspace — so
-    // there the chord simply does nothing instead of stealing those keys.
+    // Each row PRINTS its own digit (jump-digits.ts), so nothing here has
+    // to be memorised and the recency sort reshuffling the list is
+    // self-evident rather than confusing. ctrl+1 is deliberately not in
+    // the set — the legacy terminal protocol has no encoding for it, so
+    // row 1 shows (and answers to) `2`.
     id: "tasks.jump",
     scope: "global",
-    keys: ["ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5", "ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9", "ctrl+0"],
+    keys: [...TASK_JUMP_CHORDS],
     category: "Tasks pane",
-    description: "Jump to the Nth task in the list (ctrl+0 = 10th)",
-    hint: { keys: "ctrl+1-0" },
+    description: "Jump to the task showing that digit (ctrl+2 = first row)",
+    hint: { keys: "ctrl+2-0" },
   },
   {
     // Right arrow jumps from the Tasks pane back into the current

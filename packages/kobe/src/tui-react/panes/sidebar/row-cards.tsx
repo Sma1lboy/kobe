@@ -21,6 +21,7 @@ import { sweepBar } from "../../../tui/lib/progress-bar"
 import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../../tui/lib/spinner-frame-store"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import type { SidebarRow } from "../../../tui/panes/sidebar/groups"
+import { taskJumpDigit } from "../../../tui/panes/sidebar/jump-digits"
 import { spacedTitle } from "../../../tui/panes/sidebar/labels"
 import {
   type SidebarRowView,
@@ -291,6 +292,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
                 {t("tasks.moveChip")}
               </text>
             ) : null}
+            <JumpDigit row={props.row} dim={!isCursor} />
           </box>
         </RowLine>
         <RowLine selection={selection}>
@@ -301,6 +303,29 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
         </RowLine>
       </RowBody>
     </box>
+  )
+}
+
+/**
+ * The `ctrl+<digit>` this row answers to, right-stuck on its title line.
+ * Printing it is what makes the chord usable at all: the digits follow the
+ * VISIBLE order, so under `recent` sort they re-shuffle as you switch —
+ * you read the number, you don't remember it. Rows past the ninth show
+ * nothing rather than a digit that jumps somewhere else.
+ */
+function JumpDigit(props: { row: SidebarRow; dim: boolean }) {
+  const { theme } = useTheme()
+  const digit = taskJumpDigit(props.row.flatIndex)
+  if (digit === null) return null
+  return (
+    <text
+      fg={props.dim ? theme.textMuted : theme.accent}
+      attributes={TextAttributes.DIM}
+      wrapMode="none"
+      flexShrink={0}
+    >
+      {digit}
+    </text>
   )
 }
 
@@ -337,6 +362,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
                 {t("tasks.moveChip")}
               </text>
             ) : null}
+            <JumpDigit row={props.row} dim={!isCursor} />
           </box>
         </RowLine>
         <RowLine selection={selection}>
