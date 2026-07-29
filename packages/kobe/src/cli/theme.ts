@@ -41,18 +41,7 @@ import { validateTheme } from "../tui/context/theme/schema"
  * importing that module here would drag in opentui + solid (it builds
  * a Solid store at module load). We mirror the names instead.
  */
-const BUNDLED_NAMES: readonly string[] = [
-  "catppuccin",
-  "claude",
-  "conductor",
-  "dracula",
-  "gruvbox",
-  "nord",
-  "opencode",
-  "osaka-jade",
-  "rose-pine",
-  "tokyonight",
-]
+const BUNDLED_NAMES: readonly string[] = ["claude", "conductor", "tokyonight"]
 
 function fail(message: string): never {
   process.stderr.write(`kobe theme: ${message}\n`)

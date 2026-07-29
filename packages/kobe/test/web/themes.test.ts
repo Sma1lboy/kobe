@@ -38,20 +38,7 @@ describe("WEB_THEMES", () => {
   // so this list going stale is exactly how a theme ships to the TUI but not
   // the browser.
   it("ships every bundled theme", () => {
-    expect(Object.keys(WEB_THEMES).sort()).toEqual(
-      [
-        "catppuccin",
-        "claude",
-        "conductor",
-        "dracula",
-        "gruvbox",
-        "nord",
-        "opencode",
-        "osaka-jade",
-        "rose-pine",
-        "tokyonight",
-      ].sort(),
-    )
+    expect(Object.keys(WEB_THEMES).sort()).toEqual(["claude", "conductor", "tokyonight"].sort())
   })
 
   it("every theme has every required token, all valid 6-digit hex", () => {

@@ -65,6 +65,21 @@ describe("readPersistedUiPrefs", () => {
     expect(readPersistedUiPrefs("claude").theme).toBe("claude")
   })
 
+  // A host that loaded ~/.kobe/themes first knows more than the bundled set.
+  // Without this seam every `kobe theme add` theme reverts to the fallback on
+  // the next boot — which is most themes now that only three ship bundled.
+  test("a caller-supplied registry check keeps a user-installed theme", () => {
+    writeState(JSON.stringify({ activeTheme: "gruvbox" }))
+    expect(readPersistedUiPrefs("claude").theme).toBe("claude")
+    const knows = (name: string) => ["claude", "tokyonight", "gruvbox"].includes(name)
+    expect(readPersistedUiPrefs("claude", knows).theme).toBe("gruvbox")
+  })
+
+  test("the caller's check still rejects a name it doesn't know", () => {
+    writeState(JSON.stringify({ activeTheme: "uninstalled" }))
+    expect(readPersistedUiPrefs("claude", (n) => n === "gruvbox").theme).toBe("claude")
+  })
+
   test("each field validates independently — garbage in one doesn't poison the others", () => {
     writeState(
       JSON.stringify({

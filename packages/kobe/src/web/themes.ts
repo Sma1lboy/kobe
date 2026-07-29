@@ -13,15 +13,8 @@
  * Route:  GET /api/themes → { themes: Record<name, WebThemePalette> }
  */
 
-import catppuccin from "../tui/context/theme/catppuccin.json" with { type: "json" }
 import claude from "../tui/context/theme/claude.json" with { type: "json" }
 import conductor from "../tui/context/theme/conductor.json" with { type: "json" }
-import dracula from "../tui/context/theme/dracula.json" with { type: "json" }
-import gruvbox from "../tui/context/theme/gruvbox.json" with { type: "json" }
-import nord from "../tui/context/theme/nord.json" with { type: "json" }
-import opencode from "../tui/context/theme/opencode.json" with { type: "json" }
-import osakaJade from "../tui/context/theme/osaka-jade.json" with { type: "json" }
-import rosePine from "../tui/context/theme/rose-pine.json" with { type: "json" }
 import tokyonight from "../tui/context/theme/tokyonight.json" with { type: "json" }
 
 type Variant = { dark: string; light: string }
@@ -57,14 +50,7 @@ export interface WebThemePalette {
 const THEME_JSONS: Record<string, ThemeJson> = {
   claude: claude as ThemeJson,
   conductor: conductor as ThemeJson,
-  dracula: dracula as ThemeJson,
-  nord: nord as ThemeJson,
-  opencode: opencode as ThemeJson,
-  "osaka-jade": osakaJade as ThemeJson,
   tokyonight: tokyonight as ThemeJson,
-  gruvbox: gruvbox as ThemeJson,
-  catppuccin: catppuccin as ThemeJson,
-  "rose-pine": rosePine as ThemeJson,
 }
 
 function resolveHex(themeJson: ThemeJson, value: ColorValue | undefined, chain: string[] = []): string | null {

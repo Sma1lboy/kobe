@@ -218,7 +218,9 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) addTheme(name, theme)
 
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
+  // Validate against the registry we just populated, not the bundled set —
+  // a `kobe theme add` theme is a legitimate persisted choice.
+  const prefs = readPersistedUiPrefs(FALLBACK_THEME, hasTheme)
   // Seed ALL visual prefs + language before the first render — the module
   // store is live before any component mounts, so the first frame is
   // already themed (no transparent/accent flash).

@@ -35,12 +35,22 @@ export interface PersistedUiPrefs {
  * Read + validate the persisted prefs. Never throws — a missing /
  * malformed `state.json` yields the fallback theme with defaults off,
  * so a pane subcommand always renders.
+ *
+ * `isKnownTheme` decides whether a stored theme name still resolves. It
+ * defaults to the bundled-only check, which is all an off-render caller can
+ * answer on its own. A host that has already registered user themes (see
+ * `bootPaneHost`, which calls `loadUserThemes()` first) must pass the live
+ * registry's check instead — otherwise every `kobe theme add` theme is
+ * treated as stale on the next boot and silently reverts to the fallback.
  */
-export function readPersistedUiPrefs(fallbackTheme: string): PersistedUiPrefs {
+export function readPersistedUiPrefs(
+  fallbackTheme: string,
+  isKnownTheme: (name: string) => boolean = hasBundledTheme,
+): PersistedUiPrefs {
   try {
     const parsed = JSON.parse(readFileSync(kvStatePath(), "utf8")) as Record<string, unknown>
     const theme =
-      typeof parsed.activeTheme === "string" && hasBundledTheme(parsed.activeTheme) ? parsed.activeTheme : fallbackTheme
+      typeof parsed.activeTheme === "string" && isKnownTheme(parsed.activeTheme) ? parsed.activeTheme : fallbackTheme
     // Default-true (2026-07-12): only an explicit stored `false` opts out.
     const transparent = parsed.transparentBackground !== false
     const focusAccent =

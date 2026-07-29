@@ -1,9 +1,9 @@
 # Themes
 
-kobe ships with a set of bundled color themes (`catppuccin`, `claude`,
-`conductor`, `dracula`, `gruvbox`, `nord`, `opencode`, `osaka-jade`,
-`rose-pine`, `tokyonight`) and lets you drop additional ones into
-`~/.kobe/themes/` without recompiling. Any
+kobe bundles three color themes — `claude`, `conductor`, and
+`tokyonight` — and lets you drop additional ones into `~/.kobe/themes/`
+without recompiling. The bundled set is deliberately small; everything
+else is one `kobe theme add` away (see [Hosted themes](#hosted-themes)). Any
 file matching `~/.kobe/themes/*.json` is loaded at boot and shows up in
 the theme picker (`Settings → General → Theme`, opened via `ctrl+,`).
 
@@ -79,18 +79,22 @@ That's the entire distribution mechanism — no plugin manifest, no
 registry. The same shape is what kobe ships internally; your theme
 doesn't have to know it's a "user" theme.
 
-A few themes are hosted on the landing site rather than bundled, as
-worked examples of exactly that:
+## Hosted themes
+
+Ten themes are hosted on the landing site rather than bundled:
+`catppuccin`, `dracula`, `everforest`, `gruvbox`, `kanagawa`, `nord`,
+`opencode`, `osaka-jade`, `rose-pine`, `solarized`. Install any of them
+with one command:
 
 ```sh
-kobe theme add https://kobe.sma1lboy.me/themes/everforest.json
-kobe theme add https://kobe.sma1lboy.me/themes/kanagawa.json
-kobe theme add https://kobe.sma1lboy.me/themes/solarized.json
+kobe theme add https://kobe.sma1lboy.me/themes/gruvbox.json
 ```
 
-Their sources live in `packages/kobe-landing/themes/`. The gallery at
-<https://kobe.sma1lboy.me/themes> previews every bundled and hosted
-theme, rendered from these same JSON files.
+Several of these shipped bundled before v0.8.38 — nothing about them
+changed except where they live, and installing one restores it exactly.
+Their sources are in `packages/kobe-landing/themes/`, and the gallery at
+<https://kobe.sma1lboy.me/themes> previews all thirteen, rendered from
+these same JSON files.
 
 ## Troubleshooting
 
