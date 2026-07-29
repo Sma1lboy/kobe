@@ -62,15 +62,27 @@ export function takeTabActivation(taskId: string): string | null {
  * pendingTabActivation's twin: consumed by the mounted TerminalTabs via the
  * same listener set, or on mount for a task selected later.
  */
-let pendingTabOpen: { taskId: string; argv: readonly string[]; title: string } | null = null
+let pendingTabOpen: {
+  taskId: string
+  argv: readonly string[]
+  title: string
+  placement?: "split" | "tab"
+} | null = null
 
-export function requestTabOpen(taskId: string, argv: readonly string[], title: string): void {
-  pendingTabOpen = { taskId, argv, title }
+export function requestTabOpen(
+  taskId: string,
+  argv: readonly string[],
+  title: string,
+  placement?: "split" | "tab",
+): void {
+  pendingTabOpen = { taskId, argv, title, placement }
   for (const listener of tabActivationListeners) listener()
 }
 
 /** Consume a pending tab-open for this task, or null. */
-export function takeTabOpen(taskId: string): { argv: readonly string[]; title: string } | null {
+export function takeTabOpen(
+  taskId: string,
+): { argv: readonly string[]; title: string; placement?: "split" | "tab" } | null {
   if (pendingTabOpen?.taskId !== taskId) return null
   const request = pendingTabOpen
   pendingTabOpen = null

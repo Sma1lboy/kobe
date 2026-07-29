@@ -38,7 +38,7 @@ function useDaemonTabOpens(orch: RemoteOrchestrator | null): void {
     if (!request || request.at === seenAt.current) return
     seenAt.current = request.at
     if (Date.now() - request.at > STALE_NOTICE_MS) return
-    requestTabOpen(request.taskId, request.argv, request.title)
+    requestTabOpen(request.taskId, request.argv, request.title, request.placement)
   }, [request])
 }
 

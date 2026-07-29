@@ -47,6 +47,7 @@ import { buildDiffReview } from "../../tui/ops/diff-comments"
 import { warmHostedShell } from "../../tui/panes/terminal/pty-hosted"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { openPluginPane } from "../../tui/workspace/pane-split"
 import { shellIdentityInput } from "../../tui/workspace/terminal-tab-spawn"
 import {
   type EngineTab,
@@ -59,7 +60,6 @@ import {
   engineTabSpawnFor,
   initialTabs,
   isTabSplit,
-  openCommandTab,
   recycleTabs,
   rehydrateTabs,
   renameActiveTab,
@@ -199,9 +199,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         const s = stateRef.current
         if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
       }
-      // Plugin panes (`tab.open`): open a command tab running the argv.
+      // Plugin panes (`tab.open`): split the focused chattab (default) or
+      // open a separate command tab — pane-split.ts owns the policy.
       const open = takeTabOpen(propsRef.current.taskId)
-      if (open) updateRef.current(openCommandTab(stateRef.current, open.argv, open.title))
+      if (open) updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement))
     }
     consume()
     tabActivationListeners.add(consume)

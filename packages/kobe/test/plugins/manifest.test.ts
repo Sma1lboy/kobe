@@ -76,8 +76,12 @@ describe("parsePluginManifest", () => {
     const { manifest, warnings } = parsePluginManifest(
       `${base}[[panes]]\nid = "git"\ntitle = "lazygit"\ncommand = ["lazygit"]\nplacement = "overlay"`,
     )
-    expect(manifest.panes[0]).toMatchObject({ id: "git", title: "lazygit", command: ["lazygit"] })
+    expect(manifest.panes[0]).toMatchObject({ id: "git", title: "lazygit", command: ["lazygit"], placement: "split" })
     expect(warnings.some((w) => w.includes("placement"))).toBe(true)
+    // Known placements parse silently.
+    const tab = parsePluginManifest(`${base}[[panes]]\nid = "b"\ntitle = "B"\ncommand = ["true"]\nplacement = "tab"`)
+    expect(tab.manifest.panes[0]?.placement).toBe("tab")
+    expect(tab.warnings.some((w) => w.includes("placement"))).toBe(false)
     expect(() => parsePluginManifest(`${base}[[panes]]\nid = "a.b"\ntitle = "T"\ncommand = ["true"]`)).toThrow(
       /may not contain dots/,
     )

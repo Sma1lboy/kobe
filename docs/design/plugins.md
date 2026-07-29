@@ -121,18 +121,20 @@ first-party examples in [`plugins/`](../../plugins/) seed the list. No
 submission, no review queue. If the unauthenticated search rate limit ever
 bites, the upgrade path is herdr's ~400-line Cloudflare worker index.
 
-## Panes (v1: placement = tab)
+## Panes
 
-`kobe plugin pane open --plugin <id> --entrypoint <pane-id> [--task <id>]`
-(defaults to the active task) → `tab.open` RPC → the daemon validates and
-broadcasts a `tab.open` channel event → the TUI hosting the task opens a
-self-closing CommandTab running the pane's argv. The tab's cwd is the task
-worktree (a pane is about the task — lazygit, file viewers); `$KOBE_PLUGIN_ROOT`
-in command elements is expanded by the CLI, and the plugin env contract rides
-an `env` prefix inside one `sh -lc` script, so no tab/PTY schema knows about
-plugins. Trust: same boundary as `pty.open` — the daemon socket already
-grants argv execution. herdr's overlay/popup/split placements are tolerated
-in the manifest with a warning and open as tabs for now.
+`kobe plugin pane open <plugin-id>.<pane-id>` (defaults to the active task)
+→ `tab.open` RPC → the daemon validates and broadcasts → the TUI hosting the
+task places the pane. Default placement is **`split`** (owner semantics
+2026-07-29): the pane joins the focused chattab's split group beside the
+engine — herdr's `placement = "split"`. `placement = "tab"` opens a separate
+self-closing command tab instead; overlay/popup are tolerated with a warning
+and treated as split. Falls back to a tab when the active tab can't host a
+split (content tab / depth cap). The pane's cwd is the task worktree;
+`$KOBE_PLUGIN_ROOT` in command elements is expanded by the CLI, and the
+plugin env contract rides an `env` prefix inside one `sh -lc` script, so no
+tab/PTY schema knows about plugins. Trust: same boundary as `pty.open` —
+the daemon socket already grants argv execution.
 
 ## Keybindings
 
@@ -143,8 +145,8 @@ Mechanics + resolution record: docs/KEYBINDINGS.md §Plugin chords.
 
 ## Deferred (v2+, deliberate)
 
-- **Pane placements** beyond `tab` (overlay / popup / split) and Windows pane
-  support (the v1 wrap is `sh -lc`).
+- **Pane placements** beyond `split`/`tab` (overlay / popup) and Windows
+  pane support (the v1 wrap is `sh -lc`).
 - **Link handlers** — needs the terminal URL-click plumbing.
 - **Richer context JSON** (active task, selection) on action invokes.
 - **`plugin update`** — reinstall replaces the checkout, same as herdr v1.

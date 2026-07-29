@@ -71,6 +71,9 @@ export interface PluginPane extends PluginCommandSpec {
   /** Local id (no dots), like actions. */
   readonly id: string
   readonly title: string
+  /** `split` (default) joins the focused chattab's split group; `tab` opens
+   *  a separate self-closing command tab. */
+  readonly placement: "split" | "tab"
 }
 
 export interface PluginManifest {
@@ -204,18 +207,19 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
     seen.add(a.id)
   }
 
-  // Panes open as terminal tabs in the task workspace (v1's only placement);
-  // an unknown `placement` value is tolerated with a warning for forward
-  // compat with herdr-style overlay/popup/split.
+  // Panes join the focused chattab's split group by default (`split`), or
+  // open a separate command tab (`tab`); herdr-style overlay/popup are
+  // tolerated with a warning and treated as split.
   const panes = asTableArray(raw.panes, "panes").map((t, i) => {
     const paneId = asString(t.id, `panes[${i}].id`)
     if (!LOCAL_ID_RE.test(paneId)) fail(`pane id \`${paneId}\` may not contain dots`)
-    if (t.placement !== undefined && t.placement !== "tab") {
-      warnings.push(`pane \`${paneId}\` placement \`${String(t.placement)}\` is not supported yet; opening as a tab`)
+    if (t.placement !== undefined && t.placement !== "tab" && t.placement !== "split") {
+      warnings.push(`pane \`${paneId}\` placement \`${String(t.placement)}\` is not supported yet; opening as a split`)
     }
     return {
       id: paneId,
       title: asString(t.title, `panes[${i}].title`),
+      placement: (t.placement === "tab" ? "tab" : "split") as "split" | "tab",
       command: asCommand(t.command, `panes[${i}].command`),
       platforms: asPlatforms(t.platforms, `panes[${i}].platforms`),
     }

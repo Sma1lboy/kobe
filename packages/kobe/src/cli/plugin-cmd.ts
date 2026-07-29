@@ -202,7 +202,12 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
   try {
     const taskId = taskFlag ?? (await resolveActiveTaskId(session.client))
     if (!taskId) throw new PluginCliError("no active task; pass --task <id>")
-    await session.client.request("tab.open", { taskId, argv: ["sh", "-lc", script], title: pane.title })
+    await session.client.request("tab.open", {
+      taskId,
+      argv: ["sh", "-lc", script],
+      title: pane.title,
+      placement: pane.placement,
+    })
     console.log(`opened pane ${pluginId}.${pane.id} in task ${taskId}`)
   } finally {
     session.close()

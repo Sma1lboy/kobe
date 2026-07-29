@@ -289,12 +289,14 @@ export interface EngineLifecyclePayload {
   readonly at: number
 }
 
-/** The `tab.open` channel payload — one "open a terminal tab running argv". */
+/** The `tab.open` channel payload — one "open a terminal pane running argv". */
 export interface TabOpenPayload {
   readonly taskId: string
-  /** Argv the tab's PTY spawns verbatim (no shell wrap on this side). */
+  /** Argv the pane's PTY spawns verbatim (no shell wrap on this side). */
   readonly argv: readonly string[]
   readonly title: string
+  /** `split` (default) joins the focused chattab's split group; `tab` opens a separate tab. */
+  readonly placement?: "split" | "tab"
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
 }

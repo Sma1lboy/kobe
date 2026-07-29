@@ -322,7 +322,14 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           throw new Error("argv must be a non-empty array of strings")
         }
         if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
-        ctx.bus.publish("tab.open", { taskId, argv, title, at: Date.now() })
+        const placement = optionalString(payload, "placement")
+        ctx.bus.publish("tab.open", {
+          taskId,
+          argv,
+          title,
+          ...(placement === "tab" || placement === "split" ? { placement } : {}),
+          at: Date.now(),
+        })
         return { ok: true }
       },
     },
