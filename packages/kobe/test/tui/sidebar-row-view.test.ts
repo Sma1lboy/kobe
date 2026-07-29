@@ -394,19 +394,29 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
 })
 
 describe("transient lifecycle marks (engine.lifecycle)", () => {
-  const lifecycleView = (lifecycle: { compacting: boolean; subagents: number }) =>
+  const lifecycleView = (
+    lifecycle: { compacting: boolean; subagents: number },
+    activity?: { state: "running"; at: number },
+  ) =>
     buildSidebarRowView({
       task: task({}),
       lifecycle,
+      ...(activity ? { activity } : {}),
       spinnerFrame: 0,
       subtitleBudget: 80,
       truncateBranch: (branch) => branch,
     })
 
-  it("compacting replaces the branch word on line 2", () => {
-    const row = lifecycleView({ compacting: true, subagents: 0 })
+  it("compacting replaces the branch word on line 2 while the row is loading", () => {
+    const row = lifecycleView({ compacting: true, subagents: 0 }, { state: "running", at: 0 })
     expect(row.subtitleText).not.toContain("kobe/")
     expect(row.subtitleText.length).toBeGreaterThan(0)
+  })
+
+  it("a compacting mark on a quiet row never shows — the label serves the animation", () => {
+    const plain = view({})
+    const stale = lifecycleView({ compacting: true, subagents: 0 })
+    expect(stale.subtitleText).toBe(plain.subtitleText)
   })
 
   it("subagent activity rides as a ◇N prefix ahead of the branch", () => {

@@ -158,13 +158,24 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     // Accumulate per-task into a fresh Map (new ref → re-render). A tabId-
     // carrying event updates BOTH levels: the daemon publishes one event per
     // report, and the task entry is its last-event-wins rollup.
+    const prevTaskState = signals.engineStateAcc().get(p.taskId)?.state
     const next = new Map(signals.engineStateAcc())
     if (p.state === "idle") next.delete(p.taskId)
     else next.set(p.taskId, entry)
     signals.setEngineStateSig(next)
-    // A turn ending (or the session going idle) also ends any transient
-    // lifecycle marks — the safety net for a missed post-compact/stop event.
-    if ((p.state === "idle" || p.state === "turn_complete") && signals.engineLifecycleAcc().has(p.taskId)) {
+    // Transient lifecycle marks (compacting / subagents) must never outlive
+    // the evidence: a turn ending clears them, and so does a FRESH running
+    // edge — a cancelled compaction never sends post-compact, and an
+    // esc-interrupted turn may send no idle/stop either, so the next
+    // prompt's running edge is the label's only chance to un-stick. (A turn
+    // that auto-compacts at its very start may briefly lose the word to
+    // this edge — it self-heals; a stuck label doesn't.)
+    const endsMarks =
+      p.state === "idle" ||
+      p.state === "turn_complete" ||
+      p.state === "error" ||
+      (p.state === "running" && prevTaskState !== "running")
+    if (endsMarks && signals.engineLifecycleAcc().has(p.taskId)) {
       const lifecycle = new Map(signals.engineLifecycleAcc())
       lifecycle.delete(p.taskId)
       signals.setEngineLifecycleSig(lifecycle)

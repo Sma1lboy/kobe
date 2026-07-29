@@ -260,8 +260,11 @@ export function buildSidebarRowView(opts: {
   const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : "—"
   // Transient lifecycle marks: mid-turn compaction replaces the branch word
   // (it outranks the branch, not the failure/waiting words); subagent
-  // activity rides as a compact `◇N` prefix ahead of the branch.
-  const compacting = opts.lifecycle?.compacting === true
+  // activity rides as a compact `◇N` prefix ahead of the branch. The word
+  // is SUBORDINATE to the animation: it only renders while the row is
+  // actually loading, so a mark that outlived its evidence (cancelled
+  // compaction) can never pin a stale label on a quiet row.
+  const compacting = opts.lifecycle?.compacting === true && loading
   const subagents = opts.lifecycle?.subagents ?? 0
   const branchWithMarks = subagents > 0 && branch.length > 0 ? `◇${subagents} ${branch}` : branch
   const subtitleText =
