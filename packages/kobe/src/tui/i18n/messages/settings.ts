@@ -102,7 +102,7 @@ export const en = {
   },
   plugins: {
     title: "Plugins",
-    hint: "Plugins registered in ~/.kobe/plugins.json. enter (or click) toggles one on or off — the daemon watches the file, so the change applies live. Install and remove them from the shell: `kobe plugin install <owner/repo>`, `kobe plugin link <dir>`.",
+    hint: "Plugins registered in ~/.kobe/plugins.json. enter (or click) toggles one on or off — the daemon watches the file, so the change applies live. Rows indented under a plugin are the settings it declares; enter edits one, and the value reaches the plugin on its next run. Install and remove them from the shell: `kobe plugin install <owner/repo>`, `kobe plugin link <dir>`.",
     empty:
       "No plugins registered. Install one with `kobe plugin install <owner/repo>` — browse the `kobe-plugin` topic on GitHub.",
     sourceLink: "linked {path}",
@@ -114,6 +114,9 @@ export const en = {
     runOk: "ok",
     runFailed: "failed to start",
     runExit: "exit {code}",
+    settingUnset: "(unset — enter to edit)",
+    settingInvalidTitle: "Not a number",
+    settingInvalidBody: "{label} only accepts a number. Keeping the previous value.",
   },
   keybindings: {
     title: "Keybindings",
@@ -261,7 +264,7 @@ export const zh: typeof en = {
   },
   plugins: {
     title: "插件",
-    hint: "在 ~/.kobe/plugins.json 里注册的插件。enter（或点击）切换启用/禁用——daemon 监听该文件，改动实时生效。安装与移除在 shell 里做：`kobe plugin install <owner/repo>`、`kobe plugin link <dir>`。",
+    hint: "在 ~/.kobe/plugins.json 里注册的插件。enter（或点击）切换启用/禁用——daemon 监听该文件，改动实时生效。插件下方缩进的行是它声明的设置项，enter 编辑，新值在插件下次运行时生效。安装与移除在 shell 里做：`kobe plugin install <owner/repo>`、`kobe plugin link <dir>`。",
     empty:
       "尚未注册任何插件。用 `kobe plugin install <owner/repo>` 安装一个——可在 GitHub 的 `kobe-plugin` 话题下浏览。",
     sourceLink: "本地链接 {path}",
@@ -273,6 +276,9 @@ export const zh: typeof en = {
     runOk: "成功",
     runFailed: "启动失败",
     runExit: "退出码 {code}",
+    settingUnset: "(未设置 — enter 编辑)",
+    settingInvalidTitle: "不是数字",
+    settingInvalidBody: "{label} 只接受数字，保留原值。",
   },
   keybindings: {
     title: "快捷键",

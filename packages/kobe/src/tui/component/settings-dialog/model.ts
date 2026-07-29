@@ -64,6 +64,7 @@ export type SettingsRow =
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: string; kind: "pluginToggle"; pluginId: string }
+  | { id: string; kind: "pluginSetting"; pluginId: string; key: string }
   | { id: "feedback-title"; kind: "feedbackTitle" }
   | { id: "feedback-body"; kind: "feedbackBody" }
   | { id: "feedback-send"; kind: "feedbackSend" }
@@ -99,15 +100,26 @@ export function pluginRowId(pluginId: string): string {
   return `plugin:${pluginId}`
 }
 
+export function pluginSettingRowId(pluginId: string, key: string): string {
+  return `plugin:${pluginId}:${key}`
+}
+
 /** Everything the registry needs to lay out every section's rows. */
 export type SettingsRowsInput = {
   themeNames: readonly string[]
   focusAccentSlots: readonly FocusAccentSlot[]
   /** Built-ins + user-registered custom engines, in display order. */
   engineList: readonly VendorId[]
-  /** Registered plugin ids (`~/.kobe/plugins.json`), in registry order. */
-  pluginIds: readonly string[]
+  /** Registered plugins (`~/.kobe/plugins.json`), in registry order. */
+  plugins: readonly PluginRowsEntry[]
   hasDaemon: boolean
+}
+
+/** A plugin's toggle row plus the `[[settings]]` keys nested under it. */
+export type PluginRowsEntry = {
+  id: string
+  /** Manifest-declared setting keys, in declaration order; [] when none. */
+  settingKeys: readonly string[]
 }
 
 /**
@@ -150,12 +162,17 @@ export function engineRows(engineList: readonly VendorId[]): SettingsRow[] {
 }
 
 /**
- * Plugins section: one enable/disable row per registered plugin, in
- * registry order. Empty registry → zero rows (the view shows the
- * install hint instead).
+ * Plugins section: one enable/disable row per registered plugin, each
+ * followed by its declared settings as child rows, in registry order.
+ * Empty registry → zero rows (the view shows the install hint instead).
  */
-export function pluginRows(pluginIds: readonly string[]): SettingsRow[] {
-  return pluginIds.map((pluginId): SettingsRow => ({ id: pluginRowId(pluginId), kind: "pluginToggle", pluginId }))
+export function pluginRows(plugins: readonly PluginRowsEntry[]): SettingsRow[] {
+  return plugins.flatMap(({ id, settingKeys }): SettingsRow[] => [
+    { id: pluginRowId(id), kind: "pluginToggle", pluginId: id },
+    ...settingKeys.map(
+      (key): SettingsRow => ({ id: pluginSettingRowId(id, key), kind: "pluginSetting", pluginId: id, key }),
+    ),
+  ])
 }
 
 export function feedbackRows(): SettingsRow[] {
@@ -196,7 +213,7 @@ export function sectionRows(section: SectionId, input: SettingsRowsInput): Setti
     case "keys":
       return []
     case "plugins":
-      return pluginRows(input.pluginIds)
+      return pluginRows(input.plugins)
     case "feedback":
       return feedbackRows()
     case "dev":

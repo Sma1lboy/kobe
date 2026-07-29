@@ -26,6 +26,9 @@ import {
   focusAccentRowId,
   generalRows,
   humanizeSlug,
+  pluginRowId,
+  pluginRows,
+  pluginSettingRowId,
   rowAt,
   rowIndex,
   sectionRows,
@@ -45,7 +48,10 @@ function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
     themeNames: ["claude", "gruvbox", "tokyonight"],
     focusAccentSlots: SLOTS,
     engineList: [...ALL_VENDORS],
-    pluginIds: ["example.notify", "acme.layout"],
+    plugins: [
+      { id: "example.notify", settingKeys: ["KOBE_NOTIFY_SOUND"] },
+      { id: "acme.layout", settingKeys: [] },
+    ],
     hasDaemon: true,
     ...overrides,
   }
@@ -171,6 +177,25 @@ describe("devRows", () => {
     expect(rowIndex(rows, "auto-status")).toBe(2)
     expect(rowIndex(rows, "dispatcher")).toBe(3)
     expect(rowIndex(rows, "archived-history")).toBe(4)
+  })
+})
+
+describe("pluginRows", () => {
+  it("nests each plugin's declared settings right under its toggle row", () => {
+    const rows = pluginRows([
+      { id: "example.notify", settingKeys: ["SOUND", "DELAY"] },
+      { id: "acme.layout", settingKeys: [] },
+    ])
+    expect(rows.map((r) => r.kind)).toEqual(["pluginToggle", "pluginSetting", "pluginSetting", "pluginToggle"])
+    expect(rowIndex(rows, pluginSettingRowId("example.notify", "DELAY"))).toBe(2)
+    expect(rowIndex(rows, pluginRowId("acme.layout"))).toBe(3)
+    const setting = rowAt(rows, 1)
+    expect(setting?.kind === "pluginSetting" && setting.key).toBe("SOUND")
+  })
+
+  it("is one row per plugin when nothing declares settings, and empty for an empty registry", () => {
+    expect(pluginRows([{ id: "a", settingKeys: [] }]).map((r) => r.kind)).toEqual(["pluginToggle"])
+    expect(pluginRows([])).toEqual([])
   })
 })
 

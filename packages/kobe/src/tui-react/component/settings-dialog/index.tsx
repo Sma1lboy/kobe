@@ -99,7 +99,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   // Lazily-probed section data (accounts / plugins) — see ./use-section-data.
   const accounts = useAccountProbes(section)
-  const plugins = usePluginSettings(section)
+  const plugins = usePluginSettings(section, dialog)
 
   /**
    * The active section's ordered navigable rows (the row registry).
@@ -111,7 +111,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       themeNames,
       focusAccentSlots: FOCUS_ACCENT_SLOTS,
       engineList: engines.engineList(),
-      pluginIds: plugins.rows.map((p) => p.id),
+      plugins: plugins.rows.map((p) => ({ id: p.id, settingKeys: p.settings.map((s) => s.key) })),
       hasDaemon,
     })
   }
@@ -246,6 +246,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     engine: (row) => void engines.editEngine(row.vendor),
     engineAdd: () => void engines.addEngineFlow(),
     pluginToggle: (row) => plugins.toggle(row.pluginId),
+    pluginSetting: (row) => void plugins.editSetting(row.pluginId, row.key),
     feedbackTitle: () => setBodyRow(0),
     feedbackBody: () => setBodyRow(1),
     feedbackSend: () => void sendFeedback(),
@@ -390,7 +391,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
             />
           ) : null}
           {section === "plugins" ? (
-            <PluginSettingsSection {...cursorProps} plugins={plugins.rows} toggle={plugins.toggle} />
+            <PluginSettingsSection
+              {...cursorProps}
+              plugins={plugins.rows}
+              toggle={plugins.toggle}
+              editSetting={(id, key) => void plugins.editSetting(id, key)}
+            />
           ) : null}
           {section === "keys" ? <KeybindingsSettingsSection /> : null}
           {section === "feedback" ? (

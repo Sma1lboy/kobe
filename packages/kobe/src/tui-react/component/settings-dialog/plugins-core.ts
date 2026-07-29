@@ -17,6 +17,8 @@ import {
   loadPluginRegistry,
   savePluginRegistry,
 } from "@sma1lboy/kobe-daemon/plugins/registry"
+import { readPluginSettings, writePluginSettings } from "@sma1lboy/kobe-daemon/plugins/settings-env"
+import { type PluginSettingRowView, pluginSettingRows } from "./plugin-settings-core"
 
 /** Last appended `log.jsonl` record, normalized for display. */
 export interface PluginLastRun {
@@ -45,6 +47,8 @@ export interface PluginRowView {
   /** null when `kobe-plugin.toml` is missing or unparsable. */
   readonly declares: PluginDeclares | null
   readonly lastRun: PluginLastRun | null
+  /** Declared `[[settings]]` joined with their stored values; [] when none. */
+  readonly settings: readonly PluginSettingRowView[]
 }
 
 /**
@@ -83,12 +87,15 @@ export function pluginRowView(
   entry: PluginRegistryEntry,
   manifestText: string | null,
   logText: string | null,
+  settingValues: Record<string, string> = {},
 ): PluginRowView {
   let declares: PluginDeclares | null = null
+  let settings: readonly PluginSettingRowView[] = []
   if (manifestText !== null) {
     try {
       const { manifest } = parsePluginManifest(manifestText)
       declares = { actions: manifest.actions.length, events: manifest.events.length, panes: manifest.panes.length }
+      settings = pluginSettingRows(manifest.settings, settingValues)
     } catch {
       declares = null
     }
@@ -101,6 +108,7 @@ export function pluginRowView(
     source: entry.source.kind === "link" ? entry.root : entry.source.spec,
     declares,
     lastRun: parseLastRun(logText),
+    settings,
   }
 }
 
@@ -150,8 +158,18 @@ export function readPluginRows(homeDir?: string): PluginRowView[] {
       entry,
       readTextOrNull(join(entry.root, PLUGIN_MANIFEST_FILENAME)),
       readTail(pluginLogPath(entry.id, homeDir)),
+      readPluginSettings(entry.id, homeDir),
     ),
   )
+}
+
+/**
+ * Store one setting value in the plugin's config .env. "" removes the key,
+ * so the plugin falls back to its manifest default. Values apply to the
+ * next plugin command run — nothing to poke.
+ */
+export function setPluginSetting(pluginId: string, key: string, value: string, homeDir?: string): void {
+  writePluginSettings(pluginId, { [key]: value }, homeDir)
 }
 
 /**

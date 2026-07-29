@@ -40,6 +40,13 @@ command = ["sh", "notify.sh"]
 [[events]]
 on = "task.created"
 command = ["sh", "notify.sh"]
+
+[[settings]]
+key = "KOBE_NOTIFY_SOUND"
+label = "Sound"
+type = "enum"
+options = ["ping", "glass"]
+default = "ping"
 `
 
 const runLine = (record: Record<string, unknown>) => `${JSON.stringify(record)}\n`
@@ -85,6 +92,23 @@ describe("pluginRowView", () => {
   it("reports null declares when the manifest is missing or unparsable", () => {
     expect(pluginRowView(githubEntry, null, null).declares).toBeNull()
     expect(pluginRowView(githubEntry, "id = 42", null).declares).toBeNull()
+  })
+
+  it("joins declared settings with their stored values, and has none without a manifest", () => {
+    const stored = pluginRowView(githubEntry, MANIFEST, null, { KOBE_NOTIFY_SOUND: "glass" })
+    expect(stored.settings).toEqual([
+      {
+        key: "KOBE_NOTIFY_SOUND",
+        label: "Sound",
+        type: "enum",
+        options: ["ping", "glass"],
+        defaultValue: "ping",
+        value: "glass",
+        defaulted: false,
+      },
+    ])
+    expect(pluginRowView(githubEntry, MANIFEST, null).settings[0]).toMatchObject({ value: "ping", defaulted: true })
+    expect(pluginRowView(githubEntry, null, null).settings).toEqual([])
   })
 
   it("shows a linked plugin's working directory as its source", () => {

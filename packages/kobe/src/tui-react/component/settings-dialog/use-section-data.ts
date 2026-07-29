@@ -20,7 +20,12 @@ import {
   detectKimiAccount,
 } from "../../../engine/account-detect"
 import type { SectionId } from "../../../tui/component/settings-dialog/model"
-import { type PluginRowView, readPluginRows, setPluginEnabled } from "./plugins-core"
+import { useT } from "../../i18n"
+import type { DialogContext } from "../../ui/dialog"
+import { DialogConfirm } from "../../ui/dialog-confirm"
+import { RenameTaskDialog } from "../rename-task-dialog"
+import { nextEnumValue, normalizeNumberInput, toggledBooleanValue } from "./plugin-settings-core"
+import { type PluginRowView, readPluginRows, setPluginEnabled, setPluginSetting } from "./plugins-core"
 
 export interface AccountProbes {
   claude: EngineAccountStatus<ClaudeAccount> | null
@@ -51,18 +56,32 @@ export interface PluginSettings {
   readonly rows: readonly PluginRowView[]
   /** Flip a plugin's enabled flag; the daemon picks the write up live. */
   readonly toggle: (id: string) => void
+  /** Activate one declared setting: cycle an enum, flip a boolean, or prompt. */
+  readonly editSetting: (pluginId: string, key: string) => Promise<void>
 }
 
 /**
  * Registered plugins, re-read every time the section is opened so an
  * install from another terminal shows up without restarting kobe.
  */
-export function usePluginSettings(section: SectionId): PluginSettings {
+export function usePluginSettings(section: SectionId, dialog: DialogContext): PluginSettings {
   const [rows, setRows] = useState<readonly PluginRowView[]>([])
+  const t = useT()
   useEffect(() => {
     if (section !== "plugins") return
     setRows(readPluginRows())
   }, [section])
+
+  /** Every write goes through here: store, then re-read so disk wins. */
+  function store(pluginId: string, key: string, value: string): void {
+    try {
+      setPluginSetting(pluginId, key, value)
+    } catch {
+      // .env unwritable — the re-read leaves the row showing what disk has.
+    }
+    setRows(readPluginRows())
+  }
+
   return {
     rows,
     toggle: (id: string) => {
@@ -74,6 +93,42 @@ export function usePluginSettings(section: SectionId): PluginSettings {
         // Registry unwritable — the re-read below leaves the row as disk has it.
       }
       setRows(readPluginRows())
+    },
+    editSetting: async (pluginId: string, key: string) => {
+      const setting = rows.find((p) => p.id === pluginId)?.settings.find((s) => s.key === key)
+      if (!setting) return
+      if (setting.type === "enum") {
+        store(pluginId, key, nextEnumValue(setting.options, setting.value))
+        return
+      }
+      if (setting.type === "boolean") {
+        store(pluginId, key, toggledBooleanValue(setting))
+        return
+      }
+      const next = await RenameTaskDialog.show(dialog, setting.value, {
+        // The label is plugin-owned copy, like an action title — shown raw.
+        dialogTitle: setting.label,
+        fieldLabel: key,
+        submitLabel: "save",
+        allowEmpty: true,
+        placeholder: setting.defaultValue,
+      })
+      if (next === undefined) return
+      if (setting.type !== "number") {
+        store(pluginId, key, next.trim())
+        return
+      }
+      const numeric = normalizeNumberInput(next)
+      if (numeric === null) {
+        await DialogConfirm.show(
+          dialog,
+          t("settings.plugins.settingInvalidTitle"),
+          t("settings.plugins.settingInvalidBody", { label: setting.label }),
+          "cancel",
+        )
+        return
+      }
+      store(pluginId, key, numeric)
     },
   }
 }
