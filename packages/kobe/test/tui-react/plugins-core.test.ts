@@ -9,6 +9,8 @@
 
 import type { PluginRegistryEntry } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { describe, expect, it } from "vitest"
+
+const NONE: ReadonlySet<string> = new Set()
 import { formatAgo, parseLastRun, pluginRowView } from "../../src/tui-react/component/settings-dialog/plugins-core.ts"
 
 const NOW = Date.parse("2026-07-27T12:00:00.000Z")
@@ -77,7 +79,9 @@ describe("parseLastRun", () => {
 
 describe("pluginRowView", () => {
   it("counts what the manifest declares and labels a GitHub source", () => {
-    const row = pluginRowView(githubEntry, MANIFEST, null)
+    const row = pluginRowView(NONE, githubEntry, MANIFEST, null)
+    expect(row.updateAvailable).toBe(false)
+    expect(pluginRowView(new Set(["example.notify"]), githubEntry, MANIFEST, null).updateAvailable).toBe(true)
     expect(row).toMatchObject({
       id: "example.notify",
       version: "0.1.0",
@@ -90,12 +94,12 @@ describe("pluginRowView", () => {
   })
 
   it("reports null declares when the manifest is missing or unparsable", () => {
-    expect(pluginRowView(githubEntry, null, null).declares).toBeNull()
-    expect(pluginRowView(githubEntry, "id = 42", null).declares).toBeNull()
+    expect(pluginRowView(NONE, githubEntry, null, null).declares).toBeNull()
+    expect(pluginRowView(NONE, githubEntry, "id = 42", null).declares).toBeNull()
   })
 
   it("joins declared settings with their stored values, and has none without a manifest", () => {
-    const stored = pluginRowView(githubEntry, MANIFEST, null, { KOBE_NOTIFY_SOUND: "glass" })
+    const stored = pluginRowView(NONE, githubEntry, MANIFEST, null, { KOBE_NOTIFY_SOUND: "glass" })
     expect(stored.settings).toEqual([
       {
         key: "KOBE_NOTIFY_SOUND",
@@ -107,8 +111,11 @@ describe("pluginRowView", () => {
         defaulted: false,
       },
     ])
-    expect(pluginRowView(githubEntry, MANIFEST, null).settings[0]).toMatchObject({ value: "ping", defaulted: true })
-    expect(pluginRowView(githubEntry, null, null).settings).toEqual([])
+    expect(pluginRowView(NONE, githubEntry, MANIFEST, null).settings[0]).toMatchObject({
+      value: "ping",
+      defaulted: true,
+    })
+    expect(pluginRowView(NONE, githubEntry, null, null).settings).toEqual([])
   })
 
   it("shows a linked plugin's working directory as its source", () => {
@@ -118,7 +125,7 @@ describe("pluginRowView", () => {
       root: "/work/my-plugin",
       enabled: false,
     }
-    const row = pluginRowView(linked, MANIFEST, null)
+    const row = pluginRowView(NONE, linked, MANIFEST, null)
     expect(row.linked).toBe(true)
     expect(row.source).toBe("/work/my-plugin")
     expect(row.enabled).toBe(false)

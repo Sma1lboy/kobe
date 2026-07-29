@@ -62,7 +62,9 @@ Publish: push a public GitHub repo (one plugin per subdirectory is fine),
 add the topic **`kobe-plugin`** → it appears in the marketplace
 ([kobe.sma1lboy.me/plugins](https://kobe.sma1lboy.me/plugins) and
 `kobe plugin search`) automatically. Users install with
-`kobe plugin install owner/repo[/subdir]`.
+`kobe plugin install owner/repo[/subdir]` and stay fresh with
+`kobe plugin outdated` / `kobe plugin update --all` (an update is a clean
+reinstall of the managed checkout — config/state survive).
 
 ## Manifest reference
 

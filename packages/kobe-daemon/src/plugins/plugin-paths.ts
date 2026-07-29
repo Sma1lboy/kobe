@@ -41,3 +41,8 @@ export function pluginStateDir(id: string, homeDir?: string): string {
 export function pluginLogPath(id: string, homeDir?: string): string {
   return join(pluginDataDir(id, homeDir), "log.jsonl")
 }
+
+/** CLI-written `plugin outdated` cache the Settings pane reads (advisory). */
+export function pluginsOutdatedCachePath(homeDir?: string): string {
+  return join(stateRoot(homeDir), "plugins-outdated.json")
+}

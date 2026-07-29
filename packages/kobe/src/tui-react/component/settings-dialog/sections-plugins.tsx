@@ -125,6 +125,11 @@ export function PluginSettingsSection(
                         : t("settings.plugins.sourceGithub", { spec: plugin.source })
                     }`}
                   </text>
+                  {plugin.updateAvailable ? (
+                    <text fg={theme.warning} wrapMode="none">
+                      {t("settings.plugins.updateAvailable")}
+                    </text>
+                  ) : null}
                 </box>
                 <box flexDirection="row" gap={1} paddingLeft={5} paddingRight={1}>
                   <text fg={plugin.declares ? theme.textMuted : theme.warning} wrapMode="none">

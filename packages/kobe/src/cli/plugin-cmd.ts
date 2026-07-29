@@ -38,6 +38,8 @@ function printUsage(out: NodeJS.WriteStream): void {
       "  link <dir>                                            register a local plugin directory (dev)",
       "  list                                                  installed + linked plugins",
       "  search [query]                                        browse the marketplace (GitHub topic kobe-plugin)",
+      "  outdated                                              check GitHub-installed plugins against upstream",
+      "  update <id…> | --all [--yes]                          reinstall stale plugins from GitHub",
       "  enable <id> | disable <id>                            toggle a plugin without unregistering it",
       "  unlink <id>                                           unregister a linked plugin (files untouched)",
       "  uninstall <id-or-spec>                                unregister + remove the managed checkout",
@@ -241,6 +243,19 @@ export async function runPluginSubcommand(rest: string[]): Promise<void> {
       case "search": {
         const { searchMarketplace } = await import("./plugin-search.ts")
         await searchMarketplace(args.find((a) => !a.startsWith("-")))
+        return
+      }
+      case "outdated": {
+        const { printOutdated } = await import("./plugin-update.ts")
+        printOutdated()
+        return
+      }
+      case "update": {
+        const { updatePlugins } = await import("./plugin-update.ts")
+        await updatePlugins(
+          args.filter((a) => !a.startsWith("-")),
+          { all: args.includes("--all"), yes: args.includes("--yes") },
+        )
         return
       }
       case "enable":

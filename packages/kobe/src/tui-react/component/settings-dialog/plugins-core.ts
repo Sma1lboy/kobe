@@ -11,6 +11,7 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { PLUGIN_MANIFEST_FILENAME, parsePluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { readOutdatedCache } from "@sma1lboy/kobe-daemon/plugins/outdated-cache"
 import { pluginLogPath } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import {
   type PluginRegistryEntry,
@@ -49,6 +50,8 @@ export interface PluginRowView {
   readonly lastRun: PluginLastRun | null
   /** Declared `[[settings]]` joined with their stored values; [] when none. */
   readonly settings: readonly PluginSettingRowView[]
+  /** From the CLI-written outdated cache (`kobe plugin outdated`); advisory. */
+  readonly updateAvailable: boolean
 }
 
 /**
@@ -84,6 +87,7 @@ export function parseLastRun(logText: string | null): PluginLastRun | null {
 
 /** One row from a registry entry + the raw text of its manifest and log. */
 export function pluginRowView(
+  outdated: ReadonlySet<string>,
   entry: PluginRegistryEntry,
   manifestText: string | null,
   logText: string | null,
@@ -109,6 +113,7 @@ export function pluginRowView(
     declares,
     lastRun: parseLastRun(logText),
     settings,
+    updateAvailable: outdated.has(entry.id),
   }
 }
 
@@ -153,8 +158,10 @@ function readTextOrNull(path: string): string | null {
 
 /** Every registered plugin, in registry order, ready to render. */
 export function readPluginRows(homeDir?: string): PluginRowView[] {
+  const outdated = new Set(readOutdatedCache(homeDir))
   return loadPluginRegistry(homeDir).plugins.map((entry) =>
     pluginRowView(
+      outdated,
       entry,
       readTextOrNull(join(entry.root, PLUGIN_MANIFEST_FILENAME)),
       readTail(pluginLogPath(entry.id, homeDir)),
