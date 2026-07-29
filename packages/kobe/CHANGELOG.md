@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.26
+
+### Patch Changes
+
+- 2229963: `examples.browser` plugin: a real Chromium browser in a pane tab via carbonyl (Chromium rendered as terminal cells — no graphics-protocol support needed). `kobe plugin action invoke examples.browser.open <url>` remembers the URL and opens the pane on the active task; home page configurable via the plugin's `.env`.
+- cb658c1: Official plugins moved to the dedicated Sma1lboy/kobe-plugins repo (topic-tagged `kobe-plugin`, so it appears in the marketplace index automatically); `kobe plugin search`, the landing marketplace, and the docs now point at `Sma1lboy/kobe-plugins/<name>` install refs.
+- 07b4322: Plugin panes now default to `placement = "split"`: the pane joins the focused chattab's split group beside the engine (the herdr-style split semantics), instead of opening a separate tab. `placement = "tab"` in the manifest keeps the old behavior; content-tab/depth-cap cases fall back to a tab automatically.
+
 ## 0.8.25
 
 ### Patch Changes
