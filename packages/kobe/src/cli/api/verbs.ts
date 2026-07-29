@@ -246,6 +246,38 @@ export const VERBS: readonly VerbSpec[] = [
     },
   },
   {
+    name: "prompt",
+    summary:
+      "Ask the human for a line of text through the attached TUI's input dialog (plugins' host-provided prompt). Blocks until answered, cancelled, or timed out; returns { value } or { cancelled, reason }.",
+    flags: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        placeholder: "TEXT",
+        description: "Dialog title (shown verbatim).",
+      },
+      { name: "placeholder", type: "string", placeholder: "TEXT", description: "Input placeholder." },
+      { name: "initial", type: "string", placeholder: "TEXT", description: "Pre-filled input value." },
+      {
+        name: "timeout",
+        type: "string",
+        placeholder: "MS",
+        description: "Give up after this many milliseconds (default 120000, max 600000).",
+      },
+    ],
+    handler: async (ctx) => {
+      const timeoutRaw = ctx.args.str("timeout")
+      const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) : undefined
+      return simpleRpc(ctx, "ui.prompt", {
+        title: ctx.args.str("title"),
+        placeholder: ctx.args.str("placeholder"),
+        initial: ctx.args.str("initial"),
+        ...(timeoutMs && Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
+      })
+    },
+  },
+  {
     name: "pty-list",
     summary:
       "List hosted PTY sessions (key, alive, pid, command, live OSC window title). Empty when no pty host runs. Returns { sessions }.",

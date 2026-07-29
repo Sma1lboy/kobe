@@ -249,6 +249,13 @@ export interface ChannelPayloads {
   "usage.snapshot": {
     usage: Record<string, EngineQuotaUsage>
   }
+  /**
+   * One "ask the human for a line of text" request (`kobe api prompt` —
+   * the host-provided input dialog plugins call through the CLI). EVENT
+   * channel like `tab.open`: consumers dedupe on `at`, drop stale
+   * replays, and answer via the `ui.promptReply` RPC.
+   */
+  "ui.prompt": UiPromptPayload
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -298,6 +305,19 @@ export interface TabOpenPayload {
   readonly title: string
   /** `split` (default) joins the focused chattab's split group; `tab` opens a separate tab. */
   readonly placement?: "split" | "tab"
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+}
+
+/** The `ui.prompt` channel payload — one host-dialog text-input request. */
+export interface UiPromptPayload {
+  /** Broker key the answering `ui.promptReply` names. */
+  readonly promptId: string
+  /** Dialog title (plugin-provided, shown verbatim). */
+  readonly title: string
+  readonly placeholder?: string
+  /** Pre-filled input value. */
+  readonly initial?: string
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
 }

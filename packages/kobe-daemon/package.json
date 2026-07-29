@@ -29,6 +29,7 @@
     "./daemon/paths": "./src/daemon/paths.ts",
     "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
+    "./daemon/prompt-broker": "./src/daemon/prompt-broker.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",

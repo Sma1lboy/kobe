@@ -42,6 +42,7 @@ import type { DaemonEventBus } from "./event-bus.ts"
 import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
+import { UI_HANDLERS } from "./handlers-ui.ts"
 import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
 import type { IssuesStore } from "./issues-store.ts"
 import {
@@ -94,6 +95,8 @@ export interface DaemonHandlerContext {
   readonly quotaUsage: QuotaUsageCache
   /** Per-task recent engine events (`task.recentEvents`; absent in older tests). */
   readonly engineEvents?: import("./engine-events-log.ts").EngineEventLog
+  /** Pending host-dialog prompts (`ui.prompt` / `ui.promptReply`). */
+  readonly prompts?: import("./prompt-broker.ts").PromptBroker
   /** Plugin sink for agent-lifecycle events — a direct feed, deliberately NOT a bus channel. */
   readonly plugins?: Pick<import("../plugins/runtime.ts").PluginHost, "handleEngineReport" | "handleUiReport">
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
@@ -263,6 +266,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     ...TASK_HANDLERS,
     ...WORKTREE_HANDLERS,
     ...ATTENTION_HANDLERS,
+    ...UI_HANDLERS,
     {
       name: "issue.list",
       async handle(payload, ctx) {
@@ -286,127 +290,11 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
-      name: "session.deliver",
-      async handle(payload, ctx) {
-        // Dispatcher messenger (docs/design/dispatcher.md): `kobe api
-        // dispatch` routes text to a task's live engine session. The daemon
-        // only validates + broadcasts; the front-end hosting that session
-        // (the SPA via /pty/send) owns the actual paste.
-        const taskId = requireString(payload, "taskId")
-        const text = requireString(payload, "text")
-        const source = optionalString(payload, "source")
-        if (source !== undefined && source !== "note" && source !== "dispatcher") {
-          throw new Error('source must be "note" or "dispatcher"')
-        }
-        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
-        ctx.bus.publish("session.deliver", {
-          taskId,
-          text,
-          at: Date.now(),
-          source: source ?? "dispatcher",
-        })
-        return { ok: true }
-      },
-    },
-    {
-      name: "ui.reportEvent",
-      async handle(payload, ctx) {
-        // Fire-and-forget: the TUI reports a UI moment; plugins are the only
-        // consumer (same no-broadcast rationale as engine lifecycle kinds).
-        const kind = requireString(payload, "kind")
-        if (!kind.match(/^(file\.(will-open|opened|closed)|task\.opened|project\.opened|tab\.(opened|closed))$/)) {
-          throw new Error(`unknown ui event kind: ${kind}`)
-        }
-        const taskId = optionalString(payload, "taskId")
-        const detail = payload.detail
-        ctx.plugins?.handleUiReport({
-          kind: kind as import("../plugins/manifest.ts").PluginEventName,
-          ...(taskId ? { taskId } : {}),
-          ...(detail && typeof detail === "object" && !Array.isArray(detail)
-            ? { detail: detail as Record<string, unknown> }
-            : {}),
-        })
-        return {}
-      },
-    },
-    {
       name: "task.recentEvents",
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")
         if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
         return { events: ctx.engineEvents?.recent(taskId) ?? [] }
-      },
-    },
-    {
-      name: "tab.open",
-      async handle(payload, ctx) {
-        // Plugin panes: `kobe plugin pane open` asks the TUI hosting the
-        // task to open a terminal tab running argv. Same trust boundary as
-        // `pty.open` (the socket already grants argv execution); the daemon
-        // only validates + broadcasts, the TUI owns the actual tab.
-        const taskId = requireString(payload, "taskId")
-        const title = requireString(payload, "title")
-        const argv = (payload as { argv?: unknown }).argv
-        if (!Array.isArray(argv) || argv.length === 0 || !argv.every((a) => typeof a === "string" && a.length > 0)) {
-          throw new Error("argv must be a non-empty array of strings")
-        }
-        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
-        const placement = optionalString(payload, "placement")
-        ctx.bus.publish("tab.open", {
-          taskId,
-          argv,
-          title,
-          ...(placement === "tab" || placement === "split" ? { placement } : {}),
-          at: Date.now(),
-        })
-        return { ok: true }
-      },
-    },
-    {
-      name: "notice.send",
-      async handle(payload, ctx) {
-        // `kobe api notify`: one toast for every attached UI. The daemon
-        // only validates + broadcasts; NotificationsProvider in each
-        // subscribed host renders it (and dedupes replays on `at`).
-        const title = requireString(payload, "title")
-        // Free-form kind: known severities get styled by the TUI, anything
-        // else renders neutrally — agents may invent their own vocabulary.
-        const kind = optionalString(payload, "kind") ?? "done"
-        if (kind.trim() === "") throw new Error("kind must be a non-empty string")
-        const taskId = optionalString(payload, "taskId")
-        if (taskId !== undefined && !ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
-        const source = optionalString(payload, "source")
-        ctx.bus.publish("notice.event", { title, kind, taskId, at: Date.now(), source })
-        return { ok: true }
-      },
-    },
-    {
-      name: "note.file",
-      async handle(payload, ctx) {
-        // Field note (docs/design/dispatcher.md): a worktree session files a
-        // one-line resolved gotcha. The daemon's only intelligence is
-        // ADDRESSING — find the author's repo's dispatcher seat (the main
-        // session) and forward over session.deliver with provenance. WHO
-        // benefits from the note is the dispatcher agent's judgment, not
-        // daemon code.
-        const taskId = requireString(payload, "taskId")
-        const text = requireString(payload, "text")
-        const author = ctx.orch.getTask(taskId)
-        if (!author) throw new Error(`task not found: ${taskId}`)
-        const main = ctx.orch
-          .listTasks()
-          .find((t) => (t.kind ?? "task") === "main" && t.repo === author.repo && !t.archived)
-        // No dispatcher seat, or the dispatcher noting to itself: accepted
-        // but unrouted — filing must never error a working agent.
-        if (!main || main.id === author.id) return { ok: true, routed: false }
-        const label = author.title || author.branch || taskId
-        ctx.bus.publish("session.deliver", {
-          taskId: main.id,
-          text: `[KOBE FIELD NOTE] from "${label}" (task ${taskId}): ${text}`,
-          at: Date.now(),
-          source: "note",
-        })
-        return { ok: true, routed: true }
       },
     },
     {

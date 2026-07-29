@@ -12,6 +12,7 @@ import {
   type NoticeEventPayload,
   type SerializedTask,
   type TabOpenPayload,
+  type UiPromptPayload,
   isAttentionInboxState,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
@@ -291,6 +292,15 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       return
     }
     signals.setTabOpenSig(p as TabOpenPayload)
+    return
+  }
+  if (name === "ui.prompt") {
+    const p = payload as Partial<UiPromptPayload> | undefined
+    if (typeof p?.promptId !== "string" || typeof p.title !== "string" || typeof p.at !== "number") {
+      logClientError("orch", `dropped ui.prompt event: malformed payload (${describePayload(payload)})`)
+      return
+    }
+    signals.setUiPromptSig(p as UiPromptPayload)
     return
   }
   if (name === "engine.lifecycle") {

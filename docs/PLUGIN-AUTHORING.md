@@ -191,6 +191,7 @@ The high-value verbs live under `kobe api` — machine-readable list via
 "$KOBE_BIN_PATH" api list                                      # all tasks (JSON)
 "$KOBE_BIN_PATH" api notify --title "done"                     # toast in every attached UI
 "$KOBE_BIN_PATH" api issue-create --repo <dir> --title "…"     # daemon issue tracker
+"$KOBE_BIN_PATH" api prompt --title "URL?"                     # host input dialog → {value}|{cancelled}
 "$KOBE_BIN_PATH" api read-output --task-id ID                  # structured session reads
 "$KOBE_BIN_PATH" plugin pane open you.example.board            # open your own pane
 ```
@@ -209,6 +210,10 @@ the CLI unless you need push channels.
   `plugins: { ctrl+b: pane:you.example.board, f6: action:you.example.greet }`.
   Ship the suggestion in your README; kobe ships no default plugin chords.
 - **Files pane** — `[[file_handlers]]` claims opens by pattern.
+- **Host input dialog** — `kobe api prompt --title "…"` (SDK: `promptUser()`)
+  pops the TUI's standard input dialog and blocks for the answer: `{value}`
+  on submit, `{cancelled, reason}` on esc/timeout. Use it instead of
+  hand-rolling in-pane prompts.
 - **Settings → Plugins** — enable/disable, declared surfaces, last run,
   and your `[[settings]]` editors.
 - **CLI** — `kobe plugin action invoke`, `kobe plugin pane open`, `kobe

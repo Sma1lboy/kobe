@@ -74,3 +74,34 @@ export function listTasks<T = unknown>(opts?: KobeRunOptions): Promise<T> {
 export function openPane(qualifiedPaneId: string, opts?: KobeRunOptions): Promise<KobeRunResult> {
   return kobe(["plugin", "pane", "open", qualifiedPaneId], opts)
 }
+
+/**
+ * Ask the human for a line of text via the host's input dialog
+ * (`kobe api prompt`). Resolves the entered string, or null when the user
+ * cancelled / the prompt timed out / no TUI is attached. Blocks up to
+ * `timeoutMs` (host default 120s), so pass a run timeout to match.
+ */
+export async function promptUser(
+  title: string,
+  opts: KobeRunOptions & { placeholder?: string; initial?: string; timeoutMs?: number } = {},
+): Promise<string | null> {
+  const { placeholder, initial, timeoutMs, ...run } = opts
+  const args = [
+    "api",
+    "prompt",
+    "--title",
+    title,
+    ...(placeholder ? ["--placeholder", placeholder] : []),
+    ...(initial ? ["--initial", initial] : []),
+    ...(timeoutMs ? ["--timeout", String(timeoutMs)] : []),
+  ]
+  try {
+    const result = await kobeJson<{ value?: string; cancelled?: boolean }>(args, {
+      ...run,
+      timeoutMs: (timeoutMs ?? 120_000) + 10_000,
+    })
+    return typeof result.value === "string" ? result.value : null
+  } catch {
+    return null
+  }
+}

@@ -1,4 +1,5 @@
 import { EngineEventLog } from "@sma1lboy/kobe-daemon/daemon/engine-events-log"
+import { PromptBroker } from "@sma1lboy/kobe-daemon/daemon/prompt-broker"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
   type DaemonHandlerContext,
@@ -103,6 +104,8 @@ describe("daemon handler registry", () => {
       "session.deliver",
       "task.recentEvents",
       "ui.reportEvent",
+      "ui.prompt",
+      "ui.promptReply",
       "tab.open",
       "notice.send",
       "note.file",
@@ -124,6 +127,32 @@ describe("daemon handler registry", () => {
       await dispatch("ui.reportEvent", { kind: "file.opened", taskId: "t1", detail: { path: "/x.mp4" } }, ctx)
       expect(seen).toEqual([{ kind: "file.opened", taskId: "t1", detail: { path: "/x.mp4" } }])
       await expect(dispatch("ui.reportEvent", { kind: "task.created" }, ctx)).rejects.toThrow(/unknown ui event/)
+    })
+  })
+
+  describe("ui.prompt / ui.promptReply", () => {
+    it("publishes the request and resolves with the reply (first answer wins)", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      ;(ctx as { prompts?: PromptBroker }).prompts = new PromptBroker()
+      const pending = dispatch("ui.prompt", { title: "URL?", placeholder: "https://…" }, ctx)
+      const published = rec.published.find((p) => p.channel === "ui.prompt")
+      expect(published?.payload).toMatchObject({ title: "URL?", placeholder: "https://…" })
+      const promptId = (published?.payload as { promptId: string }).promptId
+      const ok = await dispatch("ui.promptReply", { promptId, value: "https://kobe.dev" }, ctx)
+      expect(ok).toEqual({ ok: true })
+      expect(await pending).toEqual({ value: "https://kobe.dev" })
+      // A second reply to the same prompt is dropped.
+      expect(await dispatch("ui.promptReply", { promptId, value: "late" }, ctx)).toEqual({ ok: false })
+    })
+
+    it("a value-less reply cancels, and unknown ids settle nothing", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      ;(ctx as { prompts?: PromptBroker }).prompts = new PromptBroker()
+      const pending = dispatch("ui.prompt", { title: "name?" }, ctx)
+      const promptId = (rec.published.find((p) => p.channel === "ui.prompt")?.payload as { promptId: string }).promptId
+      expect(await dispatch("ui.promptReply", { promptId: "nope", value: "x" }, ctx)).toEqual({ ok: false })
+      await dispatch("ui.promptReply", { promptId }, ctx)
+      expect(await pending).toEqual({ cancelled: true, reason: "cancelled" })
     })
   })
 

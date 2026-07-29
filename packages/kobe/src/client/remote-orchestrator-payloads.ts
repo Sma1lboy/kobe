@@ -24,6 +24,7 @@ import type {
   SubscribeRole,
   TabOpenPayload,
   UiPrefsPayload,
+  UiPromptPayload,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { ReadableState } from "../lib/external-store.ts"
@@ -336,6 +337,7 @@ export interface OrchestratorSignals {
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setNoticeSig: (next: NoticeEventPayload | null) => void
   readonly setTabOpenSig: (next: TabOpenPayload | null) => void
+  readonly setUiPromptSig: (next: UiPromptPayload | null) => void
   readonly engineLifecycleAcc: ReadableState<EngineLifecycleMap>
   readonly setEngineLifecycleSig: (next: EngineLifecycleMap) => void
   readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void

@@ -25,6 +25,7 @@ export {
   type TabOpenPayload,
   type TranscriptActivityPayload,
   type UiPrefsPayload,
+  type UiPromptPayload,
   type WorktreeChangesPayload,
   isChannelName,
   normalizeChannelFilter,
@@ -179,6 +180,11 @@ export type DaemonRequestName =
   | "task.recentEvents"
   // TUI-originated product events (file/task/project opens) → plugin hooks.
   | "ui.reportEvent"
+  // Host-provided input dialog (plugins → `kobe api prompt`): `ui.prompt`
+  // blocks until an attached TUI answers via `ui.promptReply` or the
+  // broker times the request out.
+  | "ui.prompt"
+  | "ui.promptReply"
   // Plugin panes: publish a `tab.open` channel event asking the TUI hosting
   // the task to open a terminal tab running argv. Same trust boundary as
   // `pty.open`; the daemon only validates + publishes.

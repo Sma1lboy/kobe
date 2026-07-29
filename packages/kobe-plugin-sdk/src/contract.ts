@@ -111,6 +111,7 @@ export const DAEMON_CHANNELS = [
   "engine.lifecycle",
   "notice.event",
   "usage.snapshot",
+  "ui.prompt",
 ] as const
 
 export type DaemonChannelName = (typeof DAEMON_CHANNELS)[number]

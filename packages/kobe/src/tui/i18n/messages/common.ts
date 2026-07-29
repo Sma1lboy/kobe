@@ -20,6 +20,11 @@ export const en = {
     footerHint: "enter {submitLabel} · esc cancel",
     defaultSubmitLabel: "rename",
   },
+  /** Host-provided plugin input dialog (`ui.prompt` → the rename dialog reused). */
+  prompt: {
+    fieldLabel: "input",
+    submitLabel: "submit",
+  },
 }
 
 export const zh: typeof en = {
@@ -34,5 +39,9 @@ export const zh: typeof en = {
     defaultFieldLabel: "名称",
     footerHint: "enter {submitLabel} · esc 取消",
     defaultSubmitLabel: "重命名",
+  },
+  prompt: {
+    fieldLabel: "输入",
+    submitLabel: "提交",
   },
 }

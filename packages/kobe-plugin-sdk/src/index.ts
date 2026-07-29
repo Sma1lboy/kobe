@@ -7,6 +7,7 @@ export {
   dispatch,
   listTasks,
   openPane,
+  promptUser,
   type KobeRunOptions,
   type KobeRunResult,
 } from "./cli.ts"

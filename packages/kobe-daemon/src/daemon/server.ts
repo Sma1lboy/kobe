@@ -43,6 +43,7 @@ import {
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import { DaemonLifetime, FIRST_GUI_GRACE_MS, resolveIdleGraceMs } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
@@ -272,6 +273,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // Plugin runtime: startup hooks + channel-derived event hooks (plugins/runtime.ts).
   const pluginHost = maybeStartPluginHost(bus, options, socketPath, (line) => logDaemonInfo("plugin-host", line))
 
+  // Pending host-dialog prompts (`ui.prompt` ↔ `ui.promptReply`).
+  const prompts = new PromptBroker()
+
   let webServer: DaemonWebServer | null = null
   // Why the web transport isn't listening (port taken, bind failed). Surfaced
   // via daemon.status so `kobe daemon status` reports the real reason instead
@@ -292,6 +296,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       webServer = null
       stopCollectors()
       pluginHost?.stop()
+      prompts.clear()
       activity.close()
       // Hosted PTYs are deliberately NOT touched here: they live in the
       // standalone `kobe pty-host` process, so `kobe daemon restart` never
@@ -350,6 +355,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       quotaUsage,
       engineEvents,
       ...(pluginHost ? { plugins: pluginHost } : {}),
+      prompts,
       daemon: {
         startedAt,
         socketPath,

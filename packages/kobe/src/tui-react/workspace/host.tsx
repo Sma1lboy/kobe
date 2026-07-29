@@ -63,7 +63,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const notif = useNotifications()
   const orch = props.orchestrator
   // Daemon-broadcast toasts (`kobe api notify` → notice.event).
-  useDaemonNotices(orch, notif.notify)
+  useDaemonNotices(orch, notif.notify, dialog)
 
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
