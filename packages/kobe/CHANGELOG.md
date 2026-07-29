@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.36
+
+### Patch Changes
+
+- 97f1b86: Move the Kanban (issues board) off the bare sidebar `c` onto `prefix+c`. The sidebar's single letters are per-task verbs (new, archive, delete, rename); the Kanban is a step-back-and-look surface, so it now sits with the other whole-page views reached through the prefix. Being global rather than sidebar-scoped, it also opens from any pane instead of only under sidebar focus.
+- ae723bc: Add a "Start in zen mode" setting (Settings → General → Zen mode). Zen now remembers itself across restarts: the workspace seeds its layout from the persisted intent, and toggling zen with `prefix+z` writes that preference back. Focusing the file tree still drops out of zen for that session without clearing the setting.
+
 ## 0.8.35
 
 ### Patch Changes
