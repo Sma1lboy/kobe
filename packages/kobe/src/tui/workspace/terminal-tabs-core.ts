@@ -51,6 +51,17 @@ interface TabBase {
    */
   readonly autoTitle?: string | null
   /**
+   * Last live process title this tab reported (the OSC stream an engine
+   * rewrites as the conversation moves on). RECORDED so surfaces that
+   * render a tab they aren't hosting — the Inbox above all — show what the
+   * tab is doing NOW instead of freezing on `autoTitle`, which is the
+   * FIRST prompt's summary and never changes again.
+   *
+   * Display precedence puts the genuinely live title first and this right
+   * behind it: `title ?? liveName ?? lastTitle ?? autoTitle ?? default`.
+   */
+  readonly lastTitle?: string | null
+  /**
    * Frozen split layout for this tab (the "group"). Absent/null = unsplit
    * (the tab's own engine fills the whole body). Persisted WITH the tab so
    * the layout survives restart (owner ask 2026-07-06): `leaf-1` is the
@@ -284,6 +295,18 @@ export function renameActiveTab(state: TabsState, title: string): TabsState {
  */
 export function setTabSessionId(state: TabsState, id: string, sessionId: string | null): TabsState {
   const tabs = state.tabs.map((t): TerminalTab => (t.id === id && t.kind === "engine" ? { ...t, sessionId } : t))
+  return { ...state, tabs }
+}
+
+/**
+ * Record the tab's latest live process title. No-op when unchanged, so the
+ * OSC stream (which repeats the same title on every turn) can call this
+ * freely without churning the persisted snapshot.
+ */
+export function setTabLastTitle(state: TabsState, id: string, lastTitle: string): TabsState {
+  const current = state.tabs.find((t) => t.id === id)
+  if (!current || current.lastTitle === lastTitle) return state
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, lastTitle } : t))
   return { ...state, tabs }
 }
 

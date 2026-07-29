@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef } from "react"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { attentionEdges, chipAttentionKind } from "../../tui/lib/notify-state"
-import type { TabsState, TerminalTab } from "../../tui/workspace/terminal-tabs-core"
+import { type TabsState, type TerminalTab, setTabLastTitle } from "../../tui/workspace/terminal-tabs-core"
 import { type HookTabState, mergeTurnStates } from "../../tui/workspace/turn-state-merge"
 import type { VendorId } from "../../types/vendor"
 import type { NotificationsContext } from "../context/notifications"
@@ -36,6 +36,8 @@ export function useTabTurnState(deps: {
   /** Task title — the toast's context line under the tab label. */
   taskTitle?: string
   notif: NotificationsContext
+  /** Tab-state writer — used to RECORD each tab's latest live title. */
+  update?: (next: TabsState) => void
 }): {
   turnStates: ReadonlyMap<string, ChatTabTurnState>
   liveTitles: ReadonlyMap<string, string>
@@ -44,6 +46,24 @@ export function useTabTurnState(deps: {
   const { turnStates: pollStates, liveTitles, turnVendors } = useTurnPolls(deps)
 
   const turnStates = useMemo(() => mergeTurnStates(deps.hookTabStates, pollStates), [deps.hookTabStates, pollStates])
+
+  // Record the live titles onto the tabs themselves. Only THIS component
+  // sees the OSC stream, and only for the task it hosts — so a surface
+  // rendering someone else's tab (the Inbox) would otherwise fall back to
+  // `autoTitle`, the FIRST prompt's summary, and keep showing the opening
+  // question long after the conversation moved on. `setTabLastTitle`
+  // returns the same state when nothing changed, so the repeated
+  // same-title pushes never touch the persisted snapshot.
+  const updateRef = useLatest(deps.update)
+  const titleStateRef = useLatest(deps.state)
+  useEffect(() => {
+    const apply = updateRef.current
+    if (!apply) return
+    const current = titleStateRef.current
+    let next = current
+    for (const [tabId, title] of liveTitles) next = setTabLastTitle(next, tabId, title)
+    if (next !== current) apply(next)
+  }, [liveTitles])
 
   // Rising-edge notify for background tabs. `prev === null` until the first
   // observation lands (attentionEdges' seed rule). Refs for values the

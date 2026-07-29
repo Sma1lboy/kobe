@@ -171,6 +171,12 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // relabelled every inherit-mode tab the moment a new tab switched the
   // task engine, while their PTYs kept running the old one.
   if (liveName) return `${liveName} ${tab.ordinal}`
+  // No LIVE title here (a surface rendering a tab it doesn't host — the
+  // Inbox), so fall back to the last live title this tab recorded. Without
+  // it those surfaces drop straight to `autoTitle`, the FIRST prompt's
+  // summary, and a tab that has long moved on still reads as its opening
+  // question.
+  if (tab.lastTitle) return `${tab.lastTitle} ${tab.ordinal}`
   const auto = meaningfulAutoTitle(tab.autoTitle)
   if (auto) return auto
   const name =

@@ -3,17 +3,16 @@
  * Workspace terminal tabs (issue #16, React port). The PTY-world chattab:
  * a strip of engine-terminal tabs above the embedded Terminal pane; every tab
  * runs the user's SHELL in its own PTY (registry key `${taskId}::${tabId}`)
- * with the interactive engine command TYPED into it (`shellSpawn`), so
- * ctrl+t gives a parallel session in the same
- * worktree exactly like the tmux chattab did with windows. Plain ctrl+t
- * opens the user's preferred engine (`resolvePreferredVendor`); ctrl+e
- * prompts for one instead (`chat.tab.chooseEngine`), pins it to just that
- * tab via `TerminalTab.vendor`, and records the pick as the project's new
- * default.
+ * with the interactive engine command TYPED into it (`shellSpawn`), so ctrl+t
+ * gives a parallel session in the same worktree exactly like the tmux
+ * chattab did with windows. Plain ctrl+t opens the preferred engine
+ * (`resolvePreferredVendor`); ctrl+e prompts for one instead
+ * (`chat.tab.chooseEngine`), pins it to that tab via `TerminalTab.vendor`,
+ * and records the pick as the project's new default.
  *
  * Chords reuse the canonical chattab binding ids: ctrl+t new · ctrl+e
- * new-with-engine · ctrl+w close (last tab refuses) · F2 rename · ctrl+]/[
- * cycle. Per-task tab state lives in the module-level map owned by
+ * new-with-engine · ctrl+w close · F2 rename · ctrl+]/[ cycle.
+ * Per-task tab state lives in the module-level map owned by
  * `terminal-tabs-shared.ts` (shared with non-mounted writers like the
  * kanban issue-start paths), so switching tasks and back preserves each
  * task's tabs — their PTYs already survive via the registry's
@@ -282,6 +281,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     hookTabStates: props.hookTabStates,
     taskTitle: props.taskTitle,
     notif,
+    update,
   })
 
   // Visiting a tab clears its unread mark (toast already auto-dismisses)
