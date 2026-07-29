@@ -117,7 +117,7 @@ validates the manifest and previews commands but does not sandbox or review.
 Zero infrastructure: the GitHub topic **`kobe-plugin`** is the only signal.
 The landing page (`packages/kobe-landing/plugins.html`, kobe.sma1lboy.me)
 queries GitHub's repo search client-side and lists tagged public repos;
-first-party examples in [`plugins/`](../../plugins/) seed the list. No
+first-party examples live in [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) (topic-tagged, so the repo auto-lists) and also seed the list per-plugin. No
 submission, no review queue. If the unauthenticated search rate limit ever
 bites, the upgrade path is herdr's ~400-line Cloudflare worker index.
 

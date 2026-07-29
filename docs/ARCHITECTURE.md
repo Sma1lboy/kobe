@@ -51,8 +51,10 @@ Task = git worktree + hosted engine sessions + branch
   surface work to the TUI. The `kobe-desktop` Electron shell was removed the
   same day for the same reason.
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
-- `plugins/` — first-party example plugins (installable via
-  `kobe plugin install Sma1lboy/kobe/plugins/<name>`).
+- Official plugins live in the separate
+  [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) repo
+  (`kobe plugin install Sma1lboy/kobe-plugins/<name>`); `plugins/` here is
+  the frozen pre-migration copy pending removal.
 
 ## 3. Launch and lifetime
 
