@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.32
+
+### Patch Changes
+
+- c963345: Sidebar transient state can no longer go stale: the compacting label is gone entirely (its end event is cancellable, so it never had a reliable clearing edge — compaction now reads as the running animation), an interrupt suppresses every activity older than it instead of decaying back into it after a few seconds, and subagent marks only render while the row animates.
+- 93d04b4: The sidebar activity icon now reacts on the keypress: enter in an engine tab starts the spinner immediately and a bare esc stops it, through a local optimistic overlay that authoritative engine events and short TTLs always correct — no label text is ever derived from a guess. Needs-input shows as a literal `?` (was ◉).
+- 59fbeb9: Fixed a pane that redrew forever with no new output: the chunk converter decided the zebra-stripe block substitution from opaque color keys while the comparator decided it from resolved RGB, so a half-block cell mixing palette and truecolor (the normal case for carbonyl and the video player) always compared as "changed". Both now share one `paintsSamePixel` definition, and a self-match invariant test makes any future converter transform prove it has a mirror.
+- 0a7ebf5: Sidebar "compacting" can no longer stick: a cancelled compaction (no post-compact) or esc-interrupted turn clears its transient mark on the next fresh running edge (turn_complete/error/idle already did), and the compacting word now renders only while the row's animation is live — the label always serves the current state.
+
 ## 0.8.31
 
 ### Patch Changes
