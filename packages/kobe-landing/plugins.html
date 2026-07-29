@@ -62,7 +62,7 @@ button{cursor:pointer}
 .navbar a.nl[aria-current="page"]{background:var(--accent-wash);color:var(--accent)}
 .navbar .caret{display:inline-block;width:7px;height:14px;background:var(--accent);margin:0 4px 0 2px;animation:blink 1.1s steps(1) infinite;vertical-align:-2px}
 @keyframes blink{50%{opacity:0}}
-.lang-btn{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-2);background:transparent;color:var(--ink-soft);border-radius:999px;padding:6px 12px;margin-left:6px;transition:all 140ms}
+.lang-btn{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-2);background:transparent;color:var(--ink-soft);border-radius:999px;padding:6px 12px;margin-left:6px;transition:all 140ms;white-space:nowrap}
 .lang-btn:hover{border-color:var(--accent-line);color:var(--ink)}
 .gh-link{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:500;background:var(--ink);color:oklch(97% 0.008 85);border-radius:999px;padding:8px 15px;margin-left:6px;transition:transform 120ms,box-shadow 160ms;white-space:nowrap}
 .gh-link:hover{transform:translateY(-1px);box-shadow:0 6px 18px oklch(25% 0.02 60/.3)}
@@ -212,6 +212,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
   <a class="nl" href="/#workflow" data-i18n="nav.workflow">--primitives</a>
   <a class="nl" href="/#install" data-i18n="nav.install">--install</a>
   <a class="nl" href="/plugins" aria-current="page" data-i18n="nav.plugins">--plugins</a>
+  <a class="nl" href="/themes" data-i18n="nav.themes">--themes</a>
   <a class="nl" href="/changelog" data-i18n="nav.changelog">--changelog</a>
   <span class="caret" aria-hidden="true"></span>
   <button id="langToggle" class="lang-btn">中文</button>
@@ -313,7 +314,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
     var zh = {
       'meta.title': 'kobe — 插件',
       'meta.desc': 'kobe 插件市场——基于 kobe CLI 的可分享工作流包。所有带 kobe-plugin 话题的公开 GitHub 仓库，自动列出。',
-      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.changelog': '--更新日志',
+      'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.themes': '--主题', 'nav.changelog': '--更新日志',
       'plug.kicker': '一个目录 · 一份 <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · 整个 CLI 就是 API',
       'plug.title': '把工作流打包，<span class="acc">拿去分享</span>。',
       'plug.sub': 'kobe 插件就是一个带 kobe-plugin.toml 清单的目录。没有另一套插件 SDK 要学：整个 kobe CLI 就是插件 API——你能用脚本对机群做的事，就能打包给别人。',
@@ -345,7 +346,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
     var en = {
       'meta.title': 'kobe — plugins',
       'meta.desc': 'The kobe plugin marketplace — shareable workflow packages built on the kobe CLI. Every public GitHub repo tagged kobe-plugin, listed automatically.',
-      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.changelog': '--changelog',
+      'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.themes': '--themes', 'nav.changelog': '--changelog',
       'plug.kicker': 'a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API',
       'plug.title': 'Workflow, packaged and <span class="acc">shareable</span>.',
       'plug.sub': 'A kobe plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole kobe CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.',
