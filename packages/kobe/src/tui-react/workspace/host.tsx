@@ -205,28 +205,27 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     if (focus.focused === "files") setZen(false)
   }, [focus.focused])
 
-  /**
-   * FileTree's Enter action (issue #16 editor-tab flow): resolve the user's
-   * real editor via the tmux-agnostic `resolveEditorLaunch`, then run it in
-   * the reusable File tab. Falls back to the host-OS opener when no
-   * editor is configured/installed.
-   */
+  /** FileTree's Enter action (issue #16): plugin file handlers, else the
+   *  user's editor in the reusable File tab, else the host-OS opener. */
   async function openFileInEditor(relPath: string): Promise<void> {
     const wt = worktree
     if (!wt) return
     const abs = join(wt, relPath)
+    orch.reportUiEvent("file.will-open", selectedId ?? undefined, { path: abs })
+    const opened = (via: string) => orch.reportUiEvent("file.opened", selectedId ?? undefined, { path: abs, via })
     // Plugin file handlers outrank the editor (docs/design/plugins.md).
-    if (tryPluginFileOpen(abs)) return
+    if (tryPluginFileOpen(abs)) return opened("plugin")
     const openEditorTab = openEditorTabFn.current
     const launch = openEditorTab ? await resolveEditorLaunch(wt, abs) : null
     if (!launch) {
       openExternally(abs)
-      return
+      return opened("external")
     }
     // Stale continuation: the user switched tasks while the editor resolved —
     // the file belongs to the old worktree, not whatever tab mount is live now.
     if (selectedWorktreeRef.current !== wt || openEditorTabFn.current !== openEditorTab) return
     openEditorTab?.(["sh", "-c", launch.command], launch.label)
+    opened("editor")
     focus.setFocused("workspace")
   }
 

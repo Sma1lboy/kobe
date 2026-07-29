@@ -46,6 +46,11 @@ export const PLUGIN_EVENT_NAMES = [
   "context.post-compact",
   "subagent.start",
   "subagent.stop",
+  // UI layer (reported by the TUI over ui.reportEvent; async observers)
+  "file.will-open",
+  "file.opened",
+  "task.opened",
+  "project.opened",
 ] as const
 
 export type PluginEventName = (typeof PLUGIN_EVENT_NAMES)[number]

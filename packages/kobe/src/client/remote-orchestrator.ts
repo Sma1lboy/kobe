@@ -341,13 +341,11 @@ export class RemoteOrchestrator {
 
   readonly usageSnapshotSignal = (): ReadableState<UsageSnapshotMap | null> => usageSnapshotSignalOp(this.reads)
 
-  transcriptActivitySignal(): ReadableState<TranscriptActivityMap | null> {
-    return transcriptActivitySignalOp(this.reads)
-  }
+  readonly transcriptActivitySignal = (): ReadableState<TranscriptActivityMap | null> =>
+    transcriptActivitySignalOp(this.reads)
 
-  transcriptActivityStore(): ExternalStore<TranscriptActivityMap | null> {
-    return transcriptActivityStoreOp(this.reads)
-  }
+  readonly transcriptActivityStore = (): ExternalStore<TranscriptActivityMap | null> =>
+    transcriptActivityStoreOp(this.reads)
 
   /** Latest daemon-broadcast notice (`notice.event`) — consumers dedupe on `at`. */
   readonly noticeStore = (): ExternalStore<NoticeEventPayload | null> => this.noticeAcc
@@ -363,6 +361,12 @@ export class RemoteOrchestrator {
     return this.client.request("task.recentEvents", { taskId: String(id) })
   }
 
+  /** Fire-and-forget UI moment → plugin event hooks (`ui.reportEvent`). */
+  readonly reportUiEvent = (kind: string, taskId?: string, detail?: Record<string, unknown>): void =>
+    void this.client
+      .request("ui.reportEvent", { kind, ...(taskId ? { taskId } : {}), ...(detail ? { detail } : {}) })
+      .catch(() => {})
+
   readonly uiPrefsSignal = (): ReadableState<UiPrefsPayload | null> => uiPrefsSignalOp(this.reads)
 
   readonly uiPrefsStore = (): ExternalStore<UiPrefsPayload | null> => uiPrefsStoreOp(this.reads)
@@ -371,13 +375,9 @@ export class RemoteOrchestrator {
 
   readonly keybindingsRevStore = (): ExternalStore<number | null> => keybindingsRevStoreOp(this.reads)
 
-  listTasks(): Task[] {
-    return listTasksOp(this.reads)
-  }
+  readonly listTasks = (): Task[] => listTasksOp(this.reads)
 
-  getTask(id: TaskId | string): Task | undefined {
-    return getTaskOp(this.reads, id)
-  }
+  readonly getTask = (id: TaskId | string): Task | undefined => getTaskOp(this.reads, id)
 
   subscribeTasks(listener: (snapshot: readonly Task[]) => void): Unsubscribe {
     return subscribeTasksOp(this.reads, listener)

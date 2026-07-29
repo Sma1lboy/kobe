@@ -177,6 +177,8 @@ export type DaemonRequestName =
   | "session.deliver"
   // Read one task's recent engine lifecycle events (the TUI event feed).
   | "task.recentEvents"
+  // TUI-originated product events (file/task/project opens) → plugin hooks.
+  | "ui.reportEvent"
   // Plugin panes: publish a `tab.open` channel event asking the TUI hosting
   // the task to open a terminal tab running argv. Same trust boundary as
   // `pty.open`; the daemon only validates + publishes.

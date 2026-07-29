@@ -64,6 +64,9 @@ Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 | `task.created` / `task.deleted` | task appears/disappears in the index | ✅ |
 | `worktree.created` | worktree materialized for a task | ✅ |
 | `task.status-changed` | backlog → in-progress → done transitions | 💤 (derivable from snapshots; add on demand) |
+| `file.will-open` / `file.opened` | Files-pane open, before/after (`detail.path`, `detail.via: plugin\|editor\|external`) | ✅ |
+| `task.opened` / `project.opened` | the user selects/enters a task or project row | ✅ |
+| `file.closed` | editor tab closes | 💤 (needs orch threading into the tab-exit path) |
 
 ### A. Session
 
@@ -170,6 +173,10 @@ builds: notify, log, mirror state, auto-file, auto-bootstrap, dashboards.
   a `tool.*` event (checked on every launch in `ensureGlobalKobeHooks`;
   install/remove such a plugin → takes effect on the next kobe start). A
   future manifest matcher (`tool = "Bash"`) can narrow further.
+- **UI events (done).** The TUI fire-and-forgets product moments over the
+  `ui.reportEvent` RPC → PluginHost direct sink (same no-broadcast path as
+  lifecycle kinds). Async observers only — a `will-` event precedes the
+  action but cannot block it.
 - **Attention split (done for Claude).** `awaiting-input` maps to
   `attention.permission` vs `attention.question` by `detail.waiting`. Codex
   PermissionRequest opt-in and `attention.notification` remain deferred.

@@ -73,6 +73,9 @@ export function useWorkspaceSelection(args: {
     if (selectedId === id) return
     setSelectedId(id)
     void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
+    // Plugin UI events: entering a task/project is an observable moment.
+    const kind = tasks.find((task) => task.id === id)?.kind === "main" ? "project.opened" : "task.opened"
+    orch.reportUiEvent(kind, id)
   }
 
   // Last-intent-wins: a slow activation that resolves after a newer one must

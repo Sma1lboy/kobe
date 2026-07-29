@@ -102,6 +102,7 @@ describe("daemon handler registry", () => {
       "attention.read",
       "session.deliver",
       "task.recentEvents",
+      "ui.reportEvent",
       "tab.open",
       "notice.send",
       "note.file",
@@ -110,6 +111,20 @@ describe("daemon handler registry", () => {
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()
     expect(registry.has("subscribe")).toBe(false)
     expect(registry.size).toBe(rpcNames.length)
+  })
+
+  describe("ui.reportEvent", () => {
+    it("feeds valid UI kinds to the plugin sink and rejects unknown kinds", async () => {
+      const { ctx } = fakeCtx({ getTask: () => TASK })
+      const seen: unknown[] = []
+      ;(ctx as { plugins?: unknown }).plugins = {
+        handleEngineReport: () => {},
+        handleUiReport: (r: unknown) => seen.push(r),
+      }
+      await dispatch("ui.reportEvent", { kind: "file.opened", taskId: "t1", detail: { path: "/x.mp4" } }, ctx)
+      expect(seen).toEqual([{ kind: "file.opened", taskId: "t1", detail: { path: "/x.mp4" } }])
+      await expect(dispatch("ui.reportEvent", { kind: "task.created" }, ctx)).rejects.toThrow(/unknown ui event/)
+    })
   })
 
   describe("engine.reportEvent lifecycle kinds", () => {

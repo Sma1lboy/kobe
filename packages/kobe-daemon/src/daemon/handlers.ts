@@ -95,7 +95,7 @@ export interface DaemonHandlerContext {
   /** Per-task recent engine events (`task.recentEvents`; absent in older tests). */
   readonly engineEvents?: import("./engine-events-log.ts").EngineEventLog
   /** Plugin sink for agent-lifecycle events — a direct feed, deliberately NOT a bus channel. */
-  readonly plugins?: Pick<import("../plugins/runtime.ts").PluginHost, "handleEngineReport">
+  readonly plugins?: Pick<import("../plugins/runtime.ts").PluginHost, "handleEngineReport" | "handleUiReport">
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
   readonly daemon: {
     readonly startedAt: Date
@@ -298,6 +298,27 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           source: source ?? "dispatcher",
         })
         return { ok: true }
+      },
+    },
+    {
+      name: "ui.reportEvent",
+      async handle(payload, ctx) {
+        // Fire-and-forget: the TUI reports a UI moment; plugins are the only
+        // consumer (same no-broadcast rationale as engine lifecycle kinds).
+        const kind = requireString(payload, "kind")
+        if (!kind.match(/^(file\.(will-open|opened|closed)|task\.opened|project\.opened)$/)) {
+          throw new Error(`unknown ui event kind: ${kind}`)
+        }
+        const taskId = optionalString(payload, "taskId")
+        const detail = payload.detail
+        ctx.plugins?.handleUiReport({
+          kind: kind as import("../plugins/manifest.ts").PluginEventName,
+          ...(taskId ? { taskId } : {}),
+          ...(detail && typeof detail === "object" && !Array.isArray(detail)
+            ? { detail: detail as Record<string, unknown> }
+            : {}),
+        })
+        return {}
       },
     },
     {

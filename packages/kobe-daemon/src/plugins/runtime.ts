@@ -19,6 +19,7 @@ import { type PluginEvent, PluginEventReducer, lifecycleEventFor } from "./event
 import {
   PLUGIN_MANIFEST_FILENAME,
   type PluginCommandSpec,
+  type PluginEventName,
   type PluginManifest,
   currentPluginPlatform,
   parsePluginManifest,
@@ -99,6 +100,22 @@ export class PluginHost {
   handleChannel(event: ChannelEvent): void {
     if (this.stopped) return
     for (const derived of this.reducer.reduce(event)) this.dispatch(derived)
+  }
+
+  /** Direct feed from `ui.reportEvent` — TUI-originated product events
+   *  (file/task/project opens). `kind` is already a plugin event name. */
+  handleUiReport(report: {
+    readonly kind: PluginEventName
+    readonly taskId?: string
+    readonly detail?: Record<string, unknown>
+  }): void {
+    if (this.stopped) return
+    this.dispatch({
+      event: report.kind,
+      ...(report.taskId ? { taskId: report.taskId, task: this.reducer.contextFor(report.taskId) } : {}),
+      ...(report.detail ? { detail: report.detail } : {}),
+      at: Date.now(),
+    })
   }
 
   /**
