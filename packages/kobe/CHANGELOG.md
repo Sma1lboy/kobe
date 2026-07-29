@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.29
+
+### Patch Changes
+
+- d5c4d7b: Plugin surface grows three ways: `[[settings]]` schemas render as per-plugin editors in Settings → Plugins (values stored in the plugin's config `.env`); `[[file_handlers]]` route Files-pane opens to a plugin action by filename pattern (mp4 → the video plugin); and UI moments fire as plugin events — `file.will-open`, `file.opened` (with via), `task.opened`, `project.opened` — over the new `ui.reportEvent` path.
+- 3fb6540: Half-block renderers (the carbonyl browser plugin, the video player) no longer show grey "zebra stripes" in embedded panes: solid-block glyphs (▀▄█) whose foreground equals their background now render as background-only spaces — visually identical pixels, but the HOST terminal's minimum-contrast feature (iTerm) can no longer darken the glyph half of same-color cells.
+- 25243fc: fix: ctrl+w closes the active split leaf while split — the direct chord now matches prefix+w (`workspace.split.close` had prefix-only keys, so ctrl+w hit nothing in a split group while the tab-close binding was gated off)
+
 ## 0.8.28
 
 ### Patch Changes
