@@ -100,9 +100,16 @@ describe("PluginHost.handleEngineReport", () => {
         vendor: "claude",
         detail: { tool: { name: "Bash" } },
       })
-      await waitFor(() => existsSync(join(root, "tool.txt")))
-      expect(readFileSync(join(root, "tool.txt"), "utf8")).toBe("tool.post")
-      const payload = JSON.parse(readFileSync(join(root, "payload.json"), "utf8"))
+      // Content-based waits: redirections create files before the write lands.
+      const read = (name: string): string => {
+        try {
+          return readFileSync(join(root, name), "utf8")
+        } catch {
+          return ""
+        }
+      }
+      await waitFor(() => read("tool.txt") === "tool.post" && read("payload.json").trim().endsWith("}"))
+      const payload = JSON.parse(read("payload.json"))
       expect(payload).toMatchObject({
         event: "tool.post",
         taskId: "t1",

@@ -71,15 +71,22 @@ describe("PluginHost", () => {
     )
 
     const host = new PluginHost({ homeDir: home, socketPath: "/tmp/fake.sock", binPath: "kobe-test-bin" })
+    // Redirections create the file BEFORE the write lands — always wait for
+    // the expected CONTENT, never mere existence (CI race, releases #1/#3).
+    const read = (name: string): string => {
+      try {
+        return readFileSync(join(root, name), "utf8")
+      } catch {
+        return ""
+      }
+    }
     host.start()
     try {
-      await waitFor(() => existsSync(join(root, "started.txt")))
-      expect(readFileSync(join(root, "started.txt"), "utf8")).toBe("startup")
+      await waitFor(() => read("started.txt") === "startup")
 
       host.handleChannel(snapshotEvent(["a"])) // baseline — must NOT fire
       host.handleChannel(snapshotEvent(["a", "b"]))
-      await waitFor(() => existsSync(join(root, "event.txt")))
-      expect(readFileSync(join(root, "event.txt"), "utf8")).toBe("task.created:example.probe:kobe-test-bin")
+      await waitFor(() => read("event.txt") === "task.created:example.probe:kobe-test-bin")
 
       // The log line lands AFTER each hook process exits — later than the
       // file the hook itself writes — so wait for both entries, not just
