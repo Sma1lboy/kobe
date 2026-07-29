@@ -161,6 +161,27 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
     bindings: [{ key: "escape", cmd: () => optsRef.current.onMoveModeExit?.() }],
   }))
 
+  // Block A2 — ctrl+<digit> task jump. NOT gated on `focused`: the chord
+  // exists so you can switch tasks from inside the engine pane, and it is
+  // reserved out of the terminal passthrough for exactly that. Slot N is
+  // the Nth row of the CURRENT visible list, so it follows filters, sort,
+  // and search results; a digit past the end is a no-op rather than a
+  // clamp to the last task (a jump that silently lands somewhere else is
+  // worse than one that does nothing).
+  useBindings(() => ({
+    enabled: true,
+    bindings: bindByIds({
+      "tasks.jump": (_evt, slot) => {
+        if (moveModeOn()) return
+        const index = slot ?? 0
+        const id = optsRef.current.flatTaskIds[index]
+        if (id === undefined) return
+        optsRef.current.setCursorIndex(index)
+        optsRef.current.onSelect(id)
+      },
+    }),
+  }))
+
   // Block B — view switcher. Always on (even during search).
   useBindings(() => ({
     enabled: optsRef.current.focused,

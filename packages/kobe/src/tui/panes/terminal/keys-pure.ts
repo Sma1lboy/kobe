@@ -204,6 +204,12 @@ const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
   // Jump to the next waiting task. NOT ctrl+g (the engine/readline
   // abort-editing chord) — see docs/KEYBINDINGS.md.
   { id: "attention.next" }, // f7
+  // Jump to task N from anywhere, including inside the engine — the whole
+  // point is not having to leave the terminal first, so ctrl+<digit> comes
+  // out of the passthrough table. Costs the embedded shell its ctrl+digit
+  // control bytes (ctrl+3 = ESC, ctrl+8 = DEL); the real escape/backspace
+  // keys are untouched, which is how anyone actually types them.
+  { id: "tasks.jump" }, // ctrl+1 … ctrl+0
 ] as const
 
 export const RESERVED_GLOBAL_CHORDS: readonly string[] = [

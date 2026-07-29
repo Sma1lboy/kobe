@@ -54,6 +54,7 @@ their prefix strokes are dropped, same reasoning as the tab rows.
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 | `ctrl+\` | Split right |
 | `ctrl+=` | Split down |
+| `ctrl+1` … `ctrl+9`, `ctrl+0` | Jump to the Nth task in the sidebar's visible list (`ctrl+0` = 10th) |
 
 Context resolves intentional overlap. For example, `ctrl+w` closes the
 innermost split when a tab is split; otherwise it closes the tab. `F2` renames
@@ -69,6 +70,22 @@ being silently migrated to different semantics.
 Owner decision (2026-07-17): the relative chords are `prefix+h` (backward) and
 `prefix+l` (forward), not j/k — the three panes are laid out horizontally, so
 left/right vim keys match the spatial direction.
+
+Owner decision (2026-07-29): `ctrl+<digit>` jumps straight to a task, and is
+GLOBAL rather than sidebar-scoped — the whole value is switching tasks without
+leaving the engine pane, so the digits are reserved out of the terminal
+passthrough (`RESERVED_GLOBAL_CHORDS`). The index follows the sidebar's CURRENT
+visible order (project filter, sort, search all apply), so a digit means what
+the eye reads; a digit past the end of the list does nothing rather than
+clamping to the last task.
+
+Terminal reality worth knowing: `ctrl+<digit>` is only a distinct keystroke
+under the kitty keyboard protocol, which opentui negotiates and iTerm2 / kitty
+/ WezTerm deliver. On a legacy terminal `ctrl+1`, `ctrl+9` and `ctrl+0` send
+nothing at all, and `ctrl+3` / `ctrl+8` are byte-identical to escape /
+backspace — so there the chords simply do nothing instead of stealing those
+keys. The cost of reserving them is the embedded shell's ctrl+digit control
+bytes; the real escape and backspace keys are untouched.
 
 Owner decision (2026-07-25): focus movement is a cursor, not a ring. It clamps
 at both ends (sidebar on the left, files on the right) instead of wrapping —

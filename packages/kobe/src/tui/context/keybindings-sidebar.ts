@@ -211,6 +211,26 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "u" },
   },
   {
+    // POSITIONAL: slot N jumps to the Nth task in the sidebar's CURRENT
+    // visible order (filters + sort applied), so a digit means what the
+    // eye reads, not a fixed task id. Global on purpose — the point is
+    // switching tasks without first leaving the engine, and
+    // modifier-prefixed chords are the global tier (docs/KEYBINDINGS.md).
+    // Reserved out of the terminal passthrough in keys-pure.ts.
+    //
+    // Terminal reality: ctrl+digit is only a DISTINCT key under the kitty
+    // keyboard protocol (opentui negotiates it; iTerm2/kitty/WezTerm
+    // deliver it). On a legacy terminal ctrl+1/9/0 send nothing at all and
+    // ctrl+3 / ctrl+8 are indistinguishable from escape / backspace — so
+    // there the chord simply does nothing instead of stealing those keys.
+    id: "tasks.jump",
+    scope: "global",
+    keys: ["ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5", "ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9", "ctrl+0"],
+    category: "Tasks pane",
+    description: "Jump to the Nth task in the list (ctrl+0 = 10th)",
+    hint: { keys: "ctrl+1-0" },
+  },
+  {
     // Right arrow jumps from the Tasks pane back into the current
     // window's engine (claude/codex) pane — the spatial "go right into
     // the conversation" gesture, the inverse of ctrl+h. Named key, not a
