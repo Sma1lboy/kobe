@@ -31,6 +31,32 @@ kobe plugin link .            # register your working directory (dev loop)
 kobe plugin log you.hello     # inspect hook runs (exit codes, output, timing)
 ```
 
+## Optional SDK (TypeScript)
+
+The contract above is the API — any language, no SDK required. For
+TypeScript/JavaScript authors, **`@sma1lboy/kobe-plugin-sdk`** wraps that
+same contract with types and autocomplete (zero deps, Node ≥ 18 or Bun):
+
+```ts
+import { pluginContext, pluginEvent, notify, Pane, KobeSocket } from "@sma1lboy/kobe-plugin-sdk"
+
+const ctx = pluginContext()   // typed KOBE_PLUGIN_* env
+const ev = pluginEvent()      // typed event envelope (null outside [[events]])
+```
+
+- `pluginContext()` / `pluginEvent()` — the env contract, typed.
+- `readSettings()` / `setting()` — your `[[settings]]` values from config `.env`.
+- `kobe()` / `kobeJson()` + `notify` / `dispatch` / `listTasks` / `openPane` —
+  `$KOBE_BIN_PATH` callbacks.
+- `KobeSocket` — daemon socket client: `request(name, payload)` + live
+  channel `subscribe` (always `role: "pane"`).
+- `Pane` — a tiny pane kit for `[[panes]]` pages: alt screen, raw-mode
+  keys, resize, absolute-addressed `draw(lines)`.
+- `PLUGIN_EVENT_NAMES` / `DAEMON_CHANNELS` — the catalogs as typed unions;
+  an in-repo contract test pins them to the host so they can't drift.
+
+Package README has full examples: `packages/kobe-plugin-sdk/README.md`.
+
 Publish: push a public GitHub repo (one plugin per subdirectory is fine),
 add the topic **`kobe-plugin`** → it appears in the marketplace
 ([kobe.sma1lboy.me/plugins](https://kobe.sma1lboy.me/plugins) and
