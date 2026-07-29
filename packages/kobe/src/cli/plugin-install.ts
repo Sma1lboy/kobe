@@ -105,7 +105,8 @@ function register(entry: PluginRegistryEntry): void {
   mkdirSync(pluginStateDir(entry.id), { recursive: true })
 }
 
-export async function installPlugin(spec: string, opts: { yes: boolean; ref?: string }): Promise<void> {
+/** Installs and returns the plugin id the manifest declared. */
+export async function installPlugin(spec: string, opts: { yes: boolean; ref?: string }): Promise<string> {
   const match = spec.match(GITHUB_SPEC_RE)
   if (!match) fail(`install takes GitHub shorthand (owner/repo[/subdir]), got \`${spec}\``)
   const [, owner, repo, subdirRaw] = match
@@ -155,6 +156,7 @@ export async function installPlugin(spec: string, opts: { yes: boolean; ref?: st
       installedAt: Date.now(),
     })
     console.log(`installed ${id} v${parsed.manifest.version}`)
+    return id
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }

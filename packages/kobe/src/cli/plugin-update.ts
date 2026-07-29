@@ -12,9 +12,21 @@
  */
 
 import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs"
+import { join } from "node:path"
 import { writeOutdatedCache } from "@sma1lboy/kobe-daemon/plugins/outdated-cache"
-import { pluginCheckoutDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
-import { type PluginRegistryEntry, loadPluginRegistry } from "@sma1lboy/kobe-daemon/plugins/registry"
+import {
+  pluginCheckoutDir,
+  pluginConfigDir,
+  pluginDataDir,
+  pluginStateDir,
+} from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
+import {
+  type PluginRegistryEntry,
+  loadPluginRegistry,
+  removePluginEntry,
+  savePluginRegistry,
+} from "@sma1lboy/kobe-daemon/plugins/registry"
 import { PluginCliError, installPlugin } from "./plugin-install.ts"
 
 export interface OutdatedRow {
@@ -80,6 +92,32 @@ export function printOutdated(): void {
   }
 }
 
+/**
+ * An update whose manifest declares a NEW id (the author renamed the
+ * plugin) installs under that id, which would leave the old registry entry
+ * enabled and pointing at the old checkout — two copies of the same plugin
+ * firing every hook. Carry the user's data across and unregister the old
+ * one. Nothing is deleted: the stale checkout directory is left in place
+ * and reported, so a rename can never lose configuration.
+ */
+function migrateRenamedPlugin(oldId: string, newId: string): void {
+  for (const dirOf of [pluginConfigDir, pluginStateDir]) {
+    const from = dirOf(oldId)
+    const to = dirOf(newId)
+    if (!existsSync(from)) continue
+    mkdirSync(to, { recursive: true })
+    // Only carry entries the fresh install didn't already create, so a
+    // re-run can't clobber newer values with the old ones.
+    for (const entry of readdirSync(from)) {
+      if (existsSync(join(to, entry))) continue
+      renameSync(join(from, entry), join(to, entry))
+    }
+  }
+  savePluginRegistry(removePluginEntry(loadPluginRegistry(), oldId))
+  console.log(`renamed ${oldId} → ${newId}: settings and state carried over, old entry unregistered`)
+  console.log(`  leftover checkout (safe to remove): ${pluginDataDir(oldId)}`)
+}
+
 /** Reinstall the named plugins — or with `all`, every stale one. */
 export async function updatePlugins(ids: readonly string[], opts: { all: boolean; yes: boolean }): Promise<void> {
   const rows = listOutdated()
@@ -101,7 +139,8 @@ export async function updatePlugins(ids: readonly string[], opts: { all: boolean
   for (const target of targets) {
     if (!target.behind && !ids.includes(target.id)) continue
     console.log(`updating ${target.id} (${target.spec})…`)
-    await installPlugin(target.spec, { yes: opts.yes })
+    const installedId = await installPlugin(target.spec, { yes: opts.yes })
+    if (installedId !== target.id) migrateRenamedPlugin(target.id, installedId)
   }
   // Reinstall moved HEADs — refresh the cache so Settings drops its marks.
   listOutdated()
