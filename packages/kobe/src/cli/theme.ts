@@ -42,12 +42,15 @@ import { validateTheme } from "../tui/context/theme/schema"
  * a Solid store at module load). We mirror the names instead.
  */
 const BUNDLED_NAMES: readonly string[] = [
+  "catppuccin",
   "claude",
   "conductor",
   "dracula",
+  "gruvbox",
   "nord",
   "opencode",
   "osaka-jade",
+  "rose-pine",
   "tokyonight",
 ]
 

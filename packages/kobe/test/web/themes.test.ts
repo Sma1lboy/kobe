@@ -34,9 +34,23 @@ const REQUIRED_KEYS: (keyof WebThemePalette)[] = [
 const HEX = /^#[0-9a-fA-F]{6}$/
 
 describe("WEB_THEMES", () => {
-  it("ships all 7 bundled themes", () => {
+  // Mirrors BUNDLED_THEME_JSONS — the web registry is a separate import list,
+  // so this list going stale is exactly how a theme ships to the TUI but not
+  // the browser.
+  it("ships every bundled theme", () => {
     expect(Object.keys(WEB_THEMES).sort()).toEqual(
-      ["claude", "conductor", "dracula", "nord", "opencode", "osaka-jade", "tokyonight"].sort(),
+      [
+        "catppuccin",
+        "claude",
+        "conductor",
+        "dracula",
+        "gruvbox",
+        "nord",
+        "opencode",
+        "osaka-jade",
+        "rose-pine",
+        "tokyonight",
+      ].sort(),
     )
   })
 

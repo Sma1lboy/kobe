@@ -1,8 +1,9 @@
 # Themes
 
-kobe ships with a set of bundled color themes (`claude`, `conductor`,
-`dracula`, `nord`, `opencode`, `osaka-jade`, `tokyonight`) and lets you
-drop additional ones into `~/.kobe/themes/` without recompiling. Any
+kobe ships with a set of bundled color themes (`catppuccin`, `claude`,
+`conductor`, `dracula`, `gruvbox`, `nord`, `opencode`, `osaka-jade`,
+`rose-pine`, `tokyonight`) and lets you drop additional ones into
+`~/.kobe/themes/` without recompiling. Any
 file matching `~/.kobe/themes/*.json` is loaded at boot and shows up in
 the theme picker (`Settings → General → Theme`, opened via `ctrl+,`).
 
@@ -77,6 +78,19 @@ loader applies.
 That's the entire distribution mechanism — no plugin manifest, no
 registry. The same shape is what kobe ships internally; your theme
 doesn't have to know it's a "user" theme.
+
+A few themes are hosted on the landing site rather than bundled, as
+worked examples of exactly that:
+
+```sh
+kobe theme add https://kobe.sma1lboy.me/themes/everforest.json
+kobe theme add https://kobe.sma1lboy.me/themes/kanagawa.json
+kobe theme add https://kobe.sma1lboy.me/themes/solarized.json
+```
+
+Their sources live in `packages/kobe-landing/themes/`. The gallery at
+<https://kobe.sma1lboy.me/themes> previews every bundled and hosted
+theme, rendered from these same JSON files.
 
 ## Troubleshooting
 

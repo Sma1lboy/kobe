@@ -111,7 +111,13 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
 .m-warn{color:var(--t-warning)}
 .m-chip{display:inline-block;background:var(--t-element);color:var(--t-text);padding:0 5px;border-radius:3px}
 
+.tc-cmd{display:flex;align-items:center;gap:7px;width:calc(100% - 34px);margin:0 17px 15px;background:var(--well);color:var(--well-ink);border:none;border-radius:9px;padding:9px 11px;font-family:var(--font-mono);font-size:11px;text-align:left}
+.tc-cmd .ps{color:var(--accent-2);flex:none}
+.tc-cmd-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.tc-copy{flex:none;color:oklch(62% 0.02 60);font-size:10px;border-left:1px solid oklch(38% 0.02 55);padding-left:8px}
+.tc-cmd:hover .tc-copy{color:var(--accent-2)}
 .sw{display:flex;gap:0;padding:12px 17px 15px}
+.tcard .sw:last-child{padding-bottom:15px}
 .sw i{flex:1;height:20px;border-radius:3px;position:relative}
 .sw i:first-child{border-radius:5px 0 0 5px}
 .sw i:last-child{border-radius:0 5px 5px 0}
@@ -161,7 +167,7 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
 
   <section class="top">
     <p class="kicker" data-i18n="head.kicker">Appearance</p>
-    <h1 data-i18n-html="head.title">Seven themes in, <span class="acc">any number</span> out.</h1>
+    <h1 data-i18n-html="head.title">Ten themes in, <span class="acc">any number</span> out.</h1>
     <p class="lede" data-i18n-html="head.lede">Every panel below is drawn from a real theme file — the same JSON kobe loads at boot, not a screenshot someone re-tinted by hand. Pick a bundled one in <code>Settings → General → Theme</code>, or write your own: a theme is one JSON file, and there is no registry to get into.</p>
   </section>
 
@@ -356,11 +362,161 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
         </div>
       </article>
 
+      <article class="tcard" style="--t-bg:#1d2021;--t-panel:#282828;--t-element:#32302f;--t-text:#ebdbb2;--t-muted:#a89984;--t-primary:#fe8019;--t-accent:#fabd2f;--t-border:#7c6f64;--t-bordersub:#665c54;--t-success:#b8bb26;--t-warning:#fabd2f;--t-error:#fb4934;--t-seltext:#1d2021">
+        <div class="tc-head"><span class="tc-name">gruvbox</span><span class="tc-tag">retro</span></div>
+        <p class="tc-note" data-i18n="note.gruvbox"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#fe8019"></i><i style="background:#d3869b"></i><i style="background:#b8bb26"></i><i style="background:#fabd2f"></i><i style="background:#fb4934"></i><i style="background:#fe8019"></i></div>
+      </article>
+      <article class="tcard" style="--t-bg:#1e1e2e;--t-panel:#181825;--t-element:#313244;--t-text:#cdd6f4;--t-muted:#a6adc8;--t-primary:#cba6f7;--t-accent:#b4befe;--t-border:#7f849c;--t-bordersub:#6c7086;--t-success:#a6e3a1;--t-warning:#f9e2af;--t-error:#f38ba8;--t-seltext:#1e1e2e">
+        <div class="tc-head"><span class="tc-name">catppuccin</span><span class="tc-tag">pastel</span></div>
+        <p class="tc-note" data-i18n="note.catppuccin"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#cba6f7"></i><i style="background:#cba6f7"></i><i style="background:#a6e3a1"></i><i style="background:#f9e2af"></i><i style="background:#f38ba8"></i><i style="background:#cba6f7"></i></div>
+      </article>
+      <article class="tcard" style="--t-bg:#191724;--t-panel:#1f1d2e;--t-element:#26233a;--t-text:#e0def4;--t-muted:#908caa;--t-primary:#c4a7e7;--t-accent:#ebbcba;--t-border:#6e6a86;--t-bordersub:#524f67;--t-success:#31748f;--t-warning:#f6c177;--t-error:#eb6f92;--t-seltext:#191724">
+        <div class="tc-head"><span class="tc-name">rose-pine</span><span class="tc-tag">muted</span></div>
+        <p class="tc-note" data-i18n="note.rosepine"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#c4a7e7"></i><i style="background:#c4a7e7"></i><i style="background:#31748f"></i><i style="background:#f6c177"></i><i style="background:#eb6f92"></i><i style="background:#c4a7e7"></i></div>
+      </article>
+
     </div>
   </section>
 
   <section class="sec">
-    <p class="sec-no" data-i18n="write.no">2.0 · Write one</p>
+    <p class="sec-no" data-i18n="dl.no">2.0 · Downloadable</p>
+    <h2 data-i18n="dl.title">Three more, one command away.</h2>
+    <p class="body" data-i18n-html="dl.body">These aren't bundled — they're hosted right here as plain JSON, which is all a theme ever is. Copy the command, run it, restart kobe. This is also the exact shape your own theme takes when you publish it.</p>
+    <div class="grid">
+      <article class="tcard" style="--t-bg:#2d353b;--t-panel:#272e33;--t-element:#343f44;--t-text:#d3c6aa;--t-muted:#9da9a0;--t-primary:#a7c080;--t-accent:#83c092;--t-border:#56635f;--t-bordersub:#4f585e;--t-success:#a7c080;--t-warning:#dbbc7f;--t-error:#e67e80;--t-seltext:#2d353b">
+        <div class="tc-head"><span class="tc-name">everforest</span><span class="tc-tag">forest</span></div>
+        <p class="tc-note" data-i18n="note.everforest"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#a7c080"></i><i style="background:#d699b6"></i><i style="background:#a7c080"></i><i style="background:#dbbc7f"></i><i style="background:#e67e80"></i><i style="background:#a7c080"></i></div>
+        <button class="tc-cmd" data-cmd="https://kobe.sma1lboy.me/themes/everforest.json"><span class="ps">$</span><span class="tc-cmd-t">kobe theme add https://kobe.sma1lboy.me/themes/everforest.json</span><span class="tc-copy" data-i18n="card.copy">copy</span></button>
+      </article>
+      <article class="tcard" style="--t-bg:#1f1f28;--t-panel:#16161d;--t-element:#2a2a37;--t-text:#dcd7ba;--t-muted:#c8c093;--t-primary:#7e9cd8;--t-accent:#7fb4ca;--t-border:#727169;--t-bordersub:#54546d;--t-success:#98bb6c;--t-warning:#e6c384;--t-error:#e46876;--t-seltext:#1f1f28">
+        <div class="tc-head"><span class="tc-name">kanagawa</span><span class="tc-tag">ukiyo-e</span></div>
+        <p class="tc-note" data-i18n="note.kanagawa"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#7e9cd8"></i><i style="background:#957fb8"></i><i style="background:#98bb6c"></i><i style="background:#e6c384"></i><i style="background:#e46876"></i><i style="background:#7e9cd8"></i></div>
+        <button class="tc-cmd" data-cmd="https://kobe.sma1lboy.me/themes/kanagawa.json"><span class="ps">$</span><span class="tc-cmd-t">kobe theme add https://kobe.sma1lboy.me/themes/kanagawa.json</span><span class="tc-copy" data-i18n="card.copy">copy</span></button>
+      </article>
+      <article class="tcard" style="--t-bg:#002b36;--t-panel:#00212b;--t-element:#073642;--t-text:#eee8d5;--t-muted:#93a1a1;--t-primary:#268bd2;--t-accent:#2aa198;--t-border:#586e75;--t-bordersub:#356266;--t-success:#859900;--t-warning:#b58900;--t-error:#dc322f;--t-seltext:#002b36">
+        <div class="tc-head"><span class="tc-name">solarized</span><span class="tc-tag">classic</span></div>
+        <p class="tc-note" data-i18n="note.solarized"></p>
+        <div class="mock">
+          <div class="mock-side">
+            <div class="m-hdr">PROJECTS</div>
+            <div class="m-row"><span class="m-dot">●</span> kobe</div>
+            <div class="m-hdr">TASKS</div>
+            <div class="m-row sel">fix/auth-retry</div>
+            <div class="m-row">feat/theme-picker</div>
+            <div class="m-row dim">chore/bump-deps</div>
+          </div>
+          <div class="mock-main">
+            <div class="m-top"><span class="m-branch">fix/auth-retry</span><span class="m-state">● running</span></div>
+            <div class="m-add">+ retry on 401 once</div>
+            <div class="m-del">- throw immediately</div>
+            <div class="m-ctx">  return session</div>
+            <div class="m-warn">! 2 files unstaged</div>
+            <div style="margin-top:5px"><span class="m-chip">3 tabs</span></div>
+          </div>
+        </div>
+        <div class="sw"><i style="background:#268bd2"></i><i style="background:#6c71c4"></i><i style="background:#859900"></i><i style="background:#b58900"></i><i style="background:#dc322f"></i><i style="background:#268bd2"></i></div>
+        <button class="tc-cmd" data-cmd="https://kobe.sma1lboy.me/themes/solarized.json"><span class="ps">$</span><span class="tc-cmd-t">kobe theme add https://kobe.sma1lboy.me/themes/solarized.json</span><span class="tc-copy" data-i18n="card.copy">copy</span></button>
+      </article>
+    </div>
+  </section>
+
+  <section class="sec">
+    <p class="sec-no" data-i18n="write.no">3.0 · Write one</p>
     <h2 data-i18n="write.title">A theme is one JSON file.</h2>
     <p class="body" data-i18n-html="write.body">Drop any <code>*.json</code> into <code>~/.kobe/themes/</code> and it appears in the picker at next boot. Name it after a bundled theme and yours wins. You don't have to fill every slot — missing ones fall through (<code>borderActive</code> → <code>border</code> → <code>text</code>), so a dozen lines is already a usable theme.</p>
 
@@ -382,7 +538,7 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
   </section>
 
   <section class="sec">
-    <p class="sec-no" data-i18n="pub.no">3.0 · Publish</p>
+    <p class="sec-no" data-i18n="pub.no">4.0 · Publish</p>
     <h2 data-i18n="pub.title">Share a URL. That's the whole registry.</h2>
     <p class="body" data-i18n="pub.body">There is no submission queue and no manifest to write. Installation reads a raw file over HTTPS, so anything you can link to is installable — a repo, a gist, your own host.</p>
 
@@ -415,7 +571,7 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
       'meta.desc': '每个内置 kobe 主题都由它真实的配色文件渲染，另附如何编写并发布你自己的主题。一个主题就是一个 JSON 文件，没有需要挤进去的注册表。',
       'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.themes': '--主题', 'nav.changelog': '--更新日志',
       'head.kicker': '外观',
-      'head.title': '内置七套，<span class="acc">想要多少</span>都行。',
+      'head.title': '内置十套，<span class="acc">想要多少</span>都行。',
       'head.lede': '下面每一块面板都由真实的主题文件绘制——就是 kobe 启动时加载的那份 JSON，不是谁手工调色的截图。在 <code>设置 → General → Theme</code> 里挑一个内置的，或者自己写：一个主题就是一个 JSON 文件，没有需要挤进去的注册表。',
       'bundled.no': '1.0 · 内置',
       'bundled.title': '随 kobe 一起发布。',
@@ -428,11 +584,21 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
       'note.opencode': '中性炭灰加沙色强调色——从 opencode 过来会觉得眼熟。',
       'note.osaka': '深玉底色配薄荷信号色。最有主张的一套，运行指示也最响。',
       'note.tokyonight': '靛蓝夜色配珊瑚强调色。和你 nvim 里大概已经在用的 tokyonight 成套。',
-      'write.no': '2.0 · 动手写',
+      'note.gruvbox': '复古律动：暖棕底色配一记信号橙。暖色系里对比最强的一套，也是多数人说「终端配色」时想到的那个。',
+      'note.catppuccin': '冷灰底上的柔和粉彩——藕紫作标志色，没有一处喧哗。深色用 Mocha，浅色用 Latte。',
+      'note.rosepine': '近黑的梅色底上低饱和的鸢尾与玫瑰。安静但不发灰；浅色侧是 Dawn。',
+      'note.everforest': '去饱和的森林绿，为暖色底上的长时间工作调过。',
+      'note.kanagawa': '取自葛饰北斋的浪——墨蓝压在墨黑上，浅色侧是 lotus。',
+      'note.solarized': '2011 年那个开创了精确终端配色的原版。深浅两侧共用同一组强调色。',
+      'dl.no': '2.0 · 可下载',
+      'dl.title': '另外三套，一条命令的距离。',
+      'dl.body': '这三套没有内置——它们就托管在这里，一份纯 JSON，主题本来就只是这个。复制命令、运行、重启 kobe。你自己发布主题时，形态和这完全一样。',
+      'card.copy': '复制', 'card.copied': '已复制',
+      'write.no': '3.0 · 动手写',
       'write.title': '一个主题就是一个 JSON 文件。',
       'write.body': '把任意 <code>*.json</code> 丢进 <code>~/.kobe/themes/</code>，下次启动就出现在选择器里。取和内置主题同名，你的那份优先。也不必填满所有色槽——缺失的会向下回落（<code>borderActive</code> → <code>border</code> → <code>text</code>），所以十几行就已经是一套可用的主题。',
       'write.body2': '<code>defs</code> 是可选的命名色板，色槽可以按名字引用它。色槽的值可以是 hex 字符串、<code>defs</code> 的键，或者一个 <code>{ dark, light }</code> 对——用对偶形式时两边都必填。<code>$schema</code> 那行的作用是让编辑器给你自动补全。',
-      'pub.no': '3.0 · 发布',
+      'pub.no': '4.0 · 发布',
       'pub.title': '分享一个 URL。这就是全部的注册表。',
       'pub.body': '没有提交队列，也没有清单文件要写。安装走的是 HTTPS 读取原始文件，所以任何你能链接到的地方都能装——一个仓库、一个 gist、或者你自己的服务器。',
       'pub.s1': '把 JSON 提交到一个 <b>公开仓库或 gist</b>。',
@@ -449,7 +615,7 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
       'meta.desc': "Every bundled kobe theme, rendered from its real color file — plus how to write and publish your own. A theme is one JSON file; there is no registry to get into.",
       'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.themes': '--themes', 'nav.changelog': '--changelog',
       'head.kicker': 'Appearance',
-      'head.title': 'Seven themes in, <span class="acc">any number</span> out.',
+      'head.title': 'Ten themes in, <span class="acc">any number</span> out.',
       'head.lede': "Every panel below is drawn from a real theme file — the same JSON kobe loads at boot, not a screenshot someone re-tinted by hand. Pick a bundled one in <code>Settings → General → Theme</code>, or write your own: a theme is one JSON file, and there is no registry to get into.",
       'bundled.no': '1.0 · Bundled',
       'bundled.title': 'Ships with kobe.',
@@ -462,11 +628,21 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
       'note.opencode': 'Neutral charcoal with a sand accent — familiar if you came from opencode.',
       'note.osaka': 'Deep jade ground with a mint signal color. The most opinionated set — and the loudest running indicator.',
       'note.tokyonight': 'Indigo night with a coral accent. Pairs with the tokyonight setup you probably already run in nvim.',
-      'write.no': '2.0 · Write one',
+      'note.gruvbox': 'Retro groove: warm browns under a signal orange. The highest-contrast warm set, and the one most people mean by "terminal colors".',
+      'note.catppuccin': 'Soft pastels on a cool grey base — mauve signature, nothing shouts. Ships Mocha for dark and Latte for light.',
+      'note.rosepine': 'Low-saturation iris and rose on near-black plum. Quiet without going grey; Dawn is the light side.',
+      'note.everforest': 'Desaturated forest greens, tuned for long sessions on a warm background.',
+      'note.kanagawa': "Inspired by Katsushika Hokusai's wave — ink blues over sumi black, lotus for light.",
+      'note.solarized': 'The 2011 original that started precision terminal palettes. Both sides share one accent set.',
+      'dl.no': '2.0 · Downloadable',
+      'dl.title': 'Three more, one command away.',
+      'dl.body': "These aren't bundled — they're hosted right here as plain JSON, which is all a theme ever is. Copy the command, run it, restart kobe. This is also the exact shape your own theme takes when you publish it.",
+      'card.copy': 'copy', 'card.copied': 'copied',
+      'write.no': '3.0 · Write one',
       'write.title': 'A theme is one JSON file.',
       'write.body': "Drop any <code>*.json</code> into <code>~/.kobe/themes/</code> and it appears in the picker at next boot. Name it after a bundled theme and yours wins. You don't have to fill every slot — missing ones fall through (<code>borderActive</code> → <code>border</code> → <code>text</code>), so a dozen lines is already a usable theme.",
       'write.body2': "<code>defs</code> is an optional named palette a slot can reference by name. A slot value is a hex string, a <code>defs</code> key, or a <code>{ dark, light }</code> pair — and when you use the pair form, both sides are required. The <code>$schema</code> line is what gives you autocomplete in your editor.",
-      'pub.no': '3.0 · Publish',
+      'pub.no': '4.0 · Publish',
       'pub.title': "Share a URL. That's the whole registry.",
       'pub.body': 'There is no submission queue and no manifest to write. Installation reads a raw file over HTTPS, so anything you can link to is installable — a repo, a gist, your own host.',
       'pub.s1': 'Commit the JSON to a <b>public repo or gist</b>.',
@@ -518,6 +694,22 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
     }
     apply();
     return { t: t };
+  })();
+
+  // Per-card install commands (downloadable themes).
+  (function () {
+    document.querySelectorAll('.tc-cmd').forEach(function (b) {
+      var label = b.querySelector('.tc-copy');
+      var timer;
+      b.addEventListener('click', function () {
+        try {
+          if (navigator.clipboard) navigator.clipboard.writeText('kobe theme add ' + b.getAttribute('data-cmd'));
+        } catch (e) {}
+        label.textContent = KOBE_I18N.t('card.copied');
+        clearTimeout(timer);
+        timer = setTimeout(function () { label.textContent = KOBE_I18N.t('card.copy'); }, 1600);
+      });
+    });
   })();
 
   (function () {
