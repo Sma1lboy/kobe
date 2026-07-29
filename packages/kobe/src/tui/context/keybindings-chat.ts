@@ -209,7 +209,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // disables its close-tab entry while split, so exactly one is live.
     id: "workspace.split.close",
     scope: "workspace",
-    keys: [],
+    keys: ["ctrl+w"],
     prefixKeys: ["w"],
     category: "Workspace",
     description: "Close active split (tab when unsplit)",
