@@ -1,7 +1,0 @@
-{
-  "name": "kobe-plugin-browser",
-  "private": true,
-  "dependencies": {
-    "carbonyl": "0.0.2-next.bacf3db"
-  }
-}

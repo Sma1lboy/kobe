@@ -53,8 +53,7 @@ Task = git worktree + hosted engine sessions + branch
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
 - Official plugins live in the separate
   [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) repo
-  (`kobe plugin install Sma1lboy/kobe-plugins/<name>`); `plugins/` here is
-  the frozen pre-migration copy pending removal.
+  (`kobe plugin install Sma1lboy/kobe-plugins/<name>`).
 
 ## 3. Launch and lifetime
 
