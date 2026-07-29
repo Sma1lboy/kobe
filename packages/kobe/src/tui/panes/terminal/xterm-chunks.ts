@@ -100,6 +100,11 @@ function renderStyleToChunkFields(style: RenderStyle): Pick<Chunk, "fg" | "bg" |
   }
 }
 
+/** Solid-block glyphs that read as pure color fills when fg == bg. */
+function isSolidBlock(chars: string): boolean {
+  return chars === "▀" || chars === "▄" || chars === "█"
+}
+
 function isVisibleCell(cell: XtermCellLike): boolean {
   const chars = cell.getChars()
   if (chars !== "" && chars !== " ") return true
@@ -186,7 +191,13 @@ export function xtermLineToChunks(line: XtermLineLike, minLast = -1): Chunk[] {
       flush()
       active = next
     }
-    buf += cell.getChars() || " "
+    const chars = cell.getChars() || " "
+    // Solid-block glyphs whose fg equals bg render as bg-only spaces: same
+    // pixels, but the HOST terminal's minimum-contrast feature (iTerm) can
+    // no longer darken the "glyph" half — the zebra-stripe fix for
+    // half-block renderers (carbonyl, the video plugin). Issue #1. Kept in
+    // lockstep with xtermLineMatchesChunks below.
+    buf += isSolidBlock(chars) && next.fg !== "" && next.fg === next.bg ? " " : chars
   }
   flush()
   return out
@@ -234,7 +245,11 @@ export function xtermLineMatchesChunks(line: XtermLineLike | undefined, row: rea
     if (!cell || cell.getWidth() === 0) continue
     const chunk = row[chunkIndex]
     if (!chunk || !chunkStyleMatchesCell(chunk, cell)) return false
-    const text = cell.getChars() || " "
+    const raw = cell.getChars() || " "
+    // Mirror xtermLineToChunks' solid-block substitution, or substituted
+    // rows would read as "changed" on every compare and re-render forever.
+    const sameFgBg = chunk.fg !== undefined && chunk.bg !== undefined && String(chunk.fg) === String(chunk.bg)
+    const text = isSolidBlock(raw) && sameFgBg ? " " : raw
     if (!chunk.text.startsWith(text, textOffset)) return false
     textOffset += text.length
     if (textOffset === chunk.text.length) {
