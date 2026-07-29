@@ -40,6 +40,7 @@ import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
+import { tryPluginFileOpen } from "./plugin-file-open"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
@@ -143,12 +144,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
 
-  // One-time orphan sweep (O19): clear historical `terminalTabs.*` snapshots
-  // whose task no longer exists — the backlog that accumulated before
-  // delete-time reclamation. Runs once, the first render the task list has
-  // hydrated (the raw signal, so archived tasks are kept — their snapshots
-  // are load-bearing for unarchive --resume). A ref, not a dep, so a later
-  // task-list change never re-sweeps a live task's fresh snapshot.
+  // One-time orphan sweep (O19): clear `terminalTabs.*` snapshots whose task
+  // no longer exists. Runs once on first hydration (raw signal → archived
+  // tasks kept, their snapshots feed unarchive --resume); ref not dep, so a
+  // later task-list change never re-sweeps a live task's fresh snapshot.
   const sweptOrphansRef = useRef(false)
   useEffect(() => {
     if (sweptOrphansRef.current || tasks.length === 0) return
@@ -159,11 +158,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     )
   }, [tasks, kv])
 
-  // Imperative handle from the currently-mounted TerminalTabs (issue #16
-  // editor-tab flow). A ref (not a plain `let` — this component re-renders
-  // every state change, unlike Solid's once-per-setup body): FileTree's
-  // "open" action only ever READS it at click time, and TerminalTabs
-  // re-hands it on every mount (task/worktree switch).
+  // Imperative handle from the currently-mounted TerminalTabs (issue #16):
+  // a ref, since FileTree's "open" only READS it at click time and
+  // TerminalTabs re-hands it on every mount (task/worktree switch).
   const openEditorTabFn = useRef<((command: readonly string[], label: string) => void) | null>(null)
   const sendToEngineFn = useRef<((text: string) => void) | null>(null)
   // Read-only diff tab opener (issue #21) — same ref pattern as the editor
@@ -218,6 +215,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     const wt = worktree
     if (!wt) return
     const abs = join(wt, relPath)
+    // Plugin file handlers outrank the editor (docs/design/plugins.md).
+    if (tryPluginFileOpen(abs)) return
     const openEditorTab = openEditorTabFn.current
     const launch = openEditorTab ? await resolveEditorLaunch(wt, abs) : null
     if (!launch) {

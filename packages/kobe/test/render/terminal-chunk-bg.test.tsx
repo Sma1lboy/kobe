@@ -8,9 +8,9 @@
  * rowsToStyledText → StyledText → TextRenderable.content.
  */
 
+import { expect, test } from "bun:test"
 import { StyledText, type TextRenderable } from "@opentui/core"
 import { useEffect, useState } from "react"
-import { expect, test } from "bun:test"
 import { rowsToStyledText } from "../../src/tui/panes/terminal/sgr-to-text-chunk"
 import { renderComponent } from "./harness"
 
@@ -19,10 +19,7 @@ function HalfBlockRow() {
   useEffect(() => {
     if (el && !el.isDestroyed) {
       el.content = new StyledText(
-        rowsToStyledText([
-          [{ text: "▀▀▀", fg: [255, 0, 0], bg: [0, 0, 255] }],
-          [{ text: "   ", bg: [0, 255, 0] }],
-        ]),
+        rowsToStyledText([[{ text: "▀▀▀", fg: [255, 0, 0], bg: [0, 0, 255] }], [{ text: "   ", bg: [0, 255, 0] }]]),
       )
     }
   }, [el])

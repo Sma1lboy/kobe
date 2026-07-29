@@ -117,3 +117,36 @@ describe("platform helpers", () => {
 it("qualifies action ids as plugin.action", () => {
   expect(qualifiedActionId("example.notify", "test")).toBe("example.notify.test")
 })
+
+describe("settings + file handlers", () => {
+  const base = 'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_kobe_version = "0.1.0"\nplatforms = ["macos"]\n'
+
+  it("parses [[settings]] with types, options, defaults", () => {
+    const { manifest } = parsePluginManifest(
+      `${base}[[settings]]\nkey = "K_MODE"\nlabel = "Mode"\ntype = "enum"\noptions = ["a", "b"]\ndefault = "a"\n[[settings]]\nkey = "K_ON"\nlabel = "On"\ntype = "boolean"`,
+    )
+    expect(manifest.settings).toEqual([
+      { key: "K_MODE", label: "Mode", type: "enum", options: ["a", "b"], default: "a" },
+      { key: "K_ON", label: "On", type: "boolean" },
+    ])
+  })
+
+  it("rejects an enum setting without options and unknown types", () => {
+    expect(() => parsePluginManifest(`${base}[[settings]]\nkey = "K"\nlabel = "L"\ntype = "enum"`)).toThrow(/options/)
+    expect(() => parsePluginManifest(`${base}[[settings]]\nkey = "K"\nlabel = "L"\ntype = "list"`)).toThrow(/type/)
+  })
+
+  it("parses [[file_handlers]] and validates the action + pattern", () => {
+    const withAction = `${base}[[actions]]\nid = "open"\ntitle = "O"\ncommand = ["true"]\n`
+    const { manifest } = parsePluginManifest(
+      `${withAction}[[file_handlers]]\npattern = "\\\\.(mp4|mov)$"\naction = "open"`,
+    )
+    expect(manifest.fileHandlers).toEqual([{ pattern: "\\.(mp4|mov)$", action: "open" }])
+    expect(() => parsePluginManifest(`${withAction}[[file_handlers]]\npattern = "x"\naction = "nope"`)).toThrow(
+      /unknown action/,
+    )
+    expect(() => parsePluginManifest(`${withAction}[[file_handlers]]\npattern = "("\naction = "open"`)).toThrow(
+      /valid regex/,
+    )
+  })
+})

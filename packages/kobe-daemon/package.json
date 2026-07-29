@@ -51,7 +51,8 @@
     "./plugins/pane-command": "./src/plugins/pane-command.ts",
     "./plugins/plugin-paths": "./src/plugins/plugin-paths.ts",
     "./plugins/registry": "./src/plugins/registry.ts",
-    "./plugins/runtime": "./src/plugins/runtime.ts"
+    "./plugins/runtime": "./src/plugins/runtime.ts",
+    "./plugins/settings-env": "./src/plugins/settings-env.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

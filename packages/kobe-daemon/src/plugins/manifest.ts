@@ -67,6 +67,30 @@ export interface PluginEventHook extends PluginCommandSpec {
   readonly on: PluginEventName
 }
 
+/** One user-tunable setting: declared here, edited in Settings → Plugins,
+ *  stored as `KEY=value` in the plugin's config `.env` (the contract plugin
+ *  commands already source). */
+export interface PluginSetting {
+  /** Env var name written to the config .env (conventionally KOBE_<PLUGIN>_*). */
+  readonly key: string
+  readonly label: string
+  readonly type: "string" | "number" | "boolean" | "enum"
+  /** Enum choices (required for type = "enum"). */
+  readonly options?: readonly string[]
+  /** Default shown when the .env has no value; storage is always a string. */
+  readonly default?: string
+}
+
+/** Route "open this file" from the Files pane to a plugin action: the first
+ *  enabled handler whose pattern matches the file name wins; the action
+ *  receives the absolute path as its argument. */
+export interface PluginFileHandler {
+  /** JS regex source tested against the file's name/path. */
+  readonly pattern: string
+  /** Local action id in this plugin. */
+  readonly action: string
+}
+
 export interface PluginPane extends PluginCommandSpec {
   /** Local id (no dots), like actions. */
   readonly id: string
@@ -88,6 +112,8 @@ export interface PluginManifest {
   readonly actions: readonly PluginAction[]
   readonly events: readonly PluginEventHook[]
   readonly panes: readonly PluginPane[]
+  readonly settings: readonly PluginSetting[]
+  readonly fileHandlers: readonly PluginFileHandler[]
 }
 
 export interface ParsedPluginManifest {
@@ -243,8 +269,55 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
     return [hook]
   })
 
+  const settings = asTableArray(raw.settings, "settings").map((t, i) => {
+    const type = asString(t.type, `settings[${i}].type`)
+    if (type !== "string" && type !== "number" && type !== "boolean" && type !== "enum") {
+      fail(`settings[${i}].type must be string | number | boolean | enum`)
+    }
+    const options =
+      t.options === undefined
+        ? undefined
+        : Array.isArray(t.options) && t.options.every((o) => typeof o === "string" && o.length > 0)
+          ? (t.options as string[])
+          : fail(`settings[${i}].options must be an array of strings`)
+    if (type === "enum" && (!options || options.length === 0)) fail(`settings[${i}] enum needs \`options\``)
+    return {
+      key: asString(t.key, `settings[${i}].key`),
+      label: asString(t.label, `settings[${i}].label`),
+      type: type as "string" | "number" | "boolean" | "enum",
+      ...(options ? { options } : {}),
+      ...(t.default === undefined ? {} : { default: asString(t.default, `settings[${i}].default`) }),
+    }
+  })
+
+  const fileHandlers = asTableArray(raw.file_handlers, "file_handlers").map((t, i) => {
+    const pattern = asString(t.pattern, `file_handlers[${i}].pattern`)
+    try {
+      new RegExp(pattern)
+    } catch {
+      fail(`file_handlers[${i}].pattern is not a valid regex`)
+    }
+    const action = asString(t.action, `file_handlers[${i}].action`)
+    if (!actions.some((a) => a.id === action)) fail(`file_handlers[${i}] names unknown action \`${action}\``)
+    return { pattern, action }
+  })
+
   return {
-    manifest: { id, name, version, minKobeVersion, description, platforms, build, startup, actions, events, panes },
+    manifest: {
+      id,
+      name,
+      version,
+      minKobeVersion,
+      description,
+      platforms,
+      build,
+      startup,
+      actions,
+      events,
+      panes,
+      settings,
+      fileHandlers,
+    },
     warnings,
   }
 }
