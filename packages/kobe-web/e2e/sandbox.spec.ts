@@ -13,6 +13,12 @@ async function pressTerminal(terminal: Locator, key: string): Promise<void> {
   await terminal.press(key)
 }
 
+/** Prefix-sequence chord: the PureTUI first stroke (`ctrl+a`), then the key. */
+async function pressPrefixed(terminal: Locator, key: string): Promise<void> {
+  await pressTerminal(terminal, "Control+a")
+  await pressTerminal(terminal, key)
+}
+
 async function waitForVisualPty(harness: Locator, buffer: Locator): Promise<void> {
   try {
     await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
@@ -89,7 +95,7 @@ test("Kanban fixture detail opens and returns through the real OpenTUI", async (
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await pressTerminal(terminal, "c")
+    await pressPrefixed(terminal, "c")
     await expect(buffer).toContainText("Backlog fixture")
 
     // Kanban opens focused on the fixture task's linked card; move to the
@@ -113,7 +119,7 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await pressTerminal(terminal, "c")
+    await pressPrefixed(terminal, "c")
 
     await expect(buffer).toContainText("Kanban")
     await expect(buffer).toContainText("Backlog fixture")

@@ -4,8 +4,8 @@
  * Tokens are applied in order: `text:…` types literally, everything else is
  * a key chord (`ctrl+h`, `c`, `enter`, `down`…). No tokens = the start view.
  *
- *   bun run visual:shot -- ctrl+h c            # Kanban board
- *   bun run visual:shot -- ctrl+h c n "text:Draft title"
+ *   bun run visual:shot -- ctrl+a c            # Kanban board (prefix chord)
+ *   bun run visual:shot -- ctrl+a c n "text:Draft title"
  */
 
 import { resolve } from "node:path"
