@@ -5,6 +5,7 @@ import {
   noteEngineInput,
   optimisticActivityStore,
   resetOptimisticActivity,
+  supersededMarks,
 } from "../../src/tui-react/workspace/optimistic-activity.ts"
 
 const auth = (entries: Record<string, TaskEngineState>): ReadonlyMap<string, TaskEngineState> =>
@@ -29,10 +30,36 @@ describe("mergeOptimisticActivity", () => {
     expect(corrected.get("t1")?.state).toBe("running")
   })
 
-  it("expired marks change nothing (same map reference back)", () => {
-    const base = auth({ t1: { state: "running", at: 1 } })
-    const marks = new Map([["t1", { kind: "interrupted" as const, at: 1000 }]])
+  it("THE /compact-then-esc bug: state older than the interrupt never resurfaces", () => {
+    // esc during /compact: the engine sends no post-compact and no Stop, so
+    // this `running` entry is frozen at t=1000 forever. Minutes later it
+    // must still read as quiet — an interrupt is a fact about the past, not
+    // a guess that decays back into stale state.
+    const stale = auth({ t1: { state: "running", at: 1000 } })
+    const marks = new Map([["t1", { kind: "interrupted" as const, at: 2000 }]])
+    for (const now of [2100, 7000, 60_000, 15 * 60_000]) {
+      expect(mergeOptimisticActivity(stale, marks, now).has("t1")).toBe(false)
+    }
+  })
+
+  it("an expired running guess decays back to authority", () => {
+    const base = auth({})
+    const marks = new Map([["t1", { kind: "running" as const, at: 1000 }]])
     expect(mergeOptimisticActivity(base, marks, 60_000)).toBe(base)
+  })
+})
+
+describe("supersededMarks", () => {
+  it("names marks an authoritative event at/after them has settled", () => {
+    const marks = new Map([
+      ["t1", { kind: "running" as const, at: 1000 }],
+      ["t2", { kind: "interrupted" as const, at: 1000 }],
+    ])
+    const settled = supersededMarks(
+      auth({ t1: { state: "running", at: 1500 }, t2: { state: "running", at: 500 } }),
+      marks,
+    )
+    expect(settled).toEqual(["t1"])
   })
 })
 

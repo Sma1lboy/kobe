@@ -40,7 +40,12 @@ import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
-import { mergeOptimisticActivity, optimisticActivityStore } from "./optimistic-activity"
+import {
+  clearOptimisticMark,
+  mergeOptimisticActivity,
+  optimisticActivityStore,
+  supersededMarks,
+} from "./optimistic-activity"
 import { tryPluginFileOpen } from "./plugin-file-open"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
@@ -71,12 +76,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const engineState = useAccessor(orch.engineStateSignal())
   const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
   // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
-  // icon immediately; authoritative events + short TTLs correct any guess.
+  // icon immediately; authoritative events always win, and a superseded
+  // mark is dropped so the overlay never becomes a second source of truth.
   const optimisticMarks = useAccessor(optimisticActivityStore)
   const sidebarEngineState = useMemo(
     () => mergeOptimisticActivity(engineState, optimisticMarks),
     [engineState, optimisticMarks],
   )
+  useEffect(() => {
+    for (const taskId of supersededMarks(engineState, optimisticMarks)) clearOptimisticMark(taskId)
+  }, [engineState, optimisticMarks])
   const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())

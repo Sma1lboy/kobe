@@ -394,10 +394,7 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
 })
 
 describe("transient lifecycle marks (engine.lifecycle)", () => {
-  const lifecycleView = (
-    lifecycle: { compacting: boolean; subagents: number },
-    activity?: { state: "running"; at: number },
-  ) =>
+  const lifecycleView = (lifecycle: { subagents: number }, activity?: { state: "running"; at: number }) =>
     buildSidebarRowView({
       task: task({}),
       lifecycle,
@@ -407,26 +404,20 @@ describe("transient lifecycle marks (engine.lifecycle)", () => {
       truncateBranch: (branch) => branch,
     })
 
-  it("compacting replaces the branch word on line 2 while the row is loading", () => {
-    const row = lifecycleView({ compacting: true, subagents: 0 }, { state: "running", at: 0 })
-    expect(row.subtitleText).not.toContain("kobe/")
-    expect(row.subtitleText.length).toBeGreaterThan(0)
-  })
-
-  it("a compacting mark on a quiet row never shows — the label serves the animation", () => {
-    const plain = view({})
-    const stale = lifecycleView({ compacting: true, subagents: 0 })
-    expect(stale.subtitleText).toBe(plain.subtitleText)
-  })
-
-  it("subagent activity rides as a ◇N prefix ahead of the branch", () => {
-    const row = lifecycleView({ compacting: false, subagents: 2 })
+  it("subagent activity rides as a ◇N prefix while the row animates", () => {
+    const row = lifecycleView({ subagents: 2 }, { state: "running", at: 0 })
     expect(row.subtitleText.startsWith("◇2 ")).toBe(true)
+  })
+
+  it("a mark left over on a QUIET row never shows — marks serve the animation", () => {
+    const plain = view({})
+    // subagent-stop never arrived (interrupted turn): the row is idle, so
+    // the stale count must not caption it.
+    expect(lifecycleView({ subagents: 2 }).subtitleText).toBe(plain.subtitleText)
   })
 
   it("no marks → unchanged branch subtitle", () => {
     const plain = view({})
-    const marked = lifecycleView({ compacting: false, subagents: 0 })
-    expect(marked.subtitleText).toBe(plain.subtitleText)
+    expect(lifecycleView({ subagents: 0 }).subtitleText).toBe(plain.subtitleText)
   })
 })

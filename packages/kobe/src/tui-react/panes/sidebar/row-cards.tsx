@@ -50,7 +50,7 @@ export type SidebarRowCardSharedProps = {
   readonly titleBudget: number
   readonly subtitleBudget: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
-  readonly engineLifecycle?: ReadonlyMap<string, { readonly compacting: boolean; readonly subagents: number }>
+  readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   readonly moveMode?: boolean

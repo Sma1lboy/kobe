@@ -72,7 +72,7 @@ function pruneEngineState(tasks: readonly SerializedTask[], signals: Orchestrato
     }
     if (nextTabs) signals.setEngineTabStateSig(nextTabs)
   }
-  // Same guard for the transient lifecycle marks (compacting / subagents).
+  // Same guard for the transient lifecycle marks (subagent counts).
   const lifecycle = signals.engineLifecycleAcc()
   if (lifecycle.size > 0) {
     let nextLifecycle: Map<string, EngineLifecycleState> | null = null
@@ -163,7 +163,7 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
     if (p.state === "idle") next.delete(p.taskId)
     else next.set(p.taskId, entry)
     signals.setEngineStateSig(next)
-    // Transient lifecycle marks (compacting / subagents) must never outlive
+    // Transient lifecycle marks (subagent counts) must never outlive
     // the evidence: a turn ending clears them, and so does a FRESH running
     // edge — a cancelled compaction never sends post-compact, and an
     // esc-interrupted turn may send no idle/stop either, so the next
@@ -320,20 +320,20 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       logClientError("orch", `dropped engine.lifecycle event: malformed payload (${describePayload(payload)})`)
       return
     }
+    // Compaction kinds are intentionally ignored here: pre-compact has no
+    // guaranteed post-compact (esc cancels it), so any flag it set would
+    // outlive its evidence. Compaction reads as the running animation.
     const prev = signals.engineLifecycleAcc()
-    const cur = prev.get(p.taskId) ?? { compacting: false, subagents: 0 }
+    const cur = prev.get(p.taskId) ?? { subagents: 0 }
     const entry =
-      p.kind === "pre-compact"
-        ? { ...cur, compacting: true }
-        : p.kind === "post-compact"
-          ? { ...cur, compacting: false }
-          : p.kind === "subagent-start"
-            ? { ...cur, subagents: cur.subagents + 1 }
-            : p.kind === "subagent-stop"
-              ? { ...cur, subagents: Math.max(0, cur.subagents - 1) }
-              : cur
+      p.kind === "subagent-start"
+        ? { subagents: cur.subagents + 1 }
+        : p.kind === "subagent-stop"
+          ? { subagents: Math.max(0, cur.subagents - 1) }
+          : cur
+    if (entry === cur && !prev.has(p.taskId)) return
     const map = new Map(prev)
-    if (!entry.compacting && entry.subagents === 0) map.delete(p.taskId)
+    if (entry.subagents === 0) map.delete(p.taskId)
     else map.set(p.taskId, entry)
     signals.setEngineLifecycleSig(map)
     return

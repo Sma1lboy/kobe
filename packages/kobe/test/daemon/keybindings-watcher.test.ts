@@ -22,6 +22,7 @@ import path from "node:path"
 import { type ChannelEvent, DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import { defaultKeybindingsPath, startKeybindingsWatcher } from "@sma1lboy/kobe-daemon/daemon/keybindings-watcher"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
+import { pokeUntil } from "./fs-watch-helpers.ts"
 
 let tmpHome: string
 let filePath: string
@@ -56,15 +57,6 @@ afterEach(() => {
   }
 })
 
-/** Poll until `cond` holds or ~2s elapses (fs.watch delivery is async). */
-async function waitFor(cond: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2000
-  while (!cond() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 20))
-  }
-  expect(cond()).toBe(true)
-}
-
 describe("defaultKeybindingsPath", () => {
   test("resolves under the given home (mirror of keybindingsConfigPath in env.ts)", () => {
     expect(defaultKeybindingsPath("/some/home")).toBe(path.join("/some/home", ".kobe", "settings", "keybindings.yaml"))
@@ -84,17 +76,27 @@ describe("startKeybindingsWatcher", () => {
     expect(revs).toEqual([0]) // initial seed
 
     // tmp + rename — what an editor (or atomic writer) does; a file-watch
-    // would go dead on this, a dir-watch survives.
+    // would go dead on this, a dir-watch survives. Poked until observed
+    // (fs-watch-helpers) so the assertion is about the WATCHER, not about
+    // whether it happened to be ready at one instant.
     const tmp = `${filePath}.tmp`
-    fs.writeFileSync(tmp, "chat.fork.new: ctrl+g\n", "utf8")
-    fs.renameSync(tmp, filePath)
-    await waitFor(() => revs.length === 2)
-    expect(revs[1]).toBe(1)
+    await pokeUntil(
+      () => revs.length >= 2,
+      () => {
+        fs.writeFileSync(tmp, "chat.fork.new: ctrl+g\n", "utf8")
+        fs.renameSync(tmp, filePath)
+      },
+    )
 
     // A later edit bumps again (the watcher is alive after the rename).
-    fs.writeFileSync(filePath, "chat.fork.new: ctrl+y\n", "utf8")
-    await waitFor(() => revs.length === 3)
-    expect(revs[2]).toBe(2)
+    const afterRename = revs.length
+    await pokeUntil(
+      () => revs.length > afterRename,
+      () => fs.writeFileSync(filePath, "chat.fork.new: ctrl+y\n", "utf8"),
+    )
+    // Revs stay a gapless monotonic sequence from the initial 0, however
+    // many pokes it took.
+    expect(revs).toEqual(revs.map((_, i) => i))
   })
 
   test("debounceMs <= 0 disables the watcher entirely (no publish, no-op stop)", () => {

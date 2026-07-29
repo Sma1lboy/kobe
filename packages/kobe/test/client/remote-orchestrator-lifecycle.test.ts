@@ -3,11 +3,11 @@ import { handleOrchestratorEvent } from "../../src/client/remote-orchestrator-ev
 import type { OrchestratorSignals } from "../../src/client/remote-orchestrator-payloads.ts"
 
 /**
- * The stale-"compacting" regression (2026-07-29): a cancelled compaction
- * never sends post-compact, and an esc-interrupted turn may send no
- * idle/stop either — so the next prompt's fresh `running` edge is the
- * lifecycle mark's only chance to un-stick. These tests pin the fold's
- * clearing rules end to end through `handleOrchestratorEvent`.
+ * Transient lifecycle marks must never outlive their evidence (the
+ * 2026-07-29 stale-mark class): a cancelled compaction sends no
+ * post-compact and an esc-interrupted turn may send no idle/stop, so the
+ * fold clears marks on every turn edge — and keeps NO compaction state at
+ * all, since that one has no reliable clearing event.
  */
 function fakeSignals(): { signals: OrchestratorSignals; lifecycle: () => ReadonlyMap<string, unknown> } {
   const cells = new Map<string, unknown>([
@@ -27,25 +27,24 @@ function fakeSignals(): { signals: OrchestratorSignals; lifecycle: () => Readonl
 }
 
 describe("engine.lifecycle marks vs engine-state edges", () => {
-  it("a fresh running edge clears a mark stranded by a cancelled compaction", () => {
+  it("compaction leaves NO client state — an unclearable flag is never created", () => {
     const { signals, lifecycle } = fakeSignals()
     handleOrchestratorEvent("engine-state", { taskId: "t1", state: "running", at: 1 }, signals)
     handleOrchestratorEvent("engine.lifecycle", { taskId: "t1", kind: "pre-compact", at: 2 }, signals)
-    expect(lifecycle().get("t1")).toMatchObject({ compacting: true })
-    // esc: compaction cancelled, no post-compact, no idle/stop ever arrives;
-    // the entry decays via idle elsewhere or the task re-enters directly.
-    handleOrchestratorEvent("engine-state", { taskId: "t1", state: "idle", at: 3 }, signals)
-    handleOrchestratorEvent("engine-state", { taskId: "t1", state: "running", at: 4 }, signals)
+    expect(lifecycle().has("t1")).toBe(false)
+    // …so an esc that cancels the compaction has nothing to strand.
+    handleOrchestratorEvent("engine.lifecycle", { taskId: "t1", kind: "post-compact", at: 3 }, signals)
     expect(lifecycle().has("t1")).toBe(false)
   })
 
-  it("a mid-turn compacting mark survives repeated running reports (no edge)", () => {
+  it("a fresh running edge clears a subagent mark stranded by an interrupt", () => {
     const { signals, lifecycle } = fakeSignals()
     handleOrchestratorEvent("engine-state", { taskId: "t1", state: "running", at: 1 }, signals)
-    handleOrchestratorEvent("engine.lifecycle", { taskId: "t1", kind: "pre-compact", at: 2 }, signals)
-    handleOrchestratorEvent("engine-state", { taskId: "t1", state: "running", at: 3 }, signals)
-    expect(lifecycle().get("t1")).toMatchObject({ compacting: true })
-    handleOrchestratorEvent("engine.lifecycle", { taskId: "t1", kind: "post-compact", at: 4 }, signals)
+    handleOrchestratorEvent("engine.lifecycle", { taskId: "t1", kind: "subagent-start", at: 2 }, signals)
+    expect(lifecycle().get("t1")).toMatchObject({ subagents: 1 })
+    // esc: no subagent-stop, no idle — the next turn's running edge clears it.
+    handleOrchestratorEvent("engine-state", { taskId: "t1", state: "idle", at: 3 }, signals)
+    handleOrchestratorEvent("engine-state", { taskId: "t1", state: "running", at: 4 }, signals)
     expect(lifecycle().has("t1")).toBe(false)
   })
 

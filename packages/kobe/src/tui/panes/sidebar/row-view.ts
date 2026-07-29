@@ -178,9 +178,9 @@ export function anyRowLoading(
 export function buildSidebarRowView(opts: {
   readonly task: Task
   readonly activity?: TaskEngineState
-  /** Transient lifecycle marks (`engine.lifecycle` channel): a compacting
-   *  word on line 2 and a `◇N` subagent prefix ahead of the branch. */
-  readonly lifecycle?: { readonly compacting: boolean; readonly subagents: number }
+  /** Transient lifecycle marks (`engine.lifecycle` channel): a `◇N`
+   *  subagent prefix ahead of the branch. */
+  readonly lifecycle?: { readonly subagents: number }
   /**
    * A long daemon operation in flight for this task, from the orchestrator's
    * `task.jobs` map (today: `ensureWorktree`). Presence means "running" —
@@ -258,14 +258,13 @@ export function buildSidebarRowView(opts: {
   // neutral dash. Persisted task lifecycle belongs to the board, not this
   // runtime-activity projection.
   const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : "—"
-  // Transient lifecycle marks: mid-turn compaction replaces the branch word
-  // (it outranks the branch, not the failure/waiting words); subagent
-  // activity rides as a compact `◇N` prefix ahead of the branch. The word
-  // is SUBORDINATE to the animation: it only renders while the row is
-  // actually loading, so a mark that outlived its evidence (cancelled
-  // compaction) can never pin a stale label on a quiet row.
-  const compacting = opts.lifecycle?.compacting === true && loading
-  const subagents = opts.lifecycle?.subagents ?? 0
+  // Subagent activity rides as a compact `◇N` prefix ahead of the branch,
+  // and ONLY while the row is actually animating: every transient mark is
+  // subordinate to the spinner, so one whose end event never arrived can
+  // never caption a quiet row. There is deliberately NO compaction word at
+  // all — its end event is cancellable (esc during /compact), so it has no
+  // reliable clearing edge; compaction reads as the running animation.
+  const subagents = loading ? (opts.lifecycle?.subagents ?? 0) : 0
   const branchWithMarks = subagents > 0 && branch.length > 0 ? `◇${subagents} ${branch}` : branch
   const subtitleText =
     deleting || deleteFailed
@@ -274,11 +273,9 @@ export function buildSidebarRowView(opts: {
         ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
         : activityLabel
           ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
-          : compacting
-            ? opts.truncateBranch(t("tasks.activity.compacting"), opts.subtitleBudget)
-            : branchWithMarks.length > 0
-              ? opts.truncateBranch(branchWithMarks, opts.subtitleBudget)
-              : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
+          : branchWithMarks.length > 0
+            ? opts.truncateBranch(branchWithMarks, opts.subtitleBudget)
+            : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
   // Untracked custom engine gets a distinct dim dot. Normal tasks fall back
   // to the hollow idle circle because the client deliberately removes an
   // explicit `idle` activity entry; absence is therefore the idle projection.

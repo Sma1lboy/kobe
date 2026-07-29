@@ -164,9 +164,14 @@ export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChanges
  */
 export type UsageSnapshotMap = ReadonlyMap<string, EngineQuotaUsage>
 
-/** Folded `engine.lifecycle` state per task — the sidebar's transient
- *  "compacting" glyph + subagent activity mark. */
-export type EngineLifecycleState = { readonly compacting: boolean; readonly subagents: number }
+/**
+ * Folded `engine.lifecycle` state per task — the sidebar's subagent mark.
+ * Compaction deliberately keeps NO client state: its end event can be
+ * cancelled (esc during /compact), so a compacting flag has no reliable
+ * clearing edge and could only ever go stale. Compaction shows as the
+ * normal running animation instead.
+ */
+export type EngineLifecycleState = { readonly subagents: number }
 export type EngineLifecycleMap = ReadonlyMap<string, EngineLifecycleState>
 
 /** One entry of the `task.recentEvents` feed (daemon EngineEventLog wire shape). */

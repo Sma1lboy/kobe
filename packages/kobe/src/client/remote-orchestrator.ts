@@ -363,7 +363,7 @@ export class RemoteOrchestrator {
   readonly replyPrompt = (promptId: string, value?: string): void =>
     void this.client.request("ui.promptReply", { promptId, ...(value !== undefined ? { value } : {}) }).catch(() => {})
 
-  /** Transient per-task lifecycle marks (compacting / subagent activity). */
+  /** Transient per-task lifecycle marks (subagent activity). */
   readonly engineLifecycleSignal = (): ReadableState<EngineLifecycleMap> => this.engineLifecycleAcc
 
   /** One task's recent engine events (the event feed; newest last). */

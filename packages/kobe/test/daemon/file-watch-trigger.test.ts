@@ -26,6 +26,7 @@ import os from "node:os"
 import path from "node:path"
 import { startFileWatchTrigger } from "@sma1lboy/kobe-daemon/daemon/file-watch-trigger"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { pokeUntil, waitUntil } from "./fs-watch-helpers.ts"
 
 // fs-event delivery (chokidar arm + fsevents) can take seconds when the socket
 // track runs multi-worker under load; the polling waitFor needs headroom past
@@ -52,15 +53,6 @@ afterEach(() => {
   }
 })
 
-/** Poll until `cond` holds or ~8s elapses (fs-event delivery is async and slow under parallel load). */
-async function waitFor(cond: () => boolean): Promise<void> {
-  const deadline = Date.now() + 8000
-  while (!cond() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 20))
-  }
-  expect(cond()).toBe(true)
-}
-
 describe("startFileWatchTrigger", () => {
   test("fires on a matching file add and on a later change", async () => {
     let triggers = 0
@@ -76,14 +68,19 @@ describe("startFileWatchTrigger", () => {
       },
     })
 
-    // Create the watched file (add).
-    fs.writeFileSync(filePath, "{}", "utf8")
-    await waitFor(() => triggers >= 1)
+    // Create the watched file (add). Poked until observed, so the test
+    // never depends on the watcher being ready at one instant.
+    await pokeUntil(
+      () => triggers >= 1,
+      () => fs.writeFileSync(filePath, "{}", "utf8"),
+    )
     const afterAdd = triggers
 
     // Modify it (change).
-    fs.writeFileSync(filePath, '{"x":1}', "utf8")
-    await waitFor(() => triggers > afterAdd)
+    await pokeUntil(
+      () => triggers > afterAdd,
+      () => fs.writeFileSync(filePath, '{"x":1}', "utf8"),
+    )
 
     expect(errors).toBe(0)
   })
@@ -102,19 +99,15 @@ describe("startFileWatchTrigger", () => {
     // Production write path: write a tmp sibling, then rename it over the
     // target. An inode watch on `state.json` would miss this.
     const tmp = path.join(tmpDir, "state.json.tmp")
-    fs.writeFileSync(tmp, "{}", "utf8")
-    fs.renameSync(tmp, filePath)
-    await waitFor(() => triggers >= 1)
+    const swap = (body: string) => () => {
+      fs.writeFileSync(tmp, body, "utf8")
+      fs.renameSync(tmp, filePath)
+    }
+    await pokeUntil(() => triggers >= 1, swap("{}"))
 
     // A second rename still lands — the watcher is alive after the first swap.
-    // Breathe first: under parallel-suite load the watcher can still be
-    // settling the first swap's debounce, and a back-to-back rename lands in
-    // the same coalescing window (the recurring local-flake signature).
-    await new Promise((r) => setTimeout(r, 150))
     const before = triggers
-    fs.writeFileSync(tmp, '{"x":2}', "utf8")
-    fs.renameSync(tmp, filePath)
-    await waitFor(() => triggers > before)
+    await pokeUntil(() => triggers > before, swap('{"x":2}'))
   })
 
   test("ignores siblings that don't match the watched basename(s)", async () => {
@@ -135,8 +128,10 @@ describe("startFileWatchTrigger", () => {
     expect(triggers).toBe(0)
 
     // An additional matched basename DOES trigger.
-    fs.writeFileSync(path.join(tmpDir, "alias.json"), "{}", "utf8")
-    await waitFor(() => triggers >= 1)
+    await pokeUntil(
+      () => triggers >= 1,
+      () => fs.writeFileSync(path.join(tmpDir, "alias.json"), "{}", "utf8"),
+    )
   })
 
   test("debounces a burst of events into a single trigger", async () => {
@@ -150,10 +145,19 @@ describe("startFileWatchTrigger", () => {
       onError: () => {},
     })
 
+    // Prove the watcher is live BEFORE counting, so the coalescing
+    // assertion can't be satisfied vacuously by a watcher that never woke.
+    await pokeUntil(
+      () => triggers >= 1,
+      () => fs.writeFileSync(filePath, "{}", "utf8"),
+    )
+    await new Promise((r) => setTimeout(r, 200)) // let that window close
+    triggers = 0
+
     for (let i = 0; i < 5; i++) {
       fs.writeFileSync(filePath, `{"n":${i}}`, "utf8")
     }
-    await waitFor(() => triggers >= 1)
+    await waitUntil(() => triggers >= 1)
     // Let the debounce window settle; the burst must not produce 5 triggers.
     await new Promise((r) => setTimeout(r, 200))
     expect(triggers).toBe(1)
@@ -188,8 +192,10 @@ describe("startFileWatchTrigger", () => {
       onError: () => {},
     })
     // Confirm it's live first.
-    fs.writeFileSync(filePath, "{}", "utf8")
-    await waitFor(() => triggers >= 1)
+    await pokeUntil(
+      () => triggers >= 1,
+      () => fs.writeFileSync(filePath, "{}", "utf8"),
+    )
     const before = triggers
 
     localStop()
