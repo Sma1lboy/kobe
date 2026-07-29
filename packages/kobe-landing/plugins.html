@@ -139,6 +139,43 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(38px
 @keyframes pulse{50%{opacity:.5}}
 .empty{font-family:var(--font-mono);font-size:13px;color:var(--faint);padding:34px 0}
 
+/* ============ PLUGIN DETAIL ============ */
+#detail{padding-top:clamp(108px,13.5vh,148px);max-width:860px} /* padding-top only — .wrap owns the side gutters */
+.det-back{display:inline-block;font-family:var(--font-mono);font-size:12px;color:var(--muted);border-bottom:1px solid transparent;transition:color 140ms,border-color 140ms}
+.det-back:hover{color:var(--accent);border-color:var(--accent-line)}
+.det-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 0}
+.det-name{font-family:var(--font-mono);font-size:clamp(21px,3vw,27px);font-weight:500;letter-spacing:-.01em;color:var(--ink);overflow-wrap:anywhere}
+.det-name .owner{color:var(--faint);font-weight:400}
+.det-desc{font-size:16px;color:var(--muted);margin-top:12px;max-width:62ch}
+.det-facts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11.5px;color:var(--faint);margin-top:16px}
+.det-fact{display:inline-flex;align-items:center;gap:5px}
+.det-fact svg{fill:oklch(70% 0.11 80)}
+.det-facts .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:none}
+.det-facts .sep{color:var(--line-2)}
+.det-gh{margin-left:auto;color:var(--muted);border-bottom:1px solid var(--line-2);transition:color 140ms,border-color 140ms}
+.det-gh:hover{color:var(--accent);border-color:var(--accent-line)}
+.det-install{width:auto;max-width:100%;margin-top:20px;font-size:12.5px;padding:11px 20px}
+.det-readme{margin-top:38px;border-top:1px solid var(--line);padding-top:26px}
+.det-readme-label{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.22em;color:var(--accent);display:block;margin-bottom:14px}
+
+/* rendered README — same register as the page, just quieter */
+.md{font-size:15px;color:var(--muted)}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{font-family:var(--font-display);font-optical-sizing:auto;font-weight:400;color:var(--ink);letter-spacing:-.014em;line-height:1.2;margin:26px 0 10px}
+.md h1{font-size:25px}.md h2{font-size:21px}.md h3{font-size:18px}
+.md h4,.md h5,.md h6{font-family:var(--font-mono);font-size:14px;font-weight:500}
+.md > :first-child{margin-top:0}
+.md p{margin:0 0 14px}
+.md a{color:var(--accent);border-bottom:1px solid var(--accent-line)}
+.md a:hover{border-bottom-color:var(--accent)}
+.md strong{color:var(--ink);font-weight:600}
+.md .md-list{margin:0 0 14px;padding-left:20px}
+.md .md-list li{margin-bottom:6px}
+.md .md-list li::marker{color:var(--accent-2)}
+.md .md-hr{border:0;border-top:1px solid var(--line);margin:24px 0}
+.md .md-pre{background:linear-gradient(180deg,oklch(24% 0.021 50),var(--well) 60%);border:1px solid oklch(32% 0.024 50);border-radius:var(--radius);color:var(--well-ink);font-family:var(--font-mono);font-size:12.5px;line-height:1.9;padding:16px 20px;margin:0 0 16px;overflow-x:auto}
+.md .md-pre code{background:transparent;border:0;padding:0;color:inherit;font-size:inherit}
+.md .md-fail{font-family:var(--font-mono);font-size:12.5px;color:var(--faint)}
+
 /* ============ PUBLISH ============ */
 .publish{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:clamp(28px,4.5vw,56px);align-items:start;margin-top:26px}
 @media(max-width:880px){.publish{grid-template-columns:1fr}}
@@ -187,7 +224,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
 </header>
 
 <!-- HEAD -->
-<section class="head wrap">
+<section id="top" class="head wrap">
   <p class="kicker rise" style="animation-delay:.06s" data-i18n-html="plug.kicker">a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API</p>
   <h1 class="rise" style="animation-delay:.16s" data-i18n-html="plug.title">Workflow, packaged and <span class="acc">shareable</span>.</h1>
   <p class="head-sub rise" style="animation-delay:.28s" data-i18n="plug.sub">A kobe plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole kobe CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.</p>
@@ -233,6 +270,9 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
   </div>
 </section>
 
+<!-- DETAIL · one plugin, hash-routed (#owner/repo[/subdir]); rendered by marketplace.js -->
+<section id="detail" class="wrap" hidden aria-live="polite"></section>
+
 <!-- PUBLISH -->
 <section id="publish" class="sec wrap">
   <span class="sec-no" data-i18n="pub.no">02 · PUBLISH</span>
@@ -251,12 +291,12 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
 
 <span class="a">[[actions]]</span>
 <span class="k">id</span> = <span class="s">"test"</span>
-<span class="k">name</span> = <span class="s">"Send a test notification"</span>
-<span class="k">run</span> = <span class="s">"./notify.sh test"</span>
+<span class="k">title</span> = <span class="s">"Send a test notification"</span>
+<span class="k">command</span> = [<span class="s">"sh"</span>, <span class="s">"notify.sh"</span>, <span class="s">"test"</span>]
 
 <span class="a">[[events]]</span>
 <span class="k">on</span> = <span class="s">"agent.turn-complete"</span>
-<span class="k">run</span> = <span class="s">"./notify.sh turn-complete"</span></pre></figure>
+<span class="k">command</span> = [<span class="s">"sh"</span>, <span class="s">"notify.sh"</span>]</pre></figure>
   </div>
 </section>
 
@@ -286,6 +326,11 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'mk.copy': '复制安装命令', 'mk.copied': '✓ 已复制',
       'mk.count': '个插件', 'mk.none': '没有匹配的插件。',
       'mk.firstParty': '第一方',
+      'det.back': '← 返回全部插件',
+      'det.pushed': '最近推送',
+      'det.viewGithub': '在 GitHub 上查看',
+      'det.readmeLoading': '正在读取 README…',
+      'det.readmeFail': '这个插件的 README 读不到。',
       'pub.no': '02 · 发布',
       'pub.title': '三步发布你自己的插件。',
       'pub.s1': '<b>把清单放进一个公开仓库。</b>仓库根目录放一份 <code>kobe-plugin.toml</code>——如果一个仓库里放好几个插件，也可以放在子目录里。',
@@ -313,6 +358,11 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'mk.copy': 'copy install command', 'mk.copied': '✓ copied',
       'mk.count': 'plugins', 'mk.none': 'No plugins match that filter.',
       'mk.firstParty': 'first-party',
+      'det.back': '← all plugins',
+      'det.pushed': 'pushed',
+      'det.viewGithub': 'view on GitHub',
+      'det.readmeLoading': 'loading README…',
+      'det.readmeFail': "Couldn't load this plugin's README.",
       'pub.no': '02 · PUBLISH',
       'pub.title': 'Ship yours in three steps.',
       'pub.s1': '<b>Put a manifest in a public repo.</b> A <code>kobe-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.',
@@ -379,147 +429,9 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
   })();
 
-  // ── Marketplace: every public repo with the kobe-plugin topic, filtered + sorted client-side ──
-  (function () {
-    var grid = document.getElementById('grid');
-    var countEl = document.getElementById('count');
-    var qEl = document.getElementById('q');
-    var sortEl = document.getElementById('sort');
-    if (!grid) return;
-
-    // first-party examples that live in this repo — also the offline fallback,
-    // since monorepo subdirectories can never carry a GitHub topic of their own.
-    var SEED = [
-      { ref: 'Sma1lboy/kobe-plugins/notify', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/notify', name: 'notify', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'Desktop or ntfy notifications when an agent finishes a turn or needs your input.', zh: '代理跑完一轮或需要你介入时，发桌面通知 / ntfy 推送。' } },
-      { ref: 'Sma1lboy/kobe-plugins/github-start', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/github-start', name: 'github-start', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'Start a kobe task straight from a GitHub issue or pull request.', zh: '直接从一个 GitHub issue 或 PR 起一个 kobe 任务。' } },
-      { ref: 'Sma1lboy/kobe-plugins/worktree-include', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/worktree-include', name: 'worktree-include', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'Copy gitignored files matching .worktreeinclude into every new worktree.', zh: '把 .worktreeinclude 匹配到的 gitignore 文件复制进每个新建的 worktree。' } },
-      { ref: 'Sma1lboy/kobe-plugins/linear-start', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/linear-start', name: 'linear-start', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'Pick a Linear issue (fzf) and start a kobe task on its branch with the issue as the prompt.', zh: '用 fzf 选一个 Linear issue，在它的分支上起一个 kobe 任务，issue 内容作为首条提示词。' } },
-      { ref: 'Sma1lboy/kobe-plugins/lazygit', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/lazygit', name: 'lazygit', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'Open lazygit on the task worktree as a terminal-tab pane in the running TUI.', zh: '在运行中的 TUI 里以终端 tab 面板打开任务 worktree 的 lazygit。' } },
-      { ref: 'Sma1lboy/kobe-plugins/browser', url: 'https://github.com/Sma1lboy/kobe-plugins/tree/main/browser', name: 'browser', owner: 'Sma1lboy', firstParty: true,
-        desc: { en: 'A real Chromium browser rendered as terminal cells (carbonyl) in a pane tab.', zh: '真 Chromium 以终端字符渲染（carbonyl）跑在 pane tab 里。' } },
-    ];
-
-    var items = [];
-
-    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-    function relTime(iso) {
-      if (!iso) return '';
-      var days = Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
-      var loc = KOBE_I18N.lang() === 'zh' ? 'zh-CN' : 'en';
-      try {
-        var rtf = new Intl.RelativeTimeFormat(loc, { numeric: 'auto' });
-        if (Math.abs(days) < 31) return rtf.format(-days, 'day');
-        if (Math.abs(days) < 365) return rtf.format(-Math.round(days / 30), 'month');
-        return rtf.format(-Math.round(days / 365), 'year');
-      } catch (e) { return days + 'd'; }
-    }
-
-    function fromApi(r) {
-      return {
-        ref: r.full_name,
-        // only follow github.com links, whatever the API hands back
-        url: /^https:\/\/github\.com\//.test(r.html_url || '') ? r.html_url : 'https://github.com/' + r.full_name,
-        name: r.name,
-        owner: (r.owner && r.owner.login) || String(r.full_name || '').split('/')[0],
-        desc: r.description || '',
-        stars: r.stargazers_count,
-        lang: r.language,
-        pushed: r.pushed_at,
-        created: r.created_at,
-      };
-    }
-
-    function descOf(it) {
-      return typeof it.desc === 'string' ? it.desc : (it.desc[KOBE_I18N.lang()] || it.desc.en);
-    }
-
-    function card(it) {
-      var cmd = 'kobe plugin install ' + it.ref;
-      var meta = [];
-      if (it.firstParty) meta.push('<span class="tag-first">' + esc(KOBE_I18N.t('mk.firstParty')) + '</span>');
-      if (it.lang) meta.push('<span class="dot" aria-hidden="true"></span>' + esc(it.lang));
-      if (it.pushed) meta.push((meta.length ? '<span class="sep">·</span> ' : '') + esc(relTime(it.pushed)));
-      return '<article class="card">' +
-        '<div class="card-top">' +
-          '<a class="card-name" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
-            '<span class="owner">' + esc(it.owner) + '/</span>' + esc(it.name) + '</a>' +
-          (typeof it.stars === 'number'
-            ? '<span class="card-stars"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>' + it.stars.toLocaleString() + '</span>'
-            : '') +
-        '</div>' +
-        '<p class="card-desc">' + esc(descOf(it)) + '</p>' +
-        (meta.length ? '<div class="card-meta">' + meta.join(' ') + '</div>' : '') +
-        '<button class="card-install" data-cmd="' + esc(cmd) + '" title="' + esc(KOBE_I18N.t('mk.copy')) + '">' +
-          '<span class="ps" aria-hidden="true">$</span><span class="cmd">' + esc(cmd) + '</span></button>' +
-      '</article>';
-    }
-
-    function render() {
-      var q = (qEl.value || '').trim().toLowerCase();
-      var mode = sortEl.value;
-      var list = items.filter(function (it) {
-        return !q || (it.ref + ' ' + descOf(it)).toLowerCase().indexOf(q) !== -1;
-      });
-      var key = mode === 'pushed' ? 'pushed' : mode === 'newest' ? 'created' : 'stars';
-      list.sort(function (a, b) {
-        var av = key === 'stars' ? (a.stars || 0) : Date.parse(a[key] || 0) || 0;
-        var bv = key === 'stars' ? (b.stars || 0) : Date.parse(b[key] || 0) || 0;
-        return bv - av;
-      });
-      countEl.textContent = list.length + ' ' + KOBE_I18N.t('mk.count');
-      grid.innerHTML = list.length
-        ? list.map(card).join('')
-        : '<p class="empty">' + esc(KOBE_I18N.t('mk.none')) + '</p>';
-    }
-
-    // Seed-only listings get their own banner, and the community disclaimer is
-    // hidden — nothing community-published is on screen to disclaim.
-    function seedNotice(key, isErr) {
-      var host = document.getElementById('disclaimer');
-      host.hidden = true;
-      var n = document.createElement('div');
-      n.className = isErr ? 'notice err' : 'notice';
-      n.innerHTML = '<span class="mk" aria-hidden="true">!</span><span></span>';
-      var msg = n.lastChild;
-      function say() { msg.textContent = KOBE_I18N.t(key); }
-      say();
-      KOBE_I18N.onChange(say);
-      host.insertAdjacentElement('beforebegin', n);
-    }
-
-    qEl.addEventListener('input', render);
-    sortEl.addEventListener('change', render);
-    KOBE_I18N.onChange(function () { if (items.length) render(); });
-
-    // copy a card's install command (delegated — cards are re-rendered on every filter)
-    grid.addEventListener('click', function (e) {
-      var btn = e.target.closest && e.target.closest('.card-install');
-      if (!btn) return;
-      var cmd = btn.getAttribute('data-cmd');
-      try { if (navigator.clipboard) navigator.clipboard.writeText(cmd); } catch (err) {}
-      var label = btn.querySelector('.cmd');
-      label.textContent = KOBE_I18N.t('mk.copied');
-      setTimeout(function () { label.textContent = cmd; }, 1500);
-    });
-
-    fetch('https://api.github.com/search/repositories?q=topic:kobe-plugin&sort=stars&order=desc&per_page=100')
-      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
-      .then(function (d) {
-        var repos = (d && d.items) || [];
-        // First-party examples live in monorepo subdirs, which can never carry
-        // the topic themselves — always keep them alongside community repos.
-        items = SEED.concat(repos.map(fromApi));
-        if (!repos.length) seedNotice('mk.empty', false);
-        render();
-      })
-      .catch(function () { items = SEED; seedNotice('mk.offline', true); render(); });
-  })();
 </script>
+
+<!-- marketplace list + plugin detail view (needs KOBE_I18N above) -->
+<script src="marketplace.js"></script>
 </body>
 </html>
