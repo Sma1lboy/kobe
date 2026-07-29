@@ -1,6 +1,7 @@
 # Plugins
 
 Status: v1 shipped (manifest + CLI + daemon runtime + marketplace page).
+Developer-facing contract/reference: [../PLUGIN-AUTHORING.md](../PLUGIN-AUTHORING.md).
 Model: deliberately isomorphic to herdr's plugin system
 (https://herdr.dev/docs/plugins/) — same philosophy, kobe's domain.
 
