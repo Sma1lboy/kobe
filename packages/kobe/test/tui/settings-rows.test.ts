@@ -77,6 +77,7 @@ describe("generalRows", () => {
       "sound",
       "crossTask",
       "sidebarHover",
+      "zenDefaultOn",
       "zenKeepTasks",
       "editorKind",
       "editorCustom",
@@ -96,7 +97,7 @@ describe("generalRows", () => {
     for (const themeCount of [0, 1, 12, 30]) {
       const themes = Array.from({ length: themeCount }, (_, i) => `theme-${i}`)
       const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
-      expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 13)
+      expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 14)
       // transparent sits after the theme list + the language picker.
       expect(rowIndex(rows, "transparent")).toBe(themeCount + LANG)
       // reduced-motion after the accents, then the split-style pair,
@@ -108,9 +109,10 @@ describe("generalRows", () => {
       expect(rowIndex(rows, "sound")).toBe(themeCount + LANG + 1 + SLOTS.length + 4)
       expect(rowIndex(rows, "cross-task")).toBe(themeCount + LANG + 1 + SLOTS.length + 5)
       expect(rowIndex(rows, "sidebar-hover")).toBe(themeCount + LANG + 1 + SLOTS.length + 6)
-      expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + LANG + 1 + SLOTS.length + 7)
-      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + LANG + 1 + SLOTS.length + 8)
-      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + LANG + 1 + SLOTS.length + 9)
+      expect(rowIndex(rows, "zen-default-on")).toBe(themeCount + LANG + 1 + SLOTS.length + 7)
+      expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + LANG + 1 + SLOTS.length + 8)
+      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + LANG + 1 + SLOTS.length + 9)
+      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + LANG + 1 + SLOTS.length + 10)
     }
   })
 
@@ -222,7 +224,7 @@ describe("sectionRows / bodyRowCount", () => {
     // 12 themes, 3 accents, 2 custom engines, daemon attached.
     const themes = Array.from({ length: 12 }, (_, i) => `t${i}`)
     const inp = input({ themeNames: themes, engineList: [...ALL_VENDORS, "aider", "goose"], hasDaemon: true })
-    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 13) // themes + langs + transparent + accents + retained general rows
+    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 14) // themes + langs + transparent + accents + retained general rows
     expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)

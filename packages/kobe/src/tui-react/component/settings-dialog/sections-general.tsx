@@ -141,6 +141,7 @@ export function GeneralSettingsSection(
   const soundRow = rowIdx("sound")
   const crossTaskRow = rowIdx("cross-task")
   const sidebarHoverRow = rowIdx("sidebar-hover")
+  const zenDefaultOnRow = rowIdx("zen-default-on")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
   const editorKindRow = rowIdx("editor-kind")
   const editorCustomRow = rowIdx("editor-custom")
@@ -279,6 +280,14 @@ export function GeneralSettingsSection(
           </Row>
         </SubSection>
         <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>
+          <Row
+            cursor={isBodyCursor(zenDefaultOnRow)}
+            onMouseUp={activate(zenDefaultOnRow, prefs.toggleZenDefaultOn)}
+            fg={prefs.zenDefaultOn() ? theme.accent : theme.textMuted}
+            bold={true}
+          >
+            {`${check(prefs.zenDefaultOn())} ${t("settings.general.zenDefaultOn")}`}
+          </Row>
           <Row
             cursor={isBodyCursor(zenKeepTasksRow)}
             onMouseUp={activate(zenKeepTasksRow, prefs.toggleZenKeepsTasks)}

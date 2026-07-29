@@ -24,7 +24,7 @@ import {
   normalizeWorktreeBase,
   worktreeBaseKindOf,
 } from "../../../state/worktree-base"
-import { ZEN_KEEP_TASKS_KEY } from "../../../state/zen"
+import { ZEN_ACTIVE_KEY, ZEN_KEEP_TASKS_KEY } from "../../../state/zen"
 import {
   DEFAULT_EDITOR_KIND,
   EDITOR_CUSTOM_KEY,
@@ -78,6 +78,16 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   function selectSplitStyle(style: SplitStyle): void {
     kv.set(SPLIT_STYLE_KEY, style)
+  }
+
+  // Zen mode: whether the workspace starts collapsed to the engine pane.
+  // Same key the runtime toggle writes (`state/zen.ts`), so this row is both
+  // the startup default and a mirror of the current session's zen state.
+  function zenDefaultOn(): boolean {
+    return kv.get(ZEN_ACTIVE_KEY, false) === true
+  }
+  function toggleZenDefaultOn(): void {
+    kv.set(ZEN_ACTIVE_KEY, !zenDefaultOn())
   }
 
   // Zen mode: whether collapsing to the engine pane keeps the Tasks rail.
@@ -252,6 +262,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleSidebarHover,
     splitStyle,
     selectSplitStyle,
+    zenDefaultOn,
+    toggleZenDefaultOn,
     zenKeepsTasks,
     toggleZenKeepsTasks,
     remoteProjectsEnabled,

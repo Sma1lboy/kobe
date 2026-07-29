@@ -6,15 +6,11 @@
  * Settings, worktrees, and update surfaces swap in-process instead of exiting.
  */
 
-import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
-import { pathLeaf } from "../../tui/lib/path-helpers"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
-import { openExternally } from "../../tui/panes/filetree/open-external"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { KanbanPage } from "../component/kanban-page"
@@ -46,15 +42,16 @@ import {
   optimisticActivityStore,
   supersededMarks,
 } from "./optimistic-activity"
-import { tryPluginFileOpen } from "./plugin-file-open"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { forgetTaskTabs, setUiEventReporter } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
+import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
+import { useZenMode } from "./use-zen-mode"
 
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
@@ -215,15 +212,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
 
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
-  const [zen, setZen] = useState(false)
-  function toggleZen(): void {
-    const next = !zen
-    setZen(next)
-    if (next) focus.setFocused("workspace")
-  }
-  useEffect(() => {
-    if (focus.focused === "files") setZen(false)
-  }, [focus.focused])
+  const { zen, toggleZen } = useZenMode({ kv, focus })
 
   // Tab open/close (and editor-file close) edges report as plugin events
   // through this seam — wired once per host, torn down on unmount.
@@ -232,41 +221,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     return () => setUiEventReporter(null)
   }, [orch])
 
-  /** FileTree's Enter action (issue #16): plugin file handlers, else the
-   *  user's editor in the reusable File tab, else the host-OS opener. */
-  async function openFileInEditor(relPath: string): Promise<void> {
-    const wt = worktree
-    if (!wt) return
-    const abs = join(wt, relPath)
-    orch.reportUiEvent("file.will-open", selectedId ?? undefined, { path: abs })
-    const opened = (via: string) => orch.reportUiEvent("file.opened", selectedId ?? undefined, { path: abs, via })
-    // Plugin file handlers outrank the editor (docs/design/plugins.md).
-    if (tryPluginFileOpen(abs)) return opened("plugin")
-    const openEditorTab = openEditorTabFn.current
-    const launch = openEditorTab ? await resolveEditorLaunch(wt, abs) : null
-    if (!launch) {
-      openExternally(abs)
-      return opened("external")
-    }
-    // Stale continuation: the user switched tasks while the editor resolved —
-    // the file belongs to the old worktree, not whatever tab mount is live now.
-    if (selectedWorktreeRef.current !== wt || openEditorTabFn.current !== openEditorTab) return
-    openEditorTab?.(["sh", "-c", launch.command], launch.label)
-    opened("editor")
-    focus.setFocused("workspace")
-  }
-
-  /**
-   * FileTree's `d` action (issue #21): open a file's read-only diff in the
-   * workspace content tab. The file's basename labels the tab; `base` (when
-   * the Changes tab is in Branch scope) makes it a vs-base diff. Deliberately
-   * NO `focus.setFocused` — a read-only open is a content swap, not a
-   * navigation (KOB-25), so the FileTree keeps keyboard focus.
-   */
-  function openDiff(relPath: string, base?: string): void {
-    const label = pathLeaf(relPath)
-    openDiffTabFn.current?.(relPath, label, base)
-  }
+  // FileTree's Enter (editor/plugin/OS) and `d` (read-only diff tab).
+  const { openFileInEditor, openDiff } = useFileOpenActions({
+    orch,
+    worktree,
+    selectedId,
+    focus,
+    openEditorTabFn,
+    openDiffTabFn,
+    selectedWorktreeRef,
+  })
 
   // Full-page swap — like the tmux `chattab` surface opening a dedicated
   // `kobe settings` window. Theme/transparent/focus accent changes apply
