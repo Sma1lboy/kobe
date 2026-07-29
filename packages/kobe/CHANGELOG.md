@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.30
+
+### Patch Changes
+
+- ad192f9: Host-provided plugin input dialog: `kobe api prompt --title "…"` blocks until an attached TUI answers through the standard input dialog (`ui.prompt` channel → dialog → `ui.promptReply`; first answer wins, 120s default timeout). Plugins get consistent input UX instead of hand-rolled in-pane prompts.
+- c9fbcb4: Six new plugin events: `task.landed`, `task.archived`, `issue.changed` (fired daemon-side), and `tab.opened` / `tab.closed` / `file.closed` (fired off the TUI tab-strip delta — mount-time restores don't announce). Catalog lives in the SDK contract; docs tables updated.
+- aa6ef3f: New optional plugin SDK — `@sma1lboy/kobe-plugin-sdk`: typed env context, event envelope + channel catalogs (contract-tested against the daemon), a daemon socket client, `$KOBE_BIN_PATH` helpers, and a tiny pane kit for building terminal pages. The plain env+CLI+socket contract stays the API; the SDK is sugar for TypeScript authors.
+- 903dc7a: Plugin SDK is now the single source of the wire contract: the daemon imports the event and channel catalogs from `@sma1lboy/kobe-plugin-sdk/contract` instead of keeping its own copies, and each kobe release auto-publishes the SDK to npm whenever its (independently changeset-versioned) version isn't there yet.
+- 574dc76: Plugin update flow: `kobe plugin outdated` probes GitHub-installed plugins against upstream (one `ls-remote` each), `kobe plugin update <id…>|--all` reinstalls stale ones (config/state survive — only the managed checkout is replaced), and Settings → Plugins shows an "update available" mark from the CLI-written cache, so the TUI never touches the network.
+
 ## 0.8.29
 
 ### Patch Changes

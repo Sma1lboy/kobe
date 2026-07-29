@@ -31,7 +31,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.8.29",
+      "version": "0.8.30",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -48,7 +48,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "1.9.4",
-        "@sma1lboy/kobe-daemon": "0.7.11",
+        "@sma1lboy/kobe-daemon": "0.7.12",
         "@tsconfig/bun": "1.0.10",
         "@types/bun": "1.3.14",
         "@types/node": "25.6.2",
@@ -63,7 +63,7 @@
     },
     "packages/kobe-daemon": {
       "name": "@sma1lboy/kobe-daemon",
-      "version": "0.7.11",
+      "version": "0.7.12",
       "dependencies": {
         "@sma1lboy/kobe-plugin-sdk": "workspace:*",
         "chokidar": "^5.0.0",
@@ -82,7 +82,7 @@
     },
     "packages/kobe-plugin-sdk": {
       "name": "@sma1lboy/kobe-plugin-sdk",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@types/node": "^22.13.10",
         "typescript": "5.8.2",
@@ -91,7 +91,7 @@
     },
     "packages/kobe-web": {
       "name": "kobe-web",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@ansi-tools/parser": "^1.0.17",
         "@dnd-kit/core": "^6.3.1",
