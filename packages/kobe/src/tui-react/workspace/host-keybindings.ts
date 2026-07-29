@@ -127,6 +127,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // next waiting task" works even while focused inside the engine.
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
+        "kanban.open": () => deps.openKanban(),
         "task.moveMode": () => deps.enterMoveMode(),
         "files.createPR": () => deps.createPR(),
         "task.openEditor": () => {
@@ -154,7 +155,6 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
       },
       "settings.open.sidebar": () => deps.openSettings(),
       "worktrees.open.sidebar": () => deps.openWorktrees(),
-      "kanban.open.sidebar": () => deps.openKanban(),
       "tasks.update": () => deps.openUpdate(),
     }),
   }))

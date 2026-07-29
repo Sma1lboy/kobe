@@ -189,16 +189,22 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "x" },
   },
   {
-    // Sidebar-launched utility page like worktrees above — no global
-    // companion chord. `c` (cards): the mnemonic letters k/b/i are taken
-    // (sidebar.nav / tasks.renameBranch / sidebar.previewToggle) and w/e
-    // stay free for keymap-slot-parity.test.ts.
-    id: "kanban.open.sidebar",
-    scope: "sidebar",
-    keys: ["c"],
-    category: "Sidebar",
+    // Prefix-only `prefix+c` (owner call 2026-07-29, demoting the bare
+    // sidebar `c` it shipped with): the kanban is a step-back-and-look
+    // surface, not a per-task verb, so it doesn't earn a direct sidebar
+    // letter next to n/o/a/d/r. Same shape as `inbox.show` — another
+    // whole-page view reached through the prefix — and being global it
+    // now opens from any pane instead of only from sidebar focus.
+    // `c` (cards) survives as the second stroke: the mnemonic letters
+    // k/b/i are taken (sidebar.nav / tasks.renameBranch /
+    // sidebar.previewToggle) and w/e stay free for
+    // keymap-slot-parity.test.ts.
+    id: "kanban.open",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["c"],
+    category: "Global",
     description: "Open kanban (issues board)",
-    hint: { keys: "c" },
   },
   {
     // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is

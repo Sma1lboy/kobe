@@ -31,6 +31,7 @@ Default prefix actions:
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
 | `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits — owner picked prefix+m 2026-07-16) |
 | `ctrl+a`, `w` | Close active split |
+| `ctrl+a`, `c` | Open the Kanban (issues board) — prefix-only, owner call 2026-07-29, demoted from the bare sidebar `c` it shipped with |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17 — the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
@@ -105,8 +106,16 @@ Bare letters are owned only while their surface has focus and no text input or
 dialog is active. The live F1 help lists every row and binding id.
 
 Common Sidebar actions include `n` new task, `enter` open, `s` settings, `o`
-open Worktree, `c` Kanban, `a` archive, `d` delete, `r` rename, `b` rename
-branch, `v` change engine, `/` search, and `[`/`]` switch Working/Archives.
+open Worktree, `a` archive, `d` delete, `r` rename, `b` rename branch, `v`
+change engine, `/` search, and `[`/`]` switch Working/Archives.
+
+Owner decision (2026-07-29): the Kanban is `prefix+c`, global scope, no direct
+chord — demoted from the bare sidebar `c` it originally shipped with. The
+sidebar's bare letters are per-task verbs (new, archive, delete, rename); the
+Kanban is a step-back-and-look surface, so it belongs with the other whole-page
+views reached through the prefix (`prefix+i` Inbox). Going global also means it
+opens from any pane instead of only under sidebar focus. `c` (cards) survives as
+the second stroke — the mnemonic letters k/b/i were already taken.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
