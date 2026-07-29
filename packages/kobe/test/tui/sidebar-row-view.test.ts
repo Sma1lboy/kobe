@@ -105,7 +105,7 @@ describe("buildSidebarRowView", () => {
   it("uses activity states before persisted lifecycle status", () => {
     expect(view({ status: "done" }, { state: "permission_needed", at: 1 })).toMatchObject({
       loading: false,
-      stateGlyph: "◉",
+      stateGlyph: "?",
       tone: "warning",
     })
   })

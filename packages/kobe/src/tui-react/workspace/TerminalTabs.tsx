@@ -85,6 +85,7 @@ import { useLatest } from "../lib/use-latest"
 import { PreviewScreen } from "../ops/preview"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
+import { noteEngineInput } from "./optimistic-activity"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { terminalTabsKey } from "./terminal-tabs-persist"
@@ -483,6 +484,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           cwd={tabCwdFor(active, props.worktree)}
           command={spawn.command}
           initialInput={spawn.initialInput}
+          onUserInput={active.kind === "engine" ? (data) => noteEngineInput(props.taskId, data) : undefined}
           splitTree={active.splitTree ?? null}
           onSplitChange={(next) => update(setTabSplit(state, active.id, next))}
           onExit={handleActiveExit}

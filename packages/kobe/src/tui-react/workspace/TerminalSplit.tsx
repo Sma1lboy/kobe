@@ -111,6 +111,9 @@ export function TerminalSplit(props: {
   focused: boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
+  /** Raw input feed for the ORIGINAL (engine) leaf only — split-created
+   *  shell leaves never report (their keys aren't turn triggers). */
+  onUserInput?: (data: string) => void
   /** The tab's first-prompt title (title ?? autoTitle) — the engine leaf's
    *  name, matching the group/tab label. Null before the first prompt. */
   engineTitle?: string | null
@@ -270,6 +273,7 @@ export function TerminalSplit(props: {
           taskId={splitLeafPtyKey(props.tabKey, leaf.id)}
           command={leaf.content ?? props.command}
           initialInput={leaf.content === null ? props.initialInput : undefined}
+          onUserInput={leaf.content === null ? props.onUserInput : undefined}
           onExit={() => onLeafExit(leaf.id)}
           resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
           focused={focused}
@@ -375,6 +379,7 @@ export function TerminalSplit(props: {
       taskId={props.tabKey}
       command={props.command}
       initialInput={props.initialInput}
+      onUserInput={props.onUserInput}
       onExit={props.onExit}
       resetToken={props.resetToken}
       focused={props.focused}

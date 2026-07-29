@@ -9,7 +9,7 @@
 import { join } from "node:path"
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { resolveEditorLaunch } from "../../tui/lib/editor-launch.ts"
 import { pathLeaf } from "../../tui/lib/path-helpers"
@@ -40,6 +40,7 @@ import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
+import { mergeOptimisticActivity, optimisticActivityStore } from "./optimistic-activity"
 import { tryPluginFileOpen } from "./plugin-file-open"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
@@ -69,6 +70,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
+  // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
+  // icon immediately; authoritative events + short TTLs correct any guess.
+  const optimisticMarks = useAccessor(optimisticActivityStore)
+  const sidebarEngineState = useMemo(
+    () => mergeOptimisticActivity(engineState, optimisticMarks),
+    [engineState, optimisticMarks],
+  )
   const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
@@ -384,7 +392,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           selectedId={selectedId}
           onSelect={selectTask}
           onActivate={(id) => void activateTask(id)}
-          engineState={engineState}
+          engineState={sidebarEngineState}
           engineLifecycle={engineLifecycle}
           taskJobs={taskJobs}
           worktreeChanges={worktreeChanges}

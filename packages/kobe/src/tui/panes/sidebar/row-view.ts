@@ -316,7 +316,7 @@ export function withSpinnerFrame(view: SidebarRowView, frame: () => number): Sid
 }
 
 /**
- * herdr-style status circles (2026-07-27): ◉ blocked-on-user, ● turn done
+ * herdr-style status circles (2026-07-27, ? for blocked-on-user since 07-29), ● turn done
  * (not yet viewed), ✓ done and viewed, ○ idle. `completionSeen` is the
  * herdr "seen" bit — a completed turn the user has selected since it
  * finished digests from the attention dot to the quiet check.
@@ -328,8 +328,10 @@ function activityBadgeFor(
   switch (state) {
     case "rate_limited":
       return { glyph: "◷", tone: "warning" }
+    // Needs-input reads as a literal question — the one state where the
+    // icon asks the user for something (owner call 2026-07-29).
     case "permission_needed":
-      return { glyph: "◉", tone: "warning" }
+      return { glyph: "?", tone: "warning" }
     case "error":
       return { glyph: "✕", tone: "error" }
     case "turn_complete":

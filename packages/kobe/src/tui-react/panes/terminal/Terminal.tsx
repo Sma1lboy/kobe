@@ -68,6 +68,9 @@ export type TerminalProps = {
   /** Stable id used for pty registry keying. */
   taskId: string | null
   focused?: boolean
+  /** Raw keystroke bytes just written to the PTY — the optimistic
+   *  activity feed (engine tabs only; see workspace/optimistic-activity). */
+  onUserInput?: (data: string) => void
   /**
    * Whether this mounted terminal represents the visible chat tab / active
    * split leaf for macOS IME placement. Unlike `focused`, this stays true when
@@ -260,6 +263,10 @@ export function Terminal(props: TerminalProps) {
     write: (data) => {
       if (!pty || pty.killed) return
       pty.write(data)
+      // Engine tabs feed the optimistic sidebar-activity overlay: the
+      // triggering/interrupting keypress is visible here long before the
+      // hook round trip confirms it. Wired only for engine leaves.
+      props.onUserInput?.(data)
     },
     paste: (text) => {
       if (!pty || pty.killed) return
