@@ -122,9 +122,13 @@ Code, X = Codex (Kimi adapter pending).
 | Event | Fires when | Detail highlights |
 |---|---|---|
 | `task.created` / `task.deleted` | task appears/disappears in the index | task context |
+| `task.landed` | a task's branch merged back into its base repo | `strategy`, `landedOn`, `commit` |
+| `task.archived` | a task was archived (restores don't fire) | task context |
 | `worktree.created` | a task's worktree materialized | task context |
+| `issue.changed` | a daemon-tracker issue mutated (create/edit/status) | `repo`, `op` |
 | `task.opened` / `project.opened` | the user selects/enters a task / project row | |
-| `file.will-open` / `file.opened` | Files-pane open, before/after | `path`, `via: plugin\|editor\|external` |
+| `file.will-open` / `file.opened` / `file.closed` | Files-pane open, before/after; editor tab closed | `path`, `via: plugin\|editor\|external` |
+| `tab.opened` / `tab.closed` | a workspace tab appeared/went away (restores don't fire) | `tabId`, `kind`, `title`, `vendor`, `purpose` |
 | `agent.running` / `agent.idle` / `agent.turn-complete` / `agent.permission-needed` / `agent.rate-limited` / `agent.error` | activity-STATE transitions, deduped per task+tab | |
 | `session.start` / `session.end` | engine session lifecycle (C; X start only) | |
 | `turn.prompt` / `turn.complete` / `turn.failed` / `turn.interrupted` | one event per turn edge (C, X; interrupted: Kimi-shaped) | `failure` class on failed |
@@ -148,8 +152,8 @@ Envelope (`KOBE_PLUGIN_EVENT_JSON`):
 ```
 
 **The principle: any observable product moment is a candidate event.** The
-catalog grows as subsystems expose their edges (tab lifecycle, land/archive,
-issue mutations, PR status are natural next ones) — if your plugin needs a
+catalog grows as subsystems expose their edges (PR status and task status
+transitions are natural next ones) — if your plugin needs a
 moment that isn't fired yet, ask via `kobe feedback` or a GitHub issue; the
 plumbing (`ui.reportEvent` → plugin sink) makes additions cheap.
 

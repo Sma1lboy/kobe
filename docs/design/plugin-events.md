@@ -62,11 +62,15 @@ Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 | Event | Fires when | Status |
 |---|---|---|
 | `task.created` / `task.deleted` | task appears/disappears in the index | ✅ |
+| `task.landed` | branch merged back into the base repo (`detail.strategy/landedOn/commit`) | ✅ |
+| `task.archived` | task archived; restores don't fire | ✅ |
 | `worktree.created` | worktree materialized for a task | ✅ |
+| `issue.changed` | daemon-tracker issue mutated (`detail.repo/op`) | ✅ |
 | `task.status-changed` | backlog → in-progress → done transitions | 💤 (derivable from snapshots; add on demand) |
 | `file.will-open` / `file.opened` | Files-pane open, before/after (`detail.path`, `detail.via: plugin\|editor\|external`) | ✅ |
+| `file.closed` | the editor tab left the tab strip (fires off the tab-delta seam) | ✅ |
 | `task.opened` / `project.opened` | the user selects/enters a task or project row | ✅ |
-| `file.closed` | editor tab closes | 💤 (needs orch threading into the tab-exit path) |
+| `tab.opened` / `tab.closed` | a workspace tab appeared/went away; mount-time restores don't fire | ✅ |
 
 ### A. Session
 

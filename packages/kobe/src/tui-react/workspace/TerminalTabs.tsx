@@ -88,7 +88,13 @@ import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { terminalTabsKey } from "./terminal-tabs-persist"
-import { tabActivationListeners, tabsByTask, takeTabActivation, takeTabOpen } from "./terminal-tabs-shared"
+import {
+  reportTabsDelta,
+  tabActivationListeners,
+  tabsByTask,
+  takeTabActivation,
+  takeTabOpen,
+} from "./terminal-tabs-shared"
 import { useTabDialogs } from "./use-tab-dialogs"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
@@ -181,6 +187,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const stateRef = useLatest(state)
 
   const update = (next: TabsState): void => {
+    reportTabsDelta(propsRef.current.taskId, stateRef.current.tabs, next.tabs)
     tabsByTask.set(propsRef.current.taskId, next)
     stateRef.current = next
     setState(next)

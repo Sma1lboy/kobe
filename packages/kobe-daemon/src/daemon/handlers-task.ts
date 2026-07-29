@@ -54,7 +54,10 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
-      await ctx.orch.setArchived(taskId, optionalBoolean(payload, "archived"))
+      const archived = optionalBoolean(payload, "archived")
+      await ctx.orch.setArchived(taskId, archived)
+      // Unarchive (archived: false) is a restore, not an "archived" moment.
+      if (archived !== false) ctx.plugins?.handleUiReport({ kind: "task.archived", taskId })
       return {}
     },
   },
@@ -113,6 +116,12 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         strategy,
         deleteBranch: optionalBoolean(payload, "deleteBranch") === true,
         archive: optionalBoolean(payload, "archive") === true,
+      })
+      // landTask throws on refusal/conflict, so reaching here means it landed.
+      ctx.plugins?.handleUiReport({
+        kind: "task.landed",
+        taskId,
+        detail: { strategy: result.strategy, landedOn: result.landedOn, commit: result.commit },
       })
       return { result }
     },

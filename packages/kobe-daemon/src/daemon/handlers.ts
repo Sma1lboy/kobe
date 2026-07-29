@@ -272,8 +272,16 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     {
       name: "issue.mutate",
       async handle(payload, ctx) {
-        const state = await ctx.issues.mutate(requireString(payload, "repoRoot"), payload.op)
+        const repoRoot = requireString(payload, "repoRoot")
+        const state = await ctx.issues.mutate(repoRoot, payload.op)
         ctx.bus.publish("issue.snapshot", state)
+        ctx.plugins?.handleUiReport({
+          kind: "issue.changed",
+          detail: {
+            repo: repoRoot,
+            ...(payload.op && typeof payload.op === "object" ? { op: payload.op as Record<string, unknown> } : {}),
+          },
+        })
         return state
       },
     },
@@ -306,7 +314,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // Fire-and-forget: the TUI reports a UI moment; plugins are the only
         // consumer (same no-broadcast rationale as engine lifecycle kinds).
         const kind = requireString(payload, "kind")
-        if (!kind.match(/^(file\.(will-open|opened|closed)|task\.opened|project\.opened)$/)) {
+        if (!kind.match(/^(file\.(will-open|opened|closed)|task\.opened|project\.opened|tab\.(opened|closed))$/)) {
           throw new Error(`unknown ui event kind: ${kind}`)
         }
         const taskId = optionalString(payload, "taskId")

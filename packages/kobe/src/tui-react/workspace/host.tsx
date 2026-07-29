@@ -44,7 +44,7 @@ import { tryPluginFileOpen } from "./plugin-file-open"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
-import { forgetTaskTabs } from "./terminal-tabs-shared"
+import { forgetTaskTabs, setUiEventReporter } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
@@ -204,6 +204,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   useEffect(() => {
     if (focus.focused === "files") setZen(false)
   }, [focus.focused])
+
+  // Tab open/close (and editor-file close) edges report as plugin events
+  // through this seam — wired once per host, torn down on unmount.
+  useEffect(() => {
+    setUiEventReporter((kind, taskId, detail) => orch.reportUiEvent(kind, taskId, detail))
+    return () => setUiEventReporter(null)
+  }, [orch])
 
   /** FileTree's Enter action (issue #16): plugin file handlers, else the
    *  user's editor in the reusable File tab, else the host-OS opener. */

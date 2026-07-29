@@ -90,6 +90,52 @@ export function takeTabOpen(
 }
 
 /**
+ * UI-event bridge for plugin events: the host injects the orchestrator's
+ * `reportUiEvent` once; tab open/close edges (and editor-file closes)
+ * report through it. No-op until wired (mock hosts, tests, pure TUI
+ * before attach).
+ */
+type UiEventReporter = (kind: string, taskId?: string, detail?: Record<string, unknown>) => void
+let uiEventReporter: UiEventReporter | null = null
+
+export function setUiEventReporter(fn: UiEventReporter | null): void {
+  uiEventReporter = fn
+}
+
+function tabDetail(tab: TerminalTab): Record<string, unknown> {
+  return {
+    tabId: tab.id,
+    kind: tab.kind,
+    ...(tab.title ? { title: tab.title } : {}),
+    ...(tab.kind === "engine" && tab.vendor ? { vendor: tab.vendor } : {}),
+    ...(tab.kind === "command" && tab.purpose ? { purpose: tab.purpose } : {}),
+  }
+}
+
+/**
+ * Report tab.opened / tab.closed (+ file.closed when the closing tab is the
+ * editor singleton) off one state transition. Called from the mounted
+ * TerminalTabs' single state writer; mount-time restores never pass through
+ * it, so restored tabs don't re-announce as opened.
+ */
+export function reportTabsDelta(taskId: string, prev: readonly TerminalTab[], next: readonly TerminalTab[]): void {
+  if (!uiEventReporter || prev === next) return
+  const report = uiEventReporter
+  const prevIds = new Set(prev.map((tab) => tab.id))
+  const nextIds = new Set(next.map((tab) => tab.id))
+  for (const tab of next) if (!prevIds.has(tab.id)) report("tab.opened", taskId, tabDetail(tab))
+  for (const tab of prev) {
+    if (nextIds.has(tab.id)) continue
+    report("tab.closed", taskId, tabDetail(tab))
+    if (tab.kind === "command" && tab.purpose === "editor") {
+      // The editor tab's argv ends with the absolute file path (host-built).
+      const path = [...tab.command].reverse().find((arg) => arg.startsWith("/"))
+      report("file.closed", taskId, { ...(path ? { path } : {}), ...(tab.title ? { title: tab.title } : {}) })
+    }
+  }
+}
+
+/**
  * Reclaim a DELETED task's in-process + persisted tab state (O19): drop its
  * `tabsByTask` entry (module-level, otherwise only-grows) and its
  * `terminalTabs.*` kv snapshot. Call from the task-DELETE flow only — never

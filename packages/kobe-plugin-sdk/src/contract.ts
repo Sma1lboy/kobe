@@ -12,7 +12,10 @@ export const PLUGIN_EVENT_NAMES = [
   // Product layer
   "task.created",
   "task.deleted",
+  "task.landed",
+  "task.archived",
   "worktree.created",
+  "issue.changed",
   // Reduced activity-state transitions (deduped per task+tab)
   "agent.turn-complete",
   "agent.permission-needed",
@@ -39,8 +42,11 @@ export const PLUGIN_EVENT_NAMES = [
   // UI layer (reported by the TUI; async observers)
   "file.will-open",
   "file.opened",
+  "file.closed",
   "task.opened",
   "project.opened",
+  "tab.opened",
+  "tab.closed",
 ] as const
 
 export type PluginEventName = (typeof PLUGIN_EVENT_NAMES)[number]
