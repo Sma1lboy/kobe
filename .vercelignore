@@ -1,0 +1,7 @@
+# Vercel CLI walks the whole monorepo (it does not read .gitignore) and dies on
+# the unix sockets scattered under packages/kobe/.dev-*/. Only
+# packages/kobe-landing is ever deployed, so allowlist just that.
+/*
+!/packages
+/packages/*
+!/packages/kobe-landing
