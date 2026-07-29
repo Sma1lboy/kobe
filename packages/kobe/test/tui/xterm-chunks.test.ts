@@ -54,6 +54,21 @@ function styledCell(chars: string) {
   }
 }
 
+/** Solid block painted as a pure fill: fg and bg the same truecolor. */
+function solidBlockCell(chars: string) {
+  return {
+    ...cell(chars),
+    isFgDefault: () => false,
+    isBgDefault: () => false,
+    isFgRGB: () => true,
+    isBgRGB: () => true,
+    getFgColorMode: () => 3 << 24,
+    getBgColorMode: () => 3 << 24,
+    getFgColor: () => 0x336699,
+    getBgColor: () => 0x336699,
+  }
+}
+
 describe("xtermLineToChunks — minLast keeps the cursor's blank tail", () => {
   it("trims trailing blanks without minLast", () => {
     expect(
@@ -99,6 +114,81 @@ describe("xtermLineMatchesChunks — allocation-free semantic check", () => {
     const chunks = xtermLineToChunks(styled)
     expect(xtermLineMatchesChunks(styled, chunks)).toBe(true)
     expect(xtermLineMatchesChunks(line("AB C", 4), chunks)).toBe(false)
+  })
+})
+
+/**
+ * A solid-block cell whose fg and bg are the SAME pixel color but declared
+ * through different color modes — exactly what half-block renderers
+ * (carbonyl, the ASCII video player) emit when they mix palette and
+ * truecolor. The builder used to compare color KEYS (`pal:15` ≠
+ * `rgb:16777215`) while the matcher compared resolved RGB (equal), so the
+ * two disagreed on whether to substitute a bg-only space — the matcher
+ * reported "changed" on every single compare and the pane re-rendered
+ * forever (the visible "redraw keeps getting bumped").
+ */
+function mixedModeBlockCell(chars: string) {
+  return {
+    ...cell(chars),
+    isFgDefault: () => false,
+    isBgDefault: () => false,
+    isFgPalette: () => true,
+    isBgRGB: () => true,
+    getFgColorMode: () => 1 << 24,
+    getBgColorMode: () => 3 << 24,
+    getFgColor: () => 231, // palette 231 resolves to exactly #ffffff
+    getBgColor: () => 0xffffff, // truecolor #ffffff — same pixel
+  }
+}
+
+describe("builder ↔ matcher lockstep (the perpetual-re-render class)", () => {
+  /**
+   * THE invariant: a line always matches its own conversion. Any transform
+   * the builder applies but the matcher doesn't mirror (or mirrors on a
+   * different representation) shows up here as a false "changed", which
+   * costs a full re-render every frame. Table-driven so a future
+   * substitution has to satisfy it too.
+   */
+  const cases: Record<string, ReturnType<typeof cell>[]> = {
+    plain: [cell("a"), cell("b"), cell(" ")],
+    styled: [styledCell("A"), cell(" "), styledCell("C")],
+    "solid block, same truecolor fg/bg": [solidBlockCell("▀"), solidBlockCell("▀")],
+    "solid block, palette fg vs truecolor bg (same pixel)": [mixedModeBlockCell("█"), mixedModeBlockCell("▄")],
+    "solid block next to text": [mixedModeBlockCell("▀"), styledCell("x"), cell("y")],
+    "block glyph with DIFFERENT fg/bg (must stay a glyph)": [styledCell("█")],
+    "default-styled block (terminal's own colors — a glyph, not a fill)": [cell("█")],
+  }
+
+  for (const [name, cells] of Object.entries(cases)) {
+    it(`self-matches: ${name}`, () => {
+      const subject = { length: cells.length, getCell: (index: number) => cells[index] }
+      for (const minLast of [-1, 0, cells.length - 1, 99]) {
+        expect(
+          xtermLineMatchesChunks(subject, xtermLineToChunks(subject, minLast), minLast),
+          `minLast=${minLast}`,
+        ).toBe(true)
+      }
+    })
+  }
+
+  it("still substitutes the fill (the zebra fix) whichever color mode declared it", () => {
+    const same = [mixedModeBlockCell("█")]
+    const subject = { length: same.length, getCell: (index: number) => same[index] }
+    expect(
+      xtermLineToChunks(subject)
+        .map((c) => c.text)
+        .join(""),
+    ).toBe(" ")
+    // A block whose fg differs from its bg is a real glyph, untouched —
+    // and so is a default-styled one (nothing resolved to compare).
+    for (const glyph of [[styledCell("█")], [cell("█")]]) {
+      const glyphLine = { length: glyph.length, getCell: (index: number) => glyph[index] }
+      expect(
+        xtermLineToChunks(glyphLine)
+          .map((c) => c.text)
+          .join(""),
+      ).toBe("█")
+    }
   })
 })
 

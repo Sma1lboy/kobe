@@ -105,6 +105,27 @@ function isSolidBlock(chars: string): boolean {
   return chars === "▀" || chars === "▄" || chars === "█"
 }
 
+/**
+ * Do these two paints land on the same pixel color? THE single definition
+ * behind the solid-block substitution below, deliberately expressed on
+ * RESOLVED RGB and shared by the converter and the comparator.
+ *
+ * Comparing the opaque color KEYS instead is a trap: `pal:231` and
+ * `rgb:16777215` are different keys but the same white, so a converter
+ * keying on strings while the comparator keyed on RGB disagreed about
+ * whether a block became a space — the comparator then reported "changed"
+ * on EVERY compare and the pane re-rendered forever (visible as a chat
+ * that keeps redrawing with no new output). Half-block renderers mix
+ * palette and truecolor freely, so this is the normal case, not a corner.
+ *
+ * Two undefined (default) paints are NOT a fill: a default-styled block is
+ * a real glyph against the terminal's own colors.
+ */
+function paintsSamePixel(fg: RGB | undefined, bg: RGB | undefined): boolean {
+  if (fg === undefined || bg === undefined) return false
+  return fg[0] === bg[0] && fg[1] === bg[1] && fg[2] === bg[2]
+}
+
 function isVisibleCell(cell: XtermCellLike): boolean {
   const chars = cell.getChars()
   if (chars !== "" && chars !== " ") return true
@@ -177,6 +198,9 @@ export function xtermLineToChunks(line: XtermLineLike, minLast = -1): Chunk[] {
 
   const out: Chunk[] = []
   let active = DEFAULT_RENDER_STYLE
+  // Whether `active` paints fg and bg as one color — recomputed only when
+  // the style changes, so the per-cell path stays allocation-free.
+  let activeIsFill = false
   let buf = ""
   const flush = () => {
     if (buf === "") return
@@ -190,14 +214,15 @@ export function xtermLineToChunks(line: XtermLineLike, minLast = -1): Chunk[] {
     if (!styleEquals(active, next)) {
       flush()
       active = next
+      activeIsFill = paintsSamePixel(colorKeyToRGB(next.fg), colorKeyToRGB(next.bg))
     }
     const chars = cell.getChars() || " "
     // Solid-block glyphs whose fg equals bg render as bg-only spaces: same
     // pixels, but the HOST terminal's minimum-contrast feature (iTerm) can
     // no longer darken the "glyph" half — the zebra-stripe fix for
-    // half-block renderers (carbonyl, the video plugin). Issue #1. Kept in
-    // lockstep with xtermLineMatchesChunks below.
-    buf += isSolidBlock(chars) && next.fg !== "" && next.fg === next.bg ? " " : chars
+    // half-block renderers (carbonyl, the video plugin). Issue #1. The
+    // decision lives in `paintsSamePixel`, shared with the comparator.
+    buf += isSolidBlock(chars) && activeIsFill ? " " : chars
   }
   flush()
   return out
@@ -246,10 +271,11 @@ export function xtermLineMatchesChunks(line: XtermLineLike | undefined, row: rea
     const chunk = row[chunkIndex]
     if (!chunk || !chunkStyleMatchesCell(chunk, cell)) return false
     const raw = cell.getChars() || " "
-    // Mirror xtermLineToChunks' solid-block substitution, or substituted
-    // rows would read as "changed" on every compare and re-render forever.
-    const sameFgBg = chunk.fg !== undefined && chunk.bg !== undefined && String(chunk.fg) === String(chunk.bg)
-    const text = isSolidBlock(raw) && sameFgBg ? " " : raw
+    // Same substitution as the converter, from the same `paintsSamePixel`
+    // definition. `chunkStyleMatchesCell` above already proved the chunk's
+    // colors ARE this cell's resolved colors, so reading them off the
+    // chunk needs no extra allocation and cannot drift from the converter.
+    const text = isSolidBlock(raw) && paintsSamePixel(chunk.fg, chunk.bg) ? " " : raw
     if (!chunk.text.startsWith(text, textOffset)) return false
     textOffset += text.length
     if (textOffset === chunk.text.length) {
