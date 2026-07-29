@@ -107,6 +107,10 @@ describe("startFileWatchTrigger", () => {
     await waitFor(() => triggers >= 1)
 
     // A second rename still lands — the watcher is alive after the first swap.
+    // Breathe first: under parallel-suite load the watcher can still be
+    // settling the first swap's debounce, and a back-to-back rename lands in
+    // the same coalescing window (the recurring local-flake signature).
+    await new Promise((r) => setTimeout(r, 150))
     const before = triggers
     fs.writeFileSync(tmp, '{"x":2}', "utf8")
     fs.renameSync(tmp, filePath)
