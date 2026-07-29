@@ -52,6 +52,7 @@ export type SidebarRowCardSharedProps = {
   readonly subtitleBudget: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
+  readonly transcriptActivity?: ReadonlyMap<string, { readonly mtimeMs: number }> | null
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   readonly moveMode?: boolean
@@ -221,6 +222,10 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
     completionSeenIds.delete(task.id)
   }
   const completionSeen = completionSeenIds.has(task.id)
+  // This worktree's transcript facts, read OUTSIDE the memo so the row
+  // re-derives when its own mtime moves rather than on every map identity
+  // change (the collector republishes the whole map per probe round).
+  const transcriptMtime = task.worktreePath ? shared.transcriptActivity?.get(task.worktreePath)?.mtimeMs : undefined
   // Memoized on the real inputs so the 10Hz spinner tick (a fresh `shared`
   // object every render) doesn't re-derive idle rows.
   const baseView = useMemo(() => {
@@ -232,6 +237,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       activity,
       lifecycle,
       job,
+      ...(transcriptMtime !== undefined ? { transcript: { mtimeMs: transcriptMtime } } : {}),
       spinnerFrame: 0,
       subtitleBudget,
       truncateBranch: truncateBranchLabel,
@@ -239,7 +245,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       reducedMotion,
       completionSeen,
     })
-  }, [task, activity, lifecycle, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, t])
+  }, [task, activity, lifecycle, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, transcriptMtime, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object and never subscribe, so an idle row does zero per-frame work.
   const frame = useSpinnerFrame(baseView.loading && !reducedMotion)

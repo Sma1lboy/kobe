@@ -89,6 +89,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
+  // Proves a "complete" turn whose engine is still writing — the hook-silent
+  // long-tool / background-subagent phase (see row-view's completion rule).
+  const transcriptActivity = useAccessor(orch.transcriptActivitySignal())
 
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
   // Task-lifecycle UI state (issue #20): project filter + sidebar-search gate
@@ -405,6 +408,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           engineLifecycle={engineLifecycle}
           taskJobs={taskJobs}
           worktreeChanges={worktreeChanges}
+          transcriptActivity={transcriptActivity}
           focused={activePane === "sidebar"}
           onHoverChange={(hover) => setSidebarHover(hover)}
           hoverEnabled={kv.get("sidebar.hover.enabled", false) === true}

@@ -66,6 +66,9 @@ export type SidebarProps = SidebarTaskCallbacks & {
   engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   taskJobs?: ReadonlyMap<string, TaskJobState>
   worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
+  /** Daemon-collected transcript facts keyed by WORKTREE path — proves a
+   *  "complete" turn whose engine is still writing (hook-silent phases). */
+  transcriptActivity?: ReadonlyMap<string, { readonly mtimeMs: number }> | null
   /**
    * Parent-level overlay hook for native workspace. When omitted, Sidebar
    * renders its own local fallback tooltip for standalone/tmux pane hosts.

@@ -364,6 +364,7 @@ export function Sidebar(props: SidebarProps) {
     engineLifecycle: props.engineLifecycle,
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
+    transcriptActivity: props.transcriptActivity,
     moveMode: props.moveMode,
   }
 

@@ -134,6 +134,33 @@ export interface RowLoadingInputs {
   readonly task: Task
   readonly activity?: TaskEngineState
   readonly job?: TaskJobState
+  /** This worktree's daemon-collected transcript facts (`transcript.activity`). */
+  readonly transcript?: { readonly mtimeMs: number }
+}
+
+/**
+ * A completion hook is not proof the work stopped. `turn-complete` fires
+ * when the MAIN agent's reply ends; a long tool call or a background
+ * subagent then runs on in total hook silence — measured on a real
+ * session, nine minutes of it — so the row read "done" while the engine
+ * was visibly working.
+ *
+ * The transcript is the signal that survives that silence: the engine
+ * keeps appending to it the whole time (verified — mtime and size advance
+ * between tool calls with no hook in sight). So a completion whose
+ * transcript kept growing AFTER it is not a completion yet.
+ *
+ * Self-correcting by construction, with no timeout: when the work really
+ * ends, the final `turn-complete` fires after the last transcript write,
+ * so its timestamp overtakes the mtime and the row settles to done. The
+ * grace absorbs the sub-second race between the last write and the hook.
+ */
+const COMPLETION_TRANSCRIPT_GRACE_MS = 2_000
+
+function stillWorkingAfterCompletion(activity: TaskEngineState | undefined, transcript?: { mtimeMs: number }): boolean {
+  if (activity?.state !== "turn_complete" || !transcript) return false
+  if (!activity.at || !transcript.mtimeMs) return false
+  return transcript.mtimeMs > activity.at + COMPLETION_TRANSCRIPT_GRACE_MS
 }
 
 /**
@@ -150,7 +177,8 @@ export function rowIsLoading(opts: RowLoadingInputs): boolean {
   const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
   const materializing = opts.job !== undefined
   const deleting = task.deletion?.phase === "queued" || task.deletion?.phase === "running"
-  return deleting || materializing || (!untrackedCustomEngine && activityState === "running")
+  const working = activityState === "running" || stillWorkingAfterCompletion(opts.activity, opts.transcript)
+  return deleting || materializing || (!untrackedCustomEngine && working)
 }
 
 /**
@@ -190,6 +218,9 @@ export function buildSidebarRowView(opts: {
    * branch labels can't be more current than this.
    */
   readonly job?: TaskJobState
+  /** This worktree's daemon-collected transcript facts — the signal that a
+   *  "complete" turn is still working (see `stillWorkingAfterCompletion`). */
+  readonly transcript?: { readonly mtimeMs: number }
   readonly spinnerFrame: number
   readonly subtitleBudget: number
   readonly truncateBranch: (branch: string, budget: number) => string
@@ -216,7 +247,10 @@ export function buildSidebarRowView(opts: {
   const branch = isMain ? (opts.mainBranch ?? "") : task.branch
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
-  const activityBadge = activityBadgeFor(activityState, opts.completionSeen === true)
+  // A completion the transcript has already outlived is not a completion:
+  // the badge must agree with the spinner, or the row spins under a ✓.
+  const stillWorking = stillWorkingAfterCompletion(opts.activity, opts.transcript)
+  const activityBadge = stillWorking ? null : activityBadgeFor(activityState, opts.completionSeen === true)
   const activityLabel = activityLabelFor(activityState)
   // A custom-engine task with no genuine activity signal has nothing to
   // animate — the monitor can't read its transcript (monitor/activity.ts),
@@ -236,6 +270,7 @@ export function buildSidebarRowView(opts: {
     task,
     activity: opts.activity,
     job: opts.job,
+    transcript: opts.transcript,
   })
   // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
   // reduced motion replaces every set with the slow pulsing dot.
