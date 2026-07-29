@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.33
+
+### Patch Changes
+
+- e8fec20: `kobe plugin update` now handles a plugin that renamed its id: settings and state move to the new id, the old registry entry is unregistered (no more duplicate hooks from two copies), and the stale checkout is reported rather than deleted.
+- 9a0fe5a: `ctrl+2` … `ctrl+9` / `ctrl+0` jump straight to a task from anywhere, including inside the engine pane. Every sidebar row prints the digit that jumps to it, so the mapping needs no memorising: `ctrl+1` is skipped (no legacy terminal can encode it, so the first row answers to `2`), and under the `recent` sort the digits visibly reorder with the list rather than becoming stale addresses — press `t` for the stable `default` sort if you want fixed positions.
+
 ## 0.8.32
 
 ### Patch Changes
