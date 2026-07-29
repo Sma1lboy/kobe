@@ -109,7 +109,11 @@ echo "$NOTES" | sed 's/^/    /'
 echo ""
 
 # ── commit & tag ──────────────────────────────────────────────────────────────
-git add packages/kobe/package.json packages/kobe/CHANGELOG.md .changeset
+# `changeset version` rewrites EVERY bumped workspace package (kobe, the
+# plugin SDK, private internals like kobe-daemon/kobe-web get dependency
+# bumps too) — stage them all. Staging only packages/kobe once tagged a
+# commit that pinned kobe to a daemon version that existed nowhere (0.8.30).
+git add packages/*/package.json packages/*/CHANGELOG.md .changeset
 if ! git diff --quiet bun.lock 2>/dev/null; then
   git add bun.lock
 fi
