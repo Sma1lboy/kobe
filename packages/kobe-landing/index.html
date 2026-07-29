@@ -66,10 +66,12 @@ button{font-family:inherit;cursor:pointer}
 @media(max-width:820px){.navbar a.nl{display:none}}
 
 /* ============ HERO ============ */
-.hero{position:relative;overflow:hidden;text-align:center}
+/* padding-bottom gives the veil runway below the equation — without it the
+   hero clips exactly at the equation and the fade cuts off as a hard line */
+.hero{position:relative;overflow:hidden;text-align:center;padding-bottom:clamp(100px,13vw,190px)}
 .hero-bg{position:absolute;inset:0;background:url('hero-fanout.png') center 60%/cover no-repeat;animation:kenburns 32s ease-in-out infinite alternate;will-change:transform}
 @keyframes kenburns{from{transform:scale(1.02)}to{transform:scale(1.09)}}
-.hero-veil{position:absolute;inset:0;background:linear-gradient(180deg, oklch(90% 0.03 210/.2) 0%, transparent 28%, transparent 52%, oklch(97.8% 0.007 85/.18) 64%, oklch(97.8% 0.007 85/.45) 74%, oklch(97.8% 0.007 85/.72) 83%, oklch(97.8% 0.007 85/.92) 91%, var(--paper) 98%)}
+.hero-veil{position:absolute;inset:0;background:linear-gradient(180deg, oklch(90% 0.03 210/.2) 0%, transparent 28%, transparent 50%, oklch(97.8% 0.007 85/.2) 61%, oklch(97.8% 0.007 85/.5) 70%, oklch(97.8% 0.007 85/.8) 78%, oklch(97.8% 0.007 85/.96) 84%, var(--paper) 89%)}
 .hero-inner{position:relative;z-index:2;padding:clamp(120px,15vh,160px) 20px 0;display:flex;flex-direction:column;align-items:center}
 .hero-kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--ink-soft);background:oklch(100% 0 0/.45);border:1px solid oklch(100% 0 0/.8);backdrop-filter:blur(10px);padding:8px 18px;border-radius:999px}
 .hero-kicker .acc{font-style:normal;font-weight:700}
