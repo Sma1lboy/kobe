@@ -9,6 +9,13 @@ event-name unions, envelope types, a daemon socket client, CLI helpers,
 and a tiny pane kit for terminal "pages". Zero dependencies, runs under
 Node ≥ 18 and Bun.
 
+The event/channel catalogs here are the **single source**: kobe's daemon
+imports them from this package's `./contract` module (a source-only,
+in-repo subpath — external consumers import the package root), so the
+host and the SDK agree by construction. The SDK versions independently
+via changesets; every kobe release publishes any not-yet-released SDK
+version to npm.
+
 ```bash
 npm install @sma1lboy/kobe-plugin-sdk
 ```

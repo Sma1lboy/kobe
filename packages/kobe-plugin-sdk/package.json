@@ -11,7 +11,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./contract": "./src/contract.ts"
   },
   "files": ["dist", "README.md"],
   "publishConfig": {

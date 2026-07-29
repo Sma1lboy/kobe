@@ -5,7 +5,7 @@
  */
 
 import { type Socket, createConnection } from "node:net"
-import type { DaemonFrame } from "./types.ts"
+import type { DaemonFrame } from "./contract.ts"
 
 export interface KobeSocketOptions {
   /** Defaults to `process.env.KOBE_SOCKET_PATH`. */

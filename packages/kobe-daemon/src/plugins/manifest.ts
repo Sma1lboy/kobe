@@ -9,51 +9,17 @@
  * plus swapping the callback CLI. Design doc: docs/design/plugins.md.
  */
 
+import { PLUGIN_EVENT_NAMES, type PluginEventName } from "@sma1lboy/kobe-plugin-sdk/contract"
 import { parse as parseToml } from "smol-toml"
 
 export type PluginPlatform = "macos" | "linux" | "windows"
 
 export const PLUGIN_PLATFORMS: readonly PluginPlatform[] = ["macos", "linux", "windows"]
 
-/** Discrete plugin-facing event names — the product layer derived from
- *  daemon channels plus the normalized agent lifecycle
- *  (docs/design/plugin-events.md; see plugins/events.ts). */
-export const PLUGIN_EVENT_NAMES = [
-  // Product layer
-  "task.created",
-  "task.deleted",
-  "worktree.created",
-  // Reduced activity-state transitions (deduped per task+tab)
-  "agent.turn-complete",
-  "agent.permission-needed",
-  "agent.rate-limited",
-  "agent.error",
-  "agent.running",
-  "agent.idle",
-  // Agent lifecycle (one event per engine hook report)
-  "session.start",
-  "session.end",
-  "turn.prompt",
-  "turn.complete",
-  "turn.failed",
-  "turn.interrupted",
-  "tool.pre",
-  "tool.post",
-  "tool.failed",
-  "attention.permission",
-  "attention.question",
-  "context.pre-compact",
-  "context.post-compact",
-  "subagent.start",
-  "subagent.stop",
-  // UI layer (reported by the TUI over ui.reportEvent; async observers)
-  "file.will-open",
-  "file.opened",
-  "task.opened",
-  "project.opened",
-] as const
-
-export type PluginEventName = (typeof PLUGIN_EVENT_NAMES)[number]
+/** The event catalog lives in the published SDK's contract module — ONE
+ *  source shared by the daemon and external plugin authors (catalog docs:
+ *  docs/design/plugin-events.md; dispatch: plugins/events.ts). */
+export { PLUGIN_EVENT_NAMES, type PluginEventName }
 
 export interface PluginCommandSpec {
   /** Argv array; never run through a shell, so no expansion. */

@@ -4,7 +4,7 @@
  * reads — safe to call from any entrypoint kind.
  */
 
-import type { PluginEventEnvelope } from "./types.ts"
+import type { PluginEventEnvelope } from "./contract.ts"
 
 export interface PluginContext {
   /** Who you are and where your files live. */

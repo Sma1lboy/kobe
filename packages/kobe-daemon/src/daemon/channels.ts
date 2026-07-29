@@ -6,6 +6,7 @@
  * import path for the wire protocol.
  */
 
+import { DAEMON_CHANNELS } from "@sma1lboy/kobe-plugin-sdk/contract"
 import type {
   AttentionInboxItem,
   EngineActivityDetail,
@@ -313,25 +314,19 @@ export type TranscriptActivityPayload = ChannelPayloads["transcript.activity"]
 /** A push-channel name (a key of {@link ChannelPayloads}). */
 export type ChannelName = keyof ChannelPayloads
 
-/** Runtime channel list — defaults subscribe-to-all + validates a filter. */
-export const CHANNEL_NAMES: readonly ChannelName[] = [
-  "task.snapshot",
-  "issue.snapshot",
-  "active-task",
-  "update",
-  "engine-state",
-  "attention.inbox",
-  "ui-prefs",
-  "keybindings",
-  "task.jobs",
-  "worktree.changes",
-  "transcript.activity",
-  "session.deliver",
-  "tab.open",
-  "engine.lifecycle",
-  "notice.event",
-  "usage.snapshot",
-]
+/**
+ * Runtime channel list — defaults subscribe-to-all + validates a filter.
+ * The name list itself ships in the plugin SDK's contract module so external
+ * authors and the daemon read ONE source; the payload types above stay here.
+ * Both directions are compile-checked: the annotation rejects an SDK name
+ * with no {@link ChannelPayloads} entry, `_everyChannelListed` rejects a
+ * payload entry missing from the SDK list.
+ */
+export const CHANNEL_NAMES: readonly ChannelName[] = DAEMON_CHANNELS
+
+type _everyChannelListed = [ChannelName] extends [(typeof DAEMON_CHANNELS)[number]] ? true : never
+const _everyChannelListed: _everyChannelListed = true
+void _everyChannelListed
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)
 

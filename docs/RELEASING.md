@@ -36,7 +36,7 @@ This first runs the release gate — `bun run lint && bun run typecheck && (cd p
 3. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array). This step is no longer error-swallowed — a `lint:fix` failure stops the release.
 4. Commits `chore: release — X.Y.Z`, tags `vX.Y.Z`, and (after confirming) pushes `main` + the tag.
 
-The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es, extracts the new `CHANGELOG.md` section as the GitHub release body, and builds the standalone binaries.
+The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es, extracts the new `CHANGELOG.md` section as the GitHub release body, and builds the standalone binaries. The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next kobe release.
 
 ## Style rule — no soft wraps inside bullets or paragraphs
 

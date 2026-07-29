@@ -20,4 +20,4 @@ export {
   type PluginEventTask,
   type DaemonChannelName,
   type DaemonFrame,
-} from "./types.ts"
+} from "./contract.ts"

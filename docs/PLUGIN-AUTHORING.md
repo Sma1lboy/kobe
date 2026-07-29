@@ -52,8 +52,9 @@ const ev = pluginEvent()      // typed event envelope (null outside [[events]])
   channel `subscribe` (always `role: "pane"`).
 - `Pane` — a tiny pane kit for `[[panes]]` pages: alt screen, raw-mode
   keys, resize, absolute-addressed `draw(lines)`.
-- `PLUGIN_EVENT_NAMES` / `DAEMON_CHANNELS` — the catalogs as typed unions;
-  an in-repo contract test pins them to the host so they can't drift.
+- `PLUGIN_EVENT_NAMES` / `DAEMON_CHANNELS` — the catalogs as typed unions.
+  These are the SINGLE source: the daemon itself imports them from the
+  SDK's `./contract` module, so host and SDK can't drift by construction.
 
 Package README has full examples: `packages/kobe-plugin-sdk/README.md`.
 

@@ -1,8 +1,10 @@
 /**
- * The wire contract, typed. These mirror the host's own definitions
- * (packages/kobe-daemon/src/plugins/manifest.ts + events.ts); an in-repo
- * contract test asserts they never drift. The SDK ships its own copies so
- * the published package has zero dependencies on private host internals.
+ * The wire contract, typed — the SINGLE source of the plugin-facing
+ * catalogs. The daemon imports these very constants (via the package's
+ * `./contract` subpath, which resolves to this source file in-repo), so
+ * in-repo code and external SDK consumers can never disagree. Channel
+ * PAYLOAD types stay host-side (kobe-daemon channels.ts) — they reach
+ * plugins as versioned `unknown`.
  */
 
 /** Every event a plugin can subscribe to via `[[events]]`. */

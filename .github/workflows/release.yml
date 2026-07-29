@@ -230,6 +230,21 @@ jobs:
         working-directory: packages/kobe
         run: npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
 
+      - name: Publish plugin SDK (piggyback, idempotent)
+        # The SDK versions independently via changesets but has no tag of
+        # its own: every kobe release checks whether the SDK's current
+        # version is on npm and publishes it when it isn't. `prepublishOnly`
+        # runs the SDK's typecheck + tsc build, so dist is always fresh.
+        working-directory: packages/kobe-plugin-sdk
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "@sma1lboy/kobe-plugin-sdk@$V" version >/dev/null 2>&1; then
+            echo "@sma1lboy/kobe-plugin-sdk@$V already on npm — skipping"
+          else
+            echo "publishing @sma1lboy/kobe-plugin-sdk@$V"
+            npm publish --access public --provenance
+          fi
+
       - name: Create GitHub release
         # Creates the release shell with the changelog notes. The
         # `binaries` matrix appends executables to this same release
