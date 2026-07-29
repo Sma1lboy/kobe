@@ -19,6 +19,7 @@ import {
   parsePluginManifest,
   qualifiedActionId,
 } from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { buildPaneArgv } from "@sma1lboy/kobe-daemon/plugins/pane-command"
 import { pluginCheckoutDir, pluginConfigDir, pluginLogPath } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import {
   type PluginRegistryEntry,
@@ -157,11 +158,6 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
   process.exit(res.status ?? 1)
 }
 
-/** POSIX single-quote for embedding in an `sh -lc` script. */
-function shq(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
-
 /** Resolve `<plugin-id>.<pane-id>` (plugin ids may contain dots — longest registered prefix wins). */
 function resolvePaneQualified(qualified: string): { pluginId: string; entrypoint: string } {
   const hit = loadAll()
@@ -181,20 +177,12 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
   const pane = loaded.manifest.panes.find((p) => p.id === entrypoint)
   if (!pane) throw new PluginCliError(`no pane \`${entrypoint}\` in \`${pluginId}\`; declare it under [[panes]]`)
 
-  // The tab's PTY runs in the task worktree (kobe's pane grammar — a pane is
-  // about the task, e.g. lazygit); a plugin referencing its own files writes
-  // `$KOBE_PLUGIN_ROOT/...` in the manifest command, expanded here. The env
-  // contract rides one `sh -lc` script so no tab/PTY schema learns plugins.
-  const env = buildPluginEnv({
+  // Shared composition with the TUI's ctrl+e picker (plugins/pane-command.ts):
+  // one `sh -lc` script, env contract riding an `env` prefix, cwd = worktree.
+  const argv = buildPaneArgv(loaded.entry.id, loaded.entry.root, pane, {
     socketPath: defaultDaemonSocketPath(),
     binPath: "kobe",
-    pluginId: loaded.entry.id,
-    pluginRoot: loaded.entry.root,
-    extra: { KOBE_PLUGIN_ENTRYPOINT_ID: pane.id },
   })
-  const pairs = Object.entries(env).filter(([k]) => k.startsWith("KOBE_")) as [string, string][]
-  const argv = pane.command.map((a) => a.replace(/\$\{?KOBE_PLUGIN_ROOT\}?/g, loaded.entry.root))
-  const script = `exec env ${pairs.map(([k, v]) => shq(`${k}=${v}`)).join(" ")} ${argv.map(shq).join(" ")}`
 
   const { openDaemonSession } = await import("./daemon-session.ts")
   const { resolveActiveTaskId } = await import("./api/runtime.ts")
@@ -204,7 +192,7 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
     if (!taskId) throw new PluginCliError("no active task; pass --task <id>")
     await session.client.request("tab.open", {
       taskId,
-      argv: ["sh", "-lc", script],
+      argv,
       title: pane.title,
       placement: pane.placement,
     })

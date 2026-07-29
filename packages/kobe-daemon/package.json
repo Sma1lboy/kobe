@@ -48,6 +48,7 @@
     "./plugins/env": "./src/plugins/env.ts",
     "./plugins/events": "./src/plugins/events.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
+    "./plugins/pane-command": "./src/plugins/pane-command.ts",
     "./plugins/plugin-paths": "./src/plugins/plugin-paths.ts",
     "./plugins/registry": "./src/plugins/registry.ts",
     "./plugins/runtime": "./src/plugins/runtime.ts"

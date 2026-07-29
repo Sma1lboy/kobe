@@ -10,7 +10,10 @@ import { availableEngineIds } from "@/engine/account-detect"
 import { resolveMainRepoRoot } from "@/state/repos"
 import { setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
+import { defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
+import { type PaneLaunch, listPaneLaunches } from "@sma1lboy/kobe-daemon/plugins/pane-command"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
+import { openPluginPane } from "../../tui/workspace/pane-split"
 import {
   type TabsState,
   type TerminalTab,
@@ -60,8 +63,25 @@ export function useTabDialogs(deps: {
   const requestChooseEngine = (): void => {
     void (async () => {
       const available = await availableEngineIds()
-      const picked = await EnginePickerDialog.show(dialog, available, deps.vendor, { allowShell: true })
+      // Installed plugin panes ride the same picker (owner ask 2026-07-29):
+      // ctrl+e is "what runs in this tab", and a pane is exactly that. Reads
+      // the local registry synchronously — a handful of small files.
+      let panes: PaneLaunch[] = []
+      try {
+        panes = listPaneLaunches({ socketPath: defaultDaemonSocketPath(), binPath: "kobe" })
+      } catch {
+        /* registry unreadable → engines only */
+      }
+      const picked = await EnginePickerDialog.show(dialog, available, deps.vendor, {
+        allowShell: true,
+        extraChoices: panes.map((p) => ({ key: `pane:${p.pluginId}.${p.paneId}`, label: p.title })),
+      })
       if (picked === undefined) return
+      const pane = panes.find((p) => `pane:${p.pluginId}.${p.paneId}` === picked)
+      if (pane) {
+        update(openPluginPane(state, pane.argv, pane.title, pane.placement))
+        return
+      }
       // "shell" = a plain terminal tab (kind "command"): no session pin, no
       // vendor preference write, closes itself on exit. Null label so the
       // tab is named by its live foreground process ("zsh", "vim"…).
@@ -69,10 +89,10 @@ export function useTabDialogs(deps: {
         update(openCommandTab(state, [defaultShell()], null))
         return
       }
-      update(pinSession(addTab(state, picked), picked))
-      deps.onChooseEngine?.(picked)
+      update(pinSession(addTab(state, picked as VendorId), picked as VendorId))
+      deps.onChooseEngine?.(picked as VendorId)
       try {
-        setRepoLastActiveVendor(resolveMainRepoRoot(deps.worktree), picked)
+        setRepoLastActiveVendor(resolveMainRepoRoot(deps.worktree), picked as VendorId)
       } catch {
         /* best-effort: a stale worktree path must not block the new tab */
       }

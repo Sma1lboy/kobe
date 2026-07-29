@@ -136,6 +136,12 @@ plugin env contract rides an `env` prefix inside one `sh -lc` script, so no
 tab/PTY schema knows about plugins. Trust: same boundary as `pty.open` —
 the daemon socket already grants argv execution.
 
+## In-TUI entry points
+
+`ctrl+e` (the tab picker) lists every enabled plugin's panes after the
+engines and the shell — picking one opens it with the pane's placement.
+Launch composition is shared with the CLI (`plugins/pane-command.ts`).
+
 ## Keybindings
 
 Users bind their own chords to plugin panes/actions via the `plugins:`

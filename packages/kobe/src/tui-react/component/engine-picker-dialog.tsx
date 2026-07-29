@@ -19,8 +19,9 @@ import { useBindings } from "../lib/keymap"
 import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 import { ChoiceRow } from "./new-task-dialog/picker-list"
 
-/** What the picker can resolve to: an engine vendor or a plain shell tab. */
-export type EnginePick = VendorId | "shell"
+/** What the picker can resolve to: an engine vendor or a plain shell tab.
+ *  With `extraChoices`, an extra choice's `key` (e.g. a plugin pane) too. */
+export type EnginePick = VendorId | "shell" | (string & {})
 
 export function EnginePickerDialogView(props: {
   availableVendors: readonly VendorId[]
@@ -28,6 +29,8 @@ export function EnginePickerDialogView(props: {
   dialogTitle?: string
   /** Offer a trailing "shell" choice (a plain terminal tab). */
   allowShell?: boolean
+  /** Trailing extra choices (plugin panes): `key` is returned, `label` shown. */
+  extraChoices?: readonly { key: string; label: string }[]
   onSubmit: (pick: EnginePick) => void
   onCancel: () => void
 }) {
@@ -35,10 +38,16 @@ export function EnginePickerDialogView(props: {
   const { theme } = useTheme()
   const t = useT()
   const vendors = props.availableVendors.length > 0 ? props.availableVendors : ALL_VENDORS
-  const choices: readonly EnginePick[] = props.allowShell ? [...vendors, "shell"] : vendors
+  const extras = props.extraChoices ?? []
+  const choices: readonly EnginePick[] = [
+    ...vendors,
+    ...(props.allowShell ? (["shell"] as const) : []),
+    ...extras.map((e) => e.key),
+  ]
   const [pick, setPick] = useState<EnginePick>(
     vendors.includes(props.defaultVendor) ? props.defaultVendor : (choices[0] ?? "claude"),
   )
+  const display = (choice: EnginePick): string => extras.find((e) => e.key === choice)?.label ?? choice
 
   function commit(picked: EnginePick): void {
     props.onSubmit(picked)
@@ -79,7 +88,7 @@ export function EnginePickerDialogView(props: {
           esc
         </text>
       </box>
-      <ChoiceRow choices={choices} selected={pick} onPick={(v) => commit(v)} />
+      <ChoiceRow choices={choices} selected={pick} display={display} onPick={(v) => commit(v)} />
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>{t("terminal.tab.chooseEngineHint")}</text>
       </box>
@@ -91,7 +100,7 @@ function show(
   dialog: DialogContext,
   availableVendors: readonly VendorId[],
   defaultVendor: VendorId,
-  opts: { dialogTitle?: string; allowShell?: boolean } = {},
+  opts: { dialogTitle?: string; allowShell?: boolean; extraChoices?: readonly { key: string; label: string }[] } = {},
 ): Promise<EnginePick | undefined> {
   return showDialog<EnginePick>(dialog, (resolve) => (
     <EnginePickerDialogView
@@ -99,6 +108,7 @@ function show(
       defaultVendor={defaultVendor}
       dialogTitle={opts.dialogTitle}
       allowShell={opts.allowShell}
+      extraChoices={opts.extraChoices}
       onSubmit={(v) => resolve(v)}
       onCancel={() => resolve(undefined)}
     />
