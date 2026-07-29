@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.37
+
+### Patch Changes
+
+- 38311b3: Fix the visual ground-truth e2e suite after the Kanban chord moved to `prefix+c`: the two Kanban journeys still opened the board with a bare `c`. No product behavior change — 0.8.36 was tagged but never published because this gate failed.
+
 ## 0.8.36
 
 ### Patch Changes
