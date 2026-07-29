@@ -89,9 +89,23 @@ afterAll(() => {
 })
 
 describe("encodeCwd", () => {
-  it("replaces both / and . with - (Claude Code's lossy on-disk encoding)", () => {
+  it("replaces / and . with - (Claude Code's lossy on-disk encoding)", () => {
     expect(encodeCwd("/Users/j/i/kobe")).toBe("-Users-j-i-kobe")
     expect(encodeCwd("/v/1.2.3")).toBe("-v-1-2-3")
+  })
+
+  it("replaces every non-alphanumeric char, matching Claude Code's encoder", () => {
+    // Claude Code encodes with `cwd.replace(/[^a-zA-Z0-9]/g, "-")`, so an
+    // underscore, space, or accented letter in the path all fold to `-`.
+    // Matching only `/` and `.` pointed session lookups at a directory
+    // Claude never created for any such worktree path.
+    expect(encodeCwd("/home/jane_doe/my_app")).toBe("-home-jane-doe-my-app")
+    expect(encodeCwd("/tmp/a b/c")).toBe("-tmp-a-b-c")
+    expect(encodeCwd("/home/josé/repo")).toBe("-home-jos--repo")
+  })
+
+  it("preserves case and leaves alphanumerics untouched", () => {
+    expect(encodeCwd("/Repo123/AbC")).toBe("-Repo123-AbC")
   })
 })
 

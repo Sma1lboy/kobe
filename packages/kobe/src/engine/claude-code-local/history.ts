@@ -9,7 +9,8 @@
  *
  *     ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
  *
- * `<encoded-cwd>` is the *absolute* cwd with `/` replaced by `-`, e.g.
+ * `<encoded-cwd>` is the *absolute* cwd with every non-alphanumeric
+ * character replaced by `-` (see {@link encodeCwd}), e.g.
  * `/Users/jackson/i/kobe` → `-Users-jackson-i-kobe`. The encoding is
  * **lossy**: a path containing literal `-` collapses to the same
  * directory as a `/`-delimited one (so `foo/bar-baz` and `foo-bar/baz`
@@ -86,14 +87,21 @@ const defaultDeps: HistoryDeps = {
 /**
  * Encode a cwd to Claude Code's on-disk project directory name.
  *
- * `/` and `.` are both replaced with `-`. Claude Code itself does this —
- * a directory named `1.2.3` becomes `1-2-3`. The encoding is lossy
- * (see file-level docstring) and reversal is unreliable.
+ * Claude Code replaces **every** non-alphanumeric character with `-`
+ * (its own encoder is `cwd.replace(/[^a-zA-Z0-9]/g, "-")`), not just the
+ * path separators: `/`, `.`, `_`, spaces, and non-ASCII letters all fold
+ * to `-`. So `/v/1.2.3` → `-v-1-2-3` and `/home/jane_doe/my_app` →
+ * `-home-jane-doe-my-app`. Matching only `/` and `.` (the old behavior)
+ * pointed every consumer at a directory Claude never created whenever a
+ * worktree path contained an underscore, space, or accented character —
+ * silently disabling session-file discovery, activity mtime detection,
+ * the turn detector, auto-title, and interrupted-prompt rescue for it.
+ *
+ * The encoding is lossy (see file-level docstring) and reversal is
+ * unreliable — we never decode, only iterate/derive.
  */
 export function encodeCwd(cwd: string): string {
-  // Normalize to forward-slashes (paranoia for cross-platform callers
-  // building these paths in tests). Then replace runs of `/` and `.`.
-  return cwd.replace(/[/.]/g, "-")
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-")
 }
 
 /** One persisted Claude session file under a worktree's project dir. */
