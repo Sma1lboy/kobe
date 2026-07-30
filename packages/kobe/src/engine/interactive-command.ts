@@ -179,6 +179,19 @@ export function withEngineEffort(
 const CLAUDE_SESSION_CONTROL_FLAGS = new Set(["--session-id", "--resume", "-r", "--continue", "-c", "--from-pr"])
 
 /**
+ * Does `arg` carry a session-control flag, in EITHER the separated form
+ * (`--resume`, its own token) or the attached form (`--resume=abc`, one
+ * token)? `parseEngineCommand` preserves `--flag=value` as a single token
+ * (the documented `--append-system-prompt="…"` idiom), and Claude accepts
+ * `--session-id=<uuid>` / `--resume=<id>` / `--from-pr=<n>` too, so the guard
+ * must match on the flag NAME before any `=`, not the whole token.
+ */
+function isSessionControlFlag(arg: string): boolean {
+  const name = arg.startsWith("-") && arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg
+  return CLAUDE_SESSION_CONTROL_FLAGS.has(name)
+}
+
+/**
  * For a Claude launch, append a kobe-generated `--session-id <uuid>` so the
  * hosted session can be mapped to its transcript (recorded as the
  * `@kobe_session_id` window option) and auto-named from its first prompt
@@ -194,7 +207,7 @@ export function withClaudeSessionId(
   vendor: string | undefined,
 ): { argv: readonly string[]; sessionId: string | null } {
   if ((vendor ?? "claude") !== "claude") return { argv, sessionId: null }
-  if (argv.some((a) => CLAUDE_SESSION_CONTROL_FLAGS.has(a))) return { argv, sessionId: null }
+  if (argv.some(isSessionControlFlag)) return { argv, sessionId: null }
   const sessionId = randomUUID()
   return { argv: [...argv, "--session-id", sessionId], sessionId }
 }
