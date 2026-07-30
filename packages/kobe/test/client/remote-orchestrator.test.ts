@@ -456,7 +456,6 @@ describe("decodeUiPrefsPayload — backward-compat defaults", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
   })
 
@@ -471,7 +470,6 @@ describe("decodeUiPrefsPayload — backward-compat defaults", () => {
       sortMode: "recent",
       keysCollapsed: true,
       projectFilter: null,
-      reducedMotion: false,
     })
     // empty projectFilter string → null (all projects); unknown sortMode → default
     const d = decodeUiPrefsPayload({ theme: "x", projectFilter: "", sortMode: "weird", focusAccent: "#abc" })

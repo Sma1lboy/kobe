@@ -1,7 +1,7 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
 import { engineEntry } from "@/engine/registry"
-import { DEFAULT_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "@/engine/spinner-frames"
+import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { t } from "@/tui/i18n"
 import { DEFAULT_TASK_VENDOR, type Task } from "@/types/task"
 import { isBuiltinVendor } from "@/types/vendor"
@@ -14,8 +14,12 @@ export interface SidebarRowView {
   readonly titleText: string
   readonly subtitleText: string
   readonly loading: boolean
+  /**
+   * The row's status glyph. ONE vocabulary for project and task rows (owner
+   * call 2026-07-30) — a project used to fall back to `★`, which read as a
+   * different kind of thing rather than a different state of the same thing.
+   */
   readonly stateGlyph: string
-  readonly projectGlyph: string
   readonly tone: SidebarTone
   /**
    * The engine-owned frame set this row animates with while loading
@@ -231,8 +235,6 @@ export function buildSidebarRowView(opts: {
    * `main` / `feat/x` on line 2 like a task does.
    */
   readonly mainBranch?: string
-  /** Accessibility: swap the engine spinner for the slow pulsing dot. */
-  readonly reducedMotion?: boolean
   /**
    * herdr "seen" bit: the user has selected this task since its current
    * `turn_complete` fired, so the badge digests ● → ✓. Callers track it;
@@ -272,11 +274,12 @@ export function buildSidebarRowView(opts: {
     job: opts.job,
     transcript: opts.transcript,
   })
-  // Engine-owned brand frames (registry `spinnerFrames`), braille fallback;
-  // reduced motion replaces every set with the slow pulsing dot.
-  const spinnerFrames = opts.reducedMotion
-    ? REDUCED_MOTION_SPINNER_FRAMES
-    : (engineEntry(task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES)
+  // Engine-owned brand frames (registry `spinnerFrames`), braille fallback.
+  // Every frame set must stay visually distinct from the STATIC badge glyphs
+  // below (`●` unseen-complete, `✓` seen, `○` idle): a spinner that borrows a
+  // badge glyph makes a RUNNING row read as a finished one. That collision is
+  // why the reduced-motion `●`/`·` pulse was removed (2026-07-30).
+  const spinnerFrames = engineEntry(task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES
   const spinner = spinnerFrames[opts.spinnerFrame % spinnerFrames.length] ?? spinnerFrames[0]
   const tone = deleteFailed
     ? "error"
@@ -315,14 +318,12 @@ export function buildSidebarRowView(opts: {
   // to the hollow idle circle because the client deliberately removes an
   // explicit `idle` activity entry; absence is therefore the idle projection.
   const restGlyph = deleteFailed ? "✕" : untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "○")
-  const restProjectGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "★")
   return {
     isMain,
     titleText: isMain ? repoBasename(task.repo) : task.title,
     subtitleText,
     loading,
     stateGlyph: loading ? spinner : restGlyph,
-    projectGlyph: loading ? spinner : restProjectGlyph,
     tone,
     spinnerFrames,
     materializing,
@@ -337,14 +338,14 @@ export function buildSidebarRowView(opts: {
  * re-derives on the spinner tick (with N tasks and nothing running, the
  * tick has zero subscribers — no row rebuilds its view 10×/s). For a loading row this
  * reproduces exactly what `buildSidebarRowView` would have produced with
- * the live frame: both glyph fields carry the spinner.
+ * the live frame.
  */
 export function withSpinnerFrame(view: SidebarRowView, frame: () => number): SidebarRowView {
   if (!view.loading) return view
   const frames = view.spinnerFrames
   const spinner = frames[frame() % frames.length] ?? frames[0] ?? "⠋"
-  if (spinner === view.stateGlyph && spinner === view.projectGlyph) return view
-  return { ...view, stateGlyph: spinner, projectGlyph: spinner }
+  if (spinner === view.stateGlyph) return view
+  return { ...view, stateGlyph: spinner }
 }
 
 /**

@@ -24,13 +24,3 @@ export const CLAUDE_SPINNER_FRAMES: readonly string[] = [
   ...CLAUDE_SPINNER_CHARS,
   ...[...CLAUDE_SPINNER_CHARS].reverse(),
 ]
-
-/**
- * Reduced-motion replacement for EVERY engine's frame set: a dot that
- * pulses big/small on a 2s cycle (Claude Code's `REDUCED_MOTION_DOT` +
- * `REDUCED_MOTION_CYCLE_MS` counterpart). Encoded as 10 frames per phase
- * so the shared 10Hz tick drives it without a second timer; identical
- * consecutive frames re-render nothing (`withSpinnerFrame` returns the
- * same view when the glyph is unchanged).
- */
-export const REDUCED_MOTION_SPINNER_FRAMES: readonly string[] = [...Array(10).fill("●"), ...Array(10).fill("·")]

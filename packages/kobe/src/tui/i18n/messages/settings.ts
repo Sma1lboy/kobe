@@ -36,9 +36,6 @@ export const en = {
     accentPrimary: "Primary (brand accent)",
     accentSuccess: "Success (legacy green)",
     accentInfo: "Info (cool blue)",
-    reducedMotion: "Reduced motion",
-    reducedMotionHint:
-      "Calms chrome animations: the running-task spinner becomes a slow pulsing dot, and the toast slide-in, materializing sweep, and tab-complete flash turn off.",
     appearance: "Appearance",
     appearanceHint:
       "How split panes draw: a full box frame around every pane, or a single divider line between neighbors.",
@@ -205,9 +202,6 @@ export const zh: typeof en = {
     appearanceHint: "分屏面板的描边方式：每个面板一个完整方框，或相邻面板之间一条分隔线。",
     splitBox: "方框边框",
     splitLine: "单线分隔",
-    reducedMotion: "减弱动效",
-    reducedMotionHint:
-      "让界面动效安静下来：运行中任务的 spinner 变为缓慢明暗脉冲点，Toast 滑入、worktree 创建扫动条和标签完成闪烁全部关闭。",
     notifications: "通知",
     notificationsHint:
       "后台聊天页完成或在审批处暂停时触发。Toast = 右下角弹窗；Sound = 终端响铃 + 提示音 + OSC 9 桌面通知（经 SSH 直达你本地终端）。跨任务 = 你已切走的任务暂停/出错/完成时也通知。标签上的未读圆点始终开启。",

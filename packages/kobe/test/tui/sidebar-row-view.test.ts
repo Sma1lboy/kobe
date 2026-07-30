@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { CLAUDE_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
+import { CLAUDE_SPINNER_FRAMES, DEFAULT_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
 import { sweepBar } from "../../src/tui/lib/progress-bar.ts"
 import {
   anyRowLoading,
@@ -95,9 +95,11 @@ describe("buildSidebarRowView", () => {
   })
 
   it("does not use stale in-progress status for main project rows", () => {
+    // Project rows share the task glyph vocabulary — idle is `○`, not a
+    // project-shaped `★` (owner call 2026-07-30).
     expect(view({ kind: "main", branch: "", status: "in_progress" })).toMatchObject({
       loading: false,
-      projectGlyph: "★",
+      stateGlyph: "○",
       titleText: "kobe",
     })
   })
@@ -262,13 +264,12 @@ describe("withSpinnerFrame", () => {
     expect(reads).toBe(0) // the 10Hz signal is not a dependency of idle rows
   })
 
-  it("overlays the live frame on both glyph fields of a loading view", () => {
+  it("overlays the live frame on a loading view's glyph", () => {
     const base = loadingView()
     expect(base.loading).toBe(true)
     const out = withSpinnerFrame(base, () => 3)
     // The overlay honours the view's OWN engine frame set (claude stars here).
     expect(out.stateGlyph).toBe(base.spinnerFrames[3])
-    expect(out.projectGlyph).toBe(base.spinnerFrames[3])
     // Everything else is untouched — exactly what buildSidebarRowView
     // would have produced with spinnerFrame: 3.
     const direct = buildSidebarRowView({
@@ -293,19 +294,22 @@ describe("withSpinnerFrame", () => {
     expect(out.stateGlyph).toBe(base.spinnerFrames[2])
   })
 
-  it("reduced motion swaps every engine's frames for the pulsing dot", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "backlog" }),
-      activity: { state: "running", at: 1 },
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-      reducedMotion: true,
-    })
-    expect(v.spinnerFrames).toBe(REDUCED_MOTION_SPINNER_FRAMES)
-    expect(v.stateGlyph).toBe("●")
-    // Second phase of the 2s cycle (frames 10-19) is the small dot.
-    expect(withSpinnerFrame(v, () => 15).stateGlyph).toBe("·")
+  /**
+   * The bug this pins (2026-07-30): the removed reduced-motion frame set was
+   * `●●●●●·····`, and `●` is ALSO the static unseen-completion badge. A
+   * RUNNING row therefore rendered the exact glyph that means "finished,
+   * unread" — sending the user to an Inbox that (correctly) had nothing in
+   * it. No spinner frame may collide with a static badge glyph.
+   */
+  it("no spinner frame collides with a settled-state badge glyph", () => {
+    // The settled states a spinner must never impersonate: each one means
+    // "this row has STOPPED and wants you". `·` (no activity tracking) and
+    // `○` (idle) are deliberately NOT in this set — they mark absence, and
+    // claude's frame set legitimately passes through `·` mid-oscillation.
+    const settledBadges = new Set(["●", "✓", "✕", "?", "◷"])
+    for (const frames of [DEFAULT_SPINNER_FRAMES, CLAUDE_SPINNER_FRAMES]) {
+      for (const frame of frames) expect(settledBadges.has(frame)).toBe(false)
+    }
   })
 })
 

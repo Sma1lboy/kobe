@@ -68,7 +68,7 @@ export function TabStrip(props: {
     for (const [tabId, turn] of props.turnStates) {
       const prev = prevTurns.current.get(tabId)
       prevTurns.current.set(tabId, turn)
-      if (turn !== "done" || prev !== "running" || themeCtx.reducedMotion) continue
+      if (turn !== "done" || prev !== "running") continue
       setPulsing((cur) => new Set(cur).add(tabId))
       const timer = setTimeout(() => {
         timers.current.delete(timer)
@@ -81,7 +81,7 @@ export function TabStrip(props: {
       timers.current.add(timer)
     }
     for (const id of [...prevTurns.current.keys()]) if (!props.turnStates.has(id)) prevTurns.current.delete(id)
-  }, [props.turnStates, themeCtx.reducedMotion])
+  }, [props.turnStates])
   useEffect(() => {
     const pending = timers.current
     return () => {

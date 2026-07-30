@@ -98,7 +98,7 @@ function useChanges(shared: SidebarRowCardSharedProps, task: SidebarRow["task"])
 function SubtitleText(props: { readonly view: SidebarRowView }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
-  const animating = props.view.materializing && !themeCtx.reducedMotion
+  const animating = props.view.materializing
   const frame = useSpinnerFrame(animating)
   if (!animating) {
     return (
@@ -194,7 +194,7 @@ const completionSeenIds = new Set<string>()
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
   const t = useT()
   const themeCtx = useTheme()
-  const { theme, reducedMotion } = themeCtx
+  const { theme } = themeCtx
   const task = row.task
   const isCursor = row.flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
@@ -242,13 +242,12 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
       subtitleBudget,
       truncateBranch: truncateBranchLabel,
       mainBranch,
-      reducedMotion,
       completionSeen,
     })
-  }, [task, activity, lifecycle, job, subtitleBudget, mainBranch, reducedMotion, completionSeen, transcriptMtime, t])
+  }, [task, activity, lifecycle, job, subtitleBudget, mainBranch, completionSeen, transcriptMtime, t])
   // Frame overlay stays OUTSIDE the memo: non-loading rows come back as the
   // same object and never subscribe, so an idle row does zero per-frame work.
-  const frame = useSpinnerFrame(baseView.loading && !reducedMotion)
+  const frame = useSpinnerFrame(baseView.loading)
   const rowView = withSpinnerFrame(baseView, () => frame)
   return { theme, task, isCursor, isSelected, selection, changes, rowView }
 }
@@ -280,7 +279,10 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
   const { theme, isCursor, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
     mainBranch: currentBranch(task.repo),
   })
-  const stateColor = !rowView.loading ? theme.primary : toneColor(theme, rowView.tone)
+  // Same tone mapping as a task row: the glyph's COLOR carries state too, so
+  // an idle project must not sit on the brand primary while an idle task is
+  // muted (owner call 2026-07-30 — one vocabulary for both row kinds).
+  const stateColor = toneColor(theme, rowView.tone)
 
   return (
     <box flexDirection="column" gap={0} paddingBottom={0}>
@@ -288,7 +290,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
-              {rowView.projectGlyph}
+              {rowView.stateGlyph}
             </text>
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
               {spacedTitle(rowView.titleText, shared.titleBudget)}

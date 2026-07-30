@@ -82,6 +82,13 @@ export function labelStyle(theme: Theme, focusedField: Field, f: Field): { fg: T
  * the new-task dialog, the engine-picker dialog and the quick-task
  * composer: choices side by side (`gap={2}`), the selected one primary +
  * bold (arrowed variants prefix `▸ ` / two spaces), click picks.
+ *
+ * Overflow (fixed 2026-07-30): a choice label is ATOMIC. Without
+ * `wrapMode="none"` + `flexShrink={0}` Yoga compressed the cells and each
+ * `<text>` wrapped INTERNALLY, so with enough engines installed a label like
+ * `lazygit (split)` split mid-word across two lines and the row read as
+ * garbage. The labels are now unbreakable and the ROW wraps instead, moving
+ * whole choices onto the next line.
  */
 export function ChoiceRow<T extends string>(props: {
   choices: readonly T[]
@@ -99,7 +106,7 @@ export function ChoiceRow<T extends string>(props: {
   const { theme } = useTheme()
   const arrow = props.arrow !== false
   return (
-    <box flexDirection="row" gap={2}>
+    <box flexDirection="row" flexWrap="wrap" gap={2}>
       {props.label}
       {props.choices.map((choice) => {
         const selected = props.selected === choice
@@ -109,6 +116,8 @@ export function ChoiceRow<T extends string>(props: {
             key={choice}
             fg={selected ? theme.primary : theme.textMuted}
             attributes={selected ? TextAttributes.BOLD : undefined}
+            wrapMode="none"
+            flexShrink={0}
             onMouseUp={() => props.onPick(choice)}
           >
             {prefix + (props.display ? props.display(choice) : choice)}

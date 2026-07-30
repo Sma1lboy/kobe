@@ -56,7 +56,6 @@ describe("readPersistedUiPrefs", () => {
       transparent: true,
       focusAccent: "success",
       locale: "en",
-      reducedMotion: false,
     })
   })
 
@@ -103,7 +102,6 @@ describe("readPersistedUiPrefs", () => {
       transparent: true, // transparent-by-default
       focusAccent: null,
       locale: "en",
-      reducedMotion: false,
     })
     // An explicit stored false is the only opt-out.
     writeState(JSON.stringify({ transparentBackground: false }))

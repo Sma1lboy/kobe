@@ -32,7 +32,6 @@ interface FakeState {
   diskThemes: string[]
   transparent: boolean
   accent: string
-  reducedMotion: boolean
 }
 
 function makeTarget(initial?: Partial<FakeState>) {
@@ -42,7 +41,6 @@ function makeTarget(initial?: Partial<FakeState>) {
     diskThemes: [],
     transparent: false,
     accent: "primary",
-    reducedMotion: false,
     ...initial,
   }
   const calls: string[] = []
@@ -68,11 +66,6 @@ function makeTarget(initial?: Partial<FakeState>) {
     setFocusAccent: (slot) => {
       calls.push(`setFocusAccent:${slot}`)
       state.accent = slot
-    },
-    reducedMotion: () => state.reducedMotion,
-    setReducedMotion: (v) => {
-      calls.push(`setReducedMotion:${v}`)
-      state.reducedMotion = v
     },
   }
   return { state, calls, target }

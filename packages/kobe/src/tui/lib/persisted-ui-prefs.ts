@@ -27,8 +27,6 @@ export interface PersistedUiPrefs {
   readonly focusAccent: FocusAccentSlot | null
   /** Active UI language, validated against the registered locales. */
   readonly locale: LocaleId
-  /** Accessibility: chrome animations degrade to calm forms. */
-  readonly reducedMotion: boolean
 }
 
 /**
@@ -58,9 +56,8 @@ export function readPersistedUiPrefs(
         ? (parsed.focusAccent as FocusAccentSlot)
         : null
     const locale = isLocaleId(parsed[LOCALE_KEY]) ? parsed[LOCALE_KEY] : DEFAULT_LOCALE
-    const reducedMotion = parsed.reducedMotion === true
-    return { theme, transparent, focusAccent, locale, reducedMotion }
+    return { theme, transparent, focusAccent, locale }
   } catch {
-    return { theme: fallbackTheme, transparent: true, focusAccent: null, locale: DEFAULT_LOCALE, reducedMotion: false }
+    return { theme: fallbackTheme, transparent: true, focusAccent: null, locale: DEFAULT_LOCALE }
   }
 }

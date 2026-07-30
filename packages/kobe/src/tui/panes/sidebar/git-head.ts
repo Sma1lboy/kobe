@@ -3,7 +3,7 @@
  *
  * Each main task is bound to a saved repo and shows the repo's
  * live current branch as a right-aligned hint — the row reads e.g.
- * `★ kobe   main`. The branch isn't stored on the task; it's computed
+ * `○ kobe   main`. The branch isn't stored on the task; it's computed
  * at display time so checking out a different branch in another shell
  * is reflected the next time the sidebar re-renders.
  *

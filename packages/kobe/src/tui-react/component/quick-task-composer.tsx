@@ -172,6 +172,9 @@ function QuickTaskComposerView(
             <text
               key={path}
               fg={theme.primary}
+              // Atomic chip: wrap the ROW, never the label (see ChoiceRow).
+              wrapMode="none"
+              flexShrink={0}
               onMouseUp={() => setAttachments((prev) => prev.filter((p) => p !== path))}
             >
               {attachmentLabel(path, i)}

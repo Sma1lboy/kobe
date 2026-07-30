@@ -144,13 +144,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.onVisualPrefsChange?.()
   }
 
-  function toggleReducedMotion(): void {
-    const next = !themeCtx.reducedMotion
-    themeCtx.setReducedMotion(next)
-    props.kv.set("reducedMotion", next)
-    props.onVisualPrefsChange?.()
-  }
-
   function selectFocusAccent(slot: FocusAccentSlot): void {
     if (themeCtx.focusAccent === slot) return
     themeCtx.setFocusAccent(slot)
@@ -231,7 +224,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     language: (row) => selectLanguage(row.locale),
     transparent: () => toggleTransparent(),
     focusAccent: (row) => selectFocusAccent(row.slot),
-    reducedMotion: () => toggleReducedMotion(),
     toast: () => prefs.toggleToast(),
     sound: () => prefs.toggleSound(),
     crossTask: () => prefs.toggleCrossTask(),
@@ -365,7 +357,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
               currentLocale={currentLang()}
               selectLanguage={selectLanguage}
               toggleTransparent={toggleTransparent}
-              toggleReducedMotion={toggleReducedMotion}
               selectFocusAccent={selectFocusAccent}
               usage={usage}
             />

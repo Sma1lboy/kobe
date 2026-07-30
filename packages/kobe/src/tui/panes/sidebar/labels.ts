@@ -12,7 +12,7 @@ export function truncateTitle(title: string, max: number): string {
 /**
  * Render the primary row label with a non-shrinkable spacer after the glyph.
  * Yoga may compress flex `gap` under a narrow tmux pane; making the spacer part
- * of the text keeps `★ repo` / `⠹ task` visually consistent at every width.
+ * of the text keeps `○ repo` / `⠹ task` visually consistent at every width.
  */
 export function spacedTitle(title: string, max: number): string {
   return ` ${truncateTitle(title, Math.max(0, max))}`

@@ -5,7 +5,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator, TaskEngineState } from "../../client/remote-orchestrator"
 import { engineEntry } from "../../engine/registry"
-import { DEFAULT_SPINNER_FRAMES, REDUCED_MOTION_SPINNER_FRAMES } from "../../engine/spinner-frames"
+import { DEFAULT_SPINNER_FRAMES } from "../../engine/spinner-frames"
 import { relativeAgeMs } from "../../tui/history/message-core"
 import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../tui/lib/spinner-frame-store"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
@@ -80,21 +80,17 @@ function tabLabel(
  * Every OTHER activity state (done / error / needs input / rate limited)
  * already surfaced as an episode, so that task is sitting in ATTENTION
  * above — running is the one thing this section can tell you that the
- * queue can't. Frames are engine-owned (vendor registry), motion respects
- * the reduced-motion preference.
+ * queue can't. Frames are engine-owned (vendor registry).
  */
 function runningBadge(opts: {
   activity: TaskEngineState | undefined
   task: Task
   frame: number
-  reducedMotion: boolean
   theme: ReturnType<typeof useTheme>["theme"]
   t: ReturnType<typeof useT>
 }): { glyph: string; label: string; color: RGBA } | undefined {
   if (opts.activity?.state !== "running") return undefined
-  const frames = opts.reducedMotion
-    ? REDUCED_MOTION_SPINNER_FRAMES
-    : (engineEntry(opts.task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES)
+  const frames = engineEntry(opts.task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES
   return {
     glyph: frames[opts.frame % frames.length] ?? frames[0] ?? "⠋",
     label: opts.t("workspace.inbox.state.running"),
@@ -193,7 +189,7 @@ export function AttentionInboxPane(props: {
   onDelete: (item: AttentionInboxItem) => void
   onClose: () => void
 }) {
-  const { theme, reducedMotion } = useTheme()
+  const { theme } = useTheme()
   const t = useT()
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = useState(0)
@@ -225,7 +221,7 @@ export function AttentionInboxPane(props: {
   const anyRunning = rows.some(
     (row) => row.kind === "recent" && props.engineStates?.get(row.task.id)?.state === "running",
   )
-  const spinnerFrame = useSpinnerFrame(anyRunning && !reducedMotion)
+  const spinnerFrame = useSpinnerFrame(anyRunning)
   // ponytail: headers are one line, cards three — the window budgets every
   // row as a card. Conservative by a couple of rows, never overflows.
   const maxVisibleCards = Math.max(
@@ -332,7 +328,6 @@ export function AttentionInboxPane(props: {
                     activity: props.engineStates?.get(row.task.id),
                     task: row.task,
                     frame: spinnerFrame,
-                    reducedMotion,
                     theme,
                     t,
                   })}

@@ -39,7 +39,6 @@ type State = {
   readonly mode: "dark" | "light"
   readonly transparentBackground: boolean
   readonly focusAccent: FocusAccentSlot
-  readonly reducedMotion: boolean
 }
 
 const store = createExternalStore<State>({
@@ -50,7 +49,6 @@ const store = createExternalStore<State>({
   // background unless the user explicitly turns transparency off.
   transparentBackground: true,
   focusAccent: "primary",
-  reducedMotion: false,
 })
 
 export function listThemes(): string[] {
@@ -100,14 +98,6 @@ export function setFocusAccent(v: FocusAccentSlot): void {
   store.update((s) => ({ ...s, focusAccent: v }))
 }
 
-export function reducedMotion(): boolean {
-  return store.get().reducedMotion
-}
-
-export function setReducedMotion(v: boolean): void {
-  store.update((s) => ({ ...s, reducedMotion: v }))
-}
-
 export function setThemeMode(mode: "dark" | "light"): void {
   store.update((s) => ({ ...s, mode }))
 }
@@ -118,13 +108,11 @@ export type ThemeContextValue = {
   selected: string
   transparentBackground: boolean
   focusAccent: FocusAccentSlot
-  reducedMotion: boolean
   mode(): "dark" | "light"
   set(name: string): boolean
   setMode(mode: "dark" | "light"): void
   setTransparentBackground(v: boolean): void
   setFocusAccent(v: FocusAccentSlot): void
-  setReducedMotion(v: boolean): void
   all(): string[]
   has(name: string): boolean
 }
@@ -179,7 +167,6 @@ export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "li
       selected: state.active,
       transparentBackground: state.transparentBackground,
       focusAccent: state.focusAccent,
-      reducedMotion: state.reducedMotion,
       mode: () => state.mode,
       set(name: string): boolean {
         if (!hasTheme(name)) return false
@@ -194,9 +181,6 @@ export function ThemeProvider(props: { children?: ReactNode; mode?: "dark" | "li
       },
       setFocusAccent(v: FocusAccentSlot): void {
         store.update((s) => ({ ...s, focusAccent: v }))
-      },
-      setReducedMotion(v: boolean): void {
-        store.update((s) => ({ ...s, reducedMotion: v }))
       },
       all: listThemes,
       has: hasTheme,

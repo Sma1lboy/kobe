@@ -87,7 +87,6 @@ describe("readUiPrefsFromStateFile", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
   })
 
@@ -102,7 +101,6 @@ describe("readUiPrefsFromStateFile", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
   })
 
@@ -116,7 +114,6 @@ describe("readUiPrefsFromStateFile", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
   })
 
@@ -165,7 +162,6 @@ describe("startUiPrefsWatcher", () => {
         sortMode: "default",
         keysCollapsed: false,
         projectFilter: null,
-        reducedMotion: false,
       },
     ])
     // The bus last-value cache is warm — what a `subscribe` replays.
@@ -188,7 +184,6 @@ describe("startUiPrefsWatcher", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
 
     // A write that doesn't move the visual prefs (an unrelated key, then
@@ -209,7 +204,6 @@ describe("startUiPrefsWatcher", () => {
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
-      reducedMotion: false,
     })
   })
 
