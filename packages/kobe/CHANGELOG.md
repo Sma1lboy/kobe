@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.38
+
+### Patch Changes
+
+- de22ad4: Add three bundled themes — `gruvbox`, `catppuccin` (Mocha/Latte), and `rose-pine` (Main/Dawn) — bringing the built-in set to ten. Three more (`everforest`, `kanagawa`, `solarized`) are hosted on the landing site and install with `kobe theme add https://kobe.sma1lboy.me/themes/<name>.json`, as worked examples of the publish path. Every new theme defines both a dark and a light mode using its upstream project's published palette, and was checked so body text, muted text, selected-row text, and the state colors all clear WCAG contrast floors in both modes.
+- a36d93f: Fix the horizontal choose-one row (engine picker, new-task dialog, quick composer) mangling its labels once enough choices are present: each label is now unbreakable and the ROW wraps, so a choice like `lazygit (split)` moves to the next line whole instead of splitting mid-word. Same fix applied to the quick composer's attachment chips. Also: one status-glyph vocabulary for the sidebar's project and task rows: a project row no longer falls back to a `★` painted in the brand primary, it uses the same `○`/`●`/`✓`/spinner glyphs and the same tone mapping as a task, so the icon says which STATE a row is in rather than which KIND of row it is. Also: remove the Reduced motion setting. Its spinner replacement animated a running task as `●`/`·` — but `●` is also the static badge for "turn complete, not yet seen", so a task that was still working read as finished-and-unread, sending you to an Inbox that correctly had nothing in it. Every engine now animates with its own brand frame set (claude's `·✢✳✶✻✽` oscillation, braille elsewhere), and the toast slide-in, materializing sweep, and tab-complete flash are always on. A regression test pins that no spinner frame may reuse a settled-state badge glyph. Existing `reducedMotion` keys in `state.json` are ignored.
+- c347624: Trim the bundled themes to three — `claude`, `conductor`, `tokyonight`. The other ten (`catppuccin`, `dracula`, `everforest`, `gruvbox`, `kanagawa`, `nord`, `opencode`, `osaka-jade`, `rose-pine`, `solarized`) now install on demand: `kobe theme add https://kobe.sma1lboy.me/themes/<name>.json`. Nothing about them changed except where they're stored, and the gallery at https://kobe.sma1lboy.me/themes previews all thirteen.
+
+  If you were using one of the moved themes, kobe falls back to `claude` until you install it again with the command above.
+
+  Also fixes a related bug that would have made this much worse: a theme installed with `kobe theme add` was validated against the bundled set on the next boot, so it silently reverted to the fallback. Hosts that load `~/.kobe/themes` now validate against the registry they just populated, so a user-installed theme survives a restart.
+
 ## 0.8.37
 
 ### Patch Changes
