@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { ATTR, type Chunk } from "../../src/tui/panes/terminal/sgr"
-import { overlayCursor } from "../../src/tui/panes/terminal/terminal-render"
+import { ATTR, type Chunk, type RGB } from "../../src/tui/panes/terminal/sgr"
+import { overlayCursor, sealRowEndAttributes } from "../../src/tui/panes/terminal/terminal-render"
 
 /** The single chunk carrying the INVERSE attribute — that's the cursor cell. */
 function cursorCell(rows: readonly (readonly Chunk[])[], y: number): Chunk | undefined {
@@ -55,5 +55,50 @@ describe("overlayCursor — cell-column aware", () => {
     const out = overlayCursor(rows, { x: 4, y: 0 })[0]
     expect(out.map((c) => c.text).join("")).toBe("ab   ")
     expect(out.at(-1)).toEqual({ text: " ", attributes: ATTR.INVERSE })
+  })
+})
+
+describe("sealRowEndAttributes — opentui row-end attribute leak workaround", () => {
+  const FG: RGB = [255, 255, 255]
+  const BG: RGB = [0, 0, 0]
+
+  it("clears attributes on the last cell of a full-width row", () => {
+    // A styled run reaching the final column is what makes opentui skip its
+    // per-row reset, bleeding the attribute into the whole rest of the frame.
+    const rows = [[{ text: "ab" } as Chunk, { text: "cde", attributes: ATTR.UNDERLINE } as Chunk]]
+    const out = sealRowEndAttributes(rows, 5, FG, BG)[0] as readonly Chunk[]
+    expect(out.map((c) => c.text).join("")).toBe("abcde")
+    // decoration survives everywhere but the sealed final cell
+    expect(out.at(-2)?.attributes).toBe(ATTR.UNDERLINE)
+    expect(out.at(-1)?.attributes ?? 0).toBe(0)
+  })
+
+  it("replays INVERSE as swapped colors so a last-column cursor stays visible", () => {
+    const rows = [[{ text: "abcd" } as Chunk, { text: "e", attributes: ATTR.INVERSE } as Chunk]]
+    const out = sealRowEndAttributes(rows, 5, FG, BG)[0] as readonly Chunk[]
+    const sealed = out.at(-1) as Chunk
+    expect(sealed.attributes ?? 0).toBe(0)
+    expect(sealed.fg).toEqual(BG)
+    expect(sealed.bg).toEqual(FG)
+  })
+
+  it("leaves short rows untouched — their run is followed by a normal reset", () => {
+    const rows = [[{ text: "ab", attributes: ATTR.UNDERLINE } as Chunk]]
+    expect(sealRowEndAttributes(rows, 40, FG, BG)[0]).toBe(rows[0])
+  })
+
+  it("counts wide glyphs by CELL width when deciding a row is full", () => {
+    // "你好" is 2 chunks-worth of text but FOUR cells: a cols=4 row is full.
+    const rows = [[{ text: "你好", attributes: ATTR.UNDERLINE } as Chunk]]
+    const out = sealRowEndAttributes(rows, 4, FG, BG)[0] as readonly Chunk[]
+    expect(out.map((c) => c.text).join("")).toBe("你好")
+    expect(out.at(-1)?.attributes ?? 0).toBe(0)
+    // ...and the same row is left alone in a wider terminal.
+    expect(sealRowEndAttributes(rows, 10, FG, BG)[0]).toBe(rows[0])
+  })
+
+  it("is a no-op for unstyled rows", () => {
+    const rows = [[{ text: "abcde" } as Chunk]]
+    expect(sealRowEndAttributes(rows, 5, FG, BG)[0]).toBe(rows[0])
   })
 })

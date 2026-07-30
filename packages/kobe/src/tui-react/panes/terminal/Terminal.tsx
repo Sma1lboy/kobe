@@ -45,7 +45,7 @@ import {
 } from "../../../tui/panes/terminal/ime-cursor"
 import { type PtyRegistry, getDefaultPtyRegistry } from "../../../tui/panes/terminal/registry"
 import { rowsToStyledText } from "../../../tui/panes/terminal/sgr-to-text-chunk"
-import { isShellMissing, overlayCursor } from "../../../tui/panes/terminal/terminal-render"
+import { isShellMissing, overlayCursor, sealRowEndAttributes } from "../../../tui/panes/terminal/terminal-render"
 import { overlaySelection } from "../../../tui/panes/terminal/terminal-selection"
 import { computeViewport, viewportCursor } from "../../../tui/panes/terminal/viewport"
 import { useTheme } from "../../context/theme"
@@ -210,7 +210,22 @@ export function Terminal(props: TerminalProps) {
   // Flatten every visible row into ONE `StyledText` — see the Solid
   // original for why a single element (not per-row `<text>`s) is load-
   // bearing for the cursor positioning math.
-  const styledSnapshot = useMemo(() => new StyledText(rowsToStyledText(cursorRows)), [cursorRows])
+  //
+  // `sealRowEndAttributes` is a local workaround for an opentui renderer bug
+  // (attributes open at a row's last column leak into the rest of the frame —
+  // the "wrapped URL underlines everything below it" report). Its doc comment
+  // has the full mechanism; drop this call once opentui resets per row.
+  const styledSnapshot = useMemo(() => {
+    const themeFg = theme.text.toInts()
+    const themeBg = theme.background.toInts()
+    const sealed = sealRowEndAttributes(
+      cursorRows,
+      bodyGeometry?.cols ?? 80,
+      [themeFg[0], themeFg[1], themeFg[2]],
+      [themeBg[0], themeBg[1], themeBg[2]],
+    )
+    return new StyledText(rowsToStyledText(sealed))
+  }, [cursorRows, bodyGeometry, theme])
 
   // Imperative content push — opentui 0.4 won't accept StyledText as a
   // JSX child or through the content prop (stringifies it).

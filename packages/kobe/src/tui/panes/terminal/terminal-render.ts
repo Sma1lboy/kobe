@@ -1,6 +1,6 @@
 import { charWidth } from "../../../lib/display-width.ts"
 import type { CursorPos } from "./pty"
-import { ATTR, type Chunk } from "./sgr"
+import { ATTR, type Chunk, type RGB } from "./sgr"
 
 /**
  * Heuristic: is this acquire-error message about the user's shell
@@ -88,4 +88,65 @@ export function overlayCursor(
 ): readonly (readonly Chunk[])[] {
   if (!cursor) return rows
   return rows.map((row, y) => (y === cursor.y ? overlayCursorRow(row, cursor.x) : row))
+}
+
+/**
+ * LOCAL PATCH for an opentui attribute leak (kept in kobe rather than
+ * upstreamed — see the `sealRowEndAttributes` call in the React pane).
+ *
+ * opentui's zig diff renderer declares `runLength` INSIDE its per-row loop
+ * (`renderer.zig`, `prepareRenderFrameWithWriter`) while its SGR writer only
+ * ever ADDS attribute bits (`ansi.zig` emits `\e[4m`, never `\e[24m`). So the
+ * first cell of a new row takes the `runStart == -1` branch with
+ * `runLength == 0` and SKIPS the `\e[0m` reset — any attribute still open at
+ * the end of the previous row bleeds into every following row until some
+ * other run happens to reset. A styled run that reaches the LAST column is
+ * exactly what triggers it, i.e. a wrapped URL: the terminal draws the rest
+ * of the frame underlined ("link underline runs off into the text below").
+ *
+ * The fix has to live where the row still exists as data: clear the
+ * attributes on the final cell of a row that fills the full width, and
+ * preserve what those attributes were DRAWING by resolving them to explicit
+ * colors — INVERSE becomes a literal fg/bg swap, so a cursor or selection
+ * cell parked in the last column keeps its highlight instead of vanishing.
+ * Underline/bold/italic lose one cell of decoration at the wrap point; that
+ * is the whole cost, and it is invisible next to a frame-wide bleed.
+ *
+ * Rows shorter than `cols` need no sealing: their run is followed by another
+ * chunk on the same row, which resets normally.
+ */
+export function sealRowEndAttributes(
+  rows: readonly (readonly Chunk[])[],
+  cols: number,
+  defaultFg: RGB,
+  defaultBg: RGB,
+): readonly (readonly Chunk[])[] {
+  if (cols <= 0) return rows
+  return rows.map((row) => {
+    const lastIndex = row.length - 1
+    const last = row[lastIndex]
+    if (!last) return row
+    const attrs = last.attributes ?? 0
+    if (attrs === 0) return row
+    let width = 0
+    for (const chunk of row) width += chunkCells(Array.from(chunk.text))
+    if (width < cols) return row
+
+    const chars = Array.from(last.text)
+    const tail = chars[chars.length - 1]
+    if (tail === undefined) return row
+    // INVERSE is the only attribute carrying information rather than
+    // decoration here (cursor + selection both paint with it), so replay it
+    // as swapped colors. `defaultFg`/`defaultBg` stand in for "the chunk
+    // didn't say" — the pane passes its theme's text/background.
+    const fg = last.fg ?? defaultFg
+    const bg = last.bg ?? defaultBg
+    const sealed: Chunk = (attrs & ATTR.INVERSE) !== 0 ? { text: tail, fg: bg, bg: fg } : { text: tail, fg, bg }
+
+    const head = chars.slice(0, -1).join("")
+    const rebuilt = row.slice(0, lastIndex)
+    if (head) rebuilt.push(cloneChunk(last, head))
+    rebuilt.push(sealed)
+    return rebuilt
+  })
 }
