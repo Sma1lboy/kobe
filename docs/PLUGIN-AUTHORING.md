@@ -7,7 +7,7 @@ and [design/plugin-events.md](./design/plugin-events.md); this page is the
 contract.
 
 A plugin is **a directory with a `kobe-plugin.toml` manifest** plus any argv
-commands your machine can run — Bash, Node, Bun, Python, Rust, a prebuilt
+commands your machine can run: Bash, Node, Bun, Python, Rust, a prebuilt
 binary. There is no SDK: the whole `kobe` CLI and the daemon socket are the
 plugin API. Kobe owns the host surface (install, validation, event dispatch,
 env injection, panes, settings UI, run logs); you own the implementation.
@@ -33,7 +33,7 @@ kobe plugin log you.hello     # inspect hook runs (exit codes, output, timing)
 
 ## Optional SDK (TypeScript)
 
-The contract above is the API — any language, no SDK required. For
+The contract above is the API: any language, no SDK required. For
 TypeScript/JavaScript authors, **`@sma1lboy/kobe-plugin-sdk`** wraps that
 same contract with types and autocomplete (zero deps, Node ≥ 18 or Bun):
 
@@ -44,15 +44,15 @@ const ctx = pluginContext()   // typed KOBE_PLUGIN_* env
 const ev = pluginEvent()      // typed event envelope (null outside [[events]])
 ```
 
-- `pluginContext()` / `pluginEvent()` — the env contract, typed.
-- `readSettings()` / `setting()` — your `[[settings]]` values from config `.env`.
-- `kobe()` / `kobeJson()` + `notify` / `dispatch` / `listTasks` / `openPane` —
+- `pluginContext()` / `pluginEvent()`: the env contract, typed.
+- `readSettings()` / `setting()`: your `[[settings]]` values from config `.env`.
+- `kobe()` / `kobeJson()` + `notify` / `dispatch` / `listTasks` / `openPane`:
   `$KOBE_BIN_PATH` callbacks.
-- `KobeSocket` — daemon socket client: `request(name, payload)` + live
+- `KobeSocket`: daemon socket client: `request(name, payload)` + live
   channel `subscribe` (always `role: "pane"`).
-- `Pane` — a tiny pane kit for `[[panes]]` pages: alt screen, raw-mode
+- `Pane`: a tiny pane kit for `[[panes]]` pages: alt screen, raw-mode
   keys, resize, absolute-addressed `draw(lines)`.
-- `PLUGIN_EVENT_NAMES` / `DAEMON_CHANNELS` — the catalogs as typed unions.
+- `PLUGIN_EVENT_NAMES` / `DAEMON_CHANNELS`: the catalogs as typed unions.
   These are the SINGLE source: the daemon itself imports them from the
   SDK's `./contract` module, so host and SDK can't drift by construction.
 
@@ -64,7 +64,7 @@ add the topic **`kobe-plugin`** → it appears in the marketplace
 `kobe plugin search`) automatically. Users install with
 `kobe plugin install owner/repo[/subdir]` and stay fresh with
 `kobe plugin outdated` / `kobe plugin update --all` (an update is a clean
-reinstall of the managed checkout — config/state survive).
+reinstall of the managed checkout; config/state survive).
 
 ## Manifest reference
 
@@ -110,14 +110,14 @@ pattern = "\\.(png|jpg)$"        # JS regex, case-insensitive, vs the file name
 action = "greet"                 # your action, invoked with the absolute path
 ```
 
-`command` is always argv — never a shell, no expansion (panes expand only
+`command` is always argv: never a shell, no expansion (panes expand only
 `$KOBE_PLUGIN_ROOT`). Unknown event names are warnings (forward compat);
 invalid types/patterns are install-time errors.
 
 ## Event catalog
 
 Declare `[[events]]` hooks; each fire runs your command with the envelope in
-`KOBE_PLUGIN_EVENT_JSON`. Events are **asynchronous observers** — your exit
+`KOBE_PLUGIN_EVENT_JSON`. Events are **asynchronous observers**. Your exit
 code and output never block or change what happened. Support: C = Claude
 Code, X = Codex (Kimi adapter pending).
 
@@ -134,7 +134,7 @@ Code, X = Codex (Kimi adapter pending).
 | `agent.running` / `agent.idle` / `agent.turn-complete` / `agent.permission-needed` / `agent.rate-limited` / `agent.error` | activity-STATE transitions, deduped per task+tab | |
 | `session.start` / `session.end` | engine session lifecycle (C; X start only) | |
 | `turn.prompt` / `turn.complete` / `turn.failed` / `turn.interrupted` | one event per turn edge (C, X; interrupted: Kimi-shaped) | `failure` class on failed |
-| `tool.pre` / `tool.post` / `tool.failed` | every tool call (C, X; failed: C) — **installed into engine config only while some enabled plugin subscribes** | `tool.name`, `tool.id` |
+| `tool.pre` / `tool.post` / `tool.failed` | every tool call (C, X; failed: C); **installed into engine config only while some enabled plugin subscribes** | `tool.name`, `tool.id` |
 | `attention.permission` / `attention.question` | the engine blocked on a human (C) | `waiting` |
 | `context.pre-compact` / `context.post-compact` | context compaction (C, X) | `compact.trigger: manual\|auto` |
 | `subagent.start` / `subagent.stop` | nested agent lifecycle (C) | `subagent.type/id` |
@@ -155,7 +155,7 @@ Envelope (`KOBE_PLUGIN_EVENT_JSON`):
 
 **The principle: any observable product moment is a candidate event.** The
 catalog grows as subsystems expose their edges (PR status and task status
-transitions are natural next ones) — if your plugin needs a
+transitions are natural next ones). If your plugin needs a
 moment that isn't fired yet, ask via `kobe feedback` or a GitHub issue; the
 plumbing (`ui.reportEvent` → plugin sink) makes additions cheap.
 
@@ -169,22 +169,22 @@ Every plugin command gets, on top of the user's environment:
 | `KOBE_SOCKET_PATH` | daemon unix socket, for raw JSON requests |
 | `KOBE_HOME_DIR` | set when kobe runs against a non-default home (keep passing it through) |
 | `KOBE_PLUGIN_ID`, `KOBE_PLUGIN_ROOT` | who you are, where your files are |
-| `KOBE_PLUGIN_CONFIG_DIR` | user-editable config (`.env` etc.) — survives reinstall |
-| `KOBE_PLUGIN_STATE_DIR` | your durable state — survives reinstall |
+| `KOBE_PLUGIN_CONFIG_DIR` | user-editable config (`.env` etc.); survives reinstall |
+| `KOBE_PLUGIN_STATE_DIR` | your durable state; survives reinstall |
 | events | `KOBE_PLUGIN_EVENT`, `KOBE_PLUGIN_EVENT_JSON`, `KOBE_PLUGIN_TASK_ID`, `KOBE_PLUGIN_TASK_TITLE` |
 | startup | `KOBE_PLUGIN_EVENT=startup` |
-| actions | `KOBE_PLUGIN_ACTION_ID`, `KOBE_PLUGIN_INVOKE_CWD` (where the user invoked — usually "the repo I mean") |
+| actions | `KOBE_PLUGIN_ACTION_ID`, `KOBE_PLUGIN_INVOKE_CWD` (where the user invoked, usually "the repo I mean") |
 | panes | `KOBE_PLUGIN_ENTRYPOINT_ID`; cwd is the task worktree |
 
-Never write durable state under `KOBE_PLUGIN_ROOT` — GitHub installs are
+Never write durable state under `KOBE_PLUGIN_ROOT`. GitHub installs are
 managed checkouts replaced on reinstall. Settings you declare in
 `[[settings]]` arrive as plain vars in your config `.env`; source it
 (`. "$KOBE_PLUGIN_CONFIG_DIR/.env"`) or read it yourself.
 
 ## Calling back into kobe
 
-**CLI (recommended — portable):** exec `$KOBE_BIN_PATH` with any command.
-The high-value verbs live under `kobe api` — machine-readable list via
+**CLI (recommended, portable):** exec `$KOBE_BIN_PATH` with any command.
+The high-value verbs live under `kobe api`: machine-readable list via
 `kobe api schema`, human list via `kobe api help`. Highlights:
 
 ```bash
@@ -205,33 +205,33 @@ the CLI unless you need push channels.
 
 ## Interaction surfaces
 
-- **ctrl+e picker** — every enabled plugin's panes are listed by title;
+- **ctrl+e picker**: every enabled plugin's panes are listed by title;
   picking one opens it with your declared placement.
-- **User keybindings** — users bind chords themselves in
+- **User keybindings**: users bind chords themselves in
   `~/.kobe/settings/keybindings.yaml`:
   `plugins: { ctrl+b: pane:you.example.board, f6: action:you.example.greet }`.
   Ship the suggestion in your README; kobe ships no default plugin chords.
-- **Files pane** — `[[file_handlers]]` claims opens by pattern.
-- **Host input dialog** — `kobe api prompt --title "…"` (SDK: `promptUser()`)
+- **Files pane**: `[[file_handlers]]` claims opens by pattern.
+- **Host input dialog**: `kobe api prompt --title "…"` (SDK: `promptUser()`)
   pops the TUI's standard input dialog and blocks for the answer: `{value}`
   on submit, `{cancelled, reason}` on esc/timeout. Use it instead of
   hand-rolling in-pane prompts.
-- **Settings → Plugins** — enable/disable, declared surfaces, last run,
+- **Settings → Plugins**: enable/disable, declared surfaces, last run,
   and your `[[settings]]` editors.
-- **CLI** — `kobe plugin action invoke`, `kobe plugin pane open`, `kobe
+- **CLI**: `kobe plugin action invoke`, `kobe plugin pane open`, `kobe
   plugin log`.
 
 ## Ground rules
 
 - **Hooks must be fast and silent.** Event hooks run on real product
-  moments; do your slow work detached. Exit non-zero only for real failures
-  — output is capped at 8 KB per run in `log.jsonl`.
+  moments; do your slow work detached. Exit non-zero only for real failures;
+  output is capped at 8 KB per run in `log.jsonl`.
 - **Never block.** Events are observers; there is no veto surface. Blocking
   tweaks (deny a tool call) belong in engine-native hooks the user installs
   directly.
 - **Trust model**: plugins run as the user with their environment; installs
   preview every command and build step first, but nothing is sandboxed.
-  Keep your repo auditable — that's what gets you installed.
+  Keep your repo auditable. That's what gets you installed.
 - Reference implementations: the first-party plugins in
   [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins)
   (notifications, GitHub/Linear task starters, lazygit pane, Chromium pane,

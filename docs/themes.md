@@ -1,7 +1,7 @@
 # Themes
 
-kobe bundles three color themes — `claude`, `conductor`, and
-`tokyonight` — and lets you drop additional ones into `~/.kobe/themes/`
+kobe bundles three color themes (`claude`, `conductor`, and
+`tokyonight`) and lets you drop additional ones into `~/.kobe/themes/`
 without recompiling. The bundled set is deliberately small; everything
 else is one `kobe theme add` away (see [Hosted themes](#hosted-themes)). Any
 file matching `~/.kobe/themes/*.json` is loaded at boot and shows up in
@@ -28,23 +28,23 @@ A theme is a JSON object with two top-level fields:
 }
 ```
 
-- **`defs`** (optional) — a palette of named colors that `theme` entries
+- **`defs`** (optional): a palette of named colors that `theme` entries
   can reference by name. Values are hex strings.
-- **`theme`** (required) — the slot map. Each value is either a hex
+- **`theme`** (required): the slot map. Each value is either a hex
   string (`#abc`, `#aabbcc`, `#aabbccdd`), a bare string referencing a
   key in `defs`, or a `{ dark, light }` pair for theme-mode-aware
   colors. Both `dark` and `light` are required when you use the variant
   form.
-- **`$schema`** (optional) — pointer back to kobe's JSON schema for
+- **`$schema`** (optional): pointer back to kobe's JSON schema for
   editor autocomplete. The canonical URL is the one above.
 
-You don't have to fill every slot — kobe falls back gracefully (e.g.
+You don't have to fill every slot; kobe has fallbacks (e.g.
 missing `borderActive` falls through to `border`, missing `border`
 falls through to `text`). The full slot list with fallbacks lives in
 [`packages/kobe/src/tui/context/theme.tsx`](../packages/kobe/src/tui/context/theme.tsx).
 The canonical example is
-[`packages/kobe/src/tui/context/theme/claude.json`](../packages/kobe/src/tui/context/theme/claude.json) —
-copy it as a starting point.
+[`packages/kobe/src/tui/context/theme/claude.json`](../packages/kobe/src/tui/context/theme/claude.json).
+Copy it as a starting point.
 
 ## CLI
 
@@ -71,11 +71,11 @@ loader applies.
 ## Publishing on GitHub
 
 1. Commit your theme JSON to a public repo (or gist).
-2. Click "Raw" on GitHub and copy the URL — it should look like
+2. Click "Raw" on GitHub and copy the URL. It should look like
    `https://raw.githubusercontent.com/<you>/<repo>/main/<theme>.json`.
 3. Share `kobe theme add <raw-url>` with anyone who wants to install it.
 
-That's the entire distribution mechanism — no plugin manifest, no
+That's the entire distribution mechanism: no plugin manifest, no
 registry. The same shape is what kobe ships internally; your theme
 doesn't have to know it's a "user" theme.
 
@@ -90,7 +90,7 @@ with one command:
 kobe theme add https://kobe.sma1lboy.me/themes/gruvbox.json
 ```
 
-Several of these shipped bundled before v0.8.38 — nothing about them
+Several of these shipped bundled before v0.8.38. Nothing about them
 changed except where they live, and installing one restores it exactly.
 Their sources are in `packages/kobe-landing/themes/`, and the gallery at
 <https://kobe.sma1lboy.me/themes> previews all thirteen, rendered from
@@ -106,5 +106,5 @@ these same JSON files.
   `kobe diagnose` for a full environment report and check the recent
   output above where you ran `kobe`.
 - **Want to override a built-in?** Drop a file with the same name
-  (e.g. `~/.kobe/themes/claude.json`) — user files load after bundled
+  (e.g. `~/.kobe/themes/claude.json`). User files load after bundled
   ones and win on collisions.

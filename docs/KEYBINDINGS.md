@@ -29,14 +29,14 @@ Default prefix actions:
 | `ctrl+a`, `h` | Cycle focus backward (Files → Workspace → Sidebar) |
 | `ctrl+a`, `l` | Cycle focus forward (Sidebar → Workspace → Files) |
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
-| `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits — owner picked prefix+m 2026-07-16) |
+| `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits; owner picked prefix+m 2026-07-16) |
 | `ctrl+a`, `w` | Close active split |
-| `ctrl+a`, `c` | Open the Kanban (issues board) — prefix-only, owner call 2026-07-29, demoted from the bare sidebar `c` it shipped with |
-| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17 — the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
+| `ctrl+a`, `c` | Open the Kanban (issues board): prefix-only, owner call 2026-07-29, demoted from the bare sidebar `c` it shipped with |
+| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 `ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct. Splits are
-direct again — `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
+direct again: `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
 their prefix strokes are dropped, same reasoning as the tab rows.
 
 ## Navigation and workspace defaults
@@ -69,22 +69,22 @@ removed so those Ctrl bytes reach the embedded engine. Existing
 being silently migrated to different semantics.
 
 Owner decision (2026-07-17): the relative chords are `prefix+h` (backward) and
-`prefix+l` (forward), not j/k — the three panes are laid out horizontally, so
+`prefix+l` (forward), not j/k. The three panes are laid out horizontally, so
 left/right vim keys match the spatial direction.
 
 Owner decision (2026-07-29): `ctrl+<digit>` jumps straight to a task, and is
-GLOBAL rather than sidebar-scoped — the whole value is switching tasks without
+GLOBAL rather than sidebar-scoped: the whole value is switching tasks without
 leaving the engine pane, so the digits are reserved out of the terminal
 passthrough (`RESERVED_GLOBAL_CHORDS`). The cost is the embedded shell's
 ctrl+digit control bytes; the real escape and backspace keys are untouched.
 
-**Each row prints the digit that jumps to it** (`panes/sidebar/jump-digits.ts`
-— one list feeds the chord table, the handler, and the renderer). That is what
+**Each row prints the digit that jumps to it** (`panes/sidebar/jump-digits.ts`;
+one list feeds the chord table, the handler, and the renderer). That is what
 makes the feature usable rather than clever:
 
 - `ctrl+1` does not exist. The legacy terminal protocol has no encoding for it
   (only ctrl+2…ctrl+8 map to C0 bytes; 1, 9 and 0 send nothing), verified on
-  the owner's terminal — so the first row prints, and answers to, `2`. Nobody
+  the owner's terminal. The first row prints, and answers to, `2`. Nobody
   computes an offset because the number is right there.
 - Under the **`recent`** sort the list reorders as you switch, so the digits
   reorder with it. Reading them off the screen is the intended interaction:
@@ -92,12 +92,12 @@ makes the feature usable rather than clever:
   task you are in sits at the top, so the digits read as distance from where
   you are. Want fixed addresses instead? `t` switches the sidebar to the
   **`default`** sort, whose order is stored and never reshuffles on its own.
-- A row past the ninth prints no digit, and a chord with no row does nothing —
-  a jump that silently lands somewhere else is worse than one that does
+- A row past the ninth prints no digit, and a chord with no row does nothing.
+  A jump that silently lands somewhere else is worse than one that does
   nothing.
 
 Owner decision (2026-07-25): focus movement is a cursor, not a ring. It clamps
-at both ends (sidebar on the left, files on the right) instead of wrapping —
+at both ends (sidebar on the left, files on the right) instead of wrapping.
 `prefix+h` from the sidebar and `prefix+l`/`F4` from files are no-ops.
 
 ## Sidebar and Files
@@ -107,24 +107,25 @@ dialog is active. The live F1 help lists every row and binding id.
 
 Common Sidebar actions include `n` new task, `enter` open, `s` settings, `o`
 open Worktree, `a` archive, `d` delete, `r` rename, `b` rename branch, `v`
-change engine, `/` search, and `[`/`]` switch Working/Archives.
+change engine, `/` search, `u` open the Update page (version check +
+one-key updater), and `[`/`]` switch Working/Archives.
 
 Owner decision (2026-07-29): the Kanban is `prefix+c`, global scope, no direct
-chord — demoted from the bare sidebar `c` it originally shipped with. The
+chord, demoted from the bare sidebar `c` it originally shipped with. The
 sidebar's bare letters are per-task verbs (new, archive, delete, rename); the
 Kanban is a step-back-and-look surface, so it belongs with the other whole-page
 views reached through the prefix (`prefix+i` Inbox). Going global also means it
 opens from any pane instead of only under sidebar focus. `c` (cards) survives as
-the second stroke — the mnemonic letters k/b/i were already taken.
+the second stroke; the mnemonic letters k/b/i were already taken.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
 Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
 call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
-chord was unreachable from where the owner actually sits — on the sidebar
+chord was unreachable from where the owner actually sits (on the sidebar
 `ctrl+p` is the project filter, and inside the terminal it passes through to
-the engine — so his muscle memory went to the prefix route, which was unbound
+the engine), so his muscle memory went to the prefix route, which was unbound
 (HUD showed `ctrl+a + shift+p ∅`). Both `p` and `shift+p` are bound because
 "PR" reads uppercase and the capital press must land. The handler also guards
 the target branch: firing it on a session sitting on the PR base (a project
@@ -134,7 +135,7 @@ main session) surfaces a toast instead of sending the engine a doomed
 Uppercase letters are distinct chords: a keypress with shift is matched as
 `shift+<letter>` first, falling back to the bare letter, so `P` (written
 `shift+p` or just `P` in YAML) can be bound apart from `p`. Shift combined
-with other modifiers on a letter (`ctrl+shift+p`) stays invalid — legacy
+with other modifiers on a letter (`ctrl+shift+p`) stays invalid: legacy
 terminals send the same byte with and without shift there.
 
 The Inbox is a modal dialog opened with `prefix+i`. Every row is a pending
@@ -150,7 +151,7 @@ or embedded-terminal shortcuts outside the dialog.
 Diff review notes live in the read-only diff content tab (workspace focus,
 diff kind only, inert elsewhere): `j/k` (and arrows) line cursor, `v` range
 anchor, `c` note dialog, `s` send all unsent notes to the engine session.
-Owner decision (2026-07-27): plain direct letters, diff-tab-scoped — they
+Owner decision (2026-07-27): plain direct letters, diff-tab-scoped. They
 follow the same raw-binding precedent as the preview's `o` (system open), so
 they cannot shadow the composer, embedded terminals, or any other pane. The
 central table carries documentation-only rows (`diff.review.*`) so F1 and
@@ -199,11 +200,11 @@ darwin:
 ```
 
 Resolution (owner sign-off 2026-07-28): kobe ships **no default plugin
-chords** — every plugin chord is the user's own placement call, so the
+chords**. Every plugin chord is the user's own placement call, so the
 catalogue/help surfaces don't list them. They register at the workspace-host
 level with the same open-page gating as global rows; a chord that shadows a
 catalogue binding applies with a warning. Fire path is a detached
-`kobe plugin pane open|action invoke` — chord-fired actions have no
+`kobe plugin pane open|action invoke`: chord-fired actions have no
 terminal, so interactive pickers belong in panes.
 
 ## Adding or moving a chord

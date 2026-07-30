@@ -51,6 +51,10 @@ Task = git worktree + hosted engine sessions + branch
   surface work to the TUI. The `kobe-desktop` Electron shell was removed the
   same day for the same reason.
 - `packages/branding/` — Remotion assets and checked-in replay rendering.
+- `packages/kobe-docs/` — public docs site (Fumadocs on Next.js, static
+  export). Content is synced from `docs/` by `scripts/sync-docs.mjs`
+  (frontmatter injection + link rewriting); edit the source in `docs/`,
+  never the generated copies.
 - Official plugins live in the separate
   [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) repo
   (`kobe plugin install Sma1lboy/kobe-plugins/<name>`).

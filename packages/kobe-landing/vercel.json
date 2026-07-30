@@ -3,6 +3,18 @@
   "buildCommand": null,
   "outputDirectory": ".",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "https://docs.kobe.sma1lboy.me/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/(.*)",
+      "destination": "https://docs.kobe.sma1lboy.me/$1",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
