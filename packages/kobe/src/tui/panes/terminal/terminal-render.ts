@@ -122,31 +122,51 @@ export function sealRowEndAttributes(
   defaultBg: RGB,
 ): readonly (readonly Chunk[])[] {
   if (cols <= 0) return rows
+  const lastColumn = cols - 1
   return rows.map((row) => {
-    const lastIndex = row.length - 1
-    const last = row[lastIndex]
-    if (!last) return row
-    const attrs = last.attributes ?? 0
-    if (attrs === 0) return row
-    let width = 0
-    for (const chunk of row) width += chunkCells(Array.from(chunk.text))
-    if (width < cols) return row
+    // Find the char occupying the row's LAST VISIBLE column. That is not
+    // necessarily the row's last char: the pane clips at `cols`
+    // (`wrapMode="none"`), and a snapshot row can be wider than the pane —
+    // an unwrapped backend hands over whole logical lines. Sealing the final
+    // CHUNK instead of the final visible CELL missed exactly that case: a
+    // long line whose trailing ` (round 2)` is clipped away still painted its
+    // underlined URL into the last column, and the leak survived.
+    let col = 0
+    for (let i = 0; i < row.length; i++) {
+      const chunk = row[i] as Chunk
+      const chars = Array.from(chunk.text)
+      for (let j = 0; j < chars.length; j++) {
+        const ch = chars[j] as string
+        const w = charWidth(ch.codePointAt(0) as number) || 1
+        if (col + w <= lastColumn) {
+          col += w
+          continue
+        }
+        // `ch` covers the last visible column (a wide glyph straddling it
+        // counts). Everything after it is clipped and cannot paint a cell.
+        const attrs = chunk.attributes ?? 0
+        if (attrs === 0) return row
+        // INVERSE is the only attribute carrying information rather than
+        // decoration here (cursor + selection both paint with it), so replay
+        // it as swapped colors. `defaultFg`/`defaultBg` stand in for "the
+        // chunk didn't say" — the pane passes its theme's text/background.
+        const fg = chunk.fg ?? defaultFg
+        const bg = chunk.bg ?? defaultBg
+        const sealed: Chunk = (attrs & ATTR.INVERSE) !== 0 ? { text: ch, fg: bg, bg: fg } : { text: ch, fg, bg }
 
-    const chars = Array.from(last.text)
-    const tail = chars[chars.length - 1]
-    if (tail === undefined) return row
-    // INVERSE is the only attribute carrying information rather than
-    // decoration here (cursor + selection both paint with it), so replay it
-    // as swapped colors. `defaultFg`/`defaultBg` stand in for "the chunk
-    // didn't say" — the pane passes its theme's text/background.
-    const fg = last.fg ?? defaultFg
-    const bg = last.bg ?? defaultBg
-    const sealed: Chunk = (attrs & ATTR.INVERSE) !== 0 ? { text: tail, fg: bg, bg: fg } : { text: tail, fg, bg }
-
-    const head = chars.slice(0, -1).join("")
-    const rebuilt = row.slice(0, lastIndex)
-    if (head) rebuilt.push(cloneChunk(last, head))
-    rebuilt.push(sealed)
-    return rebuilt
+        const head = chars.slice(0, j).join("")
+        const tail = chars.slice(j + 1).join("")
+        const rebuilt = row.slice(0, i)
+        if (head) rebuilt.push(cloneChunk(chunk, head))
+        rebuilt.push(sealed)
+        // The tail is clipped, but keep it so the row's text stays intact for
+        // anything reading chunks back (selection, copy).
+        if (tail) rebuilt.push(cloneChunk(chunk, tail))
+        return [...rebuilt, ...row.slice(i + 1)]
+      }
+    }
+    // Row never reaches the last column — its final run is followed by
+    // another chunk on the same row, which resets normally.
+    return row
   })
 }

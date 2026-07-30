@@ -97,6 +97,34 @@ describe("sealRowEndAttributes — opentui row-end attribute leak workaround", (
     expect(sealRowEndAttributes(rows, 10, FG, BG)[0]).toBe(rows[0])
   })
 
+  it("seals the last VISIBLE cell when the row is wider than the pane", () => {
+    // Unwrapped backends hand over whole logical lines, so a row can exceed
+    // `cols`. Sealing the last CHUNK missed this: the underlined URL still
+    // owned the last visible column while the clipped " (round 2)" tail was
+    // never painted, and the leak survived at narrow widths.
+    const rows = [
+      [{ text: "ab" } as Chunk, { text: "cdef", attributes: ATTR.UNDERLINE } as Chunk, { text: " tail" } as Chunk],
+    ]
+    const out = sealRowEndAttributes(rows, 5, FG, BG)[0] as readonly Chunk[]
+    // column 4 (0-indexed) is "c d e f"[2] = "e"
+    expect(out.map((c) => c.text).join("")).toBe("abcdef tail")
+    const sealed = out.find((c) => c.text === "e") as Chunk
+    expect(sealed.attributes ?? 0).toBe(0)
+    expect(sealed.fg).toEqual(FG)
+    // decoration before and after the sealed cell is untouched
+    expect(out.find((c) => c.text === "cd")?.attributes).toBe(ATTR.UNDERLINE)
+    expect(out.find((c) => c.text === "f")?.attributes).toBe(ATTR.UNDERLINE)
+  })
+
+  it("seals a wide glyph that straddles the last visible column", () => {
+    const rows = [[{ text: "a" } as Chunk, { text: "你好", attributes: ATTR.UNDERLINE } as Chunk]]
+    // cols=4: "a"=col0, 你=cols1-2, 好 straddles col3 (the last visible one)
+    const out = sealRowEndAttributes(rows, 4, FG, BG)[0] as readonly Chunk[]
+    expect(out.map((c) => c.text).join("")).toBe("a你好")
+    expect(out.find((c) => c.text === "好")?.attributes ?? 0).toBe(0)
+    expect(out.find((c) => c.text === "你")?.attributes).toBe(ATTR.UNDERLINE)
+  })
+
   it("is a no-op for unstyled rows", () => {
     const rows = [[{ text: "abcde" } as Chunk]]
     expect(sealRowEndAttributes(rows, 5, FG, BG)[0]).toBe(rows[0])

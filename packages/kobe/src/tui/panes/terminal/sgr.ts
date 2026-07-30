@@ -398,6 +398,19 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
     if (code.type === "CSI" && code.command === "m") {
       flush()
       style = applySgr(style, sgrParamsFromRaw(code.raw))
+      continue
+    }
+    // OSC 8 hyperlinks (`ESC ] 8 ; params ; URL ST`, the form claude-code and
+    // friends emit for clickable links). `@xterm/headless` underlines linked
+    // cells, so the production cell→chunk path reports ATTR.UNDERLINE for
+    // them; dropping the sequence here made this fallback render a link as
+    // plain text and, worse, made the MOCK pane disagree with the real pane
+    // about what a link looks like. Params are `["", url]` to open and
+    // `["", ""]` to close.
+    if (code.type === "OSC" && code.command === "8") {
+      flush()
+      const url = code.params[code.params.length - 1] ?? ""
+      style = { ...style, attributes: url ? style.attributes | ATTR.UNDERLINE : style.attributes & ~ATTR.UNDERLINE }
     }
     // Any other control code we let through as raw text is silently
     // dropped. If a stray OSC / CSI slips through, dropping it is safer

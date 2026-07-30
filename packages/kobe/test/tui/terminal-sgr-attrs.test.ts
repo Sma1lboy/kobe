@@ -117,3 +117,42 @@ describe("1-byte CSI introducer (0x9b)", () => {
     expect(chunks[0]?.fg).toEqual([247, 118, 142])
   })
 })
+
+describe("OSC 8 hyperlinks", () => {
+  const URL = "https://example.com/s/quill-landing"
+
+  // @xterm/headless underlines linked cells, so the production cell→chunk path
+  // reports ATTR.UNDERLINE for a link. This fallback parser used to DROP the
+  // OSC entirely, which made the mock pane render links unlike the real pane.
+  test("underlines the linked run and stops at the close (BEL-terminated)", () => {
+    const { chunks } = parseAnsiLine(`pre \x1b]8;;${URL}\x07${URL}\x1b]8;;\x07 (round 2)`)
+    expect(chunks.map((c) => c.text)).toEqual(["pre ", URL, " (round 2)"])
+    expect(chunks[0]?.attributes ?? 0).toBe(0)
+    expect(chunks[1]?.attributes).toBe(ATTR.UNDERLINE)
+    expect(chunks[2]?.attributes ?? 0).toBe(0)
+  })
+
+  test("handles the ST-terminated form identically", () => {
+    const { chunks } = parseAnsiLine(`a\x1b]8;;${URL}\x1b\\L\x1b]8;;\x1b\\b`)
+    expect(chunks.map((c) => c.text)).toEqual(["a", "L", "b"])
+    expect(chunks[1]?.attributes).toBe(ATTR.UNDERLINE)
+    expect(chunks[2]?.attributes ?? 0).toBe(0)
+  })
+
+  test("keeps SGR colors set inside the link and clears only the underline", () => {
+    // claude-code emits the link as OSC8-open + chalk.blue + OSC8-close.
+    const { chunks } = parseAnsiLine(`\x1b]8;;${URL}\x07\x1b[34m${URL}\x1b[39m\x1b]8;;\x07 tail`)
+    const link = chunks.find((c) => c.text === URL)
+    expect(link?.attributes).toBe(ATTR.UNDERLINE)
+    expect(link?.fg).toEqual([122, 162, 247])
+    expect(chunks.at(-1)?.text).toBe(" tail")
+    expect(chunks.at(-1)?.attributes ?? 0).toBe(0)
+    expect(chunks.at(-1)?.fg).toBeUndefined()
+  })
+
+  test("a link left open carries the underline to the end of the line", () => {
+    const { chunks, endStyle } = parseAnsiLine(`a\x1b]8;;${URL}\x07tail`)
+    expect(chunks.at(-1)?.attributes).toBe(ATTR.UNDERLINE)
+    expect(endStyle.attributes & ATTR.UNDERLINE).toBe(ATTR.UNDERLINE)
+  })
+})
