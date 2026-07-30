@@ -1,5 +1,8 @@
 import { Composition } from "remotion"
 import { BracketChip } from "./BracketChip"
+import { DocsDetachSurvives } from "./docs/DocsDetachSurvives"
+import { DocsFanOut } from "./docs/DocsFanOut"
+import { DocsTaskModel } from "./docs/DocsTaskModel"
 import { GlyphK } from "./GlyphK"
 import { PaneGrid } from "./PaneGrid"
 import { QuickLookReplay } from "./quicklook/QuickLookReplay"
@@ -18,6 +21,9 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="pane-grid" component={PaneGrid} durationInFrames={150} fps={30} width={1200} height={800} />
       <Composition id="task-streams" component={TaskStreams} durationInFrames={120} fps={30} width={1200} height={630} />
       <Composition id="glyph-k" component={GlyphK} durationInFrames={150} fps={30} width={800} height={800} />
+      <Composition id="docs-fan-out" component={DocsFanOut} durationInFrames={1} fps={30} width={1600} height={900} />
+      <Composition id="docs-task-model" component={DocsTaskModel} durationInFrames={1} fps={30} width={1600} height={900} />
+      <Composition id="docs-detach-survives" component={DocsDetachSurvives} durationInFrames={1} fps={30} width={1600} height={900} />
       {quicklookSpeedCuts.map((speed) => (
         <Composition
           key={speed}

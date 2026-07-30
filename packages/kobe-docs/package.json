@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@sma1lboy/kobe-docs",
+  "version": "0.0.0",
+  "description": "Public docs site for kobe — Fumadocs (Next.js, static export); content synced from the repo's docs/ folder.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bun scripts/sync-docs.mjs",
+    "dev": "bun run sync && next dev",
+    "build": "bun run sync && next build",
+    "start": "serve out",
+    "deploy": "bun run build && vercel build --prod --yes && vercel deploy --prebuilt --prod --yes"
+  },
+  "dependencies": {
+    "fumadocs-core": "^16.13.0",
+    "fumadocs-mdx": "^15.2.0",
+    "fumadocs-ui": "^16.13.0",
+    "lucide-react": "^1.25.0",
+    "mermaid": "^11.16.0",
+    "next": "^16.2.12",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^24",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "postcss": "^8.5.21",
+    "serve": "^14.2.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}

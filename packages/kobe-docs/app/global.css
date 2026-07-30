@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/*
+ * kobe brand theme — terracotta on warm dark/graphite, flat + hairlines.
+ * Values derive from packages/kobe-landing/tokens.css (OKLCH brand palette),
+ * mapped onto Fumadocs' official --color-fd-* theme variables.
+ */
+
+@theme {
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+/* Light: warm off-white paper, graphite ink, darkened terracotta accent. */
+:root {
+  --color-fd-background: oklch(96.5% 0.005 95);
+  --color-fd-foreground: oklch(27% 0.012 90);
+  --color-fd-muted: oklch(93% 0.006 95);
+  --color-fd-muted-foreground: oklch(48% 0.015 90);
+  --color-fd-popover: oklch(98% 0.004 95);
+  --color-fd-popover-foreground: oklch(27% 0.012 90);
+  --color-fd-card: oklch(94.5% 0.006 95);
+  --color-fd-card-foreground: oklch(27% 0.012 90);
+  --color-fd-border: oklch(87% 0.008 90);
+  --color-fd-primary: oklch(52% 0.105 41);
+  --color-fd-primary-foreground: oklch(97% 0.005 95);
+  --color-fd-secondary: oklch(93% 0.006 95);
+  --color-fd-secondary-foreground: oklch(32% 0.014 90);
+  --color-fd-accent: oklch(65% 0.107 41 / 0.1);
+  --color-fd-accent-foreground: oklch(48% 0.1 41);
+  --color-fd-ring: oklch(55% 0.1 41);
+}
+
+/* Dark (default): warm near-black paper, bone ink, terracotta accent. */
+.dark {
+  --color-fd-background: oklch(17.5% 0.003 100);
+  --color-fd-foreground: oklch(92.5% 0.011 95);
+  --color-fd-muted: oklch(20% 0.004 95);
+  --color-fd-muted-foreground: oklch(69.5% 0.015 90);
+  --color-fd-popover: oklch(14% 0.003 95);
+  --color-fd-popover-foreground: oklch(92.5% 0.011 95);
+  --color-fd-card: oklch(18.6% 0.004 95);
+  --color-fd-card-foreground: oklch(92.5% 0.011 95);
+  --color-fd-border: oklch(25.7% 0.01 85);
+  --color-fd-primary: oklch(65% 0.107 41);
+  --color-fd-primary-foreground: oklch(14% 0.02 45);
+  --color-fd-secondary: oklch(20% 0.004 95);
+  --color-fd-secondary-foreground: oklch(85.7% 0.014 95);
+  --color-fd-accent: oklch(65% 0.107 41 / 0.12);
+  --color-fd-accent-foreground: oklch(83.5% 0.045 45);
+  --color-fd-ring: oklch(70.5% 0.095 41);
+}
+
+/* Flat + hairlines: kill default radii/shadows, sharpen the docs frame. */
+@layer base {
+  :root {
+    --fd-layout-width: 1200px;
+  }
+
+  #nd-docs-layout,
+  #nd-page {
+    --fd-radius: 0px;
+  }
+
+  .prose {
+    --tw-prose-body: var(--color-fd-foreground);
+  }
+
+  /* Prose links wear the terracotta primary. */
+  .prose :where(a):not(:where(h1 a, h2 a, h3 a, h4 a, h5 a, h6 a)) {
+    color: var(--color-fd-primary);
+    text-decoration-color: var(--color-fd-primary);
+    text-underline-offset: 3px;
+  }
+
+  .prose :where(a):hover {
+    color: var(--color-fd-ring);
+  }
+
+  /* Inline code reads as a hairline chip, not a shaded box. */
+  .prose :where(code):not(:where(pre code)) {
+    border: 1px solid var(--color-fd-border);
+    border-radius: 4px;
+    background-color: var(--color-fd-muted);
+    font-weight: 400;
+    padding: 0.1em 0.35em;
+  }
+
+  /* Code blocks: flat card, hairline border, no shadow; warm card bg wins
+     over the Shiki theme's own (bluish) background. */
+  .prose pre,
+  figure[data-rehype-pretty-code-figure] {
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .prose pre {
+    background-color: var(--color-fd-card);
+  }
+
+  /* Headings in Space Grotesk, slightly tightened. */
+  .prose :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--font-sans);
+    letter-spacing: -0.015em;
+  }
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

@@ -9,6 +9,7 @@
     "still:grid": "remotion still src/index.ts pane-grid ../../docs/assets/brand/pane-grid.png --frame=120",
     "still:streams": "remotion still src/index.ts task-streams ../../docs/assets/brand/task-streams.png --frame=85",
     "still:glyph": "remotion still src/index.ts glyph-k ../../docs/assets/brand/glyph-k.png --frame=80",
+    "still:docs": "remotion still src/index.ts docs-fan-out ../../docs/assets/fan-out.png && remotion still src/index.ts docs-task-model ../../docs/assets/task-model.png && remotion still src/index.ts docs-detach-survives ../../docs/assets/detach-survives.png",
     "gif:bracket": "remotion render src/index.ts bracket-chip ../../docs/assets/brand/bracket-chip.gif --codec=gif",
     "gif:grid": "remotion render src/index.ts pane-grid ../../docs/assets/brand/pane-grid.gif --codec=gif",
     "gif:streams": "remotion render src/index.ts task-streams ../../docs/assets/brand/task-streams.gif --codec=gif",
