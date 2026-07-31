@@ -264,8 +264,14 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     } finally {
       client.close()
     }
-  } catch {
-    /* swallow — hooks must never fail the engine */
+  } catch (err) {
+    // Still swallowed — a hook must never fail the engine — but no longer
+    // INVISIBLE. A silently-dropped Stop leaves the sidebar spinning with
+    // zero evidence anywhere; debugging that cost a session precisely
+    // because this catch left no trace. Opt-in so normal runs stay quiet.
+    if (process.env.KOBE_HOOK_DEBUG) {
+      console.error(`[kobe hook] ${verb} failed:`, err instanceof Error ? err.message : String(err))
+    }
   }
 }
 

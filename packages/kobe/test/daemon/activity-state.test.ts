@@ -67,7 +67,7 @@ describe("daemon activity state", () => {
       bus,
       TTL_MS,
       () => Date.now(),
-      () => Promise.resolve(0),
+      () => Promise.resolve({ mtimeMs: 0 }),
     )
 
     registry.report("task-err", "turn-failed", { failure: "other" })

@@ -71,8 +71,22 @@ export function resolveEngineStateTtlMs(): number {
  * missed Stop ⇒ idle) apart from a long single turn that is still writing
  * tool output to its transcript (alive ⇒ keep the badge, re-arm). Filesystem-
  * only; never throws (a rejection is treated as `undefined` ⇒ lapse).
+ *
+ * `completedAt` is the newest turn-COMPLETION marker in the same transcript.
+ * Mtime alone answers "is anything still being written", which is NOT the
+ * question the watchdog is asking: an engine sitting idle at its prompt keeps
+ * touching its transcript, so a missed Stop re-armed the watchdog forever and
+ * the spinner never stopped. A completion at/after the last write means the
+ * last thing that happened WAS the turn ending, so the badge must drop.
  */
-export type ActivityLivenessProbe = (taskId: string) => Promise<number | undefined>
+export interface ActivityLiveness {
+  /** Newest transcript mtime (epoch ms), or undefined when unknown. */
+  readonly mtimeMs?: number
+  /** Newest turn-completion marker timestamp (epoch ms), if any. */
+  readonly completedAt?: number
+}
+
+export type ActivityLivenessProbe = (taskId: string) => Promise<ActivityLiveness | undefined>
 
 /** The reporting engine's own session identity (from its hook payload). */
 export interface EngineSessionInfo {
@@ -174,6 +188,38 @@ export class DaemonActivityRegistry {
    * re-arm (a heartbeat) instead of idling. Only a genuinely silent engine
    * (no recent write ⇒ a missed Stop / hung process) lapses to idle.
    */
+  /** Probe wrapper: a best-effort filesystem read must never crash the daemon,
+   *  and a failure reads as "silent" ⇒ lapse. */
+  private async probe(taskId: string): Promise<ActivityLiveness | undefined> {
+    try {
+      return await this.livenessAt(taskId)
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Is the engine still mid-turn? THE single definition behind both lapse
+   * watchdogs (task + tab), deliberately shared so the two cannot drift.
+   *
+   * A fresh transcript write means "the engine is alive", which used to be
+   * read as "the turn is still running". Those are different claims: an
+   * engine parked at its prompt waiting for the user keeps touching its
+   * transcript, so with a missed Stop every lapse re-armed and the spinner
+   * span forever (the "kobe shows running long after it stopped" report).
+   *
+   * A completion marker at/after the turn started settles it — the last
+   * thing that happened WAS this turn ending, so stop re-arming regardless
+   * of how recent the writes are. Only with no such marker does a fresh
+   * write keep the badge lit, which is the long-single-turn case the
+   * heartbeat exists for.
+   */
+  private stillWorking(live: ActivityLiveness | undefined, at: number): boolean {
+    if (!live) return false
+    if (live.completedAt !== undefined && live.completedAt >= at) return false
+    return live.mtimeMs !== undefined && live.mtimeMs > this.now() - this.staleMs
+  }
+
   private armLapse(taskId: string, at: number): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
       void this.handleLapse(taskId, at)
@@ -200,18 +246,13 @@ export class DaemonActivityRegistry {
     const before = this.tabActivity.get(taskId)?.get(tabId)
     if (!before || before.at !== at) return
 
-    let mtime: number | undefined
-    try {
-      mtime = await this.livenessAt(taskId)
-    } catch {
-      mtime = undefined
-    }
+    const live = await this.probe(taskId)
 
     const tabs = this.tabActivity.get(taskId)
     const cur = tabs?.get(tabId)
     if (!tabs || !cur || cur.at !== at) return
 
-    if (mtime !== undefined && mtime > this.now() - this.staleMs) {
+    if (this.stillWorking(live, at)) {
       cur.lapse = this.armTabLapse(taskId, tabId, at)
       return
     }
@@ -233,14 +274,7 @@ export class DaemonActivityRegistry {
     const before = this.activity.get(taskId)
     if (!before || before.at !== at) return
 
-    let mtime: number | undefined
-    try {
-      mtime = await this.livenessAt(taskId)
-    } catch {
-      // Probe failure ⇒ treat as silent and fall back to lapsing. Never crash
-      // the daemon over a best-effort filesystem read.
-      mtime = undefined
-    }
+    const live = await this.probe(taskId)
 
     // Re-read after the await: the entry may have been replaced or cleared
     // while the probe was in flight. Acting on a stale `at` would clobber a
@@ -248,12 +282,7 @@ export class DaemonActivityRegistry {
     const cur = this.activity.get(taskId)
     if (!cur || cur.at !== at) return
 
-    // Alive iff the transcript was written within the trailing staleness
-    // window. Using "within the last staleMs" (rather than strictly after
-    // `at`) is what makes the heartbeat correct across re-arms: each window
-    // demands a FRESH write, so a continuously-writing turn stays lit forever
-    // while a turn that actually went quiet lapses within one more `staleMs`.
-    if (mtime !== undefined && mtime > this.now() - this.staleMs) {
+    if (this.stillWorking(live, at)) {
       cur.lapse = this.armLapse(taskId, at)
       return
     }

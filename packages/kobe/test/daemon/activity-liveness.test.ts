@@ -47,7 +47,7 @@ describe("activity registry liveness watchdog", () => {
 
   it("re-arms (does not idle) a running turn whose transcript keeps advancing", async () => {
     // Probe always reports "written just now" ⇒ alive every window.
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(Date.now()))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now() }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
     registry.report("t", "turn-start")
@@ -63,10 +63,45 @@ describe("activity registry liveness watchdog", () => {
     expect(probe).toHaveBeenCalledTimes(3)
   })
 
+  it("idles a turn whose transcript kept advancing but ALREADY completed", async () => {
+    // The reported bug: an engine parked at its prompt keeps touching its
+    // transcript, so an mtime-only heartbeat re-armed forever and the sidebar
+    // spun long after the turn ended (a missed Stop hook left `running` with
+    // nothing to clear it). A completion at/after the turn start settles it.
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now(), completedAt: Date.now() }))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start")
+    expect(states.t).toEqual(["running"])
+
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    expect(states.t).toEqual(["running", "idle"])
+    // and it stays idle — no re-arm resurrects it
+    await vi.advanceTimersByTimeAsync(TTL * 2)
+    expect(states.t).toEqual(["running", "idle"])
+  })
+
+  it("keeps a long turn lit when the completion predates it (stale marker)", async () => {
+    // A marker from the PREVIOUS turn must not idle the current one; only a
+    // completion at/after this turn's start counts.
+    const startedAt = Date.now()
+    const probe: ActivityLivenessProbe = vi.fn(() =>
+      Promise.resolve({ mtimeMs: Date.now(), completedAt: startedAt - 1 }),
+    )
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start")
+    await vi.advanceTimersByTimeAsync(TTL)
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    expect(states.t).toEqual(["running"])
+  })
+
   it("lapses to idle when the transcript has not advanced within the window", async () => {
     // Probe reports an mtime stuck at the report instant (epoch 0) — outside
     // the trailing window once the timer fires at TTL.
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(0))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: 0 }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
     registry.report("t", "turn-start")
@@ -78,7 +113,7 @@ describe("activity registry liveness watchdog", () => {
 
   it("cancels a pending rescheduled lapse when a later report arrives", async () => {
     let alive = true
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(alive ? Date.now() : 0))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(alive ? { mtimeMs: Date.now() } : { mtimeMs: 0 }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
     registry.report("t", "turn-start")
@@ -118,7 +153,7 @@ describe("activity registry liveness watchdog", () => {
    * so hook-wins subscribers fall back to the quiescence poll.
    */
   it("lapses a silent per-tab entry and publishes a tabId-scoped idle", async () => {
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(0))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: 0 }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
     const tabEvents: { tabId?: string; state: TaskActivityState }[] = []
     bus.onPublish((event) => {
@@ -139,7 +174,7 @@ describe("activity registry liveness watchdog", () => {
   })
 
   it("keeps an alive per-tab running entry lit across windows (heartbeat)", async () => {
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(Date.now()))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now() }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
     registry.report("t", "turn-start", undefined, "tab-1")
@@ -152,7 +187,7 @@ describe("activity registry liveness watchdog", () => {
   })
 
   it("sticky per-tab states (turn_complete) never lapse", async () => {
-    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve(0))
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: 0 }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
     registry.report("t", "turn-complete", undefined, "tab-1")
@@ -164,10 +199,10 @@ describe("activity registry liveness watchdog", () => {
   })
 
   it("never idles after the entry was cleared during the probe await", async () => {
-    let resolveProbe: ((v: number) => void) | undefined
+    let resolveProbe: ((v: { mtimeMs: number }) => void) | undefined
     const probe: ActivityLivenessProbe = vi.fn(
       () =>
-        new Promise<number>((resolve) => {
+        new Promise<{ mtimeMs: number }>((resolve) => {
           resolveProbe = resolve
         }),
     )
@@ -176,7 +211,7 @@ describe("activity registry liveness watchdog", () => {
     registry.report("t", "turn-start")
     await vi.advanceTimersByTimeAsync(TTL) // timer fires, probe is now in flight
     registry.clearTask("t") // supersedes the in-flight lapse
-    resolveProbe?.(0) // would lapse, but the entry is gone
+    resolveProbe?.({ mtimeMs: 0 }) // would lapse, but the entry is gone
     await Promise.resolve()
     await Promise.resolve()
 

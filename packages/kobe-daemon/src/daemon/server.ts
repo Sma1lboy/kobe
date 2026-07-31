@@ -18,6 +18,7 @@ import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { sweepPtyHostSessions } from "../client/pty-process.ts"
 import { maybeStartPluginHost } from "../plugins/runtime.ts"
+import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import {
@@ -157,19 +158,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
     broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
   })
 
-  // Liveness probe for the activity watchdog: resolve taskId → worktree +
-  // vendor via the orchestrator, then read the engine's newest transcript
-  // mtime (the same fs-only history reader auto-title uses — no tmux, no
-  // subprocess). A long single turn writes tool output to its transcript
-  // even though it emits no hook events between turn-start and Stop, so this
-  // mtime is the signal that distinguishes "still working" from a missed
-  // Stop. Best-effort: any failure resolves `undefined` ⇒ the watchdog
-  // lapses to idle as before, never crashing the daemon.
-  const livenessAt: ActivityLivenessProbe = async (taskId) => {
-    const task = orch.getTask(taskId)
-    if (!task?.worktreePath) return undefined
-    return runtime.latestTranscriptMtime(task.vendor ?? runtime.defaultTaskVendor, task.worktreePath)
-  }
+  // Liveness probe for the activity lapse watchdog — see activity-liveness.ts
+  // for why it reads a completion marker and not just the transcript mtime.
+  const livenessAt: ActivityLivenessProbe = (taskId) => readActivityLiveness(orch, runtime, taskId)
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
