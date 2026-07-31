@@ -22,7 +22,7 @@
 
 import { errorMessage } from "@/lib/error-message"
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { CursorPos, TaskPty, TerminalRow } from "../../../tui/panes/terminal/pty"
+import type { CursorPos, TaskPty, TerminalRow, TerminalSnapshotWindow } from "../../../tui/panes/terminal/pty"
 import type { PtyRegistry } from "../../../tui/panes/terminal/registry"
 import { useLatest } from "../../lib/use-latest"
 
@@ -47,6 +47,7 @@ export interface UseTerminalPtyOpts {
 export interface UseTerminalPtyResult {
   pty: TaskPty | null
   snapshot: readonly TerminalRow[]
+  snapshotWindow: TerminalSnapshotWindow | null
   cursor: CursorPos | null
   exited: boolean
   acquireError: string | null
@@ -59,6 +60,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   // would render blank with no hint as to why.
   const [acquireError, setAcquireError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<readonly TerminalRow[]>([])
+  const snapshotWindowRef = useRef<TerminalSnapshotWindow | null>(null)
   const [cursor, setCursor] = useState<CursorPos | null>(null)
   // Dead-shell flag (revival checklist #5): flips when the PTY reports
   // exit for any reason. The last snapshot stays visible; the banner +
@@ -87,6 +89,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     if (!cwd || !taskId || !geometryReady) {
       setPty(null)
       setSnapshot([])
+      snapshotWindowRef.current = null
       setCursor(null)
       setAcquireError(null)
       return
@@ -105,11 +108,13 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
       setAcquireError(message)
       setPty(null)
       setSnapshot([])
+      snapshotWindowRef.current = null
       setCursor(null)
       return
     }
     setAcquireError(null)
     setSnapshot([])
+    snapshotWindowRef.current = null
     setCursor(null)
     setExited(handle.killed)
     setPty(handle)
@@ -135,7 +140,8 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
       setExited(true)
       onExitRef.current?.({ deadOnAttach: pty.deadOnAttach === true })
     })
-    const unsubscribe = pty.onData((snap, c) => {
+    const unsubscribe = pty.onData((snap, c, window) => {
+      snapshotWindowRef.current = window
       setSnapshot(snap)
       setCursor(c)
     })
@@ -144,6 +150,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     // tick.
     try {
       const initial = pty.capture()
+      snapshotWindowRef.current = pty.captureWindow()
       if (initial.length > 0) setSnapshot(initial)
       setCursor(pty.captureCursor())
     } catch {
@@ -173,6 +180,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
         if (!fresh) return
         setPty(fresh)
         setSnapshot([])
+        snapshotWindowRef.current = null
         setCursor(null)
         onFreshPtyRef.current()
       } catch (err) {
@@ -184,6 +192,7 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
         setAcquireError(message)
         setPty(null)
         setSnapshot([])
+        snapshotWindowRef.current = null
         setCursor(null)
       }
     },
@@ -210,5 +219,5 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
     // satisfies the linter without changing when this effect re-fires.
   }, [opts.resetToken, forceReacquire])
 
-  return { pty, snapshot, cursor, exited, acquireError, forceReacquire }
+  return { pty, snapshot, snapshotWindow: snapshotWindowRef.current, cursor, exited, acquireError, forceReacquire }
 }

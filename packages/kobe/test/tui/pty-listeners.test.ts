@@ -15,10 +15,10 @@ describe("PtyListeners", () => {
     })
     listeners.addTitle(title)
 
-    listeners.publishData([], null)
+    listeners.publishData([], null, null)
     listeners.publishTitle("claude")
 
-    expect(data).toHaveBeenCalledWith([], null)
+    expect(data).toHaveBeenCalledWith([], null, null)
     expect(title).toHaveBeenCalledWith("claude")
     expect(listeners.dataCount).toBe(2)
   })
@@ -31,7 +31,7 @@ describe("PtyListeners", () => {
     listeners.addExit(exit)
 
     off()
-    listeners.publishData([], null)
+    listeners.publishData([], null, null)
     for (const callback of listeners.drainExits()) callback()
     for (const callback of listeners.drainExits()) callback()
 

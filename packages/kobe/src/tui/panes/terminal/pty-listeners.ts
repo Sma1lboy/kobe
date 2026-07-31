@@ -6,7 +6,7 @@
  * the emulator makes lifecycle teardown less coupled to VT/snapshot code.
  */
 
-import type { CursorPos, DataListener, TerminalRow } from "./pty-types"
+import type { CursorPos, DataListener, TerminalRow, TerminalSnapshotWindow } from "./pty-types"
 
 type TitleListener = (title: string) => void
 type ExitListener = () => void
@@ -35,10 +35,10 @@ export class PtyListeners {
     return () => this.titles.delete(listener)
   }
 
-  publishData(snapshot: readonly TerminalRow[], cursor: CursorPos | null): void {
+  publishData(snapshot: readonly TerminalRow[], cursor: CursorPos | null, window: TerminalSnapshotWindow | null): void {
     for (const listener of this.data) {
       try {
-        listener(snapshot, cursor)
+        listener(snapshot, cursor, window)
       } catch {
         /* one listener must not break the others */
       }

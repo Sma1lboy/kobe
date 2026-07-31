@@ -81,11 +81,20 @@ export type PtyDetachOpts = {
   readonly parkedScreenBytes?: number
 }
 
-/**
- * Listener for new pane snapshots. Receives the full screen as
- * structured rows (one `Chunk[]` per row) plus the cursor position.
- */
-export type DataListener = (rows: readonly TerminalRow[], cursor: CursorPos | null) => void
+/** Stable address of the first row in one bounded terminal snapshot. */
+export type TerminalSnapshotWindow = {
+  /** Changes whenever resize/reset invalidates the terminal's line identity. */
+  readonly epoch: number
+  /** Absolute line id of `rows[0]` within this epoch. */
+  readonly startLine: number
+}
+
+/** Listener for a full rendered snapshot plus cursor and stable window address. */
+export type DataListener = (
+  rows: readonly TerminalRow[],
+  cursor: CursorPos | null,
+  window: TerminalSnapshotWindow | null,
+) => void
 
 /** Cursor position within the rendered pane, 0-based. */
 export type CursorPos = { x: number; y: number }
@@ -142,6 +151,8 @@ export interface TaskPtyLike {
   resize(cols: number, rows: number): void
   capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null
+  /** Address paired with `capture()`; null for backends without stable line ids. */
+  captureWindow(): TerminalSnapshotWindow | null
   kill(): void
   /**
    * Drop this handle WITHOUT ending the session, when the backend can

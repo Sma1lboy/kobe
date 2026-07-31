@@ -6,6 +6,7 @@ import {
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
+  type TerminalSnapshotWindow,
   extractOscTitle,
 } from "./pty-types"
 import { parseAnsiSnapshot } from "./sgr"
@@ -71,7 +72,7 @@ export class MockTaskPty implements TaskPtyLike {
     const rows = this.capture()
     for (const cb of this.listeners) {
       try {
-        cb(rows, this._cursor)
+        cb(rows, this._cursor, null)
       } catch {
         /* one listener must not break the others */
       }
@@ -87,7 +88,7 @@ export class MockTaskPty implements TaskPtyLike {
     this.listeners.add(cb)
     if (this.buffer !== "") {
       try {
-        cb(this.capture(), this._cursor)
+        cb(this.capture(), this._cursor, null)
       } catch {
         /* one listener must not break the others */
       }
@@ -116,6 +117,10 @@ export class MockTaskPty implements TaskPtyLike {
   captureCursor(): CursorPos | null {
     if (this._killed) return null
     return this._cursor
+  }
+
+  captureWindow(): TerminalSnapshotWindow | null {
+    return null
   }
 
   kill(): void {
