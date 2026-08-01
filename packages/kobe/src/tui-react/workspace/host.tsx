@@ -12,7 +12,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../state/sidebar-tree"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
-import { type SidebarNav, focusPaneForNav } from "../../tui/panes/sidebar/nav-core"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { PrefixHud } from "../component/prefix-hud"
@@ -34,7 +33,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
-import { renderContentPage, renderFullWindowPage } from "./host-pages"
+import { renderContentPage, renderFullWindowPage, useHostPagesState } from "./host-pages"
 import { HostSidebar } from "./host-sidebar"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
@@ -46,7 +45,6 @@ import {
 } from "./optimistic-activity"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
-import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { activeTabIdFor, forgetTaskTabs, requestTabActivation, setUiEventReporter } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useFileOpenActions } from "./use-file-open-actions"
@@ -113,6 +111,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     tasks,
     activeTaskId,
     focusWorkspace: () => focus.setFocused("workspace"),
+    kv,
   })
   const worktree = selectedTask?.worktreePath || null
 
@@ -162,20 +161,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       activateTask,
       forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
-
-  // One-time orphan sweep (O19): clear `terminalTabs.*` snapshots whose task
-  // no longer exists. Runs once on first hydration (raw signal → archived
-  // tasks kept, their snapshots feed unarchive --resume); ref not dep, so a
-  // later task-list change never re-sweeps a live task's fresh snapshot.
-  const sweptOrphansRef = useRef(false)
-  useEffect(() => {
-    if (sweptOrphansRef.current || tasks.length === 0) return
-    sweptOrphansRef.current = true
-    sweepOrphanTabsSnapshots(
-      kv,
-      tasks.map((task) => task.id),
-    )
-  }, [tasks, kv])
 
   // Imperative handle from the currently-mounted TerminalTabs (issue #16):
   // a ref, since FileTree's "open" only READS it at click time and
@@ -234,35 +219,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     selectedWorktreeRef,
   })
 
-  // Full-page swap — like the tmux `chattab` surface opening a dedicated
-  // `kobe settings` window. Theme/transparent/focus accent changes apply
-  // centrally via host-boot's UiPrefsSync, so there's no workspace-pane
-  // refresh to trigger on close.
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  function openSettings(): void {
-    setSettingsOpen(true)
-  }
-  function closeSettings(): void {
-    setSettingsOpen(false)
-  }
-  // Worktrees page (issue #23) — placeholder swap, see file header GAP note.
-  const [worktreesOpen, setWorktreesOpen] = useState(false)
-  // Kanban page — the daemon issue store as a board, same swap shape.
-  // ONE destination at a time — the sidebar rail's selection IS the open
-  // surface. Three independent booleans allowed "kanban and automations both
-  // open", a state the rail cannot represent and no key can reach.
-  const [nav, setNav] = useState<SidebarNav>("terminal")
-  /**
-   * Opening a rail page moves focus INTO the content pane, and leaving hands
-   * it back to the sidebar. Without this the page renders but its keys stay
-   * dead — they are gated on the content pane being focused, so `n` fell
-   * through to the sidebar's new-task chord while the Automations page sat
-   * there telling the user to press `n`.
-   */
-  const goToNav = (next: SidebarNav): void => {
-    setNav(next)
-    focus.setFocused(focusPaneForNav(next))
-  }
+  // Which surface the workspace shows — settings/worktrees/update full swaps
+  // plus the rail's one-at-a-time nav. State + rationale in host-pages.tsx.
+  const pages = useHostPagesState(focus)
   // Sidebar layout: the tree lists each worktree's tabs as rows (the strip is
   // off by default to match); `flat` restores the PROJECTS / TASKS list.
   const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
@@ -271,41 +230,31 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // sidebar renders tabs for tasks whose TerminalTabs is not mounted, so the
   // module map is the only source that answers for all of them.
   const selectedTabId = selectedId === null ? null : activeTabIdFor(selectedId)
-  const kanbanOpen = nav === "kanban"
-  const automationsOpen = nav === "automations"
-  const workItemsOpen = nav === "issues"
-  const setKanbanOpen = (on: boolean): void => goToNav(on ? "kanban" : "terminal")
-  const setAutomationsOpen = (on: boolean): void => goToNav(on ? "automations" : "terminal")
-  const setWorkItemsOpen = (on: boolean): void => goToNav(on ? "issues" : "terminal")
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
   const issueChat = useIssueChat(orch, {
     selectTask: setSelectedId,
     enterTask: activateTask,
-    closeKanban: () => setKanbanOpen(false),
+    closeKanban: pages.closeKanban,
     notifyError,
     notifyInfo,
   })
-  // Update page (issue #23 remainder) — same in-place swap shape as
-  // WorktreesPage; UpdatePage's onClose seam makes this safe (it no longer
-  // process.exit(0)s on close — only the post-update self-replace does).
-  const [updateOpen, setUpdateOpen] = useState(false)
 
   useWorkspaceKeybindings({
     focus,
     dialog,
-    settingsOpen,
-    worktreesOpen,
-    openWorktrees: () => setWorktreesOpen(true),
-    updateOpen,
-    openUpdate: () => setUpdateOpen(true),
-    kanbanOpen,
-    openKanban: () => setKanbanOpen(true),
-    filesPaneVisible: !zen && nav === "terminal",
-    automationsOpen,
-    openAutomations: () => setAutomationsOpen(true),
-    workItemsOpen,
-    openWorkItems: () => setWorkItemsOpen(true),
+    settingsOpen: pages.settingsOpen,
+    worktreesOpen: pages.worktreesOpen,
+    openWorktrees: pages.openWorktrees,
+    updateOpen: pages.updateOpen,
+    openUpdate: pages.openUpdate,
+    kanbanOpen: pages.kanbanOpen,
+    openKanban: pages.openKanban,
+    filesPaneVisible: !zen && pages.nav === "terminal",
+    automationsOpen: pages.automationsOpen,
+    openAutomations: pages.openAutomations,
+    workItemsOpen: pages.workItemsOpen,
+    openWorkItems: pages.openWorkItems,
     searchActive,
     selectedId,
     openTaskWorktree: (id) =>
@@ -316,8 +265,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         noEditorMessage: t("tasks.toast.noEditor"),
         openFailedMessage: (label) => t("tasks.toast.openWorktreeFailed", { label }),
       }),
-    openSettings,
-    closeSettings,
+    openSettings: pages.openSettings,
+    closeSettings: pages.closeSettings,
     createTask: () => void createTask(),
     renameBranch: (id) => void renameBranch(id),
     cycleVendor: (id) => void cycleVendor(id),
@@ -350,16 +299,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const pageDeps = {
     orchestrator: orch,
     selectedTask,
-    worktreesOpen,
-    automationsOpen,
-    workItemsOpen,
-    kanbanOpen,
-    updateOpen,
-    closeWorktrees: () => setWorktreesOpen(false),
-    closeAutomations: () => setAutomationsOpen(false),
-    closeWorkItems: () => setWorkItemsOpen(false),
-    closeKanban: () => setKanbanOpen(false),
-    closeUpdate: () => setUpdateOpen(false),
+    worktreesOpen: pages.worktreesOpen,
+    automationsOpen: pages.automationsOpen,
+    workItemsOpen: pages.workItemsOpen,
+    kanbanOpen: pages.kanbanOpen,
+    updateOpen: pages.updateOpen,
+    closeWorktrees: pages.closeWorktrees,
+    closeAutomations: pages.closeAutomations,
+    closeWorkItems: pages.closeWorkItems,
+    closeKanban: pages.closeKanban,
+    closeUpdate: pages.closeUpdate,
     activateTask: (taskId: string) => void activateTask(taskId),
     startIssueChat: issueChat.start,
     engineStates: engineState,
@@ -372,12 +321,12 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   if (fullWindowPage) return fullWindowPage
   const openPage = renderContentPage(pageDeps)
 
-  if (settingsOpen) {
+  if (pages.settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its
     // keyboard cursor can scrollChildIntoView on short terminals.
     return (
       <box flexGrow={1} backgroundColor={theme.background} paddingTop={1}>
-        <SettingsDialog kv={kv} orchestrator={orch} standalone={true} onClose={closeSettings} />
+        <SettingsDialog kv={kv} orchestrator={orch} standalone={true} onClose={pages.closeSettings} />
       </box>
     )
   }
@@ -393,8 +342,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       <HostSidebar
         mode={sidebarMode}
         width={SIDEBAR_WIDTH}
-        nav={nav}
-        onNavChange={goToNav}
+        nav={pages.nav}
+        onNavChange={pages.goToNav}
         tasks={tasks}
         selectedId={selectedId}
         selectedTabId={selectedTabId}
@@ -403,14 +352,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         // up and selecting a row did nothing visible.
         onSelect={(id) => {
           selectTask(id)
-          setNav("terminal")
+          pages.setNav("terminal")
         }}
         onActivate={(id) => {
-          setNav("terminal")
+          pages.setNav("terminal")
           void activateTask(id)
         }}
         onSelectTab={(taskId, tabId) => {
-          setNav("terminal")
+          pages.setNav("terminal")
           requestTabActivation(taskId, tabId)
         }}
         engineState={sidebarEngineState}

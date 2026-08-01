@@ -42,6 +42,9 @@ export type TreeRowSharedProps = {
   readonly onCursorTo: (rowId: string) => void
   readonly onActivate: (rowId: string) => void
   readonly onToggleExpand: (rowId: string) => void
+  /** Collapse/expand a PROJECT header — its id is a project key, not a task
+   *  id, so it must not go anywhere near `onActivate`'s parseRowId path. */
+  readonly onToggleProject: (projectId: string) => void
 }
 
 function RowShell(props: {
@@ -49,6 +52,9 @@ function RowShell(props: {
   readonly depth: number
   readonly shared: TreeRowSharedProps
   readonly children: ReactNode
+  /** Replace the default press action (cursor + activate). Project headers
+   *  pass their collapse toggle — they are not navigable rows. */
+  readonly onPress?: () => void
 }) {
   const { theme } = useTheme()
   const shared = props.shared
@@ -69,10 +75,13 @@ function RowShell(props: {
       flexDirection="row"
       gap={0}
       backgroundColor={selection.backgroundColor}
-      onMouseUp={() => {
-        shared.onCursorTo(props.rowId)
-        shared.onActivate(props.rowId)
-      }}
+      onMouseUp={
+        props.onPress ??
+        (() => {
+          shared.onCursorTo(props.rowId)
+          shared.onActivate(props.rowId)
+        })
+      }
     >
       <text fg={selection.markerColor} wrapMode="none">
         {selection.marker}
@@ -110,7 +119,15 @@ export function ProjectTreeRow(props: {
 }) {
   const { theme } = useTheme()
   return (
-    <RowShell rowId={props.row.id} depth={props.row.depth} shared={props.shared}>
+    <RowShell
+      rowId={props.row.id}
+      depth={props.row.depth}
+      shared={props.shared}
+      // A project header is a grouping header, not a session: clicking it
+      // toggles the group. Routing it through activate would parseRowId a
+      // project key as a task id.
+      onPress={() => props.shared.onToggleProject(props.row.id)}
+    >
       <Twisty state={props.collapsed ? "closed" : "open"} />
       <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
         {props.row.label}

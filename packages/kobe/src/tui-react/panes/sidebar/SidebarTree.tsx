@@ -212,6 +212,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     },
     onActivate: (rowId) => activateRow(rowId),
     onToggleExpand: (rowId) => tree.toggleWorktree(parseRowId(rowId).taskId),
+    onToggleProject: (projectId) => tree.toggleProject(projectId),
   }
 
   /** A worktree row's state glyph — the same derivation the flat card uses,

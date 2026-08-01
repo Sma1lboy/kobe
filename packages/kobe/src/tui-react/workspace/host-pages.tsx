@@ -12,14 +12,16 @@
  * but keeping it explicit means a future page can't silently shadow one.
  */
 
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { type SidebarNav, focusPaneForNav } from "../../tui/panes/sidebar/nav-core"
 import type { Task } from "../../types/task"
 import { AutomationsPage } from "../component/automations-page"
 import { KanbanPage } from "../component/kanban-page"
 import { UpdatePage } from "../component/update-page"
 import { WorkItemsPage } from "../component/work-items-page"
 import { WorktreesPage } from "../component/worktrees-page"
+import type { FocusContextValue } from "../context/focus"
 
 export interface HostPageState {
   readonly worktreesOpen: boolean
@@ -27,6 +29,75 @@ export interface HostPageState {
   readonly workItemsOpen: boolean
   readonly kanbanOpen: boolean
   readonly updateOpen: boolean
+}
+
+export interface HostPagesState extends HostPageState {
+  readonly nav: SidebarNav
+  /** Point the rail without moving focus — task selection uses this. */
+  readonly setNav: (next: SidebarNav) => void
+  readonly goToNav: (next: SidebarNav) => void
+  readonly settingsOpen: boolean
+  readonly openSettings: () => void
+  readonly closeSettings: () => void
+  readonly openWorktrees: () => void
+  readonly closeWorktrees: () => void
+  readonly openUpdate: () => void
+  readonly closeUpdate: () => void
+  readonly openKanban: () => void
+  readonly closeKanban: () => void
+  readonly openAutomations: () => void
+  readonly closeAutomations: () => void
+  readonly openWorkItems: () => void
+  readonly closeWorkItems: () => void
+}
+
+/**
+ * Which surface the workspace shows — extracted from `host.tsx` (file-size
+ * cap) into the module that renders those surfaces.
+ *
+ * Settings / Worktrees / Update are full swaps with their own booleans. The
+ * rail's pages (kanban/automations/issues) are ONE `nav` value — three
+ * independent booleans allowed "kanban and automations both open", a state
+ * the rail cannot represent and no key can reach.
+ *
+ * Opening a rail page moves focus INTO the content pane (`goToNav`), and
+ * leaving hands it back. Without this the page renders but its keys stay
+ * dead — they are gated on the content pane being focused, so `n` fell
+ * through to the sidebar's new-task chord while the Automations page sat
+ * there telling the user to press `n`.
+ */
+export function useHostPagesState(focus: FocusContextValue): HostPagesState {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [worktreesOpen, setWorktreesOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const [nav, setNav] = useState<SidebarNav>("terminal")
+  const goToNav = (next: SidebarNav): void => {
+    setNav(next)
+    focus.setFocused(focusPaneForNav(next))
+  }
+  return {
+    nav,
+    setNav,
+    goToNav,
+    settingsOpen,
+    openSettings: () => setSettingsOpen(true),
+    closeSettings: () => setSettingsOpen(false),
+    worktreesOpen,
+    openWorktrees: () => setWorktreesOpen(true),
+    closeWorktrees: () => setWorktreesOpen(false),
+    updateOpen,
+    openUpdate: () => setUpdateOpen(true),
+    closeUpdate: () => setUpdateOpen(false),
+    kanbanOpen: nav === "kanban",
+    openKanban: () => goToNav("kanban"),
+    closeKanban: () => goToNav("terminal"),
+    automationsOpen: nav === "automations",
+    openAutomations: () => goToNav("automations"),
+    closeAutomations: () => goToNav("terminal"),
+    workItemsOpen: nav === "issues",
+    openWorkItems: () => goToNav("issues"),
+    closeWorkItems: () => goToNav("terminal"),
+  }
 }
 
 export interface HostPageDeps extends HostPageState {

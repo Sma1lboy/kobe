@@ -11,6 +11,7 @@ import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { readLastActiveTaskId } from "../../state/last-active.ts"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import type { Task } from "../../types/task.ts"
+import { type TabsSnapshotKv, sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
 import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
 
 export interface WorkspaceSelection {
@@ -28,8 +29,9 @@ export function useWorkspaceSelection(args: {
   readonly tasks: readonly Task[]
   readonly activeTaskId: string | null
   readonly focusWorkspace: () => void
+  readonly kv: TabsSnapshotKv
 }): WorkspaceSelection {
-  const { orch, tasks, activeTaskId } = args
+  const { orch, tasks, activeTaskId, kv } = args
   // Seed from the daemon's replayed focus, else the persisted lastActive
   // record — the adopt/fallback effect below corrects a stale/archived id.
   const [selectedId, setSelectedId] = useState<string | null>(() => orch.activeTaskSignal()() ?? readLastActiveTaskId())
@@ -52,6 +54,20 @@ export function useWorkspaceSelection(args: {
     // knows the real one (the "reopens on the oldest project" bug).
     setSelectedId(firstSelectableTask(tasks, activeTaskId, readLastActiveTaskId())?.id ?? null)
   }, [tasks, activeTaskId, selectedId])
+
+  // One-time orphan sweep (O19): clear `terminalTabs.*` snapshots whose task
+  // no longer exists. Runs once on first hydration (raw signal → archived
+  // tasks kept, their snapshots feed unarchive --resume); ref not dep, so a
+  // later task-list change never re-sweeps a live task's fresh snapshot.
+  const sweptOrphansRef = useRef(false)
+  useEffect(() => {
+    if (sweptOrphansRef.current || tasks.length === 0) return
+    sweptOrphansRef.current = true
+    sweepOrphanTabsSnapshots(
+      kv,
+      tasks.map((task) => task.id),
+    )
+  }, [tasks, kv])
 
   // PTY lifecycle (issue #16): archiving/deleting a task must end every
   // engine session it owns — its tab PTYs are keyed `taskId::tabId` in the

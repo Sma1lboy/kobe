@@ -20,6 +20,16 @@ async function pressPrefixed(terminal: Locator, key: string): Promise<void> {
 }
 
 /**
+ * Re-anchor keyboard scope on the sidebar by clicking its EMPTY lower area.
+ * Not (24, 24): in the tree sidebar that pixel is the project header row,
+ * and clicking a header toggles its collapse — which hid every task row and
+ * made "Visual Fixture" assertions time out.
+ */
+async function clickSidebar(terminal: Locator): Promise<void> {
+  await terminal.click({ position: { x: 24, y: 400 } })
+}
+
+/**
  * Point the content pane at the Kanban (`prefix+1`, rail row 1).
  *
  * Waits on a CARD, never on the word "Kanban": the sidebar rail prints that
@@ -52,9 +62,12 @@ async function withVisualTui(page: Page, run: VisualJourney): Promise<void> {
     const buffer = page.getByTestId("opentui-buffer")
 
     await waitForVisualPty(harness, buffer)
-    await expect(buffer).toContainText("PROJECTS", { timeout: 45_000 })
-    await expect(buffer).toContainText("TASKS")
+    // The tree sidebar (default since the worktree tree landed) has no
+    // PROJECTS/TASKS section headers — ready means the project row and the
+    // fixture task's worktree row are both up.
+    await expect(buffer).toContainText("fixture-repo", { timeout: 45_000 })
     await expect(buffer).toContainText("Visual Fixture")
+    await expect(buffer).not.toContainText("PROJECTS")
     await run(terminal, buffer)
   } finally {
     // Kill this run's TUI so warm mode never accumulates PTY children.
@@ -68,7 +81,7 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
   test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
   await withVisualTui(page, async (terminal, buffer) => {
-    await terminal.click({ position: { x: 24, y: 24 } })
+    await clickSidebar(terminal)
     await pressTerminal(terminal, "F1")
     await expect(buffer).toContainText("keybindings")
     await expect(buffer).toContainText("Global")
@@ -78,7 +91,7 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
     // Re-anchor the sidebar scope after the modal closes before sending its
     // local shortcut. Avoid Ctrl+Q here: browser PTYs may reserve the
     // flow-control character before it reaches OpenTUI.
-    await terminal.click({ position: { x: 24, y: 24 } })
+    await clickSidebar(terminal)
     await pressTerminal(terminal, "s")
     await expect(buffer).toContainText("Settings")
     await expect(buffer).toContainText("General")
@@ -92,7 +105,7 @@ test("worktree audit opens and returns through the real OpenTUI", async ({ page 
   test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
   await withVisualTui(page, async (terminal, buffer) => {
-    await terminal.click({ position: { x: 24, y: 24 } })
+    await clickSidebar(terminal)
     await pressTerminal(terminal, "x")
 
     await expect(buffer).toContainText("Worktrees")
@@ -107,7 +120,7 @@ test("Kanban fixture detail opens and returns through the real OpenTUI", async (
   test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
   await withVisualTui(page, async (terminal, buffer) => {
-    await terminal.click({ position: { x: 24, y: 24 } })
+    await clickSidebar(terminal)
     await openKanban(terminal, buffer)
 
     // Kanban opens focused on the fixture task's linked card; move to the
@@ -129,7 +142,7 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
   test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
 
   await withVisualTui(page, async (terminal, buffer) => {
-    await terminal.click({ position: { x: 24, y: 24 } })
+    await clickSidebar(terminal)
     await openKanban(terminal, buffer)
 
     await expect(buffer).toContainText("In progress fixture")
