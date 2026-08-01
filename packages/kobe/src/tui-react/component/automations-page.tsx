@@ -23,7 +23,7 @@ import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
-import { RenameTaskDialog } from "./rename-task-dialog"
+import { AutomationComposer } from "./automation-composer-dialog"
 
 /** Agent-driven edits land within a poll; `automation.list` is a local read. */
 const POLL_MS = 5_000
@@ -170,60 +170,28 @@ export function AutomationsPage(props: {
     }
   }
 
-  /**
-   * Create flow: four single-field prompts in sequence, not one multi-field
-   * form. An automation needs a name, a repo, a prompt, and a cron — a form
-   * component for four strings would be a new widget to maintain, while the
-   * rename dialog already does one labelled field with validation. Cancelling
-   * any step aborts the whole thing.
-   */
+  /** Create flow: one card, Tab between fields (automation-composer-dialog). */
   async function createAutomation(): Promise<void> {
     const orch = props.orchestrator
     if (!orch || busyId) return
     const repos = [...new Set(orch.listTasks().map((task) => task.repo))].filter(Boolean)
-    const defaultRepo = props.focusRepo ?? repos[0]
-    if (!defaultRepo) {
+    if (repos.length === 0) {
       setNotice(t("automations.needRepo"))
       return
     }
-
-    const name = await RenameTaskDialog.show(dialog, "", {
-      dialogTitle: t("automations.newTitle"),
-      fieldLabel: t("automations.fieldName"),
-      submitLabel: t("common.next"),
-      placeholder: t("automations.namePlaceholder"),
+    const draft = await AutomationComposer.show(dialog, {
+      repos,
+      ...(props.focusRepo ? { defaultRepo: props.focusRepo } : {}),
     })
-    if (!name) return
-
-    const repo = await RenameTaskDialog.show(dialog, defaultRepo, {
-      dialogTitle: t("automations.newTitle"),
-      fieldLabel: t("automations.fieldRepo"),
-      submitLabel: t("common.next"),
-    })
-    if (!repo) return
-
-    const prompt = await RenameTaskDialog.show(dialog, "", {
-      dialogTitle: t("automations.newTitle"),
-      fieldLabel: t("automations.fieldPrompt"),
-      submitLabel: t("common.next"),
-      placeholder: t("automations.promptPlaceholder"),
-    })
-    if (!prompt) return
-
-    const schedule = await RenameTaskDialog.show(dialog, "0 9 * * MON-FRI", {
-      dialogTitle: t("automations.newTitle"),
-      fieldLabel: t("automations.fieldSchedule"),
-      submitLabel: t("common.create"),
-    })
-    if (!schedule) return
+    if (!draft) return
 
     setBusyId("new")
     try {
-      await orch.createAutomation({ repo, name, prompt, schedule })
+      await orch.createAutomation(draft)
       refetch()
     } catch (err) {
-      // The daemon rejects an unparseable cron at the boundary — surface its
-      // message rather than a generic failure, since the fix is in the input.
+      // The daemon re-validates the cron; surface its message, since the fix
+      // is in the input the user just typed.
       setNotice(err instanceof Error ? err.message : String(err))
     } finally {
       setBusyId(null)
