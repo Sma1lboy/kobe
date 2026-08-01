@@ -9,6 +9,7 @@ import {
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
+  type TerminalSnapshotWindow,
   defaultShell,
   extractOscTitle,
   resolveArgv,
@@ -87,7 +88,7 @@ export class PipeTaskPty implements TaskPtyLike {
     this.listeners.add(cb)
     if (this.buffer !== "") {
       try {
-        cb(this.capture(), null)
+        cb(this.capture(), null, null)
       } catch {
         /* one listener must not break the others */
       }
@@ -112,6 +113,10 @@ export class PipeTaskPty implements TaskPtyLike {
   }
 
   captureCursor(): CursorPos | null {
+    return null
+  }
+
+  captureWindow(): TerminalSnapshotWindow | null {
     return null
   }
 
@@ -142,7 +147,7 @@ export class PipeTaskPty implements TaskPtyLike {
     const rows = this.capture()
     for (const cb of this.listeners) {
       try {
-        cb(rows, null)
+        cb(rows, null, null)
       } catch {
         /* one listener must not break the others */
       }

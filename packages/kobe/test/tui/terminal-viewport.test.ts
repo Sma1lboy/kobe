@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { computeViewport, viewportCursor } from "../../src/tui/panes/terminal/viewport"
+import {
+  FOLLOW_VIEWPORT,
+  computeViewport,
+  moveViewportScroll,
+  resolveViewportScrollOffset,
+  viewportCursor,
+} from "../../src/tui/panes/terminal/viewport"
 
 describe("computeViewport", () => {
   it("offset 0 follows the bottom: last `height` rows", () => {
@@ -34,5 +40,34 @@ describe("viewportCursor", () => {
     expect(viewportCursor({ x: 3, y: 10 }, 0, range)).toBeNull()
     expect(viewportCursor({ x: 3, y: 100 }, 0, range)).toBeNull()
     expect(viewportCursor(null, 0, range)).toBeNull()
+  })
+})
+
+describe("anchored terminal scrollback", () => {
+  it("keeps the same physical top row while a bounded snapshot grows or slides", () => {
+    const initialWindow = { epoch: 1, startLine: 0 }
+    const state = moveViewportScroll(FOLLOW_VIEWPORT, 100, 24, -10, initialWindow)
+
+    expect(state.anchor?.topLine).toBe(66)
+    expect(resolveViewportScrollOffset(110, 24, state, initialWindow)).toBe(20)
+
+    const shiftedWindow = { epoch: 1, startLine: 5 }
+    const shiftedOffset = resolveViewportScrollOffset(100, 24, state, shiftedWindow)
+    const shiftedRange = computeViewport(100, 24, shiftedOffset)
+    expect(shiftedWindow.startLine + shiftedRange.start).toBe(66)
+  })
+
+  it("clamps to the oldest available row only after the anchor is trimmed", () => {
+    const state = moveViewportScroll(FOLLOW_VIEWPORT, 100, 24, -10, { epoch: 1, startLine: 0 })
+    const window = { epoch: 1, startLine: 70 }
+    const offset = resolveViewportScrollOffset(100, 24, state, window)
+
+    expect(offset).toBe(76)
+    expect(computeViewport(100, 24, offset)).toEqual({ start: 0, end: 24 })
+  })
+
+  it("falls back to the relative offset when resize starts a new identity epoch", () => {
+    const state = moveViewportScroll(FOLLOW_VIEWPORT, 100, 24, -10, { epoch: 1, startLine: 0 })
+    expect(resolveViewportScrollOffset(110, 24, state, { epoch: 2, startLine: 0 })).toBe(10)
   })
 })

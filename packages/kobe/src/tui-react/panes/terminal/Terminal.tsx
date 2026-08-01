@@ -47,7 +47,14 @@ import { type PtyRegistry, getDefaultPtyRegistry } from "../../../tui/panes/term
 import { rowsToStyledText } from "../../../tui/panes/terminal/sgr-to-text-chunk"
 import { isShellMissing, overlayCursor, sealRowEndAttributes } from "../../../tui/panes/terminal/terminal-render"
 import { overlaySelection } from "../../../tui/panes/terminal/terminal-selection"
-import { computeViewport, viewportCursor } from "../../../tui/panes/terminal/viewport"
+import {
+  FOLLOW_VIEWPORT,
+  type ViewportScrollState,
+  computeViewport,
+  moveViewportScroll,
+  resolveViewportScrollOffset,
+  viewportCursor,
+} from "../../../tui/panes/terminal/viewport"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { useLatest } from "../../lib/use-latest"
@@ -132,12 +139,11 @@ export function Terminal(props: TerminalProps) {
   const [focusedLocal, setFocusedLocal] = useState(false)
   const focused = props.focused ?? focusedLocal
 
-  // Scroll offset: 0 = follow bottom; positive = N lines back into history.
-  const [scrollOffset, setScrollOffset] = useState(0)
+  const [scrollState, setScrollState] = useState<ViewportScrollState>(FOLLOW_VIEWPORT)
 
   const { bodyEl, setBodyEl, bodyRows, bodyGeometry, bumpGeomTick, dims, geomTick } = useTerminalGeometry()
 
-  const { pty, snapshot, cursor, exited, acquireError, forceReacquire } = useTerminalPty({
+  const { pty, snapshot, snapshotWindow, cursor, exited, acquireError, forceReacquire } = useTerminalPty({
     cwd: props.cwd,
     taskId: props.taskId,
     command: props.command,
@@ -146,15 +152,18 @@ export function Terminal(props: TerminalProps) {
     onExit: props.onExit,
     registry,
     bodyGeometry,
-    onFreshPty: () => setScrollOffset(0),
+    onFreshPty: () => setScrollState(FOLLOW_VIEWPORT),
   })
+
+  // A historical view is anchored to an absolute PTY row, not to the live
+  // bottom. The fallback offset preserves degraded pipe/mock behavior.
+  const scrollOffset = resolveViewportScrollOffset(snapshot.length, bodyRows, scrollState, snapshotWindow)
 
   // Shared by the ctrl+pgup/pgdn chords and the mouse wheel. Positive
   // `lines` moves toward newer output, negative moves up into history.
   // Clamped to the real history depth.
   const scrollBy = (lines: number): void => {
-    const max = Math.max(0, snapshot.length - bodyRows)
-    setScrollOffset((cur) => Math.min(max, Math.max(0, cur - lines)))
+    setScrollState((current) => moveViewportScroll(current, snapshot.length, bodyRows, lines, snapshotWindow))
   }
 
   /* --------- viewport slicing ---------- */

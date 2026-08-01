@@ -61,6 +61,32 @@ function expectCacheMatchesFullRebuild(pty: FakeTransportPty): void {
 }
 
 describe("XtermTaskPty scrollback cache", () => {
+  it("publishes a stable absolute window origin across saturated scrollback shifts", async () => {
+    const pty = makePty()
+    for (let i = 1; i <= 300; i++) pty.pump(`origin L${i}\r\n`)
+    await settle()
+    pty.capture()
+    const before = pty.captureWindow()
+
+    pty.pump("origin L301\r\n")
+    await settle()
+    pty.capture()
+    const shifted = pty.captureWindow()
+
+    expect(before).not.toBeNull()
+    expect(shifted?.epoch).toBe(before?.epoch)
+    expect(shifted?.startLine).toBe((before?.startLine ?? 0) + 1)
+
+    const seen: unknown[] = []
+    const unsubscribe = pty.onData((_rows, _cursor, window) => seen.push(window))
+    seen.length = 0
+    pty.resize(COLS, ROWS)
+    expect(pty.captureWindow()?.epoch).toBeGreaterThan(shifted?.epoch ?? 0)
+    expect(seen).toEqual([pty.captureWindow()])
+    unsubscribe()
+    pty.kill()
+  })
+
   it("stays chunk-identical to a full rebuild across heavy trimming (with colors)", async () => {
     const pty = makePty()
     // 600 lines >> rows+margin (210): the buffer trims hard, shifting

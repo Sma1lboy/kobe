@@ -1,17 +1,5 @@
-/**
- * Shared xterm-headless emulation for PTY backends.
- *
- * `BunTerminalTaskPty` (local child) and `DaemonTaskPty` (daemon-hosted
- * child, protocol v4) differ ONLY in transport — where raw bytes come from
- * and where input/resize/kill go. Everything VT lives here once: the
- * headless emulator, the query-reply channel, title tracking, snapshot
- * refresh with synchronized-output handling, wheel/paste encoding.
- *
- * Subclass contract: call {@link feed} with raw child output, implement
- * the three `transport*` hooks, and call {@link markDead} when the child
- * ends. Transport hooks may throw — callers here wrap them and degrade to
- * `markDead`, matching the old Bun backend's behavior.
- */
+/** Shared xterm-headless emulation for local and daemon-hosted PTYs.
+ * Subclasses supply {@link feed}; VT behavior and snapshots live here once. */
 
 import { Unicode11Addon } from "@xterm/addon-unicode11"
 import { type IMarker, Terminal as XtermHeadless } from "@xterm/headless"
@@ -25,6 +13,7 @@ import {
   type TaskPtyLike,
   type TaskPtyOpts,
   type TerminalRow,
+  type TerminalSnapshotWindow,
 } from "./pty-types"
 import { reconcileTerminalCursor, reconcileTerminalRow, reconcileTerminalRows } from "./terminal-snapshot"
 import { xtermLineToChunks } from "./xterm-chunks"
@@ -45,6 +34,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
   private readonly listeners = new PtyListeners()
   private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
+  private snapshotWindow: TerminalSnapshotWindow | null = null
+  private snapshotEpoch = 0
   /** Output arrived while nobody was subscribed — snapshot is stale and
    * will be rebuilt lazily on the next capture()/subscribe. Keeps the N
    * background sessions of a multi-task workspace from re-converting
@@ -206,16 +197,16 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     return false
   }
 
-  onData(cb: (snapshot: readonly TerminalRow[], cursor: CursorPos | null) => void): () => void {
-    // Refresh BEFORE registering so a lazily-deferred snapshot doesn't
-    // double-notify the new subscriber (once from the rebuild's listener
-    // loop, once from the prime below).
+  onData(
+    cb: (snapshot: readonly TerminalRow[], cursor: CursorPos | null, window: TerminalSnapshotWindow | null) => void,
+  ): () => void {
+    // Refresh before registering so the lazy rebuild cannot double-notify.
     this.ensureFreshSnapshot()
     const off = this.listeners.addData(cb)
     this._unwatchedSince = null
     if (this.snapshot.length > 0) {
       try {
-        cb(this.snapshot, this.cursor)
+        cb(this.snapshot, this.cursor, this.snapshotWindow)
       } catch {
         /* one listener must not break the others */
       }
@@ -271,8 +262,9 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.anchor?.dispose()
     this.anchor = undefined
     this.anchorId = 0
+    this.snapshotWindow = null
+    this.publishedMeta = null
   }
-
   capture(): readonly TerminalRow[] {
     this.ensureFreshSnapshot()
     return this.snapshot
@@ -283,10 +275,12 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     return this.cursor
   }
 
-  /** Rebuild a lazily-deferred snapshot before handing it out. Mid-
-   * synchronized-output the rebuild is skipped (same torn-frame rule as
-   * the live path) — the snapshot stays dirty and the caller gets the
-   * last whole frame. */
+  captureWindow(): TerminalSnapshotWindow | null {
+    this.ensureFreshSnapshot()
+    return this.snapshotWindow
+  }
+
+  /** Rebuild a lazily-deferred snapshot unless synchronized output is mid-frame. */
   private ensureFreshSnapshot(): void {
     if (!this.snapshotDirty || this._killed) return
     this.refreshSnapshot()
@@ -343,6 +337,7 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     if (this._killed) return
     const previousSnapshot = this.snapshot
     const previousCursor = this.cursor
+    const previousWindow = this.snapshotWindow
     // Don't snapshot a half-painted frame. Self-reschedule rather than
     // relying solely on the closing write's callback — under rapid redraws
     // a new sync block can open before that write lands, bouncing forever.
@@ -388,12 +383,11 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     // they're still valid when the fullscreen app exits.
     const alt = active.type === "alternate"
     if (!alt && (this.anchor === undefined || this.anchor.isDisposed)) {
-      // Fresh epoch (first refresh, or the anchor was trimmed by a buffer
-      // reset): wipe the stale mapping and anchor BEFORE converting, so
-      // this very pass already populates the cache.
+      // A fresh epoch must populate the new absolute-id cache in this pass.
       this.scrollbackCache.clear()
       const fresh = this.term.registerMarker(0)
       if (fresh) {
+        this.snapshotEpoch += 1
         this.anchor = fresh
         this.anchorId = fresh.line
       }
@@ -427,27 +421,32 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       for (const id of cache.keys()) if (id < min) cache.delete(id)
     }
     if (!alt) {
-      // Re-anchor at the cursor line: it survives until it trims through
-      // the whole margin, and every refresh renews it long before that.
+      // Re-anchor at the cursor line before the old marker can trim out.
       const next = this.term.registerMarker(0)
       if (next) {
         this.anchorId = anchorAlive ? absBase + next.line : 0
         this.anchor?.dispose()
         this.anchor = next
       }
-      // registerMarker can return undefined — keep the old anchor then.
     }
     this.snapshot = reconcileTerminalRows(previousSnapshot, rows)
+    const nextStartLine = absBase + start
+    this.snapshotWindow = anchorAlive
+      ? previousWindow?.epoch === this.snapshotEpoch && previousWindow.startLine === nextStartLine
+        ? previousWindow
+        : { epoch: this.snapshotEpoch, startLine: nextStartLine }
+      : null
     this.snapshotDirty = false
     this.refreshTracker.clear()
     this.publishedMeta = currentMeta
     this.cursor = nextCursor
-    if (this.snapshot === previousSnapshot && this.cursor === previousCursor) return
+    if (this.snapshot === previousSnapshot && this.cursor === previousCursor && this.snapshotWindow === previousWindow)
+      return
     this.publishSnapshot()
   }
 
   private publishSnapshot(): void {
-    this.listeners.publishData(this.snapshot, this.cursor)
+    this.listeners.publishData(this.snapshot, this.cursor, this.snapshotWindow)
   }
 
   /** Free the emulator's cell buffers NOW instead of waiting for GC — the
