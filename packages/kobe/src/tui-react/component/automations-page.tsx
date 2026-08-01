@@ -23,6 +23,7 @@ import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
 
 /** Agent-driven edits land within a poll; `automation.list` is a local read. */
 const POLL_MS = 5_000
@@ -227,20 +228,52 @@ export function AutomationsPage(props: {
       ) : (
         <box flexDirection="column" marginTop={1} flexGrow={1}>
           {rows.map((automation, index) => {
-            const active = index === cursor
+            // Same row grammar as the sidebar's task cards: a ▌ marker column,
+            // a bold title line, and a muted detail line beneath it. Two lines
+            // per row rather than one wide row — the schedule and next-run
+            // time do not fit beside a name at any realistic pane width.
+            const chrome = resolveRowSelectionChrome(theme, { cursor: index === cursor, selected: false })
             return (
               <box
                 key={automation.id}
-                flexDirection="row"
-                justifyContent="space-between"
-                {...(active ? { backgroundColor: theme.backgroundElement } : {})}
+                flexDirection="column"
+                flexShrink={0}
+                {...(chrome.backgroundColor ? { backgroundColor: chrome.backgroundColor } : {})}
               >
-                <text fg={automation.enabled ? theme.text : theme.textMuted}>
-                  {`${active ? "›" : " "} ${automation.enabled ? "●" : "○"} ${automation.name}`}
-                </text>
-                <text fg={theme.textMuted}>
-                  {`${repoLabel(automation.repo)}  ${automation.schedule}  ${formatWhen(automation.nextRunAt, now)}`}
-                </text>
+                <box flexDirection="row" gap={0}>
+                  <text fg={chrome.markerColor} wrapMode="none">
+                    {chrome.marker}
+                  </text>
+                  <box flexDirection="row" flexGrow={1} paddingLeft={1} paddingRight={1} gap={1}>
+                    <text
+                      fg={automation.enabled ? theme.text : theme.textMuted}
+                      attributes={index === cursor ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      flexGrow={1}
+                    >
+                      {automation.name}
+                    </text>
+                    {/* Paused reads as a state, not a missing feature. */}
+                    {automation.enabled ? null : (
+                      <text fg={theme.textMuted} wrapMode="none">
+                        {t("automations.paused")}
+                      </text>
+                    )}
+                  </box>
+                </box>
+                <box flexDirection="row" gap={0}>
+                  <text fg={chrome.markerColor} wrapMode="none">
+                    {chrome.marker}
+                  </text>
+                  <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                    <text fg={theme.textMuted} wrapMode="none" flexGrow={1}>
+                      {`${repoLabel(automation.repo)} · ${automation.schedule}`}
+                    </text>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {formatWhen(automation.nextRunAt, now)}
+                    </text>
+                  </box>
+                </box>
               </box>
             )
           })}

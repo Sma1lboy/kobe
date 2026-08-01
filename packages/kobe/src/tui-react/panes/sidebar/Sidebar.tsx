@@ -376,7 +376,7 @@ export function Sidebar(props: SidebarProps) {
       focused={focused}
       view={view}
       setView={setView}
-      nav={props.nav ?? "workspace"}
+      nav={props.nav ?? "terminal"}
       setNav={(next) => props.onNavChange?.(next)}
       sortMode={sortMode}
       searchMode={searchMode}

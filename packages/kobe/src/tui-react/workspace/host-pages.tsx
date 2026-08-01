@@ -42,13 +42,28 @@ export interface HostPageDeps extends HostPageState {
   readonly engineStates: Parameters<typeof KanbanPage>[0]["engineStates"]
 }
 
-/** The open page, or `null` when the workspace itself should render. */
-export function renderHostPage(deps: HostPageDeps): ReactNode | null {
-  const orch = deps.orchestrator
-
+/**
+ * FULL-WINDOW pages — Worktrees and Update replace everything, sidebar
+ * included. They are reached by their own chords, not by the rail, and have
+ * no task list to stay beside.
+ */
+export function renderFullWindowPage(deps: HostPageDeps): ReactNode | null {
   if (deps.worktreesOpen) {
-    return <WorktreesPage orchestrator={orch} onClose={deps.closeWorktrees} />
+    return <WorktreesPage orchestrator={deps.orchestrator} onClose={deps.closeWorktrees} />
   }
+  if (deps.updateOpen) {
+    return <UpdatePage onClose={deps.closeUpdate} />
+  }
+  return null
+}
+
+/**
+ * CONTENT-PANE pages — what the sidebar rail swaps. The task list stays
+ * visible beside these, which is how selecting a task returns to its
+ * terminal.
+ */
+export function renderContentPage(deps: HostPageDeps): ReactNode | null {
+  const orch = deps.orchestrator
 
   if (deps.automationsOpen) {
     return (
@@ -95,10 +110,6 @@ export function renderHostPage(deps: HostPageDeps): ReactNode | null {
         }}
       />
     )
-  }
-
-  if (deps.updateOpen) {
-    return <UpdatePage onClose={deps.closeUpdate} />
   }
 
   return null

@@ -33,7 +33,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
-import { renderHostPage } from "./host-pages"
+import { renderContentPage, renderFullWindowPage } from "./host-pages"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import {
@@ -249,13 +249,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // ONE destination at a time — the sidebar rail's selection IS the open
   // surface. Three independent booleans allowed "kanban and automations both
   // open", a state the rail cannot represent and no key can reach.
-  const [nav, setNav] = useState<SidebarNav>("workspace")
+  const [nav, setNav] = useState<SidebarNav>("terminal")
   const kanbanOpen = nav === "kanban"
   const automationsOpen = nav === "automations"
   const workItemsOpen = nav === "issues"
-  const setKanbanOpen = (on: boolean): void => setNav(on ? "kanban" : "workspace")
-  const setAutomationsOpen = (on: boolean): void => setNav(on ? "automations" : "workspace")
-  const setWorkItemsOpen = (on: boolean): void => setNav(on ? "issues" : "workspace")
+  const setKanbanOpen = (on: boolean): void => setNav(on ? "kanban" : "terminal")
+  const setAutomationsOpen = (on: boolean): void => setNav(on ? "automations" : "terminal")
+  const setWorkItemsOpen = (on: boolean): void => setNav(on ? "issues" : "terminal")
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
   const issueChat = useIssueChat(orch, {
@@ -325,7 +325,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const dialogOpen = dialog.stack.length > 0
   const activePane = dialogOpen ? null : focus.focused
 
-  const openPage = renderHostPage({
+  const pageDeps = {
     orchestrator: orch,
     selectedTask,
     worktreesOpen,
@@ -338,11 +338,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     closeWorkItems: () => setWorkItemsOpen(false),
     closeKanban: () => setKanbanOpen(false),
     closeUpdate: () => setUpdateOpen(false),
-    activateTask: (taskId) => void activateTask(taskId),
+    activateTask: (taskId: string) => void activateTask(taskId),
     startIssueChat: issueChat.start,
     engineStates: engineState,
-  })
-  if (openPage) return openPage
+  }
+
+  // Worktrees / Update replace the whole window; the rail's pages replace only
+  // the content pane, so the sidebar stays live beside them.
+  const fullWindowPage = renderFullWindowPage(pageDeps)
+  if (fullWindowPage) return fullWindowPage
+  const openPage = renderContentPage(pageDeps)
 
   if (settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its
@@ -416,25 +421,30 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         borderColor={focus.focused === "workspace" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("workspace")}
       >
-        <ShowWorkspace
-          task={selectedTask}
-          worktree={worktree}
-          orchestrator={orch}
-          focused={activePane === "workspace"}
-          onRequestFocus={() => focus.setFocused("workspace")}
-          onEditorTabReady={(open) => {
-            openEditorTabFn.current = open
-          }}
-          onEngineSendReady={(send) => {
-            sendToEngineFn.current = send
-          }}
-          onDiffTabReady={(open) => {
-            openDiffTabFn.current = open
-          }}
-          onQuickFork={quickFork.onQuickFork}
-          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
-          onTabVisited={inbox.resolveVisited}
-        />
+        {/* The rail swaps THIS pane, not the whole window — the task list on
+            the left stays live, so selecting a task is how you get back to
+            its terminal. */}
+        {openPage ?? (
+          <ShowWorkspace
+            task={selectedTask}
+            worktree={worktree}
+            orchestrator={orch}
+            focused={activePane === "workspace"}
+            onRequestFocus={() => focus.setFocused("workspace")}
+            onEditorTabReady={(open) => {
+              openEditorTabFn.current = open
+            }}
+            onEngineSendReady={(send) => {
+              sendToEngineFn.current = send
+            }}
+            onDiffTabReady={(open) => {
+              openDiffTabFn.current = open
+            }}
+            onQuickFork={quickFork.onQuickFork}
+            initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
+            onTabVisited={inbox.resolveVisited}
+          />
+        )}
       </box>
 
       {!zen ? (

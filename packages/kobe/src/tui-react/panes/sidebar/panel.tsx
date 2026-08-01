@@ -8,7 +8,7 @@
 
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { SidebarProjectOption, SidebarRow, SidebarView, TaskSortMode } from "../../../tui/panes/sidebar/groups"
-import { SIDEBAR_NAV_ITEMS, type SidebarNav, navShowsTaskList } from "../../../tui/panes/sidebar/nav-core"
+import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { VIEW_TABS, sidebarEmptyStateKey, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
@@ -188,131 +188,126 @@ export function SidebarPanel(props: {
         })}
       </box>
 
-      {/* Archives filters the task list INSIDE Workspace — not a peer
-          destination. PROJECTS/TASKS ride the same condition: the other rail
-          rows replace the whole workspace, so painting a task list under them
-          renders content that is about to be covered. */}
-      {navShowsTaskList(props.nav) ? (
-        <>
-          <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-            {VIEW_TABS.map((tab) => {
-              const active = props.view === tab.view
-              return (
-                <box key={tab.view} flexShrink={0} onMouseUp={() => props.setView(tab.view)}>
-                  <text
-                    fg={active ? theme.text : theme.textMuted}
-                    attributes={active ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
-                    {t(viewTabLabelKey(tab.view))}
-                  </text>
-                </box>
-              )
-            })}
-          </box>
-          {/* Filter active ⇒ keep the header (and its filter label) visible even
-            when the filtered repo has no main row to show. */}
-          {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (
-            <box flexDirection="column" flexShrink={0}>
-              <box
-                flexDirection="row"
-                flexShrink={0}
-                gap={1}
-                paddingLeft={1}
-                paddingRight={1}
-                onMouseUp={() => props.cycleProjectFilter()}
+      {/* Archives filters the task list INSIDE the sidebar — it changes which
+          tasks the list shows, and is unrelated to what the content pane on
+          the right is displaying. */}
+      <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+        {VIEW_TABS.map((tab) => {
+          const active = props.view === tab.view
+          return (
+            <box key={tab.view} flexShrink={0} onMouseUp={() => props.setView(tab.view)}>
+              <text
+                fg={active ? theme.text : theme.textMuted}
+                attributes={active ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
               >
-                <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-                  {t("tasks.header.projects")}
-                </text>
-                <text fg={dividerColor} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-                  {"─".repeat(240)}
-                </text>
-                {/* Project-filter label sits at flex end (owner taste 2026-07-10);
-                  the task-count label is gone — not worth the cells. */}
-                {props.projectOptions.length > 1 ? (
-                  <text
-                    fg={props.projectFilterRepo ? theme.text : theme.textMuted}
-                    attributes={props.projectFilterRepo ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                    flexShrink={1}
-                  >
-                    {props.projectFilterLabel}
-                  </text>
-                ) : null}
-              </box>
-              <scrollbox
-                ref={props.setProjectScrollRef}
-                flexShrink={0}
-                flexGrow={0}
-                minHeight={0}
-                maxHeight={props.projectScrollMaxHeight}
-                stickyScroll={false}
-                // Scrollbar fully hidden (owner taste 2026-07-09): the cursor
-                // drives scrolling, the thumb column is pure noise. `visible`
-                // flips the ScrollBar's manual-visibility latch, so overflow
-                // recalculation can't bring it back.
-                verticalScrollbarOptions={{ visible: false }}
-              >
-                <box flexShrink={0} gap={0}>
-                  {props.projectRows.map((row) => (
-                    <ProjectRowCard key={row.task.id} row={row} shared={props.rowCardShared} />
-                  ))}
-                </box>
-              </scrollbox>
+                {t(viewTabLabelKey(tab.view))}
+              </text>
             </box>
-          ) : null}
-
-          <SectionHeader
-            label={t("tasks.header.tasks")}
-            suffix={props.sortMode === "default" ? undefined : props.sortMode}
-            topPad={props.projectRows.length > 0 || props.projectFilterRepo !== null}
-          />
+          )
+        })}
+      </box>
+      {/* Filter active ⇒ keep the header (and its filter label) visible even
+          when the filtered repo has no main row to show. */}
+      {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (
+        <box flexDirection="column" flexShrink={0}>
+          <box
+            flexDirection="row"
+            flexShrink={0}
+            gap={1}
+            paddingLeft={1}
+            paddingRight={1}
+            onMouseUp={() => props.cycleProjectFilter()}
+          >
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
+              {t("tasks.header.projects")}
+            </text>
+            <text fg={dividerColor} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+              {"─".repeat(240)}
+            </text>
+            {/* Project-filter label sits at flex end (owner taste 2026-07-10);
+                the task-count label is gone — not worth the cells. */}
+            {props.projectOptions.length > 1 ? (
+              <text
+                fg={props.projectFilterRepo ? theme.text : theme.textMuted}
+                attributes={props.projectFilterRepo ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+                flexShrink={1}
+              >
+                {props.projectFilterLabel}
+              </text>
+            ) : null}
+          </box>
           <scrollbox
-            ref={props.setTaskScrollRef}
-            flexGrow={1}
+            ref={props.setProjectScrollRef}
+            flexShrink={0}
+            flexGrow={0}
             minHeight={0}
+            maxHeight={props.projectScrollMaxHeight}
             stickyScroll={false}
+            // Scrollbar fully hidden (owner taste 2026-07-09): the cursor
+            // drives scrolling, the thumb column is pure noise. `visible`
+            // flips the ScrollBar's manual-visibility latch, so overflow
+            // recalculation can't bring it back.
             verticalScrollbarOptions={{ visible: false }}
           >
             <box flexShrink={0} gap={0}>
-              {props.taskRows.map((row) => (
-                <TaskRowCard key={row.task.id} row={row} shared={props.rowCardShared} />
+              {props.projectRows.map((row) => (
+                <ProjectRowCard key={row.task.id} row={row} shared={props.rowCardShared} />
               ))}
-              {props.flatIds.length === 0 ? (
-                <box paddingTop={1} paddingLeft={1}>
-                  <text fg={theme.textMuted}>
-                    {t(
-                      sidebarEmptyStateKey({
-                        searching: props.searchMode && props.searchQuery.trim().length > 0,
-                        projectFilter: props.projectFilterRepo !== null,
-                        view: props.view,
-                      }),
-                    )}
-                  </text>
-                </box>
-              ) : null}
-              {props.projectFilterRepo &&
-              props.flatIds.length > 0 &&
-              !props.hasTaskRows &&
-              !(props.searchMode && props.searchQuery.trim().length > 0) ? (
-                <box paddingTop={1} paddingLeft={1}>
-                  <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                    {t(sidebarEmptyStateKey({ searching: false, projectFilter: true, view: props.view }))}
-                  </text>
-                </box>
-              ) : null}
-              {props.view === "archived" && props.flatIds.length > 0 ? (
-                <box paddingTop={1} paddingLeft={1}>
-                  <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                    {t("tasks.archiveHint")}
-                  </text>
-                </box>
-              ) : null}
             </box>
           </scrollbox>
-        </>
+        </box>
       ) : null}
+
+      <SectionHeader
+        label={t("tasks.header.tasks")}
+        suffix={props.sortMode === "default" ? undefined : props.sortMode}
+        topPad={props.projectRows.length > 0 || props.projectFilterRepo !== null}
+      />
+      <scrollbox
+        ref={props.setTaskScrollRef}
+        flexGrow={1}
+        minHeight={0}
+        stickyScroll={false}
+        verticalScrollbarOptions={{ visible: false }}
+      >
+        <box flexShrink={0} gap={0}>
+          {props.taskRows.map((row) => (
+            <TaskRowCard key={row.task.id} row={row} shared={props.rowCardShared} />
+          ))}
+          {props.flatIds.length === 0 ? (
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted}>
+                {t(
+                  sidebarEmptyStateKey({
+                    searching: props.searchMode && props.searchQuery.trim().length > 0,
+                    projectFilter: props.projectFilterRepo !== null,
+                    view: props.view,
+                  }),
+                )}
+              </text>
+            </box>
+          ) : null}
+          {props.projectFilterRepo &&
+          props.flatIds.length > 0 &&
+          !props.hasTaskRows &&
+          !(props.searchMode && props.searchQuery.trim().length > 0) ? (
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                {t(sidebarEmptyStateKey({ searching: false, projectFilter: true, view: props.view }))}
+              </text>
+            </box>
+          ) : null}
+          {props.view === "archived" && props.flatIds.length > 0 ? (
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                {t("tasks.archiveHint")}
+              </text>
+            </box>
+          ) : null}
+        </box>
+      </scrollbox>
 
       {props.zenActive ? (
         <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>

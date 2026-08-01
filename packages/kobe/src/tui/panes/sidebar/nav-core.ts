@@ -12,8 +12,12 @@
  * so three horizontal chips would truncate the moment a fourth arrives.
  */
 
-/** Where the workspace should be pointed. */
-export type SidebarNav = "workspace" | "kanban" | "automations" | "issues"
+/**
+ * What the CONTENT pane shows. `terminal` is the default — the engine session
+ * the sidebar's task list selects — and has no rail row of its own: you are
+ * already there, and selecting a task is how you get back.
+ */
+export type SidebarNav = "terminal" | "kanban" | "automations" | "issues"
 
 export interface SidebarNavItem {
   readonly nav: SidebarNav
@@ -21,30 +25,23 @@ export interface SidebarNavItem {
   readonly labelKey: string
 }
 
-/** The rail, top to bottom. Order is the display order. */
+/**
+ * The rail, top to bottom. Deliberately does NOT list `terminal`: the task
+ * list below IS that destination, so a row for it would be a second control
+ * for the same thing — and clicking a task already returns there.
+ */
 export const SIDEBAR_NAV_ITEMS: readonly SidebarNavItem[] = [
-  { nav: "workspace", labelKey: "tasks.nav.workspace" },
   { nav: "kanban", labelKey: "tasks.nav.kanban" },
   { nav: "automations", labelKey: "tasks.nav.automations" },
   { nav: "issues", labelKey: "tasks.nav.issues" },
 ]
 
 /**
- * Cycle the rail by `delta` (-1 = up, +1 = down), wrapping — the same loop
- * behaviour the horizontal view tabs had.
+ * Cycle the rail by `delta` (-1 = up, +1 = down), wrapping. Returns null for
+ * `terminal`, which is not on the rail — cycling has to start somewhere on it.
  */
 export function cycleNavTarget(cur: SidebarNav, delta: -1 | 1): SidebarNav | null {
   const idx = SIDEBAR_NAV_ITEMS.findIndex((item) => item.nav === cur)
   if (idx < 0) return null
   return SIDEBAR_NAV_ITEMS[(idx + delta + SIDEBAR_NAV_ITEMS.length) % SIDEBAR_NAV_ITEMS.length]?.nav ?? null
-}
-
-/**
- * Only Workspace keeps the task list (and therefore the Archives toggle)
- * below it — the other destinations are full-page surfaces that replace the
- * whole workspace, so rendering a task list under their rail row would be
- * showing content that is about to be covered.
- */
-export function navShowsTaskList(nav: SidebarNav): boolean {
-  return nav === "workspace"
 }

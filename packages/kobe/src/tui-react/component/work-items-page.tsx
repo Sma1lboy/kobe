@@ -21,6 +21,7 @@ import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
+import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
 
 /** Repos the user has open, newest-activity first — the source picker. */
 function reposOf(orch: RemoteOrchestrator | null): string[] {
@@ -163,18 +164,48 @@ export function WorkItemsPage(props: {
       ) : (
         <box flexDirection="column" marginTop={1} flexGrow={1}>
           {rows.map((item, index) => {
-            const active = index === cursor
+            // Sidebar row grammar: ▌ marker column, title line, muted detail
+            // line. The number leads the title because that is how an issue is
+            // referred to out loud, and it survives truncation there.
+            const chrome = resolveRowSelectionChrome(theme, { cursor: index === cursor, selected: false })
             return (
               <box
                 key={`${item.number}`}
-                flexDirection="row"
-                justifyContent="space-between"
-                {...(active ? { backgroundColor: theme.backgroundElement } : {})}
+                flexDirection="column"
+                flexShrink={0}
+                {...(chrome.backgroundColor ? { backgroundColor: chrome.backgroundColor } : {})}
               >
-                <text fg={theme.text}>{`${active ? "›" : " "} #${item.number} ${item.title}`}</text>
-                <text fg={theme.textMuted}>
-                  {`${item.labels.slice(0, 2).join(" ")}  ${item.author ?? ""}  ${relativeAge(item.updatedAt, now)}`}
-                </text>
+                <box flexDirection="row" gap={0}>
+                  <text fg={chrome.markerColor} wrapMode="none">
+                    {chrome.marker}
+                  </text>
+                  <box flexDirection="row" flexGrow={1} paddingLeft={1} paddingRight={1} gap={1}>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {`#${item.number}`}
+                    </text>
+                    <text
+                      fg={theme.text}
+                      attributes={index === cursor ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      flexGrow={1}
+                    >
+                      {item.title}
+                    </text>
+                  </box>
+                </box>
+                <box flexDirection="row" gap={0}>
+                  <text fg={chrome.markerColor} wrapMode="none">
+                    {chrome.marker}
+                  </text>
+                  <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                    <text fg={theme.textMuted} wrapMode="none" flexGrow={1}>
+                      {[item.author, ...item.labels.slice(0, 2)].filter(Boolean).join(" · ")}
+                    </text>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {relativeAge(item.updatedAt, now)}
+                    </text>
+                  </box>
+                </box>
               </box>
             )
           })}
