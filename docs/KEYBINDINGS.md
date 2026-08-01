@@ -35,11 +35,10 @@ Default prefix actions:
 | `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
-The rail pages take digits, not letters (owner call 2026-08-01): they
-are one kind of thing — "point the content pane at X" — and the sidebar prints
-`1`/`2`/`3` beside each row, so the rail is its own legend and there is no
-mnemonic to recall. Kanban moved off the `c` it shipped with for that reason.
-Clicking a rail row does the same thing.
+The rail pages take digits, not letters (owner call 2026-08-01): they are one
+kind of thing — "point the content pane at X" — and their order on the rail is
+the mnemonic. Kanban moved off the `c` it shipped with for that reason. Clicking
+a rail row does the same thing.
 
 Rail pages (Kanban / Automations / Issues) do NOT disable the prefix: they
 replace only the content pane, so `ctrl+a` `u` switches from one to another

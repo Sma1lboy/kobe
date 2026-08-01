@@ -99,18 +99,6 @@ test("the task list stays visible whatever the rail selects", async () => {
   }
 })
 
-test("each rail row prints its prefix digit", async () => {
-  // The rail is the legend for prefix+1/2/3 — the chord is digits precisely
-  // because there is no mnemonic, so dropping the digits here would leave it
-  // unrecoverable.
-  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
-  const lines = (await frame()).split("\n")
-  for (const [index, label] of ["Kanban", "Routines"].entries()) {
-    const row = lines.find((line) => line.includes(label))
-    expect(row, label).toContain(String(index + 1))
-  }
-})
-
 test("nav-core cycling wraps in both directions", () => {
   expect(cycleNavTarget("kanban", 1)).toBe("automations")
   expect(cycleNavTarget("automations", 1)).toBe("kanban")

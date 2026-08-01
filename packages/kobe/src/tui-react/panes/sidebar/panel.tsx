@@ -160,7 +160,7 @@ export function SidebarPanel(props: {
           The 24-cell rail cannot fit three chips side by side, and a fourth
           would truncate — vertical scales, horizontal does not. */}
       <box flexDirection="column" flexShrink={0} paddingBottom={1}>
-        {SIDEBAR_NAV_ITEMS.map((item, index) => {
+        {SIDEBAR_NAV_ITEMS.map((item) => {
           const active = props.nav === item.nav
           return (
             <box
@@ -182,11 +182,6 @@ export function SidebarPanel(props: {
                 flexGrow={1}
               >
                 {t(item.labelKey)}
-              </text>
-              {/* The rail IS the legend for prefix+1/2/3 — without the digit
-                  printed here the chord has no mnemonic to recover. */}
-              <text fg={active ? theme.backgroundElement : theme.textMuted} wrapMode="none">
-                {String(index + 1)}
               </text>
             </box>
           )
