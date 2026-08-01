@@ -53,7 +53,7 @@ function panel(overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {}) {
 async function labelLines(frame: () => Promise<string>): Promise<Record<string, number>> {
   const lines = (await frame()).split("\n")
   const out: Record<string, number> = {}
-  for (const label of ["Kanban", "Automations"]) {
+  for (const label of ["Kanban", "Routines"]) {
     const index = lines.findIndex((line) => line.includes(label))
     if (index >= 0) out[label] = index
   }
@@ -67,7 +67,7 @@ test("every destination gets its own line, in declared order", async () => {
   const rendered = Object.entries(lines)
     .sort(([, a], [, b]) => a - b)
     .map(([label]) => label)
-  expect(rendered).toEqual(["Kanban", "Automations"])
+  expect(rendered).toEqual(["Kanban", "Routines"])
   // Distinct rows — a horizontal strip would share lines.
   expect(new Set(Object.values(lines)).size).toBe(2)
 })
@@ -75,8 +75,8 @@ test("every destination gets its own line, in declared order", async () => {
 test("no label is truncated at the 24-cell rail width", async () => {
   const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
   const text = await frame()
-  expect(text).toContain("Automations")
-  expect(text).not.toContain("Automat…")
+  expect(text).toContain("Routines")
+  expect(text).not.toContain("Routin…")
 })
 
 test("the rail has no row for the terminal — the task list IS that destination", async () => {
@@ -105,7 +105,7 @@ test("each rail row prints its prefix digit", async () => {
   // unrecoverable.
   const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
   const lines = (await frame()).split("\n")
-  for (const [index, label] of ["Kanban", "Automations"].entries()) {
+  for (const [index, label] of ["Kanban", "Routines"].entries()) {
     const row = lines.find((line) => line.includes(label))
     expect(row, label).toContain(String(index + 1))
   }

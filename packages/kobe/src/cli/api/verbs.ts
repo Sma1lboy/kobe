@@ -25,7 +25,7 @@ import {
 import { READ_OUTPUT_VERB } from "./read-output.ts"
 import { fullSchema, groupSchema, schemaIndex, verbSchema } from "./schema.ts"
 import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./types.ts"
-import { AUTOMATION_VERBS } from "./verbs-automations.ts"
+import { ROUTINE_VERBS } from "./verbs-automations.ts"
 import { ISSUE_VERBS } from "./verbs-issues.ts"
 import { WORK_ITEM_VERBS } from "./verbs-work-items.ts"
 
@@ -60,7 +60,18 @@ async function handleSchema(ctx: VerbContext): Promise<unknown> {
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 
 /** Output the alias → canonical map so callers (and the schema) stay in sync. */
-export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
+export const VERB_ALIASES: Readonly<Record<string, string>> = {
+  "spawn-task": "add",
+  // Routines shipped as `automation-*` first. Scripts and agent memory that
+  // learned those names keep working — a rename is not a reason to break them.
+  "automation-list": "routine-list",
+  "automation-create": "routine-create",
+  "automation-update": "routine-update",
+  "automation-set-enabled": "routine-set-enabled",
+  "automation-delete": "routine-delete",
+  "automation-run-now": "routine-run-now",
+  "automation-runs": "routine-runs",
+}
 
 /**
  * Verb groups for LEVELED exploration. An agent reads the compact index
@@ -76,14 +87,14 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   workitems: ["workitem-list", "workitem-start"],
-  automation: [
-    "automation-list",
-    "automation-create",
-    "automation-update",
-    "automation-set-enabled",
-    "automation-delete",
-    "automation-run-now",
-    "automation-runs",
+  routine: [
+    "routine-list",
+    "routine-create",
+    "routine-update",
+    "routine-set-enabled",
+    "routine-delete",
+    "routine-run-now",
+    "routine-runs",
   ],
   lifecycle: ["archive", "pin", "land", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
@@ -220,7 +231,7 @@ export const VERBS: readonly VerbSpec[] = [
     handler: feedback,
   },
   ...ISSUE_VERBS,
-  ...AUTOMATION_VERBS,
+  ...ROUTINE_VERBS,
   ...WORK_ITEM_VERBS,
   {
     name: "notify",

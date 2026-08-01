@@ -15,7 +15,7 @@ export const en = {
   nav: {
     workspace: "Workspace",
     kanban: "Kanban",
-    automations: "Automations",
+    automations: "Routines",
     issues: "Issues",
   },
   /** Section headers */
@@ -103,7 +103,7 @@ export const zh: typeof en = {
   nav: {
     workspace: "工作区",
     kanban: "看板",
-    automations: "自动化",
+    automations: "例行任务",
     issues: "议题",
   },
   header: {

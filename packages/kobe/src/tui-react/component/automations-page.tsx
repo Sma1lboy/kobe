@@ -325,37 +325,60 @@ export function AutomationsPage(props: {
         </box>
       )}
 
-      {selected ? (
-        <box flexDirection="column" marginTop={1} border borderColor={theme.border} padding={1}>
-          <text fg={theme.textMuted}>{selected.prompt}</text>
-          {selected.precheck ? (
-            <text fg={theme.textMuted}>{t("automations.precheck", { command: selected.precheck.command })}</text>
-          ) : null}
-          <text attributes={TextAttributes.BOLD} fg={theme.text}>
-            {t("automations.recentRuns")}
-          </text>
-          {runs.length === 0 ? (
-            <text fg={theme.textMuted}>{t("automations.noRuns")}</text>
-          ) : (
-            runs.slice(0, 5).map((run) => {
-              const tone = RUN_TONE[run.status] ?? "muted"
-              const color =
-                tone === "success"
-                  ? theme.success
-                  : tone === "warning"
-                    ? theme.warning
-                    : tone === "error"
-                      ? theme.error
-                      : theme.textMuted
-              return (
-                <text key={run.id} fg={color}>
-                  {`#${run.runNumber} ${run.status}${run.error ? ` — ${run.error}` : ""}  ${formatWhen(run.at, now)}`}
-                </text>
-              )
-            })
-          )}
-        </box>
-      ) : null}
+      {/* The detail frame is always mounted, even with nothing selected: a
+          panel that appears and disappears makes the page jump, and the empty
+          frame is where a first-time user reads what a routine even carries. */}
+      <box flexDirection="column" marginTop={1} border borderColor={theme.border} padding={1} flexShrink={0}>
+        {selected ? (
+          <>
+            <box flexDirection="row" justifyContent="space-between" gap={2}>
+              <text fg={theme.text} wrapMode="none" flexShrink={1} flexGrow={1}>
+                {selected.prompt}
+              </text>
+              {/* Running one on demand is how you find out a routine works
+                  without waiting for its schedule — the reason it is a button
+                  and not only the `s` key. */}
+              <text
+                fg={busyId === selected.id ? theme.textMuted : theme.primary}
+                attributes={TextAttributes.BOLD}
+                wrapMode="none"
+                flexShrink={0}
+                onMouseUp={() => void runNow()}
+              >
+                {t("automations.runNow")}
+              </text>
+            </box>
+            {selected.precheck ? (
+              <text fg={theme.textMuted}>{t("automations.precheck", { command: selected.precheck.command })}</text>
+            ) : null}
+            <text attributes={TextAttributes.BOLD} fg={theme.text}>
+              {t("automations.recentRuns")}
+            </text>
+            {runs.length === 0 ? (
+              <text fg={theme.textMuted}>{t("automations.noRuns")}</text>
+            ) : (
+              runs.slice(0, 5).map((run) => {
+                const tone = RUN_TONE[run.status] ?? "muted"
+                const color =
+                  tone === "success"
+                    ? theme.success
+                    : tone === "warning"
+                      ? theme.warning
+                      : tone === "error"
+                        ? theme.error
+                        : theme.textMuted
+                return (
+                  <text key={run.id} fg={color}>
+                    {`#${run.runNumber} ${run.status}${run.error ? ` — ${run.error}` : ""}  ${formatWhen(run.at, now)}`}
+                  </text>
+                )
+              })
+            )}
+          </>
+        ) : (
+          <text fg={theme.textMuted}>{t("automations.noSelection")}</text>
+        )}
+      </box>
 
       {notice ? <text fg={theme.textMuted}>{notice}</text> : null}
     </box>

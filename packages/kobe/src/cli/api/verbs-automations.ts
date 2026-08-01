@@ -1,5 +1,5 @@
 /**
- * The `automation` verb group — daemon-owned scheduled agent tasks. Split out
+ * The `routine` verb group — daemon-owned scheduled agent tasks. Split out
  * of `verbs.ts` (file-size cap); spread back into the {@link VERBS} table
  * there, so schema/help/validation see one canonical list.
  *
@@ -51,15 +51,15 @@ function precheckPayload(ctx: Parameters<VerbSpec["handler"]>[0]): Record<string
   return { precheck: { command, timeoutSeconds: ctx.args.int("precheck-timeout") ?? 120 } }
 }
 
-export const AUTOMATION_VERBS: readonly VerbSpec[] = [
+export const ROUTINE_VERBS: readonly VerbSpec[] = [
   {
-    name: "automation-list",
+    name: "routine-list",
     summary: "List scheduled automations with their next run time.",
     flags: [],
     handler: (ctx) => simpleRpc(ctx, "automation.list", {}),
   },
   {
-    name: "automation-create",
+    name: "routine-create",
     summary:
       "Schedule a prompt. Each firing creates a fresh task (worktree + engine) and delivers it. An enabled automation keeps the daemon alive so it fires with no TUI attached.",
     flags: [
@@ -92,7 +92,7 @@ export const AUTOMATION_VERBS: readonly VerbSpec[] = [
       }),
   },
   {
-    name: "automation-update",
+    name: "routine-update",
     summary: "Change an automation. A new --schedule re-anchors its next run; --precheck '' clears the precheck.",
     flags: [
       { name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." },
@@ -117,7 +117,7 @@ export const AUTOMATION_VERBS: readonly VerbSpec[] = [
       }),
   },
   {
-    name: "automation-set-enabled",
+    name: "routine-set-enabled",
     summary: "Pause or resume an automation. Disabling the last active one releases the daemon's keep-alive hold.",
     flags: [
       { name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." },
@@ -127,20 +127,20 @@ export const AUTOMATION_VERBS: readonly VerbSpec[] = [
       simpleRpc(ctx, "automation.update", { id: ctx.args.require("id"), enabled: ctx.args.bool("enabled") }),
   },
   {
-    name: "automation-delete",
+    name: "routine-delete",
     summary: "Delete an automation and its run history. Tasks it already created are untouched.",
     flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],
     handler: (ctx) => simpleRpc(ctx, "automation.delete", { id: ctx.args.require("id") }),
   },
   {
-    name: "automation-run-now",
+    name: "routine-run-now",
     summary:
       "Run an automation immediately, skipping its precheck (asking for it IS the answer). Does not shift its schedule.",
     flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],
     handler: (ctx) => simpleRpc(ctx, "automation.runNow", { id: ctx.args.require("id") }),
   },
   {
-    name: "automation-runs",
+    name: "routine-runs",
     summary:
       "Run history, newest first. Statuses: dispatched, skipped_precheck (nothing to do), skipped_missed, skipped_unavailable, dispatch_failed.",
     flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],

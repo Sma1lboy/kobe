@@ -1,4 +1,8 @@
-# Automations — scheduled agent tasks
+# Routines — scheduled agent tasks
+
+> Called Routines in the UI and CLI. The code, RPC names and on-disk file
+> still say `automation` — renaming those buys nothing and would need a
+> migration of `~/.kobe/automations.json`.
 
 > Daemon-owned cron. A schedule + a prompt + a repo; every firing creates a
 > fresh task and starts its engine with that prompt.
@@ -113,7 +117,7 @@ leave nothing to notice. Every automation mutation calls
 ## TUI
 
 `ctrl+a` `2` (or clicking the sidebar rail) points the content pane at the
-Automations page. It is the triage half of the feature:
+Routines page. It is the triage half of the feature:
 what is scheduled, when each fires next, and what the last runs did. The header
 says whether an enabled automation is currently holding the daemon open.
 
@@ -130,16 +134,16 @@ is genuinely optional.
 ## CLI
 
 ```bash
-kobe api automation-create --repo . --name "weekday audit" \
+kobe api routine-create --repo . --name "weekday audit" \
   --prompt "Audit dependencies and summarize risky changes." \
   --schedule "0 9 * * MON-FRI" \
   --precheck "gh pr list --json number -q '.[0].number'"
 
-kobe api automation-list
-kobe api automation-runs --id <id>
-kobe api automation-run-now --id <id>
-kobe api automation-set-enabled --id <id> --enabled false
-kobe api automation-delete --id <id>
+kobe api routine-list
+kobe api routine-runs --id <id>
+kobe api routine-run-now --id <id>
+kobe api routine-set-enabled --id <id> --enabled false
+kobe api routine-delete --id <id>
 ```
 
 Full flag list: `kobe api schema --group automation`.

@@ -418,27 +418,30 @@ GitHub's, and nothing is copied into kobe's own issue store. Mechanics:
 Requires `gh` installed and authenticated; failures name which of those is
 missing (`gh-missing` / `auth` / `no-remote`) rather than a generic error.
 
-### automation
+### routine
 
-Scheduled agent tasks: a cron rule + a prompt + a repo. Every firing creates a
+Scheduled agent tasks (Routines): a cron rule + a prompt + a repo. Every firing creates a
 **fresh task** (worktree + branch + engine session) with the prompt as its
 first message — a run is an ordinary task you can open and keep talking to.
-An enabled automation keeps the daemon alive so schedules fire with no TUI
+An enabled routine keeps the daemon alive so schedules fire with no TUI
 attached. Mechanics: [design/automations.md](./design/automations.md).
 
-- `automation-list`: every automation with its next run time.
-- `automation-create --repo PATH --name N --prompt TEXT --schedule CRON
+- `routine-list`: every routine with its next run time.
+- `routine-create --repo PATH --name N --prompt TEXT --schedule CRON
   [--vendor V] [--base-branch B] [--precheck CMD] [--precheck-timeout SEC]
   [--grace MIN] [--disabled]`: schedule a prompt. `--schedule` is five-field
   cron in the daemon host's local time (`"0 9 * * MON-FRI"`).
-- `automation-update --id ID [...]`: change any field. A new `--schedule`
+- `routine-update --id ID [...]`: change any field. A new `--schedule`
   re-anchors the next run; `--precheck ''` clears the precheck.
-- `automation-set-enabled --id ID --enabled BOOL`: pause / resume.
-- `automation-run-now --id ID`: run immediately, skipping the precheck. Does
+- `routine-set-enabled --id ID --enabled BOOL`: pause / resume.
+- `routine-run-now --id ID`: run immediately, skipping the precheck. Does
   not shift the schedule.
-- `automation-runs --id ID`: run history, newest first.
-- `automation-delete --id ID`: delete it and its history (tasks it already
+- `routine-runs --id ID`: run history, newest first.
+- `routine-delete --id ID`: delete it and its history (tasks it already
   created are untouched).
+
+The original `automation-*` names still work as aliases — scripts and agent
+memory that learned them keep running.
 
 **`--precheck`** runs a shell command in the repo before the engine starts;
 a non-zero exit skips the run *without* creating a task. Use it so a schedule
