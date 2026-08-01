@@ -4,10 +4,19 @@
  */
 
 export const en = {
-  /** View-switcher tab labels */
+  /** Task-list filter inside Workspace. "Active" rather than "Workspace":
+   *  the rail above already says Workspace, and repeating it reads as a
+   *  duplicate rather than as a filter over what the rail selected. */
   view: {
-    workspace: "Workspace",
+    workspace: "Active",
     archives: "Archives",
+  },
+  /** Top-level navigation rail — one row per destination */
+  nav: {
+    workspace: "Workspace",
+    kanban: "Kanban",
+    automations: "Automations",
+    issues: "Issues",
   },
   /** Section headers */
   header: {
@@ -88,8 +97,14 @@ export const en = {
 
 export const zh: typeof en = {
   view: {
-    workspace: "工作区",
+    workspace: "进行中",
     archives: "归档",
+  },
+  nav: {
+    workspace: "工作区",
+    kanban: "看板",
+    automations: "自动化",
+    issues: "议题",
   },
   header: {
     projects: "项目",

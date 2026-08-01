@@ -10,6 +10,7 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
 import type { TaskSortMode } from "../../../tui/panes/sidebar/groups"
+import type { SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import type { SidebarHover } from "../../../tui/panes/sidebar/types"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 
@@ -37,6 +38,10 @@ export type SidebarTaskCallbacks = {
 }
 
 export type SidebarProps = SidebarTaskCallbacks & {
+  /** Which top-level destination the rail highlights. Owned by the workspace
+   *  host — it is the thing that actually swaps surfaces. */
+  nav?: SidebarNav
+  onNavChange?: (nav: SidebarNav) => void
   tasks: readonly Task[]
   selectedId: string | null
   onSelect: (id: string) => void

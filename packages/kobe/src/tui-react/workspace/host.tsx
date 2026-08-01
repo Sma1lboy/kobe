@@ -11,6 +11,7 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
+import type { SidebarNav } from "../../tui/panes/sidebar/nav-core"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { PrefixHud } from "../component/prefix-hud"
@@ -245,9 +246,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // Worktrees page (issue #23) — placeholder swap, see file header GAP note.
   const [worktreesOpen, setWorktreesOpen] = useState(false)
   // Kanban page — the daemon issue store as a board, same swap shape.
-  const [kanbanOpen, setKanbanOpen] = useState(false)
-  const [automationsOpen, setAutomationsOpen] = useState(false)
-  const [workItemsOpen, setWorkItemsOpen] = useState(false)
+  // ONE destination at a time — the sidebar rail's selection IS the open
+  // surface. Three independent booleans allowed "kanban and automations both
+  // open", a state the rail cannot represent and no key can reach.
+  const [nav, setNav] = useState<SidebarNav>("workspace")
+  const kanbanOpen = nav === "kanban"
+  const automationsOpen = nav === "automations"
+  const workItemsOpen = nav === "issues"
+  const setKanbanOpen = (on: boolean): void => setNav(on ? "kanban" : "workspace")
+  const setAutomationsOpen = (on: boolean): void => setNav(on ? "automations" : "workspace")
+  const setWorkItemsOpen = (on: boolean): void => setNav(on ? "issues" : "workspace")
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
   const issueChat = useIssueChat(orch, {
@@ -362,6 +370,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       >
         <Sidebar
           width={SIDEBAR_WIDTH}
+          nav={nav}
+          onNavChange={setNav}
           tasks={tasks}
           selectedId={selectedId}
           onSelect={selectTask}
