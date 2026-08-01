@@ -206,7 +206,8 @@ function QuickTaskComposerView(
         />
       </box>
 
-      <box paddingBottom={1}></box>
+      {/* Bottom breathing room — the legend that used to fill this row is gone. */}
+      <box paddingBottom={1} />
     </box>
   )
 }
