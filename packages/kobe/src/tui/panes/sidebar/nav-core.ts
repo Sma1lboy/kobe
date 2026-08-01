@@ -48,3 +48,16 @@ export function cycleNavTarget(cur: SidebarNav, delta: -1 | 1): SidebarNav | nul
   if (idx < 0) return null
   return SIDEBAR_NAV_ITEMS[(idx + delta + SIDEBAR_NAV_ITEMS.length) % SIDEBAR_NAV_ITEMS.length]?.nav ?? null
 }
+
+/**
+ * Which pane should hold focus after moving to `nav`.
+ *
+ * Opening a rail page has to carry focus into the content pane: the pages
+ * gate their own keys on being focused, so without this the Automations page
+ * rendered "Press n to create one" while `n` was still going to the sidebar's
+ * new-task chord. Leaving hands focus back, since the task list is what you
+ * returned to.
+ */
+export function focusPaneForNav(nav: SidebarNav): "sidebar" | "workspace" {
+  return nav === "terminal" ? "sidebar" : "workspace"
+}

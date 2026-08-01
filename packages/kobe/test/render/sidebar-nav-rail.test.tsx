@@ -11,7 +11,7 @@
 
 import { expect, test } from "bun:test"
 import { SidebarPanel } from "../../src/tui-react/panes/sidebar/panel"
-import { SIDEBAR_NAV_ITEMS, cycleNavTarget } from "../../src/tui/panes/sidebar/nav-core"
+import { SIDEBAR_NAV_ITEMS, cycleNavTarget, focusPaneForNav } from "../../src/tui/panes/sidebar/nav-core"
 import { renderComponent } from "./harness"
 
 const NOOP = (): void => {}
@@ -128,4 +128,15 @@ test("the issues page is wired but off the rail", async () => {
   const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
   expect(await frame()).not.toContain("Issues")
   expect(SIDEBAR_NAV_ITEMS.some((item) => item.nav === "issues")).toBe(false)
+})
+
+test("opening a rail page carries focus into the content pane", () => {
+  // The pages gate their own keys on being focused. Without this the
+  // Automations page rendered "Press n to create one" while `n` still went to
+  // the sidebar's new-task chord.
+  expect(focusPaneForNav("kanban")).toBe("workspace")
+  expect(focusPaneForNav("automations")).toBe("workspace")
+  expect(focusPaneForNav("issues")).toBe("workspace")
+  // Back to the terminal means back to the task list.
+  expect(focusPaneForNav("terminal")).toBe("sidebar")
 })
