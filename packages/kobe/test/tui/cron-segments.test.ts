@@ -93,6 +93,18 @@ describe("describeCron", () => {
     expect(describeCron("0 */6 * * *")).toBe("every day every 6h")
   })
 
+  test("spells out every weekday, not just the ones ending -on/-ri", () => {
+    // Every value the weekday ladder can reach must restate correctly; a
+    // mechanical "code + days" mangles four of the seven (Tuedays, Weddays,
+    // Thudays, Satdays), and each is one ↑/↓ step away in the composer.
+    expect(describeCron("0 9 * * TUE")).toBe("Tuesdays at 09:00")
+    expect(describeCron("0 9 * * WED")).toBe("Wednesdays at 09:00")
+    expect(describeCron("0 9 * * THU")).toBe("Thursdays at 09:00")
+    expect(describeCron("0 9 * * FRI")).toBe("Fridays at 09:00")
+    expect(describeCron("0 9 * * SAT")).toBe("Saturdays at 09:00")
+    expect(describeCron("0 9 * * SUN")).toBe("Sundays at 09:00")
+  })
+
   test("stays silent rather than describing a shape it does not model", () => {
     // A half-truth about when a schedule fires is worse than the raw cron —
     // the next-run preview already carries the ground truth.
