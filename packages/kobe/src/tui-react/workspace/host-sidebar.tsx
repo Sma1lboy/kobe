@@ -85,7 +85,16 @@ export function HostSidebar(props: HostSidebarProps) {
   return (
     <box width={props.width} flexShrink={0} backgroundColor={theme.backgroundPanel} onMouseUp={props.onFocusRequest}>
       {props.mode === "tree" ? (
-        <SidebarTree {...common} selectedTabId={props.selectedTabId} onSelectTab={props.onSelectTab} />
+        <SidebarTree
+          {...common}
+          selectedTabId={props.selectedTabId}
+          onSelectTab={props.onSelectTab}
+          onAddTask={props.onAddTask}
+          headerStatus={props.headerStatus}
+          onHeaderStatusClick={props.onHeaderStatusClick}
+          zenActive={props.zenActive}
+          onZenClick={props.onZenClick}
+        />
       ) : (
         <Sidebar
           {...common}

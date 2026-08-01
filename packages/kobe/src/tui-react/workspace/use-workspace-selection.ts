@@ -12,6 +12,7 @@ import { readLastActiveTaskId } from "../../state/last-active.ts"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import type { Task } from "../../types/task.ts"
 import { type TabsSnapshotKv, sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
+import { forgetTaskTabs } from "./terminal-tabs-shared"
 import { activateWorkspaceTask, firstSelectableTask } from "./use-task-selection"
 
 export interface WorkspaceSelection {
@@ -75,6 +76,7 @@ export function useWorkspaceSelection(args: {
   // snapshot and release the corpses; the pane never kills (registry docs),
   // so this is the one place tab shells die with their task.
   const liveTaskIdsRef = useRef<ReadonlySet<string>>(new Set())
+  const worktreePathsRef = useRef<ReadonlyMap<string, string>>(new Map())
   useEffect(() => {
     const next = new Set<string>(tasks.filter((task) => !task.archived).map((task) => task.id))
     const registry = getDefaultPtyRegistry()
@@ -82,7 +84,24 @@ export function useWorkspaceSelection(args: {
       if (!next.has(id)) registry.releaseWhere((key) => key === id || key.startsWith(`${id}::`))
     }
     liveTaskIdsRef.current = next
-  }, [tasks])
+    // Chattabs die WITH their worktree (owner call 2026-08-01): removing a
+    // task's worktree (worktrees page / web / a sibling client) clears its
+    // `worktreePath` but keeps the task — without this, its tab rows stayed
+    // in the tree, its snapshot would respawn them, and their PTYs kept
+    // shells alive in a deleted directory. A non-empty → empty transition
+    // is the observable edge; task deletion itself is already covered by
+    // the delete flow's forgetTaskTabs + the archived sweep above.
+    const paths = new Map<string, string>()
+    for (const task of tasks) paths.set(task.id, task.worktreePath)
+    for (const [id, prevPath] of worktreePathsRef.current) {
+      const now = paths.get(id)
+      if (now === "" && prevPath !== "") {
+        registry.releaseWhere((key) => key === id || key.startsWith(`${id}::`))
+        forgetTaskTabs(kv, id)
+      }
+    }
+    worktreePathsRef.current = paths
+  }, [tasks, kv])
 
   function selectTask(id: string): void {
     userPickedRef.current = true

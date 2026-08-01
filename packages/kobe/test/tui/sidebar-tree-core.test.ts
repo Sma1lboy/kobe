@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest"
 import {
   type TreeTab,
   buildTreeRows,
-  initialExpanded,
   parseRowId,
   tabRowId,
   toggleInSet,
@@ -35,7 +34,7 @@ function rows(over: Partial<Parameters<typeof buildTreeRows>[0]> = {}) {
   return buildTreeRows({
     tasks: [],
     tabsByTask: new Map(),
-    expandedWorktrees: NOTHING,
+    collapsedWorktrees: NOTHING,
     collapsedProjects: NOTHING,
     ...over,
   })
@@ -67,19 +66,21 @@ describe("buildTreeRows", () => {
     expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/zebra", "/repos/apple"])
   })
 
-  test("tabs appear only under an expanded worktree", () => {
+  test("tabs render by default; a hand-collapsed worktree hides its own", () => {
     const tabs = new Map([["a", [tab("tab-1"), tab("tab-2")]]])
-    expect(rows({ tasks: [task("a")], tabsByTask: tabs }).filter((r) => r.kind === "tab")).toHaveLength(0)
-
-    const expanded = rows({ tasks: [task("a")], tabsByTask: tabs, expandedWorktrees: new Set(["a"]) })
+    // Default is EXPANDED (owner call 2026-08-01 round 4): no keystroke
+    // needed to see any worktree's tabs.
+    const expanded = rows({ tasks: [task("a")], tabsByTask: tabs })
     expect(expanded.map((r) => r.id)).toEqual(["/repos/kobe", "a", "a::tab-1", "a::tab-2"])
+
+    const collapsed = rows({ tasks: [task("a")], tabsByTask: tabs, collapsedWorktrees: new Set(["a"]) })
+    expect(collapsed.filter((r) => r.kind === "tab")).toHaveLength(0)
   })
 
   test("a collapsed project hides its worktrees and their tabs", () => {
     const result = rows({
       tasks: [task("a"), task("b", { repo: "/repos/other" })],
       tabsByTask: new Map([["a", [tab("tab-1")]]]),
-      expandedWorktrees: new Set(["a"]),
       collapsedProjects: new Set(["/repos/kobe"]),
     })
     expect(result.map((r) => r.id)).toEqual(["/repos/kobe", "/repos/other", "b"])
@@ -95,7 +96,7 @@ describe("buildTreeRows", () => {
   test("a task whose tabs never mounted contributes no tab rows", () => {
     // Absent from the map is "unknown", not "zero tabs" — the difference
     // matters because every task has at least one tab once it mounts.
-    const result = rows({ tasks: [task("a")], expandedWorktrees: new Set(["a"]) })
+    const result = rows({ tasks: [task("a")] })
     expect(result.filter((r) => r.kind === "tab")).toHaveLength(0)
   })
 })
@@ -105,7 +106,6 @@ describe("treeFlatIds", () => {
     const result = rows({
       tasks: [task("a")],
       tabsByTask: new Map([["a", [tab("tab-1")]]]),
-      expandedWorktrees: new Set(["a"]),
     })
     expect(treeFlatIds(result)).toEqual(["a", "a::tab-1"])
   })
@@ -130,12 +130,5 @@ describe("toggleInSet", () => {
     // Identity must change or React skips the re-render.
     expect(added).not.toBe(original)
     expect([...original]).toEqual(["a"])
-  })
-})
-
-describe("initialExpanded", () => {
-  test("expands the selected worktree and nothing else", () => {
-    expect([...initialExpanded("a")]).toEqual(["a"])
-    expect([...initialExpanded(null)]).toEqual([])
   })
 })

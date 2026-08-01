@@ -68,7 +68,7 @@ export function parseRowId(rowId: string): { taskId: string; tabId: string | nul
   return { taskId: rowId.slice(0, at), tabId: rowId.slice(at + TAB_ROW_SEPARATOR.length) }
 }
 
-/** Which worktree rows are expanded, by task id. */
+/** A set of collapsed row ids (worktree task ids / project keys). */
 export type ExpandedSet = ReadonlySet<string>
 
 export interface TreeInput {
@@ -76,7 +76,9 @@ export interface TreeInput {
   /** Tabs per task id. A task absent from the map contributes no tab rows —
    *  its tabs have never mounted, which is not the same as having none. */
   readonly tabsByTask: ReadonlyMap<string, readonly TreeTab[]>
-  readonly expandedWorktrees: ExpandedSet
+  /** Everything is expanded by DEFAULT (owner call 2026-08-01, round 4);
+   *  these sets hold the exceptions the user collapsed by hand. */
+  readonly collapsedWorktrees: ExpandedSet
   readonly collapsedProjects: ExpandedSet
 }
 
@@ -99,7 +101,7 @@ export interface TreeInput {
  * that does not exist.
  */
 export function buildTreeRows(input: TreeInput): TreeRow[] {
-  const { tasks, tabsByTask, expandedWorktrees, collapsedProjects } = input
+  const { tasks, tabsByTask, collapsedWorktrees, collapsedProjects } = input
   const byProject = new Map<string, { repo: string; tasks: Task[] }>()
   const looseTasks: Task[] = []
 
@@ -126,9 +128,9 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
   for (const [key, entry] of byProject) {
     rows.push({ kind: "project", id: key, repo: entry.repo, label: repoBasename(entry.repo), depth: 0 })
     if (collapsedProjects.has(key)) continue
-    for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask, expandedWorktrees)
+    for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask, collapsedWorktrees)
   }
-  for (const task of looseTasks) pushWorktree(rows, task, tabsByTask, expandedWorktrees)
+  for (const task of looseTasks) pushWorktree(rows, task, tabsByTask, collapsedWorktrees)
   return rows
 }
 
@@ -136,10 +138,10 @@ function pushWorktree(
   rows: TreeRow[],
   task: Task,
   tabsByTask: ReadonlyMap<string, readonly TreeTab[]>,
-  expanded: ExpandedSet,
+  collapsed: ExpandedSet,
 ): void {
   rows.push({ kind: "worktree", id: task.id, task, depth: 1 })
-  if (!expanded.has(task.id)) return
+  if (collapsed.has(task.id)) return
   for (const tab of tabsByTask.get(task.id) ?? []) {
     rows.push({ kind: "tab", id: tabRowId(task.id, tab.id), task, tab, depth: 2 })
   }
@@ -173,14 +175,4 @@ export function toggleInSet(set: ExpandedSet, id: string): Set<string> {
   const next = new Set(set)
   if (!next.delete(id)) next.add(id)
   return next
-}
-
-/**
- * Which worktrees should start expanded: the selected one, so the tabs of
- * the session you are looking at are visible without a keystroke. Everything
- * else starts collapsed — a dozen worktrees each showing their tabs is the
- * wall of rows this design exists to avoid.
- */
-export function initialExpanded(selectedTaskId: string | null): Set<string> {
-  return selectedTaskId === null ? new Set() : new Set([selectedTaskId])
 }

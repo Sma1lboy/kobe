@@ -13,12 +13,11 @@
 
 import type { Task } from "@/types/task"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
   type TreeRow,
   type TreeTab,
   buildTreeRows,
-  initialExpanded,
   parseRowId,
   tabRowId,
   toggleInSet,
@@ -54,27 +53,15 @@ export interface TreeState {
   readonly collapsedProjects: ReadonlySet<string>
   readonly toggleWorktree: (taskId: string) => void
   readonly toggleProject: (projectId: string) => void
-  /** Expand a worktree without collapsing it if already open — what
-   *  selecting a task should do (selection reveals, it does not toggle). */
-  readonly revealWorktree: (taskId: string) => void
 }
 
 export function useTreeState(opts: TreeStateOpts): TreeState {
   const { tasks, kv, selectedTaskId, selectedTabId, busyTaskIds } = opts
-  const [expandedWorktrees, setExpandedWorktrees] = useState<ReadonlySet<string>>(() => initialExpanded(selectedTaskId))
+  // Everything expanded by DEFAULT (owner call 2026-08-01, round 4) — the
+  // sets hold only what the user collapsed by hand, so a new worktree or a
+  // freshly-mounted tab list shows up without a keystroke.
+  const [collapsedWorktrees, setCollapsedWorktrees] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set<string>())
-
-  // Expansion FOLLOWS selection (owner call 2026-08-01, round 2): moving to
-  // another worktree collapses the one you left, so at most one worktree
-  // shows its tabs at a time. Without this, reveal-on-select accumulated —
-  // every worktree ever visited kept its tabs open and the rail became a
-  // wall of tab rows. Manual h/l toggles still work between selections.
-  const prevSelectedRef = useRef(selectedTaskId)
-  useEffect(() => {
-    if (prevSelectedRef.current === selectedTaskId) return
-    prevSelectedRef.current = selectedTaskId
-    setExpandedWorktrees(initialExpanded(selectedTaskId))
-  }, [selectedTaskId])
 
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
@@ -101,10 +88,18 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   }, [tasks, kv, busyTaskIds])
 
   const rows = useMemo(
-    () => buildTreeRows({ tasks, tabsByTask, expandedWorktrees, collapsedProjects }),
-    [tasks, tabsByTask, expandedWorktrees, collapsedProjects],
+    () => buildTreeRows({ tasks, tabsByTask, collapsedWorktrees, collapsedProjects }),
+    [tasks, tabsByTask, collapsedWorktrees, collapsedProjects],
   )
   const flatIds = useMemo(() => treeFlatIds(rows), [rows])
+
+  // The expanded set is what the RENDERER asks about (twisty state), so keep
+  // that vocabulary at the boundary: expanded = not hand-collapsed.
+  const expandedWorktrees = useMemo(() => {
+    const set = new Set<string>()
+    for (const task of tasks) if (!collapsedWorktrees.has(task.id)) set.add(task.id)
+    return set
+  }, [tasks, collapsedWorktrees])
 
   // The active row is the selected task's ACTIVE TAB when that worktree is
   // expanded, else the worktree row itself — so the highlight lands on the
@@ -112,22 +107,19 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   // user collapses the worktree they are working in.
   const activeRowId = useMemo(() => {
     if (selectedTaskId === null) return null
-    if (selectedTabId !== null && expandedWorktrees.has(selectedTaskId)) {
+    if (selectedTabId !== null && !collapsedWorktrees.has(selectedTaskId)) {
       return tabRowId(selectedTaskId, selectedTabId)
     }
     return selectedTaskId
-  }, [selectedTaskId, selectedTabId, expandedWorktrees])
+  }, [selectedTaskId, selectedTabId, collapsedWorktrees])
 
   const hasTabs = useCallback((taskId: string): boolean => (tabsByTask.get(taskId)?.length ?? 0) > 0, [tabsByTask])
 
   const toggleWorktree = useCallback((taskId: string) => {
-    setExpandedWorktrees((prev) => toggleInSet(prev, taskId))
+    setCollapsedWorktrees((prev) => toggleInSet(prev, taskId))
   }, [])
   const toggleProject = useCallback((projectId: string) => {
     setCollapsedProjects((prev) => toggleInSet(prev, projectId))
-  }, [])
-  const revealWorktree = useCallback((taskId: string) => {
-    setExpandedWorktrees((prev) => (prev.has(taskId) ? prev : new Set(prev).add(taskId)))
   }, [])
 
   return {
@@ -139,7 +131,6 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     collapsedProjects,
     toggleWorktree,
     toggleProject,
-    revealWorktree,
   }
 }
 

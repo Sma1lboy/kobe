@@ -140,10 +140,24 @@ export function SidebarViewTabs(props: { view: SidebarView; setView: (view: Side
     <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
       {VIEW_TABS.map((tab) => {
         const active = props.view === tab.view
+        // herdr-style tab highlight (2026-07-27, restored on owner ask
+        // 2026-08-01): the active tab is a filled accent chip, not just
+        // brighter text — the fill was silently dropped by the nav-rail
+        // rewrite (feb99ca3).
         return (
-          <box key={tab.view} flexShrink={0} onMouseUp={() => props.setView(tab.view)}>
+          <box
+            key={tab.view}
+            flexShrink={0}
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={active ? theme.focusAccent : undefined}
+            onMouseUp={() => props.setView(tab.view)}
+          >
             <text
-              fg={active ? theme.text : theme.textMuted}
+              // Contrast fg on the accent fill: `background` is alpha-0 in
+              // transparent mode (invisible text); `backgroundElement`
+              // stays opaque in every mode.
+              fg={active ? theme.backgroundElement : theme.textMuted}
               attributes={active ? TextAttributes.BOLD : undefined}
               wrapMode="none"
             >
