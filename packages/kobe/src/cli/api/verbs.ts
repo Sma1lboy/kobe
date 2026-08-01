@@ -60,18 +60,7 @@ async function handleSchema(ctx: VerbContext): Promise<unknown> {
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 
 /** Output the alias → canonical map so callers (and the schema) stay in sync. */
-export const VERB_ALIASES: Readonly<Record<string, string>> = {
-  "spawn-task": "add",
-  // Routines shipped as `automation-*` first. Scripts and agent memory that
-  // learned those names keep working — a rename is not a reason to break them.
-  "automation-list": "routine-list",
-  "automation-create": "routine-create",
-  "automation-update": "routine-update",
-  "automation-set-enabled": "routine-set-enabled",
-  "automation-delete": "routine-delete",
-  "automation-run-now": "routine-run-now",
-  "automation-runs": "routine-runs",
-}
+export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
 
 /**
  * Verb groups for LEVELED exploration. An agent reads the compact index

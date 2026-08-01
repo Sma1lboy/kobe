@@ -54,17 +54,17 @@ function precheckPayload(ctx: Parameters<VerbSpec["handler"]>[0]): Record<string
 export const ROUTINE_VERBS: readonly VerbSpec[] = [
   {
     name: "routine-list",
-    summary: "List scheduled automations with their next run time.",
+    summary: "List scheduled routines with their next run time.",
     flags: [],
     handler: (ctx) => simpleRpc(ctx, "automation.list", {}),
   },
   {
     name: "routine-create",
     summary:
-      "Schedule a prompt. Each firing creates a fresh task (worktree + engine) and delivers it. An enabled automation keeps the daemon alive so it fires with no TUI attached.",
+      "Schedule a prompt. Each firing creates a fresh task (worktree + engine) and delivers it. An enabled routine keeps the daemon alive so it fires with no TUI attached.",
     flags: [
       F.repo(),
-      { name: "name", type: "string", required: true, placeholder: "N", description: "Automation name." },
+      { name: "name", type: "string", required: true, placeholder: "N", description: "Routine name." },
       F.prompt(true, "Text delivered as the new session's first message."),
       { ...SCHEDULE_FLAG, required: true },
       F.vendor(),
@@ -93,9 +93,9 @@ export const ROUTINE_VERBS: readonly VerbSpec[] = [
   },
   {
     name: "routine-update",
-    summary: "Change an automation. A new --schedule re-anchors its next run; --precheck '' clears the precheck.",
+    summary: "Change a routine. A new --schedule re-anchors its next run; --precheck '' clears the precheck.",
     flags: [
-      { name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." },
+      { name: "id", type: "string", required: true, placeholder: "ID", description: "Routine id." },
       { name: "name", type: "string", placeholder: "N", description: "New name." },
       F.prompt(false, "New prompt."),
       SCHEDULE_FLAG,
@@ -118,9 +118,9 @@ export const ROUTINE_VERBS: readonly VerbSpec[] = [
   },
   {
     name: "routine-set-enabled",
-    summary: "Pause or resume an automation. Disabling the last active one releases the daemon's keep-alive hold.",
+    summary: "Pause or resume a routine. Disabling the last active one releases the daemon's keep-alive hold.",
     flags: [
-      { name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." },
+      { name: "id", type: "string", required: true, placeholder: "ID", description: "Routine id." },
       { name: "enabled", type: "bool", required: true, description: "true to resume, false to pause." },
     ],
     handler: (ctx) =>
@@ -128,22 +128,22 @@ export const ROUTINE_VERBS: readonly VerbSpec[] = [
   },
   {
     name: "routine-delete",
-    summary: "Delete an automation and its run history. Tasks it already created are untouched.",
-    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],
+    summary: "Delete a routine and its run history. Tasks it already created are untouched.",
+    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Routine id." }],
     handler: (ctx) => simpleRpc(ctx, "automation.delete", { id: ctx.args.require("id") }),
   },
   {
     name: "routine-run-now",
     summary:
-      "Run an automation immediately, skipping its precheck (asking for it IS the answer). Does not shift its schedule.",
-    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],
+      "Run a routine immediately, skipping its precheck (asking for it IS the answer). Does not shift its schedule.",
+    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Routine id." }],
     handler: (ctx) => simpleRpc(ctx, "automation.runNow", { id: ctx.args.require("id") }),
   },
   {
     name: "routine-runs",
     summary:
       "Run history, newest first. Statuses: dispatched, skipped_precheck (nothing to do), skipped_missed, skipped_unavailable, dispatch_failed.",
-    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Automation id." }],
+    flags: [{ name: "id", type: "string", required: true, placeholder: "ID", description: "Routine id." }],
     handler: (ctx) => simpleRpc(ctx, "automation.runs", { id: ctx.args.require("id") }),
   },
 ]

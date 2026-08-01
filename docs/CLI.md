@@ -440,9 +440,6 @@ attached. Mechanics: [design/automations.md](./design/automations.md).
 - `routine-delete --id ID`: delete it and its history (tasks it already
   created are untouched).
 
-The original `automation-*` names still work as aliases — scripts and agent
-memory that learned them keep running.
-
 **`--precheck`** runs a shell command in the repo before the engine starts;
 a non-zero exit skips the run *without* creating a task. Use it so a schedule
 does not burn a turn when nothing changed (`git log --since=24.hours --oneline
