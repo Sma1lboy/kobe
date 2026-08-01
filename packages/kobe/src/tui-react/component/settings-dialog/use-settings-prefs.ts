@@ -13,8 +13,15 @@ import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
 import { DEFAULT_SCROLLBACK_ROWS, SCROLLBACK_ROWS_KEY, normalizeScrollbackRows } from "../../../state/scrollback"
+import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../../state/sidebar-tree"
 import { SPLIT_STYLE_KEY, type SplitStyle, normalizeSplitStyle } from "../../../state/split-style"
-import { DEFAULT_TAB_STRIP_HIDE_SINGLE, TAB_STRIP_HIDE_SINGLE_KEY } from "../../../state/tab-strip"
+import {
+  TAB_STRIP_HIDE_SINGLE_KEY,
+  TAB_STRIP_MODES,
+  TAB_STRIP_MODE_KEY,
+  type TabStripMode,
+  resolveTabStripMode,
+} from "../../../state/tab-strip"
 import {
   PROJECT_DIR_TOKEN,
   PROJECT_SIBLING_BASE,
@@ -99,12 +106,23 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
   }
 
-  // Chat tab strip: hide the row while a ChatTab has only one tab.
-  function tabStripHidesSingle(): boolean {
-    return kv.get(TAB_STRIP_HIDE_SINGLE_KEY, DEFAULT_TAB_STRIP_HIDE_SINGLE) === true
+  // Sidebar layout: tree (project → worktree → tab) or the flat task list.
+  function sidebarTreeMode(): boolean {
+    return resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined)) === "tree"
   }
-  function toggleTabStripHidesSingle(): void {
-    kv.set(TAB_STRIP_HIDE_SINGLE_KEY, !tabStripHidesSingle())
+  function toggleSidebarTreeMode(): void {
+    kv.set(SIDEBAR_MODE_KEY, sidebarTreeMode() ? "flat" : "tree")
+  }
+
+  // Chat tab strip: never / only with 2+ tabs / always. Cycles rather than
+  // toggles — the sidebar tree made "off" the default, so the setting has
+  // three states instead of the old boolean (see state/tab-strip.ts).
+  function tabStripMode(): TabStripMode {
+    return resolveTabStripMode(kv.get(TAB_STRIP_MODE_KEY, undefined), kv.get(TAB_STRIP_HIDE_SINGLE_KEY, undefined))
+  }
+  function cycleTabStripMode(): void {
+    const next = TAB_STRIP_MODES[(TAB_STRIP_MODES.indexOf(tabStripMode()) + 1) % TAB_STRIP_MODES.length]
+    kv.set(TAB_STRIP_MODE_KEY, next)
   }
 
   // Experimental flags (Dev section).
@@ -289,8 +307,10 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     editEditorCustom,
     scrollbackRows,
     editScrollbackRows,
-    tabStripHidesSingle,
-    toggleTabStripHidesSingle,
+    tabStripMode,
+    cycleTabStripMode,
+    sidebarTreeMode,
+    toggleSidebarTreeMode,
     worktreeKind,
     worktreeKindLabel,
     worktreeCustomPath,

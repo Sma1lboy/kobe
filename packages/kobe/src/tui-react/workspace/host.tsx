@@ -10,6 +10,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../state/sidebar-tree"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
 import { type SidebarNav, focusPaneForNav } from "../../tui/panes/sidebar/nav-core"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
@@ -28,12 +29,13 @@ import { useAccessor } from "../lib/use-accessor"
 import { useDaemonNotices } from "../lib/use-daemon-notices"
 import { useLatest } from "../lib/use-latest"
 import { FileTree } from "../panes/filetree/FileTree"
-import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
+import type { SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { renderContentPage, renderFullWindowPage } from "./host-pages"
+import { HostSidebar } from "./host-sidebar"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import {
@@ -45,7 +47,7 @@ import {
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { sweepOrphanTabsSnapshots } from "./terminal-tabs-persist"
-import { forgetTaskTabs, setUiEventReporter } from "./terminal-tabs-shared"
+import { activeTabIdFor, forgetTaskTabs, requestTabActivation, setUiEventReporter } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
@@ -261,6 +263,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     setNav(next)
     focus.setFocused(focusPaneForNav(next))
   }
+  // Sidebar layout: the tree lists each worktree's tabs as rows (the strip is
+  // off by default to match); `flat` restores the PROJECTS / TASKS list.
+  const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
+  // The selected task's active tab — the tree marks that exact row as live.
+  // Read from the module map rather than threaded through TerminalTabs: the
+  // sidebar renders tabs for tasks whose TerminalTabs is not mounted, so the
+  // module map is the only source that answers for all of them.
+  const selectedTabId = selectedId === null ? null : activeTabIdFor(selectedId)
   const kanbanOpen = nav === "kanban"
   const automationsOpen = nav === "automations"
   const workItemsOpen = nav === "issues"
@@ -380,62 +390,62 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           opentui coerces a full frame if borderColor is ever set, so the box
           carries no border prop at all. The workspace frame's left edge is
           the only boundary; sidebar focus shows on the KOBE brand text. */}
-      <box
+      <HostSidebar
+        mode={sidebarMode}
         width={SIDEBAR_WIDTH}
-        flexShrink={0}
-        backgroundColor={theme.backgroundPanel}
-        onMouseUp={() => focus.setFocused("sidebar")}
-      >
-        <Sidebar
-          width={SIDEBAR_WIDTH}
-          nav={nav}
-          onNavChange={goToNav}
-          tasks={tasks}
-          selectedId={selectedId}
-          // Picking a task means "show me that task" — so it returns the
-          // content pane to its terminal. Without this the rail page stayed
-          // up and selecting a row did nothing visible.
-          onSelect={(id) => {
-            selectTask(id)
-            setNav("terminal")
-          }}
-          onActivate={(id) => {
-            setNav("terminal")
-            void activateTask(id)
-          }}
-          engineState={sidebarEngineState}
-          engineLifecycle={engineLifecycle}
-          taskJobs={taskJobs}
-          worktreeChanges={worktreeChanges}
-          transcriptActivity={transcriptActivity}
-          focused={activePane === "sidebar"}
-          onHoverChange={(hover) => setSidebarHover(hover)}
-          hoverEnabled={kv.get("sidebar.hover.enabled", false) === true}
-          // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
-          // fire these; the flows are the shared lib/task-actions bodies.
-          onAddTask={() => void createTask()}
-          onDeleteRequest={(id) => void deleteTask(id)}
-          onArchiveRequest={(id) => void archiveTask(id)}
-          onRenameRequest={(id) => void renameTask(id)}
-          onPinRequest={(id) => void togglePin(id)}
-          moveMode={moveMode}
-          onMoveRequest={(id, delta) => void moveTask(id, delta)}
-          onMoveModeExit={() => setMoveMode(false)}
-          onLocalMergeRequest={onLocalMergeRequest}
-          sortMode={sortMode}
-          onSortModeToggle={toggleSortMode}
-          projectFilter={projectFilter}
-          onProjectFilterChange={setProjectFilter}
-          onSearchActiveChange={setSearchActive}
-          headerStatus={{
-            label: `${t("workspace.inbox.title")} ${inbox.counts.total}`,
-            emphasize: inbox.counts.total > 0,
-          }}
-          onHeaderStatusClick={inbox.show}
-          zenActive={zen}
-          onZenClick={toggleZen}
-        />
-      </box>
+        nav={nav}
+        onNavChange={goToNav}
+        tasks={tasks}
+        selectedId={selectedId}
+        selectedTabId={selectedTabId}
+        // Picking a task means "show me that task" — so it returns the
+        // content pane to its terminal. Without this the rail page stayed
+        // up and selecting a row did nothing visible.
+        onSelect={(id) => {
+          selectTask(id)
+          setNav("terminal")
+        }}
+        onActivate={(id) => {
+          setNav("terminal")
+          void activateTask(id)
+        }}
+        onSelectTab={(taskId, tabId) => {
+          setNav("terminal")
+          requestTabActivation(taskId, tabId)
+        }}
+        engineState={sidebarEngineState}
+        engineLifecycle={engineLifecycle}
+        taskJobs={taskJobs}
+        worktreeChanges={worktreeChanges}
+        transcriptActivity={transcriptActivity}
+        focused={activePane === "sidebar"}
+        onHoverChange={(hover) => setSidebarHover(hover)}
+        hoverEnabled={kv.get("sidebar.hover.enabled", false) === true}
+        // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
+        // fire these; the flows are the shared lib/task-actions bodies.
+        onAddTask={() => void createTask()}
+        onDeleteRequest={(id) => void deleteTask(id)}
+        onArchiveRequest={(id) => void archiveTask(id)}
+        onRenameRequest={(id) => void renameTask(id)}
+        onPinRequest={(id) => void togglePin(id)}
+        moveMode={moveMode}
+        onMoveRequest={(id, delta) => void moveTask(id, delta)}
+        onMoveModeExit={() => setMoveMode(false)}
+        onLocalMergeRequest={onLocalMergeRequest}
+        sortMode={sortMode}
+        onSortModeToggle={toggleSortMode}
+        projectFilter={projectFilter}
+        onProjectFilterChange={setProjectFilter}
+        onSearchActiveChange={setSearchActive}
+        headerStatus={{
+          label: `${t("workspace.inbox.title")} ${inbox.counts.total}`,
+          emphasize: inbox.counts.total > 0,
+        }}
+        onHeaderStatusClick={inbox.show}
+        zenActive={zen}
+        onZenClick={toggleZen}
+        onFocusRequest={() => focus.setFocused("sidebar")}
+      />
 
       <box
         flexGrow={1}

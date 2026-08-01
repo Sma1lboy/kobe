@@ -27,11 +27,41 @@ export function activeTabIdFor(taskId: string): string | null {
   return tabsByTask.get(taskId)?.activeId ?? null
 }
 
+/** The task's known tab state — live process state, else its restart
+ *  snapshot, else null when this task has never opened tabs.
+ *
+ *  `kv` is nullable so a surface with no KV provider (render tests, a pane
+ *  mounted before the context exists) still sees the live tabs instead of
+ *  crashing: the in-memory map is authoritative for anything running now,
+ *  and the snapshot only adds tasks that have not mounted since restart. */
+function knownTabsState(kv: TabsSnapshotKv | null, taskId: string): TabsState | null {
+  const live = tabsByTask.get(taskId)
+  if (live) return live
+  const saved = kv?.store[terminalTabsKey(taskId)] as TabsState | null | undefined
+  return saved && Array.isArray(saved.tabs) ? saved : null
+}
+
 /** Resolve a tab from live process state or its restart snapshot. */
 export function knownTaskTab(kv: TabsSnapshotKv, taskId: string, tabId: string): TerminalTab | undefined {
-  const saved = kv.store[terminalTabsKey(taskId)] as TabsState | null | undefined
-  const state = tabsByTask.get(taskId) ?? (saved && Array.isArray(saved.tabs) ? saved : null)
-  return state?.tabs.find((tab) => tab.id === tabId)
+  return knownTabsState(kv, taskId)?.tabs.find((tab) => tab.id === tabId)
+}
+
+/**
+ * A task's tabs as a surface that does NOT host them sees them — the sidebar
+ * tree, which lists every worktree's tabs whether or not that worktree is the
+ * selected one (only the selected task has a mounted TerminalTabs).
+ *
+ * Null means "this task has never opened tabs", which is NOT the same as an
+ * empty list: the tree renders no children for the former rather than
+ * claiming the worktree has zero tabs, since mounting always yields at least
+ * one.
+ */
+export function knownTaskTabs(
+  kv: TabsSnapshotKv | null,
+  taskId: string,
+): { tabs: readonly TerminalTab[]; activeId: string } | null {
+  const state = knownTabsState(kv, taskId)
+  return state ? { tabs: state.tabs, activeId: state.activeId } : null
 }
 
 /**

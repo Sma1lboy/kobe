@@ -78,7 +78,14 @@ export const en = {
     scrollbackField: "rows",
     scrollbackInvalidTitle: "Not a number",
     scrollbackInvalidBody: "Scrollback must be a number of rows (e.g. 1000). Keeping the previous setting.",
-    tabStripHideSingle: "Hide the tab strip when a chat has one tab",
+    sidebarTree: "Sidebar as a tree (project → worktree → tab)",
+    /** `{mode}` = one of tabStripMode.* below. */
+    tabStripRow: "tab strip: {mode}  (enter to cycle)",
+    tabStripMode: {
+      never: "off — the sidebar tree lists tabs",
+      multipleOnly: "only with 2+ tabs",
+      always: "always",
+    },
   },
   engines: {
     title: "Launch command",
@@ -240,7 +247,13 @@ export const zh: typeof en = {
     scrollbackField: "行数",
     scrollbackInvalidTitle: "不是数字",
     scrollbackInvalidBody: "回滚行数必须是数字（如 1000）。保留原设置。",
-    tabStripHideSingle: "只有一个标签页时隐藏标签栏",
+    sidebarTree: "侧栏用树状（项目 → worktree → 标签）",
+    tabStripRow: "标签栏: {mode}  (enter 切换)",
+    tabStripMode: {
+      never: "关闭 — 标签在左侧树里",
+      multipleOnly: "仅 2 个以上标签时显示",
+      always: "始终显示",
+    },
   },
   engines: {
     title: "启动命令",
