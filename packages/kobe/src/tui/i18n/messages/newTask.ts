@@ -35,7 +35,6 @@ export const en = {
     noBranchesFound: "(no local branches found — typed text will be used as ref)",
     noMatchBranch: "(no match — typed text will be used as ref)",
     scanningWorktrees: "scanning worktrees…",
-    legend: "↑↓ pick · tab next field · ←→ switch · enter done · esc cancel",
   },
 
   picker: {
@@ -112,7 +111,6 @@ export const zh: typeof en = {
     noBranchesFound: "（未找到本地分支 — 将直接使用输入文本作为 ref）",
     noMatchBranch: "（无匹配 — 将直接使用输入文本作为 ref）",
     scanningWorktrees: "正在扫描 worktree…",
-    legend: "↑↓ 选择 · tab 下一字段 · ←→ 切换 · enter 确认 · esc 取消",
   },
 
   picker: {

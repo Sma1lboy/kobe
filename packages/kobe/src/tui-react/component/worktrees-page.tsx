@@ -238,7 +238,6 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("worktrees.title")}
         </text>
-        <text fg={theme.textMuted}>{t("worktrees.hint.legend")}</text>
       </box>
 
       {loading ? (

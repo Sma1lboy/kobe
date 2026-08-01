@@ -3,7 +3,6 @@ import {
   COMPOSER_FIELDS,
   type ComposerDraft,
   canSubmitDraft,
-  cyclePreset,
   firstIncompleteField,
   nextComposerField,
   previewSchedule,
@@ -69,19 +68,6 @@ describe("validation", () => {
 
   test("reports the FIRST gap, so tabbing forward fills them in order", () => {
     expect(firstIncompleteField({ name: "", repo: "", prompt: "", schedule: "nope" })).toBe("name")
-  })
-})
-
-describe("schedule presets", () => {
-  test("cycling steps through and wraps", () => {
-    expect(cyclePreset("0 9 * * MON-FRI", 1)).toBe("0 9 * * *")
-    expect(cyclePreset("*/15 * * * *", 1)).toBe("0 9 * * MON-FRI")
-    expect(cyclePreset("0 9 * * MON-FRI", -1)).toBe("*/15 * * * *")
-  })
-
-  test("a hand-typed cron steps onto a preset instead of nowhere", () => {
-    expect(cyclePreset("30 7 * * 3", 1)).toBe("0 9 * * MON-FRI")
-    expect(cyclePreset("30 7 * * 3", -1)).toBe("*/15 * * * *")
   })
 })
 

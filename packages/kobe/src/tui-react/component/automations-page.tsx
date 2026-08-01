@@ -358,7 +358,6 @@ export function AutomationsPage(props: {
       ) : null}
 
       {notice ? <text fg={theme.textMuted}>{notice}</text> : null}
-      <text fg={theme.textMuted}>{t("automations.keys")}</text>
     </box>
   )
 }

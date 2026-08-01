@@ -17,16 +17,15 @@ export const en = {
   promptPlaceholder: "Audit dependencies and summarize risky changes.",
   needRepo: "Open a project first — an automation runs in one.",
   cronInvalid: "not a five-field cron",
-  cronNever: "valid, but never fires",
-  presetHint: "←/→ presets",
-  composerKeys: "tab field · enter next · esc cancel",
-  preset: {
-    weekdays: "weekdays 9am",
-    daily: "daily 9am",
-    hourly: "hourly",
-    weekly: "mondays 9am",
-    quarterHour: "every 15m",
+  cronField: {
+    minute: "min",
+    hour: "hour",
+    dayOfMonth: "day",
+    month: "month",
+    dayOfWeek: "weekday",
   },
+
+  cronNever: "valid, but never fires",
   missing: {
     name: "Give it a name.",
     repo: "Pick a project.",
@@ -44,7 +43,6 @@ export const en = {
   deleteTitle: "Delete automation?",
   deleteBody: "{name} and its run history will be removed. Tasks it already created are untouched.",
   deleteButton: "Delete",
-  keys: "j/k move · n new · e pause/resume · s run now · enter open last run · d delete · r refresh · esc close",
 }
 
 export const zh: typeof en = {
@@ -61,16 +59,15 @@ export const zh: typeof en = {
   promptPlaceholder: "审计依赖并总结有风险的变更。",
   needRepo: "先打开一个项目——自动化要跑在某个项目里。",
   cronInvalid: "不是合法的五段 cron",
-  cronNever: "语法合法，但永远不会触发",
-  presetHint: "←/→ 预设",
-  composerKeys: "tab 切换字段 · enter 下一项 · esc 取消",
-  preset: {
-    weekdays: "工作日 9 点",
-    daily: "每天 9 点",
-    hourly: "每小时",
-    weekly: "每周一 9 点",
-    quarterHour: "每 15 分钟",
+  cronField: {
+    minute: "分",
+    hour: "时",
+    dayOfMonth: "日",
+    month: "月",
+    dayOfWeek: "星期",
   },
+
+  cronNever: "语法合法，但永远不会触发",
   missing: {
     name: "起个名字。",
     repo: "选一个项目。",
@@ -88,5 +85,4 @@ export const zh: typeof en = {
   deleteTitle: "删除这条自动化？",
   deleteBody: "将删除 {name} 及其执行记录。它已经创建的任务不受影响。",
   deleteButton: "删除",
-  keys: "j/k 移动 · n 新建 · e 暂停/恢复 · s 立即运行 · enter 打开最近一次 · d 删除 · r 刷新 · esc 关闭",
 }

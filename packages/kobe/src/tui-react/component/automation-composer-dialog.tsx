@@ -22,13 +22,19 @@ import {
   type ComposerDraft,
   type ComposerField,
   EMPTY_DRAFT,
-  SCHEDULE_PRESETS,
   canSubmitDraft,
-  cyclePreset,
   firstIncompleteField,
   nextComposerField,
   previewSchedule,
 } from "../../tui/component/automation-composer"
+import {
+  CRON_SEGMENTS,
+  describeCron,
+  moveSegmentCursor,
+  setSegment,
+  splitCron,
+  stepSegment,
+} from "../../tui/component/cron-segments"
 import { clampCursor, windowAround } from "../../tui/component/new-task-dialog/state"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { useTheme } from "../context/theme"
@@ -59,6 +65,12 @@ function AutomationComposerView(props: {
     return at >= 0 ? at : 0
   })
   const [error, setError] = useState<string | null>(null)
+  const [segmentCursor, setSegmentCursor] = useState(0)
+  const segmentValues = splitCron(draft.schedule)
+  const selectSegment = (index: number): void => {
+    setField("schedule")
+    setSegmentCursor(Math.min(Math.max(index, 0), CRON_SEGMENTS.length - 1))
+  }
 
   const patch = (next: Partial<ComposerDraft>): void => {
     setDraft((prev) => ({ ...prev, ...next }))
@@ -115,10 +127,39 @@ function AutomationComposerView(props: {
         : []),
       // Presets are a starting point, not a constraint: ←/→ steps through
       // them and the field stays typeable.
+      // ←/→ walks the cells, ↑/↓ changes the one under the cursor.
       ...(field === "schedule"
         ? [
-            { key: "left", cmd: () => patch({ schedule: cyclePreset(draft.schedule, -1) }) },
-            { key: "right", cmd: () => patch({ schedule: cyclePreset(draft.schedule, 1) }) },
+            { key: "left", cmd: () => setSegmentCursor((c) => moveSegmentCursor(c, -1)) },
+            { key: "right", cmd: () => setSegmentCursor((c) => moveSegmentCursor(c, 1)) },
+            {
+              key: "up",
+              cmd: () => {
+                const seg = CRON_SEGMENTS[segmentCursor]
+                if (!seg) return
+                patch({
+                  schedule: setSegment(
+                    draft.schedule,
+                    segmentCursor,
+                    stepSegment(seg, segmentValues[segmentCursor] ?? "*", 1),
+                  ),
+                })
+              },
+            },
+            {
+              key: "down",
+              cmd: () => {
+                const seg = CRON_SEGMENTS[segmentCursor]
+                if (!seg) return
+                patch({
+                  schedule: setSegment(
+                    draft.schedule,
+                    segmentCursor,
+                    stepSegment(seg, segmentValues[segmentCursor] ?? "*", -1),
+                  ),
+                })
+              },
+            },
           ]
         : []),
       ...(field === "confirm" ? [{ key: "return", cmd: () => commit() }] : []),
@@ -181,38 +222,41 @@ function AutomationComposerView(props: {
 
       <box gap={0}>
         {label("schedule", t("automations.fieldSchedule"))}
-        <input
-          value={draft.schedule}
-          focused={field === "schedule"}
-          onMouseUp={() => setField("schedule")}
-          onInput={(v: string) => patch({ schedule: v })}
-          onSubmit={() => setField(nextComposerField("schedule"))}
-        />
+        {/* Five cells, not a text field: ←/→ picks the cell, ↑/↓ changes it.
+            Typing cron means knowing the field order before you can say
+            anything, and a typo only shows up when the preview goes red. */}
+        <box flexDirection="row" gap={2} paddingLeft={1}>
+          {CRON_SEGMENTS.map((segment, index) => {
+            const activeCell = field === "schedule" && index === segmentCursor
+            return (
+              <box key={segment} flexDirection="column" onMouseUp={() => selectSegment(index)}>
+                <text
+                  fg={activeCell ? theme.primary : theme.text}
+                  attributes={activeCell ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined}
+                  wrapMode="none"
+                >
+                  {segmentValues[index] ?? "*"}
+                </text>
+                <text fg={activeCell ? theme.textMuted : theme.borderSubtle} wrapMode="none">
+                  {t(`automations.cronField.${segment}`)}
+                </text>
+              </box>
+            )
+          })}
+        </box>
         {/* The whole point of the card: a cron is unreadable, so say when it
             actually fires, in the user's own clock. */}
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} paddingLeft={1}>
           {preview.kind === "ok" ? (
             <text fg={theme.success} wrapMode="none">
-              {`${preview.relative} · ${preview.absolute}`}
+              {`${describeCron(draft.schedule) ?? ""}${describeCron(draft.schedule) ? " · " : ""}${preview.relative} · ${preview.absolute}`}
             </text>
           ) : (
             <text fg={theme.error} wrapMode="none">
               {preview.kind === "never" ? t("automations.cronNever") : t("automations.cronInvalid")}
             </text>
           )}
-          {field === "schedule" ? (
-            <text fg={theme.textMuted} wrapMode="none">
-              {t("automations.presetHint")}
-            </text>
-          ) : null}
         </box>
-        {field === "schedule" ? (
-          <text fg={theme.textMuted} wrapMode="none">
-            {SCHEDULE_PRESETS.map((p) => (p.cron === draft.schedule.trim() ? `▸${t(p.labelKey)}` : ` ${t(p.labelKey)}`))
-              .join("  ")
-              .trim()}
-          </text>
-        ) : null}
       </box>
 
       {error ? (
@@ -223,15 +267,17 @@ function AutomationComposerView(props: {
 
       {/* The dialog shell only owns paddingTop; the last row has to carry its
           own bottom cell or it sits flush against the card's edge. */}
-      <box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
+      {/* Create sits bottom-right, matching the new-task dialog. No key
+          legend: tab/enter/esc are the same everywhere in the app, and a
+          reminder on every card is noise once you have used one. */}
+      <box flexDirection="row" justifyContent="flex-end" paddingTop={1} paddingBottom={1}>
         <text
-          fg={field === "confirm" ? theme.primary : theme.textMuted}
+          fg={field === "confirm" ? theme.primary : theme.text}
           attributes={field === "confirm" ? TextAttributes.BOLD : undefined}
           onMouseUp={() => commit()}
         >
           {`[ ${t("common.create")} ]`}
         </text>
-        <text fg={theme.textMuted}>{t("automations.composerKeys")}</text>
       </box>
     </box>
   )

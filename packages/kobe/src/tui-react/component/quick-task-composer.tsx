@@ -206,9 +206,7 @@ function QuickTaskComposerView(
         />
       </box>
 
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>{t("quickTask.legend")}</text>
-      </box>
+      <box paddingBottom={1}></box>
     </box>
   )
 }

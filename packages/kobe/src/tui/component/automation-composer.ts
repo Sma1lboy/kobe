@@ -56,24 +56,6 @@ export function firstIncompleteField(draft: ComposerDraft): Exclude<ComposerFiel
   return null
 }
 
-/** Common schedules, offered as a starting point rather than a blank field. */
-export const SCHEDULE_PRESETS: readonly { readonly cron: string; readonly labelKey: string }[] = [
-  { cron: "0 9 * * MON-FRI", labelKey: "automations.preset.weekdays" },
-  { cron: "0 9 * * *", labelKey: "automations.preset.daily" },
-  { cron: "0 * * * *", labelKey: "automations.preset.hourly" },
-  { cron: "0 9 * * MON", labelKey: "automations.preset.weekly" },
-  { cron: "*/15 * * * *", labelKey: "automations.preset.quarterHour" },
-]
-
-/** Step through the presets — the schedule field's ←/→. */
-export function cyclePreset(current: string, delta: 1 | -1): string {
-  const index = SCHEDULE_PRESETS.findIndex((preset) => preset.cron === current.trim())
-  // Not on a preset (hand-typed): step onto the first one rather than nowhere.
-  if (index < 0) return SCHEDULE_PRESETS[delta > 0 ? 0 : SCHEDULE_PRESETS.length - 1]?.cron ?? current
-  const next = (index + delta + SCHEDULE_PRESETS.length) % SCHEDULE_PRESETS.length
-  return SCHEDULE_PRESETS[next]?.cron ?? current
-}
-
 export type SchedulePreview =
   | { readonly kind: "invalid" }
   /** Parses but never fires (`0 0 30 2 *`) — valid syntax, useless schedule. */

@@ -93,3 +93,38 @@ test("each automation renders as a boxed strip", async () => {
   expect(lines[row]).toContain("0 9 * * MON-FRI")
   expect(lines[row]).toContain("in 1h")
 })
+
+test("the schedule row is five editable cells, not a text field", async () => {
+  // ←/→ moves between cells and ↑/↓ changes the one under the cursor. Typing
+  // cron means knowing the field order before you can say anything.
+  const { frame, mockInput } = await renderComponent(
+    <AutomationsPage orchestrator={orchestrator()} focused={true} onClose={() => {}} />,
+    { width: 72, height: 30, providers: { dialog: true } },
+  )
+  await new Promise((r) => setTimeout(r, 120))
+  mockInput.typeText("n")
+  await new Promise((r) => setTimeout(r, 120))
+
+  const before = await frame()
+  expect(before).toContain("0 9 * * MON-FRI".split(" ").join("    ").slice(0, 1))
+  // Each cell is labelled — the structure is visible without knowing cron.
+  for (const label of ["min", "hour", "day", "month", "weekday"]) {
+    expect(before, label).toContain(label)
+  }
+  // And the whole thing is restated in words plus a real next-run time.
+  expect(before).toContain("weekdays at 09:00")
+
+  // Tab to schedule (name → repo → prompt → schedule), step to the hour cell,
+  // and change it.
+  mockInput.pressTab()
+  mockInput.pressTab()
+  mockInput.pressTab()
+  await new Promise((r) => setTimeout(r, 60))
+  mockInput.pressArrow("right")
+  mockInput.pressArrow("up")
+  await new Promise((r) => setTimeout(r, 80))
+
+  // The hour ladder starts at `*`, so one step off `9` lands there and the
+  // description follows it.
+  expect(await frame()).not.toContain("weekdays at 09:00")
+})

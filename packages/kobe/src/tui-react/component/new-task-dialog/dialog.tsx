@@ -94,7 +94,6 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           Create commits on click; also reachable by tabbing to the confirm
           field (Enter), or Enter on the last input of the active tab. */}
       <box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1} paddingBottom={1}>
-        <text fg={theme.textMuted}>{t("newTask.hint.legend")}</text>
         <text
           fg={vm.field === "confirm" ? theme.primary : theme.text}
           attributes={vm.field === "confirm" ? TextAttributes.BOLD : undefined}

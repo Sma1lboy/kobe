@@ -53,9 +53,7 @@ export const en = {
     done: 'Landed "{branch}" onto {landedOn} ({commit}).',
   },
 
-  hint: {
-    legend: "↑↓ nav · d delete · l land · esc close",
-  },
+  hint: {},
 }
 
 export const zh: typeof en = {
@@ -106,7 +104,5 @@ export const zh: typeof en = {
     done: '已把 "{branch}" 合入 {landedOn}（{commit}）。',
   },
 
-  hint: {
-    legend: "↑↓ 移动 · d 删除 · l 合入 · esc 关闭",
-  },
+  hint: {},
 }

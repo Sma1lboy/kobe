@@ -217,7 +217,6 @@ export function WorkItemsPage(props: {
       )}
 
       {notice ? <text fg={theme.textMuted}>{notice}</text> : null}
-      <text fg={theme.textMuted}>{t("workItems.keys")}</text>
     </box>
   )
 }
