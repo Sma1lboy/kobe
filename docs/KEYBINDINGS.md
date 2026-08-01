@@ -36,6 +36,12 @@ Default prefix actions:
 | `ctrl+a`, `g` | Point the content pane at GitHub issues. **PROPOSED — pending owner sign-off.** `g` for GitHub; `i` is taken by the Inbox, and this is deliberately distinct from the Kanban (`c`), which is kobe's OWN issue store. Also reachable by clicking the sidebar rail |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
 
+Rail pages (Kanban / Automations / Issues) do NOT disable the prefix: they
+replace only the content pane, so `ctrl+a` `u` switches from one to another
+and `ctrl+a` `c` goes back without an `esc` first. Their own bare keys
+(`j`/`k`/`d`/`enter`) are gated on the content pane holding focus, so they
+never collide with the sidebar's identically-named chords.
+
 High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 `ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct. Splits are
 direct again: `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;

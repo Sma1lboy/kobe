@@ -17,6 +17,13 @@ export type WorkspacePageState = {
   settingsOpen: boolean
   worktreesOpen: boolean
   updateOpen: boolean
+  /**
+   * The sidebar-rail pages. Deliberately NOT part of
+   * {@link workspacePagesClosed}: they replace only the content pane, so the
+   * sidebar and its chords stay live behind them — including the prefix
+   * itself, which is how you switch from one rail page to another (or back)
+   * without pressing esc first.
+   */
   kanbanOpen: boolean
   automationsOpen: boolean
   workItemsOpen: boolean
@@ -28,15 +35,10 @@ export type WorkspacePageState = {
  * exemption in host-keybindings.ts is {@link settingsCloseKeysEnabled}.
  */
 export function workspacePagesClosed(s: WorkspacePageState): boolean {
-  return (
-    !s.dialogOpen &&
-    !s.settingsOpen &&
-    !s.worktreesOpen &&
-    !s.updateOpen &&
-    !s.kanbanOpen &&
-    !s.automationsOpen &&
-    !s.workItemsOpen
-  )
+  // Only the FULL-WINDOW surfaces gate the chords: they cover the sidebar, so
+  // a sidebar chord would act on something the user cannot see. A rail page
+  // leaves the sidebar visible and must not disable it.
+  return !s.dialogOpen && !s.settingsOpen && !s.worktreesOpen && !s.updateOpen
 }
 
 /**

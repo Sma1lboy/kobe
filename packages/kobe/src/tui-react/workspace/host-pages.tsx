@@ -38,6 +38,9 @@ export interface HostPageDeps extends HostPageState {
   readonly closeKanban: () => void
   readonly closeUpdate: () => void
   readonly activateTask: (taskId: string) => void
+  /** True while the content pane holds focus — rail pages share the window
+   *  with the sidebar, so their bare keys are gated on it. */
+  readonly contentFocused: boolean
   readonly startIssueChat: Parameters<typeof KanbanPage>[0]["onStartChat"]
   readonly engineStates: Parameters<typeof KanbanPage>[0]["engineStates"]
 }
@@ -69,6 +72,7 @@ export function renderContentPage(deps: HostPageDeps): ReactNode | null {
     return (
       <AutomationsPage
         orchestrator={orch}
+        focused={deps.contentFocused}
         onClose={deps.closeAutomations}
         onOpenTask={(taskId) => {
           deps.closeAutomations()
@@ -82,6 +86,7 @@ export function renderContentPage(deps: HostPageDeps): ReactNode | null {
     return (
       <WorkItemsPage
         orchestrator={orch}
+        focused={deps.contentFocused}
         onClose={deps.closeWorkItems}
         // Opens pointed at the selected task's project, the same way the
         // kanban does — the page you wanted is almost always this one's.
@@ -98,6 +103,7 @@ export function renderContentPage(deps: HostPageDeps): ReactNode | null {
     return (
       <KanbanPage
         orchestrator={orch}
+        focused={deps.contentFocused}
         onClose={deps.closeKanban}
         onStartChat={deps.startIssueChat}
         engineStates={deps.engineStates}

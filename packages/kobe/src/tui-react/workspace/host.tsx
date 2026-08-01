@@ -342,6 +342,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     activateTask: (taskId: string) => void activateTask(taskId),
     startIssueChat: issueChat.start,
     engineStates: engineState,
+    contentFocused: activePane === "workspace",
   }
 
   // Worktrees / Update replace the whole window; the rail's pages replace only

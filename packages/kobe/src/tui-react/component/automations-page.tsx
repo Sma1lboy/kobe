@@ -60,6 +60,9 @@ function repoLabel(repo: string): string {
 export function AutomationsPage(props: {
   orchestrator: RemoteOrchestrator | null
   onClose: () => void
+  /** False while another pane holds focus — the page shares the window now,
+   *  so its bare j/k/d must not fire while the sidebar is focused. */
+  focused?: boolean
   onOpenTask?: (taskId: string) => void
 }): ReactNode {
   const { theme } = useTheme()
@@ -188,6 +191,7 @@ export function AutomationsPage(props: {
   }
 
   useBindings(() => ({
+    enabled: props.focused !== false,
     bindings: {
       ...pageCloseBindings(props.onClose),
       j: () => setCursor((c) => clampCursor(c + 1, rows.length)),

@@ -34,10 +34,20 @@ describe("workspacePagesClosed", () => {
     expect(workspacePagesClosed({ ...closed, dialogOpen: true })).toBe(false)
   })
 
-  test.each(["settingsOpen", "worktreesOpen", "updateOpen", "kanbanOpen"] as const)(
-    "an open %s page disables them too",
+  test.each(["settingsOpen", "worktreesOpen", "updateOpen"] as const)(
+    "an open full-window %s page disables them too",
     (page) => {
       expect(workspacePagesClosed({ ...closed, [page]: true })).toBe(false)
+    },
+  )
+
+  test.each(["kanbanOpen", "automationsOpen", "workItemsOpen"] as const)(
+    "a rail page (%s) leaves the chords LIVE",
+    (page) => {
+      // Rail pages replace only the content pane; the sidebar stays visible
+      // behind them. Gating here is what made prefix+u unreachable from the
+      // Kanban — you could only leave by pressing esc first.
+      expect(workspacePagesClosed({ ...closed, [page]: true })).toBe(true)
     },
   )
 })

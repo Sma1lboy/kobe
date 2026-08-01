@@ -46,6 +46,9 @@ function relativeAge(iso: string, now: number): string {
 export function WorkItemsPage(props: {
   orchestrator: RemoteOrchestrator | null
   onClose: () => void
+  /** False while another pane holds focus — the page shares the window now,
+   *  so its bare j/k/d must not fire while the sidebar is focused. */
+  focused?: boolean
   /** Land on the started task's workspace. */
   onOpenTask?: (taskId: string) => void
   /** Repo to open on; falls back to the first repo with tasks. */
@@ -126,6 +129,7 @@ export function WorkItemsPage(props: {
   }
 
   useBindings(() => ({
+    enabled: props.focused !== false,
     bindings: {
       ...pageCloseBindings(props.onClose),
       j: () => setCursor((c) => clampCursor(c + 1, rows.length)),
