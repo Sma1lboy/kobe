@@ -17,6 +17,7 @@
  * examples) is left in the calling code as-is — it isn't language.
  */
 
+import { en as automations, zh as automationsZh } from "./messages/automations"
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
@@ -31,6 +32,7 @@ import { en as settings, zh as settingsZh } from "./messages/settings"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as terminal, zh as terminalZh } from "./messages/terminal"
 import { en as update, zh as updateZh } from "./messages/update"
+import { en as workItems, zh as workItemsZh } from "./messages/workItems"
 import { en as workspace, zh as workspaceZh } from "./messages/workspace"
 import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 
@@ -51,6 +53,8 @@ export const en = {
   workspace,
   worktrees,
   kanban,
+  automations,
+  workItems,
 }
 
 /**
@@ -77,6 +81,8 @@ export const zh: Messages = {
   workspace: workspaceZh,
   worktrees: worktreesZh,
   kanban: kanbanZh,
+  automations: automationsZh,
+  workItems: workItemsZh,
 }
 
 /** Registered locales, in display order. */

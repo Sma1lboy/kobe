@@ -14,6 +14,7 @@ import { samePrStatus } from "../monitor/pr-status.ts"
 import type {
   Task,
   TaskId,
+  TaskLinkedWorkItem,
   TaskPRStatus,
   TaskQuotaResumeState,
   TaskStatus,
@@ -252,5 +253,13 @@ export class TaskEditor {
     const task = this.requireTask(id)
     if ((task.quotaResume?.resumeAt ?? null) === (state?.resumeAt ?? null)) return
     await this.store.update(task.id, { quotaResume: state ?? undefined })
+  }
+
+  /** Stamp the external tracker item this task was started from. Write-once in
+   *  practice (set at creation); a later call overwrites the snapshot. */
+  async setLinkedWorkItem(id: TaskId | string, item: TaskLinkedWorkItem | null): Promise<void> {
+    const task = this.requireTask(id)
+    if ((task.linkedWorkItem?.url ?? null) === (item?.url ?? null)) return
+    await this.store.update(task.id, { linkedWorkItem: item ?? undefined })
   }
 }

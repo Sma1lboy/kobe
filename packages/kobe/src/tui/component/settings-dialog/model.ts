@@ -61,6 +61,7 @@ export type SettingsRow =
   | { id: "worktree-base"; kind: "worktreeBase" }
   | { id: "worktree-custom"; kind: "worktreeCustom" }
   | { id: "scrollback-rows"; kind: "scrollbackRows" }
+  | { id: "tab-strip-hide-single"; kind: "tabStripHideSingle" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: string; kind: "pluginToggle"; pluginId: string }
@@ -146,6 +147,7 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "worktree-base", kind: "worktreeBase" },
     { id: "worktree-custom", kind: "worktreeCustom" },
     { id: "scrollback-rows", kind: "scrollbackRows" },
+    { id: "tab-strip-hide-single", kind: "tabStripHideSingle" },
   ]
 }
 

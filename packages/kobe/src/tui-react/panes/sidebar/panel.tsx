@@ -8,6 +8,7 @@
 
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { SidebarProjectOption, SidebarRow, SidebarView, TaskSortMode } from "../../../tui/panes/sidebar/groups"
+import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { VIEW_TABS, sidebarEmptyStateKey, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
@@ -47,6 +48,8 @@ export function SidebarPanel(props: {
   focused: boolean
   view: SidebarView
   setView: (view: SidebarView) => void
+  nav: SidebarNav
+  setNav: (nav: SidebarNav) => void
   sortMode: TaskSortMode
   searchMode: boolean
   searchQuery: string
@@ -153,25 +156,48 @@ export function SidebarPanel(props: {
         </box>
       ) : null}
 
-      <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-        {VIEW_TABS.map((tab) => {
-          const active = props.view === tab.view
-          // herdr-style tab highlight (2026-07-27): the active tab is a
-          // filled accent chip, not just brighter text.
+      {/* Top-level rail: one destination per line (owner call 2026-08-01).
+          The 24-cell rail cannot fit three chips side by side, and a fourth
+          would truncate — vertical scales, horizontal does not. */}
+      <box flexDirection="column" flexShrink={0} paddingBottom={1}>
+        {SIDEBAR_NAV_ITEMS.map((item) => {
+          const active = props.nav === item.nav
           return (
             <box
-              key={tab.view}
+              key={item.nav}
+              flexDirection="row"
               flexShrink={0}
               paddingLeft={1}
               paddingRight={1}
               backgroundColor={active ? theme.focusAccent : undefined}
-              onMouseUp={() => props.setView(tab.view)}
+              onMouseUp={() => props.setNav(item.nav)}
             >
               <text
                 // Contrast fg on the accent fill: `background` is alpha-0 in
                 // transparent mode (invisible text); `backgroundElement`
                 // stays opaque in every mode.
                 fg={active ? theme.backgroundElement : theme.textMuted}
+                attributes={active ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+                flexGrow={1}
+              >
+                {t(item.labelKey)}
+              </text>
+            </box>
+          )
+        })}
+      </box>
+
+      {/* Archives filters the task list INSIDE the sidebar — it changes which
+          tasks the list shows, and is unrelated to what the content pane on
+          the right is displaying. */}
+      <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+        {VIEW_TABS.map((tab) => {
+          const active = props.view === tab.view
+          return (
+            <box key={tab.view} flexShrink={0} onMouseUp={() => props.setView(tab.view)}>
+              <text
+                fg={active ? theme.text : theme.textMuted}
                 attributes={active ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
               >
@@ -181,7 +207,6 @@ export function SidebarPanel(props: {
           )
         })}
       </box>
-
       {/* Filter active ⇒ keep the header (and its filter label) visible even
           when the filtered repo has no main row to show. */}
       {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (

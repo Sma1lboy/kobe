@@ -60,6 +60,16 @@ export interface TaskWorkerReport {
   readonly reportedAt: string
 }
 
+/** Pointer back to the external issue a task was started from. Snapshot for
+ *  display; `url` is the durable way to the live item. Never synced. */
+export interface TaskLinkedWorkItem {
+  readonly provider: "github"
+  readonly type: "issue" | "pr"
+  readonly number: number
+  readonly title: string
+  readonly url: string
+}
+
 export interface DaemonTask {
   readonly id: string
   readonly title: string
@@ -78,6 +88,8 @@ export interface DaemonTask {
   readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
   readonly quotaResume?: TaskQuotaResumeState
+  /** The external tracker item this task was started from, when it was. */
+  readonly linkedWorkItem?: TaskLinkedWorkItem
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -128,6 +140,8 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
   setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
+  /** Stamp the external tracker item a task was started from. */
+  setLinkedWorkItem(id: string, item: TaskLinkedWorkItem | null): Promise<void>
   /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
   setQuotaResume(id: string, state: TaskQuotaResumeState | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
@@ -211,6 +225,94 @@ export interface AttentionInboxItem {
   readonly unread: boolean
   /** Event time, epoch milliseconds. Stable across daemon/TUI restarts. */
   readonly at: number
+}
+
+/** A shell command run BEFORE an automation's engine starts. A non-zero exit
+ *  means "nothing to do" and the run is skipped without spawning an engine —
+ *  the cheap way to stop a schedule burning a turn when nothing changed. */
+export interface AutomationPrecheck {
+  readonly command: string
+  readonly timeoutSeconds: number
+}
+
+/**
+ * One scheduled agent task: a cron rule + a prompt + a repo. Every firing
+ * creates a FRESH task (worktree + branch + engine session), so an automation
+ * run is an ordinary task you can open and keep talking to.
+ *
+ * `nextRunAt` is the whole scheduling story: an absolute timestamp on disk,
+ * never an in-memory timer. A daemon restart needs no re-arm pass — the first
+ * sweep after boot re-reads it (same shape as `Task.quotaResume`).
+ */
+export interface Automation {
+  readonly id: string
+  readonly name: string
+  /** Absolute repo root; resolved once at create time. */
+  readonly repo: string
+  /** Delivered as the engine's launch-time first message. */
+  readonly prompt: string
+  readonly vendor?: VendorId
+  /** Five-field cron, evaluated in the daemon host's local time. */
+  readonly schedule: string
+  readonly precheck?: AutomationPrecheck
+  readonly baseRef?: string
+  readonly enabled: boolean
+  /** ISO-8601. The single source of truth for when this fires next. */
+  readonly nextRunAt: string
+  /** How late a missed occurrence may still run. Older ones are skipped. */
+  readonly missedRunGraceMinutes: number
+  readonly lastRunAt?: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * Why a run did or did not produce work. The four "didn't run" reasons are
+ * deliberately distinct: unattended automation is only trustworthy if the user
+ * can tell "nothing to do" (`skipped_precheck`, healthy) from "it broke"
+ * (`dispatch_failed`, needs a human) at a glance.
+ */
+export type AutomationRunStatus =
+  | "dispatched"
+  | "skipped_precheck"
+  | "skipped_missed"
+  | "skipped_unavailable"
+  | "dispatch_failed"
+
+export interface AutomationPrecheckResult {
+  readonly exitCode: number | null
+  readonly timedOut: boolean
+  readonly stdout: string
+  readonly stderr: string
+  readonly durationMs: number
+}
+
+export interface AutomationRun {
+  readonly id: string
+  readonly automationId: string
+  /** Monotonic per automation; survives retention pruning. */
+  readonly runNumber: number
+  /** When this occurrence was SUPPOSED to run — not when it actually did. */
+  readonly scheduledFor: string
+  readonly status: AutomationRunStatus
+  readonly trigger: "scheduled" | "manual"
+  readonly taskId?: string
+  readonly precheckResult?: AutomationPrecheckResult
+  readonly error?: string
+  /** ISO-8601 event time. */
+  readonly at: string
+}
+
+/** Mutable fields of an automation. `schedule` changes recompute `nextRunAt`. */
+export interface AutomationPatch {
+  readonly name?: string
+  readonly prompt?: string
+  readonly vendor?: VendorId
+  readonly schedule?: string
+  readonly precheck?: AutomationPrecheck | null
+  readonly baseRef?: string | null
+  readonly enabled?: boolean
+  readonly missedRunGraceMinutes?: number
 }
 
 export interface UpdateInfo {

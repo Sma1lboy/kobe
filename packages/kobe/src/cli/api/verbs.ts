@@ -25,7 +25,9 @@ import {
 import { READ_OUTPUT_VERB } from "./read-output.ts"
 import { fullSchema, groupSchema, schemaIndex, verbSchema } from "./schema.ts"
 import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./types.ts"
+import { ROUTINE_VERBS } from "./verbs-automations.ts"
 import { ISSUE_VERBS } from "./verbs-issues.ts"
+import { WORK_ITEM_VERBS } from "./verbs-work-items.ts"
 
 /**
  * The `schema` verb's handler — LEVELED so it never dumps everything by
@@ -73,6 +75,16 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
+  workitems: ["workitem-list", "workitem-start"],
+  routine: [
+    "routine-list",
+    "routine-create",
+    "routine-update",
+    "routine-set-enabled",
+    "routine-delete",
+    "routine-run-now",
+    "routine-runs",
+  ],
   lifecycle: ["archive", "pin", "land", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
   feedback: ["feedback"],
@@ -208,6 +220,8 @@ export const VERBS: readonly VerbSpec[] = [
     handler: feedback,
   },
   ...ISSUE_VERBS,
+  ...ROUTINE_VERBS,
+  ...WORK_ITEM_VERBS,
   {
     name: "notify",
     summary:

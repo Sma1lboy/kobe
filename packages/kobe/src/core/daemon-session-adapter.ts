@@ -44,6 +44,32 @@ export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: st
   return { session: launch.key, worktreePath }
 }
 
+/**
+ * {@link ensureTaskSessionAdapter} with an explicit first message instead of
+ * the repo's `.kobe/init-prompt.md`. Used by the daemon's automation runner,
+ * whose whole job is starting a session that says something specific.
+ *
+ * `promptIntent: {kind:"explicit"}` makes `buildEngineSessionLaunch` append the
+ * text to the engine's OWN argv, so the prompt is part of the spawn rather
+ * than a paste racing a cold TUI — the difference matters when no human is
+ * watching to retype it.
+ */
+export async function startTaskSessionWithPromptAdapter(
+  link: DaemonRpcClient,
+  taskId: string,
+  prompt: string,
+): Promise<boolean> {
+  const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "explicit", prompt })
+  const host = await ensureHostedSessionHost()
+  try {
+    const opened = await ensureHostedEngine(host.rpc, worktreePath, launch)
+    return opened.alive
+  } finally {
+    host.close()
+  }
+}
+
 function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptIntent: PromptDeliveryIntent) {
   return buildEngineSessionLaunch({
     task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },

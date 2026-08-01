@@ -172,6 +172,20 @@ export type DaemonRequestName =
   | "attention.dismiss"
   // Legacy alias for resolving the exact item; `at` guards stale clients.
   | "attention.read"
+  // Scheduled Automations (docs/design/automations.md): CRUD over the
+  // daemon-owned schedule store, plus a manual trigger. The sweep itself is
+  // internal — these only shape what it will find on its next tick.
+  | "automation.list"
+  | "automation.create"
+  | "automation.update"
+  | "automation.delete"
+  | "automation.runs"
+  | "automation.runNow"
+  // External tracker work items (docs/design/work-items.md): a READ-ONLY view
+  // of GitHub issues via the `gh` CLI, plus one action — start a task on one.
+  // Never mirrored into the local issue store.
+  | "workitem.list"
+  | "workitem.start"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
@@ -350,6 +364,7 @@ export interface SerializedTask {
   readonly deletion?: DaemonTask["deletion"]
   /** Durable rate-limit auto-resume schedule. */
   readonly quotaResume?: DaemonTask["quotaResume"]
+  readonly linkedWorkItem?: DaemonTask["linkedWorkItem"]
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -373,6 +388,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     workerReport: task.workerReport,
     deletion: task.deletion,
     quotaResume: task.quotaResume,
+    linkedWorkItem: task.linkedWorkItem,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

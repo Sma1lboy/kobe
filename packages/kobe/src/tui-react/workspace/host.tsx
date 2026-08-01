@@ -11,14 +11,13 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
+import { type SidebarNav, focusPaneForNav } from "../../tui/panes/sidebar/nav-core"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { KanbanPage } from "../component/kanban-page"
 import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { UpdatePage } from "../component/update-page.tsx"
-import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
@@ -34,6 +33,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
+import { renderContentPage, renderFullWindowPage } from "./host-pages"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import {
@@ -246,7 +246,27 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // Worktrees page (issue #23) — placeholder swap, see file header GAP note.
   const [worktreesOpen, setWorktreesOpen] = useState(false)
   // Kanban page — the daemon issue store as a board, same swap shape.
-  const [kanbanOpen, setKanbanOpen] = useState(false)
+  // ONE destination at a time — the sidebar rail's selection IS the open
+  // surface. Three independent booleans allowed "kanban and automations both
+  // open", a state the rail cannot represent and no key can reach.
+  const [nav, setNav] = useState<SidebarNav>("terminal")
+  /**
+   * Opening a rail page moves focus INTO the content pane, and leaving hands
+   * it back to the sidebar. Without this the page renders but its keys stay
+   * dead — they are gated on the content pane being focused, so `n` fell
+   * through to the sidebar's new-task chord while the Automations page sat
+   * there telling the user to press `n`.
+   */
+  const goToNav = (next: SidebarNav): void => {
+    setNav(next)
+    focus.setFocused(focusPaneForNav(next))
+  }
+  const kanbanOpen = nav === "kanban"
+  const automationsOpen = nav === "automations"
+  const workItemsOpen = nav === "issues"
+  const setKanbanOpen = (on: boolean): void => goToNav(on ? "kanban" : "terminal")
+  const setAutomationsOpen = (on: boolean): void => goToNav(on ? "automations" : "terminal")
+  const setWorkItemsOpen = (on: boolean): void => goToNav(on ? "issues" : "terminal")
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
   const issueChat = useIssueChat(orch, {
@@ -271,6 +291,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openUpdate: () => setUpdateOpen(true),
     kanbanOpen,
     openKanban: () => setKanbanOpen(true),
+    filesPaneVisible: !zen && nav === "terminal",
+    automationsOpen,
+    openAutomations: () => setAutomationsOpen(true),
+    workItemsOpen,
+    openWorkItems: () => setWorkItemsOpen(true),
     searchActive,
     selectedId,
     openTaskWorktree: (id) =>
@@ -312,31 +337,30 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const dialogOpen = dialog.stack.length > 0
   const activePane = dialogOpen ? null : focus.focused
 
-  if (worktreesOpen) {
-    return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
+  const pageDeps = {
+    orchestrator: orch,
+    selectedTask,
+    worktreesOpen,
+    automationsOpen,
+    workItemsOpen,
+    kanbanOpen,
+    updateOpen,
+    closeWorktrees: () => setWorktreesOpen(false),
+    closeAutomations: () => setAutomationsOpen(false),
+    closeWorkItems: () => setWorkItemsOpen(false),
+    closeKanban: () => setKanbanOpen(false),
+    closeUpdate: () => setUpdateOpen(false),
+    activateTask: (taskId: string) => void activateTask(taskId),
+    startIssueChat: issueChat.start,
+    engineStates: engineState,
+    contentFocused: activePane === "workspace",
   }
 
-  if (kanbanOpen) {
-    return (
-      <KanbanPage
-        orchestrator={orch}
-        onClose={() => setKanbanOpen(false)}
-        onStartChat={issueChat.start}
-        engineStates={engineState}
-        // `c` fires from the sidebar, so the board opens pointed at the
-        // SELECTED task's project + its linked story card.
-        focusTask={selectedTask ? { id: selectedTask.id, repo: selectedTask.repo } : undefined}
-        onOpenTask={(taskId) => {
-          setKanbanOpen(false)
-          void activateTask(taskId)
-        }}
-      />
-    )
-  }
-
-  if (updateOpen) {
-    return <UpdatePage onClose={() => setUpdateOpen(false)} />
-  }
+  // Worktrees / Update replace the whole window; the rail's pages replace only
+  // the content pane, so the sidebar stays live beside them.
+  const fullWindowPage = renderFullWindowPage(pageDeps)
+  if (fullWindowPage) return fullWindowPage
+  const openPage = renderContentPage(pageDeps)
 
   if (settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its
@@ -364,10 +388,21 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       >
         <Sidebar
           width={SIDEBAR_WIDTH}
+          nav={nav}
+          onNavChange={goToNav}
           tasks={tasks}
           selectedId={selectedId}
-          onSelect={selectTask}
-          onActivate={(id) => void activateTask(id)}
+          // Picking a task means "show me that task" — so it returns the
+          // content pane to its terminal. Without this the rail page stayed
+          // up and selecting a row did nothing visible.
+          onSelect={(id) => {
+            selectTask(id)
+            setNav("terminal")
+          }}
+          onActivate={(id) => {
+            setNav("terminal")
+            void activateTask(id)
+          }}
           engineState={sidebarEngineState}
           engineLifecycle={engineLifecycle}
           taskJobs={taskJobs}
@@ -408,28 +443,36 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         borderColor={focus.focused === "workspace" ? theme.focusAccent : inactiveBorder}
         onMouseUp={() => focus.setFocused("workspace")}
       >
-        <ShowWorkspace
-          task={selectedTask}
-          worktree={worktree}
-          orchestrator={orch}
-          focused={activePane === "workspace"}
-          onRequestFocus={() => focus.setFocused("workspace")}
-          onEditorTabReady={(open) => {
-            openEditorTabFn.current = open
-          }}
-          onEngineSendReady={(send) => {
-            sendToEngineFn.current = send
-          }}
-          onDiffTabReady={(open) => {
-            openDiffTabFn.current = open
-          }}
-          onQuickFork={quickFork.onQuickFork}
-          initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
-          onTabVisited={inbox.resolveVisited}
-        />
+        {/* The rail swaps THIS pane, not the whole window — the task list on
+            the left stays live, so selecting a task is how you get back to
+            its terminal. */}
+        {openPage ?? (
+          <ShowWorkspace
+            task={selectedTask}
+            worktree={worktree}
+            orchestrator={orch}
+            focused={activePane === "workspace"}
+            onRequestFocus={() => focus.setFocused("workspace")}
+            onEditorTabReady={(open) => {
+              openEditorTabFn.current = open
+            }}
+            onEngineSendReady={(send) => {
+              sendToEngineFn.current = send
+            }}
+            onDiffTabReady={(open) => {
+              openDiffTabFn.current = open
+            }}
+            onQuickFork={quickFork.onQuickFork}
+            initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
+            onTabVisited={inbox.resolveVisited}
+          />
+        )}
       </box>
 
-      {!zen ? (
+      {/* The FileTree lists a WORKTREE's files. A rail page is not about a
+          worktree — it reads daemon state that spans projects — so the pane
+          would be showing an unrelated tree beside it. Hidden, same as zen. */}
+      {!zen && !openPage ? (
         <box
           width={worktreeToolsWidth}
           flexShrink={0}

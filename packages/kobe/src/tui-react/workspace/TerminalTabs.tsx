@@ -446,18 +446,17 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      {/* Tab strip — flush to the pane edge, dense, hidden for one tab. */}
-      {state.tabs.length > 1 ? (
-        <TabStrip
-          tabs={state.tabs}
-          activeId={state.activeId}
-          turnStates={turnStates}
-          onSelect={(tabId) => update(selectTab(state, tabId))}
-          vendor={props.vendor}
-          liveTitles={liveTitles}
-          turnVendors={turnVendors}
-        />
-      ) : null}
+      {/* Tab strip — flush to the pane edge, dense; hides itself for a lone
+          tab only when the Settings → Terminal toggle asks it to. */}
+      <TabStrip
+        tabs={state.tabs}
+        activeId={state.activeId}
+        turnStates={turnStates}
+        onSelect={(tabId) => update(selectTab(state, tabId))}
+        vendor={props.vendor}
+        liveTitles={liveTitles}
+        turnVendors={turnVendors}
+      />
       {/* Spawn gate: while restart verification runs (millisecond-scale
           transcript reads), nothing may spawn. */}
       {hydrating ? (

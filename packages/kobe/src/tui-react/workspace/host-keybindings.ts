@@ -24,13 +24,17 @@ import { useT } from "../i18n"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
-import { type WorkspacePageState, settingsCloseKeysEnabled, workspacePagesClosed } from "./keybinding-gates"
+import {
+  type WorkspacePageState,
+  nextFocusedPane,
+  settingsCloseKeysEnabled,
+  workspacePagesClosed,
+} from "./keybinding-gates"
 import { usePluginKeybindings } from "./use-plugin-keybindings"
 
 // Cycle order for focus.next — the host's real panes, NOT the context's
 // PANE_ORDER: that includes "terminal", which this host never mounts, and
 // cycling focus onto an unmounted pane would strand it.
-const PANE_CYCLE = ["sidebar", "workspace", "files"] as const satisfies readonly PaneId[]
 
 export type WorkspaceKeybindingDeps = {
   focus: FocusContextValue
@@ -42,6 +46,12 @@ export type WorkspaceKeybindingDeps = {
   openUpdate: () => void
   kanbanOpen: boolean
   openKanban: () => void
+  /** False while the files pane is unmounted (zen, or a rail page). */
+  filesPaneVisible?: boolean
+  automationsOpen: boolean
+  openAutomations: () => void
+  workItemsOpen: boolean
+  openWorkItems: () => void
   searchActive: boolean
   selectedId: string | null
   openTaskWorktree: (id: string) => void
@@ -94,9 +104,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
   // clamps at both ends — sidebar ← workspace → files — instead of
   // wrapping, so "previous" from the sidebar never jumps to files.
   function cyclePane(delta: 1 | -1): void {
-    const idx = PANE_CYCLE.indexOf(focus.focused as (typeof PANE_CYCLE)[number])
-    const next = Math.min(Math.max(idx + delta, 0), PANE_CYCLE.length - 1)
-    if (next !== idx) focus.setFocused(PANE_CYCLE[next] as PaneId)
+    const next = nextFocusedPane(focus.focused, delta, { filesVisible: deps.filesPaneVisible !== false })
+    if (next) focus.setFocused(next as PaneId)
   }
 
   // One named predicate instead of inline `dialog.stack.length === 0 && …`
@@ -108,6 +117,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     worktreesOpen: deps.worktreesOpen,
     updateOpen: deps.updateOpen,
     kanbanOpen: deps.kanbanOpen,
+    automationsOpen: deps.automationsOpen,
+    workItemsOpen: deps.workItemsOpen,
   }
   const pagesClosed = workspacePagesClosed(pages)
 
@@ -128,6 +139,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
         "kanban.open": () => deps.openKanban(),
+        "automations.open": () => deps.openAutomations(),
+        "workItems.open": () => deps.openWorkItems(),
         "task.moveMode": () => deps.enterMoveMode(),
         "files.createPR": () => deps.createPR(),
         "task.openEditor": () => {

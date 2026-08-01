@@ -206,9 +206,8 @@ function QuickTaskComposerView(
         />
       </box>
 
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>{t("quickTask.legend")}</text>
-      </box>
+      {/* Bottom breathing room — the legend that used to fill this row is gone. */}
+      <box paddingBottom={1} />
     </box>
   )
 }

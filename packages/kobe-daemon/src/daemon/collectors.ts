@@ -6,7 +6,10 @@
  * shutdown order); each collector's mechanics live in its own module.
  */
 
+import type { DaemonRpcClient } from "../client/rpc.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
+import { DEFAULT_AUTOMATION_TICK_MS, startAutomationRunner } from "./automation-runner.ts"
+import type { AutomationsStore } from "./automations-store.ts"
 import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
@@ -42,6 +45,13 @@ export interface DaemonCollectorOptions {
   readonly transcriptActivityTickMs?: number
   readonly quotaResumeTickMs?: number
   readonly quotaUsageTickMs?: number
+  readonly automationTickMs?: number
+}
+
+/** What the automation sweep needs; omitted in tests that don't exercise it. */
+export interface AutomationCollectorDeps {
+  readonly store: AutomationsStore
+  readonly link: DaemonRpcClient | (() => DaemonRpcClient)
 }
 
 /**
@@ -87,6 +97,7 @@ export function startDaemonCollectors(
   hasSubscribers: () => boolean,
   options: DaemonCollectorOptions,
   quotaUsage?: QuotaUsageCache,
+  automations?: AutomationCollectorDeps,
 ): () => void {
   const checkUpdate = options.checkUpdate ?? runtime.checkLatestVersion
   const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
@@ -150,6 +161,15 @@ export function startDaemonCollectors(
     options.quotaResumeTickMs ?? DEFAULT_QUOTA_RESUME_TICK_MS,
   )
 
+  // Automation sweep: same reasoning as quota-resume, only more so — a
+  // schedule that requires an audience is not a schedule. Also ungated.
+  const stopAutomationRunner = automations
+    ? startAutomationRunner(
+        { store: automations.store, orch, runtime, link: automations.link },
+        options.automationTickMs ?? DEFAULT_AUTOMATION_TICK_MS,
+      )
+    : () => {}
+
   // Usage poller (Settings dashboard): gated on subscribers — the resume
   // scheduler does its own on-demand cache reads. Vendors in play = every
   // non-archived task's vendor + the default. Cadence lives in the cache.
@@ -174,6 +194,7 @@ export function startDaemonCollectors(
     stopAutoTitlePoller()
     stopPrStatusPoller()
     stopQuotaResumeRunner()
+    stopAutomationRunner()
     stopQuotaUsagePoller()
     stopUiPrefsWatcher()
     stopKeybindingsWatcher()

@@ -51,6 +51,18 @@ export interface DaemonRuntimeAdapter {
   engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
+  /**
+   * Materialize a task's worktree and START its engine with `prompt` as the
+   * launch-time first message. Returns false when the session did not come up.
+   *
+   * The spawning sibling of {@link deliverPromptToLiveEngine}, which exists for
+   * the opposite case (resume a session that is already alive, never spawn).
+   * An automation run has no prior session by construction, so it needs this
+   * one. The prompt rides the engine's own argv rather than being typed into
+   * the PTY afterwards — a cold engine can swallow a raced paste, and an
+   * unattended run has nobody watching to notice.
+   */
+  startTaskSessionWithPrompt(link: DaemonRpcClient, taskId: string, prompt: string): Promise<boolean>
   tearDownTaskSession(taskId: string): Promise<void>
   /**
    * Engine-owned subscription-quota probe: snapshot of the vendor account's

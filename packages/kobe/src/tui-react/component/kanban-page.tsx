@@ -64,6 +64,8 @@ const ACTIVITY_BADGE: Partial<
 export function KanbanPage(props: {
   orchestrator: RemoteOrchestrator | null
   onClose: () => void
+  /** False while another pane holds focus (the board is a content-pane page). */
+  focused?: boolean
   /** Detail drawer's Start — the host owns task creation + prompt handoff. */
   onStartChat: (request: IssueChatStart) => Promise<void>
   /** Open a linked story's existing session (closes the kanban page). */
@@ -285,9 +287,10 @@ export function KanbanPage(props: {
   }
 
   useBindings(() => ({
-    // Dormant while the detail drawer is up — the dialog owns the keyboard
-    // (same gate as WorktreesPage).
-    enabled: dialog.stack.length === 0,
+    // Dormant while the detail drawer is up (the dialog owns the keyboard),
+    // and while another pane has focus — the board shares the window with the
+    // sidebar now, so its bare letters must not fire from over there.
+    enabled: dialog.stack.length === 0 && props.focused !== false,
     bindings: [
       ...pageCloseBindings(props.onClose),
       { key: "r", cmd: () => setReloadTick((tick) => tick + 1) },

@@ -30,7 +30,7 @@ function manualClock(): { schedule: ScheduleFn; fire: () => void } {
 const GUI: LifetimeClient = { subscribed: true, holdsLifetime: true }
 const PANE: LifetimeClient = { subscribed: true, holdsLifetime: false }
 
-function make(clients: LifetimeClient[], opts: { firstGuiGraceMs?: number } = {}) {
+function make(clients: LifetimeClient[], opts: { firstGuiGraceMs?: number; keepAlive?: () => boolean } = {}) {
   const clock = manualClock()
   const onIdleStop = vi.fn()
   const lifetime = new DaemonLifetime({
@@ -129,6 +129,83 @@ describe("DaemonLifetime", () => {
 
   it("no firstGuiGraceMs: a deliberate gui-less start keeps the stays-up behavior", () => {
     const { onIdleStop, clock } = make([PANE])
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The keep-alive hold exists for scheduled Automations: a schedule that only
+ * fires while a human happens to be looking at kobe is not a schedule. It must
+ * both engage AND release — a hold that never lets go is a leak.
+ */
+describe("keep-alive hold", () => {
+  it("keeps the daemon up with no gui attached", () => {
+    const clients: LifetimeClient[] = [GUI]
+    const { lifetime, onIdleStop, clock } = make(clients, { keepAlive: () => true })
+    clients.length = 0
+    lifetime.clientDisconnected(true)
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+
+  it("still self-stops when no hold is active", () => {
+    const clients: LifetimeClient[] = [GUI]
+    const { lifetime, onIdleStop, clock } = make(clients, { keepAlive: () => false })
+    clients.length = 0
+    lifetime.clientDisconnected(true)
+    clock.fire()
+    expect(onIdleStop).toHaveBeenCalledOnce()
+  })
+
+  it("suppresses arming entirely rather than arming a timer it would veto", () => {
+    // A hold present at disconnect means NO grace timer is scheduled at all —
+    // which is why releasing one later needs `reevaluateIdle` (next test) and
+    // cannot rely on a pending timer re-checking the condition.
+    const clients: LifetimeClient[] = [GUI]
+    let held = true
+    const { lifetime, onIdleStop, clock } = make(clients, { keepAlive: () => held })
+    clients.length = 0
+    lifetime.clientDisconnected(true)
+    held = false
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+
+  it("re-checks a hold that vanishes while a grace timer is already pending", () => {
+    // The timer here was armed with no hold, so a hold appearing mid-grace
+    // must still be honoured when it fires.
+    const clients: LifetimeClient[] = [GUI]
+    let held = false
+    const { lifetime, onIdleStop, clock } = make(clients, { keepAlive: () => held })
+    clients.length = 0
+    lifetime.clientDisconnected(true)
+    held = true
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+  })
+
+  it("self-stops via reevaluateIdle when the last hold is released", () => {
+    // The hole this closes: arming is otherwise driven only by gui
+    // disconnects, so deleting the last automation after the gui already left
+    // would leave nothing to notice, and the daemon would live forever.
+    const clients: LifetimeClient[] = [GUI]
+    let held = true
+    const { lifetime, onIdleStop, clock } = make(clients, { keepAlive: () => held })
+    clients.length = 0
+    lifetime.clientDisconnected(true)
+    clock.fire()
+    expect(onIdleStop).not.toHaveBeenCalled()
+
+    held = false
+    lifetime.reevaluateIdle()
+    clock.fire()
+    expect(onIdleStop).toHaveBeenCalledOnce()
+  })
+
+  it("does not arm while a gui is still attached, hold or not", () => {
+    const { lifetime, onIdleStop, clock } = make([GUI], { keepAlive: () => false })
+    lifetime.reevaluateIdle()
     clock.fire()
     expect(onIdleStop).not.toHaveBeenCalled()
   })

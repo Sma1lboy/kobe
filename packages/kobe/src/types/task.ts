@@ -201,8 +201,25 @@ export interface Task {
   readonly deletion?: TaskDeletionState
   /** Present while a rate-limited engine waits for its quota window to reset. */
   readonly quotaResume?: TaskQuotaResumeState
+  /** The external tracker item this task was started from, when it was. */
+  readonly linkedWorkItem?: TaskLinkedWorkItem
   readonly createdAt: string
   readonly updatedAt: string
+}
+
+/**
+ * A pointer back to the issue in someone else's tracker that this task exists
+ * to address. Stamped once at creation and never synced: the fields are a
+ * SNAPSHOT for display, and `url` is the durable way back to the live item.
+ * kobe deliberately does not mirror the item's state (see `work-items.ts`).
+ */
+export interface TaskLinkedWorkItem {
+  readonly provider: "github"
+  readonly type: "issue" | "pr"
+  readonly number: number
+  /** Title as it read when the task was started. */
+  readonly title: string
+  readonly url: string
 }
 
 /**

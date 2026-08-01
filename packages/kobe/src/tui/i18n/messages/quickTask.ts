@@ -17,7 +17,6 @@ export const en = {
   /** Branch field label */
   branchLabel: "branch",
   /** Footer hint legend */
-  legend: "enter create · tab field · ctrl+e engine · ctrl+v attach · ctrl+x unattach · esc cancel",
 }
 
 export const zh: typeof en = {
@@ -27,5 +26,4 @@ export const zh: typeof en = {
   promptPlaceholder: "这个任务要做什么？",
   engineLabel: "引擎",
   branchLabel: "分支",
-  legend: "enter 创建 · tab 切换字段 · ctrl+e 切换引擎 · ctrl+v 附加剪贴板 · ctrl+x 移除附件 · esc 取消",
 }

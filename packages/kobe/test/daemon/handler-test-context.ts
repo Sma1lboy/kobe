@@ -1,9 +1,12 @@
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
 import type { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
+import type { AutomationsStore } from "@sma1lboy/kobe-daemon/daemon/automations-store"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
 import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
+import type { WorkItemCache } from "@sma1lboy/kobe-daemon/daemon/work-items"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
@@ -18,6 +21,7 @@ export interface RecordedHandlerEffects {
   readonly inboxTaskDeleted: string[]
   readonly deletions: string[]
   stopped: number
+  idleReevaluations: number
 }
 
 /** Build a handler context around a partial fake Orchestrator — no socket. */
@@ -36,6 +40,7 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     inboxTaskDeleted: [],
     deletions: [],
     stopped: 0,
+    idleReevaluations: 0,
   }
   const ctx: DaemonHandlerContext = {
     runtime: daemonRuntime,
@@ -89,6 +94,23 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         return { repoRoot: String(repo), exists: true, nextId: 2, issues: [] }
       },
     } as unknown as IssuesStore,
+    // Empty schedule store: automation behavior has its own suites
+    // (automations-store / automation-runner), so handler tests only need the
+    // surface to exist.
+    automations: {
+      list: () => [],
+      get: () => undefined,
+      runsFor: () => [],
+      hasEnabled: () => false,
+      create: async (input: unknown) => input,
+      update: async () => null,
+      delete: async () => false,
+      recordRun: async (input: unknown) => input,
+      advanceNextRun: async () => null,
+    } as unknown as AutomationsStore,
+    // Never hits `gh`: work-item behavior has its own suite.
+    workItems: { list: async () => [], clear: () => {} } as unknown as WorkItemCache,
+    selfLink: { request: async () => ({}) } as unknown as DaemonRpcClient,
     daemon: {
       startedAt: new Date("2026-06-01T00:00:00.000Z"),
       socketPath: "/tmp/fake/daemon.sock",
@@ -96,6 +118,9 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       guiCount: () => 1,
       stopSoon: async () => {
         rec.stopped++
+      },
+      reevaluateIdle: () => {
+        rec.idleReevaluations++
       },
     },
     clientId: 7,

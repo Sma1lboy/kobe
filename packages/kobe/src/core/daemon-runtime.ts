@@ -26,6 +26,7 @@ import {
   deliverPromptToLiveEngineAdapter,
   engineSpecAdapter,
   ensureTaskSessionAdapter,
+  startTaskSessionWithPromptAdapter,
   tearDownTaskSessionAdapter,
   terminalSpecAdapter,
 } from "./daemon-session-adapter.ts"
@@ -66,6 +67,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   engineSpec: engineSpecAdapter,
   terminalSpec: terminalSpecAdapter,
   ensureTaskSession: ensureTaskSessionAdapter,
+  startTaskSessionWithPrompt: startTaskSessionWithPromptAdapter,
   tearDownTaskSession: tearDownTaskSessionAdapter,
   quotaUsage: (vendor) => engineEntry(vendor).quotaUsage?.() ?? Promise.resolve(null),
   deliverPromptToLiveEngine: deliverPromptToLiveEngineAdapter,

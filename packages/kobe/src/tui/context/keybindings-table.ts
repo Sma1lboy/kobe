@@ -192,19 +192,35 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // Prefix-only `prefix+c` (owner call 2026-07-29, demoting the bare
     // sidebar `c` it shipped with): the kanban is a step-back-and-look
     // surface, not a per-task verb, so it doesn't earn a direct sidebar
-    // letter next to n/o/a/d/r. Same shape as `inbox.show` — another
-    // whole-page view reached through the prefix — and being global it
-    // now opens from any pane instead of only from sidebar focus.
-    // `c` (cards) survives as the second stroke: the mnemonic letters
-    // k/b/i are taken (sidebar.nav / tasks.renameBranch /
-    // sidebar.previewToggle) and w/e stay free for
-    // keymap-slot-parity.test.ts.
+    // The three sidebar-rail pages take prefix+1/2/3, matching the rail's
+    // own top-to-bottom order (owner call 2026-08-01) — the sidebar is the
+    // legend, so there is no mnemonic to remember. They swap only the content
+    // pane, so the prefix stays live behind them and 1→2→3 hops directly
+    // between pages without an esc.
     id: "kanban.open",
     scope: "global",
     keys: [],
-    prefixKeys: ["c"],
+    prefixKeys: ["1"],
     category: "Global",
     description: "Open kanban (issues board)",
+  },
+  {
+    // Rail row 2 — see kanban.open above.
+    id: "automations.open",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["2"],
+    category: "Global",
+    description: "Open automations (scheduled tasks)",
+  },
+  {
+    // Rail row 3 — see kanban.open above.
+    id: "workItems.open",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["3"],
+    category: "Global",
+    description: "Open GitHub issues (external tracker)",
   },
   {
     // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is

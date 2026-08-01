@@ -7,8 +7,10 @@
  */
 
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import type { Automation, AutomationRun } from "@sma1lboy/kobe-daemon/daemon/contracts"
 import type { RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { WorkItem } from "@sma1lboy/kobe-daemon/daemon/work-items"
 import type { LandResult } from "../orchestrator/land.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
@@ -188,6 +190,64 @@ export async function listIssuesOp(client: KobeDaemonClient, repoRoot: string): 
  *  kanban detail drawer uses `link` (start → task) and `setStatus`. */
 export async function mutateIssueOp(client: KobeDaemonClient, repoRoot: string, op: unknown): Promise<RepoIssues> {
   return client.request<RepoIssues>("issue.mutate", { repoRoot, op })
+}
+
+/** Scheduled automations (`automation.list`) — the automations page read. */
+export async function listAutomationsOp(
+  client: KobeDaemonClient,
+): Promise<{ automations: Automation[]; keepsDaemonAlive: boolean }> {
+  return client.request("automation.list", {})
+}
+
+/** Create a schedule (`automation.create`). The daemon validates the cron and
+ *  rejects an expression that parses but never fires. */
+export async function createAutomationOp(
+  client: KobeDaemonClient,
+  input: { repo: string; name: string; prompt: string; schedule: string },
+): Promise<{ automation: Automation }> {
+  return client.request("automation.create", input)
+}
+
+/** One automation's run history (`automation.runs`), newest first. */
+export async function automationRunsOp(client: KobeDaemonClient, id: string): Promise<{ runs: AutomationRun[] }> {
+  return client.request("automation.runs", { id })
+}
+
+/** Pause / resume (`automation.update` with just `enabled`). */
+export async function setAutomationEnabledOp(
+  client: KobeDaemonClient,
+  id: string,
+  enabled: boolean,
+): Promise<{ automation: Automation }> {
+  return client.request("automation.update", { id, enabled })
+}
+
+/** Fire one now, skipping its precheck (`automation.runNow`). */
+export async function runAutomationNowOp(client: KobeDaemonClient, id: string): Promise<{ status: string }> {
+  return client.request("automation.runNow", { id })
+}
+
+/** Delete an automation and its history (`automation.delete`). */
+export async function deleteAutomationOp(client: KobeDaemonClient, id: string): Promise<{ deleted: boolean }> {
+  return client.request("automation.delete", { id })
+}
+
+/** External tracker items for a repo (`workitem.list`) — the read-only
+ *  work-items page. `refresh` bypasses the daemon's 60s cache. */
+export async function listWorkItemsOp(
+  client: KobeDaemonClient,
+  args: { repo: string; state?: string; limit?: number; search?: string; assignee?: string; refresh?: boolean },
+): Promise<{ items: WorkItem[] }> {
+  return client.request<{ items: WorkItem[] }>("workitem.list", args)
+}
+
+/** Start a task on one external item (`workitem.start`) — creates the
+ *  worktree, starts the engine with the issue as its first message. */
+export async function startWorkItemOp(
+  client: KobeDaemonClient,
+  args: { repo: string; number: number; vendor?: string; baseRef?: string },
+): Promise<{ taskId: string; title: string; started: boolean }> {
+  return client.request<{ taskId: string; title: string; started: boolean }>("workitem.start", args)
 }
 
 /**

@@ -19,6 +19,19 @@ async function pressPrefixed(terminal: Locator, key: string): Promise<void> {
   await pressTerminal(terminal, key)
 }
 
+/**
+ * Point the content pane at the Kanban (`prefix+1`, rail row 1).
+ *
+ * Waits on a CARD, never on the word "Kanban": the sidebar rail prints that
+ * label permanently, so asserting it passes whether or not the board opened.
+ * That false positive is what let the chord move from `prefix+c` to `prefix+1`
+ * with these tests still "checking" the board.
+ */
+async function openKanban(terminal: Locator, buffer: Locator): Promise<void> {
+  await pressPrefixed(terminal, "1")
+  await expect(buffer).toContainText("Backlog fixture")
+}
+
 async function waitForVisualPty(harness: Locator, buffer: Locator): Promise<void> {
   try {
     await expect(harness).toHaveAttribute("data-pty-status", "open", { timeout: 45_000 })
@@ -95,8 +108,7 @@ test("Kanban fixture detail opens and returns through the real OpenTUI", async (
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await pressPrefixed(terminal, "c")
-    await expect(buffer).toContainText("Backlog fixture")
+    await openKanban(terminal, buffer)
 
     // Kanban opens focused on the fixture task's linked card; move to the
     // independent Backlog card before opening its editable detail drawer.
@@ -107,7 +119,6 @@ test("Kanban fixture detail opens and returns through the real OpenTUI", async (
     await expect(buffer).toContainText("WORKSPACE")
 
     await pressTerminal(terminal, "Escape")
-    await expect(buffer).toContainText("Kanban")
     await expect(buffer).toContainText("Backlog fixture")
     await pressTerminal(terminal, "Escape")
     await expect(buffer).toContainText("Visual Fixture")
@@ -119,10 +130,8 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
 
   await withVisualTui(page, async (terminal, buffer) => {
     await terminal.click({ position: { x: 24, y: 24 } })
-    await pressPrefixed(terminal, "c")
+    await openKanban(terminal, buffer)
 
-    await expect(buffer).toContainText("Kanban")
-    await expect(buffer).toContainText("Backlog fixture")
     await expect(buffer).toContainText("In progress fixture")
     await expect(buffer).toContainText("Done fixture")
 
