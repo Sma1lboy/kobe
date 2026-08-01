@@ -221,7 +221,9 @@ function AutomationComposerView(props: {
         </text>
       ) : null}
 
-      <box flexDirection="row" justifyContent="space-between">
+      {/* The dialog shell only owns paddingTop; the last row has to carry its
+          own bottom cell or it sits flush against the card's edge. */}
+      <box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
         <text
           fg={field === "confirm" ? theme.primary : theme.textMuted}
           attributes={field === "confirm" ? TextAttributes.BOLD : undefined}
