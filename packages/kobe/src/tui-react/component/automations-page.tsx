@@ -254,22 +254,25 @@ export function AutomationsPage(props: {
 
   useBindings(() => ({
     enabled: props.focused !== false,
-    bindings: {
+    bindings: [
       ...pageCloseBindings(props.onClose),
-      j: () => setCursor((c) => clampCursor(c + 1, rows.length)),
-      down: () => setCursor((c) => clampCursor(c + 1, rows.length)),
-      k: () => setCursor((c) => clampCursor(c - 1, rows.length)),
-      up: () => setCursor((c) => clampCursor(c - 1, rows.length)),
-      n: () => void createAutomation(),
-      r: () => refetch(),
-      e: () => void toggleEnabled(),
-      s: () => void runNow(),
-      d: () => void requestDelete(),
-      return: () => {
-        const taskId = runs.find((run) => run.taskId)?.taskId
-        if (taskId) props.onOpenTask?.(taskId)
+      { key: "j", cmd: () => setCursor((c) => clampCursor(c + 1, rows.length)) },
+      { key: "down", cmd: () => setCursor((c) => clampCursor(c + 1, rows.length)) },
+      { key: "k", cmd: () => setCursor((c) => clampCursor(c - 1, rows.length)) },
+      { key: "up", cmd: () => setCursor((c) => clampCursor(c - 1, rows.length)) },
+      { key: "n", cmd: () => void createAutomation() },
+      { key: "r", cmd: () => refetch() },
+      { key: "e", cmd: () => void toggleEnabled() },
+      { key: "s", cmd: () => void runNow() },
+      { key: "d", cmd: () => void requestDelete() },
+      {
+        key: "return",
+        cmd: () => {
+          const taskId = runs.find((run) => run.taskId)?.taskId
+          if (taskId) props.onOpenTask?.(taskId)
+        },
       },
-    },
+    ],
   }))
 
   const now = Date.now()

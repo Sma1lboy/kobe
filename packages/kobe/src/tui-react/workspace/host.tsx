@@ -392,8 +392,17 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           onNavChange={goToNav}
           tasks={tasks}
           selectedId={selectedId}
-          onSelect={selectTask}
-          onActivate={(id) => void activateTask(id)}
+          // Picking a task means "show me that task" — so it returns the
+          // content pane to its terminal. Without this the rail page stayed
+          // up and selecting a row did nothing visible.
+          onSelect={(id) => {
+            selectTask(id)
+            setNav("terminal")
+          }}
+          onActivate={(id) => {
+            setNav("terminal")
+            void activateTask(id)
+          }}
           engineState={sidebarEngineState}
           engineLifecycle={engineLifecycle}
           taskJobs={taskJobs}

@@ -130,17 +130,17 @@ export function WorkItemsPage(props: {
 
   useBindings(() => ({
     enabled: props.focused !== false,
-    bindings: {
+    bindings: [
       ...pageCloseBindings(props.onClose),
-      j: () => setCursor((c) => clampCursor(c + 1, rows.length)),
-      down: () => setCursor((c) => clampCursor(c + 1, rows.length)),
-      k: () => setCursor((c) => clampCursor(c - 1, rows.length)),
-      up: () => setCursor((c) => clampCursor(c - 1, rows.length)),
-      tab: () => setRepoIndex((i) => (repos.length ? (i + 1) % repos.length : 0)),
-      a: () => setAssignedToMe((on) => !on),
-      r: () => setReloadTick((tick) => tick + 1),
-      return: () => void startSelected(),
-    },
+      { key: "j", cmd: () => setCursor((c) => clampCursor(c + 1, rows.length)) },
+      { key: "down", cmd: () => setCursor((c) => clampCursor(c + 1, rows.length)) },
+      { key: "k", cmd: () => setCursor((c) => clampCursor(c - 1, rows.length)) },
+      { key: "up", cmd: () => setCursor((c) => clampCursor(c - 1, rows.length)) },
+      { key: "tab", cmd: () => setRepoIndex((i) => (repos.length ? (i + 1) % repos.length : 0)) },
+      { key: "a", cmd: () => setAssignedToMe((on) => !on) },
+      { key: "r", cmd: () => setReloadTick((tick) => tick + 1) },
+      { key: "return", cmd: () => void startSelected() },
+    ],
   }))
 
   const now = Date.now()
