@@ -41,8 +41,8 @@ the mnemonic. Kanban moved off the `c` it shipped with for that reason. Clicking
 a rail row does the same thing.
 
 Rail pages (Kanban / Automations / Issues) do NOT disable the prefix: they
-replace only the content pane, so `ctrl+a` `u` switches from one to another
-and `ctrl+a` `c` goes back without an `esc` first. Their own bare keys
+replace only the content pane, so `ctrl+a` `2` switches from one to another
+and `ctrl+a` `1` goes back without an `esc` first. Their own bare keys
 (`j`/`k`/`d`/`enter`) are gated on the content pane holding focus, so they
 never collide with the sidebar's identically-named chords.
 
@@ -122,13 +122,14 @@ open Worktree, `a` archive, `d` delete, `r` rename, `b` rename branch, `v`
 change engine, `/` search, `u` open the Update page (version check +
 one-key updater), and `[`/`]` switch Working/Archives.
 
-Owner decision (2026-07-29): the Kanban is `prefix+c`, global scope, no direct
-chord, demoted from the bare sidebar `c` it originally shipped with. The
-sidebar's bare letters are per-task verbs (new, archive, delete, rename); the
-Kanban is a step-back-and-look surface, so it belongs with the other whole-page
-views reached through the prefix (`prefix+i` Inbox). Going global also means it
-opens from any pane instead of only under sidebar focus. `c` (cards) survives as
-the second stroke; the mnemonic letters k/b/i were already taken.
+Owner decision (2026-07-29, superseded 2026-08-01): the Kanban left the bare
+sidebar `c` it originally shipped with. The sidebar's bare letters are per-task
+verbs (new, archive, delete, rename); the Kanban is a step-back-and-look
+surface, so it belongs with the other whole-page views reached through the
+prefix (`prefix+i` Inbox). Going global also means it opens from any pane
+instead of only under sidebar focus. It took `prefix+c` (cards) for two days,
+then moved to `prefix+1` when the rail made it row 1 of a set — see the rail
+note above.
 
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
