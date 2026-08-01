@@ -172,6 +172,15 @@ export type DaemonRequestName =
   | "attention.dismiss"
   // Legacy alias for resolving the exact item; `at` guards stale clients.
   | "attention.read"
+  // Scheduled Automations (docs/design/automations.md): CRUD over the
+  // daemon-owned schedule store, plus a manual trigger. The sweep itself is
+  // internal — these only shape what it will find on its next tick.
+  | "automation.list"
+  | "automation.create"
+  | "automation.update"
+  | "automation.delete"
+  | "automation.runs"
+  | "automation.runNow"
   // Dispatcher messenger (docs/design/dispatcher.md): publish a
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.

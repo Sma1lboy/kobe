@@ -33,14 +33,17 @@
  * `packages/kobe/test/daemon/handlers.test.ts`).
  */
 
+import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { AttentionInboxStore } from "./attention-inbox.ts"
+import type { AutomationsStore } from "./automations-store.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
+import { AUTOMATION_HANDLERS } from "./handlers-automations.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
 import { UI_HANDLERS } from "./handlers-ui.ts"
 import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
@@ -91,6 +94,11 @@ export interface DaemonHandlerContext {
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
   readonly issues: IssuesStore
+  /** Daemon-owned scheduled automations + their run history. */
+  readonly automations: AutomationsStore
+  /** In-process RPC client for handlers that must drive the daemon's own
+   *  request surface (the automation runner's engine launch). */
+  readonly selfLink: DaemonRpcClient
   /** Rate-limited cache in front of the engine quota probes. */
   readonly quotaUsage: QuotaUsageCache
   /** Per-task recent engine events (`task.recentEvents`; absent in older tests). */
@@ -115,6 +123,9 @@ export interface DaemonHandlerContext {
     guiCount(): number
     /** Graceful self-stop (`daemon.stop`). */
     stopSoon(): Promise<void>
+    /** Re-check idle shutdown after a keep-alive hold may have been released
+     *  (the last automation was disabled or deleted with no gui attached). */
+    reevaluateIdle(): void
   }
   /** The requesting connection's id (`hello` echoes it back as `clientId`). */
   readonly clientId: number
@@ -244,6 +255,9 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           // the daemon alive. Excludes in-tmux helper panes (role "pane") and
           // transient CLI pokes, so this reflects "humans looking at kobe".
           attachedClients: ctx.daemon.guiCount(),
+          // Why this daemon may be up with zero attached clients. Without it,
+          // a daemon staying alive for a schedule looks like a leak.
+          automationHold: ctx.automations.hasEnabled(),
           taskCount: ctx.orch.listTasks().length,
           socketPath: ctx.daemon.socketPath,
           webPort: ctx.daemon.webPort ?? null,
@@ -266,6 +280,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     ...TASK_HANDLERS,
     ...WORKTREE_HANDLERS,
     ...ATTENTION_HANDLERS,
+    ...AUTOMATION_HANDLERS,
     ...UI_HANDLERS,
     {
       name: "issue.list",

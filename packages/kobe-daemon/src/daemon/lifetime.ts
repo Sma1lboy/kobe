@@ -88,6 +88,16 @@ export interface DaemonLifetimeOptions {
    * stays-up behavior.
    */
   readonly firstGuiGraceMs?: number
+  /**
+   * Non-gui reason to stay alive. When this returns true the daemon does not
+   * self-stop even with zero guis attached.
+   *
+   * Exists for scheduled Automations: a schedule that only fires while someone
+   * happens to be looking at kobe is not a schedule. The hold is opt-in by
+   * construction — the user created the automation — and releases the moment
+   * the last one is deleted or disabled, restoring the ordinary idle shutdown.
+   */
+  readonly keepAlive?: () => boolean
   /** Timer factory (default: unref'd setTimeout); injected by tests. */
   readonly schedule?: ScheduleFn
   /** Structured log sink (default: {@link logDaemonInfo}); injected by tests. */
@@ -100,6 +110,7 @@ export class DaemonLifetime {
   private readonly onIdleStop: () => void
   private readonly schedule: ScheduleFn
   private readonly log: (event: string, message: string) => void
+  private readonly keepAlive: () => boolean
   private cancelIdle: (() => void) | null = null
   private stopping = false
 
@@ -109,6 +120,7 @@ export class DaemonLifetime {
     this.onIdleStop = options.onIdleStop
     this.schedule = options.schedule ?? defaultSchedule
     this.log = options.log ?? logDaemonInfo
+    this.keepAlive = options.keepAlive ?? (() => false)
     // Autospawned daemons must not outlive a client that never became a
     // gui (see firstGuiGraceMs). The first guiAttached() cancels this;
     // afterwards only the normal >0 → 0 transition arms shutdown.
@@ -117,7 +129,7 @@ export class DaemonLifetime {
       this.log("idle", `autospawned — arming ${bootGrace}ms first-gui grace`)
       this.cancelIdle = this.schedule(() => {
         this.cancelIdle = null
-        if (this.stopping || this.guiCount() > 0) return
+        if (this.shouldStayUp()) return
         this.log("idle", "first-gui grace elapsed with no gui — self-stopping")
         this.onIdleStop()
       }, bootGrace)
@@ -163,6 +175,18 @@ export class DaemonLifetime {
     if (wasGui) this.maybeArm()
   }
 
+  /**
+   * Re-check idle shutdown after a KEEP-ALIVE hold may have gone away.
+   *
+   * Arming is otherwise driven purely by gui disconnects, which leaves a hole
+   * once holds exist: detach the last gui (daemon stays up for a schedule),
+   * then delete that schedule, and nothing is left to notice. Callers that
+   * mutate a keep-alive source call this.
+   */
+  reevaluateIdle(): void {
+    this.maybeArm()
+  }
+
   private clearIdle(): void {
     if (this.cancelIdle) {
       this.cancelIdle()
@@ -170,13 +194,26 @@ export class DaemonLifetime {
     }
   }
 
+  /**
+   * Every reason NOT to self-stop, in one place: already stopping, a gui is
+   * attached, or a non-gui holder (scheduled automations) wants the process
+   * alive. Checked at each arm point AND again when the timer fires, since a
+   * hold can appear or vanish during the grace window.
+   */
+  private shouldStayUp(): boolean {
+    if (this.stopping || this.guiCount() > 0) return true
+    if (!this.keepAlive()) return false
+    this.log("idle", "no gui, but a keep-alive hold is active — staying up")
+    return true
+  }
+
   private maybeArm(): void {
-    if (this.stopping || this.guiCount() > 0) return
+    if (this.shouldStayUp()) return
     this.clearIdle()
     this.log("idle", `last gui gone — arming ${this.idleGraceMs}ms idle-stop grace`)
     this.cancelIdle = this.schedule(() => {
       this.cancelIdle = null
-      if (this.stopping || this.guiCount() > 0) return
+      if (this.shouldStayUp()) return
       this.log("idle", "grace elapsed with no gui — self-stopping")
       this.onIdleStop()
     }, this.idleGraceMs)

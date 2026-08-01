@@ -21,6 +21,8 @@ import { maybeStartPluginHost } from "../plugins/runtime.ts"
 import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
+import { initAutomationsStore } from "./automation-wiring.ts"
+import { handleSubscribe } from "./subscribe.ts"
 import {
   type ClientState,
   type DaemonClientConnection,
@@ -145,6 +147,11 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
     // Autospawned daemons (connectOrStartDaemon's spawn stamps the env
     // flag) reap themselves if no gui EVER attaches — the zombie hole.
     ...(process.env.KOBE_DAEMON_AUTOSPAWNED === "1" ? { firstGuiGraceMs: FIRST_GUI_GRACE_MS } : {}),
+    // An enabled schedule keeps the daemon alive with no gui attached — a
+    // schedule that only fires while someone is watching is not a schedule.
+    // Read lazily: the store is constructed below, and this is polled at
+    // shutdown time rather than captured now.
+    keepAlive: () => automations.hasEnabled(),
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
   })
 
@@ -171,6 +178,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // git common-dir, sharing the server's homeDir so sandbox/test homes
   // isolate. Handlers reach it through DaemonHandlerContext.issues.
   const issues = new IssuesStore(defaultIssuesStorePath(options.homeDir))
+  // Daemon-owned scheduled automations. The sweep that fires them is started
+  // with the other collectors; this only loads the persisted schedules.
+  const automations = await initAutomationsStore(options.homeDir)
   // Sole caller of the engine quota probes — owns the fetch cadence (the
   // vendor usage APIs are themselves rate-limited). Shared by the usage
   // poller (collectors) and the rate-limit resume scheduler (handlers).
@@ -259,7 +269,21 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // keybindings watchers, worktree-changes / transcript-activity / pr-status)
   // — wired in collectors.ts; per-tick work is gated on attached subscribers
   // so a gui-less daemon never polls npm / git / gh for nobody.
-  const stopCollectors = startDaemonCollectors(orch, runtime, bus, () => lifetime.hasSubscribers(), options, quotaUsage)
+  const stopCollectors = startDaemonCollectors(
+    orch,
+    runtime,
+    bus,
+    () => lifetime.hasSubscribers(),
+    options,
+    quotaUsage,
+    {
+      store: automations,
+      // `selfLink` is defined below (it closes over handlerContext, which closes
+      // over half this function); the sweep only reads it on a tick, long after
+      // construction settles.
+      link: () => selfLink,
+    },
+  )
 
   // Plugin runtime: startup hooks + channel-derived event hooks (plugins/runtime.ts).
   const pluginHost = maybeStartPluginHost(bus, options, socketPath, (line) => logDaemonInfo("plugin-host", line))
@@ -343,6 +367,8 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       inbox,
       deletions,
       issues,
+      automations,
+      selfLink,
       quotaUsage,
       engineEvents,
       ...(pluginHost ? { plugins: pluginHost } : {}),
@@ -355,18 +381,19 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         pid: process.pid,
         guiCount: () => lifetime.guiCount(),
         stopSoon,
+        reevaluateIdle: () => lifetime.reevaluateIdle(),
       },
       clientId,
     }
   }
 
+  // In-process RPC client over the daemon's OWN handler registry — no socket,
+  // no web transport. Built unconditionally: the automation runner needs it to
+  // launch engine sessions whether or not `--web-port` was passed. The web
+  // server reuses the same object when it is enabled.
+  const selfLink = createDirectWebLink({ orch, bus, activity, ctx: handlerContext })
+
   if (options.webPort !== undefined) {
-    const link = createDirectWebLink({
-      orch,
-      bus,
-      activity,
-      ctx: handlerContext,
-    })
     // The web transport is a SECONDARY surface — a bind failure (port taken by
     // a stray `vite preview`, another kobe daemon, whatever) must NEVER take
     // the daemon down. Degrade to socket-only, record the reason for status,
@@ -377,7 +404,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         port: options.webPort,
         hostname: options.webHost,
         staticDir: options.webStaticDir,
-        link,
+        link: selfLink,
         onEvent: (sink) => bus.onPublish(sink),
         onSseOpen: () => {
           const client = { subscribed: true, holdsLifetime: true }
@@ -408,58 +435,14 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
     if (req.name === "subscribe") {
-      const payload = objectPayload(req.payload)
-      const wasSubscribed = client.subscribed
-      client.subscribed = true
-      // role defaults to "pane": a subscriber that omits it is the safe
-      // non-lifetime kind, so a future client can't accidentally pin the
-      // daemon open. Only a "gui" attach holds the daemon alive.
-      const role = payload.role === "gui" ? "gui" : "pane"
-      client.holdsLifetime = role === "gui"
-      // Per-channel filter (KOB — per-channel subscribe). `null` = no filter
-      // → every channel (back-compat: an omitted/garbage `channels` behaves
-      // exactly as before). A non-null set restricts both this replay and
-      // every later `broadcast` to the named channels, so a narrow consumer
-      // (UiPrefsSync wants only ui-prefs + keybindings) stops receiving —
-      // and deserializing — the full task.snapshot fan-out it never reads.
-      client.channels = normalizeChannelFilter(payload.channels)
-      // First-time subscribe with zero prior subscribers → a collector that
-      // had paused (gui-less daemon) repopulates on its NEXT tick; nothing
-      // to kick synchronously since the interval keeps running.
-      const firstSubscriber = !wasSubscribed
-      // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
-      // pane subscribing must NOT cancel it: panes alone never keep the
-      // daemon up, so a pane connecting during the grace window leaves the
-      // countdown running.
-      if (client.holdsLifetime) lifetime.guiAttached()
-      logDaemonInfo(
-        "conn",
-        `client #${client.id} subscribed as ${role}${client.channels ? ` [${[...client.channels].join(",")}]` : ""} — ${clients.size} client(s), ${lifetime.guiCount()} gui${firstSubscriber ? " (collectors resume)" : ""}`,
-      )
-      // Replay the current value of every populated channel so a late
-      // subscriber hydrates without a separate round trip — generalized
-      // from the old single task.snapshot send. Filtered to the
-      // client's requested channels (null = all). The bus cache is warm
-      // (subscribeTasks' eager fire).
-      for (const event of bus.snapshot()) {
-        if (client.channels && !client.channels.has(event.channel)) continue
-        writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
-      }
-      // The bus only caches ONE last-value per channel, but `engine-state`
-      // is per-task — so additionally replay EVERY task's current non-idle
-      // activity to this late subscriber (otherwise it'd only learn the most
-      // recently changed task's state). Skip when the client filtered
-      // `engine-state` out.
-      if (!client.channels || client.channels.has("engine-state")) {
-        for (const payload of activity.currentNonIdle()) {
-          writeFrame(client, {
-            type: "event",
-            name: "engine-state",
-            payload,
-          })
-        }
-      }
-      return {}
+      return handleSubscribe(client, objectPayload(req.payload), {
+        bus,
+        activity,
+        lifetime,
+        clientCount: () => clients.size,
+        writeEvent: (target, name, payload) =>
+          writeFrame(target as ClientState, { type: "event", name, payload }),
+      })
     }
     // `pty.*` requests are NOT served here — they belong to the standalone
     // pty host process's socket (`pty-server.ts`). A client that sends one

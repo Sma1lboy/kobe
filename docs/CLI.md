@@ -400,6 +400,34 @@ The daemon-owned issue store (backlog; see
   edit title/body and/or link a task (kanban: In progress; `--task none`
   unlinks).
 
+### automation
+
+Scheduled agent tasks: a cron rule + a prompt + a repo. Every firing creates a
+**fresh task** (worktree + branch + engine session) with the prompt as its
+first message — a run is an ordinary task you can open and keep talking to.
+An enabled automation keeps the daemon alive so schedules fire with no TUI
+attached. Mechanics: [design/automations.md](./design/automations.md).
+
+- `automation-list`: every automation with its next run time.
+- `automation-create --repo PATH --name N --prompt TEXT --schedule CRON
+  [--vendor V] [--base-branch B] [--precheck CMD] [--precheck-timeout SEC]
+  [--grace MIN] [--disabled]`: schedule a prompt. `--schedule` is five-field
+  cron in the daemon host's local time (`"0 9 * * MON-FRI"`).
+- `automation-update --id ID [...]`: change any field. A new `--schedule`
+  re-anchors the next run; `--precheck ''` clears the precheck.
+- `automation-set-enabled --id ID --enabled BOOL`: pause / resume.
+- `automation-run-now --id ID`: run immediately, skipping the precheck. Does
+  not shift the schedule.
+- `automation-runs --id ID`: run history, newest first.
+- `automation-delete --id ID`: delete it and its history (tasks it already
+  created are untouched).
+
+**`--precheck`** runs a shell command in the repo before the engine starts;
+a non-zero exit skips the run *without* creating a task. Use it so a schedule
+does not burn a turn when nothing changed (`git log --since=24.hours --oneline
+| grep -q .`). Run statuses distinguish `skipped_precheck` (healthy — nothing
+to do) from `dispatch_failed` (needs a human).
+
 ### lifecycle
 
 - `archive --task-id ID [--archived=false]`: archive/unarchive.
