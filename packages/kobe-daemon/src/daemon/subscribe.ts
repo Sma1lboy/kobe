@@ -13,8 +13,8 @@ import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { type ChannelName, normalizeChannelFilter } from "./channels.ts"
 import { logDaemonInfo } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
-import type { DaemonEventName } from "./protocol.ts"
 import type { DaemonLifetime } from "./lifetime.ts"
+import type { DaemonEventName } from "./protocol.ts"
 
 /** The per-connection state `subscribe` mutates. */
 export interface SubscribingClient {

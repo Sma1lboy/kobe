@@ -6,6 +6,7 @@ import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
 import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
+import type { WorkItemCache } from "@sma1lboy/kobe-daemon/daemon/work-items"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
@@ -107,6 +108,8 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       recordRun: async (input: unknown) => input,
       advanceNextRun: async () => null,
     } as unknown as AutomationsStore,
+    // Never hits `gh`: work-item behavior has its own suite.
+    workItems: { list: async () => [], clear: () => {} } as unknown as WorkItemCache,
     selfLink: { request: async () => ({}) } as unknown as DaemonRpcClient,
     daemon: {
       startedAt: new Date("2026-06-01T00:00:00.000Z"),

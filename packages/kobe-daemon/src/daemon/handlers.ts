@@ -46,6 +46,7 @@ import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { AUTOMATION_HANDLERS } from "./handlers-automations.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
 import { UI_HANDLERS } from "./handlers-ui.ts"
+import { WORK_ITEM_HANDLERS } from "./handlers-work-items.ts"
 import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
 import type { IssuesStore } from "./issues-store.ts"
 import {
@@ -61,6 +62,7 @@ import { scheduleQuotaResume } from "./quota-resume.ts"
 import type { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
+import type { WorkItemCache } from "./work-items.ts"
 
 // Re-exported for backward compatibility — `server.ts` and (transitively)
 // `packages/kobe/test/daemon/handlers.test.ts` import these from here.
@@ -94,6 +96,8 @@ export interface DaemonHandlerContext {
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
   readonly issues: IssuesStore
+  /** Short-TTL cache over external tracker items (read-only view). */
+  readonly workItems: WorkItemCache
   /** Daemon-owned scheduled automations + their run history. */
   readonly automations: AutomationsStore
   /** In-process RPC client for handlers that must drive the daemon's own
@@ -281,6 +285,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     ...WORKTREE_HANDLERS,
     ...ATTENTION_HANDLERS,
     ...AUTOMATION_HANDLERS,
+    ...WORK_ITEM_HANDLERS,
     ...UI_HANDLERS,
     {
       name: "issue.list",

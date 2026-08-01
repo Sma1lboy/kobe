@@ -371,8 +371,11 @@ export class Orchestrator {
   async setWorkerReport(id: TaskId | string, report: TaskWorkerReport): Promise<void> {
     return this.editor.setWorkerReport(id, report)
   }
-
-  /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
+  /** Stamp (or clear) the external tracker item this task was started from. */
+  async setLinkedWorkItem(id: TaskId | string, item: NonNullable<Task["linkedWorkItem"]> | null): Promise<void> {
+    return this.editor.setLinkedWorkItem(id, item)
+  }
+  /** Arm (or clear) the rate-limit auto-resume schedule. */
   async setQuotaResume(id: TaskId | string, state: NonNullable<Task["quotaResume"]> | null): Promise<void> {
     return this.editor.setQuotaResume(id, state)
   }

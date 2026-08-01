@@ -107,6 +107,8 @@ describe("daemon handler registry", () => {
       "automation.delete",
       "automation.runs",
       "automation.runNow",
+      "workitem.list",
+      "workitem.start",
       "session.deliver",
       "task.recentEvents",
       "ui.reportEvent",

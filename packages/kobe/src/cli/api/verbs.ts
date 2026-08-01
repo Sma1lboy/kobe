@@ -27,6 +27,7 @@ import { fullSchema, groupSchema, schemaIndex, verbSchema } from "./schema.ts"
 import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./types.ts"
 import { AUTOMATION_VERBS } from "./verbs-automations.ts"
 import { ISSUE_VERBS } from "./verbs-issues.ts"
+import { WORK_ITEM_VERBS } from "./verbs-work-items.ts"
 
 /**
  * The `schema` verb's handler — LEVELED so it never dumps everything by
@@ -74,6 +75,7 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
+  workitems: ["workitem-list", "workitem-start"],
   automation: [
     "automation-list",
     "automation-create",
@@ -219,6 +221,7 @@ export const VERBS: readonly VerbSpec[] = [
   },
   ...ISSUE_VERBS,
   ...AUTOMATION_VERBS,
+  ...WORK_ITEM_VERBS,
   {
     name: "notify",
     summary:

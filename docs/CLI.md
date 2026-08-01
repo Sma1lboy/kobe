@@ -400,6 +400,24 @@ The daemon-owned issue store (backlog; see
   edit title/body and/or link a task (kanban: In progress; `--task none`
   unlinks).
 
+### workitems
+
+A **read-only** view of a repo's GitHub issues (through the `gh` CLI), plus one
+action: start a task on one. Deliberately not an import — the issue stays
+GitHub's, and nothing is copied into kobe's own issue store. Mechanics:
+[design/work-items.md](./design/work-items.md).
+
+- `workitem-list --repo PATH [--state open|closed|all] [--limit N] [--search Q]
+  [--assignee USER] [--label L]`: list issues. `--assignee @me` for your own.
+- `workitem-start --repo PATH --number N [--vendor V] [--base-branch B]`:
+  create a task for issue N and start its engine with the issue title, body,
+  and URL as the first message. The task keeps a `linkedWorkItem` pointing
+  back, and its branch derives from the issue title
+  (`kobe/307-memory-ce2e8j`).
+
+Requires `gh` installed and authenticated; failures name which of those is
+missing (`gh-missing` / `auth` / `no-remote`) rather than a generic error.
+
 ### automation
 
 Scheduled agent tasks: a cron rule + a prompt + a repo. Every firing creates a

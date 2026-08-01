@@ -22,7 +22,6 @@ import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import { initAutomationsStore } from "./automation-wiring.ts"
-import { handleSubscribe } from "./subscribe.ts"
 import {
   type ClientState,
   type DaemonClientConnection,
@@ -50,8 +49,10 @@ import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import { handleSubscribe } from "./subscribe.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
+import { WorkItemCache } from "./work-items.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
 // (tests, the kobe-web bridge) can reach it via the existing
@@ -181,6 +182,8 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // Daemon-owned scheduled automations. The sweep that fires them is started
   // with the other collectors; this only loads the persisted schedules.
   const automations = await initAutomationsStore(options.homeDir)
+  // Read-only external tracker view; in-memory only (see work-items.ts).
+  const workItems = new WorkItemCache()
   // Sole caller of the engine quota probes — owns the fetch cadence (the
   // vendor usage APIs are themselves rate-limited). Shared by the usage
   // poller (collectors) and the rate-limit resume scheduler (handlers).
@@ -368,6 +371,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       deletions,
       issues,
       automations,
+      workItems,
       selfLink,
       quotaUsage,
       engineEvents,
@@ -440,8 +444,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         activity,
         lifetime,
         clientCount: () => clients.size,
-        writeEvent: (target, name, payload) =>
-          writeFrame(target as ClientState, { type: "event", name, payload }),
+        writeEvent: (target, name, payload) => writeFrame(target as ClientState, { type: "event", name, payload }),
       })
     }
     // `pty.*` requests are NOT served here — they belong to the standalone

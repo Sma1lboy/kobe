@@ -60,6 +60,16 @@ export interface TaskWorkerReport {
   readonly reportedAt: string
 }
 
+/** Pointer back to the external issue a task was started from. Snapshot for
+ *  display; `url` is the durable way to the live item. Never synced. */
+export interface TaskLinkedWorkItem {
+  readonly provider: "github"
+  readonly type: "issue" | "pr"
+  readonly number: number
+  readonly title: string
+  readonly url: string
+}
+
 export interface DaemonTask {
   readonly id: string
   readonly title: string
@@ -78,6 +88,8 @@ export interface DaemonTask {
   readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
   readonly quotaResume?: TaskQuotaResumeState
+  /** The external tracker item this task was started from, when it was. */
+  readonly linkedWorkItem?: TaskLinkedWorkItem
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -128,6 +140,8 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
   setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
+  /** Stamp the external tracker item a task was started from. */
+  setLinkedWorkItem(id: string, item: TaskLinkedWorkItem | null): Promise<void>
   /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
   setQuotaResume(id: string, state: TaskQuotaResumeState | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>

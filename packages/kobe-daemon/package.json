@@ -14,6 +14,8 @@
     "./daemon/activity-registry": "./src/daemon/activity-registry.ts",
     "./daemon/attention-inbox": "./src/daemon/attention-inbox.ts",
     "./daemon/automations-store": "./src/daemon/automations-store.ts",
+    "./daemon/work-items": "./src/daemon/work-items.ts",
+    "./daemon/work-item-start": "./src/daemon/work-item-start.ts",
     "./daemon/automation-runner": "./src/daemon/automation-runner.ts",
     "./daemon/automation-precheck": "./src/daemon/automation-precheck.ts",
     "./daemon/cron": "./src/daemon/cron.ts",
