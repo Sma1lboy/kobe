@@ -1,13 +1,11 @@
 /** @jsxImportSource @opentui/react */
 /**
- * The sidebar tree's body — one scrollbox rendering the flat sidebar's OWN
- * components over the tree's row list (owner call 2026-08-01, round 2: the
- * tree must keep the original design language, not invent a new grammar).
- *
- * - project row  → the same `SectionHeader` the PROJECTS/TASKS headers use,
- *                  labelled with the repo basename (+ a twisty prefix).
- * - worktree row → the same two-line `ProjectRowCard` / `TaskRowCard`.
- * - tab row      → `TabTreeRow`, the one genuinely new row kind.
+ * The sidebar tree's body — one scrollbox of ONE-CELL rows with progressive
+ * per-level indent (owner call 2026-08-01, round 3). The chrome around it
+ * (brand header / nav rail / view tabs / section-header grammar for project
+ * groups) stays the flat sidebar's own components; inside the tree, density
+ * wins: worktree rows compress the two-line card to one line, tabs indent
+ * one level further.
  *
  * One scrollbox, not the flat sidebar's two: a tree's whole point is that a
  * project and its worktrees scroll together, and the cursor indexes one flat
@@ -15,23 +13,23 @@
  */
 
 import type { ScrollBoxRenderable } from "@opentui/core"
-import type { SidebarRow, SidebarView } from "../../../tui/panes/sidebar/groups"
+import type { SidebarView } from "../../../tui/panes/sidebar/groups"
 import type { TreeRow } from "../../../tui/panes/sidebar/tree-core"
 import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { SectionHeader } from "./chrome"
-import { ProjectRowCard, type SidebarRowCardSharedProps, TaskRowCard } from "./row-cards"
-import { TabTreeRow, type TreeTabRowShared } from "./tree-rows"
+import { TabTreeRow, type TreeRowShared, WorktreeTreeRow } from "./tree-rows"
 
 export function SidebarTreeBody(props: {
   readonly rows: readonly TreeRow[]
   /** Row id → index in the tree's navigable flat id list. */
   readonly flatIndexOf: ReadonlyMap<string, number>
+  readonly expandedWorktrees: ReadonlySet<string>
   readonly collapsedProjects: ReadonlySet<string>
+  readonly hasTabs: (taskId: string) => boolean
   readonly view: SidebarView
-  readonly cardShared: SidebarRowCardSharedProps
-  readonly tabShared: TreeTabRowShared
+  readonly shared: TreeRowShared
   readonly onToggleProject: (projectId: string) => void
   readonly setScrollRef: (renderable: ScrollBoxRenderable | null) => void
 }) {
@@ -62,37 +60,25 @@ export function SidebarTreeBody(props: {
             )
           }
           if (row.kind === "worktree") {
-            const flatIndex = props.flatIndexOf.get(row.id) ?? -1
-            const sidebarRow: SidebarRow = { kind: "task", task: row.task, flatIndex }
-            const tabsFollow = props.rows[i + 1]?.kind === "tab"
-            if (row.task.kind === "main") {
-              // ProjectRowCard packs tight by design; when no tab rows attach
-              // beneath it, restore the 1-row spacer every worktree unit ends
-              // with (the last tab carries it otherwise).
-              return (
-                <box key={row.id} flexDirection="column" gap={0} paddingBottom={tabsFollow ? 0 : 1}>
-                  <ProjectRowCard row={sidebarRow} shared={props.cardShared} />
-                </box>
-              )
-            }
             return (
-              <TaskRowCard
+              <WorktreeTreeRow
                 key={row.id}
-                row={sidebarRow}
-                shared={props.cardShared}
-                bottomPad={tabsFollow ? false : undefined}
+                rowId={row.id}
+                flatIndex={props.flatIndexOf.get(row.id) ?? -1}
+                task={row.task}
+                expanded={props.expandedWorktrees.has(row.task.id)}
+                hasTabs={props.hasTabs(row.task.id)}
+                shared={props.shared}
               />
             )
           }
-          const lastOfRun = props.rows[i + 1]?.kind !== "tab"
           return (
             <TabTreeRow
               key={row.id}
               rowId={row.id}
               flatIndex={props.flatIndexOf.get(row.id) ?? -1}
               tab={row.tab}
-              shared={props.tabShared}
-              bottomPad={lastOfRun}
+              shared={props.shared}
             />
           )
         })}

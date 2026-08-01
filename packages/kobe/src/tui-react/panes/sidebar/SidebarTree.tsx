@@ -22,22 +22,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
 import { parseRowId } from "../../../tui/panes/sidebar/tree-core"
-import {
-  MAIN_BRANCH_POLL_MS,
-  SIDEBAR_WIDTH,
-  cycleViewTarget,
-  subtitleBudgetFor,
-  titleBudgetFor,
-} from "../../../tui/panes/sidebar/view-core"
+import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
 import { bindByIds } from "../../context/keybindings"
 import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
 import { SidebarBrandHeader, SidebarNavRail, SidebarViewTabs, SidebarZenChip } from "./chrome"
-import type { SidebarRowCardSharedProps } from "./row-cards"
 import { SidebarTreeBody } from "./tree-panel"
-import type { TreeTabRowShared } from "./tree-rows"
+import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
 import { useTreeState } from "./use-tree-state"
 
@@ -227,31 +220,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     el.minHeight = 0
   }, [effectiveWidth])
 
-  // The flat sidebar's own card props, driven by the tree's cursor. The
-  // cards' `selectedId` highlight keys on the TASK id; the cursor bar keys
-  // on the flat index; both survive tab rows sitting between cards.
-  const cardShared: SidebarRowCardSharedProps = {
-    selectedId: props.selectedId,
-    cursorIndex,
-    setCursorIndex,
-    rowEls,
-    onSelect: (id) => activateRow(id),
-    activateRow: (id) => activateRow(id),
-    activateOnClick: false,
-    setHover: () => {},
-    clearHoverForTask: () => {},
-    branchTick,
-    titleBudget: titleBudgetFor(effectiveWidth),
-    subtitleBudget: subtitleBudgetFor(effectiveWidth),
-    engineState: props.engineState,
-    engineLifecycle: props.engineLifecycle,
-    taskJobs: props.taskJobs,
-    worktreeChanges: props.worktreeChanges,
-    transcriptActivity: props.transcriptActivity,
-    moveMode: props.moveMode,
-  }
-
-  const tabShared: TreeTabRowShared = {
+  const shared: TreeRowShared = {
     cursorIndex,
     activeRowId: tree.activeRowId,
     rowEls,
@@ -259,6 +228,11 @@ export function SidebarTree(props: SidebarTreeProps) {
       setCursorIndex(flatIndex)
       activateRow(rowId)
     },
+    branchTick,
+    engineState: props.engineState,
+    engineLifecycle: props.engineLifecycle,
+    taskJobs: props.taskJobs,
+    worktreeChanges: props.worktreeChanges,
   }
 
   return (
@@ -284,10 +258,11 @@ export function SidebarTree(props: SidebarTreeProps) {
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}
+        expandedWorktrees={tree.expandedWorktrees}
         collapsedProjects={tree.collapsedProjects}
+        hasTabs={tree.hasTabs}
         view={view}
-        cardShared={cardShared}
-        tabShared={tabShared}
+        shared={shared}
         onToggleProject={tree.toggleProject}
         setScrollRef={(r) => {
           scrollRef.current = r
