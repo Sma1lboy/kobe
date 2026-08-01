@@ -18,8 +18,10 @@ import { type BoxRenderable, TextAttributes } from "@opentui/core"
 import { useEffect, useRef, useState } from "react"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { displayWidth } from "../../lib/display-width"
+import { DEFAULT_TAB_STRIP_HIDE_SINGLE, TAB_STRIP_HIDE_SINGLE_KEY } from "../../state/tab-strip"
 import { type TerminalTab, tabTitle, visibleNativeStatus } from "../../tui/workspace/terminal-tabs-core"
 import type { VendorId } from "../../types/vendor"
+import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 
 export { tabTitle }
@@ -54,6 +56,12 @@ export function TabStrip(props: {
 }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
+  const kv = useKV()
+  // A lone tab still gets a strip by default — the row carries the engine
+  // title and turn chip. The Settings → Terminal toggle restores the older
+  // hide-when-alone behavior. Rendered as a late bail so the hooks below
+  // always run in the same order.
+  const hidden = props.tabs.length < 2 && kv.get(TAB_STRIP_HIDE_SINGLE_KEY, DEFAULT_TAB_STRIP_HIDE_SINGLE) === true
 
   /* --------- turn-complete pulse ---------------------------------------
    * Track running→done transitions; a transitioned tab id sits in
@@ -133,6 +141,8 @@ export function TabStrip(props: {
     offset = 0
   }
   offsetRef.current = offset
+
+  if (hidden) return null
 
   return (
     <box

@@ -236,6 +236,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     worktreeBase: () => prefs.cycleWorktreeBase(),
     worktreeCustom: () => void prefs.editWorktreeCustom(),
     scrollbackRows: () => void prefs.editScrollbackRows(),
+    tabStripHideSingle: () => prefs.toggleTabStripHidesSingle(),
     engine: (row) => void engines.editEngine(row.vendor),
     engineAdd: () => void engines.addEngineFlow(),
     pluginToggle: (row) => plugins.toggle(row.pluginId),

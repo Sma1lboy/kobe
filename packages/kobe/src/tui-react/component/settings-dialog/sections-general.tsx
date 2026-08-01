@@ -146,6 +146,7 @@ export function GeneralSettingsSection(
   const worktreeBaseRow = rowIdx("worktree-base")
   const worktreeCustomRow = rowIdx("worktree-custom")
   const scrollbackRow = rowIdx("scrollback-rows")
+  const tabStripHideSingleRow = rowIdx("tab-strip-hide-single")
 
   return (
     <box flexDirection="row" gap={2}>
@@ -331,6 +332,14 @@ export function GeneralSettingsSection(
             bold={true}
           >
             {t("settings.general.scrollbackRow", { rows: String(prefs.scrollbackRows()) })}
+          </Row>
+          <Row
+            cursor={isBodyCursor(tabStripHideSingleRow)}
+            onMouseUp={activate(tabStripHideSingleRow, prefs.toggleTabStripHidesSingle)}
+            fg={prefs.tabStripHidesSingle() ? theme.accent : theme.textMuted}
+            bold={true}
+          >
+            {`${check(prefs.tabStripHidesSingle())} ${t("settings.general.tabStripHideSingle")}`}
           </Row>
         </SubSection>
       </box>

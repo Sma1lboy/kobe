@@ -14,6 +14,7 @@ import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
 import { DEFAULT_SCROLLBACK_ROWS, SCROLLBACK_ROWS_KEY, normalizeScrollbackRows } from "../../../state/scrollback"
 import { SPLIT_STYLE_KEY, type SplitStyle, normalizeSplitStyle } from "../../../state/split-style"
+import { DEFAULT_TAB_STRIP_HIDE_SINGLE, TAB_STRIP_HIDE_SINGLE_KEY } from "../../../state/tab-strip"
 import {
   PROJECT_DIR_TOKEN,
   PROJECT_SIBLING_BASE,
@@ -96,6 +97,14 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   function toggleZenKeepsTasks(): void {
     kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
+  }
+
+  // Chat tab strip: hide the row while a ChatTab has only one tab.
+  function tabStripHidesSingle(): boolean {
+    return kv.get(TAB_STRIP_HIDE_SINGLE_KEY, DEFAULT_TAB_STRIP_HIDE_SINGLE) === true
+  }
+  function toggleTabStripHidesSingle(): void {
+    kv.set(TAB_STRIP_HIDE_SINGLE_KEY, !tabStripHidesSingle())
   }
 
   // Experimental flags (Dev section).
@@ -280,6 +289,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     editEditorCustom,
     scrollbackRows,
     editScrollbackRows,
+    tabStripHidesSingle,
+    toggleTabStripHidesSingle,
     worktreeKind,
     worktreeKindLabel,
     worktreeCustomPath,

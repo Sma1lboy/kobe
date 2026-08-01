@@ -78,6 +78,7 @@ export const en = {
     scrollbackField: "rows",
     scrollbackInvalidTitle: "Not a number",
     scrollbackInvalidBody: "Scrollback must be a number of rows (e.g. 1000). Keeping the previous setting.",
+    tabStripHideSingle: "Hide the tab strip when a chat has one tab",
   },
   engines: {
     title: "Launch command",
@@ -239,6 +240,7 @@ export const zh: typeof en = {
     scrollbackField: "行数",
     scrollbackInvalidTitle: "不是数字",
     scrollbackInvalidBody: "回滚行数必须是数字（如 1000）。保留原设置。",
+    tabStripHideSingle: "只有一个标签页时隐藏标签栏",
   },
   engines: {
     title: "启动命令",
