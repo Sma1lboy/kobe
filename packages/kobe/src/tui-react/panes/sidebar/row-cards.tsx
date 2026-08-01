@@ -337,7 +337,7 @@ function JumpDigit(props: { row: SidebarRow; dim: boolean }) {
   )
 }
 
-export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
+export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps; bottomPad?: boolean }) {
   const t = useT()
   const shared = props.shared
   const task = props.row.task
@@ -350,7 +350,9 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
   return (
     // Two-line card + 1-cell spacer between tasks (owner call 2026-07-27,
     // settled after trying herdr's gap-0 density: tasks read better apart).
-    <box flexDirection="column" gap={0} paddingBottom={1}>
+    // The tree suppresses the spacer (`bottomPad={false}`) on a card whose
+    // tab rows follow directly — the spacer moves to the last tab instead.
+    <box flexDirection="column" gap={0} paddingBottom={props.bottomPad === false ? 0 : 1}>
       <RowBody row={props.row} shared={shared} selection={selection}>
         <RowLine selection={selection}>
           <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>

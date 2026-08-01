@@ -59,14 +59,18 @@ function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
   )
 }
 
-test("renders project, worktree, and tab rows at three depths", async () => {
+test("renders project header, worktree cards, and tab rows", async () => {
   seedTabs("a", ["tab-1", "tab-2"])
-  const { frame } = await renderComponent(tree(), { width: 28, height: 20 })
+  const { frame } = await renderComponent(tree(), { width: 28, height: 24 })
   await new Promise((r) => setTimeout(r, SETTLE))
   const text = await frame()
 
-  // The project header is the repo; its worktrees are branches under it.
-  expect(text).toContain("kobe")
+  // The project header keeps the flat sidebar's section-header grammar —
+  // label + divider run — with a twisty in front (round 2: the tree reuses
+  // the original design language rather than inventing a one-line grammar).
+  expect(text).toContain("▾ kobe")
+  expect(text).toContain("─")
+  // Worktrees are the same two-line cards; their branch is the subtitle.
   expect(text).toContain("feat/a")
   expect(text).toContain("feat/b")
   // The selected worktree starts expanded, so its tabs are visible without a
@@ -79,8 +83,9 @@ test("renders project, worktree, and tab rows at three depths", async () => {
     const line = lines.find((l) => l.includes(needle)) ?? ""
     return line.indexOf(needle)
   }
-  // Each level sits further right than its parent.
-  expect(indentOf("feat/a")).toBeGreaterThan(indentOf("kobe"))
+  // A tab row reads as a CHILD of its card: one level right of the card's
+  // subtitle column. (Cards and section headers share the left edge — that
+  // is the flat sidebar's own grammar, unchanged.)
   expect(indentOf("tab 1")).toBeGreaterThan(indentOf("feat/a"))
 })
 
@@ -128,8 +133,8 @@ test("j/k move the cursor over worktree rows", async () => {
 
   // No tabs seeded, so every row is a worktree: m, a, b — cursor starts on
   // the selected `a`. `selectedId` is a fixed prop here (a real host would
-  // re-render with the new one), so the cursor stays anchored to `a` between
-  // presses: j reports its neighbour below, k the one above.
+  // re-render with the new one and the follow effect would re-anchor), so
+  // the cursor moves freely: j lands on `b`, k returns to `a`.
   mockInput.typeText("j")
   await new Promise((r) => setTimeout(r, SETTLE))
   mockInput.pressEnter()
@@ -139,9 +144,8 @@ test("j/k move the cursor over worktree rows", async () => {
   mockInput.pressEnter()
   await new Promise((r) => setTimeout(r, SETTLE))
 
-  // Two DIFFERENT ids on either side of the anchor — a cursor that never
-  // moved would report `a` twice.
-  expect(chosen).toEqual(["b", "m"])
+  // Two DIFFERENT ids — a cursor that never moved would report `a` twice.
+  expect(chosen).toEqual(["b", "a"])
 })
 
 test("keys stay dead while another pane holds focus", async () => {

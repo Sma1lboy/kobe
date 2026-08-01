@@ -3,11 +3,12 @@
  * The tree sidebar (owner call 2026-08-01): project → worktree → tab, with
  * the right pane showing nothing but the active session's terminal.
  *
- * A sibling of `Sidebar.tsx` rather than a mode inside it. The two differ in
- * what a ROW is — a two-line task card versus a one-line tree row — and in
- * what the cursor selects (a task versus a task-or-tab), which is most of
- * what that component does. Behind `SIDEBAR_TREE_KEY` so the flat sidebar
- * stays reachable while the tree settles.
+ * Round 2 (same day): the tree keeps the flat sidebar's design language —
+ * the same brand header / nav rail / view tabs chrome, the same two-line
+ * row cards, the same section-header grammar for project groups. What the
+ * tree CHANGES is structure only: tasks group under their project header,
+ * a worktree's tabs render as child rows beneath its card, and at most one
+ * worktree shows its tabs at a time (expansion follows selection).
  *
  * Navigation is deliberately the same machinery: the cursor indexes one flat
  * id list, so j/k/gg/enter come from the same `createSidebarController` the
@@ -19,16 +20,24 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
-import { buildSidebarRowView } from "../../../tui/panes/sidebar/row-view"
-import { type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
-import { SIDEBAR_WIDTH, toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
+import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
+import { parseRowId } from "../../../tui/panes/sidebar/tree-core"
+import {
+  MAIN_BRANCH_POLL_MS,
+  SIDEBAR_WIDTH,
+  cycleViewTarget,
+  subtitleBudgetFor,
+  titleBudgetFor,
+} from "../../../tui/panes/sidebar/view-core"
 import { bindByIds } from "../../context/keybindings"
 import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
-import { SidebarTreeBody, type TreeGlyph } from "./tree-panel"
-import type { TreeRowSharedProps } from "./tree-rows"
+import { SidebarBrandHeader, SidebarNavRail, SidebarViewTabs, SidebarZenChip } from "./chrome"
+import type { SidebarRowCardSharedProps } from "./row-cards"
+import { SidebarTreeBody } from "./tree-panel"
+import type { TreeTabRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
 import { useTreeState } from "./use-tree-state"
 
@@ -47,6 +56,16 @@ export function SidebarTree(props: SidebarTreeProps) {
   const kv = useOptionalKV()
   const focused = props.focused ?? true
   const dims = useTerminalDimensions()
+  const [view, setView] = useState<SidebarView>("active")
+  const viewTasks = useMemo(() => filterByView(props.tasks, view), [props.tasks, view])
+
+  // The same ~2s branch/changes poll tick the flat sidebar runs — the row
+  // cards' `useChanges`/`pollCurrentBranch` effects key on it.
+  const [branchTick, setBranchTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   const busyTaskIds = useMemo(() => {
     const busy = new Set<string>()
@@ -57,12 +76,17 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [props.engineState])
 
   const tree = useTreeState({
-    tasks: props.tasks,
+    tasks: viewTasks,
     kv,
     selectedTaskId: props.selectedId,
     selectedTabId: props.selectedTabId ?? null,
     busyTaskIds,
   })
+  const flatIndexOf = useMemo(() => {
+    const map = new Map<string, number>()
+    tree.flatIds.forEach((id, i) => map.set(id, i))
+    return map
+  }, [tree.flatIds])
 
   // Cursor: state + ref written together so key handlers between renders read
   // the just-set index (React commits state later — same contract as the flat
@@ -74,7 +98,6 @@ export function SidebarTree(props: SidebarTreeProps) {
     setCursorIndexState(next)
   }, [])
   const flatIdsRef = useLatest(tree.flatIds)
-  const cursorId = cursorIndex >= 0 ? (tree.flatIds[cursorIndex] ?? null) : null
 
   // Follow the active row when the selection moves from elsewhere (the F7
   // attention jump, the inbox). Clamp when the list shrank under the cursor.
@@ -101,15 +124,12 @@ export function SidebarTree(props: SidebarTreeProps) {
       props.onSelect(taskId)
       if (tabId === null) {
         props.onActivate?.(taskId)
-        // Selecting a worktree reveals its tabs rather than toggling them:
-        // the user asked to go there, not to hide what is there.
-        tree.revealWorktree(taskId)
         return
       }
       props.onSelectTab?.(taskId, tabId)
       props.onActivate?.(taskId)
     },
-    [props.onSelect, props.onActivate, props.onSelectTab, tree.revealWorktree],
+    [props.onSelect, props.onActivate, props.onSelectTab],
   )
   const activateRowRef = useLatest(activateRow)
 
@@ -146,6 +166,10 @@ export function SidebarTree(props: SidebarTreeProps) {
         else ctrl.pressG()
       },
       "sidebar.tree.toggle": () => toggleAtCursor(),
+      "sidebar.view": (_evt, slot) => {
+        const target = cycleViewTarget(view, (slot ?? 0) % 2 === 0 ? -1 : 1)
+        if (target) setView(target)
+      },
       "sidebar.delete": () => withCursorTask(props.onDeleteRequest),
       "sidebar.archive": () => withCursorTask(props.onArchiveRequest),
       "sidebar.rename": () => withCursorTask(props.onRenameRequest),
@@ -178,17 +202,18 @@ export function SidebarTree(props: SidebarTreeProps) {
     }),
   }))
 
-  // Viewport follow.
+  // Viewport follow — rowEls is keyed by flat index (the row cards' own
+  // registration convention), shared by cards and tab rows alike.
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
-  const rowElsRef = useRef<Map<string, BoxRenderable> | null>(null)
+  const rowElsRef = useRef<Map<number, BoxRenderable> | null>(null)
   if (rowElsRef.current === null) rowElsRef.current = new Map()
   const rowEls = rowElsRef.current
   useEffect(() => {
     const scroll = scrollRef.current
-    if (!scroll || cursorId === null || scroll.viewport.height <= 0) return
-    const el = rowEls.get(cursorId)
+    if (!scroll || cursorIndex < 0 || scroll.viewport.height <= 0) return
+    const el = rowEls.get(cursorIndex)
     if (el) scroll.scrollChildIntoView(el.id)
-  }, [cursorId, rowEls])
+  }, [cursorIndex, rowEls])
 
   const outerRef = useRef<BoxRenderable | null>(null)
   const effectiveWidth = props.width ?? SIDEBAR_WIDTH
@@ -202,36 +227,39 @@ export function SidebarTree(props: SidebarTreeProps) {
     el.minHeight = 0
   }, [effectiveWidth])
 
-  const shared: TreeRowSharedProps = {
-    cursorId,
-    activeId: tree.activeRowId,
+  // The flat sidebar's own card props, driven by the tree's cursor. The
+  // cards' `selectedId` highlight keys on the TASK id; the cursor bar keys
+  // on the flat index; both survive tab rows sitting between cards.
+  const cardShared: SidebarRowCardSharedProps = {
+    selectedId: props.selectedId,
+    cursorIndex,
+    setCursorIndex,
     rowEls,
-    onCursorTo: (rowId) => {
-      const at = tree.flatIds.indexOf(rowId)
-      if (at >= 0) setCursorIndex(at)
-    },
-    onActivate: (rowId) => activateRow(rowId),
-    onToggleExpand: (rowId) => tree.toggleWorktree(parseRowId(rowId).taskId),
-    onToggleProject: (projectId) => tree.toggleProject(projectId),
+    onSelect: (id) => activateRow(id),
+    activateRow: (id) => activateRow(id),
+    activateOnClick: false,
+    setHover: () => {},
+    clearHoverForTask: () => {},
+    branchTick,
+    titleBudget: titleBudgetFor(effectiveWidth),
+    subtitleBudget: subtitleBudgetFor(effectiveWidth),
+    engineState: props.engineState,
+    engineLifecycle: props.engineLifecycle,
+    taskJobs: props.taskJobs,
+    worktreeChanges: props.worktreeChanges,
+    transcriptActivity: props.transcriptActivity,
+    moveMode: props.moveMode,
   }
 
-  /** A worktree row's state glyph — the same derivation the flat card uses,
-   *  so one activity vocabulary covers both sidebars. */
-  const glyphFor = useCallback(
-    (row: Extract<TreeRow, { kind: "worktree" }>): TreeGlyph => {
-      const view = buildSidebarRowView({
-        task: row.task,
-        activity: props.engineState?.get(row.task.id),
-        lifecycle: props.engineLifecycle?.get(row.task.id),
-        job: props.taskJobs?.get(row.task.id),
-        spinnerFrame: 0,
-        subtitleBudget: 0,
-        truncateBranch: truncateBranchLabel,
-      })
-      return { glyph: view.stateGlyph, color: toneColor(theme, view.tone) }
+  const tabShared: TreeTabRowShared = {
+    cursorIndex,
+    activeRowId: tree.activeRowId,
+    rowEls,
+    onPress: (flatIndex, rowId) => {
+      setCursorIndex(flatIndex)
+      activateRow(rowId)
     },
-    [props.engineState, props.engineLifecycle, props.taskJobs, theme],
-  )
+  }
 
   return (
     <box
@@ -240,20 +268,32 @@ export function SidebarTree(props: SidebarTreeProps) {
       minHeight={0}
       flexDirection="column"
       backgroundColor={theme.backgroundPanel}
+      // 1, not 0: the neighbouring panes' top FRAME border eats their row 0,
+      // so the borderless rail needs one padding row to align with them.
       paddingTop={1}
+      paddingBottom={1}
     >
+      <SidebarBrandHeader
+        focused={focused}
+        status={props.headerStatus ?? null}
+        onStatusClick={props.onHeaderStatusClick}
+        onAddTask={props.onAddTask}
+      />
+      <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
+      <SidebarViewTabs view={view} setView={setView} />
       <SidebarTreeBody
         rows={tree.rows}
-        expandedWorktrees={tree.expandedWorktrees}
+        flatIndexOf={flatIndexOf}
         collapsedProjects={tree.collapsedProjects}
-        hasTabs={tree.hasTabs}
-        glyphFor={glyphFor}
-        shared={shared}
+        view={view}
+        cardShared={cardShared}
+        tabShared={tabShared}
+        onToggleProject={tree.toggleProject}
         setScrollRef={(r) => {
           scrollRef.current = r
         }}
-        emptyKey="tasks.empty.active"
       />
+      {props.zenActive ? <SidebarZenChip onZenClick={props.onZenClick} /> : null}
       {/* Terminal dimensions are read so the body re-measures on resize. */}
       {dims.height < 0 ? <text>{""}</text> : null}
     </box>

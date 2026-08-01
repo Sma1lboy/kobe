@@ -13,7 +13,7 @@
 
 import type { Task } from "@/types/task"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   type TreeRow,
   type TreeTab,
@@ -63,6 +63,18 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   const { tasks, kv, selectedTaskId, selectedTabId, busyTaskIds } = opts
   const [expandedWorktrees, setExpandedWorktrees] = useState<ReadonlySet<string>>(() => initialExpanded(selectedTaskId))
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set<string>())
+
+  // Expansion FOLLOWS selection (owner call 2026-08-01, round 2): moving to
+  // another worktree collapses the one you left, so at most one worktree
+  // shows its tabs at a time. Without this, reveal-on-select accumulated —
+  // every worktree ever visited kept its tabs open and the rail became a
+  // wall of tab rows. Manual h/l toggles still work between selections.
+  const prevSelectedRef = useRef(selectedTaskId)
+  useEffect(() => {
+    if (prevSelectedRef.current === selectedTaskId) return
+    prevSelectedRef.current = selectedTaskId
+    setExpandedWorktrees(initialExpanded(selectedTaskId))
+  }, [selectedTaskId])
 
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this

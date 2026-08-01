@@ -8,40 +8,14 @@
 
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { SidebarProjectOption, SidebarRow, SidebarView, TaskSortMode } from "../../../tui/panes/sidebar/groups"
-import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
-import { VIEW_TABS, sidebarEmptyStateKey, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
+import type { SidebarNav } from "../../../tui/panes/sidebar/nav-core"
+import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { SectionHeader, SidebarBrandHeader, SidebarNavRail, SidebarViewTabs, SidebarZenChip } from "./chrome"
 import { SidebarHoverTooltip } from "./hover-tooltip"
 import { ProjectRowCard, type SidebarRowCardSharedProps, TaskRowCard } from "./row-cards"
 import type { SidebarHover, SidebarProps } from "./types"
-
-function SectionHeader(props: { label: string; suffix?: string; topPad?: boolean }) {
-  const { theme, transparentBackground } = useTheme()
-  const dividerColor = transparentBackground ? theme.border : theme.borderSubtle
-  return (
-    <box flexDirection="column" flexShrink={0}>
-      {props.topPad ? (
-        <box flexShrink={0}>
-          <text wrapMode="none"> </text>
-        </box>
-      ) : null}
-      <box flexDirection="row" flexShrink={0} gap={1} paddingLeft={1} paddingRight={1}>
-        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-          {props.label}
-        </text>
-        <text fg={dividerColor} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
-          {"─".repeat(240)}
-        </text>
-        {props.suffix ? (
-          <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
-            {props.suffix}
-          </text>
-        ) : null}
-      </box>
-    </box>
-  )
-}
 
 export function SidebarPanel(props: {
   rootRef: (renderable: BoxRenderable | null) => void
@@ -97,39 +71,12 @@ export function SidebarPanel(props: {
           flexShrink=1, so on overflow Yoga collapses whichever padding row
           it rounds against — the layout jitter fixed 2026-07-17. Only the
           task scrollbox absorbs overflow. */}
-      <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} paddingLeft={1} paddingRight={1}>
-        <box flexDirection="row" gap={1}>
-          {/* Borderless rail: the brand text IS the sidebar's focus signal
-              (accent when focused) — there is no pane frame to carry it. */}
-          <text
-            fg={props.focused ? theme.focusAccent : theme.textMuted}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-          >
-            KOBE
-          </text>
-          {status ? (
-            <text
-              fg={status.emphasize ? theme.warning : theme.textMuted}
-              attributes={status.emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
-              wrapMode="none"
-              onMouseUp={() => props.onHeaderStatusClick?.()}
-            >
-              {status.label}
-            </text>
-          ) : null}
-        </box>
-        {props.onAddTask ? (
-          <text
-            fg={theme.primary}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-            onMouseUp={() => props.onAddTask?.()}
-          >
-            [+]
-          </text>
-        ) : null}
-      </box>
+      <SidebarBrandHeader
+        focused={props.focused}
+        status={status}
+        onStatusClick={props.onHeaderStatusClick}
+        onAddTask={props.onAddTask}
+      />
 
       {props.searchMode ? (
         <box flexDirection="row" gap={0} flexShrink={0} paddingBottom={1} paddingLeft={1}>
@@ -156,57 +103,12 @@ export function SidebarPanel(props: {
         </box>
       ) : null}
 
-      {/* Top-level rail: one destination per line (owner call 2026-08-01).
-          The 24-cell rail cannot fit three chips side by side, and a fourth
-          would truncate — vertical scales, horizontal does not. */}
-      <box flexDirection="column" flexShrink={0} paddingBottom={1}>
-        {SIDEBAR_NAV_ITEMS.map((item) => {
-          const active = props.nav === item.nav
-          return (
-            <box
-              key={item.nav}
-              flexDirection="row"
-              flexShrink={0}
-              paddingLeft={1}
-              paddingRight={1}
-              backgroundColor={active ? theme.focusAccent : undefined}
-              onMouseUp={() => props.setNav(item.nav)}
-            >
-              <text
-                // Contrast fg on the accent fill: `background` is alpha-0 in
-                // transparent mode (invisible text); `backgroundElement`
-                // stays opaque in every mode.
-                fg={active ? theme.backgroundElement : theme.textMuted}
-                attributes={active ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                flexGrow={1}
-              >
-                {t(item.labelKey)}
-              </text>
-            </box>
-          )
-        })}
-      </box>
+      <SidebarNavRail nav={props.nav} setNav={props.setNav} />
 
       {/* Archives filters the task list INSIDE the sidebar — it changes which
           tasks the list shows, and is unrelated to what the content pane on
           the right is displaying. */}
-      <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-        {VIEW_TABS.map((tab) => {
-          const active = props.view === tab.view
-          return (
-            <box key={tab.view} flexShrink={0} onMouseUp={() => props.setView(tab.view)}>
-              <text
-                fg={active ? theme.text : theme.textMuted}
-                attributes={active ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-              >
-                {t(viewTabLabelKey(tab.view))}
-              </text>
-            </box>
-          )
-        })}
-      </box>
+      <SidebarViewTabs view={props.view} setView={props.setView} />
       {/* Filter active ⇒ keep the header (and its filter label) visible even
           when the filtered repo has no main row to show. */}
       {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (
@@ -309,24 +211,7 @@ export function SidebarPanel(props: {
         </box>
       </scrollbox>
 
-      {props.zenActive ? (
-        <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>
-          <text
-            fg={theme.accent}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-            onMouseUp={(e: { stopPropagation(): void }) => {
-              // Don't bubble to the pane box's focus-grab (workspace host):
-              // zen entry moves focus to the terminal; a bubbled sidebar
-              // focus would instantly exit zen via the focus guard.
-              e.stopPropagation()
-              props.onZenClick?.()
-            }}
-          >
-            ☯ ZEN
-          </text>
-        </box>
-      ) : null}
+      {props.zenActive ? <SidebarZenChip onZenClick={props.onZenClick} /> : null}
 
       {props.renderHoverFallback ? <SidebarHoverTooltip hover={props.hover} dims={props.dims} /> : null}
     </box>
