@@ -199,6 +199,15 @@ export async function listAutomationsOp(
   return client.request("automation.list", {})
 }
 
+/** Create a schedule (`automation.create`). The daemon validates the cron and
+ *  rejects an expression that parses but never fires. */
+export async function createAutomationOp(
+  client: KobeDaemonClient,
+  input: { repo: string; name: string; prompt: string; schedule: string },
+): Promise<{ automation: Automation }> {
+  return client.request("automation.create", input)
+}
+
 /** One automation's run history (`automation.runs`), newest first. */
 export async function automationRunsOp(client: KobeDaemonClient, id: string): Promise<{ runs: AutomationRun[] }> {
   return client.request("automation.runs", { id })

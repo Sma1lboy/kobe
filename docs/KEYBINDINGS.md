@@ -31,10 +31,15 @@ Default prefix actions:
 | `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
 | `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits; owner picked prefix+m 2026-07-16) |
 | `ctrl+a`, `w` | Close active split |
-| `ctrl+a`, `c` | Open the Kanban (issues board): prefix-only, owner call 2026-07-29, demoted from the bare sidebar `c` it shipped with |
-| `ctrl+a`, `u` | Point the content pane at Automations. **PROPOSED — pending owner sign-off.** `u` for "unattended"; `a` is the sidebar's add-task and `s` is settings. Also reachable by clicking the sidebar rail |
-| `ctrl+a`, `g` | Point the content pane at GitHub issues. **PROPOSED — pending owner sign-off.** `g` for GitHub; `i` is taken by the Inbox, and this is deliberately distinct from the Kanban (`c`), which is kobe's OWN issue store. Also reachable by clicking the sidebar rail |
+| `ctrl+a`, `1` | Point the content pane at the Kanban (kobe's own issue board) |
+| `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
+
+The rail pages take digits, not letters (owner call 2026-08-01): they
+are one kind of thing — "point the content pane at X" — and the sidebar prints
+`1`/`2`/`3` beside each row, so the rail is its own legend and there is no
+mnemonic to recall. Kanban moved off the `c` it shipped with for that reason.
+Clicking a rail row does the same thing.
 
 Rail pages (Kanban / Automations / Issues) do NOT disable the prefix: they
 replace only the content pane, so `ctrl+a` `u` switches from one to another

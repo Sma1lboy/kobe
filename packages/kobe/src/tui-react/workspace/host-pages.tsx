@@ -73,6 +73,7 @@ export function renderContentPage(deps: HostPageDeps): ReactNode | null {
       <AutomationsPage
         orchestrator={orch}
         focused={deps.contentFocused}
+        {...(deps.selectedTask ? { focusRepo: deps.selectedTask.repo } : {})}
         onClose={deps.closeAutomations}
         onOpenTask={(taskId) => {
           deps.closeAutomations()

@@ -53,7 +53,7 @@ function panel(overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {}) {
 async function labelLines(frame: () => Promise<string>): Promise<Record<string, number>> {
   const lines = (await frame()).split("\n")
   const out: Record<string, number> = {}
-  for (const label of ["Kanban", "Automations", "Issues"]) {
+  for (const label of ["Kanban", "Automations"]) {
     const index = lines.findIndex((line) => line.includes(label))
     if (index >= 0) out[label] = index
   }
@@ -67,9 +67,9 @@ test("every destination gets its own line, in declared order", async () => {
   const rendered = Object.entries(lines)
     .sort(([, a], [, b]) => a - b)
     .map(([label]) => label)
-  expect(rendered).toEqual(["Kanban", "Automations", "Issues"])
+  expect(rendered).toEqual(["Kanban", "Automations"])
   // Distinct rows — a horizontal strip would share lines.
-  expect(new Set(Object.values(lines)).size).toBe(3)
+  expect(new Set(Object.values(lines)).size).toBe(2)
 })
 
 test("no label is truncated at the 24-cell rail width", async () => {
@@ -99,10 +99,33 @@ test("the task list stays visible whatever the rail selects", async () => {
   }
 })
 
+test("each rail row prints its prefix digit", async () => {
+  // The rail is the legend for prefix+1/2/3 — the chord is digits precisely
+  // because there is no mnemonic, so dropping the digits here would leave it
+  // unrecoverable.
+  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  const lines = (await frame()).split("\n")
+  for (const [index, label] of ["Kanban", "Automations"].entries()) {
+    const row = lines.find((line) => line.includes(label))
+    expect(row, label).toContain(String(index + 1))
+  }
+})
+
 test("nav-core cycling wraps in both directions", () => {
   expect(cycleNavTarget("kanban", 1)).toBe("automations")
-  expect(cycleNavTarget("issues", 1)).toBe("kanban")
-  expect(cycleNavTarget("kanban", -1)).toBe("issues")
-  // `terminal` is not on the rail, so there is nowhere to cycle from.
+  expect(cycleNavTarget("automations", 1)).toBe("kanban")
+  expect(cycleNavTarget("kanban", -1)).toBe("automations")
+  // Neither `terminal` nor the hidden `issues` page is on the rail, so there
+  // is nowhere to cycle from either.
   expect(cycleNavTarget("terminal", 1)).toBeNull()
+  expect(cycleNavTarget("issues", 1)).toBeNull()
+})
+
+test("the issues page is wired but off the rail", async () => {
+  // Reachable via `kobe api workitem-*`; it has had no design pass, so it
+  // does not get a row yet. Its nav value stays valid so re-adding the row in
+  // SIDEBAR_NAV_ITEMS is the whole change.
+  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  expect(await frame()).not.toContain("Issues")
+  expect(SIDEBAR_NAV_ITEMS.some((item) => item.nav === "issues")).toBe(false)
 })

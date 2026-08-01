@@ -112,16 +112,20 @@ leave nothing to notice. Every automation mutation calls
 
 ## TUI
 
-`ctrl+a` `u` opens the Automations page (PROPOSED chord — see
-[KEYBINDINGS.md](../KEYBINDINGS.md)). It is the triage half of the feature:
+`ctrl+a` `2` (or clicking the sidebar rail) points the content pane at the
+Automations page. It is the triage half of the feature:
 what is scheduled, when each fires next, and what the last runs did. The header
 says whether an enabled automation is currently holding the daemon open.
 
-`j`/`k` move, `e` pauses/resumes, `s` runs one now (skipping its precheck), `d`
-deletes, `enter` opens the task from the most recent run, `r` refreshes.
+`j`/`k` move, `n` creates one, `e` pauses/resumes, `s` runs one now (skipping
+its precheck), `d` deletes, `enter` opens the task from the most recent run,
+`r` refreshes.
 
-Creating one stays on the CLI: it needs a repo, a prompt, a cron expression,
-and optionally a precheck command — a form, not a list row.
+`n` runs four single-field prompts in sequence (name → repo → prompt →
+schedule) rather than one multi-field form: the rename dialog already does a
+labelled field with validation, and four strings did not justify a new widget.
+Cancelling any step aborts. A precheck is CLI-only — it is the one field that
+is genuinely optional.
 
 ## CLI
 

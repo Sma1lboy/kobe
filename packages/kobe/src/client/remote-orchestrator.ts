@@ -73,6 +73,7 @@ import {
 import {
   adoptWorktreeOp,
   automationRunsOp,
+  createAutomationOp,
   createTaskOp,
   deleteAutomationOp,
   deleteTaskOp,
@@ -494,6 +495,7 @@ export class RemoteOrchestrator {
   // Automations + external work items (docs/design/{automations,work-items}.md).
   // Terse one-liners on purpose: pure forwarding, and this file is at the cap.
   listAutomations = () => listAutomationsOp(this.client)
+  createAutomation = (i: Parameters<typeof createAutomationOp>[1]) => createAutomationOp(this.client, i)
   automationRuns = (id: string) => automationRunsOp(this.client, id)
   setAutomationEnabled = (id: string, on: boolean) => setAutomationEnabledOp(this.client, id, on)
   runAutomationNow = (id: string) => runAutomationNowOp(this.client, id)

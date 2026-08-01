@@ -24,6 +24,7 @@ import { pageCloseBindings, useBindings } from "../lib/keymap"
 import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { resolveRowSelectionChrome } from "../ui/row-selection-chrome"
+import { RenameTaskDialog } from "./rename-task-dialog"
 
 /** Agent-driven edits land within a poll; `automation.list` is a local read. */
 const POLL_MS = 5_000
@@ -64,6 +65,8 @@ export function AutomationsPage(props: {
    *  so its bare j/k/d must not fire while the sidebar is focused. */
   focused?: boolean
   onOpenTask?: (taskId: string) => void
+  /** Repo the create flow defaults to (the selected task's project). */
+  focusRepo?: string
 }): ReactNode {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -168,6 +171,66 @@ export function AutomationsPage(props: {
     }
   }
 
+  /**
+   * Create flow: four single-field prompts in sequence, not one multi-field
+   * form. An automation needs a name, a repo, a prompt, and a cron — a form
+   * component for four strings would be a new widget to maintain, while the
+   * rename dialog already does one labelled field with validation. Cancelling
+   * any step aborts the whole thing.
+   */
+  async function createAutomation(): Promise<void> {
+    const orch = props.orchestrator
+    if (!orch || busyId) return
+    const repos = [...new Set(orch.listTasks().map((task) => task.repo))].filter(Boolean)
+    const defaultRepo = props.focusRepo ?? repos[0]
+    if (!defaultRepo) {
+      setNotice(t("automations.needRepo"))
+      return
+    }
+
+    const name = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: t("automations.newTitle"),
+      fieldLabel: t("automations.fieldName"),
+      submitLabel: t("common.next"),
+      placeholder: t("automations.namePlaceholder"),
+    })
+    if (!name) return
+
+    const repo = await RenameTaskDialog.show(dialog, defaultRepo, {
+      dialogTitle: t("automations.newTitle"),
+      fieldLabel: t("automations.fieldRepo"),
+      submitLabel: t("common.next"),
+    })
+    if (!repo) return
+
+    const prompt = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: t("automations.newTitle"),
+      fieldLabel: t("automations.fieldPrompt"),
+      submitLabel: t("common.next"),
+      placeholder: t("automations.promptPlaceholder"),
+    })
+    if (!prompt) return
+
+    const schedule = await RenameTaskDialog.show(dialog, "0 9 * * MON-FRI", {
+      dialogTitle: t("automations.newTitle"),
+      fieldLabel: t("automations.fieldSchedule"),
+      submitLabel: t("common.create"),
+    })
+    if (!schedule) return
+
+    setBusyId("new")
+    try {
+      await orch.createAutomation({ repo, name, prompt, schedule })
+      refetch()
+    } catch (err) {
+      // The daemon rejects an unparseable cron at the boundary — surface its
+      // message rather than a generic failure, since the fix is in the input.
+      setNotice(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function requestDelete(): Promise<void> {
     const orch = props.orchestrator
     if (!orch || !selected || busyId) return
@@ -198,6 +261,7 @@ export function AutomationsPage(props: {
       down: () => setCursor((c) => clampCursor(c + 1, rows.length)),
       k: () => setCursor((c) => clampCursor(c - 1, rows.length)),
       up: () => setCursor((c) => clampCursor(c - 1, rows.length)),
+      n: () => void createAutomation(),
       r: () => refetch(),
       e: () => void toggleEnabled(),
       s: () => void runNow(),
@@ -212,22 +276,31 @@ export function AutomationsPage(props: {
   const now = Date.now()
 
   return (
-    <box flexDirection="column" flexGrow={1} padding={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.accent}>
+    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingLeft={2} paddingRight={2}>
+      {/* Section header in the sidebar's grammar: BOLD CAPS label, a rule
+          filling the gap, the daemon-hold state right-stuck. */}
+      <box flexDirection="row" gap={1} flexShrink={0}>
+        <text attributes={TextAttributes.BOLD} fg={theme.primary} wrapMode="none" flexShrink={0}>
           {t("automations.title")}
         </text>
-        <text fg={theme.textMuted}>
+        <text fg={theme.borderSubtle} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
+          {"─".repeat(240)}
+        </text>
+        <text fg={keepsDaemonAlive ? theme.success : theme.textMuted} wrapMode="none" flexShrink={0}>
           {keepsDaemonAlive ? t("automations.holdingDaemon") : t("automations.notHolding")}
         </text>
       </box>
 
       {automations === null ? (
-        <text fg={theme.textMuted}>{t("common.loading")}</text>
+        <box paddingTop={1}>
+          <text fg={theme.textMuted}>{t("common.loading")}</text>
+        </box>
       ) : rows.length === 0 ? (
-        <box flexDirection="column" marginTop={1}>
+        // Empty state points at the key that fixes it, not at a CLI command:
+        // `n` is right there, and the command line is a fallback.
+        <box flexDirection="column" paddingTop={1} gap={1}>
           <text fg={theme.textMuted}>{t("automations.empty")}</text>
-          <text fg={theme.textMuted}>{t("automations.emptyHint")}</text>
+          <text fg={theme.text}>{t("automations.emptyHint")}</text>
         </box>
       ) : (
         <box flexDirection="column" marginTop={1} flexGrow={1}>

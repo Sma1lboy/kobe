@@ -88,8 +88,12 @@ guessing at a fix for something that may not be broken.
 
 ## TUI
 
-`ctrl+a` `g` opens the issues page (PROPOSED chord — see
-[KEYBINDINGS.md](../KEYBINDINGS.md)), pointed at the selected task's project.
+**Not on the sidebar rail yet** (owner call 2026-08-01): the page works but has
+had no design pass, so it stays CLI-only until it earns a row. Its `nav` value
+and page component are still wired — re-adding the entry to
+`SIDEBAR_NAV_ITEMS` is the whole change.
+
+When it is shown, it is pointed at the selected task's project.
 
 `enter` is the page: it starts a task on the highlighted issue and lands on its
 workspace. `a` toggles assigned-to-me, `tab` cycles projects, `r` forces past

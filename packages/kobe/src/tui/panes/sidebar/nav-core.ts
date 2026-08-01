@@ -33,7 +33,10 @@ export interface SidebarNavItem {
 export const SIDEBAR_NAV_ITEMS: readonly SidebarNavItem[] = [
   { nav: "kanban", labelKey: "tasks.nav.kanban" },
   { nav: "automations", labelKey: "tasks.nav.automations" },
-  { nav: "issues", labelKey: "tasks.nav.issues" },
+  // `issues` is deliberately absent: the external-tracker page works but has
+  // had no design pass, so it stays reachable only through `kobe api
+  // workitem-*` until it earns a rail row. Its nav value and page stay wired
+  // so re-adding the row here is the whole change.
 ]
 
 /**
