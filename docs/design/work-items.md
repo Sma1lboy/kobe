@@ -86,6 +86,18 @@ text.
 and to say so and stop if the report is unclear or already fixed — rather than
 guessing at a fix for something that may not be broken.
 
+## TUI
+
+`ctrl+a` `g` opens the issues page (PROPOSED chord — see
+[KEYBINDINGS.md](../KEYBINDINGS.md)), pointed at the selected task's project.
+
+`enter` is the page: it starts a task on the highlighted issue and lands on its
+workspace. `a` toggles assigned-to-me, `tab` cycles projects, `r` forces past
+the daemon's 60s cache, `j`/`k` move.
+
+A `gh` failure renders its own message verbatim — the three fixes differ, and
+the page should say which one you need rather than "could not load".
+
 ## CLI
 
 ```bash
@@ -101,7 +113,6 @@ Full flags: `kobe api schema --group workitems`.
 
 ## Not implemented
 
-- TUI panel (CLI + daemon only in the first version)
 - Providers other than GitHub
 - Writing back: creating, editing, closing, or commenting on issues
 - Pull requests as work items (the type field allows it; only issues are fetched)

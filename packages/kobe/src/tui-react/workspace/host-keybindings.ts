@@ -42,6 +42,10 @@ export type WorkspaceKeybindingDeps = {
   openUpdate: () => void
   kanbanOpen: boolean
   openKanban: () => void
+  automationsOpen: boolean
+  openAutomations: () => void
+  workItemsOpen: boolean
+  openWorkItems: () => void
   searchActive: boolean
   selectedId: string | null
   openTaskWorktree: (id: string) => void
@@ -108,6 +112,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     worktreesOpen: deps.worktreesOpen,
     updateOpen: deps.updateOpen,
     kanbanOpen: deps.kanbanOpen,
+    automationsOpen: deps.automationsOpen,
+    workItemsOpen: deps.workItemsOpen,
   }
   const pagesClosed = workspacePagesClosed(pages)
 
@@ -128,6 +134,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "attention.next": () => deps.jumpToNextAttention(),
         "inbox.show": () => deps.openInbox(),
         "kanban.open": () => deps.openKanban(),
+        "automations.open": () => deps.openAutomations(),
+        "workItems.open": () => deps.openWorkItems(),
         "task.moveMode": () => deps.enterMoveMode(),
         "files.createPR": () => deps.createPR(),
         "task.openEditor": () => {

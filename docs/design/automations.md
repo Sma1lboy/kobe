@@ -110,6 +110,19 @@ disconnects, so deleting the last automation after the GUI already left would
 leave nothing to notice. Every automation mutation calls
 `lifetime.reevaluateIdle()`.
 
+## TUI
+
+`ctrl+a` `u` opens the Automations page (PROPOSED chord — see
+[KEYBINDINGS.md](../KEYBINDINGS.md)). It is the triage half of the feature:
+what is scheduled, when each fires next, and what the last runs did. The header
+says whether an enabled automation is currently holding the daemon open.
+
+`j`/`k` move, `e` pauses/resumes, `s` runs one now (skipping its precheck), `d`
+deletes, `enter` opens the task from the most recent run, `r` refreshes.
+
+Creating one stays on the CLI: it needs a repo, a prompt, a cron expression,
+and optionally a precheck command — a form, not a list row.
+
 ## CLI
 
 ```bash
@@ -136,7 +149,6 @@ paste, and an unattended run has nobody watching to retype it.
 
 ## Not implemented
 
-- TUI panel (CLI + daemon only in the first version)
 - Reusing an existing task instead of creating one per run
 - Timezones (the daemon host's local time)
 - Cost attribution per run, remote/SSH execution targets

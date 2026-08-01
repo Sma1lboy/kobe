@@ -18,6 +18,8 @@ export type WorkspacePageState = {
   worktreesOpen: boolean
   updateOpen: boolean
   kanbanOpen: boolean
+  automationsOpen: boolean
+  workItemsOpen: boolean
 }
 
 /**
@@ -26,7 +28,15 @@ export type WorkspacePageState = {
  * exemption in host-keybindings.ts is {@link settingsCloseKeysEnabled}.
  */
 export function workspacePagesClosed(s: WorkspacePageState): boolean {
-  return !s.dialogOpen && !s.settingsOpen && !s.worktreesOpen && !s.updateOpen && !s.kanbanOpen
+  return (
+    !s.dialogOpen &&
+    !s.settingsOpen &&
+    !s.worktreesOpen &&
+    !s.updateOpen &&
+    !s.kanbanOpen &&
+    !s.automationsOpen &&
+    !s.workItemsOpen
+  )
 }
 
 /**

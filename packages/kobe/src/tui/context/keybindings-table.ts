@@ -207,6 +207,29 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open kanban (issues board)",
   },
   {
+    // PROPOSED chord, pending owner sign-off (docs/KEYBINDINGS.md rule).
+    // `u` for "unattended" — the mnemonic letter `a` is taken by the
+    // sidebar's add-task and `s` by settings. Prefix-only like every other
+    // whole-page view.
+    id: "automations.open",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["u"],
+    category: "Global",
+    description: "Open automations (scheduled tasks)",
+  },
+  {
+    // PROPOSED chord, pending owner sign-off. `g` for GitHub — `i` is taken
+    // (inbox.show) and this page is specifically the external tracker, not
+    // kobe's own issue store (that is the kanban on prefix+c).
+    id: "workItems.open",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["g"],
+    category: "Global",
+    description: "Open GitHub issues (external tracker)",
+  },
+  {
     // Sidebar-only — single letter `q` opens the quit confirm. ctrl+q is
     // also registered here for the native workspace's tmux-like two-stage
     // detach: first ctrl+q returns focus to the sidebar, second ctrl+q exits

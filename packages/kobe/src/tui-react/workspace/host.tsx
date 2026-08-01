@@ -13,12 +13,10 @@ import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { KanbanPage } from "../component/kanban-page"
 import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { UpdatePage } from "../component/update-page.tsx"
-import { WorktreesPage } from "../component/worktrees-page"
 import { useFocus } from "../context/focus"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
@@ -34,6 +32,7 @@ import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { useWorkspaceKeybindings } from "./host-keybindings"
+import { renderHostPage } from "./host-pages"
 import { useWorkspaceTaskActions } from "./host-task-actions"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import {
@@ -247,6 +246,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const [worktreesOpen, setWorktreesOpen] = useState(false)
   // Kanban page — the daemon issue store as a board, same swap shape.
   const [kanbanOpen, setKanbanOpen] = useState(false)
+  const [automationsOpen, setAutomationsOpen] = useState(false)
+  const [workItemsOpen, setWorkItemsOpen] = useState(false)
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
   const issueChat = useIssueChat(orch, {
@@ -271,6 +272,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openUpdate: () => setUpdateOpen(true),
     kanbanOpen,
     openKanban: () => setKanbanOpen(true),
+    automationsOpen,
+    openAutomations: () => setAutomationsOpen(true),
+    workItemsOpen,
+    openWorkItems: () => setWorkItemsOpen(true),
     searchActive,
     selectedId,
     openTaskWorktree: (id) =>
@@ -312,31 +317,24 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const dialogOpen = dialog.stack.length > 0
   const activePane = dialogOpen ? null : focus.focused
 
-  if (worktreesOpen) {
-    return <WorktreesPage orchestrator={orch} onClose={() => setWorktreesOpen(false)} />
-  }
-
-  if (kanbanOpen) {
-    return (
-      <KanbanPage
-        orchestrator={orch}
-        onClose={() => setKanbanOpen(false)}
-        onStartChat={issueChat.start}
-        engineStates={engineState}
-        // `c` fires from the sidebar, so the board opens pointed at the
-        // SELECTED task's project + its linked story card.
-        focusTask={selectedTask ? { id: selectedTask.id, repo: selectedTask.repo } : undefined}
-        onOpenTask={(taskId) => {
-          setKanbanOpen(false)
-          void activateTask(taskId)
-        }}
-      />
-    )
-  }
-
-  if (updateOpen) {
-    return <UpdatePage onClose={() => setUpdateOpen(false)} />
-  }
+  const openPage = renderHostPage({
+    orchestrator: orch,
+    selectedTask,
+    worktreesOpen,
+    automationsOpen,
+    workItemsOpen,
+    kanbanOpen,
+    updateOpen,
+    closeWorktrees: () => setWorktreesOpen(false),
+    closeAutomations: () => setAutomationsOpen(false),
+    closeWorkItems: () => setWorkItemsOpen(false),
+    closeKanban: () => setKanbanOpen(false),
+    closeUpdate: () => setUpdateOpen(false),
+    activateTask: (taskId) => void activateTask(taskId),
+    startIssueChat: issueChat.start,
+    engineStates: engineState,
+  })
+  if (openPage) return openPage
 
   if (settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its

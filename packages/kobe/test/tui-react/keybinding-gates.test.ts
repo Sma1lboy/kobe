@@ -20,6 +20,8 @@ const closed: WorkspacePageState = {
   worktreesOpen: false,
   updateOpen: false,
   kanbanOpen: false,
+  automationsOpen: false,
+  workItemsOpen: false,
 }
 
 describe("workspacePagesClosed", () => {

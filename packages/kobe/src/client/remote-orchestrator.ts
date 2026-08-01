@@ -72,7 +72,9 @@ import {
 } from "./remote-orchestrator-reads.ts"
 import {
   adoptWorktreeOp,
+  automationRunsOp,
   createTaskOp,
+  deleteAutomationOp,
   deleteTaskOp,
   discoverAdoptableWorktreesOp,
   dismissAttentionOp,
@@ -80,19 +82,24 @@ import {
   ensureWorktreeOp,
   forgetProjectOp,
   landTaskOp,
+  listAutomationsOp,
   listIssuesOp,
+  listWorkItemsOp,
   listWorktreesOp,
   markAttentionReadOp,
   moveTaskOp,
   mutateIssueOp,
   removeWorktreeOp,
+  runAutomationNowOp,
   setActiveTaskOp,
   setArchivedOp,
+  setAutomationEnabledOp,
   setBranchOp,
   setPinnedOp,
   setStatusOp,
   setTitleOp,
   setVendorOp,
+  startWorkItemOp,
 } from "./remote-orchestrator-writes.ts"
 
 export type {
@@ -483,6 +490,16 @@ export class RemoteOrchestrator {
   mutateIssue(repoRoot: string, op: unknown): Promise<RepoIssues> {
     return mutateIssueOp(this.client, repoRoot, op)
   }
+
+  // Automations + external work items (docs/design/{automations,work-items}.md).
+  // Terse one-liners on purpose: pure forwarding, and this file is at the cap.
+  listAutomations = () => listAutomationsOp(this.client)
+  automationRuns = (id: string) => automationRunsOp(this.client, id)
+  setAutomationEnabled = (id: string, on: boolean) => setAutomationEnabledOp(this.client, id, on)
+  runAutomationNow = (id: string) => runAutomationNowOp(this.client, id)
+  deleteAutomation = (id: string) => deleteAutomationOp(this.client, id)
+  listWorkItems = (a: Parameters<typeof listWorkItemsOp>[1]) => listWorkItemsOp(this.client, a)
+  startWorkItem = (a: Parameters<typeof startWorkItemOp>[1]) => startWorkItemOp(this.client, a)
 
   /** Remove a worktree (`worktree.remove`); refuses a dirty one unless
    *  `force` is true — same safety property `GitWorktreeManager.remove`
