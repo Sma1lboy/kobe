@@ -48,3 +48,29 @@ export function workspacePagesClosed(s: WorkspacePageState): boolean {
 export function settingsCloseKeysEnabled(s: WorkspacePageState): boolean {
   return s.settingsOpen && !s.dialogOpen
 }
+
+/** Focus cycle order: sidebar ← workspace → files. */
+export const PANE_CYCLE = ["sidebar", "workspace", "files"] as const
+export type CyclePaneId = (typeof PANE_CYCLE)[number]
+
+/**
+ * Where focus lands after a cycle step, given which panes are mounted.
+ *
+ * The files pane is not always there — zen hides it, and so does any rail
+ * page (a page reads daemon state, not a worktree's files). Focusing an
+ * unmounted pane strands the cursor on nothing, so it drops out of the cycle
+ * rather than being clamped against.
+ *
+ * Cursor semantics, not a ring (owner call 2026-07-25): movement clamps at
+ * both ends instead of wrapping, so "previous" from the sidebar never jumps
+ * to files. Returns null when focus should not move.
+ */
+export function nextFocusedPane(current: string, delta: 1 | -1, opts: { filesVisible: boolean }): CyclePaneId | null {
+  const reachable = PANE_CYCLE.filter((pane) => pane !== "files" || opts.filesVisible)
+  const idx = reachable.indexOf(current as CyclePaneId)
+  // Focus is on a pane that just vanished under the cursor — step to the
+  // nearest end instead of acting on an index of -1.
+  if (idx < 0) return (delta > 0 ? reachable[reachable.length - 1] : reachable[0]) ?? null
+  const next = Math.min(Math.max(idx + delta, 0), reachable.length - 1)
+  return next === idx ? null : ((reachable[next] as CyclePaneId) ?? null)
+}

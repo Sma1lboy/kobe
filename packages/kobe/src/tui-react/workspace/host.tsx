@@ -280,6 +280,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openUpdate: () => setUpdateOpen(true),
     kanbanOpen,
     openKanban: () => setKanbanOpen(true),
+    filesPaneVisible: !zen && nav === "terminal",
     automationsOpen,
     openAutomations: () => setAutomationsOpen(true),
     workItemsOpen,
@@ -447,7 +448,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         )}
       </box>
 
-      {!zen ? (
+      {/* The FileTree lists a WORKTREE's files. A rail page is not about a
+          worktree — it reads daemon state that spans projects — so the pane
+          would be showing an unrelated tree beside it. Hidden, same as zen. */}
+      {!zen && !openPage ? (
         <box
           width={worktreeToolsWidth}
           flexShrink={0}

@@ -10,6 +10,7 @@
 import { describe, expect, test } from "vitest"
 import {
   type WorkspacePageState,
+  nextFocusedPane,
   settingsCloseKeysEnabled,
   workspacePagesClosed,
 } from "../../src/tui-react/workspace/keybinding-gates"
@@ -55,5 +56,37 @@ describe("settingsCloseKeysEnabled — the deliberate exemption", () => {
   test("dead while settings is closed", () => {
     expect(settingsCloseKeysEnabled(closed)).toBe(false)
     expect(settingsCloseKeysEnabled({ ...closed, worktreesOpen: true })).toBe(false)
+  })
+})
+
+describe("nextFocusedPane", () => {
+  const withFiles = { filesVisible: true }
+  const noFiles = { filesVisible: false }
+
+  test("steps through all three panes when files is mounted", () => {
+    expect(nextFocusedPane("sidebar", 1, withFiles)).toBe("workspace")
+    expect(nextFocusedPane("workspace", 1, withFiles)).toBe("files")
+    expect(nextFocusedPane("files", -1, withFiles)).toBe("workspace")
+  })
+
+  test("clamps at both ends rather than wrapping", () => {
+    // Cursor semantics, owner call 2026-07-25: "previous" from the sidebar
+    // must never jump to files.
+    expect(nextFocusedPane("sidebar", -1, withFiles)).toBeNull()
+    expect(nextFocusedPane("files", 1, withFiles)).toBeNull()
+  })
+
+  test("skips the files pane when it is not mounted", () => {
+    // Zen, or any rail page — focusing an unmounted pane would strand the
+    // cursor on nothing.
+    expect(nextFocusedPane("workspace", 1, noFiles)).toBeNull()
+    expect(nextFocusedPane("sidebar", 1, noFiles)).toBe("workspace")
+  })
+
+  test("rescues focus that was left on a pane which just vanished", () => {
+    // Opening a rail page while focus sat on files: there is no index to step
+    // from, so land on the nearest end instead of doing nothing forever.
+    expect(nextFocusedPane("files", -1, noFiles)).toBe("sidebar")
+    expect(nextFocusedPane("files", 1, noFiles)).toBe("workspace")
   })
 })
