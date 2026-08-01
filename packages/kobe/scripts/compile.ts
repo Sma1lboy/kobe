@@ -39,6 +39,9 @@ const result = await Bun.build({
   conditions: ["browser"],
   external: ["node-pty"],
   minify: true,
+  // Same reason as build.ts: default NODE_ENV is "development", which ships
+  // React's development reconciler and its per-update debug bookkeeping (#307).
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
   compile: { outfile },
 })
 if (!result.success) {
