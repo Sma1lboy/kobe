@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.42
+
+### Patch Changes
+
+- b463363: Add work items: browse a repo's GitHub issues from kobe and start a task on one. `kobe api workitem-list` reads issues through the `gh` CLI (filter by state, search, assignee, or label), and `kobe api workitem-start --number N` creates a task whose branch derives from the issue title and whose engine session opens with the issue title, body, and URL already in hand. The task keeps a link back to the issue.
+
+  Read-only by design: the issue stays in GitHub, nothing is copied into kobe's own issue store, and no state is written back. The prompt marks the issue body as untrusted input — anyone can file an issue — and asks the agent to confirm the problem reproduces before fixing it. Requires `gh` installed and authenticated; failures say which of those is missing rather than reporting a generic error.
+
+  CLI-only for now: the page exists but has had no design pass, so it is not on the sidebar rail yet.
+
+- 2949a0d: Add Routines: scheduled agent tasks owned by the daemon. A routine is a cron rule + a prompt + a repo; every firing creates a fresh task (worktree + branch + engine session) with that prompt as its first message, so a scheduled run is an ordinary task you can open and keep talking to.
+
+  `ctrl+a` `2` (or the sidebar rail) opens the Routines page: `n` creates one through a card where Tab walks the fields, the repo is a scrolling picker, and the schedule is five labelled cells — ←/→ picks a cell, ↑/↓ changes it — with the next fire time restated in your own clock ("weekdays at 09:00 · in 2d · Mon 09:00"). A selected routine offers `[ run now ]` so you can find out it works without waiting for its schedule.
+
+  Also on the CLI: `kobe api routine-create/list/update/set-enabled/run-now/runs/delete`. An optional `--precheck` shell command runs before the engine starts — a non-zero exit skips the run without creating a task, so a schedule does not burn a turn when nothing changed. Run history distinguishes "nothing to do" from "needs a human". Schedules persist as absolute timestamps, so they survive a daemon restart and compensate for at most one missed occurrence within a configurable grace window. An enabled routine keeps the daemon alive so schedules fire with no TUI attached; disabling or deleting the last one restores the usual idle shutdown.
+
+- f32b584: Chat tab strip now shows even when a task has a single tab, so the engine title and turn chip are always visible. Settings → General → Terminal has a new "Hide the tab strip when a chat has one tab" toggle to restore the old behavior.
+- 4574e58: The sidebar gets a vertical navigation rail — Kanban and Routines, one per line, each labelled with its `ctrl+a` digit. Selecting one swaps the content pane on the right while the task list stays live beside it, so clicking a task is how you get back to its terminal. The file tree hides while a rail page is open: it lists a worktree's files, and these pages read daemon state that spans projects.
+
+  Archives stops being a peer of Workspace and becomes what it always was — a filter over the task list, shown as "Active / Archives".
+
+  Removes the key legends from the new-task, quick-task, worktrees, work-items and routines surfaces. `tab` / `enter` / `esc` mean the same thing throughout kobe, and a reminder on every card is noise after the first one; onboarding keeps its legend.
+
 ## 0.8.41
 
 ### Patch Changes
