@@ -41,8 +41,6 @@ export interface TreeStateOpts {
   readonly selectedTaskId: string | null
   /** That task's active tab, so the tree can mark the exact live row. */
   readonly selectedTabId: string | null
-  /** Tasks whose engine is mid-turn — drives the tab row's busy dot. */
-  readonly busyTaskIds?: ReadonlySet<string>
   /** Live `/` query. Non-empty prunes the tree to matches + their ancestors. */
   readonly query?: string
 }
@@ -64,7 +62,7 @@ export interface TreeState {
 }
 
 export function useTreeState(opts: TreeStateOpts): TreeState {
-  const { tasks, kv, selectedTaskId, selectedTabId, busyTaskIds } = opts
+  const { tasks, kv, selectedTaskId, selectedTabId } = opts
   const query = opts.query ?? ""
   const searching = query.trim() !== ""
 
@@ -85,12 +83,14 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
           // `tabTitle` falls back to the tab's last recorded title — the
           // same path the Inbox takes.
           label: tabTitle(tab, vendor),
-          busy: busyTaskIds?.has(task.id) === true && tab.id === known.activeId,
+          // The active tab carries the task's state glyph (activity is
+          // task-scoped; the active tab is the session it describes).
+          active: tab.id === known.activeId,
         })),
       )
     }
     return map
-  }, [tasks, kv, busyTaskIds])
+  }, [tasks, kv])
 
   const { rows, totalCount } = useMemo(() => {
     const all = buildTreeRows({ tasks, tabsByTask })

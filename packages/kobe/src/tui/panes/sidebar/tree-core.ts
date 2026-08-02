@@ -35,8 +35,9 @@ export interface TreeTab {
   /** Already-resolved display name — title ?? liveName ?? … ?? "Tab N".
    *  Resolving precedence is the tab module's job, not the tree's. */
   readonly label: string
-  /** The tab's engine is mid-turn / waiting — drives the row's dot. */
-  readonly busy?: boolean
+  /** The task's ACTIVE tab — the row that carries the session's state glyph
+   *  (owner call 2026-08-01: state lives on the chattab, not the worktree). */
+  readonly active?: boolean
 }
 
 export type TreeRow =

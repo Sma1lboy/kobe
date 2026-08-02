@@ -81,6 +81,7 @@ export function SidebarTreeBody(props: {
               key={row.id}
               rowId={row.id}
               flatIndex={props.flatIndexOf.get(row.id) ?? -1}
+              task={row.task}
               tab={row.tab}
               shared={props.shared}
             />

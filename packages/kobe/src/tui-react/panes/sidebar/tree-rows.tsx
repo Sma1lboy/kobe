@@ -91,6 +91,12 @@ function RowShell(props: {
   )
 }
 
+/**
+ * A worktree row carries NO state glyph (owner call 2026-08-01, round 6):
+ * the session state belongs to the chattab that runs it, so the glyph lives
+ * on the tab row below. What stays here is worktree-level fact — branch,
+ * pin, PR chip, ±change stats.
+ */
 export function WorktreeTreeRow(props: {
   readonly rowId: string
   readonly flatIndex: number
@@ -102,29 +108,12 @@ export function WorktreeTreeRow(props: {
   const task = props.task
   const isCursor = shared.cursorIndex === props.flatIndex
   const changes = useChanges(shared, task)
-  // The card's own state derivation, compressed to glyph + title (the
-  // subtitle line is what the one-line format drops).
-  const baseView = buildSidebarRowView({
-    task,
-    activity: shared.engineState?.get(task.id),
-    lifecycle: shared.engineLifecycle?.get(task.id),
-    job: shared.taskJobs?.get(task.id),
-    spinnerFrame: 0,
-    subtitleBudget: 0,
-    truncateBranch: truncateBranchLabel,
-  })
-  const frame = useSpinnerFrame(baseView.loading)
-  const rowView = withSpinnerFrame(baseView, () => frame)
   const chip = prCheckChip(task)
   // A worktree row is named by its BRANCH (a task worktree's identity), the
-  // title only as fallback for a branchless row — same choice as round 1;
-  // the card's title/subtitle pair collapsed into the branch line.
-  const label = task.branch || rowView.titleText
+  // title only as fallback for a branchless row.
+  const label = task.branch || task.title
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={shared}>
-      <text fg={toneColor(theme, rowView.tone)} wrapMode="none" width={2} flexShrink={0}>
-        {`${rowView.stateGlyph} `}
-      </text>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
         <text fg={theme.text} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
           {label}
@@ -149,16 +138,38 @@ export function WorktreeTreeRow(props: {
 export function TabTreeRow(props: {
   readonly rowId: string
   readonly flatIndex: number
+  readonly task: Task
   readonly tab: TreeTab
   readonly shared: TreeRowShared
 }) {
   const { theme } = useTheme()
-  const busy = props.tab.busy === true
-  const isCursor = props.shared.cursorIndex === props.flatIndex
+  const shared = props.shared
+  const isCursor = shared.cursorIndex === props.flatIndex
+  // The task's engine state renders HERE, on its ACTIVE tab — the session
+  // the activity hooks are reporting about. Sibling tabs keep the plain dot.
+  // (Activity is task-scoped in the daemon; the active tab is the closest
+  // per-tab truth available without a per-tab activity feed.)
+  const carriesState = props.tab.active === true
+  const baseView = buildSidebarRowView({
+    task: props.task,
+    activity: carriesState ? shared.engineState?.get(props.task.id) : undefined,
+    lifecycle: carriesState ? shared.engineLifecycle?.get(props.task.id) : undefined,
+    job: carriesState ? shared.taskJobs?.get(props.task.id) : undefined,
+    spinnerFrame: 0,
+    subtitleBudget: 0,
+    truncateBranch: truncateBranchLabel,
+  })
+  const frame = useSpinnerFrame(carriesState && baseView.loading)
+  const rowView = withSpinnerFrame(baseView, () => frame)
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
-      <text fg={busy ? theme.warning : theme.textMuted} wrapMode="none" width={2} flexShrink={0}>
-        {busy ? "● " : "· "}
+      <text
+        fg={carriesState ? toneColor(theme, rowView.tone) : theme.textMuted}
+        wrapMode="none"
+        width={2}
+        flexShrink={0}
+      >
+        {carriesState ? `${rowView.stateGlyph} ` : "· "}
       </text>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
         <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>

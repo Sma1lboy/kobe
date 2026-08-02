@@ -67,21 +67,12 @@ export function SidebarTree(props: SidebarTreeProps) {
     return () => clearInterval(timer)
   }, [])
 
-  const busyTaskIds = useMemo(() => {
-    const busy = new Set<string>()
-    for (const [taskId, state] of props.engineState ?? []) {
-      if (state.state === "running") busy.add(taskId)
-    }
-    return busy
-  }, [props.engineState])
-
   const search = useTreeSearch({ focused, onActiveChange: props.onSearchActiveChange })
   const tree = useTreeState({
     tasks: viewTasks,
     kv,
     selectedTaskId: props.selectedId,
     selectedTabId: props.selectedTabId ?? null,
-    busyTaskIds,
     query: search.active ? search.query : "",
   })
   const flatIndexOf = useMemo(() => {
