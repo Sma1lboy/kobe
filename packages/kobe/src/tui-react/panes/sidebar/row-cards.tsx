@@ -196,6 +196,22 @@ function RowBody(props: {
  */
 const completionSeenIds = new Set<string>()
 
+/**
+ * Deterministic render-time seen bookkeeping (herdr ● → ✓), shared with the
+ * tree's tab rows: the same render that shows a viewed+complete row must
+ * already draw the digested ✓ — an unread lamp on the session you are
+ * sitting IN is noise. `viewing` is "this row is what the right pane
+ * shows"; the mark clears as soon as activity moves off turn_complete.
+ */
+export function completionSeenFor(taskId: string, activityState: string | undefined, viewing: boolean): boolean {
+  if (activityState === "turn_complete") {
+    if (viewing) completionSeenIds.add(taskId)
+  } else {
+    completionSeenIds.delete(taskId)
+  }
+  return completionSeenIds.has(taskId)
+}
+
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
   const t = useT()
   const themeCtx = useTheme()
@@ -219,14 +235,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
     (changes.added > 0 ? `+${changes.added}`.length + 1 : 0) +
     (changes.deleted > 0 ? `−${changes.deleted}`.length + 1 : 0)
   const subtitleBudget = Math.max(6, shared.subtitleBudget - clusterCells)
-  // Deterministic render-time bookkeeping, not an effect: the same render
-  // that shows a selected+complete row must already draw the digested ✓.
-  if (activity?.state === "turn_complete") {
-    if (isSelected) completionSeenIds.add(task.id)
-  } else {
-    completionSeenIds.delete(task.id)
-  }
-  const completionSeen = completionSeenIds.has(task.id)
+  const completionSeen = completionSeenFor(task.id, activity?.state, isSelected)
   // This worktree's transcript facts, read OUTSIDE the memo so the row
   // re-derives when its own mtime moves rather than on every map identity
   // change (the collector republishes the whole map per probe round).

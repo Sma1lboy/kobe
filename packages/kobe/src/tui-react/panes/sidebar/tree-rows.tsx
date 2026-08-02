@@ -19,7 +19,7 @@ import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { useTheme } from "../../context/theme"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
-import { ChangeStats, JumpDigit, useChanges, useSpinnerFrame } from "./row-cards"
+import { ChangeStats, JumpDigit, completionSeenFor, useChanges, useSpinnerFrame } from "./row-cards"
 
 /** Cells of indent per depth level. Two reads as a level without eating the
  *  rail's narrow width the way four would. */
@@ -153,6 +153,12 @@ export function TabTreeRow(props: {
   const isAgent = props.tab.engine === true
   const activity = isAgent && props.tab.active === true ? shared.engineState?.get(props.task.id) : undefined
   const carriesState = activity !== undefined
+  // The unread lamp (herdr ● on turn_complete) is for sessions you are NOT
+  // looking at — sitting in the tab digests it to ✓ on the same render.
+  // Same module-level bookkeeping as the flat cards, so switching sidebars
+  // never resurrects a lamp you already saw.
+  const viewing = shared.activeRowId === props.rowId
+  const completionSeen = completionSeenFor(props.task.id, activity?.state, viewing)
   const baseView = buildSidebarRowView({
     task: props.task,
     activity,
@@ -161,6 +167,7 @@ export function TabTreeRow(props: {
     spinnerFrame: 0,
     subtitleBudget: 0,
     truncateBranch: truncateBranchLabel,
+    completionSeen,
   })
   const frame = useSpinnerFrame(carriesState && baseView.loading)
   const rowView = withSpinnerFrame(baseView, () => frame)
