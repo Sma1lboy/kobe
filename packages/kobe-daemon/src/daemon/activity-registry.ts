@@ -16,7 +16,12 @@ function reduceActivity(
     case "turn-start":
       return "running"
     case "turn-complete":
-      return "turn_complete"
+      // Only a TRACKED turn completes: running, or blocked on the user
+      // mid-turn (an approved permission resumes without a new turn-start).
+      // Engines fire Stop on automated wakes too — a background monitor
+      // stream ending "completed" a turn nobody started and lit the ●
+      // lamp (owner bug 2026-08-02). Mirrors kobe's hook-events reducer.
+      return previous === "running" || previous === "permission_needed" ? "turn_complete" : (previous ?? "idle")
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":

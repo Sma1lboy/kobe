@@ -190,6 +190,7 @@ describe("activity registry liveness watchdog", () => {
     const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: 0 }))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
 
+    registry.report("t", "turn-start", undefined, "tab-1")
     registry.report("t", "turn-complete", undefined, "tab-1")
     await vi.advanceTimersByTimeAsync(TTL * 3)
 

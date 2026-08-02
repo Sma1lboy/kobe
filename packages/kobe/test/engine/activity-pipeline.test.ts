@@ -62,6 +62,10 @@ function rowAfterClaudeHook(event: string, payload: Record<string, unknown>) {
   const bus = new DaemonEventBus()
   const registry = new DaemonActivityRegistry(bus, 60_000, () => 42)
   try {
+    // A turn precedes every terminal event in the real pipeline — and the
+    // reducer now REQUIRES it: a Stop with no tracked turn is an automated
+    // wake (monitor stream ending), not a completion.
+    if (verb !== "turn-start" && verb !== "session-start") registry.report("task-1", "turn-start")
     registry.report("task-1", verb, detail)
     const published = registry.snapshotByTask()["task-1"]
     expect(published).toBeDefined()

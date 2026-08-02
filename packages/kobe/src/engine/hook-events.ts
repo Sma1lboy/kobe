@@ -114,7 +114,13 @@ export function reduceActivity(
     case "turn-start":
       return "running"
     case "turn-complete":
-      return "turn_complete"
+      // A completion is only a completion when a turn was actually in
+      // flight: running, or blocked on the user mid-turn (an approved
+      // permission continues WITHOUT a new turn-start). Engines fire Stop
+      // for automated wakes too — a background monitor stream ending
+      // "completes" a turn the user never started, and the ● lamp lit for
+      // it (owner bug 2026-08-02). Without a tracked turn, keep what was.
+      return prev === "running" || prev === "permission_needed" ? "turn_complete" : (prev ?? "idle")
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":

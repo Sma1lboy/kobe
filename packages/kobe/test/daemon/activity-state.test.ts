@@ -27,10 +27,13 @@ describe("daemon activity state", () => {
     })
     await client.subscribe()
 
+    // A real completion follows a tracked turn — a bare Stop with no turn in
+    // flight is an automated wake and no longer completes anything.
+    await client.request("engine.reportEvent", { taskId: "task-1", kind: "turn-start" })
     await client.request("engine.reportEvent", { taskId: "task-1", kind: "turn-complete" })
     await sleep(TTL_MS + 50)
 
-    expect(states).toEqual(["turn_complete"])
+    expect(states).toEqual(["running", "turn_complete"])
     client.close()
   })
 
@@ -125,6 +128,7 @@ describe("daemon activity state", () => {
     expect(registry.currentNonIdle()).toEqual([])
 
     // clearTask publishes per-tab idles so subscribers drop tab candidates.
+    registry.report("task-1", "turn-start", undefined, "tab-3")
     registry.report("task-1", "turn-complete", undefined, "tab-3")
     published.length = 0
     registry.clearTask("task-1")
