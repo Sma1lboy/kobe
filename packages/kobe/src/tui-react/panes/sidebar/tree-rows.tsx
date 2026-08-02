@@ -145,15 +145,13 @@ export function TabTreeRow(props: {
   const { theme } = useTheme()
   const shared = props.shared
   const isCursor = shared.cursorIndex === props.flatIndex
-  // The task's engine state renders HERE, on its ACTIVE ENGINE tab — the
-  // session the activity hooks are reporting about. Everything else wears
-  // the plain dot: sibling engine tabs (activity is task-scoped, so only
-  // the active one is described by it) and ALL non-engine tabs (a shell is
-  // not a coding agent — there is no state we care about, owner round 7).
-  // No glyph when there is no ACTIVITY either: an idle `○` on every tab
-  // was a state costume on rows that have nothing to say.
-  const activity =
-    props.tab.active === true && props.tab.engine === true ? shared.engineState?.get(props.task.id) : undefined
+  // Glyph rule (owner round 7): an AGENT tab always wears the state circle
+  // vocabulary — `○` at rest, live state glyph when the daemon reports
+  // activity for its session (the ACTIVE engine tab; activity is
+  // task-scoped). A non-agent tab (shell/command/content) is outside the
+  // vocabulary — plain `·`, we don't care about its state.
+  const isAgent = props.tab.engine === true
+  const activity = isAgent && props.tab.active === true ? shared.engineState?.get(props.task.id) : undefined
   const carriesState = activity !== undefined
   const baseView = buildSidebarRowView({
     task: props.task,
@@ -166,6 +164,9 @@ export function TabTreeRow(props: {
   })
   const frame = useSpinnerFrame(carriesState && baseView.loading)
   const rowView = withSpinnerFrame(baseView, () => frame)
+  // buildSidebarRowView already rests at `○` with no activity, so an agent
+  // row can take its glyph unconditionally.
+  const glyph = isAgent ? rowView.stateGlyph : "·"
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
       <text
@@ -174,7 +175,7 @@ export function TabTreeRow(props: {
         width={2}
         flexShrink={0}
       >
-        {carriesState ? `${rowView.stateGlyph} ` : "· "}
+        {`${glyph} `}
       </text>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
         <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
