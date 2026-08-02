@@ -40,6 +40,9 @@ export interface TreeMenuDeps {
   readonly activateRow: (rowId: string) => void
   readonly setCursorIndex: (index: number) => void
   readonly onAddTask?: () => void
+  /** Close one tab of a worktree — the host owns the mounted/background split
+   *  (`closeTaskTab`), the tree only names the pair. */
+  readonly onCloseTab?: (taskId: string, tabId: string) => void
   readonly actions: SidebarTaskCallbacks
 }
 
@@ -84,12 +87,13 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
         {
           hasTabs: row.kind === "worktree" && tree.hasTabs(row.task.id),
           collapsed: !tree.expandedWorktrees.has(row.task.id),
+          tabCount: tree.tabCount(row.task.id),
         },
         x,
         y,
       )
     },
-    [tree.rows, tree.hasTabs, tree.expandedWorktrees, openAt, setCursorIndex],
+    [tree.rows, tree.hasTabs, tree.tabCount, tree.expandedWorktrees, openAt, setCursorIndex],
   )
 
   const openForProject = useCallback(
@@ -142,6 +146,10 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
         case "open":
           activateRow(row.id)
           break
+        case "closeTab":
+          // Only a tab row offers it, and only above one tab (tree-menu.ts).
+          if (row.kind === "tab") deps.onCloseTab?.(taskId, row.tab.id)
+          break
         case "toggle":
           tree.toggleWorktree(taskId)
           break
@@ -164,7 +172,16 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
           break
       }
     },
-    [menu, tree.toggleProject, tree.focusProject, tree.toggleWorktree, activateRow, actions, deps.onAddTask],
+    [
+      menu,
+      tree.toggleProject,
+      tree.focusProject,
+      tree.toggleWorktree,
+      activateRow,
+      actions,
+      deps.onAddTask,
+      deps.onCloseTab,
+    ],
   )
 
   const pickCurrent = useCallback((): void => fire(menu?.actions[cursor]), [fire, menu, cursor])

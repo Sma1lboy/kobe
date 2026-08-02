@@ -44,6 +44,8 @@ export type SidebarTreeProps = SidebarProps & {
   selectedTabId?: string | null
   /** Activate a specific tab of a task (the tree's whole reason to exist). */
   onSelectTab?: (taskId: string, tabId: string) => void
+  /** Close one tab of any worktree — offered by the tab row's menu. */
+  onCloseTab?: (taskId: string, tabId: string) => void
 }
 
 export function SidebarTree(props: SidebarTreeProps) {
@@ -208,6 +210,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     activateRow,
     setCursorIndex,
     onAddTask: props.onAddTask,
+    onCloseTab: props.onCloseTab,
     actions: props,
   })
 

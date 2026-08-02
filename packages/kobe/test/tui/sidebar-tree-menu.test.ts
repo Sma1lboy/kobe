@@ -87,6 +87,29 @@ describe("treeMenuItems", () => {
     expect(labels(tabRow)[0]).toBe("tasks.menu.openTab")
   })
 
+  test("close is offered only above one tab", () => {
+    // `closeTab` refuses to remove a task's LAST tab, so offering it there
+    // would be an entry that visibly does nothing.
+    expect(actions(tabRow, { tabCount: 1 })).not.toContain("closeTab")
+    expect(actions(tabRow, { tabCount: 0 })).not.toContain("closeTab")
+    expect(actions(tabRow, { tabCount: 2 })).toContain("closeTab")
+    // It sits right under Open — the two tab-level verbs stay together, above
+    // the worktree ones.
+    expect(actions(tabRow, { tabCount: 2 })).toEqual([
+      "open",
+      "closeTab",
+      "rename",
+      "pin",
+      "localMerge",
+      "archive",
+      "delete",
+    ])
+  })
+
+  test("a worktree row never offers close — it has no tab to close", () => {
+    expect(actions(worktreeRow(), { hasTabs: true, tabCount: 3 })).not.toContain("closeTab")
+  })
+
   test("delete is the only entry marked destructive", () => {
     const dangerous = treeMenuItems(worktreeRow()).filter((item) => item.danger === true)
     expect(dangerous.map((item) => item.action)).toEqual(["delete"])

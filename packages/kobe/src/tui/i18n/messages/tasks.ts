@@ -33,6 +33,7 @@ export const en = {
   menu: {
     open: "Open",
     openTab: "Open tab",
+    closeTab: "Close tab",
     expand: "Expand",
     collapse: "Collapse",
     focusProject: "Focus project",
@@ -134,6 +135,7 @@ export const zh: typeof en = {
   menu: {
     open: "打开",
     openTab: "打开该标签页",
+    closeTab: "关闭该标签页",
     expand: "展开",
     collapse: "折叠",
     focusProject: "只看这个项目",

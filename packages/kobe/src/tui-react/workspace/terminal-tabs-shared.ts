@@ -109,6 +109,39 @@ export function requestTabOpen(
   for (const listener of tabActivationListeners) listener()
 }
 
+/**
+ * Cross-component "close this tab" request — the third of the same family.
+ *
+ * Unlike its twins, this one has a caller that can name a tab of a task whose
+ * TerminalTabs is NOT mounted (the sidebar tree lists every worktree's tabs),
+ * so an unconsumed request is not "wait for mount" — it means nobody owns that
+ * task's state right now and the write has to happen in the background.
+ * `closeTaskTab` (terminal-tabs-close.ts) is what decides between the two by
+ * checking whether the request survived the listener sweep.
+ */
+let pendingTabClose: { taskId: string; tabId: string } | null = null
+
+export function requestTabClose(taskId: string, tabId: string): void {
+  pendingTabClose = { taskId, tabId }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending close for this task, or null. */
+export function takeTabClose(taskId: string): string | null {
+  if (pendingTabClose?.taskId !== taskId) return null
+  const tabId = pendingTabClose.tabId
+  pendingTabClose = null
+  return tabId
+}
+
+/** Whether the last {@link requestTabClose} went unclaimed — i.e. no mounted
+ *  TerminalTabs owns that task. Clears the request either way. */
+export function takeUnclaimedTabClose(): { taskId: string; tabId: string } | null {
+  const pending = pendingTabClose
+  pendingTabClose = null
+  return pending
+}
+
 /** Consume a pending tab-open for this task, or null. */
 export function takeTabOpen(
   taskId: string,

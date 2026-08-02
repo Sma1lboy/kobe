@@ -10,12 +10,17 @@
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
+import { useCallback } from "react"
 import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
 import type { SidebarNav } from "../../tui/panes/sidebar/nav-core"
 import type { WorktreeChanges } from "../../tui/panes/sidebar/worktree-changes"
+import { useKV } from "../context/kv"
+import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
+import { useT } from "../i18n"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarTree } from "../panes/sidebar/SidebarTree"
+import { closeTaskTab } from "./terminal-tabs-close"
 
 export interface HostSidebarProps {
   /** `tree` = project → worktree → tab; `flat` = the two-section task list. */
@@ -60,6 +65,21 @@ export interface HostSidebarProps {
 
 export function HostSidebar(props: HostSidebarProps) {
   const { theme } = useTheme()
+  const kv = useKV()
+  const notif = useNotifications()
+  const t = useT()
+  // Tab close is the one sidebar action the host can't express as a task-level
+  // callback: the tree names a tab of ANY worktree, so who owns that tab's
+  // state depends on whether its TerminalTabs is mounted. `closeTaskTab` is
+  // where that fork lives; a refusal (the task's last tab) surfaces as a toast
+  // rather than a silent no-op.
+  const closeTab = useCallback(
+    (taskId: string, tabId: string): void => {
+      if (!closeTaskTab(kv, taskId, tabId))
+        notif.notify({ kind: "error", taskId, tabId, title: t("terminal.tab.cannotCloseLast") })
+    },
+    [kv, notif, t],
+  )
   // Shared by both mounts. Split out so the two JSX blocks can't drift on
   // the props they DO have in common.
   const common = {
@@ -81,6 +101,19 @@ export function HostSidebar(props: HostSidebarProps) {
     onRenameRequest: props.onRenameRequest,
     onPinRequest: props.onPinRequest,
     onLocalMergeRequest: props.onLocalMergeRequest,
+    // Move mode and the search-active signal are BOTH sidebars' business.
+    // They used to sit only on the flat branch, which silently made the
+    // tree's move mode dead on arrival — the same way the brand header went
+    // missing when it was passed to one mount and not the other.
+    moveMode: props.moveMode,
+    onMoveRequest: props.onMoveRequest,
+    onMoveModeExit: props.onMoveModeExit,
+    onSearchActiveChange: props.onSearchActiveChange,
+    onAddTask: props.onAddTask,
+    headerStatus: props.headerStatus,
+    onHeaderStatusClick: props.onHeaderStatusClick,
+    zenActive: props.zenActive,
+    onZenClick: props.onZenClick,
   }
   return (
     <box width={props.width} flexShrink={0} backgroundColor={theme.backgroundPanel} onMouseUp={props.onFocusRequest}>
@@ -89,30 +122,19 @@ export function HostSidebar(props: HostSidebarProps) {
           {...common}
           selectedTabId={props.selectedTabId}
           onSelectTab={props.onSelectTab}
-          onAddTask={props.onAddTask}
-          headerStatus={props.headerStatus}
-          onHeaderStatusClick={props.onHeaderStatusClick}
-          zenActive={props.zenActive}
-          onZenClick={props.onZenClick}
+          onCloseTab={closeTab}
         />
       ) : (
         <Sidebar
           {...common}
           onHoverChange={props.onHoverChange}
           hoverEnabled={props.hoverEnabled}
-          onAddTask={props.onAddTask}
-          moveMode={props.moveMode}
-          onMoveRequest={props.onMoveRequest}
-          onMoveModeExit={props.onMoveModeExit}
+          // Flat-only: the tree replaces sorting with its own structure and
+          // the project filter with fold-the-others (docs/KEYBINDINGS.md).
           sortMode={props.sortMode}
           onSortModeToggle={props.onSortModeToggle}
           projectFilter={props.projectFilter}
           onProjectFilterChange={props.onProjectFilterChange}
-          onSearchActiveChange={props.onSearchActiveChange}
-          headerStatus={props.headerStatus}
-          onHeaderStatusClick={props.onHeaderStatusClick}
-          zenActive={props.zenActive}
-          onZenClick={props.onZenClick}
         />
       )}
     </box>

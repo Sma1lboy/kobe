@@ -151,3 +151,49 @@ test("left-click still activates the row it lands on", async () => {
 
   expect(chosen).toEqual(["b"])
 })
+
+/** Seed a task with N tabs so the tab rows render. */
+function seedTabs(taskId: string, tabIds: readonly string[]): void {
+  tabsByTask.set(taskId, {
+    tabs: tabIds.map((id, i) => ({ kind: "engine" as const, id, title: `tab ${i + 1}`, ordinal: i + 1 })),
+    activeId: tabIds[0] ?? "tab-1",
+    nextOrdinal: tabIds.length + 1,
+  })
+}
+
+test("a tab row's menu closes that tab, naming the (task, tab) pair", async () => {
+  tabsByTask.clear()
+  seedTabs("a", ["tab-1", "tab-2"])
+  const closed: Array<[string, string]> = []
+  const { frame, mockMouse, mockInput } = await renderComponent(
+    tree({ onCloseTab: (taskId, tabId) => closed.push([taskId, tabId]) }),
+    { width: 40, height: 24 },
+  )
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "tab 2"), RIGHT)
+  await settle()
+  expect(await frame()).toContain("Close tab")
+
+  // Highlight starts on "Open tab"; j steps to "Close tab".
+  mockInput.typeText("j")
+  await settle()
+  mockInput.pressEnter()
+  await settle()
+
+  expect(closed).toEqual([["a", "tab-2"]])
+})
+
+test("a worktree's LAST tab offers no close", async () => {
+  // The refusal lives in closeTab core; the menu just doesn't offer what
+  // would be refused.
+  tabsByTask.clear()
+  seedTabs("a", ["tab-1"])
+  const { frame, mockMouse } = await renderComponent(tree(), { width: 40, height: 24 })
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "tab 1"), RIGHT)
+  await settle()
+
+  const after = await frame()
+  expect(after).toContain("Open tab")
+  expect(after).not.toContain("Close tab")
+})

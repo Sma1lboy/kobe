@@ -57,6 +57,9 @@ export interface TreeState {
    *  themselves are gone in that state, so counting rows would flicker the
    *  twisty away the moment you closed it). */
   readonly hasTabs: (taskId: string) => boolean
+  /** How many tabs this worktree has — the menu needs the count, not just the
+   *  boolean, to know whether closing one is possible. */
+  readonly tabCount: (taskId: string) => number
   /** The row id the right pane is currently showing. */
   readonly activeRowId: string | null
   readonly expandedWorktrees: ReadonlySet<string>
@@ -146,7 +149,8 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     return selectedTaskId
   }, [selectedTaskId, selectedTabId, collapsedWorktrees])
 
-  const hasTabs = useCallback((taskId: string): boolean => (tabsByTask.get(taskId)?.length ?? 0) > 0, [tabsByTask])
+  const tabCount = useCallback((taskId: string): number => tabsByTask.get(taskId)?.length ?? 0, [tabsByTask])
+  const hasTabs = useCallback((taskId: string): boolean => tabCount(taskId) > 0, [tabCount])
 
   const toggleWorktree = useCallback((taskId: string) => {
     setCollapsedWorktrees((prev) => toggleInSet(prev, taskId))
@@ -186,6 +190,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     flatIds,
     totalCount,
     hasTabs,
+    tabCount,
     activeRowId,
     expandedWorktrees,
     collapsedProjects,

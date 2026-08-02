@@ -21,6 +21,7 @@ import type { TreeRow } from "./tree-core"
 
 export type TreeMenuAction =
   | "open"
+  | "closeTab"
   | "toggle"
   | "focusProject"
   | "newTask"
@@ -45,6 +46,10 @@ export interface TreeMenuContext {
   readonly collapsed?: boolean
   /** Every other project is already folded — the focus toggle reads as undo. */
   readonly projectFocused?: boolean
+  /** How many tabs the row's worktree has. Closing is only offered above 1:
+   *  `closeTab` refuses to remove a task's last tab, and an entry that does
+   *  nothing is worse than no entry. */
+  readonly tabCount?: number
 }
 
 /** The per-task verbs, shared by worktree and tab rows (see the module note
@@ -80,5 +85,7 @@ export function treeMenuItems(row: TreeRow, ctx: TreeMenuContext = {}): TreeMenu
     items.push(...taskVerbs(row.task.pinned === true))
     return items
   }
-  return [{ action: "open", labelKey: "tasks.menu.openTab" }, ...taskVerbs(row.task.pinned === true)]
+  const tabItems: TreeMenuItem[] = [{ action: "open", labelKey: "tasks.menu.openTab" }]
+  if ((ctx.tabCount ?? 0) > 1) tabItems.push({ action: "closeTab", labelKey: "tasks.menu.closeTab" })
+  return [...tabItems, ...taskVerbs(row.task.pinned === true)]
 }
