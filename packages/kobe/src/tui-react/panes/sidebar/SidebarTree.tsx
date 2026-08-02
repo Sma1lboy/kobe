@@ -351,6 +351,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   const shared: TreeRowShared = {
     cursorIndex,
     activeRowId: tree.activeRowId,
+    selectedTaskId: props.selectedId,
     rowEls,
     onPress: (flatIndex, rowId) => {
       // Clicking a row while a menu is up dismisses it — otherwise the menu

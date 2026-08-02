@@ -30,6 +30,12 @@ export type TreeRowShared = {
   readonly cursorIndex: number
   /** The row id the right pane is showing (`taskId::tabId` when a tab). */
   readonly activeRowId: string | null
+  /** The task whose session the right pane shows. The unread-lamp digest
+   *  keys on THIS (selected task + the tab's own active bit) rather than on
+   *  `activeRowId`: that id needs the live tab map, which is cold right
+   *  after a restart — and a lamp that ignores the session you are sitting
+   *  in is exactly the bug. */
+  readonly selectedTaskId: string | null
   /** Keyed by FLAT INDEX so one scroll-follow lookup covers every row. */
   readonly rowEls: Map<number, BoxRenderable>
   readonly onPress: (flatIndex: number, rowId: string) => void
@@ -155,9 +161,10 @@ export function TabTreeRow(props: {
   const carriesState = activity !== undefined
   // The unread lamp (herdr ● on turn_complete) is for sessions you are NOT
   // looking at — sitting in the tab digests it to ✓ on the same render.
-  // Same module-level bookkeeping as the flat cards, so switching sidebars
-  // never resurrects a lamp you already saw.
-  const viewing = shared.activeRowId === props.rowId
+  // "Viewing" = this row's TASK is selected and this tab is the task's
+  // active one. Same module-level bookkeeping as the flat cards, so
+  // switching sidebars never resurrects a lamp you already saw.
+  const viewing = shared.selectedTaskId === props.task.id && props.tab.active === true
   const completionSeen = completionSeenFor(props.task.id, activity?.state, viewing)
   const baseView = buildSidebarRowView({
     task: props.task,
