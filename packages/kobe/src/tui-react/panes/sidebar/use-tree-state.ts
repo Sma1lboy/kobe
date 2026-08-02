@@ -98,10 +98,17 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
           // The active tab carries the task's state glyph (activity is
           // task-scoped; the active tab is the session it describes).
           active: tab.id === known.activeId,
-          // Agent = a kobe-launched engine tab OR any tab whose live
-          // process is an engine right now (user typed `claude` in a
-          // shell). Process identity, not tab kind — the unified model.
-          engine: tab.kind === "engine" || liveEngines.get(tabPtyKeyFor(task.id, tab)) !== null,
+          // Agent = a kobe-launched engine tab, OR a tab whose live process
+          // is an engine right now (user typed `claude` in a shell), OR one
+          // whose RECORDED identity says so (`liveVendor` — the persisted
+          // twin of lastTitle) while the live probe can't answer: hosted
+          // PTYs keep the process alive across TUI restarts, but the fresh
+          // registry has nothing to walk until the tab re-mounts, and
+          // demoting the row to a plain dot for that gap reads as a lie.
+          engine:
+            tab.kind === "engine" ||
+            liveEngines.get(tabPtyKeyFor(task.id, tab)) !== null ||
+            (tab.liveVendor ?? null) !== null,
         })),
       )
     }

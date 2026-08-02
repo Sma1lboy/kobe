@@ -56,6 +56,17 @@ interface TabBase {
    */
   readonly lastTitle?: string | null
   /**
+   * Live engine identity recorded off the process-tree probe (`lastTitle`'s
+   * twin): a shell the user ran `claude` in IS an agent, and hosted PTYs
+   * keep that process alive across TUI restarts — but the fresh process's
+   * registry only knows attached PTYs, so without this record the sidebar
+   * tree demoted such tabs to non-agents on every restart. Recorded for
+   * tabs with a live title (= attached PTY, so absence of a vendor is
+   * authoritative there); an unattached tab keeps its last known value
+   * until the probe can answer again.
+   */
+  readonly liveVendor?: VendorId | null
+  /**
    * Frozen split layout for this tab (the "group"). Absent/null = unsplit
    * (the tab's own engine fills the whole body). Persisted WITH the tab so
    * the layout survives restart (owner ask 2026-07-06): `leaf-1` is the
@@ -337,6 +348,18 @@ export function setTabLastTitle(state: TabsState, id: string, lastTitle: string)
   const current = state.tabs.find((t) => t.id === id)
   if (!current || current.lastTitle === lastTitle) return state
   const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, lastTitle } : t))
+  return { ...state, tabs }
+}
+
+/**
+ * Record the tab's live engine identity (see `TerminalTab.liveVendor`).
+ * Same no-op contract as {@link setTabLastTitle} — the probe repeats the
+ * same answer every tick.
+ */
+export function setTabLiveVendor(state: TabsState, id: string, liveVendor: VendorId | null): TabsState {
+  const current = state.tabs.find((t) => t.id === id)
+  if (!current || (current.liveVendor ?? null) === liveVendor) return state
+  const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, liveVendor } : t))
   return { ...state, tabs }
 }
 
