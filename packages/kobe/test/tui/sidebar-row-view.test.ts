@@ -76,12 +76,14 @@ describe("buildSidebarRowView", () => {
     expect(projections[0]).toEqual({ loading: false, stateGlyph: "○", tone: "textMuted", subtitleText: "—" })
   })
 
-  it("keeps turn-complete as the visible row badge, digesting ● → ✓ once seen", () => {
+  it("keeps turn-complete as the ● lamp, and a SEEN completion is simply over", () => {
     expect(view({ status: "in_progress" }, { state: "turn_complete", at: 1 })).toMatchObject({
       loading: false,
       stateGlyph: "●",
       tone: "primary",
     })
+    // Seen = consumed (owner 2026-08-02): back to the idle circle, no ✓
+    // lingering on the row forever.
     expect(
       buildSidebarRowView({
         task: task({ status: "in_progress" }),
@@ -91,7 +93,7 @@ describe("buildSidebarRowView", () => {
         truncateBranch: (branch) => branch,
         completionSeen: true,
       }),
-    ).toMatchObject({ loading: false, stateGlyph: "✓", tone: "success" })
+    ).toMatchObject({ loading: false, stateGlyph: "○" })
   })
 
   it("does not use stale in-progress status for main project rows", () => {

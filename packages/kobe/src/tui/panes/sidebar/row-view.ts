@@ -349,10 +349,11 @@ export function withSpinnerFrame(view: SidebarRowView, frame: () => number): Sid
 }
 
 /**
- * herdr-style status circles (2026-07-27, ? for blocked-on-user since 07-29), ● turn done
- * (not yet viewed), ✓ done and viewed, ○ idle. `completionSeen` is the
- * herdr "seen" bit — a completed turn the user has selected since it
- * finished digests from the attention dot to the quiet check.
+ * herdr-style status circles (2026-07-27, ? for blocked-on-user since 07-29):
+ * ● turn done (not yet viewed), ○ idle. `completionSeen` is the herdr "seen"
+ * bit — and seen means CONSUMED (owner 2026-08-02): a completion you have
+ * already looked at is simply over, so the badge drops back to the idle
+ * circle rather than lingering as a ✓ the row would wear forever.
  */
 function activityBadgeFor(
   state: TaskActivityState | undefined,
@@ -368,7 +369,7 @@ function activityBadgeFor(
     case "error":
       return { glyph: "✕", tone: "error" }
     case "turn_complete":
-      return completionSeen ? { glyph: "✓", tone: "success" } : { glyph: "●", tone: "primary" }
+      return completionSeen ? null : { glyph: "●", tone: "primary" }
     default:
       return null
   }

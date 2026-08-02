@@ -52,12 +52,13 @@ describe("a completion the transcript outlived", () => {
     expect(row.stateGlyph).not.toBe("●")
   })
 
-  it("settles to done once the final hook overtakes the last write", () => {
+  it("settles once the final hook overtakes the last write", () => {
     // The real end: the Stop hook fires AFTER the last transcript write, so
-    // its timestamp wins and no timeout is needed to recover.
+    // its timestamp wins and no timeout is needed to recover. Seen =
+    // consumed (owner 2026-08-02), so the settled badge is the idle circle.
     const settled = view({ mtimeMs: COMPLETE_AT - 500 }, true)
     expect(settled.loading).toBe(false)
-    expect(settled.stateGlyph).toBe("✓")
+    expect(settled.stateGlyph).toBe("○")
   })
 
   it("ignores the sub-second race between the last write and the hook", () => {
