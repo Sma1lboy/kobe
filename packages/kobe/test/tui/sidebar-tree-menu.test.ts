@@ -47,32 +47,13 @@ const actions = (row: TreeRow, ctx = {}) => treeMenuItems(row, ctx).map((item) =
 const labels = (row: TreeRow, ctx = {}) => treeMenuItems(row, ctx).map((item) => item.labelKey)
 
 describe("treeMenuItems", () => {
-  test("a project offers the three things its header can do", () => {
-    expect(actions(projectRow)).toEqual(["toggle", "focusProject", "newTask"])
-  })
-
-  test("project labels follow collapse and focus state", () => {
-    expect(labels(projectRow, { collapsed: false })[0]).toBe("tasks.menu.collapse")
-    expect(labels(projectRow, { collapsed: true })[0]).toBe("tasks.menu.expand")
-    expect(labels(projectRow, { projectFocused: false })[1]).toBe("tasks.menu.focusProject")
-    expect(labels(projectRow, { projectFocused: true })[1]).toBe("tasks.menu.showAllProjects")
-  })
-
-  test("a worktree with no tabs omits the toggle entirely", () => {
-    // An "Expand" that visibly does nothing is worse than no entry.
-    expect(actions(worktreeRow(), { hasTabs: false })).not.toContain("toggle")
-    expect(actions(worktreeRow(), { hasTabs: true })).toContain("toggle")
+  test("a project offers only new-task — the tree has no fold to toggle", () => {
+    // Owner call 2026-08-01 round 5: no Expand/Collapse/Focus anywhere.
+    expect(actions(projectRow)).toEqual(["newTask"])
   })
 
   test("a worktree carries open plus every per-task verb", () => {
-    expect(actions(worktreeRow(), { hasTabs: false })).toEqual([
-      "open",
-      "rename",
-      "pin",
-      "localMerge",
-      "archive",
-      "delete",
-    ])
+    expect(actions(worktreeRow())).toEqual(["open", "rename", "pin", "localMerge", "archive", "delete"])
   })
 
   test("pin flips to unpin on a pinned task", () => {
@@ -107,7 +88,7 @@ describe("treeMenuItems", () => {
   })
 
   test("a worktree row never offers close — it has no tab to close", () => {
-    expect(actions(worktreeRow(), { hasTabs: true, tabCount: 3 })).not.toContain("closeTab")
+    expect(actions(worktreeRow(), { tabCount: 3 })).not.toContain("closeTab")
   })
 
   test("delete is the only entry marked destructive", () => {

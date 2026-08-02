@@ -130,7 +130,6 @@ test("right-click on a project header offers the project's own actions", async (
   await settle()
 
   const after = await frame()
-  expect(after).toContain("Focus project")
   expect(after).toContain("New task")
   // A project is not a checkout — no per-task verbs on its header.
   expect(after).not.toContain("Delete")

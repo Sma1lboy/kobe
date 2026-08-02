@@ -31,18 +31,17 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "enter" },
   },
   {
-    // PROPOSED chord, awaiting owner sign-off (2026-08-01) — tree sidebar
-    // only, so it is inert until that mode is on. `h`/`l` are the vim tree
-    // pair and are free in the sidebar scope (the FileTree already uses them
-    // for collapse/expand, which is the same verb on the same kind of
-    // widget). `space` is the third-most-common binding for it and is also
-    // free here.
-    id: "sidebar.tree.toggle",
+    // Owner call 2026-08-01: the tree has NO fold — every level is always
+    // expanded — so `l` is "go in" rather than "unfold": it opens the row
+    // under the cursor, and on a tab row (the last level) that means
+    // entering that tab's chat. `space` rides along from the original
+    // proposal; `h` was released with the fold it used to drive.
+    id: "sidebar.tree.open",
     scope: "sidebar",
-    keys: ["h", "l", "space"],
+    keys: ["l", "space"],
     category: "Sidebar",
-    description: "Expand / collapse the worktree's tabs",
-    hint: { keys: "h/l" },
+    description: "Open the row under the cursor (a tab row enters its chat)",
+    hint: { keys: "l" },
   },
   {
     // Slot pair [top, bottom]: slot 0 (g) arms/completes the gg

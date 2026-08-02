@@ -156,26 +156,6 @@ export function SidebarTree(props: SidebarTreeProps) {
   }
   const ctrl = controllerRef.current
 
-  // Expand/collapse the row under the cursor. A tab row has nothing to
-  // disclose, so the chord walks up to its worktree — pressing it on a child
-  // collapsing the parent is the behaviour every file tree has.
-  const toggleAtCursor = useCallback((): void => {
-    const rowId = flatIdsRef.current[cursorRef.current]
-    if (rowId === undefined) return
-    tree.toggleWorktree(parseRowId(rowId).taskId)
-  }, [tree.toggleWorktree])
-
-  // Fold every project but the cursor row's. The cursor never rests ON a
-  // project header (they are excluded from the flat id list), so the chord
-  // targets the project the current row BELONGS to — which is also what makes
-  // it reachable from a tab row three levels down.
-  const focusCursorProject = useCallback((): void => {
-    const rowId = flatIdsRef.current[cursorRef.current]
-    if (rowId === undefined) return
-    const projectId = tree.projectIdOfTask(parseRowId(rowId).taskId)
-    if (projectId !== null) tree.focusProject(projectId)
-  }, [tree.projectIdOfTask, tree.focusProject])
-
   /**
    * Move mode reorders PROJECTS in the tree (owner call 2026-08-01), not
    * tasks: the tree already shows a project as a group, so "move" at the
@@ -243,17 +223,16 @@ export function SidebarTree(props: SidebarTreeProps) {
         if ((slot ?? 0) % 2 === 1) ctrl.pressShiftG()
         else ctrl.pressG()
       },
-      "sidebar.tree.toggle": () => {
+      // `l` is "go in", not "unfold" (owner call 2026-08-01: the tree never
+      // folds): open the row under the cursor — on a tab row, the last
+      // level, that enters the tab's chat.
+      "sidebar.tree.open": () => {
         if (moveMode) return
-        toggleAtCursor()
+        ctrl.selectCurrent()
       },
       "sidebar.search.enter": () => {
         if (moveMode) return
         search.enter()
-      },
-      "sidebar.projectFilter": () => {
-        if (moveMode) return
-        focusCursorProject()
       },
       "sidebar.delete": () => {
         if (moveMode) return
@@ -423,13 +402,9 @@ export function SidebarTree(props: SidebarTreeProps) {
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}
-        expandedWorktrees={tree.expandedWorktrees}
-        collapsedProjects={tree.collapsedProjects}
-        hasTabs={tree.hasTabs}
         view={view}
         searching={search.active && search.query.trim().length > 0}
         shared={shared}
-        onToggleProject={tree.toggleProject}
         onProjectContextMenu={menu.openForProject}
         movingProjectId={moveMode ? cursorProjectId : null}
         setScrollRef={(r) => {

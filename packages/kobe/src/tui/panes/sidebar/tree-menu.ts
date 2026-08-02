@@ -9,9 +9,8 @@
  * (`withCursorTask` walks up from a tab to its worktree, because rename /
  * archive / delete have no tab-level meaning).
  *
- * Project headers are the one place the menu can do something the keyboard
- * cannot, and only because the cursor is structurally unable to rest on them
- * (`treeFlatIds` skips them) — a chord would have nowhere to fire from.
+ * No Expand/Collapse entries anywhere: the tree has no fold (owner call
+ * 2026-08-01) — every level always shows everything.
  *
  * Pure: labels are i18n KEYS, not text. The renderer runs them through `t()`
  * so the menu follows a language switch like everything else.
@@ -19,17 +18,7 @@
 
 import type { TreeRow } from "./tree-core"
 
-export type TreeMenuAction =
-  | "open"
-  | "closeTab"
-  | "toggle"
-  | "focusProject"
-  | "newTask"
-  | "rename"
-  | "pin"
-  | "localMerge"
-  | "archive"
-  | "delete"
+export type TreeMenuAction = "open" | "closeTab" | "newTask" | "rename" | "pin" | "localMerge" | "archive" | "delete"
 
 export interface TreeMenuItem {
   readonly action: TreeMenuAction
@@ -40,12 +29,6 @@ export interface TreeMenuItem {
 }
 
 export interface TreeMenuContext {
-  /** The worktree has tabs to disclose (drives Expand/Collapse presence). */
-  readonly hasTabs?: boolean
-  /** The row's group is currently folded. */
-  readonly collapsed?: boolean
-  /** Every other project is already folded — the focus toggle reads as undo. */
-  readonly projectFocused?: boolean
   /** How many tabs the row's worktree has. Closing is only offered above 1:
    *  `closeTab` refuses to remove a task's last tab, and an entry that does
    *  nothing is worse than no entry. */
@@ -66,24 +49,10 @@ function taskVerbs(pinned: boolean): TreeMenuItem[] {
 
 export function treeMenuItems(row: TreeRow, ctx: TreeMenuContext = {}): TreeMenuItem[] {
   if (row.kind === "project") {
-    return [
-      { action: "toggle", labelKey: ctx.collapsed ? "tasks.menu.expand" : "tasks.menu.collapse" },
-      {
-        action: "focusProject",
-        labelKey: ctx.projectFocused ? "tasks.menu.showAllProjects" : "tasks.menu.focusProject",
-      },
-      { action: "newTask", labelKey: "tasks.menu.newTask" },
-    ]
+    return [{ action: "newTask", labelKey: "tasks.menu.newTask" }]
   }
   if (row.kind === "worktree") {
-    const items: TreeMenuItem[] = [{ action: "open", labelKey: "tasks.menu.open" }]
-    // No twisty, no toggle: offering "Expand" on a worktree with nothing to
-    // disclose would be a menu entry that visibly does nothing.
-    if (ctx.hasTabs === true) {
-      items.push({ action: "toggle", labelKey: ctx.collapsed ? "tasks.menu.expand" : "tasks.menu.collapse" })
-    }
-    items.push(...taskVerbs(row.task.pinned === true))
-    return items
+    return [{ action: "open", labelKey: "tasks.menu.open" }, ...taskVerbs(row.task.pinned === true)]
   }
   const tabItems: TreeMenuItem[] = [{ action: "open", labelKey: "tasks.menu.openTab" }]
   if ((ctx.tabCount ?? 0) > 1) tabItems.push({ action: "closeTab", labelKey: "tasks.menu.closeTab" })

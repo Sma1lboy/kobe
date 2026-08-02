@@ -136,29 +136,28 @@ preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
 ### Tree sidebar (project → worktree → tab)
 
-`sidebar.tree.toggle` (`h` / `l` / `space`) expands and collapses the worktree
-under the cursor. **PROPOSED as of 2026-08-01, still awaiting owner sign-off.**
-The reasoning behind the proposal: `h`/`l` are the vim tree pair, they are free
-in the sidebar scope, and the Files pane already spends them on collapse/expand
-— the same verb on the same kind of widget. A tab row has nothing to disclose,
-so pressing it there walks up to the tab's worktree, which is what every file
-tree does. The chord is inert unless the tree sidebar is on.
+**The tree never folds** (owner call 2026-08-01): every project and worktree
+always shows everything under it — no twisties, no collapse state, no
+Expand/Collapse menu entries. The tree is the map; hiding rows made it lie.
 
-The tree deliberately adds NO other chords. Two existing ones simply mean
-something tree-shaped inside it (2026-08-01, no new bindings, so no sign-off
-was needed):
+`sidebar.tree.open` (`l` / `space`) opens the row under the cursor — the same
+thing `enter` does. On a tab row, the last level, that means entering the
+tab's chat; the chord exists so the vim right-hand "go in" gesture works
+without reaching for enter. `h` is unbound in the tree (there is no fold for
+it to drive) and stays reserved. The chord replaced the withdrawn
+`sidebar.tree.toggle` (`h`/`l`/`space`) proposal when the fold itself was
+removed; the resolution is the owner's 2026-08-01 "no fold, `l` enters"
+directive, so no further sign-off is pending.
+
+The tree deliberately adds NO other chords. One existing chord means
+something tree-shaped inside it:
 
 - `/` (`sidebar.search.enter`) — the same search chord, with a wider haystack.
   On top of the flat sidebar's task title + repo, a query also matches a
   worktree's branch and, uniquely to the tree, a **tab's live title**. Matches
-  keep their ancestors so a hit is never orphaned from its project, and the
-  query ignores hand-collapsed state (a match folded out of sight would read as
-  "no results"). `escape` / `enter` leave search exactly as in the flat rail.
-- `ctrl+p` (`sidebar.projectFilter`) — in the flat sidebar this cycles the
-  project filter; in the tree it **focuses** the cursor row's project by folding
-  every other one, and a second press unfolds them again. Same intent, expressed
-  in the structure the tree already has: "focus" is "collapse the others", so it
-  reuses the collapse state instead of adding a second notion of what is visible.
+  keep their ancestors so a hit is never orphaned from its project. `escape` /
+  `enter` leave search exactly as in the flat rail. (`ctrl+p` does nothing in
+  the tree — the project filter it drove was a fold, and the fold is gone.)
 
 - `prefix+m` (`task.moveMode`) — the same global move mode, retargeted at the
   level the tree actually shows: `j`/`k` drag the cursor row's **project**, not

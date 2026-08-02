@@ -1,10 +1,14 @@
 /**
- * Sidebar tree state — expansion, the flat row list, and the cursor's
- * translation between row ids and the terminal's (taskId, tabId) pair.
+ * Sidebar tree state — the flat row list and the cursor's translation
+ * between row ids and the terminal's (taskId, tabId) pair.
  *
  * Kept out of `Sidebar.tsx` for the file-size cap, and out of `tree-core.ts`
  * because that module is framework-free (vitest loads it in Node) while this
  * one is React state.
+ *
+ * There is NO fold anywhere (owner call 2026-08-01, round 5): every project
+ * and every worktree always shows everything under it. The tree is a map,
+ * not a filing cabinet — hiding rows just made the map lie.
  *
  * The tab projection reads through `knownTaskTabs`, which answers for tasks
  * whose TerminalTabs is not mounted — the whole point of the tree is that
@@ -13,20 +17,16 @@
 
 import type { Task } from "@/types/task"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 import { sidebarProjectKey } from "../../../tui/panes/sidebar/groups"
 import {
   type TreeRow,
   type TreeTab,
   buildTreeRows,
   filterTreeRows,
-  focusProjectSet,
-  isProjectFocused,
   mainTaskIdOfProject,
   parseRowId,
-  projectKeysOf,
   tabRowId,
-  toggleInSet,
   treeFlatIds,
 } from "../../../tui/panes/sidebar/tree-core"
 import { tabTitle } from "../../../tui/workspace/terminal-tab-split"
@@ -52,43 +52,21 @@ export interface TreeState {
   readonly flatIds: readonly string[]
   /** Navigable rows before the query pruned anything — the `N/total` suffix. */
   readonly totalCount: number
-  /** Whether this worktree has tabs AT ALL — asked by the disclosure glyph,
-   *  which must keep pointing at hidden children while collapsed (the rows
-   *  themselves are gone in that state, so counting rows would flicker the
-   *  twisty away the moment you closed it). */
-  readonly hasTabs: (taskId: string) => boolean
-  /** How many tabs this worktree has — the menu needs the count, not just the
-   *  boolean, to know whether closing one is possible. */
+  /** How many tabs this worktree has — the menu needs the count to know
+   *  whether closing one is possible. */
   readonly tabCount: (taskId: string) => number
   /** The row id the right pane is currently showing. */
   readonly activeRowId: string | null
-  readonly expandedWorktrees: ReadonlySet<string>
-  readonly collapsedProjects: ReadonlySet<string>
-  readonly toggleWorktree: (taskId: string) => void
-  readonly toggleProject: (projectId: string) => void
-  /** Fold every project but this one (and unfold on a second press). */
-  readonly focusProject: (projectId: string) => void
-  /** This project is currently the only open one. */
-  readonly isProjectFocused: (projectId: string) => boolean
   /** The project a task belongs to, or null for a project-less `dir` task. */
   readonly projectIdOfTask: (taskId: string) => string | null
   /** The task whose move reorders this project (its `main` checkout). */
   readonly mainTaskIdOfProject: (projectId: string) => string | null
 }
 
-/** Shared empty set — searching builds rows with nothing collapsed, and a
- *  fresh `new Set()` each render would break the row memo. */
-const NOTHING_COLLAPSED: ReadonlySet<string> = new Set<string>()
-
 export function useTreeState(opts: TreeStateOpts): TreeState {
   const { tasks, kv, selectedTaskId, selectedTabId, busyTaskIds } = opts
   const query = opts.query ?? ""
   const searching = query.trim() !== ""
-  // Everything expanded by DEFAULT (owner call 2026-08-01, round 4) — the
-  // sets hold only what the user collapsed by hand, so a new worktree or a
-  // freshly-mounted tab list shows up without a keystroke.
-  const [collapsedWorktrees, setCollapsedWorktrees] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set<string>())
 
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
@@ -114,64 +92,23 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     return map
   }, [tasks, kv, busyTaskIds])
 
-  // Searching IGNORES hand-collapsed state: a hit folded out of sight reads
-  // as "no results", so the query builds against the fully-open tree and the
-  // pruner puts back only what matched (plus its ancestors).
   const { rows, totalCount } = useMemo(() => {
-    const all = buildTreeRows({
-      tasks,
-      tabsByTask,
-      collapsedWorktrees: searching ? NOTHING_COLLAPSED : collapsedWorktrees,
-      collapsedProjects: searching ? NOTHING_COLLAPSED : collapsedProjects,
-    })
+    const all = buildTreeRows({ tasks, tabsByTask })
     const total = treeFlatIds(all).length
     return { rows: searching ? filterTreeRows(all, query) : all, totalCount: total }
-  }, [tasks, tabsByTask, collapsedWorktrees, collapsedProjects, searching, query])
+  }, [tasks, tabsByTask, searching, query])
   const flatIds = useMemo(() => treeFlatIds(rows), [rows])
 
-  // The expanded set is what the RENDERER asks about (twisty state), so keep
-  // that vocabulary at the boundary: expanded = not hand-collapsed.
-  const expandedWorktrees = useMemo(() => {
-    const set = new Set<string>()
-    for (const task of tasks) if (!collapsedWorktrees.has(task.id)) set.add(task.id)
-    return set
-  }, [tasks, collapsedWorktrees])
-
-  // The active row is the selected task's ACTIVE TAB when that worktree is
-  // expanded, else the worktree row itself — so the highlight lands on the
-  // deepest row that is actually visible rather than disappearing when the
-  // user collapses the worktree they are working in.
+  // The active row is the selected task's ACTIVE TAB, else the worktree row
+  // itself — the highlight lands on the deepest row that names the session.
   const activeRowId = useMemo(() => {
     if (selectedTaskId === null) return null
-    if (selectedTabId !== null && !collapsedWorktrees.has(selectedTaskId)) {
-      return tabRowId(selectedTaskId, selectedTabId)
-    }
+    if (selectedTabId !== null) return tabRowId(selectedTaskId, selectedTabId)
     return selectedTaskId
-  }, [selectedTaskId, selectedTabId, collapsedWorktrees])
+  }, [selectedTaskId, selectedTabId])
 
   const tabCount = useCallback((taskId: string): number => tabsByTask.get(taskId)?.length ?? 0, [tabsByTask])
-  const hasTabs = useCallback((taskId: string): boolean => tabCount(taskId) > 0, [tabCount])
 
-  const toggleWorktree = useCallback((taskId: string) => {
-    setCollapsedWorktrees((prev) => toggleInSet(prev, taskId))
-  }, [])
-  const toggleProject = useCallback((projectId: string) => {
-    setCollapsedProjects((prev) => toggleInSet(prev, projectId))
-  }, [])
-
-  // Project keys come from the TASKS, not the rendered rows: a pruned search
-  // result may be missing the very projects focus needs to fold.
-  const projectIds = useMemo(() => projectKeysOf(tasks), [tasks])
-  const focusProject = useCallback(
-    (projectId: string) => {
-      setCollapsedProjects((prev) => focusProjectSet(projectIds, projectId, prev))
-    },
-    [projectIds],
-  )
-  const projectFocused = useCallback(
-    (projectId: string): boolean => isProjectFocused(projectIds, projectId, collapsedProjects),
-    [projectIds, collapsedProjects],
-  )
   const mainTaskOfProject = useCallback(
     (projectId: string): string | null => mainTaskIdOfProject(tasks, projectId),
     [tasks],
@@ -189,15 +126,8 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     rows,
     flatIds,
     totalCount,
-    hasTabs,
     tabCount,
     activeRowId,
-    expandedWorktrees,
-    collapsedProjects,
-    toggleWorktree,
-    toggleProject,
-    focusProject,
-    isProjectFocused: projectFocused,
     projectIdOfTask,
     mainTaskIdOfProject: mainTaskOfProject,
   }

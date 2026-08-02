@@ -3,12 +3,10 @@ import {
   type TreeTab,
   buildTreeRows,
   filterTreeRows,
-  focusProjectSet,
   mainTaskIdOfProject,
   parseRowId,
   projectKeysOf,
   tabRowId,
-  toggleInSet,
   treeFlatIds,
 } from "../../src/tui/panes/sidebar/tree-core"
 import type { Task } from "../../src/types/task"
@@ -32,14 +30,10 @@ function task(id: string, over: Partial<Task> = {}): Task {
 
 const tab = (id: string, label = id): TreeTab => ({ id, label })
 
-const NOTHING: ReadonlySet<string> = new Set()
-
 function rows(over: Partial<Parameters<typeof buildTreeRows>[0]> = {}) {
   return buildTreeRows({
     tasks: [],
     tabsByTask: new Map(),
-    collapsedWorktrees: NOTHING,
-    collapsedProjects: NOTHING,
     ...over,
   })
 }
@@ -70,24 +64,12 @@ describe("buildTreeRows", () => {
     expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/zebra", "/repos/apple"])
   })
 
-  test("tabs render by default; a hand-collapsed worktree hides its own", () => {
+  test("every tab always renders — the tree has no fold", () => {
+    // Owner call 2026-08-01 round 5: no collapse anywhere, ever. The tree is
+    // a map; hiding rows made the map lie.
     const tabs = new Map([["a", [tab("tab-1"), tab("tab-2")]]])
-    // Default is EXPANDED (owner call 2026-08-01 round 4): no keystroke
-    // needed to see any worktree's tabs.
-    const expanded = rows({ tasks: [task("a")], tabsByTask: tabs })
-    expect(expanded.map((r) => r.id)).toEqual(["/repos/kobe", "a", "a::tab-1", "a::tab-2"])
-
-    const collapsed = rows({ tasks: [task("a")], tabsByTask: tabs, collapsedWorktrees: new Set(["a"]) })
-    expect(collapsed.filter((r) => r.kind === "tab")).toHaveLength(0)
-  })
-
-  test("a collapsed project hides its worktrees and their tabs", () => {
-    const result = rows({
-      tasks: [task("a"), task("b", { repo: "/repos/other" })],
-      tabsByTask: new Map([["a", [tab("tab-1")]]]),
-      collapsedProjects: new Set(["/repos/kobe"]),
-    })
-    expect(result.map((r) => r.id)).toEqual(["/repos/kobe", "/repos/other", "b"])
+    const result = rows({ tasks: [task("a")], tabsByTask: tabs })
+    expect(result.map((r) => r.id)).toEqual(["/repos/kobe", "a", "a::tab-1", "a::tab-2"])
   })
 
   test("a dir task gets no project header — it has no project", () => {
@@ -122,18 +104,6 @@ describe("tabRowId / parseRowId", () => {
 
   test("a bare task id parses as no tab", () => {
     expect(parseRowId("task-1")).toEqual({ taskId: "task-1", tabId: null })
-  })
-})
-
-describe("toggleInSet", () => {
-  test("adds, removes, and never mutates the input", () => {
-    const original: ReadonlySet<string> = new Set(["a"])
-    const added = toggleInSet(original, "b")
-    expect([...added].sort()).toEqual(["a", "b"])
-    expect([...toggleInSet(added, "a")]).toEqual(["b"])
-    // Identity must change or React skips the re-render.
-    expect(added).not.toBe(original)
-    expect([...original]).toEqual(["a"])
   })
 })
 
@@ -199,28 +169,6 @@ describe("projectKeysOf", () => {
         task("d", { kind: "dir", repo: "/tmp/scratch" }),
       ]),
     ).toEqual(["/repos/kobe", "/repos/foxychat"])
-  })
-})
-
-describe("focusProjectSet", () => {
-  const all = ["p1", "p2", "p3"]
-
-  test("folds every project but the kept one", () => {
-    expect([...focusProjectSet(all, "p2", NOTHING)]).toEqual(["p1", "p3"])
-  })
-
-  test("a second press on the already-focused project unfolds everything", () => {
-    const focused = focusProjectSet(all, "p2", NOTHING)
-    expect([...focusProjectSet(all, "p2", focused)]).toEqual([])
-  })
-
-  test("focusing a DIFFERENT project re-folds rather than unfolding", () => {
-    const focused = focusProjectSet(all, "p2", NOTHING)
-    expect([...focusProjectSet(all, "p3", focused)]).toEqual(["p1", "p2"])
-  })
-
-  test("a lone project has nothing to fold, so it never latches as focused", () => {
-    expect([...focusProjectSet(["p1"], "p1", NOTHING)]).toEqual([])
   })
 })
 

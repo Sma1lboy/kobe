@@ -91,30 +91,10 @@ function RowShell(props: {
   )
 }
 
-/** Disclosure glyph. A row with nothing to disclose still reserves the cell
- *  so titles at the same depth share one left edge. */
-function Twisty(props: { readonly state: "open" | "closed" | "leaf" }) {
-  const { theme } = useTheme()
-  if (props.state === "leaf") {
-    return (
-      <text wrapMode="none" width={2} flexShrink={0}>
-        {"  "}
-      </text>
-    )
-  }
-  return (
-    <text fg={theme.textMuted} wrapMode="none" width={2} flexShrink={0}>
-      {props.state === "open" ? "▾ " : "▸ "}
-    </text>
-  )
-}
-
 export function WorktreeTreeRow(props: {
   readonly rowId: string
   readonly flatIndex: number
   readonly task: Task
-  readonly expanded: boolean
-  readonly hasTabs: boolean
   readonly shared: TreeRowShared
 }) {
   const { theme } = useTheme()
@@ -142,7 +122,6 @@ export function WorktreeTreeRow(props: {
   const label = task.branch || rowView.titleText
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={shared}>
-      <Twisty state={props.hasTabs ? (props.expanded ? "open" : "closed") : "leaf"} />
       <text fg={toneColor(theme, rowView.tone)} wrapMode="none" width={2} flexShrink={0}>
         {`${rowView.stateGlyph} `}
       </text>
@@ -178,9 +157,6 @@ export function TabTreeRow(props: {
   const isCursor = props.shared.cursorIndex === props.flatIndex
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
-      {/* No twisty at the leaf level, but the cell stays so tab titles line
-          up under their worktree's title rather than under its glyph. */}
-      <Twisty state="leaf" />
       <text fg={busy ? theme.warning : theme.textMuted} wrapMode="none" width={2} flexShrink={0}>
         {busy ? "● " : "· "}
       </text>

@@ -69,18 +69,11 @@ export function parseRowId(rowId: string): { taskId: string; tabId: string | nul
   return { taskId: rowId.slice(0, at), tabId: rowId.slice(at + TAB_ROW_SEPARATOR.length) }
 }
 
-/** A set of collapsed row ids (worktree task ids / project keys). */
-export type ExpandedSet = ReadonlySet<string>
-
 export interface TreeInput {
   readonly tasks: readonly Task[]
   /** Tabs per task id. A task absent from the map contributes no tab rows —
    *  its tabs have never mounted, which is not the same as having none. */
   readonly tabsByTask: ReadonlyMap<string, readonly TreeTab[]>
-  /** Everything is expanded by DEFAULT (owner call 2026-08-01, round 4);
-   *  these sets hold the exceptions the user collapsed by hand. */
-  readonly collapsedWorktrees: ExpandedSet
-  readonly collapsedProjects: ExpandedSet
 }
 
 /**
@@ -102,7 +95,7 @@ export interface TreeInput {
  * that does not exist.
  */
 export function buildTreeRows(input: TreeInput): TreeRow[] {
-  const { tasks, tabsByTask, collapsedWorktrees, collapsedProjects } = input
+  const { tasks, tabsByTask } = input
   const byProject = new Map<string, { repo: string; tasks: Task[] }>()
   const looseTasks: Task[] = []
 
@@ -128,21 +121,14 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
   const rows: TreeRow[] = []
   for (const [key, entry] of byProject) {
     rows.push({ kind: "project", id: key, repo: entry.repo, label: repoBasename(entry.repo), depth: 0 })
-    if (collapsedProjects.has(key)) continue
-    for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask, collapsedWorktrees)
+    for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask)
   }
-  for (const task of looseTasks) pushWorktree(rows, task, tabsByTask, collapsedWorktrees)
+  for (const task of looseTasks) pushWorktree(rows, task, tabsByTask)
   return rows
 }
 
-function pushWorktree(
-  rows: TreeRow[],
-  task: Task,
-  tabsByTask: ReadonlyMap<string, readonly TreeTab[]>,
-  collapsed: ExpandedSet,
-): void {
+function pushWorktree(rows: TreeRow[], task: Task, tabsByTask: ReadonlyMap<string, readonly TreeTab[]>): void {
   rows.push({ kind: "worktree", id: task.id, task, depth: 1 })
-  if (collapsed.has(task.id)) return
   for (const tab of tabsByTask.get(task.id) ?? []) {
     rows.push({ kind: "tab", id: tabRowId(task.id, tab.id), task, tab, depth: 2 })
   }
@@ -193,10 +179,6 @@ function rowHaystack(row: TreeRow): string {
  *   - tab      → the tab's label, i.e. its live OSC window title. This is the
  *     tree's own increment over the flat sidebar, which can only search task
  *     titles: it answers "which tab is running that thing".
- *
- * Expects rows built with NOTHING collapsed — a collapsed worktree emits no
- * tab rows, and a match the user folded shut would read as "no results".
- * `useTreeState` arranges that; tests pass fully-expanded rows.
  */
 export function filterTreeRows(rows: readonly TreeRow[], query: string): TreeRow[] {
   const q = query.trim()
@@ -270,42 +252,4 @@ export function mainTaskIdOfProject(tasks: readonly Task[], projectKey: string):
     if (sidebarProjectKey(task.repo) === projectKey) return String(task.id)
   }
   return null
-}
-
-/**
- * Collapse every project EXCEPT `keepId` — the tree's answer to the flat
- * sidebar's project filter. Pressing it again while that project is already
- * the only open one restores everything, so the chord is its own undo.
- *
- * This reuses the collapse set instead of adding a filter dimension: "focus"
- * IS "fold the others", and a second source of truth for which projects are
- * visible would be one more thing to keep in sync with the twisties.
- */
-export function focusProjectSet(projectIds: readonly string[], keepId: string, current: ExpandedSet): Set<string> {
-  return isProjectFocused(projectIds, keepId, current)
-    ? new Set<string>()
-    : new Set(projectIds.filter((id) => id !== keepId))
-}
-
-/** Whether `keepId` is currently the only open project — the state that makes
- *  {@link focusProjectSet} undo itself, and what the menu reads to decide
- *  between "Focus project" and "Show all projects". */
-export function isProjectFocused(projectIds: readonly string[], keepId: string, current: ExpandedSet): boolean {
-  const others = projectIds.filter((id) => id !== keepId)
-  // A lone project can never be "focused": there is nothing folded to undo,
-  // so the toggle would latch on its first press and never come back.
-  return others.length > 0 && !current.has(keepId) && others.every((id) => current.has(id))
-}
-
-/**
- * Toggle membership in an expanded/collapsed set, returning a NEW set.
- *
- * Returning a fresh set (rather than mutating) is what lets React see the
- * change: the sets are held in state, and an in-place `add` would leave the
- * identity unchanged and skip the re-render.
- */
-export function toggleInSet(set: ExpandedSet, id: string): Set<string> {
-  const next = new Set(set)
-  if (!next.delete(id)) next.add(id)
-  return next
 }

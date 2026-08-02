@@ -7,6 +7,9 @@
  * wins: worktree rows compress the two-line card to one line, tabs indent
  * one level further.
  *
+ * No fold anywhere (owner round 5): every project and worktree always shows
+ * everything under it, so there are no twisties and no collapse state.
+ *
  * One scrollbox, not the flat sidebar's two: a tree's whole point is that a
  * project and its worktrees scroll together, and the cursor indexes one flat
  * id list so one viewport is what "scroll the cursor into view" needs.
@@ -25,15 +28,11 @@ export function SidebarTreeBody(props: {
   readonly rows: readonly TreeRow[]
   /** Row id → index in the tree's navigable flat id list. */
   readonly flatIndexOf: ReadonlyMap<string, number>
-  readonly expandedWorktrees: ReadonlySet<string>
-  readonly collapsedProjects: ReadonlySet<string>
-  readonly hasTabs: (taskId: string) => boolean
   readonly view: SidebarView
   /** A query is open and non-empty — picks the "no matches" empty state over
    *  the view's own "nothing here yet". */
   readonly searching: boolean
   readonly shared: TreeRowShared
-  readonly onToggleProject: (projectId: string) => void
   readonly onProjectContextMenu?: (projectId: string, x: number, y: number) => void
   /** Project being dragged in move mode — wears the move chip. */
   readonly movingProjectId?: string | null
@@ -54,15 +53,12 @@ export function SidebarTreeBody(props: {
       <box flexShrink={0} gap={0}>
         {props.rows.map((row, i) => {
           if (row.kind === "project") {
-            const collapsed = props.collapsedProjects.has(row.id)
             return (
               <SectionHeader
                 key={row.id}
-                prefix={collapsed ? "▸" : "▾"}
                 label={row.label}
                 suffix={props.movingProjectId === row.id ? t("tasks.moveChip") : undefined}
                 topPad={i > 0}
-                onPress={() => props.onToggleProject(row.id)}
                 onContextMenu={
                   props.onProjectContextMenu ? (x, y) => props.onProjectContextMenu?.(row.id, x, y) : undefined
                 }
@@ -76,8 +72,6 @@ export function SidebarTreeBody(props: {
                 rowId={row.id}
                 flatIndex={props.flatIndexOf.get(row.id) ?? -1}
                 task={row.task}
-                expanded={props.expandedWorktrees.has(row.task.id)}
-                hasTabs={props.hasTabs(row.task.id)}
                 shared={props.shared}
               />
             )

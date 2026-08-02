@@ -66,10 +66,11 @@ test("renders project header, worktree cards, and tab rows", async () => {
   const text = await frame()
 
   // The project header keeps the flat sidebar's section-header grammar —
-  // label + divider run — with a twisty in front (round 2: the tree reuses
-  // the original design language rather than inventing a one-line grammar).
-  expect(text).toContain("▾ kobe")
-  expect(text).toContain("─")
+  // label + divider run. No twisty: the tree has no fold (round 5), so
+  // there is no disclosure glyph anywhere.
+  expect(text).toContain("kobe ─")
+  expect(text).not.toContain("▾")
+  expect(text).not.toContain("▸")
   // Worktrees are the same two-line cards; their branch is the subtitle.
   expect(text).toContain("feat/a")
   expect(text).toContain("feat/b")
@@ -107,19 +108,30 @@ test("enter on a tab row activates that tab, not just its task", async () => {
   expect(picked).toEqual([["a", "tab-1"]])
 })
 
-test("h collapses the worktree under the cursor and l expands it again", async () => {
-  seedTabs("a", ["tab-1"])
-  const { frame, mockInput } = await renderComponent(tree(), { width: 28, height: 20 })
+test("l on a tab row enters that tab's chat — there is no fold", async () => {
+  // Owner call 2026-08-01 round 5: the tree never folds, so `l` is "go in".
+  // On the last level (a tab row) that means entering the tab.
+  seedTabs("a", ["tab-1", "tab-2"])
+  const picked: Array<[string, string]> = []
+  const { frame, mockInput } = await renderComponent(
+    tree({ onSelectTab: (taskId, tabId) => picked.push([taskId, tabId]) }),
+    { width: 28, height: 20 },
+  )
   await new Promise((r) => setTimeout(r, SETTLE))
+  // Tabs are visible without any keystroke…
   expect(await frame()).toContain("tab 1")
 
+  // …h does nothing to them (no fold to drive)…
   mockInput.typeText("h")
   await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).not.toContain("tab 1")
+  expect(await frame()).toContain("tab 1")
 
+  // …and l on the tab row (j steps onto it) opens that tab.
+  mockInput.typeText("j")
+  await new Promise((r) => setTimeout(r, SETTLE))
   mockInput.typeText("l")
   await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("tab 1")
+  expect(picked).toEqual([["a", "tab-1"]])
 })
 
 test("j/k move the cursor over worktree rows", async () => {
@@ -232,28 +244,6 @@ test("escape leaves search and restores the full tree", async () => {
   const text = await frame()
   expect(text).toContain("feat/a")
   expect(text).not.toContain("/bravo")
-})
-
-test("ctrl+p folds every project but the cursor's, and unfolds on a second press", async () => {
-  tabsByTask.clear()
-  const tasks = [MAIN, task("a"), task("x", { repo: "/repos/foxychat", branch: "feat/x" })]
-  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("feat/x")
-
-  // Cursor sits on `a` (the selected task), which lives in /repos/kobe.
-  mockInput.pressKey("p", { ctrl: true })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  const focused = await frame()
-  expect(focused).not.toContain("feat/x")
-  // The header stays — this is a fold, not a filter, so the other projects
-  // are still there to open.
-  expect(focused).toContain("foxychat")
-  expect(focused).toContain("feat/a")
-
-  mockInput.pressKey("p", { ctrl: true })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("feat/x")
 })
 
 test("move mode drags the PROJECT, routed through its main checkout", async () => {

@@ -82,32 +82,18 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
       // Move the cursor too: the menu and the highlight must agree about which
       // row the next action lands on.
       setCursorIndex(flatIndex)
-      openAt(
-        row,
-        {
-          hasTabs: row.kind === "worktree" && tree.hasTabs(row.task.id),
-          collapsed: !tree.expandedWorktrees.has(row.task.id),
-          tabCount: tree.tabCount(row.task.id),
-        },
-        x,
-        y,
-      )
+      openAt(row, { tabCount: tree.tabCount(row.task.id) }, x, y)
     },
-    [tree.rows, tree.hasTabs, tree.tabCount, tree.expandedWorktrees, openAt, setCursorIndex],
+    [tree.rows, tree.tabCount, openAt, setCursorIndex],
   )
 
   const openForProject = useCallback(
     (projectId: string, x: number, y: number): void => {
       const row = tree.rows.find((candidate) => candidate.kind === "project" && candidate.id === projectId)
       if (!row) return
-      openAt(
-        row,
-        { collapsed: tree.collapsedProjects.has(projectId), projectFocused: tree.isProjectFocused(projectId) },
-        x,
-        y,
-      )
+      openAt(row, {}, x, y)
     },
-    [tree.rows, tree.collapsedProjects, tree.isProjectFocused, openAt],
+    [tree.rows, openAt],
   )
 
   const close = useCallback((): void => setMenu(null), [])
@@ -136,9 +122,7 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
       const row = menu.row
       setMenu(null)
       if (row.kind === "project") {
-        if (action === "toggle") tree.toggleProject(row.id)
-        else if (action === "focusProject") tree.focusProject(row.id)
-        else if (action === "newTask") deps.onAddTask?.()
+        if (action === "newTask") deps.onAddTask?.()
         return
       }
       const taskId = row.task.id
@@ -149,9 +133,6 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
         case "closeTab":
           // Only a tab row offers it, and only above one tab (tree-menu.ts).
           if (row.kind === "tab") deps.onCloseTab?.(taskId, row.tab.id)
-          break
-        case "toggle":
-          tree.toggleWorktree(taskId)
           break
         case "rename":
           actions.onRenameRequest?.(taskId)
@@ -172,16 +153,7 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
           break
       }
     },
-    [
-      menu,
-      tree.toggleProject,
-      tree.focusProject,
-      tree.toggleWorktree,
-      activateRow,
-      actions,
-      deps.onAddTask,
-      deps.onCloseTab,
-    ],
+    [menu, activateRow, actions, deps.onAddTask, deps.onCloseTab],
   )
 
   const pickCurrent = useCallback((): void => fire(menu?.actions[cursor]), [fire, menu, cursor])
