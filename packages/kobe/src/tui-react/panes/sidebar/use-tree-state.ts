@@ -86,6 +86,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
           // The active tab carries the task's state glyph (activity is
           // task-scoped; the active tab is the session it describes).
           active: tab.id === known.activeId,
+          engine: tab.kind === "engine",
         })),
       )
     }

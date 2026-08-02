@@ -38,6 +38,9 @@ export interface TreeTab {
   /** The task's ACTIVE tab — the row that carries the session's state glyph
    *  (owner call 2026-08-01: state lives on the chattab, not the worktree). */
   readonly active?: boolean
+  /** A coding-agent tab. Shell/command/content tabs are outside the state
+   *  vocabulary entirely — they always wear the plain dot. */
+  readonly engine?: boolean
 }
 
 export type TreeRow =

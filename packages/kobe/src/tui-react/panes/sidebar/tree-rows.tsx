@@ -145,14 +145,19 @@ export function TabTreeRow(props: {
   const { theme } = useTheme()
   const shared = props.shared
   const isCursor = shared.cursorIndex === props.flatIndex
-  // The task's engine state renders HERE, on its ACTIVE tab — the session
-  // the activity hooks are reporting about. Sibling tabs keep the plain dot.
-  // (Activity is task-scoped in the daemon; the active tab is the closest
-  // per-tab truth available without a per-tab activity feed.)
-  const carriesState = props.tab.active === true
+  // The task's engine state renders HERE, on its ACTIVE ENGINE tab — the
+  // session the activity hooks are reporting about. Everything else wears
+  // the plain dot: sibling engine tabs (activity is task-scoped, so only
+  // the active one is described by it) and ALL non-engine tabs (a shell is
+  // not a coding agent — there is no state we care about, owner round 7).
+  // No glyph when there is no ACTIVITY either: an idle `○` on every tab
+  // was a state costume on rows that have nothing to say.
+  const activity =
+    props.tab.active === true && props.tab.engine === true ? shared.engineState?.get(props.task.id) : undefined
+  const carriesState = activity !== undefined
   const baseView = buildSidebarRowView({
     task: props.task,
-    activity: carriesState ? shared.engineState?.get(props.task.id) : undefined,
+    activity,
     lifecycle: carriesState ? shared.engineLifecycle?.get(props.task.id) : undefined,
     job: carriesState ? shared.taskJobs?.get(props.task.id) : undefined,
     spinnerFrame: 0,
