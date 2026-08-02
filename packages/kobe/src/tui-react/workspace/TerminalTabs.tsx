@@ -345,7 +345,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
 
   // Rename / choose-engine / quick-fork dialog flows — extracted verbatim
   // (file-size cap split); recreated per render for state freshness.
-  const { requestRename, requestChooseEngine, requestQuickFork } = useTabDialogs({
+  const { requestRename, requestChooseEngine, requestChatFork, requestQuickFork } = useTabDialogs({
     dialog,
     t,
     state,
@@ -357,6 +357,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     pinSession,
     onChooseEngine: props.onChooseEngine,
     onQuickFork: props.onQuickFork,
+    notifyError: (title) => notif.notify({ kind: "error", taskId: props.taskId, tabId: active.id, title }),
   })
 
   /** What a plain ctrl+t tab should run — the full preference chain.
@@ -379,6 +380,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         update(pinSession(addTab(state, preferred), preferred))
       },
       "chat.tab.chooseEngine": requestChooseEngine,
+      // Continue the CONVERSATION in a sibling tab (same worktree): same
+      // engine forks it natively, another engine gets a transcript handoff.
+      "chat.tab.fork": requestChatFork,
       "chat.tab.cycle-next": () => update(cycleTab(state, 1)),
       "chat.tab.cycle-prev": () => update(cycleTab(state, -1)),
       "chat.fork.new": requestQuickFork,

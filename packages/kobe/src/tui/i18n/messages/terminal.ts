@@ -19,6 +19,8 @@ export const en = {
     chooseEngineTitle: "New tab — engine or shell",
     chooseEngineHint: "←/→ or h/l choose, enter confirm, esc cancel",
     cannotCloseLast: "Cannot close the only tab",
+    nothingToFork: "No conversation in this tab to fork yet",
+    noTranscriptToHandOff: "{engine} keeps no readable transcript to hand over",
   },
   split: {
     // F2-while-split rename dialog (each leaf's own name — the corner
@@ -49,6 +51,8 @@ export const zh: typeof en = {
     chooseEngineTitle: "新建标签页 —— 引擎或 shell",
     chooseEngineHint: "←/→ 或 h/l 选择，enter 确认，esc 取消",
     cannotCloseLast: "无法关闭唯一的标签页",
+    nothingToFork: "这个标签页还没有可派生的对话",
+    noTranscriptToHandOff: "{engine} 没有可读的对话记录，无法交接",
   },
   split: {
     renameTitle: "重命名分屏",

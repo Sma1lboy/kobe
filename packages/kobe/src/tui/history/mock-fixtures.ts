@@ -91,6 +91,9 @@ export function createMockHistoryReader(): EngineHistoryReader {
     async readHistory(id) {
       return id === MOCK_HISTORY_SESSION_ID ? grown.slice() : seedHistoryMessages().slice(0, 2)
     },
+    async transcriptPath() {
+      return null
+    },
     async latestTranscriptMtimeForWorktree() {
       return mtime
     },

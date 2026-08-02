@@ -23,17 +23,26 @@ import { repoBasename } from "../../tui/panes/sidebar/groups"
 import type { Task, VendorId } from "../../types/task"
 import type { QuickTaskComposerOptions, QuickTaskResult } from "../component/quick-task-composer"
 
-/** Seed the composer from the task a quick-fork chord fired in. */
+/**
+ * Seed the composer from the task a quick-fork chord fired in.
+ *
+ * `branchFrom` is the SOURCE TASK'S WORKTREE, not the main checkout: a fork
+ * is "carry on from where I am", so the child branches off the parent task's
+ * branch (with its commits), not off whatever the main checkout happens to
+ * have checked out. Falls back to `repo` for callers without a worktree.
+ * Uncommitted work in the parent does NOT come along — commit it first.
+ */
 export function quickForkComposerOptions(
   repo: string,
   engines: readonly VendorId[],
   defaultVendor: VendorId,
+  branchFrom: string = repo,
 ): QuickTaskComposerOptions {
   return {
     repoLabel: repoBasename(repo),
     engines,
     defaultVendor,
-    defaultBaseRef: getCurrentBranch(repo) ?? DEFAULT_BASE_REF,
+    defaultBaseRef: getCurrentBranch(branchFrom) ?? getCurrentBranch(repo) ?? DEFAULT_BASE_REF,
     engineLabel: engineDisplayName,
   }
 }

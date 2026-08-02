@@ -23,7 +23,8 @@ Default prefix actions:
 
 | Sequence | Action |
 |---|---|
-| `ctrl+a`, `f` | Quick-fork a child task |
+| `ctrl+a`, `f` | Quick-fork a child task (new worktree, branched off THIS task's branch) |
+| `ctrl+a`, `c` | Continue this chat in a new tab of the SAME worktree — picks the engine: same one forks the session natively, a different one gets a transcript handoff (claude ⇄ codex, see [ENGINES.md](./ENGINES.md)). PROPOSED chord, awaiting owner sign-off: `c` was freed when Kanban moved to a digit, mnemonic "continue" |
 | `ctrl+a`, `i` | Open the Inbox dialog |
 | `ctrl+a`, `y` | Resume a prior engine Session |
 | `ctrl+a`, `h` | Cycle focus backward (Files → Workspace → Sidebar) |

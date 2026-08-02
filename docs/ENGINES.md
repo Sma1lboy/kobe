@@ -240,6 +240,42 @@ and `claude --resume` on a missing conversation errors out. Codex, Copilot,
 Kimi, and custom engines can't take a caller-set session id, so their tabs
 relaunch bare, with no resume.
 
+**Fork a conversation.** `ctrl+a` `c` opens a new tab in the SAME worktree that
+starts from the active tab's conversation and then diverges — parent and child
+each keep their own transcript. Only engines whose CLI can BRANCH a session
+support it (`canForkSession`):
+
+`ctrl+a` `c` opens the engine picker, and the pick decides which of two shapes
+runs.
+
+**Same engine → a native fork.** The CLI reopens its own conversation and
+branches it, so both sides keep full context with no copying:
+
+| Engine | Fork | How |
+|---|---|---|
+| `claude` | ✓ | `--resume <src> --fork-session`, plus kobe's own `--session-id <new>` so the forked tab stays trackable/resumable |
+| `codex` | ✓ | the `fork` subcommand: `codex fork [options] <src>`. Codex takes no caller-set id, so the fork's own session isn't tracked (same as any codex tab) |
+| `copilot` | no | `--resume` only reopens the same session — two live processes on one transcript, not a fork |
+| `kimi` | no | same: `-S/--session` and `--continue` only reopen |
+| custom | no | kobe knows neither their flags nor their session store |
+
+**Different engine → a handoff.** The one move that survives hitting a usage
+limit mid-task: the target engine starts a FRESH session whose first prompt
+names the previous engine, the worktree, and the absolute path of that
+session's transcript, and tells it to read what it needs from there
+(`src/engine/session-handoff.ts`). kobe never converts one vendor's transcript
+into another's format — every engine can read a JSONL file, and a converter
+would rot on both sides' format changes. The brief also marks the transcript as
+untrusted historical data (it contains arbitrary tool output), makes the
+working tree authoritative, and asks the new session to state where the old one
+stopped — that sentence is how you verify the handoff landed.
+
+A handoff needs the source engine to expose a transcript path
+(`EngineHistoryReader.transcriptPath`): claude and codex do, so claude ⇄ codex
+works in both directions. Copilot, Kimi and custom engines keep no transcript
+kobe can name, so a handoff FROM them is refused with a reason; a handoff TO
+them works, since the receiving side only needs to read a file.
+
 If an engine exits non-zero, the hosted terminal stays open with a banner
 pointing you at Settings → Engines to fix the launch command, and drops you
 into your shell.

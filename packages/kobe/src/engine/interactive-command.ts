@@ -200,6 +200,53 @@ export function withClaudeSessionId(
 }
 
 /**
+ * Engines whose CLI can BRANCH a conversation into a new session. Probed
+ * against the real binaries (2026-08-01): claude ships `--fork-session`,
+ * codex a `fork` subcommand. Copilot and Kimi only RESUME (`--resume` /
+ * `-S`), which would put two live processes on one transcript — not a fork,
+ * so kobe refuses instead of pretending. Custom engines (opencode &c) are
+ * launch-command-only: kobe knows neither their flags nor their session
+ * store, so there is nothing to fork from. Teaching one of those to fork
+ * means adding its verb here AND a history reader that can name the
+ * session — the same two things claude/codex have.
+ */
+export function canForkSession(vendor: VendorId | undefined): boolean {
+  const v: VendorId = vendor ?? "claude"
+  return v === "claude" || v === "codex"
+}
+
+/**
+ * Argv that opens `sourceSessionId`'s conversation as a NEW, diverging
+ * session — "fork this chat into another tab", same worktree. Both engines
+ * ship the verb; the shapes differ, so they live here beside the other
+ * per-vendor launch-flag mappings:
+ *   - claude: `--resume <src> --fork-session` (+ our own `--session-id` so
+ *     the forked tab stays trackable — the three combine, probed against
+ *     claude 2.x: the fork lands in the id we pass).
+ *   - codex: the `fork` SUBCOMMAND, options before the positional id.
+ * Returns null when the vendor has no fork verb (copilot/custom) or no
+ * source id — the caller then opens an ordinary blank tab.
+ */
+export function forkSessionArgv(
+  base: readonly string[],
+  vendor: VendorId | undefined,
+  sourceSessionId: string,
+  newSessionId?: string | null,
+): readonly string[] | null {
+  if (!sourceSessionId) return null
+  const v: VendorId = vendor ?? "claude"
+  if (v === "claude") {
+    const forked = [...base, "--resume", sourceSessionId, "--fork-session"]
+    return newSessionId ? [...forked, "--session-id", newSessionId] : forked
+  }
+  if (v === "codex") {
+    const [bin, ...rest] = base
+    return bin ? [bin, "fork", ...rest, sourceSessionId] : null
+  }
+  return null
+}
+
+/**
  * Shell-ready `… api` command prefix for protocol prompts. Packaged builds
  * bake plain `kobe api`; a source checkout bakes the dev invocation
  * (`bun --preload … src/cli/index.ts api`) — the same {@link

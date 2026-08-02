@@ -43,6 +43,9 @@ function fakeHistory(
       calls?.push("list")
       return sessions
     },
+    async transcriptPath() {
+      return null
+    },
     async readHistory(sessionId) {
       calls?.push(`read:${sessionId}`)
       return [...(bySession[sessionId] ?? [])]
@@ -180,6 +183,7 @@ describe("read-output fallback labeling", () => {
         throw new Error("boom")
       },
       readHistory: async () => [],
+      transcriptPath: async () => null,
       latestTranscriptMtimeForWorktree: async () => 0,
     }
     const p = await read(deps(broken, noTerminal()))

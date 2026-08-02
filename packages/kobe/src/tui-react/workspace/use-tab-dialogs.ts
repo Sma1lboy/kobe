@@ -25,12 +25,13 @@ import { EnginePickerDialog } from "../component/engine-picker-dialog"
 import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import type { useDialog } from "../ui/dialog"
+import { addForkTab, addHandoffTab, planChatContinuation } from "./fork-chat-tab"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { tabTitle } from "./tab-strip"
 
 export function useTabDialogs(deps: {
   dialog: ReturnType<typeof useDialog>
-  t: (key: string) => string
+  t: (key: string, params?: Record<string, string>) => string
   state: TabsState
   active: TerminalTab
   vendor: VendorId
@@ -40,9 +41,12 @@ export function useTabDialogs(deps: {
   pinSession: (s: TabsState, vendor: VendorId | undefined) => TabsState
   onChooseEngine?: (vendor: VendorId) => void
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
+  /** Toast for the two "nothing to continue from" refusals. */
+  notifyError: (title: string) => void
 }): {
   requestRename: () => void
   requestChooseEngine: () => void
+  requestChatFork: () => void
   requestQuickFork: () => void
 } {
   const { dialog, t, state, active, update, pinSession } = deps
@@ -99,6 +103,33 @@ export function useTabDialogs(deps: {
     })()
   }
 
+  /** `chat.tab.fork` (prefix + `c`): continue THIS conversation in a new tab
+   *  of the same worktree. The engine picker decides which of the two shapes
+   *  runs — same engine = a native fork, a different one = a handoff briefed
+   *  with the old transcript's path (see `fork-chat-tab.ts`). */
+  const requestChatFork = (): void => {
+    void (async () => {
+      const source = (active.kind === "engine" ? active.vendor : undefined) ?? deps.vendor
+      const available = await availableEngineIds()
+      const target = await EnginePickerDialog.show(dialog, available, source)
+      if (target === undefined) return
+      const plan = await planChatContinuation(active, source, target as VendorId, deps.worktree)
+      if (plan.kind === "fork") {
+        update(pinSession(addForkTab(deps.state, target as VendorId, plan.sessionId), target as VendorId))
+        return
+      }
+      if (plan.kind === "handoff") {
+        update(pinSession(addHandoffTab(deps.state, target as VendorId, plan.prompt), target as VendorId))
+        return
+      }
+      deps.notifyError(
+        plan.kind === "no-transcript"
+          ? t("terminal.tab.noTranscriptToHandOff", { engine: plan.engine })
+          : t("terminal.tab.nothingToFork"),
+      )
+    })()
+  }
+
   /** Quick-fork (issue #17, ctrl+f): open the same composer `<prefix> f`
    *  uses, seeded from THIS task's repo/branch/engine. Repo is fixed (not
    *  editable here — same constraint quick-task/host.tsx documents); the
@@ -112,13 +143,18 @@ export function useTabDialogs(deps: {
         return
       }
       const detected = await availableEngineIds()
-      const defaultVendor = quickForkDefaultVendor(repo, detected)
+      // Default engine = the one THIS task runs ("fork me as I am"); the
+      // composer's engine field still switches it to any other detected one.
+      const defaultVendor = detected.includes(deps.vendor) ? deps.vendor : quickForkDefaultVendor(repo, detected)
       const engines = detected.length > 0 ? detected : [defaultVendor]
-      const result = await QuickTaskComposer.show(dialog, quickForkComposerOptions(repo, engines, defaultVendor))
+      const result = await QuickTaskComposer.show(
+        dialog,
+        quickForkComposerOptions(repo, engines, defaultVendor, deps.worktree),
+      )
       if (result === undefined) return
       deps.onQuickFork?.(repo, result)
     })()
   }
 
-  return { requestRename, requestChooseEngine, requestQuickFork }
+  return { requestRename, requestChooseEngine, requestChatFork, requestQuickFork }
 }

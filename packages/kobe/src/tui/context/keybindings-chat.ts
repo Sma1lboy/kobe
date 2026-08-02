@@ -77,6 +77,22 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+e" },
   },
   {
+    // Fork the CONVERSATION, not the worktree: a new tab in the SAME
+    // worktree that opens on this tab's history and then diverges
+    // (claude `--resume … --fork-session`, `codex fork`). Sibling of
+    // `chat.fork.new`, which forks the WORKTREE into a child task.
+    // PROPOSED chord (needs owner sign-off): prefix + `c` for "continue" —
+    // `f` is taken by the task fork, and this is a lower-frequency action
+    // than the direct ctrl+t/ctrl+e tab chords.
+    id: "chat.tab.fork",
+    scope: "workspace",
+    keys: [],
+    prefixKeys: ["c"],
+    category: "Workspace",
+    description: "Fork this chat into a new tab (same worktree, keeps the conversation)",
+    hint: { keys: "ctrl+a c" },
+  },
+  {
     // Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires

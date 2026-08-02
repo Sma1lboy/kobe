@@ -68,6 +68,14 @@ export interface EngineHistoryReader {
   /** Neutral messages for one session id; `[]` when not found. */
   readHistory(sessionId: string): Promise<Message[]>
   /**
+   * Absolute path of the on-disk transcript for `sessionId`, or null when
+   * the engine has no file to point at. Not for kobe to PARSE (that's
+   * `readHistory`) — it is what the cross-engine handoff hands the next
+   * agent to read itself, so its native format never has to be converted.
+   * `worktree` scopes stores that key by directory (claude's project dir).
+   */
+  transcriptPath(sessionId: string, worktree: string): Promise<string | null>
+  /**
    * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
    * has no transcript yet. The Ops pane's activity poll watches this to
    * light its "new activity" badge. Never throws — readers are
@@ -161,6 +169,9 @@ export const EMPTY_HISTORY: EngineHistoryReader = {
   async readHistory() {
     return []
   },
+  async transcriptPath() {
+    return null
+  },
   // No transcript store → no activity signal (the Ops badge stays dark
   // rather than mis-watching another vendor's files).
   async latestTranscriptMtimeForWorktree() {
@@ -179,6 +190,10 @@ const claudeHistoryReader: EngineHistoryReader = {
     return [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   },
   readHistory: (sessionId) => claudeHistory.readHistory(sessionId),
+  async transcriptPath(sessionId, worktree) {
+    const files = await claudeHistory.listSessionFilesForWorktree(worktree)
+    return files.find((f) => f.sessionId === sessionId)?.path ?? null
+  },
   latestTranscriptMtimeForWorktree: (worktree) => claudeHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
@@ -186,12 +201,17 @@ const claudeHistoryReader: EngineHistoryReader = {
 const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
+  // The rollout filename embeds the UUID; the store is date-keyed, not
+  // worktree-keyed, so the worktree argument is unused here.
+  transcriptPath: async (sessionId) => (await codexHistory.findRolloutFile(sessionId)) ?? null,
   latestTranscriptMtimeForWorktree: (worktree) => codexHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
 const copilotHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => copilotHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => copilotHistory.readHistory(sessionId),
+  // Copilot's store layout isn't mapped to a per-session file kobe can name.
+  transcriptPath: async () => null,
   latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 

@@ -11,13 +11,7 @@
  * switches (acquire-reuse) until closed.
  */
 
-import {
-  type EngineSessionLaunchTask,
-  type EngineSessionProtocolGates,
-  buildEngineSessionLaunch,
-} from "@/engine/session-launch"
 import type { VendorId } from "@/types/vendor"
-import { type TabSpawn, shellSpawn } from "./terminal-tab-spawn"
 import type { PersistedSplit } from "./terminal-tab-split"
 
 // Split-tree + naming policy (PersistedSplit + the leaf predicates/keying/
@@ -105,6 +99,23 @@ export interface EngineTab extends TabBase {
    * blank session under the same id.
    */
   readonly spawned?: boolean
+  /**
+   * Session id this tab FORKED from ("continue this chat in a new tab",
+   * same worktree): the first spawn opens on that conversation's history
+   * and immediately branches into this tab's own session, so parent and
+   * child diverge instead of two processes fighting over one transcript.
+   * Only the first spawn uses it — see `engineTabArgv`. Absent on an
+   * ordinary tab, which starts blank.
+   */
+  readonly forkFrom?: string | null
+  /**
+   * Prompt typed into this tab on its FIRST spawn only — the cross-engine
+   * handoff's context brief (`session-handoff.ts`). Distinct from the
+   * task-level `initialPrompt` prop, which only ever reaches a task's
+   * FIRST engine tab; a handoff opens a later tab, so the prompt has to
+   * ride the tab itself.
+   */
+  readonly initialPrompt?: string | null
   /**
    * This tab is a VIEWPORT onto another task's first engine session — the
    * kanban "project chattab with its own worktree" placement: the story's
@@ -298,6 +309,25 @@ export function setTabSessionId(state: TabsState, id: string, sessionId: string 
   return { ...state, tabs }
 }
 
+/** Mark an engine tab as forked from `sourceSessionId` (see
+ *  `EngineTab.forkFrom`). Same shape as {@link setTabSessionId}: the id
+ *  comes from IO (the source tab's pin, or the engine's transcript store). */
+export function setTabForkFrom(state: TabsState, id: string, sourceSessionId: string): TabsState {
+  const tabs = state.tabs.map(
+    (t): TerminalTab => (t.id === id && t.kind === "engine" ? { ...t, forkFrom: sourceSessionId } : t),
+  )
+  return { ...state, tabs }
+}
+
+/** Give an engine tab its own first-spawn prompt (see
+ *  `EngineTab.initialPrompt`) — the cross-engine handoff brief. */
+export function setTabInitialPrompt(state: TabsState, id: string, prompt: string): TabsState {
+  const tabs = state.tabs.map(
+    (t): TerminalTab => (t.id === id && t.kind === "engine" ? { ...t, initialPrompt: prompt } : t),
+  )
+  return { ...state, tabs }
+}
+
 /**
  * Record the tab's latest live process title. No-op when unchanged, so the
  * OSC stream (which repeats the same title on every turn) can call this
@@ -340,90 +370,10 @@ export function markTabSpawned(state: TabsState, id: string): TabsState {
   return setTabSpawned(state, id, true)
 }
 
-/**
- * Argv for an engine tab's PTY spawn. `base` is the tab's engine command
- * (vendor-pinned or the task's); `live` is whether the tab's PTY currently
- * exists in the registry. No pinned session id → the bare command (codex/
- * custom vendors). A tab that already spawned but has NO live PTY (host
- * restart, degrade re-acquire) resumes its conversation; otherwise the id
- * is pinned fresh — the flag shapes ride `withClaudeSessionId`'s existing
- * per-vendor contract, verbatim from the component it was extracted from.
- */
-export function engineTabArgv(tab: EngineTab, base: readonly string[], live: boolean): readonly string[] {
-  if (!tab.sessionId) return base
-  if (tab.spawned && !live) return [...base, "--resume", tab.sessionId]
-  return [...base, "--session-id", tab.sessionId]
-}
-
-/**
- * Full spawn composition for an engine tab — {@link engineTabArgv} wrapped
- * in the user's shell ({@link shellSpawn}), plus the quick-fork initial
- * prompt policy (issue #17, verified delivery 12283c57): `prompt` rides the
- * argv as a positional arg ONLY on the first engine tab's FIRST spawn —
- * never on a later engine tab, an already-spawned tab, or one whose PTY is
- * still live (re-render churn), so the prompt can't re-deliver. Pure so
- * vitest pins the rule; the component supplies the IO reads (`live` from
- * the registry, `prompt` from props, `shell` from the environment).
- */
-export function engineTabSpawnFor(
-  state: TabsState,
-  tab: EngineTab,
-  base: readonly string[],
-  opts: {
-    live: boolean
-    shell: string
-    prompt?: string
-    task: EngineSessionLaunchTask
-    worktreePath: string
-    protocolGates?: EngineSessionProtocolGates
-  },
-): TabSpawn {
-  const { live, shell, prompt } = opts
-  const firstEngine = state.tabs.find((t) => t.kind === "engine")
-  const wantsPrompt = !!prompt && tab.id === firstEngine?.id && !tab.spawned && !live
-  const isFreshFirstEngine = tab.id === firstEngine?.id && !tab.spawned && !live
-  const promptIntent = wantsPrompt
-    ? ({ kind: "explicit", prompt } as const)
-    : isFreshFirstEngine
-      ? ({ kind: "repo-init" } as const)
-      : ({ kind: "none" } as const)
-  // A viewport tab (see EngineTab.ptyTask) launches AS the referenced
-  // task's first tab: its id, worktree, and tab identity — so activity,
-  // hooks, and a dead-reattach resume all belong to the story's task.
-  const ref = tab.ptyTask
-  const launch = buildEngineSessionLaunch({
-    task: ref ? { ...opts.task, id: ref.id, kind: "task" } : opts.task,
-    worktreePath: ref?.worktree ?? opts.worktreePath,
-    shell,
-    argv: engineTabArgv(tab, base, live),
-    promptIntent,
-    protocolGates: opts.protocolGates,
-    // Tab identity → exported env in the launch script: the engine's hook
-    // subprocesses inherit it, so `kobe hook` can attribute activity to
-    // THIS tab — cwd alone can't (every tab of a task shares the worktree).
-    tabId: ref ? "tab-1" : tab.id,
-  })
-  return { command: launch.command }
-}
-
-export type TabExitAction = "close" | "resume"
-
-/**
- * Policy for the ACTIVE tab's process exiting. Engine tabs run their CLI
- * inside the user's shell ({@link shellSpawn}), so a live PTY exit means
- * the SHELL ended — the tab closes, same as a command tab (editor quit,
- * shell exit). An engine tab found dead ON ATTACH (host restart /
- * park-sweep corpse) with a resumable session gets ONE resume attempt —
- * `resumeTried` is the per-tab one-shot guard, so a `--resume` that
- * itself dies closes normally instead of respawning forever.
- */
-export function tabExitAction(tab: TerminalTab, deadOnAttach: boolean, resumeTried: boolean): TabExitAction {
-  if (tab.kind === "engine" && deadOnAttach && !!tab.sessionId && tab.spawned && !resumeTried) return "resume"
-  return "close"
-}
-
-// Shell-wrapping helpers moved to `./terminal-tab-spawn` for the file-size
-// cap; re-exported here so existing importers keep one entry point.
+// Engine-tab argv/spawn composition moved to `./terminal-tab-argv` for the
+// file-size cap; shell-wrapping helpers to `./terminal-tab-spawn`. Both are
+// re-exported here so existing importers keep one entry point.
+export { type TabExitAction, engineTabArgv, engineTabSpawnFor, tabExitAction } from "./terminal-tab-argv"
 export { type TabSpawn, shellCommandLine, shellIdentityInput, shellSpawn } from "./terminal-tab-spawn"
 
 /**
