@@ -75,7 +75,13 @@ function RowShell(props: {
       flexDirection="row"
       gap={0}
       backgroundColor={selection.backgroundColor}
-      onMouseUp={(evt: { button: number; x: number; y: number }) => {
+      onMouseUp={(evt: { button: number; x: number; y: number; stopPropagation(): void }) => {
+        // Don't bubble to the pane box's focus-grab (the workspace host's
+        // sidebar shell): activating a row hands focus to the CONTENT pane,
+        // and a bubbled sidebar re-grab overwrote it — the user typed into
+        // what looked like the terminal while the sidebar's letter chords
+        // (d!) were live. Same guard the ZEN chip carries.
+        evt.stopPropagation()
         // Right-click opens the row's menu instead of activating it — the
         // terminal only forwards button 2 while mouse reporting is on, which
         // is the same mode the left-click activate already depends on.

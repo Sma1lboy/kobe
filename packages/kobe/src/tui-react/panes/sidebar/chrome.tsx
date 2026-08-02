@@ -156,7 +156,13 @@ export function SidebarNavRail(props: { nav: SidebarNav; setNav: (nav: SidebarNa
             paddingLeft={1}
             paddingRight={1}
             backgroundColor={active ? theme.focusAccent : undefined}
-            onMouseUp={() => props.setNav(item.nav)}
+            onMouseUp={(e: { stopPropagation(): void }) => {
+              // goToNav hands focus to the page; a bubbled sidebar
+              // focus-grab (the pane shell's onMouseUp) took it right back,
+              // so keys typed "into the page" fired sidebar chords (d!).
+              e.stopPropagation()
+              props.setNav(item.nav)
+            }}
           >
             <text
               // Contrast fg on the accent fill: `background` is alpha-0 in

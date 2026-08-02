@@ -358,9 +358,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           pages.setNav("terminal")
           void activateTask(id)
         }}
+        // Picking a TAB is entering that session (owner 2026-08-01): focus
+        // moves to the terminal, same as activate — a click that leaves the
+        // sidebar's letter chords (d!) live under your typing is how issues
+        // got mis-deleted.
         onSelectTab={(taskId, tabId) => {
           pages.setNav("terminal")
           requestTabActivation(taskId, tabId)
+          focus.setFocused("workspace")
         }}
         engineState={sidebarEngineState}
         engineLifecycle={engineLifecycle}
