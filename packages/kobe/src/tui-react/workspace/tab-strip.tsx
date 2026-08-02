@@ -18,7 +18,12 @@ import { type BoxRenderable, TextAttributes } from "@opentui/core"
 import { useEffect, useRef, useState } from "react"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { displayWidth } from "../../lib/display-width"
-import { DEFAULT_TAB_STRIP_HIDE_SINGLE, TAB_STRIP_HIDE_SINGLE_KEY } from "../../state/tab-strip"
+import {
+  TAB_STRIP_HIDE_SINGLE_KEY,
+  TAB_STRIP_MODE_KEY,
+  resolveTabStripMode,
+  tabStripVisible,
+} from "../../state/tab-strip"
 import { type TerminalTab, tabTitle, visibleNativeStatus } from "../../tui/workspace/terminal-tabs-core"
 import type { VendorId } from "../../types/vendor"
 import { useKV } from "../context/kv"
@@ -57,11 +62,14 @@ export function TabStrip(props: {
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const kv = useKV()
-  // A lone tab still gets a strip by default — the row carries the engine
-  // title and turn chip. The Settings → Terminal toggle restores the older
-  // hide-when-alone behavior. Rendered as a late bail so the hooks below
-  // always run in the same order.
-  const hidden = props.tabs.length < 2 && kv.get(TAB_STRIP_HIDE_SINGLE_KEY, DEFAULT_TAB_STRIP_HIDE_SINGLE) === true
+  // The sidebar tree lists every worktree's tabs, so the strip is off by
+  // default (owner call 2026-08-01) — Settings → Terminal brings it back.
+  // Rendered as a late bail so the hooks below always run in the same order.
+  const stripMode = resolveTabStripMode(
+    kv.get(TAB_STRIP_MODE_KEY, undefined),
+    kv.get(TAB_STRIP_HIDE_SINGLE_KEY, undefined),
+  )
+  const hidden = !tabStripVisible(stripMode, props.tabs.length)
 
   /* --------- turn-complete pulse ---------------------------------------
    * Track running→done transitions; a transitioned tab id sits in

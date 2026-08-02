@@ -61,3 +61,14 @@ export function useKV(): KVContext {
   if (!value) throw new Error("KV context must be used within a context provider")
   return value
 }
+
+/**
+ * The KV context when one exists, else null — for components that PREFER
+ * persisted state but have a live fallback, so they can also mount in a
+ * render test or a pane hosted before the provider. `useKV` stays the
+ * throwing default: a component that genuinely needs kv should fail loudly
+ * rather than silently lose the user's settings.
+ */
+export function useOptionalKV(): KVContext | null {
+  return useContext(Ctx) ?? null
+}

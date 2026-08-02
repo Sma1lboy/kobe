@@ -65,9 +65,9 @@ const ZERO_FRAME = () => 0
  * Per-row spinner pulse — subscribes to the shared 10Hz frame store ONLY
  * while this row actually animates, so a frame tick re-renders the loading
  * rows and nothing else (the old component-level interval re-ran the whole
- * Sidebar per tick).
+ * Sidebar per tick). Exported for the tree's one-line worktree rows.
  */
-function useSpinnerFrame(active: boolean): number {
+export function useSpinnerFrame(active: boolean): number {
   return useSyncExternalStore(
     active ? subscribeSpinnerFrame : NOOP_SUBSCRIBE,
     active ? spinnerFrameSnapshot : ZERO_FRAME,
@@ -77,8 +77,13 @@ function useSpinnerFrame(active: boolean): number {
 /**
  * Per-row `+N −M` counts: daemon-pushed when available, else the local
  * poller cache (poll scheduled in an effect; archived rows never poll).
+ * `shared` is structural — the card props and the tree's row props both
+ * carry the two fields it reads.
  */
-function useChanges(shared: SidebarRowCardSharedProps, task: SidebarRow["task"]): WorktreeChanges {
+export function useChanges(
+  shared: Pick<SidebarRowCardSharedProps, "branchTick" | "worktreeChanges">,
+  task: SidebarRow["task"],
+): WorktreeChanges {
   const pushed = pickPushedChanges(shared.worktreeChanges, task.worktreePath)
   const hasPushed = pushed !== null
   useEffect(() => {
@@ -121,8 +126,8 @@ function SubtitleText(props: { readonly view: SidebarRowView }) {
 
 /** Right-edge git metrics stay one non-shrinking cluster while metadata takes
  * the flexible middle column. This keeps every row scannable at the same
- * visual anchor even when a branch/title is long. */
-function ChangeStats(props: { readonly changes: WorktreeChanges }) {
+ * visual anchor even when a branch/title is long. Shared with the tree rows. */
+export function ChangeStats(props: { readonly changes: WorktreeChanges }) {
   const { theme } = useTheme()
   if (props.changes.added <= 0 && props.changes.deleted <= 0) return null
   return (
@@ -300,7 +305,7 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
                 {t("tasks.moveChip")}
               </text>
             ) : null}
-            <JumpDigit row={props.row} dim={!isCursor} />
+            <JumpDigit flatIndex={props.row.flatIndex} dim={!isCursor} />
           </box>
         </RowLine>
         <RowLine selection={selection}>
@@ -319,11 +324,12 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
  * Printing it is what makes the chord usable at all: the digits follow the
  * VISIBLE order, so under `recent` sort they re-shuffle as you switch —
  * you read the number, you don't remember it. Rows past the ninth show
- * nothing rather than a digit that jumps somewhere else.
+ * nothing rather than a digit that jumps somewhere else. Keyed on the flat
+ * index directly so the tree's rows (no SidebarRow wrapper) share it.
  */
-function JumpDigit(props: { row: SidebarRow; dim: boolean }) {
+export function JumpDigit(props: { flatIndex: number; dim: boolean }) {
   const { theme } = useTheme()
-  const digit = taskJumpDigit(props.row.flatIndex)
+  const digit = taskJumpDigit(props.flatIndex)
   if (digit === null) return null
   return (
     <text
@@ -370,7 +376,7 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
                 {t("tasks.moveChip")}
               </text>
             ) : null}
-            <JumpDigit row={props.row} dim={!isCursor} />
+            <JumpDigit flatIndex={props.row.flatIndex} dim={!isCursor} />
           </box>
         </RowLine>
         <RowLine selection={selection}>

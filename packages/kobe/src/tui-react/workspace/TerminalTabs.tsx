@@ -87,14 +87,17 @@ import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { noteEngineInput } from "./optimistic-activity"
 import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
+import { releaseClosedTabPtys } from "./terminal-tabs-close"
 import { terminalTabsKey } from "./terminal-tabs-persist"
 import {
   reportTabsDelta,
   tabActivationListeners,
   tabsByTask,
   takeTabActivation,
+  takeTabClose,
   takeTabOpen,
 } from "./terminal-tabs-shared"
+import { useTabClose } from "./use-tab-close"
 import { useTabDialogs } from "./use-tab-dialogs"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
@@ -210,6 +213,11 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       // open a separate command tab — pane-split.ts owns the policy.
       const open = takeTabOpen(propsRef.current.taskId)
       if (open) updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement))
+      // Close-from-elsewhere (the sidebar tree's menu): claiming it here is
+      // what keeps `closeTaskTab` from ALSO writing the background state —
+      // this component owns the state while it is mounted.
+      const closeId = takeTabClose(propsRef.current.taskId)
+      if (closeId) tabCloseRef.current.closeById(closeId)
     }
     consume()
     tabActivationListeners.add(consume)
@@ -293,21 +301,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     propsRef.current.onTabVisited?.(state.activeId)
   }, [state.activeId])
 
-  /** Auto-close (issue #16): a tab closes itself when its process exits
-   *  and releases its PTY. Reads the FRESH state (`stateRef`) — exit
-   *  events can arrive from a stale render (see `handleActiveExit`). */
-  function closeExitedTab(id: string): void {
-    const current = stateRef.current
-    const closing = current.tabs.find((tb) => tb.id === id)
-    const { state: next, closedId } = closeTab(current, id)
-    if (closedId) {
-      const key = closing ? tabPtyKeyFor(props.taskId, closing) : tabPtyKey(props.taskId, closedId)
-      releaseSplitLeaves(key, closing?.splitTree ?? null)
-      getDefaultPtyRegistry().release(key)
-    }
-    update(next)
-  }
-
   const activeSpawn = (): TabSpawn =>
     active.kind === "command"
       ? {
@@ -328,43 +321,27 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         : engineTabSpawn(active)
 
   /** Engine tabs whose dead-on-attach resume was already attempted — one
-   *  shot per tab, so a `--resume` that itself dies closes normally
-   *  instead of respawning forever. */
+   *  shot per tab, so a `--resume` that itself dies closes normally instead
+   *  of respawning forever. Owned here (not in `useTabClose`) so the marks
+   *  survive that hook being rebuilt every render. */
   const resumeTriedRef = useRef(new Set<string>())
 
-  function handleActiveExit(info?: { deadOnAttach?: boolean }): void {
-    // An exit event can be the echo of an intentional ctrl+w: closing kills
-    // the PTY, which fires onExit into THIS (stale) render before React
-    // swaps the Terminal. If the tab is already gone from the fresh state
-    // there is nothing to do — acting on the stale snapshot resurrected
-    // the closed tab (the "ctrl+w needs two presses" bug).
-    if (!stateRef.current.tabs.some((t) => t.id === active.id)) return
-    // Policy is pure (`tabExitAction`): a live exit means the tab's SHELL
-    // ended (engines run inside it — `shellSpawn`), so the tab closes; a
-    // corpse found on reattach (host restart, machine reboot) gets ONE
-    // resume — releasing the dead handle makes `engineTabSpawn` type
-    // `--resume <sessionId>` on the re-acquire (`spawned && !live`).
-    const action = tabExitAction(active, info?.deadOnAttach === true, resumeTriedRef.current.has(active.id))
-    if (action === "resume") {
-      resumeTriedRef.current.add(active.id)
-      getDefaultPtyRegistry().release(tabPtyKeyFor(props.taskId, active))
-      setResetToken((n) => n + 1)
-      return
-    }
-    if (stateRef.current.tabs.length > 1) {
-      closeExitedTab(active.id)
-      return
-    }
-    // Last tab: the strip can never be empty — recycle it in place as a
-    // fresh engine tab (new session) instead of freezing on the exit banner.
-    // `recycleTabs` carries the old tab's title/autoTitle so the recycle
-    // doesn't visibly rename the tab.
-    getDefaultPtyRegistry().release(tabPtyKeyFor(props.taskId, active))
-    resumeTriedRef.current.clear()
-    const fresh = pinSession(recycleTabs(active), undefined)
-    update(fresh)
-    if (fresh.activeId === active.id) setResetToken((n) => n + 1)
-  }
+  // Tab teardown — ctrl+w, close-from-the-tree, process exit, and the exit
+  // policy above them (use-tab-close.ts, file-size cap split).
+  const tabClose = useTabClose({
+    stateRef,
+    propsRef,
+    updateRef,
+    active,
+    pinSession,
+    bumpResetToken: () => setResetToken((n) => n + 1),
+    resumeTriedRef,
+    notifyCannotCloseLast: (tabId) =>
+      notif.notify({ kind: "error", taskId: props.taskId, tabId, title: t("terminal.tab.cannotCloseLast") }),
+  })
+  // The pending-close listener is mount-only, so it reaches the CURRENT hook
+  // through a ref rather than the one from its first render.
+  const tabCloseRef = useLatest(tabClose)
 
   // Rename / choose-engine / quick-fork dialog flows — extracted verbatim
   // (file-size cap split); recreated per render for state freshness.
@@ -420,26 +397,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   useBindings(() => ({
     enabled: props.focused && !activeIsSplit,
     bindings: bindByIds({
-      "chat.tab.close": () => {
-        const closing = state.tabs.find((tb) => tb.id === state.activeId)
-        const { state: next, closedId } = closeActiveTab(state)
-        if (!closedId) {
-          notif.notify({
-            kind: "error",
-            taskId: props.taskId,
-            tabId: state.activeId,
-            title: t("terminal.tab.cannotCloseLast"),
-          })
-          return
-        }
-        update(next)
-        const key = closing ? tabPtyKeyFor(props.taskId, closing) : tabPtyKey(props.taskId, closedId)
-        releaseSplitLeaves(key, closing?.splitTree ?? null)
-        // A viewport tab (ptyTask) only VIEWS another task's session —
-        // ctrl+w removes the view; the story's session keeps running and
-        // its own task still resumes it.
-        if (!(closing?.kind === "engine" && closing.ptyTask)) getDefaultPtyRegistry().release(key)
-      },
+      "chat.tab.close": () => tabClose.closeActive(),
       "chat.tab.rename": requestRename,
     }),
   }))
@@ -472,7 +430,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           relPath={active.relPath}
           base={active.base}
           focused={props.focused}
-          onClose={() => closeExitedTab(active.id)}
+          onClose={() => tabClose.closeExited(active.id)}
           // Line-anchored review notes: per-task, kv-persisted, sent to the
           // engine session over the same PTY paste path as the PR prompt.
           review={buildDiffReview(kv, props.taskId, sendToEngine)}
@@ -486,7 +444,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           onUserInput={active.kind === "engine" ? (data) => noteEngineInput(props.taskId, data) : undefined}
           splitTree={active.splitTree ?? null}
           onSplitChange={(next) => update(setTabSplit(state, active.id, next))}
-          onExit={handleActiveExit}
+          onExit={tabClose.handleActiveExit}
           resetToken={resetToken}
           focused={props.focused}
           onRequestFocus={props.onRequestFocus}

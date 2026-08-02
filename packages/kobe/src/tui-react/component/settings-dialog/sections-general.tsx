@@ -147,6 +147,7 @@ export function GeneralSettingsSection(
   const worktreeCustomRow = rowIdx("worktree-custom")
   const scrollbackRow = rowIdx("scrollback-rows")
   const tabStripHideSingleRow = rowIdx("tab-strip-hide-single")
+  const sidebarTreeRow = rowIdx("sidebar-tree")
 
   return (
     <box flexDirection="row" gap={2}>
@@ -335,11 +336,21 @@ export function GeneralSettingsSection(
           </Row>
           <Row
             cursor={isBodyCursor(tabStripHideSingleRow)}
-            onMouseUp={activate(tabStripHideSingleRow, prefs.toggleTabStripHidesSingle)}
-            fg={prefs.tabStripHidesSingle() ? theme.accent : theme.textMuted}
+            onMouseUp={activate(tabStripHideSingleRow, prefs.cycleTabStripMode)}
+            fg={theme.accent}
             bold={true}
           >
-            {`${check(prefs.tabStripHidesSingle())} ${t("settings.general.tabStripHideSingle")}`}
+            {t("settings.general.tabStripRow", {
+              mode: t(`settings.general.tabStripMode.${prefs.tabStripMode()}`),
+            })}
+          </Row>
+          <Row
+            cursor={isBodyCursor(sidebarTreeRow)}
+            onMouseUp={activate(sidebarTreeRow, prefs.toggleSidebarTreeMode)}
+            fg={prefs.sidebarTreeMode() ? theme.accent : theme.textMuted}
+            bold={true}
+          >
+            {`${check(prefs.sidebarTreeMode())} ${t("settings.general.sidebarTree")}`}
           </Row>
         </SubSection>
       </box>

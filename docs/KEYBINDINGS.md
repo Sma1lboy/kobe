@@ -134,6 +134,46 @@ note above.
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
+### Tree sidebar (project → worktree → tab)
+
+**The tree never folds** (owner call 2026-08-01): every project and worktree
+always shows everything under it — no twisties, no collapse state, no
+Expand/Collapse menu entries. The tree is the map; hiding rows made it lie.
+
+`sidebar.tree.open` (`l` / `space`) opens the row under the cursor — the same
+thing `enter` does. On a tab row, the last level, that means entering the
+tab's chat; the chord exists so the vim right-hand "go in" gesture works
+without reaching for enter. `h` is unbound in the tree (there is no fold for
+it to drive) and stays reserved. The chord replaced the withdrawn
+`sidebar.tree.toggle` (`h`/`l`/`space`) proposal when the fold itself was
+removed; the resolution is the owner's 2026-08-01 "no fold, `l` enters"
+directive, so no further sign-off is pending.
+
+The tree deliberately adds NO other chords. One existing chord means
+something tree-shaped inside it:
+
+- `/` (`sidebar.search.enter`) — the same search chord, with a wider haystack.
+  On top of the flat sidebar's task title + repo, a query also matches a
+  worktree's branch and, uniquely to the tree, a **tab's live title**. Matches
+  keep their ancestors so a hit is never orphaned from its project. `escape` /
+  `enter` leave search exactly as in the flat rail. (`ctrl+p` does nothing in
+  the tree — the project filter it drove was a fold, and the fold is gone.)
+
+- `prefix+m` (`task.moveMode`) — the same global move mode, retargeted at the
+  level the tree actually shows: `j`/`k` drag the cursor row's **project**, not
+  its task, and `enter` / `esc` leave. It rides on the project's `main`
+  checkout, which `moveTask` already reorders among mains, so project order
+  needed no new persistence and no new daemon verb. A repo with no main
+  checkout has no row to move, and the chord is a silent no-op there.
+- Right-click on any row opens that row's menu (`j`/`k`/`enter`/`esc`). The
+  entries are exactly what the row's own chords already do, so the menu never
+  becomes a second place where behavior is decided — the one exception is the
+  project header, which the cursor cannot reach at all.
+
+`sidebar.sort` is not registered in the tree. A tree already carries an order
+(project → worktree → tab) and manual placement lives in move mode, so a second
+automatic ordering would only fight the structure. The flat sidebar keeps it.
+
 Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
 call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
 chord was unreachable from where the owner actually sits (on the sidebar
