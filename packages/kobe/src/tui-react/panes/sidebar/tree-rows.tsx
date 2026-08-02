@@ -21,9 +21,9 @@ import { useTheme } from "../../context/theme"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 import { ChangeStats, JumpDigit, completionSeenFor, useChanges, useSpinnerFrame } from "./row-cards"
 
-/** Cells of indent per depth level. Two reads as a level without eating the
- *  rail's narrow width the way four would. */
-const INDENT_CELLS = 2
+/** Cells of indent per depth level — one (owner round: the rail is narrow,
+ *  and the glyph column already separates the levels visually). */
+const INDENT_CELLS = 1
 
 export type TreeRowShared = {
   /** Cursor position in the tree's flat id list. */
