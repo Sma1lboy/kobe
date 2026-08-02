@@ -164,3 +164,94 @@ test("keys stay dead while another pane holds focus", async () => {
 
   expect(picked).toEqual([])
 })
+
+/** Seed tabs with explicit titles — the tab-title search needs a label that
+ *  is nothing like its task's. */
+function seedTabsNamed(taskId: string, tabs: ReadonlyArray<readonly [string, string]>): void {
+  tabsByTask.set(taskId, {
+    tabs: tabs.map(([id, title], i) => ({ kind: "engine" as const, id, title, ordinal: i + 1 })),
+    activeId: tabs[0]?.[0] ?? "tab-1",
+    nextOrdinal: tabs.length + 1,
+  })
+}
+
+test("/ opens the query row and prunes the tree to matches plus ancestors", async () => {
+  tabsByTask.clear()
+  const tasks = [MAIN, task("a", { title: "alpha" }), task("b", { title: "bravo" })]
+  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(await frame()).toContain("feat/a")
+
+  mockInput.typeText("/")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.typeText("bravo")
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  const text = await frame()
+  // The query row echoes what you typed…
+  expect(text).toContain("/bravo")
+  // …the match survives, its sibling does not, and the project header stays
+  // so the hit is not left floating.
+  expect(text).toContain("feat/b")
+  expect(text).not.toContain("feat/a")
+  expect(text).toContain("kobe")
+})
+
+test("the query matches a live TAB title, which no task-title search could", async () => {
+  // The tree's own increment over the flat sidebar: "which tab is running
+  // that thing" is answerable, and the answer drags its worktree along.
+  seedTabsNamed("a", [["tab-1", "zebra-tab"]])
+  const { frame, mockInput } = await renderComponent(tree(), { width: 28, height: 20 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  mockInput.typeText("/")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.typeText("zebra")
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  const text = await frame()
+  expect(text).toContain("zebra-tab")
+  expect(text).toContain("feat/a")
+  expect(text).not.toContain("feat/b")
+})
+
+test("escape leaves search and restores the full tree", async () => {
+  tabsByTask.clear()
+  const tasks = [MAIN, task("a", { title: "alpha" }), task("b", { title: "bravo" })]
+  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  mockInput.typeText("/")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.typeText("bravo")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(await frame()).not.toContain("feat/a")
+
+  mockInput.pressEscape()
+  await new Promise((r) => setTimeout(r, SETTLE))
+  const text = await frame()
+  expect(text).toContain("feat/a")
+  expect(text).not.toContain("/bravo")
+})
+
+test("ctrl+p folds every project but the cursor's, and unfolds on a second press", async () => {
+  tabsByTask.clear()
+  const tasks = [MAIN, task("a"), task("x", { repo: "/repos/foxychat", branch: "feat/x" })]
+  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(await frame()).toContain("feat/x")
+
+  // Cursor sits on `a` (the selected task), which lives in /repos/kobe.
+  mockInput.pressKey("p", { ctrl: true })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  const focused = await frame()
+  expect(focused).not.toContain("feat/x")
+  // The header stays — this is a fold, not a filter, so the other projects
+  // are still there to open.
+  expect(focused).toContain("foxychat")
+  expect(focused).toContain("feat/a")
+
+  mockInput.pressKey("p", { ctrl: true })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(await frame()).toContain("feat/x")
+})

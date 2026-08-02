@@ -59,6 +59,38 @@ export function SectionHeader(props: {
   )
 }
 
+/** The `/` query row. Shared by the flat sidebar and the tree so there is one
+ *  search affordance rather than two lookalikes — the count suffix reads
+ *  `matches/total` over whatever list the host is filtering. */
+export function SidebarSearchInput(props: { query: string; matchCount: number; totalCount: number }) {
+  const { theme } = useTheme()
+  const t = useT()
+  return (
+    <box flexDirection="row" gap={0} flexShrink={0} paddingBottom={1} paddingLeft={1}>
+      <text fg={theme.info} wrapMode="none">
+        /
+      </text>
+      <text fg={theme.text} wrapMode="none">
+        {props.query}
+      </text>
+      <text fg={theme.info} attributes={TextAttributes.BLINK} wrapMode="none">
+        █
+      </text>
+      {props.query.length === 0 ? (
+        <text fg={theme.textMuted} wrapMode="none">
+          {" "}
+          {t("tasks.search.placeholder")}
+        </text>
+      ) : (
+        <text fg={theme.textMuted} wrapMode="none">
+          {" "}
+          {props.matchCount}/{props.totalCount}
+        </text>
+      )}
+    </box>
+  )
+}
+
 /** KOBE brand text + inbox status + [+] — the rail's first row. The brand
  *  text IS the sidebar's focus signal (accent when focused) — there is no
  *  pane frame to carry it. */

@@ -28,10 +28,11 @@ import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
-import { SidebarBrandHeader, SidebarNavRail, SidebarViewTabs, SidebarZenChip } from "./chrome"
+import { SidebarBrandHeader, SidebarNavRail, SidebarSearchInput, SidebarViewTabs, SidebarZenChip } from "./chrome"
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
+import { useTreeSearch } from "./use-tree-search"
 import { useTreeState } from "./use-tree-state"
 
 export type SidebarTreeProps = SidebarProps & {
@@ -68,12 +69,14 @@ export function SidebarTree(props: SidebarTreeProps) {
     return busy
   }, [props.engineState])
 
+  const search = useTreeSearch({ focused, onActiveChange: props.onSearchActiveChange })
   const tree = useTreeState({
     tasks: viewTasks,
     kv,
     selectedTaskId: props.selectedId,
     selectedTabId: props.selectedTabId ?? null,
     busyTaskIds,
+    query: search.active ? search.query : "",
   })
   const flatIndexOf = useMemo(() => {
     const map = new Map<string, number>()
@@ -105,6 +108,16 @@ export function SidebarTree(props: SidebarTreeProps) {
     if (cursorRef.current >= ids.length) setCursorIndex(Math.max(0, ids.length - 1))
     else if (cursorRef.current < 0 && ids.length > 0) setCursorIndex(0)
   }, [tree.flatIds, tree.activeRowId, setCursorIndex])
+
+  // Land the highlight on the top match on every search keystroke. Declared
+  // AFTER the follow effect so it wins while a query is open — otherwise the
+  // cursor would snap back to the active row you are trying to search away
+  // from. (Same ordering contract as the flat sidebar.)
+  useEffect(() => {
+    void search.query
+    if (!search.active) return
+    setCursorIndex(0)
+  }, [search.active, search.query, setCursorIndex])
 
   /**
    * Activate a row: a worktree row switches task, a tab row switches task
@@ -146,8 +159,21 @@ export function SidebarTree(props: SidebarTreeProps) {
     tree.toggleWorktree(parseRowId(rowId).taskId)
   }, [tree.toggleWorktree])
 
+  // Fold every project but the cursor row's. The cursor never rests ON a
+  // project header (they are excluded from the flat id list), so the chord
+  // targets the project the current row BELONGS to — which is also what makes
+  // it reachable from a tab row three levels down.
+  const focusCursorProject = useCallback((): void => {
+    const rowId = flatIdsRef.current[cursorRef.current]
+    if (rowId === undefined) return
+    const projectId = tree.projectIdOfTask(parseRowId(rowId).taskId)
+    if (projectId !== null) tree.focusProject(projectId)
+  }, [tree.projectIdOfTask, tree.focusProject])
+
   useBindings(() => ({
-    enabled: focused,
+    // Search mode swallows the letter chords — j/k/d/a/r must reach the query
+    // as text, exactly as in the flat sidebar's keys.ts.
+    enabled: focused && !search.active,
     bindings: bindByIds({
       "sidebar.nav": (_evt, slot) => {
         if ((slot ?? 0) % 2 === 0) ctrl.moveDown()
@@ -159,15 +185,43 @@ export function SidebarTree(props: SidebarTreeProps) {
         else ctrl.pressG()
       },
       "sidebar.tree.toggle": () => toggleAtCursor(),
-      "sidebar.view": (_evt, slot) => {
-        const target = cycleViewTarget(view, (slot ?? 0) % 2 === 0 ? -1 : 1)
-        if (target) setView(target)
-      },
+      "sidebar.search.enter": () => search.enter(),
+      "sidebar.projectFilter": () => focusCursorProject(),
       "sidebar.delete": () => withCursorTask(props.onDeleteRequest),
       "sidebar.archive": () => withCursorTask(props.onArchiveRequest),
       "sidebar.rename": () => withCursorTask(props.onRenameRequest),
       "sidebar.localMerge": () => withCursorTask(props.onLocalMergeRequest),
       "sidebar.pin": () => withCursorTask(props.onPinRequest),
+    }),
+  }))
+
+  // View switching stays live during search (flat sidebar's Block B): `[`/`]`
+  // are not text, and re-scoping the list mid-query is a reasonable thing to
+  // want.
+  useBindings(() => ({
+    enabled: focused,
+    bindings: bindByIds({
+      "sidebar.view": (_evt, slot) => {
+        const target = cycleViewTarget(view, (slot ?? 0) % 2 === 0 ? -1 : 1)
+        if (target) setView(target)
+      },
+    }),
+  }))
+
+  // Search-mode chords — registered only while the query row shows. j/k are
+  // deliberately absent: they are text here, so ctrl+n/ctrl+p walk the results.
+  useBindings(() => ({
+    enabled: focused && search.active,
+    bindings: bindByIds({
+      "sidebar.search.nav": (_evt, slot) => {
+        if ((slot ?? 0) % 2 === 0) ctrl.moveDown()
+        else ctrl.moveUp()
+      },
+      "sidebar.search.submit": () => {
+        ctrl.selectCurrent()
+        search.exit()
+      },
+      "sidebar.search.cancel": () => search.exit(),
     }),
   }))
 
@@ -253,6 +307,9 @@ export function SidebarTree(props: SidebarTreeProps) {
         onStatusClick={props.onHeaderStatusClick}
         onAddTask={props.onAddTask}
       />
+      {search.active ? (
+        <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
+      ) : null}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
       <SidebarViewTabs view={view} setView={setView} />
       <SidebarTreeBody
@@ -262,6 +319,7 @@ export function SidebarTree(props: SidebarTreeProps) {
         collapsedProjects={tree.collapsedProjects}
         hasTabs={tree.hasTabs}
         view={view}
+        searching={search.active && search.query.trim().length > 0}
         shared={shared}
         onToggleProject={tree.toggleProject}
         setScrollRef={(r) => {

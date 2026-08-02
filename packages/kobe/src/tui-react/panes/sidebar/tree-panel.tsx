@@ -29,6 +29,9 @@ export function SidebarTreeBody(props: {
   readonly collapsedProjects: ReadonlySet<string>
   readonly hasTabs: (taskId: string) => boolean
   readonly view: SidebarView
+  /** A query is open and non-empty — picks the "no matches" empty state over
+   *  the view's own "nothing here yet". */
+  readonly searching: boolean
   readonly shared: TreeRowShared
   readonly onToggleProject: (projectId: string) => void
   readonly setScrollRef: (renderable: ScrollBoxRenderable | null) => void
@@ -85,7 +88,7 @@ export function SidebarTreeBody(props: {
         {props.rows.length === 0 ? (
           <box paddingTop={1} paddingLeft={1}>
             <text fg={theme.textMuted}>
-              {t(sidebarEmptyStateKey({ searching: false, projectFilter: false, view: props.view }))}
+              {t(sidebarEmptyStateKey({ searching: props.searching, projectFilter: false, view: props.view }))}
             </text>
           </box>
         ) : null}

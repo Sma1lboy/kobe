@@ -14,11 +14,15 @@
 import type { Task } from "@/types/task"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
 import { useCallback, useMemo, useState } from "react"
+import { sidebarProjectKey } from "../../../tui/panes/sidebar/groups"
 import {
   type TreeRow,
   type TreeTab,
   buildTreeRows,
+  filterTreeRows,
+  focusProjectSet,
   parseRowId,
+  projectKeysOf,
   tabRowId,
   toggleInSet,
   treeFlatIds,
@@ -37,11 +41,15 @@ export interface TreeStateOpts {
   readonly selectedTabId: string | null
   /** Tasks whose engine is mid-turn — drives the tab row's busy dot. */
   readonly busyTaskIds?: ReadonlySet<string>
+  /** Live `/` query. Non-empty prunes the tree to matches + their ancestors. */
+  readonly query?: string
 }
 
 export interface TreeState {
   readonly rows: readonly TreeRow[]
   readonly flatIds: readonly string[]
+  /** Navigable rows before the query pruned anything — the `N/total` suffix. */
+  readonly totalCount: number
   /** Whether this worktree has tabs AT ALL — asked by the disclosure glyph,
    *  which must keep pointing at hidden children while collapsed (the rows
    *  themselves are gone in that state, so counting rows would flicker the
@@ -53,10 +61,20 @@ export interface TreeState {
   readonly collapsedProjects: ReadonlySet<string>
   readonly toggleWorktree: (taskId: string) => void
   readonly toggleProject: (projectId: string) => void
+  /** Fold every project but this one (and unfold on a second press). */
+  readonly focusProject: (projectId: string) => void
+  /** The project a task belongs to, or null for a project-less `dir` task. */
+  readonly projectIdOfTask: (taskId: string) => string | null
 }
+
+/** Shared empty set — searching builds rows with nothing collapsed, and a
+ *  fresh `new Set()` each render would break the row memo. */
+const NOTHING_COLLAPSED: ReadonlySet<string> = new Set<string>()
 
 export function useTreeState(opts: TreeStateOpts): TreeState {
   const { tasks, kv, selectedTaskId, selectedTabId, busyTaskIds } = opts
+  const query = opts.query ?? ""
+  const searching = query.trim() !== ""
   // Everything expanded by DEFAULT (owner call 2026-08-01, round 4) — the
   // sets hold only what the user collapsed by hand, so a new worktree or a
   // freshly-mounted tab list shows up without a keystroke.
@@ -87,10 +105,19 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     return map
   }, [tasks, kv, busyTaskIds])
 
-  const rows = useMemo(
-    () => buildTreeRows({ tasks, tabsByTask, collapsedWorktrees, collapsedProjects }),
-    [tasks, tabsByTask, collapsedWorktrees, collapsedProjects],
-  )
+  // Searching IGNORES hand-collapsed state: a hit folded out of sight reads
+  // as "no results", so the query builds against the fully-open tree and the
+  // pruner puts back only what matched (plus its ancestors).
+  const { rows, totalCount } = useMemo(() => {
+    const all = buildTreeRows({
+      tasks,
+      tabsByTask,
+      collapsedWorktrees: searching ? NOTHING_COLLAPSED : collapsedWorktrees,
+      collapsedProjects: searching ? NOTHING_COLLAPSED : collapsedProjects,
+    })
+    const total = treeFlatIds(all).length
+    return { rows: searching ? filterTreeRows(all, query) : all, totalCount: total }
+  }, [tasks, tabsByTask, collapsedWorktrees, collapsedProjects, searching, query])
   const flatIds = useMemo(() => treeFlatIds(rows), [rows])
 
   // The expanded set is what the RENDERER asks about (twisty state), so keep
@@ -122,15 +149,36 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     setCollapsedProjects((prev) => toggleInSet(prev, projectId))
   }, [])
 
+  // Project keys come from the TASKS, not the rendered rows: a pruned search
+  // result may be missing the very projects focus needs to fold.
+  const projectIds = useMemo(() => projectKeysOf(tasks), [tasks])
+  const focusProject = useCallback(
+    (projectId: string) => {
+      setCollapsedProjects((prev) => focusProjectSet(projectIds, projectId, prev))
+    },
+    [projectIds],
+  )
+  const projectIdOfTask = useCallback(
+    (taskId: string): string | null => {
+      const task = tasks.find((candidate) => candidate.id === taskId)
+      if (!task || task.kind === "dir") return null
+      return sidebarProjectKey(task.repo)
+    },
+    [tasks],
+  )
+
   return {
     rows,
     flatIds,
+    totalCount,
     hasTabs,
     activeRowId,
     expandedWorktrees,
     collapsedProjects,
     toggleWorktree,
     toggleProject,
+    focusProject,
+    projectIdOfTask,
   }
 }
 

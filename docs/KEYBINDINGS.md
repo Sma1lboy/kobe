@@ -134,6 +134,36 @@ note above.
 Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
 preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
 
+### Tree sidebar (project → worktree → tab)
+
+`sidebar.tree.toggle` (`h` / `l` / `space`) expands and collapses the worktree
+under the cursor. **PROPOSED as of 2026-08-01, still awaiting owner sign-off.**
+The reasoning behind the proposal: `h`/`l` are the vim tree pair, they are free
+in the sidebar scope, and the Files pane already spends them on collapse/expand
+— the same verb on the same kind of widget. A tab row has nothing to disclose,
+so pressing it there walks up to the tab's worktree, which is what every file
+tree does. The chord is inert unless the tree sidebar is on.
+
+The tree deliberately adds NO other chords. Two existing ones simply mean
+something tree-shaped inside it (2026-08-01, no new bindings, so no sign-off
+was needed):
+
+- `/` (`sidebar.search.enter`) — the same search chord, with a wider haystack.
+  On top of the flat sidebar's task title + repo, a query also matches a
+  worktree's branch and, uniquely to the tree, a **tab's live title**. Matches
+  keep their ancestors so a hit is never orphaned from its project, and the
+  query ignores hand-collapsed state (a match folded out of sight would read as
+  "no results"). `escape` / `enter` leave search exactly as in the flat rail.
+- `ctrl+p` (`sidebar.projectFilter`) — in the flat sidebar this cycles the
+  project filter; in the tree it **focuses** the cursor row's project by folding
+  every other one, and a second press unfolds them again. Same intent, expressed
+  in the structure the tree already has: "focus" is "collapse the others", so it
+  reuses the collapse state instead of adding a second notion of what is visible.
+
+`sidebar.sort` is not registered in the tree. A tree already carries an order
+(project → worktree → tab) and manual placement lives in move mode, so a second
+automatic ordering would only fight the structure. The flat sidebar keeps it.
+
 Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
 call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
 chord was unreachable from where the owner actually sits (on the sidebar

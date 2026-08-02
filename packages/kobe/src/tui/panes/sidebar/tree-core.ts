@@ -21,6 +21,7 @@
  */
 
 import type { Task } from "@/types/task"
+import { fuzzyMatch } from "./fuzzy"
 import { repoBasename, sidebarProjectKey } from "./groups"
 
 /** Separator between a task id and a tab id in a tab row's id. Matches the
@@ -162,6 +163,108 @@ export function treeFlatIds(rows: readonly TreeRow[]): string[] {
     if (row.kind !== "project") ids.push(row.id)
   }
   return ids
+}
+
+/** The project a row belongs to, or null when it has none — `dir` tasks are
+ *  emitted without a project header by construction, so they have no ancestor
+ *  for a search hit to keep alive. */
+function ownerProjectKey(task: Task): string | null {
+  return task.kind === "dir" ? null : sidebarProjectKey(task.repo)
+}
+
+/** What a row's text is matched against. */
+function rowHaystack(row: TreeRow): string {
+  if (row.kind === "project") return row.label
+  if (row.kind === "tab") return row.tab.label
+  return `${row.task.title} ${row.task.branch ?? ""} ${repoBasename(row.task.repo)}`
+}
+
+/**
+ * Prune the tree to what matches `query`, keeping every hit's ANCESTORS so a
+ * match never floats free of the worktree and project it lives in.
+ *
+ * Match semantics per kind, chosen so one query answers all three questions
+ * the tree can be asked:
+ *   - project  → repo basename. A hit keeps the WHOLE subtree ("show me
+ *     everything in kobe").
+ *   - worktree → title + branch + repo basename: the flat sidebar's haystack
+ *     plus the branch the tree actually labels the row with. A hit keeps the
+ *     worktree's tabs ("that branch, and what's running in it").
+ *   - tab      → the tab's label, i.e. its live OSC window title. This is the
+ *     tree's own increment over the flat sidebar, which can only search task
+ *     titles: it answers "which tab is running that thing".
+ *
+ * Expects rows built with NOTHING collapsed — a collapsed worktree emits no
+ * tab rows, and a match the user folded shut would read as "no results".
+ * `useTreeState` arranges that; tests pass fully-expanded rows.
+ */
+export function filterTreeRows(rows: readonly TreeRow[], query: string): TreeRow[] {
+  const q = query.trim()
+  if (q === "") return [...rows]
+
+  // Pass 1 — rows matching on their own text, plus the ancestors each hit
+  // keeps alive.
+  const selfMatch = new Set<string>()
+  const keep = new Set<string>()
+  for (const row of rows) {
+    if (!fuzzyMatch(q, rowHaystack(row))) continue
+    selfMatch.add(row.id)
+    keep.add(row.id)
+    if (row.kind === "project") continue
+    if (row.kind === "tab") keep.add(row.task.id)
+    const project = ownerProjectKey(row.task)
+    if (project !== null) keep.add(project)
+  }
+
+  // Pass 2 — emit a row when it matched, when a descendant kept it, or when
+  // an ancestor matched outright (a project hit brings its subtree along).
+  const out: TreeRow[] = []
+  for (const row of rows) {
+    if (row.kind === "project") {
+      if (keep.has(row.id)) out.push(row)
+      continue
+    }
+    const project = ownerProjectKey(row.task)
+    const underMatchedProject = project !== null && selfMatch.has(project)
+    if (row.kind === "worktree") {
+      if (underMatchedProject || keep.has(row.id)) out.push(row)
+      continue
+    }
+    if (underMatchedProject || selfMatch.has(row.task.id) || keep.has(row.id)) out.push(row)
+  }
+  return out
+}
+
+/**
+ * Every project key, in the same first-seen order `buildTreeRows` emits its
+ * project headers — what "focus one project" needs in order to know which
+ * others to fold.
+ */
+export function projectKeysOf(tasks: readonly Task[]): string[] {
+  const keys: string[] = []
+  const seen = new Set<string>()
+  for (const task of tasks) {
+    const key = ownerProjectKey(task)
+    if (key === null || seen.has(key)) continue
+    seen.add(key)
+    keys.push(key)
+  }
+  return keys
+}
+
+/**
+ * Collapse every project EXCEPT `keepId` — the tree's answer to the flat
+ * sidebar's project filter. Pressing it again while that project is already
+ * the only open one restores everything, so the chord is its own undo.
+ *
+ * This reuses the collapse set instead of adding a filter dimension: "focus"
+ * IS "fold the others", and a second source of truth for which projects are
+ * visible would be one more thing to keep in sync with the twisties.
+ */
+export function focusProjectSet(projectIds: readonly string[], keepId: string, current: ExpandedSet): Set<string> {
+  const others = projectIds.filter((id) => id !== keepId)
+  const alreadyFocused = others.length > 0 && !current.has(keepId) && others.every((id) => current.has(id))
+  return alreadyFocused ? new Set<string>() : new Set(others)
 }
 
 /**

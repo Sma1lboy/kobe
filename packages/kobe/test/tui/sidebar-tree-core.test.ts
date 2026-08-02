@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest"
 import {
   type TreeTab,
   buildTreeRows,
+  filterTreeRows,
+  focusProjectSet,
   parseRowId,
+  projectKeysOf,
   tabRowId,
   toggleInSet,
   treeFlatIds,
@@ -130,5 +133,92 @@ describe("toggleInSet", () => {
     // Identity must change or React skips the re-render.
     expect(added).not.toBe(original)
     expect([...original]).toEqual(["a"])
+  })
+})
+
+describe("filterTreeRows", () => {
+  // One fixture for the whole block: two projects, a tab under each of the
+  // kobe worktrees, so every ancestor/descendant direction has something to
+  // prove.
+  const tree = () =>
+    rows({
+      tasks: [
+        task("m", { kind: "main", repo: "/repos/kobe", branch: "main", worktreePath: "/repos/kobe" }),
+        task("wt", { repo: "/repos/kobe", branch: "feat/tree", title: "worktree tree" }),
+        task("fx", { repo: "/repos/foxychat", branch: "feat/chat", title: "chat rewrite" }),
+      ],
+      tabsByTask: new Map([
+        ["m", [tab("tab-1", "shell")]],
+        ["wt", [tab("tab-2", "running codex on the landing page")]],
+        ["fx", [tab("tab-3", "vitest watch")]],
+      ]),
+    })
+
+  const ids = (query: string) => filterTreeRows(tree(), query).map((r) => r.id)
+
+  test("an empty query is a no-op", () => {
+    expect(filterTreeRows(tree(), "   ")).toEqual(tree())
+  })
+
+  test("a tab hit keeps its worktree and project", () => {
+    // The tree's whole increment over the flat sidebar: the query matches
+    // nothing but a live tab TITLE, and the ancestors come along so the hit
+    // is placed rather than floating.
+    expect(ids("codex")).toEqual(["/repos/kobe", "wt", "wt::tab-2"])
+  })
+
+  test("a worktree hit keeps its tabs", () => {
+    expect(ids("feat/tree")).toEqual(["/repos/kobe", "wt", "wt::tab-2"])
+  })
+
+  test("a project hit keeps the whole subtree", () => {
+    expect(ids("foxychat")).toEqual(["/repos/foxychat", "fx", "fx::tab-3"])
+  })
+
+  test("no matches yields no rows — not a bare project header", () => {
+    expect(ids("zzzz")).toEqual([])
+  })
+
+  test("a dir task has no project header to keep alive", () => {
+    const loose = rows({
+      tasks: [task("d", { kind: "dir", repo: "/tmp/scratch", branch: "", title: "scratchpad" })],
+      tabsByTask: new Map(),
+    })
+    expect(filterTreeRows(loose, "scratch").map((r) => r.id)).toEqual(["d"])
+  })
+})
+
+describe("projectKeysOf", () => {
+  test("first-seen order, deduped, dir tasks excluded", () => {
+    expect(
+      projectKeysOf([
+        task("a", { repo: "/repos/kobe" }),
+        task("b", { repo: "/repos/foxychat" }),
+        task("c", { repo: "/repos/kobe" }),
+        task("d", { kind: "dir", repo: "/tmp/scratch" }),
+      ]),
+    ).toEqual(["/repos/kobe", "/repos/foxychat"])
+  })
+})
+
+describe("focusProjectSet", () => {
+  const all = ["p1", "p2", "p3"]
+
+  test("folds every project but the kept one", () => {
+    expect([...focusProjectSet(all, "p2", NOTHING)]).toEqual(["p1", "p3"])
+  })
+
+  test("a second press on the already-focused project unfolds everything", () => {
+    const focused = focusProjectSet(all, "p2", NOTHING)
+    expect([...focusProjectSet(all, "p2", focused)]).toEqual([])
+  })
+
+  test("focusing a DIFFERENT project re-folds rather than unfolding", () => {
+    const focused = focusProjectSet(all, "p2", NOTHING)
+    expect([...focusProjectSet(all, "p3", focused)]).toEqual(["p1", "p2"])
+  })
+
+  test("a lone project has nothing to fold, so it never latches as focused", () => {
+    expect([...focusProjectSet(["p1"], "p1", NOTHING)]).toEqual([])
   })
 })

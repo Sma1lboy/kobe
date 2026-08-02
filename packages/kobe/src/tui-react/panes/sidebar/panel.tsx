@@ -12,7 +12,14 @@ import type { SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
-import { SectionHeader, SidebarBrandHeader, SidebarNavRail, SidebarViewTabs, SidebarZenChip } from "./chrome"
+import {
+  SectionHeader,
+  SidebarBrandHeader,
+  SidebarNavRail,
+  SidebarSearchInput,
+  SidebarViewTabs,
+  SidebarZenChip,
+} from "./chrome"
 import { SidebarHoverTooltip } from "./hover-tooltip"
 import { ProjectRowCard, type SidebarRowCardSharedProps, TaskRowCard } from "./row-cards"
 import type { SidebarHover, SidebarProps } from "./types"
@@ -79,28 +86,7 @@ export function SidebarPanel(props: {
       />
 
       {props.searchMode ? (
-        <box flexDirection="row" gap={0} flexShrink={0} paddingBottom={1} paddingLeft={1}>
-          <text fg={theme.info} wrapMode="none">
-            /
-          </text>
-          <text fg={theme.text} wrapMode="none">
-            {props.searchQuery}
-          </text>
-          <text fg={theme.info} attributes={TextAttributes.BLINK} wrapMode="none">
-            █
-          </text>
-          {props.searchQuery.length === 0 ? (
-            <text fg={theme.textMuted} wrapMode="none">
-              {" "}
-              {t("tasks.search.placeholder")}
-            </text>
-          ) : (
-            <text fg={theme.textMuted} wrapMode="none">
-              {" "}
-              {props.flatIds.length}/{props.totalRows}
-            </text>
-          )}
-        </box>
+        <SidebarSearchInput query={props.searchQuery} matchCount={props.flatIds.length} totalCount={props.totalRows} />
       ) : null}
 
       <SidebarNavRail nav={props.nav} setNav={props.setNav} />
