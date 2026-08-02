@@ -19,9 +19,14 @@
  * Pass 1 (the already-verified writing): for each requested ptyKey, resolve
  * the registry PTY, (re)subscribe when the instance at that key changed, and
  * drop subscriptions whose key is no longer requested or whose PTY died.
- * Raw OSC titles are normalized through `titleDisplayName` so an engine's
- * decorated window title ("✳ Claude Code") reads as its binary ("claude"),
- * one vocabulary across corner tags and tab labels.
+ *
+ * Titles pass through RAW — the OSC stream IS the label (owner 2026-08-01:
+ * "don't waste the OSC name"). The store used to collapse an engine's title
+ * to its binary ("✳ Claude Code" → "claude") via the live-engine vendor,
+ * which (a) threw away the one line of live status the engine writes and
+ * (b) FLICKERED: the ps-walk probe transiently loses a vendor mid-turn, so
+ * labels flapped raw ↔ collapsed every probe tick. Identity (which detector
+ * to attach) still comes from the process tree; display no longer does.
  *
  * No React, no Solid, no @opentui — plain closures over Maps, unit-testable
  * under vitest. Callers own the tick that drives `reconcile()` (a PTY spawns
@@ -29,10 +34,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { titleDisplayName } from "../../engine/registry"
 import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { getDefaultLiveEngines } from "../../tui/workspace/live-engine"
 import { useLatest } from "../lib/use-latest"
 
 /** A registry lookup — injectable so tests drive a fake PTY set. */
@@ -58,32 +61,14 @@ export interface TitleSubscriptions {
 export function createTitleSubscriptions(
   lookup: PtyLookup = getDefaultPtyRegistry().get.bind(getDefaultPtyRegistry()),
 ): TitleSubscriptions {
-  /** ptyKey → { the subscribed PTY instance, its unsub, the raw OSC title,
-   *  and the display title it collapses to under the CURRENT live vendor }. */
-  type Entry = { pty: TaskPtyLike; unsub: () => void; raw: string; title: string }
+  /** ptyKey → the subscribed PTY instance, its unsub, and its raw OSC title. */
+  type Entry = { pty: TaskPtyLike; unsub: () => void; title: string }
   const subs = new Map<string, Entry>()
   const listeners = new Set<() => void>()
 
   const emit = (): void => {
     for (const l of listeners) l()
   }
-
-  /** Recompute one entry's display title; true when it moved. The vendor
-   *  comes from the process tree, so this must also re-run when the LIVE
-   *  ENGINE changes, not only when the title does (an engine's launch title
-   *  lands before the first probe resolves what it is). */
-  const applyDisplay = (key: string, entry: Entry): boolean => {
-    const display = titleDisplayName(entry.raw, getDefaultLiveEngines().get(key))
-    if (entry.title === display) return false
-    entry.title = display
-    return true
-  }
-
-  const unsubLive = getDefaultLiveEngines().subscribe(() => {
-    let changed = false
-    for (const [key, entry] of subs) changed = applyDisplay(key, entry) || changed
-    if (changed) emit()
-  })
 
   return {
     reconcile(ptyKeys) {
@@ -108,10 +93,11 @@ export function createTitleSubscriptions(
         if (!pty) continue
         // onTitleChange fires immediately with the current title (mock + real
         // both do), so `title` is seeded synchronously here.
-        const entry: Entry = { pty, unsub: () => {}, raw: "", title: "" }
+        const entry: Entry = { pty, unsub: () => {}, title: "" }
         entry.unsub = pty.onTitleChange((raw) => {
-          entry.raw = raw
-          if (applyDisplay(key, entry)) emit()
+          if (entry.title === raw) return
+          entry.title = raw
+          emit()
         })
         subs.set(key, entry)
         changed = true
@@ -129,7 +115,6 @@ export function createTitleSubscriptions(
       }
     },
     dispose() {
-      unsubLive()
       for (const sub of subs.values()) sub.unsub()
       subs.clear()
       listeners.clear()
