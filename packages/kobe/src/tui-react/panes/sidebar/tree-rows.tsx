@@ -163,15 +163,18 @@ export function TabTreeRow(props: {
   // task-scoped). A non-agent tab (shell/command/content) is outside the
   // vocabulary — plain `·`, we don't care about its state.
   const isAgent = props.tab.engine === true
-  const activity = isAgent && props.tab.active === true ? shared.engineState?.get(props.task.id) : undefined
+  const carriesActivity = isAgent && props.tab.active === true
+  const activity = carriesActivity ? shared.engineState?.get(props.task.id) : undefined
   const carriesState = activity !== undefined
   // The unread lamp (herdr ● on turn_complete) is for sessions you are NOT
   // looking at — sitting in the tab digests it to ✓ on the same render.
   // "Viewing" = this row's TASK is selected and this tab is the task's
-  // active one. Same module-level bookkeeping as the flat cards, so
-  // switching sidebars never resurrects a lamp you already saw.
+  // active one. ONLY the row that carries the task's activity may run the
+  // bookkeeping: a sibling tab passes state=undefined, and letting it call
+  // would fire the delete branch and wipe the seen bit the active row just
+  // recorded — the ✓ → ● → ✓ flip on every task switch.
   const viewing = shared.selectedTaskId === props.task.id && props.tab.active === true
-  const completionSeen = completionSeenFor(props.task.id, activity?.state, viewing)
+  const completionSeen = carriesActivity ? completionSeenFor(props.task.id, activity?.state, viewing) : false
   const baseView = buildSidebarRowView({
     task: props.task,
     activity,
