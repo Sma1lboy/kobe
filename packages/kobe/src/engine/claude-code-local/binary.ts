@@ -146,9 +146,11 @@ export async function findClaudeBinary(deps: BinaryDiscoveryDeps = defaultDeps):
     if (candidate) return candidate
   }
 
-  // 4. All NVM-installed node versions (newest by string sort).
+  // 4. All NVM-installed node versions, newest first. A plain string sort
+  //    mis-orders unpadded semver dir names ("v8.17.0" sorts after "v18.20.0"),
+  //    so a single-digit major would shadow newer nodes; compare numerically.
   const nvmRoot = path.join(home, ".nvm", "versions", "node")
-  const nvmVersions = deps.readdir(nvmRoot).sort().reverse()
+  const nvmVersions = deps.readdir(nvmRoot).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
   for (const v of nvmVersions) {
     const candidate = tryPath(path.join(nvmRoot, v, "bin", "claude"))
     if (candidate) return candidate
