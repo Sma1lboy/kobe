@@ -191,6 +191,9 @@ jobs:
     # macOS product/runtime path is stable. This remains a required check:
     # no continue-on-error and a per-touched-file render coverage gate.
     runs-on: macos-14
+    # Hung runners, not failing tests, were eating 40min waits (2026-08-02
+    # twice): the gate should fail fast so a rerun is cheap.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
