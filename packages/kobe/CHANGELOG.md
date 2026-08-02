@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.47
+
+### Patch Changes
+
+- cb30ee3: A Stop hook with no tracked turn no longer marks the session complete — background monitor streams ending (and other automated wakes) used to light the unread ● lamp on sessions where you never started a turn.
+- 470f892: Sidebar polish round three: the right-click menu clamps to the rail instead of opening half-hidden under the workspace pane; Kanban/Routines move below Active/Archives (they belong to the workspace you're in, not beside the brand); and the main checkout's row shows its live branch instead of repeating the repo name under the project header.
+
 ## 0.8.46
 
 ### Patch Changes
