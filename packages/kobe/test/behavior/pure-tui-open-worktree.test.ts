@@ -85,13 +85,15 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
       raw += chunk
     })
     try {
-      // Wait for the task list to actually hydrate (the scratch repo's row),
-      // not just the PROJECTS header — the `o` handler needs a selection.
+      // Wait for the task list to actually hydrate (the scratch repo's row) —
+      // the `o` handler needs a selection. The tree sidebar (default since
+      // the worktree tree) has no PROJECTS header; the repo row is the
+      // hydration signal.
       const deadline = Date.now() + 30_000
-      while (!(raw.includes("PROJECTS") && raw.includes("scratch-repo")) && Date.now() < deadline) {
+      while (!raw.includes("scratch-repo") && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
-      expect(raw).toContain("PROJECTS")
+      expect(raw).toContain("scratch-repo")
 
       const direct = await pressUntilInvoked(child, "o", marker, 0)
       expect(direct.length).toBeGreaterThan(0)
