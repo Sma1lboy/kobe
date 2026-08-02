@@ -253,6 +253,26 @@ export function projectKeysOf(tasks: readonly Task[]): string[] {
 }
 
 /**
+ * The `main` task of a project — the repo's own checkout.
+ *
+ * This is how the tree REORDERS projects, and it needs no new persistence:
+ * a project's position is where its first task appears in the store, and
+ * `moveTask` on a `main` row already swaps it past the neighbouring project's
+ * `main` (mains move among mains). So moving the main task IS moving the
+ * project, and one existing daemon call covers it.
+ *
+ * Null when the project has no main checkout — a repo that only ever produced
+ * task worktrees has no row to move, so project reorder is a no-op there.
+ */
+export function mainTaskIdOfProject(tasks: readonly Task[], projectKey: string): string | null {
+  for (const task of tasks) {
+    if (task.kind !== "main") continue
+    if (sidebarProjectKey(task.repo) === projectKey) return String(task.id)
+  }
+  return null
+}
+
+/**
  * Collapse every project EXCEPT `keepId` — the tree's answer to the flat
  * sidebar's project filter. Pressing it again while that project is already
  * the only open one restores everything, so the chord is its own undo.

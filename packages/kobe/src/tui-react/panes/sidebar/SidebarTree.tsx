@@ -175,93 +175,41 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [tree.projectIdOfTask, tree.focusProject])
 
   /**
-   * What a menu entry does. Every branch routes to a callback the tree was
-   * already wired to — the menu adds a route, not a capability (see
-   * `tree-menu.ts` for why that rule picks the entries).
+   * Move mode reorders PROJECTS in the tree (owner call 2026-08-01), not
+   * tasks: the tree already shows a project as a group, so "move" at the
+   * level you can see is the group. It routes through the project's `main`
+   * task, which `moveTask` already swaps past the neighbouring project's main
+   * — no new persistence, no new daemon call (see `mainTaskIdOfProject`).
    */
-  const runMenuAction = useCallback(
-    (action: TreeMenuAction, row: TreeRow): void => {
-      if (row.kind === "project") {
-        if (action === "toggle") tree.toggleProject(row.id)
-        else if (action === "focusProject") tree.focusProject(row.id)
-        else if (action === "newTask") props.onAddTask?.()
-        return
-      }
-      const taskId = row.task.id
-      switch (action) {
-        case "open":
-          activateRow(row.id)
-          break
-        case "toggle":
-          tree.toggleWorktree(taskId)
-          break
-        case "rename":
-          props.onRenameRequest?.(taskId)
-          break
-        case "pin":
-          props.onPinRequest?.(taskId)
-          break
-        case "localMerge":
-          props.onLocalMergeRequest?.(taskId)
-          break
-        case "archive":
-          props.onArchiveRequest?.(taskId)
-          break
-        case "delete":
-          props.onDeleteRequest?.(taskId)
-          break
-        default:
-          break
-      }
-    },
-    [
-      tree.toggleProject,
-      tree.focusProject,
-      tree.toggleWorktree,
-      activateRow,
-      props.onAddTask,
-      props.onRenameRequest,
-      props.onPinRequest,
-      props.onLocalMergeRequest,
-      props.onArchiveRequest,
-      props.onDeleteRequest,
-    ],
-  )
-  const menu = useTreeMenu(runMenuAction)
+  const moveMode = props.moveMode === true
+  const cursorProjectId = useMemo((): string | null => {
+    const rowId = tree.flatIds[cursorIndex]
+    if (rowId === undefined) return null
+    return tree.projectIdOfTask(parseRowId(rowId).taskId)
+  }, [tree.flatIds, tree.projectIdOfTask, cursorIndex])
 
-  const openRowMenu = useCallback(
-    (flatIndex: number, rowId: string, x: number, y: number): void => {
-      const row = tree.rows.find((candidate) => candidate.id === rowId)
-      if (!row || row.kind === "project") return
-      // Move the cursor too: the menu and the highlight must agree about
-      // which row the next action lands on.
-      setCursorIndex(flatIndex)
-      menu.openAt(
-        row,
-        {
-          hasTabs: row.kind === "worktree" && tree.hasTabs(row.task.id),
-          collapsed: !tree.expandedWorktrees.has(row.task.id),
-        },
-        x,
-        y,
-      )
+  const moveCursorProject = useCallback(
+    (delta: -1 | 1): void => {
+      const rowId = flatIdsRef.current[cursorRef.current]
+      if (rowId === undefined) return
+      const projectId = tree.projectIdOfTask(parseRowId(rowId).taskId)
+      if (projectId === null) return
+      // No main checkout ⇒ nothing to move. Silent rather than an error: a
+      // repo with only task worktrees has no project row position to change.
+      const mainId = tree.mainTaskIdOfProject(projectId)
+      if (mainId === null) return
+      props.onMoveRequest?.(mainId, delta)
     },
-    [tree.rows, tree.hasTabs, tree.expandedWorktrees, menu.openAt, setCursorIndex],
+    [tree.projectIdOfTask, tree.mainTaskIdOfProject, props.onMoveRequest],
   )
 
-  const openProjectMenu = useCallback(
-    (projectId: string, x: number, y: number): void => {
-      const row = tree.rows.find((candidate) => candidate.kind === "project" && candidate.id === projectId)
-      if (!row) return
-      menu.openAt(
-        row,
-        { collapsed: tree.collapsedProjects.has(projectId), projectFocused: tree.isProjectFocused(projectId) },
-        x,
-        y,
-      )
-    },
-    [tree.rows, tree.collapsedProjects, tree.isProjectFocused, menu.openAt],
-  )
+  const menu = useTreeMenu({
+    tree,
+    activateRow,
+    setCursorIndex,
+    onAddTask: props.onAddTask,
+    actions: props,
+  })
 
   useBindings(() => ({
     // Search mode swallows the letter chords — j/k/d/a/r must reach the query
@@ -269,24 +217,66 @@ export function SidebarTree(props: SidebarTreeProps) {
     // them for the same reason: j/k/enter belong to the menu while it is up.
     enabled: focused && !search.active && !menu.open,
     bindings: bindByIds({
+      // In move mode j/k drag the project instead of walking the cursor —
+      // same multiplexing the flat sidebar does for tasks.
       "sidebar.nav": (_evt, slot) => {
-        if ((slot ?? 0) % 2 === 0) ctrl.moveDown()
+        const down = (slot ?? 0) % 2 === 0
+        if (moveMode) {
+          moveCursorProject(down ? 1 : -1)
+          return
+        }
+        if (down) ctrl.moveDown()
         else ctrl.moveUp()
       },
-      "sidebar.select": () => ctrl.selectCurrent(),
+      "sidebar.select": () => {
+        if (moveMode) {
+          props.onMoveModeExit?.()
+          return
+        }
+        ctrl.selectCurrent()
+      },
       "sidebar.goto": (_evt, slot) => {
+        if (moveMode) return
         if ((slot ?? 0) % 2 === 1) ctrl.pressShiftG()
         else ctrl.pressG()
       },
-      "sidebar.tree.toggle": () => toggleAtCursor(),
-      "sidebar.search.enter": () => search.enter(),
-      "sidebar.projectFilter": () => focusCursorProject(),
-      "sidebar.delete": () => withCursorTask(props.onDeleteRequest),
-      "sidebar.archive": () => withCursorTask(props.onArchiveRequest),
-      "sidebar.rename": () => withCursorTask(props.onRenameRequest),
+      "sidebar.tree.toggle": () => {
+        if (moveMode) return
+        toggleAtCursor()
+      },
+      "sidebar.search.enter": () => {
+        if (moveMode) return
+        search.enter()
+      },
+      "sidebar.projectFilter": () => {
+        if (moveMode) return
+        focusCursorProject()
+      },
+      "sidebar.delete": () => {
+        if (moveMode) return
+        withCursorTask(props.onDeleteRequest)
+      },
+      "sidebar.archive": () => {
+        if (moveMode) return
+        withCursorTask(props.onArchiveRequest)
+      },
+      "sidebar.rename": () => {
+        if (moveMode) return
+        withCursorTask(props.onRenameRequest)
+      },
       "sidebar.localMerge": () => withCursorTask(props.onLocalMergeRequest),
-      "sidebar.pin": () => withCursorTask(props.onPinRequest),
+      "sidebar.pin": () => {
+        if (moveMode) return
+        withCursorTask(props.onPinRequest)
+      },
     }),
+  }))
+
+  // Escape leaves move mode — the same raw binding keys.ts uses, since escape
+  // has no sidebar-scope registry entry outside search.
+  useBindings(() => ({
+    enabled: focused && moveMode,
+    bindings: [{ key: "escape", cmd: () => props.onMoveModeExit?.() }],
   }))
 
   // View switching stays live during search (flat sidebar's Block B): `[`/`]`
@@ -396,7 +386,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       setCursorIndex(flatIndex)
       activateRow(rowId)
     },
-    onContextMenu: openRowMenu,
+    onContextMenu: menu.openForRow,
     branchTick,
     engineState: props.engineState,
     engineLifecycle: props.engineLifecycle,
@@ -437,7 +427,8 @@ export function SidebarTree(props: SidebarTreeProps) {
         searching={search.active && search.query.trim().length > 0}
         shared={shared}
         onToggleProject={tree.toggleProject}
-        onProjectContextMenu={openProjectMenu}
+        onProjectContextMenu={menu.openForProject}
+        movingProjectId={moveMode ? cursorProjectId : null}
         setScrollRef={(r) => {
           scrollRef.current = r
         }}

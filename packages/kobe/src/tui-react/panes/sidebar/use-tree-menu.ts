@@ -1,12 +1,12 @@
 /**
- * Right-click menu state for the tree sidebar — which row was clicked, the
- * entries it offers, and the highlight.
+ * The tree sidebar's right-click menu: which row was clicked, the entries it
+ * offers, the highlight, and what each entry does.
  *
  * Split from `SidebarTree.tsx` for the file-size cap. What the menu OFFERS is
- * the framework-free `tree-menu.ts`; what an entry DOES stays in the component,
- * because the actions are the host callbacks it already holds. This hook is
- * only the state in between — plus the `t()` pass that turns label keys into
- * text, so the menu follows a language switch.
+ * the framework-free `tree-menu.ts`; this hook is the state in between, plus
+ * the `t()` pass that turns label keys into text so the menu follows a language
+ * switch, plus the dispatch that routes an entry to the host callback the tree
+ * was already holding.
  */
 
 import { useCallback, useState } from "react"
@@ -14,6 +14,8 @@ import type { TreeRow } from "../../../tui/panes/sidebar/tree-core"
 import { type TreeMenuAction, type TreeMenuContext, treeMenuItems } from "../../../tui/panes/sidebar/tree-menu"
 import { useT } from "../../i18n"
 import type { ContextMenuEntry } from "../../ui/context-menu"
+import type { SidebarTaskCallbacks } from "./types"
+import type { TreeState } from "./use-tree-state"
 
 export interface TreeMenu {
   readonly open: boolean
@@ -21,13 +23,24 @@ export interface TreeMenu {
   readonly cursor: number
   readonly x: number
   readonly y: number
-  readonly openAt: (row: TreeRow, ctx: TreeMenuContext, x: number, y: number) => void
   readonly close: () => void
   readonly moveCursor: (delta: 1 | -1) => void
   /** Fire the highlighted entry (enter). */
   readonly pickCurrent: () => void
-  /** Fire an entry by action id (mouse click on a menu row). */
+  /** Fire an entry by action id (a click on a menu row). */
   readonly pick: (action: string) => void
+  /** Right-click landed on a worktree or tab row. */
+  readonly openForRow: (flatIndex: number, rowId: string, x: number, y: number) => void
+  /** Right-click landed on a project header. */
+  readonly openForProject: (projectId: string, x: number, y: number) => void
+}
+
+export interface TreeMenuDeps {
+  readonly tree: TreeState
+  readonly activateRow: (rowId: string) => void
+  readonly setCursorIndex: (index: number) => void
+  readonly onAddTask?: () => void
+  readonly actions: SidebarTaskCallbacks
 }
 
 interface OpenMenu {
@@ -38,8 +51,9 @@ interface OpenMenu {
   readonly y: number
 }
 
-export function useTreeMenu(onAction: (action: TreeMenuAction, row: TreeRow) => void): TreeMenu {
+export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
   const t = useT()
+  const { tree, activateRow, setCursorIndex, actions } = deps
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const [cursor, setCursor] = useState(0)
 
@@ -58,6 +72,40 @@ export function useTreeMenu(onAction: (action: TreeMenuAction, row: TreeRow) => 
     [t],
   )
 
+  const openForRow = useCallback(
+    (flatIndex: number, rowId: string, x: number, y: number): void => {
+      const row = tree.rows.find((candidate) => candidate.id === rowId)
+      if (!row || row.kind === "project") return
+      // Move the cursor too: the menu and the highlight must agree about which
+      // row the next action lands on.
+      setCursorIndex(flatIndex)
+      openAt(
+        row,
+        {
+          hasTabs: row.kind === "worktree" && tree.hasTabs(row.task.id),
+          collapsed: !tree.expandedWorktrees.has(row.task.id),
+        },
+        x,
+        y,
+      )
+    },
+    [tree.rows, tree.hasTabs, tree.expandedWorktrees, openAt, setCursorIndex],
+  )
+
+  const openForProject = useCallback(
+    (projectId: string, x: number, y: number): void => {
+      const row = tree.rows.find((candidate) => candidate.kind === "project" && candidate.id === projectId)
+      if (!row) return
+      openAt(
+        row,
+        { collapsed: tree.collapsedProjects.has(projectId), projectFocused: tree.isProjectFocused(projectId) },
+        x,
+        y,
+      )
+    },
+    [tree.rows, tree.collapsedProjects, tree.isProjectFocused, openAt],
+  )
+
   const close = useCallback((): void => setMenu(null), [])
 
   const moveCursor = useCallback(
@@ -65,12 +113,17 @@ export function useTreeMenu(onAction: (action: TreeMenuAction, row: TreeRow) => 
       const count = menu?.entries.length ?? 0
       if (count === 0) return
       // Wraps: a menu is short enough that walking off the end and landing
-      // back at the top is faster than clamping.
+      // back at the top beats clamping.
       setCursor((prev) => (prev + delta + count) % count)
     },
     [menu],
   )
 
+  /**
+   * Run an entry. Every branch routes to something the tree could already do —
+   * the menu adds a route, not a capability (see `tree-menu.ts` for why that
+   * rule picks the entries).
+   */
   const fire = useCallback(
     (action: TreeMenuAction | undefined): void => {
       if (!menu || action === undefined) return
@@ -78,9 +131,40 @@ export function useTreeMenu(onAction: (action: TreeMenuAction, row: TreeRow) => 
       // still painted underneath a confirm prompt reads as two live surfaces.
       const row = menu.row
       setMenu(null)
-      onAction(action, row)
+      if (row.kind === "project") {
+        if (action === "toggle") tree.toggleProject(row.id)
+        else if (action === "focusProject") tree.focusProject(row.id)
+        else if (action === "newTask") deps.onAddTask?.()
+        return
+      }
+      const taskId = row.task.id
+      switch (action) {
+        case "open":
+          activateRow(row.id)
+          break
+        case "toggle":
+          tree.toggleWorktree(taskId)
+          break
+        case "rename":
+          actions.onRenameRequest?.(taskId)
+          break
+        case "pin":
+          actions.onPinRequest?.(taskId)
+          break
+        case "localMerge":
+          actions.onLocalMergeRequest?.(taskId)
+          break
+        case "archive":
+          actions.onArchiveRequest?.(taskId)
+          break
+        case "delete":
+          actions.onDeleteRequest?.(taskId)
+          break
+        default:
+          break
+      }
     },
-    [menu, onAction],
+    [menu, tree.toggleProject, tree.focusProject, tree.toggleWorktree, activateRow, actions, deps.onAddTask],
   )
 
   const pickCurrent = useCallback((): void => fire(menu?.actions[cursor]), [fire, menu, cursor])
@@ -95,10 +179,11 @@ export function useTreeMenu(onAction: (action: TreeMenuAction, row: TreeRow) => 
     cursor,
     x: menu?.x ?? 0,
     y: menu?.y ?? 0,
-    openAt,
     close,
     moveCursor,
     pickCurrent,
     pick,
+    openForRow,
+    openForProject,
   }
 }

@@ -22,6 +22,7 @@ import {
   filterTreeRows,
   focusProjectSet,
   isProjectFocused,
+  mainTaskIdOfProject,
   parseRowId,
   projectKeysOf,
   tabRowId,
@@ -68,6 +69,8 @@ export interface TreeState {
   readonly isProjectFocused: (projectId: string) => boolean
   /** The project a task belongs to, or null for a project-less `dir` task. */
   readonly projectIdOfTask: (taskId: string) => string | null
+  /** The task whose move reorders this project (its `main` checkout). */
+  readonly mainTaskIdOfProject: (projectId: string) => string | null
 }
 
 /** Shared empty set — searching builds rows with nothing collapsed, and a
@@ -165,6 +168,10 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     (projectId: string): boolean => isProjectFocused(projectIds, projectId, collapsedProjects),
     [projectIds, collapsedProjects],
   )
+  const mainTaskOfProject = useCallback(
+    (projectId: string): string | null => mainTaskIdOfProject(tasks, projectId),
+    [tasks],
+  )
   const projectIdOfTask = useCallback(
     (taskId: string): string | null => {
       const task = tasks.find((candidate) => candidate.id === taskId)
@@ -187,6 +194,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     focusProject,
     isProjectFocused: projectFocused,
     projectIdOfTask,
+    mainTaskIdOfProject: mainTaskOfProject,
   }
 }
 

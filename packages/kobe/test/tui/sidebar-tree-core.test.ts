@@ -4,6 +4,7 @@ import {
   buildTreeRows,
   filterTreeRows,
   focusProjectSet,
+  mainTaskIdOfProject,
   parseRowId,
   projectKeysOf,
   tabRowId,
@@ -220,5 +221,28 @@ describe("focusProjectSet", () => {
 
   test("a lone project has nothing to fold, so it never latches as focused", () => {
     expect([...focusProjectSet(["p1"], "p1", NOTHING)]).toEqual([])
+  })
+})
+
+describe("mainTaskIdOfProject", () => {
+  const tasks = [
+    task("kobe-wt", { repo: "/repos/kobe" }),
+    task("kobe-main", { kind: "main", repo: "/repos/kobe", branch: "main", worktreePath: "/repos/kobe" }),
+    task("fox-main", { kind: "main", repo: "/repos/foxychat", branch: "main", worktreePath: "/repos/foxychat" }),
+  ]
+
+  test("finds the repo's main checkout, not its first task", () => {
+    // Project reorder rides on the MAIN row (mains move among mains), so
+    // picking the first task of the repo would move nothing.
+    expect(mainTaskIdOfProject(tasks, "/repos/kobe")).toBe("kobe-main")
+    expect(mainTaskIdOfProject(tasks, "/repos/foxychat")).toBe("fox-main")
+  })
+
+  test("a project with no main checkout has nothing to move", () => {
+    expect(mainTaskIdOfProject([task("only", { repo: "/repos/orphan" })], "/repos/orphan")).toBeNull()
+  })
+
+  test("an unknown project is null, not a throw", () => {
+    expect(mainTaskIdOfProject(tasks, "/repos/nope")).toBeNull()
   })
 })

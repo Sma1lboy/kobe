@@ -160,6 +160,17 @@ was needed):
   in the structure the tree already has: "focus" is "collapse the others", so it
   reuses the collapse state instead of adding a second notion of what is visible.
 
+- `prefix+m` (`task.moveMode`) — the same global move mode, retargeted at the
+  level the tree actually shows: `j`/`k` drag the cursor row's **project**, not
+  its task, and `enter` / `esc` leave. It rides on the project's `main`
+  checkout, which `moveTask` already reorders among mains, so project order
+  needed no new persistence and no new daemon verb. A repo with no main
+  checkout has no row to move, and the chord is a silent no-op there.
+- Right-click on any row opens that row's menu (`j`/`k`/`enter`/`esc`). The
+  entries are exactly what the row's own chords already do, so the menu never
+  becomes a second place where behavior is decided — the one exception is the
+  project header, which the cursor cannot reach at all.
+
 `sidebar.sort` is not registered in the tree. A tree already carries an order
 (project → worktree → tab) and manual placement lives in move mode, so a second
 automatic ordering would only fight the structure. The flat sidebar keeps it.

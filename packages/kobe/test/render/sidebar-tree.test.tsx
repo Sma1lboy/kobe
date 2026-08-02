@@ -255,3 +255,43 @@ test("ctrl+p folds every project but the cursor's, and unfolds on a second press
   await new Promise((r) => setTimeout(r, SETTLE))
   expect(await frame()).toContain("feat/x")
 })
+
+test("move mode drags the PROJECT, routed through its main checkout", async () => {
+  // Owner call 2026-08-01: move at the level the tree shows, which is the
+  // group. The call goes to the project's `main` task because that is the row
+  // `moveTask` reorders projects by — no new persistence.
+  tabsByTask.clear()
+  const moves: Array<[string, number]> = []
+  const tasks = [MAIN, task("a"), task("x", { repo: "/repos/foxychat", branch: "feat/x" })]
+  const { frame, mockInput } = await renderComponent(
+    tree({ tasks, moveMode: true, onMoveRequest: (id, delta) => moves.push([id, delta]) }),
+    { width: 28, height: 20 },
+  )
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  // The cursor sits on `a`, whose project is /repos/kobe — main is `m`.
+  mockInput.typeText("j")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.typeText("k")
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  expect(moves).toEqual([
+    ["m", 1],
+    ["m", -1],
+  ])
+  // …and the cursor did NOT walk: j/k belong to the drag while move mode is on.
+  expect(await frame()).toContain(" move")
+})
+
+test("escape leaves move mode", async () => {
+  tabsByTask.clear()
+  let exited = 0
+  const { mockInput } = await renderComponent(tree({ moveMode: true, onMoveModeExit: () => exited++ }), {
+    width: 28,
+    height: 20,
+  })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.pressEscape()
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(exited).toBe(1)
+})

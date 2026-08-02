@@ -35,6 +35,8 @@ export function SidebarTreeBody(props: {
   readonly shared: TreeRowShared
   readonly onToggleProject: (projectId: string) => void
   readonly onProjectContextMenu?: (projectId: string, x: number, y: number) => void
+  /** Project being dragged in move mode — wears the move chip. */
+  readonly movingProjectId?: string | null
   readonly setScrollRef: (renderable: ScrollBoxRenderable | null) => void
 }) {
   const { theme } = useTheme()
@@ -58,6 +60,7 @@ export function SidebarTreeBody(props: {
                 key={row.id}
                 prefix={collapsed ? "▸" : "▾"}
                 label={row.label}
+                suffix={props.movingProjectId === row.id ? t("tasks.moveChip") : undefined}
                 topPad={i > 0}
                 onPress={() => props.onToggleProject(row.id)}
                 onContextMenu={
