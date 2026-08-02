@@ -27,6 +27,24 @@ export const en = {
   search: {
     placeholder: "fuzzy filter",
   },
+  /** Tree sidebar right-click menu. Each entry mirrors a chord the row
+   *  already answers to, so the menu is a second route rather than a second
+   *  set of rules. */
+  menu: {
+    open: "Open",
+    openTab: "Open tab",
+    expand: "Expand",
+    collapse: "Collapse",
+    focusProject: "Focus project",
+    showAllProjects: "Show all projects",
+    newTask: "New task",
+    rename: "Rename",
+    pin: "Pin",
+    unpin: "Unpin",
+    localMerge: "Merge into local",
+    archive: "Archive",
+    delete: "Delete",
+  },
   /** Inline chip while move/reorder mode is active */
   moveChip: " move",
   /** Empty-state messages */
@@ -112,6 +130,21 @@ export const zh: typeof en = {
   },
   search: {
     placeholder: "模糊搜索",
+  },
+  menu: {
+    open: "打开",
+    openTab: "打开该标签页",
+    expand: "展开",
+    collapse: "折叠",
+    focusProject: "只看这个项目",
+    showAllProjects: "显示全部项目",
+    newTask: "新建任务",
+    rename: "重命名",
+    pin: "置顶",
+    unpin: "取消置顶",
+    localMerge: "合入本地分支",
+    archive: "归档",
+    delete: "删除",
   },
   moveChip: " 移动",
   empty: {

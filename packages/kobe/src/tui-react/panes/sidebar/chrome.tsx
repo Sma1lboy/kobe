@@ -6,7 +6,7 @@
  * 2026-08-01: the tree keeps the flat sidebar's design language).
  */
 
-import { TextAttributes } from "@opentui/core"
+import { MouseButton, TextAttributes } from "@opentui/core"
 import type { SidebarView } from "../../../tui/panes/sidebar/groups"
 import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { VIEW_TABS, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
@@ -20,6 +20,8 @@ export function SectionHeader(props: {
   /** Leading glyph cell (the tree's project twisty). */
   prefix?: string
   onPress?: () => void
+  /** Right-click, with the click's screen cell (the tree's project menu). */
+  onContextMenu?: (x: number, y: number) => void
 }) {
   const { theme, transparentBackground } = useTheme()
   const dividerColor = transparentBackground ? theme.border : theme.borderSubtle
@@ -36,7 +38,17 @@ export function SectionHeader(props: {
         gap={1}
         paddingLeft={1}
         paddingRight={1}
-        onMouseUp={props.onPress ? () => props.onPress?.() : undefined}
+        onMouseUp={
+          props.onPress || props.onContextMenu
+            ? (evt: { button: number; x: number; y: number }) => {
+                if (evt.button === MouseButton.RIGHT && props.onContextMenu) {
+                  props.onContextMenu(evt.x, evt.y)
+                  return
+                }
+                props.onPress?.()
+              }
+            : undefined
+        }
       >
         {props.prefix ? (
           <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>

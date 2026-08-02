@@ -262,9 +262,19 @@ export function projectKeysOf(tasks: readonly Task[]): string[] {
  * visible would be one more thing to keep in sync with the twisties.
  */
 export function focusProjectSet(projectIds: readonly string[], keepId: string, current: ExpandedSet): Set<string> {
+  return isProjectFocused(projectIds, keepId, current)
+    ? new Set<string>()
+    : new Set(projectIds.filter((id) => id !== keepId))
+}
+
+/** Whether `keepId` is currently the only open project — the state that makes
+ *  {@link focusProjectSet} undo itself, and what the menu reads to decide
+ *  between "Focus project" and "Show all projects". */
+export function isProjectFocused(projectIds: readonly string[], keepId: string, current: ExpandedSet): boolean {
   const others = projectIds.filter((id) => id !== keepId)
-  const alreadyFocused = others.length > 0 && !current.has(keepId) && others.every((id) => current.has(id))
-  return alreadyFocused ? new Set<string>() : new Set(others)
+  // A lone project can never be "focused": there is nothing folded to undo,
+  // so the toggle would latch on its first press and never come back.
+  return others.length > 0 && !current.has(keepId) && others.every((id) => current.has(id))
 }
 
 /**

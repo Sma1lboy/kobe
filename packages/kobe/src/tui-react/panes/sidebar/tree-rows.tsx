@@ -11,7 +11,7 @@
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
-import type { BoxRenderable } from "@opentui/core"
+import { type BoxRenderable, MouseButton } from "@opentui/core"
 import type { ReactNode } from "react"
 import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
 import type { TreeTab } from "../../../tui/panes/sidebar/tree-core"
@@ -33,6 +33,8 @@ export type TreeRowShared = {
   /** Keyed by FLAT INDEX so one scroll-follow lookup covers every row. */
   readonly rowEls: Map<number, BoxRenderable>
   readonly onPress: (flatIndex: number, rowId: string) => void
+  /** Right-click. Absent = right-click falls through to a plain activate. */
+  readonly onContextMenu?: (flatIndex: number, rowId: string, x: number, y: number) => void
   /** The sidebar's ~2s poll tick — drives the ±stats poller. */
   readonly branchTick: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
@@ -67,7 +69,16 @@ function RowShell(props: {
       flexDirection="row"
       gap={0}
       backgroundColor={selection.backgroundColor}
-      onMouseUp={() => shared.onPress(props.flatIndex, props.rowId)}
+      onMouseUp={(evt: { button: number; x: number; y: number }) => {
+        // Right-click opens the row's menu instead of activating it — the
+        // terminal only forwards button 2 while mouse reporting is on, which
+        // is the same mode the left-click activate already depends on.
+        if (evt.button === MouseButton.RIGHT && shared.onContextMenu) {
+          shared.onContextMenu(props.flatIndex, props.rowId, evt.x, evt.y)
+          return
+        }
+        shared.onPress(props.flatIndex, props.rowId)
+      }}
     >
       <text fg={selection.markerColor} wrapMode="none">
         {selection.marker}

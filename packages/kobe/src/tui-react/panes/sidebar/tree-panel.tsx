@@ -34,6 +34,7 @@ export function SidebarTreeBody(props: {
   readonly searching: boolean
   readonly shared: TreeRowShared
   readonly onToggleProject: (projectId: string) => void
+  readonly onProjectContextMenu?: (projectId: string, x: number, y: number) => void
   readonly setScrollRef: (renderable: ScrollBoxRenderable | null) => void
 }) {
   const { theme } = useTheme()
@@ -59,6 +60,9 @@ export function SidebarTreeBody(props: {
                 label={row.label}
                 topPad={i > 0}
                 onPress={() => props.onToggleProject(row.id)}
+                onContextMenu={
+                  props.onProjectContextMenu ? (x, y) => props.onProjectContextMenu?.(row.id, x, y) : undefined
+                }
               />
             )
           }

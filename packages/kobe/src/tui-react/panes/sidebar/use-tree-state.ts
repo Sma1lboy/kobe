@@ -21,6 +21,7 @@ import {
   buildTreeRows,
   filterTreeRows,
   focusProjectSet,
+  isProjectFocused,
   parseRowId,
   projectKeysOf,
   tabRowId,
@@ -63,6 +64,8 @@ export interface TreeState {
   readonly toggleProject: (projectId: string) => void
   /** Fold every project but this one (and unfold on a second press). */
   readonly focusProject: (projectId: string) => void
+  /** This project is currently the only open one. */
+  readonly isProjectFocused: (projectId: string) => boolean
   /** The project a task belongs to, or null for a project-less `dir` task. */
   readonly projectIdOfTask: (taskId: string) => string | null
 }
@@ -158,6 +161,10 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     },
     [projectIds],
   )
+  const projectFocused = useCallback(
+    (projectId: string): boolean => isProjectFocused(projectIds, projectId, collapsedProjects),
+    [projectIds, collapsedProjects],
+  )
   const projectIdOfTask = useCallback(
     (taskId: string): string | null => {
       const task = tasks.find((candidate) => candidate.id === taskId)
@@ -178,6 +185,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     toggleWorktree,
     toggleProject,
     focusProject,
+    isProjectFocused: projectFocused,
     projectIdOfTask,
   }
 }

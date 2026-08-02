@@ -6,9 +6,10 @@
  * Round 2 (same day): the tree keeps the flat sidebar's design language —
  * the same brand header / nav rail / view tabs chrome, the same two-line
  * row cards, the same section-header grammar for project groups. What the
- * tree CHANGES is structure only: tasks group under their project header,
- * a worktree's tabs render as child rows beneath its card, and at most one
- * worktree shows its tabs at a time (expansion follows selection).
+ * tree CHANGES is structure only: tasks group under their project header and
+ * a worktree's tabs render as child rows beneath its card. Everything starts
+ * expanded (owner call, round 4) — the collapse sets hold only what you folded
+ * by hand, so a new worktree or a freshly-mounted tab needs no keystroke.
  *
  * Navigation is deliberately the same machinery: the cursor indexes one flat
  * id list, so j/k/gg/enter come from the same `createSidebarController` the
@@ -21,17 +22,20 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
-import { parseRowId } from "../../../tui/panes/sidebar/tree-core"
+import { type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
+import type { TreeMenuAction } from "../../../tui/panes/sidebar/tree-menu"
 import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
 import { bindByIds } from "../../context/keybindings"
 import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
+import { ContextMenu } from "../../ui/context-menu"
 import { SidebarBrandHeader, SidebarNavRail, SidebarSearchInput, SidebarViewTabs, SidebarZenChip } from "./chrome"
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
+import { useTreeMenu } from "./use-tree-menu"
 import { useTreeSearch } from "./use-tree-search"
 import { useTreeState } from "./use-tree-state"
 
@@ -170,10 +174,100 @@ export function SidebarTree(props: SidebarTreeProps) {
     if (projectId !== null) tree.focusProject(projectId)
   }, [tree.projectIdOfTask, tree.focusProject])
 
+  /**
+   * What a menu entry does. Every branch routes to a callback the tree was
+   * already wired to — the menu adds a route, not a capability (see
+   * `tree-menu.ts` for why that rule picks the entries).
+   */
+  const runMenuAction = useCallback(
+    (action: TreeMenuAction, row: TreeRow): void => {
+      if (row.kind === "project") {
+        if (action === "toggle") tree.toggleProject(row.id)
+        else if (action === "focusProject") tree.focusProject(row.id)
+        else if (action === "newTask") props.onAddTask?.()
+        return
+      }
+      const taskId = row.task.id
+      switch (action) {
+        case "open":
+          activateRow(row.id)
+          break
+        case "toggle":
+          tree.toggleWorktree(taskId)
+          break
+        case "rename":
+          props.onRenameRequest?.(taskId)
+          break
+        case "pin":
+          props.onPinRequest?.(taskId)
+          break
+        case "localMerge":
+          props.onLocalMergeRequest?.(taskId)
+          break
+        case "archive":
+          props.onArchiveRequest?.(taskId)
+          break
+        case "delete":
+          props.onDeleteRequest?.(taskId)
+          break
+        default:
+          break
+      }
+    },
+    [
+      tree.toggleProject,
+      tree.focusProject,
+      tree.toggleWorktree,
+      activateRow,
+      props.onAddTask,
+      props.onRenameRequest,
+      props.onPinRequest,
+      props.onLocalMergeRequest,
+      props.onArchiveRequest,
+      props.onDeleteRequest,
+    ],
+  )
+  const menu = useTreeMenu(runMenuAction)
+
+  const openRowMenu = useCallback(
+    (flatIndex: number, rowId: string, x: number, y: number): void => {
+      const row = tree.rows.find((candidate) => candidate.id === rowId)
+      if (!row || row.kind === "project") return
+      // Move the cursor too: the menu and the highlight must agree about
+      // which row the next action lands on.
+      setCursorIndex(flatIndex)
+      menu.openAt(
+        row,
+        {
+          hasTabs: row.kind === "worktree" && tree.hasTabs(row.task.id),
+          collapsed: !tree.expandedWorktrees.has(row.task.id),
+        },
+        x,
+        y,
+      )
+    },
+    [tree.rows, tree.hasTabs, tree.expandedWorktrees, menu.openAt, setCursorIndex],
+  )
+
+  const openProjectMenu = useCallback(
+    (projectId: string, x: number, y: number): void => {
+      const row = tree.rows.find((candidate) => candidate.kind === "project" && candidate.id === projectId)
+      if (!row) return
+      menu.openAt(
+        row,
+        { collapsed: tree.collapsedProjects.has(projectId), projectFocused: tree.isProjectFocused(projectId) },
+        x,
+        y,
+      )
+    },
+    [tree.rows, tree.collapsedProjects, tree.isProjectFocused, menu.openAt],
+  )
+
   useBindings(() => ({
     // Search mode swallows the letter chords — j/k/d/a/r must reach the query
-    // as text, exactly as in the flat sidebar's keys.ts.
-    enabled: focused && !search.active,
+    // as text, exactly as in the flat sidebar's keys.ts. An open menu swallows
+    // them for the same reason: j/k/enter belong to the menu while it is up.
+    enabled: focused && !search.active && !menu.open,
     bindings: bindByIds({
       "sidebar.nav": (_evt, slot) => {
         if ((slot ?? 0) % 2 === 0) ctrl.moveDown()
@@ -223,6 +317,23 @@ export function SidebarTree(props: SidebarTreeProps) {
       },
       "sidebar.search.cancel": () => search.exit(),
     }),
+  }))
+
+  // Menu chords — the same j/k/enter the tree uses, retargeted at the menu
+  // while it is up. No new bindings: an open menu is a mode, not a surface
+  // with its own vocabulary.
+  useBindings(() => ({
+    enabled: focused && menu.open,
+    bindings: bindByIds({
+      "sidebar.nav": (_evt, slot) => menu.moveCursor((slot ?? 0) % 2 === 0 ? 1 : -1),
+      "sidebar.select": () => menu.pickCurrent(),
+    }),
+  }))
+  // Escape has no sidebar-scope registry entry outside search, so it binds
+  // raw — the same escape hatch move mode uses in keys.ts.
+  useBindings(() => ({
+    enabled: focused && menu.open,
+    bindings: [{ key: "escape", cmd: () => menu.close() }],
   }))
 
   function withCursorTask(fn?: (taskId: string) => void): void {
@@ -279,9 +390,13 @@ export function SidebarTree(props: SidebarTreeProps) {
     activeRowId: tree.activeRowId,
     rowEls,
     onPress: (flatIndex, rowId) => {
+      // Clicking a row while a menu is up dismisses it — otherwise the menu
+      // would hang over a row it no longer describes.
+      menu.close()
       setCursorIndex(flatIndex)
       activateRow(rowId)
     },
+    onContextMenu: openRowMenu,
     branchTick,
     engineState: props.engineState,
     engineLifecycle: props.engineLifecycle,
@@ -322,11 +437,15 @@ export function SidebarTree(props: SidebarTreeProps) {
         searching={search.active && search.query.trim().length > 0}
         shared={shared}
         onToggleProject={tree.toggleProject}
+        onProjectContextMenu={openProjectMenu}
         setScrollRef={(r) => {
           scrollRef.current = r
         }}
       />
       {props.zenActive ? <SidebarZenChip onZenClick={props.onZenClick} /> : null}
+      {menu.open ? (
+        <ContextMenu entries={menu.entries} cursor={menu.cursor} x={menu.x} y={menu.y} dims={dims} onPick={menu.pick} />
+      ) : null}
       {/* Terminal dimensions are read so the body re-measures on resize. */}
       {dims.height < 0 ? <text>{""}</text> : null}
     </box>
