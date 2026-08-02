@@ -127,7 +127,6 @@ echo "Ready to push main + $TAG → GitHub Actions will:"
 echo "  • typecheck + test + build"
 echo "  • npm publish @sma1lboy/kobe@$NEW_VERSION"
 echo "  • create GitHub release with the notes above"
-echo "  • build standalone binaries (darwin-arm64, linux-x64, linux-arm64)"
 echo ""
 read -rp "Push now? [y/N] " REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
