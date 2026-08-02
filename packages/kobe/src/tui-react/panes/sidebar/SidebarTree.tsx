@@ -397,8 +397,10 @@ export function SidebarTree(props: SidebarTreeProps) {
       {search.active ? (
         <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
       ) : null}
-      <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
       <SidebarViewTabs view={view} setView={setView} />
+      {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
+          within the workspace you're in, so they read as children of it. */}
+      <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}
@@ -413,7 +415,18 @@ export function SidebarTree(props: SidebarTreeProps) {
       />
       {props.zenActive ? <SidebarZenChip onZenClick={props.onZenClick} /> : null}
       {menu.open ? (
-        <ContextMenu entries={menu.entries} cursor={menu.cursor} x={menu.x} y={menu.y} dims={dims} onPick={menu.pick} />
+        <ContextMenu
+          entries={menu.entries}
+          cursor={menu.cursor}
+          x={menu.x}
+          y={menu.y}
+          // Clamp to the RAIL, not the screen: the menu is an absolute child
+          // of the sidebar box, so anything past the rail's right edge is
+          // clipped under the workspace pane. Every entry fits in the rail's
+          // width, so opening leftward beats being half-hidden.
+          dims={{ width: effectiveWidth, height: dims.height }}
+          onPick={menu.pick}
+        />
       ) : null}
       {/* Terminal dimensions are read so the body re-measures on resize. */}
       {dims.height < 0 ? <text>{""}</text> : null}

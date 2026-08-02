@@ -89,12 +89,15 @@ export function SidebarPanel(props: {
         <SidebarSearchInput query={props.searchQuery} matchCount={props.flatIds.length} totalCount={props.totalRows} />
       ) : null}
 
-      <SidebarNavRail nav={props.nav} setNav={props.setNav} />
-
       {/* Archives filters the task list INSIDE the sidebar — it changes which
           tasks the list shows, and is unrelated to what the content pane on
           the right is displaying. */}
       <SidebarViewTabs view={props.view} setView={props.setView} />
+
+      {/* The rail sits BELOW the view tabs (owner 2026-08-02): Kanban and
+          Routines are things you open within the workspace you're in, so
+          they read as children of that choice, not as peers of the brand. */}
+      <SidebarNavRail nav={props.nav} setNav={props.setNav} />
       {/* Filter active ⇒ keep the header (and its filter label) visible even
           when the filtered repo has no main row to show. */}
       {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (
