@@ -17,7 +17,7 @@
 
 import type { Task } from "@/types/task"
 import { DEFAULT_TASK_VENDOR } from "@/types/task"
-import { useCallback, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { sidebarProjectKey } from "../../../tui/panes/sidebar/groups"
 import {
   type TreeRow,
@@ -29,7 +29,9 @@ import {
   tabRowId,
   treeFlatIds,
 } from "../../../tui/panes/sidebar/tree-core"
+import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
 import { tabTitle } from "../../../tui/workspace/terminal-tab-split"
+import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
 import type { TabsSnapshotKv } from "../../workspace/terminal-tabs-persist"
 import { knownTaskTabs } from "../../workspace/terminal-tabs-shared"
 
@@ -66,10 +68,20 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   const query = opts.query ?? ""
   const searching = query.trim() !== ""
 
+  // Live process identity (the `ps`-walk store): a user-typed `claude` in a
+  // shell tab IS an agent while that process lives, and stops being one the
+  // moment it exits — the same rule the strip/turn-polls use. Subscribing
+  // here is what re-renders the tree when a shell becomes an agent; the
+  // store notifies only when some key's vendor actually MOVED.
+  const liveEngines = getDefaultLiveEngines()
+  const [liveTick, setLiveTick] = useState(0)
+  useEffect(() => liveEngines.subscribe(() => setLiveTick((tick) => tick + 1)), [liveEngines])
+
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
   // recomputing with it is correct, not wasteful.
   const tabsByTask = useMemo<ReadonlyMap<string, readonly TreeTab[]>>(() => {
+    void liveTick
     const map = new Map<string, readonly TreeTab[]>()
     for (const task of tasks) {
       const known = knownTaskTabs(kv, task.id)
@@ -86,12 +98,15 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
           // The active tab carries the task's state glyph (activity is
           // task-scoped; the active tab is the session it describes).
           active: tab.id === known.activeId,
-          engine: tab.kind === "engine",
+          // Agent = a kobe-launched engine tab OR any tab whose live
+          // process is an engine right now (user typed `claude` in a
+          // shell). Process identity, not tab kind — the unified model.
+          engine: tab.kind === "engine" || liveEngines.get(tabPtyKeyFor(task.id, tab)) !== null,
         })),
       )
     }
     return map
-  }, [tasks, kv])
+  }, [tasks, kv, liveEngines, liveTick])
 
   const { rows, totalCount } = useMemo(() => {
     const all = buildTreeRows({ tasks, tabsByTask })
