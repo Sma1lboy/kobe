@@ -2,7 +2,7 @@
 "@sma1lboy/kobe": patch
 ---
 
-Sidebar as a tree: project → worktree → tab, with the right pane showing nothing but the active terminal. Tabs are rows under their worktree (everything starts expanded; `h`/`l` fold what you don't want to see), `enter` on a tab row switches straight to it, and the horizontal tab strip is retired by default (Settings → General → Terminal brings it back, or switch back to the flat sidebar there).
+Sidebar as a tree: project → worktree → tab, with the right pane showing nothing but the active terminal. Everything is always expanded — the tree never folds — and every row is one line: a worktree row carries branch, pin, PR chip and ±stats; the session state circle lives on its agent tab rows (a shell that starts `claude` becomes an agent row while the process lives, surviving TUI restarts). `enter` or `l` on a tab row switches straight to it, `/` also matches live tab titles, right-click opens each row's menu, and the horizontal tab strip is retired by default (Settings → General → Terminal brings it back, or switch back to the flat sidebar there).
 
 `prefix+m` reorders **projects** in the tree — `j`/`k` drag the cursor row's whole project group, `enter`/`esc` leave. Sorting is gone from the tree: the structure already carries an order, and manual placement is what move mode is for.
 
