@@ -93,17 +93,25 @@ export function SidebarTree(props: SidebarTreeProps) {
   const flatIdsRef = useLatest(tree.flatIds)
 
   // Follow the active row when the selection moves from elsewhere (the F7
-  // attention jump, the inbox). Clamp when the list shrank under the cursor.
+  // attention jump, the inbox). EDGE-triggered on the active row CHANGING —
+  // not on every list identity churn: flatIds rebuilds on the 2s branch tick
+  // and every engine-state push, and re-anchoring then dragged the cursor
+  // back to the selected row while the user was j/k-walking the tree
+  // (prefix+h → move → yanked back, owner bug 2026-08-02). Clamps still run
+  // on every list change so a shrunken list can't strand the cursor.
+  const prevActiveRef = useRef<string | null>(null)
   useEffect(() => {
     const ids = tree.flatIds
     const active = tree.activeRowId
+    const activeMoved = active !== prevActiveRef.current
+    prevActiveRef.current = active
     const at = active === null ? -1 : ids.indexOf(active)
-    if (at >= 0) {
+    if (activeMoved && at >= 0) {
       if (at !== cursorRef.current) setCursorIndex(at)
       return
     }
     if (cursorRef.current >= ids.length) setCursorIndex(Math.max(0, ids.length - 1))
-    else if (cursorRef.current < 0 && ids.length > 0) setCursorIndex(0)
+    else if (cursorRef.current < 0 && ids.length > 0) setCursorIndex(at >= 0 ? at : 0)
   }, [tree.flatIds, tree.activeRowId, setCursorIndex])
 
   // Land the highlight on the top match on every search keystroke. Declared

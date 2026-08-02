@@ -93,21 +93,16 @@ export interface TreeInput {
  * project row is a pure grouping header (a repo, not a checkout), which is
  * what lets "main" carry tabs like any other worktree.
  *
- * `dir` tasks have no project association by construction (`kobe .` on an
- * arbitrary directory), so they are emitted as depth-1 rows with no project
- * header — hiding them under a synthetic project would claim a relationship
- * that does not exist.
+ * `dir` tasks (`kobe .` on an arbitrary directory) group under THEIR
+ * DIRECTORY as the project header (owner 2026-08-02) — their `repo` IS the
+ * directory, so the grouping rule is the same one every task uses. Emitting
+ * them loose after the last project made them read as that project's rows.
  */
 export function buildTreeRows(input: TreeInput): TreeRow[] {
   const { tasks, tabsByTask } = input
   const byProject = new Map<string, { repo: string; tasks: Task[] }>()
-  const looseTasks: Task[] = []
 
   for (const task of tasks) {
-    if (task.kind === "dir") {
-      looseTasks.push(task)
-      continue
-    }
     const key = sidebarProjectKey(task.repo)
     const entry = byProject.get(key) ?? { repo: task.repo, tasks: [] }
     // The main task carries the canonical repo path — a regular task's
@@ -127,7 +122,6 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
     rows.push({ kind: "project", id: key, repo: entry.repo, label: repoBasename(entry.repo), depth: 0 })
     for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask)
   }
-  for (const task of looseTasks) pushWorktree(rows, task, tabsByTask)
   return rows
 }
 
@@ -155,11 +149,10 @@ export function treeFlatIds(rows: readonly TreeRow[]): string[] {
   return ids
 }
 
-/** The project a row belongs to, or null when it has none — `dir` tasks are
- *  emitted without a project header by construction, so they have no ancestor
- *  for a search hit to keep alive. */
+/** The project a row belongs to. A `dir` task's project is its directory —
+ *  the same key `buildTreeRows` groups it under. */
 function ownerProjectKey(task: Task): string | null {
-  return task.kind === "dir" ? null : sidebarProjectKey(task.repo)
+  return sidebarProjectKey(task.repo)
 }
 
 /** What a row's text is matched against. */

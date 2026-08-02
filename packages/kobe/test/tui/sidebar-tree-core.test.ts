@@ -72,11 +72,15 @@ describe("buildTreeRows", () => {
     expect(result.map((r) => r.id)).toEqual(["/repos/kobe", "a", "a::tab-1", "a::tab-2"])
   })
 
-  test("a dir task gets no project header — it has no project", () => {
-    // `kobe .` on an arbitrary directory. Inventing a header for it would
-    // claim a repo relationship that does not exist.
+  test("a dir task groups under its directory as the project header", () => {
+    // `kobe .` on an arbitrary directory (owner 2026-08-02): loose rows
+    // after the last project read as THAT project's rows, so the directory
+    // itself is the header — same grouping rule as every other task.
     const result = rows({ tasks: [task("d", { kind: "dir", repo: "/tmp/scratch" })] })
-    expect(result.map((r) => [r.kind, r.id])).toEqual([["worktree", "d"]])
+    expect(result.map((r) => [r.kind, r.id])).toEqual([
+      ["project", "/tmp/scratch"],
+      ["worktree", "d"],
+    ])
   })
 
   test("a task whose tabs never mounted contributes no tab rows", () => {
@@ -150,17 +154,17 @@ describe("filterTreeRows", () => {
     expect(ids("zzzz")).toEqual([])
   })
 
-  test("a dir task has no project header to keep alive", () => {
+  test("a dir task's hit keeps its directory header", () => {
     const loose = rows({
       tasks: [task("d", { kind: "dir", repo: "/tmp/scratch", branch: "", title: "scratchpad" })],
       tabsByTask: new Map(),
     })
-    expect(filterTreeRows(loose, "scratch").map((r) => r.id)).toEqual(["d"])
+    expect(filterTreeRows(loose, "scratch").map((r) => r.id)).toEqual(["/tmp/scratch", "d"])
   })
 })
 
 describe("projectKeysOf", () => {
-  test("first-seen order, deduped, dir tasks excluded", () => {
+  test("first-seen order, deduped; a dir task contributes its directory", () => {
     expect(
       projectKeysOf([
         task("a", { repo: "/repos/kobe" }),
@@ -168,7 +172,7 @@ describe("projectKeysOf", () => {
         task("c", { repo: "/repos/kobe" }),
         task("d", { kind: "dir", repo: "/tmp/scratch" }),
       ]),
-    ).toEqual(["/repos/kobe", "/repos/foxychat"])
+    ).toEqual(["/repos/kobe", "/repos/foxychat", "/tmp/scratch"])
   })
 })
 
