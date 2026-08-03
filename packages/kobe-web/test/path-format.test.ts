@@ -34,4 +34,24 @@ describe("tailPath", () => {
     expect(tailPath(long)).toHaveLength(36)
     expect(tailPath(long).startsWith("…")).toBe(true)
   })
+
+  it("does not split a surrogate pair at the truncation seam", () => {
+    // Each 📁 (U+1F4C1) is two UTF-16 units, so a code-unit .slice can begin
+    // the kept tail on a lone low surrogate and emit a `�` glyph. Iterating by
+    // code point keeps every emoji intact.
+    const out = tailPath("📁".repeat(20), 8)
+    expect(out.startsWith("…")).toBe(true)
+    expect(out).not.toContain("�")
+    // Leading `…` + 7 whole emoji, none bisected.
+    expect([...out]).toHaveLength(8)
+    expect(out).toBe(`…${"📁".repeat(7)}`)
+  })
+
+  it("counts astral characters by code point, not UTF-16 unit, when within budget", () => {
+    // 10 emoji is 20 UTF-16 units but only 10 code points — well within a
+    // 36-code-point budget, so the path is returned unchanged rather than
+    // needlessly truncated.
+    const path = "📁".repeat(10)
+    expect(tailPath(path)).toBe(path)
+  })
 })
