@@ -107,8 +107,9 @@ function RowShell(props: {
 /**
  * A worktree row carries NO state glyph (owner call 2026-08-01, round 6):
  * the session state belongs to the chattab that runs it, so the glyph lives
- * on the tab row below. What stays here is worktree-level fact — branch,
- * pin, PR chip, ±change stats.
+ * on the tab row below. What stays here is worktree-level identity — the
+ * human task title (or the live branch for main), pin, PR chip, ±change
+ * stats.
  */
 export function WorktreeTreeRow(props: {
   readonly rowId: string
@@ -122,18 +123,17 @@ export function WorktreeTreeRow(props: {
   const isCursor = shared.cursorIndex === props.flatIndex
   const changes = useChanges(shared, task)
   const chip = prCheckChip(task)
-  // A worktree row is named by its BRANCH. A `main` row stores no branch
-  // (its checkout moves freely), so it polls the repo HEAD — falling back
-  // to the title repeated the project header's name right under it (owner
-  // 2026-08-02), which read as a duplicate row instead of "the main
-  // checkout, currently on <branch>".
+  // Task worktrees use their human title: generated branch slugs are useful
+  // git metadata but too abstract to scan as the task's only visible name.
+  // A `main` row is the exception. Its title repeats the project header, so
+  // it polls repo HEAD and shows the live branch instead (owner 2026-08-04).
   const isMain = task.kind === "main"
   useEffect(() => {
     // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
     void shared.branchTick
     if (isMain) pollCurrentBranch(task.repo)
   }, [isMain, task.repo, shared.branchTick])
-  const label = (isMain ? currentBranch(task.repo) : task.branch) || task.branch || task.title
+  const label = isMain ? currentBranch(task.repo) || task.branch || task.title : task.title || task.branch
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={shared}>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>

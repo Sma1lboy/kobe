@@ -39,7 +39,7 @@ const RIGHT = 2
 function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
   return (
     <SidebarTree
-      tasks={[MAIN, task("a"), task("b")]}
+      tasks={[MAIN, task("a", { title: "alpha task" }), task("b", { title: "bravo task" })]}
       selectedId="a"
       selectedTabId={null}
       onSelect={() => {}}
@@ -64,7 +64,7 @@ test("right-click on a worktree row opens that row's menu", async () => {
   const before = await frame()
   expect(before).not.toContain("Rename")
 
-  await mockMouse.click(2, lineOf(before, "feat/a"), RIGHT)
+  await mockMouse.click(2, lineOf(before, "alpha task"), RIGHT)
   await settle()
 
   const after = await frame()
@@ -82,7 +82,7 @@ test("a menu entry fires the row's real callback", async () => {
     height: 24,
   })
   await settle()
-  await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
+  await mockMouse.click(2, lineOf(await frame(), "alpha task"), RIGHT)
   await settle()
 
   // Highlight starts on "Open"; j steps to "Rename".
@@ -106,7 +106,7 @@ test("escape closes the menu and hands j/k back to the tree", async () => {
     height: 24,
   })
   await settle()
-  await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
+  await mockMouse.click(2, lineOf(await frame(), "alpha task"), RIGHT)
   await settle()
   expect(await frame()).toContain("Rename")
 
@@ -145,7 +145,7 @@ test("left-click still activates the row it lands on", async () => {
     height: 24,
   })
   await settle()
-  await mockMouse.click(2, lineOf(await frame(), "feat/b"), 0)
+  await mockMouse.click(2, lineOf(await frame(), "bravo task"), 0)
   await settle()
 
   expect(chosen).toEqual(["b"])

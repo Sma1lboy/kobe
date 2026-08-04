@@ -61,7 +61,8 @@ function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
 
 test("renders project header, worktree cards, and tab rows", async () => {
   seedTabs("a", ["tab-1", "tab-2"])
-  const { frame } = await renderComponent(tree(), { width: 28, height: 24 })
+  const tasks = [MAIN, task("a", { title: "alpha task" }), task("b", { title: "bravo task" })]
+  const { frame } = await renderComponent(tree({ tasks }), { width: 28, height: 24 })
   await new Promise((r) => setTimeout(r, SETTLE))
   const text = await frame()
 
@@ -71,9 +72,12 @@ test("renders project header, worktree cards, and tab rows", async () => {
   expect(text).toContain("kobe ─")
   expect(text).not.toContain("▾")
   expect(text).not.toContain("▸")
-  // Worktrees are the same two-line cards; their branch is the subtitle.
-  expect(text).toContain("feat/a")
-  expect(text).toContain("feat/b")
+  // Worktree rows keep the task's human name. The generated branch remains
+  // git metadata rather than replacing the only scannable task label.
+  expect(text).toContain("alpha task")
+  expect(text).toContain("bravo task")
+  expect(text).not.toContain("feat/a")
+  expect(text).not.toContain("feat/b")
   // The selected worktree starts expanded, so its tabs are visible without a
   // keystroke — that is the whole point of replacing the strip.
   expect(text).toContain("tab 1")
@@ -84,10 +88,19 @@ test("renders project header, worktree cards, and tab rows", async () => {
     const line = lines.find((l) => l.includes(needle)) ?? ""
     return line.indexOf(needle)
   }
-  // A tab row reads as a CHILD of its card: one level right of the card's
-  // subtitle column. (Cards and section headers share the left edge — that
-  // is the flat sidebar's own grammar, unchanged.)
-  expect(indentOf("tab 1")).toBeGreaterThan(indentOf("feat/a"))
+  // A tab row reads as a CHILD of its worktree: one level farther right.
+  expect(indentOf("tab 1")).toBeGreaterThan(indentOf("alpha task"))
+})
+
+test("worktree rows show the human task title instead of the generated branch", async () => {
+  tabsByTask.clear()
+  const tasks = [MAIN, task("a", { title: "fix readable rail", branch: "kobe/fix-readable-rail-a1b2c3" })]
+  const { frame } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  const text = await frame()
+  expect(text).toContain("fix readable rail")
+  expect(text).not.toContain("kobe/fix-readable")
 })
 
 test("enter on a tab row activates that tab, not just its task", async () => {
@@ -192,7 +205,7 @@ test("/ opens the query row and prunes the tree to matches plus ancestors", asyn
   const tasks = [MAIN, task("a", { title: "alpha" }), task("b", { title: "bravo" })]
   const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("feat/a")
+  expect(await frame()).toContain("alpha")
 
   mockInput.typeText("/")
   await new Promise((r) => setTimeout(r, SETTLE))
@@ -204,8 +217,8 @@ test("/ opens the query row and prunes the tree to matches plus ancestors", asyn
   expect(text).toContain("/bravo")
   // …the match survives, its sibling does not, and the project header stays
   // so the hit is not left floating.
-  expect(text).toContain("feat/b")
-  expect(text).not.toContain("feat/a")
+  expect(text).toContain("bravo")
+  expect(text).not.toContain("alpha")
   expect(text).toContain("kobe")
 })
 
@@ -213,7 +226,8 @@ test("the query matches a live TAB title, which no task-title search could", asy
   // The tree's own increment over the flat sidebar: "which tab is running
   // that thing" is answerable, and the answer drags its worktree along.
   seedTabsNamed("a", [["tab-1", "zebra-tab"]])
-  const { frame, mockInput } = await renderComponent(tree(), { width: 28, height: 20 })
+  const tasks = [MAIN, task("a", { title: "alpha parent" }), task("b", { title: "bravo sibling" })]
+  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
 
   mockInput.typeText("/")
@@ -223,8 +237,8 @@ test("the query matches a live TAB title, which no task-title search could", asy
 
   const text = await frame()
   expect(text).toContain("zebra-tab")
-  expect(text).toContain("feat/a")
-  expect(text).not.toContain("feat/b")
+  expect(text).toContain("alpha parent")
+  expect(text).not.toContain("bravo sibling")
 })
 
 test("escape leaves search and restores the full tree", async () => {
@@ -237,12 +251,12 @@ test("escape leaves search and restores the full tree", async () => {
   await new Promise((r) => setTimeout(r, SETTLE))
   mockInput.typeText("bravo")
   await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).not.toContain("feat/a")
+  expect(await frame()).not.toContain("alpha")
 
   mockInput.pressEscape()
   await new Promise((r) => setTimeout(r, SETTLE))
   const text = await frame()
-  expect(text).toContain("feat/a")
+  expect(text).toContain("alpha")
   expect(text).not.toContain("/bravo")
 })
 
