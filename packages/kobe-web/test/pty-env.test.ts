@@ -17,4 +17,21 @@ describe("ptyEnv", () => {
     })
     expect(base.NO_COLOR).toBe("1")
   })
+
+  it("strips ancestor Claude-session markers so engines persist transcripts", () => {
+    const env = ptyEnv({
+      TERM: "xterm-256color",
+      CLAUDE_CODE_CHILD_SESSION: "1",
+      CLAUDE_CODE_SESSION_ID: "abc",
+      CLAUDE_CODE_ENTRYPOINT: "cli",
+      CLAUDECODE: "1",
+      CLAUDE_PID: "123",
+    })
+    expect(env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined()
+    expect(env.CLAUDE_CODE_SESSION_ID).toBeUndefined()
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined()
+    expect(env.CLAUDECODE).toBeUndefined()
+    expect(env.CLAUDE_PID).toBeUndefined()
+    expect(env.TERM).toBe("xterm-256color")
+  })
 })
