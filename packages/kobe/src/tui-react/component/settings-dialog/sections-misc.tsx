@@ -260,6 +260,14 @@ export function KeybindingsSettingsSection() {
       </text>
       <box flexDirection="column" gap={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {t("settings.keybindings.inputModel")}
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.keybindings.inputModelHint", { prefix: prefix.key ?? t("settings.keybindings.disabled") })}
+        </text>
+      </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
           {t("settings.keybindings.configFile")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
@@ -268,10 +276,13 @@ export function KeybindingsSettingsSection() {
       </box>
       <box flexDirection="column" gap={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          PureTUI prefix
+          {t("settings.keybindings.commandLayer")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          {`First stroke: ${prefix.key ?? "disabled"}; timeout: ${prefix.timeoutMs}ms. Prefix bindings retain their existing pane scope and modal barrier.`}
+          {t("settings.keybindings.commandLayerHint", {
+            prefix: prefix.key ?? t("settings.keybindings.disabled"),
+            timeout: prefix.timeoutMs,
+          })}
         </text>
       </box>
       {!report.exists ? (
@@ -281,7 +292,7 @@ export function KeybindingsSettingsSection() {
           </text>
           <text fg={theme.textMuted}>prefix:</text>
           <text fg={theme.textMuted}>{"  key: ctrl+a                 # first stroke (null disables)"}</text>
-          <text fg={theme.textMuted}>{"  timeoutMs: 1000             # second stroke deadline"}</text>
+          <text fg={theme.textMuted}>{"  timeoutMs: 3000             # second stroke deadline"}</text>
           <text fg={theme.textMuted}>{"  bindings:"}</text>
           <text fg={theme.textMuted}>{"    chat.tab.new: t           # ctrl+a, then t"}</text>
           <text fg={theme.textMuted}>bindings:</text>

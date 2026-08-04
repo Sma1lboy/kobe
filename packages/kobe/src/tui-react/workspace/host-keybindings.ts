@@ -126,7 +126,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     enabled: pagesClosed,
     bindings: [
       ...bindByIds({
-        "help.open": () => HelpDialog.show(dialog),
+        "help.open": () => HelpDialog.show(dialog, focus.focused),
         "focus.previous": () => cyclePane(-1),
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.

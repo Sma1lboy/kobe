@@ -127,7 +127,14 @@ export const en = {
   },
   keybindings: {
     title: "Keybindings",
-    hint: "Edit the YAML below to rebind direct and PureTUI prefix chords; changes reload live. Press F1 anywhere for the live keymap with every binding id.",
+    hint: "Edit the YAML below to rebind keys; changes reload live. Press F1 for a focus-aware reference generated from the active keymap.",
+    inputModel: "How keys work",
+    inputModelHint:
+      "Bare keys act in the focused pane. A small one-press set handles frequent Kobe actions. Press {prefix} to reveal less-frequent commands.",
+    commandLayer: "Kobe command layer",
+    commandLayerHint:
+      "First stroke: {prefix}; second-key window: {timeout}ms. The on-screen guide shows only commands available in the current context.",
+    disabled: "disabled",
     configFile: "Config file",
     notCreated: "  (not created yet)",
     example: "Example",
@@ -295,7 +302,12 @@ export const zh: typeof en = {
   },
   keybindings: {
     title: "快捷键",
-    hint: "编辑下面的 YAML 来重绑定直接按键和 PureTUI prefix 组合；修改会实时加载。任意位置按 F1 查看带每个绑定 id 的实时键位表。",
+    hint: "编辑下面的 YAML 来重绑定按键；修改会实时加载。按 F1 查看由当前实时 keymap 生成、感知焦点的参考。",
+    inputModel: "按键如何工作",
+    inputModelHint: "裸键操作当前聚焦区域；少量单次快捷键负责 Kobe 高频动作；按 {prefix} 展开低频命令。",
+    commandLayer: "Kobe 命令层",
+    commandLayerHint: "首键：{prefix}；第二键窗口：{timeout}ms。屏幕引导只显示当前上下文可用的命令。",
+    disabled: "已禁用",
     configFile: "配置文件",
     notCreated: "  (尚未创建)",
     example: "示例",

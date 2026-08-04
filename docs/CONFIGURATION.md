@@ -153,6 +153,10 @@ Full guide: [`docs/themes.md`](./themes.md). The short version:
 Full reference: [`docs/KEYBINDINGS.md`](./KEYBINDINGS.md). The configuration
 surface:
 
+- Bare keys belong to the focused pane, frequent Kobe actions use a small
+  one-press set, and the configured prefix opens an on-screen command map for
+  less-frequent actions. `F1` presents the same live keymap in that order.
+
 - Edit `~/.kobe/settings/keybindings.yaml` (`.yml` accepted when `.yaml` is
   absent). This is a hand-authored file; kobe never writes it.
 - Changes **reload live** through the daemon watcher; no restart needed.

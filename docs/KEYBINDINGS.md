@@ -13,11 +13,24 @@ The embedded engine terminal receives unclaimed terminal input. Kobe reserves
 only its explicit global/workspace chords; do not add broad interceptors that
 break engine-native shortcuts.
 
+The user-facing model has two independent dimensions:
+
+- **Where:** Kobe-wide or owned by the focused pane.
+- **How:** one press or a prefix sequence.
+
+That produces three common patterns: bare keys act in the focused pane; a
+small one-press set owns frequent Kobe actions; and the prefix opens the
+less-frequent command layer. The embedded terminal is the passthrough boundary:
+unreserved keys, including the prefix first stroke, remain engine/shell input.
+Press `ctrl+q` to leave it before opening the command layer.
+
 ## PureTUI prefix
 
 The default first stroke is `ctrl+a`. Prefix-only actions then consume one
-second key within 1000 ms. The HUD shows the pending prefix and cancels on
-timeout, modal changes, reload, or an invalid second stroke.
+second key within 3000 ms. After a short delay, the HUD expands into a
+which-key-style command map generated from the live Binding Stack, so it shows
+only actions that can run in the current focus/modal state. It cancels on
+timeout, modal changes, reload, `esc`, or an invalid second stroke.
 
 Default prefix actions:
 
@@ -34,7 +47,10 @@ Default prefix actions:
 | `ctrl+a`, `w` | Close active split |
 | `ctrl+a`, `1` | Point the content pane at the Kanban (kobe's own issue board) |
 | `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
+| `ctrl+a`, `3` | Point the content pane at GitHub Issues (external tracker) |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
+| `ctrl+a`, `,` | Open Settings |
+| `ctrl+a`, `p` / `P` | Create a PR from the active task |
 
 The rail pages take digits, not letters (owner call 2026-08-01): they are one
 kind of thing — "point the content pane at X" — and their order on the rail is
@@ -219,7 +235,7 @@ daemon watcher.
 ```yaml
 prefix:
   key: ctrl+a          # null disables prefix bindings
-  timeoutMs: 1000
+  timeoutMs: 3000
   bindings:
     chat.fork.new: f
 

@@ -18,22 +18,52 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useMemo, useRef } from "react"
 import { formatChord } from "../../tui/lib/chord-glyphs"
-import { capOf, groupBindings } from "../../tui/lib/help-groups"
-import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
+import { type HelpGrammarSection, type HelpSurface, grammarHelpSections } from "../../tui/lib/help-groups"
+import { type BindingReachability, currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { KobeKeymap, useKeymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { tKeys, useT } from "../i18n"
-import { useBindings } from "../lib/keymap"
+import { currentBindingReachability, useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 
-export function HelpDialog(props: { onClose?: () => void }) {
+function scopeCategory(scope: HelpGrammarSection["scope"]): string {
+  if (!scope) return "Global"
+  if (scope === "sidebar") return "Sidebar"
+  if (scope === "workspace") return "Workspace"
+  if (scope === "files") return "Files"
+  if (scope === "terminal") return "Terminal"
+  return "Dialog"
+}
+
+function displayCap(cap: string): string {
+  return cap
+    .split(" + ")
+    .map((part) => formatChord(part))
+    .join(" + ")
+}
+
+function sectionTitle(section: HelpGrammarSection, t: ReturnType<typeof useT>): string {
+  if (section.kind === "here") return t("help.here", { surface: tKeys("category", scopeCategory(section.scope)) })
+  if (section.kind === "direct") return t("help.direct")
+  if (section.kind === "prefix") return t("help.afterPrefix")
+  return t("help.otherPane", { surface: tKeys("category", scopeCategory(section.scope)) })
+}
+
+export function HelpDialog(props: {
+  onClose?: () => void
+  currentScope?: HelpSurface
+  reachability?: BindingReachability
+}) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
   const keymapVersion = useKeymapVersion()
   const pureTuiPrefix = currentPrefixConfiguration()
   // biome-ignore lint/correctness/useExhaustiveDependencies: keymapVersion is the invalidation key — the table is mutated in place.
-  const grouped = useMemo(() => groupBindings(KobeKeymap), [keymapVersion])
+  const sections = useMemo(
+    () => grammarHelpSections(KobeKeymap, props.currentScope ?? null, pureTuiPrefix.key, props.reachability),
+    [keymapVersion, props.currentScope, props.reachability, pureTuiPrefix.key],
+  )
   // Standalone full-window page (`kobe help-page`) passes its own exit;
   // the in-pane overlay closes by clearing the dialog stack.
   const close = () => (props.onClose ? props.onClose() : dialog.clear())
@@ -75,7 +105,14 @@ export function HelpDialog(props: { onClose?: () => void }) {
             {t("help.title")}
           </text>
           <text fg={theme.textMuted}>
-            {`PureTUI prefix: ${pureTuiPrefix.key ? formatChord(pureTuiPrefix.key) : "disabled"} · ${pureTuiPrefix.timeoutMs}ms`}
+            {props.currentScope
+              ? t("help.focused", { surface: tKeys("category", scopeCategory(props.currentScope)) })
+              : t("help.allBindings")}
+          </text>
+          <text fg={theme.textMuted}>
+            {t("help.grammar", {
+              prefix: pureTuiPrefix.key ? formatChord(pureTuiPrefix.key) : t("help.disabled"),
+            })}
           </text>
         </box>
         <text fg={theme.textMuted} onMouseUp={close}>
@@ -96,42 +133,23 @@ export function HelpDialog(props: { onClose?: () => void }) {
         }}
       >
         <box paddingBottom={1} gap={1} paddingRight={1}>
-          {grouped.map((group) => (
-            <box key={group.category} gap={0}>
+          {sections.map((section, sectionIndex) => (
+            <box key={`${section.kind}-${section.scope ?? sectionIndex}`} gap={0}>
               <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-                {tKeys("category", group.category)}
+                {sectionTitle(section, t)}
               </text>
-              {group.rows.map((row) => {
-                // Prefer hint.keys (the user-facing chord label, e.g. "j/k")
-                // when present; fall back to the first registered chord.
-                // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via formatChord
-                // so the help matches the footer.
-                const prefixPrimary =
-                  pureTuiPrefix.key && row.prefixKeys?.[0] ? `prefix + ${formatChord(row.prefixKeys[0])}` : undefined
-                const rawPrimary = prefixPrimary ?? capOf(row) ?? "—"
-                const primary = prefixPrimary ?? (rawPrimary === "—" ? "—" : formatChord(rawPrimary))
-                // A prefix primary leaves every direct chord as a visible
-                // alias. Without this, a user-configured direct+prefix row
-                // silently lost its first direct chord in F1.
-                const directAliases = (prefixPrimary || row.hint ? row.keys : row.keys.slice(1)).map((key) =>
-                  formatChord(key),
-                )
-                const aliases = directAliases.concat(
-                  pureTuiPrefix.key
-                    ? (row.prefixKeys?.slice(1).map((key) => `prefix + ${formatChord(key)}`) ?? [])
-                    : [],
-                )
+              {section.rows.map((row) => {
                 return (
-                  <box key={row.id} flexDirection="row" gap={2} paddingLeft={1}>
-                    <box width={14}>
-                      <text fg={theme.primary}>{primary}</text>
+                  <box key={`${section.kind}-${row.binding.id}`} flexDirection="row" gap={2} paddingLeft={1}>
+                    <box width={18}>
+                      <text fg={theme.primary}>{displayCap(row.primary)}</text>
                     </box>
                     <box flexGrow={1}>
-                      <text fg={theme.text}>{tKeys("desc", row.id)}</text>
+                      <text fg={theme.text}>{tKeys("desc", row.binding.id)}</text>
                     </box>
-                    {aliases.length > 0 ? (
+                    {row.aliases.length > 0 ? (
                       <box>
-                        <text fg={theme.textMuted}>{`(${aliases.join(", ")})`}</text>
+                        <text fg={theme.textMuted}>{`(${row.aliases.map(displayCap).join(", ")})`}</text>
                       </box>
                     ) : null}
                   </box>
@@ -149,6 +167,7 @@ export function HelpDialog(props: { onClose?: () => void }) {
  * Convenience opener — pushes the help dialog onto the dialog stack.
  * Used by the global `?` binding. Static for parity with the Solid original.
  */
-HelpDialog.show = (dialog: DialogContext): void => {
-  dialog.replace(() => <HelpDialog />)
+HelpDialog.show = (dialog: DialogContext, currentScope?: HelpSurface): void => {
+  const reachability = currentBindingReachability()
+  dialog.replace(() => <HelpDialog currentScope={currentScope} reachability={reachability} />)
 }

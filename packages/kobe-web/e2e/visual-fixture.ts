@@ -14,7 +14,7 @@ export const VISUAL_HOME = join(VISUAL_ROOT, "home")
 export const VISUAL_REPO = join(VISUAL_ROOT, "fixture-repo")
 
 /** Bump when the fixture shape changes so warm reuse rebuilds. */
-const FIXTURE_VERSION = "3"
+const FIXTURE_VERSION = "4"
 const FIXTURE_MARKER = join(VISUAL_ROOT, "fixture-ok")
 
 // Kanban cards render their `created` date, so the screenshot gate breaks at
@@ -106,10 +106,11 @@ async function seedStartupState(): Promise<void> {
     skillVersion = undefined
   }
 
-  const state: Record<string, string | boolean | string[]> = {
+  const state: Record<string, string | number | boolean | string[]> = {
     "app.lastRunVersion": packageJson.version,
     onboarded: true,
     skillHintSeen: "1",
+    "keybindings.coach.step": 3,
     // The Worktrees page audits saved projects rather than task rows. Keep
     // the fixture repo in this independent registry so that visual journey
     // exercises the real daemon-backed audit instead of its empty state.

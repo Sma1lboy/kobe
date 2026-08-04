@@ -14,6 +14,7 @@ import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../state/sidebar-tree"
 import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { KeyboardCoach } from "../component/keyboard-coach"
 import { PrefixHud } from "../component/prefix-hud"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
@@ -464,10 +465,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           appeared. Absolute-positioned like SidebarHoverTooltip, under the
           host's NotificationsProvider. */}
       <ToastOverlay />
-      {/* Prefix sequence HUD — bottom-left over the Tasks sidebar (the
-          terminal column is off-limits: it collided with the engine's own
-          status line). Width-capped to the rail so lines never spill into
-          the terminal. */}
+      <KeyboardCoach focused={focus.focused} />
+      {/* Fast prefix feedback stays over the Tasks sidebar; after a short
+          pause it expands into the context-aware command map. */}
       <PrefixHud left={1} width={SIDEBAR_WIDTH - 2} />
     </box>
   )

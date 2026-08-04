@@ -10,7 +10,7 @@
 
 import type { KeyEvent } from "@opentui/core"
 import { isDev } from "../../env.ts"
-import { prefixHudPush, prefixHudSetArmed } from "./prefix-hud"
+import { type PrefixHudOption, prefixHudPush, prefixHudSetArmed } from "./prefix-hud"
 
 export type Binding = {
   key: string
@@ -186,7 +186,12 @@ export type PrefixConfiguration = {
   timeoutMs: number
 }
 
-export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 1000 }
+export type BindingReachability = {
+  direct: ReadonlySet<string>
+  prefix: ReadonlySet<string>
+}
+
+export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 3000 }
 
 let prefixConfiguration: PrefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
 let prefixArmedAt: number | null = null
@@ -217,11 +222,11 @@ export function resetPrefixState(): void {
   prefixHudSetArmed(false)
 }
 
-function armPrefix(now: number): void {
+function armPrefix(now: number, options: readonly PrefixHudOption[]): void {
   resetPrefixState()
   prefixArmedAt = now
   prefixTimer = setTimeout(resetPrefixState, prefixConfiguration.timeoutMs)
-  prefixHudSetArmed(true)
+  prefixHudSetArmed(true, options, now)
 }
 
 /** Chords already flagged by the shadowed-match warning (once per process
@@ -275,6 +280,43 @@ function prefixReachable(snapshot: readonly RegisteredBinding[]): boolean {
     if (cfg.modal) return false
   }
   return false
+}
+
+/**
+ * Snapshot the prefix command map using the same LIFO + modal reachability
+ * rules as dispatch. A duplicated stroke appears once and names the action
+ * that would actually win right now.
+ */
+function reachablePrefixOptions(snapshot: readonly RegisteredBinding[]): PrefixHudOption[] {
+  const options: PrefixHudOption[] = []
+  const seen = new Set<string>()
+  for (let i = snapshot.length - 1; i >= 0; i--) {
+    const cfg = snapshot[i]?.config()
+    if (!cfg || cfg.enabled === false) continue
+    for (const binding of cfg.bindings) {
+      if (binding.prefix !== true || seen.has(binding.key)) continue
+      seen.add(binding.key)
+      options.push({ stroke: binding.key, action: binding.id ?? binding.key })
+    }
+    if (cfg.modal) break
+  }
+  return options
+}
+
+/** Binding ids available above the active modal barrier right now. */
+export function bindingReachability(snapshot: readonly RegisteredBinding[]): BindingReachability {
+  const direct = new Set<string>()
+  const prefix = new Set<string>()
+  for (let i = snapshot.length - 1; i >= 0; i--) {
+    const cfg = snapshot[i]?.config()
+    if (!cfg || cfg.enabled === false) continue
+    for (const binding of cfg.bindings) {
+      if (!binding.id) continue
+      ;(binding.prefix === true ? prefix : direct).add(binding.id)
+    }
+    if (cfg.modal) break
+  }
+  return { direct, prefix }
 }
 
 /** Match one Binding Stack mode, preserving normal LIFO and modal semantics. */
@@ -373,7 +415,7 @@ export function dispatchKeyEvent(
     }
 
     if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key) && prefixReachable(snapshot)) {
-      armPrefix(now)
+      armPrefix(now, reachablePrefixOptions(snapshot))
       evt.preventDefault()
       return true
     }
