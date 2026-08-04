@@ -229,18 +229,26 @@ function joinBraceParts(prefix: string, seg: string, suffix: string): string {
  *   3. Plain path (possibly C-quoted, no rename).
  */
 function resolveNumstatField(field: string): { path: string; origPath?: string } {
-  const open = field.indexOf("{")
-  if (open >= 0) {
-    const close = field.indexOf("}", open)
-    const sep = field.indexOf(" => ", open)
-    if (close > open && sep >= 0 && sep < close) {
-      const prefix = field.slice(0, open)
-      const oldSeg = field.slice(open + 1, sep)
-      const newSeg = field.slice(sep + " => ".length, close)
-      const suffix = field.slice(close + 1)
-      return {
-        path: joinBraceParts(prefix, newSeg, suffix),
-        origPath: joinBraceParts(prefix, oldSeg, suffix),
+  // Brace compaction only ever appears UNQUOTED — git abandons it the moment
+  // either side needs C-quoting — so a field carrying a `"` is never this form.
+  // Anchor on the ` => ` separator and take the braces that WRAP it: the last
+  // `{` before it and the first `}` after it. A plain `indexOf("{")` would grab
+  // a literal brace in the common prefix (a directory named `a{b` renamed to
+  // `a{b/{old => new}`) and slice the path apart at the wrong seam.
+  if (!field.includes('"')) {
+    const sep = field.indexOf(" => ")
+    if (sep >= 0) {
+      const open = field.lastIndexOf("{", sep)
+      const close = field.indexOf("}", sep)
+      if (open >= 0 && close > sep) {
+        const prefix = field.slice(0, open)
+        const oldSeg = field.slice(open + 1, sep)
+        const newSeg = field.slice(sep + " => ".length, close)
+        const suffix = field.slice(close + 1)
+        return {
+          path: joinBraceParts(prefix, newSeg, suffix),
+          origPath: joinBraceParts(prefix, oldSeg, suffix),
+        }
       }
     }
   }

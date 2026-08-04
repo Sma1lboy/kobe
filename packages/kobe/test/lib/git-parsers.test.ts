@@ -158,6 +158,20 @@ describe("parseNumstatRows", () => {
     expect(parseNumstatRows("1\t0\tsrc/{shared}/util.ts")).toEqual([numstat("src/{shared}/util.ts", 1, 0)])
   })
 
+  test("resolves a brace rename whose common PREFIX contains a literal brace", () => {
+    // A directory literally named `a{b` renamed inside it: git emits
+    // `a{b/{old.txt => new.txt}` (verified against real `git diff --numstat`).
+    // Anchoring on the FIRST `{` would grab the prefix brace and slice the path
+    // apart at `a` — the structural braces are the ones wrapping ` => `.
+    expect(parseNumstatRows("0\t0\ta{b/{old.txt => new.txt}")).toEqual([numstat("a{b/new.txt", 0, 0, "a{b/old.txt")])
+  })
+
+  test("resolves a cross-directory brace rename under a brace-named prefix", () => {
+    // `git mv 'p{q/sub/f.txt' 'p{q/f.txt'` → `p{q/{sub => }/f.txt`. The prefix
+    // brace must not derail the seam collapse of the emptied new side.
+    expect(parseNumstatRows("3\t1\tp{q/{sub => }/f.txt")).toEqual([numstat("p{q/f.txt", 3, 1, "p{q/sub/f.txt")])
+  })
+
   test("resolves a move OUT of a subdirectory (empty new brace side)", () => {
     // `git mv src/sub/a.txt src/a.txt` — git empties the new side. Naive
     // concat would double the seam into `src//a.txt`; the new path must be
@@ -222,6 +236,19 @@ describe("porcelain ↔ numstat path coherence (the join the bug breaks)", () =>
     const [n] = parseNumstatRows('1\t0\t"a\\tb.txt"')
     expect(p?.path).toBe("a\tb.txt")
     expect(n?.path).toBe("a\tb.txt")
+  })
+
+  test("a rename under a brace-named directory keys onto the same porcelain path", () => {
+    // Porcelain reports the full paths (`a{b/old.txt -> a{b/new.txt`); numstat
+    // brace-compacts to `a{b/{old.txt => new.txt}`. If the numstat side grabbed
+    // the prefix brace it would resolve to `anew.txt` and orphan the +/- counts
+    // from the `R` status row. Both must land on `a{b/new.txt`.
+    const [p] = parsePorcelainRows("R  a{b/old.txt -> a{b/new.txt")
+    const [n] = parseNumstatRows("4\t2\ta{b/{old.txt => new.txt}")
+    expect(p?.path).toBe("a{b/new.txt")
+    expect(n?.path).toBe("a{b/new.txt")
+    expect(p?.path).toBe(n?.path)
+    expect(n?.origPath).toBe("a{b/old.txt")
   })
 
   test("a move OUT of a subdirectory keys onto the same porcelain path", () => {
