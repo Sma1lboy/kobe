@@ -93,6 +93,27 @@ describe("describeCron", () => {
     expect(describeCron("0 */6 * * *")).toBe("every day every 6h")
   })
 
+  test("spells every weekday, not just the ones whose slice happens to work", () => {
+    // The old `${d[0]}${d.slice(1).toLowerCase()}days` trick only spelled
+    // MON/FRI/SUN correctly; TUE/WED/THU/SAT came out "Tuedays", "Weddays",
+    // "Thudays", "Satdays". Every rung the ladder can step to must read right.
+    expect(describeCron("0 9 * * TUE")).toBe("Tuesdays at 09:00")
+    expect(describeCron("0 9 * * WED")).toBe("Wednesdays at 09:00")
+    expect(describeCron("0 9 * * THU")).toBe("Thursdays at 09:00")
+    expect(describeCron("0 9 * * FRI")).toBe("Fridays at 09:00")
+    expect(describeCron("0 9 * * SAT")).toBe("Saturdays at 09:00")
+    expect(describeCron("0 9 * * SUN")).toBe("Sundays at 09:00")
+  })
+
+  test("stays silent on an hourly list/range minute instead of naming a false time", () => {
+    // `15,45` and `10-20` are not one clock minute — `:15,45` would assert a
+    // fire time the schedule never has. The next-run preview carries the truth.
+    expect(describeCron("15,45 * * * *")).toBeNull()
+    expect(describeCron("10-20 * * * *")).toBeNull()
+    // A plain hourly minute still names itself.
+    expect(describeCron("15 * * * *")).toBe("every day hourly at :15")
+  })
+
   test("stays silent rather than describing a shape it does not model", () => {
     // A half-truth about when a schedule fires is worse than the raw cron —
     // the next-run preview already carries the ground truth.
