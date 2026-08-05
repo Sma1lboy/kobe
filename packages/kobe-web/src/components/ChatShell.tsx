@@ -22,7 +22,7 @@ import type { ColoredLine } from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { Toasts } from "./Toasts.tsx"
-import { TtyBlocksView } from "./TtyBlocksView.tsx"
+import { CommandMenu, TtyBlocksView, useTtyBlocks } from "./TtyBlocksView.tsx"
 
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
@@ -121,8 +121,7 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
   const [focusNonce, setFocusNonce] = useState(0)
 
   // Split each frame at the engine's input region: everything above it is the
-  // conversation body (history + any slash-command menu), the region itself is
-  // the current input line + status footer.
+  // conversation body, the region itself is the current input line + status.
   const textLines = useMemo(() => colored.map((l) => l.text), [colored])
   const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
   const bodyLines = useMemo(
@@ -130,6 +129,10 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
     [region, colored],
   )
   const promptText = region?.promptText ?? ""
+  // A trailing slash-command menu is lifted out of the body and floated just
+  // above the input row — where the native TUI shows it — instead of leaving
+  // it adrift in the scroll history.
+  const { body, menu } = useTtyBlocks(bodyLines)
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
@@ -158,9 +161,14 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
       </div>
       <div className="relative z-10 flex h-full flex-col bg-bg">
         <div className="min-h-0 flex-1">
-          <TtyBlocksView lines={bodyLines} />
+          <TtyBlocksView blocks={body} />
         </div>
         <div className="shrink-0 border-t border-line bg-surface">
+          {menu && (
+            <div className="border-b border-line px-4 py-2">
+              <CommandMenu items={menu} />
+            </div>
+          )}
           <InputMirror promptText={promptText} />
           {region && region.statusLines.length > 0 && (
             <div className="px-4 pb-2">

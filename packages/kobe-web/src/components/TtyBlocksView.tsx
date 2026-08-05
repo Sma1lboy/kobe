@@ -1,27 +1,34 @@
 /**
  * TtyBlocksView — render the TTY-translated blocks (lib/claude-tty.ts) with
- * the terminal's ANSI colors intact. Lines wrap (whitespace-pre-wrap) rather
- * than clip, so a wide slash-command menu or long tool output never loses
- * content off the right edge. The only restyle: user echoes as bubbles,
- * activity lines quieted. Nothing is reimplemented — it's the terminal's own
- * output, re-laid-out and colored.
+ * the terminal's ANSI colors intact. Lines keep native column alignment
+ * (whitespace-pre); block-art rows (the logo, boxes) render at line-height 1
+ * so their cells don't split apart. The slash-command menu is rendered by
+ * CommandMenu, which the shell floats just above the input row (like the
+ * native TUI) rather than leaving it adrift in the scroll body.
  */
 
 import { Fragment, useEffect, useMemo, useRef } from "react"
-import { parseTtyBlocks, type TtyBlock } from "../lib/claude-tty.ts"
+import {
+  type MenuItem,
+  parseTtyBlocks,
+  type TtyBlock,
+} from "../lib/claude-tty.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
 
-/** One colored terminal line as spans. `whitespace-pre` keeps the native
- *  column alignment (menus, diffs, boxes); the hidden PTY is sized a touch
- *  narrower than this column so a native line always fits — no wrap, no clip.
- *  Default fg falls through to CSS (the row's text color). */
+/** Box-drawing / block-element glyphs — rows containing them are art (logo,
+ *  frames, sparklines) and must render tight so cells abut. */
+const BLOCK_ART = /[█▉▊▋▌▍▎▏▀▄▐▖▗▘▙▚▛▜▝▞▟─━│┃┌┐└┘├┤┬┴┼╭╮╰╯╱╲╳]/
+
+/** One colored terminal line as spans. `whitespace-pre` keeps native column
+ *  alignment; art rows go line-height 1 so block cells don't split. */
 function Line({ line, className }: { line: ColoredLine; className?: string }) {
+  const art = BLOCK_ART.test(line.text)
   return (
     <div
-      className={`whitespace-pre font-mono text-[12px] leading-[1.55] ${className ?? "text-fg/90"}`}
+      className={`whitespace-pre font-mono text-[12px] ${art ? "leading-none" : "leading-[1.4]"} ${className ?? "text-fg/90"}`}
     >
       {line.segs.length === 0
-        ? " "
+        ? " "
         : line.segs.map((seg, i) => (
             <span
               // biome-ignore lint/suspicious/noArrayIndexKey: colored runs are positional, re-derived per frame
@@ -31,6 +38,25 @@ function Line({ line, className }: { line: ColoredLine; className?: string }) {
               {seg.text}
             </span>
           ))}
+    </div>
+  )
+}
+
+/** The slash-command menu as a tight name/description grid. Exported so the
+ *  shell can float it above the input row. */
+export function CommandMenu({ items }: { items: MenuItem[] }) {
+  return (
+    <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-0.5">
+      {items.map((item) => (
+        <Fragment key={item.name}>
+          <span className="font-mono text-[12px] text-primary">
+            {item.name}
+          </span>
+          <span className="truncate font-mono text-[12px] text-muted">
+            {item.desc}
+          </span>
+        </Fragment>
+      ))}
     </div>
   )
 }
@@ -51,17 +77,8 @@ function Block({ block }: { block: TtyBlock }) {
       return <Line line={block.line} className="text-subtle/70 italic" />
     case "menu":
       return (
-        <div className="my-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
-          {block.items.map((item) => (
-            <Fragment key={item.name}>
-              <span className="font-mono text-[12px] text-primary">
-                {item.name}
-              </span>
-              <span className="truncate font-mono text-[12px] text-muted">
-                {item.desc}
-              </span>
-            </Fragment>
-          ))}
+        <div className="my-2">
+          <CommandMenu items={block.items} />
         </div>
       )
     case "line":
@@ -71,8 +88,7 @@ function Block({ block }: { block: TtyBlock }) {
   }
 }
 
-export function TtyBlocksView({ lines }: { lines: readonly ColoredLine[] }) {
-  const blocks = useMemo(() => parseTtyBlocks(lines), [lines])
+export function TtyBlocksView({ blocks }: { blocks: readonly TtyBlock[] }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
@@ -105,4 +121,23 @@ export function TtyBlocksView({ lines }: { lines: readonly ColoredLine[] }) {
       )}
     </div>
   )
+}
+
+/** Split a trailing slash-command menu (past any trailing gaps) off the block
+ *  list, so the shell can render the body in the scroll area and float the
+ *  menu just above the input row — where the native TUI shows it. */
+export function useTtyBlocks(lines: readonly ColoredLine[]): {
+  body: TtyBlock[]
+  menu: MenuItem[] | null
+} {
+  return useMemo(() => {
+    const blocks = parseTtyBlocks(lines)
+    let end = blocks.length
+    while (end > 0 && blocks[end - 1].kind === "gap") end -= 1
+    const last = end > 0 ? blocks[end - 1] : null
+    if (last?.kind === "menu") {
+      return { body: blocks.slice(0, end - 1), menu: last.items }
+    }
+    return { body: blocks, menu: null }
+  }, [lines])
 }
