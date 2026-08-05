@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.48
+
+### Patch Changes
+
+- a6cfba7: Keep macOS fullscreen frames atomic while terminal output streams, and prevent the scrollback status from resizing the PTY and invalidating its stable viewport anchor.
+
 ## 0.8.47
 
 ### Patch Changes
