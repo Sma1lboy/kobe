@@ -31,8 +31,10 @@ export type TtyBlock =
   | { kind: "line"; line: ColoredLine }
   | { kind: "gap" }
 
-/** User prompt echo: `> hi` (v1) / `❯ hi` (v2). */
-const USER_ECHO = /^[>❯›] /
+/** User prompt echo: `> hi` (v1) / `❯ hi` (v2). The negative lookahead keeps
+ *  a `❯ 1. option` AskUserQuestion cursor from being mistaken for a user
+ *  message (it would render as a right-aligned bubble and shatter the list). */
+const USER_ECHO = /^[>❯›] (?!\d+\.\s)/
 /** Spinner / activity summary lines (`✻ Cooked for 5s`, `* Sautéed…`). */
 const ACTIVITY = /^[✻✳✽✶✢✷✸✹✺✱*∗＊]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */

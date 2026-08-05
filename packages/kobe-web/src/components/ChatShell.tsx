@@ -164,6 +164,12 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
   const { body, footer } = useTtyBlocks(bodyLines)
+  // A bordered card is only warranted when the engine is WAITING on the user
+  // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
+  // quiet unboxed line instead.
+  const footerInteractive = footer.some(
+    (b) => b.kind === "menu" || b.kind === "options" || b.kind === "activity",
+  )
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
@@ -195,11 +201,19 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
           <TtyBlocksView blocks={body} />
         </div>
         <div className="shrink-0 px-4 pb-3 pt-1">
-          {footer.length > 0 && (
-            <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
-              <TtyFooter blocks={footer} />
-            </div>
-          )}
+          {footer.length > 0 &&
+            (footerInteractive ? (
+              // A card only when the engine is WAITING on the user (spinner /
+              // slash-menu / question). Passive notices don't earn one.
+              <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+                <TtyFooter blocks={footer} />
+              </div>
+            ) : (
+              // Passive hints (Image in clipboard…) — quiet line above input.
+              <div className="mb-1 px-3 text-[11px]">
+                <TtyFooter blocks={footer} />
+              </div>
+            ))}
           <InputMirror promptText={promptText} />
           {statusColored.length > 0 && (
             <div className="mt-2 space-y-0.5 px-2">
