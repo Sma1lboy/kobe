@@ -7,7 +7,7 @@
  * output, re-laid-out and colored.
  */
 
-import { useEffect, useMemo, useRef } from "react"
+import { Fragment, useEffect, useMemo, useRef } from "react"
 import { parseTtyBlocks, type TtyBlock } from "../lib/claude-tty.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
 
@@ -49,6 +49,21 @@ function Block({ block }: { block: TtyBlock }) {
       )
     case "activity":
       return <Line line={block.line} className="text-subtle/70 italic" />
+    case "menu":
+      return (
+        <div className="my-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
+          {block.items.map((item) => (
+            <Fragment key={item.name}>
+              <span className="font-mono text-[12px] text-primary">
+                {item.name}
+              </span>
+              <span className="truncate font-mono text-[12px] text-muted">
+                {item.desc}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      )
     case "line":
       return <Line line={block.line} />
     case "gap":
