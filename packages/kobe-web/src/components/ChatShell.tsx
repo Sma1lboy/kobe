@@ -22,7 +22,7 @@ import type { ColoredLine } from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { Toasts } from "./Toasts.tsx"
-import { CommandMenu, TtyBlocksView, useTtyBlocks } from "./TtyBlocksView.tsx"
+import { TtyBlocksView, TtyFooter, useTtyBlocks } from "./TtyBlocksView.tsx"
 
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
@@ -84,23 +84,36 @@ function StatusLine({ text }: { text: string }) {
   )
 }
 
-/** The input row of the translated render — a mirror of the engine's native
- *  input line (`promptText`), with a blinking caret. It's not a textarea:
- *  clicking anywhere focuses the hidden terminal, and every keystroke drives
- *  the real CLI, so what shows here (and any slash-command menu above) is the
- *  terminal's own output, re-rendered. */
+/** The input row — a floating rounded box mirroring the engine's native input
+ *  line (`promptText`) with a blinking caret. Not a textarea: clicking
+ *  anywhere focuses the hidden terminal and every keystroke drives the real
+ *  CLI, so this (and the live footer above it) is the terminal's own output,
+ *  re-rendered. Caret sits BEFORE the placeholder when empty (so it reads as
+ *  a real cursor, not text trailing the hint) and after real input. */
 function InputMirror({ promptText }: { promptText: string }) {
+  const caret = (
+    <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-primary align-text-bottom" />
+  )
   return (
-    <div className="px-4 py-3">
-      <div className="flex min-h-[2.4rem] items-center gap-2 rounded-lg border border-line bg-bg px-3 py-2">
-        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-fg">
-          {promptText || (
-            <span className="text-subtle">Click and type to the agent…</span>
-          )}
-          <span className="ml-px inline-block h-[1.1em] w-[2px] translate-y-[2px] animate-pulse bg-primary align-middle" />
-        </span>
-        <CornerDownLeft size={13} strokeWidth={2.2} className="text-subtle" />
-      </div>
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-bg px-4 py-3 shadow-lg shadow-black/25">
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
+        {promptText ? (
+          <>
+            <span className="text-fg">{promptText}</span>
+            {caret}
+          </>
+        ) : (
+          <>
+            {caret}
+            <span className="text-subtle"> Message the agent…</span>
+          </>
+        )}
+      </span>
+      <CornerDownLeft
+        size={14}
+        strokeWidth={2}
+        className="shrink-0 text-subtle"
+      />
     </div>
   )
 }
@@ -129,10 +142,10 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
     [region, colored],
   )
   const promptText = region?.promptText ?? ""
-  // A trailing slash-command menu is lifted out of the body and floated just
-  // above the input row — where the native TUI shows it — instead of leaving
-  // it adrift in the scroll history.
-  const { body, menu } = useTtyBlocks(bodyLines)
+  // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
+  // of the scroll body and floated just above the input row — where the native
+  // TUI shows it — instead of leaving it adrift in the history.
+  const { body, footer } = useTtyBlocks(bodyLines)
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
@@ -163,15 +176,15 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
         <div className="min-h-0 flex-1">
           <TtyBlocksView blocks={body} />
         </div>
-        <div className="shrink-0 border-t border-line bg-surface">
-          {menu && (
-            <div className="border-b border-line px-4 py-2">
-              <CommandMenu items={menu} />
+        <div className="shrink-0 px-4 pb-3 pt-1">
+          {footer.length > 0 && (
+            <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+              <TtyFooter blocks={footer} />
             </div>
           )}
           <InputMirror promptText={promptText} />
           {region && region.statusLines.length > 0 && (
-            <div className="px-4 pb-2">
+            <div className="mt-2 space-y-0.5 px-2">
               {region.statusLines.map((line) => (
                 <StatusLine key={line} text={line} />
               ))}

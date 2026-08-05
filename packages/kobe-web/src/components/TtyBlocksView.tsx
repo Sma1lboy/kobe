@@ -123,21 +123,47 @@ export function TtyBlocksView({ blocks }: { blocks: readonly TtyBlock[] }) {
   )
 }
 
-/** Split a trailing slash-command menu (past any trailing gaps) off the block
- *  list, so the shell can render the body in the scroll area and float the
- *  menu just above the input row — where the native TUI shows it. */
+/** Render a run of blocks (the live footer) inline — reuses the same Block
+ *  renderer so the floated spinner/tip/menu look identical to the body. */
+export function TtyFooter({ blocks }: { blocks: readonly TtyBlock[] }) {
+  return (
+    <>
+      {blocks.map((block, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
+        <Block key={i} block={block} />
+      ))}
+    </>
+  )
+}
+
+/**
+ * Split the LIVE FOOTER — the block run below the last gap, when it holds the
+ * current turn's live state (a spinner/activity line, a slash-command menu) —
+ * off the scroll body. The native TUI draws this just above the input line;
+ * the shell floats it there instead of leaving it adrift in the history.
+ */
 export function useTtyBlocks(lines: readonly ColoredLine[]): {
   body: TtyBlock[]
-  menu: MenuItem[] | null
+  footer: TtyBlock[]
 } {
   return useMemo(() => {
     const blocks = parseTtyBlocks(lines)
     let end = blocks.length
     while (end > 0 && blocks[end - 1].kind === "gap") end -= 1
-    const last = end > 0 ? blocks[end - 1] : null
-    if (last?.kind === "menu") {
-      return { body: blocks.slice(0, end - 1), menu: last.items }
+    let gapIdx = -1
+    for (let k = end - 1; k >= 0; k -= 1) {
+      if (blocks[k].kind === "gap") {
+        gapIdx = k
+        break
+      }
     }
-    return { body: blocks, menu: null }
+    const candidate = blocks.slice(gapIdx + 1, end)
+    const isLive = candidate.some(
+      (b) => b.kind === "menu" || b.kind === "activity",
+    )
+    if (gapIdx >= 0 && isLive) {
+      return { body: blocks.slice(0, gapIdx), footer: candidate }
+    }
+    return { body: blocks.slice(0, end), footer: [] }
   }, [lines])
 }
