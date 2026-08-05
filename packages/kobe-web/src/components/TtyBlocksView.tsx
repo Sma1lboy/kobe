@@ -198,8 +198,14 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
       }
     }
     const candidate = blocks.slice(gapIdx + 1, end)
+    // Only an IN-PROGRESS activity (a spinner, marked by its `…`) is live and
+    // floats by the input. A finished summary (`✱ Cogitated for 7s`) is history
+    // and stays in the scroll body.
     const isLive = candidate.some(
-      (b) => b.kind === "menu" || b.kind === "activity" || b.kind === "options",
+      (b) =>
+        b.kind === "menu" ||
+        b.kind === "options" ||
+        (b.kind === "activity" && /[…]|\.\.\./.test(b.line.text)),
     )
     let footer: TtyBlock[] = []
     let bodyEnd = end

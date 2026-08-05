@@ -12,14 +12,12 @@
 
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { Columns3, GitBranch, PanelsTopLeft } from "lucide-react"
-import { useTabsState } from "../lib/tabs.ts"
 
 type View = "workspace" | "board" | "worktrees"
 
 export function ViewToggle() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const { selectedTaskId } = useTabsState()
   const view: View = pathname.startsWith("/board")
     ? "board"
     : pathname.startsWith("/worktrees")
@@ -28,15 +26,10 @@ export function ViewToggle() {
 
   const goTo = (target: View): void => {
     if (view === target) return
+    // "Workspace" is the /chat GUI shell now (the home surface); Board and
+    // Worktrees route back to it.
     if (target === "workspace") {
-      if (selectedTaskId) {
-        void navigate({
-          to: "/task/$taskId",
-          params: { taskId: selectedTaskId },
-        })
-      } else {
-        void navigate({ to: "/" })
-      }
+      void navigate({ to: "/" })
       return
     }
     void navigate({ to: target === "board" ? "/board" : "/worktrees" })
