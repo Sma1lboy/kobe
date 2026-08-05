@@ -23,11 +23,22 @@ export interface OptionItem {
   selected: boolean
 }
 
+/** The session-open banner (fox logo + `Claude Code vX.Y.Z` + model/cwd),
+ *  re-laid-out as a card instead of raw art lines. `logo` is the left art
+ *  column, `info` the remaining lines (model/billing, cwd). */
+export interface WelcomeInfo {
+  logo: string[]
+  product: string
+  version: string
+  info: string[]
+}
+
 export type TtyBlock =
   | { kind: "user"; text: string }
   | { kind: "activity"; line: ColoredLine }
   | { kind: "menu"; items: MenuItem[] }
   | { kind: "options"; items: OptionItem[] }
+  | { kind: "welcome"; welcome: WelcomeInfo }
   | { kind: "line"; line: ColoredLine }
   | { kind: "gap" }
 
@@ -35,8 +46,12 @@ export type TtyBlock =
  *  a `❯ 1. option` AskUserQuestion cursor from being mistaken for a user
  *  message (it would render as a right-aligned bubble and shatter the list). */
 const USER_ECHO = /^[>❯›] (?!\d+\.\s)/
-/** Spinner / activity summary lines (`✻ Cooked for 5s`, `* Sautéed…`). */
-const ACTIVITY = /^[✻✳✽✶✢✷✸✹✺✱*∗＊]\s+\S/
+/** Spinner / activity summary lines (`✻ Cooked for 5s`, `* Sautéed…`). The
+ *  leading glyph is an ANIMATION frame, so the class must cover EVERY frame or
+ *  the line flips body↔footer as it spins: Claude oscillates `· ✢ ✳ ✶ ✻ ✽`
+ *  (the `·` middle-dot was missing and caused the flicker), plus the braille
+ *  run `⠀-⣿` other engines default to, plus the v1 `*` star. */
+const ACTIVITY = /^[·✢✳✶✻✽✷✸✹✺✱*∗＊⠀-⣿]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */
 const MENU_ROW = /^(\/[a-zA-Z][\w:-]*)\s{2,}(\S.*)$/
 /** An AskUserQuestion choice row: an optional `❯` cursor, then `N. text`. */
@@ -45,6 +60,49 @@ const OPTION_ROW = /^(❯\s*)?(\d+)\.\s+(.+)$/
 const OPTION_HINT = /^(Enter to|↑\/↓|Esc to|ctrl\+g)/
 /** Indented continuation of the previous menu row's wrapped description. */
 const INDENTED = /^\s{2,}\S/
+/** Block-element glyphs the CLI's logo is drawn from (NOT box-drawing — those
+ *  frame widgets we keep verbatim). A run of these rows at the top is the
+ *  session banner. */
+const LOGO_ART = /[█▉▊▋▌▍▎▏▀▄▐▖▗▘▙▚▛▜▝▞▟]/
+/** `Claude Code v2.1.220` — product name (drawn by the CLI, not hard-coded)
+ *  then a semver. Anchors welcome detection and feeds the version badge. */
+const PRODUCT_VERSION = /^(.*?\S)\s+v?(\d+\.\d+\.\d+)\b/
+
+/**
+ * The session-open banner is the fox logo and the `Claude Code vX / model /
+ * cwd` text drawn side-by-side on the SAME rows (logo in the left columns,
+ * text to the right). Detect the leading run of block-art rows, split each at
+ * the text column, and pull out product/version/info so the shell can render
+ * a card instead of raw art. Returns null when the run isn't a banner.
+ */
+function matchWelcome(
+  lines: readonly ColoredLine[],
+  start: number,
+): { welcome: WelcomeInfo; next: number } | null {
+  let end = start
+  while (end < lines.length && LOGO_ART.test(lines[end].text)) end += 1
+  if (end - start < 2) return null
+  const run = lines.slice(start, end)
+  // Text column = leftmost start of a 3+ letter word across the run (the logo
+  // art has none, so this is where "Claude"/"gpt"/"kobe" begin).
+  let splitCol = Number.POSITIVE_INFINITY
+  for (const l of run) {
+    const m = l.text.match(/[A-Za-z]{3,}/)
+    if (m?.index !== undefined) splitCol = Math.min(splitCol, m.index)
+  }
+  if (!Number.isFinite(splitCol)) return null
+  const info = run.map((l) => l.text.slice(splitCol).trim())
+  const vIdx = info.findIndex((t) => PRODUCT_VERSION.test(t))
+  if (vIdx < 0) return null
+  const vm = info[vIdx].match(PRODUCT_VERSION)
+  if (!vm) return null
+  const logo = run.map((l) => l.text.slice(0, splitCol).replace(/\s+$/, ""))
+  const rest = info.filter((t, idx) => idx !== vIdx && t !== "")
+  return {
+    welcome: { logo, product: vm[1], version: vm[2], info: rest },
+    next: end,
+  }
+}
 
 /**
  * Translate colored viewport lines (top → bottom) into display blocks. The
@@ -65,6 +123,15 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
         blocks.push({ kind: "gap" })
       i += 1
       continue
+    }
+    // The session-open banner (logo + version), re-laid-out as a card.
+    if (LOGO_ART.test(line.text)) {
+      const w = matchWelcome(lines, i)
+      if (w) {
+        blocks.push({ kind: "welcome", welcome: w.welcome })
+        i = w.next
+        continue
+      }
     }
     if (USER_ECHO.test(trimmed)) {
       blocks.push({ kind: "user", text: trimmed.replace(USER_ECHO, "") })

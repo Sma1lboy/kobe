@@ -13,14 +13,16 @@
  * vendor tab attaches.
  */
 
-import { CornerDownLeft, PanelRight } from "lucide-react"
+import { PanelRight } from "lucide-react"
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
+import { usePastedImages } from "../lib/use-pasted-images.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
+import { InputMirror } from "./InputMirror.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { TtyBlocksView, TtyFooter, useTtyBlocks } from "./TtyBlocksView.tsx"
 
@@ -92,40 +94,6 @@ function StatusLine({ line }: { line: ColoredLine }) {
 /** A horizontal-rule row (the composer's frame lines) — dropped from status. */
 const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
 
-/** The input row — a floating rounded box mirroring the engine's native input
- *  line (`promptText`) with a blinking caret. Not a textarea: clicking
- *  anywhere focuses the hidden terminal and every keystroke drives the real
- *  CLI, so this (and the live footer above it) is the terminal's own output,
- *  re-rendered. Caret sits BEFORE the placeholder when empty (so it reads as
- *  a real cursor, not text trailing the hint) and after real input. */
-function InputMirror({ promptText }: { promptText: string }) {
-  const caret = (
-    <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-primary align-text-bottom" />
-  )
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-line bg-bg px-4 py-3 shadow-lg shadow-black/25">
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
-        {promptText ? (
-          <>
-            <span className="text-fg">{promptText}</span>
-            {caret}
-          </>
-        ) : (
-          <>
-            {caret}
-            <span className="text-subtle"> Message the agent…</span>
-          </>
-        )}
-      </span>
-      <CornerDownLeft
-        size={14}
-        strokeWidth={2}
-        className="shrink-0 text-subtle"
-      />
-    </div>
-  )
-}
-
 /**
  * One live TTY, ALWAYS translated. The engine PTY lives hidden underneath as
  * the data source AND the input target; the visible surface is always the
@@ -170,6 +138,9 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
   const footerInteractive = footer.some(
     (b) => b.kind === "menu" || b.kind === "options" || b.kind === "activity",
   )
+  // Bytes of images pasted into the current compose, so `[Image #N]` in the
+  // input renders as the actual thumbnail (click → preview).
+  const pastedImages = usePastedImages(promptText)
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
@@ -214,7 +185,7 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
                 <TtyFooter blocks={footer} />
               </div>
             ))}
-          <InputMirror promptText={promptText} />
+          <InputMirror promptText={promptText} images={pastedImages} />
           {statusColored.length > 0 && (
             <div className="mt-2 space-y-0.5 px-2">
               {statusColored.map((line, i) => (

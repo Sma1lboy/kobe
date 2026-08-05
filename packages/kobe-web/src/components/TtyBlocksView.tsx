@@ -15,6 +15,7 @@ import {
   type TtyBlock,
 } from "../lib/claude-tty.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
+import { WelcomeCard } from "./WelcomeCard.tsx"
 
 /** Box-drawing / block-element glyphs — rows containing them are art (logo,
  *  frames, sparklines) and must render tight so cells abut. */
@@ -117,6 +118,8 @@ function Block({ block }: { block: TtyBlock }) {
       )
     case "options":
       return <OptionMenu items={block.items} />
+    case "welcome":
+      return <WelcomeCard welcome={block.welcome} />
     case "line":
       return <Line line={block.line} />
     case "gap":
