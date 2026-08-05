@@ -83,6 +83,9 @@ type ChatTerminalProps = {
   mode: PtyMode
   testId?: string
   disableWebgl?: boolean
+  /** Suppress the built-in prompt composer (the /chat shell overlays its own
+   *  at the engine's native input position). The Reattach bar still shows. */
+  hideComposer?: boolean
   onStatusChange?: (status: WsStatus) => void
   onBufferChange?: (text: string) => void
 }
@@ -104,6 +107,7 @@ export function ChatTerminal({
   mode,
   testId,
   disableWebgl = false,
+  hideComposer = false,
   onStatusChange,
   onBufferChange,
 }: ChatTerminalProps) {
@@ -286,7 +290,7 @@ export function ChatTerminal({
     setDraft("")
   }
 
-  const composer = mode === "engine"
+  const composer = mode === "engine" && !hideComposer
 
   return (
     <div className="flex h-full w-full flex-col">

@@ -17,8 +17,16 @@
  */
 
 import { CornerDownLeft, MessagesSquare, SquareTerminal } from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { activityLabel, activityMeta } from "../lib/activity.ts"
+import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useEngines } from "../lib/engines.ts"
 import { tailPath } from "../lib/path-format.ts"
 import { useAppState } from "../lib/store.ts"
@@ -96,9 +104,24 @@ function InfoPanel({
   )
 }
 
-/** The chat view's prompt box — pastes into the same engine PTY the terminal
- *  view shows (spawn-on-send). The terminal view needs none of this: the
- *  CLI's own input line is right there. */
+/** One translated status line from the engine's own footer (branch | ctx |
+ *  quota | mode). Warning lines (⚠) go yellow; the rest stay muted mono. */
+function StatusLine({ text }: { text: string }) {
+  const warning = text.includes("⚠")
+  return (
+    <div
+      className={`truncate font-mono text-[11px] leading-[1.6] ${
+        warning ? "text-kobe-yellow" : "text-subtle"
+      }`}
+    >
+      {text}
+    </div>
+  )
+}
+
+/** The prompt box — pastes into the task's engine PTY (spawn-on-send). In
+ *  the terminal view it overlays the engine's NATIVE input region; in the
+ *  chat view it sits under the transcript. */
 function Composer({
   taskId,
   needsInput,
@@ -127,7 +150,7 @@ function Composer({
 
   return (
     <form
-      className="shrink-0 border-t border-line bg-surface px-4 py-3"
+      className="px-4 py-3"
       onSubmit={(event) => {
         event.preventDefault()
         void send()
@@ -135,8 +158,8 @@ function Composer({
     >
       {needsInput && (
         <div className="mb-2 text-[11px] text-kobe-blue">
-          The engine is waiting on an interactive prompt — switch to the
-          Terminal view to answer it.
+          The engine is waiting on an interactive prompt — answer it in the
+          terminal.
         </div>
       )}
       <div className="flex items-end gap-2 rounded-lg border border-line bg-bg px-3 py-2 focus-within:border-line-active">
@@ -164,6 +187,95 @@ function Composer({
         </button>
       </div>
     </form>
+  )
+}
+
+interface InputOverlay {
+  /** Height of the native input region as a fraction of the viewport. */
+  fraction: number
+  statusLines: string[]
+  /** Text sits in the NATIVE composer — the user is typing in the raw
+   *  terminal, so the overlay must get out of the way. */
+  nativeTyping: boolean
+}
+
+/**
+ * The terminal view: the real engine PTY with the GUI composer rendered AT
+ * the engine's own input position. Each buffer frame is parsed for Claude
+ * Code's composer grammar (rule / ❯ prompt / status footer); when found, an
+ * opaque panel covers exactly those rows — translated status lines + the
+ * GUI input box. Grammar absent (dialog open, other engine, native typing)
+ * → overlay drops away and the raw terminal shows through.
+ */
+function TerminalView({
+  tabId,
+  taskId,
+  needsInput,
+}: {
+  tabId: string
+  taskId: string
+  needsInput: boolean
+}) {
+  const [overlay, setOverlay] = useState<InputOverlay | null>(null)
+
+  const onBufferChange = useCallback((text: string) => {
+    const lines = text.split("\n")
+    const region = findClaudeInputRegion(lines)
+    const next: InputOverlay | null = region
+      ? {
+          fraction: (lines.length - region.topRow) / Math.max(1, lines.length),
+          statusLines: region.statusLines,
+          nativeTyping: region.promptText !== "",
+        }
+      : null
+    // Buffer frames stream at animation rate — only re-render on real change.
+    setOverlay((cur) => {
+      if (cur === null || next === null) return cur === next ? cur : next
+      const same =
+        cur.fraction === next.fraction &&
+        cur.nativeTyping === next.nativeTyping &&
+        cur.statusLines.length === next.statusLines.length &&
+        cur.statusLines.every((line, i) => line === next.statusLines[i])
+      return same ? cur : next
+    })
+  }, [])
+
+  const showOverlay = overlay !== null && !overlay.nativeTyping && !needsInput
+
+  return (
+    <div className="relative h-full">
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center text-[12px] text-subtle">
+            Attaching terminal…
+          </div>
+        }
+      >
+        <ChatTerminal
+          key={tabId}
+          tabId={tabId}
+          taskId={taskId}
+          mode="engine"
+          hideComposer
+          onBufferChange={onBufferChange}
+        />
+      </Suspense>
+      {showOverlay && (
+        <div
+          className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-bg"
+          style={{ height: `${Math.min(60, overlay.fraction * 100)}%` }}
+        >
+          {overlay.statusLines.length > 0 && (
+            <div className="px-4 pt-1">
+              {overlay.statusLines.map((line) => (
+                <StatusLine key={line} text={line} />
+              ))}
+            </div>
+          )}
+          <Composer taskId={taskId} needsInput={false} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -268,20 +380,12 @@ export function ChatShell() {
                   className={view === "terminal" ? "h-full" : "hidden"}
                   aria-hidden={view !== "terminal"}
                 >
-                  <Suspense
-                    fallback={
-                      <div className="flex h-full items-center justify-center text-[12px] text-subtle">
-                        Attaching terminal…
-                      </div>
-                    }
-                  >
-                    <ChatTerminal
-                      key={tabId}
-                      tabId={tabId}
-                      taskId={selected.id}
-                      mode="engine"
-                    />
-                  </Suspense>
+                  <TerminalView
+                    key={tabId}
+                    tabId={tabId}
+                    taskId={selected.id}
+                    needsInput={needsInput}
+                  />
                 </div>
               )}
               {view === "chat" && (
@@ -293,7 +397,9 @@ export function ChatShell() {
                       vendor={vendor}
                     />
                   </div>
-                  <Composer taskId={selected.id} needsInput={needsInput} />
+                  <div className="shrink-0 border-t border-line bg-surface">
+                    <Composer taskId={selected.id} needsInput={needsInput} />
+                  </div>
                 </div>
               )}
             </div>
