@@ -1,28 +1,20 @@
 /**
  * ChatShell — kobe as a windowed TERMINAL app (/chat, hosted by the
- * kobe-desktop Electron shell). The center IS a real terminal: the task's
- * engine PTY runs the actual engine CLI (claude), fully interactive — its
- * own input line, /command menus, and permission dialogs all live there.
+ * kobe-desktop Electron shell). ONE surface, no modes: the task's engine
+ * PTY runs the real CLI, and what you SEE is its screen translated to HTML
+ * (TtyBlocksView over lib/claude-tty.ts) with the GUI composer standing in
+ * for the native input row. The raw xterm stays mounted underneath as the
+ * data source and takes over the pixels automatically only while a native
+ * dialog owns the screen (permission prompt, menu) — answer it, and the
+ * translated render returns. No view toggle, no second transcript.
  *
- * What this surface adds is engine-specific rendering ON TOP of that
- * terminal: a "Chat" view that re-renders the SAME session's conversation
- * as GUI rows (ChatTranscript over the engine-history routes) instead of
- * scrollback. The terminal stays mounted (hidden, PTY attached) while the
- * chat view shows, so flipping back is instant and loss-free; a permission
- * prompt auto-snaps to the terminal because only the real CLI can answer it.
- *
- * Left rail mirrors the TUI tree sidebar; right is a session-info panel from
- * the daemon snapshot. One PTY per task tab — the same one the workspace
+ * Left rail mirrors the TUI tree sidebar; right is a collapsed-by-default
+ * Changes placeholder. One PTY per task tab — the same one the workspace
  * vendor tab attaches.
  */
 
-import {
-  CornerDownLeft,
-  MessagesSquare,
-  PanelRight,
-  SquareTerminal,
-} from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { CornerDownLeft, PanelRight } from "lucide-react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
@@ -36,8 +28,6 @@ import { TtyBlocksView } from "./TtyBlocksView.tsx"
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
 )
-
-type CenterView = "terminal" | "chat"
 
 /** Right rail — a collapsed-by-default file-changes placeholder. The real
  *  Changes pane (diff list) lands here once the core loop is proven; for now
@@ -95,16 +85,8 @@ function StatusLine({ text }: { text: string }) {
   )
 }
 
-/** The prompt box — pastes into the task's engine PTY (spawn-on-send). In
- *  the terminal view it overlays the engine's NATIVE input region; in the
- *  chat view it sits under the transcript. */
-function Composer({
-  taskId,
-  needsInput,
-}: {
-  taskId: string
-  needsInput: boolean
-}) {
+/** The prompt box — pastes into the task's engine PTY (spawn-on-send). */
+function Composer({ taskId }: { taskId: string }) {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
 
@@ -132,12 +114,6 @@ function Composer({
         void send()
       }}
     >
-      {needsInput && (
-        <div className="mb-2 text-[11px] text-kobe-blue">
-          The engine is waiting on an interactive prompt — answer it in the
-          terminal.
-        </div>
-      )}
       <div className="flex items-end gap-2 rounded-lg border border-line bg-bg px-3 py-2 focus-within:border-line-active">
         <textarea
           value={draft}
@@ -167,33 +143,27 @@ function Composer({
 }
 
 /**
- * One session, two renders of the SAME live TTY. The engine PTY stays
- * mounted throughout; every buffer frame is split at Claude Code's input
- * region (lib/claude-input.ts):
- *
- *   terminal — the raw xterm, with the GUI composer + translated status
- *     lines overlaid exactly on the native input rows (drops away while
- *     typing natively or when a dialog owns the screen).
- *   chat — the kaku move: the BODY of the screen re-rendered as HTML
- *     blocks (lib/claude-tty.ts) — boxes become cards, ⏺ prose becomes
- *     dot rows, tool lines get result framing, everything unrecognized
- *     passes through verbatim. No JSONL, no reimplemented widgets: any
- *     slash-command UI renders because the terminal already drew it.
+ * One live TTY, one render. Every buffer frame splits at Claude Code's
+ * input region (lib/claude-input.ts): the BODY re-renders as HTML blocks
+ * (lib/claude-tty.ts — boxes → cards, ⏺ prose → dot rows, tool lines →
+ * framed results, unrecognized lines verbatim), the input region becomes
+ * the GUI composer + translated status lines. The raw xterm stays mounted
+ * underneath as the data source and shows through automatically only
+ * while a native dialog owns the screen — the one thing HTML can't answer
+ * yet (until the PermissionRequest hook wiring lands).
  */
 function SessionView({
   tabId,
   taskId,
-  view,
   needsInput,
 }: {
   tabId: string
   taskId: string
-  view: CenterView
   needsInput: boolean
 }) {
   const [buffer, setBuffer] = useState("")
 
-  // The overlay/body split derives from the buffer per render — frames
+  // The body/input split derives from the buffer per render — frames
   // stream at animation rate but React re-renders only on text change.
   const lines = useMemo(() => buffer.split("\n"), [buffer])
   const region = useMemo(() => findClaudeInputRegion(lines), [lines])
@@ -201,15 +171,24 @@ function SessionView({
     () => (region ? lines.slice(0, region.topRow).join("\n") : buffer),
     [region, lines, buffer],
   )
-  const nativeTyping = region !== null && region.promptText !== ""
-  const showOverlay = region !== null && !nativeTyping && !needsInput
+
+  // Raw-terminal takeover: once the composer grammar has been seen, its
+  // DISAPPEARANCE means a dialog owns the screen (permission prompt, menu)
+  // — flip to the real terminal so the user answers natively, flip back
+  // when the prompt returns. Before the first prompt (engine booting) the
+  // translated view stays up. needsInput from the daemon is the belt to
+  // this suspender.
+  const seenRegionRef = useRef(false)
+  if (region !== null) seenRegionRef.current = true
+  const rawMode =
+    needsInput || (seenRegionRef.current && region === null && buffer !== "")
 
   return (
     <div className="relative h-full">
-      <div
-        className={view === "terminal" ? "h-full" : "hidden"}
-        aria-hidden={view !== "terminal"}
-      >
+      {/* The real PTY — always mounted (it IS the data source); visible
+          only while a dialog needs native answering. `invisible` (not
+          `hidden`) so xterm keeps real dimensions for fit/resize. */}
+      <div className={`absolute inset-0 ${rawMode ? "" : "invisible"}`}>
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center text-[12px] text-subtle">
@@ -226,38 +205,21 @@ function SessionView({
             onBufferChange={setBuffer}
           />
         </Suspense>
-        {showOverlay && region && (
-          <div
-            className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-bg"
-            style={{
-              height: `${Math.min(60, ((lines.length - region.topRow) / Math.max(1, lines.length)) * 100)}%`,
-            }}
-          >
-            {region.statusLines.length > 0 && (
-              <div className="px-4 pt-1">
-                {region.statusLines.map((line) => (
-                  <StatusLine key={line} text={line} />
-                ))}
-              </div>
-            )}
-            <Composer taskId={taskId} needsInput={false} />
-          </div>
-        )}
       </div>
-      {view === "chat" && (
-        <div className="flex h-full flex-col">
+      {!rawMode && (
+        <div className="relative z-10 flex h-full flex-col bg-bg">
           <div className="min-h-0 flex-1">
             <TtyBlocksView bufferText={bodyText} />
           </div>
           <div className="shrink-0 border-t border-line bg-surface">
+            <Composer taskId={taskId} />
             {region && region.statusLines.length > 0 && (
-              <div className="px-4 pt-2">
+              <div className="px-4 pb-2">
                 {region.statusLines.map((line) => (
                   <StatusLine key={line} text={line} />
                 ))}
               </div>
             )}
-            <Composer taskId={taskId} needsInput={needsInput} />
           </div>
         </div>
       )}
@@ -268,9 +230,6 @@ function SessionView({
 export function ChatShell() {
   const { tasks, activeTaskId, engineStates, worktreeChanges } = useAppState()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Terminal first — the native CLI is the product; "chat" is the
-  // specialized rendering of the same session.
-  const [view, setView] = useState<CenterView>("terminal")
 
   const live = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const selected =
@@ -286,12 +245,6 @@ export function ChatShell() {
     engine?.state === "waiting_permission" ||
     engine?.state === "permission_needed"
 
-  // Only the real CLI can answer its interactive dialogs — snap the center
-  // back to the terminal when the engine blocks on one.
-  useEffect(() => {
-    if (needsInput) setView("terminal")
-  }, [needsInput])
-
   // Same tab id the workspace vendor tab uses — both surfaces share one PTY.
   // ensureEngineTab mutates the tabs store, so resolve it in an effect (not
   // during render).
@@ -304,26 +257,6 @@ export function ChatShell() {
   // Right rail: collapsed by default — the sidebar already tells the status
   // story; the rail returns when the file-changes pane earns it.
   const [showChanges, setShowChanges] = useState(false)
-
-  const viewTab = (
-    target: CenterView,
-    label: string,
-    icon: React.ReactNode,
-  ) => (
-    <button
-      type="button"
-      onClick={() => setView(target)}
-      aria-pressed={view === target}
-      className={`flex items-center gap-1.5 border-l border-line px-2 py-1 text-[11px] transition-colors first:border-l-0 ${
-        view === target
-          ? "border-line-active bg-inset text-fg"
-          : "text-subtle hover:text-fg"
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  )
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -340,33 +273,19 @@ export function ChatShell() {
               <span className="min-w-0 truncate text-[13px] text-fg">
                 {selected.title || selected.branch}
               </span>
-              <div className="ml-auto flex items-center gap-2">
-                <div className="flex items-center overflow-hidden rounded-sm border border-line">
-                  {viewTab(
-                    "terminal",
-                    "Terminal",
-                    <SquareTerminal size={12} strokeWidth={2} />,
-                  )}
-                  {viewTab(
-                    "chat",
-                    "Chat",
-                    <MessagesSquare size={12} strokeWidth={2} />,
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowChanges((cur) => !cur)}
-                  aria-pressed={showChanges}
-                  className={`flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] transition-colors ${
-                    showChanges
-                      ? "border-line-active bg-inset text-fg"
-                      : "border-line text-subtle hover:text-fg"
-                  }`}
-                  title="Toggle the file-changes panel"
-                >
-                  <PanelRight size={12} strokeWidth={2} />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowChanges((cur) => !cur)}
+                aria-pressed={showChanges}
+                className={`ml-auto flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] transition-colors ${
+                  showChanges
+                    ? "border-line-active bg-inset text-fg"
+                    : "border-line text-subtle hover:text-fg"
+                }`}
+                title="Toggle the file-changes panel"
+              >
+                <PanelRight size={12} strokeWidth={2} />
+              </button>
             </div>
             <div className="relative min-h-0 flex-1">
               {tabId && (
@@ -374,7 +293,6 @@ export function ChatShell() {
                   key={tabId}
                   tabId={tabId}
                   taskId={selected.id}
-                  view={view}
                   needsInput={needsInput}
                 />
               )}
