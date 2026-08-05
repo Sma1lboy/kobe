@@ -1,21 +1,27 @@
 /**
  * TtyBlocksView — render the TTY-translated blocks (lib/claude-tty.ts) with
- * the terminal's ANSI colors intact. Every line is a run of colored spans
- * (monospace, verbatim), so a box, a slash-command menu, a diff, or a
- * banner reads exactly as the terminal drew it. The only restyle is the
- * user-prompt bubble; nothing is reimplemented.
+ * the terminal's ANSI colors intact. Lines wrap (whitespace-pre-wrap) rather
+ * than clip, so a wide slash-command menu or long tool output never loses
+ * content off the right edge. The only restyle: user echoes as bubbles,
+ * activity lines quieted. Nothing is reimplemented — it's the terminal's own
+ * output, re-laid-out and colored.
  */
 
 import { useEffect, useMemo, useRef } from "react"
 import { parseTtyBlocks, type TtyBlock } from "../lib/claude-tty.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
 
-/** One colored terminal line as monospace spans (default fg = CSS inherit). */
-function Line({ line }: { line: ColoredLine }) {
+/** One colored terminal line as spans. `whitespace-pre` keeps the native
+ *  column alignment (menus, diffs, boxes); the hidden PTY is sized a touch
+ *  narrower than this column so a native line always fits — no wrap, no clip.
+ *  Default fg falls through to CSS (the row's text color). */
+function Line({ line, className }: { line: ColoredLine; className?: string }) {
   return (
-    <div className="whitespace-pre font-mono text-[12px] leading-[1.5] text-fg/90">
+    <div
+      className={`whitespace-pre font-mono text-[12px] leading-[1.55] ${className ?? "text-fg/90"}`}
+    >
       {line.segs.length === 0
-        ? " "
+        ? " "
         : line.segs.map((seg, i) => (
             <span
               // biome-ignore lint/suspicious/noArrayIndexKey: colored runs are positional, re-derived per frame
@@ -33,18 +39,20 @@ function Block({ block }: { block: TtyBlock }) {
   switch (block.kind) {
     case "user":
       return (
-        <div className="my-2.5 flex">
-          <div className="max-w-[85%] rounded-lg border border-line bg-inset px-3 py-1.5">
-            <span className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-fg">
+        <div className="my-3 flex justify-end">
+          <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-inset px-3.5 py-2">
+            <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-fg">
               {block.text}
             </span>
           </div>
         </div>
       )
+    case "activity":
+      return <Line line={block.line} className="text-subtle/70 italic" />
     case "line":
       return <Line line={block.line} />
     case "gap":
-      return <div className="h-3" />
+      return <div className="h-2.5" />
   }
 }
 
@@ -68,7 +76,7 @@ export function TtyBlocksView({ lines }: { lines: readonly ColoredLine[] }) {
         if (!el) return
         stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
       }}
-      className="h-full overflow-y-auto px-4 py-3 [&>*]:mx-auto [&>*]:max-w-[900px]"
+      className="h-full overflow-x-hidden overflow-y-auto px-4 py-4"
     >
       {blocks.length === 0 ? (
         <div className="py-4 font-mono text-[12px] text-subtle">

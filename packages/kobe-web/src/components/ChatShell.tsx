@@ -139,8 +139,11 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
     >
       {/* Hidden real PTY — data source + input target. opacity-0 (not
           `invisible`) so its input element stays focusable; the translated
-          layer's opaque bg covers the raw screen. */}
-      <div className="absolute inset-0 opacity-0">
+          layer's opaque bg covers the raw screen. SAME px-4 as the translated
+          column so the native lays out (and self-ellipsizes) at exactly the
+          width we render — its compact one-line-per-item menus show 1:1, no
+          re-wrapping, no clipping. */}
+      <div className="absolute inset-0 px-4 opacity-0">
         <Suspense fallback={null}>
           <ChatTerminal
             key={tabId}
