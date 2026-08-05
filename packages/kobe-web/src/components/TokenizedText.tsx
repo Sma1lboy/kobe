@@ -7,7 +7,7 @@
  * and the history user bubbles so both resolve images the same way.
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { engineImageUrl } from "../lib/terminal.ts"
 
 const IMG_TOKEN = /\[Image #(\d+)\]/g
@@ -39,6 +39,16 @@ export function TokenizedText({
 }) {
   const [preview, setPreview] = useState<string | null>(null)
   const parts = split(text)
+
+  // Esc closes the preview (the backdrop click is the other way out).
+  useEffect(() => {
+    if (!preview) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setPreview(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [preview])
 
   return (
     <>

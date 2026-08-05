@@ -93,6 +93,25 @@ function StatusLine({ line }: { line: ColoredLine }) {
 /** A horizontal-rule row (the composer's frame lines) — dropped from status. */
 const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
 
+/** Claude prints this when the session ends (Ctrl-C / `/quit`) and the PTY
+ *  drops to a bare shell. Once we see it, we STOP translating the shell as
+ *  chat and show an ended state instead — otherwise shell prompts and `ls`
+ *  output render as conversation. (Engine-specific text for now; fold into an
+ *  engine-owned "exited" signal when the contract grows one.) */
+const ENGINE_EXIT = /^Resume this session with:|^claude --resume\s/
+
+/** Shown in place of the input row once the engine has exited — the session's
+ *  history stays above, but there's nothing live to drive. */
+function EndedCard() {
+  return (
+    <div className="rounded-2xl border border-line bg-surface/50 px-4 py-3 text-center">
+      <span className="text-[12px] text-subtle">
+        Session ended — the engine exited. Start a new task to continue.
+      </span>
+    </div>
+  )
+}
+
 /**
  * One live TTY, ALWAYS translated. The engine PTY lives hidden underneath as
  * the data source AND the input target; the visible surface is always the
@@ -120,10 +139,17 @@ function SessionView({
   // conversation body, the region itself is the current input line + status.
   const textLines = useMemo(() => colored.map((l) => l.text), [colored])
   const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
-  const bodyLines = useMemo(
-    () => (region ? colored.slice(0, region.topRow) : colored),
-    [region, colored],
+  // Once the engine exits, the PTY is a bare shell — stop at the exit banner so
+  // the shell prompts/`ls` below it don't render as chat.
+  const exitedIdx = useMemo(
+    () => colored.findIndex((l) => ENGINE_EXIT.test(l.text.trim())),
+    [colored],
   )
+  const exited = exitedIdx >= 0
+  const bodyLines = useMemo(() => {
+    if (exited) return colored.slice(0, exitedIdx)
+    return region ? colored.slice(0, region.topRow) : colored
+  }, [exited, exitedIdx, region, colored])
   const promptText = region?.promptText ?? ""
   // Status footer (branch | ctx | quota | mode) as COLORED lines, straight
   // from the buffer below the prompt — so it keeps the engine's ANSI colors
@@ -176,27 +202,33 @@ function SessionView({
           <TtyBlocksView blocks={body} sessionId={sessionId} />
         </div>
         <div className="shrink-0 px-4 pb-3 pt-1">
-          {footer.length > 0 &&
-            (footerInteractive ? (
-              // A card only when the engine is WAITING on the user (spinner /
-              // slash-menu / question). Passive notices don't earn one.
-              <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
-                <TtyFooter blocks={footer} sessionId={sessionId} />
-              </div>
-            ) : (
-              // Passive hints (Image in clipboard…) — quiet line above input.
-              <div className="mb-1 px-3 text-[11px]">
-                <TtyFooter blocks={footer} sessionId={sessionId} />
-              </div>
-            ))}
-          <InputMirror promptText={promptText} sessionId={sessionId} />
-          {statusColored.length > 0 && (
-            <div className="mt-2 space-y-0.5 px-2">
-              {statusColored.map((line, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
-                <StatusLine key={i} line={line} />
-              ))}
-            </div>
+          {exited ? (
+            <EndedCard />
+          ) : (
+            <>
+              {footer.length > 0 &&
+                (footerInteractive ? (
+                  // A card only when the engine is WAITING on the user (spinner
+                  // / slash-menu / question). Passive notices don't earn one.
+                  <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+                    <TtyFooter blocks={footer} sessionId={sessionId} />
+                  </div>
+                ) : (
+                  // Passive hints (Image in clipboard…) — quiet line above input.
+                  <div className="mb-1 px-3 text-[11px]">
+                    <TtyFooter blocks={footer} sessionId={sessionId} />
+                  </div>
+                ))}
+              <InputMirror promptText={promptText} sessionId={sessionId} />
+              {statusColored.length > 0 && (
+                <div className="mt-2 space-y-0.5 px-2">
+                  {statusColored.map((line, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
+                    <StatusLine key={i} line={line} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
