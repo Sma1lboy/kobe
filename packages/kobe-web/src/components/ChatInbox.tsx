@@ -1,15 +1,19 @@
 /**
- * ChatInbox — the attention queue as a dropdown panel under the INBOX
- * header (the /chat shell's ONE jump surface). Items come from the daemon's
- * durable attention inbox (attention.inbox channel, oldest first); clicking
- * one jumps to its task and dismisses the episode via attention.dismiss —
- * mirroring the TUI's visit-resolves rule from the queue's side.
+ * ChatInbox — the attention Inbox as a centered modal (the /chat shell's
+ * ONE jump surface), mirroring the TUI dialog's shape (attention-inbox-
+ * core.ts): one list, two sections — every pending attention episode on
+ * top (oldest first, queue order), then the RECENT tasks below (most
+ * recently updated, minus pending ones and the task you're on). Clicking
+ * an episode jumps + dismisses it (visit-resolves); clicking a recent row
+ * just jumps.
  */
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { relativeTime } from "../lib/time.ts"
 import type { AttentionItem, Task } from "../lib/types.ts"
+
+const RECENT_LIMIT = 5
 
 /** Inbox glyph per state — the sidebar's state vocabulary, same colors. */
 function itemGlyph(state: AttentionItem["state"]): {
@@ -41,47 +45,65 @@ function itemLabel(state: AttentionItem["state"]): string {
   }
 }
 
+function SectionHeader({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-2 px-4 pb-1 pt-3">
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+        {children}
+      </span>
+      <span className="h-px min-w-0 flex-1 bg-line" />
+    </div>
+  )
+}
+
 export function ChatInbox({
+  selectedId,
   onJump,
   onClose,
 }: {
-  /** Jump to the episode's task (the panel dismisses the episode itself). */
+  /** The task the workspace is on — excluded from RECENT (you're there). */
+  selectedId: string | null
+  /** Jump to a task (the modal dismisses attention episodes itself). */
   onJump: (taskId: string) => void
   onClose: () => void
 }) {
   const { attentionInbox, tasks } = useAppState()
-  const panelRef = useRef<HTMLDivElement>(null)
 
   const taskById = useMemo(
     () => new Map<string, Task>(tasks.map((t) => [t.id, t])),
     [tasks],
   )
-  // Oldest first (queue order); drop episodes whose task no longer exists.
-  const items = useMemo(
+  // Attention section: queue order (oldest first), dead tasks dropped.
+  const attention = useMemo(
     () =>
       [...attentionInbox]
         .filter((item) => taskById.has(item.taskId))
         .sort((a, b) => a.at - b.at),
     [attentionInbox, taskById],
   )
+  // Recent section: live tasks minus pending + the one you're on, newest
+  // activity first. (The TUI ranks by its visit log; the web has no visit
+  // log yet, so task mtime is the stand-in — same fallback the TUI uses
+  // for never-visited tasks.)
+  const recent = useMemo(() => {
+    const pending = new Set(attention.map((item) => item.taskId))
+    return tasks
+      .filter((t) => !t.archived && !pending.has(t.id) && t.id !== selectedId)
+      .sort((a, b) =>
+        (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt),
+      )
+      .slice(0, RECENT_LIMIT)
+  }, [tasks, attention, selectedId])
 
-  // Click-away + escape close the panel.
   useEffect(() => {
-    const onDown = (event: MouseEvent): void => {
-      if (!panelRef.current?.contains(event.target as Node)) onClose()
-    }
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose()
     }
-    window.addEventListener("mousedown", onDown)
     window.addEventListener("keydown", onKey)
-    return () => {
-      window.removeEventListener("mousedown", onDown)
-      window.removeEventListener("keydown", onKey)
-    }
+    return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
 
-  const open = (item: AttentionItem): void => {
+  const openEpisode = (item: AttentionItem): void => {
     onJump(item.taskId)
     onClose()
     // Visit resolves the episode — same contract as the TUI. Best-effort:
@@ -94,49 +116,89 @@ export function ChatInbox({
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click-away; escape is handled globally above
     <div
-      ref={panelRef}
-      className="absolute left-2 top-11 z-50 w-72 overflow-hidden rounded-md border border-line bg-menu shadow-xl"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[18vh]"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
     >
-      <div className="border-b border-line px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-        Inbox — {items.length} waiting
+      <div className="w-[26rem] overflow-hidden rounded-lg border border-line bg-menu font-mono shadow-2xl">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">
+            Inbox
+          </span>
+          <span className="text-[11px] text-subtle">
+            {attention.length} waiting · esc closes
+          </span>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto pb-2">
+          {attention.length === 0 && recent.length === 0 && (
+            <div className="px-4 py-5 text-[12px] text-subtle">
+              Nothing here yet — sessions that need you and your recent tasks
+              both land in this list.
+            </div>
+          )}
+          {attention.length > 0 && (
+            <>
+              <SectionHeader>Attention</SectionHeader>
+              {attention.map((item) => {
+                const task = taskById.get(item.taskId)
+                const g = itemGlyph(item.state)
+                return (
+                  <button
+                    key={`${item.taskId}:${item.tabId ?? ""}:${item.at}`}
+                    type="button"
+                    onClick={() => openEpisode(item)}
+                    className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset"
+                  >
+                    <span className={`w-3 shrink-0 text-[12px] ${g.className}`}>
+                      {g.glyph}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] text-fg">
+                        {task?.title || task?.branch || item.taskId}
+                      </span>
+                      <span className="block text-[11px] text-subtle">
+                        {itemLabel(item.state)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[10px] text-subtle">
+                      {relativeTime(new Date(item.at).toISOString())}
+                    </span>
+                  </button>
+                )
+              })}
+            </>
+          )}
+          {recent.length > 0 && (
+            <>
+              <SectionHeader>Recent</SectionHeader>
+              {recent.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => {
+                    onJump(task.id)
+                    onClose()
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset"
+                >
+                  <span className="w-3 shrink-0 text-[12px] text-subtle">
+                    ○
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[12px] text-muted">
+                    {task.title || task.branch || task.repo}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-subtle">
+                    {relativeTime(task.updatedAt || task.createdAt)}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
       </div>
-      {items.length === 0 ? (
-        <div className="px-3 py-4 text-[12px] text-subtle">
-          Nothing needs you. Sessions that finish a turn, hit an error, or wait
-          on a permission land here.
-        </div>
-      ) : (
-        <div className="max-h-80 overflow-y-auto py-1">
-          {items.map((item) => {
-            const task = taskById.get(item.taskId)
-            const g = itemGlyph(item.state)
-            return (
-              <button
-                key={`${item.taskId}:${item.tabId ?? ""}:${item.at}`}
-                type="button"
-                onClick={() => open(item)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-inset"
-              >
-                <span className={`w-3 shrink-0 text-[12px] ${g.className}`}>
-                  {g.glyph}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] text-fg">
-                    {task?.title || task?.branch || item.taskId}
-                  </span>
-                  <span className="block text-[11px] text-subtle">
-                    {itemLabel(item.state)}
-                  </span>
-                </span>
-                <span className="shrink-0 font-mono text-[10px] text-subtle">
-                  {relativeTime(new Date(item.at).toISOString())}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

@@ -22,24 +22,16 @@ import {
   PanelRight,
   SquareTerminal,
 } from "lucide-react"
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import { sendPtyText } from "../lib/terminal.ts"
 import { formatError, pushToast } from "../lib/toast.ts"
-import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
-import { ChatTranscript } from "./ChatTranscript.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { Toasts } from "./Toasts.tsx"
+import { TtyBlocksView } from "./TtyBlocksView.tsx"
 
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
@@ -174,89 +166,99 @@ function Composer({
   )
 }
 
-interface InputOverlay {
-  /** Height of the native input region as a fraction of the viewport. */
-  fraction: number
-  statusLines: string[]
-  /** Text sits in the NATIVE composer — the user is typing in the raw
-   *  terminal, so the overlay must get out of the way. */
-  nativeTyping: boolean
-}
-
 /**
- * The terminal view: the real engine PTY with the GUI composer rendered AT
- * the engine's own input position. Each buffer frame is parsed for Claude
- * Code's composer grammar (rule / ❯ prompt / status footer); when found, an
- * opaque panel covers exactly those rows — translated status lines + the
- * GUI input box. Grammar absent (dialog open, other engine, native typing)
- * → overlay drops away and the raw terminal shows through.
+ * One session, two renders of the SAME live TTY. The engine PTY stays
+ * mounted throughout; every buffer frame is split at Claude Code's input
+ * region (lib/claude-input.ts):
+ *
+ *   terminal — the raw xterm, with the GUI composer + translated status
+ *     lines overlaid exactly on the native input rows (drops away while
+ *     typing natively or when a dialog owns the screen).
+ *   chat — the kaku move: the BODY of the screen re-rendered as HTML
+ *     blocks (lib/claude-tty.ts) — boxes become cards, ⏺ prose becomes
+ *     dot rows, tool lines get result framing, everything unrecognized
+ *     passes through verbatim. No JSONL, no reimplemented widgets: any
+ *     slash-command UI renders because the terminal already drew it.
  */
-function TerminalView({
+function SessionView({
   tabId,
   taskId,
+  view,
   needsInput,
 }: {
   tabId: string
   taskId: string
+  view: CenterView
   needsInput: boolean
 }) {
-  const [overlay, setOverlay] = useState<InputOverlay | null>(null)
+  const [buffer, setBuffer] = useState("")
 
-  const onBufferChange = useCallback((text: string) => {
-    const lines = text.split("\n")
-    const region = findClaudeInputRegion(lines)
-    const next: InputOverlay | null = region
-      ? {
-          fraction: (lines.length - region.topRow) / Math.max(1, lines.length),
-          statusLines: region.statusLines,
-          nativeTyping: region.promptText !== "",
-        }
-      : null
-    // Buffer frames stream at animation rate — only re-render on real change.
-    setOverlay((cur) => {
-      if (cur === null || next === null) return cur === next ? cur : next
-      const same =
-        cur.fraction === next.fraction &&
-        cur.nativeTyping === next.nativeTyping &&
-        cur.statusLines.length === next.statusLines.length &&
-        cur.statusLines.every((line, i) => line === next.statusLines[i])
-      return same ? cur : next
-    })
-  }, [])
-
-  const showOverlay = overlay !== null && !overlay.nativeTyping && !needsInput
+  // The overlay/body split derives from the buffer per render — frames
+  // stream at animation rate but React re-renders only on text change.
+  const lines = useMemo(() => buffer.split("\n"), [buffer])
+  const region = useMemo(() => findClaudeInputRegion(lines), [lines])
+  const bodyText = useMemo(
+    () => (region ? lines.slice(0, region.topRow).join("\n") : buffer),
+    [region, lines, buffer],
+  )
+  const nativeTyping = region !== null && region.promptText !== ""
+  const showOverlay = region !== null && !nativeTyping && !needsInput
 
   return (
     <div className="relative h-full">
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center text-[12px] text-subtle">
-            Attaching terminal…
-          </div>
-        }
+      <div
+        className={view === "terminal" ? "h-full" : "hidden"}
+        aria-hidden={view !== "terminal"}
       >
-        <ChatTerminal
-          key={tabId}
-          tabId={tabId}
-          taskId={taskId}
-          mode="engine"
-          hideComposer
-          onBufferChange={onBufferChange}
-        />
-      </Suspense>
-      {showOverlay && (
-        <div
-          className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-bg"
-          style={{ height: `${Math.min(60, overlay.fraction * 100)}%` }}
-        >
-          {overlay.statusLines.length > 0 && (
-            <div className="px-4 pt-1">
-              {overlay.statusLines.map((line) => (
-                <StatusLine key={line} text={line} />
-              ))}
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-[12px] text-subtle">
+              Attaching terminal…
             </div>
-          )}
-          <Composer taskId={taskId} needsInput={false} />
+          }
+        >
+          <ChatTerminal
+            key={tabId}
+            tabId={tabId}
+            taskId={taskId}
+            mode="engine"
+            hideComposer
+            onBufferChange={setBuffer}
+          />
+        </Suspense>
+        {showOverlay && region && (
+          <div
+            className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-bg"
+            style={{
+              height: `${Math.min(60, ((lines.length - region.topRow) / Math.max(1, lines.length)) * 100)}%`,
+            }}
+          >
+            {region.statusLines.length > 0 && (
+              <div className="px-4 pt-1">
+                {region.statusLines.map((line) => (
+                  <StatusLine key={line} text={line} />
+                ))}
+              </div>
+            )}
+            <Composer taskId={taskId} needsInput={false} />
+          </div>
+        )}
+      </div>
+      {view === "chat" && (
+        <div className="flex h-full flex-col">
+          <div className="min-h-0 flex-1">
+            <TtyBlocksView bufferText={bodyText} />
+          </div>
+          <div className="shrink-0 border-t border-line bg-surface">
+            {region && region.statusLines.length > 0 && (
+              <div className="px-4 pt-2">
+                {region.statusLines.map((line) => (
+                  <StatusLine key={line} text={line} />
+                ))}
+              </div>
+            )}
+            <Composer taskId={taskId} needsInput={needsInput} />
+          </div>
         </div>
       )}
     </div>
@@ -290,7 +292,6 @@ export function ChatShell() {
     if (needsInput) setView("terminal")
   }, [needsInput])
 
-  const vendor = resolveVendor(selected?.vendor)
   // Same tab id the workspace vendor tab uses — both surfaces share one PTY.
   // ensureEngineTab mutates the tabs store, so resolve it in an effect (not
   // during render).
@@ -368,34 +369,14 @@ export function ChatShell() {
               </div>
             </div>
             <div className="relative min-h-0 flex-1">
-              {/* The terminal stays mounted while the chat view shows — the
-                  PTY connection and scrollback survive the toggle. */}
               {tabId && (
-                <div
-                  className={view === "terminal" ? "h-full" : "hidden"}
-                  aria-hidden={view !== "terminal"}
-                >
-                  <TerminalView
-                    key={tabId}
-                    tabId={tabId}
-                    taskId={selected.id}
-                    needsInput={needsInput}
-                  />
-                </div>
-              )}
-              {view === "chat" && (
-                <div className="flex h-full flex-col">
-                  <div className="min-h-0 flex-1">
-                    <ChatTranscript
-                      key={selected.id}
-                      worktreePath={selected.worktreePath || null}
-                      vendor={vendor}
-                    />
-                  </div>
-                  <div className="shrink-0 border-t border-line bg-surface">
-                    <Composer taskId={selected.id} needsInput={needsInput} />
-                  </div>
-                </div>
+                <SessionView
+                  key={tabId}
+                  tabId={tabId}
+                  taskId={selected.id}
+                  view={view}
+                  needsInput={needsInput}
+                />
               )}
             </div>
           </main>
