@@ -20,6 +20,7 @@ import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import { sendPtyText } from "../lib/terminal.ts"
 import { formatError, pushToast } from "../lib/toast.ts"
+import type { ColoredLine } from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { Toasts } from "./Toasts.tsx"
@@ -161,16 +162,17 @@ function SessionView({
   taskId: string
   needsInput: boolean
 }) {
-  const [buffer, setBuffer] = useState("")
+  const [colored, setColored] = useState<ColoredLine[]>([])
 
   // The body/input split derives from the buffer per render — frames
   // stream at animation rate but React re-renders only on text change.
-  const lines = useMemo(() => buffer.split("\n"), [buffer])
-  const region = useMemo(() => findClaudeInputRegion(lines), [lines])
-  const bodyText = useMemo(
-    () => (region ? lines.slice(0, region.topRow).join("\n") : buffer),
-    [region, lines, buffer],
+  const textLines = useMemo(() => colored.map((l) => l.text), [colored])
+  const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
+  const bodyLines = useMemo(
+    () => (region ? colored.slice(0, region.topRow) : colored),
+    [region, colored],
   )
+  const hasScreen = colored.length > 0
 
   // Raw-terminal takeover: once the composer grammar has been seen, its
   // DISAPPEARANCE means a dialog owns the screen (permission prompt, menu)
@@ -181,7 +183,7 @@ function SessionView({
   const seenRegionRef = useRef(false)
   if (region !== null) seenRegionRef.current = true
   const rawMode =
-    needsInput || (seenRegionRef.current && region === null && buffer !== "")
+    needsInput || (seenRegionRef.current && region === null && hasScreen)
 
   return (
     <div className="relative h-full">
@@ -202,14 +204,14 @@ function SessionView({
             taskId={taskId}
             mode="engine"
             hideComposer
-            onBufferChange={setBuffer}
+            onColoredBuffer={setColored}
           />
         </Suspense>
       </div>
       {!rawMode && (
         <div className="relative z-10 flex h-full flex-col bg-bg">
           <div className="min-h-0 flex-1">
-            <TtyBlocksView bufferText={bodyText} />
+            <TtyBlocksView lines={bodyLines} />
           </div>
           <div className="shrink-0 border-t border-line bg-surface">
             <Composer taskId={taskId} />

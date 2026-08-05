@@ -1,111 +1,59 @@
 /**
- * TtyBlocksView — render the TTY-translated blocks (lib/claude-tty.ts) as
- * styled HTML. Recognized shapes get light restyling (boxes → cards, user
- * echo → chip, ⏺ prose → dot rows, tool heads → mono rows with attached ⎿
- * results); everything else passes through verbatim in mono. The content is
- * ALWAYS the real terminal's — we restyle, we never reimplement a widget.
+ * TtyBlocksView — render the TTY-translated blocks (lib/claude-tty.ts) with
+ * the terminal's ANSI colors intact. Every line is a run of colored spans
+ * (monospace, verbatim), so a box, a slash-command menu, a diff, or a
+ * banner reads exactly as the terminal drew it. The only restyle is the
+ * user-prompt bubble; nothing is reimplemented.
  */
 
 import { useEffect, useMemo, useRef } from "react"
 import { parseTtyBlocks, type TtyBlock } from "../lib/claude-tty.ts"
+import type { ColoredLine } from "../lib/tty-color.ts"
 
-/** Strip the box-drawing frame from one line of a ╭─╮ box. */
-function stripBoxFrame(line: string): string {
-  return line
-    .replace(/^\s*[╭╰]─*[╮╯]?\s*$/, "")
-    .replace(/^\s*│\s?/, "")
-    .replace(/\s?│\s*$/, "")
-    .trimEnd()
-}
-
-function BoxCard({ lines }: { lines: string[] }) {
-  const inner = lines.map(stripBoxFrame).filter((l, i, arr) => {
-    // Drop blank frame rows at the edges, keep interior blanks.
-    if (l !== "") return true
-    return i !== 0 && i !== arr.length - 1
-  })
+/** One colored terminal line as monospace spans (default fg = CSS inherit). */
+function Line({ line }: { line: ColoredLine }) {
   return (
-    <div className="my-2 rounded-lg border border-line bg-surface/70 px-4 py-3">
-      {inner.map((line, i) => (
-        <div
-          // biome-ignore lint/suspicious/noArrayIndexKey: verbatim TTY lines are positional
-          key={i}
-          className={`whitespace-pre-wrap font-mono text-[12px] leading-relaxed ${
-            /[▖▗▘▙▚▛▜▝▞▟█▌▐]/.test(line) ? "text-primary" : "text-fg/90"
-          }`}
-        >
-          {line || " "}
-        </div>
-      ))}
+    <div className="whitespace-pre font-mono text-[12px] leading-[1.5] text-fg/90">
+      {line.segs.length === 0
+        ? " "
+        : line.segs.map((seg, i) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: colored runs are positional, re-derived per frame
+              key={i}
+              style={seg.color ? { color: seg.color } : undefined}
+            >
+              {seg.text}
+            </span>
+          ))}
     </div>
   )
 }
 
 function Block({ block }: { block: TtyBlock }) {
   switch (block.kind) {
-    case "box":
-      return <BoxCard lines={block.lines} />
     case "user":
       return (
         <div className="my-2.5 flex">
           <div className="max-w-[85%] rounded-lg border border-line bg-inset px-3 py-1.5">
-            <span className="whitespace-pre-wrap text-[13px] leading-relaxed text-fg">
+            <span className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-fg">
               {block.text}
             </span>
           </div>
         </div>
       )
-    case "assistant":
-      return (
-        <div className="my-1.5 flex gap-2.5">
-          <span className="mt-[2px] shrink-0 text-[11px] text-primary">⏺</span>
-          <div className="min-w-0 flex-1 whitespace-pre-wrap text-[13px] leading-relaxed text-fg/90">
-            {block.lines.join("\n")}
-          </div>
-        </div>
-      )
-    case "tool":
-      return (
-        <div className="my-1.5 overflow-hidden rounded-md border border-line bg-surface/60">
-          <div className="truncate px-2.5 py-1 font-mono text-[12px] text-fg">
-            <span className="mr-1.5 text-kobe-green">⏺</span>
-            {block.head}
-          </div>
-          {block.lines.length > 0 && (
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-line px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-muted">
-              {block.lines.join("\n")}
-            </pre>
-          )}
-        </div>
-      )
-    case "activity":
-      return (
-        <div className="my-1.5 flex items-baseline gap-2 text-[12px] italic text-primary/80">
-          <span className="animate-pulse not-italic">✱</span>
-          {block.text}
-        </div>
-      )
+    case "line":
+      return <Line line={block.line} />
     case "gap":
-      return <div className="h-2" />
-    case "raw":
-      return (
-        <div className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-muted">
-          {block.text}
-        </div>
-      )
+      return <div className="h-3" />
   }
 }
 
-export function TtyBlocksView({ bufferText }: { bufferText: string }) {
-  const blocks = useMemo(
-    () => parseTtyBlocks(bufferText.split("\n")),
-    [bufferText],
-  )
+export function TtyBlocksView({ lines }: { lines: readonly ColoredLine[] }) {
+  const blocks = useMemo(() => parseTtyBlocks(lines), [lines])
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
-  // Follow the live tail unless the user scrolled up (same contract as the
-  // transcript view).
+  // Follow the live tail unless the user scrolled up.
   // biome-ignore lint/correctness/useExhaustiveDependencies: blocks is the scroll trigger, not a read dependency.
   useEffect(() => {
     const el = scrollRef.current
@@ -120,10 +68,10 @@ export function TtyBlocksView({ bufferText }: { bufferText: string }) {
         if (!el) return
         stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
       }}
-      className="h-full overflow-y-auto px-4 py-3 [&>*]:mx-auto [&>*]:max-w-[860px]"
+      className="h-full overflow-y-auto px-4 py-3 [&>*]:mx-auto [&>*]:max-w-[900px]"
     >
       {blocks.length === 0 ? (
-        <div className="py-4 text-[12px] text-subtle">
+        <div className="py-4 font-mono text-[12px] text-subtle">
           Nothing on screen yet — the session's terminal output renders here.
         </div>
       ) : (

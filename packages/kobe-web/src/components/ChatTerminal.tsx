@@ -30,6 +30,7 @@ import { useAppState } from "../lib/store.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
+import { type ColoredLine, cellColor, type Seg } from "../lib/tty-color.ts"
 import { isWebTransportOffline } from "../lib/web-transport.ts"
 
 // One decoder reused across every WebSocket message — a fresh `new
@@ -88,6 +89,9 @@ type ChatTerminalProps = {
   hideComposer?: boolean
   onStatusChange?: (status: WsStatus) => void
   onBufferChange?: (text: string) => void
+  /** Colored viewport lines (fg per run) for the TTY-translated render — the
+   *  raw-text `onBufferChange` loses ANSI color. */
+  onColoredBuffer?: (lines: ColoredLine[]) => void
 }
 
 function visibleBufferText(term: Terminal): string {
@@ -101,6 +105,35 @@ function visibleBufferText(term: Terminal): string {
   return lines.join("\n")
 }
 
+/** Extract the visible viewport as colored lines (fg per run), coalescing
+ *  same-color cells into segments so the translated view keeps ANSI color. */
+function coloredViewport(term: Terminal): ColoredLine[] {
+  const buffer = term.buffer.active
+  const start = buffer.viewportY
+  const end = Math.min(buffer.length, start + term.rows)
+  const out: ColoredLine[] = []
+  for (let y = start; y < end; y += 1) {
+    const line = buffer.getLine(y)
+    const segs: Seg[] = []
+    let text = ""
+    let cur: Seg | null = null
+    for (let x = 0; line && x < term.cols; x += 1) {
+      const cell = line.getCell(x)
+      if (!cell || cell.getWidth() === 0) continue
+      const ch = cell.getChars() || " "
+      const color = cellColor(cell)
+      text += ch
+      if (cur && cur.color === color) cur.text += ch
+      else {
+        cur = { text: ch, color }
+        segs.push(cur)
+      }
+    }
+    out.push({ text: text.replace(/\s+$/, ""), segs })
+  }
+  return out
+}
+
 export function ChatTerminal({
   tabId,
   taskId,
@@ -110,6 +143,7 @@ export function ChatTerminal({
   hideComposer = false,
   onStatusChange,
   onBufferChange,
+  onColoredBuffer,
 }: ChatTerminalProps) {
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -151,10 +185,13 @@ export function ChatTerminal({
     onStatusChange?.("connecting")
 
     const publishBuffer = (): void => {
-      if (!term || !onBufferChange || bufferFrame !== null) return
+      if (!term || bufferFrame !== null) return
+      if (!onBufferChange && !onColoredBuffer) return
       bufferFrame = requestAnimationFrame(() => {
         bufferFrame = null
-        if (!disposed && term) onBufferChange(visibleBufferText(term))
+        if (disposed || !term) return
+        onBufferChange?.(visibleBufferText(term))
+        onColoredBuffer?.(coloredViewport(term))
       })
     }
 
@@ -264,7 +301,16 @@ export function ChatTerminal({
       term?.dispose()
       wsRef.current = null
     }
-  }, [tabId, taskId, mode, epoch, disableWebgl, onStatusChange, onBufferChange])
+  }, [
+    tabId,
+    taskId,
+    mode,
+    epoch,
+    disableWebgl,
+    onStatusChange,
+    onBufferChange,
+    onColoredBuffer,
+  ])
 
   const sendPrompt = (): void => {
     const ws = wsRef.current
