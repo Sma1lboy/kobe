@@ -92,6 +92,9 @@ type ChatTerminalProps = {
   /** Colored viewport lines (fg per run) for the TTY-translated render — the
    *  raw-text `onBufferChange` loses ANSI color. */
   onColoredBuffer?: (lines: ColoredLine[]) => void
+  /** When true, focus the terminal so keystrokes reach the engine natively
+   *  (the /chat shell hands input to the real CLI while a user types). */
+  active?: boolean
 }
 
 function visibleBufferText(term: Terminal): string {
@@ -144,9 +147,11 @@ export function ChatTerminal({
   onStatusChange,
   onBufferChange,
   onColoredBuffer,
+  active = false,
 }: ChatTerminalProps) {
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const termRef = useRef<Terminal | null>(null)
   const [status, setStatus] = useState<WsStatus>("connecting")
   // A dropped PTY socket normally means "still running, just detached". But if
   // the daemon web transport is down, the PTY may be PAUSED — the reassuring
@@ -208,6 +213,7 @@ export function ChatTerminal({
         allowProposedApi: true,
         scrollback: 5000,
       })
+      termRef.current = term
       const fit = new FitAddon()
       term.loadAddon(fit)
       // Unicode 11 widths: default Unicode 6 measures emoji as one cell,
@@ -299,6 +305,7 @@ export function ChatTerminal({
       if (bufferFrame !== null) cancelAnimationFrame(bufferFrame)
       ws?.close()
       term?.dispose()
+      termRef.current = null
       wsRef.current = null
     }
   }, [
@@ -311,6 +318,14 @@ export function ChatTerminal({
     onBufferChange,
     onColoredBuffer,
   ])
+
+  // Hand keyboard focus to the real terminal when the shell activates it, so
+  // the user drives the native CLI directly (slash-command menus, @-complete,
+  // arrow selection). rAF: the container flips from invisible → visible in the
+  // same render, and focus() needs the element painted.
+  useEffect(() => {
+    if (active) requestAnimationFrame(() => termRef.current?.focus())
+  }, [active])
 
   const sendPrompt = (): void => {
     const ws = wsRef.current

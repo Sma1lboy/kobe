@@ -18,8 +18,6 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
-import { sendPtyText } from "../lib/terminal.ts"
-import { formatError, pushToast } from "../lib/toast.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
@@ -86,72 +84,35 @@ function StatusLine({ text }: { text: string }) {
   )
 }
 
-/** The prompt box — pastes into the task's engine PTY (spawn-on-send). */
-function Composer({ taskId }: { taskId: string }) {
-  const [draft, setDraft] = useState("")
-  const [sending, setSending] = useState(false)
-
-  const send = async (): Promise<void> => {
-    const text = draft.trim()
-    if (!text || sending) return
-    setSending(true)
-    try {
-      const tabId = ensureEngineTab(taskId)
-      const { spawned } = await sendPtyText(tabId, taskId, text)
-      if (spawned) pushToast("info", "Engine started for this session")
-      setDraft("")
-    } catch (err) {
-      pushToast("error", formatError("send prompt", err))
-    } finally {
-      setSending(false)
-    }
-  }
-
+/** Entry-to-native input bar (translated view). Clicking it hands input to
+ *  the real CLI: the raw terminal takes over, focused, so the user types
+ *  natively — slash-command menus, @-complete, arrow selection, the lot.
+ *  It's a button, not a textarea, so there's no race for the first
+ *  keystroke; the native terminal owns every key from the click on. */
+function EntryBar({ onActivate }: { onActivate: () => void }) {
   return (
-    <form
-      className="px-4 py-3"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void send()
-      }}
-    >
-      <div className="flex items-end gap-2 rounded-lg border border-line bg-bg px-3 py-2 focus-within:border-line-active">
-        <textarea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault()
-              void send()
-            }
-          }}
-          placeholder="Send a prompt — Enter sends, Shift+Enter newline"
-          rows={Math.min(6, Math.max(1, draft.split("\n").length))}
-          className="min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-relaxed text-fg placeholder:text-subtle focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || sending}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-bg transition-opacity disabled:opacity-30"
-          title="Send"
-          aria-label="Send prompt"
-        >
-          <CornerDownLeft size={13} strokeWidth={2.2} />
-        </button>
-      </div>
-    </form>
+    <div className="px-4 py-3">
+      <button
+        type="button"
+        onClick={onActivate}
+        className="flex w-full items-center gap-2 rounded-lg border border-line bg-bg px-3 py-2 text-left text-[13px] text-subtle transition-colors hover:border-line-active"
+      >
+        <span className="flex-1">Type to the agent…</span>
+        <CornerDownLeft size={13} strokeWidth={2.2} className="text-subtle" />
+      </button>
+    </div>
   )
 }
 
 /**
- * One live TTY, one render. Every buffer frame splits at Claude Code's
- * input region (lib/claude-input.ts): the BODY re-renders as HTML blocks
- * (lib/claude-tty.ts — boxes → cards, ⏺ prose → dot rows, tool lines →
- * framed results, unrecognized lines verbatim), the input region becomes
- * the GUI composer + translated status lines. The raw xterm stays mounted
- * underneath as the data source and shows through automatically only
- * while a native dialog owns the screen — the one thing HTML can't answer
- * yet (until the PermissionRequest hook wiring lands).
+ * One live TTY, one render, native input. Every buffer frame splits at
+ * Claude Code's input region (lib/claude-input.ts): the BODY re-renders as
+ * colored HTML lines (lib/claude-tty.ts), the input region drives the entry
+ * bar + translated status lines. INPUT is always the real CLI — clicking the
+ * entry bar (or a native dialog needing an answer) hands the raw terminal
+ * the keyboard, so slash-command menus / completions / arrow selection all
+ * work natively; when the turn submits (input clears) the translated render
+ * returns to show output.
  */
 function SessionView({
   tabId,
@@ -173,23 +134,38 @@ function SessionView({
     [region, colored],
   )
   const hasScreen = colored.length > 0
+  const promptText = region?.promptText ?? ""
 
-  // Raw-terminal takeover: once the composer grammar has been seen, its
-  // DISAPPEARANCE means a dialog owns the screen (permission prompt, menu)
-  // — flip to the real terminal so the user answers natively, flip back
-  // when the prompt returns. Before the first prompt (engine booting) the
-  // translated view stays up. needsInput from the daemon is the belt to
-  // this suspender.
+  // `typing`: the user handed input to the native CLI (clicked the entry
+  // bar). It ends on the falling edge of the native input — once they've
+  // typed something and then the input clears (submitted, or Esc-cleared),
+  // the translated render returns to show output. sawInputRef guards the
+  // initial empty prompt from counting as a submit.
+  const [typing, setTyping] = useState(false)
+  const sawInputRef = useRef(false)
+  useEffect(() => {
+    if (!typing) return
+    if (promptText !== "") sawInputRef.current = true
+    else if (sawInputRef.current) {
+      sawInputRef.current = false
+      setTyping(false)
+    }
+  }, [typing, promptText])
+
+  // Raw terminal shows (and owns the keyboard) when the user is typing, OR
+  // when a native dialog needs answering (permission prompt / menu that made
+  // the composer grammar vanish). Otherwise the translated render is up.
   const seenRegionRef = useRef(false)
   if (region !== null) seenRegionRef.current = true
-  const rawMode =
+  const dialogTakeover =
     needsInput || (seenRegionRef.current && region === null && hasScreen)
+  const rawMode = typing || dialogTakeover
 
   return (
     <div className="relative h-full">
-      {/* The real PTY — always mounted (it IS the data source); visible
-          only while a dialog needs native answering. `invisible` (not
-          `hidden`) so xterm keeps real dimensions for fit/resize. */}
+      {/* The real PTY — always mounted (it IS the data source AND the input
+          target). Visible while typing or a dialog needs answering.
+          `invisible` (not `hidden`) so xterm keeps real dimensions. */}
       <div className={`absolute inset-0 ${rawMode ? "" : "invisible"}`}>
         <Suspense
           fallback={
@@ -204,6 +180,7 @@ function SessionView({
             taskId={taskId}
             mode="engine"
             hideComposer
+            active={rawMode}
             onColoredBuffer={setColored}
           />
         </Suspense>
@@ -214,7 +191,7 @@ function SessionView({
             <TtyBlocksView lines={bodyLines} />
           </div>
           <div className="shrink-0 border-t border-line bg-surface">
-            <Composer taskId={taskId} />
+            <EntryBar onActivate={() => setTyping(true)} />
             {region && region.statusLines.length > 0 && (
               <div className="px-4 pb-2">
                 {region.statusLines.map((line) => (
