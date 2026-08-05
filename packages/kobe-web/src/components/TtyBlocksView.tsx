@@ -15,6 +15,7 @@ import {
   type TtyBlock,
 } from "../lib/claude-tty.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
+import { TokenizedText } from "./TokenizedText.tsx"
 import { WelcomeCard } from "./WelcomeCard.tsx"
 
 /** Box-drawing / block-element glyphs — rows containing them are art (logo,
@@ -96,14 +97,20 @@ function OptionMenu({ items }: { items: OptionItem[] }) {
   )
 }
 
-function Block({ block }: { block: TtyBlock }) {
+function Block({
+  block,
+  sessionId,
+}: {
+  block: TtyBlock
+  sessionId: string | null
+}) {
   switch (block.kind) {
     case "user":
       return (
         <div className="my-3 flex justify-end">
           <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-inset px-3.5 py-2">
-            <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-fg">
-              {block.text}
+            <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
+              <TokenizedText text={block.text} sessionId={sessionId} />
             </span>
           </div>
         </div>
@@ -127,7 +134,13 @@ function Block({ block }: { block: TtyBlock }) {
   }
 }
 
-export function TtyBlocksView({ blocks }: { blocks: readonly TtyBlock[] }) {
+export function TtyBlocksView({
+  blocks,
+  sessionId,
+}: {
+  blocks: readonly TtyBlock[]
+  sessionId: string | null
+}) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
@@ -155,7 +168,7 @@ export function TtyBlocksView({ blocks }: { blocks: readonly TtyBlock[] }) {
       ) : (
         blocks.map((block, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
-          <Block key={i} block={block} />
+          <Block key={i} block={block} sessionId={sessionId} />
         ))
       )}
     </div>
@@ -164,12 +177,18 @@ export function TtyBlocksView({ blocks }: { blocks: readonly TtyBlock[] }) {
 
 /** Render a run of blocks (the live footer) inline — reuses the same Block
  *  renderer so the floated spinner/tip/menu look identical to the body. */
-export function TtyFooter({ blocks }: { blocks: readonly TtyBlock[] }) {
+export function TtyFooter({
+  blocks,
+  sessionId,
+}: {
+  blocks: readonly TtyBlock[]
+  sessionId: string | null
+}) {
   return (
     <>
       {blocks.map((block, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
-        <Block key={i} block={block} />
+        <Block key={i} block={block} sessionId={sessionId} />
       ))}
     </>
   )

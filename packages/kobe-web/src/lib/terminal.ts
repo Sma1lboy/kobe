@@ -37,6 +37,14 @@ export function ptyUrl(
   return `${ptyBase("ws")}/pty?${q.toString()}`
 }
 
+/** URL for a Claude-cached `[Image #N]` (the sidecar serves it from
+ *  ~/.claude/image-cache/<session>/<n>.<ext>). The engine owns `sessionId`
+ *  (daemon engine-state); the sidecar just reads the file. */
+export function engineImageUrl(sessionId: string, n: number): string {
+  const q = new URLSearchParams({ session: sessionId, n: String(n) })
+  return `${ptyBase("http")}/image?${q.toString()}`
+}
+
 /** Kill a tab's engine process server-side (when the user closes the tab). */
 export async function closePtyTab(tabId: string): Promise<void> {
   try {

@@ -93,6 +93,9 @@ export interface EngineState {
   state: ActivityState
   detail?: unknown
   at: number
+  /** Engine session id (daemon-owned). Keys the image cache + resume. */
+  sessionId?: string
+  transcriptPath?: string
 }
 
 export interface UpdateInfo {

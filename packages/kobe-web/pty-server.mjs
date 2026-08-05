@@ -13,7 +13,15 @@
  *   POST /pty/send    { tab, taskId, text }            paste text + Enter into the tab's engine
  */
 
+import {
+  createReadStream,
+  existsSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs"
 import { createServer } from "node:http"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
 import { allowedHostForBindHost, originAllowed } from "./origin-policy.mjs"
@@ -28,6 +36,53 @@ const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
 const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
 const ALLOWED_HOST = allowedHostForBindHost(HOST)
+
+const CLAUDE_HOME = join(homedir(), ".claude")
+const IMG_MIMES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+}
+
+/** The `<session>.jsonl` transcript under a ~/.claude/projects subdir (the
+ *  file is named by session id; the project dir varies by cwd). */
+function findTranscript(session) {
+  const base = join(CLAUDE_HOME, "projects")
+  if (!existsSync(base)) return null
+  for (const proj of readdirSync(base)) {
+    const p = join(base, proj, `${session}.jsonl`)
+    if (existsSync(p)) return p
+  }
+  return null
+}
+
+/** The Nth (1-based, global order) pasted image across all user messages in a
+ *  transcript — this is the source of truth for a SENT `[Image #N]`, since the
+ *  image-cache file is deleted once the turn is processed. Only top-level
+ *  `image` blocks count (tool_result images are skipped). */
+function nthTranscriptImage(transcriptPath, n) {
+  let count = 0
+  for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
+    if (!line.includes('"image"')) continue
+    let obj
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      continue
+    }
+    const content = obj?.message?.content
+    if (!Array.isArray(content)) continue
+    for (const blk of content) {
+      if (blk?.type !== "image" || !blk?.source?.data) continue
+      count += 1
+      if (count === n)
+        return { data: blk.source.data, mime: blk.source.media_type }
+    }
+  }
+  return null
+}
 
 async function fetchSpec(taskId, mode) {
   // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
@@ -59,6 +114,49 @@ const server = createServer((req, res) => {
   if (url.pathname === HEALTH_PATH) {
     res.writeHead(200, { "content-type": "text/plain" })
     res.end(HEALTH_MARKER)
+    return
+  }
+  // Serve the real bytes for a `[Image #N]` so /chat shows the thumbnail.
+  // Two sources: the live image-cache file (~/.claude/image-cache/<session>/
+  // <N>.<ext>) that exists only while composing, and — once sent — the base64
+  // block in the session transcript (the cache file is deleted after the turn).
+  // If neither is there the front-end keeps the `[Image #N]` chip. Strict
+  // allowlist on both params — no path traversal.
+  if (req.method === "GET" && url.pathname === "/image") {
+    const session = url.searchParams.get("session") ?? ""
+    const n = url.searchParams.get("n") ?? ""
+    if (!/^[a-f0-9-]{36}$/.test(session) || !/^\d+$/.test(n)) {
+      res.writeHead(400)
+      res.end("bad request")
+      return
+    }
+    const headers = {
+      "access-control-allow-origin": "*",
+      "cache-control": "private, max-age=60",
+    }
+    // 1) Live compose: the staged cache file.
+    const dir = join(CLAUDE_HOME, "image-cache", session)
+    for (const [ext, mime] of Object.entries(IMG_MIMES)) {
+      const p = join(dir, `${n}${ext}`)
+      if (existsSync(p)) {
+        res.writeHead(200, { ...headers, "content-type": mime })
+        createReadStream(p).pipe(res)
+        return
+      }
+    }
+    // 2) Sent history: the base64 block in the transcript.
+    const transcript = findTranscript(session)
+    const img = transcript ? nthTranscriptImage(transcript, Number(n)) : null
+    if (img) {
+      res.writeHead(200, {
+        ...headers,
+        "content-type": img.mime ?? "image/png",
+      })
+      res.end(Buffer.from(img.data, "base64"))
+      return
+    }
+    res.writeHead(404)
+    res.end("not found")
     return
   }
   if (req.method === "OPTIONS") {

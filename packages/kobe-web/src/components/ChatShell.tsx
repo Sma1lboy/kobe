@@ -19,7 +19,6 @@ import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import type { ColoredLine } from "../lib/tty-color.ts"
-import { usePastedImages } from "../lib/use-pasted-images.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
@@ -105,7 +104,15 @@ const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
  * see when you type `/` is the native menu, re-rendered, not a reimplementation
  * and not a jump to a bare terminal.
  */
-function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
+function SessionView({
+  tabId,
+  taskId,
+  sessionId,
+}: {
+  tabId: string
+  taskId: string
+  sessionId: string | null
+}) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
 
@@ -138,9 +145,6 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
   const footerInteractive = footer.some(
     (b) => b.kind === "menu" || b.kind === "options" || b.kind === "activity",
   )
-  // Bytes of images pasted into the current compose, so `[Image #N]` in the
-  // input renders as the actual thumbnail (click → preview).
-  const pastedImages = usePastedImages(promptText)
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
@@ -169,7 +173,7 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
       </div>
       <div className="relative z-10 flex h-full flex-col bg-bg">
         <div className="min-h-0 flex-1">
-          <TtyBlocksView blocks={body} />
+          <TtyBlocksView blocks={body} sessionId={sessionId} />
         </div>
         <div className="shrink-0 px-4 pb-3 pt-1">
           {footer.length > 0 &&
@@ -177,15 +181,15 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
               // A card only when the engine is WAITING on the user (spinner /
               // slash-menu / question). Passive notices don't earn one.
               <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
-                <TtyFooter blocks={footer} />
+                <TtyFooter blocks={footer} sessionId={sessionId} />
               </div>
             ) : (
               // Passive hints (Image in clipboard…) — quiet line above input.
               <div className="mb-1 px-3 text-[11px]">
-                <TtyFooter blocks={footer} />
+                <TtyFooter blocks={footer} sessionId={sessionId} />
               </div>
             ))}
-          <InputMirror promptText={promptText} images={pastedImages} />
+          <InputMirror promptText={promptText} sessionId={sessionId} />
           {statusColored.length > 0 && (
             <div className="mt-2 space-y-0.5 px-2">
               {statusColored.map((line, i) => (
@@ -201,7 +205,7 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
 }
 
 export function ChatShell() {
-  const { tasks, activeTaskId, worktreeChanges } = useAppState()
+  const { tasks, activeTaskId, worktreeChanges, engineStates } = useAppState()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const live = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
@@ -255,7 +259,12 @@ export function ChatShell() {
             </div>
             <div className="relative min-h-0 flex-1">
               {tabId && (
-                <SessionView key={tabId} tabId={tabId} taskId={selected.id} />
+                <SessionView
+                  key={tabId}
+                  tabId={tabId}
+                  taskId={selected.id}
+                  sessionId={engineStates[selected.id]?.sessionId ?? null}
+                />
               )}
             </div>
           </main>
