@@ -92,9 +92,10 @@ type ChatTerminalProps = {
   /** Colored viewport lines (fg per run) for the TTY-translated render — the
    *  raw-text `onBufferChange` loses ANSI color. */
   onColoredBuffer?: (lines: ColoredLine[]) => void
-  /** When true, focus the terminal so keystrokes reach the engine natively
-   *  (the /chat shell hands input to the real CLI while a user types). */
-  active?: boolean
+  /** Bumping this focuses the terminal's (hidden) input so keystrokes reach
+   *  the engine natively — the /chat shell drives the real CLI while showing
+   *  a translated render. A nonce (not a bool) so repeat clicks re-focus. */
+  focusNonce?: number
 }
 
 function visibleBufferText(term: Terminal): string {
@@ -147,7 +148,7 @@ export function ChatTerminal({
   onStatusChange,
   onBufferChange,
   onColoredBuffer,
-  active = false,
+  focusNonce = 0,
 }: ChatTerminalProps) {
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -319,13 +320,12 @@ export function ChatTerminal({
     onColoredBuffer,
   ])
 
-  // Hand keyboard focus to the real terminal when the shell activates it, so
-  // the user drives the native CLI directly (slash-command menus, @-complete,
-  // arrow selection). rAF: the container flips from invisible → visible in the
-  // same render, and focus() needs the element painted.
+  // Hand keyboard focus to the (hidden) terminal when the shell bumps the
+  // nonce, so the user drives the native CLI directly (slash-command menus,
+  // @-complete, arrow selection) while the translated render stays on screen.
   useEffect(() => {
-    if (active) requestAnimationFrame(() => termRef.current?.focus())
-  }, [active])
+    if (focusNonce > 0) requestAnimationFrame(() => termRef.current?.focus())
+  }, [focusNonce])
 
   const sendPrompt = (): void => {
     const ws = wsRef.current

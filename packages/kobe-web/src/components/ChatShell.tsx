@@ -14,7 +14,7 @@
  */
 
 import { CornerDownLeft, PanelRight } from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
@@ -84,130 +84,96 @@ function StatusLine({ text }: { text: string }) {
   )
 }
 
-/** Entry-to-native input bar (translated view). Clicking it hands input to
- *  the real CLI: the raw terminal takes over, focused, so the user types
- *  natively — slash-command menus, @-complete, arrow selection, the lot.
- *  It's a button, not a textarea, so there's no race for the first
- *  keystroke; the native terminal owns every key from the click on. */
-function EntryBar({ onActivate }: { onActivate: () => void }) {
+/** The input row of the translated render — a mirror of the engine's native
+ *  input line (`promptText`), with a blinking caret. It's not a textarea:
+ *  clicking anywhere focuses the hidden terminal, and every keystroke drives
+ *  the real CLI, so what shows here (and any slash-command menu above) is the
+ *  terminal's own output, re-rendered. */
+function InputMirror({ promptText }: { promptText: string }) {
   return (
     <div className="px-4 py-3">
-      <button
-        type="button"
-        onClick={onActivate}
-        className="flex w-full items-center gap-2 rounded-lg border border-line bg-bg px-3 py-2 text-left text-[13px] text-subtle transition-colors hover:border-line-active"
-      >
-        <span className="flex-1">Type to the agent…</span>
+      <div className="flex min-h-[2.4rem] items-center gap-2 rounded-lg border border-line bg-bg px-3 py-2">
+        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-fg">
+          {promptText || (
+            <span className="text-subtle">Click and type to the agent…</span>
+          )}
+          <span className="ml-px inline-block h-[1.1em] w-[2px] translate-y-[2px] animate-pulse bg-primary align-middle" />
+        </span>
         <CornerDownLeft size={13} strokeWidth={2.2} className="text-subtle" />
-      </button>
+      </div>
     </div>
   )
 }
 
 /**
- * One live TTY, one render, native input. Every buffer frame splits at
- * Claude Code's input region (lib/claude-input.ts): the BODY re-renders as
- * colored HTML lines (lib/claude-tty.ts), the input region drives the entry
- * bar + translated status lines. INPUT is always the real CLI — clicking the
- * entry bar (or a native dialog needing an answer) hands the raw terminal
- * the keyboard, so slash-command menus / completions / arrow selection all
- * work natively; when the turn submits (input clears) the translated render
- * returns to show output.
+ * One live TTY, ALWAYS translated. The engine PTY lives hidden underneath as
+ * the data source AND the input target; the visible surface is always the
+ * translated render (lib/claude-tty.ts colored blocks) — it never swaps for a
+ * raw terminal. Clicking anywhere focuses the hidden terminal, so keystrokes
+ * drive the real CLI directly (slash-command menus, @-complete, arrow
+ * selection). Because those live in the PTY's own screen, they come back
+ * through the colored buffer and render as translated blocks — the menu you
+ * see when you type `/` is the native menu, re-rendered, not a reimplementation
+ * and not a jump to a bare terminal.
  */
-function SessionView({
-  tabId,
-  taskId,
-  needsInput,
-}: {
-  tabId: string
-  taskId: string
-  needsInput: boolean
-}) {
+function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
+  const [focusNonce, setFocusNonce] = useState(0)
 
-  // The body/input split derives from the buffer per render — frames
-  // stream at animation rate but React re-renders only on text change.
+  // Split each frame at the engine's input region: everything above it is the
+  // conversation body (history + any slash-command menu), the region itself is
+  // the current input line + status footer.
   const textLines = useMemo(() => colored.map((l) => l.text), [colored])
   const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
   const bodyLines = useMemo(
     () => (region ? colored.slice(0, region.topRow) : colored),
     [region, colored],
   )
-  const hasScreen = colored.length > 0
   const promptText = region?.promptText ?? ""
 
-  // `typing`: the user handed input to the native CLI (clicked the entry
-  // bar). It ends on the falling edge of the native input — once they've
-  // typed something and then the input clears (submitted, or Esc-cleared),
-  // the translated render returns to show output. sawInputRef guards the
-  // initial empty prompt from counting as a submit.
-  const [typing, setTyping] = useState(false)
-  const sawInputRef = useRef(false)
-  useEffect(() => {
-    if (!typing) return
-    if (promptText !== "") sawInputRef.current = true
-    else if (sawInputRef.current) {
-      sawInputRef.current = false
-      setTyping(false)
-    }
-  }, [typing, promptText])
-
-  // Raw terminal shows (and owns the keyboard) when the user is typing, OR
-  // when a native dialog needs answering (permission prompt / menu that made
-  // the composer grammar vanish). Otherwise the translated render is up.
-  const seenRegionRef = useRef(false)
-  if (region !== null) seenRegionRef.current = true
-  const dialogTakeover =
-    needsInput || (seenRegionRef.current && region === null && hasScreen)
-  const rawMode = typing || dialogTakeover
-
   return (
-    <div className="relative h-full">
-      {/* The real PTY — always mounted (it IS the data source AND the input
-          target). Visible while typing or a dialog needs answering.
-          `invisible` (not `hidden`) so xterm keeps real dimensions. */}
-      <div className={`absolute inset-0 ${rawMode ? "" : "invisible"}`}>
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center text-[12px] text-subtle">
-              Attaching terminal…
-            </div>
-          }
-        >
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
+    <div
+      className="relative h-full"
+      onMouseDown={() => setFocusNonce((n) => n + 1)}
+    >
+      {/* Hidden real PTY — data source + input target. opacity-0 (not
+          `invisible`) so its input element stays focusable; the translated
+          layer's opaque bg covers the raw screen. */}
+      <div className="absolute inset-0 opacity-0">
+        <Suspense fallback={null}>
           <ChatTerminal
             key={tabId}
             tabId={tabId}
             taskId={taskId}
             mode="engine"
             hideComposer
-            active={rawMode}
+            focusNonce={focusNonce}
             onColoredBuffer={setColored}
           />
         </Suspense>
       </div>
-      {!rawMode && (
-        <div className="relative z-10 flex h-full flex-col bg-bg">
-          <div className="min-h-0 flex-1">
-            <TtyBlocksView lines={bodyLines} />
-          </div>
-          <div className="shrink-0 border-t border-line bg-surface">
-            <EntryBar onActivate={() => setTyping(true)} />
-            {region && region.statusLines.length > 0 && (
-              <div className="px-4 pb-2">
-                {region.statusLines.map((line) => (
-                  <StatusLine key={line} text={line} />
-                ))}
-              </div>
-            )}
-          </div>
+      <div className="relative z-10 flex h-full flex-col bg-bg">
+        <div className="min-h-0 flex-1">
+          <TtyBlocksView lines={bodyLines} />
         </div>
-      )}
+        <div className="shrink-0 border-t border-line bg-surface">
+          <InputMirror promptText={promptText} />
+          {region && region.statusLines.length > 0 && (
+            <div className="px-4 pb-2">
+              {region.statusLines.map((line) => (
+                <StatusLine key={line} text={line} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 export function ChatShell() {
-  const { tasks, activeTaskId, engineStates, worktreeChanges } = useAppState()
+  const { tasks, activeTaskId, worktreeChanges } = useAppState()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const live = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
@@ -216,13 +182,6 @@ export function ChatShell() {
     live.find((t) => t.id === activeTaskId) ??
     live[0] ??
     null
-
-  const engine = selected ? engineStates[selected.id] : undefined
-  // The daemon's activity registry emits "permission_needed"; older web code
-  // (activity.ts) still matches "waiting_permission" — accept both here.
-  const needsInput =
-    engine?.state === "waiting_permission" ||
-    engine?.state === "permission_needed"
 
   // Same tab id the workspace vendor tab uses — both surfaces share one PTY.
   // ensureEngineTab mutates the tabs store, so resolve it in an effect (not
@@ -268,12 +227,7 @@ export function ChatShell() {
             </div>
             <div className="relative min-h-0 flex-1">
               {tabId && (
-                <SessionView
-                  key={tabId}
-                  tabId={tabId}
-                  taskId={selected.id}
-                  needsInput={needsInput}
-                />
+                <SessionView key={tabId} tabId={tabId} taskId={selected.id} />
               )}
             </div>
           </main>
