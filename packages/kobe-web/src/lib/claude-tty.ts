@@ -15,10 +15,19 @@ export interface MenuItem {
   desc: string
 }
 
+/** One AskUserQuestion choice (`❯ 1. 修改代码` + its indented description). */
+export interface OptionItem {
+  num: string
+  text: string
+  desc: string
+  selected: boolean
+}
+
 export type TtyBlock =
   | { kind: "user"; text: string }
   | { kind: "activity"; line: ColoredLine }
   | { kind: "menu"; items: MenuItem[] }
+  | { kind: "options"; items: OptionItem[] }
   | { kind: "line"; line: ColoredLine }
   | { kind: "gap" }
 
@@ -28,6 +37,10 @@ const USER_ECHO = /^[>❯›] /
 const ACTIVITY = /^[✻✳✽✶✢✷✸✹✺✱*∗＊]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */
 const MENU_ROW = /^(\/[a-zA-Z][\w:-]*)\s{2,}(\S.*)$/
+/** An AskUserQuestion choice row: an optional `❯` cursor, then `N. text`. */
+const OPTION_ROW = /^(❯\s*)?(\d+)\.\s+(.+)$/
+/** The AskUserQuestion key-hint footer — not part of the option list. */
+const OPTION_HINT = /^(Enter to|↑\/↓|Esc to|ctrl\+g)/
 /** Indented continuation of the previous menu row's wrapped description. */
 const INDENTED = /^\s{2,}\S/
 
@@ -60,6 +73,37 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
       blocks.push({ kind: "activity", line })
       i += 1
       continue
+    }
+    // AskUserQuestion choices: a run of `N. text` rows with a ❯ cursor on the
+    // selected one (the cursor tells it apart from a plain prose list).
+    if (OPTION_ROW.test(trimmed)) {
+      const items: OptionItem[] = []
+      let j = i
+      let sawCursor = false
+      while (j < lines.length) {
+        const t = lines[j].text.trim()
+        const om = t.match(OPTION_ROW)
+        if (om) {
+          const selected = t.startsWith("❯")
+          if (selected) sawCursor = true
+          items.push({ num: om[2], text: om[3], desc: "", selected })
+          j += 1
+        } else if (
+          items.length > 0 &&
+          t !== "" &&
+          !OPTION_HINT.test(t) &&
+          INDENTED.test(lines[j].text)
+        ) {
+          const last = items[items.length - 1]
+          last.desc += last.desc ? ` ${t}` : t
+          j += 1
+        } else break
+      }
+      if (items.length >= 2 && sawCursor) {
+        blocks.push({ kind: "options", items })
+        i = j
+        continue
+      }
     }
     if (MENU_ROW.test(trimmed)) {
       const items: MenuItem[] = []

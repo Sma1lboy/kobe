@@ -10,6 +10,7 @@
 import { Fragment, useEffect, useMemo, useRef } from "react"
 import {
   type MenuItem,
+  type OptionItem,
   parseTtyBlocks,
   type TtyBlock,
 } from "../lib/claude-tty.ts"
@@ -61,6 +62,39 @@ export function CommandMenu({ items }: { items: MenuItem[] }) {
   )
 }
 
+/** AskUserQuestion choices as a card list, the ❯-selected one highlighted —
+ *  arrow keys still drive the native selection underneath. */
+function OptionMenu({ items }: { items: OptionItem[] }) {
+  return (
+    <div className="my-2 flex flex-col gap-1">
+      {items.map((item) => (
+        <div
+          key={item.num}
+          className={`rounded-lg border px-3 py-2 ${
+            item.selected
+              ? "border-primary bg-inset"
+              : "border-line bg-transparent"
+          }`}
+        >
+          <div className="flex items-baseline gap-2">
+            <span
+              className={`shrink-0 font-mono text-[12px] ${item.selected ? "text-primary" : "text-subtle"}`}
+            >
+              {item.num}.
+            </span>
+            <span className="text-[13px] text-fg">{item.text}</span>
+          </div>
+          {item.desc && (
+            <div className="mt-0.5 pl-5 text-[12px] leading-relaxed text-muted">
+              {item.desc}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Block({ block }: { block: TtyBlock }) {
   switch (block.kind) {
     case "user":
@@ -81,6 +115,8 @@ function Block({ block }: { block: TtyBlock }) {
           <CommandMenu items={block.items} />
         </div>
       )
+    case "options":
+      return <OptionMenu items={block.items} />
     case "line":
       return <Line line={block.line} />
     case "gap":
@@ -142,6 +178,10 @@ export function TtyFooter({ blocks }: { blocks: readonly TtyBlock[] }) {
  * off the scroll body. The native TUI draws this just above the input line;
  * the shell floats it there instead of leaving it adrift in the history.
  */
+/** Ephemeral notices the native draws just above the prompt (clipboard hint,
+ *  paste receipts) — they belong by the input, not adrift in history. */
+const INPUT_HINT = /clipboard|ctrl\+v|to paste|pasted\b|\[image #/i
+
 export function useTtyBlocks(lines: readonly ColoredLine[]): {
   body: TtyBlock[]
   footer: TtyBlock[]
@@ -159,11 +199,25 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
     }
     const candidate = blocks.slice(gapIdx + 1, end)
     const isLive = candidate.some(
-      (b) => b.kind === "menu" || b.kind === "activity",
+      (b) => b.kind === "menu" || b.kind === "activity" || b.kind === "options",
     )
+    let footer: TtyBlock[] = []
+    let bodyEnd = end
     if (gapIdx >= 0 && isLive) {
-      return { body: blocks.slice(0, gapIdx), footer: candidate }
+      footer = candidate
+      bodyEnd = gapIdx
     }
-    return { body: blocks.slice(0, end), footer: [] }
+    // Pull any trailing input-adjacent hint lines (clipboard notice, etc.)
+    // off the body into the footer so they sit by the input, not in history.
+    const bodyBlocks = blocks.slice(0, bodyEnd)
+    while (bodyBlocks.length > 0) {
+      const tail = bodyBlocks[bodyBlocks.length - 1]
+      if (tail.kind === "gap") {
+        bodyBlocks.pop()
+      } else if (tail.kind === "line" && INPUT_HINT.test(tail.line.text)) {
+        footer.unshift(bodyBlocks.pop() as TtyBlock)
+      } else break
+    }
+    return { body: bodyBlocks, footer }
   }, [lines])
 }

@@ -69,20 +69,28 @@ function ChangesPanel({
   )
 }
 
-/** One translated status line from the engine's own footer (branch | ctx |
- *  quota | mode). Warning lines (⚠) go yellow; the rest stay muted mono. */
-function StatusLine({ text }: { text: string }) {
-  const warning = text.includes("⚠")
+/** One status-footer line (branch | ctx | quota | mode), rendered from the
+ *  colored buffer so it keeps the engine's own ANSI colors (blue branch,
+ *  cyan tok/s, orange diff, red bypass-permissions). Uncolored runs fall to
+ *  muted grey. */
+function StatusLine({ line }: { line: ColoredLine }) {
   return (
-    <div
-      className={`truncate font-mono text-[11px] leading-[1.6] ${
-        warning ? "text-kobe-yellow" : "text-subtle"
-      }`}
-    >
-      {text}
+    <div className="truncate font-mono text-[11px] leading-[1.6] text-subtle">
+      {line.segs.map((seg, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: colored runs are positional, re-derived per frame
+          key={i}
+          style={seg.color ? { color: seg.color } : undefined}
+        >
+          {seg.text}
+        </span>
+      ))}
     </div>
   )
 }
+
+/** A horizontal-rule row (the composer's frame lines) — dropped from status. */
+const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
 
 /** The input row — a floating rounded box mirroring the engine's native input
  *  line (`promptText`) with a blinking caret. Not a textarea: clicking
@@ -142,6 +150,16 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
     [region, colored],
   )
   const promptText = region?.promptText ?? ""
+  // Status footer (branch | ctx | quota | mode) as COLORED lines, straight
+  // from the buffer below the prompt — so it keeps the engine's ANSI colors
+  // instead of flattening to grey. Rule/blank rows dropped.
+  const statusColored = useMemo(() => {
+    if (!region) return []
+    return colored.slice(region.promptRow + 1).filter((l) => {
+      const t = l.text.trim()
+      return t !== "" && !STATUS_RULE.test(t)
+    })
+  }, [region, colored])
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
@@ -183,10 +201,11 @@ function SessionView({ tabId, taskId }: { tabId: string; taskId: string }) {
             </div>
           )}
           <InputMirror promptText={promptText} />
-          {region && region.statusLines.length > 0 && (
+          {statusColored.length > 0 && (
             <div className="mt-2 space-y-0.5 px-2">
-              {region.statusLines.map((line) => (
-                <StatusLine key={line} text={line} />
+              {statusColored.map((line, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
+                <StatusLine key={i} line={line} />
               ))}
             </div>
           )}

@@ -48,6 +48,11 @@ export function findClaudeInputRegion(
 
   for (let row = last; row >= 0 && last - row <= MAX_TAIL_ROWS; row--) {
     if (!PROMPT_RE.test(lines[row])) continue
+    // A `❯ 5. Chat about this` row is an AskUserQuestion SELECTION cursor, not
+    // the text input — don't mistake it for the prompt (that leaked the option
+    // into the composer). Let the scan fall through so no input region is
+    // reported while a question is open.
+    if (/^[❯›>)]\s*\d+\.\s/.test(lines[row])) return null
     let top = row
     if (top > 0 && RULE_RE.test(lines[top - 1].trim())) top -= 1
     const statusLines = lines
