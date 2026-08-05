@@ -62,6 +62,8 @@ export interface ChatChordHandlers {
   onFocusSearch: () => void
   /** Open the Nth rail page (prefix, digit — 0 = Kanban, 1 = Routines). */
   onRailPage: (index: number) => void
+  /** Open the attention Inbox (prefix, i — the TUI's chord). */
+  onOpenInbox: () => void
 }
 
 /** Install the chord listener; returns whether the prefix is armed (HUD). */
@@ -93,6 +95,7 @@ export function useChatChords(handlers: ChatChordHandlers): boolean {
         disarm()
         if (event.key === "1") h.onRailPage(0)
         else if (event.key === "2") h.onRailPage(1)
+        else if (event.key === "i") h.onOpenInbox()
         // escape / unknown stroke: already disarmed, swallow silently.
         return
       }

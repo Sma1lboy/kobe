@@ -14,6 +14,7 @@ import { daemonRpc } from "./rpc-client.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
+  AttentionItem,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -43,6 +44,8 @@ export interface AppState {
   deliver: SessionDeliver | null
   /** Persisted visual prefs shared with the TUI (theme, sort mode). */
   uiPrefs: UiPrefs | null
+  /** Durable attention queue (daemon attention-inbox) — the INBOX. */
+  attentionInbox: AttentionItem[]
   /** True once the first snapshot has hydrated the store. */
   hydrated: boolean
   /** The daemon behind the web transport is live. */
@@ -61,6 +64,7 @@ const initial: AppState = {
   issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
+  attentionInbox: [],
   hydrated: false,
   daemonConnected: false,
   streamConnected: false,
@@ -195,6 +199,9 @@ function applyEvent(event: WebTransportEvent): void {
       set({ uiPrefs: event.payload })
       applyThemeFromPrefs(event.payload.theme)
       break
+    case "attention.inbox":
+      set({ attentionInbox: event.payload.items })
+      break
   }
 }
 
@@ -267,6 +274,7 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     issueSnapshots: snap.issueSnapshots ?? {},
     deliver: snap.deliver ?? null,
     uiPrefs: snap.uiPrefs ?? null,
+    attentionInbox: snap.attentionInbox ?? [],
     hydrated: true,
     daemonConnected: snap.connected,
     streamConnected: true,

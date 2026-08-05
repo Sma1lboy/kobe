@@ -40,6 +40,8 @@ export interface DaemonWebSnapshotState {
   issueSnapshots: Record<string, ChannelPayloads["issue.snapshot"]>
   deliver: ChannelPayloads["session.deliver"] | null
   uiPrefs: ChannelPayloads["ui-prefs"] | null
+  /** Durable attention queue (attention-inbox.ts) — the web INBOX. */
+  attentionInbox: ChannelPayloads["attention.inbox"]["items"]
   connected: boolean
 }
 
@@ -357,6 +359,7 @@ export function createDirectWebLink(args: {
         issueSnapshots,
         deliver: latest(args.bus, "session.deliver"),
         uiPrefs: latest(args.bus, "ui-prefs"),
+        attentionInbox: latest(args.bus, "attention.inbox")?.items ?? [],
         connected: true,
       }
     },

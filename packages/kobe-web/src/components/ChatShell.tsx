@@ -16,7 +16,12 @@
  * vendor tab attaches.
  */
 
-import { CornerDownLeft, MessagesSquare, SquareTerminal } from "lucide-react"
+import {
+  CornerDownLeft,
+  MessagesSquare,
+  PanelRight,
+  SquareTerminal,
+} from "lucide-react"
 import {
   lazy,
   Suspense,
@@ -25,17 +30,12 @@ import {
   useMemo,
   useState,
 } from "react"
-import { activityLabel, activityMeta } from "../lib/activity.ts"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
-import { useEngines } from "../lib/engines.ts"
-import { tailPath } from "../lib/path-format.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
 import { sendPtyText } from "../lib/terminal.ts"
-import { relativeTime } from "../lib/time.ts"
 import { formatError, pushToast } from "../lib/toast.ts"
-import type { EngineState, Task } from "../lib/types.ts"
-import { engineLabel, resolveVendor } from "../lib/vendor.ts"
+import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { ChatTranscript } from "./ChatTranscript.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
@@ -47,59 +47,43 @@ const ChatTerminal = lazy(() =>
 
 type CenterView = "terminal" | "chat"
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-3 px-3 py-1">
-      <span className="w-16 shrink-0 text-[11px] text-subtle">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted">
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function InfoHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-      {children}
-    </div>
-  )
-}
-
-function InfoPanel({
-  task,
-  engine,
-  engineName,
+/** Right rail — a collapsed-by-default file-changes placeholder. The real
+ *  Changes pane (diff list) lands here once the core loop is proven; for now
+ *  it only shows the uncommitted ± counts so the rail earns its width. */
+function ChangesPanel({
   changes,
+  onCollapse,
 }: {
-  task: Task
-  engine: EngineState | undefined
-  engineName: string
   changes: { added: number; deleted: number } | undefined
+  onCollapse: () => void
 }) {
-  const state = activityLabel(engine?.state) || "idle"
   return (
-    <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-l border-line bg-surface lg:flex">
-      <InfoHeader>Session</InfoHeader>
-      <InfoRow label="Agent" value={engineName} />
-      <InfoRow label="Status" value={state} />
-      <InfoRow label="Path" value={tailPath(task.worktreePath || "~", 28)} />
-      <InfoHeader>Git</InfoHeader>
-      <InfoRow label="Branch" value={task.branch || "—"} />
-      <InfoRow
-        label="Changes"
-        value={changes ? `+${changes.added} −${changes.deleted}` : "clean"}
-      />
-      {task.prStatus?.number != null && (
-        <InfoRow
-          label="PR"
-          value={`#${task.prStatus.number} ${task.prStatus.lifecycle ?? ""}`}
-        />
-      )}
-      <InfoHeader>Task</InfoHeader>
-      <InfoRow label="Kind" value={task.kind} />
-      <InfoRow label="Repo" value={tailPath(task.repo, 28)} />
-      <InfoRow label="Created" value={relativeTime(task.createdAt) || "—"} />
+    <aside className="flex w-56 shrink-0 flex-col border-l border-line bg-surface">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+          Changes
+        </span>
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="text-[11px] text-subtle hover:text-fg"
+          title="Collapse"
+          aria-label="Collapse changes panel"
+        >
+          ⇥
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-1 px-3 text-center">
+        {changes && (changes.added > 0 || changes.deleted > 0) ? (
+          <span className="font-mono text-[13px]">
+            <span className="text-kobe-green">+{changes.added}</span>{" "}
+            <span className="text-kobe-red">−{changes.deleted}</span>
+          </span>
+        ) : (
+          <span className="font-mono text-[12px] text-subtle">clean</span>
+        )}
+        <span className="text-[11px] text-subtle">File changes land here.</span>
+      </div>
     </aside>
   )
 }
@@ -281,7 +265,6 @@ function TerminalView({
 
 export function ChatShell() {
   const { tasks, activeTaskId, engineStates, worktreeChanges } = useAppState()
-  const engines = useEngines()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Terminal first — the native CLI is the product; "chat" is the
   // specialized rendering of the same session.
@@ -308,7 +291,6 @@ export function ChatShell() {
   }, [needsInput])
 
   const vendor = resolveVendor(selected?.vendor)
-  const engineName = engineLabel(engines, selected?.vendor)
   // Same tab id the workspace vendor tab uses — both surfaces share one PTY.
   // ensureEngineTab mutates the tabs store, so resolve it in an effect (not
   // during render).
@@ -317,6 +299,10 @@ export function ChatShell() {
   useEffect(() => {
     setTabId(selectedTaskId ? ensureEngineTab(selectedTaskId) : null)
   }, [selectedTaskId])
+
+  // Right rail: collapsed by default — the sidebar already tells the status
+  // story; the rail returns when the file-changes pane earns it.
+  const [showChanges, setShowChanges] = useState(false)
 
   const viewTab = (
     target: CenterView,
@@ -353,23 +339,32 @@ export function ChatShell() {
               <span className="min-w-0 truncate text-[13px] text-fg">
                 {selected.title || selected.branch}
               </span>
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityMeta(engine?.state).color}`}
-              />
-              <span className="text-[11px] text-subtle">
-                {activityLabel(engine?.state)}
-              </span>
-              <div className="ml-auto flex items-center overflow-hidden rounded-sm border border-line">
-                {viewTab(
-                  "terminal",
-                  "Terminal",
-                  <SquareTerminal size={12} strokeWidth={2} />,
-                )}
-                {viewTab(
-                  "chat",
-                  "Chat",
-                  <MessagesSquare size={12} strokeWidth={2} />,
-                )}
+              <div className="ml-auto flex items-center gap-2">
+                <div className="flex items-center overflow-hidden rounded-sm border border-line">
+                  {viewTab(
+                    "terminal",
+                    "Terminal",
+                    <SquareTerminal size={12} strokeWidth={2} />,
+                  )}
+                  {viewTab(
+                    "chat",
+                    "Chat",
+                    <MessagesSquare size={12} strokeWidth={2} />,
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChanges((cur) => !cur)}
+                  aria-pressed={showChanges}
+                  className={`flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] transition-colors ${
+                    showChanges
+                      ? "border-line-active bg-inset text-fg"
+                      : "border-line text-subtle hover:text-fg"
+                  }`}
+                  title="Toggle the file-changes panel"
+                >
+                  <PanelRight size={12} strokeWidth={2} />
+                </button>
               </div>
             </div>
             <div className="relative min-h-0 flex-1">
@@ -410,16 +405,14 @@ export function ChatShell() {
           </main>
         )}
 
-        {selected && (
-          <InfoPanel
-            task={selected}
-            engine={engine}
-            engineName={engineName}
+        {selected && showChanges && (
+          <ChangesPanel
             changes={
               selected.worktreePath
                 ? worktreeChanges[selected.worktreePath]
                 : undefined
             }
+            onCollapse={() => setShowChanges(false)}
           />
         )}
       </div>

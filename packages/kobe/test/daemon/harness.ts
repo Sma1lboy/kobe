@@ -136,6 +136,7 @@ export function emptyWebSnapshot(): DaemonWebSnapshotState {
     issueSnapshots: {},
     deliver: null,
     uiPrefs: null,
+    attentionInbox: [],
     connected: true,
   }
 }

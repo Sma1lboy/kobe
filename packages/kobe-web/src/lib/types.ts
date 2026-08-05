@@ -138,6 +138,18 @@ export interface UiPrefs {
   projectFilter?: string | null
 }
 
+/** One durable attention episode (mirror of the daemon's AttentionInboxItem).
+ *  The queue drains on visit/dismiss; a fresh event re-records at the tail. */
+export interface AttentionItem {
+  taskId: string
+  /** `null` for hook events that predate or lack a tab identity. */
+  tabId: string | null
+  state: "turn_complete" | "permission_needed" | "rate_limited" | "error"
+  unread: boolean
+  /** Event time, epoch ms — the dismiss/read key alongside taskId+tabId. */
+  at: number
+}
+
 /** Channel push, as the daemon web transport serializes it over SSE. */
 export type WebTransportEvent =
   | { channel: "task.snapshot"; payload: { tasks: Task[] } }
@@ -149,6 +161,7 @@ export type WebTransportEvent =
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
   | { channel: "session.deliver"; payload: SessionDeliver }
   | { channel: "ui-prefs"; payload: UiPrefs }
+  | { channel: "attention.inbox"; payload: { items: AttentionItem[] } }
 
 /** Full bootstrap state the daemon web transport sends on connect. */
 export interface WebTransportSnapshot {
@@ -166,5 +179,7 @@ export interface WebTransportSnapshot {
    *  forwarder dedupes on `at`. */
   deliver?: SessionDeliver | null
   uiPrefs?: UiPrefs | null
+  /** Durable attention queue (daemon attention-inbox) — the INBOX. */
+  attentionInbox?: AttentionItem[]
   connected: boolean
 }

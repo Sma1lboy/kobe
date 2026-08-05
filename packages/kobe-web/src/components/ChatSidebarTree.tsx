@@ -18,12 +18,12 @@ import { useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
-import { attentionCount } from "../lib/document-title.ts"
 import { openNewTask } from "../lib/global-ui.ts"
 import { useAppState } from "../lib/store.ts"
 import { useTabsState, type WorkspaceTab } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
 import type { EngineState, Task } from "../lib/types.ts"
+import { ChatInbox } from "./ChatInbox.tsx"
 import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
 
 type View = "active" | "archived"
@@ -229,17 +229,16 @@ export function ChatSidebarTree({
   selectedId: string | null
   onSelect: (taskId: string) => void
 }) {
-  const { tasks, engineStates, worktreeChanges } = useAppState()
+  const { tasks, engineStates, worktreeChanges, attentionInbox } = useAppState()
   const { tabsByTask } = useTabsState()
   const navigate = useNavigate()
   const [view, setView] = useState<View>("active")
   const [query, setQuery] = useState("")
+  const [inboxOpen, setInboxOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const inbox = useMemo(
-    () => attentionCount(tasks, engineStates),
-    [tasks, engineStates],
-  )
+  // The durable daemon queue IS the count — same source the panel lists.
+  const inbox = attentionInbox.length
   const groups = useMemo(() => {
     const inView = tasks.filter((t) =>
       view === "active" ? !t.archived : t.archived,
@@ -295,6 +294,7 @@ export function ChatSidebarTree({
     onFocusSearch: () => searchRef.current?.focus(),
     onRailPage: (index) =>
       void navigate({ to: index === 0 ? "/board" : "/issues" }),
+    onOpenInbox: () => setInboxOpen((cur) => !cur),
   })
 
   // One flat index across worktree + tab rows — must mint the same order
@@ -306,7 +306,13 @@ export function ChatSidebarTree({
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface font-mono">
+    <aside className="relative flex w-64 shrink-0 flex-col border-r border-line bg-surface font-mono">
+      {inboxOpen && (
+        <ChatInbox
+          onJump={(taskId) => onSelect(taskId)}
+          onClose={() => setInboxOpen(false)}
+        />
+      )}
       <div
         data-kobe-topbar
         className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-3"
@@ -314,11 +320,16 @@ export function ChatSidebarTree({
         <DesktopWindowControls />
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-bold text-primary">KOBE</span>
-          <span
-            className={`text-[12px] font-bold ${inbox > 0 ? "text-kobe-yellow" : "text-subtle"}`}
+          <button
+            type="button"
+            onClick={() => setInboxOpen((cur) => !cur)}
+            className={`text-[12px] font-bold transition-colors hover:text-fg ${
+              inbox > 0 ? "text-kobe-yellow" : "text-subtle"
+            }`}
+            title="Attention inbox (ctrl+a i)"
           >
             INBOX {inbox}
-          </span>
+          </button>
           {prefixArmed && (
             <span className="bg-primary px-1 text-[11px] font-bold text-bg">
               ^A
