@@ -173,14 +173,12 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 .transcript-event--user .transcript-event__node {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 50%, transparent);
 }
 
 .transcript-event--activity .transcript-event__node {
   border-radius: 50%;
   border-color: var(--color-kobe-blue);
   background: var(--color-kobe-blue);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--color-kobe-blue) 48%, transparent);
 }
 
 .transcript-event--system .transcript-event__node {

@@ -276,7 +276,14 @@ export const TtyBlocksView = memo(function TtyBlocksView({
       {blocks.length === 0 ? (
         <BootLine />
       ) : (
-        groupCopyRuns(blocks).map((item, i) =>
+        // Settled spinner summaries ("✳ Cooked for 5s") are timing residue,
+        // not conversation — drop them from the body entirely. The LIVE
+        // spinner still shows in the footer.
+        groupCopyRuns(
+          blocks.filter(
+            (b) => b.kind !== "activity" || /…|\.\.\./.test(b.line.text),
+          ),
+        ).map((item, i) =>
           item.kind === "run" ? (
             // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
             <TranscriptEvent key={i} kind="response">
