@@ -111,10 +111,20 @@ function matchWelcome(
   lines: readonly ColoredLine[],
   start: number,
 ): { welcome: WelcomeInfo; next: number } | null {
+  // Banner block = the contiguous NON-EMPTY rows around the art. A resize
+  // REFLOWS the scrollback banner (text rows wrap, art rows split), so
+  // requiring every row to carry art shattered the card the moment the pane
+  // narrowed — text-only rows inside the block are part of the banner too.
+  // Capped so a banner glued to following content can't swallow it.
   let end = start
-  while (end < lines.length && LOGO_ART.test(lines[end].text)) end += 1
-  if (end - start < 2) return null
+  while (
+    end < lines.length &&
+    end - start < 10 &&
+    lines[end].text.trim() !== ""
+  )
+    end += 1
   const run = lines.slice(start, end)
+  if (run.filter((l) => LOGO_ART.test(l.text)).length < 2) return null
   // Text column = leftmost start of a 3+ letter word across the run (the logo
   // art has none, so this is where "Claude"/"gpt"/"kobe" begin).
   let splitCol = Number.POSITIVE_INFINITY
@@ -123,12 +133,16 @@ function matchWelcome(
     if (m?.index !== undefined) splitCol = Math.min(splitCol, m.index)
   }
   if (!Number.isFinite(splitCol)) return null
-  const info = run.map((l) => l.text.slice(splitCol).trim())
+  const info = run.map((l) =>
+    LOGO_ART.test(l.text) ? l.text.slice(splitCol).trim() : l.text.trim(),
+  )
   const vIdx = info.findIndex((t) => PRODUCT_VERSION.test(t))
   if (vIdx < 0) return null
   const vm = info[vIdx].match(PRODUCT_VERSION)
   if (!vm) return null
-  const logo = run.map((l) => l.text.slice(0, splitCol).replace(/\s+$/, ""))
+  const logo = run
+    .filter((l) => LOGO_ART.test(l.text))
+    .map((l) => l.text.slice(0, splitCol).replace(/\s+$/, ""))
   const rest = info.filter((t, idx) => idx !== vIdx && t !== "")
   return {
     welcome: { logo, product: vm[1], version: vm[2], info: rest },

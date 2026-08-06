@@ -92,3 +92,28 @@ describe("boxed narrow-width welcome banner", () => {
     ])
   })
 })
+
+describe("reflowed side-by-side welcome banner", () => {
+  const line = (text: string) => ({ text, segs: [] })
+
+  test("text-only rows inside the block still fold into the card", () => {
+    const blocks = parseTtyBlocks([
+      line(" ▐▛███▜▌   Claude Code v2.1.223"),
+      line("▝▜█████▛▘  Fable 5 with high effort"),
+      line("  ▘▘ ▝▝    Claude Max"),
+      line("           ~/i/MAG"),
+      line(""),
+      line("● hey"),
+    ])
+    const welcome = blocks.find((b) => b.kind === "welcome")
+    if (!welcome || welcome.kind !== "welcome") throw new Error("no welcome")
+    expect(welcome.welcome.product).toBe("Claude Code")
+    expect(welcome.welcome.version).toBe("2.1.223")
+    expect(welcome.welcome.logo).toHaveLength(3)
+    expect(welcome.welcome.info).toEqual([
+      "Fable 5 with high effort",
+      "Claude Max",
+      "~/i/MAG",
+    ])
+  })
+})
