@@ -28,7 +28,7 @@ export interface PtySocketLike {
 }
 
 export interface PtySessionManagerOptions {
-  fetchSpec(taskId: string, mode: PtyMode, vendor?: string): Promise<PtyLaunchSpec>
+  fetchSpec(taskId: string, mode: PtyMode, vendor?: string, tabId?: string): Promise<PtyLaunchSpec>
   spawnPty(
     command: string,
     args: string[],

@@ -90,6 +90,8 @@ export type ActivityState =
 
 export interface EngineState {
   taskId: string
+  /** Which engine tab the event came from (inherited KOBE_TAB_ID). */
+  tabId?: string
   state: ActivityState
   detail?: unknown
   at: number

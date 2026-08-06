@@ -31,6 +31,10 @@ export interface AppState {
   tasks: Task[]
   activeTaskId: string | null
   engineStates: Record<string, EngineState>
+  /** taskId → tabId → last hook-reported engine session id. Tab-precise where
+   *  the task-level rollup is last-event-wins across tabs, so the Agent Trace
+   *  can follow exactly the session running in the ACTIVE tab. */
+  engineTabSessions: Record<string, Record<string, string>>
   update: UpdateInfo | null
   /** taskId → in-flight long job (e.g. a worktree materializing). */
   jobs: Record<string, TaskJob>
@@ -58,6 +62,7 @@ const initial: AppState = {
   tasks: [],
   activeTaskId: null,
   engineStates: {},
+  engineTabSessions: {},
   update: null,
   jobs: {},
   worktreeChanges: {},
@@ -103,6 +108,25 @@ export function isOrphanIdleEngineState(
   return !task && state === "idle"
 }
 
+/** Fold an engine-state event into the tab-session ledger. Only events that
+ *  NAME both a tab and a session update it — a tab-lapse idle carries neither
+ *  and must not wipe the last known id. Same-reference on no-op. Exported for
+ *  tests. */
+export function applyTabSessionEvent(
+  map: Record<string, Record<string, string>>,
+  payload: EngineState,
+): Record<string, Record<string, string>> {
+  if (!payload.tabId || !payload.sessionId) return map
+  if (map[payload.taskId]?.[payload.tabId] === payload.sessionId) return map
+  return {
+    ...map,
+    [payload.taskId]: {
+      ...map[payload.taskId],
+      [payload.tabId]: payload.sessionId,
+    },
+  }
+}
+
 /** Reduce a task.jobs event into the jobs map: a running job is tracked by
  *  taskId; any terminal phase (done/error) clears its entry. Returns a new map
  *  on a running insert and on a delete that hit; a delete that misses still
@@ -138,6 +162,7 @@ function applyTaskList(tasks: Task[]): void {
   set({
     tasks,
     engineStates: pruneByTask(state.engineStates, live),
+    engineTabSessions: pruneByTask(state.engineTabSessions, live),
     jobs: pruneByTask(state.jobs, live),
     issueSnapshots: pruneSnapshotAliases(state.issueSnapshots, tasks),
   })
@@ -169,6 +194,10 @@ function applyEvent(event: WebTransportEvent): void {
           ...state.engineStates,
           [event.payload.taskId]: event.payload,
         },
+        engineTabSessions: applyTabSessionEvent(
+          state.engineTabSessions,
+          event.payload,
+        ),
       })
       break
     }
@@ -268,6 +297,9 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     tasks: snap.tasks,
     activeTaskId: snap.activeTaskId,
     engineStates: snap.engineStates,
+    // Tab-precise sessions rebuild from live engine-state events (the
+    // snapshot map is task-level); a reconnect must not keep dead tabs.
+    engineTabSessions: {},
     update: snap.update,
     jobs: snap.jobs ?? {},
     worktreeChanges: snap.worktreeChanges ?? {},

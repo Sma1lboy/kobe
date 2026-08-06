@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   applyJobEvent,
+  applyTabSessionEvent,
   isOrphanIdleEngineState,
   reconnectDelay,
   validateSnapshot,
@@ -171,5 +172,37 @@ describe("reconnectDelay", () => {
 
   it("treats negative attempts as the first retry", () => {
     expect(reconnectDelay(-3)).toBe(500)
+  })
+})
+
+describe("applyTabSessionEvent", () => {
+  const ev = (tabId?: string, sessionId?: string) => ({
+    taskId: "t1",
+    state: "idle",
+    at: 1,
+    ...(tabId ? { tabId } : {}),
+    ...(sessionId ? { sessionId } : {}),
+  })
+
+  it("records a tab's hook-reported session", () => {
+    const next = applyTabSessionEvent({}, ev("tab-a", "s-new"))
+    expect(next).toEqual({ t1: { "tab-a": "s-new" } })
+  })
+
+  it("a relaunched engine re-keys its tab to the fresh session", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    const next = applyTabSessionEvent(prev, ev("tab-a", "s-new"))
+    expect(next.t1["tab-a"]).toBe("s-new")
+  })
+
+  it("a tab-lapse idle (no sessionId) keeps the last known id", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    expect(applyTabSessionEvent(prev, ev("tab-a"))).toBe(prev)
+    expect(applyTabSessionEvent(prev, ev())).toBe(prev)
+  })
+
+  it("same session round-trip is a no-op reference", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    expect(applyTabSessionEvent(prev, ev("tab-a", "s-old"))).toBe(prev)
   })
 })

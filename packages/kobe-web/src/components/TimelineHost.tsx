@@ -11,17 +11,26 @@ export function TimelineHost({
   worktreePath,
   vendor,
   engineState,
+  tabSessionId,
   onCollapse,
 }: {
   taskId: string
   worktreePath: string | null
   vendor: string
   engineState: EngineState | undefined
+  /** Active tab's hook-reported session — see useTimelineData. */
+  tabSessionId?: string
   onCollapse: () => void
 }) {
   const engines = useEngines()
   const label = engineLabel(engines, vendor)
-  const data = useTimelineData({ taskId, worktreePath, vendor, engineState })
+  const data = useTimelineData({
+    taskId,
+    worktreePath,
+    vendor,
+    engineState,
+    tabSessionId,
+  })
   const [expanded, setExpanded] = useState(false)
 
   return (

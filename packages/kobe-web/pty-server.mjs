@@ -85,7 +85,7 @@ function nthTranscriptImage(transcriptPath, n) {
   return null
 }
 
-async function fetchSpec(taskId, mode, vendor) {
+async function fetchSpec(taskId, mode, vendor, tabId) {
   // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
   // the PTY instead of resolving a task's engine via the daemon — so a Playwright
   // test can drive the real TUI through the web terminal with no daemon or task.
@@ -98,6 +98,8 @@ async function fetchSpec(taskId, mode, vendor) {
   const path = mode === "shell" ? "/api/terminal-spec" : "/api/engine-spec"
   let url = `http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`
   if (mode === "engine" && vendor) url += `&vendor=${encodeURIComponent(vendor)}`
+  // Tab identity → exported KOBE_TAB_ID, so hooks attribute events per tab.
+  if (mode === "engine" && tabId) url += `&tab=${encodeURIComponent(tabId)}`
   const res = await fetch(url)
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error ?? `engine-spec failed (${res.status})`)

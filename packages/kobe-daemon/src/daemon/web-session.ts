@@ -7,8 +7,14 @@ export function ensureTaskSession(runtime: DaemonRuntimeAdapter, link: DaemonRpc
   return runtime.ensureTaskSession(link, taskId)
 }
 
-export function engineSpec(runtime: DaemonRuntimeAdapter, link: DaemonRpcClient, taskId: string, vendor?: string) {
-  return runtime.engineSpec(link, taskId, vendor)
+export function engineSpec(
+  runtime: DaemonRuntimeAdapter,
+  link: DaemonRpcClient,
+  taskId: string,
+  vendor?: string,
+  tabId?: string,
+) {
+  return runtime.engineSpec(link, taskId, vendor, tabId)
 }
 
 export function terminalSpec(runtime: DaemonRuntimeAdapter, link: DaemonRpcClient, taskId: string) {

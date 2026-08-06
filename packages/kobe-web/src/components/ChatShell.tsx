@@ -345,7 +345,7 @@ function SessionView({
 }
 
 export function ChatShell() {
-  const { tasks, activeTaskId, engineStates } = useAppState()
+  const { tasks, activeTaskId, engineStates, engineTabSessions } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
   // Surface + selection live in the global-ui store so the root-level command
   // palette can drive the shell (jump task / open Kanban / open Routines).
@@ -456,7 +456,13 @@ export function ChatShell() {
                   key={tabId}
                   tabId={tabId}
                   taskId={selected.id}
-                  sessionId={engineStates[selected.id]?.sessionId ?? null}
+                  sessionId={
+                    (tabId
+                      ? engineTabSessions[selected.id]?.[tabId]
+                      : undefined) ??
+                    engineStates[selected.id]?.sessionId ??
+                    null
+                  }
                   mode={mode}
                   vendor={vendor}
                   grammar={grammarFor(vendor ?? selected.vendor)}
@@ -476,6 +482,9 @@ export function ChatShell() {
             worktreePath={selected.worktreePath || null}
             vendor={resolveVendor(vendor ?? selected.vendor)}
             engineState={engineStates[selected.id]}
+            tabSessionId={
+              tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
+            }
             onCollapse={() => setShowTimeline(false)}
           />
         )}

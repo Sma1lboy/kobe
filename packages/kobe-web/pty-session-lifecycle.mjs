@@ -167,7 +167,7 @@ export function createPtySessionManager({
     if (inflight) return inflight
     const p = (async () => {
       // Vendor override only applies to engine PTYs — shell mode has no engine-spec.
-      const spec = await fetchSpec(taskId, mode, mode === "engine" ? vendor : undefined)
+      const spec = await fetchSpec(taskId, mode, mode === "engine" ? vendor : undefined, tabId)
       return sessions.get(tabId) ?? spawnSession(tabId, spec, cols, rows)
     })()
     pendingSpawns.set(tabId, p)

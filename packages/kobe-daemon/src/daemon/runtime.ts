@@ -48,7 +48,7 @@ export interface DaemonRuntimeAdapter {
   availableEngineIds(): Promise<readonly VendorId[]>
   engineDisplayName(vendor: VendorId): string
   kobeApiInvocation(): string
-  engineSpec(link: DaemonRpcClient, taskId: string, vendor?: string): Promise<{ cwd: string; command: string[] }>
+  engineSpec(link: DaemonRpcClient, taskId: string, vendor?: string, tabId?: string): Promise<{ cwd: string; command: string[] }>
   terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
   /**

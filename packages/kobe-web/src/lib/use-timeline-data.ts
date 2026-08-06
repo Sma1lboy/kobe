@@ -26,11 +26,17 @@ export function useTimelineData({
   worktreePath,
   vendor,
   engineState,
+  tabSessionId,
 }: {
   taskId: string
   worktreePath: string | null
   vendor: string
   engineState: EngineState | undefined
+  /** The ACTIVE tab's hook-reported session (store engineTabSessions) — fresh
+   *  by construction: a relaunched engine re-reports on session-start. Wins
+   *  over both the newest transcript and the task-level rollup, which is
+   *  last-event-wins across tabs and can lag a whole session behind. */
+  tabSessionId?: string
 }): TimelineData {
   const [trace, setTrace] = useState<TimelineModel>({
     sessionId: engineState?.sessionId ?? "",
@@ -41,7 +47,8 @@ export function useTimelineData({
   const [sessionId, setSessionId] = useState(engineState?.sessionId ?? "")
   const mtimeRef = useRef(-1)
   const seqRef = useRef(0)
-  const preferredSessionId = engineState?.sessionId
+  const preferredSessionId = tabSessionId ?? undefined
+  const taskSessionId = engineState?.sessionId
 
   const refresh = useCallback(
     async (force = false): Promise<void> => {
@@ -51,12 +58,10 @@ export function useTimelineData({
         const sessions = await fetchSessions(worktreePath, vendor)
         if (!force && sessions.latestMtime === mtimeRef.current) return
         mtimeRef.current = sessions.latestMtime
-        // Follow the NEWEST transcript: the tab may run a fresh engine as a
-        // shell child, so the daemon's task-level sessionId can lag a whole
-        // session behind. Pinning to it froze the trace on old results; the
-        // preferred id only wins while its transcript is still unwritten.
+        // Active tab's hook session first; otherwise the NEWEST transcript
+        // (the task-level id is the last resort — it can lag a session behind).
         const latest = sessions.sessions.at(-1)
-        const target = latest ?? preferredSessionId
+        const target = preferredSessionId ?? latest ?? taskSessionId
         const next = target
           ? await fetchTrace(vendor, target)
           : { sessionId: "", turns: [] }
@@ -71,7 +76,7 @@ export function useTimelineData({
         if (seq === seqRef.current) setLoaded(true)
       }
     },
-    [worktreePath, vendor, preferredSessionId],
+    [worktreePath, vendor, preferredSessionId, taskSessionId],
   )
 
   useEffect(() => {

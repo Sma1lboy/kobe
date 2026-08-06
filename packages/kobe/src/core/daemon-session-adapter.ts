@@ -76,6 +76,7 @@ function taskEngineLaunch(
   promptIntent: PromptDeliveryIntent,
   // per-tab vendor override, the web mirror of EngineTab.vendor
   vendorOverride?: string,
+  tabId?: string,
 ) {
   return buildEngineSessionLaunch({
     task: {
@@ -90,12 +91,20 @@ function taskEngineLaunch(
       ? interactiveEngineCommand(vendorOverride as VendorId)
       : interactiveEngineCommand(task.vendor, task.modelEffort),
     promptIntent,
+    tabId,
   })
 }
 
-export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string, vendor?: string) {
+export async function engineSpecAdapter(
+  link: DaemonRpcClient,
+  taskId: string,
+  vendor?: string,
+  // Web tab identity → exported KOBE_TAB_ID: without it every web PTY engine
+  // reported as "tab-1" and per-tab hook attribution collapsed.
+  tabId?: string,
+) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" }, vendor)
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" }, vendor, tabId)
   return { cwd: worktreePath, command: [...launch.command] }
 }
 
