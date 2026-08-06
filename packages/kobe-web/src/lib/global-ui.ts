@@ -54,17 +54,24 @@ export function closeNewTask(): void {
   store.update((state) => ({ ...state, newTaskOpen: false }))
 }
 
+/** Surface navigation dismisses Settings — it occupies the same main area. */
 export function setChatSurface(surface: ChatSurface): void {
-  store.update((state) => ({ ...state, chatSurface: surface }))
+  store.update((state) => ({ ...state, chatSurface: surface, settingsOpen: false }))
 }
 
-/** Select a task on the /chat shell (and snap its surface back to chat). */
+/** Select a task on the /chat shell (and snap its surface back to chat).
+ *  Also dismisses Settings — navigating away IS closing it. */
 export function selectChatTask(taskId: string): void {
   store.update((state) => ({
     ...state,
     chatSurface: "chat",
     chatSelectedTaskId: taskId,
+    settingsOpen: false,
   }))
+}
+
+export function toggleSettings(): void {
+  store.update((state) => ({ ...state, settingsOpen: !state.settingsOpen }))
 }
 
 export function openSettings(): void {

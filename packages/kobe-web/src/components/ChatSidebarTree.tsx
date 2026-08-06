@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
 import { useEngines } from "../lib/engines.ts"
 import {
+  closeSettings,
   openKeyboardHelp,
   openNewTask,
   openSettings,
@@ -397,10 +398,12 @@ export function ChatSidebarTree({
       onSurfaceChange?.(index === 0 ? "board" : "routines"),
     onOpenInbox: () => setInboxOpen((cur) => !cur),
     onNewTab: () => {
+      closeSettings()
       if (selectedId) addTab(selectedId)
       else openNewTask()
     },
     onChooseEngine: () => {
+      closeSettings()
       if (selectedId) setPickerOpen(true)
       else openNewTask()
     },

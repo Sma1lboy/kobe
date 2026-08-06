@@ -13,7 +13,15 @@
  */
 
 import { PanelRight } from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import {
   closeSettings,
@@ -30,7 +38,11 @@ import {
   type TerminalTab,
   type VendorTab,
 } from "../lib/tabs.ts"
-import { type ColoredLine, trimLeadingColored } from "../lib/tty-color.ts"
+import {
+  type ColoredLine,
+  sameColoredLine,
+  trimLeadingColored,
+} from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
@@ -156,6 +168,22 @@ function SessionView({
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
+  // Frame stabilizer: reuse previous line OBJECTS for unchanged rows so
+  // memoized children skip re-render — a keystroke only re-renders the input
+  // row's dependents, not the whole transcript.
+  const prevLinesRef = useRef<ColoredLine[]>([])
+  const onColoredBuffer = useCallback((next: ColoredLine[]) => {
+    const prev = prevLinesRef.current
+    let allSame = next.length === prev.length
+    const stable = next.map((line, i) => {
+      const p = prev[i]
+      if (p && sameColoredLine(p, line)) return p
+      allSame = false
+      return line
+    })
+    prevLinesRef.current = allSame ? prev : stable
+    setColored(prevLinesRef.current)
+  }, [])
   // IME composing string (pinyin buffer) from the hidden textarea — the PTY
   // only sees committed text, so the composer must mirror this itself.
   const [composing, setComposing] = useState<string | null>(null)
@@ -280,7 +308,7 @@ function SessionView({
             hideComposer
             focusNonce={focusNonce}
             vendor={vendor}
-            onColoredBuffer={setColored}
+            onColoredBuffer={onColoredBuffer}
             // Strip the engine's own status glyph (✳/✱) — the row draws its own.
             onTitle={(t) =>
               setTabTitle(
@@ -406,7 +434,7 @@ export function ChatShell() {
         />
 
         {settingsOpen ? (
-          <main className="min-w-0 flex-1 overflow-hidden">
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <Suspense fallback={null}>
               <SettingsPage onClose={closeSettings} />
             </Suspense>

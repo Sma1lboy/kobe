@@ -7,7 +7,7 @@
  * native TUI) rather than leaving it adrift in the scroll body.
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, memo, useEffect, useRef, useState } from "react"
 import {
   type MenuItem,
   type OptionItem,
@@ -184,7 +184,9 @@ function Block({
   }
 }
 
-export function TtyBlocksView({
+/** memo'd: the parse cache keeps `blocks` referentially stable across input
+ *  keystrokes, so the whole transcript subtree skips re-render. */
+export const TtyBlocksView = memo(function TtyBlocksView({
   blocks,
   sessionId,
 }: {
@@ -231,7 +233,7 @@ export function TtyBlocksView({
       )}
     </div>
   )
-}
+})
 
 type CopyRunItem =
   | { kind: "run"; blocks: TtyBlock[]; text: string }
@@ -271,7 +273,7 @@ export function groupCopyRuns(blocks: readonly TtyBlock[]): CopyRunItem[] {
 
 /** Render a run of blocks (the live footer) inline — reuses the same Block
  *  renderer so the floated spinner/tip/menu look identical to the body. */
-export function TtyFooter({
+export const TtyFooter = memo(function TtyFooter({
   blocks,
   sessionId,
 }: {
@@ -301,7 +303,7 @@ export function TtyFooter({
       })}
     </>
   )
-}
+})
 
 /**
  * Split the LIVE FOOTER — the block run below the last gap, when it holds the
@@ -317,7 +319,23 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
   body: TtyBlock[]
   footer: TtyBlock[]
 } {
-  return useMemo(() => {
+  // Parse cache keyed by ELEMENT identity: the frame stabilizer reuses line
+  // objects for unchanged rows, so a keystroke that only redraws the input
+  // region skips the parse AND returns the previous body/footer wholesale —
+  // memoized views then skip re-render too.
+  const cacheRef = useRef<{
+    lines: readonly ColoredLine[]
+    result: { body: TtyBlock[]; footer: TtyBlock[] }
+  } | null>(null)
+  const cached = cacheRef.current
+  if (
+    cached &&
+    cached.lines.length === lines.length &&
+    cached.lines.every((l, i) => l === lines[i])
+  ) {
+    return cached.result
+  }
+  const result = (() => {
     const blocks = parseTtyBlocks(lines)
     let end = blocks.length
     while (end > 0 && blocks[end - 1].kind === "gap") end -= 1
@@ -356,5 +374,7 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
       } else break
     }
     return { body: bodyBlocks, footer }
-  }, [lines])
+  })()
+  cacheRef.current = { lines, result }
+  return result
 }

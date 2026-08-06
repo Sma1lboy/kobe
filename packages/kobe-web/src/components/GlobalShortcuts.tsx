@@ -14,6 +14,7 @@ import {
   selectChatTask,
   openNewTask,
   openSettings,
+  toggleSettings,
   openCommandPalette,
   useGlobalUiState,
 } from "../lib/global-ui.ts"
@@ -46,6 +47,13 @@ export function GlobalShortcuts() {
         openCommandPalette()
         return
       }
+      // The platform settings chord — toggles.
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault()
+        toggleSettings()
+        void navigate({ to: "/" })
+        return
+      }
       if (
         event.key === "?" &&
         !event.metaKey &&
@@ -59,7 +67,7 @@ export function GlobalShortcuts() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [navigate])
 
   // Let notification clicks jump to their task from any route — the /chat
   // shell (home) owns task selection now.

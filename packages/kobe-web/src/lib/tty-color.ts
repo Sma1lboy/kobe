@@ -34,6 +34,23 @@ export function trimLeadingColored(line: ColoredLine): ColoredLine {
   return { text: line.text.trimStart(), segs }
 }
 
+/** Content equality for one line — the frame stabilizer's predicate. */
+export function sameColoredLine(a: ColoredLine, b: ColoredLine): boolean {
+  if (a.text !== b.text || a.segs.length !== b.segs.length) return false
+  for (let i = 0; i < a.segs.length; i++) {
+    const x = a.segs[i]
+    const y = b.segs[i]
+    if (!x || !y) return false
+    if (
+      x.text !== y.text ||
+      x.color !== y.color ||
+      (x.bg ?? null) !== (y.bg ?? null)
+    )
+      return false
+  }
+  return true
+}
+
 /** Strip trailing whitespace runs — terminal rows are padded to full width,
  *  which defeats shrink-wrap layouts (w-fit) and bloats copied text. */
 export function trimTrailingColored(line: ColoredLine): ColoredLine {
