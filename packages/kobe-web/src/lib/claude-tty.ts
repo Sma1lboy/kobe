@@ -178,8 +178,16 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
       i += 1
       continue
     }
-    // The session-open banner (logo + version), re-laid-out as a card.
-    if (LOGO_ART.test(line.text)) {
+    // The session-open banner (logo + version), re-laid-out as a card. At
+    // some widths the CLI floats the version line ABOVE the first art row,
+    // so the trigger looks a couple of rows ahead — matchWelcome still
+    // validates the whole block (≥2 art rows + a version line) before
+    // anything is re-laid-out.
+    if (
+      LOGO_ART.test(line.text) ||
+      (lines[i + 1] && LOGO_ART.test(lines[i + 1].text)) ||
+      (lines[i + 2] && LOGO_ART.test(lines[i + 2].text))
+    ) {
       const w = matchWelcome(lines, i)
       if (w) {
         blocks.push({ kind: "welcome", welcome: w.welcome })

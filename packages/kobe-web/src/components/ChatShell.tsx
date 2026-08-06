@@ -171,6 +171,15 @@ function SessionView({
   // Resume banner below the input box → box is stale; banner above → relaunched, live.
   const engineLive =
     region !== null && !(lastExitIdx >= 0 && lastExitIdx >= region.topRow)
+  if (import.meta.env.DEV) {
+    // Live-translation probe for agent-driven debugging (dev builds only).
+    ;(window as unknown as Record<string, unknown>).__kobeTty = {
+      lines: textLines,
+      region,
+      lastExitIdx,
+      engineLive,
+    }
+  }
   // Engine child exited (ctrl+c → shell) → restore the minted tab title; a
   // bare shell may never emit an OSC title to overwrite the engine's.
   const wasLiveRef = useRef(false)
