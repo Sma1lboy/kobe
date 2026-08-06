@@ -14,11 +14,15 @@
  * the TUI's own (docs/KEYBINDINGS.md).
  */
 
-import { Plus } from "lucide-react"
+import { CircleHelp, Plus, Settings } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
 import { useEngines } from "../lib/engines.ts"
-import { openNewTask } from "../lib/global-ui.ts"
+import {
+  openKeyboardHelp,
+  openNewTask,
+  openSettings,
+} from "../lib/global-ui.ts"
 import { useAppState } from "../lib/store.ts"
 import { tabHasPty } from "../lib/tab-kinds.ts"
 import {
@@ -593,6 +597,27 @@ export function ChatSidebarTree({
             </div>
           ))
         )}
+      </div>
+      {/* Bottom-left utility rail: settings + keyboard help. */}
+      <div className="flex shrink-0 items-center gap-1 border-t border-line px-2 py-1.5">
+        <button
+          type="button"
+          onClick={openSettings}
+          title="Settings"
+          aria-label="Settings"
+          className="flex h-6 w-6 items-center justify-center rounded text-subtle transition-colors hover:bg-inset hover:text-fg"
+        >
+          <Settings size={13} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={openKeyboardHelp}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          className="flex h-6 w-6 items-center justify-center rounded text-subtle transition-colors hover:bg-inset hover:text-fg"
+        >
+          <CircleHelp size={13} strokeWidth={1.8} />
+        </button>
       </div>
     </aside>
   )

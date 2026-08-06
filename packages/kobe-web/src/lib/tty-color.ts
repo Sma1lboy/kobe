@@ -13,6 +13,8 @@
 export interface Seg {
   text: string
   color: string | null
+  /** Background color run (inverse-video / menu selection); absent = default. */
+  bg?: string | null
 }
 
 /** One viewport line: the plain text (for grammar detection) plus the colored
@@ -30,6 +32,16 @@ export function trimLeadingColored(line: ColoredLine): ColoredLine {
   const first = segs[0]
   if (first) segs[0] = { ...first, text: first.text.trimStart() }
   return { text: line.text.trimStart(), segs }
+}
+
+/** Strip trailing whitespace runs — terminal rows are padded to full width,
+ *  which defeats shrink-wrap layouts (w-fit) and bloats copied text. */
+export function trimTrailingColored(line: ColoredLine): ColoredLine {
+  const segs = [...line.segs]
+  while (segs.length > 0 && /^\s*$/.test(segs[segs.length - 1]?.text ?? "")) segs.pop()
+  const last = segs[segs.length - 1]
+  if (last) segs[segs.length - 1] = { ...last, text: last.text.replace(/\s+$/, "") }
+  return { text: line.text.replace(/\s+$/, ""), segs }
 }
 
 /** The 6 levels the xterm 256-color cube steps through. */
@@ -94,5 +106,26 @@ export function cellColor(cell: FgCell): string | null {
     return `#${hex2(r)}${hex2(g)}${hex2(b)}`
   }
   if (cell.isFgPalette()) return paletteColor(raw)
+  return null
+}
+
+/** Background sibling of {@link FgCell} — inverse-video / selection runs. */
+export interface BgCell {
+  isBgDefault(): boolean
+  isBgRGB(): boolean
+  isBgPalette(): boolean
+  getBgColor(): number
+}
+
+export function cellBgColor(cell: BgCell): string | null {
+  if (cell.isBgDefault()) return null
+  const raw = cell.getBgColor()
+  if (cell.isBgRGB()) {
+    const r = (raw >>> 16) & 0xff
+    const g = (raw >>> 8) & 0xff
+    const b = raw & 0xff
+    return `#${hex2(r)}${hex2(g)}${hex2(b)}`
+  }
+  if (cell.isBgPalette()) return paletteColor(raw)
   return null
 }

@@ -250,9 +250,15 @@ function SessionView({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the PTY so typing drives the native CLI / shell
+    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard input already routes to the PTY; the click is only a focus assist
     <div
       className="relative h-full"
-      onMouseDown={() => setFocusNonce((n) => n + 1)}
+      onClick={() => {
+        // Click focuses the PTY — but a drag-select stays a selection: don't
+        // steal focus (and collapse the range) when text was just selected.
+        if (window.getSelection()?.toString()) return
+        setFocusNonce((n) => n + 1)
+      }}
     >
       {/* Real PTY — data source + input target. opacity-0 while translated so
           its input stays focusable under the overlay; drops opacity when raw

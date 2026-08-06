@@ -13,6 +13,8 @@ import type { ColoredLine } from "./tty-color.ts"
 export interface MenuItem {
   name: string
   desc: string
+  /** The native menu's highlighted row (inverse-video bg run). */
+  selected?: boolean
 }
 
 /** One AskUserQuestion choice (`❯ 1. 修改代码` + its indented description). */
@@ -54,6 +56,17 @@ const USER_ECHO = /^[>❯›] (?!\d+\.\s)/
 const ACTIVITY = /^[·✢✳✶✻✽✷✸✹✺✱*∗＊⠀-⣿]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */
 const MENU_ROW = /^(\/[a-zA-Z][\w:-]*)\s{2,}(\S.*)$/
+
+/** The CLI marks the selected menu row with a CHROMATIC name color (accent)
+ *  vs grey for the rest — a bg run (inverse themes) also counts. */
+function menuRowSelected(line: ColoredLine, name: string): boolean {
+  if (line.segs.some((s) => s.bg)) return true
+  const seg = line.segs.find((s) => s.text.includes(name))
+  const m = seg?.color?.match(/^#(..)(..)(..)$/)
+  if (!m) return false
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => Number.parseInt(h, 16))
+  return Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) > 16
+}
 /** An AskUserQuestion choice row: an optional `❯` cursor, then `N. text`. */
 const OPTION_ROW = /^(❯\s*)?(\d+)\.\s+(.+)$/
 /** The AskUserQuestion key-hint footer — not part of the option list. */
@@ -199,7 +212,7 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
         const t = lines[j].text.trim()
         const m = t.match(MENU_ROW)
         if (m) {
-          items.push({ name: m[1], desc: m[2] })
+          items.push({ name: m[1], desc: m[2], selected: menuRowSelected(lines[j], m[1]) })
           j += 1
         } else if (
           items.length > 0 &&

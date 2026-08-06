@@ -31,3 +31,18 @@ describe("parseTtyBlocks user echo", () => {
     ])
   })
 })
+
+describe("groupCopyRuns copy text", () => {
+  test("strips the bullet and its 2-space continuation indent", async () => {
+    const { groupCopyRuns } = await import("../src/components/TtyBlocksView.tsx")
+    const runs = groupCopyRuns([
+      { kind: "line", line: { text: "● 这串数字看起来像误输入了。", segs: [] } },
+      { kind: "line", line: { text: "  有什么需要我做的吗?", segs: [] } },
+    ])
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({
+      kind: "run",
+      text: "这串数字看起来像误输入了。\n有什么需要我做的吗?",
+    })
+  })
+})

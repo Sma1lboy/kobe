@@ -14,8 +14,13 @@ import {
   parseTtyBlocks,
   type TtyBlock,
 } from "../lib/claude-tty.ts"
-import { type ColoredLine, trimLeadingColored } from "../lib/tty-color.ts"
-import { TokenizedText } from "./TokenizedText.tsx"
+import {
+  type ColoredLine,
+  trimLeadingColored,
+  trimTrailingColored,
+} from "../lib/tty-color.ts"
+import { CopyableRegion } from "./CopyableRegion.tsx"
+import { UserBubble } from "./UserBubble.tsx"
 import { WelcomeCard } from "./WelcomeCard.tsx"
 
 /** Box-drawing / block-element glyphs — rows containing them are art (logo,
@@ -24,7 +29,9 @@ const BLOCK_ART = /[█▉▊▋▌▍▎▏▀▄▐▖▗▘▙▚▛▜▝▞
 
 /** One colored terminal line as spans. `whitespace-pre` keeps native column
  *  alignment; art rows go line-height 1 so block cells don't split. */
-function Line({ line, className }: { line: ColoredLine; className?: string }) {
+function Line({ line: raw, className }: { line: ColoredLine; className?: string }) {
+  // Rows arrive padded to terminal width — trim so shrink-wrap parents work.
+  const line = trimTrailingColored(raw)
   const art = BLOCK_ART.test(line.text)
   return (
     <div
@@ -36,7 +43,14 @@ function Line({ line, className }: { line: ColoredLine; className?: string }) {
             <span
               // biome-ignore lint/suspicious/noArrayIndexKey: colored runs are positional, re-derived per frame
               key={i}
-              style={seg.color ? { color: seg.color } : undefined}
+              style={
+                seg.color || seg.bg
+                  ? {
+                      color: seg.color ?? undefined,
+                      backgroundColor: seg.bg ?? undefined,
+                    }
+                  : undefined
+              }
             >
               {seg.text}
             </span>
@@ -52,10 +66,15 @@ export function CommandMenu({ items }: { items: MenuItem[] }) {
     <div className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-0.5">
       {items.map((item) => (
         <Fragment key={item.name}>
-          <span className="font-mono text-[12px] text-primary">
+          {/* Selection = color only (the CLI's own grammar): bright vs grey. */}
+          <span
+            className={`font-mono text-[12px] ${item.selected ? "text-primary" : "text-subtle"}`}
+          >
             {item.name}
           </span>
-          <span className="truncate font-mono text-[12px] text-muted">
+          <span
+            className={`truncate font-mono text-[12px] ${item.selected ? "text-fg" : "text-subtle"}`}
+          >
             {item.desc}
           </span>
         </Fragment>
@@ -145,15 +164,7 @@ function Block({
 }) {
   switch (block.kind) {
     case "user":
-      return (
-        <div className="my-3 flex justify-end">
-          <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-inset px-3.5 py-2">
-            <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
-              <TokenizedText text={block.text} sessionId={sessionId} />
-            </span>
-          </div>
-        </div>
-      )
+      return <UserBubble text={block.text} sessionId={sessionId} />
     case "activity":
       return <Line line={block.line} className="text-subtle/70 italic" />
     case "menu":
@@ -203,13 +214,59 @@ export function TtyBlocksView({
       {blocks.length === 0 ? (
         <BootLine />
       ) : (
-        blocks.map((block, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
-          <Block key={i} block={block} sessionId={sessionId} />
-        ))
+        groupCopyRuns(blocks).map((item, i) =>
+          item.kind === "run" ? (
+            // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
+            <CopyableRegion key={i} text={item.text}>
+              {item.blocks.map((block, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: positional within the run
+                <Block key={j} block={block} sessionId={sessionId} />
+              ))}
+            </CopyableRegion>
+          ) : (
+            // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
+            <Block key={i} block={item.block} sessionId={sessionId} />
+          ),
+        )
       )}
     </div>
   )
+}
+
+type CopyRunItem =
+  | { kind: "run"; blocks: TtyBlock[]; text: string }
+  | { kind: "single"; block: TtyBlock }
+
+/** Chunk consecutive plain line/gap blocks into hover-copyable runs — the
+ *  assistant prose between structural blocks (bubbles, menus, cards). */
+export function groupCopyRuns(blocks: readonly TtyBlock[]): CopyRunItem[] {
+  const out: CopyRunItem[] = []
+  let run: TtyBlock[] = []
+  const flush = (): void => {
+    if (run.length === 0) return
+    const text = run
+      // Copy the prose, not the terminal dressing: drop the `● ` bullet and
+      // its matching 2-space continuation indent (deeper indents survive).
+      .map((b) =>
+        b.kind === "line"
+          ? b.line.text.replace(/^[●⏺]\s/, "").replace(/^ {2}/, "")
+          : "",
+      )
+      .join("\n")
+      .replace(/^\n+|\n+$/g, "")
+    if (text.trim() === "") out.push(...run.map((b) => ({ kind: "single" as const, block: b })))
+    else out.push({ kind: "run", blocks: run, text })
+    run = []
+  }
+  for (const block of blocks) {
+    if (block.kind === "line" || block.kind === "gap") run.push(block)
+    else {
+      flush()
+      out.push({ kind: "single", block })
+    }
+  }
+  flush()
+  return out
 }
 
 /** Render a run of blocks (the live footer) inline — reuses the same Block

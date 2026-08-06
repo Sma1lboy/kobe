@@ -30,7 +30,12 @@ import { useAppState } from "../lib/store.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
-import { type ColoredLine, cellColor, type Seg } from "../lib/tty-color.ts"
+import {
+  type ColoredLine,
+  cellBgColor,
+  cellColor,
+  type Seg,
+} from "../lib/tty-color.ts"
 import { isWebTransportOffline } from "../lib/web-transport.ts"
 
 // One decoder reused across every WebSocket message — a fresh `new
@@ -138,10 +143,11 @@ function coloredViewport(term: Terminal): ColoredLine[] {
       if (!cell || cell.getWidth() === 0) continue
       const ch = cell.getChars() || " "
       const color = cellColor(cell)
+      const bg = cellBgColor(cell)
       text += ch
-      if (cur && cur.color === color) cur.text += ch
+      if (cur && cur.color === color && (cur.bg ?? null) === bg) cur.text += ch
       else {
-        cur = { text: ch, color }
+        cur = { text: ch, color, bg }
         segs.push(cur)
       }
     }
