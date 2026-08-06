@@ -1,17 +1,11 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronsRight,
-  GitBranch,
-  Maximize2,
-} from "lucide-react"
+import { ChevronsRight, GitBranch, Maximize2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   durationMs,
-  type TimelineItem,
   type TimelineModel,
   type TimelineStatus,
 } from "../lib/timeline.ts"
+import { ExecutionGrid, formatExecutionDuration } from "./ExecutionGrid.tsx"
 
 function statusGlyph(status: TimelineStatus): string {
   if (status === "running") return "●"
@@ -27,55 +21,12 @@ function statusColor(status: TimelineStatus): string {
   return "text-kobe-green"
 }
 
-function itemMark(item: TimelineItem): string {
-  if (item.kind === "reasoning") return "◇"
-  if (item.kind === "change") return "◆"
-  if (item.kind === "response") return "▸"
-  return "$"
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${Math.max(1, Math.round(ms))}ms`
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(ms < 10_000 ? 1 : 0)}s`
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.floor((ms % 60_000) / 1_000)
-  return `${minutes}m ${seconds}s`
-}
-
 function clockLabel(ms: number): string {
   if (ms <= 0) return ""
   return new Date(ms).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   })
-}
-
-function TimelineItemRow({ item, now }: { item: TimelineItem; now: number }) {
-  return (
-    <div className="group/item relative flex min-w-0 gap-2 py-1.5 pl-4 pr-1">
-      <span
-        className={`absolute -left-[5px] top-[9px] bg-surface font-mono text-[10px] ${statusColor(item.status)}`}
-        aria-hidden="true"
-      >
-        {itemMark(item)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate text-[11px] font-medium text-fg">
-            {item.title}
-          </span>
-          <span className="ml-auto shrink-0 font-mono text-[9px] text-subtle">
-            {formatDuration(durationMs(item.startedAt, item.endedAt, now))}
-          </span>
-        </div>
-        {item.summary && (
-          <div className="mt-0.5 truncate font-mono text-[10px] text-subtle">
-            {item.summary}
-          </div>
-        )}
-      </div>
-    </div>
-  )
 }
 
 export function TimelinePanel({
@@ -96,26 +47,14 @@ export function TimelinePanel({
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const [atLive, setAtLive] = useState(true)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const hasRunning = model.turns.some((turn) => turn.status === "running")
   const [now, setNow] = useState(() => Date.now())
-  const latestId = model.turns.at(-1)?.id
 
   useEffect(() => {
     if (!hasRunning) return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
   }, [hasRunning])
-
-  useEffect(() => {
-    if (!latestId) return
-    setExpanded((current) => {
-      if (current.has(latestId)) return current
-      const next = new Set(current)
-      next.add(latestId)
-      return next
-    })
-  }, [latestId])
 
   // Follow the live tail until the user deliberately scrolls upward.
   // biome-ignore lint/correctness/useExhaustiveDependencies: turns are the scroll trigger.
@@ -140,12 +79,12 @@ export function TimelinePanel({
   }
 
   return (
-    <aside className="flex basis-72 shrink-0 flex-col border-l border-line bg-surface">
+    <aside className="flex basis-80 shrink-0 flex-col border-l border-line bg-surface">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
         <GitBranch size={13} strokeWidth={1.8} className="text-primary" />
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted">
-            Timeline
+            Execution map
           </div>
           <div className="truncate font-mono text-[9px] text-subtle">
             {engineLabel} · {summary}
@@ -155,8 +94,8 @@ export function TimelinePanel({
           type="button"
           onClick={onExpand}
           className="grid size-6 place-items-center border border-line text-subtle transition-colors hover:border-line-active hover:text-fg"
-          aria-label="Expand execution timeline"
-          title="Open swimlane view"
+          aria-label="Expand execution map"
+          title="Open execution map"
         >
           <Maximize2 size={11} />
         </button>
@@ -164,8 +103,8 @@ export function TimelinePanel({
           type="button"
           onClick={onCollapse}
           className="grid size-6 place-items-center text-subtle hover:text-fg"
-          aria-label="Collapse execution timeline"
-          title="Collapse timeline"
+          aria-label="Collapse execution map"
+          title="Collapse execution map"
         >
           <ChevronsRight size={12} />
         </button>
@@ -189,7 +128,7 @@ export function TimelinePanel({
           </div>
         ) : error && model.turns.length === 0 ? (
           <div className="border-l-2 border-kobe-red pl-3 text-[11px] leading-relaxed text-muted">
-            Timeline unavailable
+            Execution map unavailable
             <div className="mt-1 font-mono text-[9px] text-subtle">{error}</div>
           </div>
         ) : model.turns.length === 0 ? (
@@ -200,71 +139,42 @@ export function TimelinePanel({
             </div>
           </div>
         ) : (
-          <div className="relative">
-            <div className="absolute bottom-3 left-[7px] top-3 w-px bg-line-active" />
-            {model.turns.map((turn) => {
-              const open = expanded.has(turn.id)
-              return (
-                <section key={turn.id} className="relative pb-3 pl-5">
+          <div className="flex flex-col gap-4">
+            {model.turns.map((turn, turnIndex) => (
+              <section key={turn.id} className="relative">
+                <div className="mb-2 flex items-start gap-2 border-b border-line-subtle pb-2">
+                  <span className="mt-0.5 font-mono text-[8px] font-bold tracking-[0.14em] text-primary">
+                    T{String(turnIndex + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-2 text-[11px] font-medium leading-[1.35] text-fg">
+                      {turn.title}
+                    </div>
+                    <div className="mt-1 flex gap-2 font-mono text-[8px] text-subtle">
+                      <span>{clockLabel(turn.startedAt)}</span>
+                      <span>
+                        {formatExecutionDuration(
+                          durationMs(turn.startedAt, turn.endedAt, now),
+                        )}
+                      </span>
+                      <span>{turn.items.length} blocks</span>
+                    </div>
+                  </div>
                   <span
-                    className={`absolute left-[2px] top-[10px] z-10 grid size-[11px] place-items-center bg-surface font-mono text-[9px] ${statusColor(turn.status)}`}
-                    aria-hidden="true"
+                    className={`font-mono text-[9px] ${statusColor(turn.status)}`}
+                    title={turn.status}
                   >
                     {statusGlyph(turn.status)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpanded((current) => {
-                        const next = new Set(current)
-                        if (next.has(turn.id)) next.delete(turn.id)
-                        else next.add(turn.id)
-                        return next
-                      })
-                    }
-                    className="flex w-full items-start gap-1.5 py-1 text-left"
-                    aria-expanded={open}
-                  >
-                    <span className="mt-0.5 text-subtle">
-                      {open ? (
-                        <ChevronDown size={11} />
-                      ) : (
-                        <ChevronRight size={11} />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[11px] font-medium leading-relaxed text-fg">
-                        {turn.title}
-                      </span>
-                      <span className="mt-0.5 flex gap-2 font-mono text-[9px] text-subtle">
-                        <span>{clockLabel(turn.startedAt)}</span>
-                        <span>
-                          {formatDuration(
-                            durationMs(turn.startedAt, turn.endedAt, now),
-                          )}
-                        </span>
-                        <span>{turn.items.length} events</span>
-                      </span>
-                    </span>
-                  </button>
-                  {open && turn.items.length > 0 && (
-                    <div className="ml-1.5 mt-1 border-l border-line-active">
-                      {turn.items.map((item) => (
-                        <TimelineItemRow key={item.id} item={item} now={now} />
-                      ))}
-                    </div>
-                  )}
-                  {open &&
-                    turn.items.length === 0 &&
-                    turn.status === "running" && (
-                      <div className="ml-1.5 mt-1 flex items-center gap-2 border-l border-line-active py-2 pl-4 font-mono text-[10px] text-kobe-blue">
-                        <span className="size-1.5 animate-pulse rounded-full bg-current" />
-                        Waiting for the first event…
-                      </div>
-                    )}
-                </section>
-              )
-            })}
+                </div>
+                <ExecutionGrid
+                  items={turn.items}
+                  status={turn.status}
+                  now={now}
+                  columns={2}
+                />
+              </section>
+            ))}
           </div>
         )}
       </div>
