@@ -318,6 +318,16 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "engine.pinSession",
+      async handle(payload, ctx) {
+        const taskId = requireString(payload, "taskId")
+        const tabId = requireString(payload, "tabId")
+        const sessionId = requireString(payload, "sessionId")
+        ctx.activity.pinTabSession(taskId, tabId, sessionId)
+        return {}
+      },
+    },
+    {
       name: "engine.reportEvent",
       async handle(payload, ctx) {
         // A `kobe hook <verb>` process reporting a NORMALIZED engine activity

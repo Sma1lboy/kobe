@@ -249,12 +249,15 @@ export function ChatSidebarTree({
   onSelect,
   surface = "chat",
   onSurfaceChange,
+  width,
 }: {
   selectedId: string | null
   onSelect: (taskId: string) => void
   /** Which main-area surface is showing (chat / embedded Kanban / Routines). */
   surface?: "chat" | "board" | "routines"
   onSurfaceChange?: (surface: "chat" | "board" | "routines") => void
+  /** Drag-resized width (PaneResizer) — falls back to the w-64 default. */
+  width?: number
 }) {
   const { tasks, engineStates, worktreeChanges, attentionInbox } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
@@ -432,7 +435,10 @@ export function ChatSidebarTree({
   }
 
   return (
-    <aside className="relative flex w-64 shrink-0 flex-col border-r border-line bg-surface font-mono">
+    <aside
+      className="relative flex w-64 shrink-0 flex-col border-r border-line bg-surface font-mono"
+      style={width ? { width } : undefined}
+    >
       {inboxOpen && (
         <ChatInbox
           selectedId={selectedId}

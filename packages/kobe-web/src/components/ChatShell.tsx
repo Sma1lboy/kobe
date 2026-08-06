@@ -48,6 +48,7 @@ import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
+import { PaneResizer, usePaneWidth } from "./PaneResizer.tsx"
 import { TimelineHost } from "./TimelineHost.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { TtyBlocksView, TtyFooter, useTtyBlocks } from "./TtyBlocksView.tsx"
@@ -403,6 +404,10 @@ export function ChatShell() {
   // Agent Trace is the GUI-native execution inspector. It starts open so
   // the two-level thought/tool model is visible without introducing a chord.
   const [showTimeline, setShowTimeline] = useState(true)
+  // Drag-resizable flanks: task sidebar (divider on its right) and Agent
+  // Trace (divider on its left). Widths persist per browser.
+  const [sidebarW, dragSidebar] = usePaneWidth("kobe-web.pane.sidebar", 256, 190, 420, 1)
+  const [traceW, dragTrace] = usePaneWidth("kobe-web.pane.trace", 320, 240, 640, -1)
   // Active tab's grammar-derived engine liveness (SessionView reports it up).
   // Off → the trace panel clears instead of parading a dead session.
   const [engineLive, setEngineLive] = useState(false)
@@ -420,7 +425,9 @@ export function ChatShell() {
           onSelect={selectChatTask}
           surface={surface}
           onSurfaceChange={setChatSurface}
+          width={sidebarW}
         />
+        <PaneResizer onPointerDown={dragSidebar} label="Resize sidebar" />
 
         {settingsOpen ? (
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -490,6 +497,9 @@ export function ChatShell() {
         )}
 
         {surface === "chat" && selected && showTimeline && (
+          <PaneResizer onPointerDown={dragTrace} label="Resize agent trace" />
+        )}
+        {surface === "chat" && selected && showTimeline && (
           <TimelineHost
             taskId={selected.id}
             worktreePath={selected.worktreePath || null}
@@ -499,6 +509,7 @@ export function ChatShell() {
               tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
             }
             engineActive={engineLive}
+            width={traceW}
             onCollapse={() => setShowTimeline(false)}
           />
         )}

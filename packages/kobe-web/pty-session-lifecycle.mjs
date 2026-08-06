@@ -121,7 +121,9 @@ export function createPtySessionManager({
       closeSession(victim)
     }
     const [cmd, ...args] = spec.command
-    const spawnEnv = typeof env === "function" ? env() : env
+    const base = typeof env === "function" ? env() : env
+    // Spec-supplied identity env (KOBE_TASK_ID/KOBE_TAB_ID for shell tabs).
+    const spawnEnv = spec.env ? { ...base, ...spec.env } : base
     let pty
     try {
       pty = spawnPty(cmd, args, {

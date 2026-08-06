@@ -11,7 +11,7 @@ import {
   listHostedSessions,
   openHostedSessionHost,
 } from "../engine/hosted-session.ts"
-import { interactiveEngineCommand } from "../engine/interactive-command.ts"
+import { interactiveEngineCommand, withClaudeSessionId } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
@@ -104,13 +104,42 @@ export async function engineSpecAdapter(
   tabId?: string,
 ) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" }, vendor, tabId)
-  return { cwd: worktreePath, command: [...launch.command] }
+  const baseArgv = vendor
+    ? interactiveEngineCommand(vendor as VendorId)
+    : interactiveEngineCommand(task.vendor, task.modelEffort)
+  // Pin the session at spawn (claude `--session-id <uuid>`): the GUI then
+  // knows this tab's session DETERMINISTICALLY — no hook latency, no
+  // wrong-tab ambiguity. Vendors without a caller-set id return null.
+  const { argv, sessionId } = withClaudeSessionId(baseArgv, vendor ?? task.vendor)
+  const launch = buildEngineSessionLaunch({
+    task: {
+      id: task.id,
+      kind: task.kind,
+      vendor: vendor ? (vendor as VendorId) : task.vendor,
+      repo: task.repo,
+    },
+    worktreePath,
+    shell: resolveLoginShell({ fallback: "/bin/zsh" }),
+    argv,
+    promptIntent: { kind: "repo-init" },
+    tabId,
+  })
+  return {
+    cwd: worktreePath,
+    command: [...launch.command],
+    ...(sessionId ? { sessionId } : {}),
+  }
 }
 
-export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {
+export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string, tabId?: string) {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
-  return { cwd: worktreePath, command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"] }
+  return {
+    cwd: worktreePath,
+    command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
+    // A manual `claude`/`codex` typed into this shell inherits the task+tab
+    // identity, so its hooks attribute per-tab like a vendor tab's engine.
+    env: { KOBE_TASK_ID: taskId, ...(tabId ? { KOBE_TAB_ID: tabId } : {}) },
+  }
 }
 
 /**

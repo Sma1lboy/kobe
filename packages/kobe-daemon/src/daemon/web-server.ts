@@ -35,6 +35,8 @@ export interface DaemonWebSnapshotState {
   tasks: SerializedTask[]
   activeTaskId: string | null
   engineStates: Record<string, ChannelPayloads["engine-state"]>
+  /** taskId → tabId → last known engine session id (tab-precise traces). */
+  engineTabSessions: Record<string, Record<string, string>>
   update: ChannelPayloads["update"]["info"]
   jobs: Record<string, ChannelPayloads["task.jobs"]>
   worktreeChanges: ChannelPayloads["worktree.changes"]["changes"]
@@ -313,10 +315,21 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
     if (url.pathname === "/api/engine-spec" && req.method === "GET") {
       const vendor = url.searchParams.get("vendor") ?? undefined
       const tab = url.searchParams.get("tab") ?? undefined
-      return specResponse(url, link, (l, id) => engineSpec(runtime, l, id, vendor, tab))
+      return specResponse(url, link, async (l, id) => {
+        const spec = await engineSpec(runtime, l, id, vendor, tab)
+        // Spawn-time pin: broadcast the injected session id so the Agent
+        // Trace keys to this tab's session before the engine boots.
+        if (spec.sessionId && tab) {
+          await l
+            .request("engine.pinSession", { taskId: id, tabId: tab, sessionId: spec.sessionId })
+            .catch(() => {})
+        }
+        return spec
+      })
     }
     if (url.pathname === "/api/terminal-spec" && req.method === "GET") {
-      return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id))
+      const tab = url.searchParams.get("tab") ?? undefined
+      return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id, tab))
     }
     if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse(runtime)
     if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse(runtime)
@@ -392,6 +405,7 @@ export function createDirectWebLink(args: {
         tasks,
         activeTaskId: latest(args.bus, "active-task")?.taskId ?? null,
         engineStates: args.activity.snapshotByTask(),
+        engineTabSessions: args.activity.tabSessionsByTask(),
         update: latest(args.bus, "update")?.info ?? null,
         jobs,
         worktreeChanges: latest(args.bus, "worktree.changes")?.changes ?? {},

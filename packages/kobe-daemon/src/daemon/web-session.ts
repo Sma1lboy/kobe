@@ -17,8 +17,8 @@ export function engineSpec(
   return runtime.engineSpec(link, taskId, vendor, tabId)
 }
 
-export function terminalSpec(runtime: DaemonRuntimeAdapter, link: DaemonRpcClient, taskId: string) {
-  return runtime.terminalSpec(link, taskId)
+export function terminalSpec(runtime: DaemonRuntimeAdapter, link: DaemonRpcClient, taskId: string, tabId?: string) {
+  return runtime.terminalSpec(link, taskId, tabId)
 }
 
 export function tearDownTaskSession(runtime: DaemonRuntimeAdapter, taskId: string) {

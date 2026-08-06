@@ -173,6 +173,8 @@ export interface WebTransportSnapshot {
   tasks: Task[]
   activeTaskId: string | null
   engineStates: Record<string, EngineState>
+  /** taskId → tabId → last known engine session id (tab-precise traces). */
+  engineTabSessions?: Record<string, Record<string, string>>
   update: UpdateInfo | null
   /** taskId -> in-flight job (running only; terminal phases are dropped). */
   jobs?: Record<string, TaskJob>

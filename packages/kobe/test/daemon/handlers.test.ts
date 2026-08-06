@@ -99,6 +99,7 @@ describe("daemon handler registry", () => {
       "worktree.list",
       "worktree.remove",
       "engine.reportEvent",
+      "engine.pinSession",
       "attention.dismiss",
       "attention.read",
       "automation.list",

@@ -5,6 +5,8 @@ export type PtyMode = "engine" | "shell"
 export interface PtyLaunchSpec {
   cwd: string
   command: string[]
+  /** Extra spawn env (shell-tab task/tab identity). */
+  env?: Record<string, string>
 }
 
 export interface PtyLike {

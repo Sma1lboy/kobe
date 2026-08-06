@@ -13,6 +13,7 @@ export function TimelineHost({
   engineState,
   tabSessionId,
   engineActive = true,
+  width,
   onCollapse,
 }: {
   taskId: string
@@ -23,6 +24,8 @@ export function TimelineHost({
   tabSessionId?: string
   /** Engine liveness of the active tab (grammar-derived) — off clears the panel. */
   engineActive?: boolean
+  /** Drag-resized panel width (PaneResizer). */
+  width?: number
   onCollapse: () => void
 }) {
   const engines = useEngines()
@@ -42,6 +45,7 @@ export function TimelineHost({
         {...data}
         engineLabel={label}
         active={engineActive}
+        width={width}
         onExpand={() => setExpanded(true)}
         onCollapse={onCollapse}
       />

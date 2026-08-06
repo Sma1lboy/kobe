@@ -297,9 +297,9 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     tasks: snap.tasks,
     activeTaskId: snap.activeTaskId,
     engineStates: snap.engineStates,
-    // Tab-precise sessions rebuild from live engine-state events (the
-    // snapshot map is task-level); a reconnect must not keep dead tabs.
-    engineTabSessions: {},
+    // Daemon-seeded (registry tabSessions) so a reload keeps tab-precise
+    // traces; live engine-state events keep it fresh from here.
+    engineTabSessions: snap.engineTabSessions ?? {},
     update: snap.update,
     jobs: snap.jobs ?? {},
     worktreeChanges: snap.worktreeChanges ?? {},
