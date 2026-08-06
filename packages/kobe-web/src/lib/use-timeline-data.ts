@@ -51,11 +51,12 @@ export function useTimelineData({
         const sessions = await fetchSessions(worktreePath, vendor)
         if (!force && sessions.latestMtime === mtimeRef.current) return
         mtimeRef.current = sessions.latestMtime
+        // Follow the NEWEST transcript: the tab may run a fresh engine as a
+        // shell child, so the daemon's task-level sessionId can lag a whole
+        // session behind. Pinning to it froze the trace on old results; the
+        // preferred id only wins while its transcript is still unwritten.
         const latest = sessions.sessions.at(-1)
-        const target =
-          preferredSessionId && sessions.sessions.includes(preferredSessionId)
-            ? preferredSessionId
-            : latest
+        const target = latest ?? preferredSessionId
         const next = target
           ? await fetchTrace(vendor, target)
           : { sessionId: "", turns: [] }

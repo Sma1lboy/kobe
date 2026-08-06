@@ -226,74 +226,8 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   }
 }
 
-.activity-card--active .activity-card__pulse,
-.command-dock__beacon {
+.activity-card--active .activity-card__pulse {
   animation: kobe-signal-pulse 1.4s ease-in-out infinite;
-}
-
-/* The engine still owns input; this dock is only its visible control surface. */
-.command-dock {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--color-line-active);
-  background: color-mix(in srgb, var(--color-bg) 94%, var(--color-primary));
-  box-shadow:
-    0 18px 50px color-mix(in srgb, black 34%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent);
-}
-
-.command-dock::before {
-  position: absolute;
-  top: 0;
-  right: 15%;
-  left: 15%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
-  content: "";
-  opacity: 0.7;
-}
-
-.command-dock__identity {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-right: 1px solid var(--color-line);
-  background: var(--color-surface);
-  padding: 0 12px;
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-.command-dock__beacon {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--color-kobe-green);
-  color: var(--color-kobe-green);
-}
-
-.command-dock__input {
-  display: flex;
-  min-height: 48px;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 14px;
-}
-
-.command-dock__send {
-  display: grid;
-  width: 25px;
-  height: 25px;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--color-line-active);
-  color: var(--color-muted);
 }
 
 /* Quiet instrument-paper grid shared by the outline and expanded swimlane. */
@@ -465,7 +399,6 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 
 @media (prefers-reduced-motion: reduce) {
   .activity-card--active .activity-card__pulse,
-  .command-dock__beacon,
   .execution-node--running::after,
   .shimmer-text,
   .fade-up,

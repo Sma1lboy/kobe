@@ -319,12 +319,16 @@ function SessionView({
                 <StatusLine line={trimLeadingColored(effortLine)} />
               </div>
             )}
-            <InputMirror
-              promptText={promptText}
-              composing={composing}
-              caretOffset={caretOffset}
-              sessionId={sessionId}
-            />
+            {/* No composer until the engine draws one — during boot (empty
+                buffer / harness setup) the mirror has nothing to mirror. */}
+            {engineLive && (
+              <InputMirror
+                promptText={promptText}
+                composing={composing}
+                caretOffset={caretOffset}
+                sessionId={sessionId}
+              />
+            )}
             {statusColored.length > 0 && (
               <div className="mt-2 space-y-0.5 px-2">
                 {statusColored.map((line, i) => (

@@ -20,8 +20,8 @@ export function TracePatch({ patch }: { patch: string }) {
           <div className="px-3 py-2 text-subtle">(empty patch)</div>
         ) : (
           rows.map((row, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: patch rows are positional.
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: patch rows are positional.
               key={index}
               className={`kobe-diff-row ${rowClass(row.kind)}`}
             >
