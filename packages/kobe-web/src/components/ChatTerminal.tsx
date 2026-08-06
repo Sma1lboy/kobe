@@ -327,6 +327,16 @@ export function ChatTerminal({
           onStatusChange?.("closed")
         }
       }
+      // Shift+Enter → newline. xterm sends a bare CR (submit) for any Enter;
+      // claude's newline grammar is backslash+return (what /terminal-setup
+      // binds), and in a bare shell that's a harmless line continuation.
+      term.attachCustomKeyEventHandler((ev) => {
+        if (ev.type === "keydown" && ev.key === "Enter" && ev.shiftKey) {
+          if (ws?.readyState === WebSocket.OPEN) ws.send("\\\r")
+          return false
+        }
+        return true
+      })
       term.onData((d) => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(d)
       })

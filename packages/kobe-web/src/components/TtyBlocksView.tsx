@@ -380,17 +380,17 @@ export const TtyFooter = memo(function TtyFooter({
   return (
     <>
       {blocks.map((block, i) => {
-        // The CLI right-aligns some footer lines (clipboard hint) by space-
-        // padding to ITS cols — re-align with CSS so the tail never clips.
+        // The CLI space-pads footer lines (tips, clipboard hint) to right-
+        // align at ITS cols — strip the padding and keep everything on the
+        // LEFT, in line with the spinner, so the card reads as one column.
         if (block.kind === "line" && /^ {2,}\S/.test(block.line.text)) {
           return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
-            <div key={i} className="flex justify-end">
-              <Block
-                block={{ kind: "line", line: trimLeadingColored(block.line) }}
-                sessionId={sessionId}
-              />
-            </div>
+            <Block
+              // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
+              key={i}
+              block={{ kind: "line", line: trimLeadingColored(block.line) }}
+              sessionId={sessionId}
+            />
           )
         }
         return (
