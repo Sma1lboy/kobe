@@ -46,3 +46,21 @@ describe("groupCopyRuns copy text", () => {
     })
   })
 })
+
+describe("recap block", () => {
+  const line = (text: string) => ({ text, segs: [] })
+
+  test("absorbs continuations and strips the config hint", () => {
+    const blocks = parseTtyBlocks([
+      line("※ recap: 你刚才只是让我随便调几个工具试试,我跑了 git log"),
+      line("  和目录列表,一切正常。 (disable recaps in /config)"),
+      line(""),
+    ])
+    expect(blocks).toEqual([
+      {
+        kind: "recap",
+        text: "你刚才只是让我随便调几个工具试试,我跑了 git log 和目录列表,一切正常。",
+      },
+    ])
+  })
+})

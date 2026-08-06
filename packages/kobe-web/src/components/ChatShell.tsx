@@ -251,7 +251,32 @@ function SessionView({
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
-  const { body, footer: bodyFooter } = useTtyBlocks(chatBodyLines, grammar)
+  const { body: rawBody, footer: rawFooter } = useTtyBlocks(
+    chatBodyLines,
+    grammar,
+  )
+  // Claude's `※ recap` docks above the composer instead of drifting in the
+  // flow — strip every occurrence, pin the newest.
+  const { body, bodyFooter, recap } = useMemo((): {
+    body: readonly TtyBlock[]
+    bodyFooter: readonly TtyBlock[]
+    recap: { kind: "recap"; text: string } | null
+  } => {
+    let last: { kind: "recap"; text: string } | null = null
+    const strip = (arr: readonly TtyBlock[]): readonly TtyBlock[] => {
+      if (!arr.some((b) => b.kind === "recap")) return arr
+      return arr.filter((b) => {
+        if (b.kind === "recap") {
+          last = b
+          return false
+        }
+        return true
+      })
+    }
+    const nextBody = strip(rawBody)
+    const nextFooter = strip(rawFooter)
+    return { body: nextBody, bodyFooter: nextFooter, recap: last }
+  }, [rawBody, rawFooter])
   const footer = useMemo(
     () => (belowMenu.length > 0 ? [...bodyFooter, ...belowMenu] : bodyFooter),
     [bodyFooter, belowMenu],
@@ -334,6 +359,12 @@ function SessionView({
             {effortLine && (
               <div className="fade-up mb-1 flex justify-end px-3">
                 <StatusLine line={trimLeadingColored(effortLine)} />
+              </div>
+            )}
+            {recap && (
+              <div className="fade-up mb-1.5 px-1 text-[12px] leading-relaxed text-muted">
+                <span className="mr-1.5 select-none text-subtle">※</span>
+                {recap.text}
               </div>
             )}
             {/* No composer until the engine draws one — during boot (empty

@@ -47,6 +47,9 @@ export type TtyBlock =
   | { kind: "menu"; items: MenuItem[] }
   | { kind: "options"; items: OptionItem[] }
   | { kind: "welcome"; welcome: WelcomeInfo }
+  /** Claude's `※ recap: …` turn summary — lifted out of the flow and pinned
+   *  above the composer by the shell. */
+  | { kind: "recap"; text: string }
   | { kind: "line"; line: ColoredLine }
   | { kind: "gap" }
 
@@ -62,6 +65,10 @@ const USER_ECHO = /^[>❯›] (?!\d+\.\s)/
 const ACTIVITY = /^[·✢✳✶✻✽✷✸✹✺✱*∗＊⠀-⣿]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */
 const MENU_ROW = /^(\/[a-zA-Z][\w:-]*)\s{2,}(\S.*)$/
+/** `※ recap: …` — Claude's end-of-turn summary line. */
+const RECAP_ROW = /^※\s*recap:\s*(.*)$/i
+/** The recap's trailing config hint — chrome, not content. */
+const RECAP_HINT = /\s*\(disable recaps in \/config\)\s*$/i
 
 /** Is this line a slash-menu row? Exposed so the shell can split an engine's
  *  below-composer menu (Codex) away from its status tail. */
@@ -192,6 +199,22 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
     if (ACTIVITY.test(trimmed)) {
       blocks.push({ kind: "activity", line })
       i += 1
+      continue
+    }
+    const rm = trimmed.match(RECAP_ROW)
+    if (rm) {
+      // Absorb wrapped continuations (2-space indented, like user echoes).
+      let text = rm[1]
+      let j = i + 1
+      while (j < lines.length) {
+        const raw = lines[j].text
+        const t = raw.trim()
+        if (t === "" || !/^ {2,}\S/.test(raw)) break
+        text += ` ${t}`
+        j += 1
+      }
+      blocks.push({ kind: "recap", text: text.replace(RECAP_HINT, "").trim() })
+      i = j
       continue
     }
     // AskUserQuestion choices: a run of `N. text` rows with a ❯ cursor on the

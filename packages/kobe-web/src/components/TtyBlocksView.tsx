@@ -236,6 +236,14 @@ function Block({
       return <OptionMenu items={block.items} />
     case "welcome":
       return <WelcomeCard welcome={block.welcome} />
+    case "recap":
+      // Normally lifted + pinned above the composer by the shell; anywhere
+      // else (older scrollback) it reads as a quiet summary line.
+      return (
+        <div className="py-0.5 text-[12px] leading-relaxed text-subtle">
+          ※ {block.text}
+        </div>
+      )
     case "line":
       return <Line line={block.line} />
     case "gap":
