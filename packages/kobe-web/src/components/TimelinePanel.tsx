@@ -34,6 +34,7 @@ export function TimelinePanel({
   loaded,
   error,
   engineLabel,
+  active = true,
   onExpand,
   onCollapse,
 }: {
@@ -41,6 +42,9 @@ export function TimelinePanel({
   loaded: boolean
   error: string | null
   engineLabel: string
+  /** Is an engine live in the ACTIVE tab? Off (bare shell / exited / booting)
+   *  → the trace body clears instead of showing a finished session's events. */
+  active?: boolean
   onExpand: () => void
   onCollapse: () => void
 }) {
@@ -87,7 +91,7 @@ export function TimelinePanel({
             Agent trace
           </div>
           <div className="truncate font-mono text-[9px] text-subtle">
-            {engineLabel} · {summary}
+            {active ? `${engineLabel} · ${summary}` : engineLabel}
           </div>
         </div>
         <button
@@ -121,7 +125,16 @@ export function TimelinePanel({
         }}
         className="execution-grid min-h-0 flex-1 overflow-y-auto px-3 py-3"
       >
-        {!loaded && model.turns.length === 0 ? (
+        {!active ? (
+          <div className="py-8 text-center">
+            <div className="font-mono text-[11px] text-muted">
+              No live engine
+            </div>
+            <div className="mt-1 text-[10px] text-subtle">
+              The trace follows the session running in this tab.
+            </div>
+          </div>
+        ) : !loaded && model.turns.length === 0 ? (
           <div className="flex items-center gap-2 py-3 font-mono text-[10px] text-subtle">
             <span className="size-1.5 animate-pulse rounded-full bg-kobe-blue" />
             Reading engine events…

@@ -108,6 +108,7 @@ function SessionView({
   mode,
   vendor,
   grammar,
+  onEngineLive,
 }: {
   tabId: string
   taskId: string
@@ -118,6 +119,9 @@ function SessionView({
   vendor?: string
   /** The vendor's screen grammar (engine-grammar.ts) — drives the translation. */
   grammar: EngineGrammar
+  /** Grammar-derived engine liveness, lifted so the Agent Trace can clear
+   *  when this tab drops to a bare shell / boot screen. */
+  onEngineLive?: (live: boolean) => void
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
@@ -170,9 +174,10 @@ function SessionView({
   // bare shell may never emit an OSC title to overwrite the engine's.
   const wasLiveRef = useRef(false)
   useEffect(() => {
+    onEngineLive?.(engineLive)
     if (wasLiveRef.current && !engineLive) resetTabTitle(taskId, tabId)
     wasLiveRef.current = engineLive
-  }, [engineLive, taskId, tabId])
+  }, [engineLive, taskId, tabId, onEngineLive])
   const bodyLines = useMemo(
     () => (region ? colored.slice(0, region.topRow) : colored),
     [region, colored],
@@ -398,6 +403,13 @@ export function ChatShell() {
   // Agent Trace is the GUI-native execution inspector. It starts open so
   // the two-level thought/tool model is visible without introducing a chord.
   const [showTimeline, setShowTimeline] = useState(true)
+  // Active tab's grammar-derived engine liveness (SessionView reports it up).
+  // Off → the trace panel clears instead of parading a dead session.
+  const [engineLive, setEngineLive] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tab switch resets liveness until the new SessionView reports
+  useEffect(() => {
+    setEngineLive(false)
+  }, [tabId])
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -466,6 +478,7 @@ export function ChatShell() {
                   mode={mode}
                   vendor={vendor}
                   grammar={grammarFor(vendor ?? selected.vendor)}
+                  onEngineLive={setEngineLive}
                 />
               )}
             </div>
@@ -485,6 +498,7 @@ export function ChatShell() {
             tabSessionId={
               tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
             }
+            engineActive={engineLive}
             onCollapse={() => setShowTimeline(false)}
           />
         )}

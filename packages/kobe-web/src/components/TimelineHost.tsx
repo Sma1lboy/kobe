@@ -12,6 +12,7 @@ export function TimelineHost({
   vendor,
   engineState,
   tabSessionId,
+  engineActive = true,
   onCollapse,
 }: {
   taskId: string
@@ -20,6 +21,8 @@ export function TimelineHost({
   engineState: EngineState | undefined
   /** Active tab's hook-reported session — see useTimelineData. */
   tabSessionId?: string
+  /** Engine liveness of the active tab (grammar-derived) — off clears the panel. */
+  engineActive?: boolean
   onCollapse: () => void
 }) {
   const engines = useEngines()
@@ -38,6 +41,7 @@ export function TimelineHost({
       <TimelinePanel
         {...data}
         engineLabel={label}
+        active={engineActive}
         onExpand={() => setExpanded(true)}
         onCollapse={onCollapse}
       />
