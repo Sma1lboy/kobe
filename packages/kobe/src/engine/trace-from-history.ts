@@ -78,6 +78,24 @@ export function traceFromHistory(sessionId: string, messages: readonly Message[]
   let current: (typeof turns)[number] | undefined
   let parentId: string | null = null
 
+  // Does any LATER message in the same turn call a tool? Claude splits text
+  // and tool_use across separate assistant messages, so a same-message
+  // lookahead misclassified commentary as the answer and orphaned every
+  // tool node to the grid's root column (full-width stack, no branches).
+  const toolAhead: boolean[] = new Array(messages.length).fill(false)
+  {
+    let seenTool = false
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.role === "user" && textBlocks(m)) {
+        seenTool = false
+        continue
+      }
+      toolAhead[i] = seenTool
+      if (m.blocks.some((b) => b.type === "tool_call")) seenTool = true
+    }
+  }
+
   messages.forEach((message, messageIndex) => {
     const timestamp = at(message.timestamp)
     const prompt = message.role === "user" ? textBlocks(message) : ""
@@ -142,7 +160,9 @@ export function traceFromHistory(sessionId: string, messages: readonly Message[]
         }
         parentId = node.id
       } else if (block.type === "text" && message.role !== "user" && block.text.trim()) {
-        const hasToolAfter = message.blocks.slice(blockIndex + 1).some((candidate) => candidate.type === "tool_call")
+        const hasToolAfter =
+          message.blocks.slice(blockIndex + 1).some((candidate) => candidate.type === "tool_call") ||
+          toolAhead[messageIndex]
         const commentary = message.phase === "commentary" || (message.phase === undefined && hasToolAfter)
         node = {
           id: `${commentary ? "commentary" : "answer"}:${fallbackId}`,

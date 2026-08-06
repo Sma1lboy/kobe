@@ -180,11 +180,14 @@ function TranscriptEvent({
 
 function ActivityCard({ line }: { line: ColoredLine }) {
   const active = /…|\.\.\./.test(line.text)
+  // Settled scrollback ("✳ Worked for 5s") reads as history, not an event —
+  // a quiet line, no card chrome. Only the LIVE spinner earns the card.
+  if (!active) return <Line line={line} className="py-0.5 text-subtle" />
   return (
-    <div className={`activity-card ${active ? "activity-card--active" : ""}`}>
+    <div className="activity-card activity-card--active">
       <div className="activity-card__status">
         <span className="activity-card__pulse" aria-hidden="true" />
-        <span>{active ? "LIVE" : "ACTIVITY"}</span>
+        <span>LIVE</span>
       </div>
       <Line line={line} className="min-w-0 text-muted" />
     </div>

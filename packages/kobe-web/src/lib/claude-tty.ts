@@ -149,6 +149,14 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
       i += 1
       continue
     }
+    // A bare assistant bullet (text still streaming) renders as a stray dot
+    // on the rail — treat it as whitespace until its content arrives.
+    if (/^[●⏺○]$/.test(trimmed)) {
+      if (blocks[blocks.length - 1]?.kind !== "gap")
+        blocks.push({ kind: "gap" })
+      i += 1
+      continue
+    }
     // The session-open banner (logo + version), re-laid-out as a card.
     if (LOGO_ART.test(line.text)) {
       const w = matchWelcome(lines, i)

@@ -15,18 +15,21 @@ export function UserBubble({
   sessionId: string | null
 }) {
   return (
-    <div className="group/user relative my-2 flex justify-end">
-      <div className="max-w-[82%] border border-line-active/50 bg-inset px-3.5 py-2 [clip-path:polygon(0_0,calc(100%_-_8px)_0,100%_8px,100%_100%,0_100%)]">
+    // Mirror of CopyableRegion's reserved action row, right-aligned: same
+    // bare button and hover behavior as assistant runs, no overlay card.
+    <div className="group/user my-2 flex flex-col items-end">
+      <div className="max-w-[82%] rounded-2xl rounded-br-md border border-line-active/50 bg-inset px-3.5 py-2">
         <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
           <TokenizedText text={text} sessionId={sessionId} />
         </span>
       </div>
-      {/* Fully below the bubble on hover — same placement as assistant runs. */}
-      <CopyButton
-        text={text}
-        label="Copy message"
-        className="absolute right-1 top-full z-10 mt-0.5 bg-menu shadow-md shadow-black/30 opacity-0 focus-visible:opacity-100 group-hover/user:opacity-100"
-      />
+      <div className="flex h-5 items-center">
+        <CopyButton
+          text={text}
+          label="Copy message"
+          className="opacity-0 focus-visible:opacity-100 group-hover/user:opacity-100"
+        />
+      </div>
     </div>
   )
 }

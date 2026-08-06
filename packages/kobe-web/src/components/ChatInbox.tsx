@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
+import { useTabsState } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
 import type { AttentionItem, Task } from "../lib/types.ts"
 
@@ -73,10 +74,23 @@ export function ChatInbox({
   onClose: () => void
 }) {
   const { attentionInbox, tasks } = useAppState()
+  const { tabsByTask } = useTabsState()
 
   const taskById = useMemo(
     () => new Map<string, Task>(tasks.map((t) => [t.id, t])),
     [tasks],
+  )
+  // "task · which tab" beats a bare task name: a task runs several tabs, so
+  // the item must say WHOSE turn completed.
+  const tabTitle = useCallback(
+    (item: AttentionItem): string | null => {
+      if (!item.tabId) return null
+      const tab = (tabsByTask[item.taskId] ?? []).find(
+        (t) => t.id === item.tabId,
+      )
+      return tab?.title ?? null
+    },
+    [tabsByTask],
   )
   // Attention section: queue order (oldest first), dead tasks dropped.
   const attention = useMemo(
@@ -231,6 +245,9 @@ export function ChatInbox({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12px] text-fg">
                         {task?.title || task?.branch || item.taskId}
+                        {tabTitle(item) && (
+                          <span className="text-muted"> · {tabTitle(item)}</span>
+                        )}
                       </span>
                       <span className="block text-[11px] text-subtle">
                         {itemLabel(item.state)}
