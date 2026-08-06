@@ -48,6 +48,33 @@ describe("PureTUI prefix settings", () => {
     expect(extracted.warnings.join("\n")).toContain("modifier")
   })
 
+  test("keeps the valid second strokes when a sibling chord in the list is invalid", () => {
+    const extracted = extractPrefixKeybindings(
+      {
+        prefix: { bindings: { "chat.tab.new": ["n", "ctrl+shift+z"] } },
+      },
+      "linux",
+    )
+
+    // The valid "n" survives; only the impossible ctrl+shift+z is dropped.
+    expect(extracted.entries).toEqual([{ id: "chat.tab.new", keys: ["n"] }])
+    expect(extracted.warnings.join("\n")).toContain("ctrl+shift+z")
+    expect(extracted.warnings.join("\n")).not.toContain("keeping the default")
+  })
+
+  test("falls back to the default and says so when every chord in the list is invalid", () => {
+    const extracted = extractPrefixKeybindings(
+      {
+        prefix: { bindings: { "chat.tab.new": ["ctrl+shift+z", "cmd+shift+q"] } },
+      },
+      "linux",
+    )
+
+    // No valid chord survived, so the id is not overridden and the default holds.
+    expect(extracted.entries).toEqual([])
+    expect(extracted.warnings.join("\n")).toContain("no valid chords — keeping the default")
+  })
+
   test("adds declared prefix rows without clearing their direct chords", () => {
     const copy = keymap.map((row) => ({
       ...row,

@@ -50,16 +50,26 @@ function collectEntries(source: unknown, warnings: string[]): Map<string, string
       continue
     }
     const keys: string[] = []
+    let anyError = false
     for (const rawKey of rawKeys) {
       const normalized = normalizeChord(rawKey)
       if ("error" in normalized) {
         warnings.push(`prefix.bindings.${id}: ${normalized.error}`)
+        anyError = true
         continue
       }
       keys.push(normalized.chord)
       if (normalized.warning) warnings.push(`prefix.bindings.${id}: ${normalized.warning}`)
     }
-    if (keys.length === rawKeys.length) out.set(id, keys)
+    // Partial-keep, mirroring extractKeybindingOverrides' direct-chord path:
+    // one bad chord in a list must not discard the siblings that parsed. Only
+    // fall back to the default when NONE survived, and say so explicitly
+    // instead of dropping the whole entry on a lone warning-only chord.
+    if (keys.length === 0 && anyError) {
+      warnings.push(`prefix.bindings.${id}: no valid chords — keeping the default`)
+      continue
+    }
+    out.set(id, keys)
   }
   return out
 }
