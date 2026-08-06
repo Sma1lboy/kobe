@@ -335,6 +335,26 @@ export function ChatSidebarTree({
     if (cursor >= flatRows.length) setCursor(Math.max(0, flatRows.length - 1))
   }, [cursor, flatRows.length])
 
+  // Cursor and selection are ONE thread: whenever the selected row changes
+  // (click, ctrl+digit, palette), the cursor snaps there so j/k continues
+  // from the selection instead of a detached position.
+  const selectedFlatIdx = useMemo(() => {
+    if (!selectedId) return -1
+    const activeId = activeByTask[selectedId]
+    let worktreeIdx = -1
+    for (let i = 0; i < flatRows.length; i++) {
+      const row = flatRows[i]
+      if (row.taskId !== selectedId) continue
+      if (row.rowKind === "worktree") {
+        if (worktreeIdx < 0) worktreeIdx = i
+      } else if (row.tabId && row.tabId === activeId) return i
+    }
+    return worktreeIdx
+  }, [selectedId, activeByTask, flatRows])
+  useEffect(() => {
+    if (selectedFlatIdx >= 0) setCursor(selectedFlatIdx)
+  }, [selectedFlatIdx])
+
   const activateRow = (row: {
     taskId: string
     tabId?: string
