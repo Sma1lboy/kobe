@@ -5,7 +5,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchSessions } from "./history.ts"
 import { type TimelineModel, withLiveState } from "./timeline.ts"
-import { fetchTrace } from "./trace.ts"
+import {
+  applyLiveTraceEvent,
+  fetchTrace,
+  subscribeLiveTrace,
+  subscribeTrace,
+} from "./trace.ts"
 import type { EngineState } from "./types.ts"
 
 const POLL_MS = 1_500
@@ -17,10 +22,12 @@ export interface TimelineData {
 }
 
 export function useTimelineData({
+  taskId,
   worktreePath,
   vendor,
   engineState,
 }: {
+  taskId: string
   worktreePath: string | null
   vendor: string
   engineState: EngineState | undefined
@@ -31,6 +38,7 @@ export function useTimelineData({
   })
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState(engineState?.sessionId ?? "")
   const mtimeRef = useRef(-1)
   const seqRef = useRef(0)
   const preferredSessionId = engineState?.sessionId
@@ -52,6 +60,7 @@ export function useTimelineData({
           ? await fetchTrace(vendor, target)
           : { sessionId: "", turns: [] }
         if (seq !== seqRef.current) return
+        setSessionId(target ?? "")
         setTrace(next)
         setError(null)
       } catch (err) {
@@ -68,6 +77,7 @@ export function useTimelineData({
     mtimeRef.current = -1
     seqRef.current += 1
     setTrace({ sessionId: preferredSessionId ?? "", turns: [] })
+    setSessionId(preferredSessionId ?? "")
     setLoaded(false)
     setError(null)
     void refresh(true)
@@ -76,6 +86,27 @@ export function useTimelineData({
     }, POLL_MS)
     return () => window.clearInterval(timer)
   }, [refresh, preferredSessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    return subscribeTrace(
+      vendor,
+      sessionId,
+      (next) => {
+        setTrace(next)
+        setLoaded(true)
+        setError(null)
+      },
+      (message) => setError(message),
+    )
+  }, [vendor, sessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    return subscribeLiveTrace(taskId, sessionId, (event) => {
+      setTrace((current) => applyLiveTraceEvent(current, event))
+    })
+  }, [taskId, sessionId])
 
   const model = useMemo(
     () => withLiveState(trace, engineState?.state, engineState?.at ?? 0),

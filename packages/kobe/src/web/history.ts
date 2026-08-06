@@ -21,6 +21,9 @@
  *   GET /api/history/trace?vendor=<id>&sessionId=<id>
  *     → { trace: EngineTrace }
  *
+ *   GET /api/history/trace/events?vendor=<id>&sessionId=<id>
+ *     → SSE `trace` events containing full EngineTrace snapshots
+ *
  * Returns `null` for any other path so the server falls through.
  */
 
@@ -31,6 +34,8 @@ import { engineEntry } from "../engine/registry.ts"
 const SESSIONS_ROUTE = "/api/history/sessions"
 const MESSAGES_ROUTE = "/api/history/messages"
 const TRACE_ROUTE = "/api/history/trace"
+const TRACE_EVENTS_ROUTE = "/api/history/trace/events"
+const TRACE_REVISION_POLL_MS = 350
 
 /** Vendor ids are registry keys / user-registered slugs — never paths. */
 function isSafeVendor(value: unknown): value is string {
@@ -102,13 +107,88 @@ async function handleTrace(url: URL): Promise<Response> {
   }
 }
 
+function handleTraceEvents(req: Request, url: URL): Response {
+  const vendor = url.searchParams.get("vendor") ?? "claude"
+  const sessionId = url.searchParams.get("sessionId")
+  if (!isSafeVendor(vendor)) {
+    return Response.json({ error: "invalid vendor" }, { status: 400 })
+  }
+  if (!isSafeSessionId(sessionId)) {
+    return Response.json({ error: "invalid sessionId" }, { status: 400 })
+  }
+
+  const reader = engineEntry(vendor).history
+  const encoder = new TextEncoder()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let closed = false
+  let inFlight = false
+  let lastRevision = Number.NaN
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const close = (): void => {
+        if (closed) return
+        closed = true
+        if (timer) clearInterval(timer)
+      }
+      const send = (event: string, data: unknown, id?: number): void => {
+        if (closed) return
+        try {
+          const prefix = id === undefined ? "" : `id: ${id}\n`
+          controller.enqueue(encoder.encode(`${prefix}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          close()
+        }
+      }
+      const refresh = async (force: boolean): Promise<void> => {
+        if (closed || inFlight) return
+        inFlight = true
+        try {
+          const revision = reader.traceRevision ? await reader.traceRevision(sessionId) : 0
+          if (!force && (!reader.traceRevision || revision === lastRevision)) return
+          const trace = reader.readTrace ? await reader.readTrace(sessionId) : { sessionId, turns: [] }
+          lastRevision = revision
+          send("trace", trace, revision)
+        } catch (err) {
+          send("trace-error", { error: errorMessage(err) })
+        } finally {
+          inFlight = false
+        }
+      }
+
+      void refresh(true)
+      timer = setInterval(() => void refresh(false), TRACE_REVISION_POLL_MS)
+      req.signal.addEventListener("abort", close, { once: true })
+    },
+    cancel() {
+      closed = true
+      if (timer) clearInterval(timer)
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  })
+}
+
 /**
  * Route handler for the history API. Returns `null` when `url.pathname`
  * is not a history route so the caller can fall through.
  */
 export async function handleHistoryRequest(req: Request, url: URL): Promise<Response | null> {
-  if (url.pathname !== SESSIONS_ROUTE && url.pathname !== MESSAGES_ROUTE && url.pathname !== TRACE_ROUTE) return null
+  if (
+    url.pathname !== SESSIONS_ROUTE &&
+    url.pathname !== MESSAGES_ROUTE &&
+    url.pathname !== TRACE_ROUTE &&
+    url.pathname !== TRACE_EVENTS_ROUTE
+  )
+    return null
   if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 })
   if (url.pathname === SESSIONS_ROUTE) return handleSessions(url)
+  if (url.pathname === TRACE_EVENTS_ROUTE) return handleTraceEvents(req, url)
   return url.pathname === MESSAGES_ROUTE ? handleMessages(url) : handleTrace(url)
 }

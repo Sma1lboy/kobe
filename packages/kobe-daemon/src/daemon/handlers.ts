@@ -381,6 +381,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           kind,
           ...(tabId ? { tabId } : {}),
           ...(vendor ? { vendor } : {}),
+          ...(sessionId ? { sessionId } : {}),
           ...(detail ? { detail } : {}),
           at: Date.now(),
         })

@@ -410,6 +410,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         staticDir: options.webStaticDir,
         link: selfLink,
         onEvent: (sink) => bus.onPublish(sink),
+        engineEvents,
         onSseOpen: () => {
           const client = { subscribed: true, holdsLifetime: true }
           webClients.add(client)

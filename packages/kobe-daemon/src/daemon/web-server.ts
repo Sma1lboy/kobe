@@ -7,6 +7,7 @@ import { join, normalize } from "node:path"
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
+import type { EngineEventLog } from "./engine-events-log.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
 import {
   type DaemonHandlerContext,
@@ -57,6 +58,7 @@ export interface RequestHandlerDeps {
   tearDownSession?: (taskId: string) => void
   allowedHost?: string
   onSseOpen?: () => () => void
+  engineEvents?: EngineEventLog
 }
 
 export interface DaemonWebServerOptions {
@@ -68,6 +70,7 @@ export interface DaemonWebServerOptions {
   link: DaemonWebLink
   onEvent: (sink: (event: ChannelEvent) => void) => () => void
   onSseOpen?: () => () => void
+  engineEvents?: EngineEventLog
 }
 
 export interface DaemonWebServer {
@@ -123,6 +126,37 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
       connection: "keep-alive",
     },
   })
+}
+
+const LIVE_TRACE_ROUTE = "/api/history/trace/live"
+
+function isSafeTraceToken(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    /^[A-Za-z0-9._:-]+$/.test(value) &&
+    !value.includes("..")
+  )
+}
+
+function liveTraceResponse(req: Request, url: URL, engineEvents: EngineEventLog | undefined): Response {
+  if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 })
+  const taskId = url.searchParams.get("taskId")
+  const sessionId = url.searchParams.get("sessionId")
+  if (!isSafeTraceToken(taskId) || !isSafeTraceToken(sessionId)) {
+    return Response.json({ error: "invalid trace scope" }, { status: 400 })
+  }
+  if (!engineEvents) {
+    return Response.json({ error: "live trace unavailable" }, { status: 503 })
+  }
+  return sseResponse((send) => {
+    const publish = (event: ReturnType<EngineEventLog["recent"]>[number]) => {
+      if (event.sessionId === sessionId) send("trace-event", event)
+    }
+    for (const event of engineEvents.recent(taskId)) publish(event)
+    return engineEvents.subscribe(taskId, publish)
+  }, req.signal)
 }
 
 // Exposure policy comes FROM the handler registry (`web: true` per entry) —
@@ -271,6 +305,9 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
         }
       }, req.signal)
     }
+    if (url.pathname === LIVE_TRACE_ROUTE) {
+      return liveTraceResponse(req, url, deps.engineEvents)
+    }
     if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link, tearDown)
     if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(runtime, req, link)
     if (url.pathname === "/api/engine-spec" && req.method === "GET") {
@@ -413,6 +450,7 @@ export async function startDaemonWebServer(opts: DaemonWebServerOptions): Promis
     staticDir: opts.staticDir ? normalize(opts.staticDir) : undefined,
     allowedHost,
     onSseOpen: opts.onSseOpen,
+    engineEvents: opts.engineEvents,
   })
   const server = Bun.serve({ port: opts.port, hostname, idleTimeout: 0, fetch: handle })
   return {

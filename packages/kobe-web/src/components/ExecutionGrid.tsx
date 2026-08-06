@@ -1,4 +1,11 @@
-import { Brain, FilePenLine, MessageSquare, TerminalSquare } from "lucide-react"
+import {
+  Bot,
+  Brain,
+  FilePenLine,
+  Layers3,
+  MessageSquare,
+  TerminalSquare,
+} from "lucide-react"
 import { useState } from "react"
 import {
   durationMs,
@@ -7,6 +14,7 @@ import {
 } from "../lib/timeline.ts"
 import { CopyButton } from "./CopyButton.tsx"
 import { SlideOver } from "./SlideOver.tsx"
+import { TracePatch } from "./TracePatch.tsx"
 
 function statusGlyph(status: TimelineStatus): string {
   if (status === "running") return "●"
@@ -39,6 +47,8 @@ function ItemIcon({ item }: { item: TimelineItem }) {
     return <Brain {...props} />
   if (item.kind === "change") return <FilePenLine {...props} />
   if (item.kind === "answer") return <MessageSquare {...props} />
+  if (item.kind === "subagent") return <Bot {...props} />
+  if (item.kind === "compaction") return <Layers3 {...props} />
   return <TerminalSquare {...props} />
 }
 
@@ -74,6 +84,11 @@ function ExecutionNode({
         <span className="font-mono text-[8px] font-bold uppercase tracking-[0.14em] text-current">
           {kindLabel(item)}
         </span>
+        {(item.attempt ?? 1) > 1 && (
+          <span className="font-mono text-[8px] text-subtle">
+            A{item.attempt}
+          </span>
+        )}
         <span className="ml-auto font-mono text-[9px] text-current">
           {statusGlyph(item.status)}
         </span>
@@ -118,15 +133,18 @@ function DetailSection({ label, text }: { label: string; text: string }) {
 function ExecutionDetail({
   item,
   parent,
+  retryOf,
   now,
   onClose,
 }: {
   item: TimelineItem | undefined
   parent: TimelineItem | undefined
+  retryOf: TimelineItem | undefined
   now: number
   onClose: () => void
 }) {
   const isTool = item?.kind === "tool" || item?.kind === "change"
+  const hasResult = isTool || item?.kind === "subagent"
   return (
     <SlideOver
       open={item !== undefined}
@@ -154,7 +172,22 @@ function ExecutionDetail({
                 durationMs(item.startedAt, item.endedAt, now),
               )}
             </span>
+            {(item.attempt ?? 1) > 1 && (
+              <span className="border border-line px-1.5 py-0.5 text-muted">
+                attempt {item.attempt}
+              </span>
+            )}
           </div>
+          {retryOf && (
+            <section className="border-l-2 border-kobe-yellow bg-surface px-3 py-2">
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-kobe-yellow">
+                Engine-declared retry
+              </div>
+              <div className="mt-1 text-[11px] text-muted">
+                Retrying {retryOf.title}
+              </div>
+            </section>
+          )}
           {parent && (
             <section>
               <div className="mb-1 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-subtle">
@@ -176,21 +209,29 @@ function ExecutionDetail({
               </div>
             </section>
           )}
-          <DetailSection
-            label={
-              isTool
-                ? "Input"
-                : item.kind === "answer"
-                  ? "Final answer"
-                  : item.kind === "reasoning"
-                    ? "Reasoning summary"
-                    : "Visible commentary"
-            }
-            text={item.detail}
-          />
-          {isTool && (
+          {item.kind === "change" ? (
+            <TracePatch patch={item.detail} />
+          ) : (
             <DetailSection
-              label="Result"
+              label={
+                item.kind === "tool"
+                  ? "Input"
+                  : item.kind === "answer"
+                    ? "Final answer"
+                    : item.kind === "reasoning"
+                      ? "Reasoning summary"
+                      : item.kind === "subagent"
+                        ? "Subagent identity"
+                        : item.kind === "compaction"
+                          ? "Compaction event"
+                          : "Visible commentary"
+              }
+              text={item.detail}
+            />
+          )}
+          {hasResult && (
+            <DetailSection
+              label={item.kind === "subagent" ? "Subagent result" : "Result"}
               text={item.resultDetail ?? "No result recorded yet."}
             />
           )}
@@ -233,6 +274,7 @@ export function ExecutionGrid({
   const byId = new Map(items.map((item) => [item.id, item]))
   const selected = selectedId ? byId.get(selectedId) : undefined
   const parent = selected?.parentId ? byId.get(selected.parentId) : undefined
+  const retryOf = selected?.retryOf ? byId.get(selected.retryOf) : undefined
   const children = new Map<string, TimelineItem[]>()
   for (const item of items) {
     if (!item.parentId || !byId.has(item.parentId)) continue
@@ -298,6 +340,7 @@ export function ExecutionGrid({
       <ExecutionDetail
         item={selected}
         parent={parent}
+        retryOf={retryOf}
         now={now}
         onClose={() => setSelectedId(null)}
       />

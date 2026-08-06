@@ -7,11 +7,13 @@ import { TimelinePanel } from "./TimelinePanel.tsx"
 import { TimelineSwimlane } from "./TimelineSwimlane.tsx"
 
 export function TimelineHost({
+  taskId,
   worktreePath,
   vendor,
   engineState,
   onCollapse,
 }: {
+  taskId: string
   worktreePath: string | null
   vendor: string
   engineState: EngineState | undefined
@@ -19,7 +21,7 @@ export function TimelineHost({
 }) {
   const engines = useEngines()
   const label = engineLabel(engines, vendor)
-  const data = useTimelineData({ worktreePath, vendor, engineState })
+  const data = useTimelineData({ taskId, worktreePath, vendor, engineState })
   const [expanded, setExpanded] = useState(false)
 
   return (

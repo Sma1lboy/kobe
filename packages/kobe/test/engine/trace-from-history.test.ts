@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { Message } from "../../src/types/engine.ts"
 import { traceFromHistory } from "../../src/engine/trace-from-history.ts"
+import type { Message } from "../../src/types/engine.ts"
 
 const SESSION_ID = "compat-session"
 

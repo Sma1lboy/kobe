@@ -300,14 +300,44 @@ export async function readHistoryWithMetrics(
   return parseRolloutRaw(file, raw, sessionId)
 }
 
+/** Session UUID → immutable rollout path memo for the high-frequency trace
+ * invalidation loop. Missing sessions are deliberately not cached because a
+ * new rollout may appear after the browser subscribes. */
+const tracePathCaches = new WeakMap<HistoryDeps, Map<string, string>>()
+
+async function tracePath(sessionId: string, deps: HistoryDeps): Promise<string | undefined> {
+  let cache = tracePathCaches.get(deps)
+  if (!cache) {
+    cache = new Map()
+    tracePathCaches.set(deps, cache)
+  }
+  const hit = cache.get(sessionId)
+  if (hit) return hit
+  const file = await findRolloutFile(sessionId, deps)
+  if (file) cache.set(sessionId, file)
+  return file
+}
+
 /** Engine-owned execution trace retaining Codex turn/item/call identities. */
 export async function readTrace(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<EngineTrace> {
-  const file = await findRolloutFile(sessionId, deps)
+  const file = await tracePath(sessionId, deps)
   if (!file) return { sessionId, turns: [] }
   try {
     return parseCodexTrace(await deps.readFile(file), sessionId)
   } catch {
     return { sessionId, turns: [] }
+  }
+}
+
+/** Persisted trace invalidation token. A missing/unreadable rollout is 0 and
+ * is retried on the next poll so a just-created session becomes visible. */
+export async function traceRevision(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<number> {
+  const file = await tracePath(sessionId, deps)
+  if (!file) return 0
+  try {
+    return (await deps.stat(file)).mtimeMs
+  } catch {
+    return 0
   }
 }
 

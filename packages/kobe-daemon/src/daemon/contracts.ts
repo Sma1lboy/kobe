@@ -187,9 +187,21 @@ export type EngineActivityKind =
 export interface EngineActivityDetail {
   readonly failure?: "rate_limit" | "billing" | "other"
   readonly waiting?: "permission" | "input"
-  readonly tool?: { readonly name?: string; readonly id?: string }
+  readonly turnId?: string
+  readonly tool?: {
+    readonly name?: string
+    readonly id?: string
+    readonly input?: string
+    readonly output?: string
+    readonly isError?: boolean
+  }
   readonly compact?: { readonly trigger?: "manual" | "auto" }
-  readonly subagent?: { readonly type?: string; readonly id?: string }
+  readonly subagent?: {
+    readonly type?: string
+    readonly id?: string
+    readonly transcriptPath?: string
+    readonly result?: string
+  }
   readonly note?: string
 }
 

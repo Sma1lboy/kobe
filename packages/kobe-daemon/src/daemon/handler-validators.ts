@@ -63,19 +63,35 @@ export function optionalActivityDetail(payload: Record<string, unknown>): Engine
   const out: {
     failure?: "rate_limit" | "billing" | "other"
     waiting?: "permission" | "input"
-    tool?: { name?: string; id?: string }
+    turnId?: string
+    tool?: {
+      name?: string
+      id?: string
+      input?: string
+      output?: string
+      isError?: boolean
+    }
     compact?: { trigger?: "manual" | "auto" }
-    subagent?: { type?: string; id?: string }
+    subagent?: {
+      type?: string
+      id?: string
+      transcriptPath?: string
+      result?: string
+    }
     note?: string
   } = {}
   if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
   if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
+  if (typeof d.turnId === "string") out.turnId = d.turnId
   if (typeof d.note === "string") out.note = d.note
   const tool = d.tool as Record<string, unknown> | undefined
   if (tool && typeof tool === "object" && !Array.isArray(tool)) {
     out.tool = {
       ...(typeof tool.name === "string" ? { name: tool.name } : {}),
       ...(typeof tool.id === "string" ? { id: tool.id } : {}),
+      ...(typeof tool.input === "string" ? { input: tool.input } : {}),
+      ...(typeof tool.output === "string" ? { output: tool.output } : {}),
+      ...(typeof tool.isError === "boolean" ? { isError: tool.isError } : {}),
     }
   }
   const compact = d.compact as Record<string, unknown> | undefined
@@ -87,6 +103,8 @@ export function optionalActivityDetail(payload: Record<string, unknown>): Engine
     out.subagent = {
       ...(typeof subagent.type === "string" ? { type: subagent.type } : {}),
       ...(typeof subagent.id === "string" ? { id: subagent.id } : {}),
+      ...(typeof subagent.transcriptPath === "string" ? { transcriptPath: subagent.transcriptPath } : {}),
+      ...(typeof subagent.result === "string" ? { result: subagent.result } : {}),
     }
   }
   return Object.keys(out).length > 0 ? out : undefined

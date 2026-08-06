@@ -468,6 +468,7 @@ export function ChatShell() {
 
         {surface === "chat" && selected && showTimeline && (
           <TimelineHost
+            taskId={selected.id}
             worktreePath={selected.worktreePath || null}
             vendor={resolveVendor(vendor ?? selected.vendor)}
             engineState={engineStates[selected.id]}

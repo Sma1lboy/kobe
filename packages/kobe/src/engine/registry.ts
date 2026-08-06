@@ -70,6 +70,10 @@ export interface EngineHistoryReader {
   readHistory(sessionId: string): Promise<Message[]>
   /** Engine-normalized execution trace for GUI consumers. */
   readTrace?(sessionId: string): Promise<EngineTrace>
+  /** Monotonic-enough persisted trace revision (normally transcript mtime).
+   * Consumers use it only as an invalidation token and always refetch a full
+   * trace snapshot, so daemon/browser reconnects need no delta replay. */
+  traceRevision?(sessionId: string): Promise<number>
   /**
    * Absolute path of the on-disk transcript for `sessionId`, or null when
    * the engine has no file to point at. Not for kobe to PARSE (that's
@@ -208,6 +212,7 @@ const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
   readTrace: (sessionId) => codexHistory.readTrace(sessionId),
+  traceRevision: (sessionId) => codexHistory.traceRevision(sessionId),
   // The rollout filename embeds the UUID; the store is date-keyed, not
   // worktree-keyed, so the worktree argument is unused here.
   transcriptPath: async (sessionId) => (await codexHistory.findRolloutFile(sessionId)) ?? null,

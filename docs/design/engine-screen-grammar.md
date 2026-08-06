@@ -8,6 +8,12 @@ Code and Codex). Everything else (PTY plumbing, colored-buffer capture, IME
 and cursor mirroring, copy affordances, perf caches, raw-terminal fallback)
 is engine-agnostic and comes for free.
 
+This grammar owns only the translated **conversation surface**. It does not
+produce the right-hand Agent Trace. That pane consumes the structured,
+engine-owned `EngineTrace` contract described in [Engines](../ENGINES.md), so
+UI components never infer tools, causality, subagents, or retries from terminal
+rows.
+
 ## The contract
 
 ```ts

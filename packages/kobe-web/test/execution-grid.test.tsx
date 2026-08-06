@@ -36,6 +36,36 @@ const tool: TimelineItem = {
   endedAt: 1_500,
 }
 
+const change: TimelineItem = {
+  ...tool,
+  id: "change-1",
+  parentId: null,
+  parentBasis: "none",
+  kind: "change",
+  title: "apply_patch",
+  detail: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch",
+}
+
+const retriedTool: TimelineItem = {
+  ...tool,
+  id: "tool-2",
+  parentId: null,
+  parentBasis: "none",
+  retryOf: tool.id,
+  attempt: 2,
+}
+
+const subagent: TimelineItem = {
+  ...tool,
+  id: "agent-7",
+  parentId: null,
+  parentBasis: "none",
+  kind: "subagent",
+  title: "reviewer",
+  detail: "agent-7\n/tmp/subagent.jsonl",
+  resultDetail: "Focused tests pass.",
+}
+
 describe("ExecutionGrid", () => {
   afterEach(cleanup)
 
@@ -71,5 +101,31 @@ describe("ExecutionGrid", () => {
     expect(
       screen.getByText("The fixture still uses protocol version 1."),
     ).toBeTruthy()
+  })
+
+  it("renders patch, explicit retry, and subagent completion details", () => {
+    render(
+      <ExecutionGrid
+        items={[tool, change, retriedTool, subagent]}
+        status="success"
+        now={2_000}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Open Change details/ }))
+    expect(screen.getByText("Patch")).toBeTruthy()
+    expect(screen.getByText("+new")).toBeTruthy()
+    fireEvent.keyDown(window, { key: "Escape" })
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Open Tool details/ })[1]!)
+    expect(screen.getByText("Engine-declared retry")).toBeTruthy()
+    expect(screen.getByText("Retrying exec")).toBeTruthy()
+    expect(screen.getByText("attempt 2")).toBeTruthy()
+    fireEvent.keyDown(window, { key: "Escape" })
+
+    fireEvent.click(screen.getByRole("button", { name: /Open Subagent details/ }))
+    expect(screen.getByText("Subagent identity")).toBeTruthy()
+    expect(screen.getByText("Subagent result")).toBeTruthy()
+    expect(screen.getByText("Focused tests pass.")).toBeTruthy()
   })
 })

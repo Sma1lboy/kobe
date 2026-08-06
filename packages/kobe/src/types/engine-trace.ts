@@ -27,6 +27,10 @@ export interface EngineTraceNode {
   readonly detail: string
   /** Complete bounded tool output; null for non-tools or pending tools. */
   readonly resultDetail: string | null
+  /** Engine-declared retry provenance. The UI never infers retries from adjacency. */
+  readonly retryOf?: string | null
+  /** One-based engine-declared attempt number. Omitted when the source has no such fact. */
+  readonly attempt?: number
   readonly startedAt: number
   readonly endedAt: number | null
 }

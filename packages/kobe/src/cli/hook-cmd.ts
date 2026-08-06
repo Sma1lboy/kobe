@@ -340,11 +340,16 @@ export async function ensureGlobalKobeHooks(): Promise<void> {
     //    each written into the ENGINE's own settings file (Claude's
     //    ~/.claude/settings.json, Codex's ~/.codex/hooks.json) so every session
     //    of that engine reports.
-    const toolEvents = pluginsWantToolEvents()
+    const pluginToolEvents = pluginsWantToolEvents()
     for (const a of activityHookAdapters()) {
       const enginePath = a.globalSettingsPath()
       if (!enginePath) continue
-      await a.installActivityHooks(enginePath, { toolEvents })
+      // Codex Agent Trace consumes exact tool IDs as a low-latency overlay;
+      // other engines keep the existing plugin-volume gate until their live
+      // trace producer is implemented.
+      await a.installActivityHooks(enginePath, {
+        toolEvents: a.vendor === "codex" || pluginToolEvents,
+      })
       // PostToolUse(Bash) observer: a `git worktree add` in ANY session adopts
       // the new worktree as a task immediately (no session needed). Pure
       // observer — unlike the removed WorktreeCreate provider hook, it can't

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { type HistoryDeps, traceRevision } from "../../src/engine/codex-local/history.ts"
 import { parseCodexTrace } from "../../src/engine/codex-local/trace-parse.ts"
 import { MAX_JSONL_LINE_CHARS } from "../../src/engine/file-bounds.ts"
 
@@ -217,5 +218,34 @@ describe("parseCodexTrace", () => {
       title: "web_search_call",
       status: "success",
     })
+  })
+})
+
+describe("traceRevision", () => {
+  it("retries a missing rollout and then reuses its immutable path", async () => {
+    let present = false
+    let rootReads = 0
+    const filename = `rollout-2026-08-06T10-00-00-${SESSION_ID}.jsonl`
+    const deps: HistoryDeps = {
+      sessionsDir: () => "/sessions",
+      readdir: async (path) => {
+        if (path === "/sessions") {
+          rootReads += 1
+          return present ? ["2026"] : []
+        }
+        if (path === "/sessions/2026") return ["08"]
+        if (path === "/sessions/2026/08") return ["06"]
+        if (path === "/sessions/2026/08/06") return [filename]
+        return []
+      },
+      readFile: async () => "",
+      stat: async () => ({ mtimeMs: 123 }),
+    }
+
+    expect(await traceRevision(SESSION_ID, deps)).toBe(0)
+    present = true
+    expect(await traceRevision(SESSION_ID, deps)).toBe(123)
+    expect(await traceRevision(SESSION_ID, deps)).toBe(123)
+    expect(rootReads).toBe(2)
   })
 })
