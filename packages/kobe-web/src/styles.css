@@ -187,18 +187,6 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   border-color: var(--color-kobe-yellow);
 }
 
-.activity-card__status {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
-  color: var(--color-kobe-blue);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-}
-
 .activity-card__pulse {
   width: 5px;
   height: 5px;

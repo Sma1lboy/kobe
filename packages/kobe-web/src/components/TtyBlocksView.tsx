@@ -195,14 +195,14 @@ function ActivityCard({ line }: { line: ColoredLine }) {
   const details = (m ? m[2].split("·") : [])
     .map((s) => s.trim())
     .filter((s) => s !== "" && !/esc to interrupt/i.test(s))
-  // Bare pulse+label row — the footer card already draws the frame, so the
-  // LIVE state must not add a box-in-a-box.
+  // Bare row — the footer card already draws the frame; a small primary
+  // pulse + the shimmering verb say "working" without a label.
   return (
     <div className="flex items-center gap-2.5 py-0.5">
-      <span className="activity-card__status">
-        <span className="activity-card__pulse" aria-hidden="true" />
-        <span>LIVE</span>
-      </span>
+      <span
+        className="activity-card__pulse shrink-0 text-primary"
+        aria-hidden="true"
+      />
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 font-mono text-[12px]">
         <span className="shimmer-text">{verb}</span>
         {details.map((d) => (
