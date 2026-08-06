@@ -199,25 +199,36 @@ function SessionView({
     }
     return { chatBodyLines: bodyLines, effortLine: null }
   }, [grammar, bodyLines])
-  const promptText = region?.promptText ?? ""
-  // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells — CJK-good; wcwidth if emoji matters).
-  const caretOffset = useMemo(() => {
-    if (!region || !cursor || cursor.row !== region.promptRow || !promptText)
-      return null
+  // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells —
+  // CJK-good; wcwidth if emoji matters). The region's promptText is trimmed
+  // (terminal rows are padded to full width), so TRAILING spaces the user
+  // just typed vanish — when the cursor sits past the trimmed end, restore
+  // them so the caret keeps moving through space runs.
+  const { promptText, caretOffset } = useMemo(() => {
+    const trimmed = region?.promptText ?? ""
+    if (!region || !cursor || cursor.row !== region.promptRow || !trimmed)
+      return { promptText: trimmed, caretOffset: null }
     const raw = colored[region.promptRow]?.text ?? ""
-    const start = raw.indexOf(promptText)
-    if (start < 0) return null
+    const start = raw.indexOf(trimmed)
+    if (start < 0) return { promptText: trimmed, caretOffset: null }
     const targetCells = cursor.col - start
-    if (targetCells < 0) return null
+    if (targetCells < 0) return { promptText: trimmed, caretOffset: null }
     let cells = 0
     let idx = 0
-    for (const ch of promptText) {
+    for (const ch of trimmed) {
       if (cells >= targetCells) break
       cells += (ch.codePointAt(0) ?? 0) > 0xff ? 2 : 1
       idx += ch.length
     }
-    return Math.min(idx, promptText.length)
-  }, [region, cursor, colored, promptText])
+    if (targetCells > cells) {
+      const pad = targetCells - cells
+      return {
+        promptText: trimmed + " ".repeat(pad),
+        caretOffset: trimmed.length + pad,
+      }
+    }
+    return { promptText: trimmed, caretOffset: Math.min(idx, trimmed.length) }
+  }, [region, cursor, colored])
   // Status footer (branch | ctx | quota | mode) as COLORED lines, straight
   // from the buffer below the prompt — so it keeps the engine's ANSI colors
   // instead of flattening to grey. Rule/blank rows dropped.

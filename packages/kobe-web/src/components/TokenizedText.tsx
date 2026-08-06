@@ -126,7 +126,7 @@ function ImageThumb({
         src={src}
         alt={`#${n}`}
         onError={() => setBroken(true)}
-        className="h-9 w-auto rounded-md border border-line object-cover transition-colors hover:border-primary"
+        className="h-6 w-auto max-w-24 rounded border border-line object-cover transition-colors hover:border-primary"
       />
     </button>
   )
