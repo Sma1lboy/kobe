@@ -129,7 +129,8 @@ export interface TaskQuotaResumeState {
  */
 export interface TaskDelegationLink {
   readonly primaryTaskId: string
-  readonly protocolVersion: 1
+  /** v1 links remain readable; every newly selected/re-selected link upgrades to v2. */
+  readonly protocolVersion: 1 | 2
   readonly linkedAt: string
 }
 

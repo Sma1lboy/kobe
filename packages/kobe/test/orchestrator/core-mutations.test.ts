@@ -98,7 +98,7 @@ describe("setDelegation", () => {
     await orch.setDelegation(subagent.id, primary.id)
     expect(orch.getTask(subagent.id)?.delegation).toMatchObject({
       primaryTaskId: String(primary.id),
-      protocolVersion: 1,
+      protocolVersion: 2,
     })
     expect(orch.getTask(primary.id)?.delegation).toBeUndefined()
 
@@ -126,6 +126,17 @@ describe("setDelegation", () => {
     await orch.setDelegation(subagent.id, first.id)
     await orch.setDelegation(subagent.id, second.id)
     expect(orch.getTask(subagent.id)?.delegation?.primaryTaskId).toBe(String(second.id))
+  })
+
+  it("upgrades an existing v1 link when the same pair is selected again", async () => {
+    const primary = await makeTask({ title: "primary" })
+    const subagent = await makeTask({ title: "subagent" })
+    await store.update(subagent.id, {
+      delegation: { primaryTaskId: String(primary.id), protocolVersion: 1, linkedAt: "2026-08-06T00:00:00.000Z" },
+    })
+
+    await orch.setDelegation(subagent.id, primary.id)
+    expect(orch.getTask(subagent.id)?.delegation?.protocolVersion).toBe(2)
   })
 })
 

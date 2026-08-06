@@ -1,14 +1,15 @@
-/** Framework-free prompt contract for a directed primary -> subagent Task link. */
+/** Primary-task bootstrap for the canonical directed-delegation contract. */
 
+import { KOBE_DELEGATION_PROTOCOL_VERSION } from "../../core/task-delegation-protocol.ts"
 import type { Task } from "../../types/task.ts"
 
 /**
- * Deliberately self-contained. An installed Kobe skill gives broader API
- * guidance, but a stale/missing skill must not make a user-created link
- * unusable.
+ * Link bootstrap contains addressing and discovery only. Exact message fields,
+ * defaults, and semantics come from `describeDelegationProtocol`; the skill
+ * and design docs intentionally do not carry another schema copy.
  */
 export function buildDelegationBootstrapPrompt(primary: Task, subagent: Task): string {
-  return `[KOBE DELEGATION LINK v1]
+  return `[KOBE DELEGATION LINK v${KOBE_DELEGATION_PROTOCOL_VERSION}]
 
 You are the PRIMARY agent. Kobe has linked an existing Task as your SUBAGENT; no chat was forked and no shared channel was created.
 
@@ -19,22 +20,18 @@ subagent_task_title: ${subagent.title}
 
 Read the installed Kobe skill before using the control plane. Keep this relationship asymmetric: you own user communication, decomposition, integration, and final verification. The subagent only owns work you explicitly delegate.
 
-To delegate one bounded unit of work, send one complete turn with the explicit target id:
+Before every new delegated request, obtain a fresh request_id and the canonical v${KOBE_DELEGATION_PROTOCOL_VERSION} message templates from the Kobe binary:
 
-kobe api send --task-id ${subagent.id} --prompt "<complete scoped request>"
+kobe api delegation-protocol --primary-task-id ${primary.id} --subagent-task-id ${subagent.id} --pretty
 
-Start every request with this envelope so the subagent can reply without discovering ids:
+Send the returned requestTemplate as one complete turn:
 
-[KOBE DELEGATION REQUEST v1]
-primary_task_id: ${primary.id}
-subagent_task_id: ${subagent.id}
-objective: <one bounded outcome>
-constraints: <scope, files, permissions, forbidden actions>
-done_when: <observable acceptance evidence>
-reply_via: kobe api send --task-id ${primary.id} --prompt "<structured result>"
+kobe api send --task-id ${subagent.id} --prompt "<requestTemplate>"
+
+The subagent replies to task ${primary.id} using the matching resultTemplate. The templates, enum values, hop rules, and defaults returned by the delegation-protocol command are authoritative.
 
 Protocol boundaries:
-- Every send is a full agent turn: batch useful information; do not ping, poll, or create an open-ended chatter loop.
+- Every send is a full agent turn. Do not send acknowledgement-only messages or exceed max_hops.
 - Do not recursively delegate unless the user explicitly asks for it.
 - Task/worktree isolation remains in force. Never edit the other Task's worktree directly.
 - Destructive actions, commits, pushes, PRs, and merges require their normal authorization; this link grants none.

@@ -72,7 +72,7 @@ export interface TaskLinkedWorkItem {
 
 export interface TaskDelegationLink {
   readonly primaryTaskId: string
-  readonly protocolVersion: 1
+  readonly protocolVersion: 1 | 2
   readonly linkedAt: string
 }
 

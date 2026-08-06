@@ -10,6 +10,7 @@
  * unchanged. Moved verbatim from `core.ts` — no behaviour change.
  */
 
+import { KOBE_DELEGATION_PROTOCOL_VERSION } from "../core/task-delegation-protocol.ts"
 import { samePrStatus } from "../monitor/pr-status.ts"
 import type {
   Task,
@@ -167,10 +168,15 @@ export class TaskEditor {
       cursor = parent
     }
 
-    if (subagent.delegation?.primaryTaskId === String(primary.id)) return
+    if (
+      subagent.delegation?.primaryTaskId === String(primary.id) &&
+      subagent.delegation.protocolVersion === KOBE_DELEGATION_PROTOCOL_VERSION
+    ) {
+      return
+    }
     const delegation: TaskDelegationLink = {
       primaryTaskId: String(primary.id),
-      protocolVersion: 1,
+      protocolVersion: KOBE_DELEGATION_PROTOCOL_VERSION,
       linkedAt: new Date().toISOString(),
     }
     await this.store.update(subagent.id, { delegation })

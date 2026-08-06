@@ -37,9 +37,10 @@ primary Task id on the subagent record, but it does not fork either engine
 session or create a shared Channel transcript.
 
 The primary and subagent communicate in full engine turns through explicit
-`kobe api send --task-id …` calls. The injected delegation bootstrap and the
-installed Kobe skill supply both ids and the request/reply envelope. Each Task
-continues to own its own worktree and native engine history.
+`kobe api send --task-id …` calls. The bootstrap supplies both ids, while
+`kobe api delegation-protocol` supplies the canonical versioned request/result
+templates consumed under the installed Kobe skill. Each Task continues to own
+its own worktree and native engine history.
 
 ## Worktree and branch
 

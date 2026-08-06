@@ -186,13 +186,13 @@ function coerceDelegation(value: unknown): TaskDelegationLink | undefined {
   if (
     typeof v.primaryTaskId !== "string" ||
     v.primaryTaskId.length === 0 ||
-    v.protocolVersion !== 1 ||
+    (v.protocolVersion !== 1 && v.protocolVersion !== 2) ||
     typeof v.linkedAt !== "string" ||
     v.linkedAt.length === 0
   ) {
     return undefined
   }
-  return { primaryTaskId: v.primaryTaskId, protocolVersion: 1, linkedAt: v.linkedAt }
+  return { primaryTaskId: v.primaryTaskId, protocolVersion: v.protocolVersion, linkedAt: v.linkedAt }
 }
 
 function coerceDeletion(value: unknown): TaskDeletionState | undefined {

@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 7 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 8 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -57,28 +57,32 @@ primary remains responsible for the user-facing result.
 
 The bootstrap turn supplies literal primary/subagent task ids. Use those ids
 on every call; never rely on the globally active Task for delegation traffic.
+Before each new request, obtain the current protocol and a fresh request id
+from the binary; this output is the only authoritative field/default schema:
 
 ```bash
-kobe api send --task-id <subagent-task-id> --prompt "<one complete scoped request>"
-kobe api send --task-id <primary-task-id> --prompt "<one structured result>"
+kobe api delegation-protocol \
+  --primary-task-id <primary-task-id> \
+  --subagent-task-id <subagent-task-id> --pretty
 ```
 
-Every delegated request must carry enough context to execute independently:
+Fill and send the returned `requestTemplate`. It carries a literal
+`contract_command`; the subagent runs that command to recover the same
+request id and matching `resultTemplate`, then sends the result to its
+`target_task_id`:
 
-```text
-[KOBE DELEGATION REQUEST v1]
-primary_task_id: <id>
-subagent_task_id: <id>
-objective: <one bounded outcome>
-constraints: <scope, files, permissions, forbidden actions>
-done_when: <observable acceptance evidence>
-reply_via: kobe api send --task-id <primary-id> --prompt "<structured result>"
+```bash
+kobe api send --task-id <subagent-task-id> --prompt "<filled requestTemplate>"
+kobe api send --task-id <primary-task-id> --prompt "<filled resultTemplate>"
 ```
 
 Protocol rules:
 
 - One `send` is one full engine turn. Batch useful information; no greetings,
-  polling, acknowledgement-only messages, or unbounded ping-pong.
+  polling, acknowledgement-only messages, or unbounded ping-pong. Every send
+  increments `hop`; never send past `max_hops`.
+- Obey the returned hop budget and `reply_policy` semantics exactly; do not
+  reconstruct enum meanings from this skill or another document.
 - Do not recursively delegate unless the user explicitly asks. The primary
   may own multiple subagents, but a subagent has one direct primary.
 - Stay inside your own Task/worktree. Send findings or patches by reference;

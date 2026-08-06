@@ -37,21 +37,43 @@ work remains isolated in each Task's own worktree.
 Neither side is forked. There is no Channel page, shared composer, relay
 process, or Kobe-owned transcript.
 
-## Delegation protocol v1
+## Delegation protocol v2
 
-Each request starts with:
+The runtime contract has one source of truth:
 
-```text
-[KOBE DELEGATION REQUEST v1]
-primary_task_id: <id>
-subagent_task_id: <id>
-objective: <one bounded outcome>
-constraints: <scope, files, permissions, forbidden actions>
-done_when: <observable acceptance evidence>
-reply_via: kobe api send --task-id <primary-id> --prompt "<structured result>"
+```bash
+kobe api delegation-protocol \
+  --primary-task-id <primary-id> \
+  --subagent-task-id <subagent-id> --pretty
 ```
 
-The skill carries the normative rules:
+The command is offline and returns the exact v2 enum values, defaults,
+semantics, a fresh request id, and matching request/result templates. Its
+implementation is
+`packages/kobe/src/core/task-delegation-protocol.ts`. The UI bootstrap and Kobe
+skill point agents to this command instead of maintaining independent schema
+copies; this document explains ownership and flow only.
+
+The default exchange is deliberately two semantic messages:
+
+```text
+hop 1: primary request, one reply required
+hop 2: subagent result, no reply
+```
+
+Every message in one request chain carries the same request id. `hop` advances
+once per semantic message and must not exceed `max_hops`; a larger budget is an
+explicit Primary decision for work that genuinely needs progress or blocked
+rounds. Transport success is not an agent acknowledgement, so agents never
+spend a turn replying only “received”.
+
+The request template carries a shell-safe `contract_command` with the same
+request id and hop budget. The subagent runs that literal command to recover
+the matching result template; it does not invent fields or accidentally start
+a second request chain. Each template's `target_task_id` is the delivery
+destination for `kobe api send`.
+
+The stable behavioral boundaries remain:
 
 - a send is a complete engine turn, not a packet in an open chat stream;
 - explicit ids are mandatory because the active Task can change;
@@ -60,7 +82,7 @@ The skill carries the normative rules:
 - destructive, git publication, and merge authority are never inherited;
 - the primary verifies the subagent's evidence and owns the final result.
 
-There is deliberately no sequence number, acknowledgement, retry queue, or
-delivery log in v1. Hosted prompt delivery already reports failure, while an
-agent-level transport would duplicate engine session ownership before a real
-ordering or reliability requirement exists.
+There is deliberately no global sequence number, acknowledgement, retry queue,
+or delivery log in v2. Hosted prompt delivery already reports failure, while
+an agent-level transport would duplicate engine session ownership before a
+real ordering or reliability requirement exists.
