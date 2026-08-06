@@ -31,7 +31,14 @@ export function indexTaskDelegationMarks(tasks: readonly Task[]): ReadonlyMap<st
 
 /** Keep the existing sidebar title budget honest when persistent marks render. */
 export function delegationTitleBudget(base: number, marks: TaskDelegationMarks | undefined): number {
-  const prefixCells = marks?.isSubagent ? 1 : 0
-  const countCells = marks && marks.subagentCount > 0 ? String(marks.subagentCount).length + 3 : 0
+  // A linked child shifts one cell inward and carries a one-cell connector.
+  const prefixCells = marks?.isSubagent ? 2 : 0
+  // `SUB ${count} ›` is the primary-side navigation entry.
+  const countCells = marks && marks.subagentCount > 0 ? String(marks.subagentCount).length + 6 : 0
   return Math.max(6, base - prefixCells - countCells)
+}
+
+/** Existing child Tasks for the primary-side navigation entry, in store order. */
+export function linkedSubagents(tasks: readonly Task[], primaryTaskId: string): Task[] {
+  return tasks.filter((task) => task.delegation?.primaryTaskId === primaryTaskId)
 }

@@ -368,6 +368,7 @@ export function Sidebar(props: SidebarProps) {
     worktreeChanges: props.worktreeChanges,
     transcriptActivity: props.transcriptActivity,
     taskDelegationMarks,
+    onOpenSubagents: props.onOpenSubagents,
     moveMode: props.moveMode,
   }
 

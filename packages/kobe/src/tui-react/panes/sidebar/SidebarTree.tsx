@@ -377,6 +377,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
     taskDelegationMarks,
+    onOpenSubagents: props.onOpenSubagents,
   }
 
   return (

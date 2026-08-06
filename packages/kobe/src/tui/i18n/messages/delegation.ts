@@ -5,6 +5,11 @@ export const en = {
     empty: "No other active, materialized task is available.",
     hint: "enter select · j/k move · esc cancel",
   },
+  linked: {
+    title: "LINKED SUBAGENTS",
+    primary: "Primary: {task}",
+    hint: "enter open · j/k move · esc close",
+  },
   toast: {
     noPrimary: "Open a primary task before choosing a subagent.",
     noEngine: "The primary task has no engine tab ready for the delegation instructions.",
@@ -19,6 +24,11 @@ export const zh: typeof en = {
     primary: "主任务：{task}",
     empty: "没有其他已就绪的活动任务。",
     hint: "enter 选择 · j/k 移动 · esc 取消",
+  },
+  linked: {
+    title: "已链接的 SUBAGENT",
+    primary: "主任务：{task}",
+    hint: "enter 打开 · j/k 移动 · esc 关闭",
   },
   toast: {
     noPrimary: "请先打开一个主任务，再选择 subagent。",

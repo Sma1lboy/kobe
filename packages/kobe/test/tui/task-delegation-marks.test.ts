@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { delegationTitleBudget, indexTaskDelegationMarks } from "../../src/tui/panes/sidebar/task-delegation-marks.ts"
+import {
+  delegationTitleBudget,
+  indexTaskDelegationMarks,
+  linkedSubagents,
+} from "../../src/tui/panes/sidebar/task-delegation-marks.ts"
 import { type Task, toTaskId } from "../../src/types/task.ts"
 
 function task(id: string, primaryTaskId?: string): Task {
@@ -42,6 +46,11 @@ describe("task delegation sidebar marks", () => {
 
   it("reserves cells only for marks that render", () => {
     expect(delegationTitleBudget(20, undefined)).toBe(20)
-    expect(delegationTitleBudget(20, { isSubagent: true, subagentCount: 12 })).toBe(14)
+    expect(delegationTitleBudget(20, { isSubagent: true, subagentCount: 12 })).toBe(10)
+  })
+
+  it("resolves a primary entry to its linked Tasks without moving them", () => {
+    const tasks = [task("root"), task("unrelated"), task("worker-a", "root"), task("worker-b", "root")]
+    expect(linkedSubagents(tasks, "root").map(({ id }) => id)).toEqual(["worker-a", "worker-b"])
   })
 })

@@ -13,13 +13,16 @@ import type { Task } from "@/types/task"
 import { useCallback } from "react"
 import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
 import type { SidebarNav } from "../../tui/panes/sidebar/nav-core"
+import { linkedSubagents } from "../../tui/panes/sidebar/task-delegation-marks"
 import type { WorktreeChanges } from "../../tui/panes/sidebar/worktree-changes"
+import { TaskSubagentsDialog } from "../component/task-subagents-dialog"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { Sidebar, type SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarTree } from "../panes/sidebar/SidebarTree"
+import { useDialog } from "../ui/dialog"
 import { closeTaskTab } from "./terminal-tabs-close"
 
 export interface HostSidebarProps {
@@ -68,6 +71,7 @@ export function HostSidebar(props: HostSidebarProps) {
   const kv = useKV()
   const notif = useNotifications()
   const t = useT()
+  const dialog = useDialog()
   // Tab close is the one sidebar action the host can't express as a task-level
   // callback: the tree names a tab of ANY worktree, so who owns that tab's
   // state depends on whether its TerminalTabs is mounted. `closeTaskTab` is
@@ -79,6 +83,19 @@ export function HostSidebar(props: HostSidebarProps) {
         notif.notify({ kind: "error", taskId, tabId, title: t("terminal.tab.cannotCloseLast") })
     },
     [kv, notif, t],
+  )
+  const openSubagents = useCallback(
+    async (primaryTaskId: string): Promise<void> => {
+      const primary = props.tasks.find((task) => task.id === primaryTaskId)
+      if (!primary) return
+      const linked = linkedSubagents(props.tasks, primaryTaskId)
+      if (linked.length === 0) return
+      const target = linked.length === 1 ? linked[0] : await TaskSubagentsDialog.show(dialog, primary, props.tasks)
+      if (!target) return
+      props.onSelect(String(target.id))
+      props.onActivate(String(target.id))
+    },
+    [dialog, props.tasks, props.onSelect, props.onActivate],
   )
   // Shared by both mounts. Split out so the two JSX blocks can't drift on
   // the props they DO have in common.
@@ -95,6 +112,7 @@ export function HostSidebar(props: HostSidebarProps) {
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
     transcriptActivity: props.transcriptActivity,
+    onOpenSubagents: (primaryTaskId: string) => void openSubagents(primaryTaskId),
     focused: props.focused,
     onDeleteRequest: props.onDeleteRequest,
     onArchiveRequest: props.onArchiveRequest,
