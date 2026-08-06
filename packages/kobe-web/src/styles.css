@@ -187,20 +187,6 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   border-color: var(--color-kobe-yellow);
 }
 
-.activity-card {
-  display: flex;
-  width: fit-content;
-  max-width: 100%;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid var(--color-line);
-  border-left: 2px solid var(--color-kobe-blue);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
-  padding: 7px 10px;
-  box-shadow: 0 7px 24px color-mix(in srgb, black 18%, transparent);
-}
-
 .activity-card__status {
   display: flex;
   flex: none;
@@ -227,7 +213,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   }
 }
 
-.activity-card--active .activity-card__pulse {
+.activity-card__pulse {
   animation: kobe-signal-pulse 1.4s ease-in-out infinite;
 }
 
@@ -399,7 +385,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .activity-card--active .activity-card__pulse,
+  .activity-card__pulse,
   .execution-node--running::after,
   .shimmer-text,
   .fade-up,

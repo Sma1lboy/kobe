@@ -178,18 +178,39 @@ function TranscriptEvent({
   )
 }
 
+/** The CLI spinner's animation glyph — an oscillating frame, not content. */
+const SPIN_GLYPH = /^[·✢✳✶✻✽✷✸✹✺✱*∗＊⠀-⣿]\s+/
+
 function ActivityCard({ line }: { line: ColoredLine }) {
   const active = /…|\.\.\./.test(line.text)
   // Settled scrollback ("✳ Worked for 5s") reads as history, not an event —
   // a quiet line, no card chrome. Only the LIVE spinner earns the card.
   if (!active) return <Line line={line} className="py-0.5 text-subtle" />
+  // Re-dress the raw spinner (`✳ Verb… (esc to interrupt · 6s · ↓ 119 tokens)`)
+  // instead of echoing it: the card has its own pulse and the GUI its own
+  // interrupt affordance, so the glyph, parens, and esc hint are noise here.
+  const text = line.text.trim().replace(SPIN_GLYPH, "")
+  const m = text.match(/^(.+?)\s*\((.*)\)$/)
+  const verb = m ? m[1] : text
+  const details = (m ? m[2].split("·") : [])
+    .map((s) => s.trim())
+    .filter((s) => s !== "" && !/esc to interrupt/i.test(s))
+  // Bare pulse+label row — the footer card already draws the frame, so the
+  // LIVE state must not add a box-in-a-box.
   return (
-    <div className="activity-card activity-card--active">
-      <div className="activity-card__status">
+    <div className="flex items-center gap-2.5 py-0.5">
+      <span className="activity-card__status">
         <span className="activity-card__pulse" aria-hidden="true" />
         <span>LIVE</span>
+      </span>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 font-mono text-[12px]">
+        <span className="shimmer-text">{verb}</span>
+        {details.map((d) => (
+          <span key={d} className="whitespace-nowrap text-subtle">
+            {d}
+          </span>
+        ))}
       </div>
-      <Line line={line} className="min-w-0 text-muted" />
     </div>
   )
 }
