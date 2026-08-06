@@ -173,6 +173,41 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
         continue
       }
     }
+    // NARROW terminals get a different banner: a box frame titled
+    // `╭─── Claude Code v2.1.223 ───╮` holding a centered greeting, the
+    // logo, and billing/cwd — with an inner `│` splitting off a Tips/What's
+    // new column. Fold it into the same welcome card (left half only; the
+    // card brings its own changelog column).
+    if (/^╭─/.test(trimmed)) {
+      const title = trimmed.replace(/[╭╮─]/g, " ").trim()
+      const tm = title.match(PRODUCT_VERSION)
+      if (tm) {
+        let j = i + 1
+        while (j < lines.length && !/^╰/.test(lines[j].text.trim())) j++
+        if (j < lines.length) {
+          const lefts = lines.slice(i + 1, j).map((l) => {
+            const inner = l.text.replace(/^\s*│/, "").replace(/│\s*$/, "")
+            const cut = inner.indexOf("│")
+            return cut >= 0 ? inner.slice(0, cut) : inner
+          })
+          blocks.push({
+            kind: "welcome",
+            welcome: {
+              logo: lefts
+                .filter((t) => LOGO_ART.test(t))
+                .map((t) => t.replace(/\s+$/, "")),
+              product: tm[1],
+              version: tm[2],
+              info: lefts
+                .map((t) => t.trim())
+                .filter((t) => t !== "" && !LOGO_ART.test(t)),
+            },
+          })
+          i = j + 1
+          continue
+        }
+      }
+    }
     if (USER_ECHO.test(trimmed)) {
       // Multi-line echo: continuations are 2-space indented (assistant output
       // starts at col 0) — absorb them + internal blanks into one bubble.

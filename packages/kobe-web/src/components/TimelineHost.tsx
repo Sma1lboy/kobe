@@ -14,7 +14,6 @@ export function TimelineHost({
   tabSessionId,
   engineActive = true,
   width,
-  onCollapse,
 }: {
   taskId: string
   worktreePath: string | null
@@ -26,7 +25,6 @@ export function TimelineHost({
   engineActive?: boolean
   /** Drag-resized panel width (PaneResizer). */
   width?: number
-  onCollapse: () => void
 }) {
   const engines = useEngines()
   const label = engineLabel(engines, vendor)
@@ -47,7 +45,6 @@ export function TimelineHost({
         active={engineActive}
         width={width}
         onExpand={() => setExpanded(true)}
-        onCollapse={onCollapse}
       />
       {expanded && (
         <TimelineSwimlane

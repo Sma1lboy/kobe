@@ -28,7 +28,8 @@ function statusClasses(status: TimelineStatus): string {
     return "execution-node--running border-kobe-blue/60 text-kobe-blue"
   if (status === "error") return "border-kobe-red/70 text-kobe-red"
   if (status === "blocked") return "border-kobe-yellow/70 text-kobe-yellow"
-  return "border-line-active text-kobe-green"
+  // Settled steps recede: only unfinished/failed cards spend a status colour.
+  return "border-line-subtle text-muted"
 }
 
 function kindLabel(item: TimelineItem): string {
@@ -81,17 +82,17 @@ function ExecutionNode({
     >
       <div className="flex items-center gap-1.5">
         <ItemIcon item={item} />
-        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.14em] text-current">
-          {kindLabel(item)}
-        </span>
+        <span className="text-[10px] text-current">{kindLabel(item)}</span>
         {(item.attempt ?? 1) > 1 && (
-          <span className="font-mono text-[8px] text-subtle">
+          <span className="font-mono text-[9px] text-subtle">
             A{item.attempt}
           </span>
         )}
-        <span className="ml-auto font-mono text-[9px] text-current">
-          {statusGlyph(item.status)}
-        </span>
+        {item.status !== "success" && (
+          <span className="ml-auto font-mono text-[9px] text-current">
+            {statusGlyph(item.status)}
+          </span>
+        )}
       </div>
       <div
         className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
@@ -112,11 +113,9 @@ function ExecutionNode({
 
 function DetailSection({ label, text }: { label: string; text: string }) {
   return (
-    <section className="border border-line bg-surface">
+    <section className="rounded border border-line bg-surface">
       <header className="flex h-9 items-center gap-2 border-b border-line px-3">
-        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted">
-          {label}
-        </span>
+        <span className="text-[11px] text-muted">{label}</span>
         <CopyButton
           text={text}
           label={`Copy ${label.toLowerCase()}`}
@@ -153,7 +152,7 @@ function ExecutionDetail({
       title={
         item ? (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-primary">
+            <span className="shrink-0 text-[11px] text-primary">
               {kindLabel(item)}
             </span>
             <span className="truncate">{item.title}</span>
@@ -173,14 +172,14 @@ function ExecutionDetail({
               )}
             </span>
             {(item.attempt ?? 1) > 1 && (
-              <span className="border border-line px-1.5 py-0.5 text-muted">
+              <span className="rounded-full border border-line px-1.5 py-0.5 text-muted">
                 attempt {item.attempt}
               </span>
             )}
           </div>
           {retryOf && (
-            <section className="border-l-2 border-kobe-yellow bg-surface px-3 py-2">
-              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-kobe-yellow">
+            <section className="rounded-r border-l-2 border-kobe-yellow bg-surface px-3 py-2">
+              <div className="text-[11px] text-kobe-yellow">
                 Engine-declared retry
               </div>
               <div className="mt-1 text-[11px] text-muted">
@@ -190,20 +189,20 @@ function ExecutionDetail({
           )}
           {parent && (
             <section>
-              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-subtle">
+              <div className="mb-1 flex items-center gap-2 text-[11px] text-subtle">
                 <span>
                   {item.parentBasis === "explicit"
                     ? "Triggered by"
                     : "Observed after"}
                 </span>
-                <span className="font-normal tracking-normal text-subtle/70">
+                <span className="text-[10px] text-subtle/70">
                   {item.parentBasis === "explicit"
                     ? "source link"
                     : "temporal link"}
                 </span>
               </div>
               <div
-                className={`border-l-2 bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted ${item.parentBasis === "explicit" ? "border-primary" : "border-line-active border-dashed"}`}
+                className={`rounded-r border-l-2 bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted ${item.parentBasis === "explicit" ? "border-primary" : "border-line-active border-dashed"}`}
               >
                 {parent.detail}
               </div>
@@ -247,7 +246,7 @@ function WaitingNode({ status }: { status: TimelineStatus }) {
     <article
       className={`execution-node execution-node--running relative z-10 flex min-h-24 flex-col justify-between border bg-surface p-2.5 ${statusClasses(status)}`}
     >
-      <div className="flex items-center gap-1.5 font-mono text-[8px] font-bold uppercase tracking-[0.14em]">
+      <div className="flex items-center gap-1.5 text-[10px]">
         <TerminalSquare size={12} strokeWidth={1.8} />
         Live
         <span className="ml-auto">{statusGlyph(status)}</span>

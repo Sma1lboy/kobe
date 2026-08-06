@@ -30,7 +30,7 @@ import {
   setChatSurface,
   useGlobalUiState,
 } from "../lib/global-ui.ts"
-import { useAppState } from "../lib/store.ts"
+import { rpc, useAppState } from "../lib/store.ts"
 import {
   ensureEngineTab,
   resetTabTitle,
@@ -342,27 +342,29 @@ function SessionView({
           <div className="min-h-0 flex-1">
             <TtyBlocksView blocks={body} sessionId={sessionId} />
           </div>
-          <div className="shrink-0 px-4 pb-3 pt-1">
+          {/* One composer zone: every row runs edge-to-edge with the input
+              card, so the gaps (not indents) do the grouping. */}
+          <div className="shrink-0 space-y-1.5 px-4 pb-3 pt-1">
             {footer.length > 0 &&
               (footerInteractive ? (
                 // A card only when the engine is WAITING on the user (spinner
                 // / slash-menu / question). Passive notices don't earn one.
-                <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+                <div className="rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
                   <TtyFooter blocks={footer} sessionId={sessionId} />
                 </div>
               ) : (
                 // Passive hints (Image in clipboard…) — quiet line above input.
-                <div className="mb-1 px-3 text-[11px]">
+                <div className="text-[11px]">
                   <TtyFooter blocks={footer} sessionId={sessionId} />
                 </div>
               ))}
             {effortLine && (
-              <div className="fade-up mb-1 flex justify-end px-3">
+              <div className="fade-up flex justify-end">
                 <StatusLine line={trimLeadingColored(effortLine)} />
               </div>
             )}
             {recap && (
-              <div className="fade-up mb-1.5 px-1 text-[12px] leading-relaxed text-muted">
+              <div className="fade-up text-[12px] leading-relaxed text-muted">
                 <span className="mr-1.5 select-none text-subtle">※</span>
                 {recap.text}
               </div>
@@ -378,7 +380,9 @@ function SessionView({
               />
             )}
             {statusColored.length > 0 && (
-              <div className="mt-2 space-y-0.5 px-2">
+              // Dim the whole group instead of the segs — the rows keep the
+              // engine's ANSI colors, just quieter.
+              <div className="opacity-75">
                 {statusColored.map((line, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
                   <StatusLine key={i} line={line} />
@@ -393,7 +397,8 @@ function SessionView({
 }
 
 export function ChatShell() {
-  const { tasks, activeTaskId, engineStates, engineTabSessions } = useAppState()
+  const { tasks, activeTaskId, engineStates, engineTabSessions, attentionInbox } =
+    useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
   // Surface + selection live in the global-ui store so the root-level command
   // palette can drive the shell (jump task / open Kanban / open Routines).
@@ -442,6 +447,25 @@ export function ChatShell() {
   const tabId = vendorTab?.id ?? terminalTab?.id ?? fallbackTabId
   const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
   const vendor = vendorTab?.vendor
+
+  // Visit resolves the episode — same contract as the TUI (and the Inbox's
+  // click-through): an attention item for the tab you are LOOKING AT is
+  // already read, so it never demands a second acknowledgement.
+  const selectedIdForAttention = selected?.id ?? null
+  useEffect(() => {
+    if (!selectedIdForAttention || !tabId || settingsOpen || surface !== "chat")
+      return
+    if (document.hidden) return
+    for (const item of attentionInbox) {
+      if (item.taskId !== selectedIdForAttention || item.tabId !== tabId)
+        continue
+      void rpc("attention.dismiss", {
+        taskId: item.taskId,
+        tabId: item.tabId ?? undefined,
+        at: item.at,
+      }).catch(() => {})
+    }
+  }, [attentionInbox, selectedIdForAttention, tabId, settingsOpen, surface])
 
   // Agent Trace is the GUI-native execution inspector. It starts open so
   // the two-level thought/tool model is visible without introducing a chord.
@@ -552,7 +576,6 @@ export function ChatShell() {
             }
             engineActive={engineLive}
             width={traceW}
-            onCollapse={() => setShowTimeline(false)}
           />
         )}
       </div>

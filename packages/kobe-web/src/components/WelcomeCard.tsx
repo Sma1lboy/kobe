@@ -12,6 +12,17 @@ import { useEffect, useState } from "react"
 import { type ChangelogEntry, changelogFor } from "../lib/changelog.ts"
 import type { WelcomeInfo } from "../lib/claude-tty.ts"
 
+/** Strip the art's common leading indent so the logo sits flush against the
+ *  card padding — the terminal columns carry their own left margin, which
+ *  read as uneven card gutters. */
+function dedent(rows: string[]): string[] {
+  const indents = rows
+    .filter((r) => r.trim() !== "")
+    .map((r) => r.length - r.trimStart().length)
+  const cut = indents.length > 0 ? Math.min(...indents) : 0
+  return cut > 0 ? rows.map((r) => r.slice(cut)) : rows
+}
+
 export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
   const { logo, product, version, info } = welcome
   // The What's-new column reads Claude Code's changelog — other vendors get
@@ -37,11 +48,16 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
   }, [version, hasChangelog])
 
   return (
-    <div className="fade-up my-3 rounded-xl border border-primary/40 bg-inset px-4 py-3">
+    // @container: the What's-new / notice column keys off the CARD's own
+    // width (panes resize independently of the viewport), dropping cleanly
+    // when the middle column narrows.
+    <div className="fade-up @container my-3 rounded-xl border border-primary/40 bg-inset px-4 py-3">
       <div className="flex items-start gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-2">
-          <pre className="shrink-0 self-center whitespace-pre pr-1 font-mono text-[13px] leading-none text-primary">
-            {logo.join("\n")}
+          {/* Block-glyph art: fractional glyph advances leave hairline seams
+              between cells — the ±0.5px same-color shadow fills them. */}
+          <pre className="shrink-0 self-center whitespace-pre pr-1 font-mono text-[13px] leading-none text-primary [text-shadow:0.5px_0_0_currentColor,-0.5px_0_0_currentColor]">
+            {dedent(logo).join("\n")}
           </pre>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -58,7 +74,7 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
           </div>
         </div>
         {!hasChangelog && welcome.notice && welcome.notice.length > 0 && (
-          <div className="hidden min-w-0 flex-1 border-l border-line pl-4 sm:block">
+          <div className="hidden min-w-0 flex-1 border-l border-line pl-4 @xl:block">
             <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
               Update
             </div>
@@ -75,7 +91,7 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
           </div>
         )}
         {hasChangelog && (
-        <div className="hidden min-w-0 flex-1 border-l border-line pl-4 sm:block">
+        <div className="hidden min-w-0 flex-1 border-l border-line pl-4 @xl:block">
           <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
             What's new
           </div>

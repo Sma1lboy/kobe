@@ -1,4 +1,4 @@
-import { ChevronsRight, GitBranch, Maximize2 } from "lucide-react"
+import { Maximize2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   durationMs,
@@ -57,8 +57,8 @@ function TurnSection({
   const items = expanded ? turn.nodes : visible
   return (
     <section className="relative">
-      <div className="mb-2 flex items-start gap-2 border-b border-line-subtle pb-2">
-        <span className="mt-0.5 font-mono text-[8px] font-bold tracking-[0.14em] text-primary">
+      <div className="mb-1.5 flex items-start gap-2">
+        <span className="mt-0.5 font-mono text-[9px] text-primary">
           T{String(turnIndex + 1).padStart(2, "0")}
         </span>
         <div className="min-w-0 flex-1">
@@ -75,12 +75,14 @@ function TurnSection({
             <span>{turn.nodes.length} blocks</span>
           </div>
         </div>
-        <span
-          className={`font-mono text-[9px] ${statusColor(turn.status)}`}
-          title={turn.status}
-        >
-          {statusGlyph(turn.status)}
-        </span>
+        {turn.status !== "success" && (
+          <span
+            className={`font-mono text-[9px] ${statusColor(turn.status)}`}
+            title={turn.status}
+          >
+            {statusGlyph(turn.status)}
+          </span>
+        )}
       </div>
       {foldedCount > 0 && (
         <button
@@ -106,7 +108,6 @@ export function TimelinePanel({
   active = true,
   width,
   onExpand,
-  onCollapse,
 }: {
   model: TimelineModel
   loaded: boolean
@@ -118,7 +119,6 @@ export function TimelinePanel({
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
   onExpand: () => void
-  onCollapse: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -159,12 +159,12 @@ export function TimelinePanel({
       className="flex basis-80 shrink-0 flex-col border-l border-line bg-surface"
       style={width ? { width, flexBasis: width } : undefined}
     >
+      {/* One control here (fullscreen). Open/close lives on the chat
+          header's single toggle — no duplicate chrome, no branch icon
+          colliding with the REAL git-branch concept in the status bar. */}
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
-        <GitBranch size={13} strokeWidth={1.8} className="text-primary" />
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted">
-            Agent trace
-          </div>
+          <div className="text-[11px] font-medium text-muted">Agent trace</div>
           <div className="truncate font-mono text-[9px] text-subtle">
             {active ? `${engineLabel} · ${summary}` : engineLabel}
           </div>
@@ -172,20 +172,11 @@ export function TimelinePanel({
         <button
           type="button"
           onClick={onExpand}
-          className="grid size-6 place-items-center border border-line text-subtle transition-colors hover:border-line-active hover:text-fg"
+          className="grid size-6 place-items-center text-subtle transition-colors hover:text-fg"
           aria-label="Expand agent trace"
-          title="Open agent trace"
+          title="Open agent trace fullscreen"
         >
           <Maximize2 size={11} />
-        </button>
-        <button
-          type="button"
-          onClick={onCollapse}
-          className="grid size-6 place-items-center text-subtle hover:text-fg"
-          aria-label="Collapse execution map"
-          title="Collapse execution map"
-        >
-          <ChevronsRight size={12} />
         </button>
       </div>
 
@@ -227,7 +218,7 @@ export function TimelinePanel({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-6">
             {model.turns.map((turn, turnIndex) => (
               <TurnSection
                 key={turn.id}

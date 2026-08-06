@@ -102,6 +102,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-shimmer 2.2s linear infinite;
 }
 
+/* One entrance standard: ease-out, ~0.2s, 4px rise. New motion reuses these. */
 @keyframes kobe-fade-up {
   from {
     opacity: 0;
@@ -113,7 +114,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   }
 }
 .fade-up {
-  animation: kobe-fade-up 0.25s ease-out both;
+  animation: kobe-fade-up 0.22s ease-out both;
 }
 
 @keyframes kobe-pop-in {
@@ -133,7 +134,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 /* Transcript events — a plain conversation column. The structured timeline
    lives in the Agent Trace pane; here only spacing separates events. */
 .transcript-event {
-  padding: 5px 0;
+  padding: 7px 0;
   min-width: 0;
 }
 
@@ -155,25 +156,12 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-signal-pulse 1.4s ease-in-out infinite;
 }
 
-/* Quiet instrument-paper grid shared by the outline and expanded swimlane. */
-.execution-grid {
-  background-image:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, var(--color-line-subtle) 34%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--color-line-subtle) 24%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 24px 24px;
-  background-position: -1px -1px;
-}
-
+/* Corner grammar: conversational surfaces are SOFT (rounded-2xl bubbles,
+   composer, hint cards), interactive rows are MID (rounded-md), and data /
+   instrument surfaces — these execution cards, status rows, pane edges —
+   stay HARD (≤4px). Don't flatten the tiers into one radius. */
 .execution-node {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-bg) 70%, transparent);
+  border-radius: 4px;
   transition:
     border-color 140ms ease,
     transform 140ms ease,
@@ -235,7 +223,11 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   display: none;
 }
 
-.execution-node-grid--wide .execution-node {
+.execution-node-grid--wide /* Corner grammar: conversational surfaces are SOFT (rounded-2xl bubbles,
+   composer, hint cards), interactive rows are MID (rounded-md), and data /
+   instrument surfaces — these execution cards, status rows, pane edges —
+   stay HARD (≤4px). Don't flatten the tiers into one radius. */
+.execution-node {
   min-height: 7.5rem;
 }
 
@@ -305,6 +297,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   position: absolute;
   inset: -1px;
   border: 1px solid currentColor;
+  border-radius: 5px;
   content: "";
   opacity: 0.45;
   animation: execution-node-pulse 1.8s ease-out infinite;
@@ -327,7 +320,9 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   .execution-node--running::after,
   .shimmer-text,
   .fade-up,
-  .pop-in {
+  .pop-in,
+  .animate-spin,
+  .animate-pulse {
     animation: none;
   }
 }

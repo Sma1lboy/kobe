@@ -44,12 +44,36 @@ import { EnginePickerModal } from "./EnginePickerModal.tsx"
 
 type View = "active" | "archived"
 
+/** herdr "seen" bit — the TUI contract verbatim (row-cards.ts
+ *  completionSeenFor): keys whose CURRENT turn_complete the user has viewed,
+ *  so ● digests away. Session-scoped; cleared when activity moves off
+ *  turn_complete. Daemon state is never touched. */
+const completionSeenKeys = new Set<string>()
+export function completionSeenFor(
+  key: string,
+  activityState: string | undefined,
+  viewing: boolean,
+): boolean {
+  if (activityState === "turn_complete") {
+    if (viewing) completionSeenKeys.add(key)
+  } else {
+    completionSeenKeys.delete(key)
+  }
+  return completionSeenKeys.has(key)
+}
+
 /** TUI stateGlyph vocabulary (row-view.ts), colored with the web palette. */
-function stateGlyph(state: string | undefined): {
+function stateGlyph(
+  state: string | undefined,
+  completionSeen = false,
+): {
   glyph: string
   className: string
   pulse: boolean
 } {
+  if (state === "turn_complete" && completionSeen) {
+    return { glyph: "○", className: "text-subtle", pulse: false }
+  }
   switch (state) {
     case "running":
       return { glyph: "✱", className: "text-kobe-orange", pulse: true }
@@ -115,12 +139,13 @@ function ChangesBadge({
 
 /** Dim right-edge jump digit — the TUI's ctrl+digit rail: row 0 prints `2`
  *  (ctrl+1 has no terminal encoding; the web mirrors the printed digits so
- *  the muscle memory transfers verbatim). */
+ *  the muscle memory transfers verbatim). Ghosted until the row is hovered
+ *  or carries the cursor/selection (`data-on` on the row button). */
 function JumpDigit({ index }: { index: number }) {
   const digit = taskJumpDigit(index)
   if (digit === null) return <span className="w-3 shrink-0" />
   return (
-    <span className="w-3 shrink-0 text-right text-[11px] text-subtle/70">
+    <span className="w-3 shrink-0 text-right text-[11px] text-subtle/30 transition-colors group-hover:text-subtle group-data-[on=true]:text-subtle">
       {digit}
     </span>
   )
@@ -150,12 +175,8 @@ function WorktreeRow({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-1.5 border-l-2 py-0.5 pl-2 pr-1 text-left ${
-        cursor
-          ? "border-primary bg-inset"
-          : active
-            ? "border-fg/80 bg-menu"
-            : "border-transparent hover:bg-inset"
+      className={`group flex w-full items-center gap-1.5 rounded-md py-0.5 pl-2.5 pr-1.5 text-left transition-colors ${
+        cursor ? "bg-inset" : active ? "bg-menu" : "hover:bg-inset/60"
       }`}
     >
       <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
@@ -175,6 +196,7 @@ function TabRow({
   label,
   engine,
   isEngine,
+  completionSeen,
   jumpIndex,
   active,
   cursor,
@@ -185,6 +207,8 @@ function TabRow({
    *  shell/file tabs wear the plain `·` (TUI owner rule, round 7). */
   engine: EngineState | undefined
   isEngine: boolean
+  /** The user has viewed this tab's current turn_complete (● digests). */
+  completionSeen?: boolean
   /** Digit ordinal among TAB rows only (not the global flat index). */
   jumpIndex: number
   active: boolean
@@ -193,18 +217,15 @@ function TabRow({
   onClick: () => void
 }) {
   const s = isEngine
-    ? stateGlyph(engine?.state)
+    ? stateGlyph(engine?.state, completionSeen)
     : { glyph: "·", className: "text-subtle", pulse: false }
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-1.5 border-l-2 py-0.5 pl-4 pr-1 text-left ${
-        cursor
-          ? "border-primary bg-inset"
-          : active
-            ? "border-fg/80 bg-menu"
-            : "border-transparent hover:bg-inset"
+      data-on={cursor || active}
+      className={`group flex w-full items-center gap-1.5 rounded-md py-0.5 pl-4 pr-1.5 text-left transition-colors ${
+        cursor ? "bg-inset" : active ? "bg-menu" : "hover:bg-inset/60"
       }`}
     >
       <span
@@ -496,10 +517,10 @@ export function ChatSidebarTree({
           <button
             type="button"
             onClick={() => setView("active")}
-            className={`px-2 py-0.5 ${
+            className={`rounded-md px-2 py-0.5 transition-colors ${
               view === "active"
                 ? "bg-primary text-bg"
-                : "text-subtle hover:text-fg"
+                : "text-subtle hover:bg-inset/60 hover:text-fg"
             }`}
           >
             Active
@@ -507,10 +528,10 @@ export function ChatSidebarTree({
           <button
             type="button"
             onClick={() => setView("archived")}
-            className={`px-2 py-0.5 ${
+            className={`rounded-md px-2 py-0.5 transition-colors ${
               view === "archived"
                 ? "bg-primary text-bg"
-                : "text-subtle hover:text-fg"
+                : "text-subtle hover:bg-inset/60 hover:text-fg"
             }`}
           >
             Archives
@@ -521,14 +542,14 @@ export function ChatSidebarTree({
         <button
           type="button"
           onClick={() => onSurfaceChange?.("board")}
-          className={`w-fit hover:text-fg ${surface === "board" ? "text-primary" : ""}`}
+          className={`w-fit transition-colors hover:text-fg ${surface === "board" ? "text-primary" : ""}`}
         >
           Kanban
         </button>
         <button
           type="button"
           onClick={() => onSurfaceChange?.("routines")}
-          className={`w-fit hover:text-fg ${surface === "routines" ? "text-primary" : ""}`}
+          className={`w-fit transition-colors hover:text-fg ${surface === "routines" ? "text-primary" : ""}`}
         >
           Routines
         </button>
@@ -554,17 +575,14 @@ export function ChatSidebarTree({
           </div>
         ) : (
           groups.map((group) => (
-            <div key={group.repo} className="mt-2">
-              <div className="flex items-center gap-2 px-3 pb-0.5">
-                <span className="shrink-0 text-[12px] font-bold text-muted">
-                  {group.label}
-                </span>
-                <span className="h-px min-w-0 flex-1 bg-line" />
+            <div key={group.repo} className="mt-4 first:mt-2">
+              <div className="truncate px-3 pb-1 text-[11px] font-semibold tracking-wide text-subtle">
+                {group.label}
               </div>
               {group.tasks.map((task) => {
                 const worktreeIndex = nextIndex()
                 return (
-                  <div key={task.id}>
+                  <div key={task.id} className="px-1.5">
                     <WorktreeRow
                       task={task}
                       active={false}
@@ -579,19 +597,24 @@ export function ChatSidebarTree({
                     {taskTreeTabs(tabsByTask[task.id]).map((tab) => {
                       const tabIndex = nextIndex()
                       const jumpIndex = nextJumpIndex()
+                      const viewing =
+                        task.id === selectedId &&
+                        (tab.id
+                          ? activeByTask[task.id] === tab.id
+                          : tab.isEngine)
                       return (
                         <TabRow
                           key={tab.key}
                           label={tab.label}
                           engine={engineStates[task.id]}
                           isEngine={tab.isEngine || engineTraced(tab.id)}
+                          completionSeen={completionSeenFor(
+                            `${task.id}:${tab.key}`,
+                            engineStates[task.id]?.state,
+                            viewing,
+                          )}
                           jumpIndex={jumpIndex}
-                          active={
-                            task.id === selectedId &&
-                            (tab.id
-                              ? activeByTask[task.id] === tab.id
-                              : tab.isEngine)
-                          }
+                          active={viewing}
                           cursor={cursor === tabIndex}
                           onClick={() => {
                             onSelect(task.id)

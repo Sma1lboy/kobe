@@ -38,7 +38,10 @@ function Line({
   const art = BLOCK_ART.test(line.text)
   return (
     <div
-      className={`whitespace-pre font-mono text-[12px] ${art ? "leading-none" : "leading-[1.4]"} ${className ?? "text-fg/90"}`}
+      // Art rows: leading-none stitches rows vertically; the ±0.5px same-color
+      // shadow fills the hairline seams fractional glyph advances leave
+      // between block cells (same trick as WelcomeCard's logo).
+      className={`whitespace-pre font-mono text-[12px] ${art ? "leading-none [text-shadow:0.5px_0_0_currentColor,-0.5px_0_0_currentColor]" : "leading-[1.5]"} ${className ?? "text-fg"}`}
     >
       {line.segs.length === 0
         ? " "

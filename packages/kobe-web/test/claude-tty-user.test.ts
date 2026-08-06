@@ -64,3 +64,31 @@ describe("recap block", () => {
     ])
   })
 })
+
+describe("boxed narrow-width welcome banner", () => {
+  const line = (text: string) => ({ text, segs: [] })
+
+  test("folds into the welcome card, dropping the inner tips column", () => {
+    const blocks = parseTtyBlocks([
+      line("╭─── Claude Code v2.1.223 ──────────────────────╮"),
+      line("│                                │ Tips for      │"),
+      line("│      Welcome back codefox!     │ getting       │"),
+      line("│         ▐▛███▜▌               │ What's new    │"),
+      line("│        ▝▜█████▛▘              │ Added owner … │"),
+      line("│  Fable 5 with high effort ·    │ Added a warn… │"),
+      line("│     /…/scratchpad/probe        │ /release-not… │"),
+      line("╰────────────────────────────────────────────────╯"),
+    ])
+    expect(blocks).toHaveLength(1)
+    const b = blocks[0]
+    if (b.kind !== "welcome") throw new Error("expected welcome block")
+    expect(b.welcome.product).toBe("Claude Code")
+    expect(b.welcome.version).toBe("2.1.223")
+    expect(b.welcome.logo.length).toBe(2)
+    expect(b.welcome.info).toEqual([
+      "Welcome back codefox!",
+      "Fable 5 with high effort ·",
+      "/…/scratchpad/probe",
+    ])
+  })
+})
