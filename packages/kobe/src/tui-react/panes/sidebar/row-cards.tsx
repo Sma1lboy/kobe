@@ -29,6 +29,7 @@ import {
   prCheckChip,
   withSpinnerFrame,
 } from "../../../tui/panes/sidebar/row-view"
+import { type TaskDelegationMarks, delegationTitleBudget } from "../../../tui/panes/sidebar/task-delegation-marks"
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
@@ -53,6 +54,7 @@ export type SidebarRowCardSharedProps = {
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly transcriptActivity?: ReadonlyMap<string, { readonly mtimeMs: number }> | null
+  readonly taskDelegationMarks?: ReadonlyMap<string, TaskDelegationMarks>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
   readonly moveMode?: boolean
@@ -217,6 +219,7 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const task = row.task
+  const delegationMarks = shared.taskDelegationMarks?.get(String(task.id))
   const isCursor = row.flatIndex === shared.cursorIndex
   const isSelected = task.id === shared.selectedId
   const selection = resolveRowSelectionChrome(theme, { cursor: isCursor, selected: isSelected })
@@ -263,7 +266,37 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
   // same object and never subscribe, so an idle row does zero per-frame work.
   const frame = useSpinnerFrame(baseView.loading)
   const rowView = withSpinnerFrame(baseView, () => frame)
-  return { theme, task, isCursor, isSelected, selection, changes, rowView }
+  return {
+    theme,
+    task,
+    isCursor,
+    isSelected,
+    selection,
+    changes,
+    rowView,
+    delegationMarks,
+    titleBudget: delegationTitleBudget(shared.titleBudget, delegationMarks),
+  }
+}
+
+export function SubagentLinkGlyph(props: { readonly visible: boolean }) {
+  const { theme } = useTheme()
+  if (!props.visible) return null
+  return (
+    <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
+      ↳
+    </text>
+  )
+}
+
+export function PrimarySubagentChip(props: { readonly count: number; readonly padded?: boolean }) {
+  const { theme } = useTheme()
+  if (props.count <= 0) return null
+  return (
+    <text fg={theme.accent} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
+      {props.padded === false ? `@${props.count}` : ` @${props.count} `}
+    </text>
+  )
 }
 
 /** One marker-prefixed line of a two-line row card. */
@@ -290,9 +323,13 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
     void shared.branchTick
     pollCurrentBranch(task.repo)
   }, [task.repo, shared.branchTick])
-  const { theme, isCursor, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
-    mainBranch: currentBranch(task.repo),
-  })
+  const { theme, isCursor, selection, changes, rowView, delegationMarks, titleBudget } = useRowCardChrome(
+    props.row,
+    shared,
+    {
+      mainBranch: currentBranch(task.repo),
+    },
+  )
   // Same tone mapping as a task row: the glyph's COLOR carries state too, so
   // an idle project must not sit on the brand primary while an idle task is
   // muted (owner call 2026-07-30 — one vocabulary for both row kinds).
@@ -306,9 +343,11 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.stateGlyph}
             </text>
+            <SubagentLinkGlyph visible={delegationMarks?.isSubagent === true} />
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-              {spacedTitle(rowView.titleText, shared.titleBudget)}
+              {spacedTitle(rowView.titleText, titleBudget)}
             </text>
+            <PrimarySubagentChip count={delegationMarks?.subagentCount ?? 0} />
             {shared.moveMode && isCursor ? (
               <text fg={theme.warning} wrapMode="none">
                 {t("tasks.moveChip")}
@@ -356,9 +395,13 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
   const t = useT()
   const shared = props.shared
   const task = props.row.task
-  const { theme, isCursor, isSelected, selection, changes, rowView } = useRowCardChrome(props.row, shared, {
-    mainBranch: "",
-  })
+  const { theme, isCursor, isSelected, selection, changes, rowView, delegationMarks, titleBudget } = useRowCardChrome(
+    props.row,
+    shared,
+    {
+      mainBranch: "",
+    },
+  )
   const stateColor = toneColor(theme, rowView.tone)
   const chip = prCheckChip(task)
 
@@ -372,14 +415,16 @@ export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardShar
             <text fg={stateColor} attributes={TextAttributes.BOLD} wrapMode="none" width={1} flexShrink={0}>
               {rowView.stateGlyph}
             </text>
+            <SubagentLinkGlyph visible={delegationMarks?.isSubagent === true} />
             <text
               fg={theme.text}
               attributes={isSelected || isCursor ? TextAttributes.BOLD : undefined}
               wrapMode="none"
               flexGrow={1}
             >
-              {spacedTitle(rowView.titleText, shared.titleBudget)}
+              {spacedTitle(rowView.titleText, titleBudget)}
             </text>
+            <PrimarySubagentChip count={delegationMarks?.subagentCount ?? 0} />
             {shared.moveMode && isCursor ? (
               <text fg={theme.warning} wrapMode="none">
                 {t("tasks.moveChip")}

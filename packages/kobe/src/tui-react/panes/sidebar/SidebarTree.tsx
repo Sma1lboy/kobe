@@ -22,6 +22,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
+import { indexTaskDelegationMarks } from "../../../tui/panes/sidebar/task-delegation-marks"
 import { type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
 import type { TreeMenuAction } from "../../../tui/panes/sidebar/tree-menu"
 import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
@@ -58,6 +59,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   const dims = useTerminalDimensions()
   const [view, setView] = useState<SidebarView>("active")
   const viewTasks = useMemo(() => filterByView(props.tasks, view), [props.tasks, view])
+  const taskDelegationMarks = useMemo(() => indexTaskDelegationMarks(props.tasks), [props.tasks])
 
   // The same ~2s branch/changes poll tick the flat sidebar runs — the row
   // cards' `useChanges`/`pollCurrentBranch` effects key on it.
@@ -374,6 +376,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     engineLifecycle: props.engineLifecycle,
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
+    taskDelegationMarks,
   }
 
   return (

@@ -15,12 +15,21 @@ import { type BoxRenderable, MouseButton } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
+import type { TaskDelegationMarks } from "../../../tui/panes/sidebar/task-delegation-marks"
 import type { TreeTab } from "../../../tui/panes/sidebar/tree-core"
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { useTheme } from "../../context/theme"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
-import { ChangeStats, JumpDigit, completionSeenFor, useChanges, useSpinnerFrame } from "./row-cards"
+import {
+  ChangeStats,
+  JumpDigit,
+  PrimarySubagentChip,
+  SubagentLinkGlyph,
+  completionSeenFor,
+  useChanges,
+  useSpinnerFrame,
+} from "./row-cards"
 
 /** Cells of indent per depth level — one (owner round: the rail is narrow,
  *  and the glyph column already separates the levels visually). */
@@ -48,6 +57,7 @@ export type TreeRowShared = {
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
+  readonly taskDelegationMarks?: ReadonlyMap<string, TaskDelegationMarks>
 }
 
 function RowShell(props: {
@@ -122,6 +132,7 @@ export function WorktreeTreeRow(props: {
   const isCursor = shared.cursorIndex === props.flatIndex
   const changes = useChanges(shared, task)
   const chip = prCheckChip(task)
+  const delegationMarks = shared.taskDelegationMarks?.get(String(task.id))
   // A worktree row is named by its BRANCH. A `main` row stores no branch
   // (its checkout moves freely), so it polls the repo HEAD — falling back
   // to the title repeated the project header's name right under it (owner
@@ -137,9 +148,11 @@ export function WorktreeTreeRow(props: {
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={shared}>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
+        <SubagentLinkGlyph visible={delegationMarks?.isSubagent === true} />
         <text fg={theme.text} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
           {label}
         </text>
+        <PrimarySubagentChip count={delegationMarks?.subagentCount ?? 0} padded={false} />
         {task.pinned === true ? (
           <text fg={theme.warning} wrapMode="none" flexShrink={0}>
             ▴
