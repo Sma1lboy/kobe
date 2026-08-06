@@ -8,12 +8,8 @@
  */
 
 import { Fragment, memo, useEffect, useRef, useState } from "react"
-import {
-  type MenuItem,
-  type OptionItem,
-  parseTtyBlocks,
-  type TtyBlock,
-} from "../lib/claude-tty.ts"
+import type { MenuItem, OptionItem, TtyBlock } from "../lib/claude-tty.ts"
+import type { EngineGrammar } from "../lib/engine-grammar.ts"
 import {
   type ColoredLine,
   trimLeadingColored,
@@ -315,7 +311,10 @@ export const TtyFooter = memo(function TtyFooter({
  *  paste receipts) — they belong by the input, not adrift in history. */
 const INPUT_HINT = /clipboard|ctrl\+v|to paste|pasted\b|\[image #/i
 
-export function useTtyBlocks(lines: readonly ColoredLine[]): {
+export function useTtyBlocks(
+  lines: readonly ColoredLine[],
+  grammar: Pick<EngineGrammar, "parseBlocks">,
+): {
   body: TtyBlock[]
   footer: TtyBlock[]
 } {
@@ -325,18 +324,20 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
   // memoized views then skip re-render too.
   const cacheRef = useRef<{
     lines: readonly ColoredLine[]
+    grammar: Pick<EngineGrammar, "parseBlocks">
     result: { body: TtyBlock[]; footer: TtyBlock[] }
   } | null>(null)
   const cached = cacheRef.current
   if (
     cached &&
+    cached.grammar === grammar &&
     cached.lines.length === lines.length &&
     cached.lines.every((l, i) => l === lines[i])
   ) {
     return cached.result
   }
   const result = (() => {
-    const blocks = parseTtyBlocks(lines)
+    const blocks = grammar.parseBlocks(lines)
     let end = blocks.length
     while (end > 0 && blocks[end - 1].kind === "gap") end -= 1
     let gapIdx = -1
@@ -375,6 +376,6 @@ export function useTtyBlocks(lines: readonly ColoredLine[]): {
     }
     return { body: bodyBlocks, footer }
   })()
-  cacheRef.current = { lines, result }
+  cacheRef.current = { lines, grammar, result }
   return result
 }

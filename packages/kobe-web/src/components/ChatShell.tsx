@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { findClaudeInputRegion } from "../lib/claude-input.ts"
+import { type EngineGrammar, grammarFor } from "../lib/engine-grammar.ts"
 import {
   closeSettings,
   selectChatTask,
@@ -126,19 +126,8 @@ function StatusLine({ line }: { line: ColoredLine }) {
   )
 }
 
-/** CLI right-aligns `● high · /effort` above the prompt; we lift it out of
- *  the scroll body so it pins next to the composer instead of floating mid-screen. */
-const EFFORT_LINE = /·\s*\/effort$/
-
 /** A horizontal-rule row (the composer's frame lines) — dropped from status. */
 const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
-
-/** Claude prints this when the session ends (Ctrl-C / `/quit`) and the PTY
- *  drops to a bare shell. A banner BELOW the current input region means that
- *  box is stale (fall back to raw terminal); a banner ABOVE it means the
- *  engine was relaunched and is live again. (Engine-specific text for now;
- *  fold into an engine-owned "exited" signal when the contract grows one.) */
-const ENGINE_EXIT = /^Resume this session with:|^claude --resume\s/
 
 /**
  * One shell PTY per tab. The tab owns the parent shell; an engine CLI is a
@@ -157,6 +146,7 @@ function SessionView({
   sessionId,
   mode,
   vendor,
+  grammar,
 }: {
   tabId: string
   taskId: string
@@ -165,6 +155,8 @@ function SessionView({
   mode: "engine" | "shell"
   /** Per-tab engine vendor override (VendorTab.vendor → ChatTerminal). */
   vendor?: string
+  /** The vendor's screen grammar (engine-grammar.ts) — drives the translation. */
+  grammar: EngineGrammar
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
@@ -196,15 +188,20 @@ function SessionView({
   // Split each frame at the engine's input region: everything above it is the
   // conversation body, the region itself is the current input line + status.
   const textLines = useMemo(() => colored.map((l) => l.text), [colored])
-  const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
-  // Last ENGINE_EXIT banner — reverse loop (no findLastIndex typing on ColoredLine[]).
+  const region = useMemo(
+    () => grammar.findInputRegion(textLines),
+    [grammar, textLines],
+  )
+  // Last exit banner — reverse loop (no findLastIndex typing on ColoredLine[]).
   const lastExitIdx = useMemo(() => {
+    const banner = grammar.exitBanner
+    if (!banner) return -1
     for (let i = colored.length - 1; i >= 0; i--) {
       const line = colored[i]
-      if (line && ENGINE_EXIT.test(line.text.trim())) return i
+      if (line && banner.test(line.text.trim())) return i
     }
     return -1
-  }, [colored])
+  }, [grammar, colored])
   // Resume banner below the input box → box is stale; banner above → relaunched, live.
   const engineLive =
     region !== null && !(lastExitIdx >= 0 && lastExitIdx >= region.topRow)
@@ -222,9 +219,11 @@ function SessionView({
   // Lift the right-aligned `● high · /effort` chip out of the scroll body
   // so it can pin above the composer (matching the CLI's placement).
   const { chatBodyLines, effortLine } = useMemo(() => {
+    const pattern = grammar.effortLine
+    if (!pattern) return { chatBodyLines: bodyLines, effortLine: null }
     for (let i = bodyLines.length - 1; i >= 0; i--) {
       const line = bodyLines[i]
-      if (line && EFFORT_LINE.test(line.text.trim())) {
+      if (line && pattern.test(line.text.trim())) {
         return {
           chatBodyLines: [...bodyLines.slice(0, i), ...bodyLines.slice(i + 1)],
           effortLine: line as ColoredLine | null,
@@ -232,7 +231,7 @@ function SessionView({
       }
     }
     return { chatBodyLines: bodyLines, effortLine: null }
-  }, [bodyLines])
+  }, [grammar, bodyLines])
   const promptText = region?.promptText ?? ""
   // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells — CJK-good; wcwidth if emoji matters).
   const caretOffset = useMemo(() => {
@@ -265,7 +264,7 @@ function SessionView({
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
-  const { body, footer } = useTtyBlocks(chatBodyLines)
+  const { body, footer } = useTtyBlocks(chatBodyLines, grammar)
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.
@@ -481,6 +480,7 @@ export function ChatShell() {
                   sessionId={engineStates[selected.id]?.sessionId ?? null}
                   mode={mode}
                   vendor={vendor}
+                  grammar={grammarFor(vendor ?? selected.vendor)}
                 />
               )}
             </div>
