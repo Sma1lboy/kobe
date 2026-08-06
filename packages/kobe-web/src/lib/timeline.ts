@@ -1,17 +1,25 @@
 /**
- * Engine-neutral execution timeline derived from normalized EngineHistory.
- * Vendor adapters own transcript parsing; this module only groups the common
- * Message/ContentBlock vocabulary into two levels: user turn → execution item.
+ * Engine-neutral mindset map derived from normalized EngineHistory. Vendor
+ * adapters own transcript parsing and visible assistant phases; this module
+ * groups the common vocabulary into user turn → visible thought → tool branch.
  */
 
 import type { ContentBlock, HistoryMessage } from "./history.ts"
 import { toolInputSummary } from "./tool-display.ts"
 
 export type TimelineStatus = "running" | "success" | "error" | "blocked"
-export type TimelineItemKind = "reasoning" | "tool" | "change" | "response"
+export type TimelineItemKind =
+  | "thought"
+  | "reasoning"
+  | "tool"
+  | "change"
+  | "response"
 
 export interface TimelineItem {
   id: string
+  /** One-level causal edge: tool calls point at the visible thought/reasoning
+   * node that immediately preceded them. Root nodes keep this null. */
+  parentId: string | null
   kind: TimelineItemKind
   status: TimelineStatus
   title: string
@@ -84,11 +92,13 @@ function toolItem(
   block: ToolCall,
   message: HistoryMessage,
   result: ResultFact | undefined,
+  parentId: string | null,
 ): TimelineItem {
   const startedAt = timestampMs(message.timestamp)
   const isError = result?.result.isError === true
   return {
     id: `tool:${block.callId}`,
+    parentId,
     kind: CHANGE_TOOL.test(block.name) ? "change" : "tool",
     status: isError ? "error" : result ? "success" : "running",
     title: block.name,
@@ -102,40 +112,74 @@ function messageItems(
   message: HistoryMessage,
   messageIndex: number,
   results: ReadonlyMap<string, ResultFact>,
-): TimelineItem[] {
+  initialParentId: string | null,
+): { items: TimelineItem[]; parentId: string | null } {
   const at = timestampMs(message.timestamp)
   const out: TimelineItem[] = []
+  let parentId = initialParentId
   message.blocks.forEach((block, blockIndex) => {
     const id = `${message.sessionId}:${messageIndex}:${blockIndex}`
     if (block.type === "tool_call") {
-      out.push(toolItem(block, message, results.get(block.callId)))
+      out.push(toolItem(block, message, results.get(block.callId), parentId))
     } else if (block.type === "thinking" && block.text.trim()) {
-      out.push({
+      const item: TimelineItem = {
         id: `reasoning:${id}`,
+        parentId: null,
         kind: "reasoning",
         status: "success",
-        title: "Reasoning",
-        summary: compact(block.text),
+        title: compact(block.text, 140),
+        summary: "",
         startedAt: at,
         endedAt: at,
-      })
+      }
+      out.push(item)
+      parentId = item.id
     } else if (
       block.type === "text" &&
       message.role !== "user" &&
       block.text.trim()
     ) {
-      out.push({
-        id: `response:${id}`,
-        kind: "response",
+      const hasToolAfter = message.blocks
+        .slice(blockIndex + 1)
+        .some((candidate) => candidate.type === "tool_call")
+      const isThought =
+        message.phase === "commentary" ||
+        (message.phase === undefined && hasToolAfter)
+      const item: TimelineItem = {
+        id: `${isThought ? "thought" : "response"}:${id}`,
+        parentId: null,
+        kind: isThought ? "thought" : "response",
         status: "success",
-        title: message.role === "system" ? "System" : "Response",
-        summary: compact(block.text),
+        title: compact(block.text, 140),
+        summary: "",
         startedAt: at,
         endedAt: at,
-      })
+      }
+      out.push(item)
+      parentId = isThought ? item.id : null
     }
   })
-  return out
+  return { items: out, parentId }
+}
+
+function rollUpBranches(items: readonly TimelineItem[]): TimelineItem[] {
+  const children = new Map<string, TimelineItem[]>()
+  for (const item of items) {
+    if (!item.parentId) continue
+    const branch = children.get(item.parentId) ?? []
+    branch.push(item)
+    children.set(item.parentId, branch)
+  }
+  return items.map((item) => {
+    const branch = children.get(item.id)
+    if (!branch || branch.length === 0) return item
+    const status = turnStatus(branch)
+    const endedAt = Math.max(
+      item.endedAt ?? item.startedAt,
+      ...branch.map((child) => child.endedAt ?? child.startedAt),
+    )
+    return { ...item, status, endedAt }
+  })
 }
 
 function turnStatus(items: readonly TimelineItem[]): TimelineStatus {
@@ -153,6 +197,7 @@ export function buildTimeline(
   const results = resultsByCallId(messages)
   const turns: TimelineTurn[] = []
   let current: TimelineTurn | null = null
+  let activeParentId: string | null = null
 
   messages.forEach((message, messageIndex) => {
     const prompt = userPrompt(message)
@@ -168,10 +213,12 @@ export function buildTimeline(
         items: [],
       }
       turns.push(current)
+      activeParentId = null
       return
     }
 
-    const items = messageItems(message, messageIndex, results)
+    const next = messageItems(message, messageIndex, results, activeParentId)
+    const items = next.items
     if (items.length === 0) return
     if (!current) {
       current = {
@@ -185,12 +232,15 @@ export function buildTimeline(
       turns.push(current)
     }
     current.items.push(...items)
+    activeParentId = next.parentId
     current.endedAt = Math.max(
       current.endedAt ?? current.startedAt,
       ...items.map((item) => item.endedAt ?? item.startedAt),
     )
     current.status = turnStatus(current.items)
   })
+
+  for (const turn of turns) turn.items = rollUpBranches(turn.items)
 
   return { sessionId: messages.at(-1)?.sessionId ?? null, turns }
 }

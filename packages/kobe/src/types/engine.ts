@@ -139,6 +139,14 @@ export interface Message {
   readonly timestamp: string
   readonly sessionId: string
   /**
+   * Engine-normalized presentation phase for assistant prose. Codex persists
+   * this as `commentary` versus `final_answer`; adapters without an equivalent
+   * leave it absent. This is visible agent narration, not hidden chain-of-
+   * thought, and lets neutral consumers distinguish an execution plan from a
+   * turn's final result without vendor checks.
+   */
+  readonly phase?: "commentary" | "final"
+  /**
    * Anthropic token usage for this assistant turn, when persisted on
    * disk. Claude Code stores it inline on each assistant record's
    * `message.usage`. Surfaced so the monitor's cost dashboard can

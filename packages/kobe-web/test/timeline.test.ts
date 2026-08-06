@@ -7,7 +7,14 @@ const message = (
   role: HistoryMessage["role"],
   timestamp: string,
   blocks: HistoryMessage["blocks"],
-): HistoryMessage => ({ role, timestamp, blocks, sessionId })
+  phase?: HistoryMessage["phase"],
+): HistoryMessage => ({
+  role,
+  timestamp,
+  blocks,
+  sessionId,
+  ...(phase ? { phase } : {}),
+})
 
 describe("buildTimeline", () => {
   it("groups Codex tool results under the user turn that caused them", () => {
@@ -43,9 +50,70 @@ describe("buildTimeline", () => {
     ])
     expect(timeline.turns[0]?.items[1]).toMatchObject({
       id: "tool:call-1",
+      parentId: timeline.turns[0]?.items[0]?.id,
       status: "success",
       endedAt: Date.parse("2026-08-06T10:00:04.000Z"),
     })
+  })
+
+  it("hangs Codex tool calls from the visible commentary that motivated them", () => {
+    const timeline = buildTimeline([
+      message("user", "2026-08-06T10:00:00.000Z", [
+        { type: "text", text: "Diagnose the failing test" },
+      ]),
+      message(
+        "assistant",
+        "2026-08-06T10:00:01.000Z",
+        [{ type: "text", text: "I will inspect the focused test first." }],
+        "commentary",
+      ),
+      message("assistant", "2026-08-06T10:00:02.000Z", [
+        {
+          type: "tool_call",
+          callId: "read",
+          name: "exec",
+          input: { cmd: "sed -n '1,120p' test.ts" },
+        },
+      ]),
+      message("user", "2026-08-06T10:00:03.000Z", [
+        { type: "tool_result", callId: "read", output: "...", isError: false },
+      ]),
+      message(
+        "assistant",
+        "2026-08-06T10:00:04.000Z",
+        [{ type: "text", text: "The fixture is stale, so I will patch it." }],
+        "commentary",
+      ),
+      message("assistant", "2026-08-06T10:00:05.000Z", [
+        {
+          type: "tool_call",
+          callId: "patch",
+          name: "apply_patch",
+          input: { file_path: "test.ts" },
+        },
+      ]),
+      message("user", "2026-08-06T10:00:06.000Z", [
+        { type: "tool_result", callId: "patch", output: "Done", isError: false },
+      ]),
+      message(
+        "assistant",
+        "2026-08-06T10:00:07.000Z",
+        [{ type: "text", text: "The focused test now passes." }],
+        "final",
+      ),
+    ])
+
+    const items = timeline.turns[0]?.items ?? []
+    expect(items.map((item) => item.kind)).toEqual([
+      "thought",
+      "tool",
+      "thought",
+      "change",
+      "response",
+    ])
+    expect(items[1]?.parentId).toBe(items[0]?.id)
+    expect(items[3]?.parentId).toBe(items[2]?.id)
+    expect(items[4]?.parentId).toBeNull()
   })
 
   it("does not mistake a tool_result user record for a new turn", () => {

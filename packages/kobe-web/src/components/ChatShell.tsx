@@ -391,8 +391,8 @@ export function ChatShell() {
   const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
   const vendor = vendorTab?.vendor
 
-  // Timeline is the GUI-native execution inspector. It starts open so the
-  // two-level Codex turn/item model is visible without introducing a chord.
+  // The mindset map is the GUI-native execution inspector. It starts open so
+  // the two-level thought/tool model is visible without introducing a chord.
   const [showTimeline, setShowTimeline] = useState(true)
 
   return (
@@ -440,8 +440,8 @@ export function ChatShell() {
                     ? "border-line-active bg-inset text-fg"
                     : "border-line text-subtle hover:text-fg"
                 }`}
-                title="Toggle execution timeline"
-                aria-label="Toggle execution timeline"
+                title="Toggle mindset map"
+                aria-label="Toggle mindset map"
               >
                 <PanelRight size={12} strokeWidth={2} />
               </button>

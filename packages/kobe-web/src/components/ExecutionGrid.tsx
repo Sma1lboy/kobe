@@ -1,5 +1,4 @@
 import { Brain, FilePenLine, MessageSquare, TerminalSquare } from "lucide-react"
-import { useId } from "react"
 import {
   durationMs,
   type TimelineItem,
@@ -22,6 +21,7 @@ function statusClasses(status: TimelineStatus): string {
 }
 
 function kindLabel(item: TimelineItem): string {
+  if (item.kind === "thought") return "Thought"
   if (item.kind === "reasoning") return "Reason"
   if (item.kind === "change") return "Change"
   if (item.kind === "response") return "Result"
@@ -30,7 +30,8 @@ function kindLabel(item: TimelineItem): string {
 
 function ItemIcon({ item }: { item: TimelineItem }) {
   const props = { size: 12, strokeWidth: 1.8 }
-  if (item.kind === "reasoning") return <Brain {...props} />
+  if (item.kind === "thought" || item.kind === "reasoning")
+    return <Brain {...props} />
   if (item.kind === "change") return <FilePenLine {...props} />
   if (item.kind === "response") return <MessageSquare {...props} />
   return <TerminalSquare {...props} />
@@ -44,66 +45,18 @@ export function formatExecutionDuration(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
-function gridPosition(index: number, columns: number) {
-  const row = Math.floor(index / columns)
-  const offset = index % columns
-  const column = row % 2 === 0 ? offset : columns - offset - 1
-  return { column, row }
-}
-
-function tracePath(count: number, columns: number): string {
-  return Array.from({ length: count }, (_, index) => {
-    const { column, row } = gridPosition(index, columns)
-    return `${index === 0 ? "M" : "L"} ${column + 0.5} ${row + 0.5}`
-  }).join(" ")
-}
-
-function ExecutionTrace({
-  count,
-  columns,
+function ExecutionNode({
+  item,
+  now,
+  main = false,
 }: {
-  count: number
-  columns: number
+  item: TimelineItem
+  now: number
+  main?: boolean
 }) {
-  const markerId = `execution-arrow-${useId().replaceAll(":", "")}`
-  if (count < 2) return null
-  const rows = Math.ceil(count / columns)
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 size-full overflow-visible"
-      viewBox={`0 0 ${columns} ${rows}`}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <defs>
-        <marker
-          id={markerId}
-          markerWidth="5"
-          markerHeight="5"
-          refX="4"
-          refY="2.5"
-          orient="auto"
-        >
-          <path d="M0,0 L5,2.5 L0,5" fill="none" stroke="currentColor" />
-        </marker>
-      </defs>
-      <path
-        d={tracePath(count, columns)}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
-        vectorEffect="non-scaling-stroke"
-        markerEnd={`url(#${markerId})`}
-        className="text-line-active"
-      />
-    </svg>
-  )
-}
-
-function ExecutionNode({ item, now }: { item: TimelineItem; now: number }) {
   return (
     <article
-      className={`execution-node relative z-10 flex min-h-24 min-w-0 flex-col border bg-surface p-2.5 ${statusClasses(item.status)}`}
+      className={`execution-node relative z-10 flex min-h-24 min-w-0 flex-col border bg-surface p-2.5 ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
       title={item.summary || item.title}
     >
       <div className="flex items-center gap-1.5">
@@ -115,7 +68,9 @@ function ExecutionNode({ item, now }: { item: TimelineItem; now: number }) {
           {statusGlyph(item.status)}
         </span>
       </div>
-      <div className="mt-2 line-clamp-2 text-[11px] font-medium leading-[1.35] text-fg">
+      <div
+        className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
+      >
         {item.title}
       </div>
       {item.summary && (
@@ -151,36 +106,57 @@ export function ExecutionGrid({
   items,
   status,
   now,
-  columns,
   className = "",
 }: {
   items: readonly TimelineItem[]
   status: TimelineStatus
   now: number
-  columns: number
   className?: string
 }) {
   const showWaiting = items.length === 0 && status !== "success"
-  const count = items.length + (showWaiting ? 1 : 0)
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const children = new Map<string, TimelineItem[]>()
+  for (const item of items) {
+    if (!item.parentId || !byId.has(item.parentId)) continue
+    const branch = children.get(item.parentId) ?? []
+    branch.push(item)
+    children.set(item.parentId, branch)
+  }
+  const roots = items.filter(
+    (item) => !item.parentId || !byId.has(item.parentId),
+  )
   return (
     <div
-      className={`execution-node-grid relative grid gap-3 ${className}`}
-      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      className={`execution-node-grid relative flex flex-col gap-3 ${className}`}
     >
-      <ExecutionTrace count={count} columns={columns} />
-      {items.map((item, index) => {
-        const { column, row } = gridPosition(index, columns)
+      {roots.map((item) => {
+        const branch = children.get(item.id) ?? []
         return (
-          <div
-            key={item.id}
-            style={{ gridColumn: column + 1, gridRow: row + 1 }}
-          >
-            <ExecutionNode item={item} now={now} />
+          <div key={item.id} className="execution-branch relative">
+            <ExecutionNode item={item} now={now} main />
+            {branch.length > 0 && (
+              <>
+                <span
+                  className="execution-branch__connector"
+                  aria-hidden="true"
+                />
+                <div className="execution-branch__children relative">
+                  {branch.map((child) => (
+                    <div
+                      key={child.id}
+                      className="execution-branch__child relative"
+                    >
+                      <ExecutionNode item={child} now={now} />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )
       })}
       {showWaiting && (
-        <div style={{ gridColumn: 1, gridRow: 1 }}>
+        <div>
           <WaitingNode status={status} />
         </div>
       )}

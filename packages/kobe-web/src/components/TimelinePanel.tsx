@@ -84,7 +84,7 @@ export function TimelinePanel({
         <GitBranch size={13} strokeWidth={1.8} className="text-primary" />
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted">
-            Execution map
+            Mindset map
           </div>
           <div className="truncate font-mono text-[9px] text-subtle">
             {engineLabel} · {summary}
@@ -94,8 +94,8 @@ export function TimelinePanel({
           type="button"
           onClick={onExpand}
           className="grid size-6 place-items-center border border-line text-subtle transition-colors hover:border-line-active hover:text-fg"
-          aria-label="Expand execution map"
-          title="Open execution map"
+          aria-label="Expand mindset map"
+          title="Open mindset map"
         >
           <Maximize2 size={11} />
         </button>
@@ -128,7 +128,7 @@ export function TimelinePanel({
           </div>
         ) : error && model.turns.length === 0 ? (
           <div className="border-l-2 border-kobe-red pl-3 text-[11px] leading-relaxed text-muted">
-            Execution map unavailable
+            Mindset map unavailable
             <div className="mt-1 font-mono text-[9px] text-subtle">{error}</div>
           </div>
         ) : model.turns.length === 0 ? (
@@ -171,7 +171,6 @@ export function TimelinePanel({
                   items={turn.items}
                   status={turn.status}
                   now={now}
-                  columns={2}
                 />
               </section>
             ))}
