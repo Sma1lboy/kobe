@@ -1,10 +1,16 @@
 import { createExternalStore } from "./external-store.ts"
 
+/** What the /chat main area shows: the selected session or an embedded page. */
+export type ChatSurface = "chat" | "board" | "routines"
+
 interface GlobalUiState {
   paletteOpen: boolean
   helpOpen: boolean
   newTaskOpen: boolean
   settingsOpen: boolean
+  /** Global so the command palette (root-level) can drive the /chat shell. */
+  chatSurface: ChatSurface
+  chatSelectedTaskId: string | null
 }
 
 const store = createExternalStore<GlobalUiState>({
@@ -12,6 +18,8 @@ const store = createExternalStore<GlobalUiState>({
   helpOpen: false,
   newTaskOpen: false,
   settingsOpen: false,
+  chatSurface: "chat",
+  chatSelectedTaskId: null,
 })
 
 export function useGlobalUiState(): GlobalUiState {
@@ -44,6 +52,19 @@ export function openNewTask(): void {
 
 export function closeNewTask(): void {
   store.update((state) => ({ ...state, newTaskOpen: false }))
+}
+
+export function setChatSurface(surface: ChatSurface): void {
+  store.update((state) => ({ ...state, chatSurface: surface }))
+}
+
+/** Select a task on the /chat shell (and snap its surface back to chat). */
+export function selectChatTask(taskId: string): void {
+  store.update((state) => ({
+    ...state,
+    chatSurface: "chat",
+    chatSelectedTaskId: taskId,
+  }))
 }
 
 export function openSettings(): void {

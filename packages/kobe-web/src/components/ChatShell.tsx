@@ -15,6 +15,12 @@
 import { PanelRight } from "lucide-react"
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
+import {
+  closeSettings,
+  selectChatTask,
+  setChatSurface,
+  useGlobalUiState,
+} from "../lib/global-ui.ts"
 import { useAppState } from "../lib/store.ts"
 import {
   ensureEngineTab,
@@ -42,9 +48,10 @@ const Board = lazy(() =>
 const RoutinesPage = lazy(() =>
   import("./RoutinesPage.tsx").then((m) => ({ default: m.RoutinesPage })),
 )
+const SettingsPage = lazy(() =>
+  import("./SettingsPage.tsx").then((m) => ({ default: m.SettingsPage })),
+)
 
-/** What the /chat main area shows: the selected session, or an embedded page. */
-export type ChatSurface = "chat" | "board" | "routines"
 
 /** Right rail — a collapsed-by-default file-changes placeholder. The real
  *  Changes pane (diff list) lands here once the core loop is proven; for now
@@ -329,9 +336,13 @@ function SessionView({
 export function ChatShell() {
   const { tasks, activeTaskId, worktreeChanges, engineStates } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Embedded Kanban/Routines surface — selecting any task snaps back to chat.
-  const [surface, setSurface] = useState<ChatSurface>("chat")
+  // Surface + selection live in the global-ui store so the root-level command
+  // palette can drive the shell (jump task / open Kanban / open Routines).
+  const {
+    chatSurface: surface,
+    chatSelectedTaskId: selectedId,
+    settingsOpen,
+  } = useGlobalUiState()
 
   const live = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const selected =
@@ -383,25 +394,24 @@ export function ChatShell() {
       <div className="flex min-h-0 flex-1">
         <ChatSidebarTree
           selectedId={selected?.id ?? null}
-          onSelect={(taskId) => {
-            setSelectedId(taskId)
-            setSurface("chat")
-          }}
+          onSelect={selectChatTask}
           surface={surface}
-          onSurfaceChange={setSurface}
+          onSurfaceChange={setChatSurface}
         />
 
-        {surface !== "chat" ? (
+        {settingsOpen ? (
+          <main className="min-w-0 flex-1 overflow-hidden">
+            <Suspense fallback={null}>
+              <SettingsPage onClose={closeSettings} />
+            </Suspense>
+          </main>
+        ) : surface !== "chat" ? (
           <main className="min-w-0 flex-1 overflow-hidden">
             <Suspense fallback={null}>
               {surface === "board" ? (
                 <Board
-                  embedded
                   initialRepo={selected?.repo}
-                  onOpenTask={(taskId) => {
-                    setSelectedId(taskId)
-                    setSurface("chat")
-                  }}
+                  onOpenTask={selectChatTask}
                 />
               ) : (
                 <RoutinesPage embedded initialRepo={selected?.repo} />

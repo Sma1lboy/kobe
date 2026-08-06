@@ -10,6 +10,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
+import { selectChatTask } from "../lib/global-ui.ts"
 import { useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -93,7 +94,8 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         setPendingPrompt(taskId, prompt)
         addTab(taskId)
       }
-      void navigate({ to: "/task/$taskId", params: { taskId } })
+      selectChatTask(taskId)
+      void navigate({ to: "/" })
       setActiveTaskBestEffort(taskId)
       pushToast(
         "success",

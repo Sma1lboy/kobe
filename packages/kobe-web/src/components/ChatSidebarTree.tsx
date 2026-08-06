@@ -14,7 +14,6 @@
  * the TUI's own (docs/KEYBINDINGS.md).
  */
 
-import { useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
@@ -254,7 +253,6 @@ export function ChatSidebarTree({
 }) {
   const { tasks, engineStates, worktreeChanges, attentionInbox } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
-  const navigate = useNavigate()
   const [view, setView] = useState<View>("active")
   const [query, setQuery] = useState("")
   const [inboxOpen, setInboxOpen] = useState(false)
@@ -372,9 +370,7 @@ export function ChatSidebarTree({
       setView((cur) => (cur === "active" ? "archived" : "active")),
     onFocusSearch: () => searchRef.current?.focus(),
     onRailPage: (index) =>
-      onSurfaceChange
-        ? onSurfaceChange(index === 0 ? "board" : "routines")
-        : void navigate({ to: index === 0 ? "/board" : "/issues" }),
+      onSurfaceChange?.(index === 0 ? "board" : "routines"),
     onOpenInbox: () => setInboxOpen((cur) => !cur),
     onNewTab: () => {
       if (selectedId) addTab(selectedId)

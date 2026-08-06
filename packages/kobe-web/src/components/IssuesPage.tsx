@@ -36,6 +36,7 @@ import {
   startIssueChat,
   updateIssue,
 } from "../lib/issues.ts"
+import { selectChatTask } from "../lib/global-ui.ts"
 import { moveKanbanSelection } from "../lib/kanban-nav.ts"
 import { useAppState } from "../lib/store.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
@@ -206,7 +207,9 @@ export function IssuesPage({
       onOpenTask(taskId)
       return
     }
-    void navigate({ to: "/task/$taskId", params: { taskId } })
+    // Standalone /issues: the /chat shell (home) owns task selection.
+    selectChatTask(taskId)
+    void navigate({ to: "/" })
   }
 
   const onSavePeek = async (patch: {

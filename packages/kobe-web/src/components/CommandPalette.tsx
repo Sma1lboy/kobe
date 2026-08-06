@@ -1,20 +1,21 @@
 /**
  * Command palette (Cmd/Ctrl+K) — a keyboard-first launcher over the same
- * daemon state the rail shows. Fuzzy-matches tasks (jump + set active) and
- * a few global actions (new task, settings). Arrow keys move, Enter runs,
- * Escape closes; opening focuses the query. kobe's TUI is keyboard-first,
- * so its web counterpart gets the same muscle memory.
+ * daemon state the rail shows. Fuzzy-matches tasks (jump on the /chat shell)
+ * and global actions (new task, Kanban, Routines, settings, reset layout).
+ * Arrow keys move, Enter runs, Escape closes; opening focuses the query.
  *
- * Mounted once by AppShell, which owns the open state and the new-task /
- * settings callbacks (so a "New task" command opens the real dialog).
+ * Switcher grammar: HOLD ctrl and tap k to cycle next-next-next; releasing
+ * ctrl runs the highlighted row. A single ctrl+k then release stays open in
+ * typing mode (filter + arrows) — the IDE ctrl+tab feel.
  */
 
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
   Columns3,
-  LayoutPanelLeft,
   Plus,
+  Repeat2,
+  RotateCcw,
   Search,
   Settings as SettingsIcon,
 } from "lucide-react"
@@ -22,10 +23,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { activityColor } from "../lib/activity.ts"
 import { fuzzyScore } from "../lib/fuzzy.ts"
+import { selectChatTask, setChatSurface } from "../lib/global-ui.ts"
 import { orderTasksForPalette } from "../lib/palette-commands.ts"
 import { useAppState } from "../lib/store.ts"
-import { selectTask, useTabsState } from "../lib/tabs.ts"
-import { reportError } from "../lib/toast.ts"
+import { resetLayout, selectTask } from "../lib/tabs.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
@@ -33,7 +35,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "board" | "workspace"
+  icon: "task" | "new" | "settings" | "board" | "routines" | "reset"
   /** Set for task rows — lets the row render a LIVE engine-activity dot
    *  (read at render, not baked into the memo, so it stays current without
    *  rebuilding the command list on every engine-state push). */
@@ -45,8 +47,8 @@ function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
-  if (kind === "workspace")
-    return <LayoutPanelLeft size={14} strokeWidth={1.8} />
+  if (kind === "routines") return <Repeat2 size={14} strokeWidth={1.8} />
+  if (kind === "reset") return <RotateCcw size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -62,7 +64,6 @@ export function CommandPalette({
   onOpenSettings: () => void
 }) {
   const { tasks, engineStates } = useAppState()
-  const { selectedTaskId } = useTabsState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
@@ -107,11 +108,17 @@ export function CommandPalette({
           setActiveTaskBestEffort(t.id, (err) =>
             reportError("switch task", err),
           )
-          void navigate({ to: "/task/$taskId", params: { taskId: t.id } })
+          selectChatTask(t.id)
+          void navigate({ to: "/" })
           onClose()
         },
       }),
     )
+    const openSurface = (surface: "board" | "routines"): void => {
+      setChatSurface(surface)
+      void navigate({ to: "/" })
+      onClose()
+    }
     const actions: Command[] = [
       {
         id: "action:new",
@@ -125,30 +132,17 @@ export function CommandPalette({
       },
       {
         id: "action:board",
-        label: "Open board",
-        hint: "kanban",
+        label: "Open Kanban",
+        hint: "prefix 1",
         icon: "board",
-        run: () => {
-          void navigate({ to: "/board" })
-          onClose()
-        },
+        run: () => openSurface("board"),
       },
       {
-        id: "action:workspace",
-        label: "Open workspace",
-        hint: "workspace",
-        icon: "workspace",
-        run: () => {
-          if (selectedTaskId) {
-            void navigate({
-              to: "/task/$taskId",
-              params: { taskId: selectedTaskId },
-            })
-          } else {
-            void navigate({ to: "/" })
-          }
-          onClose()
-        },
+        id: "action:routines",
+        label: "Open Routines",
+        hint: "prefix 2",
+        icon: "routines",
+        run: () => openSurface("routines"),
       },
       {
         id: "action:settings",
@@ -160,9 +154,59 @@ export function CommandPalette({
           onClose()
         },
       },
+      {
+        id: "action:reset-layout",
+        label: "Reset workspace layout",
+        hint: "recovery",
+        icon: "reset",
+        run: () => {
+          resetLayout()
+          pushToast("info", "Workspace layout reset")
+          onClose()
+        },
+      },
     ]
     return [...actions, ...taskCmds]
-  }, [tasks, selectedTaskId, navigate, onClose, onNewTask, onOpenSettings])
+  }, [tasks, navigate, onClose, onNewTask, onOpenSettings])
+
+  // Hold-ctrl+k cycles; releasing ctrl runs the row — only after a cycle
+  // happened (single ctrl+k then release stays in typing mode).
+  const heldCycleRef = useRef(false)
+  const matchesRef = useRef<Command[]>([])
+  const cursorRef = useRef(0)
+  useEffect(() => {
+    if (!open) {
+      heldCycleRef.current = false
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        heldCycleRef.current = true
+        setCursor((c) =>
+          matchesRef.current.length === 0
+            ? 0
+            : (c + 1) % matchesRef.current.length,
+        )
+      }
+    }
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (event.key !== "Control" && event.key !== "Meta") return
+      if (!heldCycleRef.current) return
+      heldCycleRef.current = false
+      matchesRef.current[cursorRef.current]?.run()
+    }
+    window.addEventListener("keydown", onKeyDown, { capture: true })
+    window.addEventListener("keyup", onKeyUp, { capture: true })
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true })
+      window.removeEventListener("keyup", onKeyUp, { capture: true })
+    }
+  }, [open])
 
   const matches = useMemo(() => {
     if (!query.trim()) return commands
@@ -176,6 +220,10 @@ export function CommandPalette({
       .sort((a, b) => a.score - b.score)
       .map((m) => m.cmd)
   }, [commands, query])
+
+  // Refs for the hold-cycle listeners (registered once per open).
+  matchesRef.current = matches
+  cursorRef.current = cursor
 
   // Keep the cursor in range as the match list shrinks.
   useEffect(() => {
