@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { engineImageUrl } from "../lib/terminal.ts"
 
 const IMG_TOKEN = /\[Image #(\d+)\]/g
@@ -74,22 +75,27 @@ export function TokenizedText({
           />
         ),
       )}
-      {preview && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: click-anywhere backdrop
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-8"
-          onMouseDown={(e) => {
-            e.stopPropagation()
-            setPreview(null)
-          }}
-        >
-          <img
-            src={preview}
-            alt="Preview"
-            className="max-h-full max-w-full rounded-lg border border-line shadow-2xl"
-          />
-        </div>
-      )}
+      {preview &&
+        // Portal to <body>: rendered in place, the overlay is trapped in the
+        // transcript's stacking context and the Agent Trace pane (later in
+        // DOM) paints — and clicks — above the backdrop.
+        createPortal(
+          // biome-ignore lint/a11y/noStaticElementInteractions: click-anywhere backdrop
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-8"
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              setPreview(null)
+            }}
+          >
+            <img
+              src={preview}
+              alt="Preview"
+              className="max-h-full max-w-full rounded-lg border border-line shadow-2xl"
+            />
+          </div>,
+          document.body,
+        )}
     </>
   )
 }
