@@ -116,7 +116,7 @@ export interface TaskJob {
 /** worktreePath → uncommitted change counts (daemon-collected). */
 export type WorktreeChangeCounts = Record<
   string,
-  { added: number; deleted: number }
+  { added: number; deleted: number; branch?: string }
 >
 
 /** One "paste this into task X" event (mirror of the daemon's

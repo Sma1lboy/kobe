@@ -274,7 +274,8 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
     if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link, tearDown)
     if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(runtime, req, link)
     if (url.pathname === "/api/engine-spec" && req.method === "GET") {
-      return specResponse(url, link, (l, id) => engineSpec(runtime, l, id))
+      const vendor = url.searchParams.get("vendor") ?? undefined
+      return specResponse(url, link, (l, id) => engineSpec(runtime, l, id, vendor))
     }
     if (url.pathname === "/api/terminal-spec" && req.method === "GET") {
       return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id))

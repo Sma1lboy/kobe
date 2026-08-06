@@ -25,8 +25,9 @@
   --color-kobe-yellow: #e8c96b;
   --color-kobe-violet: #9b87f5;
 
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, Menlo, Monaco, "Cascadia Code",
-    monospace;
+  /* Nerd Font first (glyph coverage for icons); bundled JetBrains Mono is the fallback. */
+  --font-mono: "JetBrainsMono Nerd Font", "FiraCode Nerd Font", "FiraCode Nerd Font Mono", "JetBrains Mono",
+    "SF Mono", "Fira Code", ui-monospace, Menlo, Monaco, "Cascadia Code", monospace;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -77,4 +78,54 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@keyframes kobe-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-subtle) 35%,
+    var(--color-fg) 50%,
+    var(--color-subtle) 65%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: kobe-shimmer 2.2s linear infinite;
+}
+
+@keyframes kobe-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: kobe-fade-up 0.25s ease-out both;
+}
+
+@keyframes kobe-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: kobe-pop-in 0.18s ease-out both;
 }

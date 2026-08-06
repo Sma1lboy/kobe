@@ -134,8 +134,26 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
       }
     }
     if (USER_ECHO.test(trimmed)) {
-      blocks.push({ kind: "user", text: trimmed.replace(USER_ECHO, "") })
-      i += 1
+      // Multi-line echo: continuations are 2-space indented (assistant output
+      // starts at col 0) — absorb them + internal blanks into one bubble.
+      let text = trimmed.replace(USER_ECHO, "")
+      let j = i + 1
+      while (j < lines.length) {
+        const raw = lines[j].text
+        const t = raw.trim()
+        if (t === "") {
+          const nextRaw = lines[j + 1]?.text ?? ""
+          if (!/^ {2}\S/.test(nextRaw)) break
+          text += "\n"
+          j += 1
+          continue
+        }
+        if (!/^ {2}\S/.test(raw) || ACTIVITY.test(t)) break
+        text += `\n${t}`
+        j += 1
+      }
+      blocks.push({ kind: "user", text })
+      i = j
       continue
     }
     if (ACTIVITY.test(trimmed)) {

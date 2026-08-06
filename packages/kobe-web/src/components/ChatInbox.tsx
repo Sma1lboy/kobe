@@ -5,15 +5,20 @@
  * top (oldest first, queue order), then the RECENT tasks below (most
  * recently updated, minus pending ones and the task you're on). Clicking
  * an episode jumps + dismisses it (visit-resolves); clicking a recent row
- * just jumps.
+ * just jumps. Keyboard: j/k move, enter opens, d dismisses, esc closes —
+ * the TUI inbox contract.
  */
 
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { relativeTime } from "../lib/time.ts"
 import type { AttentionItem, Task } from "../lib/types.ts"
 
 const RECENT_LIMIT = 5
+
+type InboxRow =
+  | { kind: "attention"; item: AttentionItem }
+  | { kind: "recent"; task: Task }
 
 /** Inbox glyph per state — the sidebar's state vocabulary, same colors. */
 function itemGlyph(state: AttentionItem["state"]): {
@@ -95,25 +100,90 @@ export function ChatInbox({
       .slice(0, RECENT_LIMIT)
   }, [tasks, attention, selectedId])
 
+  // Flat selectable rows — section headers are not rows. Same order as
+  // rendered: attention first, then recent.
+  const rows = useMemo((): InboxRow[] => {
+    const out: InboxRow[] = []
+    for (const item of attention) out.push({ kind: "attention", item })
+    for (const task of recent) out.push({ kind: "recent", task })
+    return out
+  }, [attention, recent])
+
+  const [cursor, setCursor] = useState(0)
+  useEffect(() => {
+    if (cursor >= rows.length) setCursor(Math.max(0, rows.length - 1))
+  }, [cursor, rows.length])
+
+  const openEpisode = useCallback(
+    (item: AttentionItem): void => {
+      onJump(item.taskId)
+      onClose()
+      // Visit resolves the episode — same contract as the TUI. Best-effort:
+      // a failed dismiss just leaves the item for the next visit.
+      void rpc("attention.dismiss", {
+        taskId: item.taskId,
+        tabId: item.tabId ?? undefined,
+        at: item.at,
+      }).catch(() => {})
+    },
+    [onJump, onClose],
+  )
+
+  // The modal owns the keyboard — drop focus left in the sidebar search.
+  useEffect(() => {
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+  }, [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose()
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const last = Math.max(0, rows.length - 1)
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault()
+        event.stopPropagation()
+        setCursor((cur) => Math.min(last, cur + 1))
+        return
+      }
+      if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault()
+        event.stopPropagation()
+        setCursor((cur) => Math.max(0, cur - 1))
+        return
+      }
+      if (event.key === "Enter") {
+        event.preventDefault()
+        event.stopPropagation()
+        const row = rows[cursor]
+        if (!row) return
+        if (row.kind === "attention") openEpisode(row.item)
+        else {
+          onJump(row.task.id)
+          onClose()
+        }
+        return
+      }
+      if (event.key === "d") {
+        event.preventDefault()
+        event.stopPropagation()
+        const row = rows[cursor]
+        if (!row || row.kind !== "attention") return
+        // Dismiss only — no jump, no close. Store update drops the row.
+        void rpc("attention.dismiss", {
+          taskId: row.item.taskId,
+          tabId: row.item.tabId ?? undefined,
+          at: row.item.at,
+        }).catch(() => {})
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        onClose()
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
-
-  const openEpisode = (item: AttentionItem): void => {
-    onJump(item.taskId)
-    onClose()
-    // Visit resolves the episode — same contract as the TUI. Best-effort:
-    // a failed dismiss just leaves the item for the next visit.
-    void rpc("attention.dismiss", {
-      taskId: item.taskId,
-      tabId: item.tabId ?? undefined,
-      at: item.at,
-    }).catch(() => {})
-  }
+  }, [cursor, rows, onClose, onJump, openEpisode])
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click-away; escape is handled globally above
@@ -123,7 +193,7 @@ export function ChatInbox({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="w-[26rem] overflow-hidden rounded-lg border border-line bg-menu font-mono shadow-2xl">
+      <div className="pop-in w-[26rem] overflow-hidden rounded-lg border border-line bg-menu font-mono shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-4 py-2">
           <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">
             Inbox
@@ -142,15 +212,18 @@ export function ChatInbox({
           {attention.length > 0 && (
             <>
               <SectionHeader>Attention</SectionHeader>
-              {attention.map((item) => {
+              {attention.map((item, i) => {
                 const task = taskById.get(item.taskId)
                 const g = itemGlyph(item.state)
+                const active = cursor === i
                 return (
                   <button
                     key={`${item.taskId}:${item.tabId ?? ""}:${item.at}`}
                     type="button"
                     onClick={() => openEpisode(item)}
-                    className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset"
+                    className={`flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset${
+                      active ? " bg-inset" : ""
+                    }`}
                   >
                     <span className={`w-3 shrink-0 text-[12px] ${g.className}`}>
                       {g.glyph}
@@ -174,27 +247,33 @@ export function ChatInbox({
           {recent.length > 0 && (
             <>
               <SectionHeader>Recent</SectionHeader>
-              {recent.map((task) => (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => {
-                    onJump(task.id)
-                    onClose()
-                  }}
-                  className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset"
-                >
-                  <span className="w-3 shrink-0 text-[12px] text-subtle">
-                    ○
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-muted">
-                    {task.title || task.branch || task.repo}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-subtle">
-                    {relativeTime(task.updatedAt || task.createdAt)}
-                  </span>
-                </button>
-              ))}
+              {recent.map((task, i) => {
+                const flatIndex = attention.length + i
+                const active = cursor === flatIndex
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => {
+                      onJump(task.id)
+                      onClose()
+                    }}
+                    className={`flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset${
+                      active ? " bg-inset" : ""
+                    }`}
+                  >
+                    <span className="w-3 shrink-0 text-[12px] text-subtle">
+                      ○
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-muted">
+                      {task.title || task.branch || task.repo}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-subtle">
+                      {relativeTime(task.updatedAt || task.createdAt)}
+                    </span>
+                  </button>
+                )
+              })}
             </>
           )}
         </div>

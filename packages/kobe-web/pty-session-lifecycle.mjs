@@ -160,13 +160,14 @@ export function createPtySessionManager({
     return entry
   }
 
-  async function ensureSession(tabId, taskId, mode, cols, rows) {
+  async function ensureSession(tabId, taskId, mode, cols, rows, vendor) {
     const existing = sessions.get(tabId)
     if (existing) return existing
     const inflight = pendingSpawns.get(tabId)
     if (inflight) return inflight
     const p = (async () => {
-      const spec = await fetchSpec(taskId, mode)
+      // Vendor override only applies to engine PTYs — shell mode has no engine-spec.
+      const spec = await fetchSpec(taskId, mode, mode === "engine" ? vendor : undefined)
       return sessions.get(tabId) ?? spawnSession(tabId, spec, cols, rows)
     })()
     pendingSpawns.set(tabId, p)
@@ -186,8 +187,8 @@ export function createPtySessionManager({
     }
   }
 
-  async function attachSocket({ ws, tabId, taskId, mode, cols, rows }) {
-    const entry = await ensureSession(tabId, taskId, mode, cols, rows)
+  async function attachSocket({ ws, tabId, taskId, mode, cols, rows, vendor }) {
+    const entry = await ensureSession(tabId, taskId, mode, cols, rows, vendor)
     const replay = entry.scrollback.length() > 0 ? entry.scrollback.replay() : ""
     entry.sockets.add(ws)
     if (replay && ws.readyState === ws.OPEN) ws.send(replay)
@@ -278,5 +279,7 @@ export function createPtySessionManager({
     shutdown,
     sessionCount: () => sessions.size,
     pendingSpawnCount: () => pendingSpawns.size,
+    // Live shell pids for the foreground-process walk (/pty/foreground).
+    listSessions: () => [...sessions.entries()].map(([tabId, entry]) => ({ tabId, pid: entry.pty.pid })),
   }
 }

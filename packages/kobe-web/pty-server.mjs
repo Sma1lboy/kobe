@@ -19,6 +19,7 @@ import {
   readdirSync,
   readFileSync,
 } from "node:fs"
+import { execFile } from "node:child_process"
 import { createServer } from "node:http"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -84,7 +85,7 @@ function nthTranscriptImage(transcriptPath, n) {
   return null
 }
 
-async function fetchSpec(taskId, mode) {
+async function fetchSpec(taskId, mode, vendor) {
   // e2e/dev harness override: run an arbitrary TUI (dev:mock / dev:sandbox) in
   // the PTY instead of resolving a task's engine via the daemon — so a Playwright
   // test can drive the real TUI through the web terminal with no daemon or task.
@@ -95,7 +96,9 @@ async function fetchSpec(taskId, mode) {
     }
   }
   const path = mode === "shell" ? "/api/terminal-spec" : "/api/engine-spec"
-  const res = await fetch(`http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
+  let url = `http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`
+  if (mode === "engine" && vendor) url += `&vendor=${encodeURIComponent(vendor)}`
+  const res = await fetch(url)
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error ?? `engine-spec failed (${res.status})`)
   return json // { cwd, command: string[] }
@@ -157,6 +160,43 @@ const server = createServer((req, res) => {
     }
     res.writeHead(404)
     res.end("not found")
+    return
+  }
+  // GET /pty/foreground → { [tabId]: comm[] } — every live descendant of each
+  // session's shell (one bounded ps walk). The TUI live-engine mirror
+  // (engine/foreground.ts): a tab whose process tree contains an engine binary
+  // renders as that vendor in the sidebar. Read-only process names; the
+  // engine-id matching stays client-side (engine-owned data).
+  if (req.method === "GET" && url.pathname === "/pty/foreground") {
+    execFile("ps", ["-axo", "pid=,ppid=,comm="], (err, stdout) => {
+      const byParent = new Map()
+      if (!err) {
+        for (const line of String(stdout).split("\n")) {
+          const m = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/)
+          if (!m) continue
+          const list = byParent.get(Number(m[2])) ?? []
+          list.push({ pid: Number(m[1]), comm: m[3].trim() })
+          byParent.set(Number(m[2]), list)
+        }
+      }
+      const out = {}
+      for (const { tabId, pid } of ptySessions.listSessions()) {
+        const comms = []
+        const queue = [pid]
+        while (queue.length > 0 && comms.length < 50) {
+          for (const kid of byParent.get(queue.shift()) ?? []) {
+            comms.push(kid.comm.split("/").pop())
+            queue.push(kid.pid)
+          }
+        }
+        out[tabId] = comms
+      }
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+      })
+      res.end(JSON.stringify(out))
+    })
     return
   }
   if (req.method === "OPTIONS") {
@@ -274,6 +314,7 @@ wss.on("connection", (ws, req) => {
   const cols = Number.parseInt(url.searchParams.get("cols") ?? "80", 10) || 80
   const rows = Number.parseInt(url.searchParams.get("rows") ?? "24", 10) || 24
   const mode = url.searchParams.get("mode") === "shell" ? "shell" : "engine"
+  const vendor = url.searchParams.get("vendor") ?? undefined
 
   if (!tabId || !taskId) {
     ws.close(1008, "missing tab/taskId")
@@ -283,7 +324,7 @@ wss.on("connection", (ws, req) => {
   void (async () => {
     try {
       // Single-flight spawn: concurrent attaches for this tab share one PTY.
-      await ptySessions.attachSocket({ ws, tabId, taskId, mode, cols, rows })
+      await ptySessions.attachSocket({ ws, tabId, taskId, mode, cols, rows, vendor })
     } catch (err) {
       if (ws.readyState === ws.OPEN) {
         ws.send(`\r\nfailed to start ${mode}: ${err?.message ?? err}\r\n`)

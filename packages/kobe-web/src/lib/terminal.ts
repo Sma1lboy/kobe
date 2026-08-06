@@ -26,6 +26,7 @@ export function ptyUrl(
   mode: PtyMode,
   cols: number,
   rows: number,
+  vendor?: string,
 ): string {
   const q = new URLSearchParams({
     tab: tabId,
@@ -34,6 +35,7 @@ export function ptyUrl(
     cols: String(cols),
     rows: String(rows),
   })
+  if (vendor) q.set("vendor", vendor)
   return `${ptyBase("ws")}/pty?${q.toString()}`
 }
 
@@ -43,6 +45,18 @@ export function ptyUrl(
 export function engineImageUrl(sessionId: string, n: number): string {
   const q = new URLSearchParams({ session: sessionId, n: String(n) })
   return `${ptyBase("http")}/image?${q.toString()}`
+}
+
+/** Live descendant process names per tab (sidecar ps walk) — the sidebar
+ *  matches them against engine ids to trace a shell tab running an engine. */
+export async function fetchPtyForeground(): Promise<Record<string, string[]>> {
+  try {
+    const res = await fetch(`${ptyBase("http")}/pty/foreground`)
+    if (!res.ok) return {}
+    return (await res.json()) as Record<string, string[]>
+  } catch {
+    return {}
+  }
 }
 
 /** Kill a tab's engine process server-side (when the user closes the tab). */

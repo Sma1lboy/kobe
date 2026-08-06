@@ -22,6 +22,16 @@ export interface ColoredLine {
   segs: Seg[]
 }
 
+/** Strip leading whitespace runs (the CLI's space-padded right alignment) so
+ *  a line can be re-aligned with CSS instead of clipping at the container. */
+export function trimLeadingColored(line: ColoredLine): ColoredLine {
+  const segs = [...line.segs]
+  while (segs[0] && /^\s*$/.test(segs[0].text)) segs.shift()
+  const first = segs[0]
+  if (first) segs[0] = { ...first, text: first.text.trimStart() }
+  return { text: line.text.trimStart(), segs }
+}
+
 /** The 6 levels the xterm 256-color cube steps through. */
 const CUBE = [0, 95, 135, 175, 215, 255] as const
 

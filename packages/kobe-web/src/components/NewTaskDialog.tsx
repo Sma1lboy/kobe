@@ -122,7 +122,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-label="New task"
-        className="w-[28rem] max-w-[calc(100vw-2rem)] border border-line bg-surface shadow-xl"
+        className="pop-in w-[28rem] max-w-[calc(100vw-2rem)] border border-line bg-surface shadow-xl"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={() => {}}
       >

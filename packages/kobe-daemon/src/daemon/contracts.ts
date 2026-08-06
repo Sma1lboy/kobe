@@ -324,4 +324,6 @@ export interface UpdateInfo {
 export interface WorktreeChanges {
   readonly added: number
   readonly deleted: number
+  /** Current branch (from `--branch`'s `##` header); absent without it. */
+  readonly branch?: string
 }

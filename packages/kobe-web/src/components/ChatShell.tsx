@@ -1,12 +1,11 @@
 /**
  * ChatShell — kobe as a windowed TERMINAL app (/chat, hosted by the
- * kobe-desktop Electron shell). ONE surface, no modes: the task's engine
- * PTY runs the real CLI, and what you SEE is its screen translated to HTML
- * (TtyBlocksView over lib/claude-tty.ts) with the GUI composer standing in
- * for the native input row. The raw xterm stays mounted underneath as the
- * data source and takes over the pixels automatically only while a native
- * dialog owns the screen (permission prompt, menu) — answer it, and the
- * translated render returns. No view toggle, no second transcript.
+ * kobe-desktop Electron shell). Every tab is a shell PTY; an engine CLI is a
+ * CHILD process inside it. When the engine's input region is on screen, what
+ * you SEE is that screen translated to HTML (TtyBlocksView over
+ * lib/claude-tty.ts) with the GUI composer standing in for the native input
+ * row. Otherwise the raw xterm takes the pixels (bare shell, engine exited,
+ * native full-screen dialog). No view toggle, no second transcript.
  *
  * Left rail mirrors the TUI tree sidebar; right is a collapsed-by-default
  * Changes placeholder. One PTY per task tab — the same one the workspace
@@ -14,11 +13,18 @@
  */
 
 import { PanelRight } from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { findClaudeInputRegion } from "../lib/claude-input.ts"
 import { useAppState } from "../lib/store.ts"
-import { ensureEngineTab } from "../lib/tabs.ts"
-import type { ColoredLine } from "../lib/tty-color.ts"
+import {
+  ensureEngineTab,
+  resetTabTitle,
+  setTabTitle,
+  useTabsState,
+  type TerminalTab,
+  type VendorTab,
+} from "../lib/tabs.ts"
+import { type ColoredLine, trimLeadingColored } from "../lib/tty-color.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
@@ -28,6 +34,17 @@ import { TtyBlocksView, TtyFooter, useTtyBlocks } from "./TtyBlocksView.tsx"
 const ChatTerminal = lazy(() =>
   import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
 )
+// Kanban / Routines render INSIDE the /chat main area (a surface switch, not
+// a route jump) — lazy so the chat-first load doesn't pay for them.
+const Board = lazy(() =>
+  import("./Board.tsx").then((m) => ({ default: m.Board })),
+)
+const RoutinesPage = lazy(() =>
+  import("./RoutinesPage.tsx").then((m) => ({ default: m.RoutinesPage })),
+)
+
+/** What the /chat main area shows: the selected session, or an embedded page. */
+export type ChatSurface = "chat" | "board" | "routines"
 
 /** Right rail — a collapsed-by-default file-changes placeholder. The real
  *  Changes pane (diff list) lands here once the core loop is proven; for now
@@ -90,67 +107,116 @@ function StatusLine({ line }: { line: ColoredLine }) {
   )
 }
 
+/** CLI right-aligns `● high · /effort` above the prompt; we lift it out of
+ *  the scroll body so it pins next to the composer instead of floating mid-screen. */
+const EFFORT_LINE = /·\s*\/effort$/
+
 /** A horizontal-rule row (the composer's frame lines) — dropped from status. */
 const STATUS_RULE = /^[─━═╌╍-]{3,}\s*$/
 
 /** Claude prints this when the session ends (Ctrl-C / `/quit`) and the PTY
- *  drops to a bare shell. Once we see it, we STOP translating the shell as
- *  chat and show an ended state instead — otherwise shell prompts and `ls`
- *  output render as conversation. (Engine-specific text for now; fold into an
- *  engine-owned "exited" signal when the contract grows one.) */
+ *  drops to a bare shell. A banner BELOW the current input region means that
+ *  box is stale (fall back to raw terminal); a banner ABOVE it means the
+ *  engine was relaunched and is live again. (Engine-specific text for now;
+ *  fold into an engine-owned "exited" signal when the contract grows one.) */
 const ENGINE_EXIT = /^Resume this session with:|^claude --resume\s/
 
-/** Shown in place of the input row once the engine has exited — the session's
- *  history stays above, but there's nothing live to drive. */
-function EndedCard() {
-  return (
-    <div className="rounded-2xl border border-line bg-surface/50 px-4 py-3 text-center">
-      <span className="text-[12px] text-subtle">
-        Session ended — the engine exited. Start a new task to continue.
-      </span>
-    </div>
-  )
-}
-
 /**
- * One live TTY, ALWAYS translated. The engine PTY lives hidden underneath as
- * the data source AND the input target; the visible surface is always the
- * translated render (lib/claude-tty.ts colored blocks) — it never swaps for a
- * raw terminal. Clicking anywhere focuses the hidden terminal, so keystrokes
- * drive the real CLI directly (slash-command menus, @-complete, arrow
- * selection). Because those live in the PTY's own screen, they come back
- * through the colored buffer and render as translated blocks — the menu you
- * see when you type `/` is the native menu, re-rendered, not a reimplementation
- * and not a jump to a bare terminal.
+ * One shell PTY per tab. The tab owns the parent shell; an engine CLI is a
+ * CHILD process inside it. The translated chat UI engages WHENEVER the
+ * engine's input region is detected on screen — regardless of tab kind
+ * (vendor auto-types the engine command; shell starts bare) — and falls back
+ * to the RAW visible terminal when it isn't (bare shell prompt, engine
+ * exited, native full-screen dialog). Launching `claude` by hand in a Shell
+ * tab gets the full translated UI; an engine exiting drops you back to a
+ * usable shell. Clicking anywhere focuses the PTY so keystrokes drive it
+ * directly (slash menus, @-complete, arrow selection).
  */
 function SessionView({
   tabId,
   taskId,
   sessionId,
+  mode,
+  vendor,
 }: {
   tabId: string
   taskId: string
   sessionId: string | null
+  /** Vendor tabs → 'engine' (auto-types the engine command); terminal tabs → 'shell'. */
+  mode: "engine" | "shell"
+  /** Per-tab engine vendor override (VendorTab.vendor → ChatTerminal). */
+  vendor?: string
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
+  // IME composing string (pinyin buffer) from the hidden textarea — the PTY
+  // only sees committed text, so the composer must mirror this itself.
+  const [composing, setComposing] = useState<string | null>(null)
+  // Real terminal cursor (viewport row + cell col) — the mirror's caret
+  // follows it instead of pinning to the end of the prompt text.
+  const [cursor, setCursor] = useState<{ row: number; col: number } | null>(
+    null,
+  )
 
   // Split each frame at the engine's input region: everything above it is the
   // conversation body, the region itself is the current input line + status.
   const textLines = useMemo(() => colored.map((l) => l.text), [colored])
   const region = useMemo(() => findClaudeInputRegion(textLines), [textLines])
-  // Once the engine exits, the PTY is a bare shell — stop at the exit banner so
-  // the shell prompts/`ls` below it don't render as chat.
-  const exitedIdx = useMemo(
-    () => colored.findIndex((l) => ENGINE_EXIT.test(l.text.trim())),
-    [colored],
+  // Last ENGINE_EXIT banner — reverse loop (no findLastIndex typing on ColoredLine[]).
+  const lastExitIdx = useMemo(() => {
+    for (let i = colored.length - 1; i >= 0; i--) {
+      const line = colored[i]
+      if (line && ENGINE_EXIT.test(line.text.trim())) return i
+    }
+    return -1
+  }, [colored])
+  // Resume banner below the input box → box is stale; banner above → relaunched, live.
+  const engineLive =
+    region !== null && !(lastExitIdx >= 0 && lastExitIdx >= region.topRow)
+  // Engine child exited (ctrl+c → shell) → restore the minted tab title; a
+  // bare shell may never emit an OSC title to overwrite the engine's.
+  const wasLiveRef = useRef(false)
+  useEffect(() => {
+    if (wasLiveRef.current && !engineLive) resetTabTitle(taskId, tabId)
+    wasLiveRef.current = engineLive
+  }, [engineLive, taskId, tabId])
+  const bodyLines = useMemo(
+    () => (region ? colored.slice(0, region.topRow) : colored),
+    [region, colored],
   )
-  const exited = exitedIdx >= 0
-  const bodyLines = useMemo(() => {
-    if (exited) return colored.slice(0, exitedIdx)
-    return region ? colored.slice(0, region.topRow) : colored
-  }, [exited, exitedIdx, region, colored])
+  // Lift the right-aligned `● high · /effort` chip out of the scroll body
+  // so it can pin above the composer (matching the CLI's placement).
+  const { chatBodyLines, effortLine } = useMemo(() => {
+    for (let i = bodyLines.length - 1; i >= 0; i--) {
+      const line = bodyLines[i]
+      if (line && EFFORT_LINE.test(line.text.trim())) {
+        return {
+          chatBodyLines: [...bodyLines.slice(0, i), ...bodyLines.slice(i + 1)],
+          effortLine: line as ColoredLine | null,
+        }
+      }
+    }
+    return { chatBodyLines: bodyLines, effortLine: null }
+  }, [bodyLines])
   const promptText = region?.promptText ?? ""
+  // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells — CJK-good; wcwidth if emoji matters).
+  const caretOffset = useMemo(() => {
+    if (!region || !cursor || cursor.row !== region.promptRow || !promptText)
+      return null
+    const raw = colored[region.promptRow]?.text ?? ""
+    const start = raw.indexOf(promptText)
+    if (start < 0) return null
+    const targetCells = cursor.col - start
+    if (targetCells < 0) return null
+    let cells = 0
+    let idx = 0
+    for (const ch of promptText) {
+      if (cells >= targetCells) break
+      cells += (ch.codePointAt(0) ?? 0) > 0xff ? 2 : 1
+      idx += ch.length
+    }
+    return Math.min(idx, promptText.length)
+  }, [region, cursor, colored, promptText])
   // Status footer (branch | ctx | quota | mode) as COLORED lines, straight
   // from the buffer below the prompt — so it keeps the engine's ANSI colors
   // instead of flattening to grey. Rule/blank rows dropped.
@@ -164,81 +230,108 @@ function SessionView({
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
-  const { body, footer } = useTtyBlocks(bodyLines)
+  const { body, footer } = useTtyBlocks(chatBodyLines)
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.
   const footerInteractive = footer.some(
     (b) => b.kind === "menu" || b.kind === "options" || b.kind === "activity",
   )
+  // a. engineLive → translated stack; b. empty buffer → BootLine placeholder;
+  // c. otherwise → raw terminal takeover (no overlay, no composer mirror).
+  const showTranslated = engineLive || colored.length === 0
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the hidden terminal so typing drives the native CLI
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the PTY so typing drives the native CLI / shell
     <div
       className="relative h-full"
       onMouseDown={() => setFocusNonce((n) => n + 1)}
     >
-      {/* Hidden real PTY — data source + input target. opacity-0 (not
-          `invisible`) so its input element stays focusable; the translated
-          layer's opaque bg covers the raw screen. SAME px-4 as the translated
-          column so the native lays out (and self-ellipsizes) at exactly the
-          width we render — its compact one-line-per-item menus show 1:1, no
-          re-wrapping, no clipping. */}
-      <div className="absolute inset-0 px-4 opacity-0">
+      {/* Real PTY — data source + input target. opacity-0 while translated so
+          its input stays focusable under the overlay; drops opacity when raw
+          (bare shell / dialog / engine exited). SAME px-4 as the translated
+          column so the native lays out at the width we render. */}
+      <div
+        className={
+          showTranslated
+            ? "absolute inset-0 px-4 opacity-0"
+            : "absolute inset-0 px-4"
+        }
+      >
         <Suspense fallback={null}>
           <ChatTerminal
             key={tabId}
             tabId={tabId}
             taskId={taskId}
-            mode="engine"
+            mode={mode}
             hideComposer
             focusNonce={focusNonce}
+            vendor={vendor}
             onColoredBuffer={setColored}
+            // Strip the engine's own status glyph (✳/✱) — the row draws its own.
+            onTitle={(t) =>
+              setTabTitle(
+                taskId,
+                tabId,
+                t.replace(/^[✳✱⏺●○]\s*/, "").slice(0, 60),
+              )
+            }
+            onComposition={setComposing}
+            onCursor={setCursor}
           />
         </Suspense>
       </div>
-      <div className="relative z-10 flex h-full flex-col bg-bg">
-        <div className="min-h-0 flex-1">
-          <TtyBlocksView blocks={body} sessionId={sessionId} />
-        </div>
-        <div className="shrink-0 px-4 pb-3 pt-1">
-          {exited ? (
-            <EndedCard />
-          ) : (
-            <>
-              {footer.length > 0 &&
-                (footerInteractive ? (
-                  // A card only when the engine is WAITING on the user (spinner
-                  // / slash-menu / question). Passive notices don't earn one.
-                  <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
-                    <TtyFooter blocks={footer} sessionId={sessionId} />
-                  </div>
-                ) : (
-                  // Passive hints (Image in clipboard…) — quiet line above input.
-                  <div className="mb-1 px-3 text-[11px]">
-                    <TtyFooter blocks={footer} sessionId={sessionId} />
-                  </div>
-                ))}
-              <InputMirror promptText={promptText} sessionId={sessionId} />
-              {statusColored.length > 0 && (
-                <div className="mt-2 space-y-0.5 px-2">
-                  {statusColored.map((line, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
-                    <StatusLine key={i} line={line} />
-                  ))}
+      {showTranslated && (
+        <div className="relative z-10 flex h-full flex-col bg-bg">
+          <div className="min-h-0 flex-1">
+            <TtyBlocksView blocks={body} sessionId={sessionId} />
+          </div>
+          <div className="shrink-0 px-4 pb-3 pt-1">
+            {footer.length > 0 &&
+              (footerInteractive ? (
+                // A card only when the engine is WAITING on the user (spinner
+                // / slash-menu / question). Passive notices don't earn one.
+                <div className="mb-2 rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+                  <TtyFooter blocks={footer} sessionId={sessionId} />
                 </div>
-              )}
-            </>
-          )}
+              ) : (
+                // Passive hints (Image in clipboard…) — quiet line above input.
+                <div className="mb-1 px-3 text-[11px]">
+                  <TtyFooter blocks={footer} sessionId={sessionId} />
+                </div>
+              ))}
+            {effortLine && (
+              <div className="fade-up mb-1 flex justify-end px-3">
+                <StatusLine line={trimLeadingColored(effortLine)} />
+              </div>
+            )}
+            <InputMirror
+              promptText={promptText}
+              composing={composing}
+              caretOffset={caretOffset}
+              sessionId={sessionId}
+            />
+            {statusColored.length > 0 && (
+              <div className="mt-2 space-y-0.5 px-2">
+                {statusColored.map((line, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional status rows re-derived per frame
+                  <StatusLine key={i} line={line} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 export function ChatShell() {
   const { tasks, activeTaskId, worktreeChanges, engineStates } = useAppState()
+  const { tabsByTask, activeByTask } = useTabsState()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Embedded Kanban/Routines surface — selecting any task snaps back to chat.
+  const [surface, setSurface] = useState<ChatSurface>("chat")
 
   const live = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const selected =
@@ -247,14 +340,38 @@ export function ChatShell() {
     live[0] ??
     null
 
-  // Same tab id the workspace vendor tab uses — both surfaces share one PTY.
-  // ensureEngineTab mutates the tabs store, so resolve it in an effect (not
-  // during render).
+  // Prefer the task's ACTIVE vendor or terminal tab; fall back to
+  // ensureEngineTab only when neither is active — never mutate during render.
   const selectedTaskId = selected?.id ?? null
-  const [tabId, setTabId] = useState<string | null>(null)
+  const { vendorTab, terminalTab } = useMemo((): {
+    vendorTab: VendorTab | null
+    terminalTab: TerminalTab | null
+  } => {
+    if (!selectedTaskId) return { vendorTab: null, terminalTab: null }
+    const activeId = activeByTask[selectedTaskId]
+    const list = tabsByTask[selectedTaskId] ?? []
+    const tab = activeId ? list.find((t) => t.id === activeId) : undefined
+    if (tab && tab.kind === "vendor" && !tab.taskId)
+      return { vendorTab: tab, terminalTab: null }
+    if (tab && tab.kind === "terminal")
+      return { vendorTab: null, terminalTab: tab }
+    return { vendorTab: null, terminalTab: null }
+  }, [selectedTaskId, tabsByTask, activeByTask])
+
+  const [fallbackTabId, setFallbackTabId] = useState<string | null>(null)
   useEffect(() => {
-    setTabId(selectedTaskId ? ensureEngineTab(selectedTaskId) : null)
-  }, [selectedTaskId])
+    if (!selectedTaskId || vendorTab || terminalTab) {
+      setFallbackTabId(null)
+      return
+    }
+    setFallbackTabId(ensureEngineTab(selectedTaskId))
+  }, [selectedTaskId, vendorTab, terminalTab])
+
+  // Both vendor and terminal tabs go through SessionView; only the PTY mode
+  // differs (vendor/fallback → engine auto-type; terminal → bare shell).
+  const tabId = vendorTab?.id ?? terminalTab?.id ?? fallbackTabId
+  const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
+  const vendor = vendorTab?.vendor
 
   // Right rail: collapsed by default — the sidebar already tells the status
   // story; the rail returns when the file-changes pane earns it.
@@ -266,10 +383,32 @@ export function ChatShell() {
       <div className="flex min-h-0 flex-1">
         <ChatSidebarTree
           selectedId={selected?.id ?? null}
-          onSelect={setSelectedId}
+          onSelect={(taskId) => {
+            setSelectedId(taskId)
+            setSurface("chat")
+          }}
+          surface={surface}
+          onSurfaceChange={setSurface}
         />
 
-        {selected ? (
+        {surface !== "chat" ? (
+          <main className="min-w-0 flex-1 overflow-hidden">
+            <Suspense fallback={null}>
+              {surface === "board" ? (
+                <Board
+                  embedded
+                  initialRepo={selected?.repo}
+                  onOpenTask={(taskId) => {
+                    setSelectedId(taskId)
+                    setSurface("chat")
+                  }}
+                />
+              ) : (
+                <RoutinesPage embedded initialRepo={selected?.repo} />
+              )}
+            </Suspense>
+          </main>
+        ) : selected ? (
           <main className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
               <span className="min-w-0 truncate text-[13px] text-fg">
@@ -296,6 +435,8 @@ export function ChatShell() {
                   tabId={tabId}
                   taskId={selected.id}
                   sessionId={engineStates[selected.id]?.sessionId ?? null}
+                  mode={mode}
+                  vendor={vendor}
                 />
               )}
             </div>
@@ -306,7 +447,7 @@ export function ChatShell() {
           </main>
         )}
 
-        {selected && showChanges && (
+        {surface === "chat" && selected && showChanges && (
           <ChangesPanel
             changes={
               selected.worktreePath

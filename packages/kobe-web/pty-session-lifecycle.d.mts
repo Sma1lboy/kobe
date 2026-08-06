@@ -28,7 +28,7 @@ export interface PtySocketLike {
 }
 
 export interface PtySessionManagerOptions {
-  fetchSpec(taskId: string, mode: PtyMode): Promise<PtyLaunchSpec>
+  fetchSpec(taskId: string, mode: PtyMode, vendor?: string): Promise<PtyLaunchSpec>
   spawnPty(
     command: string,
     args: string[],
@@ -66,6 +66,8 @@ export interface AttachSocketInput {
   mode: PtyMode
   cols: number
   rows: number
+  /** Engine vendor override — only forwarded to fetchSpec when mode is "engine". */
+  vendor?: string
 }
 
 export interface SendTextInput {
@@ -77,10 +79,18 @@ export interface SendTextInput {
 export interface PtySessionManager {
   attachSocket(input: AttachSocketInput): Promise<unknown>
   closeSession(tabId: string): boolean
-  ensureSession(tabId: string, taskId: string, mode: PtyMode, cols: number, rows: number): Promise<unknown>
+  ensureSession(
+    tabId: string,
+    taskId: string,
+    mode: PtyMode,
+    cols: number,
+    rows: number,
+    vendor?: string,
+  ): Promise<unknown>
   sendText(input: SendTextInput): Promise<{ sent: boolean; spawned: boolean; missing?: boolean }>
   shutdown(): void
   sessionCount(): number
+  listSessions(): Array<{ tabId: string; pid: number }>
   pendingSpawnCount(): number
 }
 

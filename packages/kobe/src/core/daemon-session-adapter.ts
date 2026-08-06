@@ -70,19 +70,32 @@ export async function startTaskSessionWithPromptAdapter(
   }
 }
 
-function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptIntent: PromptDeliveryIntent) {
+function taskEngineLaunch(
+  task: SerializedTask,
+  worktreePath: string,
+  promptIntent: PromptDeliveryIntent,
+  // per-tab vendor override, the web mirror of EngineTab.vendor
+  vendorOverride?: string,
+) {
   return buildEngineSessionLaunch({
-    task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
+    task: {
+      id: task.id,
+      kind: task.kind,
+      vendor: vendorOverride ? (vendorOverride as VendorId) : task.vendor,
+      repo: task.repo,
+    },
     worktreePath,
     shell: resolveLoginShell({ fallback: "/bin/zsh" }),
-    argv: interactiveEngineCommand(task.vendor, task.modelEffort),
+    argv: vendorOverride
+      ? interactiveEngineCommand(vendorOverride as VendorId)
+      : interactiveEngineCommand(task.vendor, task.modelEffort),
     promptIntent,
   })
 }
 
-export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
+export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string, vendor?: string) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" })
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" }, vendor)
   return { cwd: worktreePath, command: [...launch.command] }
 }
 

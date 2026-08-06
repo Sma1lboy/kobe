@@ -34,6 +34,9 @@ export interface VendorTab {
    *  lives in another task's strip (a worktree session surfaced in the
    *  project workspace). Absent = the tab's bucket task, the normal case. */
   taskId?: string
+  /** Engine override for THIS tab only — the chat.tab.chooseEngine mirror;
+   *  absent = task's engine. */
+  vendor?: string
 }
 
 export interface TerminalTab {
@@ -293,7 +296,7 @@ export function clearSelectedTask(): void {
 /** Open a new vendor tab for a task; returns the new tab id (now active).
  *  `engineTaskId` pins the tab's PTY to a DIFFERENT task than its bucket —
  *  how a worktree session gets a tab inside the project workspace. */
-export function addTab(taskId: string, engineTaskId?: string): string {
+export function addTab(taskId: string, engineTaskId?: string, vendor?: string): string {
   const list = state.tabsByTask[taskId] ?? []
   const id = newId()
   const tab: VendorTab = {
@@ -303,6 +306,7 @@ export function addTab(taskId: string, engineTaskId?: string): string {
     ...(engineTaskId && engineTaskId !== taskId
       ? { taskId: engineTaskId }
       : {}),
+    ...(vendor ? { vendor } : {}),
   }
   set({
     ...state,
@@ -453,6 +457,45 @@ export function setActiveTab(taskId: string, tabId: string): void {
   }
   activeByTask[taskId] = tabId
   set({ ...state, activeByTask, splitByTask })
+}
+
+/** Update one tab's title (live OSC title from the PTY). No-op when unchanged.
+ *  The first override stashes the minted title as `baseTitle` so
+ *  {@link resetTabTitle} can restore it when the engine child exits. */
+export function setTabTitle(taskId: string, tabId: string, title: string): void {
+  const list = state.tabsByTask[taskId] ?? []
+  const current = list.find((tab) => tab.id === tabId)
+  if (!current || current.title === title) return
+  const baseTitle =
+    (current as { baseTitle?: string }).baseTitle ?? current.title
+  set({
+    ...state,
+    tabsByTask: {
+      ...state.tabsByTask,
+      [taskId]: list.map((tab) =>
+        tab.id === tabId ? { ...tab, title, baseTitle } : tab,
+      ),
+    },
+  })
+}
+
+/** Restore a tab's minted title (Terminal N / Vendor N) — the engine child
+ *  exited, and a bare shell may never emit an OSC title of its own. */
+export function resetTabTitle(taskId: string, tabId: string): void {
+  const list = state.tabsByTask[taskId] ?? []
+  const current = list.find((tab) => tab.id === tabId) as
+    | (WorkspaceTab & { baseTitle?: string })
+    | undefined
+  if (!current?.baseTitle || current.title === current.baseTitle) return
+  set({
+    ...state,
+    tabsByTask: {
+      ...state.tabsByTask,
+      [taskId]: list.map((tab) =>
+        tab.id === tabId ? { ...tab, title: current.baseTitle ?? tab.title } : tab,
+      ),
+    },
+  })
 }
 
 export function setSplitTab(taskId: string, tabId: string): void {

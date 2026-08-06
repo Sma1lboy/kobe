@@ -18,13 +18,25 @@ import { useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
+import { useEngines } from "../lib/engines.ts"
 import { openNewTask } from "../lib/global-ui.ts"
 import { useAppState } from "../lib/store.ts"
-import { useTabsState, type WorkspaceTab } from "../lib/tabs.ts"
+import { tabHasPty } from "../lib/tab-kinds.ts"
+import {
+  addEmptyTab,
+  addTab,
+  closeTab,
+  configureTab,
+  setActiveTab,
+  useTabsState,
+  type WorkspaceTab,
+} from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
+import { closePtyTab, fetchPtyForeground } from "../lib/terminal.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { ChatInbox } from "./ChatInbox.tsx"
 import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
+import { EnginePickerModal } from "./EnginePickerModal.tsx"
 
 type View = "active" | "archived"
 
@@ -112,22 +124,24 @@ function JumpDigit({ index }: { index: number }) {
 
 function WorktreeRow({
   task,
-  flatIndex,
   active,
   cursor,
   changes,
   onClick,
 }: {
   task: Task
-  flatIndex: number
   active: boolean
   /** The j/k cursor rests here (distinct from active — TUI selection chrome). */
   cursor: boolean
-  changes: { added: number; deleted: number } | undefined
+  changes: { added: number; deleted: number; branch?: string } | undefined
   onClick: () => void
 }) {
+  // Live branch from the worktree.changes channel wins over the stored
+  // static task.branch (TUI sidebar grammar).
   const label =
-    task.branch || (task.kind === "main" ? "main" : task.title || "~")
+    changes?.branch ||
+    task.branch ||
+    (task.kind === "main" ? "main" : task.title || "~")
   return (
     <button
       type="button"
@@ -137,7 +151,7 @@ function WorktreeRow({
           ? "border-primary bg-inset"
           : active
             ? "border-fg/80 bg-menu"
-            : "border-transparent hover:bg-surface"
+            : "border-transparent hover:bg-inset"
       }`}
     >
       <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
@@ -147,7 +161,8 @@ function WorktreeRow({
         <span className="shrink-0 text-[11px] text-kobe-yellow">▴</span>
       )}
       <ChangesBadge changes={changes} />
-      <JumpDigit index={flatIndex} />
+      {/* Jump digits belong to TAB rows only — spacer keeps the column. */}
+      <span className="w-3 shrink-0" />
     </button>
   )
 }
@@ -156,7 +171,7 @@ function TabRow({
   label,
   engine,
   isEngine,
-  flatIndex,
+  jumpIndex,
   active,
   cursor,
   onClick,
@@ -166,7 +181,8 @@ function TabRow({
    *  shell/file tabs wear the plain `·` (TUI owner rule, round 7). */
   engine: EngineState | undefined
   isEngine: boolean
-  flatIndex: number
+  /** Digit ordinal among TAB rows only (not the global flat index). */
+  jumpIndex: number
   active: boolean
   /** The j/k cursor rests here (distinct from active — TUI selection chrome). */
   cursor: boolean
@@ -184,7 +200,7 @@ function TabRow({
           ? "border-primary bg-inset"
           : active
             ? "border-fg/80 bg-menu"
-            : "border-transparent hover:bg-surface"
+            : "border-transparent hover:bg-inset"
       }`}
     >
       <span
@@ -197,7 +213,7 @@ function TabRow({
       >
         {label}
       </span>
-      <JumpDigit index={flatIndex} />
+      <JumpDigit index={jumpIndex} />
     </button>
   )
 }
@@ -206,6 +222,7 @@ function TabRow({
  *  terminal tabs, same as the TUI's chattab children), else one implicit
  *  engine row so every worktree still shows its session line. */
 function taskTreeTabs(tabs: readonly WorkspaceTab[] | undefined): Array<{
+  id: string | null
   key: string
   label: string
   isEngine: boolean
@@ -213,29 +230,61 @@ function taskTreeTabs(tabs: readonly WorkspaceTab[] | undefined): Array<{
   const rows = (tabs ?? [])
     .filter((tab) => tab.kind === "vendor" || tab.kind === "terminal")
     .map((tab) => ({
+      id: tab.id,
       key: tab.id,
       label: tab.title,
       isEngine: tab.kind === "vendor",
     }))
   return rows.length > 0
     ? rows
-    : [{ key: "__engine", label: "session", isEngine: true }]
+    : [{ id: null, key: "__engine", label: "session", isEngine: true }]
 }
 
 export function ChatSidebarTree({
   selectedId,
   onSelect,
+  surface = "chat",
+  onSurfaceChange,
 }: {
   selectedId: string | null
   onSelect: (taskId: string) => void
+  /** Which main-area surface is showing (chat / embedded Kanban / Routines). */
+  surface?: "chat" | "board" | "routines"
+  onSurfaceChange?: (surface: "chat" | "board" | "routines") => void
 }) {
   const { tasks, engineStates, worktreeChanges, attentionInbox } = useAppState()
-  const { tabsByTask } = useTabsState()
+  const { tabsByTask, activeByTask } = useTabsState()
   const navigate = useNavigate()
   const [view, setView] = useState<View>("active")
   const [query, setQuery] = useState("")
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // Foreground trace (TUI live-engine mirror): a tab whose process tree
+  // contains an engine binary wears that vendor's state glyphs, not `·`.
+  const engines = useEngines()
+  const [foreground, setForeground] = useState<Record<string, string[]>>({})
+  useEffect(() => {
+    let cancelled = false
+    const poll = (): void => {
+      void fetchPtyForeground().then((map) => {
+        if (!cancelled) setForeground(map)
+      })
+    }
+    poll()
+    const timer = window.setInterval(poll, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+  const engineTraced = (tabId: string | null): boolean => {
+    if (!tabId) return false
+    const comms = foreground[tabId]
+    if (!comms) return false
+    return engines.some((e) => comms.includes(e.id))
+  }
 
   // The durable daemon queue IS the count — same source the panel lists.
   const inbox = attentionInbox.length
@@ -250,19 +299,36 @@ export function ChatSidebarTree({
   }, [tasks, view, query])
 
   // The navigable flat row list (worktree + tab rows, project headers
-  // excluded — the TUI's treeFlatIds rule). Slot N is the row printing
-  // digit N; ctrl+digit and j/k index into this.
+  // excluded — the TUI's treeFlatIds rule). j/k walks every row; jump
+  // digits (ctrl+2…9,0) index TAB rows only.
   const flatRows = useMemo(() => {
-    const rows: Array<{ taskId: string }> = []
+    const rows: Array<{
+      taskId: string
+      tabId?: string
+      rowKind: "worktree" | "tab"
+    }> = []
     for (const group of groups) {
       for (const task of group.tasks) {
-        rows.push({ taskId: task.id })
-        for (const _tab of taskTreeTabs(tabsByTask[task.id]))
-          rows.push({ taskId: task.id })
+        rows.push({ taskId: task.id, rowKind: "worktree" })
+        for (const tab of taskTreeTabs(tabsByTask[task.id]))
+          rows.push({
+            taskId: task.id,
+            ...(tab.id ? { tabId: tab.id } : {}),
+            rowKind: "tab",
+          })
       }
     }
     return rows
   }, [groups, tabsByTask])
+
+  // Digit slots → flatRows indices for TAB rows only (tree order).
+  const jumpTargets = useMemo(() => {
+    const targets: number[] = []
+    for (let i = 0; i < flatRows.length; i++) {
+      if (flatRows[i].rowKind === "tab") targets.push(i)
+    }
+    return targets
+  }, [flatRows])
 
   // Tree cursor (j/k walks it, enter activates). Clamped when the list
   // shrinks; -1 until the first move.
@@ -271,14 +337,26 @@ export function ChatSidebarTree({
     if (cursor >= flatRows.length) setCursor(Math.max(0, flatRows.length - 1))
   }, [cursor, flatRows.length])
 
+  const activateRow = (row: {
+    taskId: string
+    tabId?: string
+  }): void => {
+    onSelect(row.taskId)
+    if (row.tabId) setActiveTab(row.taskId, row.tabId)
+  }
+
   const prefixArmed = useChatChords({
     onJumpRow: (slot) => {
-      const row = flatRows[slot]
+      const flatIdx = jumpTargets[slot]
+      if (flatIdx === undefined) return
+      const row = flatRows[flatIdx]
       if (!row) return
-      setCursor(slot)
-      onSelect(row.taskId)
+      setCursor(flatIdx)
+      activateRow(row)
     },
     onCursorMove: (delta) => {
+      // The inbox / engine-picker modals own j/k/enter while open.
+      if (inboxOpen || pickerOpen) return
       if (flatRows.length === 0) return
       setCursor((cur) => {
         const next = cur < 0 ? 0 : cur + delta
@@ -286,23 +364,48 @@ export function ChatSidebarTree({
       })
     },
     onCursorActivate: () => {
+      if (inboxOpen || pickerOpen) return
       const row = flatRows[cursor]
-      if (row) onSelect(row.taskId)
+      if (row) activateRow(row)
     },
     onCycleView: () =>
       setView((cur) => (cur === "active" ? "archived" : "active")),
     onFocusSearch: () => searchRef.current?.focus(),
     onRailPage: (index) =>
-      void navigate({ to: index === 0 ? "/board" : "/issues" }),
+      onSurfaceChange
+        ? onSurfaceChange(index === 0 ? "board" : "routines")
+        : void navigate({ to: index === 0 ? "/board" : "/issues" }),
     onOpenInbox: () => setInboxOpen((cur) => !cur),
+    onNewTab: () => {
+      if (selectedId) addTab(selectedId)
+      else openNewTask()
+    },
+    onChooseEngine: () => {
+      if (selectedId) setPickerOpen(true)
+      else openNewTask()
+    },
+    onCloseTab: () => {
+      if (!selectedId) return
+      const activeId = activeByTask[selectedId]
+      const tab = (tabsByTask[selectedId] ?? []).find((t) => t.id === activeId)
+      if (!tab) return
+      closeTab(selectedId, tab.id)
+      if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
+    },
   })
 
   // One flat index across worktree + tab rows — must mint the same order
-  // flatRows was built in (project → worktree → tabs).
+  // flatRows was built in (project → worktree → tabs). jumpOrdinal counts
+  // TAB rows only (the printed digit slots).
   let flatIndex = -1
+  let jumpOrdinal = -1
   const nextIndex = (): number => {
     flatIndex += 1
     return flatIndex
+  }
+  const nextJumpIndex = (): number => {
+    jumpOrdinal += 1
+    return jumpOrdinal
   }
 
   return (
@@ -312,6 +415,20 @@ export function ChatSidebarTree({
           selectedId={selectedId}
           onJump={(taskId) => onSelect(taskId)}
           onClose={() => setInboxOpen(false)}
+        />
+      )}
+      {pickerOpen && selectedId && (
+        <EnginePickerModal
+          onPick={(vendor) => {
+            addTab(selectedId, undefined, vendor)
+            setPickerOpen(false)
+          }}
+          onPickShell={() => {
+            const id = addEmptyTab(selectedId)
+            configureTab(selectedId, id, "terminal")
+            setPickerOpen(false)
+          }}
+          onClose={() => setPickerOpen(false)}
         />
       )}
       <div
@@ -374,15 +491,15 @@ export function ChatSidebarTree({
       <div className="flex shrink-0 flex-col gap-0.5 px-3 pb-2 text-[12px] text-muted">
         <button
           type="button"
-          onClick={() => void navigate({ to: "/board" })}
-          className="w-fit hover:text-fg"
+          onClick={() => onSurfaceChange?.("board")}
+          className={`w-fit hover:text-fg ${surface === "board" ? "text-primary" : ""}`}
         >
           Kanban
         </button>
         <button
           type="button"
-          onClick={() => void navigate({ to: "/issues" })}
-          className="w-fit hover:text-fg"
+          onClick={() => onSurfaceChange?.("routines")}
+          className={`w-fit hover:text-fg ${surface === "routines" ? "text-primary" : ""}`}
         >
           Routines
         </button>
@@ -421,7 +538,6 @@ export function ChatSidebarTree({
                   <div key={task.id}>
                     <WorktreeRow
                       task={task}
-                      flatIndex={worktreeIndex}
                       active={false}
                       cursor={cursor === worktreeIndex}
                       changes={
@@ -433,16 +549,25 @@ export function ChatSidebarTree({
                     />
                     {taskTreeTabs(tabsByTask[task.id]).map((tab) => {
                       const tabIndex = nextIndex()
+                      const jumpIndex = nextJumpIndex()
                       return (
                         <TabRow
                           key={tab.key}
                           label={tab.label}
                           engine={engineStates[task.id]}
-                          isEngine={tab.isEngine}
-                          flatIndex={tabIndex}
-                          active={task.id === selectedId && tab.isEngine}
+                          isEngine={tab.isEngine || engineTraced(tab.id)}
+                          jumpIndex={jumpIndex}
+                          active={
+                            task.id === selectedId &&
+                            (tab.id
+                              ? activeByTask[task.id] === tab.id
+                              : tab.isEngine)
+                          }
                           cursor={cursor === tabIndex}
-                          onClick={() => onSelect(task.id)}
+                          onClick={() => {
+                            onSelect(task.id)
+                            if (tab.id) setActiveTab(task.id, tab.id)
+                          }}
                         />
                       )
                     })}

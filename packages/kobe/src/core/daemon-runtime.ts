@@ -49,7 +49,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   deriveTitleFromSession,
   createEngineTurnDetector,
   async runWorktreeStatus(worktreePath, signal) {
-    const result = await spawnCapture("git", ["status", "--porcelain=v1"], {
+    const result = await spawnCapture("git", ["status", "--porcelain=v1", "--branch"], {
       cwd: worktreePath,
       env: readOnlyGitProcessEnv(),
       signal,

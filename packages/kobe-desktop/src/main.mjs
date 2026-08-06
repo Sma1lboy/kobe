@@ -9,6 +9,7 @@ const packageDir = resolve(here, "..")
 const repoRoot = resolve(packageDir, "../..")
 const webDir = resolve(repoRoot, "packages/kobe-web")
 const preloadPath = resolve(here, "preload.cjs")
+const iconPath = resolve(packageDir, "assets/icon.png")
 
 let webProcess = null
 let mainWindow = null
@@ -119,6 +120,7 @@ function createWindow(url) {
     minWidth: 960,
     minHeight: 640,
     title: "kobe",
+    icon: iconPath,
     frame: false,
     hasShadow: false,
     transparent: true,
@@ -173,6 +175,7 @@ app.on("before-quit", () => {
 async function bootstrap() {
   console.log("kobe desktop: starting")
   await app.whenReady()
+  if (process.platform === "darwin") app.dock?.setIcon(iconPath)
   const url = await startKobeWeb()
   console.log(`kobe desktop: loading ${url}`)
   createWindow(url)

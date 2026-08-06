@@ -7,14 +7,14 @@
  * native TUI) rather than leaving it adrift in the scroll body.
  */
 
-import { Fragment, useEffect, useMemo, useRef } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import {
   type MenuItem,
   type OptionItem,
   parseTtyBlocks,
   type TtyBlock,
 } from "../lib/claude-tty.ts"
-import type { ColoredLine } from "../lib/tty-color.ts"
+import { type ColoredLine, trimLeadingColored } from "../lib/tty-color.ts"
 import { TokenizedText } from "./TokenizedText.tsx"
 import { WelcomeCard } from "./WelcomeCard.tsx"
 
@@ -97,6 +97,45 @@ function OptionMenu({ items }: { items: OptionItem[] }) {
   )
 }
 
+const BOOT_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const
+const BOOT_PHRASES = [
+  "Setting up the harness…",
+  "Spawning the coding agent…",
+  "Wiring up the terminal…",
+  "Streaming output lands here…",
+] as const
+
+// engine startup placeholder — spinner + shimmer, the CLI's boot feel.
+function BootLine() {
+  const spinRef = useRef<HTMLSpanElement>(null)
+  const [phrase, setPhrase] = useState(0)
+
+  useEffect(() => {
+    let frame = 0
+    const spin = setInterval(() => {
+      frame = (frame + 1) % BOOT_FRAMES.length
+      if (spinRef.current) spinRef.current.textContent = BOOT_FRAMES[frame]
+    }, 80)
+    const cycle = setInterval(
+      () => setPhrase((i) => (i + 1) % BOOT_PHRASES.length),
+      2400,
+    )
+    return () => {
+      clearInterval(spin)
+      clearInterval(cycle)
+    }
+  }, [])
+
+  return (
+    <div className="flex items-center gap-2 py-4 font-mono text-[12px]">
+      <span ref={spinRef} className="text-primary">
+        {BOOT_FRAMES[0]}
+      </span>
+      <span className="shimmer-text">{BOOT_PHRASES[phrase]}</span>
+    </div>
+  )
+}
+
 function Block({
   block,
   sessionId,
@@ -162,9 +201,7 @@ export function TtyBlocksView({
       className="h-full overflow-x-hidden overflow-y-auto px-4 py-4"
     >
       {blocks.length === 0 ? (
-        <div className="py-4 font-mono text-[12px] text-subtle">
-          Nothing on screen yet — the session's terminal output renders here.
-        </div>
+        <BootLine />
       ) : (
         blocks.map((block, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
@@ -186,10 +223,25 @@ export function TtyFooter({
 }) {
   return (
     <>
-      {blocks.map((block, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
-        <Block key={i} block={block} sessionId={sessionId} />
-      ))}
+      {blocks.map((block, i) => {
+        // The CLI right-aligns some footer lines (clipboard hint) by space-
+        // padding to ITS cols — re-align with CSS so the tail never clips.
+        if (block.kind === "line" && /^ {2,}\S/.test(block.line.text)) {
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
+            <div key={i} className="flex justify-end">
+              <Block
+                block={{ kind: "line", line: trimLeadingColored(block.line) }}
+                sessionId={sessionId}
+              />
+            </div>
+          )
+        }
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: positional, re-derived per frame
+          <Block key={i} block={block} sessionId={sessionId} />
+        )
+      })}
     </>
   )
 }

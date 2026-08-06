@@ -5,6 +5,9 @@
  *   ctrl+a            arm the prefix (1000ms window, HUD chip shows it)
  *   prefix, 1 / 2     rail pages in rail order (Kanban / Routines)
  *   ctrl+2…9,0        jump to the sidebar row printing that digit
+ *   ctrl+t            new tab, same engine (TUI chat.tab.new)
+ *   ctrl+e            new tab, choose engine (TUI chat.tab.chooseEngine)
+ *   ctrl+w            close tab
  *   j / k / enter     tree cursor + activate (only outside inputs/terminal)
  *   [ / ]             Active ⇄ Archives view
  *   /                 focus the sidebar search
@@ -64,6 +67,12 @@ export interface ChatChordHandlers {
   onRailPage: (index: number) => void
   /** Open the attention Inbox (prefix, i — the TUI's chord). */
   onOpenInbox: () => void
+  /** New engine tab inheriting the task's engine (ctrl+t — TUI chat.tab.new). */
+  onNewTab: () => void
+  /** New engine tab via engine picker (ctrl+e — TUI chat.tab.chooseEngine). */
+  onChooseEngine: () => void
+  /** Close the active tab (ctrl+w — TUI chat.tab.close). */
+  onCloseTab: () => void
 }
 
 /** Install the chord listener; returns whether the prefix is armed (HUD). */
@@ -115,6 +124,25 @@ export function useChatChords(handlers: ChatChordHandlers): boolean {
       }
       // ctrl+<digit> task jump — global tier, works from inside the terminal.
       if (ctrl) {
+        const key = event.key.toLowerCase()
+        if (key === "t") {
+          event.preventDefault()
+          event.stopPropagation()
+          h.onNewTab()
+          return
+        }
+        if (key === "e") {
+          event.preventDefault()
+          event.stopPropagation()
+          h.onChooseEngine()
+          return
+        }
+        if (key === "w") {
+          event.preventDefault()
+          event.stopPropagation()
+          h.onCloseTab()
+          return
+        }
         const slot = TASK_JUMP_DIGITS.indexOf(event.key)
         if (slot >= 0) {
           event.preventDefault()

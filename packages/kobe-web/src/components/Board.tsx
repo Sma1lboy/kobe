@@ -59,7 +59,20 @@ import { ViewToggle } from "./ViewToggle.tsx"
  *  across projects. */
 type PeekTarget = { repo: string; id: number }
 
-export function Board() {
+export function Board({
+  embedded = false,
+  onOpenTask,
+  initialRepo,
+}: {
+  /** Rendered inside the /chat main area — drop the standalone window chrome
+   *  (traffic lights, brand, view toggle) and fill the host pane. */
+  embedded?: boolean
+  /** Embedded task jump — stay on the host surface instead of routing away. */
+  onOpenTask?: (taskId: string) => void
+  /** Scope the board to this repo on open (the host's selected project);
+   *  applied once — the picker stays free afterwards. */
+  initialRepo?: string
+} = {}) {
   const { tasks, hydrated, daemonConnected } = useAppState()
   const { query, repo: repoFilter } = useBoardState()
   const navigate = useNavigate()
@@ -102,6 +115,14 @@ export function Board() {
     () => resolveIssueRepoSelection(repoOptions, repoFilter),
     [repoOptions, repoFilter],
   )
+  // Host-selected project scope — applied once when it appears in the options.
+  const appliedInitialRepo = useRef<string | null>(null)
+  useEffect(() => {
+    if (!initialRepo || appliedInitialRepo.current === initialRepo) return
+    if (!repoOptions.some((option) => option.repo === initialRepo)) return
+    appliedInitialRepo.current = initialRepo
+    setBoardRepo(initialRepo)
+  }, [initialRepo, repoOptions])
   const {
     data: issueData,
     pending: issuesPending,
@@ -187,23 +208,39 @@ export function Board() {
   const openTask = (id: string): void => {
     selectTask(id)
     setActiveTaskBestEffort(id)
+    if (onOpenTask) {
+      onOpenTask(id)
+      return
+    }
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
+    <div
+      className={`flex flex-col overflow-hidden bg-bg text-fg ${embedded ? "h-full" : "h-screen"}`}
+    >
       <header
-        data-kobe-topbar
+        data-kobe-topbar={embedded ? undefined : true}
         className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
       >
-        <DesktopWindowControls />
-        {/* Workspace ↔ Board are peer views — the top-left toggle is the only
-            switch between them (no back link). The [kobe] brand mirrors the
-            Workspace header so the logo + toggle sit identically in both. */}
-        <span className="font-mono text-[13px] font-bold text-primary">
-          [kobe]
-        </span>
-        <ViewToggle />
+        {!embedded && (
+          <>
+            <DesktopWindowControls />
+            {/* Workspace ↔ Board are peer views — the top-left toggle is the
+                only switch between them (no back link). The [kobe] brand
+                mirrors the Workspace header so the logo + toggle sit
+                identically in both. */}
+            <span className="font-mono text-[13px] font-bold text-primary">
+              [kobe]
+            </span>
+            <ViewToggle />
+          </>
+        )}
+        {embedded && (
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
+            Kanban
+          </span>
+        )}
         <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
           <Search
             size={13}
