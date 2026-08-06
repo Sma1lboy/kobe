@@ -131,6 +131,21 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-pop-in 0.18s ease-out both;
 }
 
+/* Full-power ambience: a session at top effort breathes a soft primary
+   glow on its welcome card. Deliberately the ONLY glow in the app. */
+@keyframes kobe-effort-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 16%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 26px color-mix(in srgb, var(--color-primary) 36%, transparent);
+  }
+}
+.effort-glow {
+  animation: kobe-effort-glow 3s ease-in-out infinite;
+}
+
 /* Transcript events — a plain conversation column. The structured timeline
    lives in the Agent Trace pane; here only spacing separates events. */
 .transcript-event {
@@ -324,5 +339,10 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   .animate-spin,
   .animate-pulse {
     animation: none;
+  }
+
+  .effort-glow {
+    animation: none;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--color-primary) 26%, transparent);
   }
 }
