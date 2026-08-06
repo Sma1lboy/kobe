@@ -70,6 +70,12 @@ export interface TaskLinkedWorkItem {
   readonly url: string
 }
 
+export interface TaskDelegationLink {
+  readonly primaryTaskId: string
+  readonly protocolVersion: 1
+  readonly linkedAt: string
+}
+
 export interface DaemonTask {
   readonly id: string
   readonly title: string
@@ -85,6 +91,7 @@ export interface DaemonTask {
   readonly position?: number
   readonly modelEffort?: string
   readonly groupId?: string
+  readonly delegation?: TaskDelegationLink
   readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
   readonly quotaResume?: TaskQuotaResumeState
@@ -140,6 +147,7 @@ export interface DaemonOrchestrator {
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
   /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
   setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
+  setDelegation(subagentId: string, primaryId: string): Promise<void>
   /** Stamp the external tracker item a task was started from. */
   setLinkedWorkItem(id: string, item: TaskLinkedWorkItem | null): Promise<void>
   /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */

@@ -385,7 +385,6 @@ export function Sidebar(props: SidebarProps) {
       totalRows={totalRows}
       projectRows={projectRows}
       taskRows={taskRows}
-      tasks={props.tasks}
       hasTaskRows={taskRows.length > 0}
       projectOptions={projectOptions}
       projectFilterRepo={projectFilterRepo}
@@ -402,9 +401,6 @@ export function Sidebar(props: SidebarProps) {
       headerStatus={props.headerStatus}
       onHeaderStatusClick={props.onHeaderStatusClick}
       onAddTask={props.onAddTask}
-      channels={props.channels}
-      selectedChannelId={props.selectedChannelId}
-      onSelectChannel={props.onSelectChannel}
       zenActive={props.zenActive}
       onZenClick={props.onZenClick}
       hover={hover}

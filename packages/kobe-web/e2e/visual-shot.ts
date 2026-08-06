@@ -50,10 +50,14 @@ try {
   })
   const harness = page.getByTestId("opentui-harness")
   await harness.waitFor({ timeout: 10_000 })
-  // TUI takeover: PROJECTS is the workspace's earliest stable marker.
+  // TUI takeover: the tree sidebar intentionally has no PROJECTS/TASKS
+  // headers, so wait for both fixture rows before driving keybindings.
   const buffer = page.getByTestId("opentui-buffer")
   await page.waitForFunction(
-    (el) => el?.textContent?.includes("PROJECTS"),
+    (el) => {
+      const text = el?.textContent ?? ""
+      return text.includes("fixture-repo") && text.includes("Visual Fixture")
+    },
     await buffer.elementHandle(),
     { timeout: 45_000 },
   )

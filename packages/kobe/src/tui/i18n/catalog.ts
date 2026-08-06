@@ -18,8 +18,8 @@
  */
 
 import { en as automations, zh as automationsZh } from "./messages/automations"
-import { en as channels, zh as channelsZh } from "./messages/channels"
 import { en as common, zh as commonZh } from "./messages/common"
+import { en as delegation, zh as delegationZh } from "./messages/delegation"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
 import { en as history, zh as historyZh } from "./messages/history"
@@ -50,13 +50,13 @@ export const en = {
   help,
   history,
   common,
+  delegation,
   keys,
   workspace,
   worktrees,
   kanban,
   automations,
   workItems,
-  channels,
 }
 
 /**
@@ -79,13 +79,13 @@ export const zh: Messages = {
   help: helpZh,
   history: historyZh,
   common: commonZh,
+  delegation: delegationZh,
   keys: keysZh,
   workspace: workspaceZh,
   worktrees: worktreesZh,
   kanban: kanbanZh,
   automations: automationsZh,
   workItems: workItemsZh,
-  channels: channelsZh,
 }
 
 /** Registered locales, in display order. */

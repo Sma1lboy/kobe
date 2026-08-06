@@ -259,12 +259,6 @@ branches it, so both sides keep full context with no copying:
 | `kimi` | no | same: `-S/--session` and `--continue` only reopen |
 | custom | no | kobe knows neither their flags nor their session store |
 
-**Cross-task Agent Channels.** `ctrl+a` `@` applies the native-fork path to
-two tasks at once, then binds the resulting tabs as a Channel. The Channel UI
-is only a two-PTY viewport: engine transcripts, resume semantics, identity,
-and telemetry stay owned by each endpoint's adapter. There is no neutral
-transcript parser or second conversation store in this feature.
-
 **Different engine → a handoff.** The one move that survives hitting a usage
 limit mid-task: the target engine starts a FRESH session whose first prompt
 names the previous engine, the worktree, and the absolute path of that

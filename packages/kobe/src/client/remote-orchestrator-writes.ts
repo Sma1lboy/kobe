@@ -65,6 +65,17 @@ export async function setVendorOp(client: KobeDaemonClient, id: TaskId | string,
   await client.request("task.setVendor", { taskId: String(id), vendor })
 }
 
+export async function setDelegationOp(
+  client: KobeDaemonClient,
+  subagentId: TaskId | string,
+  primaryId: TaskId | string,
+): Promise<void> {
+  await client.request("task.setDelegation", {
+    subagentTaskId: String(subagentId),
+    primaryTaskId: String(primaryId),
+  })
+}
+
 export async function setPinnedOp(client: KobeDaemonClient, id: TaskId | string, pinned?: boolean): Promise<void> {
   await client.request("task.pin", { taskId: String(id), pinned })
 }

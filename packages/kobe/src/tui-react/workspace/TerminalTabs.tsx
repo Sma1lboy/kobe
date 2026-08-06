@@ -91,13 +91,11 @@ import { releaseClosedTabPtys } from "./terminal-tabs-close"
 import { terminalTabsKey } from "./terminal-tabs-persist"
 import {
   reportTabsDelta,
-  resolveTaskFork,
   tabActivationListeners,
   tabsByTask,
   takeTabActivation,
   takeTabClose,
   takeTabOpen,
-  takeTaskFork,
 } from "./terminal-tabs-shared"
 import { useTabClose } from "./use-tab-close"
 import { useTabDialogs } from "./use-tab-dialogs"
@@ -146,8 +144,6 @@ export interface TerminalTabsProps {
    *  pending Inbox episode targeting it. */
   onTabVisited?: (tabId: string) => void
   focused: boolean
-  /** Agent Channel endpoint: lock this mount to one durable chat tab. */
-  pinnedTabId?: string
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
 }
@@ -179,14 +175,13 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const rehydratedRef = useRef(false)
   const initState = (): TabsState => {
     const existing = tabsByTask.get(props.taskId)
-    if (existing) return props.pinnedTabId ? selectTab(existing, props.pinnedTabId) : existing
+    if (existing) return existing
     // Restart survival (issue #22): rehydrate the persisted tab snapshot
     // before falling back to a fresh single tab.
     const saved = kv.get(persistKey, null) as TabsState | null
     const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved, [defaultShell()]) : null
     rehydratedRef.current = fromDisk !== null
-    const base = fromDisk ?? pinSession(initialTabs(), undefined)
-    const fresh = props.pinnedTabId ? selectTab(base, props.pinnedTabId) : base
+    const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
     tabsByTask.set(props.taskId, fresh)
     return fresh
   }
@@ -223,11 +218,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       // this component owns the state while it is mounted.
       const closeId = takeTabClose(propsRef.current.taskId)
       if (closeId) tabCloseRef.current.closeById(closeId)
-      // Cross-task Agent Channel creation can target this task while its
-      // TerminalTabs is mounted. Claim the append here so React + KV share
-      // the same writer; background tasks fall back to the shared writer.
-      const fork = takeTaskFork(propsRef.current.taskId)
-      if (fork) updateRef.current(resolveTaskFork(fork, stateRef.current).state)
     }
     consume()
     tabActivationListeners.add(consume)
@@ -383,7 +373,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   }
 
   useBindings(() => ({
-    enabled: props.focused && !props.pinnedTabId,
+    enabled: props.focused,
     bindings: bindByIds({
       "chat.tab.new": () => {
         const preferred = preferredTabVendor()
@@ -409,7 +399,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const activeIsSplit = isTabSplit(active.splitTree)
   const spawn = activeSpawn()
   useBindings(() => ({
-    enabled: props.focused && !activeIsSplit && !props.pinnedTabId,
+    enabled: props.focused && !activeIsSplit,
     bindings: bindByIds({
       "chat.tab.close": () => tabClose.closeActive(),
       "chat.tab.rename": requestRename,
@@ -421,7 +411,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       {/* Tab strip — flush to the pane edge, dense; hides itself for a lone
           tab only when the Settings → Terminal toggle asks it to. */}
       <TabStrip
-        tabs={props.pinnedTabId && active ? [active] : state.tabs}
+        tabs={state.tabs}
         activeId={state.activeId}
         turnStates={turnStates}
         onSelect={(tabId) => update(selectTab(state, tabId))}

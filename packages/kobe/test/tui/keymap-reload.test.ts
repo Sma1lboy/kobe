@@ -33,6 +33,8 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("focus.next")?.prefixKeys).toEqual(["l"])
     expect(findBinding("inbox.show")?.keys).toEqual([])
     expect(findBinding("inbox.show")?.prefixKeys).toEqual(["i"])
+    expect(findBinding("chat.subagent.delegate")?.keys).toEqual([])
+    expect(findBinding("chat.subagent.delegate")?.prefixKeys).toEqual(["@"])
   })
 
   test("non-ChatPane bindings retain their direct Ctrl chords", () => {
@@ -47,11 +49,6 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("terminal.scroll-up")?.prefixKeys).toBeUndefined()
     expect(findBinding("terminal.scroll-down")?.keys).toEqual(["ctrl+pagedown"])
     expect(findBinding("terminal.scroll-down")?.prefixKeys).toBeUndefined()
-  })
-
-  test("Agent Channel connect uses the owner-selected @ prefix stroke", () => {
-    expect(findBinding("chat.channel.connect")?.keys).toEqual([])
-    expect(findBinding("chat.channel.connect")?.prefixKeys).toEqual(["@"])
   })
 
   test("restores a row's chords + hint after an override", () => {

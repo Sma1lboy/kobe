@@ -13,7 +13,6 @@
  */
 
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import type { RepoIssues } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import {
@@ -32,20 +31,19 @@ import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
 import { performInit } from "./remote-orchestrator-connect.ts"
 import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
-import {
-  type AttentionInboxItem,
-  type DaemonConnectionState,
-  type EngineLifecycleMap,
-  type EngineTabStateMap,
-  type OrchestratorSignals,
-  type RecentTaskEvent,
-  type RemoteOrchestratorOptions,
-  type TaskEngineState,
-  type TaskJobState,
-  type TranscriptActivityMap,
-  type UsageSnapshotMap,
-  type WorktreeChangesMap,
-  shouldLogReconnectAttempt,
+import type {
+  AttentionInboxItem,
+  DaemonConnectionState,
+  EngineLifecycleMap,
+  EngineTabStateMap,
+  OrchestratorSignals,
+  RecentTaskEvent,
+  RemoteOrchestratorOptions,
+  TaskEngineState,
+  TaskJobState,
+  TranscriptActivityMap,
+  UsageSnapshotMap,
+  WorktreeChangesMap,
 } from "./remote-orchestrator-payloads.ts"
 import {
   type ReadSignals,
@@ -70,6 +68,7 @@ import {
   usageSnapshotSignalOp,
   worktreeChangesSignalOp,
 } from "./remote-orchestrator-reads.ts"
+import { RemoteReconnectController } from "./remote-orchestrator-reconnect.ts"
 import {
   adoptWorktreeOp,
   automationRunsOp,
@@ -96,6 +95,7 @@ import {
   setArchivedOp,
   setAutomationEnabledOp,
   setBranchOp,
+  setDelegationOp,
   setPinnedOp,
   setStatusOp,
   setTitleOp,
@@ -150,15 +150,12 @@ export class RemoteOrchestrator {
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
   private readonly keybindingsRevAcc = createStateCell<number | null>(null)
   private readonly connectionStateAcc = createStateCell<DaemonConnectionState>("online")
-  private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
   /** Per-channel subscribe filter; `undefined` = subscribe to all channels. */
   private readonly channels?: readonly ChannelName[]
   /** True when the filter excludes `task.snapshot` — skip hello task hydration. */
   private readonly subscribesTasks: boolean
-  /** One shared retry task: repeated close events and an explicit reconnect
-   *  join the same loop instead of racing two hello/subscribe handshakes. */
-  private reconnectTask: Promise<void> | null = null
+  private readonly reconnect: RemoteReconnectController
   /** Deps bag for `performInit`/`handleOrchestratorEvent` — see file header. */
   private readonly signals: OrchestratorSignals
   /** Deps bag for the read-accessor delegates — see remote-orchestrator-reads.ts. */
@@ -168,7 +165,6 @@ export class RemoteOrchestrator {
     private readonly client: KobeDaemonClient,
     options: RemoteOrchestratorOptions = {},
   ) {
-    this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
     this.role = options.role ?? "pane"
     this.channels = options.channels
     this.subscribesTasks = !options.channels || options.channels.includes("task.snapshot")
@@ -222,71 +218,14 @@ export class RemoteOrchestrator {
       connectionStateAcc: this.connectionStateAcc,
     }
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
-    // Socket drop flips us to `disconnected`. What happens next depends on
-    // the role:
-    //   - gui:  AUTO-RECOVER (spawning). This is the front-end that owns daemon
-    //     availability, so it silently ensures a daemon is running, reconnects,
-    //     and re-subscribes until the current snapshot has been replayed.
-    //   - pane: AUTO-RECONNECT (non-spawning). An in-tmux pane DOES routinely
-    //     lose its daemon — the refcounted lazy-shutdown idle-stops the daemon
-    //     3s after the last gui quits, while the pane persists with the tmux
-    //     session. Without reconnect the pane's task list froze forever at the
-    //     last snapshot (the create/delete sync drift). The loop reconnects to
-    //     the SAME socket when a daemon returns and re-subscribes → the bus
-    //     replays the current task.snapshot → the pane re-syncs. It must NOT
-    //     spawn a daemon (that would resurrect an idle-stopped daemon and break
-    //     lazy-shutdown — panes alone never hold it alive), so it only retries
-    //     a plain connect, never `ensureReachable`.
-    this.client.onLifecycle("close", () => {
-      this.connectionStateAcc.set("disconnected")
-      const spawnDaemon = this.role === "gui"
-      logClient(
-        "orch",
-        spawnDaemon
-          ? "daemon socket closed — starting silent spawning reconnect loop"
-          : "daemon socket closed — starting non-spawning reconnect loop",
-      )
-      void this.reconnectLoop(spawnDaemon)
+    this.reconnect = new RemoteReconnectController({
+      client: this.client,
+      role: this.role,
+      ensureReachable: options.ensureReachable ?? ensureDaemonReachable,
+      init: () => this.init(),
+      setDisconnected: () => this.connectionStateAcc.set("disconnected"),
     })
-  }
-
-  /**
-   * Start or join the role-appropriate reconnect loop. A GUI may spawn the
-   * daemon; a pane only retries the existing socket so helper panes never
-   * defeat daemon lazy-shutdown. On success subscribe replay rehydrates every
-   * signal, including the current task snapshot.
-   */
-  private reconnectLoop(spawnDaemon: boolean): Promise<void> {
-    if (this.reconnectTask) return this.reconnectTask
-    const task = this.runReconnectLoop(spawnDaemon)
-    this.reconnectTask = task
-    const clear = (): void => {
-      if (this.reconnectTask === task) this.reconnectTask = null
-    }
-    task.then(clear, clear)
-    return task
-  }
-
-  private async runReconnectLoop(spawnDaemon: boolean): Promise<void> {
-    let delayMs = spawnDaemon ? 0 : 500
-    let attempt = 0
-    while (!this.client.isDisposed) {
-      if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
-      if (this.client.isDisposed) break
-      attempt++
-      try {
-        if (spawnDaemon) await this.ensureReachable()
-        await this.init()
-        logClient("orch", `reconnected and re-subscribed after ${attempt} attempt(s) — task list re-synced`)
-        return
-      } catch (err) {
-        // Pane failures are expected while no GUI owns a daemon; GUI failures
-        // mean ensure/start itself is temporarily failing. Both stay silent in
-        // the UI and use the same bounded forensic logging policy.
-        if (shouldLogReconnectAttempt(attempt)) logClientError("orch-reconnect", err)
-        delayMs = delayMs === 0 ? 500 : Math.min(delayMs * 2, 3000)
-      }
-    }
+    this.client.onLifecycle("close", () => this.reconnect.onClose())
   }
 
   /** Open the daemon socket, hello, subscribe to the task snapshot stream. */
@@ -304,8 +243,7 @@ export class RemoteOrchestrator {
 
   /** Explicitly force the same spawning recovery used by a GUI socket drop. */
   async manualReconnect(): Promise<void> {
-    this.client.forceDisconnect()
-    await this.reconnectLoop(true)
+    await this.reconnect.manualReconnect()
   }
 
   dispose(): void {
@@ -429,6 +367,10 @@ export class RemoteOrchestrator {
 
   setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
     return setVendorOp(this.client, id, vendor)
+  }
+
+  setDelegation(subagentId: TaskId | string, primaryId: TaskId | string): Promise<void> {
+    return setDelegationOp(this.client, subagentId, primaryId)
   }
 
   setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {

@@ -93,18 +93,6 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+a c" },
   },
   {
-    // Owner decision 2026-08-06: prefix + `@` means "address another
-    // task". It opens a task picker, forks both native chats once, then
-    // stores only the endpoint binding under CHANNELS.
-    id: "chat.channel.connect",
-    scope: "workspace",
-    keys: [],
-    prefixKeys: ["@"],
-    category: "Workspace",
-    description: "Connect this chat to another task as an Agent Channel",
-    hint: { keys: "ctrl+a @" },
-  },
-  {
     // Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires
@@ -124,6 +112,18 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
     hint: { keys: "ctrl+f" },
+  },
+  {
+    // Owner-confirmed 2026-08-06: prefix+@ starts a directed delegation
+    // from the focused primary Task to one selected existing Task. It does
+    // not fork either conversation or create a shared Channel surface.
+    id: "chat.subagent.delegate",
+    scope: "workspace",
+    keys: [],
+    prefixKeys: ["@"],
+    category: "Workspace",
+    description: "Link an existing task as this task's subagent",
+    hint: { keys: "ctrl+a @" },
   },
   {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing

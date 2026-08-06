@@ -24,8 +24,8 @@ Default prefix actions:
 | Sequence | Action |
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task (new worktree, branched off THIS task's branch) |
+| `ctrl+a`, `@` | Choose an existing Task as this Task's subagent. Owner decision (2026-08-06): directed primary → subagent link; no fork and no Channel UI. |
 | `ctrl+a`, `c` | Continue this chat in a new tab of the SAME worktree — picks the engine: same one forks the session natively, a different one gets a transcript handoff (claude ⇄ codex, see [ENGINES.md](./ENGINES.md)). PROPOSED chord, awaiting owner sign-off: `c` was freed when Kanban moved to a digit, mnemonic "continue" |
-| `ctrl+a`, `@` | Connect the current chat to another Task. Opens a Task picker, forks both native chats once, and opens their durable Agent Channel. Owner picked `@` on 2026-08-06 because the gesture is addressing another task, while a prefix keeps it out of engine-native typing. |
 | `ctrl+a`, `i` | Open the Inbox dialog |
 | `ctrl+a`, `y` | Resume a prior engine Session |
 | `ctrl+a`, `h` | Cycle focus backward (Files → Workspace → Sidebar) |

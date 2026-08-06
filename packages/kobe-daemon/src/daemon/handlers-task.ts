@@ -91,6 +91,15 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     },
   },
   {
+    name: "task.setDelegation",
+    async handle(payload, ctx) {
+      const subagentTaskId = requireString(payload, "subagentTaskId")
+      const primaryTaskId = requireString(payload, "primaryTaskId")
+      await ctx.orch.setDelegation(subagentTaskId, primaryTaskId)
+      return {}
+    },
+  },
+  {
     name: "task.delete",
     web: true,
     async handle(payload, ctx) {

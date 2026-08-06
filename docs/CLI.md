@@ -356,6 +356,10 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 - `send [--task-id ID] --prompt TEXT`: paste a follow-up into a task's
   running engine (one full turn). Defaults to the active task.
+  Directed delegation created by the TUI's `prefix+@` always uses an explicit
+  id: primary → subagent for a bounded request, then subagent → primary for one
+  structured result. The installed Kobe skill defines the v1 envelope and
+  prevents this from becoming an unbounded chat loop.
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see

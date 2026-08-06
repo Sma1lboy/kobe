@@ -120,6 +120,20 @@ export interface TaskQuotaResumeState {
 }
 
 /**
+ * A directed primary -> subagent relationship between two existing Tasks.
+ *
+ * The link lives on the subagent task, so there is one durable owner and no
+ * two-sided metadata to reconcile. A primary may have many subagents; one
+ * subagent has at most one direct primary. Conversation text remains in the
+ * two engines' native sessions.
+ */
+export interface TaskDelegationLink {
+  readonly primaryTaskId: string
+  readonly protocolVersion: 1
+  readonly linkedAt: string
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of {@link TaskIndex}.
  *
  * Field invariants:
@@ -191,6 +205,8 @@ export interface Task {
    * additive: single tasks never get one.
    */
   readonly groupId?: string
+  /** Directed link to the Task that owns this Task as a subagent. */
+  readonly delegation?: TaskDelegationLink
   /**
    * The worker's self-reported terminal outcome, when one was filed
    * (`kobe api report`). Worker report, not kobe-verified — see

@@ -28,6 +28,19 @@ the task's live sessions stop and the sidebar moves it to Archives. kobe
 never deletes a worktree implicitly, not on archive, not on `done`. You
 remove worktrees explicitly or not at all.
 
+### Primary and subagent Tasks
+
+`prefix+@` links the focused Task to one existing Task as a subagent. The
+relationship is directed: the focused Task is the primary and remains the
+user-facing coordinator; the selected Task is a worker. Kobe persists the
+primary Task id on the subagent record, but it does not fork either engine
+session or create a shared Channel transcript.
+
+The primary and subagent communicate in full engine turns through explicit
+`kobe api send --task-id …` calls. The injected delegation bootstrap and the
+installed Kobe skill supply both ids and the request/reply envelope. Each Task
+continues to own its own worktree and native engine history.
+
 ## Worktree and branch
 
 Every Task gets its own git worktree, at
@@ -183,9 +196,6 @@ for the Issues board, or check in on long-running tasks without a terminal.
   1 per task, never auto-deleted.
 - **Chat tab**: one engine session inside a task, with its own
   `sessionId` and transcript. N per task.
-- **Agent Channel**: a durable pair of forked Chat Tabs from two different
-  Tasks, shown side by side. Stores endpoint references, never copied chat
-  history; creation forks once and reopening reuses the same endpoints.
 - **Engine**: an interactive coding-agent CLI (`claude`, `codex`,
   `copilot`, `kimi`, or a command you registered) that kobe runs as the
   task's execution backend.

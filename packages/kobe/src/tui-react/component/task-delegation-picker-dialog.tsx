@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-/** Task picker opened by `ctrl+a`, `@` from a focused engine chat. */
+/** Task picker opened by `ctrl+a`, `@` from the primary task's engine pane. */
 
 import { engineDisplayName } from "@/engine/interactive-command"
 import type { Task } from "@/types/task"
@@ -13,8 +13,8 @@ import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 
 const MAX_ROWS = 9
 
-export function TaskChannelPickerView(props: {
-  source: Task
+export function TaskDelegationPickerView(props: {
+  primary: Task
   tasks: readonly Task[]
   onSubmit: (task: Task) => void
 }) {
@@ -23,7 +23,7 @@ export function TaskChannelPickerView(props: {
   const t = useT()
   const [cursor, setCursor] = useState(0)
   const choices = props.tasks.filter(
-    (task) => task.id !== props.source.id && !task.archived && task.worktreePath !== "",
+    (task) => task.id !== props.primary.id && !task.archived && task.worktreePath !== "",
   )
   const clamp = (next: number): number => Math.max(0, Math.min(choices.length - 1, next))
   const start = Math.max(0, Math.min(cursor - Math.floor(MAX_ROWS / 2), choices.length - MAX_ROWS))
@@ -54,13 +54,13 @@ export function TaskChannelPickerView(props: {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          {t("channels.picker.title")}
+          {t("delegation.picker.title")}
         </text>
         <text fg={theme.textMuted}>esc</text>
       </box>
-      <text fg={theme.textMuted}>{t("channels.picker.source", { task: props.source.title })}</text>
+      <text fg={theme.textMuted}>{t("delegation.picker.primary", { task: props.primary.title })}</text>
       {choices.length === 0 ? (
-        <text fg={theme.textMuted}>{t("channels.picker.empty")}</text>
+        <text fg={theme.textMuted}>{t("delegation.picker.empty")}</text>
       ) : (
         <box flexDirection="column" gap={0}>
           {visible.map((task, index) => {
@@ -94,17 +94,17 @@ export function TaskChannelPickerView(props: {
           })}
         </box>
       )}
-      <text fg={theme.textMuted}>{t("channels.picker.hint")}</text>
+      <text fg={theme.textMuted}>{t("delegation.picker.hint")}</text>
     </box>
   )
 }
 
-function show(dialog: DialogContext, source: Task, tasks: readonly Task[]): Promise<Task | undefined> {
+function show(dialog: DialogContext, primary: Task, tasks: readonly Task[]): Promise<Task | undefined> {
   return showDialog<Task>(
     dialog,
-    (resolve) => <TaskChannelPickerView source={source} tasks={tasks} onSubmit={(task) => resolve(task)} />,
+    (resolve) => <TaskDelegationPickerView primary={primary} tasks={tasks} onSubmit={(task) => resolve(task)} />,
     { size: "medium" },
   )
 }
 
-export const TaskChannelPickerDialog = { show }
+export const TaskDelegationPickerDialog = { show }
