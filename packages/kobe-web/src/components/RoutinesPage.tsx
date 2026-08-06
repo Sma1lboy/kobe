@@ -29,6 +29,60 @@ function repoBase(repo: string): string {
   return trimmed.slice(trimmed.lastIndexOf("/") + 1)
 }
 
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+/** Everyday-language description of a five-field cron; null = unreadable. */
+export function describeCron(expr: string): string | null {
+  const f = expr.trim().split(/\s+/)
+  if (f.length !== 5) return null
+  const [min, hour, dom, mon, dow] = f as [string, string, string, string, string]
+  const hhmm = (): string | null => {
+    if (!/^\d+$/.test(min) || !/^\d+$/.test(hour)) return null
+    return `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`
+  }
+  const days = (): string | null => {
+    if (!/^[0-6](,[0-6])*$/.test(dow)) return null
+    return dow.split(",").map((d) => DOW[Number(d)]).join("/")
+  }
+  const everyN = min.match(/^\*\/(\d+)$/)
+  if (everyN && hour === "*" && dom === "*" && mon === "*" && dow === "*")
+    return `every ${everyN[1]} min`
+  if (/^\d+$/.test(min) && hour === "*" && dom === "*" && mon === "*" && dow === "*")
+    return `hourly at :${min.padStart(2, "0")}`
+  const t = hhmm()
+  if (t && dom === "*" && mon === "*") {
+    if (dow === "*") return `daily at ${t}`
+    if (dow === "1-5") return `weekdays at ${t}`
+    const d = days()
+    if (d) return `${d} at ${t}`
+  }
+  if (t && /^\d+$/.test(dom) && mon === "*" && dow === "*")
+    return `monthly on day ${dom} at ${t}`
+  return null
+}
+
+/** Everyday local time for the next firing ("today 09:00" style). */
+function nextRunLabel(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const now = new Date()
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const sameDay = d.toDateString() === now.toDateString()
+  if (sameDay) return `today ${time}`
+  const tomorrow = new Date(now)
+  tomorrow.setDate(now.getDate() + 1)
+  if (d.toDateString() === tomorrow.toDateString()) return `tomorrow ${time}`
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`
+}
+
+const PRESETS: ReadonlyArray<{ label: string; expr: string }> = [
+  { label: "every 5 min", expr: "*/5 * * * *" },
+  { label: "hourly", expr: "0 * * * *" },
+  { label: "daily 09:00", expr: "0 9 * * *" },
+  { label: "weekdays 09:00", expr: "0 9 * * 1-5" },
+  { label: "Mon 09:00", expr: "0 9 * * 1" },
+]
+
 export function RoutinesPage({
   embedded = false,
   initialRepo,
@@ -122,7 +176,7 @@ export function RoutinesPage({
           </div>
         )}
 
-        <div className="flex max-w-3xl flex-col gap-2">
+        <div className="flex flex-col gap-2">
           {/* Persistent capture slot — same grammar as the kanban "+" tile. */}
           {creating ? (
             <div className="fade-up flex flex-col gap-2 border border-line bg-surface p-3">
@@ -140,6 +194,29 @@ export function RoutinesPage({
                   title="Five-field cron, daemon-host local time"
                   className="h-7 w-32 border border-line bg-bg px-2 font-mono text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
                 />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Live everyday-language readout of the cron field. */}
+                <span
+                  className={`mr-2 text-[11px] ${describeCron(schedule) ? "text-kobe-green" : "text-kobe-yellow"}`}
+                >
+                  {describeCron(schedule) ??
+                    "custom cron — check the five fields"}
+                </span>
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset.expr}
+                    type="button"
+                    onClick={() => setSchedule(preset.expr)}
+                    className={`border px-1.5 py-0.5 text-[10px] transition-colors ${
+                      schedule.trim() === preset.expr
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-line text-subtle hover:border-primary hover:text-fg"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
               <textarea
                 value={prompt}
@@ -232,8 +309,12 @@ export function RoutinesPage({
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="truncate text-[13px] text-fg">{a.name}</span>
-                  <span className="shrink-0 font-mono text-[11px] text-kobe-blue">
-                    {a.schedule}
+                  {/* Everyday wording first; the raw cron lives in the tooltip. */}
+                  <span
+                    title={a.schedule}
+                    className="shrink-0 font-mono text-[11px] text-kobe-blue"
+                  >
+                    {describeCron(a.schedule) ?? a.schedule}
                   </span>
                   <span className="shrink-0 text-[11px] text-subtle">
                     {repoBase(a.repo)}
@@ -242,7 +323,7 @@ export function RoutinesPage({
                 </div>
                 <div className="truncate text-[11px] text-muted">{a.prompt}</div>
                 <div className="text-[10px] text-subtle">
-                  next {relativeTime(a.nextRunAt)}
+                  {a.enabled ? `next ${nextRunLabel(a.nextRunAt)}` : "paused"}
                   {a.lastRunAt ? ` · last ${relativeTime(a.lastRunAt)}` : ""}
                 </div>
               </div>
