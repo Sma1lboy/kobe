@@ -160,9 +160,9 @@ function BootLine() {
 
 type EventKind = "response" | "user" | "activity" | "system"
 
-/** A single stop on the transcript's causal rail. The rail is deliberately
- * renderer-owned: engines provide normalized blocks; this component only
- * gives those blocks a consistent visual order. */
+/** One transcript event. The causal rail + per-event dots were dropped
+ * (2026-08-07): the Agent Trace pane owns the structured timeline, so the
+ * body reads as a plain conversation — rhythm comes from spacing alone. */
 function TranscriptEvent({
   kind,
   children,
@@ -172,8 +172,7 @@ function TranscriptEvent({
 }) {
   return (
     <div className={`transcript-event transcript-event--${kind}`}>
-      <span className="transcript-event__node" aria-hidden="true" />
-      <div className="transcript-event__content">{children}</div>
+      {children}
     </div>
   )
 }

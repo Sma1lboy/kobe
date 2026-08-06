@@ -130,59 +130,11 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-pop-in 0.18s ease-out both;
 }
 
-/* Transcript signal spine — one visual grammar for parsed engine events. */
+/* Transcript events — a plain conversation column. The structured timeline
+   lives in the Agent Trace pane; here only spacing separates events. */
 .transcript-event {
-  position: relative;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  column-gap: 10px;
   padding: 5px 0;
-}
-
-.transcript-event::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 8px;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--color-line-active) 42%, transparent),
-    color-mix(in srgb, var(--color-primary) 32%, transparent),
-    color-mix(in srgb, var(--color-line-active) 42%, transparent)
-  );
-  content: "";
-}
-
-.transcript-event__node {
-  z-index: 1;
-  grid-column: 1;
-  width: 7px;
-  height: 7px;
-  margin: 7px auto 0;
-  border: 1px solid var(--color-line-active);
-  background: var(--color-bg);
-  transform: rotate(45deg);
-}
-
-.transcript-event__content {
   min-width: 0;
-  grid-column: 2;
-}
-
-.transcript-event--user .transcript-event__node {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-}
-
-.transcript-event--activity .transcript-event__node {
-  border-radius: 50%;
-  border-color: var(--color-kobe-blue);
-  background: var(--color-kobe-blue);
-}
-
-.transcript-event--system .transcript-event__node {
-  border-color: var(--color-kobe-yellow);
 }
 
 .activity-card__pulse {
