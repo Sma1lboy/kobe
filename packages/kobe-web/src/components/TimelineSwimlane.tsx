@@ -42,7 +42,7 @@ export function TimelineSwimlane({
           <GitBranch size={15} strokeWidth={1.8} />
         </div>
         <div className="min-w-0">
-          <h2 className="text-[13px] font-semibold text-fg">Agent mindset</h2>
+          <h2 className="text-[13px] font-semibold text-fg">Agent trace</h2>
           <div className="font-mono text-[10px] text-subtle">
             {engineLabel} · {model.turns.length}{" "}
             {model.turns.length === 1 ? "turn" : "turns"}
@@ -51,13 +51,13 @@ export function TimelineSwimlane({
         </div>
         <div className="ml-auto flex items-center gap-2 font-mono text-[10px] text-subtle">
           <span className="size-1.5 rounded-full bg-kobe-blue" />
-          Visible thoughts · tool branches
+          Visible commentary · causal provenance · tool branches
         </div>
         <button
           type="button"
           onClick={onClose}
           className="ml-3 grid size-8 place-items-center border border-line text-subtle hover:border-line-active hover:text-fg"
-          aria-label="Close mindset map"
+          aria-label="Close agent trace"
           title="Close"
         >
           <X size={14} />
@@ -96,7 +96,7 @@ export function TimelineSwimlane({
                 </div>
                 <div className="min-w-0 p-4">
                   <ExecutionGrid
-                    items={turn.items}
+                    items={turn.nodes}
                     status={turn.status}
                     now={now}
                     className="execution-node-grid--wide"

@@ -26,7 +26,7 @@
  * Must stay importable from vitest and MUST NOT import from `src/tui/`.
  */
 
-import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage, Message } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage, EngineTrace, Message } from "@/types/engine"
 import { type VendorId, isBuiltinVendor } from "@/types/vendor"
 import {
   type ClaudeAccount,
@@ -50,6 +50,7 @@ import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
+import { traceFromHistory } from "./trace-from-history.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -67,6 +68,8 @@ export interface EngineHistoryReader {
   listSessionIdsForWorktree(worktree: string): Promise<readonly string[]>
   /** Neutral messages for one session id; `[]` when not found. */
   readHistory(sessionId: string): Promise<Message[]>
+  /** Engine-normalized execution trace for GUI consumers. */
+  readTrace?(sessionId: string): Promise<EngineTrace>
   /**
    * Absolute path of the on-disk transcript for `sessionId`, or null when
    * the engine has no file to point at. Not for kobe to PARSE (that's
@@ -190,6 +193,9 @@ const claudeHistoryReader: EngineHistoryReader = {
     return [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   },
   readHistory: (sessionId) => claudeHistory.readHistory(sessionId),
+  async readTrace(sessionId) {
+    return traceFromHistory(sessionId, await claudeHistory.readHistory(sessionId))
+  },
   async transcriptPath(sessionId, worktree) {
     const files = await claudeHistory.listSessionFilesForWorktree(worktree)
     return files.find((f) => f.sessionId === sessionId)?.path ?? null
@@ -201,6 +207,7 @@ const claudeHistoryReader: EngineHistoryReader = {
 const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
+  readTrace: (sessionId) => codexHistory.readTrace(sessionId),
   // The rollout filename embeds the UUID; the store is date-keyed, not
   // worktree-keyed, so the worktree argument is unused here.
   transcriptPath: async (sessionId) => (await codexHistory.findRolloutFile(sessionId)) ?? null,
@@ -210,6 +217,9 @@ const codexHistoryReader: EngineHistoryReader = {
 const copilotHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => copilotHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => copilotHistory.readHistory(sessionId),
+  async readTrace(sessionId) {
+    return traceFromHistory(sessionId, await copilotHistory.readHistory(sessionId))
+  },
   // Copilot's store layout isn't mapped to a per-session file kobe can name.
   transcriptPath: async () => null,
   latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),

@@ -29,9 +29,10 @@
 import { readdir, stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
-import type { EngineHistory, Message } from "@/types/engine"
+import type { EngineHistory, EngineTrace, Message } from "@/types/engine"
 import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
 import { parseRolloutRaw } from "./history-parse"
+import { parseCodexTrace } from "./trace-parse"
 
 export { deriveCodexUsageMetrics, parseJsonl } from "./history-parse"
 
@@ -297,6 +298,17 @@ export async function readHistoryWithMetrics(
     return { messages: [] }
   }
   return parseRolloutRaw(file, raw, sessionId)
+}
+
+/** Engine-owned execution trace retaining Codex turn/item/call identities. */
+export async function readTrace(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<EngineTrace> {
+  const file = await findRolloutFile(sessionId, deps)
+  if (!file) return { sessionId, turns: [] }
+  try {
+    return parseCodexTrace(await deps.readFile(file), sessionId)
+  } catch {
+    return { sessionId, turns: [] }
+  }
 }
 
 export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<void> {

@@ -391,7 +391,7 @@ export function ChatShell() {
   const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
   const vendor = vendorTab?.vendor
 
-  // The mindset map is the GUI-native execution inspector. It starts open so
+  // Agent Trace is the GUI-native execution inspector. It starts open so
   // the two-level thought/tool model is visible without introducing a chord.
   const [showTimeline, setShowTimeline] = useState(true)
 
@@ -440,8 +440,8 @@ export function ChatShell() {
                     ? "border-line-active bg-inset text-fg"
                     : "border-line text-subtle hover:text-fg"
                 }`}
-                title="Toggle mindset map"
-                aria-label="Toggle mindset map"
+                title="Toggle agent trace"
+                aria-label="Toggle agent trace"
               >
                 <PanelRight size={12} strokeWidth={2} />
               </button>

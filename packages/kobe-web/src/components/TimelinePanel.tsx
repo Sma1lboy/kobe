@@ -64,7 +64,7 @@ export function TimelinePanel({
   }, [model.turns])
 
   const summary = useMemo(() => {
-    const items = model.turns.reduce((sum, turn) => sum + turn.items.length, 0)
+    const items = model.turns.reduce((sum, turn) => sum + turn.nodes.length, 0)
     const turnLabel = model.turns.length === 1 ? "turn" : "turns"
     const eventLabel = items === 1 ? "event" : "events"
     return `${model.turns.length} ${turnLabel} · ${items} ${eventLabel}`
@@ -84,7 +84,7 @@ export function TimelinePanel({
         <GitBranch size={13} strokeWidth={1.8} className="text-primary" />
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase tracking-[0.13em] text-muted">
-            Mindset map
+            Agent trace
           </div>
           <div className="truncate font-mono text-[9px] text-subtle">
             {engineLabel} · {summary}
@@ -94,8 +94,8 @@ export function TimelinePanel({
           type="button"
           onClick={onExpand}
           className="grid size-6 place-items-center border border-line text-subtle transition-colors hover:border-line-active hover:text-fg"
-          aria-label="Expand mindset map"
-          title="Open mindset map"
+          aria-label="Expand agent trace"
+          title="Open agent trace"
         >
           <Maximize2 size={11} />
         </button>
@@ -128,7 +128,7 @@ export function TimelinePanel({
           </div>
         ) : error && model.turns.length === 0 ? (
           <div className="border-l-2 border-kobe-red pl-3 text-[11px] leading-relaxed text-muted">
-            Mindset map unavailable
+            Agent trace unavailable
             <div className="mt-1 font-mono text-[9px] text-subtle">{error}</div>
           </div>
         ) : model.turns.length === 0 ? (
@@ -157,7 +157,7 @@ export function TimelinePanel({
                           durationMs(turn.startedAt, turn.endedAt, now),
                         )}
                       </span>
-                      <span>{turn.items.length} blocks</span>
+                      <span>{turn.nodes.length} blocks</span>
                     </div>
                   </div>
                   <span
@@ -168,7 +168,7 @@ export function TimelinePanel({
                   </span>
                 </div>
                 <ExecutionGrid
-                  items={turn.items}
+                  items={turn.nodes}
                   status={turn.status}
                   now={now}
                 />

@@ -30,6 +30,14 @@
 import type { ContentBlock } from "./content"
 import type { VendorId } from "./vendor"
 export type { ContentBlock } from "./content"
+export type {
+  EngineTrace,
+  EngineTraceNode,
+  EngineTraceNodeKind,
+  EngineTraceParentBasis,
+  EngineTraceStatus,
+  EngineTraceTurn,
+} from "./engine-trace"
 
 /**
  * One selectable model in the composer's model picker. `id` is what the

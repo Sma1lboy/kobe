@@ -1,10 +1,11 @@
-/** Live timeline data: settled turn/items come from the engine-owned history
- * endpoint; daemon activity overlays an immediate live head while history is
- * still being persisted. */
+/** Live timeline data: settled nodes come from the engine-owned trace endpoint;
+ * daemon activity overlays an immediate live head while a trace append is
+ * still becoming visible. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { fetchMessages, fetchSessions, type HistoryMessage } from "./history.ts"
-import { buildTimeline, type TimelineModel, withLiveState } from "./timeline.ts"
+import { fetchSessions } from "./history.ts"
+import { type TimelineModel, withLiveState } from "./timeline.ts"
+import { fetchTrace } from "./trace.ts"
 import type { EngineState } from "./types.ts"
 
 const POLL_MS = 1_500
@@ -24,7 +25,10 @@ export function useTimelineData({
   vendor: string
   engineState: EngineState | undefined
 }): TimelineData {
-  const [messages, setMessages] = useState<HistoryMessage[]>([])
+  const [trace, setTrace] = useState<TimelineModel>({
+    sessionId: engineState?.sessionId ?? "",
+    turns: [],
+  })
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const mtimeRef = useRef(-1)
@@ -44,9 +48,11 @@ export function useTimelineData({
           preferredSessionId && sessions.sessions.includes(preferredSessionId)
             ? preferredSessionId
             : latest
-        const next = target ? await fetchMessages(vendor, target) : []
+        const next = target
+          ? await fetchTrace(vendor, target)
+          : { sessionId: "", turns: [] }
         if (seq !== seqRef.current) return
-        setMessages(next)
+        setTrace(next)
         setError(null)
       } catch (err) {
         if (seq === seqRef.current)
@@ -61,7 +67,7 @@ export function useTimelineData({
   useEffect(() => {
     mtimeRef.current = -1
     seqRef.current += 1
-    setMessages([])
+    setTrace({ sessionId: preferredSessionId ?? "", turns: [] })
     setLoaded(false)
     setError(null)
     void refresh(true)
@@ -69,16 +75,11 @@ export function useTimelineData({
       if (!document.hidden) void refresh()
     }, POLL_MS)
     return () => window.clearInterval(timer)
-  }, [refresh])
+  }, [refresh, preferredSessionId])
 
   const model = useMemo(
-    () =>
-      withLiveState(
-        buildTimeline(messages),
-        engineState?.state,
-        engineState?.at ?? 0,
-      ),
-    [messages, engineState?.state, engineState?.at],
+    () => withLiveState(trace, engineState?.state, engineState?.at ?? 0),
+    [trace, engineState?.state, engineState?.at],
   )
 
   return { model, loaded, error }

@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it } from "vitest"
 import { ExecutionGrid } from "../src/components/ExecutionGrid.tsx"
 import type { TimelineItem } from "../src/lib/timeline.ts"
 
-const thought: TimelineItem = {
-  id: "thought-1",
+const commentary: TimelineItem = {
+  id: "commentary-1",
+  turnId: "turn-1",
   parentId: null,
-  kind: "thought",
+  parentBasis: "none",
+  kind: "commentary",
   status: "success",
   title: "I will inspect the focused test first.",
   summary: "",
@@ -21,7 +23,9 @@ const thought: TimelineItem = {
 
 const tool: TimelineItem = {
   id: "tool-1",
-  parentId: thought.id,
+  turnId: "turn-1",
+  parentId: commentary.id,
+  parentBasis: "temporal",
   kind: "tool",
   status: "success",
   title: "exec",
@@ -35,17 +39,17 @@ const tool: TimelineItem = {
 describe("ExecutionGrid", () => {
   afterEach(cleanup)
 
-  it("opens full thought and tool details without flattening their relationship", () => {
+  it("opens full commentary and tool details without overstating their relationship", () => {
     render(
       <ExecutionGrid
-        items={[thought, tool]}
+        items={[commentary, tool]}
         status="success"
         now={2_000}
       />,
     )
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Open Thought details/ }),
+      screen.getByRole("button", { name: /Open Commentary details/ }),
     )
     expect(screen.getByRole("dialog")).toBeTruthy()
     expect(screen.getByText("Visible commentary")).toBeTruthy()
@@ -60,7 +64,8 @@ describe("ExecutionGrid", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Open Tool details/ }))
     expect(screen.getByRole("dialog")).toBeTruthy()
-    expect(screen.getByText("Triggered by")).toBeTruthy()
+    expect(screen.getByText("Observed after")).toBeTruthy()
+    expect(screen.getByText("temporal link")).toBeTruthy()
     expect(screen.getByText("Input")).toBeTruthy()
     expect(screen.getByText("Result")).toBeTruthy()
     expect(

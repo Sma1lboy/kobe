@@ -24,19 +24,21 @@ function statusClasses(status: TimelineStatus): string {
 }
 
 function kindLabel(item: TimelineItem): string {
-  if (item.kind === "thought") return "Thought"
+  if (item.kind === "commentary") return "Commentary"
   if (item.kind === "reasoning") return "Reason"
   if (item.kind === "change") return "Change"
-  if (item.kind === "response") return "Result"
+  if (item.kind === "answer") return "Result"
+  if (item.kind === "subagent") return "Subagent"
+  if (item.kind === "compaction") return "Compact"
   return "Tool"
 }
 
 function ItemIcon({ item }: { item: TimelineItem }) {
   const props = { size: 12, strokeWidth: 1.8 }
-  if (item.kind === "thought" || item.kind === "reasoning")
+  if (item.kind === "commentary" || item.kind === "reasoning")
     return <Brain {...props} />
   if (item.kind === "change") return <FilePenLine {...props} />
-  if (item.kind === "response") return <MessageSquare {...props} />
+  if (item.kind === "answer") return <MessageSquare {...props} />
   return <TerminalSquare {...props} />
 }
 
@@ -155,10 +157,21 @@ function ExecutionDetail({
           </div>
           {parent && (
             <section>
-              <div className="mb-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-subtle">
-                Triggered by
+              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-subtle">
+                <span>
+                  {item.parentBasis === "explicit"
+                    ? "Triggered by"
+                    : "Observed after"}
+                </span>
+                <span className="font-normal tracking-normal text-subtle/70">
+                  {item.parentBasis === "explicit"
+                    ? "source link"
+                    : "temporal link"}
+                </span>
               </div>
-              <div className="border-l-2 border-primary bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted">
+              <div
+                className={`border-l-2 bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted ${item.parentBasis === "explicit" ? "border-primary" : "border-line-active border-dashed"}`}
+              >
                 {parent.detail}
               </div>
             </section>
@@ -167,9 +180,11 @@ function ExecutionDetail({
             label={
               isTool
                 ? "Input"
-                : item.kind === "response"
+                : item.kind === "answer"
                   ? "Final answer"
-                  : "Visible commentary"
+                  : item.kind === "reasoning"
+                    ? "Reasoning summary"
+                    : "Visible commentary"
             }
             text={item.detail}
           />
@@ -235,8 +250,14 @@ export function ExecutionGrid({
       >
         {roots.map((item) => {
           const branch = children.get(item.id) ?? []
+          const temporalBranch =
+            branch.length > 0 &&
+            branch.every((child) => child.parentBasis === "temporal")
           return (
-            <div key={item.id} className="execution-branch relative">
+            <div
+              key={item.id}
+              className={`execution-branch relative ${temporalBranch ? "execution-branch--temporal" : ""}`}
+            >
               <ExecutionNode
                 item={item}
                 now={now}
@@ -253,7 +274,7 @@ export function ExecutionGrid({
                     {branch.map((child) => (
                       <div
                         key={child.id}
-                        className="execution-branch__child relative"
+                        className={`execution-branch__child relative ${child.parentBasis === "temporal" ? "execution-branch__child--temporal" : ""}`}
                       >
                         <ExecutionNode
                           item={child}

@@ -37,7 +37,7 @@ export function SlideOver({
   /** Render a much wider panel (for a two-column body). Default narrow. */
   wide?: boolean
   /** Draw above another modal when the drawer is opened from a full-screen
-   * inspector such as the mindset map. */
+   * inspector such as Agent Trace. */
   layer?: "default" | "above-modal"
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
