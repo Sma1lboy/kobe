@@ -107,9 +107,14 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
         }
       }
       unregister = register(send)
+      // A REAL event, not an SSE comment: comments are invisible to the
+      // EventSource API, so the browser could not tell a live-but-quiet
+      // stream from one wedged behind a proxy whose upstream died (the vite
+      // dev proxy keeps the client socket open). The client arms a staleness
+      // watchdog on these.
       heartbeat = setInterval(() => {
         try {
-          controller.enqueue(enc.encode(": ping\n\n"))
+          controller.enqueue(enc.encode("event: ping\ndata: {}\n\n"))
         } catch {
           cleanup()
         }

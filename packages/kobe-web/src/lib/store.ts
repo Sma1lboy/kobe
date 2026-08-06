@@ -281,6 +281,27 @@ let source: EventSource | null = null
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
+/** Staleness watchdog. The daemon heartbeats a real `ping` event every 15s;
+ *  if NOTHING (snapshot/channel/ping) arrives for this long the stream is
+ *  wedged — typically the dev proxy holding our socket open after its
+ *  upstream daemon died, which never fires an EventSource error — so we
+ *  force-replace it. */
+const STALE_STREAM_MS = 40_000
+let lastEventAt = 0
+let staleTimer: ReturnType<typeof setInterval> | null = null
+
+function armStaleWatchdog(): void {
+  if (staleTimer !== null) return
+  staleTimer = setInterval(() => {
+    if (!source || listeners.size === 0) return
+    if (Date.now() - lastEventAt <= STALE_STREAM_MS) return
+    source.close()
+    source = null
+    set({ streamConnected: false })
+    scheduleReconnect()
+  }, 10_000)
+}
+
 /** A stream is "live enough" to reuse when its EventSource exists and hasn't
  *  reached CLOSED — CONNECTING (the browser's own retry) and OPEN both count.
  *  Once CLOSED, the source is dead and must be replaced; the old code's bare
@@ -340,11 +361,18 @@ function scheduleReconnect(): void {
 function ensureStream(): void {
   if (isStreamReusable(source)) return
   source = new EventSource("/events")
+  lastEventAt = Date.now()
+  armStaleWatchdog()
   source.addEventListener("open", () => {
     reconnectAttempts = 0
+    lastEventAt = Date.now()
     set({ streamConnected: true })
   })
+  source.addEventListener("ping", () => {
+    lastEventAt = Date.now()
+  })
   source.addEventListener("snapshot", (e) => {
+    lastEventAt = Date.now()
     let parsed: unknown
     try {
       parsed = JSON.parse((e as MessageEvent).data)
@@ -360,6 +388,7 @@ function ensureStream(): void {
     applySnapshot(snap)
   })
   source.addEventListener("channel", (e) => {
+    lastEventAt = Date.now()
     let event: unknown
     try {
       event = JSON.parse((e as MessageEvent).data)
