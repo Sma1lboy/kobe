@@ -1,9 +1,12 @@
 import { Brain, FilePenLine, MessageSquare, TerminalSquare } from "lucide-react"
+import { useState } from "react"
 import {
   durationMs,
   type TimelineItem,
   type TimelineStatus,
 } from "../lib/timeline.ts"
+import { CopyButton } from "./CopyButton.tsx"
+import { SlideOver } from "./SlideOver.tsx"
 
 function statusGlyph(status: TimelineStatus): string {
   if (status === "running") return "●"
@@ -49,15 +52,20 @@ function ExecutionNode({
   item,
   now,
   main = false,
+  onOpen,
 }: {
   item: TimelineItem
   now: number
   main?: boolean
+  onOpen: () => void
 }) {
   return (
-    <article
-      className={`execution-node relative z-10 flex min-h-24 min-w-0 flex-col border bg-surface p-2.5 ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`execution-node relative z-10 flex min-h-24 w-full min-w-0 flex-col border bg-surface p-2.5 text-left focus-visible:border-primary focus-visible:outline-none ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
       title={item.summary || item.title}
+      aria-label={`Open ${kindLabel(item)} details: ${item.title}`}
     >
       <div className="flex items-center gap-1.5">
         <ItemIcon item={item} />
@@ -81,7 +89,99 @@ function ExecutionNode({
       <div className="mt-auto pt-2 font-mono text-[8px] text-subtle">
         {formatExecutionDuration(durationMs(item.startedAt, item.endedAt, now))}
       </div>
-    </article>
+    </button>
+  )
+}
+
+function DetailSection({ label, text }: { label: string; text: string }) {
+  return (
+    <section className="border border-line bg-surface">
+      <header className="flex h-9 items-center gap-2 border-b border-line px-3">
+        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted">
+          {label}
+        </span>
+        <CopyButton
+          text={text}
+          label={`Copy ${label.toLowerCase()}`}
+          className="ml-auto"
+        />
+      </header>
+      <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-fg">
+        {text || "(empty)"}
+      </pre>
+    </section>
+  )
+}
+
+function ExecutionDetail({
+  item,
+  parent,
+  now,
+  onClose,
+}: {
+  item: TimelineItem | undefined
+  parent: TimelineItem | undefined
+  now: number
+  onClose: () => void
+}) {
+  const isTool = item?.kind === "tool" || item?.kind === "change"
+  return (
+    <SlideOver
+      open={item !== undefined}
+      onClose={onClose}
+      layer="above-modal"
+      title={
+        item ? (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-primary">
+              {kindLabel(item)}
+            </span>
+            <span className="truncate">{item.title}</span>
+          </span>
+        ) : undefined
+      }
+    >
+      {item && (
+        <div className="flex flex-col gap-4 p-4">
+          <div className="flex items-center gap-3 border-b border-line pb-3 font-mono text-[9px] text-subtle">
+            <span className={statusClasses(item.status).split(" ").at(-1)}>
+              {statusGlyph(item.status)} {item.status}
+            </span>
+            <span>
+              {formatExecutionDuration(
+                durationMs(item.startedAt, item.endedAt, now),
+              )}
+            </span>
+          </div>
+          {parent && (
+            <section>
+              <div className="mb-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-subtle">
+                Triggered by
+              </div>
+              <div className="border-l-2 border-primary bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted">
+                {parent.detail}
+              </div>
+            </section>
+          )}
+          <DetailSection
+            label={
+              isTool
+                ? "Input"
+                : item.kind === "response"
+                  ? "Final answer"
+                  : "Visible commentary"
+            }
+            text={item.detail}
+          />
+          {isTool && (
+            <DetailSection
+              label="Result"
+              text={item.resultDetail ?? "No result recorded yet."}
+            />
+          )}
+        </div>
+      )}
+    </SlideOver>
   )
 }
 
@@ -113,8 +213,11 @@ export function ExecutionGrid({
   now: number
   className?: string
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const showWaiting = items.length === 0 && status !== "success"
   const byId = new Map(items.map((item) => [item.id, item]))
+  const selected = selectedId ? byId.get(selectedId) : undefined
+  const parent = selected?.parentId ? byId.get(selected.parentId) : undefined
   const children = new Map<string, TimelineItem[]>()
   for (const item of items) {
     if (!item.parentId || !byId.has(item.parentId)) continue
@@ -126,40 +229,57 @@ export function ExecutionGrid({
     (item) => !item.parentId || !byId.has(item.parentId),
   )
   return (
-    <div
-      className={`execution-node-grid relative flex flex-col gap-3 ${className}`}
-    >
-      {roots.map((item) => {
-        const branch = children.get(item.id) ?? []
-        return (
-          <div key={item.id} className="execution-branch relative">
-            <ExecutionNode item={item} now={now} main />
-            {branch.length > 0 && (
-              <>
-                <span
-                  className="execution-branch__connector"
-                  aria-hidden="true"
-                />
-                <div className="execution-branch__children relative">
-                  {branch.map((child) => (
-                    <div
-                      key={child.id}
-                      className="execution-branch__child relative"
-                    >
-                      <ExecutionNode item={child} now={now} />
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+    <>
+      <div
+        className={`execution-node-grid relative flex flex-col gap-3 ${className}`}
+      >
+        {roots.map((item) => {
+          const branch = children.get(item.id) ?? []
+          return (
+            <div key={item.id} className="execution-branch relative">
+              <ExecutionNode
+                item={item}
+                now={now}
+                main
+                onOpen={() => setSelectedId(item.id)}
+              />
+              {branch.length > 0 && (
+                <>
+                  <span
+                    className="execution-branch__connector"
+                    aria-hidden="true"
+                  />
+                  <div className="execution-branch__children relative">
+                    {branch.map((child) => (
+                      <div
+                        key={child.id}
+                        className="execution-branch__child relative"
+                      >
+                        <ExecutionNode
+                          item={child}
+                          now={now}
+                          onOpen={() => setSelectedId(child.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })}
+        {showWaiting && (
+          <div>
+            <WaitingNode status={status} />
           </div>
-        )
-      })}
-      {showWaiting && (
-        <div>
-          <WaitingNode status={status} />
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      <ExecutionDetail
+        item={selected}
+        parent={parent}
+        now={now}
+        onClose={() => setSelectedId(null)}
+      />
+    </>
   )
 }

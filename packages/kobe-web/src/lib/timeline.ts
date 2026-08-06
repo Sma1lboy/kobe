@@ -24,6 +24,10 @@ export interface TimelineItem {
   status: TimelineStatus
   title: string
   summary: string
+  /** Full visible text or tool input for the detail drawer. */
+  detail: string
+  /** Matched tool result output; null for non-tools or a pending call. */
+  resultDetail: string | null
   startedAt: number
   endedAt: number | null
 }
@@ -74,6 +78,22 @@ function compact(value: string, max = 88): string {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
 }
 
+const DETAIL_LIMIT = 100_000
+
+function detailText(value: unknown): string {
+  let text: string
+  if (typeof value === "string") text = value
+  else {
+    try {
+      text = JSON.stringify(value, null, 2) ?? String(value)
+    } catch {
+      text = String(value)
+    }
+  }
+  if (text.length <= DETAIL_LIMIT) return text
+  return `${text.slice(0, DETAIL_LIMIT)}\n\n… truncated for display (${text.length - DETAIL_LIMIT} more characters)`
+}
+
 function resultsByCallId(
   messages: readonly HistoryMessage[],
 ): Map<string, ResultFact> {
@@ -103,6 +123,8 @@ function toolItem(
     status: isError ? "error" : result ? "success" : "running",
     title: block.name,
     summary: toolInputSummary(block),
+    detail: detailText(block.input),
+    resultDetail: result ? detailText(result.result.output) : null,
     startedAt,
     endedAt: result?.at ?? null,
   }
@@ -129,6 +151,8 @@ function messageItems(
         status: "success",
         title: compact(block.text, 140),
         summary: "",
+        detail: block.text.trim(),
+        resultDetail: null,
         startedAt: at,
         endedAt: at,
       }
@@ -152,6 +176,8 @@ function messageItems(
         status: "success",
         title: compact(block.text, 140),
         summary: "",
+        detail: block.text.trim(),
+        resultDetail: null,
         startedAt: at,
         endedAt: at,
       }

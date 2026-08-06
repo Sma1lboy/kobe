@@ -112,6 +112,11 @@ describe("buildTimeline", () => {
       "response",
     ])
     expect(items[1]?.parentId).toBe(items[0]?.id)
+    expect(items[0]?.detail).toBe("I will inspect the focused test first.")
+    expect(items[1]).toMatchObject({
+      detail: '{\n  "cmd": "sed -n \'1,120p\' test.ts"\n}',
+      resultDetail: "...",
+    })
     expect(items[3]?.parentId).toBe(items[2]?.id)
     expect(items[4]?.parentId).toBeNull()
   })
