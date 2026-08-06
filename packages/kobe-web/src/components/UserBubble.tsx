@@ -15,8 +15,8 @@ export function UserBubble({
   sessionId: string | null
 }) {
   return (
-    <div className="group/user relative my-3 flex justify-end">
-      <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-inset px-3.5 py-2">
+    <div className="group/user relative my-2 flex justify-end">
+      <div className="max-w-[82%] border border-line-active/50 bg-inset px-3.5 py-2 [clip-path:polygon(0_0,calc(100%_-_8px)_0,100%_8px,100%_100%,0_100%)]">
         <span className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
           <TokenizedText text={text} sessionId={sessionId} />
         </span>

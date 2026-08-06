@@ -129,3 +129,196 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 .pop-in {
   animation: kobe-pop-in 0.18s ease-out both;
 }
+
+/* Transcript signal spine — one visual grammar for parsed engine events. */
+.transcript-event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 5px 0;
+}
+
+.transcript-event::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-line-active) 42%, transparent),
+    color-mix(in srgb, var(--color-primary) 32%, transparent),
+    color-mix(in srgb, var(--color-line-active) 42%, transparent)
+  );
+  content: "";
+}
+
+.transcript-event__node {
+  z-index: 1;
+  grid-column: 1;
+  width: 7px;
+  height: 7px;
+  margin: 7px auto 0;
+  border: 1px solid var(--color-line-active);
+  background: var(--color-bg);
+  transform: rotate(45deg);
+}
+
+.transcript-event__content {
+  min-width: 0;
+  grid-column: 2;
+}
+
+.transcript-event--user .transcript-event__node {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+
+.transcript-event--activity .transcript-event__node {
+  border-radius: 50%;
+  border-color: var(--color-kobe-blue);
+  background: var(--color-kobe-blue);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-kobe-blue) 48%, transparent);
+}
+
+.transcript-event--system .transcript-event__node {
+  border-color: var(--color-kobe-yellow);
+}
+
+.activity-card {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-line);
+  border-left: 2px solid var(--color-kobe-blue);
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+  padding: 7px 10px;
+  box-shadow: 0 7px 24px color-mix(in srgb, black 18%, transparent);
+}
+
+.activity-card__status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-kobe-blue);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.activity-card__pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentcolor;
+}
+
+@keyframes kobe-signal-pulse {
+  50% {
+    opacity: 0.35;
+    box-shadow: 0 0 10px currentcolor;
+  }
+}
+
+.activity-card--active .activity-card__pulse,
+.command-dock__beacon {
+  animation: kobe-signal-pulse 1.4s ease-in-out infinite;
+}
+
+/* The engine still owns input; this dock is only its visible control surface. */
+.command-dock {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--color-line-active);
+  background: color-mix(in srgb, var(--color-bg) 94%, var(--color-primary));
+  box-shadow:
+    0 18px 50px color-mix(in srgb, black 34%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.command-dock::before {
+  position: absolute;
+  top: 0;
+  right: 15%;
+  left: 15%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  content: "";
+  opacity: 0.7;
+}
+
+.command-dock__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-right: 1px solid var(--color-line);
+  background: var(--color-surface);
+  padding: 0 12px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.command-dock__beacon {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-kobe-green);
+  color: var(--color-kobe-green);
+}
+
+.command-dock__input {
+  display: flex;
+  min-height: 48px;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+}
+
+.command-dock__send {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--color-line-active);
+  color: var(--color-muted);
+}
+
+/* Quiet instrument-paper grid shared by the outline and expanded swimlane. */
+.execution-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--color-line-subtle) 34%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-line-subtle) 24%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-card--active .activity-card__pulse,
+  .command-dock__beacon,
+  .shimmer-text,
+  .fade-up,
+  .pop-in {
+    animation: none;
+  }
+}

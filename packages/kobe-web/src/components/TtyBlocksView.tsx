@@ -7,6 +7,7 @@
  * native TUI) rather than leaving it adrift in the scroll body.
  */
 
+import type { ReactNode } from "react"
 import { Fragment, memo, useEffect, useRef, useState } from "react"
 import type { MenuItem, OptionItem, TtyBlock } from "../lib/claude-tty.ts"
 import type { EngineGrammar } from "../lib/engine-grammar.ts"
@@ -25,7 +26,13 @@ const BLOCK_ART = /[█▉▊▋▌▍▎▏▀▄▐▖▗▘▙▚▛▜▝▞
 
 /** One colored terminal line as spans. `whitespace-pre` keeps native column
  *  alignment; art rows go line-height 1 so block cells don't split. */
-function Line({ line: raw, className }: { line: ColoredLine; className?: string }) {
+function Line({
+  line: raw,
+  className,
+}: {
+  line: ColoredLine
+  className?: string
+}) {
   // Rows arrive padded to terminal width — trim so shrink-wrap parents work.
   const line = trimTrailingColored(raw)
   const art = BLOCK_ART.test(line.text)
@@ -151,6 +158,39 @@ function BootLine() {
   )
 }
 
+type EventKind = "response" | "user" | "activity" | "system"
+
+/** A single stop on the transcript's causal rail. The rail is deliberately
+ * renderer-owned: engines provide normalized blocks; this component only
+ * gives those blocks a consistent visual order. */
+function TranscriptEvent({
+  kind,
+  children,
+}: {
+  kind: EventKind
+  children: ReactNode
+}) {
+  return (
+    <div className={`transcript-event transcript-event--${kind}`}>
+      <span className="transcript-event__node" aria-hidden="true" />
+      <div className="transcript-event__content">{children}</div>
+    </div>
+  )
+}
+
+function ActivityCard({ line }: { line: ColoredLine }) {
+  const active = /…|\.\.\./.test(line.text)
+  return (
+    <div className={`activity-card ${active ? "activity-card--active" : ""}`}>
+      <div className="activity-card__status">
+        <span className="activity-card__pulse" aria-hidden="true" />
+        <span>{active ? "LIVE" : "ACTIVITY"}</span>
+      </div>
+      <Line line={line} className="min-w-0 text-muted" />
+    </div>
+  )
+}
+
 function Block({
   block,
   sessionId,
@@ -162,7 +202,7 @@ function Block({
     case "user":
       return <UserBubble text={block.text} sessionId={sessionId} />
     case "activity":
-      return <Line line={block.line} className="text-subtle/70 italic" />
+      return <ActivityCard line={block.line} />
     case "menu":
       return (
         <div className="my-2">
@@ -215,15 +255,21 @@ export const TtyBlocksView = memo(function TtyBlocksView({
         groupCopyRuns(blocks).map((item, i) =>
           item.kind === "run" ? (
             // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
-            <CopyableRegion key={i} text={item.text}>
-              {item.blocks.map((block, j) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: positional within the run
-                <Block key={j} block={block} sessionId={sessionId} />
-              ))}
-            </CopyableRegion>
+            <TranscriptEvent key={i} kind="response">
+              <CopyableRegion text={item.text}>
+                {item.blocks.map((block, j) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional within the run
+                  <Block key={j} block={block} sessionId={sessionId} />
+                ))}
+              </CopyableRegion>
+            </TranscriptEvent>
           ) : (
-            // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
-            <Block key={i} block={item.block} sessionId={sessionId} />
+            <TranscriptSingle
+              // biome-ignore lint/suspicious/noArrayIndexKey: blocks re-derive wholesale from the buffer; position is the only identity
+              key={i}
+              block={item.block}
+              sessionId={sessionId}
+            />
           ),
         )
       )}
@@ -234,6 +280,36 @@ export const TtyBlocksView = memo(function TtyBlocksView({
 type CopyRunItem =
   | { kind: "run"; blocks: TtyBlock[]; text: string }
   | { kind: "single"; block: TtyBlock }
+
+function eventKindFor(block: TtyBlock): EventKind {
+  if (block.kind === "user") return "user"
+  if (block.kind === "activity") return "activity"
+  if (
+    block.kind === "welcome" ||
+    block.kind === "menu" ||
+    block.kind === "options"
+  ) {
+    return "system"
+  }
+  return "response"
+}
+
+function TranscriptSingle({
+  block,
+  sessionId,
+}: {
+  block: TtyBlock
+  sessionId: string | null
+}) {
+  // Whitespace separates events; it is not an event itself and should not
+  // create an empty stop on the rail.
+  if (block.kind === "gap") return <Block block={block} sessionId={sessionId} />
+  return (
+    <TranscriptEvent kind={eventKindFor(block)}>
+      <Block block={block} sessionId={sessionId} />
+    </TranscriptEvent>
+  )
+}
 
 /** Chunk consecutive plain line/gap blocks into hover-copyable runs — the
  *  assistant prose between structural blocks (bubbles, menus, cards). */
@@ -252,7 +328,8 @@ export function groupCopyRuns(blocks: readonly TtyBlock[]): CopyRunItem[] {
       )
       .join("\n")
       .replace(/^\n+|\n+$/g, "")
-    if (text.trim() === "") out.push(...run.map((b) => ({ kind: "single" as const, block: b })))
+    if (text.trim() === "")
+      out.push(...run.map((b) => ({ kind: "single" as const, block: b })))
     else out.push({ kind: "run", blocks: run, text })
     run = []
   }

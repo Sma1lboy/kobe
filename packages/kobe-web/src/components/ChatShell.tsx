@@ -35,8 +35,8 @@ import {
   ensureEngineTab,
   resetTabTitle,
   setTabTitle,
-  useTabsState,
   type TerminalTab,
+  useTabsState,
   type VendorTab,
 } from "../lib/tabs.ts"
 import {
@@ -44,9 +44,11 @@ import {
   sameColoredLine,
   trimLeadingColored,
 } from "../lib/tty-color.ts"
+import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
+import { TimelineHost } from "./TimelineHost.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { TtyBlocksView, TtyFooter, useTtyBlocks } from "./TtyBlocksView.tsx"
 
@@ -64,48 +66,6 @@ const RoutinesPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./SettingsPage.tsx").then((m) => ({ default: m.SettingsPage })),
 )
-
-
-/** Right rail — a collapsed-by-default file-changes placeholder. The real
- *  Changes pane (diff list) lands here once the core loop is proven; for now
- *  it only shows the uncommitted ± counts so the rail earns its width. */
-function ChangesPanel({
-  changes,
-  onCollapse,
-}: {
-  changes: { added: number; deleted: number } | undefined
-  onCollapse: () => void
-}) {
-  return (
-    <aside className="flex w-56 shrink-0 flex-col border-l border-line bg-surface">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-          Changes
-        </span>
-        <button
-          type="button"
-          onClick={onCollapse}
-          className="text-[11px] text-subtle hover:text-fg"
-          title="Collapse"
-          aria-label="Collapse changes panel"
-        >
-          ⇥
-        </button>
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 px-3 text-center">
-        {changes && (changes.added > 0 || changes.deleted > 0) ? (
-          <span className="font-mono text-[13px]">
-            <span className="text-kobe-green">+{changes.added}</span>{" "}
-            <span className="text-kobe-red">−{changes.deleted}</span>
-          </span>
-        ) : (
-          <span className="font-mono text-[12px] text-subtle">clean</span>
-        )}
-        <span className="text-[11px] text-subtle">File changes land here.</span>
-      </div>
-    </aside>
-  )
-}
 
 /** One status-footer line (branch | ctx | quota | mode), rendered from the
  *  colored buffer so it keeps the engine's own ANSI colors (blue branch,
@@ -381,7 +341,7 @@ function SessionView({
 }
 
 export function ChatShell() {
-  const { tasks, activeTaskId, worktreeChanges, engineStates } = useAppState()
+  const { tasks, activeTaskId, engineStates } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
   // Surface + selection live in the global-ui store so the root-level command
   // palette can drive the shell (jump task / open Kanban / open Routines).
@@ -431,9 +391,9 @@ export function ChatShell() {
   const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
   const vendor = vendorTab?.vendor
 
-  // Right rail: collapsed by default — the sidebar already tells the status
-  // story; the rail returns when the file-changes pane earns it.
-  const [showChanges, setShowChanges] = useState(false)
+  // Timeline is the GUI-native execution inspector. It starts open so the
+  // two-level Codex turn/item model is visible without introducing a chord.
+  const [showTimeline, setShowTimeline] = useState(true)
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -473,14 +433,15 @@ export function ChatShell() {
               </span>
               <button
                 type="button"
-                onClick={() => setShowChanges((cur) => !cur)}
-                aria-pressed={showChanges}
+                onClick={() => setShowTimeline((cur) => !cur)}
+                aria-pressed={showTimeline}
                 className={`ml-auto flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] transition-colors ${
-                  showChanges
+                  showTimeline
                     ? "border-line-active bg-inset text-fg"
                     : "border-line text-subtle hover:text-fg"
                 }`}
-                title="Toggle the file-changes panel"
+                title="Toggle execution timeline"
+                aria-label="Toggle execution timeline"
               >
                 <PanelRight size={12} strokeWidth={2} />
               </button>
@@ -505,14 +466,12 @@ export function ChatShell() {
           </main>
         )}
 
-        {surface === "chat" && selected && showChanges && (
-          <ChangesPanel
-            changes={
-              selected.worktreePath
-                ? worktreeChanges[selected.worktreePath]
-                : undefined
-            }
-            onCollapse={() => setShowChanges(false)}
+        {surface === "chat" && selected && showTimeline && (
+          <TimelineHost
+            worktreePath={selected.worktreePath || null}
+            vendor={resolveVendor(vendor ?? selected.vendor)}
+            engineState={engineStates[selected.id]}
+            onCollapse={() => setShowTimeline(false)}
           />
         )}
       </div>
