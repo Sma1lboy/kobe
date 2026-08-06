@@ -13,6 +13,7 @@ import {
   findClaudeInputRegion,
 } from "./claude-input.ts"
 import { parseTtyBlocks, type TtyBlock } from "./claude-tty.ts"
+import { findCodexInputRegion, parseCodexBlocks } from "./codex-tty.ts"
 import type { ColoredLine } from "./tty-color.ts"
 
 export type InputRegion = ClaudeInputRegion
@@ -38,13 +39,12 @@ export const claudeGrammar: EngineGrammar = {
 }
 
 /** Codex CLI (sampled v0.146): `› ` composer with a `model · dir` status line
- *  under it — the shared prompt-glyph family (`❯›>)`) already matches. Slash
- *  menu is the same `/name  desc` two-column shape; notices use `•` bullets
- *  (plain lines); the welcome banner is a box frame that renders fine
- *  verbatim. No known exit banner yet — region absence is the signal. */
+ *  under it, a below-composer slash menu (needs the wider tail window), and a
+ *  box-framed welcome banner folded into the welcome card. No known exit
+ *  banner yet — region absence is the signal. */
 export const codexGrammar: EngineGrammar = {
-  findInputRegion: findClaudeInputRegion,
-  parseBlocks: parseTtyBlocks,
+  findInputRegion: findCodexInputRegion,
+  parseBlocks: parseCodexBlocks,
   exitBanner: null,
   effortLine: null,
 }

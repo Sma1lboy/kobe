@@ -61,3 +61,75 @@ describe("grammarFor", () => {
     expect(rawGrammar.findInputRegion(CODEX_MAIN)).toBeNull()
   })
 })
+
+describe("codex welcome + open menu", () => {
+  const line = (text: string) => ({ text, segs: [] })
+
+  test("boxed welcome banner folds into a welcome card", () => {
+    const blocks = codexGrammar.parseBlocks([
+      line("╭───────────────────────────────╮"),
+      line("│ >_ OpenAI Codex (v0.146.0)    │"),
+      line("│                               │"),
+      line("│ model:     gpt-5.6-sol xhigh  │"),
+      line("│ directory: ~/i/kobe           │"),
+      line("╰───────────────────────────────╯"),
+      line(""),
+      line("• You have 1 usage limit reset available."),
+    ])
+    const welcome = blocks.find((b) => b.kind === "welcome")
+    expect(welcome).toMatchObject({
+      welcome: {
+        product: "OpenAI Codex",
+        version: "0.146.0",
+        vendor: "codex",
+        info: ["model:  gpt-5.6-sol xhigh", "directory: ~/i/kobe"],
+      },
+    })
+  })
+
+  test("update box folds into the welcome card as a notice", () => {
+    const blocks = codexGrammar.parseBlocks([
+      line("╭──────────────────────────────────────╮"),
+      line("│ ✨ Update available! 0.146.0 → 0.146.1 │"),
+      line("│ Run bun install -g @openai/codex      │"),
+      line("╰──────────────────────────────────────╯"),
+      line(""),
+      line("╭───────────────────────────────╮"),
+      line("│ >_ OpenAI Codex (v0.146.0)    │"),
+      line("│ directory: ~/i/kobe           │"),
+      line("╰───────────────────────────────╯"),
+    ])
+    const welcomes = blocks.filter((b) => b.kind === "welcome")
+    expect(welcomes).toHaveLength(1)
+    expect(welcomes[0]).toMatchObject({
+      welcome: {
+        product: "OpenAI Codex",
+        notice: [
+          "✨ Update available! 0.146.0 → 0.146.1",
+          "Run bun install -g @openai/codex",
+        ],
+      },
+    })
+    // No raw box lines survive.
+    expect(blocks.some((b) => b.kind === "line" && b.line.text.includes("╭"))).toBe(false)
+  })
+
+  test("composer still found with the below-composer menu open", () => {
+    const region = codexGrammar.findInputRegion([
+      "• You have 1 usage limit reset available.",
+      "",
+      "› /",
+      "",
+      "  /model         choose what model and reasoning effort to use",
+      "  /fast          1.5x speed, increased usage",
+      "  /ide           include current selection",
+      "  /permissions   choose what Codex is allowed to do",
+      "  /keymap        remap TUI shortcuts",
+      "  /vim           toggle Vim mode for the composer",
+      "  /experimental  toggle experimental features",
+      "  /approve       approve one retry of a recent auto-review denial",
+    ])
+    expect(region?.promptText).toBe("/")
+    expect(region?.promptRow).toBe(2)
+  })
+})

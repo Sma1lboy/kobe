@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kobe hero 背景候选</title>
+<style>
+:root{--paper:#F6F3EC;--ink:#3B322A;--muted:#7C7266;--accent:#C46B48;--line:#DFD8CB}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;padding:48px clamp(20px,4vw,56px) 80px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.01em}
+p.tip{color:var(--muted);font-size:14px;margin:8px 0 36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:26px}
+figure{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;transition:transform .15s,box-shadow .2s}
+figure:hover{transform:translateY(-3px);box-shadow:0 20px 50px rgb(60 45 30/.14)}
+figure a{display:block}
+img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
+figcaption{padding:14px 18px 16px}
+figcaption b{font-size:15px;display:flex;align-items:center;gap:8px}
+figcaption b i{font-style:normal;font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:1px 9px}
+figcaption span{display:block;font-size:13px;color:var(--muted);margin-top:5px;line-height:1.55}
+.cur{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<h1>kobe light 落地页 · hero 背景候选</h1>
+<p class="tip">点图看原图。当前落地页用的是 №2(fan-out 光路)。告诉我编号就换。</p>
+<div class="grid">
+  <figure><a href="hero-bg.png"><img src="hero-bg.png" alt="云中玻璃板"></a>
+    <figcaption><b><i>1</i>云中玻璃舰队(现结尾段)</b><span>积云间竖立的陶土玻璃板——"很多面板"的直觉意象,氛围最梦幻,叙事最弱。</span></figcaption></figure>
+  <figure class="cur"><a href="hero-fanout.png"><img src="hero-fanout.png" alt="云海光路分叉"></a>
+    <figcaption><b><i>2</i>fan-out 光路(现 hero)</b><span>云海上光线分叉再汇合,git graph 直译;线条有机、topology 松散。</span></figcaption></figure>
+  <figure><a href="cand-1-fanout-v2.png"><img src="cand-1-fanout-v2.png" alt="汇聚光束"></a>
+    <figcaption><b><i>3</i>汇聚光束</b><span>多束平行光冲向日出灭点——"多路 → 一点"的方向感最强,速度感强于结构感。</span></figcaption></figure>
+  <figure><a href="cand-2-ceramic-rail.png"><img src="cand-2-ceramic-rail.png" alt="陶瓷轨道"></a>
+    <figcaption><b><i>4</i>陶瓷轨道装置</b><span>白瓷轨道 + 发光任务瓦片,3D 产品渲染感;拓扑绕圈不太像 branch/merge,更适合做特性区插图。</span></figcaption></figure>
+  <figure><a href="cand-3-squadron.png"><img src="cand-3-squadron.png" alt="窗格编队"></a>
+    <figcaption><b><i>5</i>窗格编队飞向日出</b><span>真·终端窗框排成编队穿越云海,阳光从窗格里透出——产品隐喻(panes)最直白,画面也最有戏。</span></figcaption></figure>
+  <figure><a href="cand-4-braid.png"><img src="cand-4-braid.png" alt="编绳"></a>
+    <figcaption><b><i>6</i>陶土绳结</b><span>触感路线;实际生成偏乱,"多股拧成一股"没成立,个人认为淘汰。</span></figcaption></figure>
+  <figure><a href="cand-5-rivers.png"><img src="cand-5-rivers.png" alt="纸面金河"></a>
+    <figcaption><b><i>7</i>纸面熔金河谷</b><span>暖纸地形里几条发光河道汇流,金缮质感、最抽象最"贵";并行感有,终端感无。</span></figcaption></figure>
+</div>
+</body>
+</html>

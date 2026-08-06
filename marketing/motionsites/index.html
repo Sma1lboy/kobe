@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotionSites — prompts that make AI builders ship premium hero sections</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:      oklch(98.2% 0.006 95);   /* warm daylight white */
+  --surface:    oklch(100% 0 0);
+  --mist:       oklch(95.5% 0.012 130);  /* pale meadow tint */
+  --ink:        oklch(24% 0.02 140);     /* deep leaf near-black */
+  --muted:      oklch(48% 0.02 130);
+  --line:       oklch(86% 0.015 120);
+  --leaf:       oklch(46% 0.11 145);     /* meadow green accent */
+  --sky:        oklch(64% 0.11 230);     /* cornflower sky */
+  --petal:      oklch(72% 0.13 15);      /* cosmos pink */
+  --glass:      oklch(100% 0 0 / .55);
+  --radius:     12px;
+  --radius-lg:  24px;
+  --font-display:'Fraunces', Georgia, serif;
+  --font-sans:  'Outfit', system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper)}
+body{color:var(--ink);font-family:var(--font-sans);font-weight:360;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:oklch(72% 0.13 15/.25)}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--leaf);outline-offset:3px;border-radius:4px}
+
+.wrap{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,56px)}
+.eyebrow{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--leaf)}
+.h2{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(32px,4.4vw,52px);font-weight:380;letter-spacing:-.02em;line-height:1.06}
+.h2 em{font-style:italic;font-weight:400}
+.sub{color:var(--muted);font-size:17px;max-width:58ch}
+.btn{display:inline-flex;align-items:center;gap:10px;border-radius:999px;font-size:15px;font-weight:480;padding:15px 30px;border:1px solid transparent;transition:transform 140ms ease,background 140ms ease,box-shadow 180ms ease,border-color 140ms ease}
+.btn:hover{transform:translateY(-2px)}
+.btn:active{transform:scale(.97)}
+.btn-ink{background:var(--ink);color:#fff}
+.btn-ink:hover{box-shadow:0 10px 30px oklch(24% 0.02 140/.28)}
+.btn-glass{background:oklch(100% 0 0/.28);color:#fff;border-color:oklch(100% 0 0/.5);backdrop-filter:blur(10px)}
+.btn-glass:hover{background:oklch(100% 0 0/.42)}
+.btn-line{background:transparent;color:var(--ink);border-color:oklch(60% 0.02 130/.45)}
+.btn-line:hover{background:oklch(94% 0.01 120)}
+
+.copy{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:12px;padding:8px 14px;border-radius:var(--radius);border:1px solid var(--line);background:var(--surface);color:var(--muted);transition:transform 120ms,color 120ms,border-color 120ms,box-shadow 160ms}
+.copy:hover{color:var(--ink);border-color:oklch(60% 0.04 140/.5);transform:translateY(-1px);box-shadow:0 4px 14px oklch(30% 0.02 140/.08)}
+.copy:active{transform:scale(.97)}
+.copy.copied{color:var(--leaf);border-color:oklch(46% 0.11 145/.5)}
+.copy.on-glass{background:oklch(100% 0 0/.25);border-color:oklch(100% 0 0/.5);color:#fff;backdrop-filter:blur(8px)}
+.copy.on-glass:hover{background:oklch(100% 0 0/.4);color:#fff}
+.copy.on-glass.copied{color:#f0ffe9}
+
+/* ============ HERO ============ */
+.hero{position:relative;min-height:100svh;display:flex;flex-direction:column;overflow:hidden;color:#fff}
+.hero-bg{position:absolute;inset:0;background:url('hero-bg.png') center 62%/cover no-repeat;animation:kenburns 26s ease-in-out infinite alternate;will-change:transform}
+@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.07)}}
+.hero-veil{position:absolute;inset:0;background:linear-gradient(180deg,oklch(40% 0.06 230/.18) 0%,transparent 30%,transparent 62%,oklch(30% 0.05 150/.38) 100%)}
+.hero-inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:110px 20px 40px}
+
+/* floating glass nav */
+.navbar{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:4px;padding:6px;border-radius:999px;background:var(--glass);backdrop-filter:blur(16px) saturate(1.4);border:1px solid oklch(100% 0 0/.6);box-shadow:0 8px 32px oklch(30% 0.04 150/.14);transition:box-shadow 200ms}
+.navbar .brand{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-size:16.5px;font-weight:480;color:var(--ink);padding:6px 14px 6px 10px}
+.navbar a.nl{font-size:13.5px;color:oklch(35% 0.02 140);padding:8px 14px;border-radius:999px;transition:background 140ms}
+.navbar a.nl:hover{background:oklch(100% 0 0/.65)}
+.navbar .cta{font-size:13px;font-weight:520;background:var(--ink);color:#fff;padding:9px 18px;border-radius:999px;margin-left:4px;transition:transform 120ms,box-shadow 160ms}
+.navbar .cta:hover{transform:translateY(-1px);box-shadow:0 6px 18px oklch(24% 0.02 140/.3)}
+@media(max-width:720px){.navbar a.nl{display:none}}
+
+.hero .eyebrow{color:#fff;background:oklch(100% 0 0/.2);border:1px solid oklch(100% 0 0/.45);backdrop-filter:blur(8px);padding:7px 16px;border-radius:999px;letter-spacing:.18em}
+.h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(46px,7.2vw,96px);font-weight:380;line-height:1.02;letter-spacing:-.025em;margin:26px 0 20px;text-shadow:0 2px 40px oklch(35% 0.06 230/.45);max-width:15ch}
+.h1 em{font-style:italic;font-weight:420}
+.hero .sub{color:oklch(100% 0 0/.94);font-size:clamp(16px,1.6vw,19px);max-width:52ch;text-shadow:0 1px 24px oklch(35% 0.06 230/.5)}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:36px}
+.rise{opacity:0;transform:translateY(20px);animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* the receipt — frosted prompt chip pinned to hero bottom */
+.receipt{position:relative;z-index:3;margin:auto auto 30px;width:min(680px,calc(100% - 40px));border-radius:18px;background:oklch(20% 0.03 150/.45);backdrop-filter:blur(18px) saturate(1.2);border:1px solid oklch(100% 0 0/.35);box-shadow:0 20px 60px oklch(20% 0.04 150/.35);text-align:left;overflow:hidden}
+.receipt .rh{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid oklch(100% 0 0/.18);font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:oklch(100% 0 0/.8)}
+.receipt .rh .dot{width:7px;height:7px;border-radius:50%;background:oklch(85% 0.17 140);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 oklch(85% 0.17 140/.6)}50%{box-shadow:0 0 0 7px transparent}}
+.receipt p{padding:14px 18px 6px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;color:oklch(100% 0 0/.92)}
+.receipt p b{color:oklch(92% 0.08 95);font-weight:600}
+.receipt .rf{display:flex;justify-content:space-between;align-items:center;padding:12px 18px 14px}
+.receipt .rf small{font-size:12px;color:oklch(100% 0 0/.65)}
+.scroll-hint{position:absolute;bottom:12px;left:50%;translate:-50% 0;z-index:2;width:22px;height:36px;border:1.5px solid oklch(100% 0 0/.6);border-radius:12px;display:none}
+
+/* ============ TICKER ============ */
+.ticker{border-bottom:1px solid var(--line);background:var(--surface);overflow:hidden;padding:15px 0}
+.ticker-track{display:flex;gap:56px;width:max-content;animation:scroll 38s linear infinite;font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.ticker:hover .ticker-track{animation-play-state:paused}
+.ticker-track b{color:var(--petal);font-weight:400}
+@keyframes scroll{to{transform:translateX(-50%)}}
+
+section{position:relative}
+.sec{padding:clamp(84px,10vw,128px) 0}
+.sec-head{margin-bottom:56px;max-width:740px}
+.sec-head .h2{margin:16px 0 18px}
+
+/* ============ COMPARISON ============ */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:stretch}
+@media(max-width:860px){.vs{grid-template-columns:1fr}}
+.vs-card{border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface);display:flex;flex-direction:column;transition:transform 180ms ease,box-shadow 220ms ease}
+.vs-card:hover{transform:translateY(-4px);box-shadow:0 24px 60px oklch(30% 0.03 140/.1)}
+.vs-label{display:flex;justify-content:space-between;align-items:center;padding:15px 22px;font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+.vs-label .pill{padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:10px;letter-spacing:.12em}
+.vs-card.win{border-color:oklch(46% 0.11 145/.4);box-shadow:0 18px 50px oklch(46% 0.11 145/.12)}
+.vs-card.win .pill{border-color:oklch(46% 0.11 145/.5);color:var(--leaf)}
+.vs-prompt{padding:16px 22px;font-family:var(--font-mono);font-size:12px;line-height:1.7;color:var(--muted);border-bottom:1px solid var(--line);min-height:92px}
+.vs-prompt b{color:var(--ink);font-weight:500}
+.stage{height:250px;position:relative;overflow:hidden}
+.stage.dull{background:oklch(93% 0 0);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.stage.dull .bar{background:oklch(78% 0 0);border-radius:4px}
+.stage.dull .cta2{width:96px;height:26px;background:oklch(55% 0.09 265);border-radius:6px;margin-top:6px}
+.stage.photo{background:url('hero-bg.png') center 58%/cover no-repeat}
+.stage.photo::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,oklch(30% 0.05 150/.3))}
+.stage.photo h4{position:absolute;left:0;right:0;top:40%;transform:translateY(-50%);z-index:2;text-align:center;font-family:var(--font-display);font-style:italic;font-weight:380;font-size:clamp(20px,2.4vw,26px);color:#fff;text-shadow:0 2px 26px oklch(35% 0.06 230/.6);letter-spacing:-.01em}
+.stage.photo .navpill{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:190px;height:24px;border-radius:999px;background:oklch(100% 0 0/.3);backdrop-filter:blur(6px);border:1px solid oklch(100% 0 0/.5);z-index:2}
+.vs-verdict{padding:15px 22px;font-size:13.5px;color:var(--muted)}
+.vs-verdict b{color:var(--ink);font-weight:520}
+
+/* ============ STEPS ============ */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(28px,4vw,60px)}
+@media(max-width:860px){.steps{grid-template-columns:1fr}}
+.step .num{font-family:var(--font-mono);font-size:12px;color:var(--petal);margin-bottom:16px;display:flex;align-items:center;gap:12px}
+.step .num::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,oklch(72% 0.13 15/.5),transparent)}
+.step h3{font-family:var(--font-display);font-size:27px;font-weight:420;letter-spacing:-.015em;margin-bottom:10px}
+.step p{font-size:15px;color:var(--muted)}
+
+/* ============ LIBRARY ============ */
+.library{background:var(--mist);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:28px}
+.tab{padding:10px 20px;border-radius:999px;border:1px solid oklch(70% 0.03 130/.5);background:transparent;color:var(--muted);font-size:13.5px;font-weight:460;transition:all 150ms ease}
+.tab:hover{color:var(--ink);background:oklch(100% 0 0/.7);transform:translateY(-1px)}
+.tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.panel{display:none;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;animation:fadein .26s ease}
+.panel.active{display:grid}
+@media(max-width:860px){.panel.active{grid-template-columns:1fr}}
+@keyframes fadein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.preview{border-radius:var(--radius-lg);min-height:300px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px oklch(30% 0.03 140/.14)}
+.preview .plabel{position:absolute;top:16px;left:18px;font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:oklch(100% 0 0/.75);z-index:2}
+.preview h4{font-family:var(--font-display);font-size:clamp(22px,2.6vw,30px);font-weight:400;letter-spacing:-.015em;color:#fff;z-index:2;text-align:center;padding:0 30px;text-shadow:0 2px 22px rgb(0 0 0/.35)}
+.preview h4 em{font-style:italic}
+.prompt-card{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);display:flex;flex-direction:column;box-shadow:0 10px 34px oklch(30% 0.03 140/.06)}
+.prompt-card .ph{display:flex;justify-content:space-between;align-items:center;padding:17px 22px;border-bottom:1px solid var(--line)}
+.prompt-card .ph b{font-weight:540;font-size:15px}
+.tagrow{display:flex;gap:6px}
+.tagrow em{font-style:normal;font-family:var(--font-mono);font-size:10px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.prompt-card pre{flex:1;padding:18px 22px;font-family:var(--font-mono);font-size:12.3px;line-height:1.75;color:oklch(38% 0.02 140);white-space:pre-wrap;overflow:auto}
+.prompt-card pre .kw{color:var(--leaf);font-weight:600}
+.prompt-card .pf{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-top:1px solid var(--line)}
+.prompt-card .pf small{font-size:12px;color:var(--muted)}
+
+/* preview skins */
+.sk-agency{background:linear-gradient(160deg,oklch(28% 0.05 300),oklch(38% 0.1 330) 55%,oklch(60% 0.16 25))}
+.sk-agency::after{content:"";position:absolute;inset:0;background:radial-gradient(45% 60% at 78% 28%, oklch(80% 0.13 40/.5), transparent 70%)}
+.sk-saas{background:linear-gradient(180deg,oklch(18% 0.02 250),oklch(24% 0.06 250))}
+.sk-saas::before{content:"";position:absolute;inset:-40%;background:conic-gradient(from 0deg, oklch(70% 0.14 210/.25), oklch(65% 0.17 300/.18), oklch(70% 0.14 210/.25));animation:spin 18s linear infinite}
+@keyframes spin{to{transform:rotate(1turn)}}
+.sk-saas::after{content:"";position:absolute;inset:1px;border-radius:inherit;background:radial-gradient(80% 70% at 50% 100%, transparent 30%, oklch(18% 0.02 250/.92) 75%)}
+.sk-portfolio{background:oklch(96% 0.012 85)}
+.sk-portfolio h4{color:oklch(20% 0.01 80)!important;text-shadow:none!important}
+.sk-portfolio .plabel{color:oklch(45% 0.02 80)!important}
+.sk-portfolio::after{content:"";position:absolute;left:10%;right:10%;top:70%;height:1px;background:oklch(20% 0.01 80/.3)}
+.sk-fintech{background:linear-gradient(180deg,oklch(17% 0.02 160),oklch(23% 0.06 160))}
+.sk-fintech::after{content:"";position:absolute;inset:0;background-image:linear-gradient(oklch(70% 0.12 160/.09) 1px,transparent 1px),linear-gradient(90deg,oklch(70% 0.12 160/.09) 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(70% 70% at 50% 40%,#000 30%,transparent 75%)}
+.sk-auto{background:linear-gradient(180deg,oklch(13% 0.01 260),oklch(21% 0.02 260))}
+.sk-auto::after{content:"";position:absolute;left:-30%;top:54%;width:160%;height:2px;background:linear-gradient(90deg,transparent,oklch(88% 0.05 230/.95),transparent);filter:blur(1px);animation:sweep 4.5s ease-in-out infinite}
+@keyframes sweep{0%,15%{transform:translateX(-24%)}60%,100%{transform:translateX(24%)}}
+.sk-web3{background:linear-gradient(200deg,oklch(17% 0.03 290),oklch(25% 0.08 200))}
+.sk-web3::before,.sk-web3::after{content:"";position:absolute;left:50%;top:50%;border:1px solid oklch(78% 0.12 200/.45);border-radius:50%;translate:-50% -50%;animation:orbit 12s linear infinite}
+.sk-web3::before{width:210px;height:80px;transform:rotate(-18deg)}
+.sk-web3::after{width:290px;height:114px;transform:rotate(14deg);animation-duration:19s;animation-direction:reverse}
+@keyframes orbit{to{rotate:1turn}}
+
+/* ============ PROOF ============ */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:76px}
+@media(max-width:860px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--surface);padding:36px 30px}
+.stat b{display:block;font-family:var(--font-display);font-size:clamp(42px,4.5vw,60px);font-weight:340;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.stat b i{font-style:normal;color:var(--petal);font-size:.5em;vertical-align:.4em}
+.stat span{display:block;margin-top:12px;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.quote{display:grid;grid-template-columns:auto 1fr;gap:clamp(20px,3vw,44px);max-width:900px}
+@media(max-width:700px){.quote{grid-template-columns:1fr}}
+.quote .mark{font-family:var(--font-display);font-size:120px;line-height:.6;color:var(--petal);margin-top:16px}
+.quote blockquote{font-family:var(--font-display);font-style:italic;font-weight:360;font-size:clamp(23px,2.7vw,32px);line-height:1.35;letter-spacing:-.01em}
+.quote figcaption{margin-top:22px;font-size:13.5px;color:var(--muted)}
+.quote figcaption b{color:var(--ink);font-weight:520}
+.quote figcaption span{font-family:var(--font-mono);font-size:12px}
+.avatar{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;background:linear-gradient(140deg,var(--sky),var(--leaf));color:#fff;font-size:12px;font-weight:600;margin-right:12px;vertical-align:middle}
+
+/* ============ PRICING ============ */
+.plans{display:grid;grid-template-columns:1fr 1.15fr;gap:24px;max-width:920px}
+@media(max-width:860px){.plans{grid-template-columns:1fr}}
+.plan{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);padding:36px 34px;display:flex;flex-direction:column;transition:transform 180ms,box-shadow 220ms}
+.plan:hover{transform:translateY(-4px);box-shadow:0 24px 60px oklch(30% 0.03 140/.1)}
+.plan.hot{background:linear-gradient(180deg,oklch(96% 0.02 140),var(--surface) 60%);border-color:oklch(46% 0.11 145/.45);box-shadow:0 18px 50px oklch(46% 0.11 145/.14)}
+.plan .ptitle{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.plan h3{font-size:17px;font-weight:560}
+.plan .badge{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;padding:4px 10px;border-radius:999px;border:1px solid oklch(46% 0.11 145/.5);color:var(--leaf)}
+.plan .price{font-family:var(--font-display);font-size:54px;font-weight:340;letter-spacing:-.03em;margin:14px 0 4px}
+.plan .price small{font-family:var(--font-sans);font-size:14px;color:var(--muted);letter-spacing:0}
+.plan ul{list-style:none;margin:22px 0 32px;display:grid;gap:11px;font-size:14.5px;color:var(--muted)}
+.plan li{display:flex;gap:11px;align-items:baseline}
+.plan li::before{content:"❀";color:var(--petal);font-size:11px}
+.plan .btn{justify-content:center;margin-top:auto}
+
+/* ============ FAQ ============ */
+.faq{max-width:760px}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:23px 4px;font-size:16.5px;font-weight:470;transition:color 120ms}
+.faq summary:hover{color:var(--leaf)}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";font-family:var(--font-display);font-size:25px;font-weight:300;color:var(--muted);transition:transform 200ms ease}
+.faq details[open] summary::after{transform:rotate(45deg);color:var(--leaf)}
+.faq details p{padding:0 4px 24px;color:var(--muted);font-size:15px;max-width:60ch}
+
+/* ============ FINAL ============ */
+.final{position:relative;overflow:hidden;color:#fff;text-align:center;padding:clamp(110px,15vw,180px) 0}
+.final-bg{position:absolute;inset:0;background:url('hero-bg.png') center 30%/cover no-repeat;transform:scale(1.04)}
+.final-veil{position:absolute;inset:0;background:linear-gradient(180deg,oklch(30% 0.05 150/.45),oklch(25% 0.04 230/.3) 50%,oklch(28% 0.05 150/.5));backdrop-filter:blur(2px)}
+.final .wrap{position:relative;z-index:2}
+.final .h2{font-size:clamp(36px,5.4vw,66px);margin:20px auto 22px;max-width:17ch;text-shadow:0 2px 40px oklch(25% 0.05 150/.6)}
+.final .sub{margin:0 auto 42px;color:oklch(100% 0 0/.92);text-align:center;text-shadow:0 1px 20px oklch(25% 0.05 150/.6)}
+.final .eyebrow{color:#fff;background:oklch(100% 0 0/.18);border:1px solid oklch(100% 0 0/.4);backdrop-filter:blur(8px);padding:7px 16px;border-radius:999px}
+
+footer{border-top:1px solid var(--line);padding:36px 0;font-size:13px;color:var(--muted);background:var(--surface)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.foot nav{display:flex;gap:22px}
+.foot a:hover{color:var(--ink)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .rise{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="navbar" aria-label="Primary">
+  <a class="brand" href="#top" aria-label="MotionSites home">
+    <svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+      <path d="M3 20 L3 6 L9 14 L15 6 L15 20" stroke="oklch(46% 0.11 145)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M19 20 C 19 12, 23 12, 23 6" stroke="oklch(72% 0.13 15)" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="1 5"/>
+    </svg>
+    MotionSites
+  </a>
+  <a class="nl" href="#library">Library</a>
+  <a class="nl" href="#how">How it works</a>
+  <a class="nl" href="#pricing">Pricing</a>
+  <a class="cta" href="#pricing">Get the free set</a>
+</nav>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-veil" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <span class="eyebrow rise" style="animation-delay:.1s">Prompt library · 120+ heroes</span>
+      <h1 class="h1 rise" style="animation-delay:.22s">Designed to Make <em>AI Sites Feel Expensive</em></h1>
+      <p class="sub rise" style="animation-delay:.36s">Claude, Cursor and Lovable can build a hero this beautiful — if you ask like a senior designer. MotionSites is a library of battle-tested prompts that encode the lighting, motion and spacing you'd never think to type.</p>
+      <div class="hero-ctas rise" style="animation-delay:.5s">
+        <a href="#pricing" class="btn btn-ink">Browse the free set</a>
+        <a href="#library" class="btn btn-glass">Explore the library ↓</a>
+      </div>
+    </div>
+
+    <figure class="receipt rise" style="animation-delay:.66s" aria-label="The prompt that generated this background">
+      <div class="rh"><span class="dot" aria-hidden="true"></span> This background was AI-generated from prompt № 027</div>
+      <p>"Low-angle macro from inside a flower meadow — daisies, <b>pink cosmos</b>, cornflowers towering into a summer sky, <b>warm golden rim light</b> on petals, shallow depth of field, open sky upper-half for the headline…"</p>
+      <div class="rf">
+        <small>paste into Claude · Cursor · Lovable</small>
+        <button class="copy on-glass" data-copy="Low-angle macro from inside a flower meadow: mossy hill of daisies, pink cosmos and blue cornflowers towering into a vivid summer sky with soft clouds, warm golden backlight rim lighting on petals, shallow depth of field, dreamy premium editorial feel, open sky in the upper half for headline text.">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+          <span>copy prompt</span>
+        </button>
+      </div>
+    </figure>
+  </section>
+
+  <!-- TICKER -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>Agency <b>❀</b> SaaS <b>❀</b> Portfolio <b>❀</b> Fintech <b>❀</b> Automotive <b>❀</b> Web3 <b>❀</b> Editorial <b>❀</b> E-commerce <b>❀</b></span>
+      <span>Agency <b>❀</b> SaaS <b>❀</b> Portfolio <b>❀</b> Fintech <b>❀</b> Automotive <b>❀</b> Web3 <b>❀</b> Editorial <b>❀</b> E-commerce <b>❀</b></span>
+    </div>
+  </div>
+
+  <!-- COMPARISON -->
+  <section class="sec">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Same tool · same model</span>
+        <h2 class="h2">The prompt is <em>the whole difference.</em></h2>
+        <p class="sub">Two requests to the same AI builder, sixty seconds apart. One reads like a client brief from a senior art director. Guess which.</p>
+      </div>
+      <div class="vs">
+        <article class="vs-card">
+          <div class="vs-label">What everyone types <span class="pill">14 words</span></div>
+          <div class="vs-prompt">"make me a <b>modern hero section</b> for my website, clean and professional please"</div>
+          <div class="stage dull" role="img" aria-label="A flat generic hero mockup: gray bars and a blue button">
+            <div class="bar" style="width:180px;height:16px"></div>
+            <div class="bar" style="width:240px;height:9px;opacity:.7"></div>
+            <div class="bar" style="width:200px;height:9px;opacity:.7"></div>
+            <div class="cta2"></div>
+          </div>
+          <p class="vs-verdict">Centered text, default blue, zero motion. <b>Looks like a template</b> — because the prompt described one.</p>
+        </article>
+        <article class="vs-card win">
+          <div class="vs-label">The MotionSites prompt <span class="pill">217 words</span></div>
+          <div class="vs-prompt">"…cosmos petals on <b>independent float loops</b>, warm golden rim light behind the hill, serif at optical size 96, frosted nav at <b>12px blur</b>, 4% grain…"</div>
+          <div class="stage photo" role="img" aria-label="A cinematic meadow hero with an italic serif headline over blue sky">
+            <span class="navpill"></span>
+            <h4>Designed to Make<br>Moments Feel Special</h4>
+          </div>
+          <p class="vs-verdict">Layered light, real depth, editorial type. <b>Feels agency-built</b> — the brief knew what to ask for.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section class="sec" id="how" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Zero writing required</span>
+        <h2 class="h2">Browse. Copy. Paste. <em>Ship.</em></h2>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="num">01</div>
+          <h3>Find your look</h3>
+          <p>Browse by category — agency, SaaS, fintech, automotive — and preview the exact hero each prompt builds before you commit.</p>
+        </div>
+        <div class="step">
+          <div class="num">02</div>
+          <h3>Copy the prompt</h3>
+          <p>One click. Every prompt already encodes lighting, easing curves, type scale and spacing — the stuff a senior designer knows by feel.</p>
+        </div>
+        <div class="step">
+          <div class="num">03</div>
+          <h3>Paste into your builder</h3>
+          <p>Claude, Cursor or Lovable. Seconds later there's a motion-rich, 3D-feeling hero sitting in your project, ready to tune.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section class="sec library" id="library">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">The library</span>
+        <h2 class="h2">Six categories. <em>One taste level.</em></h2>
+        <p class="sub">Every entry ships as a preview + prompt pair, so you know exactly what you're pasting. Switch a category — these previews are live CSS, built by the prompts they sit next to.</p>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Prompt categories">
+        <button class="tab" role="tab" aria-selected="true" data-panel="agency">Agency</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="saas">SaaS</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="portfolio">Portfolio</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="fintech">Fintech</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="auto">Automotive</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="web3">Web3</button>
+      </div>
+
+      <div class="panel active" id="panel-agency" role="tabpanel">
+        <div class="preview sk-agency"><span class="plabel">Agency · 04</span><h4>We make brands<br><em>impossible to scroll past</em></h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Sunset Editorial</b><span class="tagrow"><em>gsap-free</em><em>tier 2</em></span></div>
+          <pre>Hero for a creative agency: dusk gradient from <span class="kw">deep plum to ember</span>, a radial sun-glow anchored top-right at 35% opacity. Serif headline with an italic second line, entrance staggered 90ms per line with a 0.2,0.7,0.2,1 ease. Nav is text-only, tracked caps, 11px.</pre>
+          <div class="pf"><small>≈ 210 words full · works everywhere</small>
+            <button class="copy" data-copy="MotionSites — Sunset Editorial (agency hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-saas" role="tabpanel">
+        <div class="preview sk-saas"><span class="plabel">SaaS · 11</span><h4>Ship dashboards<br>your users brag about</h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Aurora Console</b><span class="tagrow"><em>dark</em><em>tier 3</em></span></div>
+          <pre>Dark SaaS hero: a slow <span class="kw">conic aurora</span> rotating behind a masked vignette so color only breathes at the edges. Product shot floats on a 1px luminous border with 24px ambient shadow. Headline sans at −2 tracking, benefit-first; metrics row in tabular figures.</pre>
+          <div class="pf"><small>≈ 190 words full · Claude / Cursor tuned</small>
+            <button class="copy" data-copy="MotionSites — Aurora Console (SaaS hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-portfolio" role="tabpanel">
+        <div class="preview sk-portfolio"><span class="plabel">Portfolio · 07</span><h4>Ana Reyes — <em>work that holds its breath</em></h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Ink on Paper</b><span class="tagrow"><em>light</em><em>tier 1</em></span></div>
+          <pre>Portfolio hero in <span class="kw">warm paper white</span>: one oversized italic serif line, baseline-ruled like a typeset galley. A single hairline rule draws in from the left over 1.2s. Project index as small caps with tabular numbers; hover shifts each row 4px right.</pre>
+          <div class="pf"><small>≈ 160 words full · zero dependencies</small>
+            <button class="copy" data-copy="MotionSites — Ink on Paper (portfolio hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-fintech" role="tabpanel">
+        <div class="preview sk-fintech"><span class="plabel">Fintech · 09</span><h4>Money that moves<br>at market speed</h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Ledger Green</b><span class="tagrow"><em>dark</em><em>tier 2</em></span></div>
+          <pre>Fintech hero on <span class="kw">deep ledger green</span>: a faint engineering grid fading out radially, rates ticking in tabular numerals. Trust strip of muted wordmarks. Headline states the number first — "3.9% on idle cash" — then the product. No blue, no rockets.</pre>
+          <div class="pf"><small>≈ 200 words full · compliance-safe copy slots</small>
+            <button class="copy" data-copy="MotionSites — Ledger Green (fintech hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-auto" role="tabpanel">
+        <div class="preview sk-auto"><span class="plabel">Automotive · 03</span><h4>Zero to beautiful<br>in 2.9 seconds</h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Studio Sweep</b><span class="tagrow"><em>dark</em><em>tier 3</em></span></div>
+          <pre>Automotive hero in a <span class="kw">black studio bay</span>: a horizontal light sweep crosses the body line every 4.5s, blurred 1px like a real softbox pass. Spec figures fade up sequentially — 0-100, range, torque — in a condensed numeric stack pinned lower-left.</pre>
+          <div class="pf"><small>≈ 230 words full · video-free, pure CSS</small>
+            <button class="copy" data-copy="MotionSites — Studio Sweep (automotive hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-web3" role="tabpanel">
+        <div class="preview sk-web3"><span class="plabel">Web3 · 05</span><h4>Own the rails,<br>not the hype</h4></div>
+        <div class="prompt-card">
+          <div class="ph"><b>Orbital Mesh</b><span class="tagrow"><em>dark</em><em>tier 3</em></span></div>
+          <pre>Web3 hero: two <span class="kw">elliptical orbits</span> in thin cyan strokes rotating at different periods around the wordmark — restrained, no neon soup. Chromatic gradient only inside the type via background-clip. Stats in mono; CTA is a solid, not a gradient pill.</pre>
+          <div class="pf"><small>≈ 180 words full · degen-free typography</small>
+            <button class="copy" data-copy="MotionSites — Orbital Mesh (Web3 hero prompt, free preview)">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4" y="4" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10 4V3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" stroke="currentColor" stroke-width="1.4"/></svg>
+              <span>copy prompt</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROOF -->
+  <section class="sec">
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><b>8<i>sec</i></b><span>for a visitor to judge your site — the hero is the verdict</span></div>
+        <div class="stat"><b>120<i>+</i></b><span>battle-tested prompts across six categories</span></div>
+        <div class="stat"><b>217</b><span>words in an average prompt — you type none of them</span></div>
+        <div class="stat"><b>12</b><span>prompts in the free set, copy-ready today</span></div>
+      </div>
+      <figure class="quote">
+        <div class="mark" aria-hidden="true">"</div>
+        <div>
+          <blockquote>I pasted the Sunset Editorial prompt into Cursor between two client calls. The hero it produced is the one we shipped — the client asked which agency did it.</blockquote>
+          <figcaption><span class="avatar" aria-hidden="true">MO</span><b>Marta Okafor</b> · freelance product designer · <span>brightfold.studio</span></figcaption>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="sec" id="pricing" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Pricing</span>
+        <h2 class="h2">Test it before <em>you spend a cent.</em></h2>
+        <p class="sub">The free set is real library entries, not demos. If they don't out-build your own prompts, keep your money.</p>
+      </div>
+      <div class="plans">
+        <article class="plan">
+          <div class="ptitle"><h3>Starter set</h3></div>
+          <div class="price">$0</div>
+          <ul>
+            <li>12 prompts — two per category</li>
+            <li>Preview + full prompt for each</li>
+            <li>No signup, no email gate</li>
+            <li>Use in client work, no attribution</li>
+          </ul>
+          <a href="#top" class="btn btn-line">Start copying free</a>
+        </article>
+        <article class="plan hot">
+          <div class="ptitle"><h3>Full library</h3><span class="badge">Lifetime</span></div>
+          <div class="price">$59 <small>once — every future drop included</small></div>
+          <ul>
+            <li>All 120+ prompts, six categories</li>
+            <li>Motion tiers 1–3 per look (subtle → cinematic)</li>
+            <li>Builder-tuned variants for Claude, Cursor, Lovable</li>
+            <li>New drops monthly — next: e-commerce</li>
+          </ul>
+          <a href="#top" class="btn btn-ink">Unlock the library</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Questions</span>
+        <h2 class="h2">Before you ask.</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>Which AI builders do the prompts work with?</summary>
+          <p>Claude, Cursor and Lovable are tested on every entry; Bolt and v0 work for most. The prompts describe design decisions, not tool commands — anything that writes front-end code from natural language will follow them.</p>
+        </details>
+        <details>
+          <summary>Why do the prompts work when mine don't?</summary>
+          <p>"Modern and clean" gives the model nothing to build. These prompts specify the things a senior designer decides by reflex — light temperature, easing curves, optical type sizes, blur radii, grain levels. Specific inputs, specific output.</p>
+        </details>
+        <details>
+          <summary>Do I need to know how to code?</summary>
+          <p>No. You copy, you paste, your builder writes the code. Knowing CSS only helps if you want to tune the result afterwards — each prompt names its own knobs so you can ask the AI to adjust them.</p>
+        </details>
+        <details>
+          <summary>Can I use the output commercially?</summary>
+          <p>Yes — client work, your own products, resale of the sites you build. The only thing you can't resell is the prompt library itself.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL -->
+  <section class="final">
+    <div class="final-bg" aria-hidden="true"></div>
+    <div class="final-veil" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow">The free set is live</span>
+      <h2 class="h2">Stop typing <em>"make it modern."</em></h2>
+      <p class="sub">One person with this library ships agency-grade landing pages before lunch. Everyone else is still wondering why theirs looks like a template.</p>
+      <a href="#pricing" class="btn btn-glass" style="font-size:16px;padding:17px 36px;border-width:1.5px">Get 12 prompts free</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>© 2026 MotionSites. Prompts, not templates.</span>
+    <nav aria-label="Footer">
+      <a href="#library">Library</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#top">Changelog</a>
+      <a href="#top">X / Twitter</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+const tabs=[...document.querySelectorAll('.tab')];
+tabs.forEach(t=>t.addEventListener('click',()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+}));
+document.querySelectorAll('.copy').forEach(b=>b.addEventListener('click',async()=>{
+  try{await navigator.clipboard.writeText(b.dataset.copy)}catch(e){}
+  const s=b.querySelector('span'),old=s.textContent;
+  b.classList.add('copied');s.textContent='copied ✓';
+  setTimeout(()=>{b.classList.remove('copied');s.textContent=old},1600);
+}));
+</script>
+</body>
+</html>

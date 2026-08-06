@@ -68,6 +68,22 @@ grammar rules incrementally.
   A keystroke should only re-render the composer mirror.
 - **Verify in isolation.** Never drive a real user session: agent-browser /
   sandbox homes only. Kill the throwaway PTYs (`/pty/close`) afterwards.
+- **Menus can live BELOW the composer.** Claude draws the slash menu above
+  the prompt; Codex draws it below. A short tail window (8 rows) loses the
+  prompt the instant the menu opens → the whole screen falls back to raw
+  mode. Codex uses a 14-row window and the shell splits below-composer rows
+  into status vs `isMenuRow()` lines, floating the menu into the footer
+  (`findCodexInputRegion` + the `belowMenu` split in `ChatShell.tsx`).
+- **Box frames are re-layout candidates, not sacred.** Codex's boxed
+  welcome (`│ >_ OpenAI Codex (v0.146.0) │`) folds into the same
+  `WelcomeCard` as Claude's block art; its update-available box becomes the
+  card's right-column `notice` (`WelcomeInfo.notice`) — most users never
+  see one, so the card stays single-column. Parse boxes generically
+  (`findBoxes` in `codex-tty.ts`), classify by inner text, splice the
+  ranges out.
+- **Vendor extras gate on `WelcomeInfo.vendor`.** The What's-new changelog
+  column is Claude-only; other vendors get the single-column card unless
+  they bring their own right-column content.
 
 ## Vendor cheat sheet (sampled)
 
@@ -78,7 +94,9 @@ grammar rules incrementally.
 | Assistant marker | `● ` bullets, 2-space wrap | `• ` notice bullets |
 | Slash menu | `/name  desc` two-column | same shape (shared parser) |
 | Selection | chromatic vs grey fg | (unverified — shared heuristic) |
-| Welcome | block-art logo + text column | box-drawing frame (render verbatim) |
+| Welcome | block-art logo + text column | box frame → WelcomeCard (`>_` logo) |
+| Update notice | changelog column (client-side fetch) | boxed banner → card `notice` column |
+| Menu position | above composer | below composer (footer float) |
 | Exit banner | `Resume this session with:` | none known (region absence) |
 
 ## Sunset note

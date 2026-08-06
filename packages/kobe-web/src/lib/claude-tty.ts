@@ -33,6 +33,12 @@ export interface WelcomeInfo {
   product: string
   version: string
   info: string[]
+  /** Owning engine (absent = claude) — gates vendor-specific extras like the
+   *  What's-new changelog column. */
+  vendor?: string
+  /** Right-column notice lines (Codex's update-available box) — shown in
+   *  place of the changelog column when present. */
+  notice?: string[]
 }
 
 export type TtyBlock =
@@ -56,6 +62,12 @@ const USER_ECHO = /^[>❯›] (?!\d+\.\s)/
 const ACTIVITY = /^[·✢✳✶✻✽✷✸✹✺✱*∗＊⠀-⣿]\s+\S/
 /** A slash-command menu row: `/name   description` (2+ spaces, then text). */
 const MENU_ROW = /^(\/[a-zA-Z][\w:-]*)\s{2,}(\S.*)$/
+
+/** Is this line a slash-menu row? Exposed so the shell can split an engine's
+ *  below-composer menu (Codex) away from its status tail. */
+export function isMenuRow(text: string): boolean {
+  return MENU_ROW.test(text.trim())
+}
 
 /** The CLI marks the selected menu row with a CHROMATIC name color (accent)
  *  vs grey for the rest — a bg run (inverse themes) also counts. */

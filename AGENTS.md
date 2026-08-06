@@ -89,6 +89,7 @@ The engine adapter is the source of truth for agent/product identity, capabiliti
 - Model catalogs + context math come from `EngineCapabilities`, keyed by the task's vendor. History is an engine-owned `EngineHistory`; token/context/speed are engine-normalized — don't parse vendor transcript files or reconstruct speed in the UI.
 - Subagent steps are engine-owned nested data (tagged by `parentId`, nested one level under the parent Agent row), not flattened transcript noise.
 - A new pane needing engine-specific data → extend the engine contract first; don't thread ad-hoc vendor checks through TUI/orchestrator code.
+- Onboarding a new coding agent into the `/chat` translated render → follow the porting guide in [`docs/design/engine-screen-grammar.md`](./docs/design/engine-screen-grammar.md).
 
 ### Diagrams in `docs/`: use Mermaid
 Diagrams in `docs/` go in a ` ```mermaid ` fence (renders natively in GitHub + VS Code preview; PlantUML and friends don't). ASCII boxes only for tiny relationships (≤3 nodes, no states). Canonical example: [`docs/design/tasks.md`](./docs/design/tasks.md).

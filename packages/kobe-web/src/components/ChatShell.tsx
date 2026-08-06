@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { isMenuRow, type TtyBlock } from "../lib/claude-tty.ts"
 import { type EngineGrammar, grammarFor } from "../lib/engine-grammar.ts"
 import {
   closeSettings,
@@ -254,17 +255,30 @@ function SessionView({
   // Status footer (branch | ctx | quota | mode) as COLORED lines, straight
   // from the buffer below the prompt — so it keeps the engine's ANSI colors
   // instead of flattening to grey. Rule/blank rows dropped.
-  const statusColored = useMemo(() => {
-    if (!region) return []
-    return colored.slice(region.promptRow + 1).filter((l) => {
+  // Below-composer tail: true status rows stay in the footer; slash-menu rows
+  // (Codex draws its menu BELOW the composer) lift into the floated menu.
+  const { statusColored, belowMenu } = useMemo(() => {
+    if (!region) return { statusColored: [], belowMenu: [] as TtyBlock[] }
+    const below = colored.slice(region.promptRow + 1)
+    const menuRows = below.filter((l) => isMenuRow(l.text))
+    const menu =
+      menuRows.length >= 2
+        ? grammar.parseBlocks(menuRows).filter((b) => b.kind === "menu")
+        : []
+    const status = below.filter((l) => {
       const t = l.text.trim()
-      return t !== "" && !STATUS_RULE.test(t)
+      return t !== "" && !STATUS_RULE.test(t) && !isMenuRow(l.text)
     })
-  }, [region, colored])
+    return { statusColored: status, belowMenu: menu }
+  }, [region, colored, grammar])
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
-  const { body, footer } = useTtyBlocks(chatBodyLines, grammar)
+  const { body, footer: bodyFooter } = useTtyBlocks(chatBodyLines, grammar)
+  const footer = useMemo(
+    () => (belowMenu.length > 0 ? [...bodyFooter, ...belowMenu] : bodyFooter),
+    [bodyFooter, belowMenu],
+  )
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.

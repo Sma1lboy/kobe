@@ -14,12 +14,16 @@ import type { WelcomeInfo } from "../lib/claude-tty.ts"
 
 export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
   const { logo, product, version, info } = welcome
+  // The What's-new column reads Claude Code's changelog — other vendors get
+  // the single-column card.
+  const hasChangelog = !welcome.vendor || welcome.vendor === "claude"
   const [entry, setEntry] = useState<ChangelogEntry | null>(null)
   const [state, setState] = useState<"loading" | "empty" | "ready">("loading")
 
   // Auto-load this version's notes on mount (mirrors the CLI welcome banner's
   // right-hand "What's new" column — no click-to-expand).
   useEffect(() => {
+    if (!hasChangelog) return
     let cancelled = false
     setState("loading")
     void changelogFor(version).then((e) => {
@@ -30,7 +34,7 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
     return () => {
       cancelled = true
     }
-  }, [version])
+  }, [version, hasChangelog])
 
   return (
     <div className="fade-up my-3 rounded-xl border border-primary/40 bg-inset px-4 py-3">
@@ -53,6 +57,24 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
             ))}
           </div>
         </div>
+        {!hasChangelog && welcome.notice && welcome.notice.length > 0 && (
+          <div className="hidden min-w-0 flex-1 border-l border-line pl-4 sm:block">
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Update
+            </div>
+            <div className="mt-1.5 space-y-0.5">
+              {welcome.notice.map((line) => (
+                <div
+                  key={line}
+                  className="break-words text-[12px] leading-relaxed text-muted"
+                >
+                  {line}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasChangelog && (
         <div className="hidden min-w-0 flex-1 border-l border-line pl-4 sm:block">
           <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
             What's new
@@ -87,6 +109,7 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   )
