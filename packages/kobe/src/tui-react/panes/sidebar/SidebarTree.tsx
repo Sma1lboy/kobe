@@ -31,6 +31,7 @@ import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
 import { ContextMenu } from "../../ui/context-menu"
+import { AgentChannelRail } from "./agent-channel-rail"
 import { SidebarBrandHeader, SidebarNavRail, SidebarSearchInput, SidebarViewTabs, SidebarZenChip } from "./chrome"
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
@@ -401,6 +402,12 @@ export function SidebarTree(props: SidebarTreeProps) {
       {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
           within the workspace you're in, so they read as children of it. */}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
+      <AgentChannelRail
+        channels={props.channels ?? []}
+        tasks={props.tasks}
+        selectedChannelId={props.selectedChannelId ?? null}
+        onSelectChannel={props.onSelectChannel}
+      />
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}

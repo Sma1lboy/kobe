@@ -8,6 +8,7 @@
  */
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
+import type { AgentChannel } from "@/state/agent-channels"
 import type { Task } from "@/types/task"
 import type { TaskSortMode } from "../../../tui/panes/sidebar/groups"
 import type { SidebarNav } from "../../../tui/panes/sidebar/nav-core"
@@ -43,6 +44,9 @@ export type SidebarProps = SidebarTaskCallbacks & {
   nav?: SidebarNav
   onNavChange?: (nav: SidebarNav) => void
   tasks: readonly Task[]
+  channels?: readonly AgentChannel[]
+  selectedChannelId?: string | null
+  onSelectChannel?: (channel: AgentChannel) => void
   selectedId: string | null
   onSelect: (id: string) => void
   /** Fires on keyboard enter, and optionally mouse click in the Tasks pane. */

@@ -130,6 +130,21 @@ not kobe.
   worktree; selecting one focuses its tab if already open, otherwise opens a
   new tab seeded with that session id.
 
+## Agent Channels
+
+`ctrl+a`, `@` connects the active engine chat to another task. Creation is a
+one-time operation: kobe asks each engine to fork its own active conversation,
+adds the two forked tabs to their original tasks, and persists a Channel record
+containing only the two `{ taskId, tabId }` endpoint references. The original
+tabs stay unchanged.
+
+Opening that Channel later mounts the two real hosted PTYs side by side and
+reactivates those same endpoint tabs; it does not fork again or reconstruct a
+combined transcript. Claude Code and Codex are supported because their CLIs can
+branch a session. Engines that only resume, rather than fork, are refused. B0
+is explicitly user-driven: kobe does not automatically forward each response
+into the other endpoint or create an unbounded agent-to-agent reply loop.
+
 ## kobe web as a second client
 
 `kobe web` serves the browser dashboard from the daemon's own HTTP/SSE

@@ -93,6 +93,18 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+a c" },
   },
   {
+    // Owner decision 2026-08-06: prefix + `@` means "address another
+    // task". It opens a task picker, forks both native chats once, then
+    // stores only the endpoint binding under CHANNELS.
+    id: "chat.channel.connect",
+    scope: "workspace",
+    keys: [],
+    prefixKeys: ["@"],
+    category: "Workspace",
+    description: "Connect this chat to another task as an Agent Channel",
+    hint: { keys: "ctrl+a @" },
+  },
+  {
     // Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires

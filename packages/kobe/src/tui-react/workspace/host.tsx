@@ -36,6 +36,7 @@ import { useWorkspaceKeybindings } from "./host-keybindings"
 import { renderContentPage, renderFullWindowPage, useHostPagesState } from "./host-pages"
 import { HostSidebar } from "./host-sidebar"
 import { useWorkspaceTaskActions } from "./host-task-actions"
+import { HostTerminalContent } from "./host-terminal-content"
 import { requestTaskWorktreeOpen } from "./open-task-worktree"
 import {
   clearOptimisticMark,
@@ -44,8 +45,8 @@ import {
   supersededMarks,
 } from "./optimistic-activity"
 import { useQuickFork } from "./quick-fork"
-import { ShowWorkspace } from "./show-workspace"
 import { activeTabIdFor, forgetTaskTabs, requestTabActivation, setUiEventReporter } from "./terminal-tabs-shared"
+import { useAgentChannels } from "./use-agent-channels"
 import { useAttention } from "./use-attention"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
@@ -115,8 +116,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
   const worktree = selectedTask?.worktreePath || null
 
-  // Toasts + global sort pref + move-mode — the wiring shared with the tmux
-  // Tasks pane, extracted to the hook next to the Sidebar itself.
   const { sortMode, toggleSortMode, moveMode, setMoveMode, notifyError, notifyInfo, onLocalMergeRequest } =
     useSidebarHostState({ kv, notif, tasks, selectedId, setSelectedId })
 
@@ -162,15 +161,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     })
 
-  // Imperative handle from the currently-mounted TerminalTabs (issue #16):
-  // a ref, since FileTree's "open" only READS it at click time and
-  // TerminalTabs re-hands it on every mount (task/worktree switch).
   const openEditorTabFn = useRef<((command: readonly string[], label: string) => void) | null>(null)
   const sendToEngineFn = useRef<((text: string) => void) | null>(null)
-  // Read-only diff tab opener (issue #21) — same ref pattern as the editor
-  // tab: TerminalTabs re-hands it per mount, FileTree's `d` reads it at
-  // keypress. Opening is a content swap; the host does NOT focus the
-  // workspace here (KOB-25 — a read-only open must not pull focus).
   const openDiffTabFn = useRef<((relPath: string, label: string, base?: string) => void) | null>(null)
 
   // Identity guard for the async actions below: after an await, the selected
@@ -222,6 +214,18 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // Which surface the workspace shows — settings/worktrees/update full swaps
   // plus the rail's one-at-a-time nav. State + rationale in host-pages.tsx.
   const pages = useHostPagesState(focus)
+  const agentChannels = useAgentChannels({
+    tasks,
+    selectedTask,
+    kv,
+    dialog,
+    t,
+    notifyError,
+    onOpen: () => {
+      pages.setNav("terminal")
+      focus.setFocused("workspace")
+    },
+  })
   // Sidebar layout: the tree lists each worktree's tabs as rows (the strip is
   // off by default to match); `flat` restores the PROJECTS / TASKS list.
   const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
@@ -250,7 +254,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openUpdate: pages.openUpdate,
     kanbanOpen: pages.kanbanOpen,
     openKanban: pages.openKanban,
-    filesPaneVisible: !zen && pages.nav === "terminal",
+    filesPaneVisible: !zen && pages.nav === "terminal" && !agentChannels.selectedChannel,
     automationsOpen: pages.automationsOpen,
     openAutomations: pages.openAutomations,
     workItemsOpen: pages.workItemsOpen,
@@ -273,7 +277,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     toggleZen,
     jumpToNextAttention,
     openInbox: inbox.show,
-    createPR: () => void createPR(),
+    createPR: () => {
+      if (!agentChannels.selectedChannel) void createPR()
+    },
+    connectChannel: agentChannels.selectedChannel ? undefined : agentChannels.connectCurrent,
     // prefix+m — global entry into the sidebar's move mode: focus the
     // sidebar, highlight the current selection, j/k reorders, enter/esc
     // exits. Falls back to the first task when nothing is selected.
@@ -315,15 +322,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     contentFocused: activePane === "workspace",
   }
 
-  // Worktrees / Update replace the whole window; the rail's pages replace only
-  // the content pane, so the sidebar stays live beside them.
   const fullWindowPage = renderFullWindowPage(pageDeps)
   if (fullWindowPage) return fullWindowPage
   const openPage = renderContentPage(pageDeps)
 
   if (pages.settingsOpen) {
-    // The scrollbox lives inside SettingsDialog (standalone mode) so its
-    // keyboard cursor can scrollChildIntoView on short terminals.
     return (
       <box flexGrow={1} backgroundColor={theme.background} paddingTop={1}>
         <SettingsDialog kv={kv} orchestrator={orch} standalone={true} onClose={pages.closeSettings} />
@@ -333,12 +336,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
-      {/* Tasks sidebar stays visible in zen (tmux parity) — its
-          ☯ ZEN chip is also the exit affordance. */}
-      {/* Borderless rail (owner call 2026-07-27): no frame, no divider —
-          opentui coerces a full frame if borderColor is ever set, so the box
-          carries no border prop at all. The workspace frame's left edge is
-          the only boundary; sidebar focus shows on the KOBE brand text. */}
       <HostSidebar
         mode={sidebarMode}
         width={SIDEBAR_WIDTH}
@@ -347,14 +344,19 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         tasks={tasks}
         selectedId={selectedId}
         selectedTabId={selectedTabId}
+        channels={agentChannels.channels}
+        selectedChannelId={agentChannels.selectedChannelId}
+        onSelectChannel={agentChannels.openChannel}
         // Picking a task means "show me that task" — so it returns the
         // content pane to its terminal. Without this the rail page stayed
         // up and selecting a row did nothing visible.
         onSelect={(id) => {
+          agentChannels.leaveChannel()
           selectTask(id)
           pages.setNav("terminal")
         }}
         onActivate={(id) => {
+          agentChannels.leaveChannel()
           pages.setNav("terminal")
           void activateTask(id)
         }}
@@ -363,6 +365,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         // sidebar's letter chords (d!) live under your typing is how issues
         // got mis-deleted.
         onSelectTab={(taskId, tabId) => {
+          agentChannels.leaveChannel()
           pages.setNav("terminal")
           requestTabActivation(taskId, tabId)
           focus.setFocused("workspace")
@@ -411,7 +414,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
             the left stays live, so selecting a task is how you get back to
             its terminal. */}
         {openPage ?? (
-          <ShowWorkspace
+          <HostTerminalContent
+            channel={agentChannels.selectedChannel}
+            tasks={tasks}
             task={selectedTask}
             worktree={worktree}
             orchestrator={orch}
@@ -433,10 +438,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         )}
       </box>
 
-      {/* The FileTree lists a WORKTREE's files. A rail page is not about a
-          worktree — it reads daemon state that spans projects — so the pane
-          would be showing an unrelated tree beside it. Hidden, same as zen. */}
-      {!zen && !openPage ? (
+      {!zen && !openPage && !agentChannels.selectedChannel ? (
         <box
           width={worktreeToolsWidth}
           flexShrink={0}

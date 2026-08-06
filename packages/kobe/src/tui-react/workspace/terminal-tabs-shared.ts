@@ -12,8 +12,11 @@ import {
   type EngineTab,
   type TabsState,
   type TerminalTab,
+  addTab,
   initialTabs,
   rehydrateTabs,
+  setTabForkFrom,
+  setTabSessionId,
 } from "../../tui/workspace/terminal-tabs-core"
 import type { VendorId } from "../../types/vendor"
 import { type TabsSnapshotKv, forgetTaskTabsSnapshot, terminalTabsKey } from "./terminal-tabs-persist"
@@ -71,19 +74,19 @@ export function knownTaskTabs(
  * first, TerminalTabs mounts, then reads the pending request). Unknown tab
  * ids are dropped on consume — the tab may have closed meanwhile.
  */
-let pendingTabActivation: { taskId: string; tabId: string } | null = null
+const pendingTabActivations = new Map<string, string>()
 export const tabActivationListeners = new Set<() => void>()
 
 export function requestTabActivation(taskId: string, tabId: string): void {
-  pendingTabActivation = { taskId, tabId }
+  pendingTabActivations.set(taskId, tabId)
   for (const listener of tabActivationListeners) listener()
 }
 
 /** Consume a pending activation for this task, or null. */
 export function takeTabActivation(taskId: string): string | null {
-  if (pendingTabActivation?.taskId !== taskId) return null
-  const tabId = pendingTabActivation.tabId
-  pendingTabActivation = null
+  const tabId = pendingTabActivations.get(taskId) ?? null
+  if (tabId === null) return null
+  pendingTabActivations.delete(taskId)
   return tabId
 }
 
@@ -218,6 +221,78 @@ function currentTabsState(kv: TabsSnapshotKv, taskId: string, shell: string): Ta
   if (inMemory) return inMemory
   const saved = kv.store[terminalTabsKey(taskId)] as TabsState | null | undefined
   return saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved, [shell]) : initialTabs()
+}
+
+/** The active tab a host-side flow should treat as this task's chat source. */
+export function currentTaskActiveTab(kv: TabsSnapshotKv, taskId: string, shell: string): TerminalTab {
+  const state = currentTabsState(kv, taskId, shell)
+  return state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]
+}
+
+export interface TaskForkSpec {
+  readonly vendor: VendorId
+  readonly sourceSessionId: string
+}
+
+type PendingTaskFork = {
+  readonly taskId: string
+  readonly spec: TaskForkSpec
+  result?: { state: TabsState; tab: EngineTab }
+}
+
+const pendingTaskForks = new Map<string, PendingTaskFork>()
+
+/** Pure tab transition shared by mounted and background task owners. */
+export function appendForkTabState(state: TabsState, spec: TaskForkSpec): { state: TabsState; tab: EngineTab } {
+  let next = addTab(state, spec.vendor)
+  const tabId = next.activeId
+  next = setTabForkFrom(next, tabId, spec.sourceSessionId)
+  const { sessionId } = withClaudeSessionId(interactiveEngineCommand(spec.vendor), spec.vendor)
+  next = setTabSessionId(next, tabId, sessionId)
+  const tab = next.tabs.find(
+    (candidate): candidate is EngineTab => candidate.id === tabId && candidate.kind === "engine",
+  )
+  if (!tab) throw new Error("Fork tab transition did not create an engine tab")
+  return { state: next, tab }
+}
+
+/** Consume a fork requested for a currently-mounted TerminalTabs owner. */
+export function takeTaskFork(taskId: string): PendingTaskFork | null {
+  const request = pendingTaskForks.get(taskId) ?? null
+  if (request) pendingTaskForks.delete(taskId)
+  return request
+}
+
+/** Apply a claimed request and publish its synchronous result to the caller. */
+export function resolveTaskFork(request: PendingTaskFork, state: TabsState): { state: TabsState; tab: EngineTab } {
+  const result = appendForkTabState(state, request.spec)
+  request.result = result
+  return result
+}
+
+/**
+ * Append a native-fork tab whether the task is mounted or in the background.
+ * The listener sweep is synchronous: a mounted TerminalTabs claims and writes
+ * through its React owner; otherwise this function writes module + KV state.
+ */
+export function appendTaskForkTab(
+  kv: TabsSnapshotKv,
+  taskId: string,
+  shell: string,
+  spec: TaskForkSpec,
+): { state: TabsState; tab: EngineTab } {
+  const request: PendingTaskFork = { taskId, spec }
+  pendingTaskForks.set(taskId, request)
+  for (const listener of tabActivationListeners) listener()
+  if (pendingTaskForks.get(taskId) === request) {
+    pendingTaskForks.delete(taskId)
+    const result = appendForkTabState(currentTabsState(kv, taskId, shell), spec)
+    tabsByTask.set(taskId, result.state)
+    kv.set(terminalTabsKey(taskId), result.state)
+    request.result = result
+  }
+  if (!request.result) throw new Error(`Task fork request for ${taskId} was claimed without a result`)
+  return request.result
 }
 
 /**

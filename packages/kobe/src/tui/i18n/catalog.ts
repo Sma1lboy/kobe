@@ -18,6 +18,7 @@
  */
 
 import { en as automations, zh as automationsZh } from "./messages/automations"
+import { en as channels, zh as channelsZh } from "./messages/channels"
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
@@ -55,6 +56,7 @@ export const en = {
   kanban,
   automations,
   workItems,
+  channels,
 }
 
 /**
@@ -83,6 +85,7 @@ export const zh: Messages = {
   kanban: kanbanZh,
   automations: automationsZh,
   workItems: workItemsZh,
+  channels: channelsZh,
 }
 
 /** Registered locales, in display order. */

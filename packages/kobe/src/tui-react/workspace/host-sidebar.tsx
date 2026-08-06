@@ -9,6 +9,7 @@
  */
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
+import type { AgentChannel } from "@/state/agent-channels"
 import type { Task } from "@/types/task"
 import { useCallback } from "react"
 import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
@@ -31,6 +32,9 @@ export interface HostSidebarProps {
   readonly tasks: readonly Task[]
   readonly selectedId: string | null
   readonly selectedTabId: string | null
+  readonly channels: readonly AgentChannel[]
+  readonly selectedChannelId: string | null
+  readonly onSelectChannel: (channel: AgentChannel) => void
   readonly onSelect: (taskId: string) => void
   readonly onActivate: (taskId: string) => void
   readonly onSelectTab: (taskId: string, tabId: string) => void
@@ -88,6 +92,9 @@ export function HostSidebar(props: HostSidebarProps) {
     onNavChange: props.onNavChange,
     tasks: props.tasks,
     selectedId: props.selectedId,
+    channels: props.channels,
+    selectedChannelId: props.selectedChannelId,
+    onSelectChannel: props.onSelectChannel,
     onSelect: props.onSelect,
     onActivate: props.onActivate,
     engineState: props.engineState,

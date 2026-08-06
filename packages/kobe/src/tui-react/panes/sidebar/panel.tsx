@@ -6,12 +6,14 @@
  * `src/tui/panes/sidebar/view-core.ts`.
  */
 
+import type { Task } from "@/types/task"
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { SidebarProjectOption, SidebarRow, SidebarView, TaskSortMode } from "../../../tui/panes/sidebar/groups"
 import type { SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { AgentChannelRail } from "./agent-channel-rail"
 import {
   SectionHeader,
   SidebarBrandHeader,
@@ -38,6 +40,7 @@ export function SidebarPanel(props: {
   totalRows: number
   projectRows: readonly SidebarRow[]
   taskRows: readonly SidebarRow[]
+  tasks?: readonly Task[]
   hasTaskRows: boolean
   projectOptions: readonly SidebarProjectOption[]
   projectFilterRepo: string | null
@@ -50,6 +53,9 @@ export function SidebarPanel(props: {
   headerStatus?: SidebarProps["headerStatus"]
   onHeaderStatusClick?: () => void
   onAddTask?: () => void
+  channels?: SidebarProps["channels"]
+  selectedChannelId?: string | null
+  onSelectChannel?: SidebarProps["onSelectChannel"]
   zenActive?: boolean
   onZenClick?: () => void
   hover: SidebarHover | null
@@ -98,6 +104,12 @@ export function SidebarPanel(props: {
           Routines are things you open within the workspace you're in, so
           they read as children of that choice, not as peers of the brand. */}
       <SidebarNavRail nav={props.nav} setNav={props.setNav} />
+      <AgentChannelRail
+        channels={props.channels ?? []}
+        tasks={props.tasks ?? []}
+        selectedChannelId={props.selectedChannelId ?? null}
+        onSelectChannel={props.onSelectChannel}
+      />
       {/* Filter active ⇒ keep the header (and its filter label) visible even
           when the filtered repo has no main row to show. */}
       {props.projectRows.length > 0 || props.projectFilterRepo !== null ? (

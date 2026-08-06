@@ -183,6 +183,9 @@ for the Issues board, or check in on long-running tasks without a terminal.
   1 per task, never auto-deleted.
 - **Chat tab**: one engine session inside a task, with its own
   `sessionId` and transcript. N per task.
+- **Agent Channel**: a durable pair of forked Chat Tabs from two different
+  Tasks, shown side by side. Stores endpoint references, never copied chat
+  history; creation forks once and reopening reuses the same endpoints.
 - **Engine**: an interactive coding-agent CLI (`claude`, `codex`,
   `copilot`, `kimi`, or a command you registered) that kobe runs as the
   task's execution backend.

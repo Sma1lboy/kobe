@@ -49,6 +49,11 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("terminal.scroll-down")?.prefixKeys).toBeUndefined()
   })
 
+  test("Agent Channel connect uses the owner-selected @ prefix stroke", () => {
+    expect(findBinding("chat.channel.connect")?.keys).toEqual([])
+    expect(findBinding("chat.channel.connect")?.prefixKeys).toEqual(["@"])
+  })
+
   test("restores a row's chords + hint after an override", () => {
     const row = findBinding(ID)
     expect(row).toBeDefined()
