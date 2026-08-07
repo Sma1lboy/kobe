@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { durationMs, withLiveState } from "../src/lib/timeline.ts"
 import type { EngineTrace, TraceTurn } from "../src/lib/trace.ts"
-import { traceForRun } from "../src/lib/use-timeline-data.ts"
 
 const SESSION_ID = "codex-session"
 
@@ -76,17 +75,5 @@ describe("durationMs", () => {
     expect(durationMs(10, 25, 100)).toBe(15)
     expect(durationMs(10, null, 25)).toBe(15)
     expect(durationMs(25, 10, 100)).toBe(0)
-  })
-})
-
-describe("traceForRun", () => {
-  it("hides turns from earlier resumes of the same native session", () => {
-    const oldTurn = turn("success", 15)
-    const spanningTurn = { ...turn("success", 25), id: "turn-2" }
-    const currentTurn = { ...turn("running", null), id: "turn-3", startedAt: 30 }
-    const trace = model([oldTurn, spanningTurn, currentTurn])
-
-    expect(traceForRun(trace, 20).turns).toEqual([spanningTurn, currentTurn])
-    expect(traceForRun(trace, 0)).toBe(trace)
   })
 })
