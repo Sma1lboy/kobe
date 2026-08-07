@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { app, BrowserWindow, ipcMain, shell } from "electron"
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron"
 import { findPorts } from "./ports.mjs"
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -140,7 +140,24 @@ app.on("before-quit", () => {
 
 async function bootstrap() {
   console.log("kobe desktop: starting")
+// The renderer owns cmd+W (close TAB) and friends, so the app menu must
+// not shadow them: default roles minus the Close Window accelerator.
+function installMenu() {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: "appMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      {
+        label: "Window",
+        submenu: [{ role: "minimize" }, { role: "zoom" }, { role: "front" }],
+      },
+    ]),
+  )
+}
+
   await app.whenReady()
+  installMenu()
   if (process.platform === "darwin") app.dock?.setIcon(iconPath)
   const url = await startKobeWeb()
   console.log(`kobe desktop: loading ${url}`)

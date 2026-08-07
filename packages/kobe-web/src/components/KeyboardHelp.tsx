@@ -6,6 +6,10 @@
 
 import { useEffect, useRef } from "react"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
+import { isDesktopMode } from "../lib/desktop.ts"
+
+// Desktop speaks ⌘ for app chords; the browser build keeps ctrl.
+const MOD = isDesktopMode() ? "⌘" : "ctrl"
 
 interface Shortcut {
   keys: string[]
@@ -17,10 +21,10 @@ const SHORTCUTS: Shortcut[] = [
     keys: ["⌘", "K"],
     label: "Command palette — hold ctrl and tap K to cycle, release to jump",
   },
-  { keys: ["ctrl", "T"], label: "New tab on the selected task (same engine)" },
-  { keys: ["ctrl", "E"], label: "New tab — pick an engine, or a native shell" },
-  { keys: ["ctrl", "W"], label: "Close the active tab" },
-  { keys: ["ctrl", "2-0"], label: "Jump to the tab printing that digit" },
+  { keys: [MOD, "T"], label: "New tab on the selected task (same engine)" },
+  { keys: [MOD, "E"], label: "New tab — pick an engine, or a native shell" },
+  { keys: [MOD, "W"], label: "Close the active tab" },
+  { keys: [MOD, "2-0"], label: "Jump to the tab printing that digit" },
   {
     keys: ["ctrl", "A"],
     label: "Prefix — then 1 Kanban · 2 Routines · i Inbox",
@@ -60,7 +64,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Shell tabs",
     detail:
-      "ctrl+e → Shell runs your login shell; launching an engine inside it lights the session up",
+      `${MOD}+e → Shell runs your login shell; launching an engine inside it lights the session up`,
   },
   {
     label: "Settings / help",

@@ -4,10 +4,13 @@
  *
  *   ctrl+a            arm the prefix (1000ms window, HUD chip shows it)
  *   prefix, 1 / 2     rail pages in rail order (Kanban / Routines)
- *   ctrl+2…9,0        jump to the sidebar row printing that digit
- *   ctrl+t            new tab, same engine (TUI chat.tab.new)
- *   ctrl+e            new tab, choose engine (TUI chat.tab.chooseEngine)
- *   ctrl+w            close tab
+ *   mod+2…9,0         jump to the sidebar row printing that digit
+ *   mod+t             new tab, same engine (TUI chat.tab.new)
+ *   mod+e             new tab, choose engine (TUI chat.tab.chooseEngine)
+ *   mod+w             close tab
+ *
+ * `mod` is ⌘ in the desktop app (ctrl stays free for the terminal) and
+ * ctrl in the browser build; the ctrl+a prefix is universal.
  *   j / k / enter     tree cursor + activate (only outside inputs/terminal)
  *   [ / ]             Active ⇄ Archives view
  *   /                 focus the sidebar search
@@ -19,6 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from "react"
+import { isDesktopMode } from "./desktop.ts"
 
 /** Mirror of the TUI's TASK_JUMP_DIGITS (jump-digits.ts): row 0 prints and
  *  answers to `2` — ctrl+1 has no terminal encoding, and the web keeps the
@@ -109,9 +113,14 @@ export function useChatChords(handlers: ChatChordHandlers): boolean {
         return
       }
 
+      // Desktop (mac) speaks ⌘ for app chords, freeing ctrl for the
+      // terminal underneath; the browser build keeps the TUI's ctrl. The
+      // PREFIX stays ctrl+a everywhere — ⌘a is select-all and sacred.
+      const meta = isDesktopMode()
       const ctrl = event.ctrlKey && !event.metaKey && !event.altKey
-      // ctrl+a arms the prefix — reserved away from the terminal, exactly
-      // like the TUI (the engine never sees the prefix byte).
+      const chord = meta
+        ? event.metaKey && !event.ctrlKey && !event.altKey
+        : ctrl
       if (ctrl && event.key.toLowerCase() === "a") {
         event.preventDefault()
         event.stopPropagation()
@@ -122,8 +131,8 @@ export function useChatChords(handlers: ChatChordHandlers): boolean {
         }, PREFIX_TIMEOUT_MS)
         return
       }
-      // ctrl+<digit> task jump — global tier, works from inside the terminal.
-      if (ctrl) {
+      // chord+<digit> task jump — global tier, works from inside the terminal.
+      if (chord) {
         const key = event.key.toLowerCase()
         if (key === "t") {
           event.preventDefault()
@@ -152,7 +161,13 @@ export function useChatChords(handlers: ChatChordHandlers): boolean {
         return
       }
       // Bare keys: never while typing (inputs, composer, xterm textarea).
-      if (event.metaKey || event.altKey || isTypingTarget(event.target)) return
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isTypingTarget(event.target)
+      )
+        return
       if (event.key === "j") {
         event.preventDefault()
         h.onCursorMove(1)
