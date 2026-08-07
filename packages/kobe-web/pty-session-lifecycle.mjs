@@ -242,6 +242,24 @@ export function createPtySessionManager({
     return true
   }
 
+  /** Paste into an already-hosted PTY without submitting. This is the
+   * composer-fill primitive used by Agent Trace quoting. */
+  function insertText({ tabId, text }) {
+    const entry = sessions.get(tabId)
+    if (!entry) return { inserted: false, missing: true }
+    try {
+      // Trace output is external text. Strip terminal control bytes so it
+      // cannot close the bracketed-paste envelope or synthesize keystrokes.
+      const safeText = text
+        .replace(/\r\n?/g, "\n")
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+      entry.pty.write(`\x1b[200~${safeText}\x1b[201~`)
+      return { inserted: true, missing: false }
+    } catch {
+      return { inserted: false, missing: false }
+    }
+  }
+
   async function sendText({ tabId, taskId, text }) {
     let entry = sessions.get(tabId)
     let spawned = false
@@ -295,6 +313,7 @@ export function createPtySessionManager({
     attachSocket,
     closeSession,
     ensureSession,
+    insertText,
     sendText,
     shutdown,
     sessionCount: () => sessions.size,

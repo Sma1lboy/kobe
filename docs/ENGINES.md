@@ -271,6 +271,15 @@ output. To add another engine, implement `readTrace` (and optionally
 `traceRevision` plus normalized live hook details) in that engine's registry
 entry; do not add vendor parsing to React components.
 
+Opening a trace card formats JSON-shaped input and result details into labeled
+fields such as command, working directory, duration, exit code, and output;
+plain text stays intact. **Quote to input** inserts a bounded, self-contained
+reference to that card into the active engine's native composer. It uses
+bracketed paste without Enter, strips terminal control bytes, and returns focus
+to the composer, so the user can edit the reference and decide whether to send
+the next turn. This is a presentation/interaction layer over `EngineTrace` —
+the frontend still does not read vendor transcripts or own conversation state.
+
 ## Launching and resuming sessions
 
 Every launch site resolves the engine argv the same way

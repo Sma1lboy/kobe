@@ -78,6 +78,11 @@ export interface SendTextInput {
   text: string
 }
 
+export interface InsertTextInput {
+  tabId: string
+  text: string
+}
+
 export interface PtySessionManager {
   attachSocket(input: AttachSocketInput): Promise<unknown>
   closeSession(tabId: string): boolean
@@ -89,6 +94,10 @@ export interface PtySessionManager {
     rows: number,
     vendor?: string,
   ): Promise<unknown>
+  insertText(input: InsertTextInput): {
+    inserted: boolean
+    missing: boolean
+  }
   sendText(input: SendTextInput): Promise<{ sent: boolean; spawned: boolean; missing?: boolean }>
   shutdown(): void
   sessionCount(): number
