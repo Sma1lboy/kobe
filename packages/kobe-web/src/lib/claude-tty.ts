@@ -243,17 +243,31 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
         const raw = lines[j].text
         const t = raw.trim()
         if (t === "") {
-          const nextRaw = lines[j + 1]?.text ?? ""
-          if (!/^ {2}\S/.test(nextRaw)) break
+          // Bridge a RUN of blanks (CLI redraws litter scrollback with ghost
+          // gaps): if the next non-blank row is still an indented
+          // continuation — and not a new structure (option/menu/spinner) —
+          // it belongs to this bubble.
+          let k = j
+          while (k < lines.length && lines[k].text.trim() === "") k += 1
+          const nx = lines[k]?.text ?? ""
+          const nt = nx.trim()
+          if (
+            k - j > 4 ||
+            !/^ {2,}\S/.test(nx) ||
+            OPTION_ROW.test(nt) ||
+            MENU_ROW.test(nt) ||
+            ACTIVITY.test(nt)
+          )
+            break
           text += "\n"
-          j += 1
+          j = k
           continue
         }
         const wrapTail =
           cols > 0 &&
           /^[^\s●⏺>❯›✳✱]/.test(raw) &&
           lines[j - 1].text.trimEnd().length >= cols - 1
-        if ((!/^ {2}\S/.test(raw) && !wrapTail) || ACTIVITY.test(t)) break
+        if ((!/^ {2,}\S/.test(raw) && !wrapTail) || ACTIVITY.test(t)) break
         text += wrapTail ? ` ${t}` : `\n${t}`
         j += 1
       }

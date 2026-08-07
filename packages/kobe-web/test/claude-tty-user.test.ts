@@ -159,3 +159,25 @@ describe("reflowed user-echo continuation", () => {
     ).toBe(false)
   })
 })
+
+describe("ghost-gap continuation", () => {
+  test("an indented orphan row past multiple blanks rejoins the bubble", () => {
+    const line = (text: string) => ({ text, segs: [] })
+    const blocks = parseTtyBlocks([
+      line("> /effort low"),
+      line("  ⎿  Set effort level to low: Quick, straightforward implementation"),
+      line(""),
+      line(""),
+      line("     with minimal overhead"),
+      line(""),
+      line("● next reply"),
+    ])
+    const user = blocks.find((b) => b.kind === "user")
+    if (!user || user.kind !== "user") throw new Error("no user block")
+    expect(user.text).toContain("with minimal overhead")
+    expect(
+      blocks.some((b) => b.kind === "line" && b.line.text.includes("minimal")),
+    ).toBe(false)
+    expect(blocks.some((b) => b.kind === "line" && b.line.text.includes("next reply"))).toBe(true)
+  })
+})
