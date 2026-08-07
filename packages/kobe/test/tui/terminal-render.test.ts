@@ -32,6 +32,23 @@ describe("overlayCursor — cell-column aware", () => {
     expect(cursorCell([out], 0)?.text).toBe("b")
   })
 
+  it("counts a zero-width combining mark as part of its base char's cell", () => {
+    // "éx": é in NFD (e + combining acute) is ONE cell, x is the next.
+    // xterm folds the mark onto the base cell, so the mark must add 0 columns
+    // — counting it as 1 drifted the overlay one cell right and inverted the
+    // bare combining mark instead of the char the cursor was actually on.
+    const rows = [[{ text: "éx" } as Chunk]]
+    expect(cursorCell(overlayCursor(rows, { x: 0, y: 0 }), 0)?.text).toBe("e")
+    expect(cursorCell(overlayCursor(rows, { x: 1, y: 0 }), 0)?.text).toBe("x")
+  })
+
+  it("treats an emoji variation selector as zero-width", () => {
+    // "❤️x": U+2764 + VS16 is one narrow-width unit here (matching
+    // displayWidth), so x sits at cell 1, not cell 2.
+    const rows = [[{ text: "❤️x" } as Chunk]]
+    expect(cursorCell(overlayCursor(rows, { x: 1, y: 0 }), 0)?.text).toBe("x")
+  })
+
   it("past-the-end cursor (blank cell) appends an inverse space", () => {
     const rows = [[{ text: "你" } as Chunk]]
     // 你 spans cells 0-1; x=2 is the empty cell after it.
@@ -123,6 +140,19 @@ describe("sealRowEndAttributes — opentui row-end attribute leak workaround", (
     expect(out.map((c) => c.text).join("")).toBe("a你好")
     expect(out.find((c) => c.text === "好")?.attributes ?? 0).toBe(0)
     expect(out.find((c) => c.text === "你")?.attributes).toBe(ATTR.UNDERLINE)
+  })
+
+  it("finds the last visible cell past a zero-width combining mark", () => {
+    // "ábc" with á in NFD (a + combining acute) is THREE cells, not four:
+    // the mark folds onto its base. A cols=3 row is full and the seal must
+    // land on "c" — counting the mark as a column sealed "b" and left "c"
+    // (the real last-column cell) still bleeding its attribute.
+    const rows = [[{ text: "ábc", attributes: ATTR.UNDERLINE } as Chunk]]
+    const out = sealRowEndAttributes(rows, 3, FG, BG)[0] as readonly Chunk[]
+    expect(out.map((c) => c.text).join("")).toBe("ábc")
+    const sealed = out.find((c) => c.text === "c") as Chunk
+    expect(sealed.attributes ?? 0).toBe(0)
+    expect(out.find((c) => c.text === "áb")?.attributes).toBe(ATTR.UNDERLINE)
   })
 
   it("is a no-op for unstyled rows", () => {
