@@ -24,6 +24,10 @@ import { WelcomeCard } from "./WelcomeCard.tsx"
  *  frames, sparklines) and must render tight so cells abut. */
 const BLOCK_ART = /[█▉▊▋▌▍▎▏▀▄▐▖▗▘▙▚▛▜▝▞▟─━│┃┌┐└┘├┤┬┴┼╭╮╰╯╱╲╳]/
 
+/** The CLI's `──── ultracode` mode divider — re-dressed as part of the
+ *  ultracode ambience instead of a raw rule row. */
+const ULTRA_RULE = /^─{4,}[─\s]*ultracode\s*$/
+
 /** One colored terminal line as spans. `whitespace-pre` keeps native column
  *  alignment; art rows go line-height 1 so block cells don't split. */
 function Line({
@@ -35,6 +39,16 @@ function Line({
 }) {
   // Rows arrive padded to terminal width — trim so shrink-wrap parents work.
   const line = trimTrailingColored(raw)
+  if (ULTRA_RULE.test(line.text.trim())) {
+    return (
+      <div className="my-1.5 flex items-center gap-2.5">
+        <span aria-hidden="true" className="ultra-rule h-px min-w-0 flex-1" />
+        <span className="ultra-rule__label font-mono text-[11px]">
+          ultracode
+        </span>
+      </div>
+    )
+  }
   const art = BLOCK_ART.test(line.text)
   return (
     <div

@@ -148,6 +148,21 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-effort-glow 3s ease-in-out infinite;
 }
 
+/* The CLI's `──── ultracode` divider, part of the same ambience family. */
+.ultra-rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-kobe-violet) 70%, transparent)
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-kobe-violet) 35%, transparent);
+}
+
+.ultra-rule__label {
+  color: var(--color-kobe-violet);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--color-kobe-violet) 55%, transparent);
+}
+
 /* Transcript events — a plain conversation column. The structured timeline
    lives in the Agent Trace pane; here only spacing separates events. */
 .transcript-event {
