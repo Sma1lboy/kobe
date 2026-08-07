@@ -80,6 +80,16 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   background: transparent;
 }
 
+/* xterm ships its own .xterm-viewport scrollbar styling, which outranks the
+   global hide by specificity — pin it back to invisible. */
+.xterm-viewport {
+  scrollbar-width: none;
+}
+.xterm-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 @keyframes kobe-shimmer {
   0% {
     background-position: 200% 0;
