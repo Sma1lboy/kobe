@@ -213,8 +213,8 @@ function SessionView({
   // be — strand it there and it drifts mid-scrollback. Lift every marker row
   // out and pin ONE re-dressed strip above the composer; its presence is
   // also the LIVE signal that lights the welcome card.
-  const { chatLines, ultraActive } = useMemo(() => {
-    const marker = /^(?:[✦✧✳+*·]\s*)?ultracode(?:\s*·.*)?$|^─{4,}[─\s]*ultracode$/
+  const { chatLines, ultraMarker } = useMemo(() => {
+    const marker = /^(?:[✦✧✳+*·]\s*)?ultracode(?:\s*·.*)?$|^─{4,}[─\s]*ultracode\s*─{0,6}$/
     let found = false
     const kept = chatBodyLines.filter((l) => {
       if (!marker.test(l.text.trim())) return true
@@ -222,9 +222,13 @@ function SessionView({
       return false
     })
     return found
-      ? { chatLines: kept, ultraActive: true }
-      : { chatLines: chatBodyLines, ultraActive: false }
+      ? { chatLines: kept, ultraMarker: true }
+      : { chatLines: chatBodyLines, ultraMarker: false }
   }, [chatBodyLines])
+  // The mode label is composer chrome (region.modeLabel); stray scrollback
+  // markers count too so the ambience never flickers off mid-conversation.
+  const ultraActive =
+    region?.modeLabel?.toLowerCase() === "ultracode" || ultraMarker
   // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells —
   // CJK-good; wcwidth if emoji matters). The region's promptText is trimmed
   // (terminal rows are padded to full width), so TRAILING spaces the user

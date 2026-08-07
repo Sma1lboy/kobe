@@ -133,3 +133,34 @@ describe("codex welcome + open menu", () => {
     expect(region?.promptRow).toBe(2)
   })
 })
+
+describe("claude composer mode label", () => {
+  test("the labeled top rule absorbs into the region with modeLabel", () => {
+    const { claudeGrammar } = require("../src/lib/engine-grammar.ts")
+    const region = claudeGrammar.findInputRegion([
+      "● some reply",
+      "",
+      "──────────────────────────── ultracode ─",
+      "❯ ",
+      "────────────────────────────",
+      "  Ctx: 0 | Out: —",
+    ])
+    expect(region?.modeLabel).toBe("ultracode")
+    expect(region?.topRow).toBe(2)
+  })
+
+  test("bare label row under its rule absorbs too", () => {
+    const { claudeGrammar } = require("../src/lib/engine-grammar.ts")
+    const region = claudeGrammar.findInputRegion([
+      "● some reply",
+      "",
+      "────────────────────────────",
+      "                   ultracode ─",
+      "❯ ",
+      "────────────────────────────",
+      "  Ctx: 0 | Out: —",
+    ])
+    expect(region?.modeLabel).toBe("ultracode")
+    expect(region?.topRow).toBe(2)
+  })
+})
