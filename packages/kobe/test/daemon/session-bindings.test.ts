@@ -221,6 +221,51 @@ describe("SessionBindingStore", () => {
     expect(lateObserver.source).toBe("hook")
   })
 
+  it("makes a previously seen session current when the observer sees it resumed again", async () => {
+    const { store } = await fixture()
+    await store.begin("task-1", "tab-a", "codex")
+    const firstSessionRun = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "session-a",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+    const secondSessionRun = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "session-b",
+      source: "observer",
+      startSource: "resume",
+    })
+    const resumedAgain = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "session-a",
+      source: "observer",
+      startSource: "resume",
+    })
+
+    expect(resumedAgain).toMatchObject({
+      sessionId: "session-a",
+      state: "bound",
+      source: "observer",
+      startSource: "resume",
+    })
+    expect(resumedAgain.runId).not.toBe(firstSessionRun.runId)
+    expect(resumedAgain.runId).not.toBe(secondSessionRun.runId)
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]?.runId).toBe(resumedAgain.runId)
+    expect(store.runsSnapshot()).toEqual([
+      expect.objectContaining({ runId: firstSessionRun.runId, state: "superseded" }),
+      expect.objectContaining({ runId: secondSessionRun.runId, state: "superseded" }),
+      expect.objectContaining({ runId: resumedAgain.runId, state: "bound", sessionId: "session-a" }),
+    ])
+  })
+
   it("keeps late events on a superseded session from stealing the current tab", async () => {
     const { store } = await fixture()
     await store.begin("task-1", "tab-a", "codex")

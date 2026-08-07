@@ -229,6 +229,7 @@ export class SessionBindingStore {
         input.source === "hook" &&
         input.startSource === "resume"
       const startsRun = input.eventKind === "session-start" && input.startSource !== "compact"
+      const observesResume = input.source === "observer" && input.startSource === "resume"
 
       if (startsRun && !fillsPending && !confirmsPinnedSpawn && !confirmsObservedResume) {
         const next = this.boundRun(input, at)
@@ -242,7 +243,11 @@ export class SessionBindingStore {
         // never seen on this tab is still accepted for legacy reporters that
         // can miss SessionStart.
         const historical = this.latestMatchingRun(input)
-        if (historical && historical.runId !== current?.runId) {
+        // A PID-scoped resume observation is evidence of the engine's CURRENT
+        // selection, even when that native session appeared in an older run.
+        // Re-entering it is a new temporal run; reviving the historical row
+        // would leave currentRunIds pointing at the session being left.
+        if (historical && historical.runId !== current?.runId && !observesResume) {
           const updated = this.updatedRun(historical, input, at)
           const retained = {
             ...updated,
