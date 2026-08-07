@@ -296,6 +296,14 @@ export function ChatTerminal({
         /* container not measured yet */
       }
 
+      // Autofocus on mount (chat shell): a freshly created / switched-to tab
+      // takes keystrokes immediately — no click-to-focus required.
+      if (hideComposer) {
+        requestAnimationFrame(() => {
+          if (!disposed) termRef.current?.focus()
+        })
+      }
+
       ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows, vendor))
       wsRef.current = ws
       ws.binaryType = "arraybuffer"

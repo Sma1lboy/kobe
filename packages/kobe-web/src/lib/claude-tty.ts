@@ -86,8 +86,10 @@ function menuRowSelected(line: ColoredLine, name: string): boolean {
   const [r, g, b] = [m[1], m[2], m[3]].map((h) => Number.parseInt(h, 16))
   return Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) > 16
 }
-/** An AskUserQuestion choice row: an optional `❯` cursor, then `N. text`. */
-const OPTION_ROW = /^(❯\s*)?(\d+)\.\s+(.+)$/
+/** A selection-dialog choice row: an optional cursor (`❯` claude / `›`
+ *  codex), then `N. text`. Codex puts the description on the SAME row after
+ *  a 2+-space column gap. */
+const OPTION_ROW = /^([❯›]\s*)?(\d+)\.\s+(.+)$/
 /** The AskUserQuestion key-hint footer — not part of the option list. */
 const OPTION_HINT = /^(Enter to|↑\/↓|Esc to|ctrl\+g)/
 /** Indented continuation of the previous menu row's wrapped description. */
@@ -306,9 +308,16 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
         const t = lines[j].text.trim()
         const om = t.match(OPTION_ROW)
         if (om) {
-          const selected = t.startsWith("❯")
+          const selected = /^[❯›]/.test(t)
           if (selected) sawCursor = true
-          items.push({ num: om[2], text: om[3], desc: "", selected })
+          // Same-row description column (codex): split at the column gap.
+          const [head, ...rest] = om[3].split(/\s{2,}/)
+          items.push({
+            num: om[2],
+            text: head ?? om[3],
+            desc: rest.join(" "),
+            selected,
+          })
           j += 1
         } else if (
           items.length > 0 &&

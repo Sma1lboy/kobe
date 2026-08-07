@@ -39,8 +39,12 @@ describe("codex grammar", () => {
     expect(region?.statusLines).toEqual(["  gpt-5.6-sol xhigh · ~/i/kobe"])
   })
 
-  test("a numbered › selection cursor is NOT the composer", () => {
-    expect(codexGrammar.findInputRegion(CODEX_UPDATE_PROMPT)).toBeNull()
+  test("a numbered › selection cursor anchors a pseudo-region (dialog stays translated)", () => {
+    const region = codexGrammar.findInputRegion(CODEX_UPDATE_PROMPT)
+    expect(region?.promptText).toBe("")
+    expect(region?.statusLines).toEqual([])
+    // Anchored at the bottom row: every dialog row above stays in the body.
+    expect(region?.promptRow).toBe(4)
   })
 
   test("slash menu parses into a menu block", () => {

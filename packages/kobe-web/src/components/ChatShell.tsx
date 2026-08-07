@@ -44,6 +44,8 @@ import {
   sameColoredLine,
   trimLeadingColored,
 } from "../lib/tty-color.ts"
+import { useEngines } from "../lib/engines.ts"
+import { fetchPtyForeground } from "../lib/terminal.ts"
 import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
@@ -494,6 +496,36 @@ export function ChatShell() {
   const mode: "engine" | "shell" = terminalTab ? "shell" : "engine"
   const vendor = vendorTab?.vendor
 
+  // Which engine ACTUALLY runs in this tab (sidecar process walk). Tab
+  // metadata is a spawn-time hint that old tabs and quick-created tabs may
+  // lack — trusting it alone picked the wrong screen grammar intermittently
+  // (claude's 8-row tail window on a codex screen → raw takeover the moment
+  // its below-composer menu opened). The child process is the truth.
+  const engines = useEngines()
+  const [fgVendor, setFgVendor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!tabId) {
+      setFgVendor(null)
+      return
+    }
+    let cancelled = false
+    const poll = (): void => {
+      void fetchPtyForeground().then((map) => {
+        if (cancelled) return
+        const comms = map[tabId] ?? []
+        const hit = engines.find((e) => comms.includes(e.id))
+        setFgVendor(hit ? hit.id : null)
+      })
+    }
+    poll()
+    const timer = window.setInterval(poll, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [tabId, engines])
+  const effectiveVendor = fgVendor ?? vendor ?? selected?.vendor
+
   // Visit resolves the episode — same contract as the TUI (and the Inbox's
   // click-through): an attention item for the tab you are LOOKING AT is
   // already read, so it never demands a second acknowledgement.
@@ -596,7 +628,7 @@ export function ChatShell() {
                   }
                   mode={mode}
                   vendor={vendor}
-                  grammar={grammarFor(vendor ?? selected.vendor)}
+                  grammar={grammarFor(effectiveVendor ?? selected.vendor)}
                   onEngineLive={setEngineLive}
                 />
               )}
@@ -615,7 +647,7 @@ export function ChatShell() {
           <TimelineHost
             taskId={selected.id}
             worktreePath={selected.worktreePath || null}
-            vendor={resolveVendor(vendor ?? selected.vendor)}
+            vendor={resolveVendor(effectiveVendor ?? selected.vendor)}
             engineState={engineStates[selected.id]}
             tabSessionId={
               tabId ? engineTabSessions[selected.id]?.[tabId] : undefined

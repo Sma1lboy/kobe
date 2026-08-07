@@ -29,7 +29,13 @@ export function findCodexInputRegion(
   for (let row = last; row >= 0 && last - row <= 14; row--) {
     const t = lines[row]
     if (!PROMPT.test(t)) continue
-    if (OPTION_CURSOR.test(t)) return null
+    // A selection dialog (`› 1. gpt-5.6-sol …`) REPLACES the composer. Keep
+    // the screen translated: anchor a pseudo-region at the bottom hint row
+    // ("Press enter to confirm…") so the dialog rows above parse as an
+    // options block and keystrokes keep flowing to the PTY.
+    if (OPTION_CURSOR.test(t)) {
+      return { topRow: last, promptRow: last, promptText: "", statusLines: [] }
+    }
     return {
       topRow: row,
       promptRow: row,
