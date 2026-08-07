@@ -39,4 +39,20 @@ describe("TimelinePanel loading", () => {
 
     expect(screen.getByRole("status").textContent).toContain("Reading engine events")
   })
+
+  it("renders an unidentified fresh process as an empty trace", () => {
+    render(
+      <TimelinePanel
+        model={emptyModel}
+        loaded={true}
+        error={null}
+        engineLabel="Codex"
+        bindingState="empty"
+        onExpand={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText("No turns yet")).toBeTruthy()
+    expect(screen.queryByText(/Bound engine session is missing/)).toBeNull()
+  })
 })

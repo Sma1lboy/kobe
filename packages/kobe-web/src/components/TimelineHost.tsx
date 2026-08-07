@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useEngines } from "../lib/engines.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
 import type {
   EngineSessionBinding,
   EngineSessionTransition,
@@ -19,6 +20,7 @@ export function TimelineHost({
   legacySessionId,
   engineActive = true,
   width,
+  onQuote,
 }: {
   taskId: string
   vendor: string
@@ -33,6 +35,8 @@ export function TimelineHost({
   engineActive?: boolean
   /** Drag-resized panel width (PaneResizer). */
   width?: number
+  /** Insert one block reference into the active native composer. */
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   const engines = useEngines()
   const label = engineLabel(engines, vendor)
@@ -56,6 +60,7 @@ export function TimelineHost({
         bindingState={data.bindingState}
         runId={binding?.runId}
         width={width}
+        onQuote={onQuote}
         onExpand={() => setExpanded(true)}
       />
       {expanded && (
@@ -63,6 +68,7 @@ export function TimelineHost({
           model={data.model}
           engineLabel={label}
           runId={binding?.runId}
+          onQuote={onQuote}
           onClose={() => setExpanded(false)}
         />
       )}

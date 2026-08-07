@@ -123,7 +123,7 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
         } catch {
           cleanup()
         }
-      }, 15_000)
+      }, 3_000)
       if (signal?.aborted) cleanup()
       else signal?.addEventListener("abort", cleanup, { once: true })
     },
@@ -263,6 +263,19 @@ async function specResponse(
   }
 }
 
+export async function prepareEngineSpecSession(
+  link: DaemonRpcClient,
+  taskId: string,
+  tabId?: string,
+  vendor?: string,
+  sessionId?: string,
+): Promise<void> {
+  if (!tabId) return
+  await link.request("engine.beginSession", { taskId, tabId, ...(vendor ? { vendor } : {}) })
+  if (!sessionId) return
+  await link.request("engine.pinSession", { taskId, tabId, sessionId, ...(vendor ? { vendor } : {}) })
+}
+
 const QUICK_PROMPT_KEYS = {
   review: "boardPrompt.review",
   pr: "boardPrompt.pr",
@@ -327,21 +340,7 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
       const tab = url.searchParams.get("tab") ?? undefined
       return specResponse(url, link, async (l, id) => {
         const spec = await engineSpec(runtime, l, id, vendor, tab)
-        if (tab) {
-          await l.request("engine.beginSession", { taskId: id, tabId: tab, ...(vendor ? { vendor } : {}) })
-        }
-        // Spawn-time pin: broadcast the injected session id so the Agent
-        // Trace keys to this tab's session before the engine boots.
-        if (spec.sessionId && tab) {
-          await l
-            .request("engine.pinSession", {
-              taskId: id,
-              tabId: tab,
-              sessionId: spec.sessionId,
-              ...(vendor ? { vendor } : {}),
-            })
-            .catch(() => {})
-        }
+        await prepareEngineSpecSession(l, id, tab, vendor, spec.sessionId)
         return spec
       })
     }

@@ -10,6 +10,7 @@ export interface PtyLaunchSpec {
 }
 
 export interface PtyLike {
+  readonly pid: number
   onData(cb: (data: string) => void): void
   onExit(cb: () => void): void
   write(data: string): void
@@ -59,6 +60,16 @@ export interface PtySessionManagerOptions {
     lowWaterBytes: number
     drainPollMs: number
   }
+  onEngineSessionStart?(input: EngineSessionIdentity): void
+  onEngineSessionStop?(input: Pick<EngineSessionIdentity, "taskId" | "tabId" | "rootPid">): void
+}
+
+export interface EngineSessionIdentity {
+  taskId: string
+  tabId: string
+  vendor?: string
+  rootPid: number
+  startedAt: number
 }
 
 export interface AttachSocketInput {
@@ -78,6 +89,11 @@ export interface SendTextInput {
   text: string
 }
 
+export interface InsertTextInput {
+  tabId: string
+  text: string
+}
+
 export interface PtySessionManager {
   attachSocket(input: AttachSocketInput): Promise<unknown>
   closeSession(tabId: string): boolean
@@ -89,6 +105,10 @@ export interface PtySessionManager {
     rows: number,
     vendor?: string,
   ): Promise<unknown>
+  insertText(input: InsertTextInput): {
+    inserted: boolean
+    missing: boolean
+  }
   sendText(input: SendTextInput): Promise<{ sent: boolean; spawned: boolean; missing?: boolean }>
   shutdown(): void
   sessionCount(): number

@@ -2,6 +2,7 @@ import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
 import type { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
 import type { AutomationsStore } from "@sma1lboy/kobe-daemon/daemon/automations-store"
+import type { EngineSessionMonitor } from "@sma1lboy/kobe-daemon/daemon/engine-session-monitor"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
@@ -111,6 +112,10 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       deleteTask: async () => {},
       deleteTaskBestEffort: async () => {},
     } as unknown as SessionBindingStore,
+    engineSessionMonitor: {
+      watch: () => {},
+      unwatch: () => false,
+    } as unknown as EngineSessionMonitor,
     deletions: {
       enqueue: (taskId: string) => rec.deletions.push(taskId),
     },

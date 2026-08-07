@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { ExecutionGrid } from "../src/components/ExecutionGrid.tsx"
 import type { TimelineItem } from "../src/lib/timeline.ts"
 
@@ -30,8 +36,10 @@ const tool: TimelineItem = {
   status: "success",
   title: "exec",
   summary: "sed -n '1,120p' test.ts",
-  detail: '{\n  "cmd": "sed -n \'1,120p\' test.ts"\n}',
-  resultDetail: "The fixture still uses protocol version 1.",
+  detail:
+    '{\n  "cmd": "sed -n \'1,120p\' test.ts",\n  "workdir": "/repo",\n  "yield_time_ms": 10000\n}',
+  resultDetail:
+    '{"output":"The fixture still uses protocol version 1.","exit_code":0}',
   startedAt: 1_100,
   endedAt: 1_500,
 }
@@ -98,9 +106,36 @@ describe("ExecutionGrid", () => {
     expect(screen.getByText("temporal link")).toBeTruthy()
     expect(screen.getByText("Input")).toBeTruthy()
     expect(screen.getByText("Result")).toBeTruthy()
+    expect(screen.getByText("Command")).toBeTruthy()
+    expect(screen.getByText("Working directory")).toBeTruthy()
+    expect(screen.getByText("10 s")).toBeTruthy()
     expect(
       screen.getByText("The fixture still uses protocol version 1."),
     ).toBeTruthy()
+  })
+
+  it("quotes a readable block directly from its card", async () => {
+    const onQuote = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ExecutionGrid
+        items={[tool]}
+        status="success"
+        now={2_000}
+        onQuote={onQuote}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Quote Tool: exec" }))
+    await waitFor(() => expect(onQuote).toHaveBeenCalledOnce())
+    expect(onQuote.mock.calls[0]?.[0]?.sourceId).toBe("tool-1")
+    expect(onQuote.mock.calls[0]?.[0]?.label).toBe("Tool · exec")
+    expect(onQuote.mock.calls[0]?.[0]?.text).toContain(
+      "[Quoted Agent Trace block · Tool · exec]",
+    )
+    expect(onQuote.mock.calls[0]?.[0]?.text).toContain(
+      "Command:\nsed -n '1,120p' test.ts",
+    )
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("renders patch, explicit retry, and subagent completion details", () => {

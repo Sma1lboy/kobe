@@ -1,6 +1,7 @@
 /** Translated HTML view over one real hosted shell PTY. */
 
 import {
+  type KeyboardEvent,
   lazy,
   Suspense,
   useCallback,
@@ -12,6 +13,8 @@ import {
 import { isMenuRow, type TtyBlock } from "../lib/claude-tty.ts"
 import type { EngineGrammar } from "../lib/engine-grammar.ts"
 import { resetTabTitle, setTabTitle } from "../lib/tabs.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
+import { isBufferedSubmitKey } from "../lib/trace-quote-buffer.ts"
 import {
   type ColoredLine,
   sameColoredLine,
@@ -65,6 +68,10 @@ export function SessionView({
   mode,
   vendor,
   grammar,
+  focusRequest = 0,
+  pendingQuotes = [],
+  onRemovePendingQuote,
+  onSubmitPendingQuotes,
   onEngineLive,
 }: {
   tabId: string
@@ -76,12 +83,21 @@ export function SessionView({
   vendor?: string
   /** The vendor's screen grammar (engine-grammar.ts) — drives the translation. */
   grammar: EngineGrammar
+  /** External request to return keyboard focus to the native composer. */
+  focusRequest?: number
+  /** Structured context waiting beside the native composer. */
+  pendingQuotes?: readonly PendingTraceQuote[]
+  onRemovePendingQuote?: (sourceId: string) => void
+  onSubmitPendingQuotes?: () => Promise<void>
   /** Grammar-derived engine liveness, lifted so the Agent Trace can clear
    *  when this tab drops to a bare shell / boot screen. */
   onEngineLive?: (live: boolean) => void
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
+  useEffect(() => {
+    if (focusRequest > 0) setFocusNonce((value) => value + 1)
+  }, [focusRequest])
   // Frame stabilizer: reuse previous line OBJECTS for unchanged rows so
   // memoized children skip re-render — a keystroke only re-renders the input
   // row's dependents, not the whole transcript.
@@ -101,6 +117,7 @@ export function SessionView({
   // IME composing string (pinyin buffer) from the hidden textarea — the PTY
   // only sees committed text, so the composer must mirror this itself.
   const [composing, setComposing] = useState<string | null>(null)
+  const [submittingQuotes, setSubmittingQuotes] = useState(false)
   // Real terminal cursor (viewport row + cell col) — the mirror's caret
   // follows it instead of pinning to the end of the prompt text.
   const [cursor, setCursor] = useState<{ row: number; col: number } | null>(
@@ -277,11 +294,41 @@ export function SessionView({
   // c. otherwise → raw terminal takeover (no overlay, no composer mirror).
   const showTranslated = engineLive || colored.length === 0
 
+  const interceptBufferedSubmit = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (
+        !engineLive ||
+        pendingQuotes.length === 0 ||
+        !onSubmitPendingQuotes ||
+        !isBufferedSubmitKey({
+          key: event.key,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          isComposing: event.nativeEvent.isComposing,
+        })
+      )
+        return
+      const target = event.target
+      if (target instanceof Element && target.closest("button")) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (submittingQuotes) return
+      setSubmittingQuotes(true)
+      void onSubmitPendingQuotes()
+        .catch(() => {})
+        .finally(() => setSubmittingQuotes(false))
+    },
+    [engineLive, pendingQuotes.length, onSubmitPendingQuotes, submittingQuotes],
+  )
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click anywhere focuses the PTY so typing drives the native CLI / shell
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard input already routes to the PTY; the click is only a focus assist
     <div
       className="relative h-full"
+      onKeyDownCapture={interceptBufferedSubmit}
       onClick={() => {
         // Click focuses the PTY — but a drag-select stays a selection: don't
         // steal focus (and collapse the range) when text was just selected.
@@ -382,6 +429,9 @@ export function SessionView({
                 composing={composing}
                 caretOffset={caretOffset}
                 sessionId={sessionId}
+                pendingQuotes={pendingQuotes}
+                onRemovePendingQuote={onRemovePendingQuote}
+                submittingQuotes={submittingQuotes}
               />
             )}
             {statusColored.length > 0 && (

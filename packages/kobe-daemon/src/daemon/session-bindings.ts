@@ -173,7 +173,17 @@ export class SessionBindingStore {
       this.transitions.clear()
       for (const run of loaded.runs) this.runs.set(run.runId, run)
       for (const ref of loaded.currentRuns) this.currentRunIds.set(bindingKey(ref), ref.runId)
-      if (loaded.migrated) await this.persist()
+      const pendingRuns = this.currentRuns().filter((run) => run.state === "pending")
+      const repairedAt = pendingRuns.length ? this.now() : 0
+      for (const pending of pendingRuns) {
+        this.runs.set(pending.runId, {
+          ...pending,
+          state: "missing",
+          endedAt: pending.endedAt ?? repairedAt,
+          updatedAt: repairedAt,
+        })
+      }
+      if (loaded.migrated || pendingRuns.length) await this.persist()
       this.publish()
     })
   }
@@ -242,11 +252,6 @@ export class SessionBindingStore {
   async begin(taskId: string, tabId: string, vendor: VendorId): Promise<EngineSessionBinding> {
     return await this.enqueue(async () => {
       const previous = this.currentRun({ taskId, tabId })
-      // The PTY sidecar asks for engine-spec only when it is about to spawn a
-      // process; socket reattach reuses the existing sidecar session. Mark the
-      // run before spawn so a prompt supplied on argv cannot begin before the
-      // run's time window. Duplicate begin calls while that spawn is pending
-      // remain idempotent.
       if (previous?.vendor === vendor && previous.state === "pending") return previous
       const next = this.newRun({ taskId, tabId, vendor, source: "spawn" })
       await this.replaceCurrent(next, previous)

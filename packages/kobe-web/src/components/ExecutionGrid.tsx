@@ -4,6 +4,7 @@ import {
   FilePenLine,
   Layers3,
   MessageSquare,
+  Quote,
   TerminalSquare,
 } from "lucide-react"
 import { useState } from "react"
@@ -12,7 +13,11 @@ import {
   type TimelineItem,
   type TimelineStatus,
 } from "../lib/timeline.ts"
-import { CopyButton } from "./CopyButton.tsx"
+import {
+  type PendingTraceQuote,
+  pendingTraceQuote,
+} from "../lib/trace-content.ts"
+import { ReadableTraceContent } from "./ReadableTraceContent.tsx"
 import { SlideOver } from "./SlideOver.tsx"
 import { TracePatch } from "./TracePatch.tsx"
 
@@ -66,66 +71,65 @@ function ExecutionNode({
   now,
   main = false,
   onOpen,
+  onQuote,
 }: {
   item: TimelineItem
   now: number
   main?: boolean
   onOpen: () => void
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={`execution-node relative z-10 flex min-h-24 w-full min-w-0 flex-col border bg-surface p-2.5 text-left focus-visible:border-primary focus-visible:outline-none ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
-      title={item.summary || item.title}
-      aria-label={`Open ${kindLabel(item)} details: ${item.title}`}
-    >
-      <div className="flex items-center gap-1.5">
-        <ItemIcon item={item} />
-        <span className="text-[10px] text-current">{kindLabel(item)}</span>
-        {(item.attempt ?? 1) > 1 && (
-          <span className="font-mono text-[9px] text-subtle">
-            A{item.attempt}
-          </span>
-        )}
-        {item.status !== "success" && (
-          <span className="ml-auto font-mono text-[9px] text-current">
-            {statusGlyph(item.status)}
-          </span>
-        )}
-      </div>
-      <div
-        className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
+    <div className="group relative z-10 min-w-0">
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`execution-node relative flex min-h-24 w-full min-w-0 flex-col border bg-surface p-2.5 text-left focus-visible:border-primary focus-visible:outline-none ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
+        title={item.summary || item.title}
+        aria-label={`Open ${kindLabel(item)} details: ${item.title}`}
       >
-        {item.title}
-      </div>
-      {item.summary && (
-        <div className="mt-1 truncate font-mono text-[9px] text-subtle">
-          {item.summary}
+        <div className="flex items-center gap-1.5">
+          <ItemIcon item={item} />
+          <span className="text-[10px] text-current">{kindLabel(item)}</span>
+          {(item.attempt ?? 1) > 1 && (
+            <span className="font-mono text-[9px] text-subtle">
+              A{item.attempt}
+            </span>
+          )}
+          {item.status !== "success" && (
+            <span className="ml-auto font-mono text-[9px] text-current">
+              {statusGlyph(item.status)}
+            </span>
+          )}
         </div>
+        <div
+          className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
+        >
+          {item.title}
+        </div>
+        {item.summary && (
+          <div className="mt-1 truncate font-mono text-[9px] text-subtle">
+            {item.summary}
+          </div>
+        )}
+        <div className="mt-auto pt-2 font-mono text-[8px] text-subtle">
+          {formatExecutionDuration(
+            durationMs(item.startedAt, item.endedAt, now),
+          )}
+        </div>
+      </button>
+      {onQuote && (
+        <button
+          type="button"
+          onClick={() => void onQuote(pendingTraceQuote(item)).catch(() => {})}
+          className="absolute bottom-1.5 right-1.5 z-20 grid size-6 place-items-center border border-line bg-bg/95 text-subtle opacity-60 transition-colors hover:border-primary hover:text-fg hover:opacity-100 focus-visible:border-primary focus-visible:text-fg focus-visible:opacity-100 focus-visible:outline-none"
+          aria-label={`Quote ${kindLabel(item)}: ${item.title}`}
+          title="Quote to next prompt"
+        >
+          <Quote size={11} strokeWidth={1.8} />
+        </button>
       )}
-      <div className="mt-auto pt-2 font-mono text-[8px] text-subtle">
-        {formatExecutionDuration(durationMs(item.startedAt, item.endedAt, now))}
-      </div>
-    </button>
-  )
-}
-
-function DetailSection({ label, text }: { label: string; text: string }) {
-  return (
-    <section className="rounded border border-line bg-surface">
-      <header className="flex h-9 items-center gap-2 border-b border-line px-3">
-        <span className="text-[11px] text-muted">{label}</span>
-        <CopyButton
-          text={text}
-          label={`Copy ${label.toLowerCase()}`}
-          className="ml-auto"
-        />
-      </header>
-      <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-fg">
-        {text || "(empty)"}
-      </pre>
-    </section>
+    </div>
   )
 }
 
@@ -134,16 +138,19 @@ function ExecutionDetail({
   parent,
   retryOf,
   now,
+  onQuote,
   onClose,
 }: {
   item: TimelineItem | undefined
   parent: TimelineItem | undefined
   retryOf: TimelineItem | undefined
   now: number
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   onClose: () => void
 }) {
   const isTool = item?.kind === "tool" || item?.kind === "change"
   const hasResult = isTool || item?.kind === "subagent"
+  const [quoting, setQuoting] = useState(false)
   return (
     <SlideOver
       open={item !== undefined}
@@ -175,6 +182,24 @@ function ExecutionDetail({
               <span className="rounded-full border border-line px-1.5 py-0.5 text-muted">
                 attempt {item.attempt}
               </span>
+            )}
+            {onQuote && (
+              <button
+                type="button"
+                disabled={quoting}
+                onClick={() => {
+                  setQuoting(true)
+                  void onQuote(pendingTraceQuote(item))
+                    .then(onClose)
+                    .catch(() => {})
+                    .finally(() => setQuoting(false))
+                }}
+                className="ml-auto flex items-center gap-1.5 rounded-sm border border-line px-2 py-1 font-sans text-[10px] text-muted transition-colors hover:border-primary hover:text-fg disabled:opacity-50"
+                title="Insert this block into the current prompt without sending"
+              >
+                <Quote size={11} strokeWidth={1.8} />
+                {quoting ? "Quoting…" : "Quote to input"}
+              </button>
             )}
           </div>
           {retryOf && (
@@ -211,7 +236,7 @@ function ExecutionDetail({
           {item.kind === "change" ? (
             <TracePatch patch={item.detail} />
           ) : (
-            <DetailSection
+            <ReadableTraceContent
               label={
                 item.kind === "tool"
                   ? "Input"
@@ -229,7 +254,7 @@ function ExecutionDetail({
             />
           )}
           {hasResult && (
-            <DetailSection
+            <ReadableTraceContent
               label={item.kind === "subagent" ? "Subagent result" : "Result"}
               text={item.resultDetail ?? "No result recorded yet."}
             />
@@ -261,11 +286,13 @@ export function ExecutionGrid({
   items,
   status,
   now,
+  onQuote,
   className = "",
 }: {
   items: readonly TimelineItem[]
   status: TimelineStatus
   now: number
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   className?: string
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -304,6 +331,7 @@ export function ExecutionGrid({
                 now={now}
                 main
                 onOpen={() => setSelectedId(item.id)}
+                onQuote={onQuote}
               />
               {branch.length > 0 && (
                 <>
@@ -321,6 +349,7 @@ export function ExecutionGrid({
                           item={child}
                           now={now}
                           onOpen={() => setSelectedId(child.id)}
+                          onQuote={onQuote}
                         />
                       </div>
                     ))}
@@ -341,6 +370,7 @@ export function ExecutionGrid({
         parent={parent}
         retryOf={retryOf}
         now={now}
+        onQuote={onQuote}
         onClose={() => setSelectedId(null)}
       />
     </>

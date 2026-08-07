@@ -124,6 +124,7 @@ export interface EngineRegistryEntry {
   readonly observeSessionActivation?: (input: {
     readonly rootPid: number
     readonly afterMs: number
+    readonly afterCursor?: string
   }) => Promise<EngineSessionActivation | null>
   /**
    * Read-only binary + login probe (Settings → Accounts). `deps` is the

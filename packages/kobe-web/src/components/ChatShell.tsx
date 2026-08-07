@@ -13,7 +13,14 @@
  */
 
 import { PanelRight } from "lucide-react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { grammarFor } from "../lib/engine-grammar.ts"
 import { useEngines } from "../lib/engines.ts"
 import {
@@ -29,14 +36,18 @@ import {
   useTabsState,
   type VendorTab,
 } from "../lib/tabs.ts"
-import { fetchPtyForeground } from "../lib/terminal.ts"
+import { fetchPtyForeground, sendPtyText } from "../lib/terminal.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
+import {
+  type PendingTraceQuote,
+  serializePendingTraceQuotes,
+} from "../lib/trace-content.ts"
 import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { PaneResizer, usePaneWidth } from "./PaneResizer.tsx"
 import { SessionView } from "./SessionView.tsx"
 import { TimelineHost } from "./TimelineHost.tsx"
-import { Toasts } from "./Toasts.tsx"
 
 // Kanban / Routines render INSIDE the /chat main area (a surface switch, not
 // a route jump) — lazy so the chat-first load doesn't pay for them.
@@ -180,6 +191,10 @@ export function ChatShell() {
   // Active tab's grammar-derived engine liveness (SessionView reports it up).
   // It decorates live status only; the durable binding keeps history visible.
   const [engineLive, setEngineLive] = useState(false)
+  const [quoteFocusRequest, setQuoteFocusRequest] = useState(0)
+  const [quoteBuffers, setQuoteBuffers] = useState<
+    Record<string, readonly PendingTraceQuote[]>
+  >({})
   // biome-ignore lint/correctness/useExhaustiveDependencies: tab switch resets liveness until the new SessionView reports
   useEffect(() => {
     setEngineLive(false)
@@ -191,6 +206,55 @@ export function ChatShell() {
     selected && tabId ? sessionTransitions[selected.id]?.[tabId] : undefined
   const legacySessionId =
     selected && tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
+  const pendingQuotes = tabId ? (quoteBuffers[tabId] ?? []) : []
+  const quoteToBuffer = useCallback(
+    async (quote: PendingTraceQuote): Promise<void> => {
+      if (!tabId) throw new Error("no active chat tab")
+      setQuoteBuffers((current) => {
+        const buffered = current[tabId] ?? []
+        if (buffered.some((item) => item.sourceId === quote.sourceId))
+          return current
+        return { ...current, [tabId]: [...buffered, quote] }
+      })
+      setQuoteFocusRequest((value) => value + 1)
+      pushToast("success", "Quote added to the next prompt")
+    },
+    [tabId],
+  )
+  const removeBufferedQuote = useCallback(
+    (sourceId: string): void => {
+      if (!tabId) return
+      setQuoteBuffers((current) => ({
+        ...current,
+        [tabId]: (current[tabId] ?? []).filter(
+          (quote) => quote.sourceId !== sourceId,
+        ),
+      }))
+    },
+    [tabId],
+  )
+  const submitBufferedQuotes = useCallback(async (): Promise<void> => {
+    if (!tabId || !selectedTaskId) throw new Error("no active chat tab")
+    const buffered = quoteBuffers[tabId] ?? []
+    if (buffered.length === 0) return
+    const submittedIds = new Set(buffered.map((quote) => quote.sourceId))
+    try {
+      await sendPtyText(
+        tabId,
+        selectedTaskId,
+        serializePendingTraceQuotes(buffered),
+      )
+      setQuoteBuffers((current) => ({
+        ...current,
+        [tabId]: (current[tabId] ?? []).filter(
+          (quote) => !submittedIds.has(quote.sourceId),
+        ),
+      }))
+    } catch (err) {
+      reportError("submit quoted blocks", err)
+      throw err
+    }
+  }, [quoteBuffers, selectedTaskId, tabId])
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -257,6 +321,10 @@ export function ChatShell() {
                   mode={mode}
                   vendor={vendor}
                   grammar={grammarFor(effectiveVendor ?? selected.vendor)}
+                  focusRequest={quoteFocusRequest}
+                  pendingQuotes={pendingQuotes}
+                  onRemovePendingQuote={removeBufferedQuote}
+                  onSubmitPendingQuotes={submitBufferedQuotes}
                   onEngineLive={setEngineLive}
                 />
               )}
@@ -281,10 +349,10 @@ export function ChatShell() {
             legacySessionId={legacySessionId}
             engineActive={engineLive}
             width={traceW}
+            onQuote={quoteToBuffer}
           />
         )}
       </div>
-      <Toasts />
     </div>
   )
 }

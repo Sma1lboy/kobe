@@ -222,9 +222,9 @@ describe("createPtySessionManager", () => {
     expect(ptys[0].writes).toEqual(["abc"])
   })
 
-  it("reports an engine terminal commit with tab and root PID identity", async () => {
-    const onTerminalCommit = vi.fn()
-    const { manager } = setup({ onTerminalCommit })
+  it("registers an engine process at spawn without waiting for terminal input", async () => {
+    const onEngineSessionStart = vi.fn()
+    const { manager } = setup({ onEngineSessionStart })
     const ws = new FakeSocket()
     await manager.attachSocket({
       ws,
@@ -235,12 +235,12 @@ describe("createPtySessionManager", () => {
       cols: 80,
       rows: 24,
     })
-    ws.message("\r")
-    expect(onTerminalCommit).toHaveBeenCalledWith({
+    expect(onEngineSessionStart).toHaveBeenCalledWith({
       taskId: "task",
       tabId: "tab",
       vendor: "codex",
       rootPid: 4242,
+      startedAt: expect.any(Number),
     })
   })
 
@@ -262,8 +262,30 @@ describe("createPtySessionManager", () => {
     expect(ptys[0].writes).toEqual(["\x1b[200~hello\x1b[201~", "\r"])
   })
 
+  it("inserts a quote into an existing PTY without submitting", async () => {
+    const onEngineSessionStart = vi.fn()
+    const { manager, ptys } = setup({ onEngineSessionStart })
+    await manager.ensureSession("tab", "task", "engine", 80, 24)
+
+    expect(
+      manager.insertText({
+        tabId: "tab",
+        text: "quoted\r\nblock\x1b[201~\runsafe",
+      }),
+    ).toEqual({ inserted: true, missing: false })
+    expect(ptys[0].writes).toEqual([
+      "\x1b[200~quoted\nblock[201~\nunsafe\x1b[201~",
+    ])
+    expect(onEngineSessionStart).toHaveBeenCalledOnce()
+    expect(manager.insertText({ tabId: "missing", text: "x" })).toEqual({
+      inserted: false,
+      missing: true,
+    })
+  })
+
   it("closes sockets and clears the session on process exit", async () => {
-    const { manager, ptys } = setup()
+    const onEngineSessionStop = vi.fn()
+    const { manager, ptys } = setup({ onEngineSessionStop })
     const ws = new FakeSocket()
     await manager.attachSocket({
       ws,
@@ -278,6 +300,7 @@ describe("createPtySessionManager", () => {
 
     expect(ws.closes).toEqual([{ code: 1000, reason: "engine exited" }])
     expect(manager.sessionCount()).toBe(0)
+    expect(onEngineSessionStop).toHaveBeenCalledWith({ taskId: "task", tabId: "tab", rootPid: 4242 })
   })
 
   it("kills only the current session mapping on explicit close", async () => {

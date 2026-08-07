@@ -6,6 +6,7 @@ import {
   type TimelineStatus,
   type TimelineTurn,
 } from "../lib/timeline.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
 import type { TimelineBindingState } from "../lib/use-timeline-data.ts"
 import { ExecutionGrid, formatExecutionDuration } from "./ExecutionGrid.tsx"
 
@@ -62,10 +63,12 @@ function TurnSection({
   turn,
   turnIndex,
   now,
+  onQuote,
 }: {
   turn: TimelineTurn
   turnIndex: number
   now: number
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const spotlight = turn.nodes.filter(isSpotlightNode)
@@ -113,7 +116,12 @@ function TurnSection({
           {expanded ? "Hide steps" : `${foldedCount} steps`}
         </button>
       )}
-      <ExecutionGrid items={items} status={turn.status} now={now} />
+      <ExecutionGrid
+        items={items}
+        status={turn.status}
+        now={now}
+        onQuote={onQuote}
+      />
     </section>
   )
 }
@@ -127,6 +135,7 @@ export function TimelinePanel({
   bindingState,
   runId,
   width,
+  onQuote,
   onExpand,
 }: {
   model: TimelineModel
@@ -140,6 +149,8 @@ export function TimelinePanel({
   runId?: string
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
+  /** Buffer a trace block beside the active native composer until submit. */
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   onExpand: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -226,6 +237,13 @@ export function TimelinePanel({
           </div>
         ) : bindingState === "pending" ? (
           <TraceLoading label="Waiting for the engine session id…" />
+        ) : bindingState === "empty" ? (
+          <div className="py-8 text-center">
+            <div className="font-mono text-[11px] text-muted">No turns yet</div>
+            <div className="mt-1 text-[10px] text-subtle">
+              Execution events appear with the next prompt.
+            </div>
+          </div>
         ) : bindingState === "missing" ? (
           <div className="border-l-2 border-kobe-yellow pl-3 text-[11px] leading-relaxed text-muted">
             Bound engine session is missing
@@ -252,6 +270,7 @@ export function TimelinePanel({
                 turn={turn}
                 turnIndex={turnIndex}
                 now={now}
+                onQuote={onQuote}
               />
             ))}
           </div>

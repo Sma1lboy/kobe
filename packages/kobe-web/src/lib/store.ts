@@ -321,12 +321,12 @@ let source: EventSource | null = null
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Staleness watchdog. The daemon heartbeats a real `ping` event every 15s;
+/** Staleness watchdog. The daemon heartbeats a real `ping` event every 3s;
  *  if NOTHING (snapshot/channel/ping) arrives for this long the stream is
  *  wedged — typically the dev proxy holding our socket open after its
  *  upstream daemon died, which never fires an EventSource error — so we
  *  force-replace it. */
-const STALE_STREAM_MS = 40_000
+const STALE_STREAM_MS = 8_000
 let lastEventAt = 0
 let staleTimer: ReturnType<typeof setInterval> | null = null
 
@@ -339,7 +339,7 @@ function armStaleWatchdog(): void {
     source = null
     set({ streamConnected: false })
     scheduleReconnect()
-  }, 10_000)
+  }, 2_000)
 }
 
 /** A stream is "live enough" to reuse when its EventSource exists and hasn't

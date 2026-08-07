@@ -34,6 +34,7 @@ import { startDaemonCollectors } from "./collectors.ts"
 import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { EngineEventLog } from "./engine-events-log.ts"
+import { EngineSessionMonitor } from "./engine-session-monitor.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
   type DaemonHandlerContext,
@@ -195,6 +196,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const quotaUsage = new QuotaUsageCache(runtime, bus)
   // Per-task recent engine events (the TUI event feed / task.recentEvents).
   const engineEvents = new EngineEventLog()
+  const engineSessionMonitor = new EngineSessionMonitor(orch, runtime, bindings, activity)
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -321,6 +323,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       pluginHost?.stop()
       prompts.clear()
       activity.close()
+      engineSessionMonitor.close()
       // Hosted PTYs are deliberately NOT touched here: they live in the
       // standalone `kobe pty-host` process, so `kobe daemon restart` never
       // ends a running engine session — only `kobe reset` does.
@@ -374,6 +377,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       activity,
       inbox,
       bindings,
+      engineSessionMonitor,
       deletions,
       issues,
       automations,

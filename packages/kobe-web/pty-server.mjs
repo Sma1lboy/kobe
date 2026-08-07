@@ -10,6 +10,7 @@
  *
  *   ws  /pty?tab=<id>&taskId=<id>&mode=engine|shell&cols=<n>&rows=<n>
  *   POST /pty/close   { tab }                          kill the tab process
+ *   POST /pty/insert  { tab, text }                    paste without Enter
  *   POST /pty/send    { tab, taskId, text }            paste text + Enter into the tab's engine
  */
 
@@ -115,7 +116,8 @@ const ptySessions = createPtySessionManager({
   createScrollback,
   scrollbackCap: SCROLLBACK_CAP,
   env: ptyEnv,
-  onTerminalCommit: sessionObserver.observe,
+  onEngineSessionStart: sessionObserver.watch,
+  onEngineSessionStop: ({ tabId, rootPid }) => sessionObserver.unwatch(tabId, rootPid),
 })
 
 const server = createServer((req, res) => {
@@ -212,6 +214,49 @@ const server = createServer((req, res) => {
       "access-control-allow-headers": "content-type",
     })
     res.end()
+    return
+  }
+  if (req.method === "POST" && url.pathname === "/pty/insert") {
+    // Inserting text drives the active terminal, so it shares the websocket
+    // origin policy. Unlike /pty/send it never spawns or presses Enter.
+    if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
+      res.writeHead(403)
+      res.end()
+      return
+    }
+    let body = ""
+    req.on("data", (c) => {
+      body += c
+    })
+    req.on("end", () => {
+      let tab
+      let text
+      try {
+        ;({ tab, text } = JSON.parse(body || "{}"))
+      } catch {
+        /* ignore */
+      }
+      const respond = (status, payload) => {
+        res.writeHead(status, {
+          "content-type": "application/json",
+          "access-control-allow-origin": "*",
+        })
+        res.end(JSON.stringify(payload))
+      }
+      if (typeof tab !== "string" || !tab || typeof text !== "string" || !text) {
+        respond(400, { inserted: false, error: "tab and text are required" })
+        return
+      }
+      const result = ptySessions.insertText({ tabId: tab, text })
+      if (!result.inserted) {
+        respond(result.missing ? 404 : 500, {
+          inserted: false,
+          error: result.missing ? "no such tab" : "failed to write to tab",
+        })
+        return
+      }
+      respond(200, { inserted: true })
+    })
     return
   }
   if (req.method === "POST" && url.pathname === "/pty/send") {

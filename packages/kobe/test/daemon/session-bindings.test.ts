@@ -69,7 +69,7 @@ describe("SessionBindingStore", () => {
     expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 2 })
   })
 
-  it("a new spawn on the same tab replaces the old session identity", async () => {
+  it("opens an unidentified run without attaching the previous session", async () => {
     const { store } = await fixture()
     await store.begin("task-1", "tab-a", "claude")
     await store.bind({
@@ -79,18 +79,25 @@ describe("SessionBindingStore", () => {
       sessionId: "old",
       source: "spawn",
     })
-    await store.begin("task-1", "tab-a", "codex")
-    expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toMatchObject({
+    const empty = await store.begin("task-1", "tab-a", "codex")
+    expect(empty).toMatchObject({ vendor: "codex", sessionId: null, state: "pending" })
+
+    const bound = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
       vendor: "codex",
-      sessionId: null,
-      state: "pending",
-      startedAt: 300,
+      sessionId: "new",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
     })
+    expect(bound.runId).toBe(empty.runId)
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toMatchObject({ vendor: "codex", sessionId: "new" })
   })
 
-  it("begins a new run for a new same-vendor PTY spawn and deduplicates pending reads", async () => {
+  it("deduplicates repeated begins for the same unidentified spawn", async () => {
     const { store } = await fixture()
-    const initial = await store.begin("task-1", "tab-a", "codex")
+    await store.begin("task-1", "tab-a", "codex")
     await store.bind({
       taskId: "task-1",
       tabId: "tab-a",
@@ -100,8 +107,7 @@ describe("SessionBindingStore", () => {
     })
     const pending = await store.begin("task-1", "tab-a", "codex")
 
-    expect(pending.runId).not.toBe(initial.runId)
-    expect(pending).toMatchObject({ sessionId: null, state: "pending", startedAt: 300 })
+    expect(pending).toMatchObject({ sessionId: null, state: "pending" })
     expect(await store.begin("task-1", "tab-a", "codex")).toEqual(pending)
     expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toEqual(pending)
   })
@@ -413,6 +419,35 @@ describe("SessionBindingStore", () => {
         channel: "session.bindings",
         payload: { bindings: {}, transitions: {} },
       })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("refreshes a pending resume transition while the engine is still loading", async () => {
+    const { store } = await fixture(undefined, 4_000)
+    vi.useFakeTimers()
+    try {
+      const transition = {
+        taskId: "task-1",
+        tabId: "tab-a",
+        vendor: "codex" as const,
+        startSource: "resume" as const,
+        observedAt: 350,
+      }
+      store.markTransition(transition)
+      vi.advanceTimersByTime(3_000)
+      store.markTransition(transition)
+      vi.advanceTimersByTime(2_000)
+
+      expect(store.transitionSnapshotByTask()).toEqual({
+        "task-1": {
+          "tab-a": transition,
+        },
+      })
+
+      vi.advanceTimersByTime(2_000)
+      expect(store.transitionSnapshotByTask()).toEqual({})
     } finally {
       vi.useRealTimers()
     }

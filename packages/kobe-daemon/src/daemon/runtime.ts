@@ -56,11 +56,13 @@ export interface DaemonRuntimeAdapter {
     vendor: VendorId,
     rootPid: number,
     afterMs: number,
+    afterCursor?: string,
   ): Promise<
     | {
         phase: "pending"
         source: "resume"
         observedAt: number
+        cursor: string
       }
     | {
         phase: "selected"
@@ -68,6 +70,7 @@ export interface DaemonRuntimeAdapter {
         transcriptPath?: string
         source: "resume"
         observedAt: number
+        cursor: string
       }
     | null
   >

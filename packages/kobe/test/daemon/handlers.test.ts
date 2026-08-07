@@ -102,6 +102,8 @@ describe("daemon handler registry", () => {
       "engine.beginSession",
       "engine.pinSession",
       "engine.observeSession",
+      "engine.watchSession",
+      "engine.unwatchSession",
       "attention.dismiss",
       "attention.read",
       "automation.list",

@@ -47,8 +47,13 @@ export async function recoverEngineSessionAdapter(
   return null
 }
 
-export async function observeEngineSessionActivationAdapter(vendor: VendorId, rootPid: number, afterMs: number) {
-  return (await engineEntry(vendor).observeSessionActivation?.({ rootPid, afterMs })) ?? null
+export async function observeEngineSessionActivationAdapter(
+  vendor: VendorId,
+  rootPid: number,
+  afterMs: number,
+  afterCursor?: string,
+) {
+  return (await engineEntry(vendor).observeSessionActivation?.({ rootPid, afterMs, afterCursor })) ?? null
 }
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {

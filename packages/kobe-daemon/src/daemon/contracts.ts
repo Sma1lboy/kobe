@@ -13,7 +13,7 @@ export interface EngineRun {
   readonly taskId: string
   readonly tabId: string
   readonly vendor: VendorId
-  /** Null while the engine has started but has not reported its native id. */
+  /** Null until the launched engine process reports its native id. */
   readonly sessionId: string | null
   readonly state: "pending" | "bound" | "ended" | "superseded" | "missing"
   /** Which authoritative boundary supplied the current identity. */

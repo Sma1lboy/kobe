@@ -33,6 +33,7 @@ export type EngineSessionActivation =
       readonly phase: "pending"
       readonly source: "resume"
       readonly observedAt: number
+      readonly cursor: string
     }
   | {
       readonly phase: "selected"
@@ -40,6 +41,7 @@ export type EngineSessionActivation =
       readonly transcriptPath?: string
       readonly source: "resume"
       readonly observedAt: number
+      readonly cursor: string
     }
 
 export interface CodexSessionActivationInput {
@@ -47,11 +49,17 @@ export interface CodexSessionActivationInput {
   readonly rootPid: number
   /** Ignore resume records at or before the current EngineRun update. */
   readonly afterMs: number
+  /** Opaque monotonic cursor returned by the previous observation. */
+  readonly afterCursor?: string
 }
 
 export interface CodexSessionActivationDeps {
   readonly findEnginePid: (rootPid: number) => Promise<{ vendor: string; pid: number } | null>
-  readonly latestResume: (pid: number, afterMs: number) => CodexResumeLogRow | null | Promise<CodexResumeLogRow | null>
+  readonly latestResume: (
+    pid: number,
+    afterMs: number,
+    afterCursor?: string,
+  ) => CodexResumeLogRow | null | Promise<CodexResumeLogRow | null>
 }
 
 function defaultCodexHome(): string {
@@ -77,6 +85,7 @@ export function parseCodexResumeLog(row: CodexResumeLogRow): EngineSessionActiva
       transcriptPath: quoted[1],
       source: "resume",
       observedAt: observedAtMs(row),
+      cursor: String(row.id),
     }
   }
 
@@ -94,15 +103,21 @@ export function parseCodexResumeLog(row: CodexResumeLogRow): EngineSessionActiva
         sessionId,
         source: "resume",
         observedAt: observedAtMs(row),
+        cursor: String(row.id),
       }
     : {
         phase: "pending",
         source: "resume",
         observedAt: observedAtMs(row),
+        cursor: String(row.id),
       }
 }
 
-async function latestResumeFromSqlite(pid: number, afterMs: number): Promise<CodexResumeLogRow | null> {
+async function latestResumeFromSqlite(
+  pid: number,
+  afterMs: number,
+  afterCursor?: string,
+): Promise<CodexResumeLogRow | null> {
   const path = join(defaultCodexHome(), "logs_2.sqlite")
   const { Database } = await import("bun:sqlite")
   let db: InstanceType<typeof Database> | null = null
@@ -110,12 +125,13 @@ async function latestResumeFromSqlite(pid: number, afterMs: number): Promise<Cod
     db = new Database(path, { readonly: true, create: false })
     const seconds = Math.floor(afterMs / 1000)
     const nanos = Math.floor(afterMs % 1000) * 1_000_000
+    const afterId = /^\d+$/.test(afterCursor ?? "") ? Number(afterCursor) : 0
     // A lexical range keeps SQLite on the process_uuid index. `LIKE
     // 'pid:N:%'` scanned the user's ~666MB log DB during diagnosis.
     const processLo = `pid:${pid}:`
     const processHi = `pid:${pid};`
     return db
-      .query<CodexResumeLogRow, [string, string, string, number, number, number]>(
+      .query<CodexResumeLogRow, [string, string, string, number, number, number, number]>(
         `SELECT id, ts, ts_nanos, feedback_log_body
            FROM logs
           WHERE process_uuid >= ?1 AND process_uuid < ?2
@@ -129,10 +145,11 @@ async function latestResumeFromSqlite(pid: number, afterMs: number): Promise<Cod
               )
             )
             AND (ts > ?4 OR (ts = ?5 AND ts_nanos > ?6))
+            AND id > ?7
           ORDER BY ts DESC, ts_nanos DESC, id DESC
           LIMIT 1`,
       )
-      .get(processLo, processHi, RESUME_TARGET, seconds, seconds, nanos)
+      .get(processLo, processHi, RESUME_TARGET, seconds, seconds, nanos, afterId)
   } catch {
     // Internal telemetry is a compatibility signal, never a reason to break
     // the engine. SessionStart remains the authoritative fallback.
@@ -157,6 +174,6 @@ export async function observeCodexSessionActivation(
   if (!Number.isInteger(input.rootPid) || input.rootPid <= 0 || !Number.isFinite(input.afterMs)) return null
   const engine = await deps.findEnginePid(input.rootPid)
   if (!engine || engine.vendor !== "codex") return null
-  const row = await deps.latestResume(engine.pid, Math.max(0, input.afterMs))
+  const row = await deps.latestResume(engine.pid, Math.max(0, input.afterMs), input.afterCursor)
   return row ? parseCodexResumeLog(row) : null
 }

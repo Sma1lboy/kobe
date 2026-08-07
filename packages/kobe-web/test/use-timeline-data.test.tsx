@@ -8,16 +8,15 @@ import type {
   EngineSessionTransition,
 } from "../src/lib/types.ts"
 
-const { fetchTrace } = vi.hoisted(() => ({
-  fetchTrace: vi.fn<(vendor: string, sessionId: string) => Promise<EngineTrace>>(),
+const { subscribeTrace } = vi.hoisted(() => ({
+  subscribeTrace: vi.fn(),
 }))
 
 vi.mock("../src/lib/trace.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/trace.ts")>()
   return {
     ...actual,
-    fetchTrace,
-    subscribeTrace: vi.fn(() => () => undefined),
+    subscribeTrace,
     subscribeLiveTrace: vi.fn(() => () => undefined),
   }
 })
@@ -53,7 +52,7 @@ function binding(runId: string, sessionId: string, startedAt: number): EngineSes
 
 describe("useTimelineData", () => {
   beforeEach(() => {
-    fetchTrace.mockReset()
+    subscribeTrace.mockReset()
   })
 
   afterEach(() => {
@@ -69,9 +68,10 @@ describe("useTimelineData", () => {
       sessionId: "session-b",
       turns: [turn("b-turn", 50, 60)],
     }
-    fetchTrace.mockImplementation(async (_vendor, sessionId) =>
-      sessionId === "session-a" ? sessionA : sessionB,
-    )
+    subscribeTrace.mockImplementation((_vendor, sessionId, onTrace) => {
+      onTrace(sessionId === "session-a" ? sessionA : sessionB)
+      return () => undefined
+    })
 
     const { result, rerender } = renderHook(
       ({ currentBinding }) =>
@@ -106,12 +106,10 @@ describe("useTimelineData", () => {
       turns: [turn("a-turn", 10, 20)],
     }
     let resolveResume: ((trace: EngineTrace) => void) | undefined
-    const resumedTrace = new Promise<EngineTrace>((resolve) => {
-      resolveResume = resolve
-    })
-    fetchTrace.mockImplementation(async (_vendor, sessionId) => {
-      if (sessionId === "session-a") return sessionA
-      return await resumedTrace
+    subscribeTrace.mockImplementation((_vendor, sessionId, onTrace) => {
+      if (sessionId === "session-a") onTrace(sessionA)
+      else resolveResume = onTrace
+      return () => undefined
     })
 
     const { result, rerender } = renderHook(
@@ -160,7 +158,10 @@ describe("useTimelineData", () => {
       sessionId: "session-a",
       turns: [turn("a-turn", 10, 20)],
     }
-    fetchTrace.mockResolvedValue(sessionA)
+    subscribeTrace.mockImplementation((_vendor, _sessionId, onTrace) => {
+      onTrace(sessionA)
+      return () => undefined
+    })
     const pending: EngineSessionTransition = {
       taskId: "task-1",
       tabId: "tab-1",
@@ -194,5 +195,138 @@ describe("useTimelineData", () => {
     act(() => rerender({ currentTransition: undefined }))
     expect(result.current.loaded).toBe(true)
     expect(result.current.model.turns[0]?.id).toBe("a-turn")
+  })
+
+  it("masks the previous trace when a new engine process has no session id yet", async () => {
+    subscribeTrace.mockImplementation((_vendor, _sessionId, onTrace) => {
+      onTrace({ sessionId: "session-a", turns: [turn("old-turn", 10, 20)] })
+      return () => undefined
+    })
+    const { result, rerender } = renderHook(
+      ({ currentBinding }: { currentBinding: EngineSessionBinding }) =>
+        useTimelineData({
+          taskId: "task-1",
+          vendor: "codex",
+          engineState: undefined,
+          binding: currentBinding,
+        }),
+      { initialProps: { currentBinding: binding("old-run", "session-a", 1) } },
+    )
+    await waitFor(() => expect(result.current.model.turns[0]?.id).toBe("old-turn"))
+
+    act(() =>
+      rerender({
+        currentBinding: {
+          ...binding("empty-run", "session-a", 30),
+          sessionId: null,
+          state: "pending",
+          source: "spawn",
+          startSource: undefined,
+        },
+      }),
+    )
+    expect(result.current.bindingState).toBe("empty")
+    expect(result.current.model).toEqual({ sessionId: "", turns: [] })
+  })
+
+  it("settles loading from the SSE error path without a parallel GET", async () => {
+    subscribeTrace.mockImplementation((_vendor, _sessionId, _onTrace, onError) => {
+      onError?.("trace unavailable")
+      return () => undefined
+    })
+    const { result } = renderHook(() =>
+      useTimelineData({
+        taskId: "task-1",
+        vendor: "codex",
+        engineState: undefined,
+        binding: binding("run-a", "session-a", 1),
+      }),
+    )
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.error).toBe("trace unavailable")
+  })
+
+  it("keeps the newest SSE snapshot when updates race inside resume loading", async () => {
+    let onResume: ((trace: EngineTrace) => void) | undefined
+    subscribeTrace.mockImplementation((_vendor, sessionId, onTrace) => {
+      if (sessionId === "session-a") onTrace({ sessionId, turns: [turn("a", 1, 2)] })
+      else onResume = onTrace
+      return () => undefined
+    })
+    const { result, rerender } = renderHook(
+      ({ currentBinding }) =>
+        useTimelineData({
+          taskId: "task-1",
+          vendor: "codex",
+          engineState: undefined,
+          binding: currentBinding,
+        }),
+      { initialProps: { currentBinding: binding("run-a", "session-a", 1) } },
+    )
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    act(() => rerender({ currentBinding: binding("run-b", "session-b", 3) }))
+    act(() => {
+      onResume?.({ sessionId: "session-b", turns: [turn("older", 3, 4)] })
+      onResume?.({ sessionId: "session-b", turns: [turn("newest", 5, 6)] })
+    })
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.model.turns.map((item) => item.id)).toEqual(["newest"])
+  })
+
+  it("ignores a stale snapshot delivered after switching sessions", async () => {
+    const listeners = new Map<string, (trace: EngineTrace) => void>()
+    const unsubscribers = new Map<string, ReturnType<typeof vi.fn>>()
+    subscribeTrace.mockImplementation((_vendor, sessionId, onTrace) => {
+      listeners.set(sessionId, onTrace)
+      const unsubscribe = vi.fn()
+      unsubscribers.set(sessionId, unsubscribe)
+      return unsubscribe
+    })
+    const { result, rerender } = renderHook(
+      ({ currentBinding }) =>
+        useTimelineData({
+          taskId: "task-1",
+          vendor: "codex",
+          engineState: undefined,
+          binding: currentBinding,
+        }),
+      { initialProps: { currentBinding: binding("run-a", "session-a", 1) } },
+    )
+    act(() => listeners.get("session-a")?.({ sessionId: "session-a", turns: [turn("a", 1, 2)] }))
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+
+    act(() => rerender({ currentBinding: binding("run-b", "session-b", 3) }))
+    expect(unsubscribers.get("session-a")).toHaveBeenCalledOnce()
+    act(() => {
+      listeners.get("session-b")?.({ sessionId: "session-b", turns: [turn("b", 3, 4)] })
+      listeners.get("session-a")?.({ sessionId: "session-a", turns: [turn("stale-a", 5, 6)] })
+    })
+
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.model).toEqual({ sessionId: "session-b", turns: [turn("b", 3, 4)] })
+  })
+
+  it("clears a settled stream error when a later full snapshot recovers", async () => {
+    let onTrace: ((trace: EngineTrace) => void) | undefined
+    let onError: ((message: string) => void) | undefined
+    subscribeTrace.mockImplementation((_vendor, _sessionId, traceListener, errorListener) => {
+      onTrace = traceListener
+      onError = errorListener
+      return () => undefined
+    })
+    const { result } = renderHook(() =>
+      useTimelineData({
+        taskId: "task-1",
+        vendor: "codex",
+        engineState: undefined,
+        binding: binding("run-a", "session-a", 1),
+      }),
+    )
+    act(() => onError?.("temporary failure"))
+    await waitFor(() => expect(result.current.error).toBe("temporary failure"))
+
+    act(() => onTrace?.({ sessionId: "session-a", turns: [turn("recovered", 2, 3)] }))
+    await waitFor(() => expect(result.current.error).toBeNull())
+    expect(result.current.model.turns.map((item) => item.id)).toEqual(["recovered"])
   })
 })
