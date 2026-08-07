@@ -131,18 +131,20 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: kobe-pop-in 0.18s ease-out both;
 }
 
-/* Full-power ambience: a session at top effort breathes a soft primary
-   glow on its welcome card. Deliberately the ONLY glow in the app. */
+/* ultracode ambience: when the LIVE effort chip says ultracode, the
+   welcome card's edge breathes in the mode's violet. Deliberately the ONLY
+   glow in the app — full power reads as a signal. */
 @keyframes kobe-effort-glow {
   0%,
   100% {
-    box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 16%, transparent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--color-kobe-violet) 20%, transparent);
   }
   50% {
-    box-shadow: 0 0 26px color-mix(in srgb, var(--color-primary) 36%, transparent);
+    box-shadow: 0 0 28px color-mix(in srgb, var(--color-kobe-violet) 42%, transparent);
   }
 }
-.effort-glow {
+[data-effort="ultracode"] .welcome-card {
+  border-color: color-mix(in srgb, var(--color-kobe-violet) 55%, transparent);
   animation: kobe-effort-glow 3s ease-in-out infinite;
 }
 
@@ -341,8 +343,8 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
     animation: none;
   }
 
-  .effort-glow {
+  [data-effort="ultracode"] .welcome-card {
     animation: none;
-    box-shadow: 0 0 16px color-mix(in srgb, var(--color-primary) 26%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--color-kobe-violet) 30%, transparent);
   }
 }

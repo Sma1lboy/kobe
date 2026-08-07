@@ -290,6 +290,18 @@ function SessionView({
     () => (belowMenu.length > 0 ? [...bodyFooter, ...belowMenu] : bodyFooter),
     [bodyFooter, belowMenu],
   )
+  // LIVE effort ambience: the CLI draws the current effort chip near the
+  // composer — when it says ultracode, the welcome card's edge lights up
+  // (CSS keys off data-effort on the stack root). Chip-adjacent rows only,
+  // so typing the word doesn't glow.
+  const ultracodeActive = useMemo(() => {
+    const probe = [
+      effortLine?.text ?? "",
+      ...bodyLines.slice(-3).map((l) => l.text),
+      ...statusColored.map((l) => l.text),
+    ]
+    return probe.some((t) => /\bultracode\b/i.test(t))
+  }, [effortLine, bodyLines, statusColored])
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.
@@ -347,7 +359,10 @@ function SessionView({
         </Suspense>
       </div>
       {showTranslated && (
-        <div className="relative z-10 flex h-full flex-col bg-bg">
+        <div
+          className="relative z-10 flex h-full flex-col bg-bg"
+          data-effort={ultracodeActive ? "ultracode" : undefined}
+        >
           <div className="min-h-0 flex-1">
             <TtyBlocksView blocks={body} sessionId={sessionId} />
           </div>

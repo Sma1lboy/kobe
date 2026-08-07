@@ -23,15 +23,8 @@ function dedent(rows: string[]): string[] {
   return cut > 0 ? rows.map((r) => r.slice(cut)) : rows
 }
 
-/** Top-tier effort in the banner text ("… with high effort", "max effort") —
- *  the one place a glow is a SIGNAL: this session runs at full power. */
-function isTopEffort(info: string[]): boolean {
-  return info.some((l) => /\b(high|max|xhigh|ultra\w*)\s+effort\b/i.test(l))
-}
-
 export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
   const { logo, product, version, info } = welcome
-  const glow = isTopEffort(info)
   // The What's-new column reads Claude Code's changelog — other vendors get
   // the single-column card.
   const hasChangelog = !welcome.vendor || welcome.vendor === "claude"
@@ -58,9 +51,9 @@ export function WelcomeCard({ welcome }: { welcome: WelcomeInfo }) {
     // @container: the What's-new / notice column keys off the CARD's own
     // width (panes resize independently of the viewport), dropping cleanly
     // when the middle column narrows.
-    <div
-      className={`fade-up @container my-3 rounded-xl border border-primary/40 bg-inset px-4 py-3${glow ? " effort-glow" : ""}`}
-    >
+    // `welcome-card` is the hook for LIVE effort ambience — the session
+    // stack sets data-effort, CSS lights this edge (styles.css).
+    <div className="welcome-card fade-up @container my-3 rounded-xl border border-primary/40 bg-inset px-4 py-3">
       <div className="flex items-start gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           {/* Block-glyph art: fractional glyph advances leave hairline seams
