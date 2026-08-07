@@ -38,6 +38,24 @@ function clockLabel(ms: number): string {
   })
 }
 
+/** A small causal-chain loader: identity → history → normalized events. */
+function TraceLoading({ label }: { label: string }) {
+  return (
+    <output
+      aria-live="polite"
+      data-testid="trace-loading"
+      className="flex items-center gap-3 py-3 font-mono text-[10px] text-subtle"
+    >
+      <span className="trace-loader" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>{label}</span>
+    </output>
+  )
+}
+
 /** One turn: header (user prompt + meta) and its execution nodes, with the
  *  settled intermediate steps folded behind a count chip by default. */
 function TurnSection({
@@ -207,19 +225,13 @@ export function TimelinePanel({
             </div>
           </div>
         ) : bindingState === "pending" ? (
-          <div className="flex items-center gap-2 py-3 font-mono text-[10px] text-subtle">
-            <span className="size-1.5 animate-pulse rounded-full bg-kobe-blue" />
-            Waiting for the engine session id…
-          </div>
+          <TraceLoading label="Waiting for the engine session id…" />
         ) : bindingState === "missing" ? (
           <div className="border-l-2 border-kobe-yellow pl-3 text-[11px] leading-relaxed text-muted">
             Bound engine session is missing
           </div>
         ) : !loaded && model.turns.length === 0 ? (
-          <div className="flex items-center gap-2 py-3 font-mono text-[10px] text-subtle">
-            <span className="size-1.5 animate-pulse rounded-full bg-kobe-blue" />
-            Reading engine events…
-          </div>
+          <TraceLoading label="Reading engine events…" />
         ) : error && model.turns.length === 0 ? (
           <div className="border-l-2 border-kobe-red pl-3 text-[11px] leading-relaxed text-muted">
             Agent trace unavailable
