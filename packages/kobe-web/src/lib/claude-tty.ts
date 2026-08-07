@@ -233,6 +233,10 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
     if (USER_ECHO.test(trimmed)) {
       // Multi-line echo: continuations are 2-space indented (assistant output
       // starts at col 0) — absorb them + internal blanks into one bubble.
+      // A resize REFLOW splits a long absorbed row at the viewport width with
+      // its tail at col 0 — when the previous row filled the full width, a
+      // flush-left row is that soft-wrap tail, not new content.
+      const cols = lines[0]?.text.length ?? 0
       let text = trimmed.replace(USER_ECHO, "")
       let j = i + 1
       while (j < lines.length) {
@@ -245,8 +249,12 @@ export function parseTtyBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
           j += 1
           continue
         }
-        if (!/^ {2}\S/.test(raw) || ACTIVITY.test(t)) break
-        text += `\n${t}`
+        const wrapTail =
+          cols > 0 &&
+          /^[^\s●⏺>❯›✳✱]/.test(raw) &&
+          lines[j - 1].text.trimEnd().length >= cols - 1
+        if ((!/^ {2}\S/.test(raw) && !wrapTail) || ACTIVITY.test(t)) break
+        text += wrapTail ? ` ${t}` : `\n${t}`
         j += 1
       }
       blocks.push({ kind: "user", text })

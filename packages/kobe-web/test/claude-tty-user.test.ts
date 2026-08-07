@@ -136,3 +136,26 @@ describe("version line floated above the art", () => {
     expect(blocks.filter((b) => b.kind === "line")).toHaveLength(0)
   })
 })
+
+describe("reflowed user-echo continuation", () => {
+  test("a flush-left soft-wrap tail after a full-width row stays in the bubble", () => {
+    const W = 44
+    const pad = (t: string) => ({ text: t.padEnd(W, " "), segs: [] })
+    const full = (t: string) => ({ text: t.padEnd(W, "x").slice(0, W), segs: [] })
+    const blocks = parseTtyBlocks([
+      pad("> /effort high"),
+      full("  ⎿ Set effort level to high (saved): Comp"),
+      pad("rehensive implementation with tests"),
+      pad(""),
+      pad("● next reply"),
+    ])
+    const user = blocks.find((b) => b.kind === "user")
+    if (!user || user.kind !== "user") throw new Error("no user block")
+    expect(user.text).toContain("rehensive implementation with tests")
+    expect(
+      blocks.some(
+        (b) => b.kind === "line" && b.line.text.includes("rehensive"),
+      ),
+    ).toBe(false)
+  })
+})
