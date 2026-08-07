@@ -3,11 +3,14 @@
  *
  * OpenTUI restores a visible cursor after each diff frame, but a hidden
  * cursor is left at the last painted cell. macOS input methods use that real
- * terminal cursor for preedit/candidate placement. This adapter inserts the
- * focused embedded terminal's hidden cursor position immediately before the
- * synchronized-frame terminator, keeping the entire update atomic.
+ * terminal cursor for preedit/candidate placement. This adapter buffers each
+ * synchronized update as one transaction and inserts the focused embedded
+ * terminal's hidden cursor position immediately before its terminator. A
+ * truncated frame is therefore discarded before any partial paint can reach
+ * the outer terminal.
  */
 
+const SYNC_START = Buffer.from("\x1b[?2026h")
 const SYNC_END = Buffer.from("\x1b[?2026l")
 const HIDE_CURSOR = "\x1b[?25l"
 
@@ -45,47 +48,89 @@ export const imeAnchorController = new ImeAnchorController()
 
 class ImeAnchorFrameTransformer {
   private pending = Buffer.alloc(0)
+  private frame = Buffer.alloc(0)
 
   constructor(private readonly controller: ImeAnchorController) {}
 
   push(chunk: Buffer): Buffer {
     const data = this.pending.length > 0 ? Buffer.concat([this.pending, chunk]) : chunk
     this.pending = Buffer.alloc(0)
-
-    if (!this.controller.current()) return data
-
     const output: Buffer[] = []
     let offset = 0
+
     while (offset < data.length) {
-      const marker = data.indexOf(SYNC_END, offset)
-      if (marker < 0) break
-      output.push(data.subarray(offset, marker))
-      const anchor = this.controller.current()
-      // Renderer coordinates are zero-based; ANSI CUP rows/columns are one-based.
-      if (anchor) output.push(Buffer.from(`\x1b[${anchor.y + 1};${anchor.x + 1}H${HIDE_CURSOR}`))
-      output.push(SYNC_END)
-      offset = marker + SYNC_END.length
+      if (this.frame.length === 0) {
+        const start = data.indexOf(SYNC_START, offset)
+        if (start < 0) {
+          const tail = data.subarray(offset)
+          const pendingLength = longestMarkerPrefixSuffix(tail, [SYNC_START])
+          const safeLength = tail.length - pendingLength
+          if (safeLength > 0) output.push(tail.subarray(0, safeLength))
+          if (pendingLength > 0) this.pending = Buffer.from(tail.subarray(safeLength))
+          break
+        }
+
+        if (start > offset) output.push(data.subarray(offset, start))
+        this.frame = Buffer.from(SYNC_START)
+        offset = start + SYNC_START.length
+        continue
+      }
+
+      const end = data.indexOf(SYNC_END, offset)
+      const restart = data.indexOf(SYNC_START, offset)
+      if (restart >= 0 && (end < 0 || restart < end)) {
+        // A new transaction means the prior one was truncated. Nothing from
+        // it has reached the terminal, so discard it and recover at the new
+        // frame boundary instead of exposing a half-painted screen.
+        this.frame = Buffer.from(SYNC_START)
+        offset = restart + SYNC_START.length
+        continue
+      }
+
+      if (end >= 0) {
+        if (end > offset) this.frame = Buffer.concat([this.frame, data.subarray(offset, end)])
+        output.push(this.frame)
+        const anchor = this.controller.current()
+        // Renderer coordinates are zero-based; ANSI CUP rows/columns are one-based.
+        if (anchor) output.push(Buffer.from(`\x1b[${anchor.y + 1};${anchor.x + 1}H${HIDE_CURSOR}`))
+        output.push(SYNC_END)
+        this.frame = Buffer.alloc(0)
+        offset = end + SYNC_END.length
+        continue
+      }
+
+      const tail = data.subarray(offset)
+      const pendingLength = longestMarkerPrefixSuffix(tail, [SYNC_START, SYNC_END])
+      const safeLength = tail.length - pendingLength
+      if (safeLength > 0) this.frame = Buffer.concat([this.frame, tail.subarray(0, safeLength)])
+      if (pendingLength > 0) this.pending = Buffer.from(tail.subarray(safeLength))
+      break
     }
 
-    const tail = data.subarray(offset)
-    const pendingLength = longestTerminatorPrefixSuffix(tail)
-    const safeLength = tail.length - pendingLength
-    if (safeLength > 0) output.push(tail.subarray(0, safeLength))
-    if (pendingLength > 0) this.pending = Buffer.from(tail.subarray(safeLength))
     return output.length > 0 ? Buffer.concat(output) : Buffer.alloc(0)
   }
 
   flush(): Buffer {
+    // Never expose an incomplete synchronized update during teardown. The
+    // terminal never saw its opener, so dropping it preserves the last fully
+    // committed screen. A partial opener outside a frame is ordinary pending
+    // output and still needs to be restored verbatim.
+    if (this.frame.length > 0) {
+      this.frame = Buffer.alloc(0)
+      this.pending = Buffer.alloc(0)
+      return Buffer.alloc(0)
+    }
     const pending = this.pending
     this.pending = Buffer.alloc(0)
     return pending
   }
 }
 
-function longestTerminatorPrefixSuffix(bytes: Buffer): number {
-  const max = Math.min(bytes.length, SYNC_END.length - 1)
+function longestMarkerPrefixSuffix(bytes: Buffer, markers: readonly Buffer[]): number {
+  const max = Math.min(bytes.length, Math.max(...markers.map((marker) => marker.length - 1)))
   for (let length = max; length > 0; length -= 1) {
-    if (bytes.subarray(bytes.length - length).equals(SYNC_END.subarray(0, length))) return length
+    const suffix = bytes.subarray(bytes.length - length)
+    if (markers.some((marker) => length < marker.length && suffix.equals(marker.subarray(0, length)))) return length
   }
   return 0
 }

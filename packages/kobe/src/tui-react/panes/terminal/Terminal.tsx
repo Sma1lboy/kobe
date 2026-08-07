@@ -434,9 +434,11 @@ export function Terminal(props: TerminalProps) {
         scrollBy(scroll.direction === "up" ? -step : step)
       }}
     >
-      {/* Scroll affordance — only rendered when scrolled back into
-          history, so the body's screenY equals the pane's content top in
-          the steady state (the cursor math depends on that). */}
+      {/* Scroll affordance overlays the historical viewport instead of
+          joining this flex column. A flow child would shrink `bodyEl` by
+          one row on the first wheel tick, resize xterm, invalidate its
+          absolute-line epoch, and put the stream back on a drifting
+          relative offset. */}
       {exited ? (
         <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
           <text fg={theme.error} wrapMode="none">
@@ -445,7 +447,17 @@ export function Terminal(props: TerminalProps) {
         </box>
       ) : null}
       {scrollOffset > 0 ? (
-        <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
+        <box
+          position="absolute"
+          zIndex={10}
+          left={0}
+          right={0}
+          bottom={0}
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={theme.backgroundPanel}
+        >
           <text fg={theme.warning} wrapMode="none">
             {t("terminal.scrolledBack", { lines: scrollOffset })}
           </text>

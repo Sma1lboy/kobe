@@ -87,6 +87,29 @@ describe("XtermTaskPty scrollback cache", () => {
     pty.kill()
   })
 
+  it("keeps the window origin stable across live-grid insert/delete redraws", async () => {
+    const pty = makePty()
+    for (let i = 1; i <= 30; i++) pty.pump(`redraw L${i}\r\n`)
+    await settle()
+    pty.capture()
+    const before = pty.captureWindow()
+
+    // Codex redraws its live viewport with IL/DL while output streams. Those
+    // edits must not move the absolute marker that names frozen scrollback.
+    pty.pump("\x1b[1;1H\x1b[M")
+    await settle()
+    pty.capture()
+
+    expect(before).not.toBeNull()
+    expect(pty.captureWindow()).toEqual(before)
+
+    pty.pump("\x1b[1;1H\x1b[L")
+    await settle()
+    pty.capture()
+    expect(pty.captureWindow()).toEqual(before)
+    pty.kill()
+  })
+
   it("stays chunk-identical to a full rebuild across heavy trimming (with colors)", async () => {
     const pty = makePty()
     // 600 lines >> rows+margin (210): the buffer trims hard, shifting
