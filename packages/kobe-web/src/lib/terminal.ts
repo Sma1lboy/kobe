@@ -72,6 +72,29 @@ export async function closePtyTab(tabId: string): Promise<void> {
   }
 }
 
+/** Paste text into an already-hosted native composer without pressing Enter.
+ * The engine remains fully in charge of editing and submitting the next turn. */
+export async function insertPtyText(
+  tabId: string,
+  text: string,
+): Promise<void> {
+  try {
+    const json = await api.post<{ inserted?: boolean }>(
+      `${ptyBase("http")}/pty/insert`,
+      { tab: tabId, text },
+      { label: "insert PTY text" },
+    )
+    if (!json.inserted) throw new Error("insert failed")
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404 && !err.detail) {
+      throw new Error(
+        "the PTY server doesn't know /pty/insert — restart `kobe web` (the sidecar doesn't hot-reload)",
+      )
+    }
+    throw err
+  }
+}
+
 /**
  * Paste text + Enter into a tab's engine — the composer's submit contract,
  * fired from outside any terminal view (board quick actions). The sidecar

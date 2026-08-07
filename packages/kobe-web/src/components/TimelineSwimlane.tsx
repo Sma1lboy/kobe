@@ -18,11 +18,13 @@ export function TimelineSwimlane({
   model,
   engineLabel,
   runId,
+  onQuote,
   onClose,
 }: {
   model: TimelineModel
   engineLabel: string
   runId?: string
+  onQuote?: (text: string) => Promise<void>
   onClose: () => void
 }) {
   const running = model.turns.some((turn) => turn.status === "running")
@@ -102,6 +104,7 @@ export function TimelineSwimlane({
                     items={turn.nodes}
                     status={turn.status}
                     now={now}
+                    onQuote={onQuote}
                     className="execution-node-grid--wide"
                   />
                 </div>

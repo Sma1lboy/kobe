@@ -65,6 +65,7 @@ export function SessionView({
   mode,
   vendor,
   grammar,
+  focusRequest = 0,
   onEngineLive,
 }: {
   tabId: string
@@ -76,12 +77,17 @@ export function SessionView({
   vendor?: string
   /** The vendor's screen grammar (engine-grammar.ts) — drives the translation. */
   grammar: EngineGrammar
+  /** External request to return keyboard focus to the native composer. */
+  focusRequest?: number
   /** Grammar-derived engine liveness, lifted so the Agent Trace can clear
    *  when this tab drops to a bare shell / boot screen. */
   onEngineLive?: (live: boolean) => void
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
+  useEffect(() => {
+    if (focusRequest > 0) setFocusNonce((value) => value + 1)
+  }, [focusRequest])
   // Frame stabilizer: reuse previous line OBJECTS for unchanged rows so
   // memoized children skip re-render — a keystroke only re-renders the input
   // row's dependents, not the whole transcript.

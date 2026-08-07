@@ -262,6 +262,27 @@ describe("createPtySessionManager", () => {
     expect(ptys[0].writes).toEqual(["\x1b[200~hello\x1b[201~", "\r"])
   })
 
+  it("inserts a quote into an existing PTY without submitting", async () => {
+    const onTerminalCommit = vi.fn()
+    const { manager, ptys } = setup({ onTerminalCommit })
+    await manager.ensureSession("tab", "task", "engine", 80, 24)
+
+    expect(
+      manager.insertText({
+        tabId: "tab",
+        text: "quoted\r\nblock\x1b[201~\runsafe",
+      }),
+    ).toEqual({ inserted: true, missing: false })
+    expect(ptys[0].writes).toEqual([
+      "\x1b[200~quoted\nblock[201~\nunsafe\x1b[201~",
+    ])
+    expect(onTerminalCommit).not.toHaveBeenCalled()
+    expect(manager.insertText({ tabId: "missing", text: "x" })).toEqual({
+      inserted: false,
+      missing: true,
+    })
+  })
+
   it("closes sockets and clears the session on process exit", async () => {
     const { manager, ptys } = setup()
     const ws = new FakeSocket()

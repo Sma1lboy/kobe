@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ptyUrl } from "../src/lib/terminal.ts"
+import { insertPtyText, ptyUrl } from "../src/lib/terminal.ts"
 
 /**
  * ptyUrl builds the PTY WebSocket URL — a bug here breaks every terminal tab.
@@ -46,5 +46,23 @@ describe("ptyUrl", () => {
     withLocation({ port: "" })
     // empty port → defaults to 5173 → +2 = 5175
     expect(ptyUrl("t", "k", "shell", 80, 24)).toContain(":5175/")
+  })
+
+  it("inserts quoted text through the no-submit PTY endpoint", async () => {
+    withLocation({ port: "5173" })
+    const fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ inserted: true }))),
+    )
+    vi.stubGlobal("fetch", fetch)
+
+    await insertPtyText("tab-1", "quoted block")
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:5175/pty/insert",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ tab: "tab-1", text: "quoted block" }),
+      }),
+    )
   })
 })

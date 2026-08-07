@@ -4,6 +4,7 @@ import {
   FilePenLine,
   Layers3,
   MessageSquare,
+  Quote,
   TerminalSquare,
 } from "lucide-react"
 import { useState } from "react"
@@ -12,7 +13,8 @@ import {
   type TimelineItem,
   type TimelineStatus,
 } from "../lib/timeline.ts"
-import { CopyButton } from "./CopyButton.tsx"
+import { quoteTraceItem } from "../lib/trace-content.ts"
+import { ReadableTraceContent } from "./ReadableTraceContent.tsx"
 import { SlideOver } from "./SlideOver.tsx"
 import { TracePatch } from "./TracePatch.tsx"
 
@@ -111,39 +113,24 @@ function ExecutionNode({
   )
 }
 
-function DetailSection({ label, text }: { label: string; text: string }) {
-  return (
-    <section className="rounded border border-line bg-surface">
-      <header className="flex h-9 items-center gap-2 border-b border-line px-3">
-        <span className="text-[11px] text-muted">{label}</span>
-        <CopyButton
-          text={text}
-          label={`Copy ${label.toLowerCase()}`}
-          className="ml-auto"
-        />
-      </header>
-      <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-fg">
-        {text || "(empty)"}
-      </pre>
-    </section>
-  )
-}
-
 function ExecutionDetail({
   item,
   parent,
   retryOf,
   now,
+  onQuote,
   onClose,
 }: {
   item: TimelineItem | undefined
   parent: TimelineItem | undefined
   retryOf: TimelineItem | undefined
   now: number
+  onQuote?: (text: string) => Promise<void>
   onClose: () => void
 }) {
   const isTool = item?.kind === "tool" || item?.kind === "change"
   const hasResult = isTool || item?.kind === "subagent"
+  const [quoting, setQuoting] = useState(false)
   return (
     <SlideOver
       open={item !== undefined}
@@ -175,6 +162,24 @@ function ExecutionDetail({
               <span className="rounded-full border border-line px-1.5 py-0.5 text-muted">
                 attempt {item.attempt}
               </span>
+            )}
+            {onQuote && (
+              <button
+                type="button"
+                disabled={quoting}
+                onClick={() => {
+                  setQuoting(true)
+                  void onQuote(quoteTraceItem(item))
+                    .then(onClose)
+                    .catch(() => {})
+                    .finally(() => setQuoting(false))
+                }}
+                className="ml-auto flex items-center gap-1.5 rounded-sm border border-line px-2 py-1 font-sans text-[10px] text-muted transition-colors hover:border-primary hover:text-fg disabled:opacity-50"
+                title="Insert this block into the current prompt without sending"
+              >
+                <Quote size={11} strokeWidth={1.8} />
+                {quoting ? "Quoting…" : "Quote to input"}
+              </button>
             )}
           </div>
           {retryOf && (
@@ -211,7 +216,7 @@ function ExecutionDetail({
           {item.kind === "change" ? (
             <TracePatch patch={item.detail} />
           ) : (
-            <DetailSection
+            <ReadableTraceContent
               label={
                 item.kind === "tool"
                   ? "Input"
@@ -229,7 +234,7 @@ function ExecutionDetail({
             />
           )}
           {hasResult && (
-            <DetailSection
+            <ReadableTraceContent
               label={item.kind === "subagent" ? "Subagent result" : "Result"}
               text={item.resultDetail ?? "No result recorded yet."}
             />
@@ -261,11 +266,13 @@ export function ExecutionGrid({
   items,
   status,
   now,
+  onQuote,
   className = "",
 }: {
   items: readonly TimelineItem[]
   status: TimelineStatus
   now: number
+  onQuote?: (text: string) => Promise<void>
   className?: string
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -341,6 +348,7 @@ export function ExecutionGrid({
         parent={parent}
         retryOf={retryOf}
         now={now}
+        onQuote={onQuote}
         onClose={() => setSelectedId(null)}
       />
     </>

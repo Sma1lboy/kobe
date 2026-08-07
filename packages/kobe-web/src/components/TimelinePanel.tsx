@@ -62,10 +62,12 @@ function TurnSection({
   turn,
   turnIndex,
   now,
+  onQuote,
 }: {
   turn: TimelineTurn
   turnIndex: number
   now: number
+  onQuote?: (text: string) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const spotlight = turn.nodes.filter(isSpotlightNode)
@@ -113,7 +115,12 @@ function TurnSection({
           {expanded ? "Hide steps" : `${foldedCount} steps`}
         </button>
       )}
-      <ExecutionGrid items={items} status={turn.status} now={now} />
+      <ExecutionGrid
+        items={items}
+        status={turn.status}
+        now={now}
+        onQuote={onQuote}
+      />
     </section>
   )
 }
@@ -127,6 +134,7 @@ export function TimelinePanel({
   bindingState,
   runId,
   width,
+  onQuote,
   onExpand,
 }: {
   model: TimelineModel
@@ -140,6 +148,8 @@ export function TimelinePanel({
   runId?: string
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
+  /** Insert a trace block into the active native composer without sending. */
+  onQuote?: (text: string) => Promise<void>
   onExpand: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -252,6 +262,7 @@ export function TimelinePanel({
                 turn={turn}
                 turnIndex={turnIndex}
                 now={now}
+                onQuote={onQuote}
               />
             ))}
           </div>
