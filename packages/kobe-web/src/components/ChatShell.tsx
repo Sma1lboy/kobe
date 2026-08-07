@@ -208,6 +208,23 @@ function SessionView({
     }
     return { chatBodyLines: bodyLines, effortLine: null }
   }, [grammar, bodyLines])
+  // The CLI drops its ultracode mode banner (a `✦ ultracode · …` status row
+  // + a `──── ultracode` labeled rule) wherever the conversation happened to
+  // be — strand it there and it drifts mid-scrollback. Lift every marker row
+  // out and pin ONE re-dressed strip above the composer; its presence is
+  // also the LIVE signal that lights the welcome card.
+  const { chatLines, ultraActive } = useMemo(() => {
+    const marker = /^(?:[✦✧✳+*·]\s*)?ultracode(?:\s*·.*)?$|^─{4,}[─\s]*ultracode$/
+    let found = false
+    const kept = chatBodyLines.filter((l) => {
+      if (!marker.test(l.text.trim())) return true
+      found = true
+      return false
+    })
+    return found
+      ? { chatLines: kept, ultraActive: true }
+      : { chatLines: chatBodyLines, ultraActive: false }
+  }, [chatBodyLines])
   // Caret CHAR offset from the cursor's CELL column (>0xFF ≈ 2 cells —
   // CJK-good; wcwidth if emoji matters). The region's promptText is trimmed
   // (terminal rows are padded to full width), so TRAILING spaces the user
@@ -260,10 +277,7 @@ function SessionView({
   // The live footer (spinner/tip/slash-menu below the last gap) is lifted out
   // of the scroll body and floated just above the input row — where the native
   // TUI shows it — instead of leaving it adrift in the history.
-  const { body: rawBody, footer: rawFooter } = useTtyBlocks(
-    chatBodyLines,
-    grammar,
-  )
+  const { body: rawBody, footer: rawFooter } = useTtyBlocks(chatLines, grammar)
   // Claude's `※ recap` docks above the composer instead of drifting in the
   // flow — strip every occurrence, pin the newest.
   const { body, bodyFooter, recap } = useMemo((): {
@@ -290,18 +304,6 @@ function SessionView({
     () => (belowMenu.length > 0 ? [...bodyFooter, ...belowMenu] : bodyFooter),
     [bodyFooter, belowMenu],
   )
-  // LIVE effort ambience: the CLI draws the current effort chip near the
-  // composer — when it says ultracode, the welcome card's edge lights up
-  // (CSS keys off data-effort on the stack root). Chip-adjacent rows only,
-  // so typing the word doesn't glow.
-  const ultracodeActive = useMemo(() => {
-    const probe = [
-      effortLine?.text ?? "",
-      ...bodyLines.slice(-3).map((l) => l.text),
-      ...statusColored.map((l) => l.text),
-    ]
-    return probe.some((t) => /\bultracode\b/i.test(t))
-  }, [effortLine, bodyLines, statusColored])
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.
@@ -361,7 +363,7 @@ function SessionView({
       {showTranslated && (
         <div
           className="relative z-10 flex h-full flex-col bg-bg"
-          data-effort={ultracodeActive ? "ultracode" : undefined}
+          data-effort={ultraActive ? "ultracode" : undefined}
         >
           <div className="min-h-0 flex-1">
             <TtyBlocksView blocks={body} sessionId={sessionId} />
@@ -391,6 +393,22 @@ function SessionView({
               <div className="fade-up text-[12px] leading-relaxed text-muted">
                 <span className="mr-1.5 select-none text-subtle">※</span>
                 {recap.text}
+              </div>
+            )}
+            {/* Mirrors the native placement: the mode label rides the
+                composer's top edge, right-aligned. */}
+            {ultraActive && (
+              <div
+                className="fade-up flex items-center gap-2.5 px-1"
+                title="ultracode — xhigh effort + dynamic workflow orchestration"
+              >
+                <span
+                  aria-hidden="true"
+                  className="ultra-rule h-px min-w-0 flex-1"
+                />
+                <span className="ultra-rule__label font-mono text-[11px]">
+                  ultracode
+                </span>
               </div>
             )}
             {/* No composer until the engine draws one — during boot (empty
