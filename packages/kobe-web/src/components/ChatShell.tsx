@@ -185,6 +185,8 @@ function SessionView({
       region,
       lastExitIdx,
       engineLive,
+      tabId,
+      vendorProp: vendor,
     }
   }
   // Engine child exited (ctrl+c → shell) → restore the minted tab title; a
