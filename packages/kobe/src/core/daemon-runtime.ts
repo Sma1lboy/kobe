@@ -26,6 +26,7 @@ import {
   deliverPromptToLiveEngineAdapter,
   engineSpecAdapter,
   ensureTaskSessionAdapter,
+  recoverEngineSessionAdapter,
   startTaskSessionWithPromptAdapter,
   tearDownTaskSessionAdapter,
   terminalSpecAdapter,
@@ -46,6 +47,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   affectsActivityState,
   checkLatestVersion,
   latestTranscriptMtime,
+  recoverEngineSession: recoverEngineSessionAdapter,
   deriveTitleFromSession,
   createEngineTurnDetector,
   async runWorktreeStatus(worktreePath, signal) {

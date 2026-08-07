@@ -15,6 +15,7 @@ import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   AttentionItem,
+  EngineSessionBindings,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -35,6 +36,8 @@ export interface AppState {
    *  the task-level rollup is last-event-wins across tabs, so the Agent Trace
    *  can follow exactly the session running in the ACTIVE tab. */
   engineTabSessions: Record<string, Record<string, string>>
+  /** Durable task+tab -> engine-native session contract. */
+  sessionBindings: EngineSessionBindings
   update: UpdateInfo | null
   /** taskId → in-flight long job (e.g. a worktree materializing). */
   jobs: Record<string, TaskJob>
@@ -63,6 +66,7 @@ const initial: AppState = {
   activeTaskId: null,
   engineStates: {},
   engineTabSessions: {},
+  sessionBindings: {},
   update: null,
   jobs: {},
   worktreeChanges: {},
@@ -127,6 +131,22 @@ export function applyTabSessionEvent(
   }
 }
 
+/** Compatibility projection for old consumers that only understand ids. */
+export function sessionIdsFromBindings(
+  bindings: EngineSessionBindings,
+): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {}
+  for (const [taskId, tabs] of Object.entries(bindings)) {
+    for (const [tabId, binding] of Object.entries(tabs)) {
+      if (!binding.sessionId) continue
+      const task = out[taskId] ?? {}
+      task[tabId] = binding.sessionId
+      out[taskId] = task
+    }
+  }
+  return out
+}
+
 /** Reduce a task.jobs event into the jobs map: a running job is tracked by
  *  taskId; any terminal phase (done/error) clears its entry. Returns a new map
  *  on a running insert and on a delete that hit; a delete that misses still
@@ -163,6 +183,7 @@ function applyTaskList(tasks: Task[]): void {
     tasks,
     engineStates: pruneByTask(state.engineStates, live),
     engineTabSessions: pruneByTask(state.engineTabSessions, live),
+    sessionBindings: pruneByTask(state.sessionBindings, live),
     jobs: pruneByTask(state.jobs, live),
     issueSnapshots: pruneSnapshotAliases(state.issueSnapshots, tasks),
   })
@@ -201,6 +222,12 @@ function applyEvent(event: WebTransportEvent): void {
       })
       break
     }
+    case "session.bindings":
+      set({
+        sessionBindings: event.payload.bindings,
+        engineTabSessions: sessionIdsFromBindings(event.payload.bindings),
+      })
+      break
     case "update":
       set({ update: event.payload.info })
       break
@@ -256,7 +283,13 @@ export function validateSnapshot(raw: unknown): WebTransportSnapshot | null {
   if (typeof raw.connected !== "boolean") return null
   // Optional maps, when present, must be objects (the store spreads/iterates
   // them); a present-but-wrong type is as fatal as a bad `tasks`.
-  for (const key of ["jobs", "worktreeChanges", "issueSnapshots"] as const) {
+  for (const key of [
+    "engineTabSessions",
+    "sessionBindings",
+    "jobs",
+    "worktreeChanges",
+    "issueSnapshots",
+  ] as const) {
     if (raw[key] !== undefined && !isRecord(raw[key])) return null
   }
   if (
@@ -321,6 +354,7 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     // Daemon-seeded (registry tabSessions) so a reload keeps tab-precise
     // traces; live engine-state events keep it fresh from here.
     engineTabSessions: snap.engineTabSessions ?? {},
+    sessionBindings: snap.sessionBindings ?? {},
     update: snap.update,
     jobs: snap.jobs ?? {},
     worktreeChanges: snap.worktreeChanges ?? {},

@@ -84,6 +84,7 @@ describe("daemon session adapter", () => {
     await expect(terminalSpecAdapter(link(), "task-2")).resolves.toEqual({
       cwd: "/worktrees/story",
       command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
+      env: { KOBE_TASK_ID: "task-2" },
     })
   })
 

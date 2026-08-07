@@ -100,6 +100,25 @@ export interface EngineState {
   transcriptPath?: string
 }
 
+/** Durable task+tab identity for one engine-native session. */
+export interface EngineSessionBinding {
+  taskId: string
+  tabId: string
+  vendor: string
+  sessionId: string | null
+  state: "pending" | "bound" | "ended" | "missing"
+  source: "spawn" | "hook" | "history-recovery"
+  transcriptPath?: string
+  startedAt: number
+  boundAt?: number
+  updatedAt: number
+}
+
+export type EngineSessionBindings = Record<
+  string,
+  Record<string, EngineSessionBinding>
+>
+
 export interface UpdateInfo {
   latest?: string
   current?: string
@@ -161,6 +180,10 @@ export type WebTransportEvent =
   | { channel: "issue.snapshot"; payload: RepoIssues }
   | { channel: "active-task"; payload: { taskId: string | null } }
   | { channel: "engine-state"; payload: EngineState }
+  | {
+      channel: "session.bindings"
+      payload: { bindings: EngineSessionBindings }
+    }
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
@@ -175,6 +198,8 @@ export interface WebTransportSnapshot {
   engineStates: Record<string, EngineState>
   /** taskId → tabId → last known engine session id (tab-precise traces). */
   engineTabSessions?: Record<string, Record<string, string>>
+  /** New daemon contract; absent when connected to an older daemon. */
+  sessionBindings?: EngineSessionBindings
   update: UpdateInfo | null
   /** taskId -> in-flight job (running only; terminal phases are dropped). */
   jobs?: Record<string, TaskJob>

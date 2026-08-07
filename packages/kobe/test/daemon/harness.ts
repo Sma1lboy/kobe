@@ -133,6 +133,8 @@ export function emptyWebSnapshot(): DaemonWebSnapshotState {
     tasks: [],
     activeTaskId: null,
     engineStates: {},
+    engineTabSessions: {},
+    sessionBindings: {},
     update: null,
     jobs: {},
     worktreeChanges: {},

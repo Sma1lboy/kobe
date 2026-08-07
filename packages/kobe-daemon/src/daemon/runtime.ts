@@ -39,6 +39,15 @@ export interface DaemonRuntimeAdapter {
   affectsActivityState(value: string): boolean
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
+  /**
+   * Recover the native session created for an explicit engine session-start.
+   * This is an engine-owned compatibility path for older hook reporters that
+   * forward the lifecycle event but omit the provider's session fields.
+   */
+  recoverEngineSession(
+    vendor: VendorId,
+    worktreePath: string,
+  ): Promise<{ sessionId: string; transcriptPath?: string } | null>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
   createEngineTurnDetector(vendor: VendorId): EngineTurnDetectorAdapter
   runWorktreeStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges>

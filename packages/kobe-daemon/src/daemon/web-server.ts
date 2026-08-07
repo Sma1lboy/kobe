@@ -19,6 +19,7 @@ import {
 import type { ChannelName, ChannelPayloads, DaemonRequestName, SerializedTask } from "./protocol.ts"
 import { serializeTask } from "./protocol.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import type { SessionBindingStore } from "./session-bindings.ts"
 import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
 import { handleIssuesRequest } from "./web-issues-route.ts"
 import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
@@ -37,6 +38,8 @@ export interface DaemonWebSnapshotState {
   engineStates: Record<string, ChannelPayloads["engine-state"]>
   /** taskId → tabId → last known engine session id (tab-precise traces). */
   engineTabSessions: Record<string, Record<string, string>>
+  /** Durable, versioned session identity contract for new consumers. */
+  sessionBindings: import("./contracts.ts").EngineSessionBindingsByTask
   update: ChannelPayloads["update"]["info"]
   jobs: Record<string, ChannelPayloads["task.jobs"]>
   worktreeChanges: ChannelPayloads["worktree.changes"]["changes"]
@@ -322,11 +325,19 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
       const tab = url.searchParams.get("tab") ?? undefined
       return specResponse(url, link, async (l, id) => {
         const spec = await engineSpec(runtime, l, id, vendor, tab)
+        if (tab) {
+          await l.request("engine.beginSession", { taskId: id, tabId: tab, ...(vendor ? { vendor } : {}) })
+        }
         // Spawn-time pin: broadcast the injected session id so the Agent
         // Trace keys to this tab's session before the engine boots.
         if (spec.sessionId && tab) {
           await l
-            .request("engine.pinSession", { taskId: id, tabId: tab, sessionId: spec.sessionId })
+            .request("engine.pinSession", {
+              taskId: id,
+              tabId: tab,
+              sessionId: spec.sessionId,
+              ...(vendor ? { vendor } : {}),
+            })
             .catch(() => {})
         }
         return spec
@@ -389,6 +400,7 @@ export function createDirectWebLink(args: {
   orch: DaemonOrchestrator
   bus: DaemonEventBus
   activity: DaemonActivityRegistry
+  bindings: SessionBindingStore
   ctx: (clientId: number) => DaemonHandlerContext
 }): DaemonWebLink {
   const handlers = createDaemonHandlerRegistry()
@@ -410,7 +422,8 @@ export function createDirectWebLink(args: {
         tasks,
         activeTaskId: latest(args.bus, "active-task")?.taskId ?? null,
         engineStates: args.activity.snapshotByTask(),
-        engineTabSessions: args.activity.tabSessionsByTask(),
+        engineTabSessions: args.bindings.sessionIdsByTask(),
+        sessionBindings: args.bindings.snapshotByTask(),
         update: latest(args.bus, "update")?.info ?? null,
         jobs,
         worktreeChanges: latest(args.bus, "worktree.changes")?.changes ?? {},

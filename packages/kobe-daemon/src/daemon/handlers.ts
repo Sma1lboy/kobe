@@ -61,6 +61,8 @@ import {
 import { scheduleQuotaResume } from "./quota-resume.ts"
 import type { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import { recoverSessionIdentity } from "./session-binding-recovery.ts"
+import type { SessionBindingStore } from "./session-bindings.ts"
 import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
 import type { WorkItemCache } from "./work-items.ts"
 
@@ -92,6 +94,8 @@ export interface DaemonHandlerContext {
   readonly activity: DaemonActivityRegistry
   /** Durable attention episodes; independent from transient activity cleanup. */
   readonly inbox: AttentionInboxStore
+  /** Durable Terminal Tab -> native engine-session identities. */
+  readonly bindings: SessionBindingStore
   /** Starts deduplicated durable background deletion after RPC acceptance. */
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
@@ -318,11 +322,27 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "engine.beginSession",
+      async handle(payload, ctx) {
+        const taskId = requireString(payload, "taskId")
+        const tabId = requireString(payload, "tabId")
+        const task = ctx.orch.getTask(taskId)
+        if (!task) throw new Error(`task not found: ${taskId}`)
+        const vendor = optionalString(payload, "vendor") ?? task.vendor ?? ctx.runtime.defaultTaskVendor
+        await ctx.bindings.begin(taskId, tabId, vendor)
+        return {}
+      },
+    },
+    {
       name: "engine.pinSession",
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")
         const tabId = requireString(payload, "tabId")
         const sessionId = requireString(payload, "sessionId")
+        const task = ctx.orch.getTask(taskId)
+        if (!task) throw new Error(`task not found: ${taskId}`)
+        const vendor = optionalString(payload, "vendor") ?? task.vendor ?? ctx.runtime.defaultTaskVendor
+        await ctx.bindings.bind({ taskId, tabId, vendor, sessionId, source: "spawn" })
         ctx.activity.pinTabSession(taskId, tabId, sessionId)
         return {}
       },
@@ -368,9 +388,33 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // The engine's own session identity, from its hook payload (Claude
         // pipes session_id/transcript_path). Optional + additive: an old
         // `kobe hook` simply omits it.
-        const sessionId = optionalString(payload, "sessionId")
-        const transcriptPath = optionalString(payload, "transcriptPath")
+        const task = ctx.orch.getTask(taskId)
+        const reportedVendor = optionalString(payload, "engine")
+        const vendor = reportedVendor ?? task?.vendor ?? ctx.runtime.defaultTaskVendor
+        const recovered = await recoverSessionIdentity({
+          runtime: ctx.runtime,
+          kind,
+          tabId,
+          vendor,
+          worktreePath: task?.worktreePath,
+          sessionId: optionalString(payload, "sessionId"),
+          transcriptPath: optionalString(payload, "transcriptPath"),
+        })
+        const { sessionId, transcriptPath } = recovered
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
+        if (tabId && sessionId) {
+          await ctx.bindings
+            .bind({
+              taskId,
+              tabId,
+              vendor,
+              sessionId,
+              source: recovered.source,
+              ...(transcriptPath ? { transcriptPath } : {}),
+              ...(kind === "session-end" ? { state: "ended" } : {}),
+            })
+            .catch((err) => logDaemonError("session-bindings-hook", err))
+        }
         // Lifecycle-only kinds (tool/compact/subagent) skip the badge + inbox
         // entirely — folding them into engine-state would broadcast every
         // tool call to every client. They still reach plugins below.
@@ -386,11 +430,10 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         }
         // Per-task recent-events buffer (TUI event feed) + the low-frequency
         // `engine.lifecycle` channel (sidebar compaction glyph / subagent mark).
-        const vendor = optionalString(payload, "engine")
         ctx.engineEvents?.append(taskId, {
           kind,
           ...(tabId ? { tabId } : {}),
-          ...(vendor ? { vendor } : {}),
+          ...(reportedVendor ? { vendor: reportedVendor } : {}),
           ...(sessionId ? { sessionId } : {}),
           ...(detail ? { detail } : {}),
           at: Date.now(),
@@ -410,7 +453,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           kind,
           taskId,
           ...(detail ? { detail: detail as unknown as Record<string, unknown> } : {}),
-          ...(vendor ? { vendor } : {}),
+          ...(reportedVendor ? { vendor: reportedVendor } : {}),
           ...(tabId ? { tabId } : {}),
           ...(sessionId ? { sessionId } : {}),
         })

@@ -46,6 +46,7 @@
     "./daemon/pty-termination": "./src/daemon/pty-termination.ts",
     "./daemon/quota-usage-cache": "./src/daemon/quota-usage-cache.ts",
     "./daemon/runtime": "./src/daemon/runtime.ts",
+    "./daemon/session-bindings": "./src/daemon/session-bindings.ts",
     "./daemon/server": "./src/daemon/server.ts",
     "./daemon/transcript-activity-collector": "./src/daemon/transcript-activity-collector.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",

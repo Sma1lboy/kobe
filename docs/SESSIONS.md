@@ -12,6 +12,7 @@ flowchart TB
   subgraph daemon["kobe daemon (state, refcounted)"]
     orch[Orchestrator]
     idx["tasks.json"]
+    bindings["session-bindings.json"]
   end
   subgraph host["kobe pty-host (engine lifetime)"]
     p1["engine PTY — task A"]
@@ -22,6 +23,7 @@ flowchart TB
   web <-->|HTTP/SSE| daemon
   tui <-->|unix socket| host
   orch --- idx
+  orch --- bindings
   p1 --- ring
   p2 --- ring
 ```
@@ -121,6 +123,16 @@ not kobe.
 - Engine tabs pin their conversation up front: a Claude launch gets a
   kobe-generated `--session-id <uuid>` so the session maps to its transcript
   (vendors that can't take a caller-set id, like Codex, are left untouched).
+- The daemon persists the neutral identity link
+  `Task -> Terminal Tab -> Engine Session` in
+  `<KOBE_HOME>/.kobe/session-bindings.json`. A binding starts as `pending`,
+  becomes `bound` when the engine supplies its native id (spawn-time for
+  Claude, hook-time for Codex), and may later become `ended` without losing
+  the transcript identity. This file stores pointers only; conversation
+  content remains exclusively in the engine's own transcript store.
+- Session bindings survive a daemon restart. New clients consume the binding
+  snapshot directly; they do not choose a transcript from visible terminal
+  pixels or from whichever history file happens to be newest.
 - After a host restart (reboot, `kobe reset`), a persisted engine tab that
   already ran relaunches with `--resume <sessionId>` instead of opening a
   blank session. A tab found dead on attach gets **one** automatic resume

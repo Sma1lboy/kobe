@@ -3,6 +3,25 @@
 export type VendorId = "claude" | "codex" | "copilot" | (string & {})
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
+/** Durable identity link from one hosted Terminal Tab to its engine session. */
+export interface EngineSessionBinding {
+  readonly taskId: string
+  readonly tabId: string
+  readonly vendor: VendorId
+  /** Null while the engine has started but has not reported its native id. */
+  readonly sessionId: string | null
+  readonly state: "pending" | "bound" | "ended" | "missing"
+  /** Which authoritative boundary supplied the current identity. */
+  readonly source: "spawn" | "hook" | "history-recovery"
+  readonly transcriptPath?: string
+  /** Epoch milliseconds for the engine spawn this binding belongs to. */
+  readonly startedAt: number
+  readonly boundAt?: number
+  readonly updatedAt: number
+}
+
+export type EngineSessionBindingsByTask = Record<string, Record<string, EngineSessionBinding>>
+
 export interface TaskDeletionState {
   readonly phase: "queued" | "running" | "error"
   readonly force: boolean

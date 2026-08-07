@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useEngines } from "../lib/engines.ts"
-import type { EngineState } from "../lib/types.ts"
+import type { EngineSessionBinding, EngineState } from "../lib/types.ts"
 import { useTimelineData } from "../lib/use-timeline-data.ts"
 import { engineLabel } from "../lib/vendor.ts"
 import { TimelinePanel } from "./TimelinePanel.tsx"
@@ -8,25 +8,22 @@ import { TimelineSwimlane } from "./TimelineSwimlane.tsx"
 
 export function TimelineHost({
   taskId,
-  worktreePath,
   vendor,
   engineState,
-  tabSessionId,
+  binding,
+  legacySessionId,
   engineActive = true,
-  bound = true,
   width,
 }: {
   taskId: string
-  worktreePath: string | null
   vendor: string
   engineState: EngineState | undefined
-  /** Active tab's hook-reported session — see useTimelineData. */
-  tabSessionId?: string
-  /** Engine liveness of the active tab (grammar-derived) — off clears the panel. */
+  /** Durable daemon-owned tab -> native engine session identity. */
+  binding?: EngineSessionBinding
+  /** Exact-id fallback for an older daemon without the binding contract. */
+  legacySessionId?: string
+  /** Engine liveness of the active tab; off keeps bound history visible. */
   engineActive?: boolean
-  /** The tab's screen shows a conversation — without it (fresh boot) the
-   *  trace must not bind to the previous session's transcript. */
-  bound?: boolean
   /** Drag-resized panel width (PaneResizer). */
   width?: number
 }) {
@@ -34,11 +31,11 @@ export function TimelineHost({
   const label = engineLabel(engines, vendor)
   const data = useTimelineData({
     taskId,
-    worktreePath,
     vendor,
-    engineState,
-    tabSessionId,
-    bound,
+    // Liveness may decorate the bound session but never chooses its identity.
+    engineState: engineActive ? engineState : undefined,
+    binding,
+    legacySessionId,
   })
   const [expanded, setExpanded] = useState(false)
 
@@ -48,6 +45,7 @@ export function TimelineHost({
         {...data}
         engineLabel={label}
         active={engineActive}
+        bindingState={data.bindingState}
         width={width}
         onExpand={() => setExpanded(true)}
       />

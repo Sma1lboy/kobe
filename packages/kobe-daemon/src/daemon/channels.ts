@@ -11,6 +11,7 @@ import type {
   AttentionInboxItem,
   EngineActivityDetail,
   EngineQuotaUsage,
+  EngineSessionBindingsByTask,
   TaskActivityState,
   UpdateInfo,
 } from "./contracts.ts"
@@ -82,6 +83,13 @@ export interface ChannelPayloads {
     transcriptPath?: string
     at: number
   }
+  /**
+   * Full durable task -> tab -> engine-session identity map. Unlike
+   * `engine-state`, this survives daemon restarts and is not activity state.
+   * Consumers use it to select history/trace; they never infer identity from
+   * terminal pixels or from whichever transcript happened to be newest.
+   */
+  "session.bindings": { bindings: EngineSessionBindingsByTask }
   /**
    * Full durable attention queue. Viewing never consumes an item: an episode
    * leaves only after a newer same-tab `turn-start`, explicit dismissal, or an

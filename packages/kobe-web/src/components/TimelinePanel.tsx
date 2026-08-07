@@ -6,6 +6,7 @@ import {
   type TimelineStatus,
   type TimelineTurn,
 } from "../lib/timeline.ts"
+import type { TimelineBindingState } from "../lib/use-timeline-data.ts"
 import { ExecutionGrid, formatExecutionDuration } from "./ExecutionGrid.tsx"
 
 /** Always-visible turn nodes: the RESULT (answer) plus anything not settled
@@ -51,8 +52,7 @@ function TurnSection({
   const [expanded, setExpanded] = useState(false)
   const spotlight = turn.nodes.filter(isSpotlightNode)
   // Never fold down to nothing mid-turn: keep the latest step visible.
-  const visible =
-    spotlight.length > 0 ? spotlight : turn.nodes.slice(-1)
+  const visible = spotlight.length > 0 ? spotlight : turn.nodes.slice(-1)
   const foldedCount = turn.nodes.length - visible.length
   const items = expanded ? turn.nodes : visible
   return (
@@ -106,6 +106,7 @@ export function TimelinePanel({
   error,
   engineLabel,
   active = true,
+  bindingState,
   width,
   onExpand,
 }: {
@@ -113,9 +114,9 @@ export function TimelinePanel({
   loaded: boolean
   error: string | null
   engineLabel: string
-  /** Is an engine live in the ACTIVE tab? Off (bare shell / exited / booting)
-   *  → the trace body clears instead of showing a finished session's events. */
+  /** Is an engine live in the active tab? History remains visible when off. */
   active?: boolean
+  bindingState: TimelineBindingState
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
   onExpand: () => void
@@ -166,7 +167,9 @@ export function TimelinePanel({
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-medium text-muted">Agent trace</div>
           <div className="truncate font-mono text-[9px] text-subtle">
-            {active ? `${engineLabel} · ${summary}` : engineLabel}
+            {model.sessionId
+              ? `${engineLabel} · ${active ? "live" : "history"} · ${summary}`
+              : `${engineLabel} · ${bindingState}`}
           </div>
         </div>
         <button
@@ -191,14 +194,23 @@ export function TimelinePanel({
         }}
         className="execution-grid min-h-0 flex-1 overflow-y-auto px-3 py-3"
       >
-        {!active ? (
+        {bindingState === "unavailable" ? (
           <div className="py-8 text-center">
             <div className="font-mono text-[11px] text-muted">
-              No live engine
+              Session binding unavailable
             </div>
             <div className="mt-1 text-[10px] text-subtle">
-              The trace follows the session running in this tab.
+              This daemon has not identified the engine session for this tab.
             </div>
+          </div>
+        ) : bindingState === "pending" ? (
+          <div className="flex items-center gap-2 py-3 font-mono text-[10px] text-subtle">
+            <span className="size-1.5 animate-pulse rounded-full bg-kobe-blue" />
+            Waiting for the engine session id…
+          </div>
+        ) : bindingState === "missing" ? (
+          <div className="border-l-2 border-kobe-yellow pl-3 text-[11px] leading-relaxed text-muted">
+            Bound engine session is missing
           </div>
         ) : !loaded && model.turns.length === 0 ? (
           <div className="flex items-center gap-2 py-3 font-mono text-[10px] text-subtle">
