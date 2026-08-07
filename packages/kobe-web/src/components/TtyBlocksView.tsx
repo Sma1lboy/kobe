@@ -11,6 +11,7 @@ import type { ReactNode } from "react"
 import { Fragment, memo, useEffect, useRef, useState } from "react"
 import type { MenuItem, OptionItem, TtyBlock } from "../lib/claude-tty.ts"
 import type { EngineGrammar } from "../lib/engine-grammar.ts"
+import { groupCopyRuns } from "../lib/tty-copy-runs.ts"
 import {
   type ColoredLine,
   trimLeadingColored,
@@ -332,10 +333,6 @@ export const TtyBlocksView = memo(function TtyBlocksView({
   )
 })
 
-type CopyRunItem =
-  | { kind: "run"; blocks: TtyBlock[]; text: string }
-  | { kind: "single"; block: TtyBlock }
-
 function eventKindFor(block: TtyBlock): EventKind {
   if (block.kind === "user") return "user"
   if (block.kind === "activity") return "activity"
@@ -366,38 +363,7 @@ function TranscriptSingle({
   )
 }
 
-/** Chunk consecutive plain line/gap blocks into hover-copyable runs — the
- *  assistant prose between structural blocks (bubbles, menus, cards). */
-export function groupCopyRuns(blocks: readonly TtyBlock[]): CopyRunItem[] {
-  const out: CopyRunItem[] = []
-  let run: TtyBlock[] = []
-  const flush = (): void => {
-    if (run.length === 0) return
-    const text = run
-      // Copy the prose, not the terminal dressing: drop the `● ` bullet and
-      // its matching 2-space continuation indent (deeper indents survive).
-      .map((b) =>
-        b.kind === "line"
-          ? b.line.text.replace(/^[●⏺]\s/, "").replace(/^ {2}/, "")
-          : "",
-      )
-      .join("\n")
-      .replace(/^\n+|\n+$/g, "")
-    if (text.trim() === "")
-      out.push(...run.map((b) => ({ kind: "single" as const, block: b })))
-    else out.push({ kind: "run", blocks: run, text })
-    run = []
-  }
-  for (const block of blocks) {
-    if (block.kind === "line" || block.kind === "gap") run.push(block)
-    else {
-      flush()
-      out.push({ kind: "single", block })
-    }
-  }
-  flush()
-  return out
-}
+export { groupCopyRuns } from "../lib/tty-copy-runs.ts"
 
 /** Render a run of blocks (the live footer) inline — reuses the same Block
  *  renderer so the floated spinner/tip/menu look identical to the body. */
