@@ -152,6 +152,13 @@ Codex also won't run a non-managed hook until you trust it once via `/hooks`
 but never auto-bypasses trust, so Codex activity badges light up only after you
 approve, by design.
 
+For both Claude Code and Codex, the adapter also normalizes the native
+`session_id`, `transcript_path`, and `SessionStart.source`. The daemon uses
+those fields to bind the engine-owned conversation to a Kobe-owned temporal
+`runId`: startup/resume/clear establish a run, while compact stays inside the
+current run. Neutral UI layers consume that run binding and never infer the
+active conversation from terminal pixels or the newest transcript file.
+
 ### Copilot, Kimi, custom engines
 
 No hook mechanism is wired (`NoopHookAdapter`); install is a no-op and nothing

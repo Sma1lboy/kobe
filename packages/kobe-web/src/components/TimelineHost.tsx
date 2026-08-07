@@ -18,7 +18,7 @@ export function TimelineHost({
   taskId: string
   vendor: string
   engineState: EngineState | undefined
-  /** Durable daemon-owned tab -> native engine session identity. */
+  /** Durable daemon-owned current EngineRun for this tab. */
   binding?: EngineSessionBinding
   /** Exact-id fallback for an older daemon without the binding contract. */
   legacySessionId?: string
@@ -46,6 +46,7 @@ export function TimelineHost({
         engineLabel={label}
         active={engineActive}
         bindingState={data.bindingState}
+        runId={binding?.runId}
         width={width}
         onExpand={() => setExpanded(true)}
       />
@@ -53,6 +54,7 @@ export function TimelineHost({
         <TimelineSwimlane
           model={data.model}
           engineLabel={label}
+          runId={binding?.runId}
           onClose={() => setExpanded(false)}
         />
       )}

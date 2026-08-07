@@ -61,6 +61,18 @@ describe("CodexHookAdapter", () => {
       transcriptPath: "/tmp/rollout.jsonl",
     })
     expect(
+      adapter.sessionFromPayload({
+        hook_event_name: "SessionStart",
+        source: "resume",
+        session_id: "session-1",
+        transcript_path: "/tmp/rollout.jsonl",
+      }),
+    ).toEqual({
+      sessionId: "session-1",
+      transcriptPath: "/tmp/rollout.jsonl",
+      startSource: "resume",
+    })
+    expect(
       adapter.activityDetailFromPayload("subagent-stop", {
         turn_id: "turn-1",
         agent_id: "agent-7",

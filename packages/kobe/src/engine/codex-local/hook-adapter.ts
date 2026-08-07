@@ -30,7 +30,7 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
-import type { EngineSessionRef } from "../hook-adapter.ts"
+import { type EngineSessionRef, sessionStartSourceFromPayload } from "../hook-adapter.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "../hook-events.ts"
 import { JsonHookAdapter } from "../json-hook-adapter.ts"
 import type { HookEventSpec } from "../json-hooks.ts"
@@ -73,11 +73,13 @@ export class CodexHookAdapter extends JsonHookAdapter {
 
   override sessionFromPayload(payload: Record<string, unknown>): EngineSessionRef | undefined {
     if (typeof payload.session_id !== "string" || !payload.session_id) return undefined
+    const startSource = sessionStartSourceFromPayload(payload)
     return {
       sessionId: payload.session_id,
       ...(typeof payload.transcript_path === "string" && payload.transcript_path
         ? { transcriptPath: payload.transcript_path }
         : {}),
+      ...(startSource ? { startSource } : {}),
     }
   }
 

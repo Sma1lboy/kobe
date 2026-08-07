@@ -84,10 +84,10 @@ export interface ChannelPayloads {
     at: number
   }
   /**
-   * Full durable task -> tab -> engine-session identity map. Unlike
-   * `engine-state`, this survives daemon restarts and is not activity state.
-   * Consumers use it to select history/trace; they never infer identity from
-   * terminal pixels or from whichever transcript happened to be newest.
+   * Full durable task -> tab -> current EngineRun map. Unlike `engine-state`,
+   * this survives daemon restarts and is not activity state. Consumers use it
+   * to select history/trace; they never infer identity from terminal pixels or
+   * from whichever transcript happened to be newest.
    */
   "session.bindings": { bindings: EngineSessionBindingsByTask }
   /**

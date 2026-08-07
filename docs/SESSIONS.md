@@ -12,7 +12,7 @@ flowchart TB
   subgraph daemon["kobe daemon (state, refcounted)"]
     orch[Orchestrator]
     idx["tasks.json"]
-    bindings["session-bindings.json"]
+    bindings["session-bindings.json<br/>current run pointers + run history"]
   end
   subgraph host["kobe pty-host (engine lifetime)"]
     p1["engine PTY — task A"]
@@ -123,14 +123,20 @@ not kobe.
 - Engine tabs pin their conversation up front: a Claude launch gets a
   kobe-generated `--session-id <uuid>` so the session maps to its transcript
   (vendors that can't take a caller-set id, like Codex, are left untouched).
-- The daemon persists the neutral identity link
-  `Task -> Terminal Tab -> Engine Session` in
-  `<KOBE_HOME>/.kobe/session-bindings.json`. A binding starts as `pending`,
-  becomes `bound` when the engine supplies its native id (spawn-time for
-  Claude, hook-time for Codex), and may later become `ended` without losing
-  the transcript identity. This file stores pointers only; conversation
-  content remains exclusively in the engine's own transcript store.
-- Session bindings survive a daemon restart. New clients consume the binding
+- The daemon persists the neutral identity chain
+  `Task -> Terminal Tab -> current EngineRun -> native Engine Session` in
+  `<KOBE_HOME>/.kobe/session-bindings.json`. A run starts as `pending`, becomes
+  `bound` when the engine supplies its native id (spawn-time for Claude,
+  hook-time for Codex), and may later become `ended` or `superseded` without
+  losing the transcript identity. The file retains prior run pointers so a
+  tab changing conversations does not rewrite history; conversation content
+  remains exclusively in the engine's own transcript store.
+- Claude Code and Codex `SessionStart` hooks provide `startup`, `resume`,
+  `clear`, or `compact`. Kobe creates a fresh `runId` for the first three
+  causes (after filling any pending launch) and keeps the current run for
+  `compact`. Consequently, exiting and later resuming a conversation produces
+  a new run with the same native `sessionId`.
+- Current-run pointers and run history survive a daemon restart. New clients consume the binding
   snapshot directly; they do not choose a transcript from visible terminal
   pixels or from whichever history file happens to be newest.
 - After a host restart (reboot, `kobe reset`), a persisted engine tab that

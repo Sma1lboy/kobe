@@ -23,10 +23,24 @@ import type { VendorId } from "../types/vendor.ts"
 import type { EngineActivityDetail, EngineActivityKind } from "./hook-events.ts"
 import { engineEntry } from "./registry.ts"
 
+export type EngineSessionStartSource = "startup" | "resume" | "clear" | "compact"
+
+/** Normalize the shared SessionStart vocabulary exposed by Claude Code and
+ * Codex. Unknown future values stay vendor-local until the neutral contract
+ * deliberately adopts them. */
+export function sessionStartSourceFromPayload(payload: Record<string, unknown>): EngineSessionStartSource | undefined {
+  if (payload.hook_event_name !== "SessionStart") return undefined
+  const source = payload.source
+  return source === "startup" || source === "resume" || source === "clear" || source === "compact" ? source : undefined
+}
+
 /** An engine session's own identity, as reported by its hook payload. */
 export interface EngineSessionRef {
   readonly sessionId: string
   readonly transcriptPath?: string
+  /** Present only on SessionStart. A resume starts a fresh Kobe run while
+   * compact remains inside the current run. */
+  readonly startSource?: EngineSessionStartSource
 }
 
 export interface EngineHookAdapter {

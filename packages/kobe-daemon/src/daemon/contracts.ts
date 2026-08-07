@@ -3,23 +3,34 @@
 export type VendorId = "claude" | "codex" | "copilot" | (string & {})
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
-/** Durable identity link from one hosted Terminal Tab to its engine session. */
-export interface EngineSessionBinding {
+export type EngineSessionStartSource = "startup" | "resume" | "clear" | "compact"
+
+/** One temporal attachment of an engine-native conversation to a hosted tab.
+ * A native session can appear in several runs when it is resumed; a tab can
+ * point at several runs over its lifetime as users clear, fork, or resume. */
+export interface EngineRun {
+  readonly runId: string
   readonly taskId: string
   readonly tabId: string
   readonly vendor: VendorId
   /** Null while the engine has started but has not reported its native id. */
   readonly sessionId: string | null
-  readonly state: "pending" | "bound" | "ended" | "missing"
+  readonly state: "pending" | "bound" | "ended" | "superseded" | "missing"
   /** Which authoritative boundary supplied the current identity. */
   readonly source: "spawn" | "hook" | "history-recovery"
+  /** Native SessionStart cause. `compact` stays in the current run; the other
+   * causes establish a new temporal run after any pending spawn is filled. */
+  readonly startSource?: EngineSessionStartSource
   readonly transcriptPath?: string
   /** Epoch milliseconds for the engine spawn this binding belongs to. */
   readonly startedAt: number
   readonly boundAt?: number
+  readonly endedAt?: number
   readonly updatedAt: number
 }
 
+/** Backward-compatible name for the current run published per task/tab. */
+export type EngineSessionBinding = EngineRun
 export type EngineSessionBindingsByTask = Record<string, Record<string, EngineSessionBinding>>
 
 export interface TaskDeletionState {

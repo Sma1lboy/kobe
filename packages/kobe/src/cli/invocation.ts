@@ -33,15 +33,27 @@ export function kobeCliInvocation(): string[] {
 
 /**
  * argv prefix for commands PERSISTED into global config (engine hook files in
- * `~/.claude` / `~/.codex`). Unlike {@link kobeCliInvocation}, a persisted
- * command outlives this process — a dev-run absolute entry path (often inside
- * a task worktree) goes stale the moment that worktree is removed, and every
- * hook fire then fails with "Module not found". So prefer the packaged `kobe`
- * on PATH even in dev; fall back to the dev invocation only when no packaged
- * bin exists.
+ * `~/.claude` / `~/.codex`). A source/dev absolute path cannot be persisted:
+ * it may point into a short-lived worktree. Instead the persisted dispatcher
+ * chooses the current source reporter only when a Kobe-launched engine exports
+ * {@link kobeHookReporterEnv}; every other process falls back to `kobe` on
+ * PATH. Packaged builds need no dispatcher.
  */
 export function kobeHookInvocation(): string[] {
   if (import.meta.url.endsWith(".js")) return ["kobe"]
-  if (Bun.which("kobe")) return ["kobe"]
-  return kobeCliInvocation()
+  return [
+    "sh",
+    "-c",
+    'if [ -n "${KOBE_DEV_CLI_ENTRY:-}" ] && [ -f "$KOBE_DEV_CLI_ENTRY" ] && [ -n "${KOBE_DEV_BUN:-}" ]; then exec "$KOBE_DEV_BUN" --conditions=browser "$KOBE_DEV_CLI_ENTRY" "$@"; fi; exec kobe "$@"',
+    "kobe-hook",
+  ]
+}
+
+/** Environment inherited by engine hook subprocesses in source/dev runs. */
+export function kobeHookReporterEnv(): Readonly<Record<string, string>> {
+  if (import.meta.url.endsWith(".js")) return {}
+  return {
+    KOBE_DEV_BUN: process.execPath,
+    KOBE_DEV_CLI_ENTRY: fileURLToPath(new URL("./index.ts", import.meta.url)),
+  }
 }

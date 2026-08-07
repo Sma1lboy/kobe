@@ -1,4 +1,5 @@
 import { toPosixPath } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
+import { kobeHookReporterEnv } from "../cli/invocation.ts"
 import { worktreeInitMarkerPath } from "../env.ts"
 import { quoteShellArg, quoteShellArgv } from "../lib/shell-command.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
@@ -155,6 +156,13 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   // event came from — a task's tabs share one worktree, so cwd can't tell
   // them apart. The keepAlive fallback shell inherits it too, so a manual
   // `claude` run in that tab after an engine exit is still attributed.
-  const identity = `export KOBE_TASK_ID=${quoteShellArg(input.task.id)} KOBE_TAB_ID=${quoteShellArg(input.tabId ?? "tab-1")}\n`
+  const hookEnv = {
+    KOBE_TASK_ID: input.task.id,
+    KOBE_TAB_ID: input.tabId ?? "tab-1",
+    ...kobeHookReporterEnv(),
+  }
+  const identity = `export ${Object.entries(hookEnv)
+    .map(([key, value]) => `${key}=${quoteShellArg(value)}`)
+    .join(" ")}\n`
   return { key: engineSessionKey(input.task.id), command: [input.shell, "-ilc", identity + script] }
 }

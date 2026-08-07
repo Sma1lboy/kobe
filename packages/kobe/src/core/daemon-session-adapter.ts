@@ -1,6 +1,7 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { kobeHookReporterEnv } from "../cli/invocation.ts"
 import {
   deliverToHostedKey,
   ensureHostedEngine,
@@ -169,7 +170,11 @@ export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string,
     command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
     // A manual `claude`/`codex` typed into this shell inherits the task+tab
     // identity, so its hooks attribute per-tab like a vendor tab's engine.
-    env: { KOBE_TASK_ID: taskId, ...(tabId ? { KOBE_TAB_ID: tabId } : {}) },
+    env: {
+      KOBE_TASK_ID: taskId,
+      ...(tabId ? { KOBE_TAB_ID: tabId } : {}),
+      ...kobeHookReporterEnv(),
+    },
   }
 }
 

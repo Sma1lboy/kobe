@@ -100,17 +100,21 @@ export interface EngineState {
   transcriptPath?: string
 }
 
-/** Durable task+tab identity for one engine-native session. */
+/** Current temporal EngineRun for one task+tab. */
 export interface EngineSessionBinding {
+  /** Kobe-owned temporal run. Optional only when connected to a v1 daemon. */
+  runId?: string
   taskId: string
   tabId: string
   vendor: string
   sessionId: string | null
-  state: "pending" | "bound" | "ended" | "missing"
+  state: "pending" | "bound" | "ended" | "superseded" | "missing"
   source: "spawn" | "hook" | "history-recovery"
+  startSource?: "startup" | "resume" | "clear" | "compact"
   transcriptPath?: string
   startedAt: number
   boundAt?: number
+  endedAt?: number
   updatedAt: number
 }
 

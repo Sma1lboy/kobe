@@ -107,6 +107,7 @@ export function TimelinePanel({
   engineLabel,
   active = true,
   bindingState,
+  runId,
   width,
   onExpand,
 }: {
@@ -117,6 +118,8 @@ export function TimelinePanel({
   /** Is an engine live in the active tab? History remains visible when off. */
   active?: boolean
   bindingState: TimelineBindingState
+  /** Kobe-owned temporal run; absent only with a v1 daemon. */
+  runId?: string
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
   onExpand: () => void
@@ -168,7 +171,7 @@ export function TimelinePanel({
           <div className="text-[11px] font-medium text-muted">Agent trace</div>
           <div className="truncate font-mono text-[9px] text-subtle">
             {model.sessionId
-              ? `${engineLabel} · ${active ? "live" : "history"} · ${summary}`
+              ? `${engineLabel} · ${active ? "live" : "history"}${runId ? ` · run ${runId.slice(0, 8)}` : ""} · ${summary}`
               : `${engineLabel} · ${bindingState}`}
           </div>
         </div>

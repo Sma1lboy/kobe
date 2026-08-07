@@ -210,6 +210,7 @@ describe("daemon runtime handlers", () => {
           kind: "session-start",
           engine: "codex",
           sessionId: "session-native",
+          sessionStartSource: "resume",
           transcriptPath: "/tmp/rollout.jsonl",
         },
         ctx,
@@ -220,6 +221,8 @@ describe("daemon runtime handlers", () => {
         vendor: "codex",
         sessionId: "session-native",
         source: "hook",
+        eventKind: "session-start",
+        startSource: "resume",
         transcriptPath: "/tmp/rollout.jsonl",
       })
     })
@@ -247,6 +250,7 @@ describe("daemon runtime handlers", () => {
         vendor: "codex",
         sessionId: "session-recovered",
         source: "history-recovery",
+        eventKind: "session-start",
         transcriptPath: "/tmp/recovered-rollout.jsonl",
       })
     })

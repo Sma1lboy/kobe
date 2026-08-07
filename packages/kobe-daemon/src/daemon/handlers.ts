@@ -4,12 +4,8 @@
  * `server.ts`'s `dispatch` used to be one ~275-line switch over
  * {@link DaemonRequestName}: every case inlined payload extraction, error
  * wording, and the Orchestrator call, and the dispatch layer had zero tests.
- * This module breaks the switch into self-contained entries —
- * `{ name, handle(payload, ctx) }` — keyed in a registry map, so the dispatch
- * seam is: look up entry → validate (the same `requireString`-family helpers,
- * now shared here) → handle → uniform error shaping
- * ({@link shapeDaemonError}, the ONE place a thrown error becomes a
- * {@link DaemonError}).
+ * Registry entries replace that switch: look up → validate → handle →
+ * {@link shapeDaemonError}.
  *
  * Hard constraint: WIRE COMPATIBILITY. Every entry must produce
  * byte-equivalent success and error payloads to the pre-registry switch for
@@ -41,7 +37,13 @@ import type { DaemonOrchestrator } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
-import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
+import {
+  objectPayload,
+  optionalActivityDetail,
+  optionalSessionStartSource,
+  optionalString,
+  requireString,
+} from "./handler-validators.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { AUTOMATION_HANDLERS } from "./handlers-automations.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
@@ -401,6 +403,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           transcriptPath: optionalString(payload, "transcriptPath"),
         })
         const { sessionId, transcriptPath } = recovered
+        const startSource = optionalSessionStartSource(payload, "sessionStartSource")
         const session = sessionId ? { id: sessionId, transcriptPath } : undefined
         if (tabId && sessionId) {
           await ctx.bindings
@@ -410,6 +413,8 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
               vendor,
               sessionId,
               source: recovered.source,
+              eventKind: kind,
+              ...(startSource ? { startSource } : {}),
               ...(transcriptPath ? { transcriptPath } : {}),
               ...(kind === "session-end" ? { state: "ended" } : {}),
             })

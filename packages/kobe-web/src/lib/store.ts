@@ -36,7 +36,7 @@ export interface AppState {
    *  the task-level rollup is last-event-wins across tabs, so the Agent Trace
    *  can follow exactly the session running in the ACTIVE tab. */
   engineTabSessions: Record<string, Record<string, string>>
-  /** Durable task+tab -> engine-native session contract. */
+  /** Durable task+tab -> current EngineRun contract. */
   sessionBindings: EngineSessionBindings
   update: UpdateInfo | null
   /** taskId → in-flight long job (e.g. a worktree materializing). */

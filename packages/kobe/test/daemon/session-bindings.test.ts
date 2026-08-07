@@ -33,6 +33,8 @@ describe("SessionBindingStore", () => {
       vendor: "codex",
       sessionId: "019f-session",
       source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
       transcriptPath: "/tmp/rollout.jsonl",
     })
     await store.bind({
@@ -42,14 +44,17 @@ describe("SessionBindingStore", () => {
       sessionId: "019f-session",
       source: "hook",
       state: "ended",
+      eventKind: "session-end",
     })
 
     const reloaded = new SessionBindingStore(path, new DaemonEventBus())
     await reloaded.init()
     expect(reloaded.snapshotByTask()["task-1"]?.["tab-a"]).toMatchObject({
       sessionId: "019f-session",
+      runId: expect.any(String),
       state: "ended",
       source: "hook",
+      startSource: "startup",
       startedAt: 100,
       boundAt: 200,
       updatedAt: 300,
@@ -61,7 +66,7 @@ describe("SessionBindingStore", () => {
       channel: "session.bindings",
       payload: { bindings: store.snapshotByTask() },
     })
-    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 1 })
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 2 })
   })
 
   it("a new spawn on the same tab replaces the old session identity", async () => {
@@ -83,19 +88,159 @@ describe("SessionBindingStore", () => {
     })
   })
 
-  it("keeps a bound identity when the same tab re-reads its engine spec", async () => {
+  it("begins a new run for a new same-vendor PTY spawn and deduplicates pending reads", async () => {
     const { store } = await fixture()
-    await store.begin("task-1", "tab-a", "codex")
-    const bound = await store.bind({
+    const initial = await store.begin("task-1", "tab-a", "codex")
+    await store.bind({
       taskId: "task-1",
       tabId: "tab-a",
       vendor: "codex",
       sessionId: "existing",
       source: "hook",
     })
+    const pending = await store.begin("task-1", "tab-a", "codex")
 
-    expect(await store.begin("task-1", "tab-a", "codex")).toEqual(bound)
-    expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toEqual(bound)
+    expect(pending.runId).not.toBe(initial.runId)
+    expect(pending).toMatchObject({ sessionId: null, state: "pending", startedAt: 300 })
+    expect(await store.begin("task-1", "tab-a", "codex")).toEqual(pending)
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toEqual(pending)
+  })
+
+  it("lets Claude's SessionStart confirm a caller-pinned spawn without duplicating its run", async () => {
+    const { store } = await fixture()
+    const pending = await store.begin("task-1", "tab-a", "claude")
+    const pinned = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "claude",
+      sessionId: "caller-assigned",
+      source: "spawn",
+    })
+    const confirmed = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "claude",
+      sessionId: "caller-assigned",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+
+    expect(pinned.runId).toBe(pending.runId)
+    expect(confirmed.runId).toBe(pending.runId)
+    expect(confirmed).toMatchObject({ source: "hook", startSource: "startup" })
+    expect(store.runsSnapshot()).toHaveLength(1)
+  })
+
+  it("creates a new run when the same native session is resumed, but not when it compacts", async () => {
+    const { store } = await fixture()
+    await store.begin("task-1", "tab-a", "codex")
+    const startup = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "same-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+    const resumed = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "same-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "resume",
+    })
+    const compacted = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "same-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "compact",
+    })
+
+    expect(resumed.runId).not.toBe(startup.runId)
+    expect(compacted.runId).toBe(resumed.runId)
+    expect(compacted.startSource).toBe("resume")
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]?.runId).toBe(resumed.runId)
+    expect(store.runsSnapshot()).toEqual([
+      expect.objectContaining({ runId: startup.runId, state: "superseded", sessionId: "same-session" }),
+      expect.objectContaining({ runId: resumed.runId, state: "bound", startSource: "resume" }),
+    ])
+  })
+
+  it("keeps late events on a superseded session from stealing the current tab", async () => {
+    const { store } = await fixture()
+    await store.begin("task-1", "tab-a", "codex")
+    const oldRun = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "old-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+    const currentRun = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "new-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+    const late = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "old-session",
+      source: "hook",
+      eventKind: "turn-complete",
+    })
+
+    expect(late).toMatchObject({ runId: oldRun.runId, state: "superseded" })
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]?.runId).toBe(currentRun.runId)
+  })
+
+  it("migrates the v1 overwrite binding into one current v2 run", async () => {
+    const { path } = await fixture()
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        bindings: [
+          {
+            taskId: "task-1",
+            tabId: "tab-a",
+            vendor: "claude",
+            sessionId: "legacy-session",
+            state: "bound",
+            source: "hook",
+            startedAt: 10,
+            boundAt: 11,
+            updatedAt: 12,
+          },
+        ],
+      }),
+      "utf8",
+    )
+    const migrated = new SessionBindingStore(path, new DaemonEventBus())
+    await migrated.init()
+
+    expect(migrated.snapshotByTask()["task-1"]?.["tab-a"]).toMatchObject({
+      runId: expect.any(String),
+      sessionId: "legacy-session",
+    })
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      version: 2,
+      runs: [expect.objectContaining({ sessionId: "legacy-session" })],
+      currentRuns: [expect.objectContaining({ taskId: "task-1", tabId: "tab-a" })],
+    })
   })
 
   it("removes all bindings when a task is hard-deleted", async () => {

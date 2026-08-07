@@ -10,7 +10,7 @@
  * circular import back into `handlers.ts`, which imports THEM.
  */
 
-import type { EngineActivityDetail, VendorId } from "./contracts.ts"
+import type { EngineActivityDetail, EngineSessionStartSource, VendorId } from "./contracts.ts"
 
 /** Coerce an unknown request payload into a plain object (`{}` for anything else). */
 export function objectPayload(payload: unknown): Record<string, unknown> {
@@ -52,6 +52,14 @@ export function optionalVendor(payload: Record<string, unknown>, key: string): V
   // (missing) binary in the pane. Empty/absent stays undefined (→ claude).
   const value = optionalString(payload, key)
   return value && value.trim().length > 0 ? (value as VendorId) : undefined
+}
+
+export function optionalSessionStartSource(
+  payload: Record<string, unknown>,
+  key: string,
+): EngineSessionStartSource | undefined {
+  const value = optionalString(payload, key)
+  return value === "startup" || value === "resume" || value === "clear" || value === "compact" ? value : undefined
 }
 
 /** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping
