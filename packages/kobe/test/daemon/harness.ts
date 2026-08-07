@@ -26,6 +26,7 @@ import { type Socket, connect } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { EngineEventLog } from "@sma1lboy/kobe-daemon/daemon/engine-events-log"
 import { type DaemonServer, type DaemonServerOptions, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import {
   type DaemonWebSnapshotState,
@@ -99,6 +100,8 @@ export interface HarnessWebTransport {
   readonly sse: { opened: number; closed: number }
   /** taskIds the RPC route asked to tear the web session down for. */
   readonly tornDownSessions: readonly string[]
+  /** Daemon-local live trace source injected into the pure web handler. */
+  readonly engineEvents: EngineEventLog
 }
 
 export interface DaemonHarnessOptions {
@@ -130,12 +133,16 @@ export function emptyWebSnapshot(): DaemonWebSnapshotState {
     tasks: [],
     activeTaskId: null,
     engineStates: {},
+    engineTabSessions: {},
+    sessionBindings: {},
+    sessionTransitions: {},
     update: null,
     jobs: {},
     worktreeChanges: {},
     issueSnapshots: {},
     deliver: null,
     uiPrefs: null,
+    attentionInbox: [],
     connected: true,
   }
 }
@@ -183,6 +190,7 @@ export async function bootDaemonHarness(opts: DaemonHarnessOptions = {}): Promis
     const sseSends: RequestHandlerDeps["sseSends"] = new Set()
     const sse = { opened: 0, closed: 0 }
     const tornDownSessions: string[] = []
+    const engineEvents = new EngineEventLog()
     const linkClient = trackClient(new KobeDaemonClient(socketPath))
     const snapshot = webOpts.snapshot ?? emptyWebSnapshot
     const handle = createDaemonWebRequestHandler({
@@ -203,12 +211,14 @@ export async function bootDaemonHarness(opts: DaemonHarnessOptions = {}): Promis
           sse.closed++
         }
       },
+      engineEvents,
     })
     web = {
       fetch: (path, init) => handle(new Request(new URL(path, "http://127.0.0.1").toString(), init)),
       sseSends,
       sse,
       tornDownSessions,
+      engineEvents,
     }
   }
 

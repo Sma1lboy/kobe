@@ -12,6 +12,7 @@ flowchart TB
   subgraph daemon["kobe daemon (state, refcounted)"]
     orch[Orchestrator]
     idx["tasks.json"]
+    bindings["session-bindings.json<br/>current run pointers + run history"]
   end
   subgraph host["kobe pty-host (engine lifetime)"]
     p1["engine PTY — task A"]
@@ -22,6 +23,7 @@ flowchart TB
   web <-->|HTTP/SSE| daemon
   tui <-->|unix socket| host
   orch --- idx
+  orch --- bindings
   p1 --- ring
   p2 --- ring
 ```
@@ -121,6 +123,34 @@ not kobe.
 - Engine tabs pin their conversation up front: a Claude launch gets a
   kobe-generated `--session-id <uuid>` so the session maps to its transcript
   (vendors that can't take a caller-set id, like Codex, are left untouched).
+- The daemon persists the neutral identity chain
+  `Task -> Terminal Tab -> current EngineRun -> native Engine Session` in
+  `<KOBE_HOME>/.kobe/session-bindings.json`. A run starts as `pending`, becomes
+  `bound` when the engine supplies its native id (spawn-time for Claude,
+  hook-time for Codex), and may later become `ended` or `superseded` without
+  losing the transcript identity. The file retains prior run pointers so a
+  tab changing conversations does not rewrite history; conversation content
+  remains exclusively in the engine's own transcript store.
+- Claude Code and Codex `SessionStart` hooks provide `startup`, `resume`,
+  `clear`, or `compact`. Kobe creates a fresh `runId` for the first three
+  causes (after filling any pending launch) and keeps the current run for
+  `compact`. Consequently, exiting and later resuming a conversation produces
+  a new run with the same native `sessionId`.
+- Codex's native `/resume` picker changes conversation before it emits the
+  deferred `SessionStart`. In the browser/Electron PTY path, Enter triggers a
+  bounded adapter observation window keyed by that tab's process id. The Codex
+  adapter reads exact structured resume evidence from Codex's local log
+  database. A `thread/resume` span first publishes an in-memory transition so
+  Agent Trace enters loading before Codex finishes restoring the selected
+  thread; the transition never replaces or persists the current run. A rollout
+  path, or the selected `thread.id` when no path exists, then binds the new run
+  and clears the transition. The later hook confirms that same run. Kobe never
+  parses picker rows or terminal pixels. If the internal log format is absent
+  or changes, the observer returns nothing and the ordinary hook remains the
+  compatibility fallback.
+- Current-run pointers and run history survive a daemon restart. New clients consume the binding
+  snapshot directly; they do not choose a transcript from visible terminal
+  pixels or from whichever history file happens to be newest.
 - After a host restart (reboot, `kobe reset`), a persisted engine tab that
   already ran relaunches with `--resume <sessionId>` instead of opening a
   blank session. A tab found dead on attach gets **one** automatic resume

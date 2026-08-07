@@ -206,7 +206,13 @@ function normalizeCodexResponseItem(
     // not replay them. Reloading history should therefore hide them so
     // the visible transcript matches what the user actually typed.
     if (role === "user" && isSyntheticCodexUserRow(blocks)) return undefined
-    return { role, blocks, timestamp, sessionId }
+    const phase =
+      role === "assistant" && payload.phase === "commentary"
+        ? "commentary"
+        : role === "assistant" && payload.phase === "final_answer"
+          ? "final"
+          : undefined
+    return { role, blocks, timestamp, sessionId, ...(phase ? { phase } : {}) }
   }
 
   if (payload.type === "reasoning") return normalizeCodexReasoning(payload, timestamp, sessionId)

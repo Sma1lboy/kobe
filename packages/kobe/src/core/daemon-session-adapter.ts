@@ -1,6 +1,7 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { kobeHookReporterEnv } from "../cli/invocation.ts"
 import {
   deliverToHostedKey,
   ensureHostedEngine,
@@ -11,11 +12,44 @@ import {
   listHostedSessions,
   openHostedSessionHost,
 } from "../engine/hosted-session.ts"
-import { interactiveEngineCommand } from "../engine/interactive-command.ts"
+import { interactiveEngineCommand, withClaudeSessionId, withManagedHookTrust } from "../engine/interactive-command.ts"
+import { engineEntry } from "../engine/registry.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
 import type { VendorId } from "../types/task.ts"
+
+const SESSION_RECOVERY_DELAYS_MS = [0, 40, 120] as const
+
+/**
+ * Resolve the session behind a concrete provider `session-start` event.
+ * The daemon calls this only when an older `kobe hook` reporter omitted the
+ * payload's session fields. Vendor filesystem knowledge stays in the engine
+ * history adapter; the daemon and GUI receive only the normalized identity.
+ */
+export async function recoverEngineSessionAdapter(
+  vendor: VendorId,
+  worktreePath: string,
+): Promise<{ sessionId: string; transcriptPath?: string } | null> {
+  const history = engineEntry(vendor).history
+  for (const delayMs of SESSION_RECOVERY_DELAYS_MS) {
+    if (delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+    const session = await history.latestSessionForWorktree?.(worktreePath)
+    if (session) return session
+    if (!history.latestSessionForWorktree) {
+      const sessionId = (await history.listSessionIdsForWorktree(worktreePath)).at(-1)
+      if (sessionId) {
+        const transcriptPath = await history.transcriptPath(sessionId, worktreePath)
+        return { sessionId, ...(transcriptPath ? { transcriptPath } : {}) }
+      }
+    }
+  }
+  return null
+}
+
+export async function observeEngineSessionActivationAdapter(vendor: VendorId, rootPid: number, afterMs: number) {
+  return (await engineEntry(vendor).observeSessionActivation?.({ rootPid, afterMs })) ?? null
+}
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
@@ -70,25 +104,82 @@ export async function startTaskSessionWithPromptAdapter(
   }
 }
 
-function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptIntent: PromptDeliveryIntent) {
+function taskEngineLaunch(
+  task: SerializedTask,
+  worktreePath: string,
+  promptIntent: PromptDeliveryIntent,
+  // per-tab vendor override, the web mirror of EngineTab.vendor
+  vendorOverride?: string,
+  tabId?: string,
+) {
   return buildEngineSessionLaunch({
-    task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
+    task: {
+      id: task.id,
+      kind: task.kind,
+      vendor: vendorOverride ? (vendorOverride as VendorId) : task.vendor,
+      repo: task.repo,
+    },
     worktreePath,
     shell: resolveLoginShell({ fallback: "/bin/zsh" }),
-    argv: interactiveEngineCommand(task.vendor, task.modelEffort),
+    argv: vendorOverride
+      ? interactiveEngineCommand(vendorOverride as VendorId)
+      : interactiveEngineCommand(task.vendor, task.modelEffort),
     promptIntent,
+    tabId,
   })
 }
 
-export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
+export async function engineSpecAdapter(
+  link: DaemonRpcClient,
+  taskId: string,
+  vendor?: string,
+  // Web tab identity → exported KOBE_TAB_ID: without it every web PTY engine
+  // reported as "tab-1" and per-tab hook attribution collapsed.
+  tabId?: string,
+) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" })
-  return { cwd: worktreePath, command: [...launch.command] }
+  const vendorId = vendor ? (vendor as VendorId) : task.vendor
+  const baseArgv = vendor
+    ? interactiveEngineCommand(vendor as VendorId)
+    : interactiveEngineCommand(task.vendor, task.modelEffort)
+  const managedArgv = withManagedHookTrust(baseArgv, vendorId)
+  // Pin the session at spawn (claude `--session-id <uuid>`): the GUI then
+  // knows this tab's session DETERMINISTICALLY — no hook latency, no
+  // wrong-tab ambiguity. Vendors without a caller-set id return null.
+  const { argv, sessionId } = withClaudeSessionId(managedArgv, vendorId)
+  const launch = buildEngineSessionLaunch({
+    task: {
+      id: task.id,
+      kind: task.kind,
+      vendor: vendorId,
+      repo: task.repo,
+    },
+    worktreePath,
+    shell: resolveLoginShell({ fallback: "/bin/zsh" }),
+    argv,
+    promptIntent: { kind: "repo-init" },
+    tabId,
+  })
+  return {
+    cwd: worktreePath,
+    command: [...launch.command],
+    ...(sessionId ? { sessionId } : {}),
+  }
 }
 
-export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {
+export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string, tabId?: string) {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
-  return { cwd: worktreePath, command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"] }
+  return {
+    cwd: worktreePath,
+    command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
+    // A manual `claude`/`codex` typed into this shell inherits the task+tab
+    // identity, so its hooks attribute per-tab like a vendor tab's engine.
+    env: {
+      KOBE_TASK_ID: taskId,
+      ...(tabId ? { KOBE_TAB_ID: tabId } : {}),
+      ...kobeHookReporterEnv(),
+    },
+  }
 }
 
 /**

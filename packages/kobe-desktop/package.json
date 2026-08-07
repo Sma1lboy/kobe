@@ -1,0 +1,17 @@
+{
+  "name": "kobe-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "dev": "electron .",
+    "dev:sandbox": "KOBE_HOME_DIR=../kobe/.dev-sandbox/home electron .",
+    "dev:mock": "KOBE_HOME_DIR=../kobe/.dev-sandbox/home KOBE_PTY_DEV_CWD=../kobe KOBE_PTY_DEV_COMMAND='bun run dev:mock' electron .",
+    "check": "node --check src/main.mjs && node --check src/preload.cjs && node --check src/ports.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7"
+  }
+}

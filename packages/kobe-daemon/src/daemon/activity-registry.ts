@@ -122,6 +122,10 @@ export class DaemonActivityRegistry {
   /** Per-tab entries (taskId → tabId → entry) for events that carried a
    *  `tabId`. UI state like everything here — replayed, never persisted. */
   private readonly tabActivity = new Map<string, Map<string, ActivityEntry>>()
+  /** taskId → tabId → last known engine session id. Written by hook events
+   *  AND spawn-time pins (`--session-id` injection); unlike tabActivity it
+   *  survives idle so the web snapshot can seed a reloaded browser. */
+  private readonly tabSessions = new Map<string, Map<string, string>>()
 
   constructor(
     private readonly bus: DaemonEventBus,
@@ -167,20 +171,28 @@ export class DaemonActivityRegistry {
     // now, so a missed Stop must not pin the ● — same probe-then-idle
     // heartbeat as the task level, publishing a per-tab idle so hook-wins
     // subscribers fall back to the quiescence poll.
+    if (tabId && session) this.recordTabSession(taskId, tabId, session.id)
+    // A TAB-scoped publish must carry the TAB's session lineage only — the
+    // event's own id, or the same tab's previous one. Inheriting the
+    // task-level rollup here leaked another tab's (even another ENGINE's)
+    // session onto a fresh tab whose hooks don't pipe session ids.
+    let publishEntry = entry
     if (tabId) {
       const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
       const prevTab = tabs.get(tabId)
       if (prevTab?.lapse) clearTimeout(prevTab.lapse)
+      const tabSession = session ?? prevTab?.session
+      publishEntry = { state, detail, at, session: tabSession }
       if (state === "idle") tabs.delete(tabId)
       else {
-        const tabEntry: ActivityEntry = { state, detail, at, session: session ?? prevTab?.session }
+        const tabEntry: ActivityEntry = { state, detail, at, session: tabSession }
         if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
         tabs.set(tabId, tabEntry)
       }
       if (tabs.size > 0) this.tabActivity.set(taskId, tabs)
       else this.tabActivity.delete(taskId)
     }
-    this.bus.publish("engine-state", this.payload(taskId, entry, tabId))
+    this.bus.publish("engine-state", this.payload(taskId, publishEntry, tabId))
   }
 
   /**
@@ -295,10 +307,36 @@ export class DaemonActivityRegistry {
     this.publishIdle(taskId)
   }
 
+  private recordTabSession(taskId: string, tabId: string, sessionId: string): void {
+    const tabs = this.tabSessions.get(taskId) ?? new Map<string, string>()
+    tabs.set(tabId, sessionId)
+    this.tabSessions.set(taskId, tabs)
+  }
+
+  /**
+   * Record a kobe-ASSIGNED session id for a tab at spawn time (claude
+   * `--session-id` injection) and broadcast it, so the Agent Trace keys to
+   * the right session before the engine even boots — no hook latency, no
+   * ambiguity. Identity only: activity state is untouched.
+   */
+  pinTabSession(taskId: string, tabId: string, sessionId: string): void {
+    this.recordTabSession(taskId, tabId, sessionId)
+    const state = this.activity.get(taskId)?.state ?? "idle"
+    this.bus.publish("engine-state", { taskId, tabId, state, sessionId, at: this.now() })
+  }
+
+  /** taskId → tabId → session id, for the web snapshot (browser-reload seed). */
+  tabSessionsByTask(): Record<string, Record<string, string>> {
+    const out: Record<string, Record<string, string>> = {}
+    for (const [taskId, tabs] of this.tabSessions) out[taskId] = Object.fromEntries(tabs)
+    return out
+  }
+
   clearTask(taskId: string): void {
     const gone = this.activity.get(taskId)
     if (gone?.lapse) clearTimeout(gone.lapse)
     this.activity.delete(taskId)
+    this.tabSessions.delete(taskId)
     // Per-tab entries go with the task; explicit per-tab idles so every
     // subscriber drops its tab-level candidates too.
     const tabs = this.tabActivity.get(taskId)
@@ -345,6 +383,7 @@ export class DaemonActivityRegistry {
     }
     this.activity.clear()
     this.tabActivity.clear()
+    this.tabSessions.clear()
   }
 
   private publishIdle(taskId: string): void {

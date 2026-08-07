@@ -18,7 +18,8 @@ built-in engine registers an entry exposing:
   never hard-code vendor strings.
 - `capabilities`: model catalog, permission modes, context-window math.
 - `history`: a reader over the engine's on-disk transcript store (auto-title,
-  recap, the Ops activity badge).
+  recap, the Ops activity badge) plus an optional normalized `EngineTrace` and
+  cheap revision token for structured execution UIs.
 - `detectAccount`: a read-only binary + login probe (Settings → Accounts,
   `kobe doctor`).
 - `createHookAdapter`: installs activity hooks into the engine's own config
@@ -139,16 +140,36 @@ never blocks launch.
 ### Codex: `~/.codex/hooks.json`
 
 Codex uses the same settings-file shape. Wired: `SessionStart`,
-`UserPromptSubmit`, `Stop`, `PreCompact`, `PostCompact`, and the gated
-`PreToolUse` / `PostToolUse`. **Not wired:** `turn-failed`, `session-end`, and
-`awaiting-input`. Codex's only waiting signal is `PermissionRequest`, an
-allow/deny *decision* hook, and installing an observer there could interfere
-with Codex's approval flow. The polling fallback covers those states.
+`UserPromptSubmit`, `Stop`, `SessionEnd`, `PreCompact`, `PostCompact`,
+`SubagentStart`, `SubagentStop`, `PreToolUse`, and `PostToolUse`. **Not wired:**
+`turn-failed` and `awaiting-input`. Codex's only waiting signal is
+`PermissionRequest`, an allow/deny *decision* hook, and installing an observer
+there could interfere with Codex's approval flow. The polling fallback covers
+those states.
 
 Codex also won't run a non-managed hook until you trust it once via `/hooks`
 (or launch with `--dangerously-bypass-hook-trust`). kobe writes the definition
 but never auto-bypasses trust, so Codex activity badges light up only after you
 approve, by design.
+
+For both Claude Code and Codex, the adapter also normalizes the native
+`session_id`, `transcript_path`, and `SessionStart.source`. The daemon uses
+those fields to bind the engine-owned conversation to a Kobe-owned temporal
+`runId`: startup/resume/clear establish a run, while compact stays inside the
+current run. Neutral UI layers consume that run binding and never infer the
+active conversation from terminal pixels or the newest transcript file.
+
+Codex defers `SessionStart(source=resume)` until the next turn, after its
+native `/resume` picker has already switched threads. The browser/Electron PTY
+sidecar therefore reports only the tab/root-pid commit boundary to the daemon;
+the Codex registry adapter resolves the actual Codex descendant and reads its
+PID-scoped structured resume record from `CODEX_HOME/logs_2.sqlite`. That
+observer first yields an ephemeral pending transition when the resume span
+appears, then the exact session id and rollout path when Codex finishes
+selecting the thread. The transition starts Agent Trace loading early but never
+enters the durable EngineRun ledger. The later SessionStart confirms the
+binding, and remains the fallback when Codex changes or disables the internal
+log schema. No neutral daemon or UI code parses the vendor record.
 
 ### Copilot, Kimi, custom engines
 
@@ -158,10 +179,12 @@ is written to their config.
 ### The `tool.*` volume gate
 
 The tool-family hooks fire on **every tool call of every session machine-wide**.
-They're written into the engine config **only while an enabled plugin declares
-a `tool.*` event hook** (`pluginsWantToolEvents` in `src/cli/hook-cmd.ts`,
-re-synced on every launch, so installing or removing such a plugin takes effect
-on the next kobe start). The other activity hooks are always installed.
+Codex tool hooks are always written because the Agent Trace needs exact call
+IDs for its live overlay. Other engines retain the volume gate: their tool
+hooks are written only while an enabled plugin declares a `tool.*` event hook
+(`pluginsWantToolEvents` in `src/cli/hook-cmd.ts`, re-synced on every launch,
+so installing or removing such a plugin takes effect on the next kobe start).
+The other activity hooks are always installed.
 
 ### Worktree watch
 
@@ -210,6 +233,43 @@ OSC window title) so even unmanaged sessions get a badge.
 There is nothing to configure. The layers are automatic. The user-visible
 consequence to remember: **only claude/codex sessions can ever show
 needs-input**; every other engine tops out at working/done.
+
+## Agent Trace
+
+The `/chat` Agent Trace is a structured observability surface, not a second
+conversation store and not a chain-of-thought viewer. Its neutral contract is
+`EngineTrace`: turns contain engine-normalized nodes such as visible
+commentary, reasoning summaries, tool calls, changes, answers, subagents, and
+compaction. Every node carries a stable ID, status, timestamps, bounded detail,
+and an explicit provenance for parent edges. A temporal neighbor is labelled
+`temporal`; the UI never upgrades adjacency into proven causality. Retry links
+and attempt numbers render only when an engine explicitly supplies them.
+
+Codex currently provides the complete implementation. Its history adapter
+parses rollout JSONL into persisted full snapshots, while its trusted hooks
+publish low-latency lifecycle/tool/subagent events through the daemon. The web
+client folds that ephemeral overlay by stable turn/call IDs, then replaces it
+with the next persisted snapshot. Both SSE routes send replayable state on
+connect, so a browser or daemon reconnect heals without the UI owning a delta
+log. Claude and Copilot currently get a settled, generic trace from their
+normalized message history; engines without readable history return an empty
+trace rather than leaking vendor checks into the frontend.
+
+```mermaid
+flowchart LR
+    A[Codex rollout JSONL] --> B[Codex history adapter]
+    B --> C[EngineTrace snapshot SSE]
+    D[Trusted Codex hooks] --> E[daemon live event rail]
+    E --> F[stable-ID overlay]
+    C --> F
+    F --> G[/chat Agent Trace]
+```
+
+The terminal screen grammar remains separate: it translates PTY rows for the
+center conversation view, while Agent Trace consumes only structured engine
+output. To add another engine, implement `readTrace` (and optionally
+`traceRevision` plus normalized live hook details) in that engine's registry
+entry; do not add vendor parsing to React components.
 
 ## Launching and resuming sessions
 

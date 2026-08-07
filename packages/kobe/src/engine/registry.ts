@@ -26,7 +26,7 @@
  * Must stay importable from vitest and MUST NOT import from `src/tui/`.
  */
 
-import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage, Message } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage, EngineTrace, Message } from "@/types/engine"
 import { type VendorId, isBuiltinVendor } from "@/types/vendor"
 import {
   type ClaudeAccount,
@@ -47,9 +47,11 @@ import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
+import { type EngineSessionActivation, observeCodexSessionActivation } from "./codex-local/session-activation.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
+import { traceFromHistory } from "./trace-from-history.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -67,6 +69,12 @@ export interface EngineHistoryReader {
   listSessionIdsForWorktree(worktree: string): Promise<readonly string[]>
   /** Neutral messages for one session id; `[]` when not found. */
   readHistory(sessionId: string): Promise<Message[]>
+  /** Engine-normalized execution trace for GUI consumers. */
+  readTrace?(sessionId: string): Promise<EngineTrace>
+  /** Monotonic-enough persisted trace revision (normally transcript mtime).
+   * Consumers use it only as an invalidation token and always refetch a full
+   * trace snapshot, so daemon/browser reconnects need no delta replay. */
+  traceRevision?(sessionId: string): Promise<number>
   /**
    * Absolute path of the on-disk transcript for `sessionId`, or null when
    * the engine has no file to point at. Not for kobe to PARSE (that's
@@ -75,6 +83,8 @@ export interface EngineHistoryReader {
    * `worktree` scopes stores that key by directory (claude's project dir).
    */
   transcriptPath(sessionId: string, worktree: string): Promise<string | null>
+  /** Session whose transcript has the newest activity for this worktree. */
+  latestSessionForWorktree?(worktree: string): Promise<{ sessionId: string; transcriptPath?: string } | null>
   /**
    * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
    * has no transcript yet. The Ops pane's activity poll watches this to
@@ -107,6 +117,14 @@ export interface EngineRegistryEntry {
   readonly effortLevels?: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
+  /**
+   * Optional engine-owned observer for native context switches that happen
+   * before the provider emits its ordinary lifecycle hook.
+   */
+  readonly observeSessionActivation?: (input: {
+    readonly rootPid: number
+    readonly afterMs: number
+  }) => Promise<EngineSessionActivation | null>
   /**
    * Read-only binary + login probe (Settings → Accounts). `deps` is the
    * injectable fs/env surface from `account-detect.ts`; omit for production.
@@ -172,6 +190,9 @@ export const EMPTY_HISTORY: EngineHistoryReader = {
   async transcriptPath() {
     return null
   },
+  async latestSessionForWorktree() {
+    return null
+  },
   // No transcript store → no activity signal (the Ops badge stays dark
   // rather than mis-watching another vendor's files).
   async latestTranscriptMtimeForWorktree() {
@@ -190,9 +211,16 @@ const claudeHistoryReader: EngineHistoryReader = {
     return [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   },
   readHistory: (sessionId) => claudeHistory.readHistory(sessionId),
+  async readTrace(sessionId) {
+    return traceFromHistory(sessionId, await claudeHistory.readHistory(sessionId))
+  },
   async transcriptPath(sessionId, worktree) {
     const files = await claudeHistory.listSessionFilesForWorktree(worktree)
     return files.find((f) => f.sessionId === sessionId)?.path ?? null
+  },
+  async latestSessionForWorktree(worktree) {
+    const file = (await claudeHistory.listSessionFilesForWorktree(worktree))[0]
+    return file ? { sessionId: file.sessionId, transcriptPath: file.path } : null
   },
   latestTranscriptMtimeForWorktree: (worktree) => claudeHistory.latestTranscriptMtimeForWorktree(worktree),
 }
@@ -201,17 +229,31 @@ const claudeHistoryReader: EngineHistoryReader = {
 const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
+  readTrace: (sessionId) => codexHistory.readTrace(sessionId),
+  traceRevision: (sessionId) => codexHistory.traceRevision(sessionId),
   // The rollout filename embeds the UUID; the store is date-keyed, not
   // worktree-keyed, so the worktree argument is unused here.
   transcriptPath: async (sessionId) => (await codexHistory.findRolloutFile(sessionId)) ?? null,
+  async latestSessionForWorktree(worktree) {
+    const latest = await codexHistory.findLatestRolloutForWorktree(worktree)
+    const sessionId = latest ? codexHistory.rolloutSessionId(latest.path) : null
+    return latest && sessionId ? { sessionId, transcriptPath: latest.path } : null
+  },
   latestTranscriptMtimeForWorktree: (worktree) => codexHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
 const copilotHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => copilotHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => copilotHistory.readHistory(sessionId),
+  async readTrace(sessionId) {
+    return traceFromHistory(sessionId, await copilotHistory.readHistory(sessionId))
+  },
   // Copilot's store layout isn't mapped to a per-session file kobe can name.
   transcriptPath: async () => null,
+  async latestSessionForWorktree(worktree) {
+    const sessionId = (await copilotHistory.listSessionIdsForWorktree(worktree)).at(-1)
+    return sessionId ? { sessionId } : null
+  },
   latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
@@ -241,6 +283,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
+    observeSessionActivation: observeCodexSessionActivation,
 
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new CodexHookAdapter(),

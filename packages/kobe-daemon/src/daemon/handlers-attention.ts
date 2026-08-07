@@ -6,6 +6,8 @@ import type { DaemonRequestHandler } from "./handlers.ts"
 export const ATTENTION_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "attention.dismiss",
+    // The web /chat Inbox jumps + dismisses episodes, same as the TUI.
+    web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")
       const tabId = optionalString(payload, "tabId") ?? null

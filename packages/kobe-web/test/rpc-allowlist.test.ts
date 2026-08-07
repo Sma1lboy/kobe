@@ -33,6 +33,13 @@ const REQUIRED = [
   "task.reorder",
   "task.ensureWorktree",
   "task.setActive",
+  // RoutinesPage (the /chat Routines surface) drives the automations CRUD.
+  "automation.list",
+  "automation.create",
+  "automation.update",
+  "automation.delete",
+  "automation.runs",
+  "automation.runNow",
 ] as const
 
 describe("WEB_RPC_ALLOWLIST", () => {

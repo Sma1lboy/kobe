@@ -14,64 +14,31 @@ import {
   tabHasPty,
   type WorkspaceTabKind,
 } from "./tab-kinds.ts"
+import type {
+  EmptyTab,
+  FilePreviewTab,
+  TabsState,
+  TerminalTab,
+  TranscriptTab,
+  VendorTab,
+  WorkspaceTab,
+} from "./tab-types.ts"
 import { closePtyTab } from "./terminal.ts"
+
+export { consumePendingPrompt, setPendingPrompt } from "./pending-prompts.ts"
 
 const KEY = "kobe-web.tabs"
 
 export type { WorkspaceTabKind }
-
-export interface EmptyTab {
-  id: string
-  kind: "empty"
-  title: string
-}
-
-export interface VendorTab {
-  id: string
-  kind: "vendor"
-  title: string
-  /** Engine-task override: the PTY runs against THIS task while the tab
-   *  lives in another task's strip (a worktree session surfaced in the
-   *  project workspace). Absent = the tab's bucket task, the normal case. */
-  taskId?: string
-}
-
-export interface TerminalTab {
-  id: string
-  kind: "terminal"
-  title: string
-}
-
-/** Structured engine-history view (read-only chat render, not a PTY). */
-export interface TranscriptTab {
-  id: string
-  kind: "transcript"
-  title: string
-}
-
-export interface FilePreviewTab {
-  id: string
-  kind: "file"
-  title: string
-  path: string
-}
-
-export type WorkspaceTab =
-  | EmptyTab
-  | VendorTab
-  | TerminalTab
-  | TranscriptTab
-  | FilePreviewTab
-
-export interface TabsState {
-  selectedTaskId: string | null
-  /** taskId → its workspace tabs, in order. */
-  tabsByTask: Record<string, WorkspaceTab[]>
-  /** taskId → active tab id. */
-  activeByTask: Record<string, string>
-  /** taskId → horizontally split tab id shown on the right side. */
-  splitByTask: Record<string, string>
-}
+export type {
+  EmptyTab,
+  FilePreviewTab,
+  TabsState,
+  TerminalTab,
+  TranscriptTab,
+  VendorTab,
+  WorkspaceTab,
+} from "./tab-types.ts"
 
 const EMPTY: TabsState = {
   selectedTaskId: null,
@@ -205,25 +172,6 @@ export function selectTask(taskId: string): void {
 }
 
 /**
- * A first prompt to seed into a freshly-created task's engine composer.
- * Not persisted — a one-shot, consumed by the first engine ChatTerminal that
- * mounts for the task. (No PTY-readiness timing games: it pre-fills the
- * composer draft so the user sends when the engine is ready.)
- */
-const pendingPrompts = new Map<string, string>()
-
-export function setPendingPrompt(taskId: string, prompt: string): void {
-  pendingPrompts.set(taskId, prompt)
-}
-
-export function consumePendingPrompt(taskId: string): string | null {
-  const prompt = pendingPrompts.get(taskId)
-  if (prompt === undefined) return null
-  pendingPrompts.delete(taskId)
-  return prompt
-}
-
-/**
  * Reset all client-owned workspace layout (tab lists, splits, selection) back
  * to empty — a recovery hatch from a wedged/cluttered tab state. Pure client
  * state: clears localStorage, doesn't touch tasks/worktrees/the daemon. PTYs
@@ -293,7 +241,7 @@ export function clearSelectedTask(): void {
 /** Open a new vendor tab for a task; returns the new tab id (now active).
  *  `engineTaskId` pins the tab's PTY to a DIFFERENT task than its bucket —
  *  how a worktree session gets a tab inside the project workspace. */
-export function addTab(taskId: string, engineTaskId?: string): string {
+export function addTab(taskId: string, engineTaskId?: string, vendor?: string): string {
   const list = state.tabsByTask[taskId] ?? []
   const id = newId()
   const tab: VendorTab = {
@@ -303,6 +251,7 @@ export function addTab(taskId: string, engineTaskId?: string): string {
     ...(engineTaskId && engineTaskId !== taskId
       ? { taskId: engineTaskId }
       : {}),
+    ...(vendor ? { vendor } : {}),
   }
   set({
     ...state,
@@ -453,6 +402,55 @@ export function setActiveTab(taskId: string, tabId: string): void {
   }
   activeByTask[taskId] = tabId
   set({ ...state, activeByTask, splitByTask })
+}
+
+/** Update one tab's title (live OSC title from the PTY). No-op when unchanged.
+ *  The first override stashes the minted title as `baseTitle` so
+ *  {@link resetTabTitle} can restore it when the engine child exits. */
+export function setTabTitle(taskId: string, tabId: string, title: string): void {
+  // Engines clear the OSC title with an empty string on exit — a blank
+  // sidebar row is never what anyone meant. Keep the last real name.
+  const clean = title.trim()
+  if (!clean) return
+  const list = state.tabsByTask[taskId] ?? []
+  const current = list.find((tab) => tab.id === tabId)
+  if (!current || current.title === clean) return
+  const baseTitle =
+    (current as { baseTitle?: string }).baseTitle ?? current.title
+  set({
+    ...state,
+    tabsByTask: {
+      ...state.tabsByTask,
+      [taskId]: list.map((tab) =>
+        tab.id === tabId ? { ...tab, title: clean, baseTitle } : tab,
+      ),
+    },
+  })
+}
+
+/** Retitle a tab whose engine child exited. Every tab is a shell with the
+ *  engine as a CHILD — when the child dies, a vendor tab IS a bare shell, so
+ *  it reads "Shell"; a terminal tab restores its minted name (Terminal N). */
+export function resetTabTitle(taskId: string, tabId: string): void {
+  const list = state.tabsByTask[taskId] ?? []
+  const current = list.find((tab) => tab.id === tabId) as
+    | (WorkspaceTab & { baseTitle?: string })
+    | undefined
+  if (!current) return
+  const next =
+    current.kind === "vendor"
+      ? "Shell"
+      : (current.baseTitle ?? current.title ?? "Shell")
+  if (!next || current.title === next) return
+  set({
+    ...state,
+    tabsByTask: {
+      ...state.tabsByTask,
+      [taskId]: list.map((tab) =>
+        tab.id === tabId ? { ...tab, title: next } : tab,
+      ),
+    },
+  })
 }
 
 export function setSplitTab(taskId: string, tabId: string): void {

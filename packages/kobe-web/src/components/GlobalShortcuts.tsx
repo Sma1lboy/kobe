@@ -11,9 +11,11 @@ import {
   closeKeyboardHelp,
   closeNewTask,
   openKeyboardHelp,
+  selectChatTask,
   openNewTask,
   openSettings,
-  toggleCommandPalette,
+  toggleSettings,
+  openCommandPalette,
   useGlobalUiState,
 } from "../lib/global-ui.ts"
 import { setNotifyNavigate } from "../lib/notify.ts"
@@ -39,9 +41,17 @@ export function GlobalShortcuts() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      // Open only — while open, the palette itself owns ctrl+k (hold-to-cycle).
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
-        toggleCommandPalette()
+        openCommandPalette()
+        return
+      }
+      // The platform settings chord — toggles.
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault()
+        toggleSettings()
+        void navigate({ to: "/" })
         return
       }
       if (
@@ -57,14 +67,16 @@ export function GlobalShortcuts() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [navigate])
 
-  // Let notification clicks jump to their task from any route.
+  // Let notification clicks jump to their task from any route — the /chat
+  // shell (home) owns task selection now.
   useEffect(() => {
     setNotifyNavigate((taskId) => {
       selectTask(taskId)
       setActiveTaskBestEffort(taskId)
-      void navigate({ to: "/task/$taskId", params: { taskId } })
+      selectChatTask(taskId)
+      void navigate({ to: "/" })
     })
     return () => setNotifyNavigate(null)
   }, [navigate])

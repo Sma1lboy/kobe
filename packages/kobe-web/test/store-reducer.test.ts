@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
   applyJobEvent,
+  applyTabSessionEvent,
   isOrphanIdleEngineState,
   reconnectDelay,
+  sessionIdsFromBindings,
   validateSnapshot,
 } from "../src/lib/store.ts"
 import type { Task, TaskJob, WebTransportSnapshot } from "../src/lib/types.ts"
@@ -109,6 +111,7 @@ describe("validateSnapshot", () => {
       ...ok,
       activeTaskId: "t1",
       jobs: {},
+      sessionTransitions: {},
       worktreeChanges: {},
       issueSnapshots: {},
       uiPrefs: { theme: "claude" },
@@ -147,6 +150,7 @@ describe("validateSnapshot", () => {
     expect(validateSnapshot({ ...ok, jobs: [] })).toBeNull()
     expect(validateSnapshot({ ...ok, worktreeChanges: 1 })).toBeNull()
     expect(validateSnapshot({ ...ok, issueSnapshots: "x" })).toBeNull()
+    expect(validateSnapshot({ ...ok, sessionTransitions: [] })).toBeNull()
     expect(validateSnapshot({ ...ok, uiPrefs: 5 })).toBeNull()
   })
 
@@ -171,5 +175,69 @@ describe("reconnectDelay", () => {
 
   it("treats negative attempts as the first retry", () => {
     expect(reconnectDelay(-3)).toBe(500)
+  })
+})
+
+describe("applyTabSessionEvent", () => {
+  const ev = (tabId?: string, sessionId?: string) => ({
+    taskId: "t1",
+    state: "idle",
+    at: 1,
+    ...(tabId ? { tabId } : {}),
+    ...(sessionId ? { sessionId } : {}),
+  })
+
+  it("records a tab's hook-reported session", () => {
+    const next = applyTabSessionEvent({}, ev("tab-a", "s-new"))
+    expect(next).toEqual({ t1: { "tab-a": "s-new" } })
+  })
+
+  it("a relaunched engine re-keys its tab to the fresh session", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    const next = applyTabSessionEvent(prev, ev("tab-a", "s-new"))
+    expect(next.t1["tab-a"]).toBe("s-new")
+  })
+
+  it("a tab-lapse idle (no sessionId) keeps the last known id", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    expect(applyTabSessionEvent(prev, ev("tab-a"))).toBe(prev)
+    expect(applyTabSessionEvent(prev, ev())).toBe(prev)
+  })
+
+  it("same session round-trip is a no-op reference", () => {
+    const prev = { t1: { "tab-a": "s-old" } }
+    expect(applyTabSessionEvent(prev, ev("tab-a", "s-old"))).toBe(prev)
+  })
+})
+
+describe("sessionIdsFromBindings", () => {
+  it("projects only identified sessions for older consumers", () => {
+    expect(
+      sessionIdsFromBindings({
+        t1: {
+          pending: {
+            taskId: "t1",
+            tabId: "pending",
+            vendor: "codex",
+            sessionId: null,
+            state: "pending",
+            source: "spawn",
+            startedAt: 1,
+            updatedAt: 1,
+          },
+          bound: {
+            taskId: "t1",
+            tabId: "bound",
+            vendor: "codex",
+            sessionId: "session-1",
+            state: "bound",
+            source: "hook",
+            startedAt: 1,
+            boundAt: 2,
+            updatedAt: 2,
+          },
+        },
+      }),
+    ).toEqual({ t1: { bound: "session-1" } })
   })
 })

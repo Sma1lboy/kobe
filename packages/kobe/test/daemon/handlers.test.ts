@@ -99,6 +99,9 @@ describe("daemon handler registry", () => {
       "worktree.list",
       "worktree.remove",
       "engine.reportEvent",
+      "engine.beginSession",
+      "engine.pinSession",
+      "engine.observeSession",
       "attention.dismiss",
       "attention.read",
       "automation.list",
@@ -164,33 +167,7 @@ describe("daemon handler registry", () => {
     })
   })
 
-  describe("engine.reportEvent lifecycle kinds", () => {
-    it("buffers every kind, publishes engine.lifecycle for low-frequency ones, and skips the badge", async () => {
-      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
-      const log = new EngineEventLog()
-      ;(ctx as { engineEvents?: EngineEventLog }).engineEvents = log
-      await dispatch("engine.reportEvent", { taskId: "t1", kind: "pre-compact" }, ctx)
-      await dispatch("engine.reportEvent", { taskId: "t1", kind: "tool-post", detail: { tool: { name: "Bash" } } }, ctx)
-      // Lifecycle-only kinds never touch the activity badge or the inbox.
-      expect(rec.reported).toHaveLength(0)
-      expect(rec.inboxRecords).toHaveLength(0)
-      // Only the low-frequency kind broadcast on engine.lifecycle (no tool spam).
-      const lifecycle = rec.published.filter((p) => p.channel === "engine.lifecycle")
-      expect(lifecycle).toHaveLength(1)
-      expect(lifecycle[0]?.payload).toMatchObject({ taskId: "t1", kind: "pre-compact" })
-      // Both kinds landed in the recent-events buffer, readable over RPC.
-      const res = (await dispatch("task.recentEvents", { taskId: "t1" }, ctx)) as { events: { kind: string }[] }
-      expect(res.events.map((e) => e.kind)).toEqual(["pre-compact", "tool-post"])
-    })
-
-    it("state kinds still hit the badge and never the lifecycle channel", async () => {
-      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
-      await dispatch("engine.reportEvent", { taskId: "t1", kind: "turn-complete" }, ctx)
-      expect(rec.reported.map((r) => r.kind)).toEqual(["turn-complete"])
-      expect(rec.published.filter((p) => p.channel === "engine.lifecycle")).toHaveLength(0)
-    })
-  })
-
+  // Lifecycle-buffer cases moved to handlers-runtime.test.ts (file-size cap).
   describe("tab.open", () => {
     it("publishes a tab.open event for a known task", async () => {
       const { ctx, rec } = fakeCtx({ getTask: (id: string) => (id === "t1" ? TASK : undefined) })
@@ -438,167 +415,5 @@ describe("daemon handler registry", () => {
     })
   })
 
-  describe("task.ensureWorktree", () => {
-    it("returns { worktreePath } from the orchestrator", async () => {
-      const { ctx } = fakeCtx({ ensureWorktree: async (id: string) => `/worktrees/${id}` })
-      await expect(dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)).resolves.toEqual({
-        worktreePath: "/worktrees/t1",
-      })
-    })
-
-    it("rejects a missing taskId", async () => {
-      const { ctx } = fakeCtx()
-      await expect(dispatch("task.ensureWorktree", {}, ctx)).rejects.toThrow("taskId is required")
-    })
-
-    // Long-operation feedback (issue #5): `git worktree add` is minute-class
-    // on a huge repo and the RPC stays blocking, so the handler must publish
-    // lifecycle progress on `task.jobs` around the call — running before,
-    // and ALWAYS a terminal phase after (done on success, error on throw).
-    // Without the guaranteed terminal publish, the bus's last-value replay
-    // would show late subscribers a stuck "running" forever.
-    it("publishes task.jobs running → done around a successful materialisation", async () => {
-      let publishedWhenWorkStarted = -1
-      const { ctx, rec } = fakeCtx({
-        ensureWorktree: async (id: string) => {
-          publishedWhenWorkStarted = rec.published.length
-          return `/worktrees/${id}`
-        },
-      })
-      await dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)
-      // `running` was already on the bus when the orchestrator call started.
-      expect(publishedWhenWorkStarted).toBe(1)
-      expect(rec.published).toEqual([
-        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "running" } },
-        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "done" } },
-      ])
-    })
-
-    it("publishes task.jobs running → error (with the message) when the orchestrator throws, and rethrows", async () => {
-      const { ctx, rec } = fakeCtx({
-        ensureWorktree: async () => {
-          throw new Error("git worktree add failed")
-        },
-      })
-      await expect(dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)).rejects.toThrow("git worktree add failed")
-      expect(rec.published).toEqual([
-        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "running" } },
-        {
-          channel: "task.jobs",
-          payload: { taskId: "t1", kind: "ensureWorktree", phase: "error", error: "git worktree add failed" },
-        },
-      ])
-    })
-
-    it("coerces a non-Error throw into the error string on the terminal publish", async () => {
-      const { ctx, rec } = fakeCtx({
-        ensureWorktree: async () => {
-          throw "plain failure"
-        },
-      })
-      await expect(dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)).rejects.toBe("plain failure")
-      expect(rec.published[1]).toEqual({
-        channel: "task.jobs",
-        payload: { taskId: "t1", kind: "ensureWorktree", phase: "error", error: "plain failure" },
-      })
-    })
-  })
-
-  describe("engine.reportEvent (payload contract pinned — the activity hooks depend on it)", () => {
-    it("maps cwd → task and folds the coerced detail into the activity registry", async () => {
-      const { ctx, rec } = fakeCtx({ listTasks: () => [TASK] })
-      const result = await dispatch(
-        "engine.reportEvent",
-        {
-          kind: "awaiting-input",
-          cwd: `${TASK.worktreePath}/src/deep`,
-          // `junk` must be dropped; the normalized keys survive.
-          detail: { waiting: "permission", junk: 1 },
-        },
-        ctx,
-      )
-      expect(result).toEqual({})
-      expect(rec.reported).toEqual([{ taskId: "t1", kind: "awaiting-input", detail: { waiting: "permission" } }])
-    })
-
-    it("an explicit taskId wins over cwd resolution", async () => {
-      const { ctx, rec } = fakeCtx({ listTasks: () => [TASK] })
-      await dispatch(
-        "engine.reportEvent",
-        { kind: "turn-complete", taskId: "direct", tabId: "tab-3", cwd: TASK.worktreePath },
-        ctx,
-      )
-      expect(rec.reported).toEqual([{ taskId: "direct", kind: "turn-complete", detail: undefined }])
-      expect(rec.inboxRecords).toEqual([{ taskId: "direct", kind: "turn-complete", detail: undefined, tabId: "tab-3" }])
-    })
-
-    it("an unmatched cwd is silently dropped (returns {} with no report)", async () => {
-      const { ctx, rec } = fakeCtx({ listTasks: () => [TASK] })
-      await expect(
-        dispatch("engine.reportEvent", { kind: "turn-start", cwd: "/somewhere/else" }, ctx),
-      ).resolves.toEqual({})
-      expect(rec.reported).toEqual([])
-      expect(rec.inboxRecords).toEqual([])
-    })
-
-    it("rejects an unknown kind and a missing kind with the exact wording", async () => {
-      const { ctx } = fakeCtx()
-      await expect(dispatch("engine.reportEvent", { kind: "explode" }, ctx)).rejects.toThrow(
-        "unknown engine event kind: explode",
-      )
-      await expect(dispatch("engine.reportEvent", { cwd: "/x" }, ctx)).rejects.toThrow("kind is required")
-    })
-  })
-
-  describe("daemon surface", () => {
-    it("daemon.status reports the ctx-provided facts in the wire shape", async () => {
-      const { ctx } = fakeCtx({ listTasks: () => [TASK] })
-      const status = (await dispatch("daemon.status", {}, ctx)) as Record<string, unknown>
-      expect(status.daemonPid).toBe(4242)
-      expect(status.attachedClients).toBe(1)
-      expect(status.taskCount).toBe(1)
-      expect(status.socketPath).toBe("/tmp/fake/daemon.sock")
-      expect(status.startedAt).toBe("2026-06-01T00:00:00.000Z")
-      expect(typeof status.uptimeMs).toBe("number")
-      expect(typeof status.kobeVersion).toBe("string")
-    })
-
-    it("daemon.stop drives stopSoon and returns the empty object", async () => {
-      const { ctx, rec } = fakeCtx()
-      await expect(dispatch("daemon.stop", {}, ctx)).resolves.toEqual({})
-      expect(rec.stopped).toBe(1)
-    })
-
-    it("task.setActive publishes the active-task channel after the orchestrator call", async () => {
-      const active: Array<string | null> = []
-      const { ctx, rec } = fakeCtx({
-        setActiveTask: async (id: string | null) => {
-          active.push(id)
-        },
-      })
-      await expect(dispatch("task.setActive", { taskId: "t1" }, ctx)).resolves.toEqual({})
-      // Omitted taskId means "clear focus" — null, not an error.
-      await expect(dispatch("task.setActive", {}, ctx)).resolves.toEqual({})
-      expect(active).toEqual(["t1", null])
-      expect(rec.published).toEqual([
-        { channel: "active-task", payload: { taskId: "t1" } },
-        { channel: "active-task", payload: { taskId: null } },
-      ])
-    })
-
-    // Perf-fix op-count pin (paired with orchestrator/set-active-perf.test.ts):
-    // the store's fsync'd doSave was dropped from the focus path, but the
-    // `active-task` frame the UI needs must STILL publish 1:1 per switch. Over
-    // 10 switches → exactly 10 frames (the win removes disk writes, not frames).
-    it("publishes one active-task frame per switch — 10 switches → 10 frames", async () => {
-      const { ctx, rec } = fakeCtx({ setActiveTask: async () => {} })
-      for (let i = 0; i < 10; i++) {
-        await dispatch("task.setActive", { taskId: `t${i % 5}` }, ctx)
-      }
-      const frames = rec.published.filter((p) => p.channel === "active-task")
-      expect(frames).toHaveLength(10)
-    })
-  })
-
-  // "error shaping" moved to handlers-error-shape.test.ts (file-size cap).
+  // Runtime-oriented cases moved to handlers-runtime.test.ts (file-size cap).
 })

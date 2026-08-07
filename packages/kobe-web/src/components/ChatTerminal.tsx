@@ -28,8 +28,13 @@ import {
 } from "../lib/composer-history.ts"
 import { useAppState } from "../lib/store.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
+import {
+  coloredViewport,
+  visibleBufferText,
+} from "../lib/terminal-buffer.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
+import type { ColoredLine } from "../lib/tty-color.ts"
 import { isWebTransportOffline } from "../lib/web-transport.ts"
 
 // One decoder reused across every WebSocket message — a fresh `new
@@ -63,8 +68,10 @@ const CLAUDE_XTERM_THEME = {
   brightWhite: "#eae7df",
 } as const
 
+// Nerd Font variants FIRST — the bundled JetBrains Mono has no NF glyphs, so
+// p10k/eza icons tofu unless a locally-installed Nerd Font wins the stack.
 const TERMINAL_FONT_FAMILY =
-  '"JetBrains Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Symbols Nerd Font Mono", "SF Mono", ui-monospace, Menlo, monospace'
+  '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "FiraCode Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace'
 
 async function loadTerminalFont(): Promise<void> {
   if (!("fonts" in document)) return
@@ -81,34 +88,57 @@ type ChatTerminalProps = {
   tabId: string
   taskId: string
   mode: PtyMode
+  /** Per-tab engine vendor override (EngineTab.vendor mirror). */
+  vendor?: string
   testId?: string
   disableWebgl?: boolean
+  /** Suppress the built-in prompt composer (the /chat shell overlays its own
+   *  at the engine's native input position). The Reattach bar still shows. */
+  hideComposer?: boolean
   onStatusChange?: (status: WsStatus) => void
   onBufferChange?: (text: string) => void
-}
-
-function visibleBufferText(term: Terminal): string {
-  const buffer = term.buffer.active
-  const start = buffer.viewportY
-  const end = Math.min(buffer.length, start + term.rows)
-  const lines: string[] = []
-  for (let index = start; index < end; index += 1) {
-    lines.push(buffer.getLine(index)?.translateToString(true) ?? "")
-  }
-  return lines.join("\n")
+  /** Colored viewport lines (fg per run) for the TTY-translated render — the
+   *  raw-text `onBufferChange` loses ANSI color. */
+  onColoredBuffer?: (lines: ColoredLine[]) => void
+  /** Bumping this focuses the terminal's (hidden) input so keystrokes reach
+   *  the engine natively — the /chat shell drives the real CLI while showing
+   *  a translated render. A nonce (not a bool) so repeat clicks re-focus. */
+  focusNonce?: number
+  /** Live OSC window/tab title from the PTY (foreground process / session). */
+  onTitle?: (title: string) => void
+  /** IME composing string from the hidden textarea (null = composition ended)
+   *  — the GUI composer mirrors it so pinyin isn't invisible mid-composition. */
+  onComposition?: (text: string | null) => void
+  /** Terminal cursor per frame (viewport row + cell column) — the composer
+   *  mirror places its caret at the REAL cursor, not the end of the line. */
+  onCursor?: (pos: { row: number; col: number }) => void
 }
 
 export function ChatTerminal({
   tabId,
   taskId,
   mode,
+  vendor,
   testId,
   disableWebgl = false,
+  hideComposer = false,
   onStatusChange,
   onBufferChange,
+  onColoredBuffer,
+  focusNonce = 0,
+  onTitle,
+  onComposition,
+  onCursor,
 }: ChatTerminalProps) {
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const termRef = useRef<Terminal | null>(null)
+  // Ref so the xterm setup effect doesn't re-run when the parent rebinds
+  // onTitle each render.
+  const onTitleRef = useRef(onTitle)
+  onTitleRef.current = onTitle
+  const onCompositionRef = useRef(onComposition)
+  onCompositionRef.current = onComposition
   const [status, setStatus] = useState<WsStatus>("connecting")
   // A dropped PTY socket normally means "still running, just detached". But if
   // the daemon web transport is down, the PTY may be PAUSED — the reassuring
@@ -143,14 +173,25 @@ export function ChatTerminal({
     let ws: WebSocket | null = null
     let resizeObserver: ResizeObserver | null = null
     let bufferFrame: number | null = null
+    let titleDisposable: { dispose(): void } | null = null
+    let compositionCleanup: (() => void) | null = null
     setStatus("connecting")
     onStatusChange?.("connecting")
 
     const publishBuffer = (): void => {
-      if (!term || !onBufferChange || bufferFrame !== null) return
+      if (!term || bufferFrame !== null) return
+      if (!onBufferChange && !onColoredBuffer && !onCursor) return
       bufferFrame = requestAnimationFrame(() => {
         bufferFrame = null
-        if (!disposed && term) onBufferChange(visibleBufferText(term))
+        if (disposed || !term) return
+        onBufferChange?.(visibleBufferText(term))
+        onColoredBuffer?.(coloredViewport(term))
+        const buffer = term.buffer.active
+        // Viewport-relative row (matches coloredViewport indexing) + cell col.
+        onCursor?.({
+          row: buffer.baseY + buffer.cursorY - buffer.viewportY,
+          col: buffer.cursorX,
+        })
       })
     }
 
@@ -167,6 +208,7 @@ export function ChatTerminal({
         allowProposedApi: true,
         scrollback: 5000,
       })
+      termRef.current = term
       const fit = new FitAddon()
       term.loadAddon(fit)
       // Unicode 11 widths: default Unicode 6 measures emoji as one cell,
@@ -179,6 +221,22 @@ export function ChatTerminal({
       // Plain URLs in engine output become clickable.
       term.loadAddon(new WebLinksAddon())
       term.open(el)
+      // IME composes in xterm's hidden textarea — surface the pinyin
+      // buffer so the GUI composer can mirror it.
+      const ta = term.textarea
+      if (ta) {
+        const update = (e: CompositionEvent): void =>
+          onCompositionRef.current?.(e.data ?? "")
+        const end = (): void => onCompositionRef.current?.(null)
+        ta.addEventListener("compositionstart", update)
+        ta.addEventListener("compositionupdate", update)
+        ta.addEventListener("compositionend", end)
+        compositionCleanup = () => {
+          ta.removeEventListener("compositionstart", update)
+          ta.removeEventListener("compositionupdate", update)
+          ta.removeEventListener("compositionend", end)
+        }
+      }
       // The visual harness pins the stock renderer so browser screenshots and
       // buffer synchronization do not depend on GPU/WebGL availability.
       if (!disableWebgl) {
@@ -196,7 +254,15 @@ export function ChatTerminal({
         /* container not measured yet */
       }
 
-      ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows))
+      // Autofocus on mount (chat shell): a freshly created / switched-to tab
+      // takes keystrokes immediately — no click-to-focus required.
+      if (hideComposer) {
+        requestAnimationFrame(() => {
+          if (!disposed) termRef.current?.focus()
+        })
+      }
+
+      ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows, vendor))
       wsRef.current = ws
       ws.binaryType = "arraybuffer"
       ws.onopen = () => {
@@ -227,9 +293,20 @@ export function ChatTerminal({
           onStatusChange?.("closed")
         }
       }
+      // Shift+Enter → newline. xterm sends a bare CR (submit) for any Enter;
+      // claude's newline grammar is backslash+return (what /terminal-setup
+      // binds), and in a bare shell that's a harmless line continuation.
+      term.attachCustomKeyEventHandler((ev) => {
+        if (ev.type === "keydown" && ev.key === "Enter" && ev.shiftKey) {
+          if (ws?.readyState === WebSocket.OPEN) ws.send("\\\r")
+          return false
+        }
+        return true
+      })
       term.onData((d) => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(d)
       })
+      titleDisposable = term.onTitleChange((t) => onTitleRef.current?.(t))
 
       const sendResize = (): void => {
         if (!term) return
@@ -256,11 +333,32 @@ export function ChatTerminal({
       disposed = true
       resizeObserver?.disconnect()
       if (bufferFrame !== null) cancelAnimationFrame(bufferFrame)
+      titleDisposable?.dispose()
+      compositionCleanup?.()
       ws?.close()
       term?.dispose()
+      termRef.current = null
       wsRef.current = null
     }
-  }, [tabId, taskId, mode, epoch, disableWebgl, onStatusChange, onBufferChange])
+  }, [
+    tabId,
+    taskId,
+    mode,
+    vendor,
+    epoch,
+    disableWebgl,
+    onStatusChange,
+    onBufferChange,
+    onColoredBuffer,
+    onCursor,
+  ])
+
+  // Hand keyboard focus to the (hidden) terminal when the shell bumps the
+  // nonce, so the user drives the native CLI directly (slash-command menus,
+  // @-complete, arrow selection) while the translated render stays on screen.
+  useEffect(() => {
+    if (focusNonce > 0) requestAnimationFrame(() => termRef.current?.focus())
+  }, [focusNonce])
 
   const sendPrompt = (): void => {
     const ws = wsRef.current
@@ -286,7 +384,7 @@ export function ChatTerminal({
     setDraft("")
   }
 
-  const composer = mode === "engine"
+  const composer = mode === "engine" && !hideComposer
 
   return (
     <div className="flex h-full w-full flex-col">

@@ -30,12 +30,9 @@ export function desktopWindowControls(): DesktopWindowControls | undefined {
 
 export async function preloadDesktopModules(): Promise<void> {
   await Promise.allSettled([
-    import("../components/AppShell.tsx"),
     import("../components/Board.tsx"),
-    import("../components/IssuesPage.tsx"),
-    import("../components/WorkspaceTabs.tsx"),
+    import("../components/RoutinesPage.tsx"),
     import("../components/ChatTerminal.tsx"),
-    import("../components/BoardPeek.tsx"),
     import("../components/IssueIntakePanel.tsx"),
     import("../components/IssuePeek.tsx"),
     import("../components/SettingsPage.tsx"),

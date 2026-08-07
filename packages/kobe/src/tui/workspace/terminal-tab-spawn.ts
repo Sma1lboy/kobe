@@ -7,6 +7,8 @@
  * shell-quoting rule.
  */
 
+import { kobeHookReporterEnv } from "../../cli/invocation.ts"
+
 /** What a tab's PTY should spawn: an argv, plus optional bytes typed into
  *  it right after spawn (`TaskPtyOpts.initialInput`). */
 export interface TabSpawn {
@@ -54,6 +56,12 @@ export function shellSpawn(argv: readonly string[], shell: string, env?: Readonl
  * ponytail: one visible line flashes before the clear; upgrade path = an
  * `env` field on PtySpawnSpec with a skip-spare rule if cosmetics matter.
  */
-export function shellIdentityInput(taskId: string, tabId: string): string {
-  return ` export KOBE_TASK_ID=${shellCommandLine([taskId])} KOBE_TAB_ID=${shellCommandLine([tabId])} && clear\r`
+export function shellIdentityInput(
+  taskId: string,
+  tabId: string,
+  reporterEnv: Readonly<Record<string, string>> = kobeHookReporterEnv(),
+): string {
+  const env = { KOBE_TASK_ID: taskId, KOBE_TAB_ID: tabId, ...reporterEnv }
+  const exports = Object.entries(env).map(([key, value]) => `${key}=${shellCommandLine([value])}`)
+  return ` export ${exports.join(" ")} && clear\r`
 }

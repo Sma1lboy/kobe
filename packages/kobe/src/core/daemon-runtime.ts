@@ -26,6 +26,8 @@ import {
   deliverPromptToLiveEngineAdapter,
   engineSpecAdapter,
   ensureTaskSessionAdapter,
+  observeEngineSessionActivationAdapter,
+  recoverEngineSessionAdapter,
   startTaskSessionWithPromptAdapter,
   tearDownTaskSessionAdapter,
   terminalSpecAdapter,
@@ -46,10 +48,12 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   affectsActivityState,
   checkLatestVersion,
   latestTranscriptMtime,
+  recoverEngineSession: recoverEngineSessionAdapter,
+  observeEngineSessionActivation: observeEngineSessionActivationAdapter,
   deriveTitleFromSession,
   createEngineTurnDetector,
   async runWorktreeStatus(worktreePath, signal) {
-    const result = await spawnCapture("git", ["status", "--porcelain=v1"], {
+    const result = await spawnCapture("git", ["status", "--porcelain=v1", "--branch"], {
       cwd: worktreePath,
       env: readOnlyGitProcessEnv(),
       signal,

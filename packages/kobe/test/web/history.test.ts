@@ -44,11 +44,36 @@ describe("handleHistoryRequest", () => {
   })
 
   it("rejects traversal in sessionId", async () => {
-    for (const bad of ["../../etc/passwd", "a/b", "a\\b", ""]) {
-      const { req, url } = get(`/api/history/messages?vendor=claude&sessionId=${encodeURIComponent(bad)}`)
-      const res = await handleHistoryRequest(req, url)
-      expect(res?.status).toBe(400)
+    for (const route of ["messages", "trace", "trace/events"]) {
+      for (const bad of ["../../etc/passwd", "a/b", "a\\b", ""]) {
+        const { req, url } = get(`/api/history/${route}?vendor=claude&sessionId=${encodeURIComponent(bad)}`)
+        const res = await handleHistoryRequest(req, url)
+        expect(res?.status).toBe(400)
+      }
     }
+  })
+
+  it("returns the neutral empty trace for an engine without trace storage", async () => {
+    const { req, url } = get("/api/history/trace?vendor=custom-engine&sessionId=session-1")
+    const res = await handleHistoryRequest(req, url)
+    expect(res?.status).toBe(200)
+    await expect(res?.json()).resolves.toEqual({
+      trace: { sessionId: "session-1", turns: [] },
+    })
+  })
+
+  it("streams a full initial trace snapshot for reconnect-safe consumers", async () => {
+    const { req, url } = get("/api/history/trace/events?vendor=custom-engine&sessionId=session-1")
+    const res = await handleHistoryRequest(req, url)
+    expect(res?.status).toBe(200)
+    expect(res?.headers.get("content-type")).toBe("text/event-stream")
+    const reader = res?.body?.getReader()
+    expect(reader).toBeDefined()
+    const first = await reader?.read()
+    await reader?.cancel()
+    const text = new TextDecoder().decode(first?.value)
+    expect(text).toContain("event: trace")
+    expect(text).toContain('data: {"sessionId":"session-1","turns":[]}')
   })
 
   it("returns an empty session list for a worktree with no transcripts", async () => {

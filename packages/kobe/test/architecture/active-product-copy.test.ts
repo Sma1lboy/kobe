@@ -36,7 +36,7 @@ const STALE_CLAIMS: Array<[path: string, phrases: string[]]> = [
       "需要 Bun ≥ 1.3.11、tmux",
     ],
   ],
-  ["packages/kobe-web/src/components/ToolsPanel.tsx", ["tmux session and engine"]],
+  ["packages/kobe-web/src/components/ChatShell.tsx", ["tmux session and engine"]],
   ["packages/kobe-web/README.md", ["kobe-sandbox tmux socket"]],
   [".claude/skills/release/SKILL.md", ["needs tmux", "apt-installed tmux"]],
   ["marketing/brand.meta.yaml", ["git worktrees, tmux sessions", "persistent tmux sessions"]],
