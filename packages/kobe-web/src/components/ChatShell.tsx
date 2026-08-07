@@ -112,6 +112,7 @@ function SessionView({
   vendor,
   grammar,
   onEngineLive,
+  onConversation,
 }: {
   tabId: string
   taskId: string
@@ -125,6 +126,10 @@ function SessionView({
   /** Grammar-derived engine liveness, lifted so the Agent Trace can clear
    *  when this tab drops to a bare shell / boot screen. */
   onEngineLive?: (live: boolean) => void
+  /** Screen shows a conversation (a user bubble exists). The trace binds to
+   *  a transcript only then — a fresh boot has NOTHING to trace, so it must
+   *  not parade the previous session (no state to manage: the screen tells). */
+  onConversation?: (has: boolean) => void
 }) {
   const [colored, setColored] = useState<ColoredLine[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
@@ -313,6 +318,14 @@ function SessionView({
   // A bordered card is only warranted when the engine is WAITING on the user
   // (spinner / slash-menu / question). Passive notices (clipboard hint) get a
   // quiet unboxed line instead.
+  // A user bubble on screen = this tab HAS a conversation to trace.
+  const hasConversation = useMemo(
+    () => body.some((b) => b.kind === "user"),
+    [body],
+  )
+  useEffect(() => {
+    onConversation?.(hasConversation)
+  }, [hasConversation, onConversation])
   const footerInteractive = footer.some(
     (b) => b.kind === "menu" || b.kind === "options" || b.kind === "activity",
   )
@@ -555,9 +568,11 @@ export function ChatShell() {
   // Active tab's grammar-derived engine liveness (SessionView reports it up).
   // Off → the trace panel clears instead of parading a dead session.
   const [engineLive, setEngineLive] = useState(false)
+  const [hasConversation, setHasConversation] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: tab switch resets liveness until the new SessionView reports
   useEffect(() => {
     setEngineLive(false)
+    setHasConversation(false)
   }, [tabId])
 
   return (
@@ -630,6 +645,7 @@ export function ChatShell() {
                   vendor={vendor}
                   grammar={grammarFor(effectiveVendor ?? selected.vendor)}
                   onEngineLive={setEngineLive}
+                  onConversation={setHasConversation}
                 />
               )}
             </div>
@@ -653,6 +669,7 @@ export function ChatShell() {
               tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
             }
             engineActive={engineLive}
+            bound={hasConversation}
             width={traceW}
           />
         )}

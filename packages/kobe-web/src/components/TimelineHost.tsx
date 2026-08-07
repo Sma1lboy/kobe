@@ -13,6 +13,7 @@ export function TimelineHost({
   engineState,
   tabSessionId,
   engineActive = true,
+  bound = true,
   width,
 }: {
   taskId: string
@@ -23,6 +24,9 @@ export function TimelineHost({
   tabSessionId?: string
   /** Engine liveness of the active tab (grammar-derived) — off clears the panel. */
   engineActive?: boolean
+  /** The tab's screen shows a conversation — without it (fresh boot) the
+   *  trace must not bind to the previous session's transcript. */
+  bound?: boolean
   /** Drag-resized panel width (PaneResizer). */
   width?: number
 }) {
@@ -34,6 +38,7 @@ export function TimelineHost({
     vendor,
     engineState,
     tabSessionId,
+    bound,
   })
   const [expanded, setExpanded] = useState(false)
 

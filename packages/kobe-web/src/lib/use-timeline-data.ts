@@ -27,6 +27,7 @@ export function useTimelineData({
   vendor,
   engineState,
   tabSessionId,
+  bound = true,
 }: {
   taskId: string
   worktreePath: string | null
@@ -37,6 +38,10 @@ export function useTimelineData({
    *  over both the newest transcript and the task-level rollup, which is
    *  last-event-wins across tabs and can lag a whole session behind. */
   tabSessionId?: string
+  /** The tab's screen shows a conversation. Without a hook-known session,
+   *  the trace binds to the newest transcript ONLY when true — a fresh boot
+   *  has nothing to trace, not the previous session's history. */
+  bound?: boolean
 }): TimelineData {
   const [trace, setTrace] = useState<TimelineModel>({
     sessionId: engineState?.sessionId ?? "",
@@ -54,6 +59,14 @@ export function useTimelineData({
     async (force = false): Promise<void> => {
       if (!worktreePath) return
       const seq = ++seqRef.current
+      // Unbound and no hook-known session: nothing to trace yet.
+      if (!preferredSessionId && !bound) {
+        setSessionId("")
+        setTrace({ sessionId: "", turns: [] })
+        setError(null)
+        setLoaded(true)
+        return
+      }
       try {
         const sessions = await fetchSessions(worktreePath, vendor)
         if (!force && sessions.latestMtime === mtimeRef.current) return
@@ -61,7 +74,7 @@ export function useTimelineData({
         // Active tab's hook session first; otherwise the NEWEST transcript
         // (the task-level id is the last resort — it can lag a session behind).
         const latest = sessions.sessions.at(-1)
-        const target = preferredSessionId ?? latest ?? taskSessionId
+        const target = preferredSessionId ?? (bound ? (latest ?? taskSessionId) : undefined)
         const next = target
           ? await fetchTrace(vendor, target)
           : { sessionId: "", turns: [] }
@@ -76,7 +89,7 @@ export function useTimelineData({
         if (seq === seqRef.current) setLoaded(true)
       }
     },
-    [worktreePath, vendor, preferredSessionId, taskSessionId],
+    [worktreePath, vendor, preferredSessionId, taskSessionId, bound],
   )
 
   useEffect(() => {
