@@ -116,7 +116,8 @@ const ptySessions = createPtySessionManager({
   createScrollback,
   scrollbackCap: SCROLLBACK_CAP,
   env: ptyEnv,
-  onTerminalCommit: sessionObserver.observe,
+  onEngineSessionStart: sessionObserver.watch,
+  onEngineSessionStop: ({ tabId, rootPid }) => sessionObserver.unwatch(tabId, rootPid),
 })
 
 const server = createServer((req, res) => {

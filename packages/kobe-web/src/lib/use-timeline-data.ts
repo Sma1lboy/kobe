@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { type TimelineModel, withLiveState } from "./timeline.ts"
 import {
   applyLiveTraceEvent,
-  fetchTrace,
   subscribeLiveTrace,
   subscribeTrace,
 } from "./trace.ts"
@@ -16,7 +15,10 @@ import type {
   EngineState,
 } from "./types.ts"
 
-export type TimelineBindingState = EngineSessionBinding["state"] | "unavailable"
+export type TimelineBindingState =
+  | EngineSessionBinding["state"]
+  | "empty"
+  | "unavailable"
 
 // A local trace fetch often resolves inside one paint. Keep resume transitions
 // visible long enough to communicate that the pane changed session identity.
@@ -59,9 +61,14 @@ export function useTimelineData({
     (targetSessionId ? `legacy:${vendor}:${targetSessionId}` : "")
   const runStartedAt = binding?.startedAt ?? 0
   const transitionPending = transition?.startSource === "resume"
+  const unidentified =
+    !targetSessionId &&
+    (binding?.state === "pending" || binding?.state === "missing")
   const bindingState: TimelineBindingState = transitionPending
     ? "pending"
-    : (binding?.state ?? (legacySessionId ? "bound" : "unavailable"))
+    : unidentified
+      ? "empty"
+      : (binding?.state ?? (legacySessionId ? "bound" : "unavailable"))
   const [trace, setTrace] = useState<TimelineModel>({
     sessionId: targetSessionId,
     turns: [],
@@ -76,10 +83,9 @@ export function useTimelineData({
   // resumed session can never paint the old timeline under its new identity.
   const generationReady =
     !transitionPending &&
-    (!targetSessionId ||
-      (loaded &&
-        loadedGeneration === targetGeneration &&
-        trace.sessionId === targetSessionId))
+    loaded &&
+    loadedGeneration === targetGeneration &&
+    trace.sessionId === targetSessionId
 
   useEffect(() => {
     const seq = ++seqRef.current
@@ -100,40 +106,37 @@ export function useTimelineData({
       setLoaded(true)
       return
     }
-    void fetchTrace(vendor, targetSessionId)
-      .then(async (next) => {
-        await wait(minimumLoadingMs - (Date.now() - startedAt))
-        if (seq !== seqRef.current) return
-        // Engine history is session-scoped. Resuming away from a session and
-        // later returning to it must restore its complete persisted timeline;
-        // EngineRun timestamps identify the live attachment, not a history
-        // retention boundary.
-        setTrace(next)
-        setLoadedGeneration(targetGeneration)
-        setLoaded(true)
+    let settled = false
+    let settleSeq = 0
+    const settle = (apply: () => void): void => {
+      const currentSettle = ++settleSeq
+      const delay = settled ? 0 : minimumLoadingMs - (Date.now() - startedAt)
+      void wait(delay).then(() => {
+        if (seq !== seqRef.current || currentSettle !== settleSeq) return
+        apply()
+        settled = true
       })
-      .catch(async (err) => {
-        await wait(minimumLoadingMs - (Date.now() - startedAt))
-        if (seq !== seqRef.current) return
-        setError(err instanceof Error ? err.message : String(err))
-        setLoadedGeneration(targetGeneration)
-        setLoaded(true)
-      })
-  }, [vendor, targetSessionId, targetGeneration, binding?.startSource])
-
-  useEffect(() => {
-    if (!targetSessionId) return
+    }
     return subscribeTrace(
       vendor,
       targetSessionId,
       (next) => {
-        setTrace(next)
-        setLoaded(true)
-        setError(null)
+        settle(() => {
+          setTrace(next)
+          setLoadedGeneration(targetGeneration)
+          setLoaded(true)
+          setError(null)
+        })
       },
-      (message) => setError(message),
+      (message) => {
+        settle(() => {
+          setError(message)
+          setLoadedGeneration(targetGeneration)
+          setLoaded(true)
+        })
+      },
     )
-  }, [vendor, targetSessionId])
+  }, [vendor, targetSessionId, targetGeneration, binding?.startSource])
 
   useEffect(() => {
     if (!targetSessionId) return

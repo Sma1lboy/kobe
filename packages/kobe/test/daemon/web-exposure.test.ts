@@ -1,8 +1,9 @@
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { createDaemonHandlerRegistry, shapeDaemonError } from "@sma1lboy/kobe-daemon/daemon/server"
 import { WEB_RPC_ALLOWLIST, WEB_RPC_ALLOWSET } from "@sma1lboy/kobe-daemon/daemon/web-rpc-allowlist"
-import { webExposedRpcNames, webRpcErrorBody } from "@sma1lboy/kobe-daemon/daemon/web-server"
-import { describe, expect, it } from "vitest"
+import { prepareEngineSpecSession, webExposedRpcNames, webRpcErrorBody } from "@sma1lboy/kobe-daemon/daemon/web-server"
+import { describe, expect, it, vi } from "vitest"
 
 /**
  * Web-exposure policy + error-shape parity for the unified dispatch seam.
@@ -28,6 +29,8 @@ const EXPOSED: readonly DaemonRequestName[] = [
   "automation.update",
   "daemon.status",
   "engine.observeSession",
+  "engine.unwatchSession",
+  "engine.watchSession",
   "task.archive",
   "task.create",
   "task.delete",
@@ -106,5 +109,27 @@ describe("socket/web error-shape parity", () => {
     const err = new TypeError("bad type")
     expect(shapeDaemonError(err)).toEqual({ message: "bad type", name: "TypeError" })
     expect(webRpcErrorBody(err)).toEqual({ error: "bad type", name: "TypeError" })
+  })
+})
+
+describe("engine spec session identity", () => {
+  it("opens an empty run when the engine cannot accept a caller-owned id", async () => {
+    const request = vi.fn().mockResolvedValue({})
+    await prepareEngineSpecSession({ request } as unknown as DaemonRpcClient, "task-1", "tab-a", "codex", undefined)
+    expect(request).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenCalledWith("engine.beginSession", {
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+    })
+  })
+
+  it("pins a caller-owned session id into the run it just opened", async () => {
+    const request = vi.fn().mockResolvedValue({})
+    await prepareEngineSpecSession({ request } as unknown as DaemonRpcClient, "task-1", "tab-a", "claude", "session-1")
+    expect(request.mock.calls).toEqual([
+      ["engine.beginSession", { taskId: "task-1", tabId: "tab-a", vendor: "claude" }],
+      ["engine.pinSession", { taskId: "task-1", tabId: "tab-a", vendor: "claude", sessionId: "session-1" }],
+    ])
   })
 })

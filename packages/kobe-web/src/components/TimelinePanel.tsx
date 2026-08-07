@@ -237,6 +237,13 @@ export function TimelinePanel({
           </div>
         ) : bindingState === "pending" ? (
           <TraceLoading label="Waiting for the engine session id…" />
+        ) : bindingState === "empty" ? (
+          <div className="py-8 text-center">
+            <div className="font-mono text-[11px] text-muted">No turns yet</div>
+            <div className="mt-1 text-[10px] text-subtle">
+              Execution events appear with the next prompt.
+            </div>
+          </div>
         ) : bindingState === "missing" ? (
           <div className="border-l-2 border-kobe-yellow pl-3 text-[11px] leading-relaxed text-muted">
             Bound engine session is missing

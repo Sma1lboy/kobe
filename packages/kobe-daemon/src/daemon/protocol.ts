@@ -52,8 +52,12 @@ export {
  * event frames). Additive — an older client never sends `pty.*`, a newer
  * client against an older daemon gets "unknown daemon request" and falls back
  * to a local PTY — so MIN stays 2.
+ *
+ * v5: additive `engine.watchSession` / `engine.unwatchSession` process leases
+ * let a browser PTY sidecar hand continuous native-context observation to the
+ * daemon. Older peers keep using hooks or the one-shot observer, so MIN stays 2.
  */
-export const DAEMON_PROTOCOL_VERSION = 4
+export const DAEMON_PROTOCOL_VERSION = 5
 
 /** Oldest protocol version this build can still interoperate with. */
 export const MIN_COMPATIBLE_PROTOCOL_VERSION = 2
@@ -167,13 +171,15 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
-  // Spawn-time session pin: the engine spec injected a caller-set session id
-  // (claude `--session-id`), record + broadcast it for tab-precise traces.
+  // Begin an unidentified process run, then atomically pin it when the engine
+  // accepts a caller-set session id.
   | "engine.beginSession"
   | "engine.pinSession"
-  // Sidecar commit observation: ask the engine adapter whether the PTY's
-  // native conversation changed before its ordinary hook fires.
+  // Legacy one-shot observation plus the continuous process lease used by the
+  // browser PTY sidecar. Provider parsing stays behind the engine adapter.
   | "engine.observeSession"
+  | "engine.watchSession"
+  | "engine.unwatchSession"
   // Remove the durable Inbox item at the supplied event timestamp. Explicit
   // removal, opening, and visiting the target all use this guarded operation.
   | "attention.dismiss"

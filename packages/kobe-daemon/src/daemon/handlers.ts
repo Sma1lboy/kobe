@@ -34,6 +34,7 @@ import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { AttentionInboxStore } from "./attention-inbox.ts"
 import type { AutomationsStore } from "./automations-store.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
+import type { EngineSessionMonitor } from "./engine-session-monitor.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { objectPayload, requireString } from "./handler-validators.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
@@ -89,6 +90,8 @@ export interface DaemonHandlerContext {
   readonly inbox: AttentionInboxStore
   /** Durable Terminal Tab -> native engine-session identities. */
   readonly bindings: SessionBindingStore
+  /** Ephemeral process watches that continuously update durable bindings. */
+  readonly engineSessionMonitor: EngineSessionMonitor
   /** Starts deduplicated durable background deletion after RPC acceptance. */
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */

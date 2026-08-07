@@ -30,12 +30,13 @@
 import { isAbsolute } from "node:path"
 import { errorMessage } from "@/lib/error-message"
 import { engineEntry } from "../engine/registry.ts"
+import { TraceSnapshotMonitor } from "./trace-snapshot-monitor.ts"
 
 const SESSIONS_ROUTE = "/api/history/sessions"
 const MESSAGES_ROUTE = "/api/history/messages"
 const TRACE_ROUTE = "/api/history/trace"
 const TRACE_EVENTS_ROUTE = "/api/history/trace/events"
-const TRACE_REVISION_POLL_MS = 350
+const traceSnapshots = new TraceSnapshotMonitor((vendor) => engineEntry(vendor).history)
 
 /** Vendor ids are registry keys / user-registered slugs — never paths. */
 function isSafeVendor(value: unknown): value is string {
@@ -117,19 +118,16 @@ function handleTraceEvents(req: Request, url: URL): Response {
     return Response.json({ error: "invalid sessionId" }, { status: 400 })
   }
 
-  const reader = engineEntry(vendor).history
   const encoder = new TextEncoder()
-  let timer: ReturnType<typeof setInterval> | undefined
   let closed = false
-  let inFlight = false
-  let lastRevision = Number.NaN
+  let unsubscribe: (() => void) | undefined
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const close = (): void => {
         if (closed) return
         closed = true
-        if (timer) clearInterval(timer)
+        unsubscribe?.()
       }
       const send = (event: string, data: unknown, id?: number): void => {
         if (closed) return
@@ -140,29 +138,15 @@ function handleTraceEvents(req: Request, url: URL): Response {
           close()
         }
       }
-      const refresh = async (force: boolean): Promise<void> => {
-        if (closed || inFlight) return
-        inFlight = true
-        try {
-          const revision = reader.traceRevision ? await reader.traceRevision(sessionId) : 0
-          if (!force && (!reader.traceRevision || revision === lastRevision)) return
-          const trace = reader.readTrace ? await reader.readTrace(sessionId) : { sessionId, turns: [] }
-          lastRevision = revision
-          send("trace", trace, revision)
-        } catch (err) {
-          send("trace-error", { error: errorMessage(err) })
-        } finally {
-          inFlight = false
-        }
-      }
-
-      void refresh(true)
-      timer = setInterval(() => void refresh(false), TRACE_REVISION_POLL_MS)
+      unsubscribe = traceSnapshots.subscribe(vendor, sessionId, {
+        trace: (trace, revision) => send("trace", trace, revision),
+        error: (err) => send("trace-error", { error: errorMessage(err) }),
+      })
       req.signal.addEventListener("abort", close, { once: true })
     },
     cancel() {
       closed = true
-      if (timer) clearInterval(timer)
+      unsubscribe?.()
     },
   })
 

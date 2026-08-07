@@ -125,29 +125,39 @@ not kobe.
   (vendors that can't take a caller-set id, like Codex, are left untouched).
 - The daemon persists the neutral identity chain
   `Task -> Terminal Tab -> current EngineRun -> native Engine Session` in
-  `<KOBE_HOME>/.kobe/session-bindings.json`. A run starts as `pending`, becomes
-  `bound` when the engine supplies its native id (spawn-time for Claude,
-  hook-time for Codex), and may later become `ended` or `superseded` without
-  losing the transcript identity. The file retains prior run pointers so a
-  tab changing conversations does not rewrite history; conversation content
-  remains exclusively in the engine's own transcript store.
+  `<KOBE_HOME>/.kobe/session-bindings.json`. Starting a new engine process moves
+  the current pointer to an unidentified run immediately: the trace is empty,
+  never borrowed from the tab's previous conversation. The engine then supplies
+  its native id (spawn-time for Claude, hook- or observer-time for Codex) and
+  binds that same run. A daemon restart turns an abandoned `pending` run into
+  the same empty state instead of loading forever or attaching historical
+  identity. Runs may later become `ended` or `superseded` without losing their
+  transcript identity. The file retains prior runs so changing conversations
+  does not rewrite history; content remains in the engine's transcript store.
 - Claude Code and Codex `SessionStart` hooks provide `startup`, `resume`,
   `clear`, or `compact`. Kobe creates a fresh `runId` for the first three
   causes (after filling any pending launch) and keeps the current run for
   `compact`. Consequently, exiting and later resuming a conversation produces
   a new run with the same native `sessionId`.
 - Codex's native `/resume` picker changes conversation before it emits the
-  deferred `SessionStart`. In the browser/Electron PTY path, Enter triggers a
-  bounded adapter observation window keyed by that tab's process id. The Codex
-  adapter reads exact structured resume evidence from Codex's local log
-  database. A `thread/resume` span first publishes an in-memory transition so
-  Agent Trace enters loading before Codex finishes restoring the selected
-  thread; the transition never replaces or persists the current run. A rollout
-  path, or the selected `thread.id` when no path exists, then binds the new run
-  and clears the transition. The later hook confirms that same run. Kobe never
-  parses picker rows or terminal pixels. If the internal log format is absent
-  or changes, the observer returns nothing and the ordinary hook remains the
+  deferred `SessionStart`. In the browser/Electron PTY path, the sidecar
+  registers the tab's engine process when it spawns and heartbeats that lease;
+  the daemon continuously asks the selected engine adapter for context changes.
+  The Codex adapter reads exact structured resume evidence from Codex's local
+  log database behind an opaque monotonic cursor. A `thread/resume` span first
+  publishes an in-memory transition so Agent Trace enters loading before Codex
+  finishes restoring the selected thread; the transition never replaces or
+  persists the current run. A rollout path, or the selected `thread.id` when no
+  path exists, then binds the new run and clears the transition. Heartbeat
+  re-registration restores the monitor after a daemon restart without changing
+  the PTY process. The later hook confirms that same run. Kobe never parses
+  picker rows or terminal pixels. If the internal log format is absent or
+  changes, the observer returns nothing and the ordinary hook remains the
   compatibility fallback.
+- Agent Trace snapshots are keyed by the bound native session. The daemon shares
+  one engine-owned revision/history poll per active session and broadcasts full
+  reconnect-safe snapshots; the frontend only selects the current task/tab and
+  never races a separate history fetch against that stream.
 - Current-run pointers and run history survive a daemon restart. New clients consume the binding
   snapshot directly; they do not choose a transcript from visible terminal
   pixels or from whichever history file happens to be newest.

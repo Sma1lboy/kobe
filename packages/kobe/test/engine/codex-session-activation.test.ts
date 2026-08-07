@@ -19,6 +19,7 @@ describe("Codex session activation observer", () => {
       transcriptPath: TRANSCRIPT,
       source: "resume",
       observedAt: 1_786_022_485_925,
+      cursor: "7",
     })
   })
 
@@ -35,6 +36,7 @@ describe("Codex session activation observer", () => {
       sessionId: SESSION_ID,
       source: "resume",
       observedAt: 1_786_081_735_042,
+      cursor: "8",
     })
   })
 
@@ -51,6 +53,7 @@ describe("Codex session activation observer", () => {
       phase: "pending",
       source: "resume",
       observedAt: 1_786_081_734_500,
+      cursor: "9",
     })
   })
 
@@ -74,14 +77,14 @@ describe("Codex session activation observer", () => {
     }))
     await expect(
       observeCodexSessionActivation(
-        { rootPid: 400, afterMs: 1_786_022_480_000 },
+        { rootPid: 400, afterMs: 1_786_022_480_000, afterCursor: "7" },
         {
           findEnginePid: async () => ({ vendor: "codex", pid: 401 }),
           latestResume,
         },
       ),
     ).resolves.toMatchObject({ phase: "selected", sessionId: SESSION_ID })
-    expect(latestResume).toHaveBeenCalledWith(401, 1_786_022_480_000)
+    expect(latestResume).toHaveBeenCalledWith(401, 1_786_022_480_000, "7")
   })
 
   it("does not inspect another engine's process", async () => {
@@ -95,6 +98,27 @@ describe("Codex session activation observer", () => {
         },
       ),
     ).resolves.toBeNull()
+    expect(latestResume).not.toHaveBeenCalled()
+  })
+
+  it("rejects malformed rollout evidence instead of binding a guessed session", () => {
+    expect(
+      parseCodexResumeLog({
+        id: 11,
+        ts: 1_786_081_736,
+        ts_nanos: 0,
+        feedback_log_body: "Resuming rollout from an unquoted transcript",
+      }),
+    ).toBeNull()
+  })
+
+  it("rejects invalid root process identity without reading logs", async () => {
+    const findEnginePid = vi.fn()
+    const latestResume = vi.fn()
+    await expect(
+      observeCodexSessionActivation({ rootPid: 0, afterMs: 0 }, { findEnginePid, latestResume }),
+    ).resolves.toBeNull()
+    expect(findEnginePid).not.toHaveBeenCalled()
     expect(latestResume).not.toHaveBeenCalled()
   })
 })

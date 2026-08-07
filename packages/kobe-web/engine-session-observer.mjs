@@ -1,46 +1,53 @@
-/**
- * Neutral PTY-side trigger for engine-owned session observation.
- *
- * The sidecar knows tab/process identity but not provider log formats. After a
- * terminal commit it asks the daemon to run the selected engine adapter. A
- * bounded retry window covers both the provider persisting its activation and
- * a resumed app-server thread completing startup after Enter reaches the PTY.
- */
+/** Registers engine PTY process identity; daemon owns provider observation. */
 
-const DEFAULT_DELAYS_MS = [0, 100, 300, 750, 1500, 3000]
+const DEFAULT_HEARTBEAT_MS = 5_000
 
 export function createEngineSessionObservationClient({
   daemonWebPort,
   fetchFn = fetch,
-  setTimeoutFn = setTimeout,
-  delaysMs = DEFAULT_DELAYS_MS,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+  heartbeatMs = DEFAULT_HEARTBEAT_MS,
 }) {
-  const generations = new Map()
+  const watches = new Map()
 
-  function observe({ taskId, tabId, vendor, rootPid }) {
-    if (!taskId || !tabId || !Number.isInteger(rootPid) || rootPid <= 0) return
-    const generation = (generations.get(tabId) ?? 0) + 1
-    generations.set(tabId, generation)
-    for (const delayMs of delaysMs) {
-      const timer = setTimeoutFn(() => {
-        if (generations.get(tabId) !== generation) return
-        void fetchFn(`http://127.0.0.1:${daemonWebPort}/api/rpc`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            name: "engine.observeSession",
-            payload: { taskId, tabId, rootPid, ...(vendor ? { vendor } : {}) },
-          }),
-        }).catch(() => {})
-      }, delayMs)
-      timer?.unref?.()
+  async function rpc(name, payload) {
+    try {
+      await fetchFn(`http://127.0.0.1:${daemonWebPort}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, payload }),
+      })
+    } catch {
+      // Heartbeats reconstruct daemon state after a restart.
     }
   }
 
-  return {
-    observe,
-    forget(tabId) {
-      generations.delete(tabId)
-    },
+  function watch(input) {
+    if (!input.taskId || !input.tabId || !Number.isInteger(input.rootPid) || input.rootPid <= 0) return
+    unwatch(input.tabId)
+    const payload = { ...input, startedAt: Number.isFinite(input.startedAt) ? input.startedAt : Date.now() }
+    void rpc("engine.watchSession", payload)
+    const timer = setIntervalFn(() => void rpc("engine.watchSession", payload), heartbeatMs)
+    timer?.unref?.()
+    watches.set(input.tabId, { payload, timer })
   }
+
+  function unwatch(tabId, rootPid) {
+    const current = watches.get(tabId)
+    if (!current || (rootPid !== undefined && current.payload.rootPid !== rootPid)) return
+    clearIntervalFn(current.timer)
+    watches.delete(tabId)
+    void rpc("engine.unwatchSession", {
+      taskId: current.payload.taskId,
+      tabId: current.payload.tabId,
+      rootPid: current.payload.rootPid,
+    })
+  }
+
+  function close() {
+    for (const tabId of [...watches.keys()]) unwatch(tabId)
+  }
+
+  return { watch, unwatch, close, watchedCount: () => watches.size }
 }

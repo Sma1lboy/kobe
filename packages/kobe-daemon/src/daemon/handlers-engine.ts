@@ -41,10 +41,37 @@ export const ENGINE_HANDLERS: readonly DaemonRequestHandler[] = [
     },
   },
   {
+    name: "engine.watchSession",
+    web: true,
+    handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      const tabId = requireString(payload, "tabId")
+      const rootPid = requireNumber(payload, "rootPid")
+      const startedAt = requireNumber(payload, "startedAt")
+      if (!Number.isInteger(rootPid) || rootPid <= 0) throw new Error("rootPid must be a positive integer")
+      if (!Number.isFinite(startedAt) || startedAt < 0) throw new Error("startedAt must be a non-negative number")
+      const task = ctx.orch.getTask(taskId)
+      if (!task) throw new Error(`task not found: ${taskId}`)
+      const vendor = optionalString(payload, "vendor") ?? task.vendor ?? ctx.runtime.defaultTaskVendor
+      ctx.engineSessionMonitor.watch({ taskId, tabId, vendor, rootPid, startedAt })
+      return { watching: true }
+    },
+  },
+  {
+    name: "engine.unwatchSession",
+    web: true,
+    handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      const tabId = requireString(payload, "tabId")
+      const rootPid = requireNumber(payload, "rootPid")
+      if (!Number.isInteger(rootPid) || rootPid <= 0) throw new Error("rootPid must be a positive integer")
+      return { removed: ctx.engineSessionMonitor.unwatch({ taskId, tabId, rootPid }) }
+    },
+  },
+  {
     name: "engine.observeSession",
-    // The localhost PTY sidecar calls this after a terminal commit. It carries
-    // no transcript bytes and can only ask the adapter to inspect the supplied
-    // process; the daemon still validates task/tab ownership before binding.
+    // Backward-compatible one-shot path. New sidecars lease a continuous
+    // daemon monitor through engine.watchSession instead.
     web: true,
     async handle(payload, ctx) {
       const taskId = requireString(payload, "taskId")

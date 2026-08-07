@@ -235,6 +235,7 @@ describe("daemon runtime handlers", () => {
         transcriptPath: "/tmp/observed-rollout.jsonl",
         source: "resume" as const,
         observedAt: 1234,
+        cursor: "11",
       }))
       ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
         ...ctx.runtime,
@@ -264,6 +265,7 @@ describe("daemon runtime handlers", () => {
           phase: "pending",
           source: "resume",
           observedAt: 1_234,
+          cursor: "12",
         }),
       }
 
@@ -280,6 +282,40 @@ describe("daemon runtime handlers", () => {
         },
       ])
       expect(rec.bindings).toEqual([])
+    })
+
+    it("registers and unregisters a validated continuous engine-process watch", async () => {
+      const { ctx } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      const watch = vi.fn()
+      const unwatch = vi.fn(() => true)
+      ;(ctx as { engineSessionMonitor: DaemonHandlerContext["engineSessionMonitor"] }).engineSessionMonitor = {
+        watch,
+        unwatch,
+      } as unknown as DaemonHandlerContext["engineSessionMonitor"]
+
+      await expect(
+        dispatch("engine.watchSession", { taskId: "t1", tabId: "tab-codex", rootPid: 4242, startedAt: 1_000 }, ctx),
+      ).resolves.toEqual({ watching: true })
+      expect(watch).toHaveBeenCalledWith({
+        taskId: "t1",
+        tabId: "tab-codex",
+        vendor: "codex",
+        rootPid: 4242,
+        startedAt: 1_000,
+      })
+      await expect(
+        dispatch("engine.unwatchSession", { taskId: "t1", tabId: "tab-codex", rootPid: 4242 }, ctx),
+      ).resolves.toEqual({ removed: true })
+    })
+
+    it("rejects invalid process-incarnation watch parameters", async () => {
+      const { ctx } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      await expect(
+        dispatch("engine.watchSession", { taskId: "t1", tabId: "tab-codex", rootPid: 0, startedAt: 1_000 }, ctx),
+      ).rejects.toThrow("rootPid must be a positive integer")
+      await expect(
+        dispatch("engine.watchSession", { taskId: "t1", tabId: "tab-codex", rootPid: 42, startedAt: -1 }, ctx),
+      ).rejects.toThrow("startedAt must be a non-negative number")
     })
 
     it("recovers a native session only for a tab-scoped session-start from an older hook reporter", async () => {

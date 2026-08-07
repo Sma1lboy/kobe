@@ -73,7 +73,8 @@ export function createPtySessionManager({
   submitDelays = DEFAULT_SUBMIT_DELAYS,
   maxSessions = DEFAULT_MAX_SESSIONS,
   backpressure = DEFAULT_BACKPRESSURE,
-  onTerminalCommit = () => {},
+  onEngineSessionStart = () => {},
+  onEngineSessionStop = () => {},
 }) {
   /** @type {Map<string, { pty: any, scrollback: ReturnType<createScrollback>, sockets: Set<any> }>} */
   const sessions = new Map()
@@ -141,6 +142,7 @@ export function createPtySessionManager({
     const entry = {
       pty,
       ...identity,
+      startedAt: Date.now(),
       scrollback: createScrollback(scrollbackCap),
       sockets: new Set(),
       paused: false,
@@ -154,6 +156,7 @@ export function createPtySessionManager({
       applyBackpressure(entry)
     })
     pty.onExit(() => {
+      stopEngineWatch(tabId, entry)
       clearDrainTimer(entry)
       for (const ws of entry.sockets) {
         if (ws.readyState === ws.OPEN) ws.close(1000, "engine exited")
@@ -161,7 +164,22 @@ export function createPtySessionManager({
       if (sessions.get(tabId) === entry) sessions.delete(tabId)
     })
     sessions.set(tabId, entry)
+    if (entry.mode === "engine") {
+      onEngineSessionStart({
+        taskId: entry.taskId,
+        tabId,
+        vendor: entry.vendor,
+        rootPid: entry.pty.pid,
+        startedAt: entry.startedAt,
+      })
+    }
     return entry
+  }
+
+  function stopEngineWatch(tabId, entry) {
+    if (entry.mode !== "engine" || entry.watchStopped) return
+    entry.watchStopped = true
+    onEngineSessionStop({ taskId: entry.taskId, tabId, rootPid: entry.pty.pid })
   }
 
   async function ensureSession(tabId, taskId, mode, cols, rows, vendor) {
@@ -212,14 +230,6 @@ export function createPtySessionManager({
         }
       }
       safePty(tabId, entry, (pty) => pty.write(text))
-      if (text.includes("\r") && entry.mode === "engine") {
-        onTerminalCommit({
-          taskId: entry.taskId,
-          tabId,
-          vendor: entry.vendor,
-          rootPid: entry.pty.pid,
-        })
-      }
     })
 
     ws.on("close", () => {
@@ -232,6 +242,7 @@ export function createPtySessionManager({
   function closeSession(tabId) {
     const entry = sessions.get(tabId)
     if (!entry) return false
+    stopEngineWatch(tabId, entry)
     clearDrainTimer(entry)
     try {
       entry.pty.kill()
@@ -280,14 +291,6 @@ export function createPtySessionManager({
       setTimeoutFn(() => {
         try {
           target.pty.write("\r")
-          if (target.mode === "engine") {
-            onTerminalCommit({
-              taskId: target.taskId,
-              tabId,
-              vendor: target.vendor,
-              rootPid: target.pty.pid,
-            })
-          }
         } catch {
           /* best-effort */
         }
@@ -297,7 +300,8 @@ export function createPtySessionManager({
   }
 
   function shutdown() {
-    for (const entry of sessions.values()) {
+    for (const [tabId, entry] of sessions) {
+      stopEngineWatch(tabId, entry)
       clearDrainTimer(entry)
       try {
         entry.pty.kill()

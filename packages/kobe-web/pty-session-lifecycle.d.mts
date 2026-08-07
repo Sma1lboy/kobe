@@ -10,6 +10,7 @@ export interface PtyLaunchSpec {
 }
 
 export interface PtyLike {
+  readonly pid: number
   onData(cb: (data: string) => void): void
   onExit(cb: () => void): void
   write(data: string): void
@@ -59,6 +60,16 @@ export interface PtySessionManagerOptions {
     lowWaterBytes: number
     drainPollMs: number
   }
+  onEngineSessionStart?(input: EngineSessionIdentity): void
+  onEngineSessionStop?(input: Pick<EngineSessionIdentity, "taskId" | "tabId" | "rootPid">): void
+}
+
+export interface EngineSessionIdentity {
+  taskId: string
+  tabId: string
+  vendor?: string
+  rootPid: number
+  startedAt: number
 }
 
 export interface AttachSocketInput {
