@@ -440,8 +440,10 @@ export const TtyFooter = memo(function TtyFooter({
  * the shell floats it there instead of leaving it adrift in the history.
  */
 /** Ephemeral notices the native draws just above the prompt (clipboard hint,
- *  paste receipts) — they belong by the input, not adrift in history. */
-const INPUT_HINT = /clipboard|ctrl\+v|to paste|pasted\b|\[image #/i
+ *  paste receipts, usage-limit warnings) — they belong by the input, not
+ *  adrift in history. */
+const INPUT_HINT =
+  /clipboard|ctrl\+v|to paste|pasted\b|\[image #|% of your \S+ limit|\/upgrade to keep using/i
 
 export function useTtyBlocks(
   lines: readonly ColoredLine[],
