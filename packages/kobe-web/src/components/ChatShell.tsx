@@ -47,7 +47,6 @@ import {
 import { useEngines } from "../lib/engines.ts"
 import { fetchPtyForeground } from "../lib/terminal.ts"
 import { resolveVendor } from "../lib/vendor.ts"
-import { AcpSessionView } from "./AcpSessionView.tsx"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { InputMirror } from "./InputMirror.tsx"
@@ -632,10 +631,7 @@ export function ChatShell() {
               </button>
             </div>
             <div className="relative min-h-0 flex-1">
-              {tabId && vendor === "claude-acp" ? (
-                // EXPERIMENTAL structured link — no PTY, no grammar.
-                <AcpSessionView key={tabId} tabId={tabId} taskId={selected.id} />
-              ) : tabId && (
+              {tabId && (
                 <SessionView
                   key={tabId}
                   tabId={tabId}

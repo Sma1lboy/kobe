@@ -19,8 +19,8 @@ export function EnginePickerModal({
 }) {
   const engines = useEngines()
   const [cursor, setCursor] = useState(0)
-  // engines + Claude·ACP (experimental structured link) + one Shell row.
-  const rowCount = engines.length + 2
+  // engines + one Shell row (native terminal — TUI picker's shell pick).
+  const rowCount = engines.length + 1
 
   useEffect(() => {
     if (cursor >= rowCount) setCursor(Math.max(0, rowCount - 1))
@@ -51,10 +51,6 @@ export function EnginePickerModal({
         event.preventDefault()
         event.stopPropagation()
         if (cursor === engines.length) {
-          onPick("claude-acp")
-          return
-        }
-        if (cursor === engines.length + 1) {
           onPickShell()
           return
         }
@@ -72,8 +68,7 @@ export function EnginePickerModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [cursor, engines, onClose, onPick, onPickShell, rowCount])
 
-  const acpActive = cursor === engines.length
-  const shellActive = cursor === engines.length + 1
+  const shellActive = cursor === engines.length
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click-away; escape is handled globally above
@@ -108,18 +103,6 @@ export function EnginePickerModal({
               </button>
             )
           })}
-          <button
-            type="button"
-            onClick={() => onPick("claude-acp")}
-            className={`flex w-full items-center gap-2.5 px-4 py-1.5 text-left hover:bg-inset${
-              acpActive ? " bg-inset" : ""
-            }`}
-          >
-            <span className="min-w-0 flex-1 truncate text-[12px] text-fg">
-              Claude · ACP
-            </span>
-            <span className="text-[11px] text-kobe-violet">experimental</span>
-          </button>
           <button
             type="button"
             onClick={onPickShell}
