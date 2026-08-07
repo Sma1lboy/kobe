@@ -45,6 +45,7 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     stopped: 0,
     idleReevaluations: 0,
   }
+  const currentBindings: Record<string, Record<string, Record<string, unknown>>> = {}
   const ctx: DaemonHandlerContext = {
     runtime: daemonRuntime,
     orch: {
@@ -90,12 +91,17 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       begin: async (taskId: string, tabId: string, vendor: string) => {
         const value = { taskId, tabId, vendor, state: "pending" }
         rec.bindings.push(value)
+        currentBindings[taskId] = { ...(currentBindings[taskId] ?? {}), [tabId]: value }
         return value
       },
       bind: async (value: Record<string, unknown>) => {
         rec.bindings.push(value)
+        const taskId = String(value.taskId)
+        const tabId = String(value.tabId)
+        currentBindings[taskId] = { ...(currentBindings[taskId] ?? {}), [tabId]: value }
         return value
       },
+      snapshotByTask: () => currentBindings,
       deleteTask: async () => {},
       deleteTaskBestEffort: async () => {},
     } as unknown as SessionBindingStore,

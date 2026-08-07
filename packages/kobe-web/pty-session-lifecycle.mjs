@@ -73,6 +73,7 @@ export function createPtySessionManager({
   submitDelays = DEFAULT_SUBMIT_DELAYS,
   maxSessions = DEFAULT_MAX_SESSIONS,
   backpressure = DEFAULT_BACKPRESSURE,
+  onTerminalCommit = () => {},
 }) {
   /** @type {Map<string, { pty: any, scrollback: ReturnType<createScrollback>, sockets: Set<any> }>} */
   const sessions = new Map()
@@ -110,7 +111,7 @@ export function createPtySessionManager({
     }
   }
 
-  function spawnSession(tabId, spec, cols, rows) {
+  function spawnSession(tabId, spec, cols, rows, identity) {
     // Enforce the session cap before allocating another process: evict the
     // oldest unwatched session, or reject when every session is in active use.
     if (sessions.size >= maxSessions && !sessions.has(tabId)) {
@@ -139,6 +140,7 @@ export function createPtySessionManager({
     }
     const entry = {
       pty,
+      ...identity,
       scrollback: createScrollback(scrollbackCap),
       sockets: new Set(),
       paused: false,
@@ -170,7 +172,7 @@ export function createPtySessionManager({
     const p = (async () => {
       // Vendor override only applies to engine PTYs — shell mode has no engine-spec.
       const spec = await fetchSpec(taskId, mode, mode === "engine" ? vendor : undefined, tabId)
-      return sessions.get(tabId) ?? spawnSession(tabId, spec, cols, rows)
+      return sessions.get(tabId) ?? spawnSession(tabId, spec, cols, rows, { taskId, mode, vendor })
     })()
     pendingSpawns.set(tabId, p)
     try {
@@ -210,6 +212,14 @@ export function createPtySessionManager({
         }
       }
       safePty(tabId, entry, (pty) => pty.write(text))
+      if (text.includes("\r") && entry.mode === "engine") {
+        onTerminalCommit({
+          taskId: entry.taskId,
+          tabId,
+          vendor: entry.vendor,
+          rootPid: entry.pty.pid,
+        })
+      }
     })
 
     ws.on("close", () => {
@@ -252,6 +262,14 @@ export function createPtySessionManager({
       setTimeoutFn(() => {
         try {
           target.pty.write("\r")
+          if (target.mode === "engine") {
+            onTerminalCommit({
+              taskId: target.taskId,
+              tabId,
+              vendor: target.vendor,
+              rootPid: target.pty.pid,
+            })
+          }
         } catch {
           /* best-effort */
         }

@@ -48,6 +48,20 @@ export interface DaemonRuntimeAdapter {
     vendor: VendorId,
     worktreePath: string,
   ): Promise<{ sessionId: string; transcriptPath?: string } | null>
+  /**
+   * Observe an engine-native context switch that precedes ordinary lifecycle
+   * hooks. Vendor log/process details remain behind the composition adapter.
+   */
+  observeEngineSessionActivation(
+    vendor: VendorId,
+    rootPid: number,
+    afterMs: number,
+  ): Promise<{
+    sessionId: string
+    transcriptPath?: string
+    source: "resume"
+    observedAt: number
+  } | null>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
   createEngineTurnDetector(vendor: VendorId): EngineTurnDetectorAdapter
   runWorktreeStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges>

@@ -159,6 +159,16 @@ those fields to bind the engine-owned conversation to a Kobe-owned temporal
 current run. Neutral UI layers consume that run binding and never infer the
 active conversation from terminal pixels or the newest transcript file.
 
+Codex defers `SessionStart(source=resume)` until the next turn, after its
+native `/resume` picker has already switched threads. The browser/Electron PTY
+sidecar therefore reports only the tab/root-pid commit boundary to the daemon;
+the Codex registry adapter resolves the actual Codex descendant and reads its
+PID-scoped structured resume record from `CODEX_HOME/logs_2.sqlite`. That
+observer yields the exact session id and rollout path immediately. The later
+SessionStart confirms the binding, and remains the fallback when Codex changes
+or disables the internal log schema. No neutral daemon or UI code parses the
+vendor record.
+
 ### Copilot, Kimi, custom engines
 
 No hook mechanism is wired (`NoopHookAdapter`); install is a no-op and nothing

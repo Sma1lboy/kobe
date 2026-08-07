@@ -17,7 +17,7 @@ export interface EngineRun {
   readonly sessionId: string | null
   readonly state: "pending" | "bound" | "ended" | "superseded" | "missing"
   /** Which authoritative boundary supplied the current identity. */
-  readonly source: "spawn" | "hook" | "history-recovery"
+  readonly source: "spawn" | "observer" | "hook" | "history-recovery"
   /** Native SessionStart cause. `compact` stays in the current run; the other
    * causes establish a new temporal run after any pending spawn is filled. */
   readonly startSource?: EngineSessionStartSource

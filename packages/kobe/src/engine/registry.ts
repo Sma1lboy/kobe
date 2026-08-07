@@ -47,6 +47,7 @@ import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
+import { type EngineSessionActivation, observeCodexSessionActivation } from "./codex-local/session-activation.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
@@ -116,6 +117,14 @@ export interface EngineRegistryEntry {
   readonly effortLevels?: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
+  /**
+   * Optional engine-owned observer for native context switches that happen
+   * before the provider emits its ordinary lifecycle hook.
+   */
+  readonly observeSessionActivation?: (input: {
+    readonly rootPid: number
+    readonly afterMs: number
+  }) => Promise<EngineSessionActivation | null>
   /**
    * Read-only binary + login probe (Settings → Accounts). `deps` is the
    * injectable fs/env surface from `account-detect.ts`; omit for production.
@@ -274,6 +283,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
+    observeSessionActivation: observeCodexSessionActivation,
 
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new CodexHookAdapter(),

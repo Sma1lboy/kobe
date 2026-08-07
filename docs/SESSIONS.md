@@ -136,6 +136,15 @@ not kobe.
   causes (after filling any pending launch) and keeps the current run for
   `compact`. Consequently, exiting and later resuming a conversation produces
   a new run with the same native `sessionId`.
+- Codex's native `/resume` picker changes conversation before it emits the
+  deferred `SessionStart`. In the browser/Electron PTY path, Enter triggers a
+  bounded adapter observation window keyed by that tab's process id. The Codex
+  adapter reads exact structured resume evidence from Codex's local log
+  database: a rollout path when present, otherwise the selected `thread.id`
+  from its `thread/resume` span. It binds the new run immediately and lets the
+  later hook confirm the same run. It never parses picker rows or terminal
+  pixels. If the internal log format is absent or changes, the observer returns
+  nothing and the ordinary hook remains the compatibility fallback.
 - Current-run pointers and run history survive a daemon restart. New clients consume the binding
   snapshot directly; they do not choose a transcript from visible terminal
   pixels or from whichever history file happens to be newest.

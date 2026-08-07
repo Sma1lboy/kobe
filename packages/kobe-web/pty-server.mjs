@@ -25,6 +25,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
+import { createEngineSessionObservationClient } from "./engine-session-observer.mjs"
 import { allowedHostForBindHost, originAllowed } from "./origin-policy.mjs"
 import { ptyEnv } from "./pty-env.mjs"
 import { createScrollback } from "./pty-scrollback.mjs"
@@ -37,6 +38,7 @@ const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
 const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
 const ALLOWED_HOST = allowedHostForBindHost(HOST)
+const sessionObserver = createEngineSessionObservationClient({ daemonWebPort: DAEMON_WEB_PORT })
 
 const CLAUDE_HOME = join(homedir(), ".claude")
 const IMG_MIMES = {
@@ -113,6 +115,7 @@ const ptySessions = createPtySessionManager({
   createScrollback,
   scrollbackCap: SCROLLBACK_CAP,
   env: ptyEnv,
+  onTerminalCommit: sessionObserver.observe,
 })
 
 const server = createServer((req, res) => {
@@ -287,6 +290,7 @@ const server = createServer((req, res) => {
         /* ignore */
       }
       const ok = tab ? ptySessions.closeSession(tab) : false
+      if (tab) sessionObserver.forget(tab)
       res.writeHead(200, {
         "content-type": "application/json",
         "access-control-allow-origin": "*",

@@ -10,4 +10,8 @@ SessionStart hooks now preserve their native start cause; startup/resume/clear
 create a Kobe run while compaction stays in the current run. The browser
 uses the current run to select the native session and gate live events, while
 rendering that session's complete persisted timeline across repeated resumes.
-It never infers identity from terminal pixels or the newest transcript.
+For Codex in the browser/Electron PTY path, a PID-scoped adapter observer now
+binds native `/resume` selections from Codex's structured rollout record or
+`thread/resume` span before the deferred SessionStart hook, which later
+confirms the same run and remains the compatibility fallback. The UI never
+infers identity from terminal pixels or the newest transcript.

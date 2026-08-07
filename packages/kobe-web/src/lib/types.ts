@@ -109,7 +109,7 @@ export interface EngineSessionBinding {
   vendor: string
   sessionId: string | null
   state: "pending" | "bound" | "ended" | "superseded" | "missing"
-  source: "spawn" | "hook" | "history-recovery"
+  source: "spawn" | "observer" | "hook" | "history-recovery"
   startSource?: "startup" | "resume" | "clear" | "compact"
   transcriptPath?: string
   startedAt: number

@@ -171,6 +171,9 @@ export type DaemonRequestName =
   // (claude `--session-id`), record + broadcast it for tab-precise traces.
   | "engine.beginSession"
   | "engine.pinSession"
+  // Sidecar commit observation: ask the engine adapter whether the PTY's
+  // native conversation changed before its ordinary hook fires.
+  | "engine.observeSession"
   // Remove the durable Inbox item at the supplied event timestamp. Explicit
   // removal, opening, and visiting the target all use this guarded operation.
   | "attention.dismiss"

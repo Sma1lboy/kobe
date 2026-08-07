@@ -85,12 +85,13 @@ describe("useTimelineData", () => {
     expect(result.current.model.turns.map((item) => item.id)).toEqual(["a-old", "a-new"])
 
     act(() => rerender({ currentBinding: binding("run-b", "session-b", 40) }))
-    await waitFor(() => expect(result.current.model.sessionId).toBe("session-b"))
+    await waitFor(() => expect(result.current.model.turns.map((item) => item.id)).toEqual(["b-turn"]))
 
     // The new attachment starts after a-old ended. Run-scoped filtering used
     // to hide it here even though it remains part of session-a's history.
     act(() => rerender({ currentBinding: binding("run-a2", "session-a", 100) }))
-    await waitFor(() => expect(result.current.model.sessionId).toBe("session-a"))
-    expect(result.current.model.turns.map((item) => item.id)).toEqual(["a-old", "a-new"])
+    await waitFor(() =>
+      expect(result.current.model.turns.map((item) => item.id)).toEqual(["a-old", "a-new"]),
+    )
   })
 })

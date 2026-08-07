@@ -34,18 +34,11 @@ import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { AttentionInboxStore } from "./attention-inbox.ts"
 import type { AutomationsStore } from "./automations-store.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
-import { logDaemonError } from "./crash-log.ts"
-import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
-import {
-  objectPayload,
-  optionalActivityDetail,
-  optionalSessionStartSource,
-  optionalString,
-  requireString,
-} from "./handler-validators.ts"
+import { objectPayload, requireString } from "./handler-validators.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { AUTOMATION_HANDLERS } from "./handlers-automations.ts"
+import { ENGINE_HANDLERS } from "./handlers-engine.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
 import { UI_HANDLERS } from "./handlers-ui.ts"
 import { WORK_ITEM_HANDLERS } from "./handlers-work-items.ts"
@@ -60,10 +53,8 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
-import { scheduleQuotaResume } from "./quota-resume.ts"
 import type { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
-import { recoverSessionIdentity } from "./session-binding-recovery.ts"
 import type { SessionBindingStore } from "./session-bindings.ts"
 import type { TaskDeletionScheduler } from "./task-deletion-runner.ts"
 import type { WorkItemCache } from "./work-items.ts"
@@ -293,6 +284,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     ...AUTOMATION_HANDLERS,
     ...WORK_ITEM_HANDLERS,
     ...UI_HANDLERS,
+    ...ENGINE_HANDLERS,
     {
       name: "issue.list",
       async handle(payload, ctx) {
@@ -321,178 +313,6 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const taskId = requireString(payload, "taskId")
         if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
         return { events: ctx.engineEvents?.recent(taskId) ?? [] }
-      },
-    },
-    {
-      name: "engine.beginSession",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const tabId = requireString(payload, "tabId")
-        const task = ctx.orch.getTask(taskId)
-        if (!task) throw new Error(`task not found: ${taskId}`)
-        const vendor = optionalString(payload, "vendor") ?? task.vendor ?? ctx.runtime.defaultTaskVendor
-        await ctx.bindings.begin(taskId, tabId, vendor)
-        return {}
-      },
-    },
-    {
-      name: "engine.pinSession",
-      async handle(payload, ctx) {
-        const taskId = requireString(payload, "taskId")
-        const tabId = requireString(payload, "tabId")
-        const sessionId = requireString(payload, "sessionId")
-        const task = ctx.orch.getTask(taskId)
-        if (!task) throw new Error(`task not found: ${taskId}`)
-        const vendor = optionalString(payload, "vendor") ?? task.vendor ?? ctx.runtime.defaultTaskVendor
-        await ctx.bindings.bind({ taskId, tabId, vendor, sessionId, source: "spawn" })
-        ctx.activity.pinTabSession(taskId, tabId, sessionId)
-        return {}
-      },
-    },
-    {
-      name: "engine.reportEvent",
-      async handle(payload, ctx) {
-        // A `kobe hook <verb>` process reporting a NORMALIZED engine activity
-        // event (the vendor-specific hook was already translated by the
-        // engine's hook adapter). The global hooks carry no task id — they
-        // report their `cwd`, which we map to a task by worktree path. Fold it
-        // into the task's transient activity state + broadcast on
-        // `engine-state`. Unknown kinds are ignored (forward-compat: a newer
-        // adapter, older daemon); an unmatched cwd (an unrelated repo, a
-        // project with no kobe task) is silently dropped.
-        const kind = requireString(payload, "kind")
-        if (!ctx.runtime.isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
-        // `taskId` (legacy/direct) wins; otherwise resolve from `cwd`.
-        const explicitId = optionalString(payload, "taskId")
-        const cwd = optionalString(payload, "cwd")
-        // External-worktree sync (replaces the removed WorktreeCreate hook): a
-        // session starting in an unadopted worktree under a tracked repo's
-        // a managed worktree root is auto-adopted as a task, so the cwd then maps
-        // to it below. Gated to `session-start` to bound the work; the path
-        // check is git-free and `adoptWorktree` is idempotent + git-validated
-        // (a bogus dir just throws → caught → dropped).
-        if (!explicitId && cwd && kind === "session-start") {
-          const cand = findAdoptableWorktree(ctx.orch.listTasks(), cwd)
-          if (cand) {
-            try {
-              await ctx.orch.adoptWorktree({ repo: cand.repo, worktreePath: cand.worktreePath, ifExists: "return" })
-            } catch (err) {
-              logDaemonError("worktree-autosync", err)
-            }
-          }
-        }
-        const taskId = explicitId ?? (cwd ? matchTaskByCwd(ctx.orch.listTasks(), cwd) : undefined)
-        if (!taskId) return {} // unmatched cwd → drop
-        const detail = optionalActivityDetail(payload)
-        // Which engine tab the event came from — the inherited KOBE_TAB_ID env.
-        // Sessions outside a Kobe tab remain activity-only via the report below.
-        const tabId = optionalString(payload, "tabId")
-        // The engine's own session identity, from its hook payload (Claude
-        // pipes session_id/transcript_path). Optional + additive: an old
-        // `kobe hook` simply omits it.
-        const task = ctx.orch.getTask(taskId)
-        const reportedVendor = optionalString(payload, "engine")
-        const vendor = reportedVendor ?? task?.vendor ?? ctx.runtime.defaultTaskVendor
-        const recovered = await recoverSessionIdentity({
-          runtime: ctx.runtime,
-          kind,
-          tabId,
-          vendor,
-          worktreePath: task?.worktreePath,
-          sessionId: optionalString(payload, "sessionId"),
-          transcriptPath: optionalString(payload, "transcriptPath"),
-        })
-        const { sessionId, transcriptPath } = recovered
-        const startSource = optionalSessionStartSource(payload, "sessionStartSource")
-        const session = sessionId ? { id: sessionId, transcriptPath } : undefined
-        if (tabId && sessionId) {
-          await ctx.bindings
-            .bind({
-              taskId,
-              tabId,
-              vendor,
-              sessionId,
-              source: recovered.source,
-              eventKind: kind,
-              ...(startSource ? { startSource } : {}),
-              ...(transcriptPath ? { transcriptPath } : {}),
-              ...(kind === "session-end" ? { state: "ended" } : {}),
-            })
-            .catch((err) => logDaemonError("session-bindings-hook", err))
-        }
-        // Lifecycle-only kinds (tool/compact/subagent) skip the badge + inbox
-        // entirely — folding them into engine-state would broadcast every
-        // tool call to every client. They still reach plugins below.
-        const isStateKind = ctx.runtime.affectsActivityState(kind)
-        if (isStateKind) {
-          ctx.activity.report(taskId, kind, detail, tabId, session)
-          // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
-          if (explicitId && tabId) {
-            await ctx.inbox
-              .record(taskId, kind, detail, tabId)
-              .catch((err) => logDaemonError("attention-inbox-record", err))
-          }
-        }
-        // Per-task recent-events buffer (TUI event feed) + the low-frequency
-        // `engine.lifecycle` channel (sidebar compaction glyph / subagent mark).
-        ctx.engineEvents?.append(taskId, {
-          kind,
-          ...(tabId ? { tabId } : {}),
-          ...(reportedVendor ? { vendor: reportedVendor } : {}),
-          ...(sessionId ? { sessionId } : {}),
-          ...(detail ? { detail } : {}),
-          at: Date.now(),
-        })
-        if (
-          kind === "pre-compact" ||
-          kind === "post-compact" ||
-          kind === "subagent-start" ||
-          kind === "subagent-stop"
-        ) {
-          ctx.bus.publish("engine.lifecycle", { taskId, kind, ...(tabId ? { tabId } : {}), at: Date.now() })
-        }
-        // Plugin event hooks: every report becomes one agent-lifecycle event
-        // (docs/design/plugin-events.md); dispatch fans out only to plugins
-        // that declared the event.
-        ctx.plugins?.handleEngineReport({
-          kind,
-          taskId,
-          ...(detail ? { detail: detail as unknown as Record<string, unknown> } : {}),
-          ...(reportedVendor ? { vendor: reportedVendor } : {}),
-          ...(tabId ? { tabId } : {}),
-          ...(sessionId ? { sessionId } : {}),
-        })
-        // Auto status flow (docs/design/web-kanban.md M5): an engine
-        // STARTING a turn on a backlog task means work began — a pure rule
-        // advances it to in_progress. (in_progress → in_review is the
-        // agent's own self-report via the injected status protocol, not a
-        // daemon rule.) Fire-and-forget; gated inside maybeAutoStart
-        // (opt-in state.json flag).
-        if (kind === "turn-start") {
-          ctx.runtime
-            .maybeAutoStart(ctx.orch, taskId)
-            .then((result) => {
-              if (result === "moved") {
-                console.log(`[status-rules] task ${taskId} auto-moved backlog → in_progress`)
-              }
-            })
-            .catch((err) => logDaemonError("status-rules", err))
-          // A turn actually started (the user resumed manually, or our own
-          // continue prompt landed) — any pending auto-resume is now stale.
-          if (ctx.orch.getTask(taskId)?.quotaResume) {
-            void ctx.orch.setQuotaResume(taskId, null).catch((err) => logDaemonError("quota-resume", err))
-          }
-        }
-        // Real subscription-quota limit → ask the engine's quota probe when
-        // the window resets and arm the durable auto-resume schedule.
-        // Fire-and-forget: the probe does network I/O and must not delay the
-        // hook RPC. `billing` is excluded — it needs a human, not a timer.
-        if (kind === "turn-failed" && detail?.failure === "rate_limit") {
-          void scheduleQuotaResume(ctx.orch, ctx.runtime, ctx.quotaUsage, taskId).catch((err) =>
-            logDaemonError("quota-resume", err),
-          )
-        }
-        return {}
       },
     },
   ]

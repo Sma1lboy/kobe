@@ -173,6 +173,54 @@ describe("SessionBindingStore", () => {
     ])
   })
 
+  it("lets SessionStart confirm an observed resume without creating a duplicate run", async () => {
+    const { store } = await fixture()
+    await store.begin("task-1", "tab-a", "codex")
+    await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "old-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "startup",
+    })
+    const observed = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "resumed-session",
+      source: "observer",
+      startSource: "resume",
+      transcriptPath: "/tmp/resumed.jsonl",
+    })
+    const confirmed = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "resumed-session",
+      source: "hook",
+      eventKind: "session-start",
+      startSource: "resume",
+      transcriptPath: "/tmp/resumed.jsonl",
+    })
+
+    expect(confirmed.runId).toBe(observed.runId)
+    expect(confirmed.source).toBe("hook")
+    expect(store.runsSnapshot()).toHaveLength(2)
+
+    const lateObserver = await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "resumed-session",
+      source: "observer",
+      startSource: "resume",
+    })
+    expect(lateObserver.runId).toBe(observed.runId)
+    expect(lateObserver.source).toBe("hook")
+  })
+
   it("keeps late events on a superseded session from stealing the current tab", async () => {
     const { store } = await fixture()
     await store.begin("task-1", "tab-a", "codex")

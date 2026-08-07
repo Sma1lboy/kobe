@@ -69,7 +69,7 @@ function normalizeRun(value: unknown): EngineRun | null {
   }
   if (item.sessionId !== null && !nonEmpty(item.sessionId)) return null
   if (!["pending", "bound", "ended", "superseded", "missing"].includes(item.state ?? "")) return null
-  if (!["spawn", "hook", "history-recovery"].includes(item.source ?? "")) return null
+  if (!["spawn", "observer", "hook", "history-recovery"].includes(item.source ?? "")) return null
   if (item.startSource !== undefined && !validStartSource(item.startSource)) return null
   if (!Number.isFinite(item.startedAt) || !Number.isFinite(item.updatedAt)) return null
   if (item.boundAt !== undefined && !Number.isFinite(item.boundAt)) return null
@@ -221,9 +221,16 @@ export class SessionBindingStore {
         current.sessionId === input.sessionId &&
         current.source === "spawn" &&
         current.startSource === undefined
+      const confirmsObservedResume =
+        current?.vendor === input.vendor &&
+        current.sessionId === input.sessionId &&
+        current.source === "observer" &&
+        current.startSource === "resume" &&
+        input.source === "hook" &&
+        input.startSource === "resume"
       const startsRun = input.eventKind === "session-start" && input.startSource !== "compact"
 
-      if (startsRun && !fillsPending && !confirmsPinnedSpawn) {
+      if (startsRun && !fillsPending && !confirmsPinnedSpawn && !confirmsObservedResume) {
         const next = this.boundRun(input, at)
         await this.replaceCurrent(next, current, at)
         return next
@@ -329,7 +336,7 @@ export class SessionBindingStore {
       ...current,
       sessionId: input.sessionId,
       state: input.state ?? "bound",
-      source: input.source,
+      source: preferredSource(current.source, input.source),
       ...(startSource ? { startSource } : {}),
       ...((input.transcriptPath ?? current.transcriptPath)
         ? { transcriptPath: input.transcriptPath ?? current.transcriptPath }
@@ -393,6 +400,16 @@ export class SessionBindingStore {
   private publish(): void {
     this.bus.publish("session.bindings", { bindings: this.snapshotByTask() })
   }
+}
+
+function preferredSource(current: EngineRun["source"], incoming: EngineRun["source"]): EngineRun["source"] {
+  const rank: Record<EngineRun["source"], number> = {
+    spawn: 0,
+    "history-recovery": 1,
+    observer: 2,
+    hook: 3,
+  }
+  return rank[incoming] >= rank[current] ? incoming : current
 }
 
 function compareRuns(a: EngineRun, b: EngineRun): number {

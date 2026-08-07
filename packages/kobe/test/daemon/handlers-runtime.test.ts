@@ -4,7 +4,7 @@ import {
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
 } from "@sma1lboy/kobe-daemon/daemon/server"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { Task } from "../../src/types/task.ts"
 import { fakeCtx } from "./handler-test-context.ts"
 
@@ -224,6 +224,34 @@ describe("daemon runtime handlers", () => {
         eventKind: "session-start",
         startSource: "resume",
         transcriptPath: "/tmp/rollout.jsonl",
+      })
+    })
+
+    it("binds an adapter-observed resume before SessionStart fires", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      const observeEngineSessionActivation = vi.fn(async () => ({
+        sessionId: "session-observed",
+        transcriptPath: "/tmp/observed-rollout.jsonl",
+        source: "resume" as const,
+        observedAt: 1234,
+      }))
+      ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
+        ...ctx.runtime,
+        observeEngineSessionActivation,
+      }
+      await dispatch("engine.beginSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex" }, ctx)
+      await expect(
+        dispatch("engine.observeSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex", rootPid: 4242 }, ctx),
+      ).resolves.toEqual({ observed: true, sessionId: "session-observed" })
+      expect(observeEngineSessionActivation).toHaveBeenCalledWith("codex", 4242, expect.any(Number))
+      expect(rec.bindings.at(-1)).toEqual({
+        taskId: "t1",
+        tabId: "tab-codex",
+        vendor: "codex",
+        sessionId: "session-observed",
+        source: "observer",
+        startSource: "resume",
+        transcriptPath: "/tmp/observed-rollout.jsonl",
       })
     })
 
