@@ -64,30 +64,21 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   -webkit-app-region: no-drag;
 }
 
-/* Keep panes scrollable without visible browser chrome. */
+/* Scrollbars NEVER render — not at rest, not mid-scroll. display:none on
+   the pseudo kills WebKit's transient overlay too; the max-specificity
+   selector outranks anything a library (xterm.css) ships. */
 * {
-  scrollbar-width: none;
+  scrollbar-width: none !important;
 }
 
-::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-::-webkit-scrollbar-thumb {
-  background: transparent;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-/* xterm ships its own .xterm-viewport scrollbar styling, which outranks the
-   global hide by specificity — pin it back to invisible. */
-.xterm-viewport {
-  scrollbar-width: none;
-}
-.xterm-viewport::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 @keyframes kobe-shimmer {
