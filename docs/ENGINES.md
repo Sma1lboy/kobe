@@ -273,12 +273,15 @@ entry; do not add vendor parsing to React components.
 
 Opening a trace card formats JSON-shaped input and result details into labeled
 fields such as command, working directory, duration, exit code, and output;
-plain text stays intact. **Quote to input** inserts a bounded, self-contained
-reference to that card into the active engine's native composer. It uses
-bracketed paste without Enter, strips terminal control bytes, and returns focus
-to the composer, so the user can edit the reference and decide whether to send
-the next turn. This is a presentation/interaction layer over `EngineTrace` —
-the frontend still does not read vendor transcripts or own conversation state.
+plain text stays intact. A card's quote control adds a bounded,
+self-contained reference to a tab-scoped buffer beside the active engine's
+native composer; opening the detail drawer is optional. Buffered references
+stay structured and individually removable until plain Enter submits the next
+turn. At that boundary the client serializes them and strips terminal control
+bytes; the sidecar then delivers the result through bracketed paste and lets
+the native engine submit. Shift+Enter and IME composition remain engine-owned.
+This is a presentation/interaction layer over `EngineTrace` — the frontend
+still does not read vendor transcripts or own conversation history.
 
 ## Launching and resuming sessions
 

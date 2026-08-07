@@ -36,8 +36,12 @@ import {
   useTabsState,
   type VendorTab,
 } from "../lib/tabs.ts"
-import { fetchPtyForeground, insertPtyText } from "../lib/terminal.ts"
+import { fetchPtyForeground, sendPtyText } from "../lib/terminal.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
+import {
+  type PendingTraceQuote,
+  serializePendingTraceQuotes,
+} from "../lib/trace-content.ts"
 import { resolveVendor } from "../lib/vendor.ts"
 import { ChatSidebarTree } from "./ChatSidebarTree.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
@@ -188,6 +192,9 @@ export function ChatShell() {
   // It decorates live status only; the durable binding keeps history visible.
   const [engineLive, setEngineLive] = useState(false)
   const [quoteFocusRequest, setQuoteFocusRequest] = useState(0)
+  const [quoteBuffers, setQuoteBuffers] = useState<
+    Record<string, readonly PendingTraceQuote[]>
+  >({})
   // biome-ignore lint/correctness/useExhaustiveDependencies: tab switch resets liveness until the new SessionView reports
   useEffect(() => {
     setEngineLive(false)
@@ -199,20 +206,55 @@ export function ChatShell() {
     selected && tabId ? sessionTransitions[selected.id]?.[tabId] : undefined
   const legacySessionId =
     selected && tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
-  const quoteToInput = useCallback(
-    async (text: string): Promise<void> => {
+  const pendingQuotes = tabId ? (quoteBuffers[tabId] ?? []) : []
+  const quoteToBuffer = useCallback(
+    async (quote: PendingTraceQuote): Promise<void> => {
       if (!tabId) throw new Error("no active chat tab")
-      try {
-        await insertPtyText(tabId, `\n\n${text}\n\n`)
-        setQuoteFocusRequest((value) => value + 1)
-        pushToast("success", "Quoted block into the next prompt")
-      } catch (err) {
-        reportError("quote block", err)
-        throw err
-      }
+      setQuoteBuffers((current) => {
+        const buffered = current[tabId] ?? []
+        if (buffered.some((item) => item.sourceId === quote.sourceId))
+          return current
+        return { ...current, [tabId]: [...buffered, quote] }
+      })
+      setQuoteFocusRequest((value) => value + 1)
+      pushToast("success", "Quote added to the next prompt")
     },
     [tabId],
   )
+  const removeBufferedQuote = useCallback(
+    (sourceId: string): void => {
+      if (!tabId) return
+      setQuoteBuffers((current) => ({
+        ...current,
+        [tabId]: (current[tabId] ?? []).filter(
+          (quote) => quote.sourceId !== sourceId,
+        ),
+      }))
+    },
+    [tabId],
+  )
+  const submitBufferedQuotes = useCallback(async (): Promise<void> => {
+    if (!tabId || !selectedTaskId) throw new Error("no active chat tab")
+    const buffered = quoteBuffers[tabId] ?? []
+    if (buffered.length === 0) return
+    const submittedIds = new Set(buffered.map((quote) => quote.sourceId))
+    try {
+      await sendPtyText(
+        tabId,
+        selectedTaskId,
+        serializePendingTraceQuotes(buffered),
+      )
+      setQuoteBuffers((current) => ({
+        ...current,
+        [tabId]: (current[tabId] ?? []).filter(
+          (quote) => !submittedIds.has(quote.sourceId),
+        ),
+      }))
+    } catch (err) {
+      reportError("submit quoted blocks", err)
+      throw err
+    }
+  }, [quoteBuffers, selectedTaskId, tabId])
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -280,6 +322,9 @@ export function ChatShell() {
                   vendor={vendor}
                   grammar={grammarFor(effectiveVendor ?? selected.vendor)}
                   focusRequest={quoteFocusRequest}
+                  pendingQuotes={pendingQuotes}
+                  onRemovePendingQuote={removeBufferedQuote}
+                  onSubmitPendingQuotes={submitBufferedQuotes}
                   onEngineLive={setEngineLive}
                 />
               )}
@@ -304,7 +349,7 @@ export function ChatShell() {
             legacySessionId={legacySessionId}
             engineActive={engineLive}
             width={traceW}
-            onQuote={quoteToInput}
+            onQuote={quoteToBuffer}
           />
         )}
       </div>

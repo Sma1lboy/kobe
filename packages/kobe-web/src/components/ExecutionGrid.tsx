@@ -13,7 +13,10 @@ import {
   type TimelineItem,
   type TimelineStatus,
 } from "../lib/timeline.ts"
-import { quoteTraceItem } from "../lib/trace-content.ts"
+import {
+  type PendingTraceQuote,
+  pendingTraceQuote,
+} from "../lib/trace-content.ts"
 import { ReadableTraceContent } from "./ReadableTraceContent.tsx"
 import { SlideOver } from "./SlideOver.tsx"
 import { TracePatch } from "./TracePatch.tsx"
@@ -68,48 +71,65 @@ function ExecutionNode({
   now,
   main = false,
   onOpen,
+  onQuote,
 }: {
   item: TimelineItem
   now: number
   main?: boolean
   onOpen: () => void
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={`execution-node relative z-10 flex min-h-24 w-full min-w-0 flex-col border bg-surface p-2.5 text-left focus-visible:border-primary focus-visible:outline-none ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
-      title={item.summary || item.title}
-      aria-label={`Open ${kindLabel(item)} details: ${item.title}`}
-    >
-      <div className="flex items-center gap-1.5">
-        <ItemIcon item={item} />
-        <span className="text-[10px] text-current">{kindLabel(item)}</span>
-        {(item.attempt ?? 1) > 1 && (
-          <span className="font-mono text-[9px] text-subtle">
-            A{item.attempt}
-          </span>
-        )}
-        {item.status !== "success" && (
-          <span className="ml-auto font-mono text-[9px] text-current">
-            {statusGlyph(item.status)}
-          </span>
-        )}
-      </div>
-      <div
-        className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
+    <div className="group relative z-10 min-w-0">
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`execution-node relative flex min-h-24 w-full min-w-0 flex-col border bg-surface p-2.5 text-left focus-visible:border-primary focus-visible:outline-none ${main ? "execution-node--main" : "execution-node--branch"} ${statusClasses(item.status)}`}
+        title={item.summary || item.title}
+        aria-label={`Open ${kindLabel(item)} details: ${item.title}`}
       >
-        {item.title}
-      </div>
-      {item.summary && (
-        <div className="mt-1 truncate font-mono text-[9px] text-subtle">
-          {item.summary}
+        <div className="flex items-center gap-1.5">
+          <ItemIcon item={item} />
+          <span className="text-[10px] text-current">{kindLabel(item)}</span>
+          {(item.attempt ?? 1) > 1 && (
+            <span className="font-mono text-[9px] text-subtle">
+              A{item.attempt}
+            </span>
+          )}
+          {item.status !== "success" && (
+            <span className="ml-auto font-mono text-[9px] text-current">
+              {statusGlyph(item.status)}
+            </span>
+          )}
         </div>
+        <div
+          className={`mt-2 text-[11px] font-medium leading-[1.45] text-fg ${main ? "line-clamp-4" : "line-clamp-2"}`}
+        >
+          {item.title}
+        </div>
+        {item.summary && (
+          <div className="mt-1 truncate font-mono text-[9px] text-subtle">
+            {item.summary}
+          </div>
+        )}
+        <div className="mt-auto pt-2 font-mono text-[8px] text-subtle">
+          {formatExecutionDuration(
+            durationMs(item.startedAt, item.endedAt, now),
+          )}
+        </div>
+      </button>
+      {onQuote && (
+        <button
+          type="button"
+          onClick={() => void onQuote(pendingTraceQuote(item)).catch(() => {})}
+          className="absolute bottom-1.5 right-1.5 z-20 grid size-6 place-items-center border border-line bg-bg/95 text-subtle opacity-60 transition-colors hover:border-primary hover:text-fg hover:opacity-100 focus-visible:border-primary focus-visible:text-fg focus-visible:opacity-100 focus-visible:outline-none"
+          aria-label={`Quote ${kindLabel(item)}: ${item.title}`}
+          title="Quote to next prompt"
+        >
+          <Quote size={11} strokeWidth={1.8} />
+        </button>
       )}
-      <div className="mt-auto pt-2 font-mono text-[8px] text-subtle">
-        {formatExecutionDuration(durationMs(item.startedAt, item.endedAt, now))}
-      </div>
-    </button>
+    </div>
   )
 }
 
@@ -125,7 +145,7 @@ function ExecutionDetail({
   parent: TimelineItem | undefined
   retryOf: TimelineItem | undefined
   now: number
-  onQuote?: (text: string) => Promise<void>
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   onClose: () => void
 }) {
   const isTool = item?.kind === "tool" || item?.kind === "change"
@@ -169,7 +189,7 @@ function ExecutionDetail({
                 disabled={quoting}
                 onClick={() => {
                   setQuoting(true)
-                  void onQuote(quoteTraceItem(item))
+                  void onQuote(pendingTraceQuote(item))
                     .then(onClose)
                     .catch(() => {})
                     .finally(() => setQuoting(false))
@@ -272,7 +292,7 @@ export function ExecutionGrid({
   items: readonly TimelineItem[]
   status: TimelineStatus
   now: number
-  onQuote?: (text: string) => Promise<void>
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   className?: string
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -311,6 +331,7 @@ export function ExecutionGrid({
                 now={now}
                 main
                 onOpen={() => setSelectedId(item.id)}
+                onQuote={onQuote}
               />
               {branch.length > 0 && (
                 <>
@@ -328,6 +349,7 @@ export function ExecutionGrid({
                           item={child}
                           now={now}
                           onOpen={() => setSelectedId(child.id)}
+                          onQuote={onQuote}
                         />
                       </div>
                     ))}

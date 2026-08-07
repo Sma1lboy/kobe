@@ -114,7 +114,7 @@ describe("ExecutionGrid", () => {
     ).toBeTruthy()
   })
 
-  it("quotes a readable block into the next input", async () => {
+  it("quotes a readable block directly from its card", async () => {
     const onQuote = vi.fn().mockResolvedValue(undefined)
     render(
       <ExecutionGrid
@@ -125,18 +125,17 @@ describe("ExecutionGrid", () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole("button", { name: /Open Tool details/ }))
-    fireEvent.click(
-      screen.getByRole("button", { name: "Quote to input" }),
-    )
+    fireEvent.click(screen.getByRole("button", { name: "Quote Tool: exec" }))
     await waitFor(() => expect(onQuote).toHaveBeenCalledOnce())
-    expect(onQuote.mock.calls[0]?.[0]).toContain(
+    expect(onQuote.mock.calls[0]?.[0]?.sourceId).toBe("tool-1")
+    expect(onQuote.mock.calls[0]?.[0]?.label).toBe("Tool · exec")
+    expect(onQuote.mock.calls[0]?.[0]?.text).toContain(
       "[Quoted Agent Trace block · Tool · exec]",
     )
-    expect(onQuote.mock.calls[0]?.[0]).toContain(
+    expect(onQuote.mock.calls[0]?.[0]?.text).toContain(
       "Command:\nsed -n '1,120p' test.ts",
     )
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("renders patch, explicit retry, and subagent completion details", () => {

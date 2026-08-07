@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest"
 import type { TimelineItem } from "../src/lib/timeline.ts"
 import {
+  pendingTraceQuote,
   quoteTraceItem,
   readableTraceContent,
+  serializePendingTraceQuotes,
 } from "../src/lib/trace-content.ts"
 
 const tool: TimelineItem = {
@@ -49,6 +51,24 @@ describe("trace content presentation", () => {
     expect(quote).toContain("Working directory:\n/repo")
     expect(quote).toContain("Exit code:\n0 · success")
     expect(quote).toContain("[/Quoted Agent Trace block]")
+  })
+
+  it("keeps a structured identity until buffered quotes are submitted", () => {
+    const pending = pendingTraceQuote(tool)
+    expect(pending.sourceId).toBe("tool-1")
+    expect(pending.label).toBe("Tool · exec")
+    expect(serializePendingTraceQuotes([pending])).toBe(
+      `\n\n${pending.text}\n\n`,
+    )
+  })
+
+  it("strips terminal controls before a buffered quote reaches bracketed paste", () => {
+    const pending = pendingTraceQuote(tool)
+    expect(
+      serializePendingTraceQuotes([
+        { ...pending, text: `safe\u001b[201~\r\nnext\u0000` },
+      ]),
+    ).toBe("\n\nsafe[201~\nnext\n\n")
   })
 
   it("keeps oversized quotes inside the input cap with one closing marker", () => {

@@ -6,6 +6,7 @@ import {
   type TimelineStatus,
   type TimelineTurn,
 } from "../lib/timeline.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
 import type { TimelineBindingState } from "../lib/use-timeline-data.ts"
 import { ExecutionGrid, formatExecutionDuration } from "./ExecutionGrid.tsx"
 
@@ -67,7 +68,7 @@ function TurnSection({
   turn: TimelineTurn
   turnIndex: number
   now: number
-  onQuote?: (text: string) => Promise<void>
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const spotlight = turn.nodes.filter(isSpotlightNode)
@@ -148,8 +149,8 @@ export function TimelinePanel({
   runId?: string
   /** Drag-resized width (PaneResizer) — falls back to the basis-80 default. */
   width?: number
-  /** Insert a trace block into the active native composer without sending. */
-  onQuote?: (text: string) => Promise<void>
+  /** Buffer a trace block beside the active native composer until submit. */
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   onExpand: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)

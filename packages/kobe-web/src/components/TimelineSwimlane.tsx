@@ -5,6 +5,7 @@ import {
   type TimelineModel,
   type TimelineStatus,
 } from "../lib/timeline.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
 import { ExecutionGrid, formatExecutionDuration } from "./ExecutionGrid.tsx"
 
 function statusClass(status: TimelineStatus): string {
@@ -24,7 +25,7 @@ export function TimelineSwimlane({
   model: TimelineModel
   engineLabel: string
   runId?: string
-  onQuote?: (text: string) => Promise<void>
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
   onClose: () => void
 }) {
   const running = model.turns.some((turn) => turn.status === "running")

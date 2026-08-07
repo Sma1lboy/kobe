@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useEngines } from "../lib/engines.ts"
+import type { PendingTraceQuote } from "../lib/trace-content.ts"
 import type {
   EngineSessionBinding,
   EngineSessionTransition,
@@ -35,7 +36,7 @@ export function TimelineHost({
   /** Drag-resized panel width (PaneResizer). */
   width?: number
   /** Insert one block reference into the active native composer. */
-  onQuote?: (text: string) => Promise<void>
+  onQuote?: (quote: PendingTraceQuote) => Promise<void>
 }) {
   const engines = useEngines()
   const label = engineLabel(engines, vendor)

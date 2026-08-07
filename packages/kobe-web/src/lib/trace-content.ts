@@ -201,3 +201,39 @@ export function quoteTraceItem(item: TimelineItem): string {
   const suffix = `\n\n[quoted block truncated]\n${close}`
   return `${full.slice(0, QUOTE_LIMIT - suffix.length).trimEnd()}${suffix}`
 }
+
+export type PendingTraceQuote = Readonly<{
+  sourceId: string
+  label: string
+  text: string
+}>
+
+/** A trace node stays structured in the GUI until the user submits. */
+export function pendingTraceQuote(item: TimelineItem): PendingTraceQuote {
+  return {
+    sourceId: item.id,
+    label: `${itemKindLabel(item)} · ${item.title}`,
+    text: quoteTraceItem(item),
+  }
+}
+
+export function serializePendingTraceQuotes(
+  quotes: readonly PendingTraceQuote[],
+): string {
+  const normalized =
+    `\n\n${quotes.map((quote) => quote.text).join("\n\n")}\n\n`.replace(
+      /\r\n?/g,
+      "\n",
+    )
+  let safe = ""
+  for (const character of normalized) {
+    const codepoint = character.codePointAt(0) ?? 0
+    if (
+      codepoint === 9 ||
+      codepoint === 10 ||
+      (codepoint >= 32 && codepoint !== 127)
+    )
+      safe += character
+  }
+  return safe
+}
