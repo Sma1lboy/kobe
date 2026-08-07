@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process"
-import { createServer } from "node:net"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { app, BrowserWindow, ipcMain, shell } from "electron"
+import { findPorts } from "./ports.mjs"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const packageDir = resolve(here, "..")
@@ -14,40 +14,6 @@ const iconPath = resolve(packageDir, "assets/icon.png")
 let webProcess = null
 let mainWindow = null
 let stopping = false
-
-function canListen(port) {
-  return new Promise((resolveListen) => {
-    const server = createServer()
-    server.once("error", () => resolveListen(false))
-    server.once("listening", () => {
-      server.close(() => resolveListen(true))
-    })
-    server.listen(port, "127.0.0.1")
-  })
-}
-
-async function findPorts(start = 5173, daemonWebPort = 5174) {
-  let webPort = null
-  for (let port = start; port < start + 200; port += 1) {
-    if (port !== daemonWebPort && (await canListen(port))) {
-      webPort = port
-      break
-    }
-  }
-  if (webPort === null) throw new Error(`no free web port found starting at ${start}`)
-
-  const preferredPty = webPort + 2
-  for (let port = preferredPty; port < preferredPty + 200; port += 1) {
-    if (port !== daemonWebPort && port !== webPort && (await canListen(port))) {
-      return {
-        web: webPort,
-        daemonWeb: daemonWebPort,
-        pty: port,
-      }
-    }
-  }
-  throw new Error(`no free PTY port found starting at ${preferredPty}`)
-}
 
 function stopWebProcess() {
   if (stopping) return
