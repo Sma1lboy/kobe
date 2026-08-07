@@ -463,9 +463,13 @@ export function setActiveTab(taskId: string, tabId: string): void {
  *  The first override stashes the minted title as `baseTitle` so
  *  {@link resetTabTitle} can restore it when the engine child exits. */
 export function setTabTitle(taskId: string, tabId: string, title: string): void {
+  // Engines clear the OSC title with an empty string on exit — a blank
+  // sidebar row is never what anyone meant. Keep the last real name.
+  const clean = title.trim()
+  if (!clean) return
   const list = state.tabsByTask[taskId] ?? []
   const current = list.find((tab) => tab.id === tabId)
-  if (!current || current.title === title) return
+  if (!current || current.title === clean) return
   const baseTitle =
     (current as { baseTitle?: string }).baseTitle ?? current.title
   set({
@@ -473,26 +477,32 @@ export function setTabTitle(taskId: string, tabId: string, title: string): void 
     tabsByTask: {
       ...state.tabsByTask,
       [taskId]: list.map((tab) =>
-        tab.id === tabId ? { ...tab, title, baseTitle } : tab,
+        tab.id === tabId ? { ...tab, title: clean, baseTitle } : tab,
       ),
     },
   })
 }
 
-/** Restore a tab's minted title (Terminal N / Vendor N) — the engine child
- *  exited, and a bare shell may never emit an OSC title of its own. */
+/** Retitle a tab whose engine child exited. Every tab is a shell with the
+ *  engine as a CHILD — when the child dies, a vendor tab IS a bare shell, so
+ *  it reads "Shell"; a terminal tab restores its minted name (Terminal N). */
 export function resetTabTitle(taskId: string, tabId: string): void {
   const list = state.tabsByTask[taskId] ?? []
   const current = list.find((tab) => tab.id === tabId) as
     | (WorkspaceTab & { baseTitle?: string })
     | undefined
-  if (!current?.baseTitle || current.title === current.baseTitle) return
+  if (!current) return
+  const next =
+    current.kind === "vendor"
+      ? "Shell"
+      : (current.baseTitle ?? current.title ?? "Shell")
+  if (!next || current.title === next) return
   set({
     ...state,
     tabsByTask: {
       ...state.tabsByTask,
       [taskId]: list.map((tab) =>
-        tab.id === tabId ? { ...tab, title: current.baseTitle ?? tab.title } : tab,
+        tab.id === tabId ? { ...tab, title: next } : tab,
       ),
     },
   })
