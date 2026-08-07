@@ -10,7 +10,7 @@ import { ApiError, api } from "./api-client.ts"
 export type PtyMode = "engine" | "shell"
 
 /** PTY sidecar origin (port + 2). `ws` picks ws/wss; `http` picks http/https. */
-function ptyBase(kind: "ws" | "http"): string {
+export function ptyBase(kind: "ws" | "http"): string {
   const secure = location.protocol === "https:"
   const proto =
     kind === "ws" ? (secure ? "wss" : "ws") : secure ? "https" : "http"

@@ -25,6 +25,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
+import { createAcpManager } from "./acp-server.mjs"
 import { allowedHostForBindHost, originAllowed } from "./origin-policy.mjs"
 import { ptyEnv } from "./pty-env.mjs"
 import { createScrollback } from "./pty-scrollback.mjs"
@@ -286,7 +287,7 @@ const server = createServer((req, res) => {
       } catch {
         /* ignore */
       }
-      const ok = tab ? ptySessions.closeSession(tab) : false
+      const ok = tab ? ptySessions.closeSession(tab) || acpSessions.close(tab) : false
       res.writeHead(200, {
         "content-type": "application/json",
         "access-control-allow-origin": "*",
@@ -304,10 +305,45 @@ const server = createServer((req, res) => {
 // deliberately configured LAN host) may attach. This defends a malicious local
 // page / DNS-rebinding even on the loopback bind. Non-browser clients (no
 // Origin) are allowed — there's no browser to forge their request.
-const wss = new WebSocketServer({
-  server,
-  path: "/pty",
-  verifyClient: ({ origin }) => originAllowed(origin, { allowedHost: ALLOWED_HOST }),
+const wss = new WebSocketServer({ noServer: true })
+
+// EXPERIMENTAL claude-acp vendor: structured JSON-RPC sessions, same origin
+// policy as the PTY attach (an ACP session is arbitrary agent exec too).
+const acpSessions = createAcpManager({
+  fetchCwd: async (taskId) => {
+    const spec = await fetchSpec(taskId, "shell")
+    return spec.cwd
+  },
+})
+const acpWss = new WebSocketServer({ noServer: true })
+
+// One upgrade router: two path-scoped WebSocketServers on the same HTTP
+// server destroy each other's non-matching upgrades, so both run noServer
+// and this single hook routes (and origin-guards) every upgrade.
+server.on("upgrade", (req, socket, head) => {
+  if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
+    socket.destroy()
+    return
+  }
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname
+  const target = pathname === "/pty" ? wss : pathname === "/acp" ? acpWss : null
+  if (!target) {
+    socket.destroy()
+    return
+  }
+  target.handleUpgrade(req, socket, head, (ws) => target.emit("connection", ws, req))
+})
+acpWss.on("connection", (ws, req) => {
+  const url = new URL(req.url ?? "/", "http://localhost")
+  const tabId = url.searchParams.get("tab")
+  const taskId = url.searchParams.get("taskId")
+  if (!tabId || !taskId) {
+    ws.close(1008, "missing tab/taskId")
+    return
+  }
+  void acpSessions.attach(ws, tabId, taskId).catch((err) => {
+    if (ws.readyState === ws.OPEN) ws.close(1011, String(err?.message ?? err))
+  })
 })
 
 wss.on("connection", (ws, req) => {
