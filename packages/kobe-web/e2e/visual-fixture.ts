@@ -97,7 +97,7 @@ function createdIssueId(value: unknown, title: string): number {
 
 async function seedStartupState(): Promise<void> {
   const packageJson = JSON.parse(await readFile(join(KOBE_DIR, "package.json"), "utf8")) as { version: string }
-  const skillPath = join(REPO_ROOT, ".agents", "skills", "kobe", "SKILL.md")
+  const skillPath = join(REPO_ROOT, ".claude", "skills", "kobe", "SKILL.md")
   let skillVersion: string | undefined
   try {
     const skill = await readFile(skillPath, "utf8")

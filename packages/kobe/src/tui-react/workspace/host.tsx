@@ -50,7 +50,7 @@ import { useAttention } from "./use-attention"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
-import { useSubagentDelegation } from "./use-subagent-delegation"
+import { useTaskMessaging } from "./use-task-messaging"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
 
@@ -193,15 +193,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     send(prompt)
   }
 
-  // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
-  // prompt to the new task's TerminalTabs mount (phase 2). Wiring lives in
-  // `quick-fork.ts` — the create/enter/pending-prompt shape is identical
-  // regardless of host, and this component is already near the file-size cap.
+  // Quick-fork: compose → create+enter → hand the prompt to TerminalTabs.
   const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
-  const delegation = useSubagentDelegation({
-    orchestrator: orch,
+  const taskMessaging = useTaskMessaging({
     tasks,
-    primary: selectedTask,
+    current: selectedTask,
     dialog,
     t,
     sendRef: sendToEngineFn,
@@ -228,7 +224,12 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   })
 
   const pages = useHostPagesState(focus)
+  // Tree lists worktree tabs as rows; `flat` restores PROJECTS / TASKS.
   const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
+  // The selected task's active tab — the tree marks that exact row as live.
+  // Read from the module map rather than threaded through TerminalTabs: the
+  // sidebar renders tabs for tasks whose TerminalTabs is not mounted, so the
+  // module map is the only source that answers for all of them.
   const selectedTabId = selectedId === null ? null : activeTabIdFor(selectedId)
   // Kanban detail drawer → engine session (create/link/prompt handoff) —
   // quick-fork's pending-prompt pattern, per-placement (use-issue-chat.ts).
@@ -274,7 +275,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     jumpToNextAttention,
     openInbox: inbox.show,
     createPR: () => void createPR(),
-    delegateToTask: delegation.connectCurrent,
+    chooseMessagePeer: taskMessaging.choosePeer,
     // prefix+m — global entry into the sidebar's move mode: focus the
     // sidebar, highlight the current selection, j/k reorders, enter/esc
     // exits. Falls back to the first task when nothing is selected.

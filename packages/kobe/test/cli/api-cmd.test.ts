@@ -138,7 +138,6 @@ describe("API surface (full CRUD)", () => {
   it("exposes the full task lifecycle, not just the old six", () => {
     for (const v of [
       "schema",
-      "delegation-protocol",
       "list",
       "get-task",
       "add",

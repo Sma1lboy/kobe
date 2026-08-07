@@ -26,7 +26,6 @@ import { READ_OUTPUT_VERB } from "./read-output.ts"
 import { fullSchema, groupSchema, schemaIndex, verbSchema } from "./schema.ts"
 import { ApiError, type FlagSpec, type VerbContext, type VerbSpec } from "./types.ts"
 import { ROUTINE_VERBS } from "./verbs-automations.ts"
-import { DELEGATION_PROTOCOL_VERB } from "./verbs-delegation.ts"
 import { ISSUE_VERBS } from "./verbs-issues.ts"
 import { WORK_ITEM_VERBS } from "./verbs-work-items.ts"
 
@@ -69,7 +68,7 @@ export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "a
  * instead of slurping every flag of every verb and polluting its context.
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
-  discover: ["schema", "delegation-protocol"],
+  discover: ["schema"],
   read: ["list", "get-task", "collect", "pty-list", "read-output"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
@@ -112,7 +111,6 @@ export const VERBS: readonly VerbSpec[] = [
     offline: true,
     handler: handleSchema,
   },
-  DELEGATION_PROTOCOL_VERB,
   { name: "list", summary: "List all tasks (incl. archived). Returns { tasks }.", flags: [], handler: list },
   {
     name: "get-task",

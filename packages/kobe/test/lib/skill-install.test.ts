@@ -95,14 +95,6 @@ describe("skill version / staleness", () => {
     expect(parseSkillVersion(readFileSync(repoSkill, "utf8"))).toBe(KOBE_SKILL_VERSION)
   })
 
-  it("routes delegation fields to the binary instead of duplicating the message schema", () => {
-    const repoSkill = join(dirname(fileURLToPath(import.meta.url)), "../../../../.agents/skills/kobe/SKILL.md")
-    const content = readFileSync(repoSkill, "utf8")
-    expect(content).toContain("kobe api delegation-protocol")
-    expect(content).not.toContain("[KOBE DELEGATION MESSAGE")
-    expect(content).not.toContain("objective: <one bounded outcome>")
-  })
-
   it("kobeSkillState: absent → not installed, not stale", () => {
     const s = kobeSkillState({ home: tempDir(), cwd: tempDir() })
     expect(s).toMatchObject({ installed: false, stale: false })

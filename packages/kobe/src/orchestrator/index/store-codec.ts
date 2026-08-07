@@ -17,7 +17,7 @@
  */
 
 import { copyFile } from "node:fs/promises"
-import type { Task, TaskDelegationLink, TaskDeletionState, TaskPRStatus, TaskStatus } from "../../types/task.ts"
+import type { Task, TaskDeletionState, TaskPRStatus, TaskStatus } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { coerceVendorId } from "../../types/vendor.ts"
 import { LockfileError, acquire } from "./lockfile.ts"
@@ -150,7 +150,6 @@ function coerceTask(value: unknown): Task | null {
         ? "in_progress"
         : v.status
   const deletion = coerceDeletion(v.deletion)
-  const delegation = coerceDelegation(v.delegation)
 
   return {
     id: toTaskId(v.id),
@@ -173,26 +172,10 @@ function coerceTask(value: unknown): Task | null {
     // Fan-out round marker — must survive the load coercion or siblings
     // lose their grouping on every daemon restart.
     ...(typeof v.groupId === "string" && v.groupId.length > 0 ? { groupId: v.groupId } : {}),
-    ...(delegation ? { delegation } : {}),
     ...(deletion ? { deletion } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
-}
-
-function coerceDelegation(value: unknown): TaskDelegationLink | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-  const v = value as Record<string, unknown>
-  if (
-    typeof v.primaryTaskId !== "string" ||
-    v.primaryTaskId.length === 0 ||
-    (v.protocolVersion !== 1 && v.protocolVersion !== 2) ||
-    typeof v.linkedAt !== "string" ||
-    v.linkedAt.length === 0
-  ) {
-    return undefined
-  }
-  return { primaryTaskId: v.primaryTaskId, protocolVersion: v.protocolVersion, linkedAt: v.linkedAt }
 }
 
 function coerceDeletion(value: unknown): TaskDeletionState | undefined {

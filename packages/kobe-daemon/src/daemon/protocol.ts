@@ -119,7 +119,6 @@ export type DaemonRequestName =
   | "task.rename"
   | "task.setBranch"
   | "task.setVendor"
-  | "task.setDelegation"
   | "task.delete"
   // Land a task's branch back into its base repo (merge/squash). The last step
   // of the worktree→engine→branch lifecycle that had no product path; refuses a
@@ -359,8 +358,6 @@ export interface SerializedTask {
   readonly modelEffort?: string
   /** Fan-out round marker shared by the siblings of one fan-out call. */
   readonly groupId?: string
-  /** Directed primary -> subagent relationship; stored on the subagent. */
-  readonly delegation?: DaemonTask["delegation"]
   /** The worker's self-reported outcome (worker report, not kobe-verified). */
   readonly workerReport?: DaemonTask["workerReport"]
   /** Durable daemon-owned background deletion state. */
@@ -388,7 +385,6 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     position: task.position,
     modelEffort: task.modelEffort,
     groupId: task.groupId,
-    delegation: task.delegation,
     workerReport: task.workerReport,
     deletion: task.deletion,
     quotaResume: task.quotaResume,

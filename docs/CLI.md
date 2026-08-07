@@ -10,10 +10,6 @@ surfaces stay authoritative when this page and the binary disagree:
   **the** source of truth for the scriptable surface: names, types,
   required flags, enum values. Agents should read it once and drill in with
   `--verb <name>` instead of parsing this page.
-- `kobe api delegation-protocol`: the canonical directed Task-delegation
-  message contract. With primary/subagent ids it returns a fresh request id
-  plus matching request/result templates; skills and docs do not carry a
-  second field/default schema.
 
 Design rationale (why a CLI instead of MCP) lives in
 [design/cli-api.md](./design/cli-api.md), which is historical; the shipped
@@ -360,11 +356,6 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 - `send [--task-id ID] --prompt TEXT`: paste a follow-up into a task's
   running engine (one full turn). Defaults to the active task.
-  Directed delegation created by the TUI's `prefix+@` always uses an explicit
-  id: primary → subagent for a bounded request, then subagent → primary for one
-  structured result. `delegation-protocol` defines the v2 envelope, hop budget,
-  and reply policy; the installed Kobe skill consumes that contract instead of
-  defining a competing copy.
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see

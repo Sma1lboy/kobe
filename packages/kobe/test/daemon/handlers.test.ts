@@ -78,7 +78,6 @@ describe("daemon handler registry", () => {
       "task.rename",
       "task.setBranch",
       "task.setVendor",
-      "task.setDelegation",
       "task.delete",
       "task.land",
       "task.pin",
@@ -304,22 +303,6 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.rename", { taskId: "t1", title: "new" }, ctx)).resolves.toEqual({})
       expect(renames).toEqual([["t1", "new"]])
       await expect(dispatch("task.rename", { taskId: "t1" }, ctx)).rejects.toThrow("title is required")
-    })
-
-    it("task.setDelegation forwards the directed endpoint ids", async () => {
-      const links: Array<[string, string]> = []
-      const { ctx } = fakeCtx({
-        setDelegation: async (subagentId: string, primaryId: string) => {
-          links.push([subagentId, primaryId])
-        },
-      })
-      await expect(
-        dispatch("task.setDelegation", { subagentTaskId: "worker", primaryTaskId: "primary" }, ctx),
-      ).resolves.toEqual({})
-      expect(links).toEqual([["worker", "primary"]])
-      await expect(dispatch("task.setDelegation", { subagentTaskId: "worker" }, ctx)).rejects.toThrow(
-        "primaryTaskId is required",
-      )
     })
 
     it("task.reorder forwards a validated batch and returns the empty object", async () => {

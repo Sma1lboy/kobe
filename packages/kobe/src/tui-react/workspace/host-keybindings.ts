@@ -67,8 +67,8 @@ export type WorkspaceKeybindingDeps = {
   enterMoveMode: () => void
   /** prefix+p / prefix+P — send the Create PR prompt into the engine pane. */
   createPR: () => void
-  /** prefix+@ — choose one existing Task as this primary Task's subagent. */
-  delegateToTask: () => void
+  /** prefix+@ — choose a Task address for the current agent. */
+  chooseMessagePeer: () => void
 }
 
 export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
@@ -145,7 +145,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "workItems.open": () => deps.openWorkItems(),
         "task.moveMode": () => deps.enterMoveMode(),
         "files.createPR": () => deps.createPR(),
-        "chat.subagent.delegate": () => deps.delegateToTask(),
+        "chat.task.message": () => deps.chooseMessagePeer(),
         "task.openEditor": () => {
           if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)
         },

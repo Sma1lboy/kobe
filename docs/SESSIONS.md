@@ -118,11 +118,6 @@ conversation is the engine's own transcript on disk, and it outlives every
 kobe process, including a machine reboot, because the engine writes it,
 not kobe.
 
-A directed primary/subagent link also survives restarts because it is Task
-metadata in `tasks.json`. Messages sent across that link are not copied into a
-Kobe-owned log: each delivered turn lands in, and is resumed from, the target
-engine's own session history.
-
 - Engine tabs pin their conversation up front: a Claude launch gets a
   kobe-generated `--session-id <uuid>` so the session maps to its transcript
   (vendors that can't take a caller-set id, like Codex, are left untouched).

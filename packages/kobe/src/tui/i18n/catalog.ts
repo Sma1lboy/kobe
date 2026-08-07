@@ -19,7 +19,6 @@
 
 import { en as automations, zh as automationsZh } from "./messages/automations"
 import { en as common, zh as commonZh } from "./messages/common"
-import { en as delegation, zh as delegationZh } from "./messages/delegation"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
 import { en as history, zh as historyZh } from "./messages/history"
@@ -30,6 +29,7 @@ import { en as onboarding, zh as onboardingZh } from "./messages/onboarding"
 import { en as ops, zh as opsZh } from "./messages/ops"
 import { en as quickTask, zh as quickTaskZh } from "./messages/quickTask"
 import { en as settings, zh as settingsZh } from "./messages/settings"
+import { en as taskMessaging, zh as taskMessagingZh } from "./messages/taskMessaging"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as terminal, zh as terminalZh } from "./messages/terminal"
 import { en as update, zh as updateZh } from "./messages/update"
@@ -40,6 +40,7 @@ import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 export const en = {
   settings,
   tasks,
+  taskMessaging,
   terminal,
   files,
   newTask,
@@ -50,7 +51,6 @@ export const en = {
   help,
   history,
   common,
-  delegation,
   keys,
   workspace,
   worktrees,
@@ -69,6 +69,7 @@ export type Messages = typeof en
 export const zh: Messages = {
   settings: settingsZh,
   tasks: tasksZh,
+  taskMessaging: taskMessagingZh,
   terminal: terminalZh,
   files: filesZh,
   newTask: newTaskZh,
@@ -79,7 +80,6 @@ export const zh: Messages = {
   help: helpZh,
   history: historyZh,
   common: commonZh,
-  delegation: delegationZh,
   keys: keysZh,
   workspace: workspaceZh,
   worktrees: worktreesZh,

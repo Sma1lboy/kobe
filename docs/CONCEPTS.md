@@ -28,19 +28,13 @@ the task's live sessions stop and the sidebar moves it to Archives. kobe
 never deletes a worktree implicitly, not on archive, not on `done`. You
 remove worktrees explicitly or not at all.
 
-### Primary and subagent Tasks
+### Cross-task messaging
 
-`prefix+@` links the focused Task to one existing Task as a subagent. The
-relationship is directed: the focused Task is the primary and remains the
-user-facing coordinator; the selected Task is a worker. Kobe persists the
-primary Task id on the subagent record, but it does not fork either engine
-session or create a shared Channel transcript.
-
-The primary and subagent communicate in full engine turns through explicit
-`kobe api send --task-id …` calls. The bootstrap supplies both ids, while
-`kobe api delegation-protocol` supplies the canonical versioned request/result
-templates consumed under the installed Kobe skill. Each Task continues to own
-its own worktree and native engine history.
+`prefix+@` chooses another Task and gives its id, plus the current Task's id,
+to the current agent. This is an address handoff only: it creates no Channel,
+fork, saved relationship, or sidebar topology. Agents exchange complete turns
+through the existing `kobe api send`; the installed Kobe skill owns the small
+`reply_to_task_id` message convention.
 
 ## Worktree and branch
 

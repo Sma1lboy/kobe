@@ -10,11 +10,9 @@
  * unchanged. Moved verbatim from `core.ts` — no behaviour change.
  */
 
-import { KOBE_DELEGATION_PROTOCOL_VERSION } from "../core/task-delegation-protocol.ts"
 import { samePrStatus } from "../monitor/pr-status.ts"
 import type {
   Task,
-  TaskDelegationLink,
   TaskId,
   TaskLinkedWorkItem,
   TaskPRStatus,
@@ -139,47 +137,6 @@ export class TaskEditor {
     const task = this.requireTask(id)
     if (task.vendor === vendor) return
     await this.store.update(task.id, { vendor })
-  }
-
-  /**
-   * Make `subagentId` a directed child of `primaryId`.
-   *
-   * A task stores only its immediate primary. Walking those parent pointers
-   * before the write rejects self-links and cycles, so the durable topology is
-   * a forest rather than an arbitrary message graph. Re-selecting the same
-   * pair is idempotent; selecting another primary explicitly re-parents the
-   * subagent.
-   */
-  async setDelegation(subagentId: TaskId | string, primaryId: TaskId | string): Promise<void> {
-    const subagent = this.requireTask(subagentId)
-    const primary = this.requireTask(primaryId)
-    if (subagent.id === primary.id) throw new Error("setDelegation: a task cannot delegate to itself")
-    if (subagent.archived || primary.archived) throw new Error("setDelegation: both tasks must be active")
-
-    const seen = new Set<string>([String(primary.id)])
-    let cursor = primary
-    while (cursor.delegation) {
-      const parentId = cursor.delegation.primaryTaskId
-      if (parentId === String(subagent.id)) throw new Error("setDelegation: link would create a cycle")
-      if (seen.has(parentId)) throw new Error("setDelegation: existing delegation cycle detected")
-      seen.add(parentId)
-      const parent = this.store.get(parentId)
-      if (!parent) break
-      cursor = parent
-    }
-
-    if (
-      subagent.delegation?.primaryTaskId === String(primary.id) &&
-      subagent.delegation.protocolVersion === KOBE_DELEGATION_PROTOCOL_VERSION
-    ) {
-      return
-    }
-    const delegation: TaskDelegationLink = {
-      primaryTaskId: String(primary.id),
-      protocolVersion: KOBE_DELEGATION_PROTOCOL_VERSION,
-      linkedAt: new Date().toISOString(),
-    }
-    await this.store.update(subagent.id, { delegation })
   }
 
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */

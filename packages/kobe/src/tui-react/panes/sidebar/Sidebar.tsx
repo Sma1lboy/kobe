@@ -39,7 +39,6 @@ import {
   sidebarProjectKey,
   splitSidebarRows,
 } from "../../../tui/panes/sidebar/groups"
-import { indexTaskDelegationMarks } from "../../../tui/panes/sidebar/task-delegation-marks"
 import {
   MAIN_BRANCH_POLL_MS,
   SIDEBAR_WIDTH,
@@ -64,7 +63,6 @@ export function Sidebar(props: SidebarProps) {
   const t = useT()
   const focused = props.focused ?? true
   const focusedRef = useLatest(focused)
-  const taskDelegationMarks = useMemo(() => indexTaskDelegationMarks(props.tasks), [props.tasks])
 
   const [view, setView] = useState<SidebarView>("active")
   const [searchMode, setSearchMode] = useState(false)
@@ -367,8 +365,6 @@ export function Sidebar(props: SidebarProps) {
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,
     transcriptActivity: props.transcriptActivity,
-    taskDelegationMarks,
-    onOpenSubagents: props.onOpenSubagents,
     moveMode: props.moveMode,
   }
 

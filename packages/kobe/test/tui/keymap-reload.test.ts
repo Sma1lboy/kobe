@@ -33,8 +33,7 @@ describe("resetKeymapToDefaults", () => {
     expect(findBinding("focus.next")?.prefixKeys).toEqual(["l"])
     expect(findBinding("inbox.show")?.keys).toEqual([])
     expect(findBinding("inbox.show")?.prefixKeys).toEqual(["i"])
-    expect(findBinding("chat.subagent.delegate")?.keys).toEqual([])
-    expect(findBinding("chat.subagent.delegate")?.prefixKeys).toEqual(["@"])
+    expect(findBinding("chat.task.message")?.prefixKeys).toEqual(["@"])
   })
 
   test("non-ChatPane bindings retain their direct Ctrl chords", () => {

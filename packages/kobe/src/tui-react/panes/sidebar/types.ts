@@ -59,8 +59,6 @@ export type SidebarProps = SidebarTaskCallbacks & {
   onProjectFilterChange?: (repo: string | null) => void
   onSearchActiveChange?: (active: boolean) => void
   onCursorChange?: (taskId: string | null) => void
-  /** Open the primary Task's linked-subagent jump portal. */
-  onOpenSubagents?: (primaryTaskId: string) => void
   /** Optional width override; defaults to the sidebar rail width. */
   width?: number
   headerStatus?: { label: string; emphasize: boolean } | null

@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-/** Task picker opened by `ctrl+a`, `@` from the primary task's engine pane. */
+/** Task-address picker opened by `ctrl+a`, `@` from an engine pane. */
 
 import { engineDisplayName } from "@/engine/interactive-command"
 import type { Task } from "@/types/task"
@@ -13,8 +13,8 @@ import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
 
 const MAX_ROWS = 9
 
-export function TaskDelegationPickerView(props: {
-  primary: Task
+export function TaskMessagePickerView(props: {
+  current: Task
   tasks: readonly Task[]
   onSubmit: (task: Task) => void
 }) {
@@ -23,7 +23,7 @@ export function TaskDelegationPickerView(props: {
   const t = useT()
   const [cursor, setCursor] = useState(0)
   const choices = props.tasks.filter(
-    (task) => task.id !== props.primary.id && !task.archived && task.worktreePath !== "",
+    (task) => task.id !== props.current.id && !task.archived && task.worktreePath !== "",
   )
   const clamp = (next: number): number => Math.max(0, Math.min(choices.length - 1, next))
   const start = Math.max(0, Math.min(cursor - Math.floor(MAX_ROWS / 2), choices.length - MAX_ROWS))
@@ -54,13 +54,13 @@ export function TaskDelegationPickerView(props: {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          {t("delegation.picker.title")}
+          {t("taskMessaging.picker.title")}
         </text>
         <text fg={theme.textMuted}>esc</text>
       </box>
-      <text fg={theme.textMuted}>{t("delegation.picker.primary", { task: props.primary.title })}</text>
+      <text fg={theme.textMuted}>{t("taskMessaging.picker.current", { task: props.current.title })}</text>
       {choices.length === 0 ? (
-        <text fg={theme.textMuted}>{t("delegation.picker.empty")}</text>
+        <text fg={theme.textMuted}>{t("taskMessaging.picker.empty")}</text>
       ) : (
         <box flexDirection="column" gap={0}>
           {visible.map((task, index) => {
@@ -94,17 +94,17 @@ export function TaskDelegationPickerView(props: {
           })}
         </box>
       )}
-      <text fg={theme.textMuted}>{t("delegation.picker.hint")}</text>
+      <text fg={theme.textMuted}>{t("taskMessaging.picker.hint")}</text>
     </box>
   )
 }
 
-function show(dialog: DialogContext, primary: Task, tasks: readonly Task[]): Promise<Task | undefined> {
+function show(dialog: DialogContext, current: Task, tasks: readonly Task[]): Promise<Task | undefined> {
   return showDialog<Task>(
     dialog,
-    (resolve) => <TaskDelegationPickerView primary={primary} tasks={tasks} onSubmit={(task) => resolve(task)} />,
+    (resolve) => <TaskMessagePickerView current={current} tasks={tasks} onSubmit={(task) => resolve(task)} />,
     { size: "medium" },
   )
 }
 
-export const TaskDelegationPickerDialog = { show }
+export const TaskMessagePickerDialog = { show }

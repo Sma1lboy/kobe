@@ -118,39 +118,6 @@ describe("schema drill-ins", () => {
   })
 })
 
-describe("delegation-protocol", () => {
-  it("returns one canonical v2 request/result pair with an explicit request id", async () => {
-    const result = (await invokeVerb(
-      "delegation-protocol",
-      ["--primary-task-id", "PRIMARY01", "--subagent-task-id", "WORKER01", "--request-id", "req_TEST"],
-      offline,
-    )) as { version: number; requestTemplate: string; resultTemplate: string }
-    expect(result.version).toBe(2)
-    expect(result.requestTemplate).toContain("request_id: req_TEST")
-    expect(result.requestTemplate).toContain("subagent_task_id: WORKER01")
-    expect(result.requestTemplate).toContain("--request-id 'req_TEST'")
-    expect(result.resultTemplate).toContain("target_task_id: PRIMARY01")
-  })
-
-  it("assigns a fresh request id when addressed and validates paired ids + hop budget", async () => {
-    const result = (await invokeVerb(
-      "delegation-protocol",
-      ["--primary-task-id", "PRIMARY01", "--subagent-task-id", "WORKER01"],
-      offline,
-    )) as { requestTemplate: string }
-    expect(result.requestTemplate).toMatch(/request_id: req_[0-9A-HJKMNP-TV-Z]{26}/)
-    await expectApiError(
-      () => invokeVerb("delegation-protocol", ["--primary-task-id", "PRIMARY01"], offline),
-      "MISSING_FLAG",
-    )
-    await expectApiError(() => invokeVerb("delegation-protocol", ["--max-hops", "1"], offline), "BAD_FLAG")
-    await expectApiError(
-      () => invokeVerb("delegation-protocol", ["--request-id", "bad; touch /tmp/nope"], offline),
-      "BAD_FLAG",
-    )
-  })
-})
-
 describe("edit verbs — RPC name + payload", () => {
   it("rename → task.rename", async () => {
     const client = new FakeClient({ "task.rename": () => ({}) })

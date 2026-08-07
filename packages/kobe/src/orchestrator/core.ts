@@ -337,11 +337,6 @@ export class Orchestrator {
     return this.editor.setVendor(id, vendor)
   }
 
-  /** Persist a directed primary -> subagent link. */
-  async setDelegation(subagentId: TaskId | string, primaryId: TaskId | string): Promise<void> {
-    return this.editor.setDelegation(subagentId, primaryId)
-  }
-
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     return this.editor.setPinned(id, pinned)

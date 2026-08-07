@@ -90,56 +90,6 @@ describe("setVendor", () => {
   })
 })
 
-describe("setDelegation", () => {
-  it("persists one directed primary link on the subagent", async () => {
-    const primary = await makeTask({ title: "primary" })
-    const subagent = await makeTask({ title: "subagent" })
-
-    await orch.setDelegation(subagent.id, primary.id)
-    expect(orch.getTask(subagent.id)?.delegation).toMatchObject({
-      primaryTaskId: String(primary.id),
-      protocolVersion: 2,
-    })
-    expect(orch.getTask(primary.id)?.delegation).toBeUndefined()
-
-    const reloaded = new TaskIndexStore({ homeDir: home })
-    await reloaded.load()
-    expect(reloaded.get(subagent.id)?.delegation?.primaryTaskId).toBe(String(primary.id))
-  })
-
-  it("rejects self-links, archived endpoints, and cycles", async () => {
-    const primary = await makeTask({ title: "primary" })
-    const subagent = await makeTask({ title: "subagent" })
-
-    await expect(orch.setDelegation(primary.id, primary.id)).rejects.toThrow(/itself/)
-    await orch.setDelegation(subagent.id, primary.id)
-    await expect(orch.setDelegation(primary.id, subagent.id)).rejects.toThrow(/cycle/)
-
-    await orch.setArchived(subagent.id, true)
-    await expect(orch.setDelegation(subagent.id, primary.id)).rejects.toThrow(/active/)
-  })
-
-  it("explicitly re-parents an existing subagent", async () => {
-    const first = await makeTask({ title: "first" })
-    const second = await makeTask({ title: "second" })
-    const subagent = await makeTask({ title: "subagent" })
-    await orch.setDelegation(subagent.id, first.id)
-    await orch.setDelegation(subagent.id, second.id)
-    expect(orch.getTask(subagent.id)?.delegation?.primaryTaskId).toBe(String(second.id))
-  })
-
-  it("upgrades an existing v1 link when the same pair is selected again", async () => {
-    const primary = await makeTask({ title: "primary" })
-    const subagent = await makeTask({ title: "subagent" })
-    await store.update(subagent.id, {
-      delegation: { primaryTaskId: String(primary.id), protocolVersion: 1, linkedAt: "2026-08-06T00:00:00.000Z" },
-    })
-
-    await orch.setDelegation(subagent.id, primary.id)
-    expect(orch.getTask(subagent.id)?.delegation?.protocolVersion).toBe(2)
-  })
-})
-
 describe("setPinned", () => {
   it("toggles when no explicit value is given", async () => {
     const t = await makeTask()
