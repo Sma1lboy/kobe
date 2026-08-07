@@ -172,20 +172,27 @@ export class DaemonActivityRegistry {
     // heartbeat as the task level, publishing a per-tab idle so hook-wins
     // subscribers fall back to the quiescence poll.
     if (tabId && session) this.recordTabSession(taskId, tabId, session.id)
+    // A TAB-scoped publish must carry the TAB's session lineage only — the
+    // event's own id, or the same tab's previous one. Inheriting the
+    // task-level rollup here leaked another tab's (even another ENGINE's)
+    // session onto a fresh tab whose hooks don't pipe session ids.
+    let publishEntry = entry
     if (tabId) {
       const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
       const prevTab = tabs.get(tabId)
       if (prevTab?.lapse) clearTimeout(prevTab.lapse)
+      const tabSession = session ?? prevTab?.session
+      publishEntry = { state, detail, at, session: tabSession }
       if (state === "idle") tabs.delete(tabId)
       else {
-        const tabEntry: ActivityEntry = { state, detail, at, session: session ?? prevTab?.session }
+        const tabEntry: ActivityEntry = { state, detail, at, session: tabSession }
         if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
         tabs.set(tabId, tabEntry)
       }
       if (tabs.size > 0) this.tabActivity.set(taskId, tabs)
       else this.tabActivity.delete(taskId)
     }
-    this.bus.publish("engine-state", this.payload(taskId, entry, tabId))
+    this.bus.publish("engine-state", this.payload(taskId, publishEntry, tabId))
   }
 
   /**

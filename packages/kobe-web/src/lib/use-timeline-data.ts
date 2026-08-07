@@ -75,6 +75,18 @@ export function useTimelineData({
         // (the task-level id is the last resort — it can lag a session behind).
         const latest = sessions.sessions.at(-1)
         const target = preferredSessionId ?? (bound ? (latest ?? taskSessionId) : undefined)
+        if (import.meta.env.DEV) {
+          ;(window as unknown as Record<string, unknown>).__kobeTrace = {
+            vendor,
+            worktreePath,
+            preferredSessionId,
+            taskSessionId,
+            bound,
+            latest,
+            target,
+            at: new Date().toISOString(),
+          }
+        }
         const next = target
           ? await fetchTrace(vendor, target)
           : { sessionId: "", turns: [] }
