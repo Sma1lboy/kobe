@@ -99,6 +99,24 @@ function createWindow(url) {
     },
   })
 
+  // Cmd+W must NEVER close the window. before-input-event runs ahead of any
+  // menu/renderer handling, so whatever layer tried to claim it, the chord
+  // is swallowed here and routed to the renderer as close-tab (where the
+  // Settings view counts as a tab).
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (
+      process.platform === "darwin" &&
+      input.type === "keyDown" &&
+      input.meta &&
+      !input.control &&
+      !input.alt &&
+      input.key.toLowerCase() === "w"
+    ) {
+      event.preventDefault()
+      mainWindow?.webContents.send("kobe-chord:close-tab")
+    }
+  })
+
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
     void shell.openExternal(target)
     return { action: "deny" }

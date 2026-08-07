@@ -18,11 +18,13 @@ import { CircleHelp, Plus, Settings } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { taskJumpDigit, useChatChords } from "../lib/chat-chords.ts"
 import { useEngines } from "../lib/engines.ts"
+import { desktopWindowControls } from "../lib/desktop.ts"
 import {
   closeSettings,
   openKeyboardHelp,
   openNewTask,
   openSettings,
+  useGlobalUiState,
 } from "../lib/global-ui.ts"
 import { useAppState } from "../lib/store.ts"
 import { tabHasPty } from "../lib/tab-kinds.ts"
@@ -392,6 +394,29 @@ export function ChatSidebarTree({
     if (row.tabId) setActiveTab(row.taskId, row.tabId)
   }
 
+  // cmd/ctrl+W: Settings counts as a tab — close it back to the previous
+  // chat tab first; otherwise close the active engine tab. Shared by the
+  // chord path and the desktop main-process ⌘W IPC.
+  const { settingsOpen } = useGlobalUiState()
+  const closeActiveSurface = (): void => {
+    if (settingsOpen) {
+      closeSettings()
+      return
+    }
+    if (!selectedId) return
+    const activeId = activeByTask[selectedId]
+    const tab = (tabsByTask[selectedId] ?? []).find((t) => t.id === activeId)
+    if (!tab) return
+    closeTab(selectedId, tab.id)
+    if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
+  }
+  const closeActiveSurfaceRef = useRef(closeActiveSurface)
+  closeActiveSurfaceRef.current = closeActiveSurface
+  useEffect(
+    () => desktopWindowControls()?.onCloseTab?.(() => closeActiveSurfaceRef.current()),
+    [],
+  )
+
   const prefixArmed = useChatChords({
     onJumpRow: (slot) => {
       const flatIdx = jumpTargets[slot]
@@ -431,14 +456,7 @@ export function ChatSidebarTree({
       if (selectedId) setPickerOpen(true)
       else openNewTask()
     },
-    onCloseTab: () => {
-      if (!selectedId) return
-      const activeId = activeByTask[selectedId]
-      const tab = (tabsByTask[selectedId] ?? []).find((t) => t.id === activeId)
-      if (!tab) return
-      closeTab(selectedId, tab.id)
-      if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
-    },
+    onCloseTab: closeActiveSurface,
   })
 
   // One flat index across worktree + tab rows — must mint the same order

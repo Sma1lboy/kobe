@@ -2,6 +2,8 @@ export interface DesktopWindowControls {
   close(): void
   minimize(): void
   toggleMaximize(): void
+  /** Cmd+W routed from the main process — returns an unsubscribe. */
+  onCloseTab?(cb: () => void): () => void
 }
 
 declare global {
