@@ -39,38 +39,6 @@ export interface DaemonRuntimeAdapter {
   affectsActivityState(value: string): boolean
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
-  /**
-   * Recover the native session created for an explicit engine session-start.
-   * This is an engine-owned compatibility path for older hook reporters that
-   * forward the lifecycle event but omit the provider's session fields.
-   */
-  recoverEngineSession(
-    vendor: VendorId,
-    worktreePath: string,
-  ): Promise<{ sessionId: string; transcriptPath?: string } | null>
-  /**
-   * Observe an engine-native context switch that precedes ordinary lifecycle
-   * hooks. Vendor log/process details remain behind the composition adapter.
-   */
-  observeEngineSessionActivation(
-    vendor: VendorId,
-    rootPid: number,
-    afterMs: number,
-  ): Promise<
-    | {
-        phase: "pending"
-        source: "resume"
-        observedAt: number
-      }
-    | {
-        phase: "selected"
-        sessionId: string
-        transcriptPath?: string
-        source: "resume"
-        observedAt: number
-      }
-    | null
-  >
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
   createEngineTurnDetector(vendor: VendorId): EngineTurnDetectorAdapter
   runWorktreeStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges>
@@ -80,17 +48,8 @@ export interface DaemonRuntimeAdapter {
   availableEngineIds(): Promise<readonly VendorId[]>
   engineDisplayName(vendor: VendorId): string
   kobeApiInvocation(): string
-  engineSpec(
-    link: DaemonRpcClient,
-    taskId: string,
-    vendor?: string,
-    tabId?: string,
-  ): Promise<{ cwd: string; command: string[]; sessionId?: string }>
-  terminalSpec(
-    link: DaemonRpcClient,
-    taskId: string,
-    tabId?: string,
-  ): Promise<{ cwd: string; command: string[]; env?: Record<string, string> }>
+  engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
+  terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
   /**
    * Materialize a task's worktree and START its engine with `prompt` as the

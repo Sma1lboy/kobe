@@ -30,84 +30,19 @@ describe("CodexHookAdapter", () => {
     expect(adapter.supportsWorktreeSync()).toBe(false)
   })
 
-  it("keeps failure payloads neutral while preserving exact trace identities", () => {
+  it("decodes no extra detail (no failure/permission events are wired)", () => {
     expect(adapter.activityDetailFromPayload("turn-complete", {})).toBeUndefined()
     expect(adapter.activityDetailFromPayload("turn-failed", { error_type: "rate_limit" })).toBeUndefined()
-    expect(
-      adapter.activityDetailFromPayload("tool-post", {
-        turn_id: "turn-1",
-        tool_use_id: "call-1",
-        tool_name: "exec_command",
-        tool_input: { cmd: "pwd" },
-        tool_response: { output: "/repo", exit_code: 0 },
-      }),
-    ).toEqual({
-      turnId: "turn-1",
-      tool: {
-        id: "call-1",
-        name: "exec_command",
-        input: '{\n  "cmd": "pwd"\n}',
-        output: '{\n  "output": "/repo",\n  "exit_code": 0\n}',
-        isError: false,
-      },
-    })
-    expect(
-      adapter.sessionFromPayload({
-        session_id: "session-1",
-        transcript_path: "/tmp/rollout.jsonl",
-      }),
-    ).toEqual({
-      sessionId: "session-1",
-      transcriptPath: "/tmp/rollout.jsonl",
-    })
-    expect(
-      adapter.sessionFromPayload({
-        hook_event_name: "SessionStart",
-        source: "resume",
-        session_id: "session-1",
-        transcript_path: "/tmp/rollout.jsonl",
-      }),
-    ).toEqual({
-      sessionId: "session-1",
-      transcriptPath: "/tmp/rollout.jsonl",
-      startSource: "resume",
-    })
-    expect(
-      adapter.activityDetailFromPayload("subagent-stop", {
-        turn_id: "turn-1",
-        agent_id: "agent-7",
-        agent_type: "reviewer",
-        agent_transcript_path: "/tmp/subagent.jsonl",
-        last_assistant_message: "The focused tests pass.",
-      }),
-    ).toEqual({
-      turnId: "turn-1",
-      subagent: {
-        id: "agent-7",
-        type: "reviewer",
-        transcriptPath: "/tmp/subagent.jsonl",
-        result: "The focused tests pass.",
-      },
-    })
   })
 
   it("owns exactly the events Codex can deliver safely", () => {
     expect([...KOBE_CODEX_HOOK_EVENTS].sort()).toEqual(
-      [
-        "SessionStart",
-        "Stop",
-        "SessionEnd",
-        "UserPromptSubmit",
-        "PreCompact",
-        "PostCompact",
-        "PreToolUse",
-        "PostToolUse",
-        "SubagentStart",
-        "SubagentStop",
-      ].sort(),
+      ["SessionStart", "Stop", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse"].sort(),
     )
-    // Codex still has no neutral StopFailure or permission notification hook.
-    for (const absent of ["StopFailure", "Notification", "PostToolUseFailure"]) {
+    // The verbs with no clean Codex signal are NOT installed: no StopFailure
+    // equivalent, no Notification, and SessionEnd/Subagent* are documented
+    // upstream but absent from the pinned protocol.
+    for (const absent of ["StopFailure", "Notification", "SessionEnd", "SubagentStart", "PostToolUseFailure"]) {
       expect(KOBE_CODEX_HOOK_EVENTS).not.toContain(absent)
     }
   })
@@ -160,11 +95,10 @@ describe("CodexHookAdapter install/remove roundtrip (real file)", () => {
     expect(hooks.SessionStart).toBeDefined()
     expect(hooks.UserPromptSubmit).toBeDefined()
     expect(hooks.Stop).toBeDefined()
-    // Codex has no clean failure/permission signals.
+    // Codex never delivers these → kobe must not install them.
     expect(hooks.StopFailure).toBeUndefined()
     expect(hooks.Notification).toBeUndefined()
-    expect(hooks.SessionEnd).toBeDefined()
-    expect(hooks.SubagentStart).toBeDefined()
+    expect(hooks.SessionEnd).toBeUndefined()
     // kobe's Stop coexists with the user's Stop hook.
     expect(JSON.stringify(hooks.Stop)).toContain("turn-complete")
     expect(JSON.stringify(hooks.Stop)).toContain("user-stop")

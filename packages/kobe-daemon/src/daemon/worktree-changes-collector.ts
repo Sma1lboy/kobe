@@ -55,7 +55,7 @@ function isRemoteRepoKey(value: string): boolean {
 }
 
 function sameWorktreeChanges(a: WorktreeChanges, b: WorktreeChanges): boolean {
-  return a.added === b.added && a.deleted === b.deleted && a.branch === b.branch
+  return a.added === b.added && a.deleted === b.deleted
 }
 
 function maybeStartScheduledRun<T>(
@@ -115,7 +115,7 @@ export async function runGitStatus(worktreePath: string, signal: AbortSignal): P
       settled = true
       resolve({ status, stdout })
     }
-    const child = spawn("git", ["status", "--porcelain=v1", "--branch"], {
+    const child = spawn("git", ["status", "--porcelain=v1"], {
       cwd: worktreePath,
       stdio: ["ignore", "pipe", "ignore"],
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
@@ -131,25 +131,12 @@ export async function runGitStatus(worktreePath: string, signal: AbortSignal): P
   if (output.status !== 0) throw new Error("git status failed")
   let added = 0
   let deleted = 0
-  let branch: string | undefined
   for (const line of output.stdout.split("\n")) {
-    if (line.startsWith("## ")) {
-      // `--branch` header: `main...origin/main [ahead 1]` → `main`;
-      // `HEAD (no branch)` → `HEAD` (detached); `No commits yet on x` → `x`.
-      const header = line.slice(3)
-      const noCommits = header.match(/^No commits yet on (.+)$/)
-      branch = noCommits
-        ? noCommits[1]
-        : header.startsWith("HEAD (no branch)")
-          ? "HEAD"
-          : header.split("...")[0]?.trim() || undefined
-      continue
-    }
-    if (line.length < 3) continue
+    if (line.length < 3 || line.startsWith("##")) continue
     if (line[0] === "D" || line[1] === "D") deleted++
     else added++
   }
-  return branch ? { added, deleted, branch } : { added, deleted }
+  return { added, deleted }
 }
 
 /**

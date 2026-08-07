@@ -37,18 +37,19 @@ export function ThemePicker() {
   const { names, palettes, active, overridden } = useThemeState()
 
   return (
-    // Chrome-free: the Settings Section supplies the header; this is only the
-    // swatch grid plus the follow-TUI state.
-    <div>
-      <div className="flex items-center justify-end">
+    <div className="border border-line bg-surface p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+          Appearance
+        </div>
         {overridden ? (
           <button
             type="button"
             onClick={clearPreferredTheme}
-            className="text-[10px] text-muted transition-colors hover:text-fg"
+            className="border border-line bg-bg px-2 py-0.5 text-[10px] text-muted transition-colors hover:border-primary hover:text-fg"
             title="Clear the web-local theme and follow the TUI again"
           >
-            follow TUI
+            Follow TUI
           </button>
         ) : (
           <span className="font-mono text-[10px] text-subtle">
@@ -57,9 +58,9 @@ export function ThemePicker() {
         )}
       </div>
       {names.length === 0 ? (
-        <p className="mt-2 text-[12px] text-subtle">Loading themes…</p>
+        <p className="mt-4 text-[12px] text-subtle">Loading themes…</p>
       ) : (
-        <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {names.map((name) => {
             const isActive = name === active
             return (

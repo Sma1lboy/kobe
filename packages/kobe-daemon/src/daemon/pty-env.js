@@ -35,23 +35,6 @@ const IDENTITY_VARS = new Set([
 const IDENTITY_PREFIXES = ["ITERM_", "KITTY_", "GHOSTTY_", "WEZTERM_", "ALACRITTY_", "KONSOLE_", "ZELLIJ_"]
 
 /**
- * Ancestor AGENT-session markers. When kobe itself is launched from inside a
- * Claude Code session, the child engine inherits these and concludes it is a
- * nested agent — CLAUDE_CODE_CHILD_SESSION in particular turns OFF transcript
- * persistence, which silently blanks every kobe surface that reads engine
- * history (chat transcript, cost, auto-title). kobe's engines are top-level
- * sessions regardless of what spawned the daemon, so the markers must not
- * leak through.
- */
-const ANCESTOR_AGENT_VARS = new Set([
-  "CLAUDE_CODE_CHILD_SESSION",
-  "CLAUDE_CODE_SESSION_ID",
-  "CLAUDE_CODE_ENTRYPOINT",
-  "CLAUDECODE",
-  "CLAUDE_PID",
-])
-
-/**
  * @param {Readonly<Record<string, string | undefined>>} base
  * @param {Readonly<Record<string, string | undefined>>} [overrides]
  * @returns {Record<string, string | undefined>}
@@ -61,7 +44,6 @@ export function embeddedTerminalEnv(base, overrides = {}) {
   const env = {}
   for (const [key, value] of Object.entries(base)) {
     if (IDENTITY_VARS.has(key)) continue
-    if (ANCESTOR_AGENT_VARS.has(key)) continue
     if (IDENTITY_PREFIXES.some((prefix) => key.startsWith(prefix))) continue
     env[key] = value
   }

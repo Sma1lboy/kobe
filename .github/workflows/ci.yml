@@ -9,10 +9,14 @@
 # PTY-host state (no real engine binary needed — the harness shims a fake
 # `claude`). See docs/HARNESS.md "Behavioral self-test".
 #
-# `render-track` is the hard macOS gate for React/OpenTUI components (bun-test
-# rendering). `visual-ground-truth` independently gates the browser → PTY →
-# real OpenTUI journey on Linux, where the hosted runner grants node-pty a
-# working pseudoterminal.
+# coverage-cap (PR only) is the coverage sibling of file-size-cap: every
+# packages/kobe/src file a PR touches must meet a line-coverage floor
+# (scripts/coverage-gate.mjs; `coverage-exemption: <reason>` in the PR body
+# opts out with a paper trail). `render-track` is the matching hard macOS
+# gate for React/OpenTUI components: it runs bun-test rendering plus the same
+# touched-file floor against render lcov. `visual-ground-truth` independently
+# gates the browser → PTY → real OpenTUI journey on Linux, where the hosted
+# runner grants node-pty a working pseudoterminal.
 #
 # changeset-cap (PR only, KOB-10) is the changeset sibling of file-size-cap:
 # a PR that touches published-package source (packages/kobe/src or
@@ -150,13 +154,10 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests (kobe package)
-        # All non-daemon/-behavior/-render tests.
+        # All non-daemon/-behavior/-render tests. The coverage job runs the
+        # daemon socket suite and uploads its sibling-package coverage.
         working-directory: packages/kobe
         run: bun run test:fast
-
-      - name: Daemon socket tests (kobe package)
-        working-directory: packages/kobe
-        run: bun run test:socket
 
       - name: Build (kobe package)
         run: bun run build
@@ -185,8 +186,10 @@ jobs:
         run: bun run --filter @sma1lboy/kobe test:behavior
 
   render-track:
-    # OpenTUI's native renderer runs under Bun, not Vitest's Node worker;
-    # the macOS product/runtime path is the stable one. Required check.
+    # OpenTUI's native renderer runs under Bun, not Vitest's Node worker.
+    # Bun 1.3.13 coverage SIGILLs on the current Ubuntu runner, while the
+    # macOS product/runtime path is stable. This remains a required check:
+    # no continue-on-error and a per-touched-file render coverage gate.
     runs-on: macos-14
     # Hung runners, not failing tests, were eating 40min waits (2026-08-02
     # twice): the gate should fail fast so a rerun is cheap.
@@ -205,9 +208,24 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Render tests (kobe package)
+      - name: Render tests and coverage (kobe package)
         working-directory: packages/kobe
         run: bun run test:render
+
+      - name: Touched render files must meet the coverage floor
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          KOBE_RENDER_COVERAGE: "1"
+        run: bun scripts/coverage-gate.mjs
+
+      - name: Upload render coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/kobe/coverage-render/lcov.info
+          fail_ci_if_error: false
 
   visual-ground-truth:
     # The hosted macOS images reject node-pty's POSIX PTY spawn before the
@@ -255,3 +273,64 @@ jobs:
           name: visual-ground-truth-${{ github.run_id }}
           path: packages/kobe-web/test-results
           if-no-files-found: ignore
+
+  coverage-cap:
+    # Per-touched-file coverage floor (the coverage sibling of file-size-cap)
+    # + the Codecov upload that feeds the README badge. Runs on push too so
+    # main's coverage stays current; the touched-file GATE step is PR-only.
+    # No repo-wide % gate — only files a PR touches must clear the bar, so
+    # coverage ratchets up where work actually happens.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Coverage (kobe package)
+        working-directory: packages/kobe
+        run: bun run coverage
+
+      - name: Daemon socket coverage
+        # Existing socket/protocol/lifecycle tests execute source from the
+        # sibling kobe-daemon workspace. Collect that execution in this job so
+        # all coverage reports reach Codecov in one atomic upload.
+        working-directory: packages/kobe
+        run: bun run test:socket:coverage
+
+      - name: Render-track coverage (kobe package .tsx)
+        # bun test + @opentui/react's testRender (docs/HARNESS.md "render
+        # track") — the only runner that can execute opentui components at
+        # all. Separate report; not gated per-file (yet), just folded into
+        # the Codecov upload below so the repo-wide badge reflects .tsx too.
+        # Non-fatal: Bun 1.3.13's coverage instrumentation SIGILLs on the
+        # opentui native path on the current ubuntu runner (test:render is
+        # green locally). Since this track is informational — the .ts
+        # per-file gate below is the real one — a crash here must not block
+        # the gate. Drop continue-on-error once a Bun bump stops the crash.
+        continue-on-error: true
+        working-directory: packages/kobe
+        run: bun run test:render
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/kobe/coverage/lcov.info,packages/kobe/coverage-render/lcov.info,packages/kobe/coverage-daemon/lcov.info
+          name: combined
+          fail_ci_if_error: false
+
+      - name: Touched files must meet the coverage floor
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun scripts/coverage-gate.mjs

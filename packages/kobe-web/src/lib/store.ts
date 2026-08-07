@@ -14,9 +14,6 @@ import { daemonRpc } from "./rpc-client.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
-  AttentionItem,
-  EngineSessionBindings,
-  EngineSessionTransitions,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -33,14 +30,6 @@ export interface AppState {
   tasks: Task[]
   activeTaskId: string | null
   engineStates: Record<string, EngineState>
-  /** taskId → tabId → last hook-reported engine session id. Tab-precise where
-   *  the task-level rollup is last-event-wins across tabs, so the Agent Trace
-   *  can follow exactly the session running in the ACTIVE tab. */
-  engineTabSessions: Record<string, Record<string, string>>
-  /** Durable task+tab -> current EngineRun contract. */
-  sessionBindings: EngineSessionBindings
-  /** Ephemeral task+tab native-session transitions. */
-  sessionTransitions: EngineSessionTransitions
   update: UpdateInfo | null
   /** taskId → in-flight long job (e.g. a worktree materializing). */
   jobs: Record<string, TaskJob>
@@ -54,8 +43,6 @@ export interface AppState {
   deliver: SessionDeliver | null
   /** Persisted visual prefs shared with the TUI (theme, sort mode). */
   uiPrefs: UiPrefs | null
-  /** Durable attention queue (daemon attention-inbox) — the INBOX. */
-  attentionInbox: AttentionItem[]
   /** True once the first snapshot has hydrated the store. */
   hydrated: boolean
   /** The daemon behind the web transport is live. */
@@ -68,16 +55,12 @@ const initial: AppState = {
   tasks: [],
   activeTaskId: null,
   engineStates: {},
-  engineTabSessions: {},
-  sessionBindings: {},
-  sessionTransitions: {},
   update: null,
   jobs: {},
   worktreeChanges: {},
   issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
-  attentionInbox: [],
   hydrated: false,
   daemonConnected: false,
   streamConnected: false,
@@ -116,41 +99,6 @@ export function isOrphanIdleEngineState(
   return !task && state === "idle"
 }
 
-/** Fold an engine-state event into the tab-session ledger. Only events that
- *  NAME both a tab and a session update it — a tab-lapse idle carries neither
- *  and must not wipe the last known id. Same-reference on no-op. Exported for
- *  tests. */
-export function applyTabSessionEvent(
-  map: Record<string, Record<string, string>>,
-  payload: EngineState,
-): Record<string, Record<string, string>> {
-  if (!payload.tabId || !payload.sessionId) return map
-  if (map[payload.taskId]?.[payload.tabId] === payload.sessionId) return map
-  return {
-    ...map,
-    [payload.taskId]: {
-      ...map[payload.taskId],
-      [payload.tabId]: payload.sessionId,
-    },
-  }
-}
-
-/** Compatibility projection for old consumers that only understand ids. */
-export function sessionIdsFromBindings(
-  bindings: EngineSessionBindings,
-): Record<string, Record<string, string>> {
-  const out: Record<string, Record<string, string>> = {}
-  for (const [taskId, tabs] of Object.entries(bindings)) {
-    for (const [tabId, binding] of Object.entries(tabs)) {
-      if (!binding.sessionId) continue
-      const task = out[taskId] ?? {}
-      task[tabId] = binding.sessionId
-      out[taskId] = task
-    }
-  }
-  return out
-}
-
 /** Reduce a task.jobs event into the jobs map: a running job is tracked by
  *  taskId; any terminal phase (done/error) clears its entry. Returns a new map
  *  on a running insert and on a delete that hit; a delete that misses still
@@ -186,9 +134,6 @@ function applyTaskList(tasks: Task[]): void {
   set({
     tasks,
     engineStates: pruneByTask(state.engineStates, live),
-    engineTabSessions: pruneByTask(state.engineTabSessions, live),
-    sessionBindings: pruneByTask(state.sessionBindings, live),
-    sessionTransitions: pruneByTask(state.sessionTransitions, live),
     jobs: pruneByTask(state.jobs, live),
     issueSnapshots: pruneSnapshotAliases(state.issueSnapshots, tasks),
   })
@@ -220,20 +165,9 @@ function applyEvent(event: WebTransportEvent): void {
           ...state.engineStates,
           [event.payload.taskId]: event.payload,
         },
-        engineTabSessions: applyTabSessionEvent(
-          state.engineTabSessions,
-          event.payload,
-        ),
       })
       break
     }
-    case "session.bindings":
-      set({
-        sessionBindings: event.payload.bindings,
-        sessionTransitions: event.payload.transitions ?? {},
-        engineTabSessions: sessionIdsFromBindings(event.payload.bindings),
-      })
-      break
     case "update":
       set({ update: event.payload.info })
       break
@@ -261,9 +195,6 @@ function applyEvent(event: WebTransportEvent): void {
       set({ uiPrefs: event.payload })
       applyThemeFromPrefs(event.payload.theme)
       break
-    case "attention.inbox":
-      set({ attentionInbox: event.payload.items })
-      break
   }
 }
 
@@ -289,14 +220,7 @@ export function validateSnapshot(raw: unknown): WebTransportSnapshot | null {
   if (typeof raw.connected !== "boolean") return null
   // Optional maps, when present, must be objects (the store spreads/iterates
   // them); a present-but-wrong type is as fatal as a bad `tasks`.
-  for (const key of [
-    "engineTabSessions",
-    "sessionBindings",
-    "sessionTransitions",
-    "jobs",
-    "worktreeChanges",
-    "issueSnapshots",
-  ] as const) {
+  for (const key of ["jobs", "worktreeChanges", "issueSnapshots"] as const) {
     if (raw[key] !== undefined && !isRecord(raw[key])) return null
   }
   if (
@@ -321,27 +245,6 @@ let source: EventSource | null = null
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Staleness watchdog. The daemon heartbeats a real `ping` event every 15s;
- *  if NOTHING (snapshot/channel/ping) arrives for this long the stream is
- *  wedged — typically the dev proxy holding our socket open after its
- *  upstream daemon died, which never fires an EventSource error — so we
- *  force-replace it. */
-const STALE_STREAM_MS = 40_000
-let lastEventAt = 0
-let staleTimer: ReturnType<typeof setInterval> | null = null
-
-function armStaleWatchdog(): void {
-  if (staleTimer !== null) return
-  staleTimer = setInterval(() => {
-    if (!source || listeners.size === 0) return
-    if (Date.now() - lastEventAt <= STALE_STREAM_MS) return
-    source.close()
-    source = null
-    set({ streamConnected: false })
-    scheduleReconnect()
-  }, 10_000)
-}
-
 /** A stream is "live enough" to reuse when its EventSource exists and hasn't
  *  reached CLOSED — CONNECTING (the browser's own retry) and OPEN both count.
  *  Once CLOSED, the source is dead and must be replaced; the old code's bare
@@ -358,18 +261,12 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     tasks: snap.tasks,
     activeTaskId: snap.activeTaskId,
     engineStates: snap.engineStates,
-    // Daemon-seeded (registry tabSessions) so a reload keeps tab-precise
-    // traces; live engine-state events keep it fresh from here.
-    engineTabSessions: snap.engineTabSessions ?? {},
-    sessionBindings: snap.sessionBindings ?? {},
-    sessionTransitions: snap.sessionTransitions ?? {},
     update: snap.update,
     jobs: snap.jobs ?? {},
     worktreeChanges: snap.worktreeChanges ?? {},
     issueSnapshots: snap.issueSnapshots ?? {},
     deliver: snap.deliver ?? null,
     uiPrefs: snap.uiPrefs ?? null,
-    attentionInbox: snap.attentionInbox ?? [],
     hydrated: true,
     daemonConnected: snap.connected,
     streamConnected: true,
@@ -403,18 +300,11 @@ function scheduleReconnect(): void {
 function ensureStream(): void {
   if (isStreamReusable(source)) return
   source = new EventSource("/events")
-  lastEventAt = Date.now()
-  armStaleWatchdog()
   source.addEventListener("open", () => {
     reconnectAttempts = 0
-    lastEventAt = Date.now()
     set({ streamConnected: true })
   })
-  source.addEventListener("ping", () => {
-    lastEventAt = Date.now()
-  })
   source.addEventListener("snapshot", (e) => {
-    lastEventAt = Date.now()
     let parsed: unknown
     try {
       parsed = JSON.parse((e as MessageEvent).data)
@@ -430,7 +320,6 @@ function ensureStream(): void {
     applySnapshot(snap)
   })
   source.addEventListener("channel", (e) => {
-    lastEventAt = Date.now()
     let event: unknown
     try {
       event = JSON.parse((e as MessageEvent).data)

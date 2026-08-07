@@ -57,25 +57,10 @@ function ColumnView({
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
-        {/* Backlog keeps a persistent card-slot "+" — the capture affordance
-            lives where the next card will appear, not only in the header. */}
-        {onNewIssue && (
-          <button
-            type="button"
-            onClick={onNewIssue}
-            title="New story in this project"
-            className="flex items-center justify-center gap-1.5 border border-dashed border-line-subtle p-3 text-[11px] text-subtle transition-colors hover:border-primary hover:text-fg"
-          >
-            <Plus size={12} strokeWidth={2} />
-            <span>New story</span>
-          </button>
-        )}
         {column.cards.length === 0 ? (
-          !onNewIssue && (
-            <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
-              none
-            </div>
-          )
+          <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
+            none
+          </div>
         ) : (
           column.cards.map((card) => {
             const { issue } = card

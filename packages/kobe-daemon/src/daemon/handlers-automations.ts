@@ -35,7 +35,6 @@ function readPrecheck(payload: Record<string, unknown>): AutomationPrecheck | nu
 export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   {
     name: "automation.list",
-    web: true,
     async handle(_payload, ctx) {
       const automations = ctx.automations.list()
       return {
@@ -48,7 +47,6 @@ export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "automation.create",
-    web: true,
     async handle(payload, ctx) {
       const precheck = readPrecheck(payload)
       const automation = await ctx.automations.create({
@@ -69,7 +67,6 @@ export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "automation.update",
-    web: true,
     async handle(payload, ctx) {
       const id = requireString(payload, "id")
       const patch: AutomationPatch = {
@@ -93,7 +90,6 @@ export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "automation.delete",
-    web: true,
     async handle(payload, ctx) {
       const id = requireString(payload, "id")
       const deleted = await ctx.automations.delete(id)
@@ -103,7 +99,6 @@ export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "automation.runs",
-    web: true,
     async handle(payload, ctx) {
       const automationId = requireString(payload, "id")
       return { runs: ctx.automations.runsFor(automationId) }
@@ -111,7 +106,6 @@ export const AUTOMATION_HANDLERS: readonly DaemonRequestHandler[] = [
   },
   {
     name: "automation.runNow",
-    web: true,
     async handle(payload, ctx) {
       const id = requireString(payload, "id")
       const automation = ctx.automations.get(id)

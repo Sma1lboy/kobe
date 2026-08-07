@@ -30,14 +30,6 @@
 import type { ContentBlock } from "./content"
 import type { VendorId } from "./vendor"
 export type { ContentBlock } from "./content"
-export type {
-  EngineTrace,
-  EngineTraceNode,
-  EngineTraceNodeKind,
-  EngineTraceParentBasis,
-  EngineTraceStatus,
-  EngineTraceTurn,
-} from "./engine-trace"
 
 /**
  * One selectable model in the composer's model picker. `id` is what the
@@ -146,14 +138,6 @@ export interface Message {
   readonly blocks: readonly ContentBlock[]
   readonly timestamp: string
   readonly sessionId: string
-  /**
-   * Engine-normalized presentation phase for assistant prose. Codex persists
-   * this as `commentary` versus `final_answer`; adapters without an equivalent
-   * leave it absent. This is visible agent narration, not hidden chain-of-
-   * thought, and lets neutral consumers distinguish an execution plan from a
-   * turn's final result without vendor checks.
-   */
-  readonly phase?: "commentary" | "final"
   /**
    * Anthropic token usage for this assistant turn, when persisted on
    * disk. Claude Code stores it inline on each assistant record's

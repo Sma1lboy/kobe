@@ -432,12 +432,9 @@ describe("terminal tabs state", () => {
   // (leading space + clear), NOT the PTY environment — same inheritance
   // path as shellSpawn's env prefix.
   it("shellIdentityInput builds the typed export line for bare shell tabs", () => {
-    expect(shellIdentityInput("t1", "tab-4", {})).toBe(" export KOBE_TASK_ID=t1 KOBE_TAB_ID=tab-4 && clear\r")
+    expect(shellIdentityInput("t1", "tab-4")).toBe(" export KOBE_TASK_ID=t1 KOBE_TAB_ID=tab-4 && clear\r")
     // Hostile ids stay one shell word each.
-    expect(shellIdentityInput("t 1", "tab-4", {})).toBe(" export KOBE_TASK_ID='t 1' KOBE_TAB_ID=tab-4 && clear\r")
-    expect(shellIdentityInput("t1", "tab-4", { KOBE_DEV_CLI_ENTRY: "/repo path/index.ts" })).toContain(
-      "KOBE_DEV_CLI_ENTRY='/repo path/index.ts'",
-    )
+    expect(shellIdentityInput("t 1", "tab-4")).toBe(" export KOBE_TASK_ID='t 1' KOBE_TAB_ID=tab-4 && clear\r")
   })
 
   // Why: the F7 attention jump's tab precision — the launch script exports
@@ -453,8 +450,7 @@ describe("terminal tabs state", () => {
       task: { id: "01TASK", kind: "task" },
       worktreePath: "/wt",
     })
-    expect(spawn.command[2]).toContain("export KOBE_TASK_ID='01TASK' KOBE_TAB_ID='tab-2'")
-    expect(spawn.command[2]).toContain("KOBE_DEV_CLI_ENTRY=")
+    expect(spawn.command[2]).toContain("export KOBE_TASK_ID='01TASK' KOBE_TAB_ID='tab-2'\n")
   })
 
   // Why: collapse decides persistence (null = unsplit fast path) AND the

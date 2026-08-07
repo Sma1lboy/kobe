@@ -42,8 +42,6 @@ export interface WorktreeChanges {
   readonly added: number
   /** Files deleted (in index or worktree). */
   readonly deleted: number
-  /** Current branch (from `--branch`'s `##` header); absent without it. */
-  readonly branch?: string
 }
 
 const ZERO: WorktreeChanges = { added: 0, deleted: 0 }
@@ -55,20 +53,7 @@ const ZERO: WorktreeChanges = { added: 0, deleted: 0 }
  * (DESIGN §5.5) is one predicate everywhere.
  */
 export function sameWorktreeChanges(a: WorktreeChanges, b: WorktreeChanges): boolean {
-  return a.added === b.added && a.deleted === b.deleted && a.branch === b.branch
-}
-
-/**
- * Branch name from a `--branch` porcelain header line (no leading `## `):
- * `main...origin/main [ahead 1]` → `main`, `HEAD (no branch)` → `HEAD`
- * (detached), `No commits yet on main` → `main`.
- */
-export function parseBranchHeader(header: string): string | undefined {
-  const noCommits = header.match(/^No commits yet on (.+)$/)
-  if (noCommits) return noCommits[1]
-  if (header.startsWith("HEAD (no branch)")) return "HEAD"
-  const name = header.split("...")[0]?.trim()
-  return name || undefined
+  return a.added === b.added && a.deleted === b.deleted
 }
 
 /**
@@ -131,8 +116,5 @@ export function parsePorcelain(text: string): WorktreeChanges {
     if (x === "D" || y === "D") deleted += 1
     else added += 1
   }
-  // `--branch` header (parsePorcelainRows skips it) → live branch name.
-  const header = text.split("\n").find((l) => l.startsWith("## "))
-  const branch = header ? parseBranchHeader(header.slice(3)) : undefined
-  return branch ? { added, deleted, branch } : { added, deleted }
+  return { added, deleted }
 }

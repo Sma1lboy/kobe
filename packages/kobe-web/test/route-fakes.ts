@@ -5,11 +5,7 @@
  */
 
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import {
-  createDaemonWebRequestHandler,
-  type DaemonWebLink,
-  type DaemonWebSnapshotState,
-} from "@sma1lboy/kobe-daemon/daemon/web-server"
+import { createDaemonWebRequestHandler, type DaemonWebLink } from "@sma1lboy/kobe-daemon/daemon/web-server"
 import { daemonRuntime } from "../../kobe/src/core/daemon-runtime.ts"
 import { vi } from "vitest"
 
@@ -27,22 +23,7 @@ export function fakeLink(opts: FakeOpts = {}): DaemonWebLink & { calls: Array<{ 
       return (opts.onRequest?.(name, payload) ?? {}) as T
     },
     snapshot() {
-      return (opts.snapshot ?? {
-        tasks: [],
-        activeTaskId: null,
-        engineStates: {},
-        engineTabSessions: {},
-        sessionBindings: {},
-        sessionTransitions: {},
-        update: null,
-        jobs: {},
-        worktreeChanges: {},
-        issueSnapshots: {},
-        deliver: null,
-        uiPrefs: null,
-        attentionInbox: [],
-        connected: true,
-      }) as DaemonWebSnapshotState
+      return opts.snapshot ?? { tasks: [], connected: true }
     },
   }
 }

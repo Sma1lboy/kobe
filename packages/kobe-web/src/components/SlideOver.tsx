@@ -27,7 +27,6 @@ export function SlideOver({
   children,
   footer,
   wide = false,
-  layer = "default",
 }: {
   open: boolean
   onClose: () => void
@@ -36,9 +35,6 @@ export function SlideOver({
   footer?: ReactNode
   /** Render a much wider panel (for a two-column body). Default narrow. */
   wide?: boolean
-  /** Draw above another modal when the drawer is opened from a full-screen
-   * inspector such as Agent Trace. */
-  layer?: "default" | "above-modal"
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   // Drives the slide: mount off-screen, then flip on the next tick so the
@@ -80,9 +76,7 @@ export function SlideOver({
   if (!open) return null
 
   return (
-    <div
-      className={`fixed inset-0 flex justify-end ${layer === "above-modal" ? "z-[60]" : "z-40"}`}
-    >
+    <div className="fixed inset-0 z-40 flex justify-end">
       <button
         type="button"
         aria-label="Close"

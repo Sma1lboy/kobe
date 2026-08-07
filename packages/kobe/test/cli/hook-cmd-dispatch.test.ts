@@ -147,21 +147,12 @@ describe("runHookSubcommand — activity verbs", () => {
   // including user-typed engines. The adapter extracts it from the payload;
   // the dispatcher must forward it (and transcriptPath) on the RPC.
   it("forwards the adapter's session identity on the RPC", async () => {
-    mocks.adapter.sessionFromPayload.mockReturnValue({
-      sessionId: "sess-9",
-      transcriptPath: "/tmp/sess-9.jsonl",
-      startSource: "resume",
-    })
+    mocks.adapter.sessionFromPayload.mockReturnValue({ sessionId: "sess-9", transcriptPath: "/tmp/sess-9.jsonl" })
     stubStdin({ cwd: "/some/task/worktree", session_id: "sess-9" })
-    await runHookSubcommand(["session-start"])
+    await runHookSubcommand(["turn-complete"])
     expect(mocks.request).toHaveBeenCalledWith(
       "engine.reportEvent",
-      expect.objectContaining({
-        kind: "session-start",
-        sessionId: "sess-9",
-        transcriptPath: "/tmp/sess-9.jsonl",
-        sessionStartSource: "resume",
-      }),
+      expect.objectContaining({ kind: "turn-complete", sessionId: "sess-9", transcriptPath: "/tmp/sess-9.jsonl" }),
     )
   })
 

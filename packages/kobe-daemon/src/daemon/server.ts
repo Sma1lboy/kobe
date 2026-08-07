@@ -49,7 +49,6 @@ import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
-import { SessionBindingStore, defaultSessionBindingsPath } from "./session-bindings.ts"
 import { handleSubscribe } from "./subscribe.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
@@ -173,12 +172,8 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
-  const bindings = new SessionBindingStore(defaultSessionBindingsPath(options.homeDir), bus)
-  await bindings.init().catch((err) => logDaemonError("session-bindings-init", err))
-  const clearTaskState = async (taskId: string) => {
-    await Promise.all([inbox.deleteTaskBestEffort(taskId), bindings.deleteTaskBestEffort(taskId)])
-    activity.clearTask(taskId)
-  }
+  const clearTaskState = (taskId: string) =>
+    inbox.deleteTaskBestEffort(taskId).finally(() => activity.clearTask(taskId))
   const deletions = new TaskDeletionRunner(orch, runtime, clearTaskState)
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
@@ -373,7 +368,6 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       bus,
       activity,
       inbox,
-      bindings,
       deletions,
       issues,
       automations,
@@ -401,7 +395,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // no web transport. Built unconditionally: the automation runner needs it to
   // launch engine sessions whether or not `--web-port` was passed. The web
   // server reuses the same object when it is enabled.
-  const selfLink = createDirectWebLink({ orch, bus, activity, bindings, ctx: handlerContext })
+  const selfLink = createDirectWebLink({ orch, bus, activity, ctx: handlerContext })
 
   if (options.webPort !== undefined) {
     // The web transport is a SECONDARY surface — a bind failure (port taken by
@@ -416,7 +410,6 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         staticDir: options.webStaticDir,
         link: selfLink,
         onEvent: (sink) => bus.onPublish(sink),
-        engineEvents,
         onSseOpen: () => {
           const client = { subscribed: true, holdsLifetime: true }
           webClients.add(client)

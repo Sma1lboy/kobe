@@ -98,7 +98,7 @@ describe("/api/quick-prompts", () => {
       engines: Array<{ id: string; isBuiltin: boolean; isDefault: boolean }>
     }
     expect(empty.activeTheme).toBe("claude")
-    expect(empty.transparentBackground).toBe(true)
+    expect(empty.transparentBackground).toBe(false)
     expect(empty.focusAccent).toBe("primary")
     expect(empty.editorKind).toBe("auto")
     expect(empty.archivedHistoryPreview).toBe(false)

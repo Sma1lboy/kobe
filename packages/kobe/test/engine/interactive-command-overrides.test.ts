@@ -21,7 +21,6 @@ import {
   withClaudeSessionId,
   withEngineEffort,
   withEngineTerminalTitle,
-  withManagedHookTrust,
 } from "../../src/engine/interactive-command.ts"
 import { setPersistedString } from "../../src/state/repos.ts"
 
@@ -95,30 +94,6 @@ describe("withEngineTerminalTitle", () => {
   it("leaves engines without a native-title launch policy untouched", () => {
     expect(withEngineTerminalTitle(["claude"], "claude")).toEqual(["claude"])
     expect(withEngineTerminalTitle(["aider"], "aider")).toEqual(["aider"])
-  })
-})
-
-describe("withManagedHookTrust", () => {
-  it("adds Codex hook trust only to an already-unrestricted managed launch", () => {
-    expect(withManagedHookTrust(["codex", "--dangerously-bypass-approvals-and-sandbox"], "codex")).toEqual([
-      "codex",
-      "--dangerously-bypass-approvals-and-sandbox",
-      "--dangerously-bypass-hook-trust",
-    ])
-  })
-
-  it("leaves safer, non-Codex, and already-configured launches unchanged", () => {
-    expect(withManagedHookTrust(["codex"], "codex")).toEqual(["codex"])
-    expect(withManagedHookTrust(["claude", "--dangerously-bypass-approvals-and-sandbox"], "claude")).toEqual([
-      "claude",
-      "--dangerously-bypass-approvals-and-sandbox",
-    ])
-    expect(
-      withManagedHookTrust(
-        ["codex", "--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust"],
-        "codex",
-      ),
-    ).toEqual(["codex", "--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust"])
   })
 })
 

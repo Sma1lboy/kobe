@@ -22,6 +22,7 @@
  * BoardColumns.tsx.
  */
 
+import { useNavigate } from "@tanstack/react-router"
 import { Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
@@ -46,28 +47,22 @@ import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { ProjectColumns } from "./BoardColumns.tsx"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
+import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
 import {
   IssuePanelSuspense,
   LazyIssueIntakePanel,
   LazyIssuePeek,
 } from "./lazy-issue-panels.tsx"
+import { ViewToggle } from "./ViewToggle.tsx"
 
 /** A peek target is repo-scoped: an issue number alone would be ambiguous
  *  across projects. */
 type PeekTarget = { repo: string; id: number }
 
-export function Board({
-  onOpenTask,
-  initialRepo,
-}: {
-  /** Task jump — the /chat host selects the task on its own surface. */
-  onOpenTask?: (taskId: string) => void
-  /** Scope the board to this repo on open (the host's selected project);
-   *  applied once — the picker stays free afterwards. */
-  initialRepo?: string
-} = {}) {
+export function Board() {
   const { tasks, hydrated, daemonConnected } = useAppState()
   const { query, repo: repoFilter } = useBoardState()
+  const navigate = useNavigate()
   const filterRef = useRef<HTMLInputElement>(null)
   const [peek, setPeek] = useState<PeekTarget | null>(null)
   // Issue-intake panel target repo (null = closed).
@@ -107,14 +102,6 @@ export function Board({
     () => resolveIssueRepoSelection(repoOptions, repoFilter),
     [repoOptions, repoFilter],
   )
-  // Host-selected project scope — applied once when it appears in the options.
-  const appliedInitialRepo = useRef<string | null>(null)
-  useEffect(() => {
-    if (!initialRepo || appliedInitialRepo.current === initialRepo) return
-    if (!repoOptions.some((option) => option.repo === initialRepo)) return
-    appliedInitialRepo.current = initialRepo
-    setBoardRepo(initialRepo)
-  }, [initialRepo, repoOptions])
   const {
     data: issueData,
     pending: issuesPending,
@@ -196,19 +183,27 @@ export function Board({
   // board: the empty branch differs (clear-filters vs new-issue affordance).
   const filtered = Boolean(query)
 
-  // Open a linked issue's task session on the host surface.
+  // Open a linked issue's task workspace/session.
   const openTask = (id: string): void => {
     selectTask(id)
     setActiveTaskBestEffort(id)
-    onOpenTask?.(id)
+    void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
-          Kanban
+    <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
+      <header
+        data-kobe-topbar
+        className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
+      >
+        <DesktopWindowControls />
+        {/* Workspace ↔ Board are peer views — the top-left toggle is the only
+            switch between them (no back link). The [kobe] brand mirrors the
+            Workspace header so the logo + toggle sit identically in both. */}
+        <span className="font-mono text-[13px] font-bold text-primary">
+          [kobe]
         </span>
+        <ViewToggle />
         <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
           <Search
             size={13}
@@ -320,6 +315,15 @@ export function Board({
               No projects yet. Create a task from the workspace to track stories
               against its repo.
             </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/" })}
+                className="border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+              >
+                Back to workspace
+              </button>
+            </div>
           </div>
         )}
       </div>

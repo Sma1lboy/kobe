@@ -26,9 +26,6 @@ export interface HistoryMessage {
   blocks: ContentBlock[]
   timestamp: string
   sessionId: string
-  /** Visible assistant narration versus the final answer, normalized by the
-   * engine adapter. Hidden chain-of-thought is never exposed here. */
-  phase?: "commentary" | "final"
   usage?: MessageUsage
 }
 
