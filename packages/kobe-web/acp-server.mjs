@@ -157,6 +157,13 @@ class AcpSession {
       .catch((err) => this.push({ type: "error", message: err?.message ?? String(err) }))
   }
 
+  setModel(modelId) {
+    if (!this.sessionId) return
+    this.request("session/set_model", { sessionId: this.sessionId, modelId })
+      .then(() => this.push({ type: "model_set", modelId }))
+      .catch((err) => this.push({ type: "error", message: err?.message ?? String(err) }))
+  }
+
   cancel() {
     if (!this.sessionId) return
     this.write({
@@ -231,6 +238,7 @@ export function createAcpManager(deps) {
         if (msg.type === "prompt" && typeof msg.text === "string") session.prompt(msg.text)
         else if (msg.type === "cancel") session.cancel()
         else if (msg.type === "permission_outcome") session.permissionOutcome(msg.rpcId, msg.optionId)
+        else if (msg.type === "set_model" && typeof msg.modelId === "string") session.setModel(msg.modelId)
       })
       ws.on("close", () => session.detach(ws))
     },

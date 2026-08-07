@@ -11,6 +11,24 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { type AcpItem, type AcpUpdate, applyAcpUpdate } from "../lib/acp.ts"
 import { setTabTitle } from "../lib/tabs.ts"
 import { ptyBase } from "../lib/terminal.ts"
+import { CommandMenu } from "./TtyBlocksView.tsx"
+
+interface AcpCommand {
+  name: string
+  description?: string
+}
+
+interface AcpModel {
+  modelId: string
+  name: string
+  description?: string
+}
+
+interface AcpMeta {
+  sessionId: string
+  agent: { title?: string; name?: string; version?: string } | null
+  models: { availableModels?: AcpModel[]; currentModelId?: string } | null
+}
 
 interface PermissionRequest {
   rpcId: number
@@ -37,6 +55,10 @@ export function AcpSessionView({
   )
   const [error, setError] = useState<string | null>(null)
   const [permission, setPermission] = useState<PermissionRequest | null>(null)
+  const [commands, setCommands] = useState<AcpCommand[]>([])
+  const [meta, setMeta] = useState<AcpMeta | null>(null)
+  const [modelId, setModelId] = useState<string | null>(null)
+  const [lastStop, setLastStop] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const wsRef = useRef<WebSocket | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -56,13 +78,30 @@ export function AcpSessionView({
       }
       if (msg.type === "ready") {
         setPhase((cur) => (cur === "boot" ? "ready" : cur))
+        setMeta({
+          sessionId: String(msg.sessionId ?? ""),
+          agent: (msg.agent as AcpMeta["agent"]) ?? null,
+          models: (msg.models as AcpMeta["models"]) ?? null,
+        })
         setTabTitle(taskId, tabId, "Claude · ACP")
+      } else if (msg.type === "model_set") {
+        setModelId(String(msg.modelId))
       } else if (msg.type === "update") {
-        setItems((cur) => applyAcpUpdate(cur, msg.update as AcpUpdate))
         const u = msg.update as AcpUpdate
+        // The agent's slash-command table (ACP available_commands_update) —
+        // session state, not a chat item.
+        if (u?.sessionUpdate === "available_commands_update") {
+          const cmds = (u as { availableCommands?: AcpCommand[] })
+            .availableCommands
+          if (Array.isArray(cmds)) setCommands(cmds)
+          return
+        }
+        setItems((cur) => applyAcpUpdate(cur, u))
         if (u?.sessionUpdate === "user_message_chunk") setPhase("running")
       } else if (msg.type === "turn_end") {
         setPhase("ready")
+        const stop = String(msg.stopReason ?? "end_turn")
+        setLastStop(stop === "end_turn" ? null : stop)
       } else if (msg.type === "permission_request") {
         const params = msg.params as {
           toolCall?: { title?: string }
@@ -90,6 +129,15 @@ export function AcpSessionView({
       ws.close()
     }
   }, [tabId, taskId])
+
+  if (import.meta.env.DEV) {
+    ;(window as unknown as Record<string, unknown>).__kobeAcp = {
+      phase,
+      commands: commands.length,
+      items: items.length,
+      draft,
+    }
+  }
 
   // Follow the tail.
   // biome-ignore lint/correctness/useExhaustiveDependencies: items drive the scroll
@@ -120,11 +168,44 @@ export function AcpSessionView({
   return (
     <div className="flex h-full flex-col bg-bg">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="mb-3 flex items-center gap-2 text-[11px] text-subtle">
-          <span className="rounded-full border border-kobe-violet/40 bg-kobe-violet/10 px-2 py-0.5 font-mono text-kobe-violet">
-            ACP · experimental
-          </span>
-          structured session — no terminal underneath
+        <div className="fade-up @container mb-3 rounded-xl border border-kobe-violet/40 bg-inset px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-fg">
+              {meta?.agent?.title ?? "Claude Code"}
+            </span>
+            {meta?.agent?.version && (
+              <span className="rounded-full border border-kobe-violet/40 bg-kobe-violet/10 px-2 py-0.5 font-mono text-[11px] text-kobe-violet">
+                v{meta.agent.version}
+              </span>
+            )}
+            <span className="rounded-full border border-kobe-violet/40 bg-kobe-violet/10 px-2 py-0.5 font-mono text-[11px] text-kobe-violet">
+              ACP
+            </span>
+            {meta?.models?.availableModels && (
+              <select
+                value={modelId ?? meta.models.currentModelId ?? "default"}
+                onChange={(e) =>
+                  wsRef.current?.send(
+                    JSON.stringify({ type: "set_model", modelId: e.target.value }),
+                  )
+                }
+                className="ml-auto rounded-md border border-line bg-bg px-1.5 py-0.5 font-mono text-[11px] text-muted focus:outline-none"
+              >
+                {meta.models.availableModels.map((m) => (
+                  <option key={m.modelId} value={m.modelId} title={m.description}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-subtle">
+            {meta?.sessionId && (
+              <span className="font-mono">session {meta.sessionId.slice(0, 8)}</span>
+            )}
+            {commands.length > 0 && <span>{commands.length} slash commands — type /</span>}
+            <span>structured session — no terminal underneath</span>
+          </div>
         </div>
         {items.map((item, i) => {
           switch (item.kind) {
@@ -211,12 +292,27 @@ export function AcpSessionView({
             Starting ACP session…
           </div>
         )}
+        {lastStop && (
+          <div className="my-2 font-mono text-[11px] text-kobe-yellow">
+            turn ended: {lastStop}
+          </div>
+        )}
         {error && (
           <div className="my-2 border-l-2 border-kobe-red pl-3 text-[12px] text-muted">
             {error}
           </div>
         )}
       </div>
+      {draft.startsWith("/") && commands.length > 0 && (
+        <div className="mx-4 mb-2 max-h-56 overflow-y-auto rounded-2xl border border-line bg-surface/50 px-4 py-2.5">
+          <CommandMenu
+            items={commands
+              .filter((c) => `/${c.name}`.startsWith(draft.trim().split(" ")[0] ?? "/"))
+              .slice(0, 12)
+              .map((c) => ({ name: `/${c.name}`, desc: c.description ?? "" }))}
+          />
+        </div>
+      )}
       {permission && (
         <div className="mx-4 mb-2 rounded-xl border border-kobe-yellow/50 bg-surface px-3.5 py-2.5">
           <div className="mb-2 text-[12px] text-fg">{permission.title}</div>
