@@ -1,0 +1,316 @@
+/**
+ * Daemon-side worktree-changes collector (issue #6).
+ *
+ * Before this, EVERY pane process polled `git status` itself for the
+ * sidebar's per-row `+N −M` chips (`tui/panes/sidebar/worktree-changes-poller.ts`
+ * riding `tui/lib/background-poll.ts`) — N panes × M tasks of duplicated
+ * background subprocesses doing identical work. The daemon is now the
+ * SINGLE collector: one guarded `git status --porcelain=v1` per local
+ * worktree, fanned out on the `worktree.changes` channel. Panes render
+ * the pushes and spawn ZERO git processes while daemon-connected; the
+ * pane-local poller survives only as the no-daemon fallback.
+ *
+ * The scheduling guards are the SAME ones the TUI poller uses against
+ * huge-repo `git status` stalls (shared via `@/lib/poll-scheduling`, extracted from background-poll so
+ * the daemon doesn't import the TUI's solid-js signal layer):
+ *
+ *   - **in-flight dedupe** — one `git status` per worktree at a time;
+ *     ticks landing mid-run are dropped.
+ *   - **timeout + SIGKILL** — a status walk exceeding
+ *     {@link WORKTREE_CHANGES_TIMEOUT_MS} is aborted and the child killed.
+ *   - **hard backoff** — a timed-out worktree is left alone for
+ *     {@link WORKTREE_CHANGES_SLOW_RETRY_MS} (the repo is too big to poll
+ *     at tick cadence).
+ *   - **adaptive cadence** — the next run waits
+ *     `max(minIntervalMs, 5 × last duration)`, so slow-but-finishing
+ *     repos self-thin without a special case.
+ *
+ * Collection scope: every NON-ARCHIVED task with a LOCAL worktree. Archived
+ * tasks are never collected (the Archives view must not pay git-status for
+ * shelved worktrees — the original freeze trigger), and remote (`ssh://`)
+ * projects are skipped — their worktrees aren't on this filesystem.
+ * Deleted/archived tasks' entries DROP from the published map on the next
+ * tick. `main` tasks collect like any other (worktreePath = repo root —
+ * the PROJECTS rows show the same chip); tasks sharing a worktree path
+ * (main rows of the same repo) dedupe naturally on the path key.
+ *
+ * Publish contract: the FULL map, republished only when membership or a
+ * value actually changed — the bus's last-value replay then hands a late
+ * subscriber the whole picture in one frame, and unchanged ticks cost
+ * subscribers nothing. Reads are `GIT_OPTIONAL_LOCKS=0` (inspect, don't
+ * write — never take `.git/index.lock` from under the engine's own
+ * commits) and best-effort: a failed/timed-out run keeps the entry's last
+ * value, never throws, never publishes garbage.
+ */
+
+import { spawn } from "node:child_process"
+import type { DaemonTask as Task, WorktreeChanges } from "./contracts.ts"
+import { logDaemonError } from "./crash-log.ts"
+import type { DaemonEventBus } from "./event-bus.ts"
+import type { WorktreeChangesPayload } from "./protocol.ts"
+import type { DaemonRuntimeAdapter, PollCadenceConfig, PollScheduleState } from "./runtime.ts"
+
+function isRemoteRepoKey(value: string): boolean {
+  return value.startsWith("ssh://")
+}
+
+function sameWorktreeChanges(a: WorktreeChanges, b: WorktreeChanges): boolean {
+  return a.added === b.added && a.deleted === b.deleted && a.branch === b.branch
+}
+
+function maybeStartScheduledRun<T>(
+  state: PollScheduleState,
+  cfg: PollCadenceConfig,
+  run: (signal: AbortSignal) => Promise<T>,
+  onValue: (value: T) => void,
+): boolean {
+  const startedAt = Date.now()
+  if (state.inFlight || startedAt < state.nextAllowedAt) return false
+  state.inFlight = true
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs)
+  void run(controller.signal)
+    .then((value) => {
+      if (!controller.signal.aborted) onValue(value)
+    })
+    .catch(() => {})
+    .finally(() => {
+      clearTimeout(timer)
+      const finishedAt = Date.now()
+      state.nextAllowedAt = controller.signal.aborted
+        ? startedAt + cfg.slowRetryMs
+        : finishedAt + Math.max(cfg.minIntervalMs, (finishedAt - startedAt) * 5)
+      state.inFlight = false
+    })
+  return true
+}
+
+/** Tick cadence — matches the sidebar's ~2s `branchTick` the pane pollers rode. */
+export const DEFAULT_WORKTREE_CHANGES_TICK_MS = 2_000
+/** Kill a `git status` that runs longer than this; the repo is too big to poll. */
+export const WORKTREE_CHANGES_TIMEOUT_MS = 4_000
+/** After a timeout, leave the worktree alone for this long before retrying. */
+export const WORKTREE_CHANGES_SLOW_RETRY_MS = 60_000
+/** Floor between successful polls per worktree. */
+export const WORKTREE_CHANGES_MIN_INTERVAL_MS = 1_500
+
+/** The task-list slice the collector needs — `Orchestrator` satisfies it. */
+export interface TaskLister {
+  listTasks(): readonly Task[]
+}
+
+/**
+ * Injectable status runner (tests swap the real `git status` out). Throw /
+ * reject to keep the entry's last value.
+ */
+export type WorktreeStatusRunner = (worktreePath: string, signal: AbortSignal) => Promise<WorktreeChanges>
+
+/** The real runner: async `git status --porcelain=v1 --branch`, lock-free read. */
+export async function runGitStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges> {
+  const output = await new Promise<{ status: number | null; stdout: string }>((resolve) => {
+    let stdout = ""
+    let settled = false
+    const finish = (status: number | null) => {
+      if (settled) return
+      settled = true
+      resolve({ status, stdout })
+    }
+    const child = spawn("git", ["status", "--porcelain=v1", "--branch"], {
+      cwd: worktreePath,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      signal,
+      killSignal: "SIGKILL",
+    })
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk)
+    })
+    child.on("error", () => finish(null))
+    child.on("close", finish)
+  })
+  if (output.status !== 0) throw new Error("git status failed")
+  let added = 0
+  let deleted = 0
+  let branch: string | undefined
+  for (const line of output.stdout.split("\n")) {
+    if (line.startsWith("## ")) {
+      const rest = line.slice(3)
+      if (rest.startsWith("HEAD (no branch)")) branch = "HEAD"
+      else if (rest.startsWith("No commits yet on "))
+        branch = rest.slice("No commits yet on ".length)
+      else {
+        const dots = rest.indexOf("...")
+        branch = dots >= 0 ? rest.slice(0, dots) : rest
+      }
+      continue
+    }
+    if (line.length < 3 || line.startsWith("##")) continue
+    if (line[0] === "D" || line[1] === "D") deleted++
+    else added++
+  }
+  return branch !== undefined ? { added, deleted, branch } : { added, deleted }
+}
+
+/**
+ * The worktree paths the collector tracks: non-archived tasks with a
+ * non-empty LOCAL worktree. Remote (`ssh://`) projects are excluded by
+ * repo key — their worktrees live on another host. Pure — unit-tested.
+ * Returns a Set, so tasks sharing a path (e.g. `main` rows whose
+ * worktreePath is the repo root) collapse to one collection slot.
+ */
+export function trackedWorktreePaths(tasks: readonly Task[]): Set<string> {
+  const paths = new Set<string>()
+  for (const task of tasks) {
+    if (task.archived) continue
+    if (!task.worktreePath) continue
+    if (isRemoteRepoKey(task.repo) || isRemoteRepoKey(task.worktreePath)) continue
+    paths.add(task.worktreePath)
+  }
+  return paths
+}
+
+interface CollectorEntry extends PollScheduleState {
+  /** Last successful counts, absent until the first run lands. */
+  value?: WorktreeChanges
+}
+
+export interface WorktreeChangesCollectorOptions {
+  readonly cadence?: PollCadenceConfig
+  /** Injectable status runner — tests avoid real git/worktrees. */
+  readonly run?: WorktreeStatusRunner
+  /**
+   * Consumer gate (KOB — idle-daemon collector pause). When supplied and it
+   * returns `false`, `tick()` does NO work (no `git status` spawns, no
+   * publish) — a gui-less `kobe daemon start` / freshly-respawned `daemon
+   * restart` with zero subscribed panes must not run N git walks every 2s
+   * for nobody. The timer keeps ticking, so the FIRST tick after a pane
+   * subscribes repopulates, and the bus's last-value replay hands that late
+   * subscriber the current map. Omit (or return `true`) to collect every
+   * tick — the historical behavior, used by tests that drive `tick()`
+   * directly.
+   */
+  readonly hasSubscribers?: () => boolean
+}
+
+/**
+ * Tick-driven collector. `tick()` is synchronous and never throws: it
+ * prunes entries for worktrees no longer tracked (deleted/archived/now-
+ * remote tasks), starts guarded status runs for due worktrees, and
+ * publishes the full map when — and only when — membership or a value
+ * changed. Run completions publish as they land (each is a real change
+ * by construction). Exposed as a class so tests drive `tick()` directly
+ * with a fake lister/bus/runner; `startWorktreeChangesCollector` is the
+ * production interval binding.
+ */
+export class WorktreeChangesCollector {
+  private readonly entries = new Map<string, CollectorEntry>()
+  private stopped = false
+
+  constructor(
+    private readonly orch: TaskLister,
+    private readonly bus: DaemonEventBus,
+    private readonly options: WorktreeChangesCollectorOptions = {},
+  ) {}
+
+  tick(): void {
+    if (this.stopped) return
+    // Consumer gate: with zero subscribed panes there is nobody to render
+    // the counts, so skip the whole pass — no git spawns, no publish. The
+    // first tick once a pane subscribes repopulates the map and the bus
+    // replays it to the late subscriber.
+    if (this.options.hasSubscribers && !this.options.hasSubscribers()) return
+    try {
+      const tracked = trackedWorktreePaths(this.orch.listTasks())
+      // Prune first: a task deleted/archived since the last tick drops its
+      // entry — and, when it had published counts, triggers a republish so
+      // subscribers stop showing it.
+      let pruned = false
+      for (const path of this.entries.keys()) {
+        if (tracked.has(path)) continue
+        const entry = this.entries.get(path)
+        // An in-flight run for a pruned path finishes into a dropped entry
+        // object — its completion checks membership before publishing.
+        if (entry?.value) pruned = true
+        this.entries.delete(path)
+      }
+      if (pruned) this.publish()
+      for (const path of tracked) this.maybeCollect(path)
+    } catch (err) {
+      logDaemonError("worktree-changes", err)
+    }
+  }
+
+  /** Stop publishing; in-flight children die with their AbortSignal timers. */
+  stop(): void {
+    this.stopped = true
+  }
+
+  private maybeCollect(worktreePath: string): void {
+    let entry = this.entries.get(worktreePath)
+    if (!entry) {
+      entry = { inFlight: false, nextAllowedAt: 0 }
+      this.entries.set(worktreePath, entry)
+    }
+    const cadence = this.options.cadence ?? {
+      timeoutMs: WORKTREE_CHANGES_TIMEOUT_MS,
+      slowRetryMs: WORKTREE_CHANGES_SLOW_RETRY_MS,
+      minIntervalMs: WORKTREE_CHANGES_MIN_INTERVAL_MS,
+    }
+    const run = this.options.run ?? runGitStatus
+    maybeStartScheduledRun(
+      entry,
+      cadence,
+      (signal) => run(worktreePath, signal),
+      (value) => {
+        if (this.stopped) return
+        // The entry may have been pruned (task deleted/archived) while the
+        // status ran — a completion for an untracked path must not resurrect
+        // it in the published map.
+        if (this.entries.get(worktreePath) !== entry) return
+        // Publish-on-change only: a status returning the same counts is a
+        // no-op for every subscriber.
+        if (entry.value && sameWorktreeChanges(entry.value, value)) return
+        entry.value = value
+        this.publish()
+      },
+    )
+  }
+
+  private publish(): void {
+    const changes: WorktreeChangesPayload["changes"] = {}
+    for (const [path, entry] of this.entries) {
+      if (entry.value) changes[path] = entry.value
+    }
+    this.bus.publish("worktree.changes", { changes })
+  }
+}
+
+/**
+ * Start the production collector on an interval. Returns a `stop()` that
+ * clears the timer. Pass `tickMs <= 0` to disable (returns a no-op stop) —
+ * the same disable convention as the server's other pollers; socket-suite
+ * tests use it to keep servers git-free.
+ *
+ * `hasSubscribers` is the consumer gate (KOB — idle-daemon collector
+ * pause): each tick is a no-op while it returns `false`, so a gui-less
+ * daemon with zero subscribed panes stops spawning `git status` for
+ * nobody. The interval keeps running, so the first tick after a pane
+ * subscribes repopulates the cache. Omit to collect unconditionally.
+ */
+export function startWorktreeChangesCollector(
+  orch: TaskLister,
+  runtime: Pick<DaemonRuntimeAdapter, "runWorktreeStatus">,
+  bus: DaemonEventBus,
+  tickMs: number = DEFAULT_WORKTREE_CHANGES_TICK_MS,
+  hasSubscribers?: () => boolean,
+): () => void {
+  if (tickMs <= 0) return () => {}
+  const collector = new WorktreeChangesCollector(orch, bus, { hasSubscribers, run: runtime.runWorktreeStatus })
+  collector.tick()
+  const timer = setInterval(() => collector.tick(), tickMs)
+  timer.unref?.()
+  return () => {
+    clearInterval(timer)
+    collector.stop()
+  }
+}

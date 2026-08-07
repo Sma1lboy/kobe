@@ -168,3 +168,30 @@ describe("claude composer mode label", () => {
     expect(region?.topRow).toBe(2)
   })
 })
+
+describe("codex relaunch banners", () => {
+  const line = (text: string) => ({ text, segs: [] })
+
+  test("the LAST welcome box becomes the card; earlier ones stay history", () => {
+    const boxed = (rows: string[]) => [
+      line("╭──────────────────────────────╮"),
+      ...rows.map((r) => line(`│ ${r.padEnd(28, " ")} │`)),
+      line("╰──────────────────────────────╯"),
+    ]
+    const blocks = codexGrammar.parseBlocks([
+      ...boxed([">_ OpenAI Codex (v0.146.0)", "directory: ~/one"]),
+      line(""),
+      line("bytedance@host dir % codex"),
+      ...boxed([">_ OpenAI Codex (v0.146.0)", "directory: ~/two"]),
+    ])
+    const welcomes = blocks.filter((b) => b.kind === "welcome")
+    expect(welcomes).toHaveLength(1)
+    const w = welcomes[0]
+    if (w.kind !== "welcome") throw new Error("unreachable")
+    expect(w.welcome.info).toContain("directory: ~/two")
+    // The earlier banner stays as verbatim history rows.
+    expect(
+      blocks.some((b) => b.kind === "line" && b.line.text.includes("~/one")),
+    ).toBe(true)
+  })
+})

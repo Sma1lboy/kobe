@@ -7,10 +7,12 @@ import { withDispatcherProtocol, withWorktreeProtocol } from "./interactive-comm
 
 export const SIGINT_GUARD = "trap ':' INT; "
 
-/** Keep a hosted terminal useful after its engine exits. */
+/** Keep a hosted terminal useful after its engine exits. `-il` so the
+ *  fallback is the user's REAL shell (login + interactive — prompt theme,
+ *  PATH, rc files), not a bare default prompt. */
 export function keepAlive(command: string): string {
   const banner = "\\n  ⚠ Engine exited (code %s). Check Settings → Engines and fix the launch command.\\n\\n"
-  return `${command}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}"`
+  return `${command}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}" -il`
 }
 
 export interface EngineInitLaunch {

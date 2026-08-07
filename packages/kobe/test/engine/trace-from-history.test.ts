@@ -81,18 +81,12 @@ describe("traceFromHistory", () => {
 
   it("links tools in LATER messages to the turn's commentary (claude splits them)", () => {
     const trace = traceFromHistory(SESSION_ID, [
-      message("user", "2026-08-06T10:00:00.000Z", [
-        { type: "text", text: "run some tools" },
-      ]),
-      message("assistant", "2026-08-06T10:00:01.000Z", [
-        { type: "text", text: "ok, running a few checks:" },
-      ]),
+      message("user", "2026-08-06T10:00:00.000Z", [{ type: "text", text: "run some tools" }]),
+      message("assistant", "2026-08-06T10:00:01.000Z", [{ type: "text", text: "ok, running a few checks:" }]),
       message("assistant", "2026-08-06T10:00:02.000Z", [
         { type: "tool_call", callId: "c1", name: "shell", input: { cmd: "ls" } },
       ]),
-      message("assistant", "2026-08-06T10:00:03.000Z", [
-        { type: "text", text: "all done." },
-      ]),
+      message("assistant", "2026-08-06T10:00:03.000Z", [{ type: "text", text: "all done." }]),
     ])
 
     const nodes = trace.turns[0]?.nodes ?? []

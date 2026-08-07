@@ -92,13 +92,18 @@ function findBoxes(lines: readonly ColoredLine[]): Box[] {
  */
 export function parseCodexBlocks(lines: readonly ColoredLine[]): TtyBlock[] {
   const boxes = findBoxes(lines)
-  const welcomeBox = boxes.find((b) =>
-    b.inner.some((t) => CODEX_PRODUCT.test(t)),
-  )
+  // Relaunches stack multiple banners in scrollback — the card is the LAST
+  // one (the running session); earlier banners stay verbatim history.
+  const welcomeBox = [...boxes]
+    .reverse()
+    .find((b) => b.inner.some((t) => CODEX_PRODUCT.test(t)))
   if (!welcomeBox) return parseTtyBlocks(lines)
-  const noticeBox = boxes.find(
-    (b) => b !== welcomeBox && b.inner.some((t) => /update available/i.test(t)),
-  )
+  const noticeBox = [...boxes]
+    .reverse()
+    .find(
+      (b) =>
+        b !== welcomeBox && b.inner.some((t) => /update available/i.test(t)),
+    )
   const pm = welcomeBox.inner
     .find((t) => CODEX_PRODUCT.test(t))
     ?.match(CODEX_PRODUCT)
