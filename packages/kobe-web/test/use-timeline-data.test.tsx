@@ -85,6 +85,8 @@ describe("useTimelineData", () => {
     expect(result.current.model.turns.map((item) => item.id)).toEqual(["a-old", "a-new"])
 
     act(() => rerender({ currentBinding: binding("run-b", "session-b", 40) }))
+    expect(result.current.loaded).toBe(false)
+    expect(result.current.model).toEqual({ sessionId: "session-b", turns: [] })
     await waitFor(() => expect(result.current.model.turns.map((item) => item.id)).toEqual(["b-turn"]))
 
     // The new attachment starts after a-old ended. Run-scoped filtering used
@@ -93,5 +95,60 @@ describe("useTimelineData", () => {
     await waitFor(() =>
       expect(result.current.model.turns.map((item) => item.id)).toEqual(["a-old", "a-new"]),
     )
+  })
+
+  it("shows an empty loading generation while a resumed run replaces the current run", async () => {
+    const sessionA: EngineTrace = {
+      sessionId: "session-a",
+      turns: [turn("a-turn", 10, 20)],
+    }
+    let resolveResume: ((trace: EngineTrace) => void) | undefined
+    const resumedTrace = new Promise<EngineTrace>((resolve) => {
+      resolveResume = resolve
+    })
+    fetchTrace.mockImplementation(async (_vendor, sessionId) => {
+      if (sessionId === "session-a") return sessionA
+      return await resumedTrace
+    })
+
+    const { result, rerender } = renderHook(
+      ({ currentBinding, engineState }) =>
+        useTimelineData({
+          taskId: "task-1",
+          vendor: "codex",
+          engineState,
+          binding: currentBinding,
+        }),
+      {
+        initialProps: {
+          currentBinding: binding("run-a", "session-a", 1),
+          engineState: { taskId: "task-1", state: "idle", at: 0 },
+        },
+      },
+    )
+
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.model.turns[0]?.id).toBe("a-turn")
+
+    act(() =>
+      rerender({
+        currentBinding: binding("run-b", "session-b", 30),
+        engineState: { taskId: "task-1", state: "running", at: 31 },
+      }),
+    )
+
+    // The running activity overlay must not synthesize a turn over the loader,
+    // and the previous session must not survive under the new run identity.
+    expect(result.current.loaded).toBe(false)
+    expect(result.current.model).toEqual({ sessionId: "session-b", turns: [] })
+
+    await act(async () => {
+      resolveResume?.({
+        sessionId: "session-b",
+        turns: [turn("b-turn", 30, 40)],
+      })
+    })
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.model.turns[0]?.id).toBe("b-turn")
   })
 })

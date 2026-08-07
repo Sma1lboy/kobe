@@ -14,6 +14,16 @@ import type { EngineSessionBinding, EngineState } from "./types.ts"
 
 export type TimelineBindingState = EngineSessionBinding["state"] | "unavailable"
 
+// A local trace fetch often resolves inside one paint. Keep resume transitions
+// visible long enough to communicate that the pane changed session identity.
+const MIN_RESUME_LOADING_MS = 360
+
+function wait(ms: number): Promise<void> {
+  return ms > 0
+    ? new Promise((resolve) => window.setTimeout(resolve, ms))
+    : Promise.resolve()
+}
+
 export interface TimelineData {
   model: TimelineModel
   loaded: boolean
@@ -37,6 +47,9 @@ export function useTimelineData({
   legacySessionId?: string
 }): TimelineData {
   const targetSessionId = binding?.sessionId ?? legacySessionId ?? ""
+  const targetGeneration =
+    binding?.runId ??
+    (targetSessionId ? `legacy:${vendor}:${targetSessionId}` : "")
   const runStartedAt = binding?.startedAt ?? 0
   const bindingState: TimelineBindingState =
     binding?.state ?? (legacySessionId ? "bound" : "unavailable")
@@ -45,34 +58,58 @@ export function useTimelineData({
     turns: [],
   })
   const [loaded, setLoaded] = useState(false)
+  const [loadedGeneration, setLoadedGeneration] = useState("")
   const [error, setError] = useState<string | null>(null)
   const seqRef = useRef(0)
+  const previousGenerationRef = useRef(targetGeneration)
+
+  // Props change before effects run. Mask the previous run synchronously so a
+  // resumed session can never paint the old timeline under its new identity.
+  const generationReady =
+    !targetSessionId ||
+    (loaded &&
+      loadedGeneration === targetGeneration &&
+      trace.sessionId === targetSessionId)
 
   useEffect(() => {
     const seq = ++seqRef.current
+    const previousGeneration = previousGenerationRef.current
+    previousGenerationRef.current = targetGeneration
+    const startedAt = Date.now()
+    const minimumLoadingMs =
+      previousGeneration &&
+      previousGeneration !== targetGeneration &&
+      binding?.startSource === "resume"
+        ? MIN_RESUME_LOADING_MS
+        : 0
     setTrace({ sessionId: targetSessionId, turns: [] })
     setLoaded(false)
     setError(null)
     if (!targetSessionId) {
+      setLoadedGeneration(targetGeneration)
       setLoaded(true)
       return
     }
     void fetchTrace(vendor, targetSessionId)
-      .then((next) => {
+      .then(async (next) => {
+        await wait(minimumLoadingMs - (Date.now() - startedAt))
         if (seq !== seqRef.current) return
         // Engine history is session-scoped. Resuming away from a session and
         // later returning to it must restore its complete persisted timeline;
         // EngineRun timestamps identify the live attachment, not a history
         // retention boundary.
         setTrace(next)
+        setLoadedGeneration(targetGeneration)
         setLoaded(true)
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        await wait(minimumLoadingMs - (Date.now() - startedAt))
         if (seq !== seqRef.current) return
         setError(err instanceof Error ? err.message : String(err))
+        setLoadedGeneration(targetGeneration)
         setLoaded(true)
       })
-  }, [vendor, targetSessionId])
+  }, [vendor, targetSessionId, targetGeneration, binding?.startSource])
 
   useEffect(() => {
     if (!targetSessionId) return
@@ -96,10 +133,22 @@ export function useTimelineData({
     })
   }, [taskId, targetSessionId, runStartedAt])
 
-  const model = useMemo(
-    () => withLiveState(trace, engineState?.state, engineState?.at ?? 0),
-    [trace, engineState?.state, engineState?.at],
-  )
+  const model = useMemo(() => {
+    if (!generationReady)
+      return { sessionId: targetSessionId, turns: [] } satisfies TimelineModel
+    return withLiveState(trace, engineState?.state, engineState?.at ?? 0)
+  }, [
+    generationReady,
+    targetSessionId,
+    trace,
+    engineState?.state,
+    engineState?.at,
+  ])
 
-  return { model, loaded, error, bindingState }
+  return {
+    model,
+    loaded: generationReady,
+    error: generationReady ? error : null,
+    bindingState,
+  }
 }
