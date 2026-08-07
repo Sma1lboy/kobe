@@ -169,9 +169,21 @@ export function ChatShell() {
     }
   }, [attentionInbox, selectedIdForAttention, tabId, settingsOpen, surface])
 
-  // Agent Trace is the GUI-native execution inspector. It starts open so
-  // the two-level thought/tool model is visible without introducing a chord.
-  const [showTimeline, setShowTimeline] = useState(true)
+  // Agent Trace starts COLLAPSED — the chat is the product surface; the
+  // inspector opens on demand (header toggle) and the choice persists.
+  const [showTimeline, setShowTimelineState] = useState(
+    () => window.localStorage.getItem("kobe-web.trace.open") === "1",
+  )
+  const setShowTimeline = useCallback(
+    (next: boolean | ((cur: boolean) => boolean)) => {
+      setShowTimelineState((cur) => {
+        const value = typeof next === "function" ? next(cur) : next
+        window.localStorage.setItem("kobe-web.trace.open", value ? "1" : "0")
+        return value
+      })
+    },
+    [],
+  )
   // Drag-resizable flanks: task sidebar (divider on its right) and Agent
   // Trace (divider on its left). Widths persist per browser.
   const [sidebarW, dragSidebar] = usePaneWidth(
