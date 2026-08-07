@@ -4,7 +4,7 @@ import {
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
 } from "@sma1lboy/kobe-daemon/daemon/server"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { Task } from "../../src/types/task.ts"
 import { fakeCtx } from "./handler-test-context.ts"
 
@@ -181,6 +181,135 @@ describe("daemon runtime handlers", () => {
   })
 
   describe("engine.reportEvent (payload contract pinned — the activity hooks depend on it)", () => {
+    it("registers a pending spawn before a caller-assigned session is pinned", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "claude" }) })
+      await dispatch("engine.beginSession", { taskId: "t1", tabId: "tab-claude" }, ctx)
+      await dispatch("engine.pinSession", { taskId: "t1", tabId: "tab-claude", sessionId: "session-assigned" }, ctx)
+      expect(rec.bindings).toEqual([
+        { taskId: "t1", tabId: "tab-claude", vendor: "claude", state: "pending" },
+        {
+          taskId: "t1",
+          tabId: "tab-claude",
+          vendor: "claude",
+          sessionId: "session-assigned",
+          source: "spawn",
+        },
+      ])
+    })
+
+    it("persists a hook-reported native session against the exact tab", async () => {
+      const { ctx, rec } = fakeCtx({
+        listTasks: () => [TASK],
+        getTask: () => ({ ...TASK, vendor: "codex" }),
+      })
+      await dispatch(
+        "engine.reportEvent",
+        {
+          taskId: "t1",
+          tabId: "tab-codex",
+          kind: "session-start",
+          engine: "codex",
+          sessionId: "session-native",
+          sessionStartSource: "resume",
+          transcriptPath: "/tmp/rollout.jsonl",
+        },
+        ctx,
+      )
+      expect(rec.bindings).toContainEqual({
+        taskId: "t1",
+        tabId: "tab-codex",
+        vendor: "codex",
+        sessionId: "session-native",
+        source: "hook",
+        eventKind: "session-start",
+        startSource: "resume",
+        transcriptPath: "/tmp/rollout.jsonl",
+      })
+    })
+
+    it("binds an adapter-observed resume before SessionStart fires", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      const observeEngineSessionActivation = vi.fn(async () => ({
+        phase: "selected" as const,
+        sessionId: "session-observed",
+        transcriptPath: "/tmp/observed-rollout.jsonl",
+        source: "resume" as const,
+        observedAt: 1234,
+      }))
+      ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
+        ...ctx.runtime,
+        observeEngineSessionActivation,
+      }
+      await dispatch("engine.beginSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex" }, ctx)
+      await expect(
+        dispatch("engine.observeSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex", rootPid: 4242 }, ctx),
+      ).resolves.toEqual({ observed: true, pending: false, sessionId: "session-observed" })
+      expect(observeEngineSessionActivation).toHaveBeenCalledWith("codex", 4242, expect.any(Number))
+      expect(rec.bindings.at(-1)).toEqual({
+        taskId: "t1",
+        tabId: "tab-codex",
+        vendor: "codex",
+        sessionId: "session-observed",
+        source: "observer",
+        startSource: "resume",
+        transcriptPath: "/tmp/observed-rollout.jsonl",
+      })
+    })
+
+    it("publishes a transient resume transition before Codex identifies the selected session", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
+        ...ctx.runtime,
+        observeEngineSessionActivation: async () => ({
+          phase: "pending",
+          source: "resume",
+          observedAt: 1_234,
+        }),
+      }
+
+      await expect(
+        dispatch("engine.observeSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex", rootPid: 4242 }, ctx),
+      ).resolves.toEqual({ observed: true, pending: true })
+      expect(rec.transitions).toEqual([
+        {
+          taskId: "t1",
+          tabId: "tab-codex",
+          vendor: "codex",
+          startSource: "resume",
+          observedAt: 1_234,
+        },
+      ])
+      expect(rec.bindings).toEqual([])
+    })
+
+    it("recovers a native session only for a tab-scoped session-start from an older hook reporter", async () => {
+      const { ctx, rec } = fakeCtx({
+        listTasks: () => [TASK],
+        getTask: () => ({ ...TASK, vendor: "codex" }),
+      })
+      ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
+        ...ctx.runtime,
+        recoverEngineSession: async () => ({
+          sessionId: "session-recovered",
+          transcriptPath: "/tmp/recovered-rollout.jsonl",
+        }),
+      }
+      await dispatch(
+        "engine.reportEvent",
+        { taskId: "t1", tabId: "tab-codex", kind: "session-start", engine: "codex" },
+        ctx,
+      )
+      expect(rec.bindings).toContainEqual({
+        taskId: "t1",
+        tabId: "tab-codex",
+        vendor: "codex",
+        sessionId: "session-recovered",
+        source: "history-recovery",
+        eventKind: "session-start",
+        transcriptPath: "/tmp/recovered-rollout.jsonl",
+      })
+    })
+
     it("maps cwd → task and folds the coerced detail into the activity registry", async () => {
       const { ctx, rec } = fakeCtx({ listTasks: () => [TASK] })
       const result = await dispatch(

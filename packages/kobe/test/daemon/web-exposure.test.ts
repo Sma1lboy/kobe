@@ -27,6 +27,7 @@ const EXPOSED: readonly DaemonRequestName[] = [
   "automation.runs",
   "automation.update",
   "daemon.status",
+  "engine.observeSession",
   "task.archive",
   "task.create",
   "task.delete",

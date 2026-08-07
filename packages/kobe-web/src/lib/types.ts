@@ -100,6 +100,42 @@ export interface EngineState {
   transcriptPath?: string
 }
 
+/** Current temporal EngineRun for one task+tab. */
+export interface EngineSessionBinding {
+  /** Kobe-owned temporal run. Optional only when connected to a v1 daemon. */
+  runId?: string
+  taskId: string
+  tabId: string
+  vendor: string
+  sessionId: string | null
+  state: "pending" | "bound" | "ended" | "superseded" | "missing"
+  source: "spawn" | "observer" | "hook" | "history-recovery"
+  startSource?: "startup" | "resume" | "clear" | "compact"
+  transcriptPath?: string
+  startedAt: number
+  boundAt?: number
+  endedAt?: number
+  updatedAt: number
+}
+
+export type EngineSessionBindings = Record<
+  string,
+  Record<string, EngineSessionBinding>
+>
+
+export interface EngineSessionTransition {
+  taskId: string
+  tabId: string
+  vendor: string
+  startSource: "resume"
+  observedAt: number
+}
+
+export type EngineSessionTransitions = Record<
+  string,
+  Record<string, EngineSessionTransition>
+>
+
 export interface UpdateInfo {
   latest?: string
   current?: string
@@ -161,6 +197,13 @@ export type WebTransportEvent =
   | { channel: "issue.snapshot"; payload: RepoIssues }
   | { channel: "active-task"; payload: { taskId: string | null } }
   | { channel: "engine-state"; payload: EngineState }
+  | {
+      channel: "session.bindings"
+      payload: {
+        bindings: EngineSessionBindings
+        transitions?: EngineSessionTransitions
+      }
+    }
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
@@ -175,6 +218,10 @@ export interface WebTransportSnapshot {
   engineStates: Record<string, EngineState>
   /** taskId → tabId → last known engine session id (tab-precise traces). */
   engineTabSessions?: Record<string, Record<string, string>>
+  /** New daemon contract; absent when connected to an older daemon. */
+  sessionBindings?: EngineSessionBindings
+  /** Ephemeral resume transitions; absent when connected to an older daemon. */
+  sessionTransitions?: EngineSessionTransitions
   update: UpdateInfo | null
   /** taskId -> in-flight job (running only; terminal phases are dropped). */
   jobs?: Record<string, TaskJob>

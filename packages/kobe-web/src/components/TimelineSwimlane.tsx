@@ -17,10 +17,12 @@ function statusClass(status: TimelineStatus): string {
 export function TimelineSwimlane({
   model,
   engineLabel,
+  runId,
   onClose,
 }: {
   model: TimelineModel
   engineLabel: string
+  runId?: string
   onClose: () => void
 }) {
   const running = model.turns.some((turn) => turn.status === "running")
@@ -46,6 +48,7 @@ export function TimelineSwimlane({
           <div className="font-mono text-[10px] text-subtle">
             {engineLabel} · {model.turns.length}{" "}
             {model.turns.length === 1 ? "turn" : "turns"}
+            {runId ? ` · run ${runId.slice(0, 8)}` : ""}
             {model.sessionId ? ` · ${model.sessionId.slice(0, 8)}` : ""}
           </div>
         </div>

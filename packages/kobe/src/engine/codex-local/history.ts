@@ -137,6 +137,11 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
 /** UUID embedded at the tail of a `rollout-<ISO>-<UUID>.jsonl` filename. */
 const UUID_AT_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
 
+/** Native session id embedded in a rollout path, or null for another file. */
+export function rolloutSessionId(file: string): string | null {
+  return path.basename(file).match(UUID_AT_END)?.[1] ?? null
+}
+
 /** The `cwd` recorded on a rollout's `session_meta` line, or `""`. */
 export function rolloutCwd(raw: string): string {
   for (const line of raw.split("\n")) {

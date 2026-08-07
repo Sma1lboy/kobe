@@ -260,6 +260,7 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
         ...(detail ? { detail } : {}),
         ...(session ? { sessionId: session.sessionId } : {}),
         ...(session?.transcriptPath ? { transcriptPath: session.transcriptPath } : {}),
+        ...(session?.startSource ? { sessionStartSource: session.startSource } : {}),
       })
     } finally {
       client.close()

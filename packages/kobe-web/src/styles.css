@@ -335,6 +335,58 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
   animation: execution-node-pulse 1.8s ease-out infinite;
 }
 
+/* Agent Trace loading speaks its own grammar: a causal chain filling from
+ * identity → history → events, rather than a generic spinner. */
+.trace-loader {
+  position: relative;
+  display: inline-flex;
+  width: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.trace-loader::before {
+  position: absolute;
+  right: 3px;
+  left: 3px;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-kobe-blue) 32%, transparent);
+  content: "";
+}
+
+.trace-loader > span {
+  z-index: 1;
+  width: 6px;
+  height: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-kobe-blue) 70%, var(--color-line));
+  background: var(--color-surface);
+  animation: trace-loader-node 1.2s ease-in-out infinite;
+}
+
+.trace-loader > span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.trace-loader > span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes trace-loader-node {
+  0%,
+  60%,
+  100% {
+    background: var(--color-surface);
+    box-shadow: none;
+    transform: scale(0.78);
+  }
+  25% {
+    background: var(--color-kobe-blue);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--color-kobe-blue) 55%, transparent);
+    transform: scale(1);
+  }
+}
+
 @keyframes execution-node-pulse {
   0% {
     opacity: 0.45;
@@ -350,6 +402,7 @@ html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
 @media (prefers-reduced-motion: reduce) {
   .activity-card__pulse,
   .execution-node--running::after,
+  .trace-loader > span,
   .shimmer-text,
   .fade-up,
   .pop-in,

@@ -152,6 +152,25 @@ Codex also won't run a non-managed hook until you trust it once via `/hooks`
 but never auto-bypasses trust, so Codex activity badges light up only after you
 approve, by design.
 
+For both Claude Code and Codex, the adapter also normalizes the native
+`session_id`, `transcript_path`, and `SessionStart.source`. The daemon uses
+those fields to bind the engine-owned conversation to a Kobe-owned temporal
+`runId`: startup/resume/clear establish a run, while compact stays inside the
+current run. Neutral UI layers consume that run binding and never infer the
+active conversation from terminal pixels or the newest transcript file.
+
+Codex defers `SessionStart(source=resume)` until the next turn, after its
+native `/resume` picker has already switched threads. The browser/Electron PTY
+sidecar therefore reports only the tab/root-pid commit boundary to the daemon;
+the Codex registry adapter resolves the actual Codex descendant and reads its
+PID-scoped structured resume record from `CODEX_HOME/logs_2.sqlite`. That
+observer first yields an ephemeral pending transition when the resume span
+appears, then the exact session id and rollout path when Codex finishes
+selecting the thread. The transition starts Agent Trace loading early but never
+enters the durable EngineRun ledger. The later SessionStart confirms the
+binding, and remains the fallback when Codex changes or disables the internal
+log schema. No neutral daemon or UI code parses the vendor record.
+
 ### Copilot, Kimi, custom engines
 
 No hook mechanism is wired (`NoopHookAdapter`); install is a no-op and nothing

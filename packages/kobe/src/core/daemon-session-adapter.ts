@@ -1,6 +1,7 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { kobeHookReporterEnv } from "../cli/invocation.ts"
 import {
   deliverToHostedKey,
   ensureHostedEngine,
@@ -11,11 +12,44 @@ import {
   listHostedSessions,
   openHostedSessionHost,
 } from "../engine/hosted-session.ts"
-import { interactiveEngineCommand, withClaudeSessionId } from "../engine/interactive-command.ts"
+import { interactiveEngineCommand, withClaudeSessionId, withManagedHookTrust } from "../engine/interactive-command.ts"
+import { engineEntry } from "../engine/registry.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
 import type { VendorId } from "../types/task.ts"
+
+const SESSION_RECOVERY_DELAYS_MS = [0, 40, 120] as const
+
+/**
+ * Resolve the session behind a concrete provider `session-start` event.
+ * The daemon calls this only when an older `kobe hook` reporter omitted the
+ * payload's session fields. Vendor filesystem knowledge stays in the engine
+ * history adapter; the daemon and GUI receive only the normalized identity.
+ */
+export async function recoverEngineSessionAdapter(
+  vendor: VendorId,
+  worktreePath: string,
+): Promise<{ sessionId: string; transcriptPath?: string } | null> {
+  const history = engineEntry(vendor).history
+  for (const delayMs of SESSION_RECOVERY_DELAYS_MS) {
+    if (delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+    const session = await history.latestSessionForWorktree?.(worktreePath)
+    if (session) return session
+    if (!history.latestSessionForWorktree) {
+      const sessionId = (await history.listSessionIdsForWorktree(worktreePath)).at(-1)
+      if (sessionId) {
+        const transcriptPath = await history.transcriptPath(sessionId, worktreePath)
+        return { sessionId, ...(transcriptPath ? { transcriptPath } : {}) }
+      }
+    }
+  }
+  return null
+}
+
+export async function observeEngineSessionActivationAdapter(vendor: VendorId, rootPid: number, afterMs: number) {
+  return (await engineEntry(vendor).observeSessionActivation?.({ rootPid, afterMs })) ?? null
+}
 
 async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
@@ -104,18 +138,20 @@ export async function engineSpecAdapter(
   tabId?: string,
 ) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
+  const vendorId = vendor ? (vendor as VendorId) : task.vendor
   const baseArgv = vendor
     ? interactiveEngineCommand(vendor as VendorId)
     : interactiveEngineCommand(task.vendor, task.modelEffort)
+  const managedArgv = withManagedHookTrust(baseArgv, vendorId)
   // Pin the session at spawn (claude `--session-id <uuid>`): the GUI then
   // knows this tab's session DETERMINISTICALLY — no hook latency, no
   // wrong-tab ambiguity. Vendors without a caller-set id return null.
-  const { argv, sessionId } = withClaudeSessionId(baseArgv, vendor ?? task.vendor)
+  const { argv, sessionId } = withClaudeSessionId(managedArgv, vendorId)
   const launch = buildEngineSessionLaunch({
     task: {
       id: task.id,
       kind: task.kind,
-      vendor: vendor ? (vendor as VendorId) : task.vendor,
+      vendor: vendorId,
       repo: task.repo,
     },
     worktreePath,
@@ -138,7 +174,11 @@ export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string,
     command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
     // A manual `claude`/`codex` typed into this shell inherits the task+tab
     // identity, so its hooks attribute per-tab like a vendor tab's engine.
-    env: { KOBE_TASK_ID: taskId, ...(tabId ? { KOBE_TAB_ID: tabId } : {}) },
+    env: {
+      KOBE_TASK_ID: taskId,
+      ...(tabId ? { KOBE_TAB_ID: tabId } : {}),
+      ...kobeHookReporterEnv(),
+    },
   }
 }
 

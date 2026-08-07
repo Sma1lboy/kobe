@@ -169,7 +169,11 @@ export type DaemonRequestName =
   | "engine.reportEvent"
   // Spawn-time session pin: the engine spec injected a caller-set session id
   // (claude `--session-id`), record + broadcast it for tab-precise traces.
+  | "engine.beginSession"
   | "engine.pinSession"
+  // Sidecar commit observation: ask the engine adapter whether the PTY's
+  // native conversation changed before its ordinary hook fires.
+  | "engine.observeSession"
   // Remove the durable Inbox item at the supplied event timestamp. Explicit
   // removal, opening, and visiting the target all use this guarded operation.
   | "attention.dismiss"
