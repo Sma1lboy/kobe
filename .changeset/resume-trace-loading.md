@@ -2,6 +2,6 @@
 "@sma1lboy/kobe": patch
 ---
 
-Show a stable, animated Agent Trace loading transition when an engine tab
-resumes into a new temporal run, without briefly retaining the previous
-session timeline.
+Show a stable, animated Agent Trace loading transition as soon as the engine
+adapter detects a native resume, before the selected session id is available,
+without briefly retaining the previous session timeline.

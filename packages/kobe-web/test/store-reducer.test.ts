@@ -111,6 +111,7 @@ describe("validateSnapshot", () => {
       ...ok,
       activeTaskId: "t1",
       jobs: {},
+      sessionTransitions: {},
       worktreeChanges: {},
       issueSnapshots: {},
       uiPrefs: { theme: "claude" },
@@ -149,6 +150,7 @@ describe("validateSnapshot", () => {
     expect(validateSnapshot({ ...ok, jobs: [] })).toBeNull()
     expect(validateSnapshot({ ...ok, worktreeChanges: 1 })).toBeNull()
     expect(validateSnapshot({ ...ok, issueSnapshots: "x" })).toBeNull()
+    expect(validateSnapshot({ ...ok, sessionTransitions: [] })).toBeNull()
     expect(validateSnapshot({ ...ok, uiPrefs: 5 })).toBeNull()
   })
 

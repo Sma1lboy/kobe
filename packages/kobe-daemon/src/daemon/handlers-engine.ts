@@ -57,6 +57,16 @@ export const ENGINE_HANDLERS: readonly DaemonRequestHandler[] = [
       const current = ctx.bindings.snapshotByTask()[taskId]?.[tabId]
       const activation = await ctx.runtime.observeEngineSessionActivation(vendor, rootPid, current?.updatedAt ?? 0)
       if (!activation) return { observed: false }
+      if (activation.phase === "pending") {
+        ctx.bindings.markTransition({
+          taskId,
+          tabId,
+          vendor,
+          startSource: activation.source,
+          observedAt: activation.observedAt,
+        })
+        return { observed: true, pending: true }
+      }
       await ctx.bindings.bind({
         taskId,
         tabId,
@@ -67,7 +77,7 @@ export const ENGINE_HANDLERS: readonly DaemonRequestHandler[] = [
         ...(activation.transcriptPath ? { transcriptPath: activation.transcriptPath } : {}),
       })
       ctx.activity.pinTabSession(taskId, tabId, activation.sessionId)
-      return { observed: true, sessionId: activation.sessionId }
+      return { observed: true, pending: false, sessionId: activation.sessionId }
     },
   },
   {

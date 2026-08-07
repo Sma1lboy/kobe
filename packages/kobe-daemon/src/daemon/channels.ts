@@ -12,6 +12,7 @@ import type {
   EngineActivityDetail,
   EngineQuotaUsage,
   EngineSessionBindingsByTask,
+  EngineSessionTransitionsByTask,
   TaskActivityState,
   UpdateInfo,
 } from "./contracts.ts"
@@ -89,7 +90,10 @@ export interface ChannelPayloads {
    * to select history/trace; they never infer identity from terminal pixels or
    * from whichever transcript happened to be newest.
    */
-  "session.bindings": { bindings: EngineSessionBindingsByTask }
+  "session.bindings": {
+    bindings: EngineSessionBindingsByTask
+    transitions: EngineSessionTransitionsByTask
+  }
   /**
    * Full durable attention queue. Viewing never consumes an item: an episode
    * leaves only after a newer same-tab `turn-start`, explicit dismissal, or an

@@ -135,6 +135,7 @@ export function emptyWebSnapshot(): DaemonWebSnapshotState {
     engineStates: {},
     engineTabSessions: {},
     sessionBindings: {},
+    sessionTransitions: {},
     update: null,
     jobs: {},
     worktreeChanges: {},

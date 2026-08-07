@@ -57,6 +57,7 @@ export function ChatShell() {
     engineStates,
     engineTabSessions,
     sessionBindings,
+    sessionTransitions,
     attentionInbox,
   } = useAppState()
   const { tabsByTask, activeByTask } = useTabsState()
@@ -186,6 +187,8 @@ export function ChatShell() {
 
   const activeBinding =
     selected && tabId ? sessionBindings[selected.id]?.[tabId] : undefined
+  const activeTransition =
+    selected && tabId ? sessionTransitions[selected.id]?.[tabId] : undefined
   const legacySessionId =
     selected && tabId ? engineTabSessions[selected.id]?.[tabId] : undefined
 
@@ -274,6 +277,7 @@ export function ChatShell() {
             vendor={resolveVendor(effectiveVendor ?? selected.vendor)}
             engineState={engineStates[selected.id]}
             binding={activeBinding}
+            transition={activeTransition}
             legacySessionId={legacySessionId}
             engineActive={engineLive}
             width={traceW}

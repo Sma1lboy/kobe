@@ -164,10 +164,12 @@ native `/resume` picker has already switched threads. The browser/Electron PTY
 sidecar therefore reports only the tab/root-pid commit boundary to the daemon;
 the Codex registry adapter resolves the actual Codex descendant and reads its
 PID-scoped structured resume record from `CODEX_HOME/logs_2.sqlite`. That
-observer yields the exact session id and rollout path immediately. The later
-SessionStart confirms the binding, and remains the fallback when Codex changes
-or disables the internal log schema. No neutral daemon or UI code parses the
-vendor record.
+observer first yields an ephemeral pending transition when the resume span
+appears, then the exact session id and rollout path when Codex finishes
+selecting the thread. The transition starts Agent Trace loading early but never
+enters the durable EngineRun ledger. The later SessionStart confirms the
+binding, and remains the fallback when Codex changes or disables the internal
+log schema. No neutral daemon or UI code parses the vendor record.
 
 ### Copilot, Kimi, custom engines
 

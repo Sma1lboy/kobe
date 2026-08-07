@@ -40,6 +40,8 @@ export interface DaemonWebSnapshotState {
   engineTabSessions: Record<string, Record<string, string>>
   /** Durable, versioned session identity contract for new consumers. */
   sessionBindings: import("./contracts.ts").EngineSessionBindingsByTask
+  /** Ephemeral native-session transitions; never written to disk. */
+  sessionTransitions: import("./contracts.ts").EngineSessionTransitionsByTask
   update: ChannelPayloads["update"]["info"]
   jobs: Record<string, ChannelPayloads["task.jobs"]>
   worktreeChanges: ChannelPayloads["worktree.changes"]["changes"]
@@ -424,6 +426,7 @@ export function createDirectWebLink(args: {
         engineStates: args.activity.snapshotByTask(),
         engineTabSessions: args.bindings.sessionIdsByTask(),
         sessionBindings: args.bindings.snapshotByTask(),
+        sessionTransitions: args.bindings.transitionSnapshotByTask(),
         update: latest(args.bus, "update")?.info ?? null,
         jobs,
         worktreeChanges: latest(args.bus, "worktree.changes")?.changes ?? {},

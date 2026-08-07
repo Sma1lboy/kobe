@@ -56,12 +56,21 @@ export interface DaemonRuntimeAdapter {
     vendor: VendorId,
     rootPid: number,
     afterMs: number,
-  ): Promise<{
-    sessionId: string
-    transcriptPath?: string
-    source: "resume"
-    observedAt: number
-  } | null>
+  ): Promise<
+    | {
+        phase: "pending"
+        source: "resume"
+        observedAt: number
+      }
+    | {
+        phase: "selected"
+        sessionId: string
+        transcriptPath?: string
+        source: "resume"
+        observedAt: number
+      }
+    | null
+  >
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
   createEngineTurnDetector(vendor: VendorId): EngineTurnDetectorAdapter
   runWorktreeStatus(worktreePath: string, signal: AbortSignal): Promise<WorktreeChanges>

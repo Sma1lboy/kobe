@@ -21,6 +21,7 @@ export interface RecordedHandlerEffects {
   readonly inboxRead: Array<{ taskId: string; tabId: string | null; at: number }>
   readonly inboxTaskDeleted: string[]
   readonly bindings: Array<Record<string, unknown>>
+  readonly transitions: Array<Record<string, unknown>>
   readonly deletions: string[]
   stopped: number
   idleReevaluations: number
@@ -41,6 +42,7 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     inboxRead: [],
     inboxTaskDeleted: [],
     bindings: [],
+    transitions: [],
     deletions: [],
     stopped: 0,
     idleReevaluations: 0,
@@ -101,7 +103,11 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         currentBindings[taskId] = { ...(currentBindings[taskId] ?? {}), [tabId]: value }
         return value
       },
+      markTransition: (value: Record<string, unknown>) => {
+        rec.transitions.push(value)
+      },
       snapshotByTask: () => currentBindings,
+      transitionSnapshotByTask: () => ({}),
       deleteTask: async () => {},
       deleteTaskBestEffort: async () => {},
     } as unknown as SessionBindingStore,

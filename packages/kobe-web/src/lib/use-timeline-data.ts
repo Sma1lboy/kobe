@@ -10,7 +10,11 @@ import {
   subscribeLiveTrace,
   subscribeTrace,
 } from "./trace.ts"
-import type { EngineSessionBinding, EngineState } from "./types.ts"
+import type {
+  EngineSessionBinding,
+  EngineSessionTransition,
+  EngineState,
+} from "./types.ts"
 
 export type TimelineBindingState = EngineSessionBinding["state"] | "unavailable"
 
@@ -36,6 +40,7 @@ export function useTimelineData({
   vendor,
   engineState,
   binding,
+  transition,
   legacySessionId,
 }: {
   taskId: string
@@ -43,6 +48,8 @@ export function useTimelineData({
   engineState: EngineState | undefined
   /** Durable daemon-owned identity. Terminal pixels never select history. */
   binding?: EngineSessionBinding
+  /** Adapter-confirmed native resume before the selected session id exists. */
+  transition?: EngineSessionTransition
   /** Exact-id fallback from a pre-binding daemon; never a newest-file guess. */
   legacySessionId?: string
 }): TimelineData {
@@ -51,8 +58,10 @@ export function useTimelineData({
     binding?.runId ??
     (targetSessionId ? `legacy:${vendor}:${targetSessionId}` : "")
   const runStartedAt = binding?.startedAt ?? 0
-  const bindingState: TimelineBindingState =
-    binding?.state ?? (legacySessionId ? "bound" : "unavailable")
+  const transitionPending = transition?.startSource === "resume"
+  const bindingState: TimelineBindingState = transitionPending
+    ? "pending"
+    : (binding?.state ?? (legacySessionId ? "bound" : "unavailable"))
   const [trace, setTrace] = useState<TimelineModel>({
     sessionId: targetSessionId,
     turns: [],
@@ -66,10 +75,11 @@ export function useTimelineData({
   // Props change before effects run. Mask the previous run synchronously so a
   // resumed session can never paint the old timeline under its new identity.
   const generationReady =
-    !targetSessionId ||
-    (loaded &&
-      loadedGeneration === targetGeneration &&
-      trace.sessionId === targetSessionId)
+    !transitionPending &&
+    (!targetSessionId ||
+      (loaded &&
+        loadedGeneration === targetGeneration &&
+        trace.sessionId === targetSessionId))
 
   useEffect(() => {
     const seq = ++seqRef.current
@@ -135,10 +145,14 @@ export function useTimelineData({
 
   const model = useMemo(() => {
     if (!generationReady)
-      return { sessionId: targetSessionId, turns: [] } satisfies TimelineModel
+      return {
+        sessionId: transitionPending ? "" : targetSessionId,
+        turns: [],
+      } satisfies TimelineModel
     return withLiveState(trace, engineState?.state, engineState?.at ?? 0)
   }, [
     generationReady,
+    transitionPending,
     targetSessionId,
     trace,
     engineState?.state,

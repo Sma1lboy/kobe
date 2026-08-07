@@ -1,6 +1,10 @@
 import { useState } from "react"
 import { useEngines } from "../lib/engines.ts"
-import type { EngineSessionBinding, EngineState } from "../lib/types.ts"
+import type {
+  EngineSessionBinding,
+  EngineSessionTransition,
+  EngineState,
+} from "../lib/types.ts"
 import { useTimelineData } from "../lib/use-timeline-data.ts"
 import { engineLabel } from "../lib/vendor.ts"
 import { TimelinePanel } from "./TimelinePanel.tsx"
@@ -11,6 +15,7 @@ export function TimelineHost({
   vendor,
   engineState,
   binding,
+  transition,
   legacySessionId,
   engineActive = true,
   width,
@@ -20,6 +25,8 @@ export function TimelineHost({
   engineState: EngineState | undefined
   /** Durable daemon-owned current EngineRun for this tab. */
   binding?: EngineSessionBinding
+  /** Non-durable phase between native resume detection and selected identity. */
+  transition?: EngineSessionTransition
   /** Exact-id fallback for an older daemon without the binding contract. */
   legacySessionId?: string
   /** Engine liveness of the active tab; off keeps bound history visible. */
@@ -35,6 +42,7 @@ export function TimelineHost({
     // Liveness may decorate the bound session but never chooses its identity.
     engineState: engineActive ? engineState : undefined,
     binding,
+    transition,
     legacySessionId,
   })
   const [expanded, setExpanded] = useState(false)

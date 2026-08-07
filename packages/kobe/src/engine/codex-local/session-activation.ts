@@ -3,10 +3,10 @@
  *
  * Codex's SessionStart hook is deliberately deferred until the next turn, so
  * it cannot tell a host UI which conversation the native resume picker just
- * activated. Codex does, however, persist PID-scoped structured evidence at
- * selection time: either a rollout-recorder path or the selected `thread.id`
- * inside a `thread/resume` span. This adapter normalizes both shapes; callers
- * never see Codex's SQLite schema or log wording.
+ * activated. Codex does, however, persist PID-scoped structured evidence while
+ * resume is in flight: a `thread/resume` span appears first, followed by either
+ * a rollout-recorder path or the selected `thread.id`. This adapter normalizes
+ * both phases; callers never see Codex's SQLite schema or log wording.
  */
 
 import { homedir } from "node:os"
@@ -28,12 +28,19 @@ interface CodexResumeLogRow {
   readonly feedback_log_body: string | null
 }
 
-export interface EngineSessionActivation {
-  readonly sessionId: string
-  readonly transcriptPath?: string
-  readonly source: "resume"
-  readonly observedAt: number
-}
+export type EngineSessionActivation =
+  | {
+      readonly phase: "pending"
+      readonly source: "resume"
+      readonly observedAt: number
+    }
+  | {
+      readonly phase: "selected"
+      readonly sessionId: string
+      readonly transcriptPath?: string
+      readonly source: "resume"
+      readonly observedAt: number
+    }
 
 export interface CodexSessionActivationInput {
   /** Root child owned by the tab's PTY sidecar. */
@@ -65,6 +72,7 @@ export function parseCodexResumeLog(row: CodexResumeLogRow): EngineSessionActiva
     const sessionId = rolloutSessionId(quoted[1])
     if (!sessionId) return null
     return {
+      phase: "selected",
       sessionId,
       transcriptPath: quoted[1],
       source: "resume",
@@ -80,7 +88,18 @@ export function parseCodexResumeLog(row: CodexResumeLogRow): EngineSessionActiva
     return null
   }
   const sessionId = THREAD_ID.exec(body)?.[1]
-  return sessionId ? { sessionId, source: "resume", observedAt: observedAtMs(row) } : null
+  return sessionId
+    ? {
+        phase: "selected",
+        sessionId,
+        source: "resume",
+        observedAt: observedAtMs(row),
+      }
+    : {
+        phase: "pending",
+        source: "resume",
+        observedAt: observedAtMs(row),
+      }
 }
 
 async function latestResumeFromSqlite(pid: number, afterMs: number): Promise<CodexResumeLogRow | null> {
@@ -107,7 +126,6 @@ async function latestResumeFromSqlite(pid: number, afterMs: number): Promise<Cod
                 feedback_log_body LIKE 'app_server.request{%'
                 AND feedback_log_body LIKE '%otel.name="thread/resume"%'
                 AND feedback_log_body LIKE '%:resume_thread_with_history:%'
-                AND feedback_log_body LIKE '%thread.id=%'
               )
             )
             AND (ts > ?4 OR (ts = ?5 AND ts_nanos > ?6))

@@ -33,6 +33,18 @@ export interface EngineRun {
 export type EngineSessionBinding = EngineRun
 export type EngineSessionBindingsByTask = Record<string, Record<string, EngineSessionBinding>>
 
+/** Ephemeral native-session transition. It deliberately stays outside the
+ * durable EngineRun ledger until the engine identifies the selected session. */
+export interface EngineSessionTransition {
+  readonly taskId: string
+  readonly tabId: string
+  readonly vendor: VendorId
+  readonly startSource: "resume"
+  readonly observedAt: number
+}
+
+export type EngineSessionTransitionsByTask = Record<string, Record<string, EngineSessionTransition>>
+
 export interface TaskDeletionState {
   readonly phase: "queued" | "running" | "error"
   readonly force: boolean

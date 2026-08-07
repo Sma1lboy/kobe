@@ -14,6 +14,7 @@ describe("Codex session activation observer", () => {
         feedback_log_body: `Resuming rollout from "${TRANSCRIPT}"`,
       }),
     ).toEqual({
+      phase: "selected",
       sessionId: SESSION_ID,
       transcriptPath: TRANSCRIPT,
       source: "resume",
@@ -30,16 +31,33 @@ describe("Codex session activation observer", () => {
         feedback_log_body: `app_server.request{otel.kind="server" otel.name="thread/resume"}:resume_thread_with_history:thread_spawn{otel.name="thread_spawn"}:session_init:startup_prewarm{thread.id=${SESSION_ID}}: response started`,
       }),
     ).toEqual({
+      phase: "selected",
       sessionId: SESSION_ID,
       source: "resume",
       observedAt: 1_786_081_735_042,
     })
   })
 
-  it("does not infer a thread id from transcript text outside the resume span", () => {
+  it("reports a resume transition before Codex publishes the selected thread id", () => {
     expect(
       parseCodexResumeLog({
         id: 9,
+        ts: 1_786_081_734,
+        ts_nanos: 500_000_000,
+        feedback_log_body:
+          'app_server.request{otel.name="thread/resume"}:resume_thread_with_history: loading session state',
+      }),
+    ).toEqual({
+      phase: "pending",
+      source: "resume",
+      observedAt: 1_786_081_734_500,
+    })
+  })
+
+  it("does not infer a thread id from transcript text outside the resume span", () => {
+    expect(
+      parseCodexResumeLog({
+        id: 10,
         ts: 1_786_081_736,
         ts_nanos: 0,
         feedback_log_body: `The log mentioned otel.name="thread/resume" and thread.id=${SESSION_ID}`,
@@ -62,7 +80,7 @@ describe("Codex session activation observer", () => {
           latestResume,
         },
       ),
-    ).resolves.toMatchObject({ sessionId: SESSION_ID })
+    ).resolves.toMatchObject({ phase: "selected", sessionId: SESSION_ID })
     expect(latestResume).toHaveBeenCalledWith(401, 1_786_022_480_000)
   })
 

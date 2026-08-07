@@ -123,6 +123,19 @@ export type EngineSessionBindings = Record<
   Record<string, EngineSessionBinding>
 >
 
+export interface EngineSessionTransition {
+  taskId: string
+  tabId: string
+  vendor: string
+  startSource: "resume"
+  observedAt: number
+}
+
+export type EngineSessionTransitions = Record<
+  string,
+  Record<string, EngineSessionTransition>
+>
+
 export interface UpdateInfo {
   latest?: string
   current?: string
@@ -186,7 +199,10 @@ export type WebTransportEvent =
   | { channel: "engine-state"; payload: EngineState }
   | {
       channel: "session.bindings"
-      payload: { bindings: EngineSessionBindings }
+      payload: {
+        bindings: EngineSessionBindings
+        transitions?: EngineSessionTransitions
+      }
     }
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
@@ -204,6 +220,8 @@ export interface WebTransportSnapshot {
   engineTabSessions?: Record<string, Record<string, string>>
   /** New daemon contract; absent when connected to an older daemon. */
   sessionBindings?: EngineSessionBindings
+  /** Ephemeral resume transitions; absent when connected to an older daemon. */
+  sessionTransitions?: EngineSessionTransitions
   update: UpdateInfo | null
   /** taskId -> in-flight job (running only; terminal phases are dropped). */
   jobs?: Record<string, TaskJob>

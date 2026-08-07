@@ -16,6 +16,7 @@ import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   AttentionItem,
   EngineSessionBindings,
+  EngineSessionTransitions,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -38,6 +39,8 @@ export interface AppState {
   engineTabSessions: Record<string, Record<string, string>>
   /** Durable task+tab -> current EngineRun contract. */
   sessionBindings: EngineSessionBindings
+  /** Ephemeral task+tab native-session transitions. */
+  sessionTransitions: EngineSessionTransitions
   update: UpdateInfo | null
   /** taskId → in-flight long job (e.g. a worktree materializing). */
   jobs: Record<string, TaskJob>
@@ -67,6 +70,7 @@ const initial: AppState = {
   engineStates: {},
   engineTabSessions: {},
   sessionBindings: {},
+  sessionTransitions: {},
   update: null,
   jobs: {},
   worktreeChanges: {},
@@ -184,6 +188,7 @@ function applyTaskList(tasks: Task[]): void {
     engineStates: pruneByTask(state.engineStates, live),
     engineTabSessions: pruneByTask(state.engineTabSessions, live),
     sessionBindings: pruneByTask(state.sessionBindings, live),
+    sessionTransitions: pruneByTask(state.sessionTransitions, live),
     jobs: pruneByTask(state.jobs, live),
     issueSnapshots: pruneSnapshotAliases(state.issueSnapshots, tasks),
   })
@@ -225,6 +230,7 @@ function applyEvent(event: WebTransportEvent): void {
     case "session.bindings":
       set({
         sessionBindings: event.payload.bindings,
+        sessionTransitions: event.payload.transitions ?? {},
         engineTabSessions: sessionIdsFromBindings(event.payload.bindings),
       })
       break
@@ -286,6 +292,7 @@ export function validateSnapshot(raw: unknown): WebTransportSnapshot | null {
   for (const key of [
     "engineTabSessions",
     "sessionBindings",
+    "sessionTransitions",
     "jobs",
     "worktreeChanges",
     "issueSnapshots",
@@ -355,6 +362,7 @@ function applySnapshot(snap: WebTransportSnapshot): void {
     // traces; live engine-state events keep it fresh from here.
     engineTabSessions: snap.engineTabSessions ?? {},
     sessionBindings: snap.sessionBindings ?? {},
+    sessionTransitions: snap.sessionTransitions ?? {},
     update: snap.update,
     jobs: snap.jobs ?? {},
     worktreeChanges: snap.worktreeChanges ?? {},

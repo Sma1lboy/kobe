@@ -230,6 +230,7 @@ describe("daemon runtime handlers", () => {
     it("binds an adapter-observed resume before SessionStart fires", async () => {
       const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
       const observeEngineSessionActivation = vi.fn(async () => ({
+        phase: "selected" as const,
         sessionId: "session-observed",
         transcriptPath: "/tmp/observed-rollout.jsonl",
         source: "resume" as const,
@@ -242,7 +243,7 @@ describe("daemon runtime handlers", () => {
       await dispatch("engine.beginSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex" }, ctx)
       await expect(
         dispatch("engine.observeSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex", rootPid: 4242 }, ctx),
-      ).resolves.toEqual({ observed: true, sessionId: "session-observed" })
+      ).resolves.toEqual({ observed: true, pending: false, sessionId: "session-observed" })
       expect(observeEngineSessionActivation).toHaveBeenCalledWith("codex", 4242, expect.any(Number))
       expect(rec.bindings.at(-1)).toEqual({
         taskId: "t1",
@@ -253,6 +254,32 @@ describe("daemon runtime handlers", () => {
         startSource: "resume",
         transcriptPath: "/tmp/observed-rollout.jsonl",
       })
+    })
+
+    it("publishes a transient resume transition before Codex identifies the selected session", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => ({ ...TASK, vendor: "codex" }) })
+      ;(ctx as { runtime: DaemonHandlerContext["runtime"] }).runtime = {
+        ...ctx.runtime,
+        observeEngineSessionActivation: async () => ({
+          phase: "pending",
+          source: "resume",
+          observedAt: 1_234,
+        }),
+      }
+
+      await expect(
+        dispatch("engine.observeSession", { taskId: "t1", tabId: "tab-codex", vendor: "codex", rootPid: 4242 }, ctx),
+      ).resolves.toEqual({ observed: true, pending: true })
+      expect(rec.transitions).toEqual([
+        {
+          taskId: "t1",
+          tabId: "tab-codex",
+          vendor: "codex",
+          startSource: "resume",
+          observedAt: 1_234,
+        },
+      ])
+      expect(rec.bindings).toEqual([])
     })
 
     it("recovers a native session only for a tab-scoped session-start from an older hook reporter", async () => {

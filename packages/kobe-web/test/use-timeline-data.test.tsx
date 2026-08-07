@@ -3,7 +3,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { EngineTrace, TraceTurn } from "../src/lib/trace.ts"
-import type { EngineSessionBinding } from "../src/lib/types.ts"
+import type {
+  EngineSessionBinding,
+  EngineSessionTransition,
+} from "../src/lib/types.ts"
 
 const { fetchTrace } = vi.hoisted(() => ({
   fetchTrace: vi.fn<(vendor: string, sessionId: string) => Promise<EngineTrace>>(),
@@ -150,5 +153,46 @@ describe("useTimelineData", () => {
     })
     await waitFor(() => expect(result.current.loaded).toBe(true))
     expect(result.current.model.turns[0]?.id).toBe("b-turn")
+  })
+
+  it("starts loading on a transient resume log before the selected session id is bound", async () => {
+    const sessionA: EngineTrace = {
+      sessionId: "session-a",
+      turns: [turn("a-turn", 10, 20)],
+    }
+    fetchTrace.mockResolvedValue(sessionA)
+    const pending: EngineSessionTransition = {
+      taskId: "task-1",
+      tabId: "tab-1",
+      vendor: "codex",
+      startSource: "resume",
+      observedAt: 25,
+    }
+
+    const { result, rerender } = renderHook(
+      ({ currentTransition }) =>
+        useTimelineData({
+          taskId: "task-1",
+          vendor: "codex",
+          engineState: undefined,
+          binding: binding("run-a", "session-a", 1),
+          transition: currentTransition,
+        }),
+      {
+        initialProps: {
+          currentTransition: undefined as EngineSessionTransition | undefined,
+        },
+      },
+    )
+
+    await waitFor(() => expect(result.current.model.turns[0]?.id).toBe("a-turn"))
+    act(() => rerender({ currentTransition: pending }))
+    expect(result.current.bindingState).toBe("pending")
+    expect(result.current.loaded).toBe(false)
+    expect(result.current.model).toEqual({ sessionId: "", turns: [] })
+
+    act(() => rerender({ currentTransition: undefined }))
+    expect(result.current.loaded).toBe(true)
+    expect(result.current.model.turns[0]?.id).toBe("a-turn")
   })
 })

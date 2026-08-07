@@ -3,14 +3,14 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import { SessionBindingStore } from "@sma1lboy/kobe-daemon/daemon/session-bindings"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
-async function fixture(nowValues = [100, 200, 300, 400]) {
+async function fixture(nowValues = [100, 200, 300, 400], transitionTtlMs = 4_000) {
   const dir = await mkdtemp(join(tmpdir(), "kobe-session-bindings-"))
   const path = join(dir, "session-bindings.json")
   const bus = new DaemonEventBus()
   let index = 0
-  const store = new SessionBindingStore(path, bus, () => nowValues[index++] ?? 999)
+  const store = new SessionBindingStore(path, bus, () => nowValues[index++] ?? 999, transitionTtlMs)
   await store.init()
   return { path, bus, store }
 }
@@ -64,7 +64,7 @@ describe("SessionBindingStore", () => {
     })
     expect(bus.snapshot().at(-1)).toEqual({
       channel: "session.bindings",
-      payload: { bindings: store.snapshotByTask() },
+      payload: { bindings: store.snapshotByTask(), transitions: {} },
     })
     expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 2 })
   })
@@ -346,6 +346,76 @@ describe("SessionBindingStore", () => {
         "tab-b": expect.objectContaining({ taskId: "task-2", tabId: "tab-b" }),
       },
     })
+  })
+
+  it("publishes resume transitions without persisting or replacing the current run", async () => {
+    const { path, bus, store } = await fixture()
+    await store.begin("task-1", "tab-a", "codex")
+    await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "old-session",
+      source: "hook",
+    })
+    const before = await readFile(path, "utf8")
+    const currentRun = store.snapshotByTask()["task-1"]?.["tab-a"]
+
+    store.markTransition({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      startSource: "resume",
+      observedAt: 350,
+    })
+
+    expect(store.transitionSnapshotByTask()).toEqual({
+      "task-1": {
+        "tab-a": expect.objectContaining({ observedAt: 350 }),
+      },
+    })
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]).toEqual(currentRun)
+    expect(await readFile(path, "utf8")).toBe(before)
+    expect(bus.snapshot().at(-1)).toEqual({
+      channel: "session.bindings",
+      payload: {
+        bindings: store.snapshotByTask(),
+        transitions: store.transitionSnapshotByTask(),
+      },
+    })
+
+    await store.bind({
+      taskId: "task-1",
+      tabId: "tab-a",
+      vendor: "codex",
+      sessionId: "new-session",
+      source: "observer",
+      startSource: "resume",
+    })
+    expect(store.transitionSnapshotByTask()).toEqual({})
+    expect(store.snapshotByTask()["task-1"]?.["tab-a"]?.sessionId).toBe("new-session")
+  })
+
+  it("expires an unconfirmed resume transition and restores the current run", async () => {
+    const { bus, store } = await fixture(undefined, 20)
+    vi.useFakeTimers()
+    try {
+      store.markTransition({
+        taskId: "task-1",
+        tabId: "tab-a",
+        vendor: "codex",
+        startSource: "resume",
+        observedAt: 350,
+      })
+      vi.advanceTimersByTime(20)
+      expect(store.transitionSnapshotByTask()).toEqual({})
+      expect(bus.snapshot().at(-1)).toEqual({
+        channel: "session.bindings",
+        payload: { bindings: {}, transitions: {} },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("loads malformed files as an empty store", async () => {

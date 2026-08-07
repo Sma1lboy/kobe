@@ -33,6 +33,7 @@ export function fakeLink(opts: FakeOpts = {}): DaemonWebLink & { calls: Array<{ 
         engineStates: {},
         engineTabSessions: {},
         sessionBindings: {},
+        sessionTransitions: {},
         update: null,
         jobs: {},
         worktreeChanges: {},

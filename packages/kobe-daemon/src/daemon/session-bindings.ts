@@ -10,6 +10,8 @@ import type {
   EngineSessionBinding,
   EngineSessionBindingsByTask,
   EngineSessionStartSource,
+  EngineSessionTransition,
+  EngineSessionTransitionsByTask,
   VendorId,
 } from "./contracts.ts"
 import { logDaemonError } from "./crash-log.ts"
@@ -150,12 +152,15 @@ async function writeStore(
 export class SessionBindingStore {
   private readonly runs = new Map<string, EngineRun>()
   private readonly currentRunIds = new Map<string, string>()
+  private readonly transitions = new Map<string, EngineSessionTransition>()
+  private readonly transitionTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private tail: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly path: string,
     private readonly bus: DaemonEventBus,
     private readonly now = () => Date.now(),
+    private readonly transitionTtlMs = 4_000,
   ) {}
 
   async init(): Promise<void> {
@@ -163,6 +168,9 @@ export class SessionBindingStore {
       const loaded = await readStore(this.path)
       this.runs.clear()
       this.currentRunIds.clear()
+      for (const timer of this.transitionTimers.values()) clearTimeout(timer)
+      this.transitionTimers.clear()
+      this.transitions.clear()
       for (const run of loaded.runs) this.runs.set(run.runId, run)
       for (const ref of loaded.currentRuns) this.currentRunIds.set(bindingKey(ref), ref.runId)
       if (loaded.migrated) await this.persist()
@@ -178,6 +186,41 @@ export class SessionBindingStore {
       out[run.taskId] = tabs
     }
     return out
+  }
+
+  transitionSnapshotByTask(): EngineSessionTransitionsByTask {
+    const out: EngineSessionTransitionsByTask = {}
+    for (const transition of this.transitions.values()) {
+      const tabs = out[transition.taskId] ?? {}
+      tabs[transition.tabId] = transition
+      out[transition.taskId] = tabs
+    }
+    return out
+  }
+
+  markTransition(transition: EngineSessionTransition): void {
+    const key = bindingKey(transition)
+    const previous = this.transitions.get(key)
+    this.transitions.set(key, transition)
+    const oldTimer = this.transitionTimers.get(key)
+    if (oldTimer) clearTimeout(oldTimer)
+    const timer = setTimeout(() => {
+      if (this.transitions.get(key)?.observedAt !== transition.observedAt) return
+      this.transitions.delete(key)
+      this.transitionTimers.delete(key)
+      this.publish()
+    }, this.transitionTtlMs)
+    timer.unref?.()
+    this.transitionTimers.set(key, timer)
+    if (previous?.observedAt !== transition.observedAt) this.publish()
+  }
+
+  clearTransition(value: Pick<EngineSessionTransition, "taskId" | "tabId">, publish = true): void {
+    const key = bindingKey(value)
+    const timer = this.transitionTimers.get(key)
+    if (timer) clearTimeout(timer)
+    this.transitionTimers.delete(key)
+    if (this.transitions.delete(key) && publish) this.publish()
   }
 
   runsSnapshot(): EngineRun[] {
@@ -234,6 +277,7 @@ export class SessionBindingStore {
       if (startsRun && !fillsPending && !confirmsPinnedSpawn && !confirmsObservedResume) {
         const next = this.boundRun(input, at)
         await this.replaceCurrent(next, current, at)
+        if (input.startSource === "resume") this.clearTransition(input)
         return next
       }
 
@@ -254,15 +298,18 @@ export class SessionBindingStore {
             state: input.state === "ended" ? "ended" : historical.state,
           } satisfies EngineRun
           await this.commitRun(retained)
+          if (input.startSource === "resume") this.clearTransition(input)
           return retained
         }
         const next = this.boundRun(input, at)
         await this.replaceCurrent(next, current, at)
+        if (input.startSource === "resume") this.clearTransition(input)
         return next
       }
 
       const next = this.updatedRun(current, input, at)
       await this.commitRun(next)
+      if (input.startSource === "resume") this.clearTransition(input)
       return next
     })
   }
@@ -270,6 +317,12 @@ export class SessionBindingStore {
   async deleteTask(taskId: string): Promise<void> {
     await this.enqueue(async () => {
       let changed = false
+      for (const [key, transition] of this.transitions) {
+        if (transition.taskId !== taskId) continue
+        this.clearTransition(transition, false)
+        this.transitions.delete(key)
+        changed = true
+      }
       for (const [runId, run] of this.runs) {
         if (run.taskId !== taskId) continue
         this.runs.delete(runId)
@@ -403,7 +456,10 @@ export class SessionBindingStore {
   }
 
   private publish(): void {
-    this.bus.publish("session.bindings", { bindings: this.snapshotByTask() })
+    this.bus.publish("session.bindings", {
+      bindings: this.snapshotByTask(),
+      transitions: this.transitionSnapshotByTask(),
+    })
   }
 }
 
