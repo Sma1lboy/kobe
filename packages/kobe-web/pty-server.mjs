@@ -335,7 +335,7 @@ const server = createServer((req, res) => {
         /* ignore */
       }
       const ok = tab ? ptySessions.closeSession(tab) : false
-      if (tab) sessionObserver.forget(tab)
+      if (tab) sessionObserver.unwatch(tab)
       res.writeHead(200, {
         "content-type": "application/json",
         "access-control-allow-origin": "*",
