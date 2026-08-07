@@ -25,6 +25,7 @@ describe("cross-task message address handoff", () => {
     expect(prompt).toContain("peer_task_id: PEER02")
     expect(prompt).toContain("reply_to_task_id: SELF01")
     expect(prompt).toContain("kobe api send")
+    expect(prompt).toContain("first message to this peer must explicitly tell the receiving agent to read")
     expect(prompt).toContain("does not create a channel, persist a relationship, or fork either chat")
     expect(prompt).not.toContain("request_id")
     expect(prompt).not.toContain("max_hops")
