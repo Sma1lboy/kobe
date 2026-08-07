@@ -1,5 +1,4 @@
 import { toPosixPath } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
-import { kobeHookReporterEnv } from "../cli/invocation.ts"
 import { worktreeInitMarkerPath } from "../env.ts"
 import { quoteShellArg, quoteShellArgv } from "../lib/shell-command.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
@@ -8,12 +7,10 @@ import { withDispatcherProtocol, withWorktreeProtocol } from "./interactive-comm
 
 export const SIGINT_GUARD = "trap ':' INT; "
 
-/** Keep a hosted terminal useful after its engine exits. `-il` so the
- *  fallback is the user's REAL shell (login + interactive — prompt theme,
- *  PATH, rc files), not a bare default prompt. */
+/** Keep a hosted terminal useful after its engine exits. */
 export function keepAlive(command: string): string {
   const banner = "\\n  ⚠ Engine exited (code %s). Check Settings → Engines and fix the launch command.\\n\\n"
-  return `${command}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}" -il`
+  return `${command}; __rc=$?; [ "$__rc" -ne 0 ] && printf '${banner}' "$__rc"; exec "\${SHELL:-/bin/sh}"`
 }
 
 export interface EngineInitLaunch {
@@ -156,13 +153,6 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   // event came from — a task's tabs share one worktree, so cwd can't tell
   // them apart. The keepAlive fallback shell inherits it too, so a manual
   // `claude` run in that tab after an engine exit is still attributed.
-  const hookEnv = {
-    KOBE_TASK_ID: input.task.id,
-    KOBE_TAB_ID: input.tabId ?? "tab-1",
-    ...kobeHookReporterEnv(),
-  }
-  const identity = `export ${Object.entries(hookEnv)
-    .map(([key, value]) => `${key}=${quoteShellArg(value)}`)
-    .join(" ")}\n`
+  const identity = `export KOBE_TASK_ID=${quoteShellArg(input.task.id)} KOBE_TAB_ID=${quoteShellArg(input.tabId ?? "tab-1")}\n`
   return { key: engineSessionKey(input.task.id), command: [input.shell, "-ilc", identity + script] }
 }

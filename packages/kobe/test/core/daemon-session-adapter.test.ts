@@ -81,13 +81,10 @@ describe("daemon session adapter", () => {
     const engine = await engineSpecAdapter(link(), "task-2")
     expect(engine.cwd).toBe("/worktrees/story")
     expect(engine.command).toEqual(["/bin/zsh", "-ilc", "claude 'repo prompt'"])
-    await expect(terminalSpecAdapter(link(), "task-2")).resolves.toEqual(
-      expect.objectContaining({
-        cwd: "/worktrees/story",
-        command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
-        env: expect.objectContaining({ KOBE_TASK_ID: "task-2" }),
-      }),
-    )
+    await expect(terminalSpecAdapter(link(), "task-2")).resolves.toEqual({
+      cwd: "/worktrees/story",
+      command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
+    })
   })
 
   it("tears down a task session best-effort", async () => {

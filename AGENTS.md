@@ -42,7 +42,7 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 ## Hard rules (non-negotiable)
 
 ### How work lands on `main`
-- **Default: PR.** Feature branch → commits → `gh pr create` → CI green (typecheck/test, behavior, file-size-cap, Review CI) → `gh pr merge --squash --delete-branch`. The PR gates are where the hard rules below get enforced, so unattended/agent-driven work always takes this path.
+- **Default: PR.** Feature branch → commits → `gh pr create` → CI green (typecheck/test, behavior, file-size-cap, coverage-cap, Review CI) → `gh pr merge --squash --delete-branch`. The PR gates are where the hard rules below get enforced, so unattended/agent-driven work always takes this path.
 - **Owner-supervised local iteration may skip the PR** (2026-07-10): work in a worktree, get green, then merge/cherry-pick into local `main`. Same quality gates (lint, typecheck, tests, changeset) still apply. Only when the owner is in the loop that turn.
 - A direct push to `main` needs the owner to say so **in that turn** — never inferred, never carried over to the next task.
 - `scripts/release.sh` pushes its own `chore: release — X.Y.Z` commit + tag (see [`docs/RELEASING.md`](./docs/RELEASING.md)).
@@ -89,7 +89,6 @@ The engine adapter is the source of truth for agent/product identity, capabiliti
 - Model catalogs + context math come from `EngineCapabilities`, keyed by the task's vendor. History is an engine-owned `EngineHistory`; token/context/speed are engine-normalized — don't parse vendor transcript files or reconstruct speed in the UI.
 - Subagent steps are engine-owned nested data (tagged by `parentId`, nested one level under the parent Agent row), not flattened transcript noise.
 - A new pane needing engine-specific data → extend the engine contract first; don't thread ad-hoc vendor checks through TUI/orchestrator code.
-- Onboarding a new coding agent into the `/chat` translated render → follow the porting guide in [`docs/design/engine-screen-grammar.md`](./docs/design/engine-screen-grammar.md).
 
 ### Diagrams in `docs/`: use Mermaid
 Diagrams in `docs/` go in a ` ```mermaid ` fence (renders natively in GitHub + VS Code preview; PlantUML and friends don't). ASCII boxes only for tiny relationships (≤3 nodes, no states). Canonical example: [`docs/design/tasks.md`](./docs/design/tasks.md).

@@ -10,7 +10,7 @@
  * circular import back into `handlers.ts`, which imports THEM.
  */
 
-import type { EngineActivityDetail, EngineSessionStartSource, VendorId } from "./contracts.ts"
+import type { EngineActivityDetail, VendorId } from "./contracts.ts"
 
 /** Coerce an unknown request payload into a plain object (`{}` for anything else). */
 export function objectPayload(payload: unknown): Record<string, unknown> {
@@ -54,14 +54,6 @@ export function optionalVendor(payload: Record<string, unknown>, key: string): V
   return value && value.trim().length > 0 ? (value as VendorId) : undefined
 }
 
-export function optionalSessionStartSource(
-  payload: Record<string, unknown>,
-  key: string,
-): EngineSessionStartSource | undefined {
-  const value = optionalString(payload, key)
-  return value === "startup" || value === "resume" || value === "clear" || value === "compact" ? value : undefined
-}
-
 /** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping
  *  anything malformed (the field is best-effort UI hint, never load-bearing). */
 export function optionalActivityDetail(payload: Record<string, unknown>): EngineActivityDetail | undefined {
@@ -71,35 +63,19 @@ export function optionalActivityDetail(payload: Record<string, unknown>): Engine
   const out: {
     failure?: "rate_limit" | "billing" | "other"
     waiting?: "permission" | "input"
-    turnId?: string
-    tool?: {
-      name?: string
-      id?: string
-      input?: string
-      output?: string
-      isError?: boolean
-    }
+    tool?: { name?: string; id?: string }
     compact?: { trigger?: "manual" | "auto" }
-    subagent?: {
-      type?: string
-      id?: string
-      transcriptPath?: string
-      result?: string
-    }
+    subagent?: { type?: string; id?: string }
     note?: string
   } = {}
   if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
   if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
-  if (typeof d.turnId === "string") out.turnId = d.turnId
   if (typeof d.note === "string") out.note = d.note
   const tool = d.tool as Record<string, unknown> | undefined
   if (tool && typeof tool === "object" && !Array.isArray(tool)) {
     out.tool = {
       ...(typeof tool.name === "string" ? { name: tool.name } : {}),
       ...(typeof tool.id === "string" ? { id: tool.id } : {}),
-      ...(typeof tool.input === "string" ? { input: tool.input } : {}),
-      ...(typeof tool.output === "string" ? { output: tool.output } : {}),
-      ...(typeof tool.isError === "boolean" ? { isError: tool.isError } : {}),
     }
   }
   const compact = d.compact as Record<string, unknown> | undefined
@@ -111,8 +87,6 @@ export function optionalActivityDetail(payload: Record<string, unknown>): Engine
     out.subagent = {
       ...(typeof subagent.type === "string" ? { type: subagent.type } : {}),
       ...(typeof subagent.id === "string" ? { id: subagent.id } : {}),
-      ...(typeof subagent.transcriptPath === "string" ? { transcriptPath: subagent.transcriptPath } : {}),
-      ...(typeof subagent.result === "string" ? { result: subagent.result } : {}),
     }
   }
   return Object.keys(out).length > 0 ? out : undefined

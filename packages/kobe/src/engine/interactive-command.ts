@@ -149,25 +149,6 @@ export function withEngineTerminalTitle(argv: readonly string[], vendor: VendorI
 }
 
 /**
- * Let a managed Desktop Codex launch run kobe's installed observer hooks when
- * the user has already selected Codex's unrestricted YOLO mode. Codex treats
- * hook trust as a second approval gate, so without the companion flag a
- * `--dangerously-bypass-approvals-and-sandbox` session can run normally while
- * silently withholding its session id from the daemon.
- *
- * This helper is intentionally NOT part of {@link interactiveEngineCommand}:
- * the TUI keeps Codex's normal `/hooks` trust flow. The Desktop bridge calls it
- * only for the engine process it manages, and only when the broader bypass flag
- * is already present. Safer Codex launches remain untouched.
- */
-export function withManagedHookTrust(argv: readonly string[], vendor: VendorId | undefined): readonly string[] {
-  if ((vendor ?? "claude") !== "codex") return argv
-  if (!argv.includes("--dangerously-bypass-approvals-and-sandbox")) return argv
-  if (argv.includes("--dangerously-bypass-hook-trust")) return argv
-  return [...argv, "--dangerously-bypass-hook-trust"]
-}
-
-/**
  * Append the vendor-correct reasoning/effort flag when `effort` is set AND
  * valid for the vendor (per the registry's {@link EngineRegistryEntry.effortLevels}).
  * Codex maps it to `-c model_reasoning_effort=<level>`; other vendors have no

@@ -15,56 +15,53 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   {
     keys: ["⌘", "K"],
-    label: "Command palette — hold ctrl and tap K to cycle, release to jump",
+    label: "Command palette — jump to a task or run an action",
   },
-  { keys: ["ctrl", "T"], label: "New tab on the selected task (same engine)" },
-  { keys: ["ctrl", "E"], label: "New tab — pick an engine, or a native shell" },
-  { keys: ["ctrl", "W"], label: "Close the active tab" },
-  { keys: ["ctrl", "2-0"], label: "Jump to the tab printing that digit" },
+  { keys: ["j", "k"], label: "Move between tasks in the rail (also ↑ / ↓)" },
   {
-    keys: ["ctrl", "A"],
-    label: "Prefix — then 1 Kanban · 2 Routines · i Inbox",
+    keys: ["/"],
+    label: "Focus the task filter — then ↵ jumps to the top match, esc clears",
   },
-  { keys: ["j", "k"], label: "Tree cursor from the selected row · ↵ activates" },
-  { keys: ["[", "]"], label: "Active ⇄ Archives view" },
-  { keys: ["/"], label: "Focus the sidebar search" },
   { keys: ["?"], label: "This help" },
   { keys: ["esc"], label: "Close a dialog / palette / help" },
 ]
 
-const INBOX: Shortcut[] = [
-  { keys: ["j", "k"], label: "Move · ↵ opens the item" },
-  { keys: ["d"], label: "Dismiss the selected attention item" },
+const PALETTE: Shortcut[] = [
+  { keys: ["↑", "↓"], label: "Move selection" },
+  { keys: ["↵"], label: "Run the selected command" },
 ]
 
 const COMPOSER: Shortcut[] = [
-  { keys: ["↵"], label: "Send — keystrokes drive the real CLI underneath" },
-  { keys: ["/"], label: "Native slash menu (arrow keys move its selection)" },
-  { keys: ["ctrl", "V"], label: "Paste an image from the clipboard" },
+  { keys: ["↑", "↓"], label: "Recall previously-sent prompts (newest first)" },
+  { keys: ["↵"], label: "Send · Shift+↵ for a newline" },
 ]
 
 const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "New task",
-    detail: "the [+] in the sidebar header (or palette → New task)",
+    detail: "the + in the task rail (or palette → New task)",
   },
   {
-    label: "Copy",
+    label: "Adopt worktree",
+    detail: "the folder-in icon next to + — pull an existing worktree in",
+  },
+  {
+    label: "Chat / Vendor / Terminal",
     detail:
-      "hover a reply for the copy button below it, or drag-select any text",
+      "tab kinds inside a task workspace; Chat has search and a hide-tools toggle",
   },
   {
-    label: "Kanban / Routines",
-    detail: "sidebar rail (or ctrl+a then 1 / 2) — embedded in this window",
-  },
-  {
-    label: "Shell tabs",
+    label: "Triage",
     detail:
-      "ctrl+e → Shell runs your login shell; launching an engine inside it lights the session up",
+      "task rail status chips (All/Needs) + the Board — filter by what needs you",
   },
   {
-    label: "Settings / help",
-    detail: "the gear and ? at the sidebar's bottom-left",
+    label: "Changes / diff",
+    detail: "filter files by path, toggle line wrap on a file preview",
+  },
+  {
+    label: "Notifications",
+    detail: "Settings → Notifications — get pinged when a task needs you",
   },
 ]
 
@@ -136,15 +133,15 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
           </section>
           <section>
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-              In the Inbox (ctrl+a, i)
+              In the command palette
             </div>
-            {INBOX.map((s) => (
+            {PALETTE.map((s) => (
               <Row key={s.label} {...s} />
             ))}
           </section>
           <section>
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-              In the composer
+              In the engine composer
             </div>
             {COMPOSER.map((s) => (
               <Row key={s.label} {...s} />

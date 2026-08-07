@@ -48,12 +48,11 @@ worktree.
 
 ## Chat tabs and engine sessions
 
-A Task owns N chat tabs. A tab is a stable terminal slot, not a permanent
-conversation identity: over time it can start a new conversation, resume an
-older one, or clear into another. Each temporal attachment is an `EngineRun`;
-the run points at the engine-native `sessionId` and transcript used by the
-engine's resume mechanism. Resuming the same conversation later creates a new
-run with the same `sessionId`. Context compaction stays inside the current run.
+A Task owns N chat tabs. Each tab is one engine session with its own
+conversation transcript and its own `sessionId`, which is what the engine's
+resume mechanism keys off. Tabs exist so you can peel a side question off a
+long-running conversation without polluting its transcript. Close the tab
+when exhausted, keep the worktree.
 
 Per-task settings (engine, model, permission mode) apply to all tabs
 equally. If you want a different model, you want a different task.
@@ -182,10 +181,8 @@ for the Issues board, or check in on long-running tasks without a terminal.
   triple, anchored to one repo.
 - **Worktree**: a git worktree on disk, checked out to the task's branch.
   1 per task, never auto-deleted.
-- **Chat tab**: one stable terminal slot inside a task. N per task; each can
-  host several engine runs over time.
-- **Engine run**: one temporal attachment of a native engine session to a chat
-  tab. Kobe owns `runId`; the engine owns `sessionId` and transcript history.
+- **Chat tab**: one engine session inside a task, with its own
+  `sessionId` and transcript. N per task.
 - **Engine**: an interactive coding-agent CLI (`claude`, `codex`,
   `copilot`, `kimi`, or a command you registered) that kobe runs as the
   task's execution backend.

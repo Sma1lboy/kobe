@@ -80,25 +80,6 @@ describe("parseJsonl — message records", () => {
     expect(out.every((m) => m.sessionId === SID)).toBe(true)
   })
 
-  it("normalizes visible commentary and final-answer phases", () => {
-    const raw = [
-      meta({
-        type: "message",
-        role: "assistant",
-        phase: "commentary",
-        content: [{ type: "output_text", text: "I will inspect the lock." }],
-      }),
-      meta({
-        type: "message",
-        role: "assistant",
-        phase: "final_answer",
-        content: [{ type: "output_text", text: "The race is fixed." }],
-      }),
-    ].join("\n")
-
-    expect(parseJsonl(raw, SID).map((message) => message.phase)).toEqual(["commentary", "final"])
-  })
-
   it("drops Codex's synthetic environment_context user row", () => {
     const raw = meta({
       type: "message",

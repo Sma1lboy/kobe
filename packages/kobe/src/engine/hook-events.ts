@@ -62,26 +62,12 @@ export interface EngineActivityDetail {
   readonly failure?: "rate_limit" | "billing" | "other"
   /** For `awaiting-input`: why the engine is blocked. */
   readonly waiting?: "permission" | "input"
-  /** Engine turn identity when the hook payload exposes one. */
-  readonly turnId?: string
-  /** For `tool-*`: normalized live facts (vendor field spellings die here).
-   * Input/output are bounded display strings, never authoritative history. */
-  readonly tool?: {
-    readonly name?: string
-    readonly id?: string
-    readonly input?: string
-    readonly output?: string
-    readonly isError?: boolean
-  }
+  /** For `tool-*`: normalized tool identity (vendor field spellings die here). */
+  readonly tool?: { readonly name?: string; readonly id?: string }
   /** For `pre-compact`/`post-compact`: what triggered the compaction. */
   readonly compact?: { readonly trigger?: "manual" | "auto" }
-  /** For `subagent-*`: identity plus bounded engine-native completion facts. */
-  readonly subagent?: {
-    readonly type?: string
-    readonly id?: string
-    readonly transcriptPath?: string
-    readonly result?: string
-  }
+  /** For `subagent-*`: which nested agent. */
+  readonly subagent?: { readonly type?: string; readonly id?: string }
   /** Free-form human note (e.g. the raw error type), shown in tooltips. */
   readonly note?: string
 }

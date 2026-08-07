@@ -29,10 +29,9 @@
 import { readdir, stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
-import type { EngineHistory, EngineTrace, Message } from "@/types/engine"
+import type { EngineHistory, Message } from "@/types/engine"
 import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
 import { parseRolloutRaw } from "./history-parse"
-import { parseCodexTrace } from "./trace-parse"
 
 export { deriveCodexUsageMetrics, parseJsonl } from "./history-parse"
 
@@ -136,11 +135,6 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
 
 /** UUID embedded at the tail of a `rollout-<ISO>-<UUID>.jsonl` filename. */
 const UUID_AT_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
-
-/** Native session id embedded in a rollout path, or null for another file. */
-export function rolloutSessionId(file: string): string | null {
-  return path.basename(file).match(UUID_AT_END)?.[1] ?? null
-}
 
 /** The `cwd` recorded on a rollout's `session_meta` line, or `""`. */
 export function rolloutCwd(raw: string): string {
@@ -303,47 +297,6 @@ export async function readHistoryWithMetrics(
     return { messages: [] }
   }
   return parseRolloutRaw(file, raw, sessionId)
-}
-
-/** Session UUID → immutable rollout path memo for the high-frequency trace
- * invalidation loop. Missing sessions are deliberately not cached because a
- * new rollout may appear after the browser subscribes. */
-const tracePathCaches = new WeakMap<HistoryDeps, Map<string, string>>()
-
-async function tracePath(sessionId: string, deps: HistoryDeps): Promise<string | undefined> {
-  let cache = tracePathCaches.get(deps)
-  if (!cache) {
-    cache = new Map()
-    tracePathCaches.set(deps, cache)
-  }
-  const hit = cache.get(sessionId)
-  if (hit) return hit
-  const file = await findRolloutFile(sessionId, deps)
-  if (file) cache.set(sessionId, file)
-  return file
-}
-
-/** Engine-owned execution trace retaining Codex turn/item/call identities. */
-export async function readTrace(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<EngineTrace> {
-  const file = await tracePath(sessionId, deps)
-  if (!file) return { sessionId, turns: [] }
-  try {
-    return parseCodexTrace(await deps.readFile(file), sessionId)
-  } catch {
-    return { sessionId, turns: [] }
-  }
-}
-
-/** Persisted trace invalidation token. A missing/unreadable rollout is 0 and
- * is retried on the next poll so a just-created session becomes visible. */
-export async function traceRevision(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<number> {
-  const file = await tracePath(sessionId, deps)
-  if (!file) return 0
-  try {
-    return (await deps.stat(file)).mtimeMs
-  } catch {
-    return 0
-  }
 }
 
 export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<void> {

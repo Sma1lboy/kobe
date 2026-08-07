@@ -100,7 +100,6 @@ export const DAEMON_CHANNELS = [
   "active-task",
   "update",
   "engine-state",
-  "session.bindings",
   "attention.inbox",
   "ui-prefs",
   "keybindings",

@@ -2,7 +2,7 @@ import "@fontsource/jetbrains-mono/latin-400.css"
 import "@fontsource/jetbrains-mono/latin-500.css"
 import "@fontsource/jetbrains-mono/latin-600.css"
 import "@fontsource/jetbrains-mono/latin-700.css"
-import { createRouter, Navigate, RouterProvider } from "@tanstack/react-router"
+import { createRouter, RouterProvider } from "@tanstack/react-router"
 import ReactDOM from "react-dom/client"
 import { enableDesktopMode, preloadDesktopModules } from "./lib/desktop.ts"
 import { routeTree } from "./routeTree.gen"
@@ -13,9 +13,6 @@ const router = createRouter({
   routeTree,
   defaultPreload: "intent",
   scrollRestoration: true,
-  // Retired routes (/board, /worktrees, /task/…) redirect home — the /chat
-  // shell owns those surfaces now.
-  defaultNotFoundComponent: () => <Navigate to="/" />,
 })
 
 declare module "@tanstack/react-router" {

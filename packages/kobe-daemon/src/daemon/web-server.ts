@@ -7,7 +7,6 @@ import { join, normalize } from "node:path"
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
-import type { EngineEventLog } from "./engine-events-log.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
 import {
   type DaemonHandlerContext,
@@ -19,7 +18,6 @@ import {
 import type { ChannelName, ChannelPayloads, DaemonRequestName, SerializedTask } from "./protocol.ts"
 import { serializeTask } from "./protocol.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
-import type { SessionBindingStore } from "./session-bindings.ts"
 import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
 import { handleIssuesRequest } from "./web-issues-route.ts"
 import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
@@ -36,20 +34,12 @@ export interface DaemonWebSnapshotState {
   tasks: SerializedTask[]
   activeTaskId: string | null
   engineStates: Record<string, ChannelPayloads["engine-state"]>
-  /** taskId → tabId → last known engine session id (tab-precise traces). */
-  engineTabSessions: Record<string, Record<string, string>>
-  /** Durable, versioned session identity contract for new consumers. */
-  sessionBindings: import("./contracts.ts").EngineSessionBindingsByTask
-  /** Ephemeral native-session transitions; never written to disk. */
-  sessionTransitions: import("./contracts.ts").EngineSessionTransitionsByTask
   update: ChannelPayloads["update"]["info"]
   jobs: Record<string, ChannelPayloads["task.jobs"]>
   worktreeChanges: ChannelPayloads["worktree.changes"]["changes"]
   issueSnapshots: Record<string, ChannelPayloads["issue.snapshot"]>
   deliver: ChannelPayloads["session.deliver"] | null
   uiPrefs: ChannelPayloads["ui-prefs"] | null
-  /** Durable attention queue (attention-inbox.ts) — the web INBOX. */
-  attentionInbox: ChannelPayloads["attention.inbox"]["items"]
   connected: boolean
 }
 
@@ -65,7 +55,6 @@ export interface RequestHandlerDeps {
   tearDownSession?: (taskId: string) => void
   allowedHost?: string
   onSseOpen?: () => () => void
-  engineEvents?: EngineEventLog
 }
 
 export interface DaemonWebServerOptions {
@@ -77,7 +66,6 @@ export interface DaemonWebServerOptions {
   link: DaemonWebLink
   onEvent: (sink: (event: ChannelEvent) => void) => () => void
   onSseOpen?: () => () => void
-  engineEvents?: EngineEventLog
 }
 
 export interface DaemonWebServer {
@@ -112,14 +100,9 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
         }
       }
       unregister = register(send)
-      // A REAL event, not an SSE comment: comments are invisible to the
-      // EventSource API, so the browser could not tell a live-but-quiet
-      // stream from one wedged behind a proxy whose upstream died (the vite
-      // dev proxy keeps the client socket open). The client arms a staleness
-      // watchdog on these.
       heartbeat = setInterval(() => {
         try {
-          controller.enqueue(enc.encode("event: ping\ndata: {}\n\n"))
+          controller.enqueue(enc.encode(": ping\n\n"))
         } catch {
           cleanup()
         }
@@ -138,37 +121,6 @@ function sseResponse(register: (send: SseSend) => () => void, signal?: AbortSign
       connection: "keep-alive",
     },
   })
-}
-
-const LIVE_TRACE_ROUTE = "/api/history/trace/live"
-
-function isSafeTraceToken(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= 200 &&
-    /^[A-Za-z0-9._:-]+$/.test(value) &&
-    !value.includes("..")
-  )
-}
-
-function liveTraceResponse(req: Request, url: URL, engineEvents: EngineEventLog | undefined): Response {
-  if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 })
-  const taskId = url.searchParams.get("taskId")
-  const sessionId = url.searchParams.get("sessionId")
-  if (!isSafeTraceToken(taskId) || !isSafeTraceToken(sessionId)) {
-    return Response.json({ error: "invalid trace scope" }, { status: 400 })
-  }
-  if (!engineEvents) {
-    return Response.json({ error: "live trace unavailable" }, { status: 503 })
-  }
-  return sseResponse((send) => {
-    const publish = (event: ReturnType<EngineEventLog["recent"]>[number]) => {
-      if (event.sessionId === sessionId) send("trace-event", event)
-    }
-    for (const event of engineEvents.recent(taskId)) publish(event)
-    return engineEvents.subscribe(taskId, publish)
-  }, req.signal)
 }
 
 // Exposure policy comes FROM the handler registry (`web: true` per entry) —
@@ -317,37 +269,13 @@ export function createDaemonWebRequestHandler(deps: RequestHandlerDeps): (req: R
         }
       }, req.signal)
     }
-    if (url.pathname === LIVE_TRACE_ROUTE) {
-      return liveTraceResponse(req, url, deps.engineEvents)
-    }
     if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link, tearDown)
     if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(runtime, req, link)
     if (url.pathname === "/api/engine-spec" && req.method === "GET") {
-      const vendor = url.searchParams.get("vendor") ?? undefined
-      const tab = url.searchParams.get("tab") ?? undefined
-      return specResponse(url, link, async (l, id) => {
-        const spec = await engineSpec(runtime, l, id, vendor, tab)
-        if (tab) {
-          await l.request("engine.beginSession", { taskId: id, tabId: tab, ...(vendor ? { vendor } : {}) })
-        }
-        // Spawn-time pin: broadcast the injected session id so the Agent
-        // Trace keys to this tab's session before the engine boots.
-        if (spec.sessionId && tab) {
-          await l
-            .request("engine.pinSession", {
-              taskId: id,
-              tabId: tab,
-              sessionId: spec.sessionId,
-              ...(vendor ? { vendor } : {}),
-            })
-            .catch(() => {})
-        }
-        return spec
-      })
+      return specResponse(url, link, (l, id) => engineSpec(runtime, l, id))
     }
     if (url.pathname === "/api/terminal-spec" && req.method === "GET") {
-      const tab = url.searchParams.get("tab") ?? undefined
-      return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id, tab))
+      return specResponse(url, link, (l, id) => terminalSpec(runtime, l, id))
     }
     if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse(runtime)
     if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse(runtime)
@@ -402,7 +330,6 @@ export function createDirectWebLink(args: {
   orch: DaemonOrchestrator
   bus: DaemonEventBus
   activity: DaemonActivityRegistry
-  bindings: SessionBindingStore
   ctx: (clientId: number) => DaemonHandlerContext
 }): DaemonWebLink {
   const handlers = createDaemonHandlerRegistry()
@@ -424,16 +351,12 @@ export function createDirectWebLink(args: {
         tasks,
         activeTaskId: latest(args.bus, "active-task")?.taskId ?? null,
         engineStates: args.activity.snapshotByTask(),
-        engineTabSessions: args.bindings.sessionIdsByTask(),
-        sessionBindings: args.bindings.snapshotByTask(),
-        sessionTransitions: args.bindings.transitionSnapshotByTask(),
         update: latest(args.bus, "update")?.info ?? null,
         jobs,
         worktreeChanges: latest(args.bus, "worktree.changes")?.changes ?? {},
         issueSnapshots,
         deliver: latest(args.bus, "session.deliver"),
         uiPrefs: latest(args.bus, "ui-prefs"),
-        attentionInbox: latest(args.bus, "attention.inbox")?.items ?? [],
         connected: true,
       }
     },
@@ -486,7 +409,6 @@ export async function startDaemonWebServer(opts: DaemonWebServerOptions): Promis
     staticDir: opts.staticDir ? normalize(opts.staticDir) : undefined,
     allowedHost,
     onSseOpen: opts.onSseOpen,
-    engineEvents: opts.engineEvents,
   })
   const server = Bun.serve({ port: opts.port, hostname, idleTimeout: 0, fetch: handle })
   return {

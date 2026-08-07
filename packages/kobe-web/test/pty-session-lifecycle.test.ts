@@ -9,7 +9,6 @@ import {
 } from "../pty-session-lifecycle.mjs"
 
 class FakePty {
-  pid = 4242
   data: ((data: string) => void) | null = null
   exit: (() => void) | null = null
   writes: string[] = []
@@ -220,28 +219,6 @@ describe("createPtySessionManager", () => {
       { cols: 1, rows: 48 },
     ])
     expect(ptys[0].writes).toEqual(["abc"])
-  })
-
-  it("reports an engine terminal commit with tab and root PID identity", async () => {
-    const onTerminalCommit = vi.fn()
-    const { manager } = setup({ onTerminalCommit })
-    const ws = new FakeSocket()
-    await manager.attachSocket({
-      ws,
-      tabId: "tab",
-      taskId: "task",
-      mode: "engine",
-      vendor: "codex",
-      cols: 80,
-      rows: 24,
-    })
-    ws.message("\r")
-    expect(onTerminalCommit).toHaveBeenCalledWith({
-      taskId: "task",
-      tabId: "tab",
-      vendor: "codex",
-      rootPid: 4242,
-    })
   })
 
   it("spawn-on-send pastes with bracketed paste, then Enter", async () => {

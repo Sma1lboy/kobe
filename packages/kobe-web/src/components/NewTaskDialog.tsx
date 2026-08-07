@@ -10,7 +10,6 @@
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
-import { selectChatTask } from "../lib/global-ui.ts"
 import { useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -94,8 +93,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         setPendingPrompt(taskId, prompt)
         addTab(taskId)
       }
-      selectChatTask(taskId)
-      void navigate({ to: "/" })
+      void navigate({ to: "/task/$taskId", params: { taskId } })
       setActiveTaskBestEffort(taskId)
       pushToast(
         "success",
@@ -124,7 +122,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-label="New task"
-        className="pop-in w-[28rem] max-w-[calc(100vw-2rem)] border border-line bg-surface shadow-xl"
+        className="w-[28rem] max-w-[calc(100vw-2rem)] border border-line bg-surface shadow-xl"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={() => {}}
       >

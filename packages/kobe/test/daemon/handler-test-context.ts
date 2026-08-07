@@ -6,7 +6,6 @@ import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
 import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
-import type { SessionBindingStore } from "@sma1lboy/kobe-daemon/daemon/session-bindings"
 import type { WorkItemCache } from "@sma1lboy/kobe-daemon/daemon/work-items"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
@@ -20,8 +19,6 @@ export interface RecordedHandlerEffects {
   readonly inboxDeleted: Array<{ taskId: string; tabId: string | null; at?: number }>
   readonly inboxRead: Array<{ taskId: string; tabId: string | null; at: number }>
   readonly inboxTaskDeleted: string[]
-  readonly bindings: Array<Record<string, unknown>>
-  readonly transitions: Array<Record<string, unknown>>
   readonly deletions: string[]
   stopped: number
   idleReevaluations: number
@@ -41,31 +38,19 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     inboxDeleted: [],
     inboxRead: [],
     inboxTaskDeleted: [],
-    bindings: [],
-    transitions: [],
     deletions: [],
     stopped: 0,
     idleReevaluations: 0,
   }
-  const currentBindings: Record<string, Record<string, Record<string, unknown>>> = {}
   const ctx: DaemonHandlerContext = {
     runtime: daemonRuntime,
-    orch: {
-      listTasks: () => [],
-      getTask: (taskId: string) => {
-        const listTasks = orch.listTasks
-        const tasks = typeof listTasks === "function" ? (listTasks as () => Array<{ id: string }>)() : []
-        return tasks.find((task) => task.id === taskId)
-      },
-      ...orch,
-    } as unknown as Orchestrator,
+    orch: { listTasks: () => [], ...orch } as unknown as Orchestrator,
     bus: {
       publish: (channel: string, payload: unknown) => rec.published.push({ channel, payload }),
     } as unknown as DaemonEventBus,
     activity: {
       report: (taskId: string, kind: string, detail?: unknown) => rec.reported.push({ taskId, kind, detail }),
       clearTask: (taskId: string) => rec.cleared.push(taskId),
-      pinTabSession: () => {},
     } as unknown as DaemonActivityRegistry,
     inbox: {
       record: (taskId: string, kind: string, detail?: unknown, tabId?: string) => {
@@ -89,28 +74,6 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         return Promise.resolve()
       },
     } as unknown as AttentionInboxStore,
-    bindings: {
-      begin: async (taskId: string, tabId: string, vendor: string) => {
-        const value = { taskId, tabId, vendor, state: "pending" }
-        rec.bindings.push(value)
-        currentBindings[taskId] = { ...(currentBindings[taskId] ?? {}), [tabId]: value }
-        return value
-      },
-      bind: async (value: Record<string, unknown>) => {
-        rec.bindings.push(value)
-        const taskId = String(value.taskId)
-        const tabId = String(value.tabId)
-        currentBindings[taskId] = { ...(currentBindings[taskId] ?? {}), [tabId]: value }
-        return value
-      },
-      markTransition: (value: Record<string, unknown>) => {
-        rec.transitions.push(value)
-      },
-      snapshotByTask: () => currentBindings,
-      transitionSnapshotByTask: () => ({}),
-      deleteTask: async () => {},
-      deleteTaskBestEffort: async () => {},
-    } as unknown as SessionBindingStore,
     deletions: {
       enqueue: (taskId: string) => rec.deletions.push(taskId),
     },

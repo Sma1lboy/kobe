@@ -71,14 +71,6 @@ describe("sessionFromPayload", () => {
     expect(
       adapter.sessionFromPayload({ session_id: "abc-123", transcript_path: "/tmp/abc-123.jsonl", cwd: "/wt" }),
     ).toEqual({ sessionId: "abc-123", transcriptPath: "/tmp/abc-123.jsonl" })
-    expect(
-      adapter.sessionFromPayload({
-        hook_event_name: "SessionStart",
-        source: "clear",
-        session_id: "abc-456",
-        transcript_path: "/tmp/abc-456.jsonl",
-      }),
-    ).toEqual({ sessionId: "abc-456", transcriptPath: "/tmp/abc-456.jsonl", startSource: "clear" })
   })
 
   it("omits transcriptPath when absent, and returns undefined without a session_id", () => {
@@ -87,9 +79,6 @@ describe("sessionFromPayload", () => {
     expect(adapter.sessionFromPayload({ session_id: 42 })).toBeUndefined()
     expect(adapter.sessionFromPayload({ session_id: "" })).toBeUndefined()
     expect(adapter.sessionFromPayload({ session_id: "abc", transcript_path: 7 })).toEqual({ sessionId: "abc" })
-    expect(
-      adapter.sessionFromPayload({ hook_event_name: "SessionStart", source: "future", session_id: "abc" }),
-    ).toEqual({ sessionId: "abc" })
   })
 })
 

@@ -322,9 +322,7 @@ export function ChatTranscript({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          // Centered reading column (kaku's grammar) — full-width lines on a
-          // wide window are harder to scan than a bounded measure.
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-3 [&>*]:mx-auto [&>*]:max-w-[860px]"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
         >
           {error ? (
             offline ? (

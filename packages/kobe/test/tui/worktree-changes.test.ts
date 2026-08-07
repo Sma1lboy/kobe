@@ -16,9 +16,9 @@ describe("parsePorcelain", () => {
     expect(parsePorcelain(text)).toEqual({ added: 0, deleted: 3 })
   })
 
-  test("branch-header line feeds `branch`, not the counts", () => {
+  test("ignores branch-header line if present", () => {
     const text = ["## main...origin/main [ahead 2, behind 1]", " M src/a.ts", " D src/b.ts", ""].join("\n")
-    expect(parsePorcelain(text)).toEqual({ added: 1, deleted: 1, branch: "main" })
+    expect(parsePorcelain(text)).toEqual({ added: 1, deleted: 1 })
   })
 
   test("clean tree yields zeros", () => {

@@ -20,11 +20,9 @@
 import { mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
-import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { daemonWebPortFromStatus, type DaemonWebStatus } from "./dev-daemon.ts"
 
-const REQUESTED_DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
+const DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
 const WEB_PORT = process.env.KOBE_WEB_PORT ?? "5173"
 const PTY_PORT = process.env.KOBE_PTY_PORT ?? "5175"
 
@@ -35,31 +33,16 @@ const rawHome = process.env.KOBE_HOME_DIR
 const homeDir = rawHome ? resolve(rawHome) : null
 if (homeDir) mkdirSync(homeDir, { recursive: true })
 if (homeDir) process.env.KOBE_HOME_DIR = homeDir
-process.env.KOBE_DAEMON_WEB_PORT = REQUESTED_DAEMON_WEB_PORT
-
-const sandboxed = homeDir !== null
-
-// The socket is the daemon's identity boundary. Ask that exact process which
-// HTTP port it owns instead of trusting the requested/default port: another
-// production or sandbox daemon may already be answering there.
-const socketPath = await ensureDaemonReachable()
-const daemon = new KobeDaemonClient(socketPath)
-let daemonStatus: DaemonWebStatus
-try {
-  await daemon.connect()
-  daemonStatus = await daemon.request<DaemonWebStatus>("daemon.status", {})
-} finally {
-  daemon.close()
-}
-const DAEMON_WEB_PORT = daemonWebPortFromStatus(daemonStatus, socketPath)
 process.env.KOBE_DAEMON_WEB_PORT = DAEMON_WEB_PORT
 const childEnv = { ...process.env, ...(homeDir ? { KOBE_HOME_DIR: homeDir } : {}) }
 
+const sandboxed = homeDir !== null
 console.log(
   `\x1b[1m[kobe web dev]\x1b[0m ${sandboxed ? "\x1b[33msandbox\x1b[0m" : "\x1b[31mPRODUCTION\x1b[0m"} · home: ${homeDir ?? `${homedir()}/.kobe (production)`}`,
 )
 console.log(`  web :${WEB_PORT}  daemon-web :${DAEMON_WEB_PORT}  pty :${PTY_PORT}`)
 
+await ensureDaemonReachable()
 try {
   const res = await fetch(`http://127.0.0.1:${DAEMON_WEB_PORT}/__kobe_web`, {
     signal: AbortSignal.timeout(1500),
