@@ -189,14 +189,26 @@ aliases.
 ### skill
 
 ```bash
-kobe skill install [--agent NAME]   # wraps `npx skills add Sma1lboy/kobe`
+kobe skill install [--agent NAME]…  # wraps `npx skills add <bundled path>`
 kobe skill status
-kobe skill command [--agent NAME]   # print the npx command without running it
+kobe skill command [--agent NAME]…  # print the npx command without running it
 ```
 
 Installs the kobe agent skill, the thing that teaches a coding agent how
-to drive `kobe api`. Default agent: `claude-code`. `kobe doctor` reports
-the skill as missing/stale and points here.
+to drive `kobe api`. `kobe doctor` reports the skill as missing/stale and
+points here.
+
+**Which agent** is the agent-skills CLI's call, not kobe's: with no
+`--agent` it detects your installed agents and asks. It writes the real
+SKILL.md to `.agents/skills/kobe/` and symlinks the agent-specific dirs
+(`.claude/skills/kobe` → `../../.agents/skills/kobe`) at it. To name agents
+yourself, repeat the flag — `--agent claude-code --agent codex`; a
+comma-joined list is rejected rather than silently using only the first.
+
+**No download.** The skill ships inside the npm package, so install points
+the CLI at that local copy. `npx skills add Sma1lboy/kobe` also works but
+does a `git clone --depth 1` — ~198MB of working tree for an 8KB file,
+which is unusable on a slow connection. Use it only without kobe installed.
 
 ### plugin
 
