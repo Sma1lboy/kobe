@@ -33,6 +33,7 @@
     "./daemon/lifecycle": "./src/daemon/lifecycle.ts",
     "./daemon/lifetime": "./src/daemon/lifetime.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
+    "./daemon/notes-store": "./src/daemon/notes-store.ts",
     "./daemon/paths": "./src/daemon/paths.ts",
     "./daemon/platform-shell": "./src/daemon/platform-shell.js",
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",

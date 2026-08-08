@@ -118,4 +118,37 @@ describe("hosted engine session launch", () => {
     expect(main.command[2]).toContain("DISPATCHER")
     expect(main.command[2]).not.toContain("report it by running")
   })
+
+  test("seeds a worktree session with the repo's field notes, and never the main session", () => {
+    // The main session is the dispatcher — it gets notes pushed to it live,
+    // so reading the store for it would double-deliver.
+    const readNotes = (repoRoot: string) => {
+      seen.push(repoRoot)
+      return [{ text: "build needs --no-sandbox", author: "worker A" }]
+    }
+    const seen: string[] = []
+    const card = buildEngineSessionLaunch({
+      task: { id: "task-1", kind: "task", vendor: "claude", repo: "/repo" },
+      worktreePath: "/worktree",
+      shell: "/bin/zsh",
+      argv: ["claude"],
+      promptIntent: { kind: "none" },
+      protocolGates: { status: () => false, notes: () => true, dispatcher: () => false },
+      readNotes,
+    })
+    const main = buildEngineSessionLaunch({
+      task: { id: "main-1", kind: "main", vendor: "claude", repo: "/repo" },
+      worktreePath: "/repo",
+      shell: "/bin/zsh",
+      argv: ["claude"],
+      promptIntent: { kind: "none" },
+      protocolGates: { status: () => false, notes: () => true, dispatcher: () => true },
+      readNotes,
+    })
+
+    expect(card.command[2]).toContain("build needs --no-sandbox")
+    expect(main.command[2]).not.toContain("build needs --no-sandbox")
+    // Read once, for the card only — keyed by the task's source repo.
+    expect(seen).toEqual(["/repo"])
+  })
 })

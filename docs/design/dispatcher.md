@@ -37,9 +37,36 @@ flowchart LR
 | SPA forwarder | `kobe-web/src/lib/dispatch-delivery.ts` | The front-end half of delivery (browser owns tab ids). `at` high-water mark in localStorage; failed sends roll back so the snapshot replay retries. |
 | Board chip | `kobe-web/src/components/Board.tsx` | `dispatcher` chip on repo-scoped boards; opens the main session in the peek drawer. |
 
-## Known v1 limits
+## v2 — notes persist and seed the next session (2026-08-08)
 
-- **Delivery requires an open dashboard** (the SPA is the forwarder). The daemon web transport snapshot replays the most recent missed event on the next visit; an event-channel replay is last-one-only.
+v1's loop was open at the far end: a note reached whichever sessions happened to be in flight, then evaporated with the dispatcher's transcript. A gotcha resolved on Monday was invisible to Tuesday's worktree, so the fleet re-paid for the same discovery indefinitely.
+
+v2 closes it with a store and a recall block — no retrieval layer, no embeddings:
+
+```mermaid
+flowchart LR
+  W["worktree session"] -- "kobe api note" --> RPC[note.file]
+  RPC --> Store[(notes.json\nper repo, newest 50)]
+  RPC -- "session.deliver" --> D["dispatcher\n(live relay, unchanged)"]
+  Store -- "read at launch" --> N["NEXT worktree session\n(--append-system-prompt)"]
+```
+
+| Piece | Where | Job |
+|---|---|---|
+| `NotesStore` | `kobe-daemon/src/daemon/notes-store.ts` | Append-only, keyed by git common-dir (the issue-store convention), newest `NOTES_RETENTION_CAP` (50) kept per repo. |
+| `note.file` (extended) | `handlers-ui.ts` | **Persists first, then routes.** A note filed with no dispatcher seat is no longer a loss; a store failure degrades to routing-only and never errors the author. |
+| `note.list` RPC + `kobe api note-list --repo` | `handlers-ui.ts` / `verbs.ts` | Read the accumulated notes back. |
+| `readFieldNotes` | `kobe/src/state/field-notes.ts` | Sync launch-path reader (matches on `repoRoot`). A missing or corrupt store is "no notes" — recall must never block a session from starting. |
+| `noteRecallProtocol` | `engine/interactive-command.ts` | Renders the newest `NOTE_INJECTION_CAP` (15) into the worktree session's existing `--append-system-prompt`, as **claims with provenance, not instructions** — a stale note must lose to what the session observes. |
+
+Recall rides the same `experimental.dispatcher` switch and the same single injection point as note filing; the main session is excluded because it gets notes pushed live.
+
+**Why full injection rather than retrieval:** a repo's note count is bounded at 50 by the store and 15 by the prompt. At that size, filtering costs more than it saves. The upgrade path if a repo genuinely outgrows it is filtering by touched path — not a vector store.
+
+## Known limits
+
+- **Live delivery requires an open dashboard** (the SPA is the forwarder). Persistence is unaffected — an undelivered note still reaches the next session.
 - **Claude-only injection**, same as the status protocol.
-- **No persistence/board rail for notes yet** — the dispatcher's transcript is the log. A "Field Notes" board rail + new-task bundling is the natural v2.
-- **Trust is deliberately deferred**: agent-authored text flows into other agents' inputs with no human gate (relays carry provenance prefixes). Revisit before any default-on.
+- **No board rail for notes** — `kobe api note-list` is the only reader UI.
+- **No dedup on filing**: the recall block asks the agent not to re-file a note that restates an existing one; nothing enforces it.
+- **Trust is deliberately deferred**: agent-authored text flows into other agents' inputs with no human gate, and persistence now means a wrong note outlives the session that wrote it. Revisit before any default-on.
