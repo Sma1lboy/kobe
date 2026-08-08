@@ -114,6 +114,18 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "ctrl+f" },
   },
   {
+    // Owner-confirmed 2026-08-06; simplified 2026-08-07. The chord only
+    // gives the current agent another Task's address. No link or channel is
+    // persisted, and messaging uses the existing `kobe api send` path.
+    id: "chat.task.message",
+    scope: "workspace",
+    keys: [],
+    prefixKeys: ["@"],
+    category: "Workspace",
+    description: "Choose a task for cross-task messaging",
+    hint: { keys: "ctrl+a @" },
+  },
+  {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing
     // every persisted session for the active task's worktree so the
     // user can jump back to (or fork from) any prior conversation.

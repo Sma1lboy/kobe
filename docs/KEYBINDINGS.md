@@ -24,6 +24,7 @@ Default prefix actions:
 | Sequence | Action |
 |---|---|
 | `ctrl+a`, `f` | Quick-fork a child task (new worktree, branched off THIS task's branch) |
+| `ctrl+a`, `@` | Choose another Task and give its address to the current agent for ordinary `kobe api send` messaging. Owner decision (2026-08-06), simplified (2026-08-07): no fork, persisted link, Channel UI, or custom protocol. |
 | `ctrl+a`, `c` | Continue this chat in a new tab of the SAME worktree — picks the engine: same one forks the session natively, a different one gets a transcript handoff (claude ⇄ codex, see [ENGINES.md](./ENGINES.md)). PROPOSED chord, awaiting owner sign-off: `c` was freed when Kanban moved to a digit, mnemonic "continue" |
 | `ctrl+a`, `i` | Open the Inbox dialog |
 | `ctrl+a`, `y` | Resume a prior engine Session |

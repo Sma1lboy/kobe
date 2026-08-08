@@ -59,6 +59,7 @@ describe("workspace open-worktree bindings", () => {
       openInbox: vi.fn(),
       enterMoveMode: vi.fn(),
       createPR: vi.fn(),
+      chooseMessagePeer: vi.fn(),
     })
 
     const registrations = mocks.bindingFactories.map((factory) => factory())
@@ -79,5 +80,45 @@ describe("workspace open-worktree bindings", () => {
     expect(openTaskWorktree).toHaveBeenCalledTimes(2)
     expect(renameBranch).toHaveBeenCalledWith("task-1")
     expect(cycleVendor).toHaveBeenCalledWith("task-1")
+  })
+
+  test("the workspace prefix binding opens the task-message peer picker", () => {
+    const chooseMessagePeer = vi.fn()
+    useWorkspaceKeybindings({
+      focus: { focused: "workspace", setFocused: vi.fn() } as never,
+      dialog: { stack: [] } as never,
+      settingsOpen: false,
+      worktreesOpen: false,
+      openWorktrees: vi.fn(),
+      updateOpen: false,
+      openUpdate: vi.fn(),
+      kanbanOpen: false,
+      automationsOpen: false,
+      openAutomations: vi.fn(),
+      workItemsOpen: false,
+      openWorkItems: vi.fn(),
+      openKanban: vi.fn(),
+      searchActive: false,
+      selectedId: "task-1",
+      openTaskWorktree: vi.fn(),
+      openSettings: vi.fn(),
+      closeSettings: vi.fn(),
+      createTask: vi.fn(),
+      renameBranch: vi.fn(),
+      cycleVendor: vi.fn(),
+      toggleZen: vi.fn(),
+      jumpToNextAttention: vi.fn(),
+      openInbox: vi.fn(),
+      enterMoveMode: vi.fn(),
+      createPR: vi.fn(),
+      chooseMessagePeer,
+    })
+
+    const workspaceBindings = mocks.bindingFactories[0]?.().bindings ?? []
+    const taskMessage = workspaceBindings.find((binding) => binding.key === "@" && binding.prefix)
+    expect(taskMessage).toBeDefined()
+
+    taskMessage?.cmd({} as never)
+    expect(chooseMessagePeer).toHaveBeenCalledOnce()
   })
 })

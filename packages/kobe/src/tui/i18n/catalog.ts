@@ -29,6 +29,7 @@ import { en as onboarding, zh as onboardingZh } from "./messages/onboarding"
 import { en as ops, zh as opsZh } from "./messages/ops"
 import { en as quickTask, zh as quickTaskZh } from "./messages/quickTask"
 import { en as settings, zh as settingsZh } from "./messages/settings"
+import { en as taskMessaging, zh as taskMessagingZh } from "./messages/taskMessaging"
 import { en as tasks, zh as tasksZh } from "./messages/tasks"
 import { en as terminal, zh as terminalZh } from "./messages/terminal"
 import { en as update, zh as updateZh } from "./messages/update"
@@ -39,6 +40,7 @@ import { en as worktrees, zh as worktreesZh } from "./messages/worktrees"
 export const en = {
   settings,
   tasks,
+  taskMessaging,
   terminal,
   files,
   newTask,
@@ -67,6 +69,7 @@ export type Messages = typeof en
 export const zh: Messages = {
   settings: settingsZh,
   tasks: tasksZh,
+  taskMessaging: taskMessagingZh,
   terminal: terminalZh,
   files: filesZh,
   newTask: newTaskZh,

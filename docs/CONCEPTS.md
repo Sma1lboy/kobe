@@ -28,6 +28,14 @@ the task's live sessions stop and the sidebar moves it to Archives. kobe
 never deletes a worktree implicitly, not on archive, not on `done`. You
 remove worktrees explicitly or not at all.
 
+### Cross-task messaging
+
+`prefix+@` chooses another Task and gives its id, plus the current Task's id,
+to the current agent. This is an address handoff only: it creates no Channel,
+fork, saved relationship, or sidebar topology. Agents exchange complete turns
+through the existing `kobe api send`; the installed Kobe skill owns the small
+`reply_to_task_id` message convention.
+
 ## Worktree and branch
 
 Every Task gets its own git worktree, at

@@ -1,10 +1,6 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Default PureTUI workspace: Sidebar | engine Terminal |
- * Files. `useAccessor` subscribes React to framework-free daemon state; imperative
- * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
- * Settings, worktrees, and update surfaces swap in-process instead of exiting.
- */
+/** Default PureTUI workspace: Sidebar | engine Terminal | Files.
+ * Daemon state is reactive; terminal handoffs stay imperative and task-scoped. */
 
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -51,6 +47,7 @@ import { useAttention } from "./use-attention"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
+import { useTaskMessaging } from "./use-task-messaging"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
 
@@ -73,14 +70,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
-  // Per-TAB activity. The daemon reports both levels; the task entry is a
-  // last-event-wins rollup, so a task whose live tab is not the one the
-  // rollup last described reads as idle. The sidebar tree needs the tab
-  // level to light the right row.
+  // Task activity is a last-event-wins rollup; tab activity lights the exact live row.
   const engineTabState = useAccessor(orch.engineTabStatesSignal())
-  // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
-  // icon immediately; authoritative events always win, and a superseded
-  // mark is dropped so the overlay never becomes a second source of truth.
+  // Local enter/esc updates the icon immediately; authoritative events replace that mark.
   const optimisticMarks = useAccessor(optimisticActivityStore)
   const sidebarEngineState = useMemo(
     () => mergeOptimisticActivity(engineState, optimisticMarks),
@@ -198,23 +190,26 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     send(prompt)
   }
 
-  // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
-  // prompt to the new task's TerminalTabs mount (phase 2). Wiring lives in
-  // `quick-fork.ts` — the create/enter/pending-prompt shape is identical
-  // regardless of host, and this component is already near the file-size cap.
+  // Quick-fork: compose → create+enter → hand the prompt to TerminalTabs.
   const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
+  const taskMessaging = useTaskMessaging({
+    tasks,
+    current: selectedTask,
+    dialog,
+    t,
+    sendRef: sendToEngineFn,
+    notifyError,
+    notifyInfo,
+  })
 
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const { zen, toggleZen } = useZenMode({ kv, focus })
 
-  // Tab open/close (and editor-file close) edges report as plugin events
-  // through this seam — wired once per host, torn down on unmount.
   useEffect(() => {
     setUiEventReporter((kind, taskId, detail) => orch.reportUiEvent(kind, taskId, detail))
     return () => setUiEventReporter(null)
   }, [orch])
 
-  // FileTree's Enter (editor/plugin/OS) and `d` (read-only diff tab).
   const { openFileInEditor, openDiff } = useFileOpenActions({
     orch,
     worktree,
@@ -225,11 +220,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     selectedWorktreeRef,
   })
 
-  // Which surface the workspace shows — settings/worktrees/update full swaps
-  // plus the rail's one-at-a-time nav. State + rationale in host-pages.tsx.
   const pages = useHostPagesState(focus)
-  // Sidebar layout: the tree lists each worktree's tabs as rows (the strip is
-  // off by default to match); `flat` restores the PROJECTS / TASKS list.
+  // Tree lists worktree tabs as rows; `flat` restores PROJECTS / TASKS.
   const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
   // The selected task's active tab — the tree marks that exact row as live.
   // Read from the module map rather than threaded through TerminalTabs: the
@@ -280,6 +272,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     jumpToNextAttention,
     openInbox: inbox.show,
     createPR: () => void createPR(),
+    chooseMessagePeer: taskMessaging.choosePeer,
     // prefix+m — global entry into the sidebar's move mode: focus the
     // sidebar, highlight the current selection, j/k reorders, enter/esc
     // exits. Falls back to the first task when nothing is selected.
