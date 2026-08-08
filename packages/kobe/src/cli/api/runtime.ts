@@ -11,6 +11,7 @@ import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import {
   deliverHostedPrompt,
+  deliverToExactTab,
   ensurePtyHost,
   findEngineKey,
   killTaskSessions,
@@ -18,10 +19,12 @@ import {
   openPtyHost,
   taskKeys,
 } from "./pty-delivery.ts"
-import { publishCliTabSnapshot } from "./tab-snapshot.ts"
+import { mintCliTab, publishCliTabSnapshot } from "./tab-snapshot.ts"
 import { ApiError, type ApiRuntime, type DeliveredPrompt, type PromptDeliveryOps, type PromptTarget } from "./types.ts"
 
-/** Ensure and address the task's sole hosted engine session. */
+/** Ensure and address the task's hosted engine session (`target.tab` routes:
+ *  undefined = canonical, "new" = mint + spawn a fresh tab, "tab-N" = that
+ *  exact alive tab only). */
 async function deliverHosted(target: PromptTarget, worktree: string, prompt: string): Promise<DeliveredPrompt> {
   let host: Awaited<ReturnType<typeof ensurePtyHost>>
   try {
@@ -33,6 +36,12 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
     )
   }
   try {
+    // Exact-tab addressing: deliver-only, never spawn — a dead/absent tab is
+    // the caller's error (TAB_NOT_FOUND), not a cue to boot a new engine.
+    if (target.tab && target.tab !== "new") {
+      return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt)
+    }
+    const newTab = target.tab === "new" ? mintCliTab(target.id) : undefined
     const argv = interactiveEngineCommand(target.vendor, target.modelEffort)
     const launch = buildEngineSessionLaunch({
       task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },
@@ -40,16 +49,27 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       shell: process.env.SHELL?.trim() || "/bin/zsh",
       argv,
       promptIntent: { kind: "explicit", prompt },
+      tabId: newTab,
     })
-    const result = await deliverHostedPrompt(host.rpc, { id: target.id, engineBin: argv[0] }, worktree, prompt, launch)
+    const result = await deliverHostedPrompt(
+      host.rpc,
+      { id: target.id, engineBin: argv[0] },
+      worktree,
+      prompt,
+      launch,
+      {
+        forceNew: newTab !== undefined,
+      },
+    )
     if (result.started && !result.engineReady) {
       throw new ApiError(`failed to start hosted engine session for ${target.id}`, "SESSION_FAILED")
     }
     // Make the session visible to the sidebar tree, which lists a worktree's
     // tabs from the task's persisted snapshot — a CLI-started session used to
     // run live with no snapshot, so the tree showed the worktree with no tabs
-    // under it at all. Write-once; see `tab-snapshot.ts`.
-    publishCliTabSnapshot(target.id)
+    // under it at all. Write-once (a --tab new spawn already appended its tab
+    // in mintCliTab); see `tab-snapshot.ts`.
+    if (!newTab) publishCliTabSnapshot(target.id)
     return result
   } catch (error) {
     if (error instanceof ApiError) throw error

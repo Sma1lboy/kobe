@@ -98,6 +98,12 @@ export interface PromptTarget {
   readonly vendor?: VendorId
   readonly modelEffort?: string
   readonly repo?: string
+  /**
+   * Tab addressing (`send --tab`): `"new"` mints the next tab-N and spawns
+   * a fresh engine tab there; `"tab-N"` delivers to that exact alive tab
+   * (TAB_NOT_FOUND when dead/absent). Undefined = canonical engine tab.
+   */
+  readonly tab?: string
 }
 
 export interface DeliveredPrompt {
