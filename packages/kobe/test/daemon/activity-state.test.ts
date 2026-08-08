@@ -177,4 +177,31 @@ describe("daemon activity state", () => {
 
     registry.close()
   })
+
+  // Why: the task-level carry-forward used to ride along on tab-tagged
+  // publishes — a session-less event on a FRESH tab (codex hooks pipe no
+  // session id) inherited the previous tab's (even another ENGINE's) session
+  // and stamped it onto the new tab forever. A tab publish must carry only
+  // the tab's own lineage.
+  it("a session-less event on a NEW tab does not inherit another tab's session", () => {
+    const bus = new DaemonEventBus()
+    const registry = new DaemonActivityRegistry(bus, 1_000)
+    const published: Array<{ tabId?: string; sessionId?: string }> = []
+    bus.onPublish((event) => {
+      if (event.channel === "engine-state") {
+        published.push(event.payload as { tabId?: string; sessionId?: string })
+      }
+    })
+
+    registry.report("task-1", "session-start", undefined, "tab-a", {
+      id: "claude-sess",
+    })
+    // A different engine boots in tab-b; its hooks pipe NO session id.
+    registry.report("task-1", "session-start", undefined, "tab-b")
+
+    const last = published.at(-1)
+    expect(last?.tabId).toBe("tab-b")
+    expect(last?.sessionId).toBeUndefined()
+    registry.close()
+  })
 })
