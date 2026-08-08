@@ -117,6 +117,7 @@ describe("daemon handler registry", () => {
       "tab.open",
       "notice.send",
       "note.file",
+      "note.list",
     ]
     const registry = createDaemonHandlerRegistry()
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()

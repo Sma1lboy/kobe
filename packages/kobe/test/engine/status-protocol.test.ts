@@ -88,6 +88,39 @@ describe("worktreeProtocol", () => {
   })
 })
 
+describe("note recall", () => {
+  const notes = [
+    { text: "the build needs --no-sandbox", author: "worker A" },
+    { text: "auth tests need a fresh keychain", author: "" },
+  ]
+
+  it("seeds an enabled session with the repo's accumulated notes, with provenance", () => {
+    const text = worktreeProtocol("t1", "kobe api", { status: off, notes: on }, notes)
+    expect(text).toContain("the build needs --no-sandbox")
+    expect(text).toContain('(from "worker A")')
+    // An authorless note still renders, just without the attribution clause.
+    expect(text).toContain("auth tests need a fresh keychain")
+    // Notes are claims, not orders — the prompt must say so or a stale note
+    // outranks what the session observes.
+    expect(text).toContain("not instructions")
+  })
+
+  it("emits no recall block at all when the repo has no notes", () => {
+    const text = worktreeProtocol("t1", "kobe api", { status: off, notes: on }, [])
+    expect(text).toContain("field notes")
+    expect(text).not.toContain("previously filed by other sessions")
+  })
+
+  it("withholds recall when the note switch is off, even with notes on disk", () => {
+    expect(worktreeProtocol("t1", "kobe api", { status: on, notes: off }, notes)).not.toContain("--no-sandbox")
+  })
+
+  it("carries recall through the argv wrapper", () => {
+    const argv = withWorktreeProtocol(["claude"], "claude", "t1", { status: off, notes: on }, notes)
+    expect(argv[2]).toContain("the build needs --no-sandbox")
+  })
+})
+
 describe("withDispatcherProtocol", () => {
   it("appends the dispatcher protocol for an enabled claude main-session launch", () => {
     const argv = withDispatcherProtocol(["claude"], "claude", "m1", on)

@@ -159,20 +159,39 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       const text = requireString(payload, "text")
       const author = ctx.orch.getTask(taskId)
       if (!author) throw new Error(`task not found: ${taskId}`)
+      const label = author.title || author.branch || taskId
+      // Persist BEFORE routing: relaying is best-effort and needs a live
+      // dispatcher seat, but the durable record is the point — a note filed
+      // with no dispatcher running must still reach the NEXT session
+      // (repo-init injection reads this store). A store failure must never
+      // error a working agent, so it degrades to routing-only.
+      const persisted = await ctx.notes
+        ?.append(author.repo, { at: new Date().toISOString(), text, taskId, author: label })
+        .then(() => true)
+        .catch(() => false)
       const main = ctx.orch
         .listTasks()
         .find((t) => (t.kind ?? "task") === "main" && t.repo === author.repo && !t.archived)
       // No dispatcher seat, or the dispatcher noting to itself: accepted
-      // but unrouted — filing must never error a working agent.
-      if (!main || main.id === author.id) return { ok: true, routed: false }
-      const label = author.title || author.branch || taskId
+      // but unrouted — filing must never error a working agent. Still
+      // persisted above, which is why an unrouted note is no longer a loss.
+      if (!main || main.id === author.id) return { ok: true, routed: false, persisted: persisted ?? false }
       ctx.bus.publish("session.deliver", {
         taskId: main.id,
         text: `[KOBE FIELD NOTE] from "${label}" (task ${taskId}): ${text}`,
         at: Date.now(),
         source: "note",
       })
-      return { ok: true, routed: true }
+      return { ok: true, routed: true, persisted: persisted ?? false }
+    },
+  },
+  {
+    name: "note.list",
+    async handle(payload, ctx) {
+      // Newest-first field notes for a repo. Read by `kobe api note-list` and
+      // by the worktree launch path that seeds a fresh session with them.
+      const repo = requireString(payload, "repo")
+      return { notes: (await ctx.notes?.list(repo)) ?? [] }
     },
   },
 ]
