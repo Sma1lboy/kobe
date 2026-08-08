@@ -34,6 +34,8 @@ import { tabTitle } from "../../../tui/workspace/terminal-tab-split"
 import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
 import type { TabsSnapshotKv } from "../../workspace/terminal-tabs-persist"
 import { knownTaskTabs } from "../../workspace/terminal-tabs-shared"
+import { orphanTabsByTask } from "./orphan-tabs"
+import { useHostSessions } from "./use-host-sessions"
 
 export interface TreeStateOpts {
   readonly tasks: readonly Task[]
@@ -77,6 +79,9 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   const [liveTick, setLiveTick] = useState(0)
   useEffect(() => liveEngines.subscribe(() => setLiveTick((tick) => tick + 1)), [liveEngines])
 
+  // Live pty-host inventory, for tasks the snapshot can't answer for.
+  const hostSessions = useHostSessions()
+
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
   // recomputing with it is correct, not wasteful.
@@ -112,8 +117,15 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         })),
       )
     }
+    // Backstop: a task with a LIVE pty session but no snapshot renders from
+    // the session itself, so a headless-started engine is never an empty
+    // worktree row. Only fills holes — a task already in `map` keeps its
+    // richer snapshot projection. See `orphan-tabs.ts`.
+    for (const [taskId, tabs] of orphanTabsByTask(hostSessions, new Set(map.keys()))) {
+      if (tasks.some((t) => t.id === taskId)) map.set(taskId, tabs)
+    }
     return map
-  }, [tasks, kv, liveEngines, liveTick])
+  }, [tasks, kv, liveEngines, liveTick, hostSessions])
 
   const { rows, totalCount } = useMemo(() => {
     const all = buildTreeRows({ tasks, tabsByTask })

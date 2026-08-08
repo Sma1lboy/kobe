@@ -18,6 +18,7 @@ import {
   openPtyHost,
   taskKeys,
 } from "./pty-delivery.ts"
+import { publishCliTabSnapshot } from "./tab-snapshot.ts"
 import { ApiError, type ApiRuntime, type DeliveredPrompt, type PromptDeliveryOps, type PromptTarget } from "./types.ts"
 
 /** Ensure and address the task's sole hosted engine session. */
@@ -44,6 +45,11 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
     if (result.started && !result.engineReady) {
       throw new ApiError(`failed to start hosted engine session for ${target.id}`, "SESSION_FAILED")
     }
+    // Make the session visible to the sidebar tree, which lists a worktree's
+    // tabs from the task's persisted snapshot — a CLI-started session used to
+    // run live with no snapshot, so the tree showed the worktree with no tabs
+    // under it at all. Write-once; see `tab-snapshot.ts`.
+    publishCliTabSnapshot(target.id)
     return result
   } catch (error) {
     if (error instanceof ApiError) throw error
