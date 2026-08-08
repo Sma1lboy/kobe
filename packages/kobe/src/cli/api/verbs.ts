@@ -4,7 +4,6 @@
 
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
 import type { TaskStatus } from "../../types/task.ts"
-import type { VendorId } from "../../types/vendor.ts"
 import { F, FANOUT_CAP } from "./flags.ts"
 import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { DIGEST_VERB } from "./handlers-digest.ts"
@@ -347,7 +346,11 @@ export const VERBS: readonly VerbSpec[] = [
     handler: (ctx) =>
       simpleRpc(ctx, "task.setVendor", {
         taskId: ctx.args.require("task-id"),
-        vendor: ctx.args.requireEnum<VendorId>("vendor"),
+        // `args.vendor()`, never `requireEnum` — engines are an open set and
+        // this verb is the one place that used the closed built-in list,
+        // which made every registered custom engine unsettable from the CLI.
+        // Presence is already enforced by the spec's `required: true`.
+        vendor: ctx.args.vendor(),
       }),
   },
   {
