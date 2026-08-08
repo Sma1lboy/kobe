@@ -18,7 +18,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { publishCliTabSnapshot } from "../../src/cli/api/tab-snapshot.ts"
+import { mintCliTab, publishCliTabSnapshot } from "../../src/cli/api/tab-snapshot.ts"
 
 let home: string
 let originalHome: string | undefined
@@ -84,5 +84,35 @@ describe("publishCliTabSnapshot", () => {
     writeState({})
     publishCliTabSnapshot("")
     expect(Object.keys(readState())).toEqual([])
+  })
+})
+
+describe("mintCliTab", () => {
+  it("consumes the snapshot's nextOrdinal so CLI and TUI ids never collide", () => {
+    writeState({
+      "terminalTabs.t1": {
+        tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1 }],
+        activeId: "tab-1",
+        nextOrdinal: 4, // TUI already minted tab-2/tab-3 and closed them
+      },
+    })
+    const id = mintCliTab("t1")
+    expect(id).toBe("tab-4")
+    const snapshot = readState()["terminalTabs.t1"] as {
+      tabs: { id: string }[]
+      activeId: string
+      nextOrdinal: number
+    }
+    expect(snapshot.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-4"])
+    expect(snapshot.activeId).toBe("tab-4")
+    expect(snapshot.nextOrdinal).toBe(5)
+  })
+
+  it("seeds a task with no snapshot and mints tab-2 alongside the canonical tab", () => {
+    writeState({})
+    const id = mintCliTab("t1")
+    expect(id).toBe("tab-2")
+    const snapshot = readState()["terminalTabs.t1"] as { tabs: { id: string }[] }
+    expect(snapshot.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-2"])
   })
 })

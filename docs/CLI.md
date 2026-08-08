@@ -373,8 +373,12 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 ### drive
 
-- `send [--task-id ID] --prompt TEXT`: paste a follow-up into a task's
-  running engine (one full turn). Defaults to the active task.
+- `send [--task-id ID] --prompt TEXT [--tab TAB]`: paste a follow-up into a
+  task's running engine (one full turn). Defaults to the active task.
+  `--tab new` mints the next `tab-N` and spawns a fresh engine tab there
+  (visible in the sidebar tree like a TUI-opened tab); `--tab tab-N`
+  delivers to that exact alive tab (`TAB_NOT_FOUND` when dead/absent).
+  Omitted, the canonical engine tab is used.
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see
