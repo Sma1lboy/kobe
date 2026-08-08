@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": null,
   "outputDirectory": ".",
+  "// ignoreCommand": "Always build. Vercel's default monorepo skip-check runs `git diff --quiet HEAD^ HEAD -- .`, but the repo-root .vercelignore allowlists only this directory — which strips .git, so git exits non-zero ('Not a git repository') and every deployment reads as FAILED. This site is static (buildCommand: null), so there is no build to skip anyway; exit 1 means 'do build'.",
+  "ignoreCommand": "exit 1",
   "cleanUrls": true,
   "redirects": [
     {
