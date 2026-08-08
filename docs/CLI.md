@@ -189,14 +189,26 @@ aliases.
 ### skill
 
 ```bash
-kobe skill install [--agent NAME]   # wraps `npx skills add Sma1lboy/kobe`
+kobe skill install [--agent NAME]…  # wraps `npx skills add <bundled path>`
 kobe skill status
-kobe skill command [--agent NAME]   # print the npx command without running it
+kobe skill command [--agent NAME]…  # print the npx command without running it
 ```
 
 Installs the kobe agent skill, the thing that teaches a coding agent how
-to drive `kobe api`. Default agent: `claude-code`. `kobe doctor` reports
-the skill as missing/stale and points here.
+to drive `kobe api`. `kobe doctor` reports the skill as missing/stale and
+points here.
+
+**Which agent** is the agent-skills CLI's call, not kobe's: with no
+`--agent` it detects your installed agents and asks. It writes the real
+SKILL.md to `.agents/skills/kobe/` and symlinks the agent-specific dirs
+(`.claude/skills/kobe` → `../../.agents/skills/kobe`) at it. To name agents
+yourself, repeat the flag — `--agent claude-code --agent codex`; a
+comma-joined list is rejected rather than silently using only the first.
+
+**No download.** The skill ships inside the npm package, so install points
+the CLI at that local copy. `npx skills add Sma1lboy/kobe` also works but
+does a `git clone --depth 1` — ~198MB of working tree for an 8KB file,
+which is unusable on a slow connection. Use it only without kobe installed.
 
 ### plugin
 
@@ -333,6 +345,13 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
+- `digest --repo PATH [--since-days N]`: aggregate the repo's recent agent
+  work — worker-reported `succeeded` / `failed` / `unreported` task counts,
+  routine run outcomes bucketed by status, and the newest named failures.
+  Purely a read over state kobe already persists (`workerReport` +
+  `AutomationRun.status`), so the numbers report what workers CLAIMED, never
+  what kobe verified. A rising `unreported` share is the honest signal that
+  the fleet is drifting out of the `report` contract. Default window 7 days.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
@@ -361,8 +380,11 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   already-hosted session (the dispatcher's messenger; see
   [design/dispatcher.md](./design/dispatcher.md)).
 - `note --task-id ID --text TEXT`: file a one-line field note (a resolved,
-  repo-level gotcha); kobe forwards it to the repo's dispatcher session,
-  which relays it to in-flight tasks.
+  repo-level gotcha). Appended to the repo's durable note store — every
+  future worktree session on this repo starts with it in its system prompt —
+  and forwarded to the dispatcher session for live relay to in-flight tasks.
+- `note-list --repo PATH`: read a repo's accumulated field notes, newest
+  first. Returns `{ notes }`.
 - `set-active [--task-id ID] [--none]`: set (or clear) the shared active
   task every Tasks pane highlights.
 

@@ -67,6 +67,8 @@ export type SidebarProps = SidebarTaskCallbacks & {
   zenActive?: boolean
   onZenClick?: () => void
   engineState?: ReadonlyMap<string, TaskEngineState>
+  /** Per-tab activity (taskId → tabId → state); the tree's tab rows use it. */
+  engineTabState?: ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>
   /** Transient per-task lifecycle marks (subagent activity). */
   engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   taskJobs?: ReadonlyMap<string, TaskJobState>

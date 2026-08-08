@@ -2,12 +2,19 @@
  * Install + detect the kobe agent skill.
  *
  * The skill teaches a coding agent when and how to drive `kobe api` (the
- * full task-lifecycle CLI). It is distributed via the Vercel Labs
- * agent-skills CLI — `npx skills add Sma1lboy/kobe` pulls the canonical
- * `.agents/skills/kobe/SKILL.md` from the repo and installs it into the
- * agent's skill dir. `kobe skill install` is a thin CONVENIENCE WRAPPER
- * that runs exactly that flow for the developer, so nobody has to remember
- * the `npx skills add Sma1lboy/kobe --skill kobe --agent …` invocation.
+ * full task-lifecycle CLI). Installation runs through the Vercel Labs
+ * agent-skills CLI (`npx skills add`), which owns the part that is genuinely
+ * hard to maintain: the registry of ~75 coding agents, where each one reads
+ * its skills from, which get a real directory vs a symlink into the shared
+ * `.agents/skills`. kobe does NOT reimplement any of that.
+ *
+ * What kobe changes is the SOURCE. `npx skills add Sma1lboy/kobe` clones the
+ * repo (`git clone --depth 1`) — 198MB of working tree to deliver an 8KB
+ * SKILL.md, which is effectively un-installable on a slow connection. But a
+ * user running `kobe skill install` already HAS kobe, and the skill ships
+ * inside the npm package, so the CLI is pointed at that local copy instead:
+ * {@link bundledSkillDir}. No clone, no network. The published repo slug
+ * stays available as {@link SKILL_SOURCE_SLUG} for people without kobe.
  *
  * Reliable check: `kobe skill status`. The startup hint
  * here is best-effort (the opentui screen takeover can scroll it off).
@@ -19,7 +26,8 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 
 /**
@@ -33,42 +41,71 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
 export const KOBE_SKILL_VERSION = 8
 
 /**
- * Where the kobe skill lands for a coding agent, relative to a home/project
- * root. This is `.claude/skills/...`, NOT kobe's `KOBE_HOME_DIR` — agents
- * read skills from the real project/home regardless of kobe's state-dir.
+ * Where an installed kobe skill can be FOUND, relative to a home/project
+ * root. Not kobe's `KOBE_HOME_DIR` — agents read skills from the real
+ * project/home regardless of kobe's state-dir.
+ *
+ * Two locations because the agent-skills CLI writes the real file into the
+ * shared `.agents/skills` and SYMLINKS agent-specific dirs at it (that's its
+ * default; `--copy` opts out). `existsSync` follows symlinks, so either path
+ * answering is a genuine install. `.claude` stays in the list so skills
+ * installed by older kobe versions still register as present.
  */
-const SKILL_REL_PATH = ".claude/skills/kobe/SKILL.md"
+const SKILL_REL_PATHS = [".agents/skills/kobe/SKILL.md", ".claude/skills/kobe/SKILL.md"] as const
 
 /** The kobe-side wrapper command a user runs. Shown in hints / doctor. */
 export const SKILL_INSTALL_COMMAND = "kobe skill install"
 
-/** The agent-skills CLI repo slug the wrapper installs from. */
+/**
+ * The public repo slug. Only a FALLBACK now (and the documented route for
+ * people who don't have kobe installed): resolving it means a 198MB clone.
+ */
 export const SKILL_SOURCE_SLUG = "Sma1lboy/kobe"
 
-/** Default coding agent the skill is installed for. */
-export const DEFAULT_SKILL_AGENT = "claude-code"
+/**
+ * The skill directory shipped inside this install, or null in an environment
+ * where it isn't present (an unbuilt source checkout). Candidates mirror
+ * `web-cmd.ts`'s dist-asset lookup: repo layout first, then the packaged
+ * copy the build emits into `dist/skills`.
+ */
+export function bundledSkillDir(): string | null {
+  const here = fileURLToPath(import.meta.url)
+  const candidates = [
+    resolve(here, "../../../../../.agents/skills/kobe"), // dev: repo root .agents/skills/kobe
+    resolve(here, "../../skills/kobe"), // packaged: dist/skills/kobe
+  ]
+  return candidates.find((dir) => existsSync(join(dir, "SKILL.md"))) ?? null
+}
 
 /**
- * Build the `npx skills add …` argv that `kobe skill install` wraps. Pure +
- * testable: the wrapper spawns `npx` with these args. `agent` selects which
- * coding agent's skill dir to install into (the agent-skills CLI handles the
- * actual placement under `.claude/skills/...`).
+ * Build the `npx skills add …` argv. `source` is the bundled directory when
+ * we have one (a local path — the CLI validates it and skips the network
+ * entirely) and the repo slug otherwise.
+ *
+ * Agent SELECTION is deliberately left to the agent-skills CLI: omitting
+ * `--agent` makes it detect the installed agents and prompt, which is the
+ * one part of this we never want to reimplement — that registry covers ~75
+ * agents and changes constantly. Pass `agent` only when the user asked for
+ * a specific one. Note the CLI wants a repeated flag per agent, not a
+ * comma-joined list (it rejects `--agent claude-code,codex`).
  */
-export function npxSkillsArgv(opts: { agent?: string } = {}): string[] {
-  return ["skills", "add", SKILL_SOURCE_SLUG, "--skill", "kobe", "--agent", opts.agent ?? DEFAULT_SKILL_AGENT]
+export function npxSkillsArgv(opts: { agent?: string | readonly string[]; source?: string | null } = {}): string[] {
+  const source = opts.source !== undefined ? opts.source : bundledSkillDir()
+  const agents = opts.agent === undefined ? [] : typeof opts.agent === "string" ? [opts.agent] : opts.agent
+  return ["skills", "add", source ?? SKILL_SOURCE_SLUG, "--skill", "kobe", ...agents.flatMap((a) => ["--agent", a])]
 }
 
 /** The full underlying command string, for display in help / hints. */
-export function npxSkillsCommand(opts: { agent?: string } = {}): string {
+export function npxSkillsCommand(opts: { agent?: string | readonly string[]; source?: string | null } = {}): string {
   return `npx ${npxSkillsArgv(opts).join(" ")}`
 }
 
 /**
- * Run the `npx skills add …` install flow, inheriting stdio. Returns the
- * npx exit code. Shared by `kobe skill install` and the startup prompt.
+ * Run the `npx skills add …` install flow, inheriting stdio (so the CLI's
+ * own agent picker is fully interactive). Returns the npx exit code.
  */
-export async function runNpxSkillsInstall(agent: string = DEFAULT_SKILL_AGENT): Promise<number> {
-  const proc = Bun.spawn(["npx", ...npxSkillsArgv({ agent })], {
+export async function runNpxSkillsInstall(agent?: string | readonly string[]): Promise<number> {
+  const proc = Bun.spawn(["npx", ...npxSkillsArgv(agent === undefined ? {} : { agent })], {
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
@@ -87,7 +124,7 @@ const HINT_SEEN_KEY = "skillHintSeen"
 export function kobeSkillPaths(opts: { home?: string; cwd?: string } = {}): string[] {
   const home = opts.home ?? homedir()
   const cwd = opts.cwd ?? process.cwd()
-  return [join(home, SKILL_REL_PATH), join(cwd, SKILL_REL_PATH)]
+  return [home, cwd].flatMap((root) => SKILL_REL_PATHS.map((rel) => join(root, rel)))
 }
 
 /** True if the kobe agent skill is installed at the user OR project level. */

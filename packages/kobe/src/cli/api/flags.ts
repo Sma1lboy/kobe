@@ -8,6 +8,7 @@
 
 import { resolve } from "node:path"
 import { expandTilde } from "../../lib/path-home.ts"
+import { getCustomEngineIds } from "../../state/repos.ts"
 import { ALL_VENDORS, type VendorId } from "../../types/vendor.ts"
 import { ApiError, type FlagSpec, type Flags, type ParsedArgs, type VerbSpec, helpStep } from "./types.ts"
 
@@ -116,6 +117,12 @@ export function validateAgainstSpec(verb: VerbSpec, flags: Flags): void {
     if (f.type === "enum" && f.values) {
       const raw = flags.get(f.name)
       if (raw !== undefined && !f.values.includes(raw)) {
+        // `--vendor` is the one OPEN enum: its `values` lists the built-ins
+        // for `--help`, but a user-registered custom engine id is equally
+        // valid (the daemon accepts any non-empty string — `optionalVendor`).
+        // Without this the spec gate rejected every custom engine before a
+        // handler could ever see it, while the TUI happily offered them.
+        if (f.name === "vendor" && getCustomEngineIds().includes(raw)) continue
         throw new ApiError(`--${f.name} must be one of ${f.values.join(", ")}`, "BAD_FLAG", helpStep(verb.name))
       }
     }
@@ -179,9 +186,29 @@ export class VerbArgs {
     return this.enumOf<T>(name) as T
   }
 
-  /** The shared `--vendor` flag, typed. */
+  /**
+   * The shared `--vendor` flag, typed.
+   *
+   * NOT `enumOf`: engines are an OPEN set. The spec's `values` lists the
+   * built-ins (that's what `--help` should show), but a user-registered
+   * custom engine — a slug in `customEngineIds`, its launch command in
+   * `engineCommand.<id>` — is equally valid, and the daemon already accepts
+   * any non-empty string for exactly this reason (`optionalVendor`). Reading
+   * the static list here made every custom engine unsettable through the
+   * CLI while the TUI selector offered it.
+   */
   vendor(): VendorId | undefined {
-    return this.enumOf<VendorId>("vendor")
+    const value = this.str("vendor")
+    if (value === undefined) return undefined
+    const builtins = this.spec("vendor").values ?? ALL_VENDORS
+    if (builtins.includes(value)) return value as VendorId
+    // Registry read is lazy — only a non-built-in id pays for the state read.
+    if (getCustomEngineIds().includes(value)) return value as VendorId
+    throw new ApiError(
+      `--vendor must be a built-in (${builtins.join(", ")}) or a registered custom engine id`,
+      "BAD_FLAG",
+      helpStep(this.verb.name),
+    )
   }
 
   /** Boolean flag (`true/1/yes` / `false/0/no`); undefined when absent. */

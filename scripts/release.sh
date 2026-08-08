@@ -9,9 +9,15 @@
 # docs/RELEASING.md.
 #
 # What it does:
+#   0. Verify local main == origin/main. A release publishes what CI builds
+#      from the pushed tag, so unpushed commits (never PR-reviewed) and a
+#      stale local tree are both refused. Unrelated UNCOMMITTED files are
+#      only reported — they can't reach the tag, and blocking on them froze
+#      releases whenever another session had work in progress.
 #   1. Gate: `bun run lint && bun run typecheck && (cd packages/kobe && bun run test)`.
 #      Any failure aborts before touching version/CHANGELOG — a red tree never
-#      gets tagged.
+#      gets tagged. Runs against the working tree as a fast fail; `release.yml`
+#      re-runs everything from the tag checkout before publishing.
 #   2. `changeset version` — derives the next version from pending changesets,
 #      rewrites packages/kobe/package.json, prepends notes to CHANGELOG.md, and
 #      deletes the consumed changesets.
@@ -39,17 +45,59 @@ if [ "$PENDING" = "0" ]; then
   exit 1
 fi
 
-# ── safety: working tree clean (except files the release itself rewrites) ─────
+# ── report (don't block on) unrelated uncommitted work ────────────────────────
+# What ships is the TAG, and the tag is built from committed content: the
+# release commit stages an explicit path list (see `git add` below) and CI
+# publishes from a fresh checkout of the tag. So a file someone else is
+# mid-edit on cannot reach npm — and blocking here meant one agent's
+# work-in-progress froze releases for everyone else on a fast-moving repo
+# where several sessions share the checkout.
+#
+# Still WORTH SAYING OUT LOUD, because the gate below runs against the
+# working tree: uncommitted edits can turn the local lint/typecheck/test
+# result green or red in ways the tag's own content wouldn't. That's a
+# fast-fail convenience, not the verdict — `release.yml` re-runs every gate
+# from the tag checkout before it publishes.
 DIRTY=$(git diff --name-only HEAD \
   | grep -v '^packages/kobe/package\.json$' \
   | grep -v '^packages/kobe/CHANGELOG\.md$' \
   | grep -v '^bun\.lock$' \
   | grep -v '^\.changeset/' || true)
 if [ -n "$DIRTY" ]; then
-  echo "Uncommitted changes in:" >&2
+  echo "Note: uncommitted changes present (NOT part of this release):" >&2
   echo "$DIRTY" | sed 's/^/  /' >&2
   echo "" >&2
-  echo "Commit or stash them before releasing." >&2
+  echo "  The release commit stages an explicit path list and CI publishes from" >&2
+  echo "  the tag, so these stay local. The gate below does run against them." >&2
+  echo "" >&2
+fi
+
+# ── safety: release from origin/main, not a local divergence ─────────────────
+# The release is a REMOTE artifact: CI builds from the pushed tag, and npm
+# gets whatever `origin/main` held. So local HEAD must already BE origin/main
+# — a local-only commit would be published without ever having passed PR CI,
+# and being behind means tagging a stale tree that clobbers nothing locally
+# but ships an old build. Neither is auto-fixable here (pull vs rebase vs
+# "that commit shouldn't ship" is a judgment call), so both stop.
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ]; then
+  echo "Error: releases cut from main only (on '$BRANCH')." >&2
+  exit 1
+fi
+git fetch origin main --quiet
+AHEAD=$(git rev-list --count origin/main..HEAD)
+BEHIND=$(git rev-list --count HEAD..origin/main)
+if [ "$BEHIND" != "0" ]; then
+  echo "Error: local main is $BEHIND commit(s) BEHIND origin/main." >&2
+  echo "  Tagging here would ship a stale tree. Pull first." >&2
+  exit 1
+fi
+if [ "$AHEAD" != "0" ]; then
+  echo "Error: local main is $AHEAD commit(s) AHEAD of origin/main:" >&2
+  git log --oneline origin/main..HEAD | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "  A release publishes what is on origin/main. Push these first (they" >&2
+  echo "  then go through CI), or drop them — don't publish unpushed work." >&2
   exit 1
 fi
 

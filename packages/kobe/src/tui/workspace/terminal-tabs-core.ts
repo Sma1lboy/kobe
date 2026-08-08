@@ -26,6 +26,7 @@ export {
   splitLeafNames,
   splitLeafPtyKey,
   tabTitle,
+  tabTitleStable,
   visibleNativeStatus,
 } from "./terminal-tab-split"
 

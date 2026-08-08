@@ -4,16 +4,23 @@ import type { AttentionInboxStore } from "@sma1lboy/kobe-daemon/daemon/attention
 import type { AutomationsStore } from "@sma1lboy/kobe-daemon/daemon/automations-store"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
+import type { FieldNote, NotesStore } from "@sma1lboy/kobe-daemon/daemon/notes-store"
 import type { QuotaUsageCache } from "@sma1lboy/kobe-daemon/daemon/quota-usage-cache"
-import type { DaemonHandlerContext } from "@sma1lboy/kobe-daemon/daemon/server"
+import {
+  type DaemonHandlerContext,
+  createDaemonHandlerRegistry,
+  dispatchDaemonRequest,
+} from "@sma1lboy/kobe-daemon/daemon/server"
 import type { WorkItemCache } from "@sma1lboy/kobe-daemon/daemon/work-items"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
+import type { Task } from "../../src/types/task.ts"
 
 export interface RecordedHandlerEffects {
   readonly published: Array<{ channel: string; payload: unknown }>
   readonly reported: Array<{ taskId: string; kind: string; detail?: unknown }>
   readonly issueCalls: Array<{ method: string; repo: unknown; op?: unknown }>
+  readonly noteCalls: Array<{ method: string; repo: unknown; note?: unknown }>
   readonly cleared: string[]
   readonly inboxRecords: Array<{ taskId: string; kind: string; detail?: unknown; tabId?: string }>
   readonly inboxDeleted: Array<{ taskId: string; tabId: string | null; at?: number }>
@@ -24,7 +31,12 @@ export interface RecordedHandlerEffects {
   idleReevaluations: number
 }
 
-/** Build a handler context around a partial fake Orchestrator — no socket. */
+/**
+ * Build a handler context around a partial fake Orchestrator — no socket.
+ * Two non-orchestrator keys are read off the same bag for the field-note
+ * store fake: `notes` (what `note.list` returns) and `noteAppendThrows`
+ * (drive the persist-failure path).
+ */
 export function fakeCtx(orch: Record<string, unknown> = {}): {
   ctx: DaemonHandlerContext
   rec: RecordedHandlerEffects
@@ -33,6 +45,7 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     published: [],
     reported: [],
     issueCalls: [],
+    noteCalls: [],
     cleared: [],
     inboxRecords: [],
     inboxDeleted: [],
@@ -94,6 +107,19 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
         return { repoRoot: String(repo), exists: true, nextId: 2, issues: [] }
       },
     } as unknown as IssuesStore,
+    // Field-note store fake. `appendThrows` lets a test drive the
+    // persist-failure path — filing must degrade to routing-only, never
+    // error the agent that filed the note.
+    notes: {
+      list: async (repo: unknown) => {
+        rec.noteCalls.push({ method: "list", repo })
+        return (orch.notes as FieldNote[] | undefined) ?? []
+      },
+      append: async (repo: unknown, note: unknown) => {
+        rec.noteCalls.push({ method: "append", repo, note })
+        if (orch.noteAppendThrows) throw new Error("disk on fire")
+      },
+    } as unknown as NotesStore,
     // Empty schedule store: automation behavior has its own suites
     // (automations-store / automation-runner), so handler tests only need the
     // surface to exist.
@@ -126,4 +152,44 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
     clientId: 7,
   }
   return { ctx, rec }
+}
+
+/**
+ * Task fixture + wire snapshot + the dispatch shim, shared by the two
+ * registry suites (`handlers.test.ts` and `handlers-task-crud.test.ts`).
+ * They live here rather than in either suite so neither imports the other.
+ */
+export const TASK: Task = {
+  id: "t1",
+  title: "demo task",
+  repo: "/repo",
+  branch: "kobe/demo",
+  worktreePath: "/repo/.kobe/worktrees/demo",
+  kind: "task",
+  status: "in_progress",
+  archived: false,
+  pinned: false,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-02T00:00:00.000Z",
+} as Task
+
+/** What `serializeTask(TASK)` puts on the wire (pinned literally on purpose). */
+export const SERIALIZED_TASK = {
+  id: "t1",
+  title: "demo task",
+  repo: "/repo",
+  branch: "kobe/demo",
+  worktreePath: "/repo/.kobe/worktrees/demo",
+  kind: "task",
+  status: "in_progress",
+  archived: false,
+  pinned: false,
+  vendor: undefined,
+  prStatus: undefined,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-02T00:00:00.000Z",
+}
+
+export function dispatch(name: string, payload: unknown, ctx: DaemonHandlerContext): Promise<unknown> {
+  return dispatchDaemonRequest(createDaemonHandlerRegistry(), name, payload, ctx)
 }

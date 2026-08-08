@@ -44,6 +44,7 @@ import {
 } from "./handlers.ts"
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import { DaemonLifetime, FIRST_GUI_GRACE_MS, resolveIdleGraceMs } from "./lifetime.ts"
+import { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
@@ -65,6 +66,7 @@ export {
   type DaemonRequestHandler,
 } from "./handlers.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
+export { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 export type { DaemonClientConnection } from "./client-connection.ts"
 
 export interface DaemonServerOptions {
@@ -179,6 +181,10 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // git common-dir, sharing the server's homeDir so sandbox/test homes
   // isolate. Handlers reach it through DaemonHandlerContext.issues.
   const issues = new IssuesStore(defaultIssuesStorePath(options.homeDir))
+  // Durable field notes (docs/design/dispatcher.md) — same key convention and
+  // homeDir isolation as the issue store. Written by `note.file`, read back at
+  // worktree launch so a fresh session starts with the repo's known gotchas.
+  const notes = new NotesStore(defaultNotesStorePath(options.homeDir))
   // Daemon-owned scheduled automations. The sweep that fires them is started
   // with the other collectors; this only loads the persisted schedules.
   const automations = await initAutomationsStore(options.homeDir)
@@ -370,6 +376,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       inbox,
       deletions,
       issues,
+      notes,
       automations,
       workItems,
       selfLink,

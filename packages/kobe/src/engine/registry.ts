@@ -47,6 +47,7 @@ import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
+import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
@@ -254,6 +255,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       ownsStatus: true,
       launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
     },
+    quotaUsage: () => fetchCodexQuotaUsage(),
   },
   copilot: {
     vendor: "copilot",
@@ -356,6 +358,20 @@ export function titleDisplayName(title: string, vendor: VendorId | null): string
  */
 export function getCapabilities(vendor: VendorId): EngineCapabilities | undefined {
   return engineEntry(vendor).capabilities
+}
+
+/**
+ * Built-in vendors that ship a quota probe. Quota is an ACCOUNT-level fact,
+ * not a task-level one: a logged-in Codex account has a balance worth showing
+ * whether or not any kobe task currently runs Codex. The daemon's usage poller
+ * asks for this list rather than deriving vendors from the task list, which
+ * silently hid every engine the user hadn't happened to open a task with.
+ * Vendors whose probe can't read a login just never publish a snapshot.
+ */
+export function vendorsWithQuotaProbe(): readonly VendorId[] {
+  return Object.values(BUILTIN_ENGINES)
+    .filter((entry) => entry.quotaUsage)
+    .map((entry) => entry.vendor)
 }
 
 /** Flat de-duped list of every model surfaced by every registered vendor. */

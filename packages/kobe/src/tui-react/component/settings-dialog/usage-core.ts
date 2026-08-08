@@ -38,6 +38,24 @@ export function formatReset(resetsAt: number | null, nowMs: number): string {
   return `→ ${d.getMonth() + 1}/${d.getDate()} ${clock}`
 }
 
+/** One window rendered as a single compact chip (the workspace footer line). */
+export interface UsageChipView {
+  readonly text: string
+  readonly tone: UsageTone
+}
+
+/**
+ * Bar-less one-line form of {@link usageRows} for the workspace footer:
+ * `5h 42% → 14:00`. Same tone thresholds, no padding — the footer packs
+ * several vendors onto one row, so every cell has to earn its width.
+ */
+export function usageChips(usage: EngineQuotaUsage, nowMs: number): UsageChipView[] {
+  return usage.windows.map((w) => ({
+    text: `${w.label} ${w.percent}%${formatReset(w.resetsAt, nowMs) ? ` ${formatReset(w.resetsAt, nowMs)}` : ""}`,
+    tone: toneOf(w.percent),
+  }))
+}
+
 /**
  * One aligned meter row per quota window, in the vendor's own order (the
  * usage API lists session before weekly). Label column width tracks the

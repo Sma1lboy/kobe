@@ -153,6 +153,36 @@ export function meaningfulAutoTitle(autoTitle: string | null | undefined): strin
   return trimmed
 }
 
+/**
+ * A tab's name for a surface that shows kobe's OWN state glyph beside it —
+ * the sidebar tree.
+ *
+ * `tabTitle` lets a status-owning engine's live OSC title BE the name, which
+ * is right in the tab strip: you are looking at that terminal, and claude's
+ * self-report is the status surface there (`visibleNativeStatus` suppresses
+ * our duplicate chip for exactly that reason). In the tree it is wrong twice
+ * over. The tree renders no live title (it lists tabs it does not host), so
+ * it falls back to `lastTitle` — a FROZEN status string from whenever that
+ * tab last reported, e.g. `⠐ 利用自进化…` still spinning on an idle row. And
+ * the tree already shows real state in its own glyph, derived from daemon
+ * activity, so the name repeating a stale one contradicts it.
+ *
+ * So: skip the engine-owned status titles and take the next stable thing
+ * down `tabTitle`'s own precedence (first-prompt summary, else the vendor
+ * default). A manual rename still wins — that's the user's name, not the
+ * engine's. Engines that don't claim `ownsStatus` are untouched: their OSC
+ * title is a real process name, which is a fine label.
+ */
+export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendor?: VendorId | null): string {
+  const vendor = liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined)
+  if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
+    return tabTitle(tab, taskVendor)
+  }
+  // `lastTitle: null` re-runs the same precedence with the engine's status
+  // string removed, rather than duplicating the fallback chain here.
+  return tabTitle({ ...tab, lastTitle: null }, taskVendor)
+}
+
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
   // Manual rename always wins; a conversation's first-prompt title beats
   // the numbered default; a multi-leaf SPLIT tab is a "group N" (its

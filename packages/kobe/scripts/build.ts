@@ -11,11 +11,14 @@
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
- * Skill distribution stays OUT of the npm tarball: the canonical SKILL.md
- * lives at `.agents/skills/kobe/SKILL.md` and ships via the Vercel Labs
- * agent-skills CLI (`npx skills add Sma1lboy/kobe`). `kobe skill install`
- * is just a convenience WRAPPER that runs that npx flow for the user — kobe
- * doesn't bundle or copy the file, so there's nothing to emit here.
+ * The canonical SKILL.md (`.agents/skills/kobe/SKILL.md`, ~8KB) is COPIED
+ * into the tarball. `npx skills add Sma1lboy/kobe` does a `git clone
+ * --depth 1`, which for this repo means 198MB of working tree — unusable
+ * on a slow connection for a file this size. Since the user already has
+ * kobe installed, `kobe skill install` points the agent-skills CLI at the
+ * bundled copy instead (a local path, no network). The CLI still owns
+ * agent detection, target dirs, and symlinking — kobe never reimplements
+ * that registry.
  *
  * The published artifact carries the browser dashboard alongside the TUI.
  * `kobe web` serves the built SPA from dist/web-ui through the daemon-owned
@@ -26,6 +29,9 @@ import { existsSync } from "node:fs"
 import { chmod, cp, mkdir, rm } from "node:fs/promises"
 
 const OUT_FILES = ["./dist/cli/index.js"]
+/** Canonical skill source (repo root) → its home in the tarball. */
+const SKILL_SRC_DIR = "../../.agents/skills/kobe"
+const SKILL_OUT_DIR = "./dist/skills/kobe"
 const WEB_PACKAGE_DIR = "../kobe-web"
 const WEB_DIST_DIR = `${WEB_PACKAGE_DIR}/dist`
 const WEB_OUT_DIR = "./dist/web-ui"
@@ -62,6 +68,21 @@ async function copyWebUi(): Promise<void> {
   for (const file of WEB_PTY_SIDE_CAR_FILES) {
     await cp(`${WEB_PACKAGE_DIR}/${file}`, `${WEB_OUT_DIR}/${file}`, { force: true })
   }
+}
+
+/**
+ * Copy the canonical skill into the tarball. Hard-fails when it's missing:
+ * a silently skill-less build ships a `kobe skill install` that can only
+ * report "not bundled", which is worse than a red build.
+ */
+async function copySkill(): Promise<void> {
+  if (!existsSync(`${SKILL_SRC_DIR}/SKILL.md`)) {
+    console.error(`build failed: canonical skill missing at ${SKILL_SRC_DIR}/SKILL.md`)
+    process.exit(1)
+  }
+  await rm(SKILL_OUT_DIR, { recursive: true, force: true })
+  await mkdir(SKILL_OUT_DIR, { recursive: true })
+  await cp(SKILL_SRC_DIR, SKILL_OUT_DIR, { recursive: true, force: true })
 }
 
 await buildWebUi()
@@ -110,5 +131,6 @@ if (!ptyHostNode.success) {
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
 await copyWebUi()
+await copySkill()
 
-console.log(`built ${OUT_FILES.join(", ")}, ./dist/cli/pty-host-node.mjs`)
+console.log(`built ${OUT_FILES.join(", ")}, ./dist/cli/pty-host-node.mjs, ${SKILL_OUT_DIR}`)

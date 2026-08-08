@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": null,
   "outputDirectory": ".",
+  "ignoreCommand": "exit 1",
   "cleanUrls": true,
   "redirects": [
     {

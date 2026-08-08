@@ -207,9 +207,12 @@ export type DaemonRequestName =
   // channel (`kobe api notify`). The daemon only validates + publishes.
   | "notice.send"
   // Field note (docs/design/dispatcher.md): a worktree session files a
-  // one-line resolved gotcha; the daemon forwards it to the repo's
-  // dispatcher seat (the main session) over `session.deliver`.
+  // one-line resolved gotcha. The daemon APPENDS it to the durable per-repo
+  // notes store, then forwards it to the repo's dispatcher seat (the main
+  // session) over `session.deliver`. `note.list` reads the store back —
+  // the launch path seeds each fresh worktree session with it.
   | "note.file"
+  | "note.list"
   // Hosted PTYs (v4) — the tmux-persistence replacement for the embedded
   // terminal. Served by the standalone PTY HOST process (`kobe pty-host`,
   // its own socket — see `pty-server.ts`), NOT by the daemon: the daemon

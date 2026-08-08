@@ -72,6 +72,13 @@ export interface DaemonRuntimeAdapter {
    */
   quotaUsage(vendor: VendorId): Promise<EngineQuotaUsage | null>
   /**
+   * Vendors whose adapter ships a quota probe at all. Quota is ACCOUNT-level,
+   * so the usage poller walks this list rather than the vendors currently in
+   * play across tasks — otherwise an engine the user is logged into but has
+   * no open task for never gets asked, and its balance silently never shows.
+   */
+  vendorsWithQuotaProbe(): readonly VendorId[]
+  /**
    * Deliver a prompt into a task's LIVE hosted engine session only (never
    * spawns). Returns false when no alive engine session exists.
    */
