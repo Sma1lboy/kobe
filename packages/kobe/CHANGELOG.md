@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.50
+
+### Patch Changes
+
+- e3393fd: Ship the 0.8.49 content — that tag's build could not resolve two new files that were left untracked, so it published nothing and npm stayed on 0.8.47.
+
 ## 0.8.49
 
 ### Patch Changes
