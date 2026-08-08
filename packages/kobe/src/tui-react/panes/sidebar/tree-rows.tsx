@@ -45,6 +45,9 @@ export type TreeRowShared = {
   /** The sidebar's ~2s poll tick — drives the ±stats poller. */
   readonly branchTick: number
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
+  /** Per-tab activity (taskId → tabId → state) — the precise signal for a
+   *  tab row; `engineState` is the task-level rollup fallback. */
+  readonly engineTabState?: ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
@@ -173,8 +176,18 @@ export function TabTreeRow(props: {
   // task-scoped). A non-agent tab (shell/command/content) is outside the
   // vocabulary — plain `·`, we don't care about its state.
   const isAgent = props.tab.engine === true
-  const carriesActivity = isAgent && props.tab.active === true
-  const activity = carriesActivity ? shared.engineState?.get(props.task.id) : undefined
+  // Prefer THIS tab's own activity over the task rollup. The daemon reports
+  // both levels, but the task entry is last-event-wins across every tab — so
+  // a task whose live work is in tab-2 reads as whatever tab-N reported most
+  // recently, and a genuinely running row sat at `○` until you opened it.
+  // Tab-level is the precise answer; the rollup stays the fallback for
+  // sessions kobe didn't spawn as a tab (a hand-typed `claude` in a shell
+  // reports task-level only — see the `engine-state` channel contract).
+  const tabActivity = isAgent ? shared.engineTabState?.get(props.task.id)?.get(props.tab.id) : undefined
+  const carriesActivity = isAgent && (tabActivity !== undefined || props.tab.active === true)
+  const activity = isAgent
+    ? (tabActivity ?? (props.tab.active ? shared.engineState?.get(props.task.id) : undefined))
+    : undefined
   const carriesState = activity !== undefined
   // The unread lamp (herdr ● on turn_complete) is for sessions you are NOT
   // looking at — sitting in the tab digests it to ✓ on the same render.

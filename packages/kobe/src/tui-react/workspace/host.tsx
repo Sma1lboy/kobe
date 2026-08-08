@@ -32,6 +32,7 @@ import type { SidebarHover } from "../panes/sidebar/Sidebar"
 import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
+import { WorkspaceFrame } from "./host-footer"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { renderContentPage, renderFullWindowPage, useHostPagesState } from "./host-pages"
 import { HostSidebar } from "./host-sidebar"
@@ -72,6 +73,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
+  // Per-TAB activity. The daemon reports both levels; the task entry is a
+  // last-event-wins rollup, so a task whose live tab is not the one the
+  // rollup last described reads as idle. The sidebar tree needs the tab
+  // level to light the right row.
+  const engineTabState = useAccessor(orch.engineTabStatesSignal())
   // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
   // icon immediately; authoritative events always win, and a superseded
   // mark is dropped so the overlay never becomes a second source of truth.
@@ -332,7 +338,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   return (
-    <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
+    <WorkspaceFrame orchestrator={orch}>
       {/* Tasks sidebar stays visible in zen (tmux parity) — its
           ☯ ZEN chip is also the exit affordance. */}
       {/* Borderless rail (owner call 2026-07-27): no frame, no divider —
@@ -368,6 +374,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           focus.setFocused("workspace")
         }}
         engineState={sidebarEngineState}
+        engineTabState={engineTabState}
         engineLifecycle={engineLifecycle}
         taskJobs={taskJobs}
         worktreeChanges={worktreeChanges}
@@ -469,7 +476,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           status line). Width-capped to the rail so lines never spill into
           the terminal. */}
       <PrefixHud left={1} width={SIDEBAR_WIDTH - 2} />
-    </box>
+    </WorkspaceFrame>
   )
 }
 
