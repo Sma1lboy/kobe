@@ -118,6 +118,10 @@ export async function send(ctx: VerbContext): Promise<unknown> {
     }
     taskId = active
   }
+  const tab = ctx.args.str("tab")
+  if (tab && tab !== "new" && !/^tab-[A-Za-z0-9-]+$/.test(tab)) {
+    throw new ApiError(`--tab must be "new" or a tab id like tab-2 (got ${JSON.stringify(tab)})`, "BAD_TAB")
+  }
   const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
   const delivered = await ctx.runtime.deliverPrompt(
     daemon,
@@ -128,6 +132,7 @@ export async function send(ctx: VerbContext): Promise<unknown> {
       vendor: res.task.vendor as VendorId | undefined,
       modelEffort: res.task.modelEffort,
       repo: res.task.repo,
+      tab,
     },
     prompt,
   )

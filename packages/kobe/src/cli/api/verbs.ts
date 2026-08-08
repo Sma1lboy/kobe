@@ -176,7 +176,18 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "send",
     summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
-    flags: [F.taskId(false), F.prompt(true, "Text pasted + submitted into the engine pane.")],
+    flags: [
+      F.taskId(false),
+      F.prompt(true, "Text pasted + submitted into the engine pane."),
+      {
+        name: "tab",
+        type: "string",
+        required: false,
+        placeholder: "TAB",
+        description:
+          'Tab addressing: "new" spawns the prompt in a fresh engine tab; "tab-N" delivers to that exact alive tab (error when dead/absent). Omitted = the canonical engine tab.',
+      },
+    ],
     handler: send,
   },
   {

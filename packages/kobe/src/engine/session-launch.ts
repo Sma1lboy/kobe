@@ -125,9 +125,9 @@ export interface EngineSessionLaunch {
   readonly command: readonly string[]
 }
 
-/** Canonical PTY Host key for a task's first interactive engine tab. */
-export function engineSessionKey(taskId: string): string {
-  return `${taskId}::tab-1`
+/** Canonical PTY Host key for a task's interactive engine tab (first by default). */
+export function engineSessionKey(taskId: string, tabId = "tab-1"): string {
+  return `${taskId}::${tabId}`
 }
 
 /** Build one PTY Host spawn spec shared by interactive and headless entry. */
@@ -169,5 +169,5 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   // them apart. The keepAlive fallback shell inherits it too, so a manual
   // `claude` run in that tab after an engine exit is still attributed.
   const identity = `export KOBE_TASK_ID=${quoteShellArg(input.task.id)} KOBE_TAB_ID=${quoteShellArg(input.tabId ?? "tab-1")}\n`
-  return { key: engineSessionKey(input.task.id), command: [input.shell, "-ilc", identity + script] }
+  return { key: engineSessionKey(input.task.id, input.tabId), command: [input.shell, "-ilc", identity + script] }
 }
