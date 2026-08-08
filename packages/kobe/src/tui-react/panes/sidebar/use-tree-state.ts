@@ -30,7 +30,7 @@ import {
   treeFlatIds,
 } from "../../../tui/panes/sidebar/tree-core"
 import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
-import { tabTitle } from "../../../tui/workspace/terminal-tab-split"
+import { tabTitleStable } from "../../../tui/workspace/terminal-tab-split"
 import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
 import type { TabsSnapshotKv } from "../../workspace/terminal-tabs-persist"
 import { knownTaskTabs } from "../../workspace/terminal-tabs-shared"
@@ -96,10 +96,12 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         task.id,
         known.tabs.map((tab) => ({
           id: tab.id,
-          // No live name here: the tree renders tabs it does not host, so
-          // `tabTitle` falls back to the tab's last recorded title — the
-          // same path the Inbox takes.
-          label: tabTitle(tab, vendor),
+          // `tabTitleStable`, NOT `tabTitle`: for a status-owning engine the
+          // recorded title IS its self-reported status (`⠐ 利用自进化…`), and
+          // the tree has no live stream to refresh it — so the row would
+          // wear a frozen spinner phrase that contradicts the state glyph
+          // right next to it, which kobe derives from daemon activity.
+          label: tabTitleStable(tab, vendor, liveEngines.get(tabPtyKeyFor(task.id, tab)) ?? tab.liveVendor),
           // The active tab carries the task's state glyph (activity is
           // task-scoped; the active tab is the session it describes).
           active: tab.id === known.activeId,
