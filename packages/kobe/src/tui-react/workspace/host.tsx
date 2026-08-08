@@ -1,10 +1,6 @@
 /** @jsxImportSource @opentui/react */
-/**
- * Default PureTUI workspace: Sidebar | engine Terminal |
- * Files. `useAccessor` subscribes React to framework-free daemon state; imperative
- * terminal handoffs use refs, and worktree-scoped TerminalTabs mount by key.
- * Settings, worktrees, and update surfaces swap in-process instead of exiting.
- */
+/** Default PureTUI workspace: Sidebar | engine Terminal | Files.
+ * Daemon state is reactive; terminal handoffs stay imperative and task-scoped. */
 
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -74,14 +70,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
   const engineLifecycle = useAccessor(orch.engineLifecycleSignal())
-  // Per-TAB activity. The daemon reports both levels; the task entry is a
-  // last-event-wins rollup, so a task whose live tab is not the one the
-  // rollup last described reads as idle. The sidebar tree needs the tab
-  // level to light the right row.
+  // Task activity is a last-event-wins rollup; tab activity lights the exact live row.
   const engineTabState = useAccessor(orch.engineTabStatesSignal())
-  // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
-  // icon immediately; authoritative events always win, and a superseded
-  // mark is dropped so the overlay never becomes a second source of truth.
+  // Local enter/esc updates the icon immediately; authoritative events replace that mark.
   const optimisticMarks = useAccessor(optimisticActivityStore)
   const sidebarEngineState = useMemo(
     () => mergeOptimisticActivity(engineState, optimisticMarks),
