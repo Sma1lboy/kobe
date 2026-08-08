@@ -136,4 +136,14 @@ describe("withClaudeSessionId", () => {
       expect(withClaudeSessionId(argv, "claude")).toEqual({ argv, sessionId: null })
     }
   })
+
+  it("recognizes the attached --flag=value form the command parser preserves", () => {
+    // `parseEngineCommand` keeps `--resume=<id>` as ONE token; an exact-token
+    // guard would miss it and append a second session control, which claude
+    // then refuses to launch.
+    for (const flag of ["--session-id", "--resume", "--from-pr"]) {
+      const argv = ["claude", `${flag}=x`]
+      expect(withClaudeSessionId(argv, "claude")).toEqual({ argv, sessionId: null })
+    }
+  })
 })
