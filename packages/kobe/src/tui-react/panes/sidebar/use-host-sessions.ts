@@ -22,7 +22,21 @@ const POLL_MS = 2_000
 
 const EMPTY: readonly LiveSession[] = []
 
-export function useHostSessions(enabled = true): readonly LiveSession[] {
+/**
+ * Off under a test runner. `getSharedPtyClient` caches ONE connection per
+ * process, and bun-test runs every render file in one process — so a sidebar
+ * mounted by any test would connect to whatever socket was current and pin
+ * that client for the whole run. `pty-hosted.test.ts` then points
+ * `KOBE_PTY_SOCKET_PATH` at its own fixture server in `beforeAll`, asks for
+ * the client, and gets the stale one aimed somewhere else: all ten of its
+ * cases hit the 5s timeout. A backstop for orphaned rows must not be able to
+ * do that to the suite that owns the real socket.
+ */
+function pollingAllowed(): boolean {
+  return process.env.NODE_ENV !== "test" && process.env.BUN_TEST !== "1" && process.env.VITEST !== "true"
+}
+
+export function useHostSessions(enabled = pollingAllowed()): readonly LiveSession[] {
   const [sessions, setSessions] = useState<readonly LiveSession[]>(EMPTY)
 
   useEffect(() => {
