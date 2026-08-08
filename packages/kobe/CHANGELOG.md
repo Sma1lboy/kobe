@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.8.49
+
+### Patch Changes
+
+- 7f6bd56: The sidebar tree now shows tabs for sessions the CLI started, and `--vendor` accepts custom engines.
+
+  A task started headlessly (`kobe api add --prompt`, `kobe api send`, a routine firing) ran a live engine that the sidebar could not see: the tree lists a worktree's tabs from the task's persisted snapshot, and only a mounted `TerminalTabs` ever wrote one — so agent-driven work, which is mostly how work enters kobe, rendered as empty worktree rows. The CLI launch path now seeds that snapshot (write-once, so a mounted TUI still owns real tab state), and the tree falls back to the pty host's live session list for anything neither writer covered.
+
+  `kobe api set-vendor --vendor <custom-engine>` was rejected before any handler saw it: the flag layer validated against the closed built-in list while the TUI selector offered registered custom engines and the daemon accepted them. Both CLI gates now consult `customEngineIds`.
+
+- f4cb869: Field notes now persist and seed the next session, and `kobe api digest` measures the fleet.
+
+  Field notes used to evaporate with the dispatcher's transcript, so a gotcha resolved on Monday was invisible to Tuesday's worktree. `kobe api note` now appends to a durable per-repo store (newest 50, keyed by git common-dir) and every fresh worktree session is launched knowing the newest 15 — presented as prior claims with provenance, not instructions. `kobe api note-list --repo PATH` reads them back.
+
+  `kobe api digest --repo PATH [--since-days N]` aggregates worker-reported task outcomes and routine run statuses over a window. It reads state kobe already persisted and had no reader for, so a change to how the fleet works now has a number it has to move.
+
+- Show subscription quota on a footer line under the workspace. The daemon's existing usage cache already snapshots Claude's quota windows; Codex now has a probe too, read from the `rate_limits` block its CLI records in its own rollout JSONL (no network, no extra polling). Vendors with no readable quota don't render, so the line is absent rather than empty.
+
+  Also fixes the usage poller only asking vendors that some open task happened to use — a balance belongs to the account, so an engine you're logged into but have no task for was silently never polled (this hid Codex usage from the Settings dashboard too, not just the new footer).
+
+- b6224d3: Remove the desktop GUI chat shell and Agent Trace integration that was unintentionally merged into `main`. The experiment and its follow-up work remain available on the dedicated feature branch.
+- `kobe skill install` no longer downloads the repo. `npx skills add Sma1lboy/kobe` does a `git clone --depth 1`, which for this repo is ~198MB of working tree to deliver an 8KB SKILL.md — effectively un-installable on a slow connection. The skill now ships inside the npm package and install points the agent-skills CLI at that local copy, so it needs no network at all.
+
+  It also stops hard-coding `claude-code`. With no `--agent`, the agent-skills CLI detects your installed agents and asks — kobe deliberately keeps no agent registry of its own. The real SKILL.md lands in `.agents/skills/kobe/` with agent dirs symlinked at it, and `kobe skill status` now finds installs in either location. Name agents yourself by repeating the flag (`--agent claude-code --agent codex`); a comma-joined list is rejected instead of silently installing only the first.
+
+- 21bf419: A sidebar tab row lights from its own activity instead of waiting to be opened.
+
+  The row asked the task-level activity map, which is a last-event-wins rollup across every tab — so a task whose live work sat in a non-active tab showed the resting `○` on every row, and only opening it revealed a running engine. The daemon has reported per-tab state all along (nothing consumed it); the tree now reads that first and keeps the task rollup as the fallback for sessions kobe didn't spawn as a tab, like a hand-typed `claude` in a shell.
+
+- 310ec77: Sidebar tab rows show a stable name instead of the engine's frozen status line.
+
+  claude and codex both put live activity in their terminal title, and the tree renders tabs it does not host — so with no live stream to refresh it, a row fell back to the last recorded title and sat wearing a stale spinner phrase (`⠐ 利用自进化…`) that contradicted the state glyph right beside it. kobe derives that glyph from daemon activity; the name now comes from the tab's own stable identity (manual rename, else the first-prompt summary, else the engine default). Engines that don't claim their title, like copilot, keep showing their real process name.
+
 ## 0.8.48
 
 ### Patch Changes
