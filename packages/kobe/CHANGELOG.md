@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.51
+
+### Patch Changes
+
+- 9e44930: Ship the 0.8.49/0.8.50 content. Both tags failed their release build and published nothing, so npm stayed on 0.8.47: the first could not resolve two new files that had been left untracked, and the second hit a render suite the sidebar's new pty-host poll was breaking. Both are fixed.
+
 ## 0.8.50
 
 ### Patch Changes
