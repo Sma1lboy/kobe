@@ -228,6 +228,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     sound: () => prefs.toggleSound(),
     crossTask: () => prefs.toggleCrossTask(),
     sidebarHover: () => prefs.toggleSidebarHover(),
+    keyHints: () => prefs.toggleKeyHints(),
     splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenDefaultOn: () => prefs.toggleZenDefaultOn(),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),

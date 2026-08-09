@@ -48,6 +48,12 @@ export const en = {
     sound: "Sound",
     crossTask: "Notify for background tasks",
     sidebarHover: "Task hover tooltips",
+    /** SubSection title for the keyboard-hints toggle */
+    keyHints: "Keyboard hints",
+    keyHintsHint:
+      "The status-bar command/help reminder and the one-line first-use key hints in the sidebar and files panes. Re-enabling relights pane hints that were dismissed by use.",
+    /** Checkbox row label */
+    keyHintsShow: "Show keyboard hints",
     zen: "Zen mode",
     zenHint:
       "The `zen` chip (above the file list) and `prefix`+z collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
@@ -130,6 +136,15 @@ export const en = {
     hint: "Edit the YAML below to rebind direct and PureTUI prefix chords; changes reload live. Press F1 anywhere for the live keymap with every binding id.",
     configFile: "Config file",
     notCreated: "  (not created yet)",
+    /** Heading for the prefix/grammar block; {prefix} is the live first stroke */
+    prefixTitle: "Command layer ({prefix})",
+    /** One-paragraph grammar summary; {prefix} live first stroke, {timeout} live second-stroke window in ms */
+    prefixHint:
+      "Bare keys act in the focused pane; a small one-press set covers frequent Kobe actions; {prefix} opens the command map ({timeout}ms second-stroke window — hold on and a guide appears). Prefix bindings keep their pane scope and modal rules.",
+    /** Shown as the {prefix} value when the user disabled the prefix in YAML */
+    prefixDisabled: "disabled",
+    /** Trailing note listing non-rebindable ids; hidden when there are none */
+    fixed: "Fixed (not rebindable): {ids}.",
     example: "Example",
     overridesApplied: "Overrides applied",
     none: "none",
@@ -217,6 +232,10 @@ export const zh: typeof en = {
     sound: "声音",
     crossTask: "为后台任务发送通知",
     sidebarHover: "任务悬停提示",
+    keyHints: "键盘提示",
+    keyHintsHint:
+      "状态栏的命令/帮助提醒，以及侧栏和文件面板的一行首用按键提示。重新开启会重新点亮已因使用而熄灭的面板提示。",
+    keyHintsShow: "显示键盘提示",
     zen: "禅模式",
     zenHint:
       "`zen` 标记（文件列表上方）和 `prefix`+z 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
@@ -298,6 +317,11 @@ export const zh: typeof en = {
     hint: "编辑下面的 YAML 来重绑定直接按键和 PureTUI prefix 组合；修改会实时加载。任意位置按 F1 查看带每个绑定 id 的实时键位表。",
     configFile: "配置文件",
     notCreated: "  (尚未创建)",
+    prefixTitle: "命令层（{prefix}）",
+    prefixHint:
+      "裸键作用于当前聚焦面板；少量单次快捷键覆盖高频 Kobe 操作；{prefix} 打开命令层（第二击窗口 {timeout}ms — 稍等会出现命令指南）。Prefix 绑定保持原有的面板作用域和 modal 规则。",
+    prefixDisabled: "已禁用",
+    fixed: "固定（不可重绑定）：{ids}。",
     example: "示例",
     overridesApplied: "已应用的覆盖",
     none: "无",

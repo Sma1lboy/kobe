@@ -41,6 +41,7 @@ import {
   type EditorKind,
   normalizeEditorKind,
 } from "../../../tui/lib/editor-prefs"
+import { KEY_HINTS_ENABLED_KEY, PANE_HINT_USED_KEYS, keyHintsEnabled } from "../../../tui/lib/keyboard-hints"
 import type { KVContext } from "../../context/kv"
 import { useT } from "../../i18n"
 import type { DialogContext } from "../../ui/dialog"
@@ -78,6 +79,18 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   function toggleSidebarHover(): void {
     kv.set("sidebar.hover.enabled", !sidebarHoverEnabled())
+  }
+
+  // Keyboard hints: the status-bar micro-hint + the panes' first-use hint
+  // lines. Default ON. Re-enabling also relights pane hints already
+  // extinguished by use — that is the "show me the hints again" gesture.
+  function keyHintsOn(): boolean {
+    return keyHintsEnabled(kv.get(KEY_HINTS_ENABLED_KEY, true))
+  }
+  function toggleKeyHints(): void {
+    const next = !keyHintsOn()
+    kv.set(KEY_HINTS_ENABLED_KEY, next)
+    if (next) for (const key of Object.values(PANE_HINT_USED_KEYS)) kv.set(key, false)
   }
 
   // Appearance: how split leaves draw — full box frames or single dividers.
@@ -287,6 +300,8 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleCrossTask,
     sidebarHoverEnabled,
     toggleSidebarHover,
+    keyHintsOn,
+    toggleKeyHints,
     splitStyle,
     selectSplitStyle,
     zenDefaultOn,

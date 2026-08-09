@@ -24,6 +24,33 @@ less-frequent command layer. The embedded terminal is the passthrough boundary:
 unreserved keys, including the prefix first stroke, remain engine/shell input.
 Press `ctrl+q` to leave it before opening the command layer.
 
+## Discoverability (2026-08-09)
+
+Four restrained surfaces teach the grammar — none re-implements the
+which-key map, and all captions resolve through the live keymap
+(`src/tui/lib/keyboard-hints.ts`), so a rebound chord shows its new key and
+an unbound/disabled one drops out:
+
+- **Status-bar micro-hint** — a permanent `{prefix} commands · F1 help` pair
+  in the workspace footer's right corner. Inside the embedded terminal it
+  swaps the prefix token for the `ctrl+q` escape hatch (the prefix first
+  stroke passes through to the PTY there); with a modal open, or the prefix
+  disabled and help unbound, tokens drop until nothing renders.
+- **First-use pane hints** — one muted line per vim-style pane (sidebar:
+  `j/k move · ⏎ open`; files: move/fold/open/diff). Using that pane's own
+  nav/select keys extinguishes its line permanently; the files pane then
+  falls back to its short permanent `⏎ open · d diff` footer.
+- **Onboarding wizard "Keyboard basics" page** — one informational screen
+  after the first-run questions (skippable with the wizard).
+- **Settings** — General → "Keyboard hints" toggles all hint surfaces
+  (re-enabling relights extinguished pane hints); Keybindings keeps a
+  one-paragraph grammar summary with the live prefix/timeout values.
+
+Hints are text-only on the ambient background (no opaque fill), so normal
+and transparent themes both stay readable — pinned by
+`test/tui-react/keyboard-overlay-theme.test.ts` and the `/harness` visual
+journey `keyboard hints render and extinguish in the real OpenTUI`.
+
 ## PureTUI prefix
 
 The default first stroke is `ctrl+a`. Prefix-only actions then consume one

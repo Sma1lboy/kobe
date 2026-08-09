@@ -139,6 +139,7 @@ export function GeneralSettingsSection(
   const soundRow = rowIdx("sound")
   const crossTaskRow = rowIdx("cross-task")
   const sidebarHoverRow = rowIdx("sidebar-hover")
+  const keyHintsRow = rowIdx("key-hints")
   const zenDefaultOnRow = rowIdx("zen-default-on")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
   const editorKindRow = rowIdx("editor-kind")
@@ -267,6 +268,16 @@ export function GeneralSettingsSection(
             bold={true}
           >
             {`${check(prefs.sidebarHoverEnabled())} ${t("settings.general.sidebarHover")}`}
+          </Row>
+        </SubSection>
+        <SubSection title={t("settings.general.keyHints")} hint={t("settings.general.keyHintsHint")}>
+          <Row
+            cursor={isBodyCursor(keyHintsRow)}
+            onMouseUp={activate(keyHintsRow, prefs.toggleKeyHints)}
+            fg={prefs.keyHintsOn() ? theme.accent : theme.textMuted}
+            bold={true}
+          >
+            {`${check(prefs.keyHintsOn())} ${t("settings.general.keyHintsShow")}`}
           </Row>
         </SubSection>
         <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>

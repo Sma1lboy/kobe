@@ -21,6 +21,7 @@ import { en as automations, zh as automationsZh } from "./messages/automations"
 import { en as common, zh as commonZh } from "./messages/common"
 import { en as files, zh as filesZh } from "./messages/files"
 import { en as help, zh as helpZh } from "./messages/help"
+import { en as hints, zh as hintsZh } from "./messages/hints"
 import { en as history, zh as historyZh } from "./messages/history"
 import { en as kanban, zh as kanbanZh } from "./messages/kanban"
 import { en as keys, zh as keysZh } from "./messages/keys"
@@ -47,6 +48,7 @@ export const en = {
   update,
   quickTask,
   help,
+  hints,
   history,
   common,
   keys,
@@ -75,6 +77,7 @@ export const zh: Messages = {
   update: updateZh,
   quickTask: quickTaskZh,
   help: helpZh,
+  hints: hintsZh,
   history: historyZh,
   common: commonZh,
   keys: keysZh,

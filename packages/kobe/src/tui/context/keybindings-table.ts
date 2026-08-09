@@ -169,8 +169,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // Sidebar shortcut — single letter `s` mirrors the n/q pattern
-    // (plain keys when the tasks list is focused). `ctrl+,` still
-    // works from anywhere as the modifier-prefixed equivalent.
+    // (plain keys when the tasks list is focused). `prefix+,`
+    // (settings.open above) is the from-anywhere equivalent.
     id: "settings.open.sidebar",
     scope: "sidebar",
     keys: ["s"],

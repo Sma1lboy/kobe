@@ -58,6 +58,7 @@ import {
   sameStatusEntries,
   statusRows,
 } from "../../../tui/panes/filetree/rows"
+import { PaneKeyHint, usePaneHintMark } from "../../component/keyboard-hints"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
@@ -337,22 +338,28 @@ export function FileTree(props: FileTreeProps) {
     [activateRow],
   )
 
+  // Using the pane's own nav/open keys extinguishes its first-use hint.
+  const markKeysUsed = usePaneHintMark("files")
+
   // `useBindings` re-reads the config per keypress through a render-refreshed
   // ref, so these closures always see the latest rows/cursor/tab.
   useBindings(() => ({
     enabled: props.focused ?? true,
     bindings: fileTreeBindings({
       moveDown: () => {
+        markKeysUsed()
         if (rows.length === 0) return
         setCursorIndex((i) => Math.min(i + 1, rows.length - 1))
       },
       moveUp: () => {
+        markKeysUsed()
         if (rows.length === 0) return
         setCursorIndex((i) => Math.max(i - 1, 0))
       },
       setTab,
       currentTab: () => tab,
       openCurrent: () => {
+        markKeysUsed()
         const row = rows[cursorIndex]
         if (row) activateRow(row)
       },
@@ -459,12 +466,12 @@ export function FileTree(props: FileTreeProps) {
       </scrollbox>
 
       {/* Footer hint — shown only when a worktree is loaded so the
-         "no task" placeholder stays clean. */}
+         "no task" placeholder stays clean. First use shows the fuller
+         teaching line, then the pane's permanent short set; every cap is
+         live keymap data (component/keyboard-hints.tsx). */}
       {props.worktreePath != null ? (
         <box flexDirection="row" justifyContent="flex-end" paddingTop={1} flexShrink={0}>
-          <text fg={theme.textMuted} wrapMode="none">
-            {t("files.footer.openHint")}
-          </text>
+          <PaneKeyHint pane="files" />
         </box>
       ) : null}
     </box>

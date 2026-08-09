@@ -16,3 +16,16 @@ describe("which-key overlay theme surface", () => {
     expect(overlay.match(/backgroundColor=\{theme\.backgroundDialog\}/g)).toHaveLength(3)
   })
 })
+
+describe("keyboard hint theme surface", () => {
+  it("stays text-only on the ambient background so transparent themes keep it readable", () => {
+    // The hints deliberately paint NO background of their own: over a normal
+    // theme they sit on the frame/panel fill, over a transparent theme the
+    // host terminal shows through and muted fg text stays legible. Painting
+    // an opaque panel color here would regress the transparent mode #388
+    // fixed for the which-key overlay.
+    const hints = source("src/tui-react/component/keyboard-hints.tsx")
+    expect(hints).not.toContain("backgroundColor=")
+    expect(hints.match(/fg=\{theme\.textMuted\}/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+})

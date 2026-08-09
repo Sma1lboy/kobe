@@ -142,6 +142,10 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "automations.open": () => deps.openAutomations(),
         "workItems.open": () => deps.openWorkItems(),
         "task.moveMode": () => deps.enterMoveMode(),
+        // prefix+, — the global companion to the sidebar's bare `s`. The
+        // row shipped in the table (and docs) without a handler here, so
+        // the chord was dead outside the sidebar.
+        "settings.open": () => deps.openSettings(),
         "files.createPR": () => deps.createPR(),
         "task.openEditor": () => {
           if (deps.selectedId) deps.openTaskWorktree(deps.selectedId)

@@ -25,7 +25,7 @@
 
 import type { KeyEvent, KeyHandler } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { createContext, useContext, useEffect, useRef } from "react"
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore } from "react"
 import {
   type Binding,
   type BindingReachability,
@@ -109,6 +109,29 @@ export function currentBindingReachability(): BindingReachability {
   return bindingReachability(stack)
 }
 
+// Registration-change signal. Registrations land in mount EFFECTS (after the
+// tree rendered), so anything that derives render output from the stack —
+// the status-bar key hint reads `currentBindingReachability()` — would
+// otherwise compute against an empty/stale stack on its first pass and never
+// find out. Bumped on every insert/remove; consumers subscribe below.
+let stackVersion = 0
+const stackListeners = new Set<() => void>()
+function bumpStackVersion(): void {
+  stackVersion++
+  for (const listener of stackListeners) listener()
+}
+
+/** Re-render the caller whenever bindings register or unregister. */
+export function useBindingStackVersion(): number {
+  return useSyncExternalStore(
+    (onChange) => {
+      stackListeners.add(onChange)
+      return () => stackListeners.delete(onChange)
+    },
+    () => stackVersion,
+  )
+}
+
 /**
  * Register a set of bindings for the lifetime of the calling component.
  * The `config` function is re-evaluated on every keypress via a ref, so
@@ -140,9 +163,11 @@ export function useBindings(config: () => BindingsConfig, opts?: { modalOwner?: 
       modalMember: opts?.modalOwner === undefined ? (scope ?? undefined) : undefined,
     }
     insertRegistration(stack, reg)
+    bumpStackVersion()
     return () => {
       const i = stack.findIndex((r) => r.id === reg.id)
       if (i >= 0) stack.splice(i, 1)
+      bumpStackVersion()
     }
   }, [])
 }
