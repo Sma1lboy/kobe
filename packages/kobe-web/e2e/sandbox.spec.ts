@@ -191,5 +191,12 @@ test("keyboard hints render and extinguish in the real OpenTUI", async ({ page }
 
     // …while the status-bar hint is permanent.
     await expect(buffer).toContainText("F1 help")
+
+    // NOT asserted here: the terminal-passthrough variant (`⌃Q sidebar`).
+    // The fixture task has no started engine session, so the workspace
+    // never mounts a live PTY passthrough surface in this journey (and CI
+    // has no engine binary at all). Both hint variants and the flip are
+    // pinned by test/render/keyboard-hints.test.tsx against the real
+    // binding stack.
   })
 })

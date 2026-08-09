@@ -16,7 +16,7 @@
  * an on-screen hint truthful across live YAML rebinds.
  */
 
-import { useCallback } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { formatChord } from "../../tui/lib/chord-glyphs"
 import {
   type HintPane,
@@ -46,15 +46,30 @@ export function useStatusKeyHintText(): string | null {
   const kv = useOptionalKV()
   // Reachability is a function of the focused pane, the live keymap, and
   // which bindings are registered (registration happens in mount effects,
-  // AFTER the first render) — subscribe to all three so the snapshot below
-  // is recomputed when any of them changes.
+  // AFTER the first render) — subscribe to all three so a change in any of
+  // them re-renders this consumer and re-runs the effect below.
   useOptionalFocus()
   useKeymapVersion()
   useBindingStackVersion()
-  if (!keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) return null
-  const tokens = statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key)
-  if (tokens.length === 0) return null
-  return tokens.map((tok) => t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) })).join(" · ")
+  const [text, setText] = useState<string | null>(null)
+  // Snapshot AFTER every commit, never during render: `enabled` gates like
+  // the terminal passthrough table read render-refreshed refs in CHILD
+  // components, and this hook renders in a parent (the workspace footer) —
+  // a render-time read sees the PREVIOUS cycle's focus, which showed the
+  // prefix hint inside the terminal and the escape hatch outside it,
+  // exactly inverted. Effects run children-first, so by the time this one
+  // fires the whole tree's refs and registrations are current. The
+  // compare-and-set keeps the no-change case from looping.
+  useEffect(() => {
+    const enabled = keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))
+    const tokens = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
+    const next =
+      tokens.length === 0
+        ? null
+        : tokens.map((tok) => t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) })).join(" · ")
+    setText((prev) => (prev === next ? prev : next))
+  })
+  return text
 }
 
 /** Thin renderable wrapper over {@link useStatusKeyHintText}. */
