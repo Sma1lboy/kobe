@@ -16,6 +16,8 @@ export type Binding = {
   key: string
   /** True when `key` is the second stroke of the PureTUI prefix. */
   prefix?: boolean
+  /** Terminal/shell input that must win over Kobe's configurable prefix. */
+  passthrough?: boolean
   /**
    * Owning KobeKeymap binding id (`tab.new`) — `bindByIds` fills it in so
    * the prefix HUD can name what a resolved sequence did. Hand-rolled
@@ -189,6 +191,8 @@ export type PrefixConfiguration = {
 export type BindingReachability = {
   direct: ReadonlySet<string>
   prefix: ReadonlySet<string>
+  /** An enabled terminal passthrough table owns the current input surface. */
+  inputPassthrough: boolean
 }
 
 export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 3000 }
@@ -307,16 +311,18 @@ function reachablePrefixOptions(snapshot: readonly RegisteredBinding[]): PrefixH
 export function bindingReachability(snapshot: readonly RegisteredBinding[]): BindingReachability {
   const direct = new Set<string>()
   const prefix = new Set<string>()
+  let inputPassthrough = false
   for (let i = snapshot.length - 1; i >= 0; i--) {
     const cfg = snapshot[i]?.config()
     if (!cfg || cfg.enabled === false) continue
     for (const binding of cfg.bindings) {
+      if (binding.passthrough) inputPassthrough = true
       if (!binding.id) continue
       ;(binding.prefix === true ? prefix : direct).add(binding.id)
     }
     if (cfg.modal) break
   }
-  return { direct, prefix }
+  return { direct, prefix, inputPassthrough }
 }
 
 /** Match one Binding Stack mode, preserving normal LIFO and modal semantics. */
@@ -325,6 +331,7 @@ function dispatchMode(
   evt: KeyEvent,
   candidates: string[],
   prefix: boolean,
+  accepts: (binding: Binding) => boolean = () => true,
 ): Binding | null {
   for (let i = snapshot.length - 1; i >= 0; i--) {
     const reg = snapshot[i]
@@ -338,7 +345,9 @@ function dispatchMode(
     // decide. Candidates are ≤3 strings, so the nested scan stays O(1).
     let hit: Binding | undefined
     for (const candidate of candidates) {
-      hit = cfg.bindings.find((binding) => Boolean(binding.prefix) === prefix && binding.key === candidate)
+      hit = cfg.bindings.find(
+        (binding) => Boolean(binding.prefix) === prefix && binding.key === candidate && accepts(binding),
+      )
       if (hit) break
     }
     if (hit) {
@@ -414,10 +423,22 @@ export function dispatchKeyEvent(
       }
     }
 
-    if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key) && prefixReachable(snapshot)) {
-      armPrefix(now, reachablePrefixOptions(snapshot))
-      evt.preventDefault()
-      return true
+    if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key)) {
+      // The embedded terminal owns unreserved input, including the prefix
+      // first stroke. Its explicit passthrough row must win before the
+      // global prefix catalogue can arm.
+      const passthrough = dispatchMode(snapshot, evt as KeyEvent, candidates, false, (binding) =>
+        Boolean(binding.passthrough),
+      )
+      if (passthrough) {
+        evt.preventDefault()
+        return true
+      }
+      if (prefixReachable(snapshot)) {
+        armPrefix(now, reachablePrefixOptions(snapshot))
+        evt.preventDefault()
+        return true
+      }
     }
 
     const direct = dispatchMode(snapshot, evt as KeyEvent, candidates, false)
@@ -427,7 +448,7 @@ export function dispatchKeyEvent(
       // noise on every navigation keypress, and shift+letter is just
       // typing an uppercase character (terminal passthrough included) —
       // same noise class as the bare letters.
-      if (direct.key.includes("+") && !direct.key.startsWith("shift+")) {
+      if (direct.id && direct.key.includes("+") && !direct.key.startsWith("shift+")) {
         prefixHudPush({ prefixKey: "", stroke: direct.key, action: direct.id ?? direct.key, at: now })
       }
       evt.preventDefault()

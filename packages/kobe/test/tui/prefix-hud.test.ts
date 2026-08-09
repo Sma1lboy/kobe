@@ -61,6 +61,42 @@ describe("prefix HUD feed", () => {
     expect(snap.entries[0]).toMatchObject({ prefixKey: "ctrl+a", stroke: "t", action: "tab.new", at: 200 })
   })
 
+  test("the default prefix window remains open long enough to read the guide", () => {
+    const stack = [registration(1, "t", "tab.new")]
+
+    dispatchKeyEvent(stack, event("a", true), 100)
+    dispatchKeyEvent(stack, event("t"), 2_900)
+
+    expect(prefixHudState().entries[0]).toMatchObject({ stroke: "t", action: "tab.new" })
+  })
+
+  test("the guide follows LIFO, deduplication, and modal barriers", () => {
+    const stack: RegisteredBinding[] = [
+      {
+        id: 1,
+        config: () => ({
+          enabled: true,
+          bindings: [
+            { key: "t", prefix: true, cmd: () => {}, id: "lower.tab" },
+            { key: "f", prefix: true, cmd: () => {}, id: "lower.fork" },
+          ],
+        }),
+      },
+      {
+        id: 2,
+        config: () => ({
+          enabled: true,
+          modal: true,
+          bindings: [{ key: "t", prefix: true, cmd: () => {}, id: "modal.tab" }],
+        }),
+      },
+    ]
+
+    dispatchKeyEvent(stack, event("a", true), 100)
+
+    expect(prefixHudState().options).toEqual([{ stroke: "t", action: "modal.tab" }])
+  })
+
   test("a second stroke that matches nothing lands a null-action (miss) entry", () => {
     const stack = [registration(1, "t", "tab.new")]
 

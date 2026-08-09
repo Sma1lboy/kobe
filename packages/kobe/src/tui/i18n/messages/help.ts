@@ -22,8 +22,8 @@ export const en = {
     title: "Keyboard tour {step}/3",
     skip: "click to dismiss",
     step0: "In the Sidebar, use j/k to move and enter to open a task. Bare keys belong to the focused pane.",
-    step1: "Press ctrl+q to return to the Sidebar. One-press Kobe shortcuts handle frequent navigation and tabs.",
-    step2: "Press ctrl+a to reveal every available second key, then choose a command or press esc.",
+    step1: "Press {key} to return to the Sidebar. One-press Kobe shortcuts handle frequent navigation and tabs.",
+    step2: "Press {key} to reveal every available second key, then choose a command or press esc.",
   },
 }
 
@@ -44,7 +44,7 @@ export const zh: typeof en = {
     title: "快捷键导览 {step}/3",
     skip: "点击关闭",
     step0: "在侧边栏用 j/k 移动、enter 打开任务。裸键只属于当前聚焦区域。",
-    step1: "按 ctrl+q 返回侧边栏。Kobe 的单次快捷键用于高频导航和标签页操作。",
-    step2: "按 ctrl+a 查看当前可用的所有第二键，然后选择命令或按 esc 取消。",
+    step1: "按 {key} 返回侧边栏。Kobe 的单次快捷键用于高频导航和标签页操作。",
+    step2: "按 {key} 查看当前可用的所有第二键，然后选择命令或按 esc 取消。",
   },
 }

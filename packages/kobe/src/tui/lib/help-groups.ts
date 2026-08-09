@@ -121,7 +121,7 @@ export function grammarHelpSections(
       if ((directAvailable && (staticallyAvailable || binding.presentation === "onePress")) || docOnlyHere) {
         if (binding.presentation === "onePress") direct.push(row)
         else here.push(row)
-      } else if (binding.scope !== "global") {
+      } else if (!staticallyAvailable && binding.scope !== "global") {
         const rows = other.get(binding.scope)
         if (rows) rows.push(row)
         else other.set(binding.scope, [row])

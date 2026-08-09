@@ -65,9 +65,12 @@ describe("grammarHelpSections", () => {
     const sections = grammarHelpSections(rows, "sidebar", "ctrl+a", {
       direct: new Set(["help", "local"]),
       prefix: new Set(["more"]),
+      inputPassthrough: false,
     })
     expect(sections.find((section) => section.kind === "here")?.rows.map((row) => row.binding.id)).toEqual(["local"])
     expect(sections.find((section) => section.kind === "direct")?.rows.map((row) => row.binding.id)).toEqual(["help"])
     expect(sections.find((section) => section.kind === "prefix")?.rows.map((row) => row.binding.id)).toEqual(["more"])
+    expect(sections.flatMap((section) => section.rows).some((row) => row.binding.id === "modified-local")).toBe(false)
+    expect(sections.some((section) => section.kind === "other" && section.scope === "sidebar")).toBe(false)
   })
 })

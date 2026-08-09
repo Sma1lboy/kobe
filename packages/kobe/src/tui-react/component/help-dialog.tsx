@@ -169,5 +169,6 @@ export function HelpDialog(props: {
  */
 HelpDialog.show = (dialog: DialogContext, currentScope?: HelpSurface): void => {
   const reachability = currentBindingReachability()
-  dialog.replace(() => <HelpDialog currentScope={currentScope} reachability={reachability} />)
+  const inputScope = reachability.inputPassthrough ? "terminal" : currentScope
+  dialog.replace(() => <HelpDialog currentScope={inputScope} reachability={reachability} />)
 }
