@@ -30,6 +30,27 @@ export function keyHintsEnabled(raw: unknown): boolean {
   return raw !== false
 }
 
+/** The get/set slice of the UI KV store these helpers need (KVContext-shaped). */
+export type HintKvLike = {
+  get: (key: string, fallback?: unknown) => unknown
+  set: (key: string, value: unknown) => void
+}
+
+/** Settings toggle read: whether the hint surfaces are enabled. */
+export function keyHintsToggleOn(kv: HintKvLike): boolean {
+  return keyHintsEnabled(kv.get(KEY_HINTS_ENABLED_KEY, true))
+}
+
+/**
+ * Settings toggle write. Re-enabling also relights pane hints already
+ * extinguished by use — that is the "show me the hints again" gesture.
+ */
+export function toggleKeyHints(kv: HintKvLike): void {
+  const next = !keyHintsToggleOn(kv)
+  kv.set(KEY_HINTS_ENABLED_KEY, next)
+  if (next) for (const key of Object.values(PANE_HINT_USED_KEYS)) kv.set(key, false)
+}
+
 /** True while a pane's first-use hint should still show (raw KV values). */
 export function paneHintVisible(enabledRaw: unknown, usedRaw: unknown): boolean {
   return keyHintsEnabled(enabledRaw) && usedRaw !== true

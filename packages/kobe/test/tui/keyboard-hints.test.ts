@@ -9,7 +9,16 @@
 
 import { afterEach, describe, expect, test } from "vitest"
 import { findBinding, resetKeymapToDefaults } from "../../src/tui/context/keybindings.ts"
-import { paneHintTokens, paneHintVisible, statusHintTokens, wizardKeyLines } from "../../src/tui/lib/keyboard-hints.ts"
+import {
+  KEY_HINTS_ENABLED_KEY,
+  PANE_HINT_USED_KEYS,
+  keyHintsToggleOn,
+  paneHintTokens,
+  paneHintVisible,
+  statusHintTokens,
+  toggleKeyHints,
+  wizardKeyLines,
+} from "../../src/tui/lib/keyboard-hints.ts"
 import type { BindingReachability } from "../../src/tui/lib/keymap-dispatch.ts"
 
 afterEach(() => resetKeymapToDefaults())
@@ -106,6 +115,43 @@ describe("paneHintVisible", () => {
   })
   test("the master toggle silences everything", () => {
     expect(paneHintVisible(false, false)).toBe(false)
+  })
+})
+
+describe("toggleKeyHints (Settings toggle)", () => {
+  function fakeKv(): { store: Map<string, unknown> } & Parameters<typeof toggleKeyHints>[0] {
+    const store = new Map<string, unknown>()
+    return {
+      store,
+      get: (key, fallback) => (store.has(key) ? store.get(key) : fallback),
+      set: (key, value) => void store.set(key, value),
+    }
+  }
+
+  test("defaults on; toggling turns the master flag off", () => {
+    const kv = fakeKv()
+    expect(keyHintsToggleOn(kv)).toBe(true)
+    toggleKeyHints(kv)
+    expect(keyHintsToggleOn(kv)).toBe(false)
+    expect(kv.store.get(KEY_HINTS_ENABLED_KEY)).toBe(false)
+  })
+
+  test("re-enabling relights extinguished pane hints", () => {
+    const kv = fakeKv()
+    kv.set(KEY_HINTS_ENABLED_KEY, false)
+    kv.set(PANE_HINT_USED_KEYS.sidebar, true)
+    kv.set(PANE_HINT_USED_KEYS.files, true)
+    toggleKeyHints(kv)
+    expect(keyHintsToggleOn(kv)).toBe(true)
+    expect(kv.store.get(PANE_HINT_USED_KEYS.sidebar)).toBe(false)
+    expect(kv.store.get(PANE_HINT_USED_KEYS.files)).toBe(false)
+  })
+
+  test("turning OFF leaves the used flags alone", () => {
+    const kv = fakeKv()
+    kv.set(PANE_HINT_USED_KEYS.sidebar, true)
+    toggleKeyHints(kv)
+    expect(kv.store.get(PANE_HINT_USED_KEYS.sidebar)).toBe(true)
   })
 })
 

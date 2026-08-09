@@ -24,6 +24,8 @@ import {
   splitStyleRowId,
 } from "../../../tui/component/settings-dialog/model"
 import { LOCALES, type LocaleId } from "../../../tui/i18n/catalog"
+import { keyHintsToggleOn, toggleKeyHints } from "../../../tui/lib/keyboard-hints"
+import { useKV } from "../../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { Row, type SectionCursorProps, SubSection } from "./rows"
@@ -118,6 +120,9 @@ export function GeneralSettingsSection(
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const t = useT()
+  // Keyboard-hints toggle state lives in the framework-free lib (not the
+  // prefs bundle) so its logic stays vitest-testable — see keyboard-hints.ts.
+  const kv = useKV()
   // Row registry for this section — a row's body index is its position in
   // the list, so every index below is an id lookup, not arithmetic.
   const rows = useMemo(
@@ -273,11 +278,11 @@ export function GeneralSettingsSection(
         <SubSection title={t("settings.general.keyHints")} hint={t("settings.general.keyHintsHint")}>
           <Row
             cursor={isBodyCursor(keyHintsRow)}
-            onMouseUp={activate(keyHintsRow, prefs.toggleKeyHints)}
-            fg={prefs.keyHintsOn() ? theme.accent : theme.textMuted}
+            onMouseUp={activate(keyHintsRow, () => toggleKeyHints(kv))}
+            fg={keyHintsToggleOn(kv) ? theme.accent : theme.textMuted}
             bold={true}
           >
-            {`${check(prefs.keyHintsOn())} ${t("settings.general.keyHintsShow")}`}
+            {`${check(keyHintsToggleOn(kv))} ${t("settings.general.keyHintsShow")}`}
           </Row>
         </SubSection>
         <SubSection title={t("settings.general.zen")} hint={t("settings.general.zenHint")}>

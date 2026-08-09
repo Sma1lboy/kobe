@@ -30,6 +30,7 @@ import {
   rowAt,
   sectionRows,
 } from "../../../tui/component/settings-dialog/model"
+import { toggleKeyHints } from "../../../tui/lib/keyboard-hints"
 import { LOCALE_KEY } from "../../../tui/lib/persisted-ui-prefs"
 import type { VendorId } from "../../../types/task"
 import { isBuiltinVendor } from "../../../types/vendor"
@@ -228,7 +229,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     sound: () => prefs.toggleSound(),
     crossTask: () => prefs.toggleCrossTask(),
     sidebarHover: () => prefs.toggleSidebarHover(),
-    keyHints: () => prefs.toggleKeyHints(),
+    keyHints: () => toggleKeyHints(props.kv),
     splitStyle: (row) => prefs.selectSplitStyle(row.style),
     zenDefaultOn: () => prefs.toggleZenDefaultOn(),
     zenKeepTasks: () => prefs.toggleZenKeepsTasks(),
