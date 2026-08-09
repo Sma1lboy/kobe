@@ -195,7 +195,7 @@ export type BindingReachability = {
   inputPassthrough: boolean
 }
 
-export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 1000 }
+export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key: "ctrl+a", timeoutMs: 5000 }
 
 let prefixConfiguration: PrefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
 let prefixArmedAt: number | null = null

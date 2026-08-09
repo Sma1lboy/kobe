@@ -27,7 +27,7 @@ Press `ctrl+q` to leave it before opening the command layer.
 ## PureTUI prefix
 
 The default first stroke is `ctrl+a`. Prefix-only actions then consume one
-second key within 1000 ms. After a short delay, the HUD expands into a
+second key within 5000 ms. After a short delay, the HUD expands into a
 which-key-style command map generated from the live Binding Stack, so it shows
 only actions that can run in the current focus/modal state. It cancels on
 timeout, modal changes, reload, `esc`, or an invalid second stroke.
@@ -235,7 +235,7 @@ daemon watcher.
 ```yaml
 prefix:
   key: ctrl+a          # null disables prefix bindings
-  timeoutMs: 1000
+  timeoutMs: 5000
   bindings:
     chat.fork.new: f
 

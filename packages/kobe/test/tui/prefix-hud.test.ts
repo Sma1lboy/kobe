@@ -65,7 +65,7 @@ describe("prefix HUD feed", () => {
     const stack = [registration(1, "t", "tab.new")]
 
     dispatchKeyEvent(stack, event("a", true), 100)
-    dispatchKeyEvent(stack, event("t"), 900)
+    dispatchKeyEvent(stack, event("t"), 4_900)
 
     expect(prefixHudState().entries[0]).toMatchObject({ stroke: "t", action: "tab.new" })
   })
