@@ -124,7 +124,7 @@ export function PrefixHud(props: { left: number; width: number }) {
         width={guideWidth}
         border
         borderColor={theme.borderActive}
-        backgroundColor={theme.backgroundPanel}
+        backgroundColor={theme.backgroundDialog}
         paddingLeft={1}
         paddingRight={1}
         flexDirection="column"
@@ -167,7 +167,7 @@ export function PrefixHud(props: { left: number; width: number }) {
   return (
     <box position="absolute" zIndex={2400} left={props.left} top={top} width={props.width} flexDirection="column">
       {fresh.map((entry) => (
-        <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
+        <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundDialog}>
           <text fg={theme.textMuted} wrapMode="none">
             {truncateEnd(
               `${entry.prefixKey ? `${entry.prefixKey} + ` : ""}${entry.stroke} ${
@@ -179,7 +179,7 @@ export function PrefixHud(props: { left: number; width: number }) {
         </box>
       ))}
       {hud.armed ? (
-        <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
+        <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundDialog}>
           <text fg={theme.textMuted} wrapMode="none">
             {`${armedKey} ⋯`}
           </text>

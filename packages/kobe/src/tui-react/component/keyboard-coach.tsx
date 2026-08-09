@@ -45,7 +45,7 @@ export function KeyboardCoach(props: { focused: PaneId }) {
       flexDirection="column"
       border
       borderColor={theme.borderActive}
-      backgroundColor={theme.backgroundPanel}
+      backgroundColor={theme.backgroundDialog}
       paddingLeft={1}
       paddingRight={1}
       onMouseUp={() => kv.set(KEYBOARD_COACH_STEP_KEY, KEYBOARD_COACH_DONE)}
