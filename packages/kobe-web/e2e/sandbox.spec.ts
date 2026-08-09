@@ -84,7 +84,7 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
     await clickSidebar(terminal)
     await pressTerminal(terminal, "F1")
     await expect(buffer).toContainText("keybindings")
-    await expect(buffer).toContainText("Global")
+    await expect(buffer).toContainText("ONE PRESS")
     await pressTerminal(terminal, "Escape")
     await expect(buffer).not.toContainText("keybindings")
 

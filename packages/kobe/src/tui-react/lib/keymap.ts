@@ -28,8 +28,10 @@ import { useRenderer } from "@opentui/react"
 import { createContext, useContext, useEffect, useRef } from "react"
 import {
   type Binding,
+  type BindingReachability,
   type BindingsConfig,
   type RegisteredBinding,
+  bindingReachability,
   dispatchKeyEvent,
   insertRegistration,
   resetPrefixState,
@@ -100,6 +102,11 @@ function ensureInstalled(renderer: ReturnType<typeof useRenderer>): void {
  */
 export function modalActive(): boolean {
   return stack.some((r) => r.modalOwner !== undefined)
+}
+
+/** Capture what F1 would have been able to dispatch before its modal opens. */
+export function currentBindingReachability(): BindingReachability {
+  return bindingReachability(stack)
 }
 
 /**

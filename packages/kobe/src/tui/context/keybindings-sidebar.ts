@@ -243,6 +243,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     category: "Tasks pane",
     description: "Jump to the task showing that digit (ctrl+2 = first row)",
     hint: { keys: "ctrl+2-0" },
+    presentation: "onePress",
   },
   {
     // Right arrow jumps from the Tasks pane back into the current

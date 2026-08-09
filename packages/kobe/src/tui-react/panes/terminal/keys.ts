@@ -25,7 +25,7 @@ import {
   keyEventToShellBytes,
 } from "../../../tui/panes/terminal/keys-pure"
 import { bindByIds } from "../../context/keybindings"
-import { modalActive, useBindings } from "../../lib/keymap"
+import { type Binding, modalActive, useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
 
 // Re-export pure helpers so callers can import everything from one path.
@@ -64,7 +64,7 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   // ~850-entry passthrough table is identical every time. Handlers read the
   // live opts through the render-refreshed ref, so nothing here goes stale.
   const bindings = useMemo(() => {
-    const table: { key: string; cmd: (evt: KeyEvent) => void }[] = []
+    const table: Binding[] = []
     // Scrollback exceptions FIRST so they take precedence over any
     // passthrough variants of `pageup`/`pagedown` registered later.
     table.push(
@@ -78,7 +78,7 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
       const bytes = keyEventToShellBytes(evt)
       if (bytes != null) optsRef.current.write(bytes)
     }
-    for (const chord of PASSTHROUGH_CHORDS) table.push({ key: chord, cmd: forward })
+    for (const chord of PASSTHROUGH_CHORDS) table.push({ key: chord, cmd: forward, passthrough: true })
     return table
   }, [])
 

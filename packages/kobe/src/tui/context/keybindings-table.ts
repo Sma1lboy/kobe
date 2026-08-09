@@ -104,6 +104,8 @@ export type KobeBinding = {
   description: string
   /** Friendly-chord display override. Omitted = the first chord in `keys` shows. */
   hint?: KobeBindingHint
+  /** User-facing tier. Only the deliberately small Kobe-owned direct set opts in. */
+  presentation?: "onePress"
 }
 
 /**
@@ -122,6 +124,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Global",
     description: "Show keybindings help",
     hint: { keys: "F1" },
+    presentation: "onePress",
   },
   {
     // Sidebar-only — single letter `n`. While focused on the chat
@@ -246,6 +249,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Back to sidebar (tasks)",
     hint: { keys: "ctrl+q" },
+    presentation: "onePress",
   },
 
   // ─── Navigation ───────────────────────────────────────────────────────
@@ -282,6 +286,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Navigation",
     description: "Focus next pane (sidebar → workspace → files)",
     hint: { keys: "f4" },
+    presentation: "onePress",
   },
   {
     // Jump to the next available durable Inbox item. Opening or visiting the
@@ -299,6 +304,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Navigation",
     description: "Jump to the next available Inbox item",
     hint: { keys: "f7" },
+    presentation: "onePress",
   },
   {
     // Zen toggle (issue #18, pure-tui shape) — hides the Files column;
@@ -367,6 +373,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Terminal",
     description: "Reset terminal — kill the current shell and respawn",
     hint: { keys: "f5" },
+    presentation: "onePress",
   },
   // NOTE: The terminal pane's bare-key passthrough (every alphanumeric /
   // named key forwarded to the PTY) is intentionally NOT in this table.
