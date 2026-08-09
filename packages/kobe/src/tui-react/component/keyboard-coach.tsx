@@ -26,6 +26,8 @@ export function KeyboardCoach(props: { focused: PaneId }) {
   const dialog = useDialog()
   const hud = useAccessor(prefixHudState)
   useKeymapVersion()
+  const sidebarNavKey = legendCap("sidebar.nav")
+  const sidebarSelectKey = legendCap("sidebar.select")
   const focusSidebarKey = legendCap("focus.sidebar")
   const prefixKey = currentPrefixConfiguration().key
   const rawStep = kv.get(KEYBOARD_COACH_STEP_KEY, 0)
@@ -37,13 +39,18 @@ export function KeyboardCoach(props: { focused: PaneId }) {
       focused: props.focused,
       lastAction: last?.action ?? null,
       lastWasPrefix: Boolean(last?.prefixKey),
+      sidebarNavAvailable: sidebarNavKey !== null,
+      sidebarSelectAvailable: sidebarSelectKey !== null,
       focusSidebarAvailable: focusSidebarKey !== null,
       prefixAvailable: prefixKey !== null,
     })
     if (next !== step) kv.set(KEYBOARD_COACH_STEP_KEY, next)
-  }, [focusSidebarKey, kv, last, prefixKey, props.focused, step])
+  }, [focusSidebarKey, kv, last, prefixKey, props.focused, sidebarNavKey, sidebarSelectKey, step])
 
-  const unavailableStep = (step === 1 && focusSidebarKey === null) || (step === 2 && prefixKey === null)
+  const unavailableStep =
+    (step === 0 && (sidebarNavKey === null || sidebarSelectKey === null)) ||
+    (step === 1 && focusSidebarKey === null) ||
+    (step === 2 && prefixKey === null)
   if (step >= KEYBOARD_COACH_DONE || unavailableStep || hud.armed || dialog.stack.length > 0) return null
   return (
     <box
@@ -67,11 +74,20 @@ export function KeyboardCoach(props: { focused: PaneId }) {
         <text fg={theme.textMuted}>{t("help.coach.skip")}</text>
       </box>
       <text fg={theme.text} wrapMode="word">
-        {step === 1
-          ? t("help.coach.step1", { key: formatChord(focusSidebarKey ?? "") })
-          : step === 2
-            ? t("help.coach.step2", { key: formatChord(prefixKey ?? "") })
-            : t("help.coach.step0")}
+        {step === 0
+          ? t("help.coach.step0", {
+              nav:
+                sidebarNavKey
+                  ?.split("/")
+                  .map((part) => formatChord(part))
+                  .join("/") ?? "",
+              open: formatChord(sidebarSelectKey ?? ""),
+            })
+          : step === 1
+            ? t("help.coach.step1", { key: formatChord(focusSidebarKey ?? "") })
+            : step === 2
+              ? t("help.coach.step2", { key: formatChord(prefixKey ?? "") })
+              : null}
       </text>
     </box>
   )

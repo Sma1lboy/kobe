@@ -3,7 +3,12 @@ import { KEYBOARD_COACH_DONE, nextKeyboardCoachStep } from "../../src/tui/lib/ke
 
 describe("keyboard coach", () => {
   it("advances only after the gesture taught by each step", () => {
-    const available = { focusSidebarAvailable: true, prefixAvailable: true }
+    const available = {
+      sidebarNavAvailable: true,
+      sidebarSelectAvailable: true,
+      focusSidebarAvailable: true,
+      prefixAvailable: true,
+    }
     expect(nextKeyboardCoachStep(0, { ...available, focused: "sidebar", lastAction: null, lastWasPrefix: false })).toBe(
       0,
     )
@@ -27,6 +32,8 @@ describe("keyboard coach", () => {
         focused: "sidebar",
         lastAction: "chat.tab.new",
         lastWasPrefix: false,
+        sidebarNavAvailable: true,
+        sidebarSelectAvailable: true,
         focusSidebarAvailable: true,
         prefixAvailable: true,
       }),
@@ -39,6 +46,8 @@ describe("keyboard coach", () => {
         focused: "workspace",
         lastAction: null,
         lastWasPrefix: false,
+        sidebarNavAvailable: true,
+        sidebarSelectAvailable: true,
         focusSidebarAvailable: false,
         prefixAvailable: true,
       }),
@@ -48,9 +57,25 @@ describe("keyboard coach", () => {
         focused: "sidebar",
         lastAction: null,
         lastWasPrefix: false,
+        sidebarNavAvailable: true,
+        sidebarSelectAvailable: true,
         focusSidebarAvailable: true,
         prefixAvailable: false,
       }),
     ).toBe(KEYBOARD_COACH_DONE)
+  })
+
+  it("skips the sidebar lesson when its configurable gestures are unavailable", () => {
+    expect(
+      nextKeyboardCoachStep(0, {
+        focused: "sidebar",
+        lastAction: null,
+        lastWasPrefix: false,
+        sidebarNavAvailable: false,
+        sidebarSelectAvailable: true,
+        focusSidebarAvailable: true,
+        prefixAvailable: true,
+      }),
+    ).toBe(1)
   })
 })

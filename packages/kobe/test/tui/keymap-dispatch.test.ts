@@ -229,6 +229,49 @@ describe("dispatchKeyEvent", () => {
     expect(bindingReachability(stack).inputPassthrough).toBe(true)
   })
 
+  test("entering terminal input cancels a prefix armed in another pane", () => {
+    let prefixFired = false
+    let forwarded = false
+    const global: RegisteredBinding = {
+      id: 1,
+      config: () => ({
+        bindings: [
+          {
+            key: "f",
+            prefix: true,
+            id: "chat.fork.new",
+            cmd: () => {
+              prefixFired = true
+            },
+          },
+        ],
+      }),
+    }
+
+    expect(dispatchKeyEvent([global], makeEvt("a", { ctrl: true }), 100)).toBe(true)
+    expect(prefixHudState().armed).toBe(true)
+
+    const terminal: RegisteredBinding = {
+      id: 2,
+      config: () => ({
+        bindings: [
+          {
+            key: "f",
+            passthrough: true,
+            cmd: () => {
+              forwarded = true
+            },
+          },
+        ],
+      }),
+    }
+    expect(dispatchKeyEvent([global, terminal], makeEvt("f"), 200)).toBe(true)
+    expect(forwarded).toBe(true)
+    expect(prefixFired).toBe(false)
+    expect(prefixHudState().armed).toBe(false)
+    expect(prefixHudState().entries).toHaveLength(0)
+  })
+
   test("bare letter does not match modifier-prefixed binding", () => {
     let fired = false
     const stack: RegisteredBinding[] = [

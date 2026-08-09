@@ -286,6 +286,17 @@ function prefixReachable(snapshot: readonly RegisteredBinding[]): boolean {
   return false
 }
 
+/** True when the current focused input surface forwards keys to a PTY. */
+function inputPassthroughReachable(snapshot: readonly RegisteredBinding[]): boolean {
+  for (let i = snapshot.length - 1; i >= 0; i--) {
+    const cfg = snapshot[i]?.config()
+    if (!cfg || cfg.enabled === false) continue
+    if (cfg.bindings.some((binding) => binding.passthrough)) return true
+    if (cfg.modal) return false
+  }
+  return false
+}
+
 /**
  * Snapshot the prefix command map using the same LIFO + modal reachability
  * rules as dispatch. A duplicated stroke appears once and names the action
@@ -395,6 +406,10 @@ export function dispatchKeyEvent(
   const candidates = matchKey(evt as KeyEvent)
   dispatching = true
   try {
+    // A sequence armed in another pane cannot cross the terminal boundary:
+    // once PTY passthrough owns input, cancel it and dispatch this key using
+    // the current surface instead.
+    if (prefixArmedAt !== null && inputPassthroughReachable(snapshot)) resetPrefixState()
     if (prefixArmedAt !== null) {
       const armedPrefixKey = prefixConfiguration.key ?? ""
       const expired = now - prefixArmedAt > prefixConfiguration.timeoutMs
