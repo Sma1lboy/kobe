@@ -49,6 +49,7 @@ import { UI_HANDLERS } from "./handlers-ui.ts"
 import { WORK_ITEM_HANDLERS } from "./handlers-work-items.ts"
 import { WORKTREE_HANDLERS } from "./handlers-worktree.ts"
 import type { IssuesStore } from "./issues-store.ts"
+import type { NotesStore } from "./notes-store.ts"
 import {
   CHANNEL_NAMES,
   DAEMON_PROTOCOL_VERSION,
@@ -96,6 +97,8 @@ export interface DaemonHandlerContext {
   readonly deletions: TaskDeletionScheduler
   /** Daemon-owned issue tracker store, keyed by git common-dir. */
   readonly issues: IssuesStore
+  /** Durable field notes, same key convention (absent in older tests). */
+  readonly notes?: NotesStore
   /** Short-TTL cache over external tracker items (read-only view). */
   readonly workItems: WorkItemCache
   /** Daemon-owned scheduled automations + their run history. */

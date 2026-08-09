@@ -24,3 +24,14 @@ bun run deploy:preview   # preview URL
 
 The custom domain `kobe.sma1lboy.me` is a CNAME → `cname.vercel-dns.com`, managed in
 AWS Route 53 (hosted zone `sma1lboy.me`).
+
+### Why `vercel.json` pins `ignoreCommand: "exit 1"`
+
+Vercel's default monorepo skip-check runs `git diff --quiet HEAD^ HEAD -- .` to
+avoid rebuilding when the root directory is untouched. The repo-root
+`.vercelignore` allowlists only this directory, which strips `.git` from the
+clone — so git exits non-zero with *"Not a git repository"* and **every**
+deployment, on `main` and on every PR, reported as failed. This site is static
+(`buildCommand: null`), so there is nothing to skip: `exit 1` means "always
+build". `vercel.json` takes no comment keys (an unknown key fails validation
+outright), which is why this note lives here.

@@ -36,6 +36,8 @@ export interface HostSidebarProps {
   readonly onSelectTab: (taskId: string, tabId: string) => void
   readonly focused: boolean
   readonly engineState?: ReadonlyMap<string, TaskEngineState>
+  /** Per-tab activity, keyed taskId → tabId. The tree lights the exact tab. */
+  readonly engineTabState?: ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
@@ -91,6 +93,7 @@ export function HostSidebar(props: HostSidebarProps) {
     onSelect: props.onSelect,
     onActivate: props.onActivate,
     engineState: props.engineState,
+    engineTabState: props.engineTabState,
     engineLifecycle: props.engineLifecycle,
     taskJobs: props.taskJobs,
     worktreeChanges: props.worktreeChanges,

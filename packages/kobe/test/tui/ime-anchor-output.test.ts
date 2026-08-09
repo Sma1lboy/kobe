@@ -86,6 +86,60 @@ describe("createImeAnchoredOutput", () => {
     expect(sink.text()).toBe(frame)
   })
 
+  it("withholds a synchronized update until the complete frame can be written atomically", () => {
+    const sink = collectingOutput()
+    const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+
+    anchored.stdout.write(`${SYNC_START}${HIDE_CURSOR}\x1b[2;3HA`)
+    expect(sink.text()).toBe("")
+
+    anchored.stdout.write(SYNC_END)
+    expect(sink.text()).toBe(`${SYNC_START}${HIDE_CURSOR}\x1b[2;3HA${SYNC_END}`)
+  })
+
+  it("recognizes a synchronized-frame opener split at every byte boundary", () => {
+    for (let split = 1; split < SYNC_START.length; split += 1) {
+      const sink = collectingOutput()
+      const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+
+      anchored.stdout.write(Buffer.from(`plain${SYNC_START.slice(0, split)}`))
+      anchored.stdout.write(Buffer.from(`${SYNC_START.slice(split)}frame${SYNC_END}`))
+      anchored.flush()
+
+      expect(sink.text(), `split=${split}`).toBe(`plain${SYNC_START}frame${SYNC_END}`)
+    }
+  })
+
+  it("drops a truncated update when a fresh synchronized frame starts", () => {
+    const sink = collectingOutput()
+    const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+    const complete = `${SYNC_START}\x1b[4;5Hnew${SYNC_END}`
+
+    anchored.stdout.write(`${SYNC_START}\x1b[2;3Hstale`)
+    anchored.stdout.write(complete)
+
+    expect(sink.text()).toBe(complete)
+  })
+
+  it("keeps a high-churn sequence complete across rotating chunk boundaries", () => {
+    const sink = collectingOutput()
+    const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+    const expected: string[] = []
+
+    for (let frame = 0; frame < 250; frame += 1) {
+      const transaction = `${SYNC_START}\x1b[${(frame % 40) + 1};1Hframe-${frame}${SYNC_END}`
+      expected.push(transaction)
+      for (let offset = 0; offset < transaction.length; ) {
+        const width = (frame + offset) % 11 || 1
+        anchored.stdout.write(transaction.slice(offset, offset + width))
+        offset += width
+      }
+    }
+
+    anchored.flush()
+    expect(sink.text()).toBe(expected.join(""))
+  })
+
   it("ends every animated diff frame at the same hidden IME anchor", () => {
     const sink = collectingOutput()
     const controller = new ImeAnchorController()
@@ -119,16 +173,26 @@ describe("createImeAnchoredOutput", () => {
     }
   })
 
-  it("flushes an incomplete terminator prefix without inventing a frame end", () => {
+  it("drops an incomplete synchronized update on flush", () => {
     const sink = collectingOutput()
     const controller = new ImeAnchorController()
     const anchored = createImeAnchoredOutput(sink.output, controller)
     controller.claim(Symbol("terminal"), { x: 6, y: 4 })
 
-    anchored.stdout.write(`plain${SYNC_END.slice(0, 4)}`)
+    anchored.stdout.write(`${SYNC_START}plain${SYNC_END.slice(0, 4)}`)
     anchored.flush()
 
-    expect(sink.text()).toBe(`plain${SYNC_END.slice(0, 4)}`)
+    expect(sink.text()).toBe("")
+  })
+
+  it("flushes a partial frame opener outside a transaction verbatim", () => {
+    const sink = collectingOutput()
+    const anchored = createImeAnchoredOutput(sink.output, new ImeAnchorController())
+
+    anchored.stdout.write(`plain${SYNC_START.slice(0, 4)}`)
+    anchored.flush()
+
+    expect(sink.text()).toBe(`plain${SYNC_START.slice(0, 4)}`)
   })
 })
 

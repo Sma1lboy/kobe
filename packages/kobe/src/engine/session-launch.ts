@@ -1,6 +1,7 @@
 import { toPosixPath } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { worktreeInitMarkerPath } from "../env.ts"
 import { quoteShellArg, quoteShellArgv } from "../lib/shell-command.ts"
+import { readFieldNotes } from "../state/field-notes.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
 import type { VendorId } from "../types/vendor.ts"
 import { withDispatcherProtocol, withWorktreeProtocol } from "./interactive-command.ts"
@@ -113,6 +114,8 @@ export interface EngineSessionLaunchInput {
   readonly initTimeoutSeconds?: number
   /** Injectable feature gates keep the pure composition deterministic in tests. */
   readonly protocolGates?: EngineSessionProtocolGates
+  /** Field-note reader seam; defaults to the real store (tests inject). */
+  readonly readNotes?: (repoRoot: string) => readonly { text: string; author: string }[]
   /** Which engine TAB this session is (defaults to tab-1, the key's tab). */
   readonly tabId?: string
 }
@@ -122,9 +125,9 @@ export interface EngineSessionLaunch {
   readonly command: readonly string[]
 }
 
-/** Canonical PTY Host key for a task's first interactive engine tab. */
-export function engineSessionKey(taskId: string): string {
-  return `${taskId}::tab-1`
+/** Canonical PTY Host key for a task's interactive engine tab (first by default). */
+export function engineSessionKey(taskId: string, tabId = "tab-1"): string {
+  return `${taskId}::${tabId}`
 }
 
 /** Build one PTY Host spawn spec shared by interactive and headless entry. */
@@ -133,11 +136,23 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   const dispatcherTaskId = input.task.kind === "main" ? input.task.id : undefined
   const gates = input.protocolGates
   const launchInit = resolveEngineLaunchInit(input.task.repo ?? "", input.worktreePath, input.promptIntent)
+  // The repo's accumulated field notes ride along in the same
+  // --append-system-prompt as the filing protocol, so a fresh worktree
+  // session starts with what earlier sessions already learned. Read only for
+  // worktree (card) sessions — the main session is the dispatcher and gets
+  // notes pushed to it live.
+  const notes = protocolTaskId ? (input.readNotes ?? readFieldNotes)(input.task.repo ?? "") : []
   let argv = withDispatcherProtocol(
-    withWorktreeProtocol(input.argv, input.task.vendor, protocolTaskId, {
-      status: gates?.status,
-      notes: gates?.notes,
-    }),
+    withWorktreeProtocol(
+      input.argv,
+      input.task.vendor,
+      protocolTaskId,
+      {
+        status: gates?.status,
+        notes: gates?.notes,
+      },
+      notes,
+    ),
     input.task.vendor,
     dispatcherTaskId,
     gates?.dispatcher,
@@ -154,5 +169,5 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   // them apart. The keepAlive fallback shell inherits it too, so a manual
   // `claude` run in that tab after an engine exit is still attributed.
   const identity = `export KOBE_TASK_ID=${quoteShellArg(input.task.id)} KOBE_TAB_ID=${quoteShellArg(input.tabId ?? "tab-1")}\n`
-  return { key: engineSessionKey(input.task.id), command: [input.shell, "-ilc", identity + script] }
+  return { key: engineSessionKey(input.task.id, input.tabId), command: [input.shell, "-ilc", identity + script] }
 }

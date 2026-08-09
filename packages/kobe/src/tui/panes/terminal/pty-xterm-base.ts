@@ -382,17 +382,18 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     // to cache. The normal buffer's anchor/cache are left untouched so
     // they're still valid when the fullscreen app exits.
     const alt = active.type === "alternate"
-    if (!alt && (this.anchor === undefined || this.anchor.isDisposed)) {
+    const canAnchor = !alt && active.baseY > 0
+    if (canAnchor && (this.anchor === undefined || this.anchor.isDisposed)) {
       // A fresh epoch must populate the new absolute-id cache in this pass.
       this.scrollbackCache.clear()
-      const fresh = this.term.registerMarker(0)
+      const fresh = this.term.registerMarker(-active.cursorY - 1)
       if (fresh) {
         this.snapshotEpoch += 1
         this.anchor = fresh
         this.anchorId = fresh.line
       }
     }
-    const anchorAlive = !alt && this.anchor !== undefined && !this.anchor.isDisposed
+    const anchorAlive = canAnchor && this.anchor !== undefined && !this.anchor.isDisposed
     // Absolute id of buffer line y — only meaningful while the anchor lives.
     const absBase = anchorAlive ? this.anchorId - (this.anchor as IMarker).line : 0
     const cache = this.scrollbackCache
@@ -420,9 +421,9 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       const min = absBase + start
       for (const id of cache.keys()) if (id < min) cache.delete(id)
     }
-    if (!alt) {
-      // Re-anchor at the cursor line before the old marker can trim out.
-      const next = this.term.registerMarker(0)
+    if (canAnchor) {
+      // Re-anchor on frozen scrollback before the old marker can trim out.
+      const next = this.term.registerMarker(-active.cursorY - 1)
       if (next) {
         this.anchorId = anchorAlive ? absBase + next.line : 0
         this.anchor?.dispose()

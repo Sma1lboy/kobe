@@ -14,7 +14,13 @@
 
 import { describe, expect, it } from "vitest"
 import type { DetectDeps } from "../../src/engine/account-detect.ts"
-import { EMPTY_HISTORY, engineEntry, getCapabilities, supportsStructuredHistory } from "../../src/engine/registry.ts"
+import {
+  EMPTY_HISTORY,
+  engineEntry,
+  getCapabilities,
+  supportsStructuredHistory,
+  vendorsWithQuotaProbe,
+} from "../../src/engine/registry.ts"
 
 /** A DetectDeps with every binary found and no files/env, overridable per test. */
 function deps(over: Partial<DetectDeps> = {}): DetectDeps {
@@ -105,6 +111,21 @@ describe("engineEntry — built-in vendors", () => {
       }),
     )
     expect(status.account.kind).toBe("apikey")
+  })
+})
+
+describe("vendorsWithQuotaProbe", () => {
+  it("lists every engine that can report a balance, regardless of open tasks", () => {
+    // The daemon's usage poller walks THIS list. Deriving it from the task
+    // list instead is what hid Codex's balance from anyone whose tasks all
+    // happened to be Claude.
+    const vendors = vendorsWithQuotaProbe()
+    expect([...vendors].sort()).toEqual(["claude", "codex"])
+    for (const vendor of vendors) expect(engineEntry(vendor).quotaUsage).toBeDefined()
+  })
+
+  it("omits engines with no probe rather than listing them as silent failures", () => {
+    expect(vendorsWithQuotaProbe()).not.toContain("copilot")
   })
 })
 

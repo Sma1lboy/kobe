@@ -44,7 +44,7 @@ export interface HistoryDeps {
   stat(p: string): Promise<{ mtimeMs: number }>
 }
 
-const defaultDeps: HistoryDeps = {
+export const defaultHistoryDeps: HistoryDeps = {
   sessionsDir() {
     return path.join(homedir(), ".codex", "sessions")
   },
@@ -81,7 +81,7 @@ let warnedRolloutTruncation = false
  * files in approximate newest→oldest order. Best-effort: missing /
  * unreadable dirs are skipped silently.
  */
-export async function listRolloutFiles(deps: HistoryDeps = defaultDeps): Promise<string[]> {
+export async function listRolloutFiles(deps: HistoryDeps = defaultHistoryDeps): Promise<string[]> {
   const root = deps.sessionsDir()
   const years = (await deps.readdir(root)).sort().reverse()
   const out: string[] = []
@@ -120,7 +120,10 @@ export async function listRolloutFiles(deps: HistoryDeps = defaultDeps): Promise
  * absolute path or `undefined` if no match. We scan newest-first so
  * recent sessions resolve in a couple of stat calls.
  */
-export async function findRolloutFile(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<string | undefined> {
+export async function findRolloutFile(
+  sessionId: string,
+  deps: HistoryDeps = defaultHistoryDeps,
+): Promise<string | undefined> {
   if (!sessionId) return undefined
   const want = sessionId.toLowerCase()
   const all = await listRolloutFiles(deps)
@@ -210,7 +213,10 @@ const MAX_WORKTREE_SCAN = 200
  * the {@link rolloutCwdForFile} memo, so a repeat scan (the auto-title
  * poller's tick) reads no rollout it has seen before.
  */
-export async function listSessionIdsForWorktree(worktree: string, deps: HistoryDeps = defaultDeps): Promise<string[]> {
+export async function listSessionIdsForWorktree(
+  worktree: string,
+  deps: HistoryDeps = defaultHistoryDeps,
+): Promise<string[]> {
   if (!worktree) return []
   const files = await listRolloutFiles(deps)
   const matches: string[] = []
@@ -247,7 +253,7 @@ const MAX_MTIME_SCAN = 12
  */
 export async function findLatestRolloutForWorktree(
   worktree: string,
-  deps: HistoryDeps = defaultDeps,
+  deps: HistoryDeps = defaultHistoryDeps,
 ): Promise<{ path: string; mtimeMs: number } | null> {
   if (!worktree) return null
   const files = await listRolloutFiles(deps)
@@ -275,18 +281,18 @@ export async function findLatestRolloutForWorktree(
  */
 export async function latestTranscriptMtimeForWorktree(
   worktree: string,
-  deps: HistoryDeps = defaultDeps,
+  deps: HistoryDeps = defaultHistoryDeps,
 ): Promise<number> {
   return (await findLatestRolloutForWorktree(worktree, deps))?.mtimeMs ?? 0
 }
 
-export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {
+export async function readHistory(sessionId: string, deps: HistoryDeps = defaultHistoryDeps): Promise<Message[]> {
   return (await readHistoryWithMetrics(sessionId, deps)).messages as Message[]
 }
 
 export async function readHistoryWithMetrics(
   sessionId: string,
-  deps: HistoryDeps = defaultDeps,
+  deps: HistoryDeps = defaultHistoryDeps,
 ): Promise<EngineHistory> {
   const file = await findRolloutFile(sessionId, deps)
   if (!file) return { messages: [] }
@@ -299,7 +305,7 @@ export async function readHistoryWithMetrics(
   return parseRolloutRaw(file, raw, sessionId)
 }
 
-export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<void> {
+export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultHistoryDeps): Promise<void> {
   const file = await findRolloutFile(sessionId, deps)
   if (!file) return
   try {

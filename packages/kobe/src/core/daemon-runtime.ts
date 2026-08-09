@@ -4,7 +4,7 @@ import type { DaemonRuntimeAdapter } from "@sma1lboy/kobe-daemon/daemon/runtime"
 import { availableEngineIds } from "../engine/account-detect.ts"
 import { affectsActivityState, isEngineActivityKind } from "../engine/hook-events.ts"
 import { engineDisplayName, kobeApiInvocation } from "../engine/interactive-command.ts"
-import { engineEntry } from "../engine/registry.ts"
+import { engineEntry, vendorsWithQuotaProbe } from "../engine/registry.ts"
 import { createEngineTurnDetector } from "../engine/turn-detector.ts"
 import { issueAssetsDir } from "../env.ts"
 import { readOnlyGitProcessEnv } from "../lib/git-env.ts"
@@ -70,6 +70,7 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   startTaskSessionWithPrompt: startTaskSessionWithPromptAdapter,
   tearDownTaskSession: tearDownTaskSessionAdapter,
   quotaUsage: (vendor) => engineEntry(vendor).quotaUsage?.() ?? Promise.resolve(null),
+  vendorsWithQuotaProbe,
   deliverPromptToLiveEngine: deliverPromptToLiveEngineAdapter,
   settingsSnapshot: daemonSettingsSnapshot,
   settingsPatch: daemonSettingsPatch,

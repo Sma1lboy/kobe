@@ -30,10 +30,12 @@ import {
   treeFlatIds,
 } from "../../../tui/panes/sidebar/tree-core"
 import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
-import { tabTitle } from "../../../tui/workspace/terminal-tab-split"
+import { tabTitleStable } from "../../../tui/workspace/terminal-tab-split"
 import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
 import type { TabsSnapshotKv } from "../../workspace/terminal-tabs-persist"
 import { knownTaskTabs } from "../../workspace/terminal-tabs-shared"
+import { orphanTabsByTask } from "./orphan-tabs"
+import { useHostSessions } from "./use-host-sessions"
 
 export interface TreeStateOpts {
   readonly tasks: readonly Task[]
@@ -77,6 +79,9 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   const [liveTick, setLiveTick] = useState(0)
   useEffect(() => liveEngines.subscribe(() => setLiveTick((tick) => tick + 1)), [liveEngines])
 
+  // Live pty-host inventory, for tasks the snapshot can't answer for.
+  const hostSessions = useHostSessions()
+
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
   // recomputing with it is correct, not wasteful.
@@ -91,10 +96,12 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         task.id,
         known.tabs.map((tab) => ({
           id: tab.id,
-          // No live name here: the tree renders tabs it does not host, so
-          // `tabTitle` falls back to the tab's last recorded title — the
-          // same path the Inbox takes.
-          label: tabTitle(tab, vendor),
+          // `tabTitleStable`, NOT `tabTitle`: for a status-owning engine the
+          // recorded title IS its self-reported status (`⠐ 利用自进化…`), and
+          // the tree has no live stream to refresh it — so the row would
+          // wear a frozen spinner phrase that contradicts the state glyph
+          // right next to it, which kobe derives from daemon activity.
+          label: tabTitleStable(tab, vendor, liveEngines.get(tabPtyKeyFor(task.id, tab)) ?? tab.liveVendor),
           // The active tab carries the task's state glyph (activity is
           // task-scoped; the active tab is the session it describes).
           active: tab.id === known.activeId,
@@ -112,8 +119,15 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         })),
       )
     }
+    // Backstop: a task with a LIVE pty session but no snapshot renders from
+    // the session itself, so a headless-started engine is never an empty
+    // worktree row. Only fills holes — a task already in `map` keeps its
+    // richer snapshot projection. See `orphan-tabs.ts`.
+    for (const [taskId, tabs] of orphanTabsByTask(hostSessions, new Set(map.keys()))) {
+      if (tasks.some((t) => t.id === taskId)) map.set(taskId, tabs)
+    }
     return map
-  }, [tasks, kv, liveEngines, liveTick])
+  }, [tasks, kv, liveEngines, liveTick, hostSessions])
 
   const { rows, totalCount } = useMemo(() => {
     const all = buildTreeRows({ tasks, tabsByTask })

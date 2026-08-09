@@ -27,7 +27,7 @@ import {
   writeHostedPrompt,
 } from "../../engine/hosted-session.ts"
 import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
-import type { DeliveredPrompt } from "./types.ts"
+import { ApiError, type DeliveredPrompt } from "./types.ts"
 
 /**
  * The narrow pty-host surface this module needs: request/response RPC plus
@@ -88,9 +88,13 @@ export async function deliverHostedPrompt(
   cwd: string,
   prompt: string,
   launch: EngineSessionLaunch,
+  opts?: { readonly forceNew?: boolean },
 ): Promise<DeliveredPrompt> {
   const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
-  const existingKey = findEngineKey(sessions, target.id, target.engineBin)
+  // `forceNew` (send --tab new): the caller minted a fresh tab key and wants
+  // a NEW engine spawned there — never reroute into the existing canonical
+  // engine, which is exactly what the lookup below would do.
+  const existingKey = opts?.forceNew ? null : findEngineKey(sessions, target.id, target.engineBin)
   if (existingKey) {
     try {
       const delivered = await deliverToKey(rpc, existingKey, cwd, prompt)
@@ -139,6 +143,35 @@ export async function deliverHostedPrompt(
     }
   } finally {
     await rpc.request("pty.detach", { key: launch.key }).catch(() => {})
+  }
+}
+
+/**
+ * Deliver into ONE exact tab (`send --tab tab-N`) — no fallback, no spawn.
+ * The addressed tab must exist and be alive; anything else is a typed error
+ * so a script targeting "the second tab" never silently lands in the first.
+ */
+export async function deliverToExactTab(
+  rpc: PtyHostRpc,
+  taskId: string,
+  tabId: string,
+  cwd: string,
+  prompt: string,
+): Promise<DeliveredPrompt> {
+  const key = `${taskId}::${tabId}`
+  const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
+  const session = sessions.find((s) => s.key === key)
+  if (!session?.alive) {
+    throw new ApiError(
+      `tab ${tabId} has no live session on task ${taskId} — see \`kobe api pty-list\` for alive tabs`,
+      "TAB_NOT_FOUND",
+    )
+  }
+  try {
+    const delivered = await deliverToKey(rpc, key, cwd, prompt)
+    return { session: key, pane: key, started: false, engineReady: delivered, delivered }
+  } finally {
+    await rpc.request("pty.detach", { key }).catch(() => {})
   }
 }
 

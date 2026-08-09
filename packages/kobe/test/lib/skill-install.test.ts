@@ -4,9 +4,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 import {
-  DEFAULT_SKILL_AGENT,
   KOBE_SKILL_VERSION,
   SKILL_INSTALL_COMMAND,
+  bundledSkillDir,
   isKobeSkillInstalled,
   kobeSkillPaths,
   kobeSkillState,
@@ -31,9 +31,14 @@ afterEach(() => {
 })
 
 describe("kobeSkillPaths", () => {
-  it("returns the user-home and project-level skill paths", () => {
+  it("covers .agents (where the CLI writes the real file) and .claude, home + project", () => {
+    // The agent-skills CLI puts the real SKILL.md in .agents/skills and
+    // symlinks agent dirs at it. Looking only under .claude reported "not
+    // installed" for a perfectly good install.
     expect(kobeSkillPaths({ home: "/h", cwd: "/p" })).toEqual([
+      "/h/.agents/skills/kobe/SKILL.md",
       "/h/.claude/skills/kobe/SKILL.md",
+      "/p/.agents/skills/kobe/SKILL.md",
       "/p/.claude/skills/kobe/SKILL.md",
     ])
   })
@@ -64,22 +69,39 @@ describe("SKILL_INSTALL_COMMAND", () => {
 })
 
 describe("npxSkillsArgv / npxSkillsCommand", () => {
-  it("wraps `npx skills add Sma1lboy/kobe` with the default agent", () => {
-    expect(npxSkillsArgv()).toEqual([
+  it("names NO agent by default — the agent-skills CLI detects and asks", () => {
+    // kobe deliberately owns no agent registry: ~75 agents, each with its own
+    // skills dir and symlink rules. Passing an agent here would freeze that
+    // list into kobe.
+    expect(npxSkillsArgv({ source: "/bundled" })).toEqual(["skills", "add", "/bundled", "--skill", "kobe"])
+    expect(npxSkillsArgv({ source: "/bundled" })).not.toContain("--agent")
+  })
+
+  it("installs from the BUNDLED path, not a repo clone", () => {
+    // `npx skills add Sma1lboy/kobe` is a `git clone --depth 1` = ~198MB of
+    // working tree for an 8KB file. The local path skips the network.
+    const dir = bundledSkillDir()
+    expect(dir).not.toBeNull()
+    expect(npxSkillsArgv()[2]).toBe(dir)
+  })
+
+  it("falls back to the repo slug when nothing is bundled", () => {
+    expect(npxSkillsArgv({ source: null })).toContain("Sma1lboy/kobe")
+  })
+
+  it("repeats --agent per agent (the CLI rejects a comma-joined list)", () => {
+    expect(npxSkillsArgv({ source: "/b", agent: "cursor" })).toEqual([
       "skills",
       "add",
-      "Sma1lboy/kobe",
+      "/b",
       "--skill",
       "kobe",
       "--agent",
-      DEFAULT_SKILL_AGENT,
+      "cursor",
     ])
-    expect(npxSkillsCommand()).toBe(`npx skills add Sma1lboy/kobe --skill kobe --agent ${DEFAULT_SKILL_AGENT}`)
-  })
-
-  it("lets the caller override the agent", () => {
-    expect(npxSkillsArgv({ agent: "cursor" })).toContain("cursor")
-    expect(npxSkillsCommand({ agent: "cursor" })).toContain("--agent cursor")
+    expect(npxSkillsCommand({ source: "/b", agent: ["claude-code", "codex"] })).toBe(
+      "npx skills add /b --skill kobe --agent claude-code --agent codex",
+    )
   })
 })
 

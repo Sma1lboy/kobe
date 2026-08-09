@@ -112,9 +112,12 @@ describe("kobe skill status", () => {
 })
 
 describe("kobe skill command", () => {
-  it("prints the underlying npx command for the default agent without running it", async () => {
+  it("prints the underlying npx command — with NO agent — without running it", async () => {
     await runSkillSubcommand(["command"])
-    expect(out().trim()).toBe(npxSkillsCommand({ agent: "claude-code" }))
+    // No --agent on purpose: the agent-skills CLI detects installed agents
+    // and asks. kobe must not pin an agent list of its own.
+    expect(out().trim()).toBe(npxSkillsCommand())
+    expect(out()).not.toContain("--agent")
     expect(mocks.bunSpawn).not.toHaveBeenCalled()
   })
 
@@ -139,12 +142,17 @@ describe("kobe skill command", () => {
 })
 
 describe("kobe skill install", () => {
-  it("spawns npx with the skills-add argv and reports success on exit 0", async () => {
+  it("spawns npx against the BUNDLED skill path, naming no agent", async () => {
     await runSkillSubcommand(["install"])
-    expect(mocks.bunSpawn).toHaveBeenCalledWith(
-      ["npx", "skills", "add", "Sma1lboy/kobe", "--skill", "kobe", "--agent", "claude-code"],
-      { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
-    )
+    const [argv, opts] = mocks.bunSpawn.mock.calls[0]
+    // The source must be a local directory, never the repo slug: resolving
+    // `Sma1lboy/kobe` is a ~198MB clone to deliver an 8KB file.
+    expect(argv.slice(0, 2)).toEqual(["npx", "skills"])
+    expect(argv[3]).toMatch(/[/\\]/)
+    expect(argv).not.toContain("Sma1lboy/kobe")
+    expect(argv).not.toContain("--agent")
+    // stdio inherited so the CLI's own agent picker is interactive here.
+    expect(opts).toEqual({ stdin: "inherit", stdout: "inherit", stderr: "inherit" })
     expect(out()).toContain("kobe skill: installed.")
   })
 
@@ -152,7 +160,20 @@ describe("kobe skill install", () => {
     mocks.bunSpawn.mockReturnValue({ exited: Promise.resolve(3) })
     await expect(runSkillSubcommand(["install"])).rejects.toThrow("exit 3")
     expect(err()).toContain("kobe skill install failed (npx exited 3)")
-    expect(err()).toContain(npxSkillsCommand({ agent: "claude-code" }))
+    expect(err()).toContain(npxSkillsCommand())
+  })
+
+  it("rejects a comma-joined --agent instead of silently using only the first", async () => {
+    await expect(runSkillSubcommand(["install", "--agent", "claude-code,codex"])).rejects.toThrow("exit 2")
+    expect(err()).toContain("--agent takes one name")
+    expect(err()).toContain("--agent claude-code --agent codex")
+  })
+
+  it("repeats --agent for each named agent", async () => {
+    await runSkillSubcommand(["install", "--agent", "claude-code", "--agent", "codex"])
+    const [argv] = mocks.bunSpawn.mock.calls[0]
+    expect(argv.filter((a: string) => a === "--agent")).toHaveLength(2)
+    expect(argv).toEqual(expect.arrayContaining(["--agent", "claude-code", "--agent", "codex"]))
   })
 
   it("install --agent NAME threads the agent through to npx", async () => {

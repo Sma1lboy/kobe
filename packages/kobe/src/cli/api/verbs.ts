@@ -4,9 +4,9 @@
 
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
 import type { TaskStatus } from "../../types/task.ts"
-import type { VendorId } from "../../types/vendor.ts"
 import { F, FANOUT_CAP } from "./flags.ts"
 import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
+import { DIGEST_VERB } from "./handlers-digest.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
 import { OUTCOME_VERBS } from "./handlers-outcome.ts"
 import {
@@ -69,9 +69,9 @@ export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "a
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
-  read: ["list", "get-task", "collect", "pty-list", "read-output"],
+  read: ["list", "get-task", "collect", "digest", "pty-list", "read-output"],
   create: ["add", "fan-out"],
-  drive: ["send", "dispatch", "note", "set-active"],
+  drive: ["send", "dispatch", "note", "note-list", "set-active"],
   supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
@@ -176,7 +176,18 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "send",
     summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
-    flags: [F.taskId(false), F.prompt(true, "Text pasted + submitted into the engine pane.")],
+    flags: [
+      F.taskId(false),
+      F.prompt(true, "Text pasted + submitted into the engine pane."),
+      {
+        name: "tab",
+        type: "string",
+        required: false,
+        placeholder: "TAB",
+        description:
+          'Tab addressing: "new" spawns the prompt in a fresh engine tab; "tab-N" delivers to that exact alive tab (error when dead/absent). Omitted = the canonical engine tab.',
+      },
+    ],
     handler: send,
   },
   {
@@ -189,7 +200,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "note",
     summary:
-      "File a one-line field note — a resolved, repo-level gotcha worth sharing. kobe forwards it to the repo's dispatcher session (the main session), which relays it to the in-flight tasks that benefit (docs/design/dispatcher.md).",
+      "File a one-line field note — a resolved, repo-level gotcha worth sharing. Appended to the repo's durable note store (every future session on this repo starts with it) and forwarded to the dispatcher session for live relay (docs/design/dispatcher.md).",
     flags: [
       F.taskId(true),
       {
@@ -201,6 +212,12 @@ export const VERBS: readonly VerbSpec[] = [
       },
     ],
     handler: note,
+  },
+  {
+    name: "note-list",
+    summary: "Read a repo's accumulated field notes, newest first. Returns { notes }.",
+    flags: [F.repo(true)],
+    handler: (ctx) => simpleRpc(ctx, "note.list", { repo: ctx.args.requirePath("repo") }),
   },
   {
     name: "feedback",
@@ -309,6 +326,9 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: collect,
   },
+  // The ruler: an aggregate read over worker reports + routine runs. Spec +
+  // handler in ./handlers-digest.ts.
+  DIGEST_VERB,
   // Supervision (worker `report` / coordinator `await`) — specs + handlers
   // live in ./handlers-outcome.ts; spread keeps this table the single index.
   ...OUTCOME_VERBS,
@@ -337,7 +357,11 @@ export const VERBS: readonly VerbSpec[] = [
     handler: (ctx) =>
       simpleRpc(ctx, "task.setVendor", {
         taskId: ctx.args.require("task-id"),
-        vendor: ctx.args.requireEnum<VendorId>("vendor"),
+        // `args.vendor()`, never `requireEnum` — engines are an open set and
+        // this verb is the one place that used the closed built-in list,
+        // which made every registered custom engine unsettable from the CLI.
+        // Presence is already enforced by the spec's `required: true`.
+        vendor: ctx.args.vendor(),
       }),
   },
   {

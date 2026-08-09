@@ -124,6 +124,33 @@ describe("send handler", () => {
       "MISSING_TARGET",
     )
   })
+
+  it("threads --tab through to the delivery target", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
+    const { calls, deliver } = recordingDelivery()
+    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    expect(calls[0].target.tab).toBe("new")
+    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    expect(calls[1].target.tab).toBe("tab-3")
+  })
+
+  it("rejects a malformed --tab before any delivery", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
+    await expectApiError(
+      () =>
+        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "3"], {
+          client,
+          runtime: stubRuntime(),
+        }),
+      "BAD_TAB",
+    )
+  })
 })
 
 describe("fan-out handler", () => {

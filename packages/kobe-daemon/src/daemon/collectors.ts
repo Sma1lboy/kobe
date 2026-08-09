@@ -170,22 +170,14 @@ export function startDaemonCollectors(
       )
     : () => {}
 
-  // Usage poller (Settings dashboard): gated on subscribers — the resume
-  // scheduler does its own on-demand cache reads. Vendors in play = every
-  // non-archived task's vendor + the default. Cadence lives in the cache.
+  // Usage poller (Settings dashboard + workspace footer): gated on
+  // subscribers — the resume scheduler does its own on-demand cache reads.
+  // Every vendor WITH A PROBE is polled, not just the ones some task
+  // happens to use: a balance belongs to the account, so a logged-in engine
+  // with no open task still has a number worth showing. Cadence (slow poll,
+  // backoff, per-vendor floor) lives entirely in the cache.
   const stopQuotaUsagePoller = quotaUsage
-    ? startQuotaUsagePoller(
-        quotaUsage,
-        () => [
-          runtime.defaultTaskVendor,
-          ...orch
-            .listTasks()
-            .filter((t) => !t.archived)
-            .map((t) => t.vendor ?? runtime.defaultTaskVendor),
-        ],
-        hasSubscribers,
-        options.quotaUsageTickMs,
-      )
+    ? startQuotaUsagePoller(quotaUsage, () => runtime.vendorsWithQuotaProbe(), hasSubscribers, options.quotaUsageTickMs)
     : () => {}
 
   // Same teardown order server.ts's close() used before the extraction.
