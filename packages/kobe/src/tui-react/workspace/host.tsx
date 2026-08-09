@@ -57,7 +57,6 @@ import { useZenMode } from "./use-zen-mode"
 
 const WORKTREE_TOOLS_MIN_WIDTH = 22
 const WORKTREE_TOOLS_MAX_WIDTH = 34
-
 function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme, transparentBackground } = useTheme()
   const inactiveBorder = transparentBackground ? theme.border : theme.borderSubtle
@@ -69,7 +68,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const orch = props.orchestrator
   // Daemon-broadcast toasts (`kobe api notify` → notice.event).
   useDaemonNotices(orch, notif.notify, dialog)
-
   const tasks = useAccessor(orch.tasksSignal())
   const activeTaskId = useAccessor(orch.activeTaskSignal())
   const engineState = useAccessor(orch.engineStateSignal())
@@ -96,7 +94,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // Proves a "complete" turn whose engine is still writing — the hook-silent
   // long-tool / background-subagent phase (see row-view's completion rule).
   const transcriptActivity = useAccessor(orch.transcriptActivitySignal())
-
   const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
   // Task-lifecycle UI state (issue #20): project filter + sidebar-search gate
   // muting host letter chords while typing. Move mode / sort pref / toasts
@@ -104,13 +101,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // `ui-prefs` follow for sortMode/projectFilter (deliberate for now).
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
   const [searchActive, setSearchActive] = useState(false)
-
   const available = Math.max(WORKTREE_TOOLS_MIN_WIDTH, dims.width - SIDEBAR_WIDTH)
   const worktreeToolsWidth = Math.max(
     WORKTREE_TOOLS_MIN_WIDTH,
     Math.min(WORKTREE_TOOLS_MAX_WIDTH, Math.floor(available / 3)),
   )
-
   // Selection + adopt-first-focus + the archived-task PTY sweep — extracted
   // verbatim to use-workspace-selection.ts (file-size cap split).
   const { selectedId, setSelectedId, selectedTask, selectTask, activateTask } = useWorkspaceSelection({
@@ -121,7 +116,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     kv,
   })
   const worktree = selectedTask?.worktreePath || null
-
   // Toasts + global sort pref + move-mode — the wiring shared with the tmux
   // Tasks pane, extracted to the hook next to the Sidebar itself.
   const { sortMode, toggleSortMode, moveMode, setMoveMode, notifyError, notifyInfo, onLocalMergeRequest } =
