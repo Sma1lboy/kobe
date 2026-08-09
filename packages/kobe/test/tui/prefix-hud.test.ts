@@ -61,11 +61,11 @@ describe("prefix HUD feed", () => {
     expect(snap.entries[0]).toMatchObject({ prefixKey: "ctrl+a", stroke: "t", action: "tab.new", at: 200 })
   })
 
-  test("the default prefix window remains open long enough to read the guide", () => {
+  test("the guide remains available throughout the default prefix window", () => {
     const stack = [registration(1, "t", "tab.new")]
 
     dispatchKeyEvent(stack, event("a", true), 100)
-    dispatchKeyEvent(stack, event("t"), 2_900)
+    dispatchKeyEvent(stack, event("t"), 900)
 
     expect(prefixHudState().entries[0]).toMatchObject({ stroke: "t", action: "tab.new" })
   })

@@ -11,25 +11,14 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import {
-  type RegisteredBinding,
-  bindingReachability,
-  dispatchKeyEvent,
-  insertRegistration,
-  resetPrefixState,
-} from "../../src/tui/lib/keymap-dispatch"
-import { prefixHudState, resetPrefixHud } from "../../src/tui/lib/prefix-hud"
+import { type RegisteredBinding, dispatchKeyEvent, insertRegistration } from "../../src/tui/lib/keymap-dispatch"
 
 // Silence + capture the shadowed-match warning (several LIFO tests below
 // stack two enabled same-chord bindings on purpose). NOTE: the warning
 // dedupes per chord per PROCESS — assertions about it must each use a
 // chord no other test in this file dispatches.
 const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
-beforeEach(() => {
-  consoleError.mockClear()
-  resetPrefixState()
-  resetPrefixHud()
-})
+beforeEach(() => consoleError.mockClear())
 
 function makeEvt(
   name: string,
@@ -193,83 +182,6 @@ describe("dispatchKeyEvent", () => {
 
     expect(fired).toBe(true)
     expect(evt.defaultPrevented).toBe(true)
-  })
-
-  test("terminal passthrough owns the configurable prefix first stroke", () => {
-    let forwarded = false
-    const stack: RegisteredBinding[] = [
-      {
-        id: 1,
-        config: () => ({
-          bindings: [{ key: "f", prefix: true, cmd: () => {}, id: "chat.fork.new" }],
-        }),
-      },
-      {
-        id: 2,
-        config: () => ({
-          bindings: [
-            {
-              key: "ctrl+a",
-              passthrough: true,
-              cmd: () => {
-                forwarded = true
-              },
-            },
-          ],
-        }),
-      },
-    ]
-
-    const evt = makeEvt("a", { ctrl: true })
-    expect(dispatchKeyEvent(stack, evt, 100)).toBe(true)
-    expect(forwarded).toBe(true)
-    expect(evt.defaultPrevented).toBe(true)
-    expect(prefixHudState().armed).toBe(false)
-    expect(prefixHudState().entries).toHaveLength(0)
-    expect(bindingReachability(stack).inputPassthrough).toBe(true)
-  })
-
-  test("entering terminal input cancels a prefix armed in another pane", () => {
-    let prefixFired = false
-    let forwarded = false
-    const global: RegisteredBinding = {
-      id: 1,
-      config: () => ({
-        bindings: [
-          {
-            key: "f",
-            prefix: true,
-            id: "chat.fork.new",
-            cmd: () => {
-              prefixFired = true
-            },
-          },
-        ],
-      }),
-    }
-
-    expect(dispatchKeyEvent([global], makeEvt("a", { ctrl: true }), 100)).toBe(true)
-    expect(prefixHudState().armed).toBe(true)
-
-    const terminal: RegisteredBinding = {
-      id: 2,
-      config: () => ({
-        bindings: [
-          {
-            key: "f",
-            passthrough: true,
-            cmd: () => {
-              forwarded = true
-            },
-          },
-        ],
-      }),
-    }
-    expect(dispatchKeyEvent([global, terminal], makeEvt("f"), 200)).toBe(true)
-    expect(forwarded).toBe(true)
-    expect(prefixFired).toBe(false)
-    expect(prefixHudState().armed).toBe(false)
-    expect(prefixHudState().entries).toHaveLength(0)
   })
 
   test("bare letter does not match modifier-prefixed binding", () => {

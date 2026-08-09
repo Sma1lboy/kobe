@@ -8,14 +8,11 @@ function source(path: string): string {
   return readFileSync(join(ROOT, path), "utf8")
 }
 
-describe("keyboard overlay theme surfaces", () => {
+describe("which-key overlay theme surface", () => {
   it("uses the readable dialog surface instead of transparent pane chrome", () => {
-    const overlays = [
-      source("src/tui-react/component/prefix-hud.tsx"),
-      source("src/tui-react/component/keyboard-coach.tsx"),
-    ].join("\n")
+    const overlay = source("src/tui-react/component/prefix-hud.tsx")
 
-    expect(overlays).not.toContain("backgroundColor={theme.backgroundPanel}")
-    expect(overlays.match(/backgroundColor=\{theme\.backgroundDialog\}/g)).toHaveLength(4)
+    expect(overlay).not.toContain("backgroundColor={theme.backgroundPanel}")
+    expect(overlay.match(/backgroundColor=\{theme\.backgroundDialog\}/g)).toHaveLength(3)
   })
 })

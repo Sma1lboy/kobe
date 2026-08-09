@@ -18,12 +18,6 @@ export const en = {
   direct: "ONE PRESS — Kobe shortcuts",
   afterPrefix: "AFTER PREFIX — more Kobe commands",
   otherPane: "OTHER PANE — {surface}",
-  coach: {
-    title: "Keyboard tour {step}/2",
-    skip: "click to dismiss",
-    step0: "In the Sidebar, use {nav} to move and {open} to open a task. Bare keys belong to the focused pane.",
-    step1: "Press {key} to reveal every available second key, then choose a command or press esc.",
-  },
 }
 
 export const zh: typeof en = {
@@ -39,10 +33,4 @@ export const zh: typeof en = {
   direct: "一次按下 — Kobe 快捷键",
   afterPrefix: "按下 Prefix 后 — 更多 Kobe 命令",
   otherPane: "其他区域 — {surface}",
-  coach: {
-    title: "快捷键导览 {step}/2",
-    skip: "点击关闭",
-    step0: "在侧边栏用 {nav} 移动、{open} 打开任务。裸键只属于当前聚焦区域。",
-    step1: "按 {key} 查看当前可用的所有第二键，然后选择命令或按 esc 取消。",
-  },
 }
