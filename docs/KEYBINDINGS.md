@@ -95,6 +95,13 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 direct again: `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
 their prefix strokes are dropped, same reasoning as the tab rows.
 
+Owner decision (2026-08-09): `f1` is reserved out of the terminal
+passthrough (`RESERVED_GLOBAL_CHORDS`), so F1 opens the help reference from
+inside the embedded terminal too. It was the one F-row gap (f2–f5, f7 were
+already reserved), the docs promise "F1 anywhere", and the status-bar hint
+advertises F1 inside the terminal — all three lied while f1 passed through.
+No engine CLI binds F1.
+
 ## Navigation and workspace defaults
 
 | Key | Action |
