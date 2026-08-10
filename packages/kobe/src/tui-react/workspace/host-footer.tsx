@@ -19,7 +19,7 @@
 import type { ReactNode } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { engineDisplayName } from "../../engine/interactive-command"
-import { useStatusKeyHintText } from "../component/keyboard-hints"
+import { StatusKeyHintBar, useStatusKeyHintItems } from "../component/keyboard-hints"
 import { usageChips } from "../component/settings-dialog/usage-core"
 import { useTheme } from "../context/theme"
 import { useAccessor } from "../lib/use-accessor"
@@ -49,11 +49,16 @@ function UsageChips(props: { orchestrator: RemoteOrchestrator }) {
 }
 
 /** Sidebar | workspace | files row, with the quota + key-hint line under it. */
-export function WorkspaceFrame(props: { orchestrator: RemoteOrchestrator; children: ReactNode }) {
+export function WorkspaceFrame(props: {
+  orchestrator: RemoteOrchestrator
+  /** Wires the footer's clickable ⚙ button; absent = no settings segment. */
+  onOpenSettings?: () => void
+  children: ReactNode
+}) {
   const { theme } = useTheme()
   const usage = useAccessor(props.orchestrator.usageSnapshotSignal())
-  const hint = useStatusKeyHintText()
-  const footerVisible = (usage != null && usage.size > 0) || hint !== null
+  const hintItems = useStatusKeyHintItems({ onOpenSettings: props.onOpenSettings })
+  const footerVisible = (usage != null && usage.size > 0) || hintItems.length > 0
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1}>
@@ -64,11 +69,7 @@ export function WorkspaceFrame(props: { orchestrator: RemoteOrchestrator; childr
           <box flexGrow={1} flexDirection="row">
             <UsageChips orchestrator={props.orchestrator} />
           </box>
-          {hint !== null ? (
-            <text fg={theme.textMuted} wrapMode="none">
-              {hint}
-            </text>
-          ) : null}
+          <StatusKeyHintBar onOpenSettings={props.onOpenSettings} />
         </box>
       ) : null}
     </box>

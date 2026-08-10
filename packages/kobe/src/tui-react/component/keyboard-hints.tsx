@@ -3,8 +3,11 @@
  * Keyboard-discoverability hints — the React half of
  * `src/tui/lib/keyboard-hints.ts`:
  *
- *   - `StatusKeyHint` / `useStatusKeyHintText`: the permanent status-bar
- *     micro-hint (`⌃ A commands · F1 help`), terminal-passthrough aware.
+ *   - `StatusKeyHintBar` / `useStatusKeyHintItems`: the permanent status-bar
+ *     micro-hint (`⌃ A commands · F1 help · ⚙ settings`), terminal-
+ *     passthrough aware. Every segment is mouse-activatable (clicks don't
+ *     pass through to the PTY, so the ⚙ button works even inside the
+ *     terminal, where the keyboard path is longest).
  *   - `PaneKeyHint`: one muted line per vim-style pane (sidebar/files);
  *     the fuller first-use variant extinguishes permanently once the pane's
  *     own keys are used (`usePaneHintMark`).
@@ -22,6 +25,7 @@ import {
   type HintPane,
   KEY_HINTS_ENABLED_KEY,
   PANE_HINT_USED_KEYS,
+  type StatusHintToken,
   keyHintsEnabled,
   paneHintTokens,
   paneHintVisible,
@@ -33,25 +37,34 @@ import { useKeymapVersion } from "../context/keybindings"
 import { useOptionalKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-import { currentBindingReachability, useBindingStackVersion } from "../lib/keymap"
+import { armPrefixFromCurrentStack, currentBindingReachability, useBindingStackVersion } from "../lib/keymap"
+import { useOptionalDialog } from "../ui/dialog"
+import { HelpDialog } from "./help-dialog"
+
+export type StatusKeyHintItem = {
+  text: string
+  /** Mouse activation — the same action the advertised key would run. */
+  onPress?: () => void
+}
 
 /**
- * The status-bar hint line, or null when it has nothing truthful to say
+ * The status-bar hint segments, empty when there is nothing truthful to say
  * (hints toggled off, prefix disabled AND help unbound, …). Reads the live
  * binding stack, so an open modal or the terminal passthrough boundary
  * reshapes it automatically.
  */
-export function useStatusKeyHintText(): string | null {
+export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): StatusKeyHintItem[] {
   const t = useT()
   const kv = useOptionalKV()
   // Reachability is a function of the focused pane, the live keymap, and
   // which bindings are registered (registration happens in mount effects,
   // AFTER the first render) — subscribe to all three so a change in any of
   // them re-renders this consumer and re-runs the effect below.
-  useOptionalFocus()
+  const focus = useOptionalFocus()
+  const dialog = useOptionalDialog()
   useKeymapVersion()
   useBindingStackVersion()
-  const [text, setText] = useState<string | null>(null)
+  const [tokens, setTokens] = useState<readonly StatusHintToken[]>([])
   // Snapshot AFTER every commit, never during render: `enabled` gates like
   // the terminal passthrough table read render-refreshed refs in CHILD
   // components, and this hook renders in a parent (the workspace footer) —
@@ -62,25 +75,51 @@ export function useStatusKeyHintText(): string | null {
   // compare-and-set keeps the no-change case from looping.
   useEffect(() => {
     const enabled = keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))
-    const tokens = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
-    const next =
-      tokens.length === 0
-        ? null
-        : tokens.map((tok) => t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) })).join(" · ")
-    setText((prev) => (prev === next ? prev : next))
+    const next = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
+    setTokens((prev) =>
+      prev.length === next.length && prev.every((tok, i) => tok.chord === next[i]?.chord && tok.msg === next[i]?.msg)
+        ? prev
+        : next,
+    )
   })
-  return text
+  // Click = the action the advertised key would run. Arming the prefix goes
+  // through the REAL dispatcher state, so the which-key guide that appears
+  // accepts a keyboard second stroke exactly like a pressed ctrl+a.
+  const actions: Record<StatusHintToken["msg"], (() => void) | undefined> = {
+    commands: () => void armPrefixFromCurrentStack(),
+    sidebar: focus ? () => focus.setFocused("sidebar") : undefined,
+    help: dialog ? () => HelpDialog.show(dialog, focus?.focused ?? "sidebar") : undefined,
+  }
+  const items: StatusKeyHintItem[] = tokens.map((tok) => ({
+    text: t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
+    onPress: actions[tok.msg],
+  }))
+  if (opts?.onOpenSettings && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
+    items.push({ text: `⚙ ${t("hints.status.settings")}`, onPress: opts.onOpenSettings })
+  }
+  return items
 }
 
-/** Thin renderable wrapper over {@link useStatusKeyHintText}. */
-export function StatusKeyHint() {
+/** The footer's hint row: muted key captions, each mouse-activatable. */
+export function StatusKeyHintBar(props: { onOpenSettings?: () => void }) {
   const { theme } = useTheme()
-  const text = useStatusKeyHintText()
-  if (text === null) return null
+  const items = useStatusKeyHintItems({ onOpenSettings: props.onOpenSettings })
+  if (items.length === 0) return null
   return (
-    <text fg={theme.textMuted} wrapMode="none">
-      {text}
-    </text>
+    <box flexDirection="row" flexShrink={0}>
+      {items.flatMap((item, index) => [
+        index > 0 ? (
+          <text key={`sep-${item.text}`} fg={theme.textMuted} wrapMode="none">
+            {" · "}
+          </text>
+        ) : null,
+        <box key={item.text} onMouseUp={item.onPress}>
+          <text fg={theme.textMuted} wrapMode="none">
+            {item.text}
+          </text>
+        </box>,
+      ])}
+    </box>
   )
 }
 
