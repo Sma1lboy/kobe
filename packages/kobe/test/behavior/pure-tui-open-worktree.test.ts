@@ -8,12 +8,11 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, DIST_CLI, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
+import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
 
-const nodePty = await import("node-pty").then(
-  (mod) => mod,
-  () => null,
-)
+// Shared loader: skips when node-pty is missing OR cannot spawn here (a
+// sandboxed shell denies posix_spawnp) — see harness.ts.
+const nodePty = await loadNodePty()
 
 async function readInvocations(marker: string): Promise<string[]> {
   return readFile(marker, "utf8").then(
