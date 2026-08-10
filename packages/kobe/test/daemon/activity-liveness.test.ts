@@ -134,6 +134,24 @@ describe("activity registry liveness watchdog", () => {
     expect(states.t).toEqual(["running", "running", "idle"])
   })
 
+  it("passes the REPORTING engine's vendor to the probe (custom wrapper ids)", async () => {
+    // A task configured with a custom wrapper vendor (`claudecpa`) has no
+    // transcript store under that id — the probe must ask about the engine
+    // the hook actually reported (`--engine claude`), else mtime reads 0
+    // and every long turn lapses mid-work.
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now() }))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start", undefined, "tab-1", undefined, "claude")
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    expect(probe).toHaveBeenCalledWith("t", "claude")
+    // Carried forward: a later event without the tag keeps the known vendor.
+    registry.report("t", "turn-start")
+    await vi.advanceTimersByTimeAsync(TTL)
+    expect(probe).toHaveBeenLastCalledWith("t", "claude")
+  })
+
   it("falls back to lapsing when the probe throws (no crash)", async () => {
     const probe: ActivityLivenessProbe = vi.fn(() => Promise.reject(new Error("fs boom")))
     registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)

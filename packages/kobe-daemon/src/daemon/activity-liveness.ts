@@ -39,10 +39,15 @@ export async function readActivityLiveness(
   orch: LivenessTaskLookup,
   runtime: LivenessRuntime,
   taskId: string,
+  reportedVendor?: string,
 ): Promise<ActivityLiveness | undefined> {
   const task = orch.getTask(taskId)
   if (!task?.worktreePath) return undefined
-  const vendor = task.vendor ?? runtime.defaultTaskVendor
+  // The hook's own `--engine` tag outranks the task's configured vendor: a
+  // custom wrapper id (`claudecpa` → cc-switch → claude) has no transcript
+  // store of its own, so probing by task.vendor read mtime 0 and lapsed
+  // every long turn to idle mid-work.
+  const vendor = (reportedVendor as VendorId | undefined) ?? task.vendor ?? runtime.defaultTaskVendor
   const detector = runtime.createEngineTurnDetector(vendor)
   if (!detector?.supportsCompletionMarkers()) {
     const mtimeMs = await runtime.latestTranscriptMtime(vendor, task.worktreePath)

@@ -57,4 +57,25 @@ describe("tabTitleStable", () => {
     const tab = { kind: "command", id: "tab-3", title: null, ordinal: 3, lastTitle: "vim" } as TerminalTab
     expect(tabTitleStable(tab, "claude")).toBe("vim 3")
   })
+
+  it("a confirmed-dead engine tab is a shell — no pin, no frozen status", () => {
+    // Tab spawned as codex, engine ctrl+C'd: the probe CONFIRMS no engine
+    // (liveVendor === null). Neither "codex N" nor the stale status may name
+    // it; the first-prompt summary (if any) still beats the bare default.
+    const tab = engineTab({ vendor: "codex", lastTitle: "Working ▌ my thread", autoTitle: "add the ruler" })
+    expect(tabTitleStable(tab, "codex", null)).toBe("add the ruler")
+    const bare = engineTab({ vendor: "codex", lastTitle: "Working ▌ my thread" })
+    expect(tabTitleStable(bare, "codex", null)).toBe("shell 1")
+  })
+
+  it("the LIVE vendor renames a tab pinned to another engine", () => {
+    // Spawned as codex, now running claude: the pin is history.
+    const tab = engineTab({ vendor: "codex", lastTitle: "⠐ thinking" })
+    expect(tabTitleStable(tab, "codex", "claude")).toBe("claude 1")
+  })
+
+  it("undefined liveVendor (probe can't look) keeps the engine pin", () => {
+    const tab = engineTab({ vendor: "codex", lastTitle: "Working ▌ t" })
+    expect(tabTitleStable(tab, "codex")).toBe("codex 1")
+  })
 })

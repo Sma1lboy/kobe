@@ -170,7 +170,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   // Liveness probe for the activity lapse watchdog — see activity-liveness.ts
   // for why it reads a completion marker and not just the transcript mtime.
-  const livenessAt: ActivityLivenessProbe = (taskId) => readActivityLiveness(orch, runtime, taskId)
+  const livenessAt: ActivityLivenessProbe = (taskId, vendor) => readActivityLiveness(orch, runtime, taskId, vendor)
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
