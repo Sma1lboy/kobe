@@ -344,8 +344,16 @@ export function setTabInitialPrompt(state: TabsState, id: string, prompt: string
  * Record the tab's latest live process title. No-op when unchanged, so the
  * OSC stream (which repeats the same title on every turn) can call this
  * freely without churning the persisted snapshot.
+ *
+ * An EMPTY title is also a no-op: this field exists so surfaces that render
+ * a tab they don't host still know its name, and "the process has not
+ * reported a title" must never erase the one it reported earlier. Recording
+ * `""` renamed a live session to its vendor default a beat after the real
+ * title appeared (owner report 2026-08-10) — and persisted that, so the tab
+ * came back wrong on the next start too.
  */
 export function setTabLastTitle(state: TabsState, id: string, lastTitle: string): TabsState {
+  if (lastTitle.length === 0) return state
   const current = state.tabs.find((t) => t.id === id)
   if (!current || current.lastTitle === lastTitle) return state
   const tabs = state.tabs.map((t): TerminalTab => (t.id === id ? { ...t, lastTitle } : t))

@@ -62,7 +62,8 @@ export function createTitleSubscriptions(
   lookup: PtyLookup = getDefaultPtyRegistry().get.bind(getDefaultPtyRegistry()),
 ): TitleSubscriptions {
   /** ptyKey → the subscribed PTY instance, its unsub, and its raw OSC title. */
-  type Entry = { pty: TaskPtyLike; unsub: () => void; title: string }
+  /** `title` is undefined until the PTY reports one — see the seeding note below. */
+  type Entry = { pty: TaskPtyLike; unsub: () => void; title: string | undefined }
   const subs = new Map<string, Entry>()
   const listeners = new Set<() => void>()
 
@@ -91,9 +92,14 @@ export function createTitleSubscriptions(
         if (subs.has(key)) continue
         const pty = lookup(key)
         if (!pty) continue
-        // onTitleChange fires immediately with the current title (mock + real
-        // both do), so `title` is seeded synchronously here.
-        const entry: Entry = { pty, unsub: () => {}, title: "" }
+        // onTitleChange replays the CURRENT title synchronously when there
+        // is one, so `title` is seeded below. Until then it stays
+        // `undefined` — NOT `""`: `get()` returning an empty string reads as
+        // "this tab's live title is empty" instead of "nothing reported
+        // yet", and the host records that over the tab's real `lastTitle`
+        // (use-tab-turn-state), wiping the name to the vendor default a beat
+        // after the correct one rendered (owner report 2026-08-10).
+        const entry: Entry = { pty, unsub: () => {}, title: undefined }
         entry.unsub = pty.onTitleChange((raw) => {
           if (entry.title === raw) return
           entry.title = raw
