@@ -49,17 +49,15 @@ export type AppliedOverride = {
   defaultKeys: readonly string[]
 }
 
-/** Ids whose event-shape or handler contract cannot be expressed by a rebind. */
-export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
-  // sidebar.goto / sidebar.pin / sidebar.localMerge left this list
-  // 2026-07-17: shift+<letter> chords are expressible now (matchKey mints
-  // `shift+g` from an uppercase keypress), so their rows carry explicit
-  // shift+ chords instead of evt.shift gates in the handlers.
-  "chat.question.nav":
-    "the question picker has no live registration site (display-only row) — rebinding would change Help without changing behavior",
-  "chat.question.pick-number":
-    "digits map to options positionally and the question picker has no live registration site (display-only row)",
-}
+/**
+ * Ids whose event-shape or handler contract cannot be expressed by a rebind.
+ * Currently empty — the last entries (`chat.question.*`) left with their
+ * display-only rows — but the seam stays: `applyKeymapOverrides` rejects any
+ * id listed here, and Settings → Keybindings surfaces the list when non-empty.
+ * (sidebar.goto / sidebar.pin / sidebar.localMerge left 2026-07-17 when
+ * shift+<letter> chords became expressible.)
+ */
+export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {}
 
 /**
  * Positional slot contract for a direction-multiplexed binding id. The
@@ -128,6 +126,9 @@ function scopesOverlap(a: string, b: string): boolean {
 export function applyKeymapOverrides(
   keymap: readonly OverridableBinding[],
   entries: readonly KeymapOverrideEntry[],
+  // Injectable so the fixed-id rejection stays testable while the shipped
+  // map is empty (FIXED_BINDING_IDS above).
+  fixedIds: Readonly<Record<string, string>> = FIXED_BINDING_IDS,
 ): { applied: AppliedOverride[]; warnings: string[] } {
   const warnings: string[] = []
   const applied: AppliedOverride[] = []
@@ -138,7 +139,7 @@ export function applyKeymapOverrides(
       warnings.push(`${entry.id}: unknown binding id (press F1 in kobe for the full list)`)
       continue
     }
-    const fixedReason = FIXED_BINDING_IDS[entry.id]
+    const fixedReason = fixedIds[entry.id]
     if (fixedReason) {
       warnings.push(`${entry.id}: not customizable — ${fixedReason}`)
       continue

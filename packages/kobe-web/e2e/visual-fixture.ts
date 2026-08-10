@@ -26,7 +26,14 @@ const VISUAL_TODAY = "2026-07-15"
 // Inlined into the PTY command: the child runs under `/bin/sh -lc`, and a
 // login shell or env-passing gap must NEVER let it fall back to the shared
 // `.dev-sandbox/home` (the owner's live environment).
-export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} KOBE_ISSUES_TODAY=${VISUAL_TODAY} bun run dev:sandbox`
+//
+// The explicit EMPTY assignments neutralize kobe's absolute-path overrides
+// (empty = unset to `kobe-daemon/daemon/paths.ts`). A kobe engine session
+// exports KOBE_DAEMON_SOCKET_PATH into its terminal so in-task agents can
+// reach the owning daemon — which means an agent running this suite from
+// inside a kobe task would otherwise hand the fixture TUI a socket pointing
+// at the OWNER'S live daemon, and the "isolated" journey renders real tasks.
+export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} KOBE_ISSUES_TODAY=${VISUAL_TODAY} KOBE_DAEMON_SOCKET_PATH= KOBE_DAEMON_PID_PATH= KOBE_PTY_SOCKET_PATH= KOBE_PTY_PID_PATH= KOBE_TASK_ID= KOBE_TAB_ID= bun run dev:sandbox`
 
 const XDG_CONFIG_HOME = join(VISUAL_HOME, ".config")
 const XDG_DATA_HOME = join(VISUAL_HOME, ".local", "share")

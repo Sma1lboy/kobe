@@ -50,14 +50,18 @@ try {
   })
   const harness = page.getByTestId("opentui-harness")
   await harness.waitFor({ timeout: 10_000 })
-  // TUI takeover: PROJECTS is the workspace's earliest stable marker.
+  // TUI takeover: the fixture project row is the workspace's earliest stable
+  // marker (the tree sidebar, default since the worktree tree landed, never
+  // prints the old PROJECTS header this script used to wait for).
   const buffer = page.getByTestId("opentui-buffer")
   await page.waitForFunction(
-    (el) => el?.textContent?.includes("PROJECTS"),
+    (el) => el?.textContent?.includes("fixture-repo"),
     await buffer.elementHandle(),
     { timeout: 45_000 },
   )
-  await page.getByTestId("opentui-terminal").click({ position: { x: 24, y: 24 } })
+  // Click the sidebar's EMPTY lower area — (24, 24) would land on the tree's
+  // project header row (same re-anchor rationale as sandbox.spec.ts).
+  await page.getByTestId("opentui-terminal").click({ position: { x: 24, y: 400 } })
   for (const token of tokens) {
     if (token.startsWith("text:")) await page.keyboard.type(token.slice(5))
     else await page.keyboard.press(chord(token))

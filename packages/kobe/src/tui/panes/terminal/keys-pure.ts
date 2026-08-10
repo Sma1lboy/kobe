@@ -166,6 +166,11 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
  * `terminal-keys-pure.test.ts` pins the resolved set.
  */
 const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
+  // The live keymap reference (owner call 2026-08-09): docs promise
+  // "F1 anywhere", the rest of the F-row (f2-f5, f7) was already
+  // reserved, and the status-bar hint advertises F1 inside the terminal —
+  // leaving f1 passthrough made all three lie. No engine binds F1.
+  { id: "help.open" }, // f1
   // THE escape hatch out of the terminal: ctrl+q returns to the tasks
   // list (direct chord restored 2026-07-11, same owner call as the tab
   // rows below).

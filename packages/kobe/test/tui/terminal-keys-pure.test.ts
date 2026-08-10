@@ -130,6 +130,10 @@ describe("key routing tables", () => {
         "ctrl+w",
         "ctrl+\\",
         "ctrl+=",
+        // f1 joined 2026-08-09 (owner call): "F1 anywhere" is the docs'
+        // promise and the status-bar hint advertises it inside the
+        // terminal — no engine binds F1.
+        "f1",
         "f2",
         "f3",
         "f4",
@@ -140,7 +144,7 @@ describe("key routing tables", () => {
     // Chords the engine depends on must NOT be reserved (shift+tab is
     // claude's plan-mode cycle; ctrl+g is readline abort-editing; the rest
     // are its own UI shortcuts).
-    for (const chord of ["shift+tab", "ctrl+g", "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "ctrl+p", "f1", "ctrl+r"]) {
+    for (const chord of ["shift+tab", "ctrl+g", "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "ctrl+p", "ctrl+r"]) {
       expect(RESERVED_GLOBAL_CHORDS).not.toContain(chord)
     }
     // Plain typing keys must stay forwardable.

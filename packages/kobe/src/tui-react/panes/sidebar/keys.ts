@@ -19,6 +19,7 @@
 
 import { useRef } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
+import { usePaneHintMark } from "../../component/keyboard-hints"
 import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
@@ -78,6 +79,9 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   const searchModeOn = (): boolean => optsRef.current.searchMode ?? false
   const moveModeOn = (): boolean => optsRef.current.moveMode ?? false
 
+  // Using the pane's own nav/select keys extinguishes its first-use hint.
+  const markKeysUsed = usePaneHintMark("sidebar")
+
   // Block A — letter chords + `/` to enter search. Disabled while the user
   // is typing in the search input.
   useBindings(() => ({
@@ -85,6 +89,7 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
     bindings: bindByIds({
       // Direction-multiplexed: slot layout is alternating [down, up] pairs.
       "sidebar.nav": (_evt, slot) => {
+        markKeysUsed()
         const down = (slot ?? 0) % 2 === 0
         if (moveModeOn()) {
           const id = cursorTaskId()
@@ -96,6 +101,7 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         else ctrl.moveUp()
       },
       "sidebar.select": () => {
+        markKeysUsed()
         if (moveModeOn()) {
           optsRef.current.onMoveModeExit?.()
           return
