@@ -29,26 +29,36 @@ export function soloKey(taskId: string, tab: TerminalTab): string | null {
 }
 
 /**
- * What (if anything) to run a turn detector against for this tab: a
- * kobe-launched engine → its pinned vendor at the tab key; anything else
- * with a solo PTY running an engine process → that vendor.
+ * What (if anything) to run a turn detector against for this tab: whatever
+ * engine the live probe sees under the tab's PTY; for a kobe-launched engine
+ * tab, the creation pin covers only the window the probe CANNOT answer
+ * (PTY not spawned/attached yet — `vendorOf` returns undefined there).
  *
- * `vendorOf` is the live process identity (`live-engine.ts`, a process-tree
- * walk). It used to be a window-title match, which mis-identified a claude
- * session as codex whenever its activity summary said "codex" — a title is
- * text for humans, not identity.
+ * `vendorOf` is the tri-state live process identity (`live-engine.ts`, a
+ * process-tree walk): a vendor / null ("shell walked, no engine") /
+ * undefined ("couldn't look"). The pin used to win unconditionally for
+ * engine tabs, which kept a ctrl+C'd codex tab identified as codex forever —
+ * wrong detector, wrong persisted identity, wrong sidebar label. A confirmed
+ * engine-free shell is a shell, whatever the tab was born as; and an engine
+ * tab where the user then typed a DIFFERENT engine tracks that one.
  */
 export function targetFor(
   taskId: string,
   tab: TerminalTab,
   taskVendor: VendorId,
-  vendorOf: (key: string) => VendorId | null,
+  vendorOf: (key: string) => VendorId | null | undefined,
 ): { vendor: VendorId; key: string } | null {
-  if (tab.kind === "engine" && hasEngineLeaf(tab.splitTree)) {
-    return { vendor: tab.vendor ?? taskVendor, key: tabPtyKey(taskId, tab.id) }
-  }
   const key = soloKey(taskId, tab)
-  if (!key) return null
-  const vendor = vendorOf(key)
-  return vendor ? { vendor, key } : null
+  const pinned = tab.kind === "engine" && hasEngineLeaf(tab.splitTree) ? (tab.vendor ?? taskVendor) : null
+  if (!key) {
+    // Multi-leaf split: no single process to identify — the engine leaf's
+    // pin (if any) still runs the tab-key detector, as before.
+    return pinned ? { vendor: pinned, key: tabPtyKey(taskId, tab.id) } : null
+  }
+  const live = vendorOf(key)
+  if (live) return { vendor: live, key }
+  // undefined = spawn/attach window → trust the pin; null = confirmed bare
+  // shell → no detector, even for an engine-born tab.
+  if (live === undefined && pinned) return { vendor: pinned, key }
+  return null
 }

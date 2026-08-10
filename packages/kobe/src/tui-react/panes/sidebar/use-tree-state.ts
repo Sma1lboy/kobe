@@ -94,29 +94,37 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
       const vendor = task.vendor ?? DEFAULT_TASK_VENDOR
       map.set(
         task.id,
-        known.tabs.map((tab) => ({
-          id: tab.id,
-          // `tabTitleStable`, NOT `tabTitle`: for a status-owning engine the
-          // recorded title IS its self-reported status (`⠐ 利用自进化…`), and
-          // the tree has no live stream to refresh it — so the row would
-          // wear a frozen spinner phrase that contradicts the state glyph
-          // right next to it, which kobe derives from daemon activity.
-          label: tabTitleStable(tab, vendor, liveEngines.get(tabPtyKeyFor(task.id, tab)) ?? tab.liveVendor),
-          // The active tab carries the task's state glyph (activity is
-          // task-scoped; the active tab is the session it describes).
-          active: tab.id === known.activeId,
-          // Agent = a kobe-launched engine tab, OR a tab whose live process
-          // is an engine right now (user typed `claude` in a shell), OR one
-          // whose RECORDED identity says so (`liveVendor` — the persisted
-          // twin of lastTitle) while the live probe can't answer: hosted
-          // PTYs keep the process alive across TUI restarts, but the fresh
-          // registry has nothing to walk until the tab re-mounts, and
-          // demoting the row to a plain dot for that gap reads as a lie.
-          engine:
-            tab.kind === "engine" ||
-            liveEngines.get(tabPtyKeyFor(task.id, tab)) !== null ||
-            (tab.liveVendor ?? null) !== null,
-        })),
+        known.tabs.map((tab) => {
+          // Tri-state live identity: a vendor / "confirmed no engine" (null) /
+          // "can't look" (undefined — no attached PTY, e.g. right after a TUI
+          // restart). Only the can't-look case falls back to the RECORDED
+          // `liveVendor` (itself tri-state — the persisted twin); a confirmed
+          // engine-free shell must not resurrect the identity of whatever ran
+          // there before (a ctrl+C'd codex kept its tab labelled "codex N"
+          // through the old `?? recorded` fallback).
+          const probed = liveEngines.resolve(tabPtyKeyFor(task.id, tab))
+          const live = probed === undefined ? tab.liveVendor : probed
+          return {
+            id: tab.id,
+            // `tabTitleStable`, NOT `tabTitle`: for a status-owning engine the
+            // recorded title IS its self-reported status (`⠐ 利用自进化…`), and
+            // the tree has no live stream to refresh it — so the row would
+            // wear a frozen spinner phrase that contradicts the state glyph
+            // right next to it, which kobe derives from daemon activity.
+            label: tabTitleStable(tab, vendor, live),
+            // The active tab carries the task's state glyph (activity is
+            // task-scoped; the active tab is the session it describes).
+            active: tab.id === known.activeId,
+            // Agent = a kobe-launched engine tab, OR a tab whose live process
+            // is an engine right now (user typed `claude` in a shell), OR one
+            // whose RECORDED identity says so while the live probe can't
+            // answer: hosted PTYs keep the process alive across TUI restarts,
+            // but the fresh registry has nothing to walk until the tab
+            // re-mounts, and demoting the row to a plain dot for that gap
+            // reads as a lie.
+            engine: tab.kind === "engine" || (live ?? null) !== null,
+          }
+        }),
       )
     }
     // Backstop: a task with a LIVE pty session but no snapshot renders from

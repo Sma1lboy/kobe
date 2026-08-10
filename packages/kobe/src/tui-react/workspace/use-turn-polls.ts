@@ -123,7 +123,7 @@ export function useTurnPolls(deps: {
     // `targetFor` reads the store by the tab's solo ptyKey (the same key it
     // resolves for the title lookup).
     for (const tab of state.tabs) {
-      const target = targetFor(taskId, tab, vendorRef.current, (key) => liveEngines.get(key))
+      const target = targetFor(taskId, tab, vendorRef.current, (key) => liveEngines.resolve(key))
       if (!target) continue
       const existing = turnPolls.get(tab.id)
       if (existing && existing.vendor === target.vendor && existing.key === target.key) {

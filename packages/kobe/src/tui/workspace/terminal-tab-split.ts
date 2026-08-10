@@ -174,13 +174,24 @@ export function meaningfulAutoTitle(autoTitle: string | null | undefined): strin
  * title is a real process name, which is a fine label.
  */
 export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendor?: VendorId | null): string {
+  // `liveVendor` is tri-state: a vendor = that engine runs in the tab NOW;
+  // null = the probe CONFIRMED no engine (a ctrl+C'd tab sitting at its
+  // shell prompt); undefined = the probe can't answer, fall back to the pin.
+  // A confirmed-dead engine tab is a shell: neither its frozen status line
+  // nor its creation pin ("codex N") may keep naming it.
+  if (liveVendor === null && tab.kind === "engine") {
+    return tabTitle({ ...tab, kind: "command", lastTitle: null } as TerminalTab, taskVendor)
+  }
   const vendor = liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined)
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
     return tabTitle(tab, taskVendor)
   }
   // `lastTitle: null` re-runs the same precedence with the engine's status
-  // string removed, rather than duplicating the fallback chain here.
-  return tabTitle({ ...tab, lastTitle: null }, taskVendor)
+  // string removed, rather than duplicating the fallback chain here. The
+  // RESOLVED vendor also replaces an engine tab's creation pin in that
+  // fallback: a tab spawned as codex whose shell now runs claude must not
+  // keep wearing "codex N" — the pin is history, the live process is the name.
+  return tabTitle(tab.kind === "engine" ? { ...tab, lastTitle: null, vendor } : { ...tab, lastTitle: null }, taskVendor)
 }
 
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {

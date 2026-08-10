@@ -368,8 +368,12 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // entirely — folding them into engine-state would broadcast every
         // tool call to every client. They still reach plugins below.
         const isStateKind = ctx.runtime.affectsActivityState(kind)
+        // The hook's `--engine` tag — read early so the activity registry's
+        // liveness probe can ask about the engine that actually reported
+        // (a custom wrapper id as task.vendor has no transcript store).
+        const vendor = optionalString(payload, "engine")
         if (isStateKind) {
-          ctx.activity.report(taskId, kind, detail, tabId, session)
+          ctx.activity.report(taskId, kind, detail, tabId, session, vendor)
           // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
           if (explicitId && tabId) {
             await ctx.inbox
@@ -379,7 +383,6 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         }
         // Per-task recent-events buffer (TUI event feed) + the low-frequency
         // `engine.lifecycle` channel (sidebar compaction glyph / subagent mark).
-        const vendor = optionalString(payload, "engine")
         ctx.engineEvents?.append(taskId, {
           kind,
           ...(tabId ? { tabId } : {}),

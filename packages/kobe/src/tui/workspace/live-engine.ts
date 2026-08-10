@@ -31,6 +31,15 @@ export type PtyEntries = () => readonly (readonly [string, TaskPtyLike])[]
 export interface LiveEngineStore {
   /** Live vendor for a ptyKey, or null when it runs no engine. */
   get(key: string): VendorId | null
+  /**
+   * Tri-state identity: a vendor = that engine runs under the key's shell
+   * right now; null = an engine RAN here and is gone (the shell sits at its
+   * prompt — a ctrl+C'd tab); undefined = the probe can't answer (PTY not
+   * attached/spawned yet), so callers fall back to recorded identity.
+   * The null/undefined split is what lets an engine tab's creation pin
+   * cover the spawn window without also resurrecting a dead engine's name.
+   */
+  resolve(key: string): VendorId | null | undefined
   /** Subscribe to identity changes (fires when any key's vendor moved). */
   subscribe(listener: () => void): () => void
   /** Run one probe pass now — the interval calls this; tests await it. */
@@ -49,6 +58,10 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
   const entries = opts.entries ?? (() => getDefaultPtyRegistry().entries())
   const snapshot = opts.snapshot ?? psSnapshot
   const vendors = new Map<string, VendorId>()
+  /** Keys the last successful probe actually walked — the resolve() tri-state:
+   *  in here with no vendor means "shell confirmed engine-free", absent means
+   *  "couldn't look" (no PTY / no pid / ps failed). */
+  const answered = new Set<string>()
   const listeners = new Set<() => void>()
   let disposed = false
 
@@ -67,11 +80,16 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
         if (pid !== null) pids.set(key, pid)
       }
       let changed = false
-      // A key whose PTY is gone (or has no walkable child) holds no identity.
+      // A key whose PTY is gone (or has no walkable child) holds no identity —
+      // and no ANSWER either: nothing to walk means "can't look", not "empty".
       for (const key of [...vendors.keys()]) {
         if (live.has(key) && pids.has(key)) continue
         vendors.delete(key)
         changed = true
+      }
+      for (const key of [...answered]) {
+        if (live.has(key) && pids.has(key)) continue
+        answered.delete(key)
       }
       if (pids.size > 0) {
         let rows: ReturnType<typeof parsePsSnapshot>
@@ -84,6 +102,7 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
         if (disposed) return
         for (const [key, pid] of pids) {
           const vendor = foregroundEngineIn(rows, pid)?.vendor ?? null
+          answered.add(key)
           const prev = vendors.get(key) ?? null
           if (prev === vendor) continue
           if (vendor) vendors.set(key, vendor)
@@ -96,6 +115,11 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
     get(key) {
       return vendors.get(key) ?? null
     },
+    resolve(key) {
+      const vendor = vendors.get(key)
+      if (vendor) return vendor
+      return answered.has(key) ? null : undefined
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -106,6 +130,7 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
       disposed = true
       listeners.clear()
       vendors.clear()
+      answered.clear()
       clearInterval(handle)
     },
   }

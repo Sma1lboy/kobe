@@ -91,7 +91,15 @@ export interface ActivityLiveness {
   readonly completedAt?: number
 }
 
-export type ActivityLivenessProbe = (taskId: string) => Promise<ActivityLiveness | undefined>
+/**
+ * `vendor` is the REPORTING engine's id (the hook's `--engine`), when the
+ * entry being policed carries one. A task whose configured vendor is a
+ * custom wrapper id (`claudecpa` → cc-switch → claude) has no transcript
+ * store under that id — probing by task.vendor read mtime 0 forever, so
+ * every long turn lapsed to idle at the TTL while the engine was mid-turn.
+ * The hook knows what actually runs; the probe must ask about THAT.
+ */
+export type ActivityLivenessProbe = (taskId: string, vendor?: string) => Promise<ActivityLiveness | undefined>
 
 /** The reporting engine's own session identity (from its hook payload). */
 export interface EngineSessionInfo {
@@ -106,6 +114,9 @@ interface ActivityEntry {
   /** Carried forward across events that omit it — most hooks pipe it, but
    *  the latest-known id must survive an event from an older `kobe hook`. */
   session?: EngineSessionInfo
+  /** The reporting engine's id (hook `--engine`) — what the liveness probe
+   *  asks about. Carried forward like `session`. */
+  vendor?: string
   lapse?: ReturnType<typeof setTimeout>
 }
 
@@ -142,12 +153,19 @@ export class DaemonActivityRegistry {
     detail?: EngineActivityDetail,
     tabId?: string,
     session?: EngineSessionInfo,
+    vendor?: string,
   ): void {
     const prev = this.activity.get(taskId)
     if (prev?.lapse) clearTimeout(prev.lapse)
     const state = reduceActivity(prev?.state, kind, detail)
     const at = this.now()
-    const entry: ActivityEntry = { state, detail, at, session: session ?? prev?.session }
+    const entry: ActivityEntry = {
+      state,
+      detail,
+      at,
+      session: session ?? prev?.session,
+      vendor: vendor ?? prev?.vendor,
+    }
     // Safety net: only `running` is policed by the lapse watchdog — a missed
     // Stop/SessionEnd must not pin it forever, so it lapses to idle once the
     // engine genuinely goes silent (heartbeat probe below). Sticky states
@@ -177,10 +195,11 @@ export class DaemonActivityRegistry {
       const prevTab = tabs.get(tabId)
       if (prevTab?.lapse) clearTimeout(prevTab.lapse)
       const tabSession = session ?? prevTab?.session
-      publishEntry = { state, detail, at, session: tabSession }
+      const tabVendor = vendor ?? prevTab?.vendor
+      publishEntry = { state, detail, at, session: tabSession, vendor: tabVendor }
       if (state === "idle") tabs.delete(tabId)
       else {
-        const tabEntry: ActivityEntry = { state, detail, at, session: tabSession }
+        const tabEntry: ActivityEntry = { state, detail, at, session: tabSession, vendor: tabVendor }
         if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
         tabs.set(tabId, tabEntry)
       }
@@ -202,9 +221,9 @@ export class DaemonActivityRegistry {
    */
   /** Probe wrapper: a best-effort filesystem read must never crash the daemon,
    *  and a failure reads as "silent" ⇒ lapse. */
-  private async probe(taskId: string): Promise<ActivityLiveness | undefined> {
+  private async probe(taskId: string, vendor?: string): Promise<ActivityLiveness | undefined> {
     try {
-      return await this.livenessAt(taskId)
+      return await this.livenessAt(taskId, vendor)
     } catch {
       return undefined
     }
@@ -258,7 +277,7 @@ export class DaemonActivityRegistry {
     const before = this.tabActivity.get(taskId)?.get(tabId)
     if (!before || before.at !== at) return
 
-    const live = await this.probe(taskId)
+    const live = await this.probe(taskId, before.vendor)
 
     const tabs = this.tabActivity.get(taskId)
     const cur = tabs?.get(tabId)
@@ -286,7 +305,7 @@ export class DaemonActivityRegistry {
     const before = this.activity.get(taskId)
     if (!before || before.at !== at) return
 
-    const live = await this.probe(taskId)
+    const live = await this.probe(taskId, before.vendor)
 
     // Re-read after the await: the entry may have been replaced or cleared
     // while the probe was in flight. Acting on a stale `at` would clobber a

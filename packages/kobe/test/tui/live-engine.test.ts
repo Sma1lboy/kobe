@@ -70,6 +70,33 @@ describe("createLiveEngines", () => {
     store.dispose()
   })
 
+  it("resolve() is tri-state: vendor / confirmed-none / can't-look", async () => {
+    let tree = TREE
+    let live: readonly (readonly [string, TaskPtyLike])[] = [
+      ["a", pty(100)],
+      ["b", pty(200)],
+      ["c", pty(null)], // attached but unspawned — nothing to walk
+    ]
+    const store = createLiveEngines({ entries: () => live, snapshot: async () => tree })
+    await store.probe()
+    expect(store.resolve("a")).toBe("claude") // engine live
+    expect(store.resolve("b")).toBeNull() // shell walked, confirmed engine-free
+    expect(store.resolve("c")).toBeUndefined() // can't look
+    expect(store.resolve("never-seen")).toBeUndefined()
+
+    // The engine exits (ctrl+C back to the prompt): a is now CONFIRMED empty,
+    // not unknown — recorded identity must not resurrect through it.
+    tree = IDLE
+    await store.probe()
+    expect(store.resolve("a")).toBeNull()
+
+    // The PTY detaches entirely → back to "can't look".
+    live = []
+    await store.probe()
+    expect(store.resolve("a")).toBeUndefined()
+    store.dispose()
+  })
+
   it("keeps the last identity when ps fails — never guesses", async () => {
     let fail = false
     const store = createLiveEngines({
