@@ -32,6 +32,7 @@ const PAGES = new Map([
   ['QUICKSTART.md', 'quick-start'],
   ['CONCEPTS.md', 'concepts'],
   ['CLI.md', 'cli'],
+  ['API.md', 'api'],
   ['CONFIGURATION.md', 'configuration'],
   ['KEYBINDINGS.md', 'keybindings'],
   ['themes.md', 'themes'],

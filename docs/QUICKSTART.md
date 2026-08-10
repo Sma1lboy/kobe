@@ -73,5 +73,7 @@ More in [Troubleshooting](TROUBLESHOOTING.md).
 ## Next steps
 
 - [Concepts](CONCEPTS.md): tasks, sessions, and what survives what.
-- [CLI + API reference](CLI.md): every command and RPC verb.
+- [CLI reference](CLI.md): every command the `kobe` binary ships.
+- [kobe api](API.md): the scriptable surface — fan out, supervise, land,
+  from a script or another agent.
 - [Configuration](CONFIGURATION.md): engines, themes, notifications.

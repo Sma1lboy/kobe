@@ -17,6 +17,15 @@
 </p>
 
 <p align="center">
+  <a href="https://docs.kobe.sma1lboy.me"><strong>Documentation</strong></a> ·
+  <a href="https://docs.kobe.sma1lboy.me/docs/quick-start">Quick start</a> ·
+  <a href="https://docs.kobe.sma1lboy.me/docs/concepts">Concepts</a> ·
+  <a href="https://docs.kobe.sma1lboy.me/docs/cli">CLI</a> ·
+  <a href="https://docs.kobe.sma1lboy.me/docs/api">Agent API</a> ·
+  <a href="https://kobe.sma1lboy.me">Website</a>
+</p>
+
+<p align="center">
   <img src="docs/assets/workspace.png" alt="kobe workspace — task sidebar, embedded engine session, file tree and terminal" />
 </p>
 
@@ -56,6 +65,8 @@ kobe
 ```
 
 Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.kobe/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
+
+Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** — quick start, concepts, CLI, agent API, configuration, keybindings, themes, engines, plugins, troubleshooting.
 
 > **If kobe saves you an afternoon, [star the repo](https://github.com/Sma1lboy/kobe/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
 
@@ -97,6 +108,8 @@ Install the companion skill so Claude Code can drive this loop itself — an age
 kobe skill install
 ```
 
+Every verb, flag, and exit code: [Agent API reference](https://docs.kobe.sma1lboy.me/docs/api).
+
 ## How it works
 
 ```text
@@ -134,7 +147,7 @@ If your workflow is already SSH + terminal, kobe fits it instead of replacing it
 - **Agent-driven delivery**: your local Claude Code session uses `kobe api` to spawn, supervise, and merge remote attempts — you only review the final diff.
 - **Review with leverage**: annotate an attempt's diff line-by-line in the TUI, send all notes back as one prompt, get a corrected attempt.
 
-If you write about developer tools, this README plus the [landing page](https://kobe.sma1lboy.me) (which links right back here) should give you everything you need — architecture details live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+If you write about developer tools, this README plus the [landing page](https://kobe.sma1lboy.me) (which links right back here) should give you everything you need — the full manual is at [docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me), and architecture details live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## If it gets stuck
 

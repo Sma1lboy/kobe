@@ -1,7 +1,10 @@
-# CLI + API reference
+# CLI reference
 
-The human index of everything the `kobe` binary does. Two machine-readable
-surfaces stay authoritative when this page and the binary disagree:
+The human index of everything the `kobe` binary does. The scriptable agent
+surface has its own page: [`kobe api` reference](./API.md).
+
+Two machine-readable surfaces stay authoritative when this page and the
+binary disagree:
 
 - `kobe --help`: the top-level command list. It is a single tested string
   (`packages/kobe/src/cli/usage.ts`); adding a subcommand fails CI until
@@ -9,7 +12,7 @@ surfaces stay authoritative when this page and the binary disagree:
 - `kobe api schema`: the full `kobe api` verb/flag spec as JSON. This is
   **the** source of truth for the scriptable surface: names, types,
   required flags, enum values. Agents should read it once and drill in with
-  `--verb <name>` instead of parsing this page.
+  `--verb <name>` instead of parsing the docs.
 
 Design rationale (why a CLI instead of MCP) lives in
 [design/cli-api.md](./design/cli-api.md), which is historical; the shipped
@@ -306,223 +309,16 @@ Not in `kobe --help`; documented so their behavior isn't a mystery:
 
 ## `kobe api`: the scriptable surface
 
-Each invocation is a short-lived process: connect to (or auto-start) the
-daemon, do the work, print one JSON object to stdout, exit. Read-only verbs
-marked *offline* below skip the daemon entirely.
+Everything the TUI can do, driven from a shell script or another AI agent:
+spawn tasks, fan a prompt across N isolated attempts, supervise them, read
+their output, land the winner. Each invocation is a short-lived process that
+prints one JSON object and exits.
 
-### Output + exit-code contract
-
-- **Success** → one JSON object on stdout, newline-terminated, exit 0.
-  `--pretty` indents it (humans only).
-- **Error** → `{ "error": { "message", "code", ... } }` on stderr. Common
-  rejections additionally carry `hint` and `nextCommandArgs` (argv runnable
-  verbatim) so a caller can self-heal without parsing prose.
-- Exit codes: `0` success · `1` handler/RPC failure · `2` usage errors
-  (unknown verb, bad/missing flag, unreachable daemon) · `3` partial
-  fan-out (some tasks created, some failed; the full payload still goes to
-  stdout so created tasks are never lost).
-- `kobe api <verb> --help` prints that verb's usage and exits 0.
-
-Flag parsing: `--key value` and `--key=value` both work; boolean flags may
-be given bare (`--force` ⇒ true) or explicitly (`--archived=false`);
-`--task-id` / enum / positive-int values are validated against the verb's
-spec, and unknown flags are rejected (exit 2). `--repo` resolves relative
-paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
-`copilot`, `kimi`. `spawn-task` is an alias of `add`.
-
-### Discovery
-
-- `schema` *(offline)*: the API, as JSON. Default is a compact index
-  (groups + verb summaries, no flags); drill in with `--verb <name>` (full
-  flag detail for one verb), `--group <g>`, or `--all` (everything; large).
-  Includes an `apiVersion` agents can gate on.
-
-### read
-
-- `list`: list all tasks (incl. archived). Returns `{ tasks }`.
-- `get-task --task-id <id>`: one task's metadata; `.running` = its hosted
-  engine session is live.
-- `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
-  snapshot of several tasks: identity, branch, `.running`, uncommitted
-  `.changes`, and committed `.base` (ahead count + diffstat vs base).
-- `digest --repo PATH [--since-days N]`: aggregate the repo's recent agent
-  work — worker-reported `succeeded` / `failed` / `unreported` task counts,
-  routine run outcomes bucketed by status, and the newest named failures.
-  Purely a read over state kobe already persists (`workerReport` +
-  `AutomationRun.status`), so the numbers report what workers CLAIMED, never
-  what kobe verified. A rising `unreported` share is the honest signal that
-  the fleet is drifting out of the `report` contract. Default window 7 days.
-- `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
-  live window title). Empty when no PTY host runs.
-- `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
-  [--limit N]`: a task's engine output as bounded, cursor-paged JSON: the
-  engine's structured history when available, else a labeled terminal tail
-  (`fallbackReason`). Read-only; the cursor stays pinned to one
-  source/session and returns a typed `SOURCE_CHANGED` error when it moved.
-- `inspect [--task-id ID]` *(offline)*: production diagnostics in one read —
-  `daemon` (the activity registry's RAW per-task/per-tab entries: state,
-  probe vendor, whether a lapse watchdog is armed — via `debug.inspect`),
-  `sessions` (pty-host inventory joined with a live process-tree engine walk
-  per shell: `foreground` is tri-state — `{vendor,pid,argv}` / `null`
-  (walked, engine-free) / `"unknown"` (couldn't look)), and `tabs` (the
-  persisted `terminalTabs.*` snapshots the sidebar names its rows from:
-  `liveVendor`, `lastTitle`, `autoTitle`). Read-only and non-spawning: a
-  missing daemon or PTY host degrades that section to `null`. This is the
-  first thing to run (and paste) when reporting a badge/label/identity bug
-  against a production kobe.
-
-### create
-
-- `add --repo PATH [--title T] [--branch B] [--base-branch B] [--vendor V]
-  [--status S] [--pin] [--activate] [--prompt TEXT]`: create a task
-  (appears in the sidebar immediately). With `--prompt` it also
-  materializes the worktree, starts the engine, and delivers the prompt.
-  Does not steal focus unless `--activate`. Alias: `spawn-task`.
-- `fan-out --repo PATH --prompt TEXT (--count N | --agents claude:2,codex:1)
-  [--vendor V] [--title T] [--base-branch B]`: spawn N tasks of one prompt
-  in a single call (parallel attempts). Capped at 10.
-
-### drive
-
-- `send [--task-id ID] --prompt TEXT [--tab TAB]`: paste a follow-up into a
-  task's running engine (one full turn). Defaults to the active task.
-  `--tab new` mints the next `tab-N` and spawns a fresh engine tab there
-  (visible in the sidebar tree like a TUI-opened tab); `--tab tab-N`
-  delivers to that exact alive tab (`TAB_NOT_FOUND` when dead/absent).
-  Omitted, the canonical engine tab is used. Delivery into an existing tab
-  is gated on a live engine process in that tab's process tree — an engine
-  that exited into the keep-alive shell refuses with `ENGINE_NOT_RUNNING`
-  (plus a `--tab new` recovery hint) instead of pasting the prompt into a
-  shell. Any registered engine passes the gate, so a tab may run a
-  different vendor than the task (cross-vendor send).
-- `dispatch --task-id ID --prompt TEXT`: route text into a task's live
-  session via the daemon's `session.deliver` channel; requires an
-  already-hosted session (the dispatcher's messenger; see
-  [design/dispatcher.md](./design/dispatcher.md)).
-- `note --task-id ID --text TEXT`: file a one-line field note (a resolved,
-  repo-level gotcha). Appended to the repo's durable note store — every
-  future worktree session on this repo starts with it in its system prompt —
-  and forwarded to the dispatcher session for live relay to in-flight tasks.
-- `note-list --repo PATH`: read a repo's accumulated field notes, newest
-  first. Returns `{ notes }`.
-- `set-active [--task-id ID] [--none]`: set (or clear) the shared active
-  task every Tasks pane highlights.
-
-### supervise
-
-- `report --outcome succeeded|failed [--task-id ID] [--summary TEXT]`:
-  worker-side. Files an EXPLICIT outcome for a task, stored verbatim as its
-  `workerReport` (worker report, not kobe-verified; kobe never infers an
-  outcome). Task defaults to `$KOBE_TASK_ID`, then the cwd's worktree.
-- `await --task-ids a,b,c [--timeout-secs N]`: coordinator-side. Blocks
-  (poll-free, on daemon push) until every listed task has a worker report,
-  then returns all outcomes as JSON. A timeout is a checkpoint, not a
-  failure: exit 0 with `{ timedOut: true, ... }` (default 900 s).
-
-### edit
-
-- `rename --task-id ID --title T`: set a task's title.
-- `set-branch --task-id ID --branch B`: rename a task's branch
-  (`git branch -m` if materialized, else recorded).
-- `set-vendor --task-id ID --vendor V`: change the engine vendor (takes
-  effect on next session rebuild).
-- `set-status --task-id ID --status S`: set lifecycle status:
-  `backlog`, `in_progress`, `in_review`, `done`, `canceled`, `error`.
-
-### issues
-
-The daemon-owned issue store (backlog; see
-[WORK-TRACKING.md](./WORK-TRACKING.md)). Statuses: `open`, `doing`, `hold`,
-`done`.
-
-- `issue-list --repo PATH`: list a repo's issues.
-- `issue-create --repo PATH --title T [--body TEXT]`: create an issue.
-- `issue-set-status --repo PATH --id N --status S`: set an issue's status.
-- `issue-update --repo PATH --id N [--title T] [--body TEXT] [--task ID]`:
-  edit title/body and/or link a task (kanban: In progress; `--task none`
-  unlinks).
-
-### workitems
-
-A **read-only** view of a repo's GitHub issues (through the `gh` CLI), plus one
-action: start a task on one. Deliberately not an import — the issue stays
-GitHub's, and nothing is copied into kobe's own issue store. Mechanics:
-[design/work-items.md](./design/work-items.md).
-
-- `workitem-list --repo PATH [--state open|closed|all] [--limit N] [--search Q]
-  [--assignee USER] [--label L]`: list issues. `--assignee @me` for your own.
-- `workitem-start --repo PATH --number N [--vendor V] [--base-branch B]`:
-  create a task for issue N and start its engine with the issue title, body,
-  and URL as the first message. The task keeps a `linkedWorkItem` pointing
-  back, and its branch derives from the issue title
-  (`kobe/307-memory-ce2e8j`).
-
-Requires `gh` installed and authenticated; failures name which of those is
-missing (`gh-missing` / `auth` / `no-remote`) rather than a generic error.
-
-### routine
-
-Scheduled agent tasks (Routines): a cron rule + a prompt + a repo. Every firing creates a
-**fresh task** (worktree + branch + engine session) with the prompt as its
-first message — a run is an ordinary task you can open and keep talking to.
-An enabled routine keeps the daemon alive so schedules fire with no TUI
-attached. Mechanics: [design/automations.md](./design/automations.md).
-
-- `routine-list`: every routine with its next run time.
-- `routine-create --repo PATH --name N --prompt TEXT --schedule CRON
-  [--vendor V] [--base-branch B] [--precheck CMD] [--precheck-timeout SEC]
-  [--grace MIN] [--disabled]`: schedule a prompt. `--schedule` is five-field
-  cron in the daemon host's local time (`"0 9 * * MON-FRI"`).
-- `routine-update --id ID [...]`: change any field. A new `--schedule`
-  re-anchors the next run; `--precheck ''` clears the precheck.
-- `routine-set-enabled --id ID --enabled BOOL`: pause / resume.
-- `routine-run-now --id ID`: run immediately, skipping the precheck. Does
-  not shift the schedule.
-- `routine-runs --id ID`: run history, newest first.
-- `routine-delete --id ID`: delete it and its history (tasks it already
-  created are untouched).
-
-**`--precheck`** runs a shell command in the repo before the engine starts;
-a non-zero exit skips the run *without* creating a task. Use it so a schedule
-does not burn a turn when nothing changed (`git log --since=24.hours --oneline
-| grep -q .`). Run statuses distinguish `skipped_precheck` (healthy — nothing
-to do) from `dispatch_failed` (needs a human).
-
-### lifecycle
-
-- `archive --task-id ID [--archived=false]`: archive/unarchive.
-  Non-destructive: worktree, branch, and history stay.
-- `pin --task-id ID [--pinned=false]`: pin/unpin a task to the top of the
-  sidebar.
-- `land --task-id ID [--strategy merge|squash] [--delete-branch]
-  [--then-archive]`: merge a task's branch back into its base repo's
-  current branch (`--no-ff` merge, or one squash commit). Refuses a dirty
-  base checkout; on conflict it aborts and returns the conflicted files.
-  Returns `{ landedOn, commit }`.
-- `delete --task-id ID [--force]`: permanently remove a task **and its
-  worktree**. Destructive; prefer `archive`. Needs `--force` on a dirty
-  worktree.
-
-### worktree
-
-- `ensure-worktree --task-id ID`: materialize a task's git worktree on
-  disk now (without starting an engine). Returns `{ worktreePath }`.
-- `discover-adoptable --repo PATH`: list existing git worktrees not yet
-  tracked as kobe tasks.
-- `adopt --repo PATH --worktree PATH [--branch B] [--vendor V] [--title T]`:
-  import an existing git worktree as a kobe task.
-
-### feedback + other
-
-- `feedback --title T --body TEXT [--category SLUG]` *(offline)*: create a
-  GitHub Discussion in the kobe repo's Feedback category via `gh`.
-- `notify --title TEXT [--kind KIND] [--task-id ID] [--source TAG]`: show
-  a toast in every attached kobe UI. `done` / `needs_input` / `error` get
-  severity styling; any other kind renders neutrally.
-- `prompt --title TEXT [--placeholder T] [--initial T] [--timeout MS]`:
-  ask the human for a line of text through the attached TUI's input dialog;
-  blocks until answered/cancelled/timeout (default 120000 ms, max 600000)
-  and returns `{ value }` or `{ cancelled, reason }`.
+Full verb reference — including the fan-out / supervise / observe / fan-in
+loop and the output + exit-code contract — lives in the
+[`kobe api` reference](./API.md). `kobe api schema` stays the machine-readable
+source of truth, and `kobe skill install` teaches a coding agent the surface
+without pasting docs into a prompt.
 
 ## Exit codes + output conventions (whole CLI)
 
