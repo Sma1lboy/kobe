@@ -311,9 +311,8 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // the sidebar's ☯ ZEN chip is the click-based exit affordance, this is
     // the keyboard one. Prefix-only `prefix+z` (owner call 2026-07-17,
     // dropping the old f6 direct chord entirely — f6 now passes through
-    // to the embedded shell). Trade-off: no zen chord fires from inside
-    // the terminal pane, since ctrl+a passes through there; exit zen via
-    // the sidebar's ☯ ZEN chip or from any non-terminal pane.
+    // to the embedded shell). Reachable from the terminal pane too since
+    // 2026-08-10: the prefix first stroke no longer passes through.
     id: "workspace.zenToggle",
     scope: "global",
     keys: [],

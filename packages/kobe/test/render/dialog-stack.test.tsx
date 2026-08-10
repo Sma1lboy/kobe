@@ -345,6 +345,54 @@ describe("DialogProvider", () => {
     expect(dialogRef.current?.stack.length).toBe(0)
   })
 
+  // Regression (owner report 2026-08-10): Settings → Engines → "+ Add
+  // engine" chains three prompts, each closing (clear → deferred refocus of
+  // the pane behind) before the next opens. The pending timer landed ~1ms
+  // into the NEXT prompt and yanked native focus back to the pane, so every
+  // Enter looked like it lost focus. Opening a dialog must cancel it.
+  it("a chained dialog keeps focus when the previous one's refocus is still pending", async () => {
+    const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
+    let paneInput: Renderable | null = null
+    let nextInput: Renderable | null = null
+    const { frame, renderer } = await renderComponent(
+      <DialogProvider>
+        <input
+          ref={(value) => {
+            paneInput = value
+          }}
+          focused={true}
+          value="pane input"
+        />
+        <Driver
+          onMount={(dialog) => {
+            dialogRef.current = dialog
+            dialog.replace(() => <text>prompt one</text>)
+          }}
+        />
+      </DialogProvider>,
+    )
+    expect(await frame()).toContain("prompt one")
+    expect(paneInput).not.toBeNull()
+
+    // Close + immediately open the next prompt, exactly like addEngineFlow.
+    act(() => {
+      dialogRef.current?.clear()
+      dialogRef.current?.replace(() => (
+        <input
+          ref={(value) => {
+            nextInput = value
+          }}
+          focused={true}
+          value="prompt two"
+        />
+      ))
+    })
+    await settle()
+    expect(await frame()).toContain("prompt two")
+    expect(renderer.currentFocusedRenderable).toBe(nextInput)
+    expect(renderer.currentFocusedRenderable).not.toBe(paneInput)
+  })
+
   it("clear can suppress restoring focus to the pane behind the dialog", async () => {
     const dialogRef: { current?: ReturnType<typeof useDialog> } = {}
     let input: Renderable | null = null

@@ -184,6 +184,13 @@ export function DialogProvider(props: { children?: ReactNode }) {
   const stackRef = useLatest(stack)
 
   const captureFocusIfFirst = useCallback(() => {
+    // A dialog closing schedules a deferred refocus of the pane behind it.
+    // Opening the NEXT dialog in the same turn (addEngineFlow's chained
+    // id → command → name prompts: each `clear()` is followed by the next
+    // `replace()`) must cancel it, or that timer fires ~1ms later and pulls
+    // native focus off the new dialog's input — every Enter looked like it
+    // lost focus.
+    if (refocusTimer.current) clearTimeout(refocusTimer.current)
     if (stackRef.current.length === 0) {
       focusRef.current = renderer?.currentFocusedRenderable ?? null
       focusRef.current?.blur()
