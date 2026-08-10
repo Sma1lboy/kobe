@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 7 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 8 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -31,8 +31,16 @@ lifecycle tracking, and an explicit outcome contract.
   child the user cannot see or manage.
 - Following up on a task you started → `send`; waiting on results →
   `await`; comparing → `collect`; reporting your own verdict → `report`.
-- Messaging another live session → `dispatch` (never impersonate the user
-  in someone else's terminal).
+- Messaging another task's agent → `send`. Sent from inside a kobe task,
+  the prompt arrives prefixed `[KOBE PEER] from "<title>" (task <id> —
+  reply: …)`, so the receiver knows who is talking and can answer with the
+  baked-in reply command — peer conversations need no coordinator and no
+  human relay. `--plain` skips the prefix when you truly need a verbatim
+  paste. Received a `[KOBE PEER]` message yourself? Reply with its baked-in
+  command, not by asking the user.
+- `dispatch` stays the dispatcher's verb (deliver-only into an
+  already-hosted session; never impersonate the user in someone else's
+  terminal).
 
 Your own engine's in-context subagents remain fine for read-only
 research/exploration inside your task — the boundary is WORK: anything that
@@ -69,6 +77,8 @@ kobe api fan-out --repo "$PWD" --count 3 --prompt "<prompt>"
 kobe api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 
 # Follow up. Use an explicit id for unattended work; the active task can drift.
+# From inside a kobe task this auto-prefixes [KOBE PEER] provenance
+# (sender + reply command); --plain sends verbatim.
 kobe api send --task-id <id> --prompt "<complete next turn>"
 
 kobe api get-task --task-id <id>

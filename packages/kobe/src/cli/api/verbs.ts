@@ -176,7 +176,8 @@ export const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "send",
-    summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
+    summary:
+      "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task. Sent from inside another kobe task ($KOBE_TASK_ID), the prompt is prefixed with [KOBE PEER] provenance — who sent it and how to reply — so agent-to-agent messaging needs no coordinator.",
     flags: [
       F.taskId(false),
       F.prompt(true, "Text pasted + submitted into the engine pane."),
@@ -187,6 +188,12 @@ export const VERBS: readonly VerbSpec[] = [
         placeholder: "TAB",
         description:
           'Tab addressing: "new" spawns the prompt in a fresh engine tab; "tab-N" delivers to that exact alive tab (error when dead/absent). Omitted = the canonical engine tab.',
+      },
+      {
+        name: "plain",
+        type: "bool",
+        required: false,
+        description: "Deliver the prompt verbatim — skip the [KOBE PEER] provenance prefix.",
       },
     ],
     handler: send,
