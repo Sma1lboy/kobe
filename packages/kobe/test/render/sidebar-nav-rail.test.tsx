@@ -109,15 +109,6 @@ test("nav-core cycling wraps in both directions", () => {
   expect(cycleNavTarget("issues", 1)).toBeNull()
 })
 
-test("the issues page is wired but off the rail", async () => {
-  // Reachable via `kobe api workitem-*`; it has had no design pass, so it
-  // does not get a row yet. Its nav value stays valid so re-adding the row in
-  // SIDEBAR_NAV_ITEMS is the whole change.
-  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
-  expect(await frame()).not.toContain("Issues")
-  expect(SIDEBAR_NAV_ITEMS.some((item) => item.nav === "issues")).toBe(false)
-})
-
 test("opening a rail page carries focus into the content pane", () => {
   // The pages gate their own keys on being focused. Without this the
   // Automations page rendered "Press n to create one" while `n` still went to

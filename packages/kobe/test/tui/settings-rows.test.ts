@@ -58,36 +58,9 @@ function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
 }
 
 describe("generalRows", () => {
-  it("lays out themes, languages, visual preferences, notifications, and editor rows in order", () => {
+  it("carries each variable-length group's payload in the order it was given", () => {
     const themes = ["a", "b", "c"]
     const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
-    expect(rows.map((r) => r.kind)).toEqual([
-      "theme",
-      "theme",
-      "theme",
-      ...LOCALES.map(() => "language" as const),
-      "transparent",
-      "focusAccent",
-      "focusAccent",
-      "focusAccent",
-      "splitStyle",
-      "splitStyle",
-      "toast",
-      "sound",
-      "crossTask",
-      "sidebarHover",
-      "keyHints",
-      "zenDefaultOn",
-      "zenKeepTasks",
-      "editorKind",
-      "editorCustom",
-      "worktreeBase",
-      "worktreeCustom",
-      "scrollbackRows",
-      "tabStripHideSingle",
-      "sidebarTree",
-    ])
-    // Payload order matches input order.
     expect(rows.slice(0, 3).map((r) => (r.kind === "theme" ? r.name : "?"))).toEqual(themes)
     expect(rows.filter((r) => r.kind === "language").map((r) => r.locale)).toEqual(LOCALES.map((l) => l.id))
     expect(

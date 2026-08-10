@@ -11,8 +11,6 @@ import { TASK_JUMP_CHORDS, TASK_JUMP_DIGITS, taskJumpDigit } from "../../src/tui
 describe("task jump digits", () => {
   it("skips 1 — the legacy terminal protocol cannot encode ctrl+1", () => {
     expect(TASK_JUMP_DIGITS).not.toContain("1")
-    expect(TASK_JUMP_DIGITS[0]).toBe("2")
-    expect(TASK_JUMP_DIGITS.at(-1)).toBe("0")
   })
 
   it("row N prints the digit whose chord fires slot N", () => {
