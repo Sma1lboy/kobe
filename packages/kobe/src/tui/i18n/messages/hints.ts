@@ -15,7 +15,7 @@ export const en = {
     help: "{key} help",
     /** {key} = the live escape hatch out of the embedded terminal */
     sidebar: "{key} sidebar",
-    /** Label of the clickable ⚙ footer button (glyph added in code) */
+    /** Label of the clickable footer settings button (brackets added in code) */
     settings: "settings",
   },
   pane: {

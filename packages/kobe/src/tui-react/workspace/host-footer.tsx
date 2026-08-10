@@ -51,7 +51,7 @@ function UsageChips(props: { orchestrator: RemoteOrchestrator }) {
 /** Sidebar | workspace | files row, with the quota + key-hint line under it. */
 export function WorkspaceFrame(props: {
   orchestrator: RemoteOrchestrator
-  /** Wires the footer's clickable ⚙ button; absent = no settings segment. */
+  /** Wires the footer's clickable [settings] button; absent = no settings segment. */
   onOpenSettings?: () => void
   children: ReactNode
 }) {

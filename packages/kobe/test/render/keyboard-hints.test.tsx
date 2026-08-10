@@ -119,7 +119,7 @@ describe("StatusKeyHintBar", () => {
     expect(text).toContain("F1 help")
   })
 
-  it("swaps the prefix token for the escape hatch inside the terminal, keeping the ⚙ button", async () => {
+  it("swaps the prefix token for the escape hatch inside the terminal, keeping the [settings] button", async () => {
     const settingsOpened: true[] = []
     const { frame } = await renderComponent(
       <WorkspaceDriver>
@@ -133,7 +133,7 @@ describe("StatusKeyHintBar", () => {
     const text = await frame()
     expect(text).toContain("⌃ Q sidebar")
     expect(text).toContain("F1 help")
-    expect(text).toContain("⚙ settings")
+    expect(text).toContain("[settings]")
     expect(text).not.toContain("commands")
   })
 
@@ -153,7 +153,7 @@ describe("StatusKeyHintBar", () => {
 })
 
 describe("footer hint clicks", () => {
-  it("⚙ opens settings from the workspace footer", async () => {
+  it("[settings] opens settings from the workspace footer", async () => {
     const settingsOpened: true[] = []
     const { frame, mockMouse } = await renderComponent(
       <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={() => settingsOpened.push(true)}>
@@ -162,7 +162,7 @@ describe("footer hint clicks", () => {
       { width: 70, height: 10, providers: { focus: true, dialog: true } },
     )
     await settle()
-    const spot = locate(await frame(), "⚙ settings")
+    const spot = locate(await frame(), "[settings]")
     await mockMouse.click(spot.x + 1, spot.y)
     await settle()
     expect(settingsOpened.length).toBe(1)

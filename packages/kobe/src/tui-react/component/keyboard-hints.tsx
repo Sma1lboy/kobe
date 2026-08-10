@@ -4,10 +4,10 @@
  * `src/tui/lib/keyboard-hints.ts`:
  *
  *   - `StatusKeyHintBar` / `useStatusKeyHintItems`: the permanent status-bar
- *     micro-hint (`⌃ A commands · F1 help · ⚙ settings`), terminal-
+ *     micro-hint (`⌃ A commands · F1 help · [settings]`), terminal-
  *     passthrough aware. Every segment is mouse-activatable (clicks don't
- *     pass through to the PTY, so the ⚙ button works even inside the
- *     terminal, where the keyboard path is longest).
+ *     pass through to the PTY, so the [settings] button works even inside
+ *     the terminal, where the keyboard path is longest).
  *   - `PaneKeyHint`: one muted line per vim-style pane (sidebar/files);
  *     the fuller first-use variant extinguishes permanently once the pane's
  *     own keys are used (`usePaneHintMark`).
@@ -94,8 +94,12 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
     text: t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
     onPress: actions[tok.msg],
   }))
+  // Bracketed like the other clickable chips ([~] Zen, [enter] Send) — and
+  // deliberately NO glyph: U+2699 ⚙ is East-Asian-Ambiguous width, so
+  // terminals disagree on whether it takes 1 or 2 cells and the row
+  // misaligns per OS/font.
   if (opts?.onOpenSettings && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
-    items.push({ text: `⚙ ${t("hints.status.settings")}`, onPress: opts.onOpenSettings })
+    items.push({ text: `[${t("hints.status.settings")}]`, onPress: opts.onOpenSettings })
   }
   return items
 }

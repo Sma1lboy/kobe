@@ -189,9 +189,9 @@ test("keyboard hints render and extinguish in the real OpenTUI", async ({ page }
     await pressTerminal(terminal, "j")
     await expect(buffer).not.toContainText("j/k move")
 
-    // …while the status-bar hint is permanent, ⚙ button included.
+    // …while the status-bar hint is permanent, [settings] button included.
     await expect(buffer).toContainText("F1 help")
-    await expect(buffer).toContainText("⚙ settings")
+    await expect(buffer).toContainText("[settings]")
 
     // NOT asserted here: the terminal-passthrough variant (`⌃Q sidebar`).
     // The fixture task has no started engine session, so the workspace

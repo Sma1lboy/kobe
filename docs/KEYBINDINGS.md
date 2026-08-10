@@ -32,13 +32,13 @@ which-key map, and all captions resolve through the live keymap
 an unbound/disabled one drops out:
 
 - **Status-bar micro-hint** — a permanent `{prefix} commands · F1 help ·
-  ⚙ settings` row in the workspace footer's right corner. Inside the
+  [settings]` row in the workspace footer's right corner. Inside the
   embedded terminal it swaps the prefix token for the `ctrl+q` escape hatch
   (the prefix first stroke passes through to the PTY there); with a modal
   open, or the prefix disabled and help unbound, tokens drop until nothing
   renders. Every segment is mouse-activatable — clicking `commands` arms the
   REAL prefix (the guide accepts a keyboard second stroke), clicking the
-  help caption opens F1, and the `⚙` button opens Settings even while the
+  help caption opens F1, and the `[settings]` button opens Settings even while the
   terminal owns keyboard input, since mouse clicks never pass through
   (owner call 2026-08-09).
 - **First-use pane hints** — one muted line per vim-style pane (sidebar:
