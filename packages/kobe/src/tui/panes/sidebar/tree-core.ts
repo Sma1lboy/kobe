@@ -83,10 +83,14 @@ export interface TreeInput {
 /**
  * Build the flat tree rows.
  *
- * Ordering: projects in their stored order (same rule the flat sidebar used
- * — tasks.json order is save order, so a new repo lands at the end and the
- * list never reshuffles on its own), each followed by its own worktrees, each
- * followed by its own tabs.
+ * Ordering: projects follow their MAIN task's stored order (the same rule the
+ * flat sidebar's PROJECTS section renders, and the same partition `moveTask`
+ * reorders — so project move-mode visibly moves the header). A project's
+ * first-seen regular task must NOT set its position: mains and regular tasks
+ * interleave in tasks.json creation order, so keying on any-task order made
+ * a main swap read as a no-op. Projects without a main (nothing to move)
+ * append after, in first-seen order. Each project is followed by its own
+ * worktrees, each followed by its own tabs.
  *
  * A `main` task IS the project's main worktree, so it renders as the first
  * worktree row under its project rather than as the project row itself: the
@@ -117,8 +121,31 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
     byProject.set(key, entry)
   }
 
+  // Project order = the mains' stored order (the partition moveTask swaps),
+  // then main-less projects in first-seen order. Keying on first-seen ANY
+  // task made project move-mode a no-op whenever an older regular task
+  // anchored the group ahead of its main.
+  const orderedKeys: string[] = []
+  const seen = new Set<string>()
+  for (const task of tasks) {
+    if (task.kind !== "main") continue
+    const key = sidebarProjectKey(task.repo)
+    if (!seen.has(key)) {
+      seen.add(key)
+      orderedKeys.push(key)
+    }
+  }
+  for (const key of byProject.keys()) {
+    if (!seen.has(key)) {
+      seen.add(key)
+      orderedKeys.push(key)
+    }
+  }
+
   const rows: TreeRow[] = []
-  for (const [key, entry] of byProject) {
+  for (const key of orderedKeys) {
+    const entry = byProject.get(key)
+    if (!entry) continue
     rows.push({ kind: "project", id: key, repo: entry.repo, label: repoBasename(entry.repo), depth: 0 })
     for (const task of entry.tasks) pushWorktree(rows, task, tabsByTask)
   }

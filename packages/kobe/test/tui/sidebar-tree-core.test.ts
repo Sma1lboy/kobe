@@ -64,6 +64,31 @@ describe("buildTreeRows", () => {
     expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/zebra", "/repos/apple"])
   })
 
+  test("project order follows the MAINS' stored order, not first-seen task order", () => {
+    // The move-mode contract: `moveTask` on a main swaps it among mains, so
+    // the tree must key project order on main order — an older regular task
+    // must not anchor its project ahead of the swap (that made project
+    // move-mode read as a no-op).
+    const result = rows({
+      tasks: [
+        task("old-z-task", { repo: "/repos/zebra" }),
+        task("m-apple", { kind: "main", repo: "/repos/apple", worktreePath: "/repos/apple" }),
+        task("m-zebra", { kind: "main", repo: "/repos/zebra", worktreePath: "/repos/zebra" }),
+      ],
+    })
+    expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/apple", "/repos/zebra"])
+  })
+
+  test("a main-less project appends after the main-ordered ones", () => {
+    const result = rows({
+      tasks: [
+        task("loose", { repo: "/repos/no-main" }),
+        task("m", { kind: "main", repo: "/repos/kobe", worktreePath: "/repos/kobe" }),
+      ],
+    })
+    expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/kobe", "/repos/no-main"])
+  })
+
   test("every tab always renders — the tree has no fold", () => {
     // Owner call 2026-08-01 round 5: no collapse anywhere, ever. The tree is
     // a map; hiding rows made the map lie.

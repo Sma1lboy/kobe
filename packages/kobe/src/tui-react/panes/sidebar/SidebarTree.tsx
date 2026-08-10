@@ -108,8 +108,24 @@ export function SidebarTree(props: SidebarTreeProps) {
   // (prefix+h → move → yanked back, owner bug 2026-08-02). Clamps still run
   // on every list change so a shrunken list can't strand the cursor.
   const prevActiveRef = useRef<string | null>(null)
+  // The row the cursor sat on LAST render — what move mode re-anchors to when
+  // a project reorder shifts every flat index under the cursor. Written by a
+  // deps-less effect below so it always holds the pre-change row.
+  const cursorRowIdRef = useRef<string | null>(null)
+  const moveMode = props.moveMode === true
   useEffect(() => {
     const ids = tree.flatIds
+    // Move mode: the cursor follows its ROW, not its index — a reorder moves
+    // the project (and the row with it), so an index-anchored cursor would
+    // land in the neighbouring project and the next j/k would move THAT one.
+    if (moveMode) {
+      const wanted = cursorRowIdRef.current
+      const at = wanted === null ? -1 : ids.indexOf(wanted)
+      if (at >= 0) {
+        if (at !== cursorRef.current) setCursorIndex(at)
+        return
+      }
+    }
     const active = tree.activeRowId
     const activeMoved = active !== prevActiveRef.current
     prevActiveRef.current = active
@@ -120,7 +136,12 @@ export function SidebarTree(props: SidebarTreeProps) {
     }
     if (cursorRef.current >= ids.length) setCursorIndex(Math.max(0, ids.length - 1))
     else if (cursorRef.current < 0 && ids.length > 0) setCursorIndex(at >= 0 ? at : 0)
-  }, [tree.flatIds, tree.activeRowId, setCursorIndex])
+  }, [tree.flatIds, tree.activeRowId, moveMode, setCursorIndex])
+  // Deps-less on purpose: runs after every commit, so when the follow effect
+  // fires on a flatIds change it reads the PREVIOUS render's row id.
+  useEffect(() => {
+    cursorRowIdRef.current = tree.flatIds[cursorRef.current] ?? null
+  })
 
   // Land the highlight on the top match on every search keystroke. Declared
   // AFTER the follow effect so it wins while a query is open — otherwise the
@@ -170,7 +191,6 @@ export function SidebarTree(props: SidebarTreeProps) {
    * task, which `moveTask` already swaps past the neighbouring project's main
    * — no new persistence, no new daemon call (see `mainTaskIdOfProject`).
    */
-  const moveMode = props.moveMode === true
   const cursorProjectId = useMemo((): string | null => {
     const rowId = tree.flatIds[cursorIndex]
     if (rowId === undefined) return null
