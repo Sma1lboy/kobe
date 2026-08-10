@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.57
+
+### Patch Changes
+
+- de7fb88: Fix losing focus on every Enter while adding an engine in Settings → Engines. The chained id → command → name prompts each closed before the next opened, and the closing dialog's deferred refocus timer fired ~1ms into the new prompt, pulling focus back to the pane behind it. Opening a dialog now cancels a pending refocus, so any chained dialog flow keeps its input.
+- b72bc4a: Keep the configured command prefix Kobe-owned inside embedded terminals so its live command map and second-stroke actions remain reachable from every pane.
+
 ## 0.8.56
 
 ### Patch Changes
