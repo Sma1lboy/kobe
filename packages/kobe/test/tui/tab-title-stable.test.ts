@@ -74,6 +74,26 @@ describe("tabTitleStable", () => {
     expect(tabTitleStable(tab, "codex", "claude")).toBe("claude 1")
   })
 
+  // Regression (owner report 2026-08-10): quit kobe with `claude` running in
+  // a shell tab, restart, and the sidebar row read "shell N" — the tab had
+  // recorded liveVendor=claude, but the naming rule only carried a resolved
+  // vendor through for tabs whose `kind` was already "engine", so a
+  // shell-hosted engine fell to the bare shell default.
+  it("names a shell tab after the engine running in it, not 'shell'", () => {
+    const tab = {
+      kind: "command",
+      id: "tab-2",
+      title: null,
+      ordinal: 2,
+      lastTitle: "⠐ 思考中…",
+      liveVendor: "claude",
+    } as unknown as TerminalTab
+    expect(tabTitleStable(tab, "claude", "claude")).toBe("claude 2")
+    // Same tab with a first-prompt summary still prefers that summary.
+    const named = { ...tab, autoTitle: "wire up the digest verb" } as TerminalTab
+    expect(tabTitleStable(named, "claude", "claude")).toBe("wire up the digest verb")
+  })
+
   it("undefined liveVendor (probe can't look) keeps the engine pin", () => {
     const tab = engineTab({ vendor: "codex", lastTitle: "Working ▌ t" })
     expect(tabTitleStable(tab, "codex")).toBe("codex 1")

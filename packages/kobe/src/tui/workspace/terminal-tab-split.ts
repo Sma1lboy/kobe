@@ -191,7 +191,13 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   // RESOLVED vendor also replaces an engine tab's creation pin in that
   // fallback: a tab spawned as codex whose shell now runs claude must not
   // keep wearing "codex N" — the pin is history, the live process is the name.
-  return tabTitle(tab.kind === "engine" ? { ...tab, lastTitle: null, vendor } : { ...tab, lastTitle: null }, taskVendor)
+  //
+  // The vendor rides along for a COMMAND tab too (mirroring line ~183's
+  // engine→command demotion): a shell the user typed `claude` into is named
+  // by that engine, not "shell N". `kind` only steers `tabTitle`'s final
+  // vendor-default branch, so re-shaping it here is naming-only — no session
+  // or resume story is implied (see terminal-tab-identity.ts).
+  return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: null } as TerminalTab, taskVendor)
 }
 
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
