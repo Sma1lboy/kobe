@@ -298,12 +298,6 @@ export function Sidebar(props: SidebarProps) {
     if (target) setView(target)
   }
 
-  // Hide the Active/Archived filter until it can DO anything: with nothing
-  // archived it is two mystery nouns at the top of the rail (owner
-  // 2026-08-09). Also shown while sitting IN the archived view so the way
-  // back stays visible; `[`/`]` keep cycling regardless.
-  const showViewTabs = view === "archived" || props.tasks.some((task) => task.archived === true)
-
   // Single activation funnel (keyboard enter + row onMouseUp). In a
   // pinned-selection pane a jump to ANOTHER task snaps the cursor back to
   // the pinned row (see the Solid original).
@@ -382,7 +376,6 @@ export function Sidebar(props: SidebarProps) {
       focused={focused}
       view={view}
       setView={setView}
-      showViewTabs={showViewTabs}
       nav={props.nav ?? "terminal"}
       setNav={(next) => props.onNavChange?.(next)}
       sortMode={sortMode}

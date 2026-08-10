@@ -23,7 +23,6 @@ function panel(overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {}) {
       focused={true}
       view="active"
       setView={NOOP}
-      showViewTabs={true}
       nav="terminal"
       setNav={NOOP}
       sortMode="recent"
@@ -71,6 +70,14 @@ test("every destination gets its own line, in declared order", async () => {
   expect(rendered).toEqual(["Kanban", "Routines"])
   // Distinct rows — a horizontal strip would share lines.
   expect(new Set(Object.values(lines)).size).toBe(2)
+})
+
+test("Active and Archived stay visible when Archives is empty", async () => {
+  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  const text = await frame()
+
+  expect(text).toContain("Active")
+  expect(text).toContain("Archived")
 })
 
 test("no label is truncated at the 24-cell rail width", async () => {

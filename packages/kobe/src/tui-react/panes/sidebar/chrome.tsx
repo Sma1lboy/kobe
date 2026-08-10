@@ -7,6 +7,7 @@
  */
 
 import { MouseButton, TextAttributes } from "@opentui/core"
+import { legendCap } from "../../../tui/lib/help-groups"
 import type { SidebarView } from "../../../tui/panes/sidebar/groups"
 import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { VIEW_TABS, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
@@ -103,14 +104,14 @@ export function SidebarSearchInput(props: { query: string; matchCount: number; t
   )
 }
 
-/** KOBE brand text + inbox status + [+] — the rail's first row. The brand
- *  text IS the sidebar's focus signal (accent when focused) — there is no
- *  pane frame to carry it. */
+/** KOBE brand text + inbox status — the rail's first row. The brand text IS
+ *  the sidebar's focus signal (accent when focused) — there is no pane frame
+ *  to carry it. Task creation gets its own labelled row below: a tiny header
+ *  glyph read as decoration to first-time users. */
 export function SidebarBrandHeader(props: {
   focused: boolean
   status: { label: string; emphasize: boolean } | null
   onStatusClick?: () => void
-  onAddTask?: () => void
 }) {
   const { theme } = useTheme()
   return (
@@ -130,11 +131,42 @@ export function SidebarBrandHeader(props: {
           </text>
         ) : null}
       </box>
-      {props.onAddTask ? (
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none" onMouseUp={() => props.onAddTask?.()}>
-          [+]
+    </box>
+  )
+}
+
+/** Persistent primary action for the sidebar. The full row is clickable and
+ *  the keycap comes from the live keymap, so a rebound or disabled `task.new`
+ *  binding never leaves stale instructions behind. */
+export function SidebarCreateAction(props: { onAddTask?: () => void }) {
+  const { theme, transparentBackground } = useTheme()
+  const t = useT()
+  const keycap = legendCap("task.new")
+  if (!props.onAddTask) return null
+
+  return (
+    <box flexShrink={0} paddingTop={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+      <box
+        flexDirection="row"
+        flexShrink={0}
+        gap={1}
+        paddingLeft={1}
+        paddingRight={1}
+        backgroundColor={transparentBackground ? undefined : theme.backgroundElement}
+        onMouseUp={() => props.onAddTask?.()}
+      >
+        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
+          +
         </text>
-      ) : null}
+        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
+          {t("tasks.menu.newTask")}
+        </text>
+        {keycap ? (
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexShrink={0}>
+            {keycap}
+          </text>
+        ) : null}
+      </box>
     </box>
   )
 }

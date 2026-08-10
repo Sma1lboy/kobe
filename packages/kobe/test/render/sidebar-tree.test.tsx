@@ -74,6 +74,10 @@ test("renders project header, worktree cards, and tab rows", async () => {
   // Worktrees are the same two-line cards; their branch is the subtitle.
   expect(text).toContain("feat/a")
   expect(text).toContain("feat/b")
+  // Navigation stays stable with an all-active task list: the New task row
+  // must not replace the Active/Archived scope tabs.
+  expect(text).toContain("Active")
+  expect(text).toContain("Archived")
   // The selected worktree starts expanded, so its tabs are visible without a
   // keystroke — that is the whole point of replacing the strip.
   expect(text).toContain("tab 1")

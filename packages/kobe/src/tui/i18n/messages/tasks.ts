@@ -52,7 +52,7 @@ export const en = {
     noMatchSearch: "No matching tasks — esc to clear.",
     noActiveProject: "No active tasks for this project.",
     noArchivedProject: "No archived tasks for this project.",
-    noActive: "No active tasks — press n or [+] to create one.",
+    noActive: "No active tasks — create one above.",
     noArchived: "No archived tasks.",
   },
   /** In-list hint shown at the bottom of the Archives view */
@@ -148,7 +148,7 @@ export const zh: typeof en = {
     noMatchSearch: "无匹配任务——按 esc 清除。",
     noActiveProject: "该项目暂无活跃任务。",
     noArchivedProject: "该项目暂无归档任务。",
-    noActive: "暂无活跃任务——按 n 或 [+] 新建。",
+    noActive: "暂无活跃任务——在上方新建。",
     noArchived: "暂无归档任务。",
   },
   archiveHint: "a 取消归档",
