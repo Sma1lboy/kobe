@@ -91,6 +91,10 @@ As rendered by `kobe --help`:
 ```text
 Usage: kobe [command] [options]
 
+Run with no command to launch PureTUI.
+Run `kobe .` (or `kobe <path>`) to open a directory as a standalone task.
+
+Commands:
   web [options]           Launch the browser dashboard
   completions <shell>     Generate shell completion script (bash/zsh/fish)
   add [path]              Save a repo path for the new-task picker
@@ -100,9 +104,9 @@ Usage: kobe [command] [options]
   repo <verb>             Per-repo init script + first prompt (show|set|unset)
   api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)
   daemon <verb>           Manage the daemon (start|stop|status|restart)
-  doctor [--report]       Diagnose daemon/PTY/engines/git; --report writes a bundle
-  config [--path]         Open kobe's config file (state.json) in your editor
-  reset [--hard]          Stop runtimes; optionally wipe task/UI state
+  doctor [--report]        Diagnose daemon/PTY/engines/git; --report writes a bundle
+  config [--path]          Open kobe's config file (state.json) in your editor
+  reset [--hard]           Stop runtimes; optionally wipe task/UI state
   theme <verb>            Manage user themes (list|add|remove)
   skill <verb>            Install the kobe agent skill (install|status|command)
   plugin <verb>           Install and run plugins (install|link|list|action|…)
@@ -346,6 +350,12 @@ Env vars the binary respects (accessor home: `packages/kobe/src/env.ts`):
 - `KOBE_DAEMON_WEB_PORT`: daemon web transport port (default 5174;
   `0`/`off`/`false` disables it). `KOBE_WEB_HOST`,
   `KOBE_DAEMON_WEB_STATIC_DIR`: web transport host / static dir overrides.
+- `KOBE_OPEN_EDITOR`: command that opens a worktree in an external editor
+  (`code`, `cursor`, `nvim`, …), used by `prefix+o` / the sidebar's `o`.
+  It wins over kobe's auto-detection of installed editors, and the TUI's
+  "No editor found" toast names this variable. Separate from the
+  `editor.*` config keys, which pick the TTY editor for `kobe config` and
+  the file tree's `e` (see [Configuration](./CONFIGURATION.md)).
 - `KOBE_DEV=1`: declares a developer checkout (suppresses the
   update-available chip).
 - `KOBE_DEBUG=1`: print full startup errors instead of the one-line

@@ -169,8 +169,10 @@ makes the feature usable rather than clever:
   reorder with it. Reading them off the screen is the intended interaction:
   the digit is "where this task sits right now", not a permanent address. The
   task you are in sits at the top, so the digits read as distance from where
-  you are. Want fixed addresses instead? `t` switches the sidebar to the
-  **`default`** sort, whose order is stored and never reshuffles on its own.
+  you are. Want fixed addresses instead? The **`default`** sort's order is
+  stored and never reshuffles on its own — but see the `sidebar.sort` note
+  below: the `t` chord that switches between them is currently inert, so
+  today the mode changes only via `activeSortMode` in state.json.
 - A row past the ninth prints no digit, and a chord with no row does nothing.
   A jump that silently lands somewhere else is worse than one that does
   nothing.
@@ -239,9 +241,16 @@ something tree-shaped inside it:
   to kobe; the terminal-side fix (e.g. iTerm2's "Ctrl-click reported to
   apps") lives in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
-`sidebar.sort` is not registered. A tree already carries an order (project →
-worktree → tab) and manual placement lives in move mode, so a second automatic
-ordering would only fight the structure.
+`sidebar.sort` (`t`) is **registered in the keymap table but has no handler**
+in the tree sidebar, so pressing it does nothing today (F1 filters it out by
+reachability, so it is not advertised either). A tree already carries an order
+(project → worktree → tab) and manual placement lives in move mode, so a
+second automatic ordering would only fight the structure — but the row was
+never removed, and `activeSortMode` is still read at startup. Whether to wire
+the chord back or drop the row is an open owner call; the same applies to
+`sidebar.projectFilter` (`ctrl+p`, whose project filter was a fold),
+`sidebar.previewToggle` (`i`), and `tasks.toggleKeys` (`?`), which are also
+table rows with no handler.
 
 Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
 call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
