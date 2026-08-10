@@ -27,21 +27,46 @@ const assetsOutDir = join(packageDir, 'public/docs-assets');
 
 const repoBlob = 'https://github.com/Sma1lboy/kobe/blob/main/';
 
+/**
+ * The sidebar, as ordered sections of `[docs/ source file, site slug]`.
+ * This is the single source of truth: PAGES (what gets synced) is derived
+ * from it, so a page can never be synced but missing from the sidebar.
+ */
+const SECTIONS = [
+  {
+    title: 'Getting started',
+    pages: [
+      ['QUICKSTART.md', 'quick-start'],
+      ['CONCEPTS.md', 'concepts'],
+      ['KEYBINDINGS.md', 'keybindings'],
+    ],
+  },
+  {
+    title: 'Using kobe',
+    pages: [
+      ['CLI.md', 'cli'],
+      ['CONFIGURATION.md', 'configuration'],
+      ['ENGINES.md', 'engines'],
+      ['themes.md', 'themes'],
+      ['SESSIONS.md', 'sessions'],
+    ],
+  },
+  {
+    title: 'Automating and extending',
+    pages: [
+      ['API.md', 'api'],
+      ['PLUGIN-AUTHORING.md', 'plugins'],
+      ['WORK-TRACKING.md', 'work-tracking'],
+    ],
+  },
+  {
+    title: 'Help',
+    pages: [['TROUBLESHOOTING.md', 'troubleshooting']],
+  },
+];
+
 /** docs/ source file → site slug, in sidebar order. */
-const PAGES = new Map([
-  ['QUICKSTART.md', 'quick-start'],
-  ['CONCEPTS.md', 'concepts'],
-  ['CLI.md', 'cli'],
-  ['API.md', 'api'],
-  ['CONFIGURATION.md', 'configuration'],
-  ['KEYBINDINGS.md', 'keybindings'],
-  ['themes.md', 'themes'],
-  ['SESSIONS.md', 'sessions'],
-  ['ENGINES.md', 'engines'],
-  ['TROUBLESHOOTING.md', 'troubleshooting'],
-  ['PLUGIN-AUTHORING.md', 'plugins'],
-  ['WORK-TRACKING.md', 'work-tracking'],
-]);
+const PAGES = new Map(SECTIONS.flatMap((section) => section.pages));
 
 /** Case-insensitive lookup so `./Keybindings.md`-style links still resolve. */
 const PAGE_BY_LOWER_NAME = new Map([...PAGES].map(([name, slug]) => [name.toLowerCase(), slug]));
@@ -174,9 +199,13 @@ for (const [sourceFile, slug] of PAGES) {
 await writeFile(join(docsOutDir, 'index.mdx'), quickStart, 'utf8');
 console.log('synced docs/QUICKSTART.md → content/docs/index.mdx (docs home)');
 
+// Fumadocs renders `---Title---` entries as sidebar section separators.
 const meta = {
   title: 'kobe',
-  pages: [...PAGES.values()],
+  pages: SECTIONS.flatMap((section) => [
+    `---${section.title}---`,
+    ...section.pages.map(([, slug]) => slug),
+  ]),
 };
 await writeFile(join(docsOutDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 console.log('wrote content/docs/meta.json');

@@ -1,13 +1,11 @@
 # Themes
 
-kobe bundles three color themes (`claude`, `conductor`, and
-`tokyonight`) and lets you drop additional ones into `~/.kobe/themes/`
-without recompiling. The bundled set is deliberately small; everything
-else is one `kobe theme add` away (see [Hosted themes](#hosted-themes)). Any
-file matching `~/.kobe/themes/*.json` is loaded at boot and shows up in
-the theme picker (`Settings → General → Theme`, opened via `ctrl+,`).
+kobe bundles three themes — `claude`, `conductor`, `tokyonight` — and ten
+more are [one command away](#hosted-themes). You can also write your own.
 
-If a user theme has the same name as a bundled theme, the user's wins.
+Any `~/.kobe/themes/*.json` file loads at boot and appears in the theme
+picker (Settings → General → Theme, or `ctrl+,`). A user theme with the same
+name as a bundled one wins.
 
 ## JSON shape
 
@@ -81,20 +79,15 @@ doesn't have to know it's a "user" theme.
 
 ## Hosted themes
 
-Ten themes are hosted on the landing site rather than bundled:
-`catppuccin`, `dracula`, `everforest`, `gruvbox`, `kanagawa`, `nord`,
-`opencode`, `osaka-jade`, `rose-pine`, `solarized`. Install any of them
-with one command:
+Ten more themes are hosted rather than bundled — `catppuccin`, `dracula`,
+`everforest`, `gruvbox`, `kanagawa`, `nord`, `opencode`, `osaka-jade`,
+`rose-pine`, `solarized`. Install any of them with one command:
 
 ```sh
 kobe theme add https://kobe.sma1lboy.me/themes/gruvbox.json
 ```
 
-Several of these shipped bundled before v0.8.38. Nothing about them
-changed except where they live, and installing one restores it exactly.
-Their sources are in `packages/kobe-landing/themes/`, and the gallery at
-<https://kobe.sma1lboy.me/themes> previews all thirteen, rendered from
-these same JSON files.
+Preview all thirteen at <https://kobe.sma1lboy.me/themes>.
 
 ## Troubleshooting
 
