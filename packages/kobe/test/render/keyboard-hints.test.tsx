@@ -92,6 +92,14 @@ function TerminalPassthroughDriver(props: { children?: React.ReactNode }) {
   return <>{props.children}</>
 }
 
+const TEST_MODAL_SCOPE = Symbol("test-modal")
+
+/** Registers a modal barrier, the way an open dialog does. */
+function ModalBarrierDriver(props: { children?: React.ReactNode }) {
+  useBindings(() => ({ modal: true, bindings: [] }), { modalOwner: TEST_MODAL_SCOPE })
+  return <>{props.children}</>
+}
+
 /** Writes KV keys on mount, then renders children — for persisted-state cases. */
 function KvSeed(props: { entries: readonly [string, unknown][]; children?: React.ReactNode }) {
   const kv = useKV()
@@ -135,6 +143,22 @@ describe("StatusKeyHintBar", () => {
     expect(text).toContain("F1 help")
     expect(text).toContain("[settings]")
     expect(text).not.toContain("commands")
+  })
+
+  it("hides the whole bar — [settings] included — while a modal owns input", async () => {
+    // Barrier OUTERMOST: parent effects commit after children, so its
+    // registration lands on top of the stack — the same position an
+    // opening dialog's barrier takes in production.
+    const { frame } = await renderComponent(
+      <ModalBarrierDriver>
+        <WorkspaceDriver>
+          <StatusKeyHintBar onOpenSettings={NOOP} />
+        </WorkspaceDriver>
+      </ModalBarrierDriver>,
+      { providers: { focus: true, dialog: true } },
+    )
+    await settle()
+    expect((await frame()).trim()).toBe("")
   })
 
   it("renders nothing when the master toggle is off", async () => {

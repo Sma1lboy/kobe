@@ -37,7 +37,12 @@ import { useKeymapVersion } from "../context/keybindings"
 import { useOptionalKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-import { armPrefixFromCurrentStack, currentBindingReachability, useBindingStackVersion } from "../lib/keymap"
+import {
+  armPrefixFromCurrentStack,
+  currentBindingReachability,
+  modalActive,
+  useBindingStackVersion,
+} from "../lib/keymap"
 import { useOptionalDialog } from "../ui/dialog"
 import { HelpDialog } from "./help-dialog"
 
@@ -64,7 +69,10 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   const dialog = useOptionalDialog()
   useKeymapVersion()
   useBindingStackVersion()
-  const [tokens, setTokens] = useState<readonly StatusHintToken[]>([])
+  const [snapshot, setSnapshot] = useState<{ tokens: readonly StatusHintToken[]; modal: boolean }>({
+    tokens: [],
+    modal: false,
+  })
   // Snapshot AFTER every commit, never during render: `enabled` gates like
   // the terminal passthrough table read render-refreshed refs in CHILD
   // components, and this hook renders in a parent (the workspace footer) —
@@ -75,11 +83,14 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   // compare-and-set keeps the no-change case from looping.
   useEffect(() => {
     const enabled = keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))
-    const next = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
-    setTokens((prev) =>
-      prev.length === next.length && prev.every((tok, i) => tok.chord === next[i]?.chord && tok.msg === next[i]?.msg)
+    const nextTokens = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
+    const nextModal = modalActive()
+    setSnapshot((prev) =>
+      prev.modal === nextModal &&
+      prev.tokens.length === nextTokens.length &&
+      prev.tokens.every((tok, i) => tok.chord === nextTokens[i]?.chord && tok.msg === nextTokens[i]?.msg)
         ? prev
-        : next,
+        : { tokens: nextTokens, modal: nextModal },
     )
   })
   // Click = the action the advertised key would run. Arming the prefix goes
@@ -90,15 +101,16 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
     sidebar: focus ? () => focus.setFocused("sidebar") : undefined,
     help: dialog ? () => HelpDialog.show(dialog, focus?.focused ?? "sidebar") : undefined,
   }
-  const items: StatusKeyHintItem[] = tokens.map((tok) => ({
+  const items: StatusKeyHintItem[] = snapshot.tokens.map((tok) => ({
     text: t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
     onPress: actions[tok.msg],
   }))
   // Bracketed like the other clickable chips ([~] Zen, [enter] Send) — and
   // deliberately NO glyph: U+2699 ⚙ is East-Asian-Ambiguous width, so
   // terminals disagree on whether it takes 1 or 2 cells and the row
-  // misaligns per OS/font.
-  if (opts?.onOpenSettings && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
+  // misaligns per OS/font. Hidden while a modal owns input — Settings must
+  // not open under a dialog, same reason the keyboard tokens drop.
+  if (opts?.onOpenSettings && !snapshot.modal && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
     items.push({ text: `[${t("hints.status.settings")}]`, onPress: opts.onOpenSettings })
   }
   return items
