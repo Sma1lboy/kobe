@@ -67,6 +67,11 @@ export function SidebarTree(props: SidebarTreeProps) {
   const [view, setView] = useState<SidebarView>("active")
   const viewTasks = useMemo(() => filterByView(props.tasks, view), [props.tasks, view])
 
+  // Same rule as the flat sidebar: the Active/Archived row stays hidden until
+  // something is actually archived, and stays visible while you are IN the
+  // archived view so there is a way back.
+  const showViewTabs = view === "archived" || props.tasks.some((task) => task.archived === true)
+
   // The same ~2s branch/changes poll tick the flat sidebar runs — the row
   // cards' `useChanges`/`pollCurrentBranch` effects key on it.
   const [branchTick, setBranchTick] = useState(0)
@@ -300,6 +305,10 @@ export function SidebarTree(props: SidebarTreeProps) {
     enabled: focused,
     bindings: bindByIds({
       "sidebar.view": (_evt, slot) => {
+        // Follows the row: with nothing archived there is no second view to
+        // cycle into, and landing there would strand you in a list whose only
+        // content is "No archived tasks."
+        if (!showViewTabs) return
         const target = cycleViewTarget(view, (slot ?? 0) % 2 === 0 ? -1 : 1)
         if (target) setView(target)
       },
@@ -431,9 +440,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       {search.active ? (
         <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
       ) : null}
-      {/* Keep the task-scope navigation stable even when Archives is empty.
-          New task is an action above it, not a replacement for these tabs. */}
-      <SidebarViewTabs view={view} setView={setView} />
+      {showViewTabs ? <SidebarViewTabs view={view} setView={setView} /> : null}
       {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
           within the workspace you're in, so they read as children of it. */}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />

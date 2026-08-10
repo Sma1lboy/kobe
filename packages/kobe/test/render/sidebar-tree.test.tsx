@@ -74,10 +74,6 @@ test("renders project header, worktree cards, and tab rows", async () => {
   // Worktrees are the same two-line cards; their branch is the subtitle.
   expect(text).toContain("feat/a")
   expect(text).toContain("feat/b")
-  // Navigation stays stable with an all-active task list: the New task row
-  // must not replace the Active/Archived scope tabs.
-  expect(text).toContain("Active")
-  expect(text).toContain("Archived")
   // The selected worktree starts expanded, so its tabs are visible without a
   // keystroke — that is the whole point of replacing the strip.
   expect(text).toContain("tab 1")
@@ -323,4 +319,21 @@ test("an idle task keeps the resting glyph — running must mean running", async
   const { frame } = await renderComponent(tree(), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
   expect(await frame()).toContain("○")
+})
+
+test("the Active/Archived row stays hidden until something is archived", async () => {
+  // The tree renders its OWN copy of the view tabs. The gate added to the flat
+  // sidebar skipped this one, so the row kept showing on a fresh install while
+  // a passing test on the other component said it was fixed.
+  const { frame } = await renderComponent(tree(), { width: 28, height: 30 })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  const text = await frame()
+  expect(text).not.toContain("Archived")
+
+  const withArchived = await renderComponent(tree({ tasks: [MAIN, task("a"), task("z", { archived: true })] }), {
+    width: 28,
+    height: 30,
+  })
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(await withArchived.frame()).toContain("Archived")
 })
