@@ -29,7 +29,9 @@ scripts/release.sh
 > commit + tag that `release.sh` pushes is the ONE sanctioned direct push —
 > it only consumes changesets that already passed PR CI.
 
-This first runs the release gate — `bun run lint && bun run typecheck && (cd packages/kobe && bun run test)` — and aborts before touching anything if it fails. With a green gate, it consumes every pending `.changeset/*.md`:
+This first runs the release gate — lint, typecheck, unit tests, build, and the **behavior** suite — and aborts before touching anything if it fails. The gate deliberately mirrors everything `release.yml` makes `publish` wait on: a check that only ran in CI would be discovered by the *tag*, and a tag that fails to publish burns its version number for good (v0.8.58 did exactly this — green locally, then the pipeline's behavior job failed). If a gate is added to `release.yml`, add it here too.
+
+With a green gate, it consumes every pending `.changeset/*.md`:
 
 1. `changeset version` — computes the next version from the pending bump types, rewrites `packages/kobe/package.json`, and prepends the collected notes to `CHANGELOG.md` (then deletes the consumed changesets).
 2. Runs `bun install`, then `bun install --frozen-lockfile`, so `bun.lock` matches the workspace package versions before the release commit is made.

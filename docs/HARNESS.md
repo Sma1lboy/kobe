@@ -42,6 +42,19 @@ bun run build
 bun run test:behavior
 ```
 
+These drive a real PTY, a real daemon, and real child processes, so they are
+timing-exposed in a way unit tests are not — the failure mode is a keypress
+landing before the surface that handles it is live. Two rules keep that from
+reaching the release pipeline:
+
+- **Retry is configured** (`--retry=2` on `test:behavior`), for this suite
+  only. A single red run of a process-driving test is not evidence.
+- **Poll, never sleep-then-assert.** A fixed wait encodes one runner's speed.
+  Re-assert the precondition inside the retry loop, not once before it: the
+  open-worktree test pressed `ctrl+q` once, then retried only `o` for 15s, so
+  a boot that placed focus a beat late spent every retry on the wrong pane
+  (green on `ci.yml`, red on `release.yml`, same commit — v0.8.58).
+
 ## OpenTUI visual ground truth
 
 Agent visual iteration and UI acceptance have exactly one path:

@@ -31,6 +31,15 @@ async function readInvocations(marker: string): Promise<string[]> {
  * `expected [] to deeply equal [repo]` failure). Retrying the press is
  * the deterministic harness-level fix; assertions below use set/count
  * semantics so extra presses can't break them.
+ *
+ * Every attempt RE-ASSERTS sidebar focus first (`ctrl+q`, the documented
+ * escape hatch) instead of trusting a one-shot press before the loop.
+ * `tasks.openWorktree` is gated on sidebar focus, so a boot that lands
+ * focus in the content pane a beat later than the fixed pre-loop wait —
+ * or any press that moves focus — left all 15s of retries hammering the
+ * wrong pane and the whole loop timed out at zero invocations (the
+ * release-pipeline failure on v0.8.58, green on ci.yml for the same
+ * commit). ctrl+q is idempotent once the sidebar already has focus.
  */
 async function pressUntilInvoked(
   child: { write(data: string): void },
@@ -41,6 +50,8 @@ async function pressUntilInvoked(
   const deadline = Date.now() + 15_000
   let lines: string[] = []
   while (Date.now() < deadline) {
+    child.write("\x11")
+    await new Promise((resolve) => setTimeout(resolve, 150))
     child.write(keys)
     await new Promise((resolve) => setTimeout(resolve, 500))
     lines = await readInvocations(marker)

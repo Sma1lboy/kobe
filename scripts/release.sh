@@ -14,8 +14,10 @@
 #      stale local tree are both refused. Unrelated UNCOMMITTED files are
 #      only reported — they can't reach the tag, and blocking on them froze
 #      releases whenever another session had work in progress.
-#   1. Gate: `bun run lint && bun run typecheck && (cd packages/kobe && bun run test)`.
-#      Any failure aborts before touching version/CHANGELOG — a red tree never
+#   1. Gate: lint, typecheck, test, build, behavior — the same set
+#      `release.yml` makes `publish` wait on, so a gate the tag would fail on
+#      fails HERE instead, while the version number is still reusable. Any
+#      failure aborts before touching version/CHANGELOG — a red tree never
 #      gets tagged. Runs against the working tree as a fast fail; `release.yml`
 #      re-runs everything from the tag checkout before publishing.
 #   2. `changeset version` — derives the next version from pending changesets,
@@ -103,13 +105,23 @@ fi
 
 CURRENT=$(node -p "require('$PKG_JSON').version")
 
-# ── gate: lint + typecheck + test before touching version/CHANGELOG ───────────
+# ── gate: lint + typecheck + test + build + behavior ──────────────────────────
 # Fail here, not after `changeset version` — a red tree must never get a
 # version bump, commit, or tag written for it.
-echo "Running release gate (lint, typecheck, test)…"
+#
+# The gate must mirror what `release.yml` makes `publish` WAIT ON, or the
+# tag is the thing that discovers the failure. v0.8.58 burned exactly that
+# way: lint/typecheck/test were green locally, the tag pushed, and the
+# release pipeline's `behavior` job (never run locally) failed — leaving a
+# published-nothing tag on a version number that can't be reused.
+echo "Running release gate (lint, typecheck, test, build, behavior)…"
 bun run lint
 bun run typecheck
 (cd packages/kobe && bun run test)
+bun run build
+# node-pty is optional locally (the suite self-skips without it); on CI it is
+# present and this is the same command the release pipeline runs.
+bun run --filter @sma1lboy/kobe test:behavior
 
 # ── consume changesets → bump version + write CHANGELOG ───────────────────────
 bun x changeset version
