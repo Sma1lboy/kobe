@@ -153,6 +153,19 @@ Full guide: [`docs/themes.md`](./themes.md). The short version:
 Full reference: [`docs/KEYBINDINGS.md`](./KEYBINDINGS.md). The configuration
 surface:
 
+- Bare keys belong to the focused pane, frequent Kobe actions use a small
+  one-press set, and the configured prefix opens an on-screen command map for
+  less-frequent actions. `F1` presents the same live keymap in that order.
+
+- Discoverability hints (Settings → General → Keyboard hints, default on):
+  the status bar keeps a permanent `{prefix} commands · F1 help` micro-hint
+  (inside the embedded terminal it advertises the escape hatch instead, since
+  the prefix passes through to the PTY there), and the sidebar/files panes
+  each show a one-line first-use hint that extinguishes permanently once that
+  pane's own keys are used. Turning the toggle back on relights extinguished
+  pane hints. Every advertised chord follows live rebinds; an unbound chord
+  drops out of its hint.
+
 - Edit `~/.kobe/settings/keybindings.yaml` (`.yml` accepted when `.yaml` is
   absent). This is a hand-authored file; kobe never writes it.
 - Changes **reload live** through the daemon watcher; no restart needed.

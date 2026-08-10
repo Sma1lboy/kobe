@@ -14,6 +14,7 @@
 
 import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import { type PsSnapshot, engineProcessIn, parsePsSnapshot, psSnapshot } from "../../engine/foreground.ts"
 import {
   type HostedSessionRpc,
   deliverToHostedKey,
@@ -28,6 +29,34 @@ import {
 } from "../../engine/hosted-session.ts"
 import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
 import { ApiError, type DeliveredPrompt } from "./types.ts"
+
+/**
+ * Foreground gate for delivery into an EXISTING session (herdr's
+ * "agent is no longer the pane foreground process" check, ported to the
+ * process tree): a session's spawn argv says what WAS launched, not what is
+ * running now — kobe's keepAlive drops an exited engine into a fallback
+ * SHELL, where a pasted prompt executes as shell commands. Walk the PTY
+ * child's descendants: any registered engine counts (cross-vendor send is
+ * legitimate), `extraBin` additionally matches a custom engine's binary
+ * name. False on no pid / ps failure — unverifiable is "not an engine".
+ *
+ * Known ceiling: during an engine's first ~1-2s (login shell still sourcing
+ * rc, engine child not yet spawned) the gate reads "shell only" and refuses;
+ * the typed error's hint makes the retry trivial. Watching the spawn argv
+ * would close it but can't distinguish boot from the post-exit exec'd shell.
+ */
+async function sessionHasEngine(
+  pid: number | null | undefined,
+  extraBin?: string,
+  snapshot: PsSnapshot = psSnapshot,
+): Promise<boolean> {
+  if (!pid) return false
+  try {
+    return engineProcessIn(parsePsSnapshot(await snapshot()), pid, extraBin)
+  } catch {
+    return false
+  }
+}
 
 /**
  * The narrow pty-host surface this module needs: request/response RPC plus
@@ -88,7 +117,7 @@ export async function deliverHostedPrompt(
   cwd: string,
   prompt: string,
   launch: EngineSessionLaunch,
-  opts?: { readonly forceNew?: boolean },
+  opts?: { readonly forceNew?: boolean; readonly snapshot?: PsSnapshot },
 ): Promise<DeliveredPrompt> {
   const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
   // `forceNew` (send --tab new): the caller minted a fresh tab key and wants
@@ -96,6 +125,20 @@ export async function deliverHostedPrompt(
   // engine, which is exactly what the lookup below would do.
   const existingKey = opts?.forceNew ? null : findEngineKey(sessions, target.id, target.engineBin)
   if (existingKey) {
+    // Foreground gate: the session's SPAWN argv matched an engine, but the
+    // engine may have exited into the keepAlive shell since — pasting there
+    // executes the prompt as shell commands. See {@link sessionHasEngine}.
+    const pid = sessions.find((s) => s.key === existingKey)?.pid
+    if (!(await sessionHasEngine(pid, target.engineBin, opts?.snapshot))) {
+      throw new ApiError(
+        `task ${target.id}'s engine tab (${existingKey}) has no live engine process — its engine exited into a plain shell`,
+        "ENGINE_NOT_RUNNING",
+        {
+          hint: "spawn a fresh engine tab for this prompt with --tab new",
+          nextCommandArgs: ["api", "send", "--task-id", target.id, "--tab", "new", "--prompt", prompt],
+        },
+      )
+    }
     try {
       const delivered = await deliverToKey(rpc, existingKey, cwd, prompt)
       return {
@@ -157,6 +200,7 @@ export async function deliverToExactTab(
   tabId: string,
   cwd: string,
   prompt: string,
+  opts?: { readonly engineBin?: string; readonly snapshot?: PsSnapshot },
 ): Promise<DeliveredPrompt> {
   const key = `${taskId}::${tabId}`
   const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
@@ -165,6 +209,20 @@ export async function deliverToExactTab(
     throw new ApiError(
       `tab ${tabId} has no live session on task ${taskId} — see \`kobe api pty-list\` for alive tabs`,
       "TAB_NOT_FOUND",
+    )
+  }
+  // Same foreground gate as the canonical path: an addressed tab whose
+  // engine exited (or that always was a shell tab) must not have the prompt
+  // pasted into its shell. ANY running engine passes — the addressed tab's
+  // engine need not match the task's vendor (cross-vendor send).
+  if (!(await sessionHasEngine(session.pid, opts?.engineBin, opts?.snapshot))) {
+    throw new ApiError(
+      `tab ${tabId} on task ${taskId} has no live engine process — it is a plain shell right now`,
+      "ENGINE_NOT_RUNNING",
+      {
+        hint: "spawn a fresh engine tab for this prompt with --tab new, or pick an engine tab from pty-list",
+        nextCommandArgs: ["api", "pty-list"],
+      },
     )
   }
   try {

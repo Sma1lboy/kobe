@@ -33,9 +33,6 @@ export const en = {
     gitNotInstalled: "git is not installed",
     gitFailed: "git command failed",
   },
-  footer: {
-    openHint: "↵ open · d diff",
-  },
   toast: {
     prOnTargetBranch: "Already on the target branch ({branch}) — create the PR from a task branch",
   },
@@ -70,9 +67,6 @@ export const zh: typeof en = {
     permissionDenied: "权限不足",
     gitNotInstalled: "未安装 git",
     gitFailed: "git 命令失败",
-  },
-  footer: {
-    openHint: "↵ 打开 · d 差异",
   },
   toast: {
     prOnTargetBranch: "当前就在目标分支（{branch}）— 请在任务分支上创建 PR",

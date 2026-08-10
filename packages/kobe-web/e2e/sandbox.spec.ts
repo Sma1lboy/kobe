@@ -84,7 +84,7 @@ test("workspace help and settings render in the real OpenTUI", async ({ page }) 
     await clickSidebar(terminal)
     await pressTerminal(terminal, "F1")
     await expect(buffer).toContainText("keybindings")
-    await expect(buffer).toContainText("Global")
+    await expect(buffer).toContainText("ONE PRESS")
     await pressTerminal(terminal, "Escape")
     await expect(buffer).not.toContainText("keybindings")
 
@@ -168,5 +168,35 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
       caret: "hide",
       fullPage: false,
     })
+  })
+})
+
+// LAST on purpose: pressing the sidebar's own keys below persists the pane
+// hint's "used" flag into the shared fixture HOME, so any journey after this
+// one would see the extinguished state instead of the fresh-HOME hints.
+test("keyboard hints render and extinguish in the real OpenTUI", async ({ page }) => {
+  test.skip(process.env.KOBE_VISUAL !== "1", "visual ground-truth only")
+
+  await withVisualTui(page, async (terminal, buffer) => {
+    // Fresh HOME: the status-bar micro-hint and the sidebar's first-use
+    // hint are both up, resolved from the live keymap.
+    await expect(buffer).toContainText("F1 help")
+    await expect(buffer).toContainText("commands")
+    await expect(buffer).toContainText("j/k move")
+
+    // Using the sidebar's own keys extinguishes the pane hint…
+    await clickSidebar(terminal)
+    await pressTerminal(terminal, "j")
+    await expect(buffer).not.toContainText("j/k move")
+
+    // …while the status-bar hint is permanent.
+    await expect(buffer).toContainText("F1 help")
+
+    // NOT asserted here: the terminal-passthrough variant (`⌃Q sidebar`).
+    // The fixture task has no started engine session, so the workspace
+    // never mounts a live PTY passthrough surface in this journey (and CI
+    // has no engine binary at all). Both hint variants and the flip are
+    // pinned by test/render/keyboard-hints.test.tsx against the real
+    // binding stack.
   })
 })

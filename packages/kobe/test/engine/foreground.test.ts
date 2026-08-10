@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { foregroundEngine, foregroundEngineIn, parsePsSnapshot, vendorFromArgv } from "../../src/engine/foreground.ts"
+import {
+  engineProcessIn,
+  foregroundEngine,
+  foregroundEngineIn,
+  parsePsSnapshot,
+  vendorFromArgv,
+} from "../../src/engine/foreground.ts"
 
 /**
  * Verbatim `ps -A -o pid=,ppid=,args=` lines captured while the owner's
@@ -61,6 +67,38 @@ describe("foregroundEngineIn", () => {
 12 11 claude bg-pty-host --bg-pty-host /tmp/x.sock
 `)
     expect(foregroundEngineIn(nested, 10)?.pid).toBe(11)
+  })
+})
+
+describe("engineProcessIn (delivery foreground gate)", () => {
+  it("sees a builtin engine through the wrapper chain", () => {
+    expect(engineProcessIn(parsePsSnapshot(REAL_TREE), 56070)).toBe(true)
+  })
+
+  it("a keepAlive fallback shell (engine exited) is NOT an engine", () => {
+    const rows = parsePsSnapshot(`
+10 1 -zsh
+11 10 /bin/sh
+`)
+    expect(engineProcessIn(rows, 10)).toBe(false)
+  })
+
+  it("a DIFFERENT builtin than the task's vendor still passes (cross-vendor send)", () => {
+    const rows = parsePsSnapshot(`
+10 1 -zsh
+11 10 codex
+`)
+    // caller passed claude's bin; the running codex is still an engine
+    expect(engineProcessIn(rows, 10, "claude")).toBe(true)
+  })
+
+  it("extraBin matches a custom engine binary the builtin walk cannot see", () => {
+    const rows = parsePsSnapshot(`
+10 1 -zsh
+11 10 /usr/local/bin/aider --model gpt
+`)
+    expect(engineProcessIn(rows, 10)).toBe(false)
+    expect(engineProcessIn(rows, 10, "aider")).toBe(true)
   })
 })
 

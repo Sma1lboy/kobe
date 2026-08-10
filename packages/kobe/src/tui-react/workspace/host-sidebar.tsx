@@ -14,6 +14,7 @@ import { useCallback } from "react"
 import type { TaskSortMode } from "../../tui/panes/sidebar/groups"
 import type { SidebarNav } from "../../tui/panes/sidebar/nav-core"
 import type { WorktreeChanges } from "../../tui/panes/sidebar/worktree-changes"
+import { PaneKeyHint } from "../component/keyboard-hints"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
@@ -119,7 +120,13 @@ export function HostSidebar(props: HostSidebarProps) {
     onZenClick: props.onZenClick,
   }
   return (
-    <box width={props.width} flexShrink={0} backgroundColor={theme.backgroundPanel} onMouseUp={props.onFocusRequest}>
+    <box
+      width={props.width}
+      flexShrink={0}
+      flexDirection="column"
+      backgroundColor={theme.backgroundPanel}
+      onMouseUp={props.onFocusRequest}
+    >
       {props.mode === "tree" ? (
         <SidebarTree
           {...common}
@@ -140,6 +147,11 @@ export function HostSidebar(props: HostSidebarProps) {
           onProjectFilterChange={props.onProjectFilterChange}
         />
       )}
+      {/* First-use key hint (component/keyboard-hints.tsx): renders until
+          the sidebar's own keys have been used, then never again. */}
+      <box flexShrink={0} paddingLeft={1} paddingBottom={0}>
+        <PaneKeyHint pane="sidebar" />
+      </box>
     </box>
   )
 }

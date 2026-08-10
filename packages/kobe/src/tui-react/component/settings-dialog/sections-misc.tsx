@@ -11,7 +11,7 @@ import { useEffect, useRef } from "react"
 import { stripNewlines } from "../../../tui/component/new-task-dialog/state"
 import { devRows, rowIndex } from "../../../tui/component/settings-dialog/model"
 import { userKeybindingsReport } from "../../../tui/context/keybindings-user"
-import { currentPrefixConfiguration } from "../../../tui/lib/keymap-dispatch"
+import { DEFAULT_PREFIX_CONFIGURATION, currentPrefixConfiguration } from "../../../tui/lib/keymap-dispatch"
 import { FIXED_BINDING_IDS } from "../../../tui/lib/keymap-overrides"
 import { useKeymapVersion } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
@@ -268,10 +268,13 @@ export function KeybindingsSettingsSection() {
       </box>
       <box flexDirection="column" gap={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          PureTUI prefix
+          {t("settings.keybindings.prefixTitle", { prefix: prefix.key ?? t("settings.keybindings.prefixDisabled") })}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          {`First stroke: ${prefix.key ?? "disabled"}; timeout: ${prefix.timeoutMs}ms. Prefix bindings retain their existing pane scope and modal barrier.`}
+          {t("settings.keybindings.prefixHint", {
+            prefix: prefix.key ?? t("settings.keybindings.prefixDisabled"),
+            timeout: prefix.timeoutMs,
+          })}
         </text>
       </box>
       {!report.exists ? (
@@ -281,7 +284,9 @@ export function KeybindingsSettingsSection() {
           </text>
           <text fg={theme.textMuted}>prefix:</text>
           <text fg={theme.textMuted}>{"  key: ctrl+a                 # first stroke (null disables)"}</text>
-          <text fg={theme.textMuted}>{"  timeoutMs: 1000             # second stroke deadline"}</text>
+          <text fg={theme.textMuted}>
+            {`  timeoutMs: ${DEFAULT_PREFIX_CONFIGURATION.timeoutMs}             # second stroke deadline`}
+          </text>
           <text fg={theme.textMuted}>{"  bindings:"}</text>
           <text fg={theme.textMuted}>{"    chat.tab.new: t           # ctrl+a, then t"}</text>
           <text fg={theme.textMuted}>bindings:</text>
@@ -317,9 +322,11 @@ export function KeybindingsSettingsSection() {
           ))}
         </box>
       ) : null}
-      <text fg={theme.textMuted} wrapMode="word">
-        {`Fixed (not rebindable): ${fixedIds.join(", ")}.`}
-      </text>
+      {fixedIds.length > 0 ? (
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.keybindings.fixed", { ids: fixedIds.join(", ") })}
+        </text>
+      ) : null}
     </box>
   )
 }

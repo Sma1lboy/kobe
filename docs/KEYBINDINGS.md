@@ -13,11 +13,51 @@ The embedded engine terminal receives unclaimed terminal input. Kobe reserves
 only its explicit global/workspace chords; do not add broad interceptors that
 break engine-native shortcuts.
 
+The user-facing model has two independent dimensions:
+
+- **Where:** Kobe-wide or owned by the focused pane.
+- **How:** one press or a prefix sequence.
+
+That produces three common patterns: bare keys act in the focused pane; a
+small one-press set owns frequent Kobe actions; and the prefix opens the
+less-frequent command layer. The embedded terminal is the passthrough boundary:
+unreserved keys, including the prefix first stroke, remain engine/shell input.
+Press `ctrl+q` to leave it before opening the command layer.
+
+## Discoverability (2026-08-09)
+
+Four restrained surfaces teach the grammar — none re-implements the
+which-key map, and all captions resolve through the live keymap
+(`src/tui/lib/keyboard-hints.ts`), so a rebound chord shows its new key and
+an unbound/disabled one drops out:
+
+- **Status-bar micro-hint** — a permanent `{prefix} commands · F1 help` pair
+  in the workspace footer's right corner. Inside the embedded terminal it
+  swaps the prefix token for the `ctrl+q` escape hatch (the prefix first
+  stroke passes through to the PTY there); with a modal open, or the prefix
+  disabled and help unbound, tokens drop until nothing renders.
+- **First-use pane hints** — one muted line per vim-style pane (sidebar:
+  `j/k move · ⏎ open`; files: move/fold/open/diff). Using that pane's own
+  nav/select keys extinguishes its line permanently; the files pane then
+  falls back to its short permanent `⏎ open · d diff` footer.
+- **Onboarding wizard "Keyboard basics" page** — one informational screen
+  after the first-run questions (skippable with the wizard).
+- **Settings** — General → "Keyboard hints" toggles all hint surfaces
+  (re-enabling relights extinguished pane hints); Keybindings keeps a
+  one-paragraph grammar summary with the live prefix/timeout values.
+
+Hints are text-only on the ambient background (no opaque fill), so normal
+and transparent themes both stay readable — pinned by
+`test/tui-react/keyboard-overlay-theme.test.ts` and the `/harness` visual
+journey `keyboard hints render and extinguish in the real OpenTUI`.
+
 ## PureTUI prefix
 
 The default first stroke is `ctrl+a`. Prefix-only actions then consume one
-second key within 1000 ms. The HUD shows the pending prefix and cancels on
-timeout, modal changes, reload, or an invalid second stroke.
+second key within 5000 ms. After a short delay, the HUD expands into a
+which-key-style command map generated from the live Binding Stack, so it shows
+only actions that can run in the current focus/modal state. It cancels on
+timeout, modal changes, reload, `esc`, or an invalid second stroke.
 
 Default prefix actions:
 
@@ -34,7 +74,10 @@ Default prefix actions:
 | `ctrl+a`, `w` | Close active split |
 | `ctrl+a`, `1` | Point the content pane at the Kanban (kobe's own issue board) |
 | `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
+| `ctrl+a`, `3` | Point the content pane at GitHub Issues (external tracker) |
 | `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
+| `ctrl+a`, `,` | Open Settings |
+| `ctrl+a`, `p` / `P` | Create a PR from the active task |
 
 The rail pages take digits, not letters (owner call 2026-08-01): they are one
 kind of thing — "point the content pane at X" — and their order on the rail is
@@ -51,6 +94,13 @@ High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
 `ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct. Splits are
 direct again: `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
 their prefix strokes are dropped, same reasoning as the tab rows.
+
+Owner decision (2026-08-09): `f1` is reserved out of the terminal
+passthrough (`RESERVED_GLOBAL_CHORDS`), so F1 opens the help reference from
+inside the embedded terminal too. It was the one F-row gap (f2–f5, f7 were
+already reserved), the docs promise "F1 anywhere", and the status-bar hint
+advertises F1 inside the terminal — all three lied while f1 passed through.
+No engine CLI binds F1.
 
 ## Navigation and workspace defaults
 
@@ -169,7 +219,10 @@ something tree-shaped inside it:
 - Right-click on any row opens that row's menu (`j`/`k`/`enter`/`esc`). The
   entries are exactly what the row's own chords already do, so the menu never
   becomes a second place where behavior is decided — the one exception is the
-  project header, which the cursor cannot reach at all.
+  project header, which the cursor cannot reach at all. Some outer terminals
+  (iTerm2 by default) keep right-click for their own menu and never report it
+  to kobe; the terminal-side fix (e.g. iTerm2's "Ctrl-click reported to
+  apps") lives in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 `sidebar.sort` is not registered in the tree. A tree already carries an order
 (project → worktree → tab) and manual placement lives in move mode, so a second
@@ -219,7 +272,7 @@ daemon watcher.
 ```yaml
 prefix:
   key: ctrl+a          # null disables prefix bindings
-  timeoutMs: 1000
+  timeoutMs: 5000
   bindings:
     chat.fork.new: f
 

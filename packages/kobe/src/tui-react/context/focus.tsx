@@ -105,3 +105,12 @@ export function useFocus(): FocusContextValue {
   }
   return ctx
 }
+
+/**
+ * Read the focus context when present — null outside a provider. For
+ * consumers that only SUBSCRIBE to focus changes (the keyboard hints) and
+ * degrade gracefully in focus-less mounts such as render-test frames.
+ */
+export function useOptionalFocus(): FocusContextValue | null {
+  return useContext(FocusContext)
+}

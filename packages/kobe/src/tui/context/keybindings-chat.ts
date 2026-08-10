@@ -61,6 +61,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "New chat tab",
     hint: { keys: "ctrl+t" },
+    presentation: "onePress",
   },
   {
     // Can't reuse `ctrl+shift+t`: it has the same shift+letter collision
@@ -75,6 +76,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "New tab with a chosen engine or a plain shell",
     hint: { keys: "ctrl+e" },
+    presentation: "onePress",
   },
   {
     // Fork the CONVERSATION, not the worktree: a new tab in the SAME
@@ -138,6 +140,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Close chat tab",
     hint: { keys: "ctrl+w" },
+    presentation: "onePress",
   },
   {
     // Rename the active chat tab. F2 is the cross-OS / cross-IDE
@@ -151,6 +154,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Rename active chat tab",
     hint: { keys: "f2" },
+    presentation: "onePress",
   },
   {
     // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket
@@ -168,6 +172,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Next chat tab",
     hint: { keys: "ctrl+]" },
+    presentation: "onePress",
   },
   {
     id: "chat.tab.cycle-prev",
@@ -177,6 +182,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Previous chat tab",
     hint: { keys: "ctrl+[" },
+    presentation: "onePress",
   },
   {
     // Splits inside the active workspace tab (issue #16).
@@ -195,6 +201,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Split right",
     hint: { keys: "ctrl+\\" },
+    presentation: "onePress",
   },
   {
     id: "workspace.split.down",
@@ -203,6 +210,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Split down",
     hint: { keys: "ctrl+=" },
+    presentation: "onePress",
   },
   {
     // Split-focus cycle in reading order. F3 because
@@ -215,6 +223,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Focus next split",
     hint: { keys: "f3" },
+    presentation: "onePress",
   },
   {
     // Same chord as chat.tab.close, contextual scope: while the tab is
@@ -230,6 +239,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Close active split (tab when unsplit)",
     hint: { keys: "ctrl+w" },
+    presentation: "onePress",
   },
   {
     // Same chord as chat.tab.rename, contextual like workspace.split.close:
@@ -243,45 +253,9 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Rename active split (tab when unsplit)",
     hint: { keys: "f2" },
+    presentation: "onePress",
   },
-  // AskUserQuestion picker bindings — only fire when a question card is
-  // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
-  // 1-9 are bare-letter chords by intent: while a picker is showing, the
-  // composer is hidden (Chat.tsx `<Show when={!pendingQuestion()}>`) so
-  // these never compete with composer typing. Workspace scope means the
-  // chat pane must own focus — the user can still navigate the file tree
-  // with j/k while a question is queued.
-  //
-  {
-    id: "chat.question.nav",
-    scope: "workspace",
-    keys: ["j", "k", "down", "up"],
-    category: "Workspace",
-    description: "Move highlight in question picker",
-    hint: { keys: "j/k" },
-  },
-  {
-    id: "chat.question.toggle",
-    scope: "workspace",
-    keys: ["space"],
-    category: "Workspace",
-    description: "Toggle highlighted option in question picker",
-    hint: { keys: "space" },
-  },
-  {
-    id: "chat.question.submit",
-    scope: "workspace",
-    keys: ["return"],
-    category: "Workspace",
-    description: "Advance / submit question picker",
-    hint: { keys: "enter" },
-  },
-  {
-    id: "chat.question.pick-number",
-    scope: "workspace",
-    keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    category: "Workspace",
-    description: "Pick option by number in question picker",
-    hint: { keys: "1-9" },
-  },
+  // The Solid-era AskUserQuestion picker rows (`chat.question.*`) are gone:
+  // the React TUI never registered them, so they were F1 noise advertising
+  // keys that did nothing. The engine CLI owns its own question UI.
 ]

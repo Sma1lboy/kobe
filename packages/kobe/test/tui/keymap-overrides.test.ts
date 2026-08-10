@@ -149,7 +149,7 @@ describe("applyKeymapOverrides", () => {
       { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k" } },
       { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
       { id: "sidebar.goto", scope: "sidebar", keys: ["g", "shift+g"] }, // slot pair [top, bottom]
-      { id: "chat.question.nav", scope: "workspace", keys: ["j", "k"] }, // FIXED (display-only)
+      { id: "fixed.example", scope: "workspace", keys: ["j", "k"] }, // fixed via injected map below
       { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
       { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p" } },
     ]
@@ -175,17 +175,24 @@ describe("applyKeymapOverrides", () => {
 
   test("unknown ids, fixed ids, and doc-only rows warn without applying", () => {
     const keymap = makeKeymap()
-    const { applied, warnings } = applyKeymapOverrides(keymap, [
-      { id: "nope.nothing", keys: ["ctrl+x"] },
-      { id: "chat.question.nav", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS (display-only)
-      { id: "chat.send", keys: ["ctrl+m"] }, // doc-only
-    ])
+    // The shipped FIXED_BINDING_IDS map is empty; inject one to keep the
+    // rejection path pinned (the parameter defaults to the shipped map).
+    const fixedIds = { "fixed.example": "handled outside the keymap" }
+    const { applied, warnings } = applyKeymapOverrides(
+      keymap,
+      [
+        { id: "nope.nothing", keys: ["ctrl+x"] },
+        { id: "fixed.example", keys: ["ctrl+n"] },
+        { id: "chat.send", keys: ["ctrl+m"] }, // doc-only
+      ],
+      fixedIds,
+    )
     expect(applied).toEqual([])
     expect(warnings).toHaveLength(3)
     expect(warnings[0]).toMatch(/unknown binding id/)
     expect(warnings[1]).toMatch(/not customizable/)
     expect(warnings[2]).toMatch(/doc-only/)
-    expect(keymap.find((b) => b.id === "chat.question.nav")?.keys).toEqual(["j", "k"])
+    expect(keymap.find((b) => b.id === "fixed.example")?.keys).toEqual(["j", "k"])
   })
 
   test("boundary rule: bare characters are dropped on workspace/global scope, kept on sidebar/files", () => {

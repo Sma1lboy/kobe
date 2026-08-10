@@ -76,6 +76,16 @@ export function parsePsSnapshot(text: string): ProcRow[] {
   return rows
 }
 
+function childrenIndex(rows: readonly ProcRow[]): Map<number, ProcRow[]> {
+  const kids = new Map<number, ProcRow[]>()
+  for (const row of rows) {
+    const list = kids.get(row.ppid)
+    if (list) list.push(row)
+    else kids.set(row.ppid, [row])
+  }
+  return kids
+}
+
 /**
  * Breadth-first hunt for an engine among `rootPid`'s descendants —
  * shallowest wins, so a wrapper's engine child is found before that
@@ -83,12 +93,7 @@ export function parsePsSnapshot(text: string): ProcRow[] {
  * subprocesses; the session itself is nearer the shell).
  */
 export function foregroundEngineIn(rows: readonly ProcRow[], rootPid: number): ForegroundEngine | null {
-  const kids = new Map<number, ProcRow[]>()
-  for (const row of rows) {
-    const list = kids.get(row.ppid)
-    if (list) list.push(row)
-    else kids.set(row.ppid, [row])
-  }
+  const kids = childrenIndex(rows)
   const queue = [...(kids.get(rootPid) ?? [])]
   while (queue.length > 0) {
     const row = queue.shift()
@@ -98,6 +103,32 @@ export function foregroundEngineIn(rows: readonly ProcRow[], rootPid: number): F
     queue.push(...(kids.get(row.pid) ?? []))
   }
   return null
+}
+
+/**
+ * Is ANY engine process running under `rootPid`? The delivery gate's
+ * question (herdr's "agent is no longer the pane foreground process"):
+ * kobe's keepAlive wrapper keeps a tab's PTY alive after its engine exits,
+ * so "session alive" never proves an engine is there — and pasting a prompt
+ * into the fallback SHELL executes it as commands. Vendor-agnostic on
+ * purpose: any engine may receive text (cross-vendor send is legitimate);
+ * only a bare shell must not. `extraBin` matches a custom engine's launch
+ * binary by name — a user-registered engine (aider etc.) is not a builtin,
+ * so the argv walk alone can't see it.
+ */
+export function engineProcessIn(rows: readonly ProcRow[], rootPid: number, extraBin?: string): boolean {
+  if (foregroundEngineIn(rows, rootPid)) return true
+  if (!extraBin) return false
+  const kids = childrenIndex(rows)
+  const queue = [...(kids.get(rootPid) ?? [])]
+  while (queue.length > 0) {
+    const row = queue.shift()
+    if (!row) break
+    const argv0 = row.args.trim().split(/\s+/)[0] ?? ""
+    if (basename(argv0) === extraBin) return true
+    queue.push(...(kids.get(row.pid) ?? []))
+  }
+  return false
 }
 
 /** Injectable so tests never shell out. */

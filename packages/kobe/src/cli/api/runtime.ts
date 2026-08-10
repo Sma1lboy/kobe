@@ -38,8 +38,11 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
   try {
     // Exact-tab addressing: deliver-only, never spawn — a dead/absent tab is
     // the caller's error (TAB_NOT_FOUND), not a cue to boot a new engine.
+    // engineBin covers the task's CUSTOM engine binary; builtins the
+    // foreground gate recognizes on its own (cross-vendor send stays open).
     if (target.tab && target.tab !== "new") {
-      return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt)
+      const engineBin = interactiveEngineCommand(target.vendor, target.modelEffort)[0]
+      return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt, { engineBin })
     }
     const newTab = target.tab === "new" ? mintCliTab(target.id) : undefined
     const argv = interactiveEngineCommand(target.vendor, target.modelEffort)

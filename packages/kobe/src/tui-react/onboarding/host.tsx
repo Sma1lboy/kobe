@@ -3,27 +3,31 @@
  * First-run onboarding wizard — the inline (ink-style) UI half of
  * `src/cli/onboarding.ts`. Renders in a small main-screen footer (the
  * shell prompt history stays visible above), asks the two yes/no
- * questions, then destroys the renderer and resolves with the answers —
- * applying them (fs writes, npx) happens back in the CLI layer once the
- * terminal is plain again. `q`/`esc` skips setup: every unanswered step
- * resolves as a decline, never a nag loop.
+ * questions, shows the "Keyboard basics" page (live-keymap grammar:
+ * bare keys / one-press / prefix / help), then destroys the renderer and
+ * resolves with the answers — applying them (fs writes, npx) happens back
+ * in the CLI layer once the terminal is plain again. `q`/`esc` skips
+ * setup: every unanswered step resolves as a decline, never a nag loop.
  */
 
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useState } from "react"
 import type { OnboardingChoices, ShellKind } from "../../cli/onboarding.ts"
+import { wizardKeyLines } from "../../tui/lib/keyboard-hints"
+import { currentPrefixConfiguration } from "../../tui/lib/keymap-dispatch"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { pageCloseBindings, useBindings } from "../lib/keymap"
 
-/** header(2) + blank + question(2) + options(2) + blank + legend + slack */
-const INLINE_ROWS = 12
+/** header(2) + blank + answered(2) + keys title + 4 grammar lines + legend + slack */
+const INLINE_ROWS = 15
 
 type StepId = "completions" | "skill"
 
-function WizardPage(props: { shell: ShellKind | null; onDone: (choices: OnboardingChoices) => void }) {
+/** Exported for the render tests; production entry is {@link runOnboardingWizard}. */
+export function WizardPage(props: { shell: ShellKind | null; onDone: (choices: OnboardingChoices) => void }) {
   const { theme } = useTheme()
   const t = useT()
   const renderer = useRenderer()
@@ -33,6 +37,9 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
   const [stepIndex, setStepIndex] = useState(0)
   const [yes, setYes] = useState(true)
   const [answers, setAnswers] = useState<Partial<Record<StepId, boolean>>>({})
+  // After the questions, one informational "Keyboard basics" page — enter
+  // (or the usual q/esc skip) finishes; there is nothing to answer on it.
+  const [onKeysPage, setOnKeysPage] = useState(false)
 
   const step = steps[stepIndex] as StepId
 
@@ -44,12 +51,16 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
   // `choice` defaults to the keyboard cursor; mouse passes its own option
   // explicitly (setYes + read-back in one handler would see a stale render).
   function confirm(choice: boolean = yes): void {
-    const next = { ...answers, [step]: choice }
-    if (stepIndex + 1 >= steps.length) {
-      finish(next)
+    if (onKeysPage) {
+      finish(answers)
       return
     }
+    const next = { ...answers, [step]: choice }
     setAnswers(next)
+    if (stepIndex + 1 >= steps.length) {
+      setOnKeysPage(true)
+      return
+    }
     setStepIndex(stepIndex + 1)
     setYes(true)
   }
@@ -84,7 +95,7 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
         {t("onboarding.subtitle")}
       </text>
       <box flexDirection="column" paddingTop={1}>
-        {steps.slice(0, stepIndex).map((answered) => (
+        {steps.slice(0, onKeysPage ? steps.length : stepIndex).map((answered) => (
           <box key={answered} flexDirection="row" gap={1}>
             <text fg={theme.success} wrapMode="none">
               ✓
@@ -97,33 +108,48 @@ function WizardPage(props: { shell: ShellKind | null; onDone: (choices: Onboardi
             </text>
           </box>
         ))}
-        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="word">
-          {questionFor(step)}
-        </text>
-        <text fg={theme.textMuted} wrapMode="word">
-          {explain}
-        </text>
-        {[true, false].map((option) => {
-          const active = yes === option
-          return (
-            <box key={String(option)} flexDirection="row" gap={1} paddingLeft={1} onMouseUp={() => confirm(option)}>
-              <text fg={active ? theme.primary : theme.textMuted} wrapMode="none">
-                {active ? "❯" : " "}
+        {onKeysPage ? (
+          <box flexDirection="column" onMouseUp={() => confirm()}>
+            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="word">
+              {t("onboarding.keysTitle")}
+            </text>
+            {wizardKeyLines(currentPrefixConfiguration().key).map((line) => (
+              <text key={line.msg} fg={theme.textMuted} wrapMode="word">
+                {t(`onboarding.${line.msg}`, line.params)}
               </text>
-              <text
-                fg={active ? theme.primary : theme.textMuted}
-                attributes={active ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-              >
-                {option ? t("onboarding.optionYes") : t("onboarding.optionNo")}
-              </text>
-            </box>
-          )
-        })}
+            ))}
+          </box>
+        ) : (
+          <>
+            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="word">
+              {questionFor(step)}
+            </text>
+            <text fg={theme.textMuted} wrapMode="word">
+              {explain}
+            </text>
+            {[true, false].map((option) => {
+              const active = yes === option
+              return (
+                <box key={String(option)} flexDirection="row" gap={1} paddingLeft={1} onMouseUp={() => confirm(option)}>
+                  <text fg={active ? theme.primary : theme.textMuted} wrapMode="none">
+                    {active ? "❯" : " "}
+                  </text>
+                  <text
+                    fg={active ? theme.primary : theme.textMuted}
+                    attributes={active ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                  >
+                    {option ? t("onboarding.optionYes") : t("onboarding.optionNo")}
+                  </text>
+                </box>
+              )
+            })}
+          </>
+        )}
       </box>
       <box paddingTop={1}>
         <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-          {t("onboarding.legend")}
+          {t(onKeysPage ? "onboarding.keysLegend" : "onboarding.legend")}
         </text>
       </box>
     </box>

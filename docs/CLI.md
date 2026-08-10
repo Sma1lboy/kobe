@@ -378,7 +378,12 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   `--tab new` mints the next `tab-N` and spawns a fresh engine tab there
   (visible in the sidebar tree like a TUI-opened tab); `--tab tab-N`
   delivers to that exact alive tab (`TAB_NOT_FOUND` when dead/absent).
-  Omitted, the canonical engine tab is used.
+  Omitted, the canonical engine tab is used. Delivery into an existing tab
+  is gated on a live engine process in that tab's process tree — an engine
+  that exited into the keep-alive shell refuses with `ENGINE_NOT_RUNNING`
+  (plus a `--tab new` recovery hint) instead of pasting the prompt into a
+  shell. Any registered engine passes the gate, so a tab may run a
+  different vendor than the task (cross-vendor send).
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see

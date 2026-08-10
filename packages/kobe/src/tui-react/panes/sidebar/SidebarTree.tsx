@@ -25,6 +25,7 @@ import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/group
 import { type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
 import type { TreeMenuAction } from "../../../tui/panes/sidebar/tree-menu"
 import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
+import { usePaneHintMark } from "../../component/keyboard-hints"
 import { bindByIds } from "../../context/keybindings"
 import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
@@ -193,6 +194,9 @@ export function SidebarTree(props: SidebarTreeProps) {
     actions: props,
   })
 
+  // Using the pane's own nav/select keys extinguishes its first-use hint.
+  const markKeysUsed = usePaneHintMark("sidebar")
+
   useBindings(() => ({
     // Search mode swallows the letter chords — j/k/d/a/r must reach the query
     // as text, exactly as in the flat sidebar's keys.ts. An open menu swallows
@@ -202,6 +206,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       // In move mode j/k drag the project instead of walking the cursor —
       // same multiplexing the flat sidebar does for tasks.
       "sidebar.nav": (_evt, slot) => {
+        markKeysUsed()
         const down = (slot ?? 0) % 2 === 0
         if (moveMode) {
           moveCursorProject(down ? 1 : -1)
@@ -211,6 +216,7 @@ export function SidebarTree(props: SidebarTreeProps) {
         else ctrl.moveUp()
       },
       "sidebar.select": () => {
+        markKeysUsed()
         if (moveMode) {
           props.onMoveModeExit?.()
           return
