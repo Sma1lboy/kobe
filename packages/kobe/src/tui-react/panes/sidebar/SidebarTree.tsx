@@ -411,13 +411,9 @@ export function SidebarTree(props: SidebarTreeProps) {
       {search.active ? (
         <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
       ) : null}
-      {/* Hidden until an archived task exists (owner 2026-08-09): with
-          nothing archived the Active/Archived pair is two mystery nouns to a
-          first-time user. Shown while IN the archived view so the way back
-          stays visible; `[`/`]` keep cycling regardless. */}
-      {view === "archived" || props.tasks.some((task) => task.archived === true) ? (
-        <SidebarViewTabs view={view} setView={setView} />
-      ) : null}
+      {/* Keep the task-scope navigation stable even when Archives is empty.
+          New task is an action above it, not a replacement for these tabs. */}
+      <SidebarViewTabs view={view} setView={setView} />
       {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
           within the workspace you're in, so they read as children of it. */}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
