@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 /**
  * Real-render coverage for the keyboard-discoverability hints: the
- * status-bar micro-hint (prefix/help, terminal-passthrough aware), the
+ * status-bar micro-hint (prefix/help, including terminal passthrough), the
  * first-use pane hints and their extinguish/fallback behavior, the master
  * toggle, and the onboarding wizard's "Keyboard basics" page.
  */
@@ -45,7 +45,7 @@ function locate(frameText: string, needle: string): { x: number; y: number } {
 }
 
 /** Registers the real workspace chord set so reachability has live data. */
-function WorkspaceDriver(props: { children?: React.ReactNode }) {
+function WorkspaceDriver(props: { children?: React.ReactNode; onToggleZen?: () => void }) {
   const focus = useFocus()
   const dialog = useDialog()
   useWorkspaceKeybindings({
@@ -71,7 +71,7 @@ function WorkspaceDriver(props: { children?: React.ReactNode }) {
     createTask: NOOP,
     renameBranch: NOOP,
     cycleVendor: NOOP,
-    toggleZen: NOOP,
+    toggleZen: props.onToggleZen ?? NOOP,
     jumpToNextAttention: NOOP,
     openInbox: NOOP,
     enterMoveMode: NOOP,
@@ -87,7 +87,7 @@ function TerminalPassthroughDriver(props: { children?: React.ReactNode }) {
   useEffect(() => focus.setFocused("workspace"), [])
   useBindings(() => ({
     enabled: focus.focused === "workspace",
-    bindings: [{ key: "a", cmd: NOOP, passthrough: true }],
+    bindings: [{ key: "ctrl+a", cmd: NOOP, passthrough: true }],
   }))
   return <>{props.children}</>
 }
@@ -127,7 +127,7 @@ describe("StatusKeyHintBar", () => {
     expect(text).toContain("F1 help")
   })
 
-  it("swaps the prefix token for the escape hatch inside the terminal, keeping the [settings] button", async () => {
+  it("keeps the prefix command layer visible inside the terminal", async () => {
     const settingsOpened: true[] = []
     const { frame } = await renderComponent(
       <WorkspaceDriver>
@@ -139,10 +139,34 @@ describe("StatusKeyHintBar", () => {
     )
     await settle()
     const text = await frame()
-    expect(text).toContain("⌃ Q sidebar")
+    expect(text).toContain("⌃ A commands")
     expect(text).toContain("F1 help")
     expect(text).toContain("[settings]")
-    expect(text).not.toContain("commands")
+    expect(text).not.toContain("⌃ Q sidebar")
+  })
+
+  it("opens and dispatches the command layer with ctrl+a inside the terminal", async () => {
+    let zenToggles = 0
+    const { frame, mockInput } = await renderComponent(
+      <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={NOOP}>
+        <WorkspaceDriver onToggleZen={() => zenToggles++}>
+          <TerminalPassthroughDriver>
+            <PrefixHud left={1} width={24} />
+          </TerminalPassthroughDriver>
+        </WorkspaceDriver>
+      </WorkspaceFrame>,
+      { width: 110, height: 30, providers: { focus: true, dialog: true } },
+    )
+    await settle()
+
+    act(() => mockInput.pressKey("a", { ctrl: true }))
+    await settle(300)
+    expect(await frame()).toContain("more Kobe commands")
+
+    act(() => mockInput.pressKey("z"))
+    await settle()
+    expect(zenToggles).toBe(1)
+    act(() => resetPrefixState())
   })
 
   it("hides the whole bar — [settings] included — while a modal owns input", async () => {

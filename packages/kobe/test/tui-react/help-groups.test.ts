@@ -56,9 +56,9 @@ describe("grammarHelpSections", () => {
     expect(sections[3]?.scope).toBe("files")
   })
 
-  it("does not advertise the Kobe prefix inside the embedded terminal", () => {
+  it("advertises the Kobe prefix inside the embedded terminal", () => {
     const sections = grammarHelpSections(rows, "terminal", "ctrl+a")
-    expect(sections.some((section) => section.kind === "prefix")).toBe(false)
+    expect(sections.find((section) => section.kind === "prefix")?.rows.map((row) => row.binding.id)).toEqual(["more"])
   })
 
   it("uses the live stack snapshot to hide inactive submode bindings", () => {

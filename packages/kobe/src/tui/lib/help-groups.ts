@@ -88,8 +88,8 @@ function availableOn(row: KobeBinding, surface: HelpSurface | null): boolean {
   if (surface === null) return false
   if (row.scope === surface) return true
   // Terminal is the workspace's embedded input surface. Workspace-owned
-  // reserved direct chords stay relevant there; prefix rows are filtered by
-  // the caller because the prefix key itself passes through to the PTY.
+  // reserved direct chords and the configured global prefix stay relevant
+  // there; other unclaimed keys still pass through to the PTY.
   return surface === "terminal" && row.scope === "workspace"
 }
 
@@ -127,7 +127,7 @@ export function grammarHelpSections(
         else other.set(binding.scope, [row])
       }
     }
-    if (prefixKey && surface !== "terminal" && prefixAvailable && binding.prefixKeys?.length) {
+    if (prefixKey && prefixAvailable && binding.prefixKeys?.length) {
       prefix.push({
         binding,
         primary: `${prefixKey} + ${binding.prefixKeys[0]}`,

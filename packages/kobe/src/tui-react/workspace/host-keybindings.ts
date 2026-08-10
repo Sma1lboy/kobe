@@ -131,8 +131,8 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         // f4 — reserved from terminal passthrough, so the cycle behaves
         // identically from every pane including inside the terminal.
         "focus.next": () => cyclePane(1),
-        // prefix+z only (owner call 2026-07-17) — not reachable from
-        // inside the terminal pane, where the prefix key passes through.
+        // prefix+z only (owner call 2026-07-17). The configured prefix is
+        // Kobe-global, so this remains reachable inside the terminal pane.
         "workspace.zenToggle": () => deps.toggleZen(),
         // f7 — reserved from terminal passthrough too, so "jump to the
         // next waiting task" works even while focused inside the engine.

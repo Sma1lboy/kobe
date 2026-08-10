@@ -3,8 +3,8 @@
  * (`src/tui/lib/keyboard-hints.ts`). The contract that matters: every hint
  * resolves through the LIVE keymap and reachability snapshot — a rebound
  * chord shows its new key, an unbound/disabled one drops its token, and the
- * terminal passthrough boundary is never lied about (the prefix first
- * stroke belongs to the PTY there).
+ * terminal passthrough boundary is never lied about (the configured prefix
+ * remains Kobe-owned there while every other unreserved key reaches the PTY).
  */
 
 import { afterEach, describe, expect, test } from "vitest"
@@ -52,7 +52,16 @@ describe("statusHintTokens", () => {
     ])
   })
 
-  test("terminal passthrough swaps the prefix token for the escape hatch", () => {
+  test("terminal passthrough keeps the reachable global prefix visible", () => {
+    const tokens = statusHintTokens(
+      reach({ direct: ["focus.sidebar", "help.open"], prefix: ["settings.open"], inputPassthrough: true }),
+      "ctrl+a",
+    )
+    expect(tokens.map((t) => t.msg)).toEqual(["commands", "help"])
+    expect(tokens[0]?.chord).toBe("ctrl+a")
+  })
+
+  test("terminal passthrough falls back to the escape hatch when no prefix command is reachable", () => {
     const tokens = statusHintTokens(
       reach({ direct: ["focus.sidebar", "help.open"], prefix: [], inputPassthrough: true }),
       "ctrl+a",
