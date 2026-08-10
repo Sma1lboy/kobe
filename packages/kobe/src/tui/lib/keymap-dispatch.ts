@@ -233,6 +233,23 @@ function armPrefix(now: number, options: readonly PrefixHudOption[]): void {
   prefixHudSetArmed(true, options, now)
 }
 
+/**
+ * Arm the PureTUI prefix programmatically — the mouse path into the command
+ * layer (the footer's "commands" hint is clickable). Same guards as the
+ * keyboard arm branch in {@link dispatchKeyEvent}: a disabled prefix, an
+ * input surface owned by the terminal passthrough, or an unreachable
+ * catalogue (modal barrier) is a no-op — the guide must never show commands
+ * a second stroke couldn't fire. Returns whether it armed; the armed state
+ * is the real one, so the next keypress dispatches as a second stroke.
+ */
+export function armPrefixNow(snapshot: readonly RegisteredBinding[], now: number = Date.now()): boolean {
+  if (prefixConfiguration.key === null) return false
+  if (inputPassthroughReachable(snapshot)) return false
+  if (!prefixReachable(snapshot)) return false
+  armPrefix(now, reachablePrefixOptions(snapshot))
+  return true
+}
+
 /** Chords already flagged by the shadowed-match warning (once per process
  *  per chord — a stuck contract violation must not spam every keypress). */
 const shadowWarned = new Set<string>()

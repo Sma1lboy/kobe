@@ -325,6 +325,15 @@ export function useDialog(): DialogContext {
 }
 
 /**
+ * Read the dialog context when present — null outside a provider. For
+ * consumers that degrade gracefully in dialog-less mounts (the footer's
+ * clickable key hints in render tests).
+ */
+export function useOptionalDialog(): DialogContext | null {
+  return useContext(ctx)
+}
+
+/**
  * Open a dialog that resolves a single value — the shared `show` shape:
  * `body` receives the promise's `resolve` and wires it to its
  * submit/cancel props; dismissing through the stack (esc / backdrop /

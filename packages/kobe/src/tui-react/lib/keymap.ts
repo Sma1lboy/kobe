@@ -31,6 +31,7 @@ import {
   type BindingReachability,
   type BindingsConfig,
   type RegisteredBinding,
+  armPrefixNow,
   bindingReachability,
   dispatchKeyEvent,
   insertRegistration,
@@ -107,6 +108,11 @@ export function modalActive(): boolean {
 /** Capture what F1 would have been able to dispatch before its modal opens. */
 export function currentBindingReachability(): BindingReachability {
   return bindingReachability(stack)
+}
+
+/** Mouse path into the command layer: arm the prefix against the live stack. */
+export function armPrefixFromCurrentStack(): boolean {
+  return armPrefixNow(stack)
 }
 
 // Registration-change signal. Registrations land in mount EFFECTS (after the

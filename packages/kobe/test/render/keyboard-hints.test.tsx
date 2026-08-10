@@ -11,17 +11,38 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { useEffect } from "react"
-import { PaneKeyHint, StatusKeyHint } from "../../src/tui-react/component/keyboard-hints"
+import type { RemoteOrchestrator } from "../../src/client/remote-orchestrator"
+import { createStateCell } from "../../src/lib/external-store"
+import { PaneKeyHint, StatusKeyHintBar } from "../../src/tui-react/component/keyboard-hints"
+import { PrefixHud } from "../../src/tui-react/component/prefix-hud"
 import { useFocus } from "../../src/tui-react/context/focus"
 import { useKV } from "../../src/tui-react/context/kv"
 import { useBindings } from "../../src/tui-react/lib/keymap"
 import { WizardPage } from "../../src/tui-react/onboarding/host"
 import { useDialog } from "../../src/tui-react/ui/dialog"
+import { WorkspaceFrame } from "../../src/tui-react/workspace/host-footer"
 import { useWorkspaceKeybindings } from "../../src/tui-react/workspace/host-keybindings"
 import { KEY_HINTS_ENABLED_KEY, PANE_HINT_USED_KEYS } from "../../src/tui/lib/keyboard-hints"
+import { resetPrefixState } from "../../src/tui/lib/keymap-dispatch"
 import { act, renderComponent, settle } from "./harness"
 
 const NOOP = (): void => {}
+
+/** Minimal orchestrator stand-in — the frame only reads the usage signal. */
+function fakeOrchestrator(): RemoteOrchestrator {
+  const cell = createStateCell(null)
+  return { usageSnapshotSignal: () => cell } as unknown as RemoteOrchestrator
+}
+
+/** Find a substring's cell coordinates in a captured char frame. */
+function locate(frameText: string, needle: string): { x: number; y: number } {
+  const lines = frameText.split("\n")
+  for (let y = 0; y < lines.length; y++) {
+    const x = lines[y]?.indexOf(needle) ?? -1
+    if (x >= 0) return { x, y }
+  }
+  throw new Error(`not on screen: ${needle}`)
+}
 
 /** Registers the real workspace chord set so reachability has live data. */
 function WorkspaceDriver(props: { children?: React.ReactNode }) {
@@ -71,6 +92,14 @@ function TerminalPassthroughDriver(props: { children?: React.ReactNode }) {
   return <>{props.children}</>
 }
 
+const TEST_MODAL_SCOPE = Symbol("test-modal")
+
+/** Registers a modal barrier, the way an open dialog does. */
+function ModalBarrierDriver(props: { children?: React.ReactNode }) {
+  useBindings(() => ({ modal: true, bindings: [] }), { modalOwner: TEST_MODAL_SCOPE })
+  return <>{props.children}</>
+}
+
 /** Writes KV keys on mount, then renders children — for persisted-state cases. */
 function KvSeed(props: { entries: readonly [string, unknown][]; children?: React.ReactNode }) {
   const kv = useKV()
@@ -85,11 +114,11 @@ function withTempKvHome(): void {
   process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-hints-"))
 }
 
-describe("StatusKeyHint", () => {
+describe("StatusKeyHintBar", () => {
   it("advertises the live prefix and help chords from the workspace stack", async () => {
     const { frame } = await renderComponent(
       <WorkspaceDriver>
-        <StatusKeyHint />
+        <StatusKeyHintBar />
       </WorkspaceDriver>,
       { providers: { focus: true, dialog: true } },
     )
@@ -98,11 +127,12 @@ describe("StatusKeyHint", () => {
     expect(text).toContain("F1 help")
   })
 
-  it("swaps the prefix token for the escape hatch inside the terminal", async () => {
+  it("swaps the prefix token for the escape hatch inside the terminal, keeping the [settings] button", async () => {
+    const settingsOpened: true[] = []
     const { frame } = await renderComponent(
       <WorkspaceDriver>
         <TerminalPassthroughDriver>
-          <StatusKeyHint />
+          <StatusKeyHintBar onOpenSettings={() => settingsOpened.push(true)} />
         </TerminalPassthroughDriver>
       </WorkspaceDriver>,
       { providers: { focus: true, dialog: true } },
@@ -111,7 +141,24 @@ describe("StatusKeyHint", () => {
     const text = await frame()
     expect(text).toContain("⌃ Q sidebar")
     expect(text).toContain("F1 help")
+    expect(text).toContain("[settings]")
     expect(text).not.toContain("commands")
+  })
+
+  it("hides the whole bar — [settings] included — while a modal owns input", async () => {
+    // Barrier OUTERMOST: parent effects commit after children, so its
+    // registration lands on top of the stack — the same position an
+    // opening dialog's barrier takes in production.
+    const { frame } = await renderComponent(
+      <ModalBarrierDriver>
+        <WorkspaceDriver>
+          <StatusKeyHintBar onOpenSettings={NOOP} />
+        </WorkspaceDriver>
+      </ModalBarrierDriver>,
+      { providers: { focus: true, dialog: true } },
+    )
+    await settle()
+    expect((await frame()).trim()).toBe("")
   })
 
   it("renders nothing when the master toggle is off", async () => {
@@ -119,13 +166,61 @@ describe("StatusKeyHint", () => {
     const { frame } = await renderComponent(
       <WorkspaceDriver>
         <KvSeed entries={[[KEY_HINTS_ENABLED_KEY, false]]}>
-          <StatusKeyHint />
+          <StatusKeyHintBar onOpenSettings={NOOP} />
         </KvSeed>
       </WorkspaceDriver>,
       { providers: { focus: true, dialog: true, kv: true } },
     )
     await settle()
     expect((await frame()).trim()).toBe("")
+  })
+})
+
+describe("footer hint clicks", () => {
+  it("[settings] opens settings from the workspace footer", async () => {
+    const settingsOpened: true[] = []
+    const { frame, mockMouse } = await renderComponent(
+      <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={() => settingsOpened.push(true)}>
+        <WorkspaceDriver />
+      </WorkspaceFrame>,
+      { width: 70, height: 10, providers: { focus: true, dialog: true } },
+    )
+    await settle()
+    const spot = locate(await frame(), "[settings]")
+    await mockMouse.click(spot.x + 1, spot.y)
+    await settle()
+    expect(settingsOpened.length).toBe(1)
+  })
+
+  it("clicking the help caption opens the F1 reference", async () => {
+    const { frame, mockMouse } = await renderComponent(
+      <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={NOOP}>
+        <WorkspaceDriver />
+      </WorkspaceFrame>,
+      { width: 90, height: 30, providers: { focus: true, dialog: true } },
+    )
+    await settle()
+    const spot = locate(await frame(), "F1 help")
+    await mockMouse.click(spot.x + 1, spot.y)
+    await settle()
+    expect(await frame()).toContain("kobe — keybindings")
+  })
+
+  it("clicking the commands caption arms the real prefix and shows the which-key guide", async () => {
+    const { frame, mockMouse } = await renderComponent(
+      <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={NOOP}>
+        <WorkspaceDriver />
+        <PrefixHud left={1} width={24} />
+      </WorkspaceFrame>,
+      { width: 110, height: 30, providers: { focus: true, dialog: true } },
+    )
+    await settle()
+    const spot = locate(await frame(), "commands")
+    await mockMouse.click(spot.x + 1, spot.y)
+    // The guide expands after the learner delay (180ms).
+    await settle(300)
+    expect(await frame()).toContain("more Kobe commands")
+    act(() => resetPrefixState())
   })
 })
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest"
 import { bindByIds } from "../../src/tui/context/keybindings"
 import {
   type RegisteredBinding,
+  armPrefixNow,
   configurePrefix,
   dispatchKeyEvent,
   resetPrefixConfiguration,
@@ -115,5 +116,37 @@ describe("PureTUI prefix dispatch", () => {
     expect(dispatchKeyEvent(stack, event("a", true), 100)).toBe(false)
     expect(dispatchKeyEvent(stack, event("t"), 101)).toBe(false)
     expect(calls).toBe(0)
+  })
+})
+
+describe("armPrefixNow (mouse path into the command layer)", () => {
+  test("arms against a reachable stack and the next key dispatches as a second stroke", () => {
+    const calls: string[] = []
+    const stack: RegisteredBinding[] = [registration(1, true, "f", () => calls.push("fork"))]
+    expect(armPrefixNow(stack)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("f") as never)).toBe(true)
+    expect(calls).toEqual(["fork"])
+  })
+
+  test("no-ops when the prefix is disabled", () => {
+    configurePrefix({ key: null, timeoutMs: 5000 })
+    const stack: RegisteredBinding[] = [registration(1, true, "f", () => {})]
+    expect(armPrefixNow(stack)).toBe(false)
+  })
+
+  test("no-ops while the terminal passthrough owns input", () => {
+    const stack: RegisteredBinding[] = [
+      registration(1, true, "f", () => {}),
+      { id: 2, config: () => ({ enabled: true, bindings: [{ key: "a", cmd: () => {}, passthrough: true }] }) },
+    ]
+    expect(armPrefixNow(stack)).toBe(false)
+  })
+
+  test("no-ops when a modal barrier hides every prefix row", () => {
+    const stack: RegisteredBinding[] = [
+      registration(1, true, "f", () => {}),
+      { id: 2, config: () => ({ enabled: true, modal: true, bindings: [] }) },
+    ]
+    expect(armPrefixNow(stack)).toBe(false)
   })
 })

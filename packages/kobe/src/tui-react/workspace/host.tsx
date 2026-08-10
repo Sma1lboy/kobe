@@ -11,7 +11,6 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../state/sidebar-tree"
-import { buildPRPrompt, gatherPRPromptState } from "../../tui/ops/pr-prompt"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { PrefixHud } from "../component/prefix-hud"
@@ -48,6 +47,7 @@ import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { activeTabIdFor, forgetTaskTabs, requestTabActivation, setUiEventReporter } from "./terminal-tabs-shared"
 import { useAttention } from "./use-attention"
+import { useCreatePR } from "./use-create-pr"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
@@ -184,19 +184,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // have changed — a stale continuation must not deliver into the new task.
   const selectedWorktreeRef = useLatest(worktree)
 
-  /** FileTree `pr` chip + prefix+p — PTY paste+submit of the PR prompt.
-   *  On the target branch (a project main session) it toasts instead. */
-  async function createPR(): Promise<void> {
-    const wt = worktree
-    const send = sendToEngineFn.current
-    if (!wt || !send) return
-    const state = await gatherPRPromptState(wt)
-    if (state.branch === state.targetBranch)
-      return notifyError(t("files.toast.prOnTargetBranch", { branch: state.branch }))
-    const prompt = await buildPRPrompt(wt, state)
-    if (selectedWorktreeRef.current !== wt || sendToEngineFn.current !== send) return
-    send(prompt)
-  }
+  // FileTree `pr` chip + prefix+p — split out for the file-size cap.
+  const createPR = useCreatePR({ worktree, sendToEngineFn, selectedWorktreeRef, notifyError })
 
   // Quick-fork (issue #17, ctrl+f): composer → create+enter → hand the
   // prompt to the new task's TerminalTabs mount (phase 2). Wiring lives in
@@ -338,7 +327,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   }
 
   return (
-    <WorkspaceFrame orchestrator={orch}>
+    <WorkspaceFrame orchestrator={orch} onOpenSettings={pages.openSettings}>
       {/* Tasks sidebar stays visible in zen (tmux parity) — its
           ☯ ZEN chip is also the exit affordance. */}
       {/* Borderless rail (owner call 2026-07-27): no frame, no divider —

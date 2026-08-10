@@ -15,6 +15,8 @@ export const en = {
     help: "{key} help",
     /** {key} = the live escape hatch out of the embedded terminal */
     sidebar: "{key} sidebar",
+    /** Label of the clickable footer settings button (brackets added in code) */
+    settings: "settings",
   },
   pane: {
     move: "move",
@@ -29,6 +31,7 @@ export const zh: typeof en = {
     commands: "{key} 命令",
     help: "{key} 帮助",
     sidebar: "{key} 侧栏",
+    settings: "设置",
   },
   pane: {
     move: "移动",
