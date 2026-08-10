@@ -197,7 +197,11 @@ export function TabTreeRow(props: {
   // would fire the delete branch and wipe the seen bit the active row just
   // recorded — the ✓ → ● → ✓ flip on every task switch.
   const viewing = shared.selectedTaskId === props.task.id && props.tab.active === true
-  const completionSeen = carriesActivity ? completionSeenFor(props.task.id, activity?.state, viewing) : false
+  // Per-TAB seen bit: sibling tab rows of the same task render in this very
+  // pass and would otherwise share (and clear) one task-wide mark.
+  const completionSeen = carriesActivity
+    ? completionSeenFor(props.task.id, activity?.state, viewing, props.tab.id)
+    : false
   const baseView = buildSidebarRowView({
     task: props.task,
     activity,

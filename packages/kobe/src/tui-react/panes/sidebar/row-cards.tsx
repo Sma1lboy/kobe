@@ -189,10 +189,17 @@ function RowBody(props: {
  * cards; only `mainBranch` (project rows poll the repo HEAD) differs.
  */
 /**
- * Task ids whose CURRENT `turn_complete` the user has already looked at
+ * Rows whose CURRENT `turn_complete` the user has already looked at
  * (selected while complete) — the herdr "seen" bit driving ● → ✓. Session
  * scope is deliberate: a fresh attach starts everything unseen. Cleared the
- * moment the activity state moves off `turn_complete`.
+ * moment that row's activity state moves off `turn_complete`.
+ *
+ * Keyed per ROW (task, or task+tab in the tree), not per task: a task owns
+ * several tab rows, and they render in the same pass. With a task-wide key
+ * a sibling tab — which legitimately passes `activityState: undefined` —
+ * took the clear branch and wiped the bit the completed tab's row had just
+ * recorded. Symptom (owner report 2026-08-10): open the tab, the lamp
+ * digests to ✓, and it flips back to ● the moment you leave, forever.
  */
 const completionSeenIds = new Set<string>()
 
@@ -202,14 +209,23 @@ const completionSeenIds = new Set<string>()
  * already draw the digested ✓ — an unread lamp on the session you are
  * sitting IN is noise. `viewing` is "this row is what the right pane
  * shows"; the mark clears as soon as activity moves off turn_complete.
+ *
+ * `tabId` scopes the bit to one tab row; omit it for the flat sidebar's
+ * task cards, which own the task's whole activity rollup.
  */
-export function completionSeenFor(taskId: string, activityState: string | undefined, viewing: boolean): boolean {
+export function completionSeenFor(
+  taskId: string,
+  activityState: string | undefined,
+  viewing: boolean,
+  tabId?: string,
+): boolean {
+  const key = tabId === undefined ? taskId : `${taskId} ${tabId}`
   if (activityState === "turn_complete") {
-    if (viewing) completionSeenIds.add(taskId)
+    if (viewing) completionSeenIds.add(key)
   } else {
-    completionSeenIds.delete(taskId)
+    completionSeenIds.delete(key)
   }
-  return completionSeenIds.has(taskId)
+  return completionSeenIds.has(key)
 }
 
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {

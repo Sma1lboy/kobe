@@ -391,10 +391,15 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         const vendor = optionalString(payload, "engine")
         if (isStateKind) {
           ctx.activity.report(taskId, kind, detail, tabId, session, vendor)
-          // Kobe tabs provide both IDs; cwd-only and legacy task-only hooks are not Inbox-navigable.
-          if (explicitId && tabId) {
+          // A tab id makes the episode tab-precise; without one it is still
+          // recorded at TASK level (owner call 2026-08-10) — an engine the
+          // user typed into a bare shell inherits no KOBE_TAB_ID, and
+          // dropping its events is why such a session could finish without
+          // ever appearing in the Inbox. `explicitId` still gates: a
+          // cwd-matched task is a guess, not an identity.
+          if (explicitId) {
             await ctx.inbox
-              .record(taskId, kind, detail, tabId)
+              .record(taskId, kind, detail, tabId ?? null)
               .catch((err) => logDaemonError("attention-inbox-record", err))
           }
         }

@@ -71,12 +71,17 @@ describe("attention Inbox handlers", () => {
     expect(rec.inboxRecords).toEqual([])
   })
 
-  it("requires a tabId before recording an explicitly attributed event", async () => {
+  // Owner call 2026-08-10: a missing tabId records a TASK-level episode
+  // rather than dropping the event. An engine the user typed into a bare
+  // shell (including the shell an exited engine leaves in place) inherits no
+  // KOBE_TAB_ID, and dropping those is why such a session could finish
+  // without ever appearing in the Inbox.
+  it("records a task-level episode when the event carries no tabId", async () => {
     const { ctx, rec } = fakeCtx()
     await dispatch("engine.reportEvent", { taskId: "t1", kind: "turn-complete" }, ctx)
 
     expect(rec.reported).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined }])
-    expect(rec.inboxRecords).toEqual([])
+    expect(rec.inboxRecords).toEqual([{ taskId: "t1", kind: "turn-complete", detail: undefined, tabId: null }])
   })
 
   it("does not drop the engine event when Inbox persistence fails", async () => {

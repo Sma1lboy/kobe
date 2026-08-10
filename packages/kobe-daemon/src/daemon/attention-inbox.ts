@@ -101,13 +101,24 @@ export class AttentionInboxStore {
     return [...this.items.values()].sort(compareItems)
   }
 
+  /**
+   * `tabId` is nullable (owner call 2026-08-10): an engine the user typed
+   * into a shell that kobe did not spawn — including the shell an exited
+   * engine leaves behind in place — inherits no `KOBE_TAB_ID`, so its hooks
+   * report task-only. Dropping those events entirely is why such a session
+   * finished without ever showing up in the Inbox. A task-level episode
+   * still navigates (the task's active tab); the tab-level one is simply
+   * more precise when the identity is there.
+   */
   async record(
     taskId: string,
     kind: EngineActivityKind,
     detail: EngineActivityDetail | undefined,
-    tabId: string,
+    tabIdInput: string | null,
   ): Promise<void> {
-    if (!tabId) throw new Error("AttentionInboxStore.record: tabId is required")
+    // An empty string is not a tab — normalize it to the task level rather
+    // than minting an episode keyed on `""`.
+    const tabId = tabIdInput === null || tabIdInput.length === 0 ? null : tabIdInput
     await this.enqueue(async () => {
       const key = attentionInboxItemKey({ taskId, tabId })
       const next = new Map(this.items)

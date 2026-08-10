@@ -15,7 +15,7 @@ import {
 import { requestInboxItemOpen } from "./inbox-open-action"
 import { notifyInboxRpcFailure } from "./inbox-rpc-errors"
 import { writeInboxVisit } from "./inbox-visits"
-import { activeTabIdFor, knownTaskTab, requestTabActivation } from "./terminal-tabs-shared"
+import { activeTabIdFor, knownTaskTabs, requestTabActivation } from "./terminal-tabs-shared"
 
 function episodeKey(item: AttentionInboxItem): string {
   return `${attentionInboxKey(item)}\0${item.at}`
@@ -39,11 +39,14 @@ export function useInboxHost(args: {
   const { orchestrator: orch } = args
   const { availableItems, unavailableItems } = useMemo(
     () =>
-      partitionAttentionInboxAvailability(
-        args.items,
-        args.tasks,
-        (taskId, tabId) => knownTaskTab(args.kv, taskId, tabId) !== undefined,
-      ),
+      partitionAttentionInboxAvailability(args.items, args.tasks, (taskId, tabId) => {
+        // Tri-state (see isAttentionInboxItemAvailable): `undefined` when
+        // this task has no readable tab list here, so an episode is never
+        // deleted just because its task hasn't mounted in this process.
+        const known = knownTaskTabs(args.kv, taskId)
+        if (known === null) return undefined
+        return known.tabs.some((tab) => tab.id === tabId)
+      }),
     [args.items, args.tasks, args.kv],
   )
   // Episodes whose target is what you're ALREADY looking at never surface:
@@ -94,7 +97,10 @@ export function useInboxHost(args: {
     const task = orch.getTask(item.taskId)
     const available =
       knownAvailable ??
-      isAttentionInboxItemAvailable(item, task, (tabId) => knownTaskTab(args.kv, item.taskId, tabId) !== undefined)
+      isAttentionInboxItemAvailable(item, task, (tabId) => {
+        const known = knownTaskTabs(args.kv, item.taskId)
+        return known === null ? undefined : known.tabs.some((tab) => tab.id === tabId)
+      })
     if (!requestInboxItemOpen(item, available, orch, args.notifyError)) return
     if (args.dialog.stack.length > 0) args.dialog.clear({ refocus: false })
     args.selectTask(item.taskId)
