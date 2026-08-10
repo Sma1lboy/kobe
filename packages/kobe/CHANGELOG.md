@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.56
+
+### Patch Changes
+
+- e2ba00f: A tab you exit claude in goes back to being a shell. Its state dot stayed lit in the sidebar and any keystroke — a stray `ls`, a typo — flipped it to "running" for a session that had already ended, while the row's own label had long since fallen back to `shell N`. The cause was that a tab's `kind` froze at birth: every tab IS a shell and an engine is just a process running inside it, so exiting one now resets the tab's state (its kind, session pin, and the engine's self-reported status title) instead of leaving each surface to guess whether the engine was still there. What belongs to the tab — your rename, its ordinal, split layout — survives.
+- 42d3e28: There is one sidebar now. The flat task list the tree replaced on 2026-08-01 was kept as a one-key way back, but nine days in nobody had gone back and every sidebar change had to be written twice — with nothing failing when it wasn't. That cost three bugs: the tree's move mode shipped dead, the brand header went missing from one mount, and the Active/Archived row kept showing on a fresh install because the gate landed on the flat copy only. Removing it drops ~1100 lines along with the Settings toggle, the `sidebar.mode` preference, and the hover tooltips the tree never had.
+- 78fa7bc: The sidebar's Active/Archived row hides again until something is actually archived. The gate shipped in 0.8.54 but an unrelated sidebar-header change removed it in the same release, so a fresh install was back to showing two mystery nouns above an empty archive. Pinned with a render test this time.
+- f0baf47: The Active/Archived row now really does stay hidden until something is archived. The gate shipped for the flat sidebar, but the tree sidebar — the default — renders its own copy of the tabs and kept showing them; `[`/`]` could also still cycle into an empty archive and strand you there. Both follow the same rule now.
+
 ## 0.8.55
 
 ### Patch Changes
