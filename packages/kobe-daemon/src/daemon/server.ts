@@ -446,13 +446,20 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
     if (req.name === "subscribe") {
-      return handleSubscribe(client, objectPayload(req.payload), {
+      const hadSubscribers = lifetime.hasSubscribers()
+      const result = handleSubscribe(client, objectPayload(req.payload), {
         bus,
         activity,
         lifetime,
         clientCount: () => clients.size,
         writeEvent: (target, name, payload) => writeFrame(target as ClientState, { type: "event", name, payload }),
       })
+      if (!hadSubscribers && lifetime.hasSubscribers()) {
+        // The poller's startup tick ran before this client could subscribe;
+        // wake it now instead of leaving a cold footer empty for 60 seconds.
+        for (const vendor of runtime.vendorsWithQuotaProbe()) void quotaUsage.refreshIfDue(vendor)
+      }
+      return result
     }
     // `pty.*` requests are NOT served here — they belong to the standalone
     // pty host process's socket (`pty-server.ts`). A client that sends one
