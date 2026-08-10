@@ -95,6 +95,13 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
       }
       expect(raw).toContain("scratch-repo")
 
+      // Boot lands focus in the CONTENT pane when there is a session to
+      // resume into (owner 2026-08-09), and sidebar `o` is gated on sidebar
+      // focus. ctrl+q is the documented way back, so press it before the
+      // sidebar-scoped chord — otherwise `o` is legitimately dead here.
+      child.write("\x11")
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
       const direct = await pressUntilInvoked(child, "o", marker, 0)
       expect(direct.length).toBeGreaterThan(0)
       expect(new Set(direct)).toEqual(new Set([repo]))
