@@ -367,11 +367,18 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         // Picking a TAB is entering that session (owner 2026-08-01): focus
         // moves to the terminal, same as activate — a click that leaves the
         // sidebar's letter chords (d!) live under your typing is how issues
-        // got mis-deleted.
+        // got mis-deleted. Re-clicking the tab you are ALREADY in flips focus
+        // back to the sidebar (owner 2026-08-09): the first click entered the
+        // session, so a second click on the same row means "give me the
+        // sidebar". Keyboard enter is exempt (sidebar already focused —
+        // enter always means enter the session), as is a click that brings
+        // the terminal back from a rail page.
         onSelectTab={(taskId, tabId) => {
+          const reClick =
+            pages.nav === "terminal" && focus.focused !== "sidebar" && taskId === selectedId && tabId === selectedTabId
           pages.setNav("terminal")
           requestTabActivation(taskId, tabId)
-          focus.setFocused("workspace")
+          focus.setFocused(reClick ? "sidebar" : "workspace")
         }}
         engineState={sidebarEngineState}
         engineTabState={engineTabState}

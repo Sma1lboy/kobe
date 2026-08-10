@@ -23,6 +23,7 @@ function panel(overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {}) {
       focused={true}
       view="active"
       setView={NOOP}
+      showViewTabs={true}
       nav="terminal"
       setNav={NOOP}
       sortMode="recent"
@@ -95,7 +96,7 @@ test("the task list stays visible whatever the rail selects", async () => {
     const { frame } = await renderComponent(panel({ nav }), { width: 24, height: 40 })
     const text = await frame()
     expect(text, nav).toContain("TASKS")
-    expect(text, nav).toContain("Archives")
+    expect(text, nav).toContain("Archived")
   }
 })
 

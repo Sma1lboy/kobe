@@ -39,6 +39,7 @@ export function useWorkspaceSelection(args: {
 
   const focusRestoredRef = useRef(false)
   const userPickedRef = useRef(false)
+  const bootFocusRef = useRef(false)
   // Adopt the daemon's first restored focus, but never let later events from
   // sibling clients yank a task the local user already selected.
   useEffect(() => {
@@ -49,12 +50,21 @@ export function useWorkspaceSelection(args: {
         return
       }
     }
+    // Boot lands IN the restored session (owner 2026-08-09): reopening kobe
+    // resumes where you quit, so the content pane — not the sidebar — should
+    // hold focus. One-shot, only while the user hasn't picked anything yet;
+    // a boot with no restorable task leaves the sidebar focused (cold-start
+    // default, nothing to resume into).
+    if (!bootFocusRef.current && !userPickedRef.current && selectedId && tasks.some((task) => task.id === selectedId)) {
+      bootFocusRef.current = true
+      args.focusWorkspace()
+    }
     if (selectedId && tasks.some((task) => task.id === selectedId)) return
     // Fallback carries the persisted lastActive record too — a stale or
     // freshly-respawned daemon can replay a null focus while disk still
     // knows the real one (the "reopens on the oldest project" bug).
     setSelectedId(firstSelectableTask(tasks, activeTaskId, readLastActiveTaskId())?.id ?? null)
-  }, [tasks, activeTaskId, selectedId])
+  }, [tasks, activeTaskId, selectedId, args.focusWorkspace])
 
   // One-time orphan sweep (O19): clear `terminalTabs.*` snapshots whose task
   // no longer exists. Runs once on first hydration (raw signal → archived

@@ -6,10 +6,13 @@
 export const en = {
   /** Task-list filter inside Workspace. "Active" rather than "Workspace":
    *  the rail above already says Workspace, and repeating it reads as a
-   *  duplicate rather than as a filter over what the rail selected. */
+   *  duplicate rather than as a filter over what the rail selected.
+   *  "Archived" not "Archives" (owner 2026-08-09): a noun next to an
+   *  adjective read as two DESTINATIONS to first-time users; the parallel
+   *  adjective pair reads as what it is — a filter over the task list. */
   view: {
     workspace: "Active",
-    archives: "Archives",
+    archives: "Archived",
   },
   /** Top-level navigation rail — one row per destination */
   nav: {
