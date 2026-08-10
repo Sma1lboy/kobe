@@ -15,6 +15,7 @@ import { useT } from "../../i18n"
 import {
   SectionHeader,
   SidebarBrandHeader,
+  SidebarCreateAction,
   SidebarNavRail,
   SidebarSearchInput,
   SidebarViewTabs,
@@ -82,12 +83,8 @@ export function SidebarPanel(props: {
           flexShrink=1, so on overflow Yoga collapses whichever padding row
           it rounds against — the layout jitter fixed 2026-07-17. Only the
           task scrollbox absorbs overflow. */}
-      <SidebarBrandHeader
-        focused={props.focused}
-        status={status}
-        onStatusClick={props.onHeaderStatusClick}
-        onAddTask={props.onAddTask}
-      />
+      <SidebarBrandHeader focused={props.focused} status={status} onStatusClick={props.onHeaderStatusClick} />
+      <SidebarCreateAction onAddTask={props.onAddTask} />
 
       {props.searchMode ? (
         <SidebarSearchInput query={props.searchQuery} matchCount={props.flatIds.length} totalCount={props.totalRows} />

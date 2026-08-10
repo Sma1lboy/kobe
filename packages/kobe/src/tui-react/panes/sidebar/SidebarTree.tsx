@@ -32,7 +32,14 @@ import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
 import { ContextMenu } from "../../ui/context-menu"
-import { SidebarBrandHeader, SidebarNavRail, SidebarSearchInput, SidebarViewTabs, SidebarZenChip } from "./chrome"
+import {
+  SidebarBrandHeader,
+  SidebarCreateAction,
+  SidebarNavRail,
+  SidebarSearchInput,
+  SidebarViewTabs,
+  SidebarZenChip,
+} from "./chrome"
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
@@ -399,8 +406,8 @@ export function SidebarTree(props: SidebarTreeProps) {
         focused={focused}
         status={props.headerStatus ?? null}
         onStatusClick={props.onHeaderStatusClick}
-        onAddTask={props.onAddTask}
       />
+      <SidebarCreateAction onAddTask={props.onAddTask} />
       {search.active ? (
         <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
       ) : null}
