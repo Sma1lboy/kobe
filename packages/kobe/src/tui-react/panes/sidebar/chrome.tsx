@@ -139,7 +139,7 @@ export function SidebarBrandHeader(props: {
  *  the keycap comes from the live keymap, so a rebound or disabled `task.new`
  *  binding never leaves stale instructions behind. */
 export function SidebarCreateAction(props: { onAddTask?: () => void }) {
-  const { theme } = useTheme()
+  const { theme, transparentBackground } = useTheme()
   const t = useT()
   const keycap = legendCap("task.new")
   if (!props.onAddTask) return null
@@ -152,7 +152,7 @@ export function SidebarCreateAction(props: { onAddTask?: () => void }) {
         gap={1}
         paddingLeft={1}
         paddingRight={1}
-        backgroundColor={theme.backgroundElement}
+        backgroundColor={transparentBackground ? undefined : theme.backgroundElement}
         onMouseUp={() => props.onAddTask?.()}
       >
         <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
