@@ -39,7 +39,7 @@ synchronised view).
 | Daemon scope | **Per-user** singleton — one `kobed` owns every repo's tasks. Not per-repo. |
 | Lifecycle | **Explicit** `kobed start` / `kobed stop` / `kobed status`. No auto-spawn from TUI. Hard-cut: TUI errors out with `kobe: no daemon (run \`kobed start\`)` if the socket is missing. |
 | Multi-attach | **Yes.** N TUIs can attach to one daemon. State (tasks, chat history) is broadcast to all attached clients. UI-local state (cursor, focus, composer draft) stays per-client. |
-| Wire protocol | **JSON-lines over unix socket.** Custom `{type, id?, payload}` envelope. No LSP, no gRPC. Re-uses the pattern from [`orchestrator/bridge/server.ts`](../../packages/kobe/src/orchestrator/bridge/server.ts) but bidirectional. |
+| Wire protocol | **JSON-lines over unix socket.** Custom `{type, id?, payload}` envelope. No LSP, no gRPC. Re-uses the pattern from the then-current `orchestrator/bridge/server.ts` (since removed) but bidirectional. |
 | Attach-time sync | **Snapshot + tail.** Daemon sends task list + last N (50?) chat messages per task on attach. Older history loads lazily on scroll. No full-history replay. |
 
 ---
@@ -232,7 +232,7 @@ resume per task via `r` is fine for the first cut.
 | Wave | Title | Scope |
 |---|---|---|
 | **D0** | Core extract | Move `Orchestrator`, `TaskIndexStore`, worktree manager, bridge server out of TUI imports. Define a `KobeCore` boundary that is TUI-free — no dependency on opentui or anything that renders. Solid signals stay as an in-process reactive primitive (the TUI happens to consume the same primitive, but the core doesn't depend on rendering). No behavioural change — kobe still runs as one process, but `KobeCore` is now a self-contained module. |
-| **D1** | Wire protocol + transport | Implement the JSON-line socket server (server-side push + request/response). Reuse [`orchestrator/bridge/server.ts`](../../packages/kobe/src/orchestrator/bridge/server.ts) shape. Build a typed client (now `packages/kobe-daemon/src/client/`). Both still in-process for now — TUI talks to a "loopback" client that calls the server via the socket inside the same process. Validates the protocol end-to-end. |
+| **D1** | Wire protocol + transport | Implement the JSON-line socket server (server-side push + request/response). Reuse the then-current `orchestrator/bridge/server.ts` (since removed) shape. Build a typed client (now `packages/kobe-daemon/src/client/`). Both still in-process for now — TUI talks to a "loopback" client that calls the server via the socket inside the same process. Validates the protocol end-to-end. |
 | **D2** | `kobed` binary | Add `kobed` entry point (`packages/kobe/src/bin/kobed.ts`). Pidfile, signal handling, `kobed start/stop/status/restart`. Default socket: `$XDG_RUNTIME_DIR/kobe.sock` → fallback `~/.kobe/daemon.sock`. TUI now mandatorily talks over the socket; the in-process loopback from D1 is removed. Hard-cut error if no daemon. |
 | **D3** | Multi-attach broadcast | Track all attached clients in the daemon. Broadcast events to all of them. Add the `engine_offline` status + reconnect banner to the TUI. Verify: open two terminals, send a message in one, see it stream in both. |
 | **D4** (deferred) | Resilience polish | Event seq + replay-since-seq, daemon-side per-client backpressure, socket auth token in path, `kobed status --json`, structured logging to `~/.kobe/logs/`. Punt until D3 ships and shows what actually flakes. |

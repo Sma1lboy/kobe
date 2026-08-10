@@ -77,7 +77,9 @@ configuration surface.
 | `activeTheme` | string (theme name) | `"claude"` | Must name a bundled or installed theme; unknown names fall back to the default. See [Themes](#themes). |
 | `transparentBackground` | boolean | `true` | Default-true: only an explicit stored `false` opts out. |
 | `focusAccent` | `"primary"` \| `"success"` \| `"info"` | `"primary"` | Which palette slot paints the focused-pane indicator. |
+| `appearance.splitStyle` | `"box"` \| `"line"` | `"box"` | How split leaves are framed. `box` draws a full frame per leaf (matching the workspace's bordered columns); `line` is the tmux-style minimal look — each leaf draws only the edge it shares with its previous sibling. Unknown values fall back to `box` (`src/state/split-style.ts`). |
 | `locale` | `"en"` \| `"zh"` | `"en"` | UI language. Unknown values fall back to English. |
+| `hints.keyboard.enabled` | boolean | `true` | Master switch for the keyboard-discoverability hints (status-bar micro-hint + first-use pane hints). Only an explicit `false` turns them off; re-enabling relights pane hints that were extinguished by use. Settings → General → Keyboard hints. |
 
 ### Editor
 
@@ -104,6 +106,8 @@ Used by the file tree's `e` key, `prefix+o` (open worktree in editor), and
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `terminal.scrollbackRows` | number | `1000` | Rows of history per embedded terminal's xterm buffer. Clamped between 100 and 100,000; non-numeric values reset to the default. Applies to terminals spawned **after** the change; live PTYs keep the buffer they were born with (`src/state/scrollback.ts`). |
+| `chat.tabStrip.mode` | `"always"` \| `"multipleOnly"` \| `"never"` | `"never"` | Horizontal chat tab strip. Off by default because the sidebar tree already lists every worktree's tabs, so the strip is a second copy of the same list. `always` brings it back for every tab count; `multipleOnly` shows it only once a task has more than one tab (`src/state/tab-strip.ts`). |
+| `chat.tabStrip.hideSingle` | boolean | unset | **Legacy** boolean that `chat.tabStrip.mode` replaced (`true` meant "hide while a task has one tab"). Still honored when the new key was never written, so an old setting keeps working; the moment you touch `chat.tabStrip.mode` the new key wins for good. |
 
 ### Notifications
 
@@ -120,8 +124,36 @@ All three default to `true` (only an explicit `false` opts out). Details in
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `activeSortMode` | `"recent"` \| `"default"` | `"default"` | Sidebar task ordering. `recent` reshuffles as you switch tasks (jump digits follow); `default` is the stored, stable order. |
-| `sidebar.hover.enabled` | boolean | `false` | Hover interactions in the sidebar. |
+| `activeSortMode` | `"recent"` \| `"default"` | `"default"` | Sidebar task ordering, read at startup. `recent` reshuffles as you switch tasks (jump digits follow); `default` is the stored, stable order. **Hand-edit only today**: the `t` chord that flips it (`sidebar.sort`) is in the keymap table but has no handler in the current TUI, so nothing in the UI writes this key. |
+
+### Zen mode
+
+Zen hides the files/Ops pane and the terminal pane across every chat tab so
+each engine pane fills its window. Both keys are read fresh at each toggle, so
+a hand edit needs no daemon restart (`src/state/zen.ts`).
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `zen.active` | boolean | `false` | Global on/off intent. Persisted rather than per-session so switching projects doesn't drop you out of zen; entering any session reconciles its layout to this flag. Toggle with `prefix+z`. |
+| `zen.keepTasks` | boolean | `true` | Whether zen keeps the Tasks rail. Default on so the create-PR bar and the prefix chord stay reachable to leave zen again. |
+
+### Worktree location
+
+By default every LOCAL task worktree lands under
+`~/.kobe/worktrees/<repo-key>/<slug>`. These keys relocate that root
+wholesale; the per-repo `<repo-key>` namespacing is preserved either way, so
+worktrees from different repos never collide under a shared base. Read fresh
+on every worktree-path computation — changing it takes effect for the next
+task with no daemon restart, and **only new tasks move** (existing tasks keep
+their persisted `worktreePath`, and the old default root stays recognized).
+Remote (SSH) projects are unaffected: their worktrees live on the remote host
+under the project's own base path. Settings → General → Worktree location
+(`src/state/worktree-base.ts`).
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `worktree.basePath` | string | `""` (→ `~/.kobe/worktrees`) | Absolute path, or a value starting with the `$project_dir` token, which expands to the task's project root at path-computation time — one global setting that yields a per-project layout. `$project_dir/..` is the "next to project" preset (worktrees land beside each repo). The token is only recognized as the **leading** segment; anywhere else it is a literal directory name. |
+| `worktree.basePath.custom` | string | unset | TUI-only companion that remembers the last custom path you typed, so cycling the setting away from `custom` and back restores it instead of forcing a retype. The daemon never reads it. |
 
 ### Experimental
 
@@ -133,6 +165,7 @@ without notice.
 | `experimental.remoteProjects` | boolean | `false` | Remote (SSH) projects. |
 | `experimental.autoStatus` | boolean | `false` | Auto status flow: `turn-start` moves a backlog task to `in_progress`, and spawned sessions get a system-prompt protocol to self-report `in_review` (`src/state/auto-status.ts`). |
 | `experimental.dispatcher` | boolean | `false` | Per-repo dispatcher: field notes filed by worktree sessions are routed by the repo's main session (`src/state/dispatcher.ts`). |
+| `experimental.archivedHistoryPreview` | boolean | `false` | Read-only engine-history view for archived tasks. The web settings API mirrors this key and the TUI settings dialog can toggle it (`src/state/archived-history.ts`). |
 
 ## Themes
 

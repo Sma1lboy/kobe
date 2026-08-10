@@ -41,7 +41,7 @@ A theme is a JSON object with two top-level fields:
 You don't have to fill every slot; kobe has fallbacks (e.g.
 missing `borderActive` falls through to `border`, missing `border`
 falls through to `text`). The full slot list with fallbacks lives in
-[`packages/kobe/src/tui/context/theme.tsx`](../packages/kobe/src/tui/context/theme.tsx).
+[`packages/kobe/src/tui/context/theme-core.ts`](../packages/kobe/src/tui/context/theme-core.ts).
 The canonical example is
 [`packages/kobe/src/tui/context/theme/claude.json`](../packages/kobe/src/tui/context/theme/claude.json).
 Copy it as a starting point.
@@ -103,7 +103,7 @@ these same JSON files.
   (`.json`) and the directory path printed by `kobe theme list`.
 - **Theme rejected at boot**: kobe writes a `console.warn` line to
   stderr with the file path and the rejection reason. Run
-  `kobe diagnose` for a full environment report and check the recent
+  `kobe doctor` for a full environment report and check the recent
   output above where you ran `kobe`.
 - **Want to override a built-in?** Drop a file with the same name
   (e.g. `~/.kobe/themes/claude.json`). User files load after bundled

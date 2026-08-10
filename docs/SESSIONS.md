@@ -81,7 +81,7 @@ Two scoped exceptions to "everything survives a quit":
 
 - Archiving a task kills its hosted sessions. A daemon janitor sweeps PTY
   sessions whose task is no longer live (`pty.sweep`), so a headless
-  `kobe api task-archive` can't leak an engine that runs forever.
+  `kobe api archive` can't leak an engine that runs forever.
 - An engine that exits on its own is kept as a dead session, scrollback
   intact, so a reattach still shows how it died, until an explicit close or
   the archive sweep removes it.

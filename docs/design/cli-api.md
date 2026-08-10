@@ -575,6 +575,6 @@ implement X three different ways" and the model uses
   the five `kobe api` verbs are a strict subset.
 - `packages/kobe-daemon/src/client/index.ts` — `KobeDaemonClient`, the
   ready-made transport every `kobe api` verb will use.
-- [`bridge.md`](./bridge.md) — sibling design doc for the MCP-bridge
+- `bridge.md` (since removed) — sibling design doc for the MCP-bridge
   path; this file supersedes its skill-distribution discussion (§4)
   but keeps the MCP bridge itself in tree as a fallback.
