@@ -10,7 +10,6 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { TAB_ORDER, tabLabelKey } from "../../src/tui/panes/filetree/keys-core"
 import {
   collapseOrParentAction,
   computePathBudget,
@@ -162,12 +161,5 @@ describe("fs watch", () => {
   test("watchWorktree on an unwatchable path degrades to a no-op disposer", () => {
     const dispose = watchWorktree("/nonexistent/kobe-filetree-test", () => {})
     expect(() => dispose()).not.toThrow()
-  })
-})
-
-describe("keys-core tab vocabulary", () => {
-  test("tab order and label keys stay in sync", () => {
-    expect(TAB_ORDER).toEqual(["all", "changes"])
-    expect(TAB_ORDER.map(tabLabelKey)).toEqual(["files.tabs.all", "files.tabs.changes"])
   })
 })

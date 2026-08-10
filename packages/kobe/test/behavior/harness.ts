@@ -58,7 +58,15 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
 
   await writeFile(join(bin, "kobe"), `#!/bin/sh\nexec bun ${DIST_CLI} "$@"\n`)
   await chmod(join(bin, "kobe"), 0o755)
-  await writeFile(join(bin, "claude"), `#!/bin/sh\necho "fake-claude ready $*"\nexec sleep 600\n`)
+  // The idle loop must keep the shim's OWN name in `ps`. `exec sleep 600`
+  // replaced the process image, so the tab's tree read as `sleep` with no
+  // `claude` anywhere — and the delivery foreground gate (engineProcessIn)
+  // correctly called that "engine exited into a shell". A real engine never
+  // renames itself; `read` blocks in-process, so argv[0] stays `claude`.
+  await writeFile(
+    join(bin, "claude"),
+    `#!/bin/sh\necho "fake-claude ready $*"\nwhile :; do read -r _ignored || sleep 600; done\n`,
+  )
   await chmod(join(bin, "claude"), 0o755)
 
   const inherited = Object.fromEntries(

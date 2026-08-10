@@ -80,4 +80,46 @@ describe("workspace open-worktree bindings", () => {
     expect(renameBranch).toHaveBeenCalledWith("task-1")
     expect(cycleVendor).toHaveBeenCalledWith("task-1")
   })
+
+  // Boot now lands focus in the content pane when a session is restorable,
+  // so the sidebar-scoped `o` is legitimately dead until ctrl+q comes back.
+  // Pinning the gate here keeps that contract visible to anyone driving the
+  // TUI from a test: press ctrl+q first, or use the global prefix chord.
+  test("the sidebar open-worktree row is gated off while another pane holds focus", () => {
+    useWorkspaceKeybindings({
+      focus: { focused: "workspace", setFocused: vi.fn() } as never,
+      dialog: { stack: [] } as never,
+      settingsOpen: false,
+      worktreesOpen: false,
+      openWorktrees: vi.fn(),
+      updateOpen: false,
+      openUpdate: vi.fn(),
+      kanbanOpen: false,
+      automationsOpen: false,
+      openAutomations: vi.fn(),
+      workItemsOpen: false,
+      openWorkItems: vi.fn(),
+      openKanban: vi.fn(),
+      searchActive: false,
+      selectedId: "task-1",
+      openTaskWorktree: vi.fn(),
+      openSettings: vi.fn(),
+      closeSettings: vi.fn(),
+      createTask: vi.fn(),
+      renameBranch: vi.fn(),
+      cycleVendor: vi.fn(),
+      toggleZen: vi.fn(),
+      jumpToNextAttention: vi.fn(),
+      openInbox: vi.fn(),
+      enterMoveMode: vi.fn(),
+      createPR: vi.fn(),
+    })
+
+    const registrations = mocks.bindingFactories.map((factory) => factory())
+    const sidebarRow = registrations[3]
+    expect(sidebarRow?.bindings.find((binding) => binding.key === "o" && !binding.prefix)).toBeDefined()
+    expect(sidebarRow?.enabled).toBe(false)
+    // The global prefix chord stays reachable from any pane.
+    expect(registrations[0]?.enabled).not.toBe(false)
+  })
 })

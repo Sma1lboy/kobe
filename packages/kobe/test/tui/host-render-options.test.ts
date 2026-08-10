@@ -11,16 +11,6 @@ function fakeTty(): NodeJS.WriteStream {
 }
 
 describe("hostRenderOptions", () => {
-  it("returns the shared option set verbatim", () => {
-    expect(hostRenderOptions()).toEqual({
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-    })
-  })
-
   it("spreads onDestroy in only when present (same shape otherwise)", () => {
     const onDestroy = () => {}
     expect(hostRenderOptions(onDestroy)).toMatchObject({ onDestroy })

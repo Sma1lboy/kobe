@@ -52,8 +52,7 @@ fixed 1280×800 Chromium → /harness → xterm.js → PTY sidecar
 ```
 
 ```bash
-bun run visual          # hermetic acceptance vs the committed baseline (~10-15s)
-bun run visual:update   # intentionally accept a UI change (updates baseline)
+bun run visual          # hermetic journey: real OpenTUI drives, assertions read the buffer (~10-15s)
 
 bun run visual:serve    # warm iteration servers + reusable fixture (keep running)
 bun run visual:dev      # fast baseline check against visual:serve (~2s)
@@ -77,7 +76,7 @@ command on Linux.
 | Help and settings | Workspace → `F1` Help → close → Settings → close | Global modal and sidebar page transitions return to the live Workspace. |
 | Worktree audit | Workspace sidebar → Worktrees → close | The daemon-backed Worktrees page loads from the real fixture and returns safely. |
 | Story detail | Workspace sidebar → Kanban → select fixture card → detail drawer → close | Board selection reaches the persisted story detail without mutating it. |
-| Story intake | Workspace sidebar → Kanban → New Story → title and description | The creation drawer accepts real terminal input; its completed state is screenshot-pinned as `kanban-new-issue.png`. |
+| Story intake | Workspace sidebar → Kanban → New Story → title and description | The creation drawer accepts real terminal input and echoes it back. |
 
 Ports derive from `KOBE_VISUAL_PORT_BASE` (default 5273); a busy port fails
 fast — never reuse a stray server, and never point the fixture at a real HOME

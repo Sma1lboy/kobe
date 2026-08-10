@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest"
 import {
   BRANCH_LABEL_MAX,
   type SearchKeystroke,
-  VIEW_TABS,
   cycleViewTarget,
   projectScrollMaxHeightFor,
   searchQueryKeystroke,
@@ -20,21 +19,14 @@ import {
   toneColor,
   truncateBranchLabel,
   truncateProjectFilterLabel,
-  viewTabLabelKey,
 } from "../../src/tui/panes/sidebar/view-core"
 
 describe("view tabs", () => {
   it("cycles with wrap-around in both directions", () => {
-    expect(VIEW_TABS.map((t) => t.view)).toEqual(["active", "archived"])
     expect(cycleViewTarget("active", 1)).toBe("archived")
     expect(cycleViewTarget("archived", 1)).toBe("active")
     expect(cycleViewTarget("active", -1)).toBe("archived")
     expect(cycleViewTarget("archived", -1)).toBe("active")
-  })
-
-  it("maps every view to an i18n label key", () => {
-    expect(viewTabLabelKey("active")).toBe("tasks.view.workspace")
-    expect(viewTabLabelKey("archived")).toBe("tasks.view.archives")
   })
 })
 

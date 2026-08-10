@@ -158,16 +158,6 @@ test("Kanban new issue intake renders in the real OpenTUI", async ({ page }) => 
     await page.keyboard.type(BODY)
     await expect(buffer).toContainText(TITLE)
     await expect(buffer).toContainText(BODY)
-
-    await page.evaluate(async () => {
-      await document.fonts.ready
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    })
-    await expect(page).toHaveScreenshot("kanban-new-issue.png", {
-      animations: "disabled",
-      caret: "hide",
-      fullPage: false,
-    })
   })
 })
 

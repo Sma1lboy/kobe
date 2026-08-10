@@ -46,6 +46,22 @@ test("n opens the create flow", async () => {
   expect(await frame()).toContain("New routine")
 })
 
+test("esc closes the create flow", async () => {
+  // The composer used to bind escape itself and only resolve the promise —
+  // as a modal MEMBER it outranked the barrier, so the card never popped.
+  const { frame, mockInput } = await renderComponent(
+    <AutomationsPage orchestrator={orchestrator()} focused={true} onClose={() => {}} />,
+    { width: 60, height: 16, providers: { dialog: true } },
+  )
+  await new Promise((r) => setTimeout(r, 100))
+  mockInput.typeText("n")
+  await new Promise((r) => setTimeout(r, 100))
+  expect(await frame()).toContain("New routine")
+  mockInput.pressEscape()
+  await new Promise((r) => setTimeout(r, 100))
+  expect(await frame()).not.toContain("New routine")
+})
+
 test("esc closes the page", async () => {
   let closed = false
   const { mockInput } = await renderComponent(

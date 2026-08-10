@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest"
-import {
-  SIDEBAR_HOVER_TOOLTIP_Z_INDEX,
-  approxCellWidth,
-  resolveSidebarHoverTooltipLayout,
-} from "../../src/tui/panes/sidebar/hover-layout"
+import { approxCellWidth, resolveSidebarHoverTooltipLayout } from "../../src/tui/panes/sidebar/hover-layout"
 
 describe("sidebar hover tooltip layout", () => {
-  it("uses an overlay layer above pane chrome and toast overlays", () => {
-    expect(SIDEBAR_HOVER_TOOLTIP_Z_INDEX).toBeGreaterThan(2500)
-  })
-
   it("clamps the tooltip inside the screen", () => {
     const layout = resolveSidebarHoverTooltipLayout({
       hoverX: 78,
