@@ -30,6 +30,10 @@ export function SidebarPanel(props: {
   focused: boolean
   view: SidebarView
   setView: (view: SidebarView) => void
+  /** Render the Active/Archived filter row at all — hidden until an
+   *  archived task exists (owner 2026-08-09: two nouns at the top of the
+   *  rail confused first-time users who have nothing archived yet). */
+  showViewTabs: boolean
   nav: SidebarNav
   setNav: (nav: SidebarNav) => void
   sortMode: TaskSortMode
@@ -88,7 +92,7 @@ export function SidebarPanel(props: {
 
       {/* Active/Archived filters the task list INSIDE the sidebar. Keep this
           navigation stable even when Archives is currently empty. */}
-      <SidebarViewTabs view={props.view} setView={props.setView} />
+      {props.showViewTabs ? <SidebarViewTabs view={props.view} setView={props.setView} /> : null}
 
       {/* The rail sits BELOW the view tabs (owner 2026-08-02): Kanban and
           Routines are things you open within the workspace you're in, so
