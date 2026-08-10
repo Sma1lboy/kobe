@@ -134,6 +134,21 @@ describe("activity registry liveness watchdog", () => {
     expect(states.t).toEqual(["running", "running", "idle"])
   })
 
+  it("debugSnapshot exposes the raw entries (state, vendor, armed watchdog)", async () => {
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now() }))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start", undefined, "tab-1", undefined, "claude")
+    registry.report("u", "turn-start")
+    registry.report("u", "turn-complete")
+
+    const snap = registry.debugSnapshot()
+    expect(snap.tasks.t).toMatchObject({ state: "running", vendor: "claude", lapseArmed: true })
+    // Sticky states are not policed — no watchdog armed.
+    expect(snap.tasks.u).toMatchObject({ state: "turn_complete", lapseArmed: false })
+    expect(snap.tabs.t?.["tab-1"]).toMatchObject({ state: "running", vendor: "claude", lapseArmed: true })
+  })
+
   it("passes the REPORTING engine's vendor to the probe (custom wrapper ids)", async () => {
     // A task configured with a custom wrapper vendor (`claudecpa`) has no
     // transcript store under that id — the probe must ask about the engine

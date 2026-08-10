@@ -103,6 +103,7 @@ describe("schema drill-ins", () => {
       "digest",
       "pty-list",
       "read-output",
+      "inspect",
     ])
     for (const v of result.verbs) expect(v.summary.length).toBeGreaterThan(0)
   })

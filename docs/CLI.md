@@ -359,6 +359,17 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   engine's structured history when available, else a labeled terminal tail
   (`fallbackReason`). Read-only; the cursor stays pinned to one
   source/session and returns a typed `SOURCE_CHANGED` error when it moved.
+- `inspect [--task-id ID]` *(offline)*: production diagnostics in one read —
+  `daemon` (the activity registry's RAW per-task/per-tab entries: state,
+  probe vendor, whether a lapse watchdog is armed — via `debug.inspect`),
+  `sessions` (pty-host inventory joined with a live process-tree engine walk
+  per shell: `foreground` is tri-state — `{vendor,pid,argv}` / `null`
+  (walked, engine-free) / `"unknown"` (couldn't look)), and `tabs` (the
+  persisted `terminalTabs.*` snapshots the sidebar names its rows from:
+  `liveVendor`, `lastTitle`, `autoTitle`). Read-only and non-spawning: a
+  missing daemon or PTY host degrades that section to `null`. This is the
+  first thing to run (and paste) when reporting a badge/label/identity bug
+  against a production kobe.
 
 ### create
 

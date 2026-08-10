@@ -313,6 +313,23 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      // Production diagnostics (`kobe api inspect`): what the daemon's
+      // transient state ACTUALLY holds right now. Bug reports about badges,
+      // idle-lapse, or identity need this raw view — the wire payloads are
+      // projections that hide the fields (probe vendor, armed watchdogs)
+      // those bugs usually hinge on. Read-only, no side effects.
+      name: "debug.inspect",
+      handle(_payload, ctx) {
+        return {
+          daemonPid: ctx.daemon.pid,
+          kobeVersion: ctx.runtime.currentVersion,
+          startedAt: ctx.daemon.startedAt.toISOString(),
+          activity: ctx.activity.debugSnapshot(),
+          attachedClients: ctx.daemon.guiCount(),
+        }
+      },
+    },
+    {
       name: "task.recentEvents",
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")

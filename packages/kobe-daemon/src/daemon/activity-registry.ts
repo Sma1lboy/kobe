@@ -360,6 +360,33 @@ export class DaemonActivityRegistry {
     return out
   }
 
+  /**
+   * Raw diagnostic dump for `kobe api inspect` — every task/tab entry with
+   * the fields the wire payload deliberately omits (probe vendor, whether a
+   * lapse watchdog is armed). Read-only; production bug reports need to see
+   * what the registry ACTUALLY holds, not the projected payload.
+   */
+  debugSnapshot(): {
+    tasks: Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean }>
+    tabs: Record<string, Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean }>>
+  } {
+    const dump = (e: ActivityEntry) => ({
+      state: e.state,
+      at: e.at,
+      ...(e.vendor ? { vendor: e.vendor } : {}),
+      lapseArmed: e.lapse !== undefined,
+    })
+    const tasks: Record<string, ReturnType<typeof dump>> = {}
+    for (const [taskId, entry] of this.activity) tasks[taskId] = dump(entry)
+    const tabs: Record<string, Record<string, ReturnType<typeof dump>>> = {}
+    for (const [taskId, tabMap] of this.tabActivity) {
+      const out: Record<string, ReturnType<typeof dump>> = {}
+      for (const [tabId, entry] of tabMap) out[tabId] = dump(entry)
+      tabs[taskId] = out
+    }
+    return { tasks, tabs }
+  }
+
   close(): void {
     for (const entry of this.activity.values()) {
       if (entry.lapse) clearTimeout(entry.lapse)

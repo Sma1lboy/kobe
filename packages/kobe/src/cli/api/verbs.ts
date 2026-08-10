@@ -8,6 +8,7 @@ import { F, FANOUT_CAP } from "./flags.ts"
 import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { DIGEST_VERB } from "./handlers-digest.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
+import { INSPECT_VERB } from "./handlers-inspect.ts"
 import { OUTCOME_VERBS } from "./handlers-outcome.ts"
 import {
   add,
@@ -69,7 +70,7 @@ export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "a
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
-  read: ["list", "get-task", "collect", "digest", "pty-list", "read-output"],
+  read: ["list", "get-task", "collect", "digest", "pty-list", "read-output", "inspect"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "note-list", "set-active"],
   supervise: ["report", "await"],
@@ -329,6 +330,10 @@ export const VERBS: readonly VerbSpec[] = [
   // The ruler: an aggregate read over worker reports + routine runs. Spec +
   // handler in ./handlers-digest.ts.
   DIGEST_VERB,
+  // Production diagnostics aggregate (daemon activity registry + pty
+  // sessions with live foreground walk + persisted tab snapshots). Spec +
+  // handler in ./handlers-inspect.ts.
+  INSPECT_VERB,
   // Supervision (worker `report` / coordinator `await`) — specs + handlers
   // live in ./handlers-outcome.ts; spread keeps this table the single index.
   ...OUTCOME_VERBS,

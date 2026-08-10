@@ -74,6 +74,7 @@ describe("daemon handler registry", () => {
       "workitem.start",
       "session.deliver",
       "task.recentEvents",
+      "debug.inspect",
       "ui.reportEvent",
       "ui.prompt",
       "ui.promptReply",

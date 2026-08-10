@@ -192,6 +192,10 @@ export type DaemonRequestName =
   | "session.deliver"
   // Read one task's recent engine lifecycle events (the TUI event feed).
   | "task.recentEvents"
+  // Production diagnostics (`kobe api inspect`): the activity registry's RAW
+  // task/tab entries — probe vendor, armed watchdogs — beyond what the
+  // engine-state wire payload carries. Read-only.
+  | "debug.inspect"
   // TUI-originated product events (file/task/project opens) → plugin hooks.
   | "ui.reportEvent"
   // Host-provided input dialog (plugins → `kobe api prompt`): `ui.prompt`
