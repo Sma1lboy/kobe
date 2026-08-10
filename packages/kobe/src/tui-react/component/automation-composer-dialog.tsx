@@ -72,6 +72,13 @@ function AutomationComposerView(props: {
     setSegmentCursor(Math.min(Math.max(index, 0), CRON_SEGMENTS.length - 1))
   }
 
+  // Resolving the promise does not take the card off the dialog stack — a
+  // cancel path that only calls onCancel leaves the modal up with esc dead.
+  const cancel = (): void => {
+    props.onCancel()
+    dialog.clear()
+  }
+
   const patch = (next: Partial<ComposerDraft>): void => {
     setDraft((prev) => ({ ...prev, ...next }))
     setError(null)
@@ -114,7 +121,9 @@ function AutomationComposerView(props: {
 
   useBindings(() => ({
     bindings: [
-      { key: "escape", cmd: () => props.onCancel() },
+      // No escape binding: the dialog stack's ModalBarrier owns esc and both
+      // resolves the promise (showDialog's onClose) and pops the card. A
+      // member registration here would outrank it and only do the former.
       { key: "tab", cmd: () => setField((f) => nextComposerField(f, 1)) },
       { key: "shift+tab", cmd: () => setField((f) => nextComposerField(f, -1)) },
       // Repo is a list, so up/down drives it while it has focus. The other
@@ -182,7 +191,7 @@ function AutomationComposerView(props: {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("automations.newTitle")}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
+        <text fg={theme.textMuted} onMouseUp={() => cancel()}>
           esc
         </text>
       </box>

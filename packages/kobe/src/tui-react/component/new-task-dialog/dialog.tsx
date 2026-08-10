@@ -90,10 +90,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </text>
         ) : null}
       </box>
-      {/* Bottom action row — hint legend left, Create button bottom-right.
-          Create commits on click; also reachable by tabbing to the confirm
-          field (Enter), or Enter on the last input of the active tab. */}
-      <box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1} paddingBottom={1}>
+      {/* Bottom action row — Create button bottom-right, matching the
+          automation composer. Create commits on click; also reachable by
+          tabbing to the confirm field (Enter), or Enter on the last input
+          of the active tab. */}
+      <box flexDirection="row" justifyContent="flex-end" alignItems="center" paddingTop={1} paddingBottom={1}>
         <text
           fg={vm.field === "confirm" ? theme.primary : theme.text}
           attributes={vm.field === "confirm" ? TextAttributes.BOLD : undefined}
