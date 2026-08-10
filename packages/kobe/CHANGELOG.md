@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.54
+
+### Patch Changes
+
+- 542fc99: feat: `kobe api inspect` — production diagnostics in one read
+
+  New read-only verb aggregating every identity/activity signal an investigation needs: the daemon's RAW activity registry via a new `debug.inspect` RPC (per-task/per-tab state, the vendor the liveness probe asks about, whether a lapse watchdog is armed), the pty-host inventory joined with a live process-tree engine walk per session (tri-state `foreground`: engine / confirmed-none / unknown — the exact walk the TUI's live-engine store runs, so CLI output and TUI behavior compare 1:1), and the persisted `terminalTabs.*` snapshots the sidebar names its rows from (`liveVendor` / `lastTitle` / `autoTitle`). Offline and non-spawning: a missing daemon or PTY host degrades its section to null instead of erroring — safe to run against a live production kobe, which is the point.
+
+- 5181a68: Keyboard onboarding: a permanent status-bar micro-hint (`⌃A commands · F1 help`, terminal-passthrough aware), one-line first-use hints in the sidebar and files panes that extinguish once you use their keys, a "Keyboard basics" page in the first-run wizard, and a Settings → General "Keyboard hints" toggle that can relight them. Every caption resolves through the live keymap, so rebound chords show their new keys and unbound ones drop out. Also wires the documented-but-dead `prefix+,` Open Settings chord, reserves `f1` out of the terminal passthrough so the help reference opens from inside the embedded terminal too (closing the one F-row gap), removes the Solid-era `chat.question.*` doc-only rows from F1, and fixes the Settings → Keybindings copy (localized prefix block, live `timeoutMs` example).
+- 54e5b54: Make task creation obvious with a labelled, full-width New task action that respects transparent terminals while keeping the Active and Archived navigation visible.
+- 5a42569: The status-bar key hints are now clickable: the `[settings]` button opens Settings from anywhere — including inside the embedded terminal, where mouse clicks don't pass through to the PTY and the keyboard path is longest — clicking `{prefix} commands` arms the real prefix (the which-key guide accepts a keyboard second stroke), the help caption opens F1, and the terminal's `⌃Q sidebar` caption jumps focus back to the sidebar.
+- cf90e6e: Inbox no longer flashes 1 → 0 when the tab you are looking at completes a turn: episodes targeting the selected task's active tab are filtered out synchronously, before the background dismiss RPC round-trips.
+- 8a64d8f: Make the keyboard model discoverable: the prefix now opens a context-aware which-key command map with a five-second selection window, while F1 leads with current-pane, one-press, and prefix sections. Both views follow live rebindings while preserving terminal passthrough, and missing localized action labels are filled in.
+- 3dd0f88: fix: dead engines release their tab identity; liveness probes the reporting engine
+
+  Two identity staleness bugs. (1) A chat tab spawned with a vendor (e.g. codex) kept wearing that name in the sidebar tree forever, even after ctrl+C left it a bare shell — and after the user launched a different engine in it. The live process probe is now tri-state (engine / confirmed-none / can't-look) and outranks the tab's creation pin everywhere: the pin only covers the spawn window the probe can't see, a confirmed engine-free shell is labelled a shell, and a tab running a different engine is named after what actually runs. (2) A task whose configured vendor is a custom wrapper id (`claudecpa`) lapsed to the idle glyph mid-turn: the activity watchdog probed the wrapper id's (nonexistent) transcript store and read silence. The hook's own `--engine` tag now rides the report, so the daemon probes the engine that actually reported.
+
+- 8a64d8f: Keep the Prefix command map and compact Prefix HUD readable when transparent backgrounds are enabled.
+- c4b7972: Fix esc doing nothing in the New routine dialog, and move the new-task Create button to the bottom right.
+
+  The routine composer bound `escape` itself and only resolved its promise, never popping the card off the dialog stack — and as a modal member it outranked the barrier that would have closed it, so the dialog stayed up with no way out but ctrl+c. It now leaves esc to the barrier. The new-task dialog's action row used `space-between` with a single child, which left Create hugging the left edge; it now sits bottom-right like every other card.
+
+- 3f6c5e6: `kobe api send` gates delivery into an existing tab on a live engine process (herdr's foreground check, ported to the process tree). A session's spawn argv says what was launched, not what is running: an engine that exited into the keep-alive shell used to receive the pasted prompt as shell commands. Both the canonical path and `--tab tab-N` now walk the PTY child's process tree first and refuse with typed `ENGINE_NOT_RUNNING` (hint + `--tab new` recovery argv) when only a shell remains. Any registered engine passes — the addressed tab may run a different vendor than the task, so cross-vendor send stays open.
+- bd157e8: fix: sidebar project move-mode actually moves — order keys on mains, cursor follows its row
+
+  Project order in the sidebar tree now follows the MAIN tasks' stored order (the partition `moveTask` swaps), so moving a project visibly moves its header — previously an older regular task anchored the group and the swap read as a no-op. And in move mode the cursor re-anchors to its row id across the reorder instead of its flat index, so it stays on the project being moved rather than landing on a neighbour.
+
+- 1443da8: Sidebar onboarding + focus polish: transparent mode drops the opaque cursor-row fill (the ▌ marker takes the focus accent instead, across sidebar/filetree/inbox/issues rows); the Active/Archived filter row hides until an archived task exists and reads "Archived" not "Archives"; re-clicking the chattab you are already in returns focus to the sidebar; booting into a restored session focuses the content pane instead of the sidebar.
+- a5f8190: The kobe skill now teaches "inside a kobe session, kobe verbs come first" (v7). An agent that finds `$KOBE_TASK_ID` set is a session kobe manages, and delegation or parallel work should route through `fan-out` / `add --prompt` / `send` / `await` / `dispatch` rather than hand-rolled subagents or a raw `claude -p` — work in a kobe task gets its own worktree, a visible sidebar row, lifecycle tracking, and an explicit outcome contract, which ad-hoc subprocesses never do. In-context subagents stay fine for read-only research; the boundary is work. The injected worktree protocol gains one pointer line naming those verbs and where to learn them (`kobe api schema` / the skill) — a pointer, not a curriculum, so per-session context cost stays flat.
+
 ## 0.8.53
 
 ### Patch Changes
