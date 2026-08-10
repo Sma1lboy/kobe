@@ -145,6 +145,19 @@ export interface EngineRegistryEntry {
   readonly terminalTitle?: {
     readonly ownsStatus: boolean
     readonly launchArgs?: readonly string[]
+    /**
+     * Leading STATUS decoration the engine writes into its own OSC title,
+     * stripped before kobe renders the name. Engine-owned by construction:
+     * only the adapter knows its vendor's glyph vocabulary, and kobe already
+     * draws that state in its own column — showing both is the same fact
+     * twice, and the animated variants make a resting tab look busy.
+     *
+     * Matched anchored at the start, longest-first, with any following
+     * whitespace; the remainder is the title. A pattern that would consume
+     * the WHOLE title is not applied (a session actually named "Working" is
+     * a name, not a status).
+     */
+    readonly statusPrefixes?: readonly string[]
   }
   /**
    * Subscription-quota probe: snapshot of the account's usage windows, or
@@ -230,7 +243,12 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
-    terminalTitle: { ownsStatus: true },
+    terminalTitle: {
+      ownsStatus: true,
+      // `${prefix} ${title}` where prefix is ✳ at rest and cycles ⠂/⠐ every
+      // 960ms while a turn runs (claude-code `AnimatedTerminalTitle`).
+      statusPrefixes: ["✳", "⠂", "⠐"],
+    },
     quotaUsage: () => fetchClaudeQuotaUsage(),
   },
   codex: {
@@ -254,6 +272,11 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     terminalTitle: {
       ownsStatus: true,
       launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
+      // The `activity` segment is a braille spinner frame joined to the next
+      // segment by a space (codex `TERMINAL_TITLE_SPINNER_FRAMES` +
+      // `separator_from_previous`). It only appears while a turn runs, so a
+      // resting title has no prefix to strip.
+      statusPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     },
     quotaUsage: () => fetchCodexQuotaUsage(),
   },
@@ -348,6 +371,35 @@ export function supportsStructuredHistory(vendor: VendorId): boolean {
  */
 export function titleDisplayName(title: string, vendor: VendorId | null): string {
   return vendor ? (engineEntry(vendor).defaultCommand[0] ?? vendor) : title
+}
+
+/**
+ * Strip the engine's own STATUS decoration from a live OSC title.
+ *
+ * Engines that own their title write their turn state into it — claude's
+ * `✳`/`⠂`/`⠐`, codex's braille spinner frame. Kobe draws that same state in
+ * its own glyph column, so rendering the prefix too says it twice, and the
+ * animated frames make a resting tab look busy. The vocabulary is declared
+ * per engine (`terminalTitle.statusPrefixes`); this stays a lookup so no
+ * neutral layer hard-codes a vendor's glyphs.
+ *
+ * Conservative by construction: unknown vendor, no declared prefixes, or a
+ * prefix that would consume the whole title all return the title unchanged —
+ * a session genuinely named after one of these glyphs keeps its name.
+ */
+export function stripEngineStatusPrefix(title: string, vendor: VendorId | null | undefined): string {
+  if (!vendor) return title
+  const prefixes = engineEntry(vendor).terminalTitle?.statusPrefixes
+  if (!prefixes || prefixes.length === 0) return title
+  // Longest-first so a multi-char prefix isn't shadowed by a shorter one.
+  for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
+    if (!title.startsWith(prefix)) continue
+    const rest = title.slice(prefix.length).trimStart()
+    // Whole title was the decoration → it is the name, not a status.
+    if (rest.length === 0) return title
+    return rest
+  }
+  return title
 }
 
 /**

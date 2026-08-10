@@ -87,10 +87,11 @@ describe("engineEntry — built-in vendors", () => {
     expect(entry.identity?.inputPlaceholder).toBe("Ask Codex…")
     expect(entry.capabilities?.defaultModelId()).toBe("gpt-5.3-codex")
     expect(entry.capabilities?.permissionModes).toEqual([])
-    expect(entry.terminalTitle).toEqual({
-      ownsStatus: true,
-      launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
-    })
+    expect(entry.terminalTitle?.ownsStatus).toBe(true)
+    expect(entry.terminalTitle?.launchArgs).toEqual(["-c", 'tui.terminal_title=["activity","thread-title"]'])
+    // The `activity` segment codex is asked for above is a spinner frame,
+    // so the vendor also declares those frames as strippable status.
+    expect(entry.terminalTitle?.statusPrefixes).toContain("⠹")
   })
 
   it("routes detectAccount to the vendor's own detector (claude oauth)", async () => {

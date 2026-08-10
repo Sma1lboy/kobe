@@ -20,13 +20,22 @@
  * the registry PTY, (re)subscribe when the instance at that key changed, and
  * drop subscriptions whose key is no longer requested or whose PTY died.
  *
- * Titles pass through RAW — the OSC stream IS the label (owner 2026-08-01:
- * "don't waste the OSC name"). The store used to collapse an engine's title
- * to its binary ("✳ Claude Code" → "claude") via the live-engine vendor,
- * which (a) threw away the one line of live status the engine writes and
- * (b) FLICKERED: the ps-walk probe transiently loses a vendor mid-turn, so
- * labels flapped raw ↔ collapsed every probe tick. Identity (which detector
- * to attach) still comes from the process tree; display no longer does.
+ * The STORE keeps titles raw — the OSC stream IS the label (owner
+ * 2026-08-01: "don't waste the OSC name"). It once collapsed an engine's
+ * title to its binary ("✳ Claude Code" → "claude") via the live-engine
+ * vendor, which (a) threw away the one line of live status the engine writes
+ * and (b) FLICKERED: the ps-walk probe transiently loses a vendor mid-turn,
+ * so labels flapped raw ↔ collapsed every probe tick. Identity (which
+ * detector to attach) still comes from the process tree; display no longer
+ * does.
+ *
+ * What the RENDER projections below (and use-turn-polls' twin) do strip is
+ * the engine's leading STATUS decoration — claude's `✳`/`⠂`/`⠐`, codex's
+ * spinner frame — because kobe draws that state in its own glyph column and
+ * showing both says it twice (owner 2026-08-10). That is a display concern,
+ * so it lives in the projection, not in the store, and the vocabulary is
+ * declared per engine (`terminalTitle.statusPrefixes`). The name itself is
+ * still never rewritten.
  *
  * No React, no Solid, no @opentui — plain closures over Maps, unit-testable
  * under vitest. Callers own the tick that drives `reconcile()` (a PTY spawns
@@ -34,8 +43,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { stripEngineStatusPrefix } from "../../engine/registry"
 import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { getDefaultLiveEngines } from "../../tui/workspace/live-engine"
 import { useLatest } from "../lib/use-latest"
 
 /** A registry lookup — injectable so tests drive a fake PTY set. */
@@ -156,11 +167,16 @@ export function useTitleSubscriptions(ptyKeys: ReadonlyMap<string, string>): Rea
   const reconcile = useCallback(() => {
     const keys = ptyKeysRef.current
     store.reconcile(keys.values())
+    const liveEngines = getDefaultLiveEngines()
     setTitles((prev) => {
       const next = new Map<string, string>()
       for (const [id, key] of keys) {
         const title = store.get(key)
-        if (title !== undefined) next.set(id, title)
+        if (title === undefined) continue
+        // Same rule as use-turn-polls' projection: the engine's own status
+        // decoration is stripped before anything renders it, so kobe's glyph
+        // column stays the one place turn state is drawn.
+        next.set(id, stripEngineStatusPrefix(title, liveEngines.resolve(key) ?? null))
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next
