@@ -80,6 +80,18 @@ describe("statusReportProtocol", () => {
     expect(dispatcherProtocol("m9", "kobe api")).toContain("kobe api dispatch --task-id <id>")
     expect(dispatcherProtocol("m9", "kobe api")).toContain("kobe api collect --repo .")
   })
+
+  it("points delegation at kobe's own verbs — a pointer, not a curriculum", () => {
+    // The injected protocol stays small (every session pays context for it):
+    // the coordination verbs are named so the agent knows they exist, and the
+    // schema/skill are named as where to learn them — nothing more.
+    const text = noteFilingProtocol("t9", "kobe api")
+    expect(text).toContain("fan-out / add --prompt / send / await / dispatch")
+    expect(text).toContain("kobe api schema")
+    // Guard the "pointer" property itself: the whole protocol must stay a
+    // handful of lines, not absorb the skill's verb tables over time.
+    expect(text.split("\n").length).toBeLessThanOrEqual(6)
+  })
 })
 
 describe("worktreeProtocol", () => {
