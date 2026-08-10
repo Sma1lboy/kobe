@@ -37,7 +37,9 @@ lifecycle tracking, and an explicit outcome contract.
   baked-in reply command — peer conversations need no coordinator and no
   human relay. `--plain` skips the prefix when you truly need a verbatim
   paste. Received a `[KOBE PEER]` message yourself? Reply with its baked-in
-  command, not by asking the user.
+  command, not by asking the user — and if you haven't loaded this skill or
+  `kobe api schema` yet, do that first (the message points there) before
+  improvising verbs.
 - `dispatch` stays the dispatcher's verb (deliver-only into an
   already-hosted session; never impersonate the user in someone else's
   terminal).

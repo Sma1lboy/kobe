@@ -33,7 +33,12 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   } catch {
     /* stale env id — keep id-only provenance rather than dropping it */
   }
-  return `[KOBE PEER] from "${label}" (task ${senderId} — reply: \`${kobeApiInvocation()} send --task-id ${senderId} --prompt "<text>"\`): ${prompt}`
+  const api = kobeApiInvocation()
+  // The trailing pointer closes the loop for a receiver that has never seen
+  // kobe: reply command baked in, and where to learn the rest (the herdr
+  // "--skill first" trick) — a pointer, not a curriculum, since every peer
+  // message pays for this prefix in context.
+  return `[KOBE PEER] from "${label}" (task ${senderId} — reply: \`${api} send --task-id ${senderId} --prompt "<text>"\`; more coordination verbs: the kobe agent skill or \`${api} schema\`): ${prompt}`
 }
 
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {

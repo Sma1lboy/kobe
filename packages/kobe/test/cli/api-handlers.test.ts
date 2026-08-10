@@ -194,6 +194,9 @@ describe("send handler", () => {
       })
       expect(calls[0].prompt).toContain('[KOBE PEER] from "Auth attempt" (task sender-1')
       expect(calls[0].prompt).toContain("send --task-id sender-1")
+      // The self-teach pointer: a receiver that has never seen kobe learns
+      // where the rest of the coordination verbs live.
+      expect(calls[0].prompt).toContain("kobe agent skill")
       expect(calls[0].prompt).toMatch(/: hi$/)
     })
 
