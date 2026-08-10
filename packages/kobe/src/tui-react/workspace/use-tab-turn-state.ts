@@ -17,6 +17,8 @@ import { useEffect, useMemo, useRef } from "react"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { attentionEdges, chipAttentionKind } from "../../tui/lib/notify-state"
+import { defaultShell } from "../../tui/panes/terminal/pty-types"
+import { demoteExitedEngine } from "../../tui/workspace/terminal-tab-identity"
 import {
   type TabsState,
   type TerminalTab,
@@ -70,8 +72,20 @@ export function useTabTurnState(deps: {
     const current = titleStateRef.current
     let next = current
     for (const [tabId, title] of liveTitles) {
+      const live = turnVendors.get(tabId) ?? null
+      // The engine this tab was running is gone (vendor → confirmed null):
+      // reset the tab to the shell it always was, BEFORE recording the new
+      // identity. `kind` describes what runs here now — leaving it at
+      // "engine" is what kept a dot on the sidebar row and made every
+      // keystroke mark an optimistic turn for a session that had exited.
+      const tab = next.tabs.find((t) => t.id === tabId)
+      const demoted = tab ? demoteExitedEngine(tab, tab.liveVendor, live, [defaultShell()]) : undefined
+      if (tab && demoted && demoted !== tab) {
+        next = { ...next, tabs: next.tabs.map((t) => (t.id === tabId ? demoted : t)) }
+        continue // the reset already cleared lastTitle/liveVendor
+      }
       next = setTabLastTitle(next, tabId, title)
-      next = setTabLiveVendor(next, tabId, turnVendors.get(tabId) ?? null)
+      next = setTabLiveVendor(next, tabId, live)
     }
     if (next !== current) apply(next)
   }, [liveTitles, turnVendors])
