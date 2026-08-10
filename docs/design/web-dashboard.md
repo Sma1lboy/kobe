@@ -56,11 +56,16 @@ the PTY sidecar, and lets Vite proxy `/api`, `/events`, `/pty`.
 
 ## Daemon channels the SPA consumes
 
-The daemon web transport exposes only the SPA channel set
-([`spa-channels.ts`](../../packages/kobe-web/server/spa-channels.ts)); no
-standalone bridge socket is involved. A contract
-test (`test/spa-channels.test.ts`) partitions every protocol channel into
-consumed vs dropped so a new channel can't slip through unaccounted.
+The daemon web transport exposes only what the SPA is allowed to reach; no
+standalone bridge socket is involved. Browser reachability is now declared
+per handler (`web: true` in `packages/kobe-daemon/src/daemon/handlers*.ts`)
+and surfaced as a set by
+[`web-rpc-allowlist.ts`](../../packages/kobe-daemon/src/daemon/web-rpc-allowlist.ts),
+so the list can't drift from the registry it describes — this replaced the
+hand-maintained `spa-channels.ts`. A contract test
+([`packages/kobe-web/test/rpc-allowlist.test.ts`](../../packages/kobe-web/test/rpc-allowlist.test.ts))
+partitions every protocol entry into consumed vs dropped so a new one can't
+slip through unaccounted.
 
 | Channel | What the SPA does with it |
 |---|---|
