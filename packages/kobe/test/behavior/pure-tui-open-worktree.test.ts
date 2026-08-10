@@ -32,14 +32,13 @@ async function readInvocations(marker: string): Promise<string[]> {
  * the deterministic harness-level fix; assertions below use set/count
  * semantics so extra presses can't break them.
  *
- * Every attempt RE-ASSERTS sidebar focus first (`ctrl+q`, the documented
- * escape hatch) instead of trusting a one-shot press before the loop.
- * `tasks.openWorktree` is gated on sidebar focus, so a boot that lands
- * focus in the content pane a beat later than the fixed pre-loop wait —
- * or any press that moves focus — left all 15s of retries hammering the
- * wrong pane and the whole loop timed out at zero invocations (the
- * release-pipeline failure on v0.8.58, green on ci.yml for the same
- * commit). ctrl+q is idempotent once the sidebar already has focus.
+ * Do NOT re-send `ctrl+q` inside this loop to "re-assert" sidebar focus:
+ * that chord is NOT idempotent. `focus.sidebar` (scope workspace) returns
+ * to the sidebar, but `app.quit` binds BOTH `q` and `ctrl+q` in scope
+ * sidebar — so once focus is already there, the same byte opens the quit
+ * confirm, whose modal barrier then swallows every `o` for the rest of the
+ * loop. Tried on 2026-08-10; it turned an occasional slow-boot flake into a
+ * deterministic failure on all three retries.
  */
 async function pressUntilInvoked(
   child: { write(data: string): void },
@@ -50,8 +49,6 @@ async function pressUntilInvoked(
   const deadline = Date.now() + 15_000
   let lines: string[] = []
   while (Date.now() < deadline) {
-    child.write("\x11")
-    await new Promise((resolve) => setTimeout(resolve, 150))
     child.write(keys)
     await new Promise((resolve) => setTimeout(resolve, 500))
     lines = await readInvocations(marker)
