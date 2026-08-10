@@ -10,7 +10,6 @@ import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../state/sidebar-tree"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { PrefixHud } from "../component/prefix-hud"
@@ -27,8 +26,6 @@ import { useAccessor } from "../lib/use-accessor"
 import { useDaemonNotices } from "../lib/use-daemon-notices"
 import { useLatest } from "../lib/use-latest"
 import { FileTree } from "../panes/filetree/FileTree"
-import type { SidebarHover } from "../panes/sidebar/Sidebar"
-import { SidebarHoverTooltip } from "../panes/sidebar/hover-tooltip"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
 import { WorkspaceFrame } from "./host-footer"
@@ -96,12 +93,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // long-tool / background-subagent phase (see row-view's completion rule).
   const transcriptActivity = useAccessor(orch.transcriptActivitySignal())
 
-  const [sidebarHover, setSidebarHover] = useState<SidebarHover | null>(null)
-  // Task-lifecycle UI state (issue #20): project filter + sidebar-search gate
-  // muting host letter chords while typing. Move mode / sort pref / toasts
-  // live in useSidebarHostState below. KNOWN GAP vs the Tasks pane: no live
-  // `ui-prefs` follow for sortMode/projectFilter (deliberate for now).
-  const [projectFilter, setProjectFilter] = useState<string | null>(null)
+  // Sidebar-search gate: mutes the host's letter chords while typing. Move
+  // mode / toasts live in useSidebarHostState below.
   const [searchActive, setSearchActive] = useState(false)
 
   const available = Math.max(WORKTREE_TOOLS_MIN_WIDTH, dims.width - SIDEBAR_WIDTH)
@@ -219,7 +212,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const pages = useHostPagesState(focus)
   // Sidebar layout: the tree lists each worktree's tabs as rows (the strip is
   // off by default to match); `flat` restores the PROJECTS / TASKS list.
-  const sidebarMode = resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined))
   // The selected task's active tab — the tree marks that exact row as live.
   // Read from the module map rather than threaded through TerminalTabs: the
   // sidebar renders tabs for tasks whose TerminalTabs is not mounted, so the
@@ -335,7 +327,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           carries no border prop at all. The workspace frame's left edge is
           the only boundary; sidebar focus shows on the KOBE brand text. */}
       <HostSidebar
-        mode={sidebarMode}
         width={SIDEBAR_WIDTH}
         nav={pages.nav}
         onNavChange={pages.goToNav}
@@ -376,8 +367,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         worktreeChanges={worktreeChanges}
         transcriptActivity={transcriptActivity}
         focused={activePane === "sidebar"}
-        onHoverChange={(hover) => setSidebarHover(hover)}
-        hoverEnabled={kv.get("sidebar.hover.enabled", false) === true}
         // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
         // fire these; the flows are the shared lib/task-actions bodies.
         onAddTask={() => void createTask()}
@@ -389,10 +378,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         onMoveRequest={(id, delta) => void moveTask(id, delta)}
         onMoveModeExit={() => setMoveMode(false)}
         onLocalMergeRequest={onLocalMergeRequest}
-        sortMode={sortMode}
-        onSortModeToggle={toggleSortMode}
-        projectFilter={projectFilter}
-        onProjectFilterChange={setProjectFilter}
         onSearchActiveChange={setSearchActive}
         headerStatus={{
           label: `${t("workspace.inbox.title")} ${inbox.counts.total}`,
@@ -459,12 +444,11 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
         </box>
       ) : null}
 
-      <SidebarHoverTooltip hover={sidebarHover} dims={dims} />
       {/* Cross-task attention toasts (issue #15). `useAttention` above fires
           `notif.notify()` on unfocused-task state changes, but the main app
           never mounted the overlay that renders them (only the standalone
           `kobe tasks` pane did) — so the bottom-right toast silently never
-          appeared. Absolute-positioned like SidebarHoverTooltip, under the
+          appeared. Absolute-positioned overlay, under the
           host's NotificationsProvider. */}
       <ToastOverlay />
       {/* Prefix sequence HUD — bottom-left over the Tasks sidebar (the

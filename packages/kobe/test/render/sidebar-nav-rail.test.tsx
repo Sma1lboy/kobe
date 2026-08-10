@@ -10,42 +10,42 @@
  */
 
 import { expect, test } from "bun:test"
-import { SidebarPanel } from "../../src/tui-react/panes/sidebar/panel"
+import { SidebarTree } from "../../src/tui-react/panes/sidebar/SidebarTree"
 import { SIDEBAR_NAV_ITEMS, cycleNavTarget, focusPaneForNav } from "../../src/tui/panes/sidebar/nav-core"
+import type { Task } from "../../src/types/task"
+import { toTaskId } from "../../src/types/task"
 import { renderComponent } from "./harness"
 
-const NOOP = (): void => {}
+const SETTLE = 80
 
-function panel(overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {}) {
+function task(id: string, over: Partial<Task> = {}): Task {
+  return {
+    id: toTaskId(id),
+    title: id,
+    repo: "/repos/kobe",
+    branch: `feat/${id}`,
+    worktreePath: `/wt/${id}`,
+    kind: "task",
+    status: "in_progress",
+    archived: false,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...over,
+  }
+}
+
+const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/kobe" })
+
+function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
   return (
-    <SidebarPanel
-      rootRef={NOOP}
+    <SidebarTree
+      tasks={[MAIN, task("a"), task("b")]}
+      selectedId="a"
+      selectedTabId={null}
+      onSelect={() => {}}
       focused={true}
-      view="active"
-      setView={NOOP}
-      showViewTabs={true}
-      nav="terminal"
-      setNav={NOOP}
-      sortMode="recent"
-      searchMode={false}
-      searchQuery=""
-      flatIds={[]}
-      totalRows={0}
-      projectRows={[]}
-      taskRows={[]}
-      hasTaskRows={false}
-      projectOptions={[]}
-      projectFilterRepo={null}
-      projectFilterLabel=""
-      cycleProjectFilter={NOOP}
-      projectScrollMaxHeight={10}
-      setProjectScrollRef={NOOP}
-      setTaskScrollRef={NOOP}
-      rowCardShared={{} as Parameters<typeof SidebarPanel>[0]["rowCardShared"]}
-      hover={null}
-      dims={{ width: 24, height: 40 }}
-      renderHoverFallback={false}
-      {...overrides}
+      width={24}
+      {...over}
     />
   )
 }
@@ -62,7 +62,8 @@ async function labelLines(frame: () => Promise<string>): Promise<Record<string, 
 }
 
 test("every destination gets its own line, in declared order", async () => {
-  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  const { frame } = await renderComponent(tree(), { width: 24, height: 40 })
+  await new Promise((r) => setTimeout(r, SETTLE))
   const lines = await labelLines(frame)
 
   const rendered = Object.entries(lines)
@@ -74,14 +75,16 @@ test("every destination gets its own line, in declared order", async () => {
 })
 
 test("no label is truncated at the 24-cell rail width", async () => {
-  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  const { frame } = await renderComponent(tree(), { width: 24, height: 40 })
+  await new Promise((r) => setTimeout(r, SETTLE))
   const text = await frame()
   expect(text).toContain("Routines")
   expect(text).not.toContain("Routin…")
 })
 
 test("the rail has no row for the terminal — the task list IS that destination", async () => {
-  const { frame } = await renderComponent(panel(), { width: 24, height: 40 })
+  const { frame } = await renderComponent(tree(), { width: 24, height: 40 })
+  await new Promise((r) => setTimeout(r, SETTLE))
   const text = await frame()
   // A "Workspace"/"Terminal" row would be a second control for what selecting
   // a task already does.
@@ -93,9 +96,9 @@ test("the task list stays visible whatever the rail selects", async () => {
   // The rail swaps the CONTENT pane on the right; the sidebar is unchanged, so
   // clicking a task while the Kanban is up can switch back to its terminal.
   for (const nav of ["terminal", "kanban", "automations", "issues"] as const) {
-    const { frame } = await renderComponent(panel({ nav }), { width: 24, height: 40 })
-    const text = await frame()
-    expect(text, nav).toContain("TASKS")
+    const { frame } = await renderComponent(tree({ nav }), { width: 24, height: 40 })
+    await new Promise((r) => setTimeout(r, SETTLE))
+    expect(await frame(), nav).toContain("feat/a")
   }
 })
 
@@ -118,17 +121,4 @@ test("opening a rail page carries focus into the content pane", () => {
   expect(focusPaneForNav("issues")).toBe("workspace")
   // Back to the terminal means back to the task list.
   expect(focusPaneForNav("terminal")).toBe("sidebar")
-})
-
-test("the Active/Archived row renders only when it can do something", async () => {
-  // Deleted once already by an unrelated sidebar-header PR (#391) after it
-  // shipped, so pin the render rather than the prop: with nothing archived
-  // the two nouns are noise at the top of the rail.
-  const shown = await renderComponent(panel({ showViewTabs: true }), { width: 24, height: 40 })
-  expect(await shown.frame()).toContain("Archived")
-
-  const hidden = await renderComponent(panel({ showViewTabs: false }), { width: 24, height: 40 })
-  const frame = await hidden.frame()
-  expect(frame).not.toContain("Archived")
-  expect(frame).not.toContain("Active")
 })

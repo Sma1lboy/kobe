@@ -47,7 +47,6 @@ export const en = {
     toast: "Toast",
     sound: "Sound",
     crossTask: "Notify for background tasks",
-    sidebarHover: "Task hover tooltips",
     /** SubSection title for the keyboard-hints toggle */
     keyHints: "Keyboard hints",
     keyHintsHint:
@@ -84,7 +83,6 @@ export const en = {
     scrollbackField: "rows",
     scrollbackInvalidTitle: "Not a number",
     scrollbackInvalidBody: "Scrollback must be a number of rows (e.g. 1000). Keeping the previous setting.",
-    sidebarTree: "Sidebar as a tree (project → worktree → tab)",
     /** `{mode}` = one of tabStripMode.* below. */
     tabStripRow: "tab strip: {mode}  (enter to cycle)",
     tabStripMode: {
@@ -231,7 +229,6 @@ export const zh: typeof en = {
     toast: "Toast 弹窗",
     sound: "声音",
     crossTask: "为后台任务发送通知",
-    sidebarHover: "任务悬停提示",
     keyHints: "键盘提示",
     keyHintsHint:
       "状态栏的命令/帮助提醒，以及侧栏和文件面板的一行首用按键提示。重新开启会重新点亮已因使用而熄灭的面板提示。",
@@ -266,7 +263,6 @@ export const zh: typeof en = {
     scrollbackField: "行数",
     scrollbackInvalidTitle: "不是数字",
     scrollbackInvalidBody: "回滚行数必须是数字（如 1000）。保留原设置。",
-    sidebarTree: "侧栏用树状（项目 → worktree → 标签）",
     tabStripRow: "标签栏: {mode}  (enter 切换)",
     tabStripMode: {
       never: "关闭 — 标签在左侧树里",

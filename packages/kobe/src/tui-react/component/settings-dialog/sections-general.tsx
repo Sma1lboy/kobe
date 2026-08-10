@@ -143,7 +143,6 @@ export function GeneralSettingsSection(
   const toastRow = rowIdx("toast")
   const soundRow = rowIdx("sound")
   const crossTaskRow = rowIdx("cross-task")
-  const sidebarHoverRow = rowIdx("sidebar-hover")
   const keyHintsRow = rowIdx("key-hints")
   const zenDefaultOnRow = rowIdx("zen-default-on")
   const zenKeepTasksRow = rowIdx("zen-keep-tasks")
@@ -153,7 +152,6 @@ export function GeneralSettingsSection(
   const worktreeCustomRow = rowIdx("worktree-custom")
   const scrollbackRow = rowIdx("scrollback-rows")
   const tabStripHideSingleRow = rowIdx("tab-strip-hide-single")
-  const sidebarTreeRow = rowIdx("sidebar-tree")
 
   return (
     <box flexDirection="row" gap={2}>
@@ -266,14 +264,6 @@ export function GeneralSettingsSection(
           >
             {`${check(prefs.crossTaskEnabled())} ${t("settings.general.crossTask")}`}
           </Row>
-          <Row
-            cursor={isBodyCursor(sidebarHoverRow)}
-            onMouseUp={activate(sidebarHoverRow, prefs.toggleSidebarHover)}
-            fg={prefs.sidebarHoverEnabled() ? theme.accent : theme.textMuted}
-            bold={true}
-          >
-            {`${check(prefs.sidebarHoverEnabled())} ${t("settings.general.sidebarHover")}`}
-          </Row>
         </SubSection>
         <SubSection title={t("settings.general.keyHints")} hint={t("settings.general.keyHintsHint")}>
           <Row
@@ -359,14 +349,6 @@ export function GeneralSettingsSection(
             {t("settings.general.tabStripRow", {
               mode: t(`settings.general.tabStripMode.${prefs.tabStripMode()}`),
             })}
-          </Row>
-          <Row
-            cursor={isBodyCursor(sidebarTreeRow)}
-            onMouseUp={activate(sidebarTreeRow, prefs.toggleSidebarTreeMode)}
-            fg={prefs.sidebarTreeMode() ? theme.accent : theme.textMuted}
-            bold={true}
-          >
-            {`${check(prefs.sidebarTreeMode())} ${t("settings.general.sidebarTree")}`}
           </Row>
         </SubSection>
       </box>

@@ -53,7 +53,6 @@ export type SettingsRow =
   | { id: "toast"; kind: "toast" }
   | { id: "sound"; kind: "sound" }
   | { id: "cross-task"; kind: "crossTask" }
-  | { id: "sidebar-hover"; kind: "sidebarHover" }
   | { id: "key-hints"; kind: "keyHints" }
   | { id: "zen-default-on"; kind: "zenDefaultOn" }
   | { id: "zen-keep-tasks"; kind: "zenKeepTasks" }
@@ -63,7 +62,6 @@ export type SettingsRow =
   | { id: "worktree-custom"; kind: "worktreeCustom" }
   | { id: "scrollback-rows"; kind: "scrollbackRows" }
   | { id: "tab-strip-hide-single"; kind: "tabStripHideSingle" }
-  | { id: "sidebar-tree"; kind: "sidebarTree" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: string; kind: "pluginToggle"; pluginId: string }
@@ -141,7 +139,6 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "toast", kind: "toast" },
     { id: "sound", kind: "sound" },
     { id: "cross-task", kind: "crossTask" },
-    { id: "sidebar-hover", kind: "sidebarHover" },
     { id: "key-hints", kind: "keyHints" },
     { id: "zen-default-on", kind: "zenDefaultOn" },
     { id: "zen-keep-tasks", kind: "zenKeepTasks" },
@@ -151,7 +148,6 @@ export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focus
     { id: "worktree-custom", kind: "worktreeCustom" },
     { id: "scrollback-rows", kind: "scrollbackRows" },
     { id: "tab-strip-hide-single", kind: "tabStripHideSingle" },
-    { id: "sidebar-tree", kind: "sidebarTree" },
   ]
 }
 

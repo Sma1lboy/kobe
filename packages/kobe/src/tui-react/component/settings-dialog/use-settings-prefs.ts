@@ -13,7 +13,6 @@ import { ARCHIVED_HISTORY_PREVIEW_KEY } from "../../../state/archived-history"
 import { AUTO_STATUS_KEY } from "../../../state/auto-status"
 import { DISPATCHER_KEY } from "../../../state/dispatcher"
 import { DEFAULT_SCROLLBACK_ROWS, SCROLLBACK_ROWS_KEY, normalizeScrollbackRows } from "../../../state/scrollback"
-import { SIDEBAR_MODE_KEY, resolveSidebarMode } from "../../../state/sidebar-tree"
 import { SPLIT_STYLE_KEY, type SplitStyle, normalizeSplitStyle } from "../../../state/split-style"
 import {
   TAB_STRIP_HIDE_SINGLE_KEY,
@@ -73,12 +72,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   // Sidebar hover tooltips: opt-in, default OFF (owner call 2026-07-28) —
   // the item info they show is nice-to-have, not essential.
-  function sidebarHoverEnabled(): boolean {
-    return kv.get("sidebar.hover.enabled", false) === true
-  }
-  function toggleSidebarHover(): void {
-    kv.set("sidebar.hover.enabled", !sidebarHoverEnabled())
-  }
 
   // Appearance: how split leaves draw — full box frames or single dividers.
   function splitStyle(): SplitStyle {
@@ -104,14 +97,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
   }
   function toggleZenKeepsTasks(): void {
     kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
-  }
-
-  // Sidebar layout: tree (project → worktree → tab) or the flat task list.
-  function sidebarTreeMode(): boolean {
-    return resolveSidebarMode(kv.get(SIDEBAR_MODE_KEY, undefined)) === "tree"
-  }
-  function toggleSidebarTreeMode(): void {
-    kv.set(SIDEBAR_MODE_KEY, sidebarTreeMode() ? "flat" : "tree")
   }
 
   // Chat tab strip: never / only with 2+ tabs / always. Cycles rather than
@@ -285,8 +270,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     toggleSound,
     crossTaskEnabled,
     toggleCrossTask,
-    sidebarHoverEnabled,
-    toggleSidebarHover,
     splitStyle,
     selectSplitStyle,
     zenDefaultOn,
@@ -309,8 +292,6 @@ export function useSettingsPrefs(kv: KVContext, dialog: DialogContext) {
     editScrollbackRows,
     tabStripMode,
     cycleTabStripMode,
-    sidebarTreeMode,
-    toggleSidebarTreeMode,
     worktreeKind,
     worktreeKindLabel,
     worktreeCustomPath,

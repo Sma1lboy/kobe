@@ -37,7 +37,6 @@ function task(id: string, over: Partial<Task> = {}): Task {
 
 function sidebarProps(over: Partial<HostSidebarProps> = {}): HostSidebarProps {
   return {
-    mode: "flat",
     width: 28,
     nav: "terminal",
     onNavChange: NOOP,
@@ -48,8 +47,6 @@ function sidebarProps(over: Partial<HostSidebarProps> = {}): HostSidebarProps {
     onActivate: NOOP,
     onSelectTab: NOOP,
     focused: true,
-    onHoverChange: NOOP,
-    hoverEnabled: false,
     onAddTask: NOOP,
     onDeleteRequest: NOOP,
     onArchiveRequest: NOOP,
@@ -59,10 +56,6 @@ function sidebarProps(over: Partial<HostSidebarProps> = {}): HostSidebarProps {
     onMoveRequest: NOOP,
     onMoveModeExit: NOOP,
     onLocalMergeRequest: NOOP,
-    sortMode: "default",
-    onSortModeToggle: NOOP,
-    projectFilter: null,
-    onProjectFilterChange: NOOP,
     onSearchActiveChange: NOOP,
     headerStatus: { label: "", emphasize: false },
     onHeaderStatusClick: NOOP,
@@ -109,19 +102,6 @@ describe("HostSidebar", () => {
     act(() => mockInput.pressEnter())
     await settle()
     expect(selected.length).toBeGreaterThan(0)
-  })
-
-  it("tree mount renders the same wrapper without a stale hint", async () => {
-    withTempKvHome()
-    const { frame } = await renderComponent(inFrameRow(<HostSidebar {...sidebarProps({ mode: "tree" })} />, 24), {
-      width: 28,
-      height: 24,
-      providers: { kv: true, notifications: true },
-    })
-    await settle()
-    const text = await frame()
-    expect(text).toContain("feat/a")
-    expect(text).toContain("j/k move")
   })
 })
 

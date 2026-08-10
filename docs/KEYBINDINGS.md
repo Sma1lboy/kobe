@@ -209,11 +209,10 @@ The tree deliberately adds NO other chords. One existing chord means
 something tree-shaped inside it:
 
 - `/` (`sidebar.search.enter`) — the same search chord, with a wider haystack.
-  On top of the flat sidebar's task title + repo, a query also matches a
-  worktree's branch and, uniquely to the tree, a **tab's live title**. Matches
-  keep their ancestors so a hit is never orphaned from its project. `escape` /
-  `enter` leave search exactly as in the flat rail. (`ctrl+p` does nothing in
-  the tree — the project filter it drove was a fold, and the fold is gone.)
+  On top of a task's title + repo, a query also matches a worktree's branch
+  and a **tab's live title**. Matches keep their ancestors so a hit is never
+  orphaned from its project. `escape` / `enter` leave search. (`ctrl+p` does
+  nothing — the project filter it drove was a fold, and the fold is gone.)
 
 - `prefix+m` (`task.moveMode`) — the same global move mode, retargeted at the
   level the tree actually shows: `j`/`k` drag the cursor row's **project**, not
@@ -229,9 +228,9 @@ something tree-shaped inside it:
   to kobe; the terminal-side fix (e.g. iTerm2's "Ctrl-click reported to
   apps") lives in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
-`sidebar.sort` is not registered in the tree. A tree already carries an order
-(project → worktree → tab) and manual placement lives in move mode, so a second
-automatic ordering would only fight the structure. The flat sidebar keeps it.
+`sidebar.sort` is not registered. A tree already carries an order (project →
+worktree → tab) and manual placement lives in move mode, so a second automatic
+ordering would only fight the structure.
 
 Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
 call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct

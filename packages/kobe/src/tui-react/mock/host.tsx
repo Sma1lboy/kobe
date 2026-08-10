@@ -23,7 +23,7 @@ import { useFocus } from "../context/focus"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { Sidebar } from "../panes/sidebar/Sidebar"
+import { SidebarTree } from "../panes/sidebar/SidebarTree"
 import { TerminalTabs } from "../workspace/TerminalTabs"
 
 const cwd = mkdtempSync(join(tmpdir(), "kobe-mock-react-"))
@@ -53,14 +53,13 @@ function MockScene() {
         backgroundColor={theme.backgroundPanel}
         onMouseUp={() => focus.setFocused("sidebar")}
       >
-        <Sidebar
+        <SidebarTree
           width={SIDEBAR_WIDTH}
           tasks={tasks}
           selectedId={selectedId}
+          selectedTabId={null}
           onSelect={setSelectedId}
           focused={focus.focused === "sidebar"}
-          hoverEnabled={true}
-          sortMode="default"
           headerStatus={{ label: "v0.0.0-mock", emphasize: false }}
         />
       </box>
