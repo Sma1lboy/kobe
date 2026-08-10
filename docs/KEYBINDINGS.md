@@ -21,8 +21,9 @@ The user-facing model has two independent dimensions:
 That produces three common patterns: bare keys act in the focused pane; a
 small one-press set owns frequent Kobe actions; and the prefix opens the
 less-frequent command layer. The embedded terminal is the passthrough boundary:
-unreserved keys, including the prefix first stroke, remain engine/shell input.
-Press `ctrl+q` to leave it before opening the command layer.
+unreserved keys remain engine/shell input, while the currently configured prefix
+first stroke stays Kobe-owned so the command layer works from every pane.
+Press `ctrl+q` to leave the terminal without opening the command layer.
 
 ## Discoverability (2026-08-09)
 
@@ -32,15 +33,15 @@ which-key map, and all captions resolve through the live keymap
 an unbound/disabled one drops out:
 
 - **Status-bar micro-hint** — a permanent `{prefix} commands · F1 help ·
-  [settings]` row in the workspace footer's right corner. Inside the
-  embedded terminal it swaps the prefix token for the `ctrl+q` escape hatch
-  (the prefix first stroke passes through to the PTY there); with a modal
-  open, or the prefix disabled and help unbound, tokens drop until nothing
-  renders. Every segment is mouse-activatable — clicking `commands` arms the
-  REAL prefix (the guide accepts a keyboard second stroke), clicking the
-  help caption opens F1, and the `[settings]` button opens Settings even while the
-  terminal owns keyboard input, since mouse clicks never pass through
-  (owner call 2026-08-09).
+  [settings]` row in the workspace footer's right corner, including inside
+  the embedded terminal. When no prefix action is reachable there, it falls
+  back to the `ctrl+q` escape hatch; with a modal open, or the prefix disabled
+  and help unbound, tokens drop until nothing renders. Every segment is
+  mouse-activatable — clicking `commands` arms the REAL prefix (the guide
+  accepts a keyboard second stroke), clicking the help caption opens F1, and
+  the `[settings]` button opens Settings even while the terminal owns keyboard
+  input, since mouse clicks never pass through (owner call 2026-08-09; terminal
+  prefix reachability corrected 2026-08-10).
 - **First-use pane hints** — one muted line per vim-style pane (sidebar:
   `j/k move · ⏎ open`; files: move/fold/open/diff). Using that pane's own
   nav/select keys extinguishes its line permanently; the files pane then
@@ -64,6 +65,16 @@ which-key-style command map generated from the live Binding Stack, so it shows
 only actions that can run in the current focus/modal state. It cancels on
 timeout, modal changes, reload, `esc`, or an invalid second stroke.
 
+Owner decision (2026-08-10): the configured prefix first stroke is dynamically
+Kobe-owned even inside the embedded terminal. This makes the command layer and
+content-scoped prefix actions reachable without leaving the pane. The explicit
+cost of the default is that the terminal no longer receives `ctrl+a` for shell
+line-start; disabling the prefix or rebinding it releases the old key to the
+PTY immediately. Unlike fixed global chords, this reservation follows the live
+user configuration. A sequence armed outside the terminal still cancels when
+focus crosses the PTY boundary, so a pending pane command cannot leak into the
+engine accidentally.
+
 Default prefix actions:
 
 | Sequence | Action |
@@ -80,7 +91,7 @@ Default prefix actions:
 | `ctrl+a`, `1` | Point the content pane at the Kanban (kobe's own issue board) |
 | `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
 | `ctrl+a`, `3` | Point the content pane at GitHub Issues (external tracker) |
-| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell; not reachable from inside the terminal pane, use the sidebar ☯ ZEN chip there) |
+| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell) |
 | `ctrl+a`, `,` | Open Settings |
 | `ctrl+a`, `p` / `P` | Create a PR from the active task |
 

@@ -134,12 +134,15 @@ describe("armPrefixNow (mouse path into the command layer)", () => {
     expect(armPrefixNow(stack)).toBe(false)
   })
 
-  test("no-ops while the terminal passthrough owns input", () => {
+  test("arms while terminal passthrough owns unrelated input", () => {
+    const calls: string[] = []
     const stack: RegisteredBinding[] = [
-      registration(1, true, "f", () => {}),
+      registration(1, true, "f", () => calls.push("fork")),
       { id: 2, config: () => ({ enabled: true, bindings: [{ key: "a", cmd: () => {}, passthrough: true }] }) },
     ]
-    expect(armPrefixNow(stack)).toBe(false)
+    expect(armPrefixNow(stack)).toBe(true)
+    expect(dispatchKeyEvent(stack, event("f") as never)).toBe(true)
+    expect(calls).toEqual(["fork"])
   })
 
   test("no-ops when a modal barrier hides every prefix row", () => {

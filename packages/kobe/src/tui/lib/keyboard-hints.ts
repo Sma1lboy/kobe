@@ -65,17 +65,18 @@ export type StatusHintToken = {
 
 /**
  * The status-bar micro-hint, derived from the live reachability snapshot:
- * inside the embedded terminal the prefix first stroke passes through to the
- * PTY, so the hint advertises the escape hatch instead of lying about the
- * prefix; a disabled prefix or unbound help chord drops its token.
+ * the configured prefix remains Kobe-owned inside the embedded terminal, so
+ * it stays visible whenever a second stroke can run. If no prefix command is
+ * reachable there, the escape hatch is the truthful fallback; a disabled
+ * prefix or unbound help chord drops its token.
  */
 export function statusHintTokens(reach: BindingReachability, prefixKey: string | null): StatusHintToken[] {
   const tokens: StatusHintToken[] = []
-  if (reach.inputPassthrough) {
+  if (prefixKey !== null && reach.prefix.size > 0) {
+    tokens.push({ chord: prefixKey, msg: "commands" })
+  } else if (reach.inputPassthrough) {
     const cap = reach.direct.has("focus.sidebar") ? legendCap("focus.sidebar") : null
     if (cap) tokens.push({ chord: cap, msg: "sidebar" })
-  } else if (prefixKey !== null && reach.prefix.size > 0) {
-    tokens.push({ chord: prefixKey, msg: "commands" })
   }
   if (reach.direct.has("help.open")) {
     const cap = legendCap("help.open")

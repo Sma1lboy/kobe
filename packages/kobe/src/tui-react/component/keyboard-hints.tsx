@@ -55,8 +55,8 @@ export type StatusKeyHintItem = {
 /**
  * The status-bar hint segments, empty when there is nothing truthful to say
  * (hints toggled off, prefix disabled AND help unbound, …). Reads the live
- * binding stack, so an open modal or the terminal passthrough boundary
- * reshapes it automatically.
+ * binding stack, so an open modal or a context with no reachable prefix
+ * commands reshapes it automatically.
  */
 export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): StatusKeyHintItem[] {
   const t = useT()
@@ -76,9 +76,8 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   // Snapshot AFTER every commit, never during render: `enabled` gates like
   // the terminal passthrough table read render-refreshed refs in CHILD
   // components, and this hook renders in a parent (the workspace footer) —
-  // a render-time read sees the PREVIOUS cycle's focus, which showed the
-  // prefix hint inside the terminal and the escape hatch outside it,
-  // exactly inverted. Effects run children-first, so by the time this one
+  // a render-time read sees the PREVIOUS cycle's focus and command set.
+  // Effects run children-first, so by the time this one
   // fires the whole tree's refs and registrations are current. The
   // compare-and-set keeps the no-change case from looping.
   useEffect(() => {

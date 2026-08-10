@@ -136,7 +136,9 @@ export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
 
 /**
  * Chord strings the terminal pane must NEVER passthrough to the shell.
- * Deliberately MINIMAL: the engine CLI owns
+ * The dispatcher also dynamically claims the configured command prefix;
+ * keeping that out of this static table makes live rebindings release the
+ * old prefix immediately. This list stays deliberately MINIMAL: the engine CLI owns
  * its own chords (shift+tab plan-mode, ctrl+r history, ctrl+hjkl, F1…),
  * so kobe keeps only ctrl+q as the escape hatch plus the tab-management
  * and reset chords. Kobe's other global chords stay reachable from every

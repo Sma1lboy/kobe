@@ -4,9 +4,9 @@
  *
  * Same passthrough contract as the Solid hook: when focused, every
  * keystroke the shell would expect (ctrl+c, ctrl+d, arrows, …) is
- * forwarded verbatim. Only `RESERVED_GLOBAL_CHORDS` and the
- * ctrl+pgup/pgdown scrollback chords stay kobe-owned — see
- * `keys-pure.ts` for the full rationale, unchanged and reused as-is.
+ * forwarded verbatim. The dynamically configured command prefix,
+ * `RESERVED_GLOBAL_CHORDS`, and ctrl+pgup/pgdown scrollback chords stay
+ * kobe-owned — see `keys-pure.ts` for the full rationale.
  *
  * Pure/runtime split preserved: `keys-pure.ts` (constants + the
  * side-effect-free byte encoder) is imported straight from the Solid

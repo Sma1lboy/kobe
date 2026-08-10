@@ -16,7 +16,7 @@ export type Binding = {
   key: string
   /** True when `key` is the second stroke of the PureTUI prefix. */
   prefix?: boolean
-  /** Terminal/shell input that must win over Kobe's configurable prefix. */
+  /** Terminal/shell input used to detect the PTY boundary. The configured prefix remains Kobe-owned. */
   passthrough?: boolean
   /**
    * Owning KobeKeymap binding id (`tab.new`) — `bindByIds` fills it in so
@@ -191,7 +191,7 @@ export type PrefixConfiguration = {
 export type BindingReachability = {
   direct: ReadonlySet<string>
   prefix: ReadonlySet<string>
-  /** An enabled terminal passthrough table owns the current input surface. */
+  /** The current input surface forwards unclaimed keys to a terminal. */
   inputPassthrough: boolean
 }
 
@@ -199,6 +199,7 @@ export const DEFAULT_PREFIX_CONFIGURATION: Readonly<PrefixConfiguration> = { key
 
 let prefixConfiguration: PrefixConfiguration = { ...DEFAULT_PREFIX_CONFIGURATION }
 let prefixArmedAt: number | null = null
+let prefixArmedOnPassthrough = false
 let prefixTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Apply a validated configuration and cancel an in-flight sequence. */
@@ -223,12 +224,14 @@ export function resetPrefixState(): void {
   if (prefixTimer !== null) clearTimeout(prefixTimer)
   prefixTimer = null
   prefixArmedAt = null
+  prefixArmedOnPassthrough = false
   prefixHudSetArmed(false)
 }
 
-function armPrefix(now: number, options: readonly PrefixHudOption[]): void {
+function armPrefix(now: number, options: readonly PrefixHudOption[], inputPassthrough: boolean): void {
   resetPrefixState()
   prefixArmedAt = now
+  prefixArmedOnPassthrough = inputPassthrough
   prefixTimer = setTimeout(resetPrefixState, prefixConfiguration.timeoutMs)
   prefixHudSetArmed(true, options, now)
 }
@@ -236,17 +239,17 @@ function armPrefix(now: number, options: readonly PrefixHudOption[]): void {
 /**
  * Arm the PureTUI prefix programmatically — the mouse path into the command
  * layer (the footer's "commands" hint is clickable). Same guards as the
- * keyboard arm branch in {@link dispatchKeyEvent}: a disabled prefix, an
- * input surface owned by the terminal passthrough, or an unreachable
- * catalogue (modal barrier) is a no-op — the guide must never show commands
- * a second stroke couldn't fire. Returns whether it armed; the armed state
- * is the real one, so the next keypress dispatches as a second stroke.
+ * keyboard arm branch in {@link dispatchKeyEvent}: a disabled prefix or an
+ * unreachable catalogue (modal barrier) is a no-op. Terminal passthrough is
+ * deliberately allowed because the configured prefix is Kobe-global; every
+ * other unclaimed key still reaches the PTY. Returns whether it armed; the
+ * armed state is the real one, so the next keypress dispatches as a second
+ * stroke.
  */
 export function armPrefixNow(snapshot: readonly RegisteredBinding[], now: number = Date.now()): boolean {
   if (prefixConfiguration.key === null) return false
-  if (inputPassthroughReachable(snapshot)) return false
   if (!prefixReachable(snapshot)) return false
-  armPrefix(now, reachablePrefixOptions(snapshot))
+  armPrefix(now, reachablePrefixOptions(snapshot), inputPassthroughReachable(snapshot))
   return true
 }
 
@@ -359,7 +362,6 @@ function dispatchMode(
   evt: KeyEvent,
   candidates: string[],
   prefix: boolean,
-  accepts: (binding: Binding) => boolean = () => true,
 ): Binding | null {
   for (let i = snapshot.length - 1; i >= 0; i--) {
     const reg = snapshot[i]
@@ -373,9 +375,7 @@ function dispatchMode(
     // decide. Candidates are ≤3 strings, so the nested scan stays O(1).
     let hit: Binding | undefined
     for (const candidate of candidates) {
-      hit = cfg.bindings.find(
-        (binding) => Boolean(binding.prefix) === prefix && binding.key === candidate && accepts(binding),
-      )
+      hit = cfg.bindings.find((binding) => Boolean(binding.prefix) === prefix && binding.key === candidate)
       if (hit) break
     }
     if (hit) {
@@ -423,10 +423,12 @@ export function dispatchKeyEvent(
   const candidates = matchKey(evt as KeyEvent)
   dispatching = true
   try {
-    // A sequence armed in another pane cannot cross the terminal boundary:
-    // once PTY passthrough owns input, cancel it and dispatch this key using
-    // the current surface instead.
-    if (prefixArmedAt !== null && inputPassthroughReachable(snapshot)) resetPrefixState()
+    // A sequence cannot cross the PTY boundary after it is armed: the next
+    // key must resolve in the same kind of input surface that showed the
+    // command map. Prefixes armed INSIDE the terminal remain valid there.
+    if (prefixArmedAt !== null && inputPassthroughReachable(snapshot) !== prefixArmedOnPassthrough) {
+      resetPrefixState()
+    }
     if (prefixArmedAt !== null) {
       const armedPrefixKey = prefixConfiguration.key ?? ""
       const expired = now - prefixArmedAt > prefixConfiguration.timeoutMs
@@ -456,18 +458,12 @@ export function dispatchKeyEvent(
     }
 
     if (prefixConfiguration.key !== null && candidates.includes(prefixConfiguration.key)) {
-      // The embedded terminal owns unreserved input, including the prefix
-      // first stroke. Its explicit passthrough row must win before the
-      // global prefix catalogue can arm.
-      const passthrough = dispatchMode(snapshot, evt as KeyEvent, candidates, false, (binding) =>
-        Boolean(binding.passthrough),
-      )
-      if (passthrough) {
-        evt.preventDefault()
-        return true
-      }
+      // The configured first stroke is Kobe-global, including while the
+      // embedded terminal owns every other unreserved key. If no prefix row
+      // is reachable (disabled configuration/modal context), normal direct
+      // dispatch below still lets the terminal's passthrough binding win.
       if (prefixReachable(snapshot)) {
-        armPrefix(now, reachablePrefixOptions(snapshot))
+        armPrefix(now, reachablePrefixOptions(snapshot), inputPassthroughReachable(snapshot))
         evt.preventDefault()
         return true
       }
