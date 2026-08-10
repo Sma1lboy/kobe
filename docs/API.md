@@ -127,8 +127,15 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 ## drive
 
-- `send [--task-id ID] --prompt TEXT [--tab TAB]`: paste a follow-up into a
-  task's running engine (one full turn). Defaults to the active task.
+- `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a
+  follow-up into a task's running engine (one full turn). Defaults to the
+  active task. Invoked from inside another kobe task (`$KOBE_TASK_ID` set,
+  target ≠ sender), the prompt is prefixed with `[KOBE PEER]` provenance —
+  sender title + task id + the exact `kobe api send` command to reply +
+  a pointer at the kobe agent skill / `kobe api schema` for the rest of
+  the coordination verbs — so agents can message each other directly and
+  a receiver that has never seen kobe can still answer and self-teach.
+  `--plain` skips the prefix.
   `--tab new` mints the next `tab-N` and spawns a fresh engine tab there
   (visible in the sidebar tree like a TUI-opened tab); `--tab tab-N`
   delivers to that exact alive tab (`TAB_NOT_FOUND` when dead/absent).

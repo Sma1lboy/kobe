@@ -38,7 +38,7 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * marker is below this number is STALE: the binary moved on, the skill
  * didn't, so we prompt the developer to re-run `kobe skill install`.
  */
-export const KOBE_SKILL_VERSION = 7
+export const KOBE_SKILL_VERSION = 8
 
 /**
  * Where an installed kobe skill can be FOUND, relative to a home/project
