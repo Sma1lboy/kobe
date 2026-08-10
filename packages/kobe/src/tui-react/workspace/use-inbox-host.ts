@@ -46,7 +46,25 @@ export function useInboxHost(args: {
       ),
     [args.items, args.tasks, args.kv],
   )
-  const counts = attentionInboxCounts(availableItems)
+  // Episodes whose target is what you're ALREADY looking at never surface:
+  // the daemon records them unconditionally and its push lands before the
+  // background dismiss (the resolve effect below) round-trips, so without
+  // this synchronous filter the Inbox count flashes 1 → 0 on every
+  // turn-complete of the current tab. The durable record is still cleaned
+  // up by the dismiss — this only keeps it out of the visible queue.
+  const viewingResolved = args.selectedId
+    ? new Set(
+        visitResolvedEpisodes(availableItems, {
+          taskId: args.selectedId,
+          tabId: activeTabIdFor(args.selectedId),
+        }).map(episodeKey),
+      )
+    : null
+  const visibleItems =
+    viewingResolved && viewingResolved.size > 0
+      ? availableItems.filter((item) => !viewingResolved.has(episodeKey(item)))
+      : availableItems
+  const counts = attentionInboxCounts(visibleItems)
   const notifyErrorRef = useLatest(args.notifyError)
   const unavailableItemsRef = useLatest(unavailableItems)
   const unavailableSignature = episodeSignature(unavailableItems)
@@ -151,5 +169,5 @@ export function useInboxHost(args: {
     resolveEpisodes(currentItems, { taskId: selectedId, tabId: activeTab })
   }, [availableSignature, resolveEpisodes])
 
-  return { availableItems, counts, openItem, show, resolveVisited }
+  return { availableItems: visibleItems, counts, openItem, show, resolveVisited }
 }
