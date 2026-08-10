@@ -219,7 +219,10 @@ something tree-shaped inside it:
 - Right-click on any row opens that row's menu (`j`/`k`/`enter`/`esc`). The
   entries are exactly what the row's own chords already do, so the menu never
   becomes a second place where behavior is decided — the one exception is the
-  project header, which the cursor cannot reach at all.
+  project header, which the cursor cannot reach at all. Some outer terminals
+  (iTerm2 by default) keep right-click for their own menu and never report it
+  to kobe; the terminal-side fix (e.g. iTerm2's "Ctrl-click reported to
+  apps") lives in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 `sidebar.sort` is not registered in the tree. A tree already carries an order
 (project → worktree → tab) and manual placement lives in move mode, so a second

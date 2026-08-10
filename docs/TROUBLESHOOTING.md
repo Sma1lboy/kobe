@@ -59,6 +59,33 @@ window (no pane awareness), exactly like tmux.
 **Remote workflows:** the kobe web dashboard sidesteps all of this. The
 browser owns the clipboard.
 
+## Right-click opens my terminal's menu instead of kobe's
+
+**Why.** The outer terminal's context menu lives in the app layer, ahead of
+the TTY: it decides what to do with a right-click before mouse reporting
+ever sees it. iTerm2 (and several other emulators) keep right-click for
+their own menu by default, so kobe's row menu never gets the event. No TUI
+can take that back from inside the terminal — the fix is a terminal
+setting, not a kobe one.
+
+**iTerm2** ships an official escape hatch for exactly this
+([Pointer preferences](https://iterm2.com/3.3/documentation-preferences-pointer.html)):
+
+- Settings → **Pointer** → check *"Ctrl-click reported to apps, does not
+  open menu"*. **Ctrl+left-click** is then reported to kobe as a
+  right-click and the row menu opens; plain right-click keeps iTerm2's
+  menu, so you lose nothing.
+- Alternatively, Settings → Pointer → *Mouse Button Actions* can rebind
+  the right-button gesture itself away from iTerm2's menu.
+
+**Terminal.app** has no reporting toggle for this; use the keyboard
+fallback below.
+
+**Fallback that works everywhere:** every row-menu entry is also a direct
+chord on the row itself (`r` rename, `a` archive, `d` delete, …) — see
+[KEYBINDINGS.md](./KEYBINDINGS.md). The one right-click-only surface today
+is the project header's menu.
+
 ## Mouse wheel in the embedded terminal
 
 The wheel follows real terminal-emulator semantics, in order:
