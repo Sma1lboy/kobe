@@ -3,13 +3,44 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 6 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 7 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
 Use `kobe api` to manage local coding tasks. Each Task owns a git Worktree,
 branch, and Hosted PTY engine sessions. API automation works without an open
 TUI; prompted `send`, `add`, and `fan-out` ensure the canonical engine session.
+
+## Inside a kobe session, kobe verbs come first
+
+Check where you are before choosing how to delegate or parallelize:
+
+```bash
+test -n "${KOBE_TASK_ID:-}"
+```
+
+When that passes, you are an engine session kobe manages — `$KOBE_TASK_ID`
+is your task, `$KOBE_TAB_ID` your tab. Coordination should then go through
+kobe, not around it, because work routed through `kobe api` gets what
+ad-hoc subprocesses never do: its own Worktree and branch (no file
+collisions with you), a sidebar row with live state the user can watch,
+lifecycle tracking, and an explicit outcome contract.
+
+- Parallel attempts of one prompt → `fan-out`, not N hand-rolled subagents.
+- Delegating a scoped piece of work → `add --prompt`, not a raw `claude -p`
+  child the user cannot see or manage.
+- Following up on a task you started → `send`; waiting on results →
+  `await`; comparing → `collect`; reporting your own verdict → `report`.
+- Messaging another live session → `dispatch` (never impersonate the user
+  in someone else's terminal).
+
+Your own engine's in-context subagents remain fine for read-only
+research/exploration inside your task — the boundary is WORK: anything that
+edits files, runs long, or the user should be able to see and steer belongs
+in a kobe task. Do not recursively fan out from a spawned task.
+
+When the check fails, none of this applies — use `kobe api` only if the
+user asks for kobe by name.
 
 ## Discover before calling
 

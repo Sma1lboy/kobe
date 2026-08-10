@@ -300,6 +300,11 @@ export function noteFilingProtocol(taskId: string, api: string = kobeApiInvocati
     "When you RESOLVE a non-obvious, repo-level gotcha (a build flag, a flaky test, an environment quirk, an API trap), file it:",
     `  ${api} note --task-id ${taskId} --text "<one line: the verified conclusion>"`,
     "File only verified conclusions another session could act on — never progress logs, opinions, or details specific to your own task. A handful per session at most.",
+    // A pointer, not a curriculum: the injected protocol must stay small
+    // (every session pays for it in context), so the coordination verbs are
+    // taught by the kobe agent skill / `kobe api schema`, and this line only
+    // says where to look — the herdr SKILL.md layering, applied here.
+    `For delegating or parallelizing WORK from this session, prefer kobe's own verbs (fan-out / add --prompt / send / await / dispatch) over ad-hoc subprocesses — discover them via \`${api} schema\` or the kobe agent skill.`,
   ].join("\n")
 }
 
