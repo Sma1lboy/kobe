@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.59
+
+### Patch Changes
+
+- 41b2311: The behavior suite now skips its PTY-driven pins where `node-pty` is installed but cannot spawn (a sandboxed shell denies `posix_spawnp`), instead of failing with an environment error that looks like a product regression — which also blocked releases on such a machine. CI has a real PTY, so coverage there is unchanged.
+- f333a09: Correct the user-facing docs against the shipped binary: two commands that don't exist, a stale `kobe --help` transcript, a setting kobe never reads, and the worktree-location setting that had no documentation at all.
+- 6651070: Give the scriptable `kobe api` surface its own documentation page instead of burying it inside the CLI reference, and link the published docs site from the README so it is discoverable at all.
+- 40641c0: Fix four related Inbox / sidebar bugs.
+
+  The unread lamp no longer relights the moment you leave a tab you just read: the "seen" bit was keyed per task, so a sibling tab of the same task — which legitimately reports no activity — wiped the mark its completed sibling had just recorded in the same render pass. It is now keyed per tab.
+
+  The Inbox no longer silently drops episodes. Its tab lookup reads a per-task snapshot that only exists once this process has mounted that task's tabs; for every other task it answered "that tab is gone", and the background cleanup then deleted the episode from the daemon for good — so two tabs could be unread while the Inbox listed one. The lookup is now tri-state and an unreadable tab list keeps the episode.
+
+  An engine finishing in a shell kobe did not spawn now reaches the Inbox at all. Such a session inherits no `KOBE_TAB_ID`, and the daemon dropped every hook event that lacked one; it now records a task-level episode, which still navigates to the task.
+
+  Clicking into a tab no longer flashes the engine's live status line ("⠐ …") before settling back to its name. The live vendor comes from a ~2s process walk, so for one render there was no answer and the naming rule fell through to the raw recorded title; it now falls back to the tab's recorded identity first.
+
+- a5267c6: `kobe api send` issued from inside another kobe task now prefixes the prompt with `[KOBE PEER]` provenance — sender title, task id, and the exact reply command — so agents can message each other directly without a coordinator or human relay. `--plain` skips the prefix. The kobe agent skill (v8) teaches the peer-messaging convention.
+- 1399710: Make the local release gate match what the release pipeline blocks publish on. `scripts/release.sh` ran lint/typecheck/test but not build or the behavior suite, so a check that only existed in CI was discovered by the tag — and a tag that fails to publish burns its version number. The gate now runs the same set, and the behavior suite (real PTY, real daemon, timing-exposed) retries twice before reporting red.
+
 ## 0.8.58
 
 ### Patch Changes
