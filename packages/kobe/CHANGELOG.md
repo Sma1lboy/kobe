@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.65
+
+### Patch Changes
+
+- 5c4ccb9: Rewrite the user-facing docs to be readable rather than exhaustive: the quick start now shows what kobe looks like and gets you to a first task, the keybinding page is chord tables instead of a decision log, and engine/session internals moved to `docs/design/`. Fixes a stale bundled-theme list that named seven hosted themes as bundled. The docs site sidebar is now grouped into Getting started / Using kobe / Automating and extending / Help.
+- f2b6d74: The engine's status glyph stops leaking into recorded tab names. Stripping it was gated on knowing which engine wrote the title, but that answer comes from a ~2s process-tree walk — so on every tick the probe had not answered yet, a raw `✳ …` passed through and was recorded as the tab's name, which is why the prefix kept reappearing. The vendor now only narrows which glyphs to look for; an unknown or not-yet-probed vendor falls back to every built-in's glyphs and still strips.
+
 ## 0.8.64
 
 ### Patch Changes
