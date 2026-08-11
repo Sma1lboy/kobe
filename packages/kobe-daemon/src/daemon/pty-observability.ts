@@ -1,7 +1,8 @@
 /** Read-only PTY-host inventory types, ring peeks, and OSC title tracking. */
 
 import type { StringDecoder } from "node:string_decoder"
-import type { PtyPeekResult } from "./protocol.ts"
+import type { PtyPeekResult, PtySessionExit } from "./protocol.ts"
+import type { PtyExit } from "./pty-driver.ts"
 
 /** One session's inventory row — what `pty.list` reports. */
 export interface PtySessionInfo {
@@ -15,6 +16,36 @@ export interface PtySessionInfo {
   readonly parked?: boolean
   /** Byte size of that local parked screen; zero when no parked screen exists. */
   readonly parkedScreenBytes?: number
+  /** How the child died — null while alive or before exit was observed. */
+  readonly exit?: PtySessionExit | null
+}
+
+/** What the host hands `onSessionExit` — the death record for one session. */
+export interface PtySessionEndInfo {
+  readonly key: string
+  readonly pid: number | null
+  readonly exit: PtySessionExit
+  /** Raw tail of the ring at exit time (ANSI included; consumers strip). */
+  readonly tail: string
+}
+
+/** Human suffix for the host's `session <key> exited` log line. */
+export function describeExit(exit: PtyExit | undefined): string {
+  if (exit?.signal) return ` (signal ${exit.signal})`
+  if (exit && exit.code !== null) return ` (code ${exit.code})`
+  return " (cause unknown)"
+}
+
+/** Last `maxBytes` of the ring as lossy UTF-8 — the child's final output. */
+export function ringTail(chunks: readonly Buffer[], bytes: number, maxBytes: number): string {
+  const skip = Math.max(0, bytes - maxBytes)
+  let seen = 0
+  const parts: Buffer[] = []
+  for (const chunk of chunks) {
+    if (seen + chunk.byteLength > skip) parts.push(seen >= skip ? chunk : chunk.subarray(skip - seen))
+    seen += chunk.byteLength
+  }
+  return Buffer.concat(parts).toString("utf8")
 }
 
 /** Aggregate, read-only terminal retention facts returned with `pty.list`. */
@@ -94,6 +125,8 @@ export interface PtyRingView {
   /** Total bytes the child has ever written (monotonic). */
   readonly totalBytes: number
   readonly proc: { readonly pid: number } | null
+  /** Recorded death cause, when the child already exited. */
+  readonly exit?: PtySessionExit | null
 }
 
 /**
@@ -102,7 +135,9 @@ export interface PtyRingView {
  * window) without attaching, spawning, or resizing anything.
  */
 export function peekRing(session: PtyRingView | undefined, sinceOffset?: number): PtyPeekResult {
-  if (!session) return { exists: false, alive: false, pid: null, offset: 0, data: "", sinceValid: false }
+  if (!session) {
+    return { exists: false, alive: false, pid: null, offset: 0, data: "", sinceValid: false, exit: null }
+  }
   const windowStart = session.totalBytes - session.bytes
   let buf = Buffer.concat(session.chunks as Buffer[])
   let sinceValid = false
@@ -117,5 +152,6 @@ export function peekRing(session: PtyRingView | undefined, sinceOffset?: number)
     offset: session.totalBytes,
     data: buf.toString("base64"),
     sinceValid,
+    exit: session.exit ?? null,
   }
 }

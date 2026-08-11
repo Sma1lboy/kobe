@@ -287,6 +287,16 @@ export interface PtyDataEventPayload {
   readonly data: string
 }
 
+/** How a session's child ended — recorded at exit time by the PTY host.
+ *  `code` XOR `signal` is set for a normal wait; both null means the
+ *  driver could not tell (spawn failure, pre-exit-info host). */
+export interface PtySessionExit {
+  readonly code: number | null
+  readonly signal: string | null
+  /** ISO timestamp of when the host observed the exit. */
+  readonly at: string
+}
+
 /** Targeted `pty.exit` event payload — the session's child ended. */
 export interface PtyExitEventPayload {
   readonly key: string
@@ -294,6 +304,10 @@ export interface PtyExitEventPayload {
    *  kill()ed + reopened the same key tell the OLD incarnation's exit
    *  apart from its new session's — absent from pre-pid hosts. */
   readonly pid?: number | null
+  /** Exit status/signal/time — absent from pre-exit-info hosts. */
+  readonly code?: number | null
+  readonly signal?: string | null
+  readonly at?: string
 }
 
 /** `pty.open` response — attach result for one session key. */
@@ -344,6 +358,9 @@ export interface PtyPeekResult {
    *  the ring window); false means the offset was trimmed away and `data`
    *  is the full ring. */
   readonly sinceValid: boolean
+  /** How the child died when `alive` is false — null while alive, absent
+   *  from pre-exit-info hosts. */
+  readonly exit?: PtySessionExit | null
 }
 
 export interface DaemonError {

@@ -87,6 +87,8 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   hosted engine tabs is live (not just the first); `.tabs` = the task's
   terminal tabs (`id`/`kind`/`title`/`vendor`/`liveVendor`/`lastTitle`/
   `autoTitle` + per-tab `alive`) — the discovery read for `send --tab tab-N`.
+  A dead tab whose session ended abnormally also carries `exit`
+  (`code`/`signal`/`at`); clean exits stay `exit: null`.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
@@ -101,13 +103,17 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   [--limit N]`: a task's engine output as bounded, cursor-paged JSON —
   structured history when the engine has it, else a labeled terminal tail
   (`fallbackReason`). The cursor is pinned to one source/session and returns
-  `SOURCE_CHANGED` if that moved.
-- `inspect [--task-id ID]` *(offline)*: diagnostics in one read, across three
+  `SOURCE_CHANGED` if that moved. A dead session's terminal page includes
+  `terminal.exit` (`code`/`signal`/`at`) while the PTY host still runs.
+- `inspect [--task-id ID]` *(offline)*: diagnostics in one read, across four
   sections — `daemon` (raw per-task/per-tab activity entries), `sessions`
-  (PTY inventory joined with a live process-tree walk), and `tabs` (the
+  (PTY inventory joined with a live process-tree walk; dead sessions carry
+  `exit`), `sessionExits` (durable death records — exit `code`/`signal`/`at`
+  plus a plain-text output `tail`, kept in `pty-exits.json` so they survive
+  the PTY host's idle-exit; abnormal exits only), and `tabs` (the
   snapshots the sidebar names its rows from). Non-spawning: a missing daemon
   or PTY host degrades that section to `null`. **Run and paste this first**
-  when reporting a badge, label, or engine-identity bug.
+  when reporting a badge, label, engine-identity, or engine-crash bug.
 
 ## create
 

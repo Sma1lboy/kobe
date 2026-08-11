@@ -33,6 +33,7 @@ type PtySessionRow = {
   pid?: number | null
   title?: string
   command?: readonly string[]
+  exit?: { code: number | null; signal: string | null; at: string } | null
 }
 
 /**
@@ -89,11 +90,26 @@ async function sessionsSection(taskId: string | undefined): Promise<unknown> {
       alive: s.alive,
       pid: s.pid ?? null,
       title: s.title || null,
+      // How a dead session died (host memory) — null while alive/unknown.
+      exit: s.exit ?? null,
       // Tri-state, same vocabulary as the TUI store: vendor / null (walked,
       // no engine) / "unknown" (no pid or ps failed — couldn't look).
       foreground: walkable ? (found ? { vendor: found.vendor, pid: found.pid, argv: found.argv } : null) : "unknown",
     }
   })
+}
+
+/** Durable death records (`pty-exits.json`) — survive the host's idle-exit,
+ *  so "how did it die" stays answerable with no host running. Includes the
+ *  exit-time output tail (plain text). */
+async function sessionExitsSection(taskId: string | undefined): Promise<unknown> {
+  try {
+    const { readPtyExitRecords } = await import("@sma1lboy/kobe-daemon/daemon/pty-exit-store")
+    const records = Object.values(readPtyExitRecords())
+    return taskId ? records.filter((r) => r.key.startsWith(`${taskId}::`)) : records
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 /** Persisted tab snapshots (what the sidebar tree names its rows from). */
@@ -129,15 +145,19 @@ function tabsSection(taskId: string | undefined): unknown {
 
 async function inspect(ctx: VerbContext): Promise<unknown> {
   const taskId = ctx.args.str("task-id")
-  const [daemon, sessions] = await Promise.all([daemonSection(), sessionsSection(taskId)])
-  return { daemon, sessions, tabs: tabsSection(taskId), at: new Date().toISOString() }
+  const [daemon, sessions, sessionExits] = await Promise.all([
+    daemonSection(),
+    sessionsSection(taskId),
+    sessionExitsSection(taskId),
+  ])
+  return { daemon, sessions, sessionExits, tabs: tabsSection(taskId), at: new Date().toISOString() }
 }
 
 /** Spec half — spread into {@link VERBS} in `verbs.ts`. */
 export const INSPECT_VERB: VerbSpec = {
   name: "inspect",
   summary:
-    "Production diagnostics in one read: daemon activity registry (raw states, probe vendors, watchdogs), pty-host sessions joined with a live process-tree engine walk, and the persisted tab snapshots the sidebar renders from. Read-only; missing daemon/host degrade to null.",
+    "Production diagnostics in one read: daemon activity registry (raw states, probe vendors, watchdogs), pty-host sessions joined with a live process-tree engine walk, durable session death records (exit code/signal/output tail), and the persisted tab snapshots the sidebar renders from. Read-only; missing daemon/host degrade to null.",
   flags: [F.taskId(false)],
   offline: true,
   handler: inspect,

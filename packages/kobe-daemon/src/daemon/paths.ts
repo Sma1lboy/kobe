@@ -194,3 +194,9 @@ export function defaultPtyHostPidPath(homeDir = process.env.KOBE_HOME_DIR ?? hom
 export function defaultPtyHostLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "pty.log")
 }
+
+/** Durable per-session death records (`pty-exit-store.ts`) — must outlive
+ *  the host's idle-exit, so a crashed engine's cause stays queryable. */
+export function defaultPtyExitsPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".kobe", "pty-exits.json")
+}

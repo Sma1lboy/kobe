@@ -6,6 +6,7 @@
  * not this module, so unit tests never open PTY Host or git processes.
  */
 
+import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
@@ -140,9 +141,17 @@ export const defaultApiRuntime: ApiRuntime = {
         host.close()
       }
     }
+    // Durable death records outlive the host's idle-exit — a crashed tab
+    // still reports its cause here. Best-effort: unreadable = none.
+    let exits: Readonly<Record<string, PtySessionExit>> = {}
+    try {
+      exits = (await import("@sma1lboy/kobe-daemon/daemon/pty-exit-store")).readPtyExitRecords()
+    } catch {
+      /* keep tabs readable without the records */
+    }
     const snapshot = readTabsSnapshot(taskId)
     return {
-      tabs: joinTaskTabs(snapshot, taskId, sessions),
+      tabs: joinTaskTabs(snapshot, taskId, sessions, exits),
       running: hasLiveEngineTab(snapshot, taskId, sessions),
     }
   },
