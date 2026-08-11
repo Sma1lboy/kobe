@@ -22,12 +22,13 @@ import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
+import { isNarrowWidth, narrowSurface } from "../lib/narrow-mode"
 import { useAccessor } from "../lib/use-accessor"
 import { useDaemonNotices } from "../lib/use-daemon-notices"
 import { useLatest } from "../lib/use-latest"
-import { FileTree } from "../panes/filetree/FileTree"
 import { useSidebarHostState } from "../panes/sidebar/use-sidebar-host-state.tsx"
 import { useDialog } from "../ui/dialog"
+import { HostFilesPane } from "./host-files-pane"
 import { WorkspaceFrame } from "./host-footer"
 import { useWorkspaceKeybindings } from "./host-keybindings"
 import { renderContentPage, renderFullWindowPage, useHostPagesState } from "./host-pages"
@@ -50,9 +51,6 @@ import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
-
-const WORKTREE_TOOLS_MIN_WIDTH = 22
-const WORKTREE_TOOLS_MAX_WIDTH = 34
 
 function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { theme, transparentBackground } = useTheme()
@@ -97,11 +95,10 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // mode / toasts live in useSidebarHostState below.
   const [searchActive, setSearchActive] = useState(false)
 
-  const available = Math.max(WORKTREE_TOOLS_MIN_WIDTH, dims.width - SIDEBAR_WIDTH)
-  const worktreeToolsWidth = Math.max(
-    WORKTREE_TOOLS_MIN_WIDTH,
-    Math.min(WORKTREE_TOOLS_MAX_WIDTH, Math.floor(available / 3)),
-  )
+  // Narrow mode (issue #14, phone SSH): sidebar and workspace become
+  // mutually exclusive full-screen surfaces; the files pane stays hidden.
+  // Everything is gated on this one flag so ≥70 cols stays byte-identical.
+  const narrow = isNarrowWidth(dims.width)
 
   // Selection + adopt-first-focus + the archived-task PTY sweep — extracted
   // verbatim to use-workspace-selection.ts (file-size cap split).
@@ -190,6 +187,13 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const { zen, toggleZen } = useZenMode({ kv, focus })
 
+  // Narrow hides the files pane entirely, so a focus stranded there (a
+  // resize below the breakpoint mid-session) falls back to the workspace —
+  // otherwise plain keys would land in an unmounted pane.
+  useEffect(() => {
+    if (narrow && focus.focused === "files") focus.setFocused("workspace")
+  }, [narrow, focus])
+
   // Tab open/close (and editor-file close) edges report as plugin events
   // through this seam — wired once per host, torn down on unmount.
   useEffect(() => {
@@ -238,7 +242,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openUpdate: pages.openUpdate,
     kanbanOpen: pages.kanbanOpen,
     openKanban: pages.openKanban,
-    filesPaneVisible: !zen && pages.nav === "terminal",
+    filesPaneVisible: !zen && pages.nav === "terminal" && !narrow,
     automationsOpen: pages.automationsOpen,
     openAutomations: pages.openAutomations,
     workItemsOpen: pages.workItemsOpen,
@@ -309,6 +313,14 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   if (fullWindowPage) return fullWindowPage
   const openPage = renderContentPage(pageDeps)
 
+  // Narrow: exactly one of sidebar/content renders (`narrowSurface`);
+  // desktop renders both, unchanged.
+  const surface = narrow
+    ? narrowSurface({ focusedPane: focus.focused, hasSelection: selectedTask != null, hasOpenPage: openPage != null })
+    : null
+  const showSidebar = surface !== "content"
+  const showContent = surface !== "sidebar"
+
   if (pages.settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its
     // keyboard cursor can scrollChildIntoView on short terminals.
@@ -327,122 +339,122 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           opentui coerces a full frame if borderColor is ever set, so the box
           carries no border prop at all. The workspace frame's left edge is
           the only boundary; sidebar focus shows on the KOBE brand text. */}
-      <HostSidebar
-        width={SIDEBAR_WIDTH}
-        nav={pages.nav}
-        onNavChange={pages.goToNav}
-        tasks={tasks}
-        selectedId={selectedId}
-        selectedTabId={selectedTabId}
-        // Picking a task means "show me that task" — so it returns the
-        // content pane to its terminal. Without this the rail page stayed
-        // up and selecting a row did nothing visible.
-        onSelect={(id) => {
-          selectTask(id)
-          pages.setNav("terminal")
-        }}
-        onActivate={(id) => {
-          pages.setNav("terminal")
-          void activateTask(id)
-        }}
-        // Picking a TAB is entering that session (owner 2026-08-01): focus
-        // moves to the terminal, same as activate — a click that leaves the
-        // sidebar's letter chords (d!) live under your typing is how issues
-        // got mis-deleted. Re-clicking the tab you are ALREADY in flips focus
-        // back to the sidebar (owner 2026-08-09): the first click entered the
-        // session, so a second click on the same row means "give me the
-        // sidebar". Keyboard enter is exempt (sidebar already focused —
-        // enter always means enter the session), as is a click that brings
-        // the terminal back from a rail page.
-        onSelectTab={(taskId, tabId) => {
-          const reClick =
-            pages.nav === "terminal" && focus.focused !== "sidebar" && taskId === selectedId && tabId === selectedTabId
-          pages.setNav("terminal")
-          requestTabActivation(taskId, tabId)
-          focus.setFocused(reClick ? "sidebar" : "workspace")
-        }}
-        engineState={sidebarEngineState}
-        engineTabState={engineTabState}
-        engineLifecycle={engineLifecycle}
-        taskJobs={taskJobs}
-        worktreeChanges={worktreeChanges}
-        transcriptActivity={transcriptActivity}
-        focused={activePane === "sidebar"}
-        // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
-        // fire these; the flows are the shared lib/task-actions bodies.
-        onAddTask={() => void createTask()}
-        onDeleteRequest={(id) => void deleteTask(id)}
-        onArchiveRequest={(id) => void archiveTask(id)}
-        onRenameRequest={(id) => void renameTask(id)}
-        onPinRequest={(id) => void togglePin(id)}
-        moveMode={moveMode}
-        onMoveRequest={(id, delta) => void moveTask(id, delta)}
-        onMoveModeExit={() => setMoveMode(false)}
-        onLocalMergeRequest={onLocalMergeRequest}
-        onSearchActiveChange={setSearchActive}
-        headerStatus={{
-          label: `${t("workspace.inbox.title")} ${inbox.counts.total}`,
-          emphasize: inbox.counts.total > 0,
-        }}
-        onHeaderStatusClick={inbox.show}
-        zenActive={zen}
-        onZenClick={toggleZen}
-        onFocusRequest={() => focus.setFocused("sidebar")}
-      />
+      {showSidebar ? (
+        <HostSidebar
+          width={narrow ? dims.width : SIDEBAR_WIDTH}
+          nav={pages.nav}
+          onNavChange={pages.goToNav}
+          tasks={tasks}
+          selectedId={selectedId}
+          selectedTabId={selectedTabId}
+          // Picking a task means "show me that task" — so it returns the
+          // content pane to its terminal. Without this the rail page stayed
+          // up and selecting a row did nothing visible.
+          onSelect={(id) => {
+            selectTask(id)
+            pages.setNav("terminal")
+          }}
+          onActivate={(id) => {
+            pages.setNav("terminal")
+            void activateTask(id)
+          }}
+          // Picking a TAB is entering that session (owner 2026-08-01): focus
+          // moves to the terminal, same as activate — a click that leaves the
+          // sidebar's letter chords (d!) live under your typing is how issues
+          // got mis-deleted. Re-clicking the tab you are ALREADY in flips focus
+          // back to the sidebar (owner 2026-08-09): the first click entered the
+          // session, so a second click on the same row means "give me the
+          // sidebar". Keyboard enter is exempt (sidebar already focused —
+          // enter always means enter the session), as is a click that brings
+          // the terminal back from a rail page.
+          onSelectTab={(taskId, tabId) => {
+            const reClick =
+              pages.nav === "terminal" &&
+              focus.focused !== "sidebar" &&
+              taskId === selectedId &&
+              tabId === selectedTabId
+            pages.setNav("terminal")
+            requestTabActivation(taskId, tabId)
+            focus.setFocused(reClick ? "sidebar" : "workspace")
+          }}
+          engineState={sidebarEngineState}
+          engineTabState={engineTabState}
+          engineLifecycle={engineLifecycle}
+          taskJobs={taskJobs}
+          worktreeChanges={worktreeChanges}
+          transcriptActivity={transcriptActivity}
+          focused={activePane === "sidebar"}
+          // Task lifecycle (issue #20): the Sidebar's own d/a/r/p/m keys
+          // fire these; the flows are the shared lib/task-actions bodies.
+          onAddTask={() => void createTask()}
+          onDeleteRequest={(id) => void deleteTask(id)}
+          onArchiveRequest={(id) => void archiveTask(id)}
+          onRenameRequest={(id) => void renameTask(id)}
+          onPinRequest={(id) => void togglePin(id)}
+          moveMode={moveMode}
+          onMoveRequest={(id, delta) => void moveTask(id, delta)}
+          onMoveModeExit={() => setMoveMode(false)}
+          onLocalMergeRequest={onLocalMergeRequest}
+          onSearchActiveChange={setSearchActive}
+          headerStatus={{
+            label: `${t("workspace.inbox.title")} ${inbox.counts.total}`,
+            emphasize: inbox.counts.total > 0,
+          }}
+          onHeaderStatusClick={inbox.show}
+          zenActive={zen}
+          onZenClick={toggleZen}
+          onFocusRequest={() => focus.setFocused("sidebar")}
+        />
+      ) : null}
 
-      <box
-        flexGrow={1}
-        flexShrink={1}
-        borderColor={focus.focused === "workspace" ? theme.focusAccent : inactiveBorder}
-        onMouseUp={() => focus.setFocused("workspace")}
-      >
-        {/* The rail swaps THIS pane, not the whole window — the task list on
+      {showContent ? (
+        <box
+          flexGrow={1}
+          flexShrink={1}
+          borderColor={focus.focused === "workspace" ? theme.focusAccent : inactiveBorder}
+          onMouseUp={() => focus.setFocused("workspace")}
+        >
+          {/* The rail swaps THIS pane, not the whole window — the task list on
             the left stays live, so selecting a task is how you get back to
             its terminal. */}
-        {openPage ?? (
-          <ShowWorkspace
-            task={selectedTask}
-            worktree={worktree}
-            orchestrator={orch}
-            focused={activePane === "workspace"}
-            onRequestFocus={() => focus.setFocused("workspace")}
-            onEditorTabReady={(open) => {
-              openEditorTabFn.current = open
-            }}
-            onEngineSendReady={(send) => {
-              sendToEngineFn.current = send
-            }}
-            onDiffTabReady={(open) => {
-              openDiffTabFn.current = open
-            }}
-            onQuickFork={quickFork.onQuickFork}
-            initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
-            onTabVisited={inbox.resolveVisited}
-          />
-        )}
-      </box>
+          {openPage ?? (
+            <ShowWorkspace
+              task={selectedTask}
+              worktree={worktree}
+              orchestrator={orch}
+              focused={activePane === "workspace"}
+              onRequestFocus={() => focus.setFocused("workspace")}
+              onEditorTabReady={(open) => {
+                openEditorTabFn.current = open
+              }}
+              onEngineSendReady={(send) => {
+                sendToEngineFn.current = send
+              }}
+              onDiffTabReady={(open) => {
+                openDiffTabFn.current = open
+              }}
+              onQuickFork={quickFork.onQuickFork}
+              initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
+              onTabVisited={inbox.resolveVisited}
+            />
+          )}
+        </box>
+      ) : null}
 
       {/* The FileTree lists a WORKTREE's files. A rail page is not about a
           worktree — it reads daemon state that spans projects — so the pane
-          would be showing an unrelated tree beside it. Hidden, same as zen. */}
-      {!zen && !openPage ? (
-        <box
-          width={worktreeToolsWidth}
-          flexShrink={0}
-          borderColor={focus.focused === "files" ? theme.focusAccent : inactiveBorder}
-          onMouseUp={() => focus.setFocused("files")}
-        >
-          <FileTree
-            worktreePath={worktree}
-            paneWidth={worktreeToolsWidth - 2 /* box border */}
-            prBaseRef={selectedTask?.prStatus?.baseRef}
-            focused={activePane === "files"}
-            onOpenFile={(relPath) => void openFileInEditor(relPath)}
-            onOpenDiff={openDiff}
-            onZenToggle={toggleZen}
-            onCreatePR={() => void createPR()}
-          />
-        </box>
+          would be showing an unrelated tree beside it. Hidden, same as zen
+          (and always in narrow — three panes don't fit 46 cols). */}
+      {!zen && !openPage && !narrow ? (
+        <HostFilesPane
+          worktree={worktree}
+          prBaseRef={selectedTask?.prStatus?.baseRef}
+          focused={activePane === "files"}
+          onOpenFile={(relPath) => void openFileInEditor(relPath)}
+          onOpenDiff={openDiff}
+          onZenToggle={toggleZen}
+          onCreatePR={() => void createPR()}
+        />
       ) : null}
 
       {/* Cross-task attention toasts (issue #15). `useAttention` above fires

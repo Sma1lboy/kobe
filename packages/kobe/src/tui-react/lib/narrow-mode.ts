@@ -16,3 +16,25 @@ export const NARROW_BREAKPOINT = 70
 export function isNarrowWidth(cols: number): boolean {
   return cols < NARROW_BREAKPOINT
 }
+
+export type NarrowSurface = "sidebar" | "content"
+
+/**
+ * Which single surface the narrow layout renders — sidebar and workspace
+ * are mutually exclusive full-screen views below the breakpoint.
+ *
+ * Sidebar focus always means the list (ctrl+q's existing "back to the
+ * sidebar" semantic IS the back gesture — no new chord). Otherwise the
+ * content shows whenever there is something to show: a selected task's
+ * workspace, or an open rail page (kanban/automations/issues, which move
+ * focus into the content pane on open). With neither, fall back to the
+ * sidebar — the content pane would only say "no task".
+ */
+export function narrowSurface(args: {
+  focusedPane: string
+  hasSelection: boolean
+  hasOpenPage: boolean
+}): NarrowSurface {
+  if (args.focusedPane === "sidebar") return "sidebar"
+  return args.hasSelection || args.hasOpenPage ? "content" : "sidebar"
+}
