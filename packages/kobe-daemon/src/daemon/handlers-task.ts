@@ -116,6 +116,8 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         strategy,
         deleteBranch: optionalBoolean(payload, "deleteBranch") === true,
         archive: optionalBoolean(payload, "archive") === true,
+        removeWorktree: optionalBoolean(payload, "removeWorktree") === true,
+        callerCwd: optionalString(payload, "callerCwd"),
       })
       // landTask throws on refusal/conflict, so reaching here means it landed.
       ctx.plugins?.handleUiReport({

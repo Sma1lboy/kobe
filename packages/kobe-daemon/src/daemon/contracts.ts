@@ -100,6 +100,8 @@ export interface LandResult {
   readonly strategy: "merge" | "squash"
   readonly landedOn: string
   readonly commit: string
+  /** Present only when the land requested worktree removal — the cleanup outcome. */
+  readonly worktree?: { readonly removed: boolean; readonly reason?: string }
 }
 
 export interface AdoptableWorktree {
@@ -151,7 +153,13 @@ export interface DaemonOrchestrator {
   finishTaskDeletion(id: string): Promise<void>
   landTask(
     id: string,
-    options?: { strategy?: "merge" | "squash"; deleteBranch?: boolean; archive?: boolean },
+    options?: {
+      strategy?: "merge" | "squash"
+      deleteBranch?: boolean
+      archive?: boolean
+      removeWorktree?: boolean
+      callerCwd?: string
+    },
   ): Promise<LandResult>
   setActiveTask(id: string | null): Promise<void>
   /** Clear a task's worktreePath (keep its branch) after an out-of-band worktree removal. */

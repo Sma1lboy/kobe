@@ -126,13 +126,21 @@ export async function markAttentionReadOp(
 export async function landTaskOp(
   client: KobeDaemonClient,
   id: TaskId | string,
-  opts?: { strategy?: "merge" | "squash"; deleteBranch?: boolean; archive?: boolean },
+  opts?: {
+    strategy?: "merge" | "squash"
+    deleteBranch?: boolean
+    archive?: boolean
+    removeWorktree?: boolean
+    callerCwd?: string
+  },
 ): Promise<LandResult> {
   const res = await client.request<{ result: LandResult }>("task.land", {
     taskId: String(id),
     strategy: opts?.strategy,
     deleteBranch: opts?.deleteBranch,
     archive: opts?.archive,
+    removeWorktree: opts?.removeWorktree,
+    callerCwd: opts?.callerCwd,
   })
   return res.result
 }

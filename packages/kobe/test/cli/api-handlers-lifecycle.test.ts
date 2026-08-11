@@ -144,6 +144,26 @@ describe("task lifecycle handlers", () => {
     expect(result).toEqual({ task, running: true, tabs })
   })
 
+  it("land --remove-worktree sends the caller's cwd so the daemon can refuse self-removal", async () => {
+    const client = new FakeClient({
+      "task.land": () => ({ result: { branch: "b", strategy: "merge", landedOn: "main", commit: "abc" } }),
+    })
+    await invokeVerb("land", ["--task-id", "t1", "--remove-worktree"], { client, runtime: stubRuntime() })
+    const payload = client.requests[0]?.payload as { removeWorktree?: boolean; callerCwd?: string }
+    expect(payload.removeWorktree).toBe(true)
+    expect(payload.callerCwd).toBe(process.cwd())
+  })
+
+  it("plain land does not leak a callerCwd", async () => {
+    const client = new FakeClient({
+      "task.land": () => ({ result: { branch: "b", strategy: "merge", landedOn: "main", commit: "abc" } }),
+    })
+    await invokeVerb("land", ["--task-id", "t1"], { client, runtime: stubRuntime() })
+    const payload = client.requests[0]?.payload as { removeWorktree?: boolean; callerCwd?: string }
+    expect(payload.removeWorktree).toBe(false)
+    expect(payload.callerCwd).toBeUndefined()
+  })
+
   it("sets and clears active task", async () => {
     const client = new FakeClient({ "task.setActive": () => ({}) })
     await invokeVerb("set-active", ["--task-id", "t1"], { client, runtime: stubRuntime() })
