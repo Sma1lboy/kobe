@@ -12,7 +12,7 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import { engineEntry, stripEngineStatusPrefix } from "../../engine/registry"
+import { engineEntry, engineStatusPrefixes, stripEngineStatusPrefix } from "../../engine/registry"
 import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
@@ -174,9 +174,7 @@ function stableRecordedTitle(tab: TerminalTab, vendor: VendorId): string | null 
 
 /** True when every character of `text` is one of the engine's status glyphs. */
 function isEngineDecoration(text: string, vendor: VendorId): boolean {
-  const prefixes = engineEntry(vendor).terminalTitle?.statusPrefixes
-  if (!prefixes || prefixes.length === 0) return false
-  const glyphs = new Set(prefixes)
+  const glyphs = new Set(engineStatusPrefixes(vendor))
   return [...text].every((ch) => ch.trim().length === 0 || glyphs.has(ch))
 }
 
@@ -218,8 +216,15 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   // settling back to "claude 1".
   const vendor =
     liveVendor ?? tab.liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined) ?? undefined
+  // Cleaning the recorded title is NOT gated on `ownsStatus`: a status glyph
+  // is not part of a name whoever wrote it, and the vendor kobe resolves is
+  // often a user wrapper (`claudecpa` — a zsh function that ends up running
+  // real claude) that declares nothing. Gating here left exactly those tabs
+  // wearing `⠂ …`. What `ownsStatus` still decides is the fallback identity
+  // below.
+  const named = vendor ? stableRecordedTitle(tab, vendor) : (tab.lastTitle ?? null)
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
-    return tabTitle(tab, taskVendor)
+    return tabTitle({ ...tab, lastTitle: named } as TerminalTab, taskVendor)
   }
   // Re-run the normal precedence with the recorded title CLEANED rather than
   // dropped: `stripEngineStatusPrefix` is idempotent, so a title recorded
@@ -242,10 +247,7 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   // In the tree that is not a name at all, so drop it and let the next rung
   // answer: `meaningfulAutoTitle` already applies the same "this is not a
   // label" judgement to first-prompt summaries.
-  return tabTitle(
-    { ...tab, kind: "engine", vendor, lastTitle: stableRecordedTitle(tab, vendor) } as TerminalTab,
-    taskVendor,
-  )
+  return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: named } as TerminalTab, taskVendor)
 }
 
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {

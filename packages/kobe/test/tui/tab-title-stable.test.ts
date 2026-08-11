@@ -47,6 +47,17 @@ describe("tabTitleStable", () => {
     expect(tabTitleStable(withAuto, "claude", "claude")).toBe("wire up the digest verb")
   })
 
+  // Regression (owner report 2026-08-10): a tab pinned to a user WRAPPER
+  // (`claudecpa` — a zsh function that ends up running real claude) is a
+  // custom vendor and declares no glyph vocabulary, so its rows kept the
+  // prefix. Cleaning is not gated on `ownsStatus` for exactly this reason.
+  it("heals a wrapper vendor's title too", () => {
+    const tab = engineTab({ id: "tab-2", ordinal: 2, vendor: "claudecpa", lastTitle: "⠂ Herdr多Agent协作技巧分享" })
+    expect(tabTitleStable(tab, "claudecpa" as never, "claudecpa" as never)).toBe("Herdr多Agent协作技巧分享 2")
+    // ...and when the process walk resolves the REAL engine underneath.
+    expect(tabTitleStable(tab, "claude", "claude")).toBe("Herdr多Agent协作技巧分享 2")
+  })
+
   it("keeps a manual rename — that is the user's name, not the engine's", () => {
     const tab = engineTab({ title: "my tab", lastTitle: "⠐ working" })
     expect(tabTitleStable(tab, "claude")).toBe("my tab")

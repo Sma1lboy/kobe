@@ -33,11 +33,21 @@ describe("stripEngineStatusPrefix", () => {
     expect(stripEngineStatusPrefix("✳ literal", "codex")).toBe("✳ literal")
   })
 
-  it("leaves the title alone when the vendor is unknown or has no vocabulary", () => {
+  it("leaves the title alone when there is no vendor at all", () => {
     expect(stripEngineStatusPrefix("✳ 运行本地Codex处理图片", null)).toBe("✳ 运行本地Codex处理图片")
     expect(stripEngineStatusPrefix("✳ whatever", undefined)).toBe("✳ whatever")
-    // copilot declares no statusPrefixes — its OSC title is a plain name.
-    expect(stripEngineStatusPrefix("✳ whatever", "copilot")).toBe("✳ whatever")
+  })
+
+  // A vendor that declares NO vocabulary falls back to the union of every
+  // built-in's glyphs. That case is the norm, not an edge: a user wrapper
+  // (`claudecpa` — a zsh function that ends up running real claude)
+  // registers as a CUSTOM engine and carries no `terminalTitle`, so a
+  // per-vendor-only lookup left exactly those tabs wearing `⠂ …`.
+  it("falls back to every built-in's glyphs for a vendor that declares none", () => {
+    expect(stripEngineStatusPrefix("⠂ Herdr多Agent协作技巧分享", "claudecpa" as never)).toBe("Herdr多Agent协作技巧分享")
+    expect(stripEngineStatusPrefix("✳ whatever", "copilot")).toBe("whatever")
+    // Still conservative: decoration-only stays a name.
+    expect(stripEngineStatusPrefix("⠂", "claudecpa" as never)).toBe("⠂")
   })
 
   // A prefix that would eat the entire title is a NAME, not a status: the
