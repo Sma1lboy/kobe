@@ -21,6 +21,7 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { kobeApiInvocation } from "../engine/interactive-command.ts"
 import { getRepoInitOverride } from "./repos.ts"
 
 export interface ResolvedRepoInit {
@@ -49,7 +50,27 @@ export interface EngineLaunchInit {
 export type PromptDeliveryIntent =
   | { readonly kind: "repo-init" }
   | { readonly kind: "explicit"; readonly prompt: string }
+  /**
+   * The FIRST prompt of a freshly created worktree task (`add --prompt`,
+   * `fan-out`, quick-fork, work-item/automation starts). Delivered like
+   * `explicit`, plus a branch-rename coda — the task's branch is an
+   * auto-generated placeholder, and the agent reading this prompt is the one
+   * party that knows what the work is actually about. Prompts into EXISTING
+   * sessions (`send`, `send --tab new`, dispatch, cross-engine handoff) must
+   * stay `explicit` so they never re-append the coda.
+   */
+  | { readonly kind: "new-task"; readonly prompt: string }
   | { readonly kind: "none" }
+
+/**
+ * Coda appended to a new worktree task's first prompt. The concrete task id
+ * is baked in at spawn time (ids are immutable) — same convention as the
+ * status-report protocol. `api` defaults to the environment-correct CLI
+ * invocation; tests pass a literal.
+ */
+export function newTaskBranchCoda(taskId: string, api: string = kobeApiInvocation()): string {
+  return `PS: this task's git branch name is an auto-generated placeholder. Once you understand the work, rename it to a short descriptive name (keep the kobe/ prefix): \`${api} set-branch --task-id ${taskId} --branch kobe/<descriptive-slug>\``
+}
 
 const INIT_SCRIPT_REL = join(".kobe", "init.sh")
 const INIT_PROMPT_REL = join(".kobe", "init-prompt.md")
@@ -89,9 +110,18 @@ export function resolveRepoInit(repoRoot: string, worktreePath: string): Resolve
   }
 }
 
-function firstMessageFor(intent: PromptDeliveryIntent, init: ResolvedRepoInit): FirstEngineMessage | undefined {
+function firstMessageFor(
+  intent: PromptDeliveryIntent,
+  init: ResolvedRepoInit,
+  taskId?: string,
+): FirstEngineMessage | undefined {
   if (intent.kind === "none") return undefined
   if (intent.kind === "explicit") return { source: "explicit", text: intent.prompt }
+  if (intent.kind === "new-task") {
+    // `$KOBE_TASK_ID` fallback: exported into every engine tab's env, so the
+    // agent's shell expands it even if a caller never threaded the id here.
+    return { source: "explicit", text: `${intent.prompt}\n\n${newTaskBranchCoda(taskId ?? '"$KOBE_TASK_ID"')}` }
+  }
   const text = init.initPrompt?.trim()
   return text ? { source: "repo-init", text } : undefined
 }
@@ -105,10 +135,11 @@ export function resolveEngineLaunchInit(
   repoRoot: string,
   worktreePath: string,
   intent: PromptDeliveryIntent = { kind: "repo-init" },
+  taskId?: string,
 ): EngineLaunchInit {
   const init = resolveRepoInit(repoRoot, worktreePath)
   return {
     initScript: init.initScript,
-    firstMessage: firstMessageFor(intent, init),
+    firstMessage: firstMessageFor(intent, init, taskId),
   }
 }

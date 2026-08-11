@@ -73,6 +73,7 @@ export async function fanOut(ctx: VerbContext): Promise<unknown> {
           vendor,
           modelEffort: task.modelEffort,
           repo: task.repo,
+          newTask: true,
         },
         prompt,
       ),

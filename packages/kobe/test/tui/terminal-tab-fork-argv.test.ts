@@ -179,7 +179,11 @@ describe("engineTabSpawnFor with a tab-owned handoff prompt", () => {
   const handoff = state.tabs[1] as EngineTab
 
   it("delivers on the first spawn of a non-first tab", () => {
-    expect(engineTabSpawnFor(state, handoff, ["codex"], opts).command[2]).toContain("read /r.jsonl")
+    const script = engineTabSpawnFor(state, handoff, ["codex"], opts).command[2]
+    expect(script).toContain("read /r.jsonl")
+    // A handoff opens on an EXISTING worktree — never a new-task first
+    // prompt, so the branch-rename coda must not ride along (issue #8).
+    expect(script).not.toContain("set-branch")
   })
 
   it("never re-delivers once spawned or while the PTY is live", () => {
