@@ -1,297 +1,146 @@
 # Keybindings
 
-`F1` renders the live, localized keymap and is authoritative. This document
-defines ownership rules and the stable default vocabulary.
+**Press `F1` inside kobe** for the live, localized keymap — it's always
+correct, including your own overrides. This page is the stable vocabulary.
 
-## Dispatch model
+## How keys work
 
-Kobe has one PureTUI Binding Stack. Bindings are resolved from the innermost
-active modal/focused surface outward. A modal barrier prevents background
-surfaces from consuming keys while a dialog owns input.
+Two things decide what a key does:
 
-The embedded engine terminal receives unclaimed terminal input. Kobe reserves
-only its explicit global/workspace chords; do not add broad interceptors that
-break engine-native shortcuts.
+- **Where** — a key is either Kobe-wide, or owned by the focused pane.
+- **How** — one press, or the prefix followed by a second key.
 
-The user-facing model has two independent dimensions:
+Which gives you three patterns:
 
-- **Where:** Kobe-wide or owned by the focused pane.
-- **How:** one press or a prefix sequence.
+| Pattern | Example | Used for |
+|---|---|---|
+| Bare letter | `n`, `a`, `d` | Actions in the focused pane |
+| One press | `ctrl+t`, `ctrl+w` | Frequent Kobe-wide actions |
+| Prefix sequence | `ctrl+a` then `i` | Everything less frequent |
 
-That produces three common patterns: bare keys act in the focused pane; a
-small one-press set owns frequent Kobe actions; and the prefix opens the
-less-frequent command layer. The embedded terminal is the passthrough boundary:
-unreserved keys remain engine/shell input, while the currently configured prefix
-first stroke stays Kobe-owned so the command layer works from every pane.
-Press `ctrl+q` to leave the terminal without opening the command layer.
+Inside the embedded engine terminal, unclaimed keys go straight to the engine
+— kobe only reserves its explicit chords. The prefix still works there, so
+the command menu is reachable from every pane. Press `ctrl+q` to leave the
+terminal without opening it.
 
-## Discoverability (2026-08-09)
+## The prefix
 
-Four restrained surfaces teach the grammar — none re-implements the
-which-key map, and all captions resolve through the live keymap
-(`src/tui/lib/keyboard-hints.ts`), so a rebound chord shows its new key and
-an unbound/disabled one drops out:
-
-- **Status-bar micro-hint** — a permanent `{prefix} commands · F1 help ·
-  [settings]` row in the workspace footer's right corner, including inside
-  the embedded terminal. When no prefix action is reachable there, it falls
-  back to the `ctrl+q` escape hatch; with a modal open, or the prefix disabled
-  and help unbound, tokens drop until nothing renders. Every segment is
-  mouse-activatable — clicking `commands` arms the REAL prefix (the guide
-  accepts a keyboard second stroke), clicking the help caption opens F1, and
-  the `[settings]` button opens Settings even while the terminal owns keyboard
-  input, since mouse clicks never pass through (owner call 2026-08-09; terminal
-  prefix reachability corrected 2026-08-10).
-- **First-use pane hints** — one muted line per vim-style pane (sidebar:
-  `j/k move · ⏎ open`; files: move/fold/open/diff). Using that pane's own
-  nav/select keys extinguishes its line permanently; the files pane then
-  falls back to its short permanent `⏎ open · d diff` footer.
-- **Onboarding wizard "Keyboard basics" page** — one informational screen
-  after the first-run questions (skippable with the wizard).
-- **Settings** — General → "Keyboard hints" toggles all hint surfaces
-  (re-enabling relights extinguished pane hints); Keybindings keeps a
-  one-paragraph grammar summary with the live prefix/timeout values.
-
-Hints are text-only on the ambient background (no opaque fill), so normal
-and transparent themes both stay readable — pinned by
-`test/tui-react/keyboard-overlay-theme.test.ts` and the `/harness` visual
-journey `keyboard hints render and extinguish in the real OpenTUI`.
-
-## PureTUI prefix
-
-The default first stroke is `ctrl+a`. Prefix-only actions then consume one
-second key within 5000 ms. After a short delay, the HUD expands into a
-which-key-style command map generated from the live Binding Stack, so it shows
-only actions that can run in the current focus/modal state. It cancels on
-timeout, modal changes, reload, `esc`, or an invalid second stroke.
-
-Owner decision (2026-08-10): the configured prefix first stroke is dynamically
-Kobe-owned even inside the embedded terminal. This makes the command layer and
-content-scoped prefix actions reachable without leaving the pane. The explicit
-cost of the default is that the terminal no longer receives `ctrl+a` for shell
-line-start; disabling the prefix or rebinding it releases the old key to the
-PTY immediately. Unlike fixed global chords, this reservation follows the live
-user configuration. A sequence armed outside the terminal still cancels when
-focus crosses the PTY boundary, so a pending pane command cannot leak into the
-engine accidentally.
-
-Default prefix actions:
+The default first stroke is `ctrl+a`. Press it, then one more key within 5
+seconds. After a short pause an on-screen command map appears, showing only
+the actions that can actually run right now.
 
 | Sequence | Action |
 |---|---|
-| `ctrl+a`, `f` | Quick-fork a child task (new worktree, branched off THIS task's branch) |
-| `ctrl+a`, `c` | Continue this chat in a new tab of the SAME worktree — picks the engine: same one forks the session natively, a different one gets a transcript handoff (claude ⇄ codex, see [ENGINES.md](./ENGINES.md)). PROPOSED chord, awaiting owner sign-off: `c` was freed when Kanban moved to a digit, mnemonic "continue" |
-| `ctrl+a`, `i` | Open the Inbox dialog |
-| `ctrl+a`, `y` | Resume a prior engine Session |
-| `ctrl+a`, `h` | Cycle focus backward (Files → Workspace → Sidebar) |
-| `ctrl+a`, `l` | Cycle focus forward (Sidebar → Workspace → Files) |
-| `ctrl+a`, `o` | Open the active task Worktree in the configured editor |
-| `ctrl+a`, `m` | Enter sidebar Move mode on the current selection (j/k reorders projects/tasks, enter/esc exits; owner picked prefix+m 2026-07-16) |
-| `ctrl+a`, `w` | Close active split |
-| `ctrl+a`, `1` | Point the content pane at the Kanban (kobe's own issue board) |
-| `ctrl+a`, `2` | Point the content pane at Automations (scheduled tasks) |
-| `ctrl+a`, `3` | Point the content pane at GitHub Issues (external tracker) |
-| `ctrl+a`, `z` | Toggle zen mode (prefix-only, owner call 2026-07-17; the old F6 direct chord is released to the shell) |
-| `ctrl+a`, `,` | Open Settings |
-| `ctrl+a`, `p` / `P` | Create a PR from the active task |
+| `ctrl+a` `f` | Fork a child task — new worktree, branched off this task's branch |
+| `ctrl+a` `c` | Continue this chat in a new tab of the same worktree |
+| `ctrl+a` `i` | Open the Inbox |
+| `ctrl+a` `y` | Resume a prior engine session |
+| `ctrl+a` `h` / `l` | Move focus left / right across panes |
+| `ctrl+a` `o` | Open the task's worktree in your editor |
+| `ctrl+a` `m` | Reorder projects and tasks in the sidebar |
+| `ctrl+a` `w` | Close the active split |
+| `ctrl+a` `1` / `2` / `3` | Kanban / Automations / GitHub Issues |
+| `ctrl+a` `z` | Toggle zen mode |
+| `ctrl+a` `,` | Open Settings |
+| `ctrl+a` `p` | Create a PR from the active task |
 
-The rail pages take digits, not letters (owner call 2026-08-01): they are one
-kind of thing — "point the content pane at X" — and their order on the rail is
-the mnemonic. Kanban moved off the `c` it shipped with for that reason. Clicking
-a rail row does the same thing.
+`ctrl+a` `c` picks an engine first. The same engine forks the conversation
+natively; a different one gets a transcript handoff (claude ⇄ codex — see
+[Engines](./ENGINES.md)).
 
-Rail pages (Kanban / Automations / Issues) do NOT disable the prefix: they
-replace only the content pane, so `ctrl+a` `2` switches from one to another
-and `ctrl+a` `1` goes back without an `esc` first. Their own bare keys
-(`j`/`k`/`d`/`enter`) are gated on the content pane holding focus, so they
-never collide with the sidebar's identically-named chords.
+The sequence cancels on timeout, `esc`, an invalid second key, or a change of
+focus or dialog.
 
-High-frequency tab actions remain direct: `ctrl+t`, `ctrl+e`, `ctrl+w`,
-`ctrl+[`, and `ctrl+]`. The escape hatch `ctrl+q` is also direct. Splits are
-direct again: `ctrl+\` (right) and `ctrl+=` (down), owner call 2026-07-22;
-their prefix strokes are dropped, same reasoning as the tab rows.
-
-Owner decision (2026-08-09): `f1` is reserved out of the terminal
-passthrough (`RESERVED_GLOBAL_CHORDS`), so F1 opens the help reference from
-inside the embedded terminal too. It was the one F-row gap (f2–f5, f7 were
-already reserved), the docs promise "F1 anywhere", and the status-bar hint
-advertises F1 inside the terminal — all three lied while f1 passed through.
-No engine CLI binds F1.
-
-## Navigation and workspace defaults
+## One-press keys
 
 | Key | Action |
 |---|---|
-| `ctrl+q` | Focus Sidebar; from Sidebar, quit |
-| `F2` | Rename active tab or split |
-| `F3` | Focus next split |
-| `F4` | Cycle focus forward |
-| `F5` | Confirm and reset the active terminal |
-| `F7` | Jump to the next available Inbox item across all projects, Tasks, and Terminal Tabs. Visiting its target removes the item from the queue. |
+| `F1` | The live keymap — works everywhere, including inside the terminal |
+| `ctrl+q` | Focus the sidebar; from the sidebar, quit |
 | `ctrl+t` | New engine tab |
-| `ctrl+e` | New tab with engine/shell picker |
-| `ctrl+w` | Close active split, otherwise close tab |
+| `ctrl+e` | New tab, with an engine/shell picker |
+| `ctrl+w` | Close the active split, otherwise the tab |
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 | `ctrl+\` | Split right |
 | `ctrl+=` | Split down |
-| `ctrl+2` … `ctrl+9`, `ctrl+0` | Jump to the row printing that digit in the sidebar |
+| `ctrl+2` … `ctrl+9`, `ctrl+0` | Jump to the sidebar row printing that digit |
+| `F2` | Rename the active split, otherwise the tab |
+| `F3` | Focus the next split |
+| `F4` | Cycle focus forward |
+| `F5` | Confirm and reset the active terminal |
+| `F7` | Jump to the next Inbox item across all projects |
 
-Context resolves intentional overlap. For example, `ctrl+w` closes the
-innermost split when a tab is split; otherwise it closes the tab. `F2` renames
-the active split when split, otherwise the tab.
+Overlap resolves by context: `ctrl+w` closes the innermost split when a tab
+is split, otherwise the tab. `F2` follows the same rule.
 
-Owner decision (2026-07-14): cross-pane navigation is relative and prefix-only.
-`F4` remains the direct forward-cycle alias. The former absolute
-`focus.numeric` action and its `ctrl+h/j/k/l` / `prefix+h/j/k/l` chords are
-removed so those Ctrl bytes reach the embedded engine. Existing
-`focus.numeric` YAML entries are rejected as an unknown binding instead of
-being silently migrated to different semantics.
-
-Owner decision (2026-07-17): the relative chords are `prefix+h` (backward) and
-`prefix+l` (forward), not j/k. The three panes are laid out horizontally, so
-left/right vim keys match the spatial direction.
-
-Owner decision (2026-07-29): `ctrl+<digit>` jumps straight to a task, and is
-GLOBAL rather than sidebar-scoped: the whole value is switching tasks without
-leaving the engine pane, so the digits are reserved out of the terminal
-passthrough (`RESERVED_GLOBAL_CHORDS`). The cost is the embedded shell's
-ctrl+digit control bytes; the real escape and backspace keys are untouched.
-
-**Each row prints the digit that jumps to it** (`panes/sidebar/jump-digits.ts`;
-one list feeds the chord table, the handler, and the renderer). That is what
-makes the feature usable rather than clever:
-
-- `ctrl+1` does not exist. The legacy terminal protocol has no encoding for it
-  (only ctrl+2…ctrl+8 map to C0 bytes; 1, 9 and 0 send nothing), verified on
-  the owner's terminal. The first row prints, and answers to, `2`. Nobody
-  computes an offset because the number is right there.
-- Under the **`recent`** sort the list reorders as you switch, so the digits
-  reorder with it. Reading them off the screen is the intended interaction:
-  the digit is "where this task sits right now", not a permanent address. The
-  task you are in sits at the top, so the digits read as distance from where
-  you are. Want fixed addresses instead? The **`default`** sort's order is
-  stored and never reshuffles on its own — but see the `sidebar.sort` note
-  below: the `t` chord that switches between them is currently inert, so
-  today the mode changes only via `activeSortMode` in state.json.
-- A row past the ninth prints no digit, and a chord with no row does nothing.
-  A jump that silently lands somewhere else is worse than one that does
-  nothing.
-
-Owner decision (2026-07-25): focus movement is a cursor, not a ring. It clamps
-at both ends (sidebar on the left, files on the right) instead of wrapping.
-`prefix+h` from the sidebar and `prefix+l`/`F4` from files are no-ops.
+**Jump digits.** Each sidebar row prints the digit that jumps to it, so you
+read it off the screen rather than counting. There is no `ctrl+1` — the
+terminal protocol can't encode it, so the first row answers to `2`.
 
 ## Sidebar and Files
 
-Bare letters are owned only while their surface has focus and no text input or
-dialog is active. The live F1 help lists every row and binding id.
+Bare letters work only while that pane has focus and no dialog or text input
+is active.
 
-Common Sidebar actions include `n` new task, `enter` open, `s` settings, `o`
-open Worktree, `a` archive, `d` delete, `r` rename, `b` rename branch, `v`
-change engine, `/` search, `u` open the Update page (version check +
-one-key updater), and `[`/`]` switch Working/Archives.
+**Sidebar**
 
-Owner decision (2026-07-29, superseded 2026-08-01): the Kanban left the bare
-sidebar `c` it originally shipped with. The sidebar's bare letters are per-task
-verbs (new, archive, delete, rename); the Kanban is a step-back-and-look
-surface, so it belongs with the other whole-page views reached through the
-prefix (`prefix+i` Inbox). Going global also means it opens from any pane
-instead of only under sidebar focus. It took `prefix+c` (cards) for two days,
-then moved to `prefix+1` when the rail made it row 1 of a set — see the rail
-note above.
+| Key | Action | | Key | Action |
+|---|---|---|---|---|
+| `n` | New task | | `r` | Rename |
+| `enter` | Open | | `b` | Rename branch |
+| `l` / `space` | Open the row under the cursor | | `v` | Change engine |
+| `o` | Open worktree in your editor | | `s` | Settings |
+| `a` | Archive | | `u` | Update page |
+| `d` | Delete | | `/` | Search |
+| `[` / `]` | Switch Working / Archives | | | |
 
-Common Files actions include `j/k` navigation, `h/l` collapse/expand, `enter`
-preview, `e` open in the configured editor, and `[`/`]` switch file tabs.
+**Files**
 
-### Tree sidebar (project → worktree → tab)
+| Key | Action |
+|---|---|
+| `j` / `k` | Move |
+| `h` / `l` | Collapse / expand |
+| `enter` | Preview |
+| `e` | Open in your editor |
+| `d` | Diff |
+| `[` / `]` | Switch file tabs |
 
-**The tree never folds** (owner call 2026-08-01): every project and worktree
-always shows everything under it — no twisties, no collapse state, no
-Expand/Collapse menu entries. The tree is the map; hiding rows made it lie.
+The sidebar is a tree — project → worktree → tab — and it never folds, so
+everything is always visible. Search (`/`) matches titles, repos, branches,
+and live tab titles, and keeps matching rows' parents so a hit is never
+orphaned.
 
-`sidebar.tree.open` (`l` / `space`) opens the row under the cursor — the same
-thing `enter` does. On a tab row, the last level, that means entering the
-tab's chat; the chord exists so the vim right-hand "go in" gesture works
-without reaching for enter. `h` is unbound in the tree (there is no fold for
-it to drive) and stays reserved. The chord replaced the withdrawn
-`sidebar.tree.toggle` (`h`/`l`/`space`) proposal when the fold itself was
-removed; the resolution is the owner's 2026-08-01 "no fold, `l` enters"
-directive, so no further sign-off is pending.
+Right-click any row for its menu. Every entry there is also a direct chord on
+the row, so the menu is optional. (If right-click opens your *terminal's*
+menu instead, see [Troubleshooting](./TROUBLESHOOTING.md).)
 
-The tree deliberately adds NO other chords. One existing chord means
-something tree-shaped inside it:
+## Inbox
 
-- `/` (`sidebar.search.enter`) — the same search chord, with a wider haystack.
-  On top of a task's title + repo, a query also matches a worktree's branch
-  and a **tab's live title**. Matches keep their ancestors so a hit is never
-  orphaned from its project. `escape` / `enter` leave search. (`ctrl+p` does
-  nothing — the project filter it drove was a fold, and the fold is gone.)
+`ctrl+a` `i` opens it. Rows are pending items, oldest first.
 
-- `prefix+m` (`task.moveMode`) — the same global move mode, retargeted at the
-  level the tree actually shows: `j`/`k` drag the cursor row's **project**, not
-  its task, and `enter` / `esc` leave. It rides on the project's `main`
-  checkout, which `moveTask` already reorders among mains, so project order
-  needed no new persistence and no new daemon verb. A repo with no main
-  checkout has no row to move, and the chord is a silent no-op there.
-- Right-click on any row opens that row's menu (`j`/`k`/`enter`/`esc`). The
-  entries are exactly what the row's own chords already do, so the menu never
-  becomes a second place where behavior is decided — the one exception is the
-  project header, which the cursor cannot reach at all. Some outer terminals
-  (iTerm2 by default) keep right-click for their own menu and never report it
-  to kobe; the terminal-side fix (e.g. iTerm2's "Ctrl-click reported to
-  apps") lives in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
+| Key | Action |
+|---|---|
+| `j` / `k` | Select |
+| `enter` | Open the target task and tab, and clear the item |
+| `d` | Clear the item without navigating |
 
-`sidebar.sort` (`t`) is **registered in the keymap table but has no handler**
-in the tree sidebar, so pressing it does nothing today (F1 filters it out by
-reachability, so it is not advertised either). A tree already carries an order
-(project → worktree → tab) and manual placement lives in move mode, so a
-second automatic ordering would only fight the structure — but the row was
-never removed, and `activeSortMode` is still read at startup. Whether to wire
-the chord back or drop the row is an open owner call; the same applies to
-`sidebar.projectFilter` (`ctrl+p`, whose project filter was a fold),
-`sidebar.previewToggle` (`i`), and `tasks.toggleKeys` (`?`), which are also
-table rows with no handler.
+Visiting a target clears its item too — visiting means handled. A newer item
+for the same task and tab replaces the older one.
 
-Create PR is `prefix+p` / `prefix+P`, global scope, no direct chord (owner
-call 2026-07-18, superseding the 2026-07-17 files-scoped `ctrl+p`): the direct
-chord was unreachable from where the owner actually sits (on the sidebar
-`ctrl+p` is the project filter, and inside the terminal it passes through to
-the engine), so his muscle memory went to the prefix route, which was unbound
-(HUD showed `ctrl+a + shift+p ∅`). Both `p` and `shift+p` are bound because
-"PR" reads uppercase and the capital press must land. The handler also guards
-the target branch: firing it on a session sitting on the PR base (a project
-main session) surfaces a toast instead of sending the engine a doomed
-`gh pr create`.
+## Diff review
 
-Uppercase letters are distinct chords: a keypress with shift is matched as
-`shift+<letter>` first, falling back to the bare letter, so `P` (written
-`shift+p` or just `P` in YAML) can be bound apart from `p`. Shift combined
-with other modifiers on a letter (`ctrl+shift+p`) stays invalid: legacy
-terminals send the same byte with and without shift there.
+In the read-only diff tab, with the workspace focused:
 
-The Inbox is a modal dialog opened with `prefix+i`. Every row is a pending
-item, ordered oldest first. Inside the dialog, `j/k` selects. `enter` opens the
-target Task and Terminal Tab when available; either way, it removes the item
-from the queue. `d` removes it without navigating. Landing on a target also
-removes matching items because visiting means handled. A newer item for the
-same Task and Terminal Tab replaces the older one and moves to the end of the
-queue. Owner decision (2026-07-15): `d` is direct and dialog-scoped because
-removal is a frequent, explicit cleanup action there; it cannot shadow input
-or embedded-terminal shortcuts outside the dialog.
+| Key | Action |
+|---|---|
+| `j` / `k` | Move the line cursor |
+| `v` | Anchor a range |
+| `c` | Write a note |
+| `s` | Send all unsent notes to the engine |
 
-Diff review notes live in the read-only diff content tab (workspace focus,
-diff kind only, inert elsewhere): `j/k` (and arrows) line cursor, `v` range
-anchor, `c` note dialog, `s` send all unsent notes to the engine session.
-Owner decision (2026-07-27): plain direct letters, diff-tab-scoped. They
-follow the same raw-binding precedent as the preview's `o` (system open), so
-they cannot shadow the composer, embedded terminals, or any other pane. The
-central table carries documentation-only rows (`diff.review.*`) so F1 and
-the legend list them.
+## Customizing
 
-## User customization
-
-Edit `~/.kobe/settings/keybindings.yaml`. Changes reload live through the
-daemon watcher.
+Edit `~/.kobe/settings/keybindings.yaml`. Changes reload live — no restart.
 
 ```yaml
 prefix:
@@ -304,50 +153,34 @@ bindings:
   chat.tab.new: ctrl+t
   chat.tab.chooseEngine: ctrl+e
   sidebar.select: [enter]
-  files.createPR: null
-darwin:
+  files.createPR: null   # null or [] unbinds
+
+darwin:                  # platform overlays win per chord
   bindings:
     files.openExternal: cmd+o
 ```
 
-A direct override replaces the binding's complete direct-chord list. `null`
-or `[]` unbinds it. Prefix overrides contain second-stroke keys and retain the
-binding's original pane scope and modal rules.
+- A direct override **replaces** that binding's whole chord list.
+- Prefix overrides set second-stroke keys and keep the binding's pane scope.
+- Uppercase is a distinct chord: `shift+p` (or just `P`) can be bound apart
+  from `p`. Shift with another modifier on a letter (`ctrl+shift+p`) is
+  invalid — legacy terminals send the same byte either way.
+- Unknown ids and invalid entries are ignored with a warning in
+  Settings → Keybindings. A typo never breaks the default keymap.
 
-Positional groups must preserve their documented slot count/order. Invalid or
-unknown entries are ignored with warnings shown in Settings → Keybindings.
+### Plugin chords
 
-### Plugin chords (`plugins:` section)
-
-Bind a chord to an installed plugin's pane or action (docs/design/plugins.md):
+kobe ships none — every plugin chord is your own choice:
 
 ```yaml
 plugins:
   ctrl+g: pane:examples.lazygit.git
   f6: action:examples.notify.test
-darwin:
-  plugins:
-    cmd+g: pane:examples.lazygit.git   # platform overlay wins per chord
 ```
 
-Resolution (owner sign-off 2026-07-28): kobe ships **no default plugin
-chords**. Every plugin chord is the user's own placement call, so the
-catalogue/help surfaces don't list them. They register at the workspace-host
-level with the same open-page gating as global rows; a chord that shadows a
-catalogue binding applies with a warning. Fire path is a detached
-`kobe plugin pane open|action invoke`: chord-fired actions have no
-terminal, so interactive pickers belong in panes.
+See [design/plugins.md](./design/plugins.md).
 
-## Adding or moving a chord
+---
 
-Chord placement is an owner decision. Before treating a new or moved binding
-as settled, get owner sign-off on direct versus prefix placement, the selected
-key, and any engine/terminal shortcut it may shadow. Record that decision and
-its reasoning here.
-
-1. Add or change the stable binding row in `tui/context/keybindings-*.ts`.
-2. Register its handler at the narrowest correct focused surface.
-3. Check conflicts across direct and prefix forms.
-4. Update F1 localization, focused tests, and this document when the default
-   vocabulary changes.
-5. Verify terminal passthrough for unclaimed keys.
+Why each chord sits where it does, and which ones are still open questions:
+[design/keybinding-decisions.md](./design/keybinding-decisions.md).

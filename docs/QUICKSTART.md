@@ -1,7 +1,10 @@
 # Quick start
 
-Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI
-(`claude`, `codex`, or `copilot`) on `PATH`.
+kobe runs many AI coding sessions side by side in your terminal. Each one
+gets its own git worktree and branch, so they never step on each other.
+
+You need [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI
+(`claude`, `codex`, or `copilot`) on your `PATH`.
 
 ## Install
 
@@ -12,29 +15,38 @@ bun install -g @sma1lboy/kobe
 bunx @sma1lboy/kobe
 ```
 
-## First run
+## Your first task
 
 ```bash
-ssh devbox        # optional — kobe runs wherever your code lives
 cd your-repo
 kobe
 ```
 
-Press `n`, pick a repo, base branch, and engine, and prompt the embedded
-session. The worktree lands in `~/.kobe/worktrees/<repo-key>/<task-slug>/`.
+Press `n`, pick a repo, a base branch, and an engine. Then just talk to the
+session — it's the real engine CLI, running in a fresh worktree under
+`~/.kobe/worktrees/`.
 
-Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the
-sidebar, and from there quits. Sessions keep running in the background.
-Reattach later with plain `kobe` and the screen comes back.
+![kobe's three panes: tasks on the left, the engine session in the middle, changed files on the right](assets/workspace.png)
 
-The TUI is full-mouse: click to focus panes and sidebar rows, wheel to scroll
-(forwarded to the engine when it asks for mouse input), drag to select.
-Shift-drag bypasses mouse reporting for a native selection. When a background
-session finishes or needs input, kobe raises a desktop notification (OSC 9,
-which rides SSH back to your local terminal), plays a chime, and lights an
-unread dot; `ctrl+a`, `i` opens the attention inbox across all tasks.
+Three panes: **tasks** on the left, the **engine session** in the middle,
+**changed files** on the right. Click any of them to focus it.
 
-## Fan out from the shell
+## Three keys to remember
+
+| Key | What it does |
+|---|---|
+| `F1` | Every shortcut, live and up to date |
+| `ctrl+a` | Opens the command menu |
+| `ctrl+q` | Focus the sidebar — press it again to quit |
+
+## Quitting doesn't stop anything
+
+Sessions keep running in the background after you quit, close the terminal,
+or drop an SSH connection. Run `kobe` again and everything is where you left
+it. When a background session finishes or needs you, kobe raises a desktop
+notification and marks the task unread.
+
+## Run many attempts at once
 
 One prompt, N isolated attempts, one command:
 
@@ -49,31 +61,30 @@ kobe api fan-out --repo "$PWD" \
 Compare the attempts, then land the winner:
 
 ```bash
-kobe api collect --task-ids a,b,c      # read-only comparison snapshot
+kobe api collect --task-ids a,b,c      # read-only comparison
 kobe api land --task-id a              # merge the winning branch
 ```
 
 ## Let your agent drive
 
-Install the companion skill so your agent can orchestrate this loop itself:
+Install the companion skill so your coding agent can run this loop itself:
 
 ```bash
 kobe skill install
 ```
 
-## If it gets stuck
+## If something's wrong
 
 ```bash
-kobe doctor            # read-only diagnosis: daemon, PTY host, engines, git
-kobe doctor --report   # write a bundle you can attach to a bug report
+kobe doctor            # check daemon, engines, git
+kobe doctor --report   # write a bundle for a bug report
 ```
 
-More in [Troubleshooting](TROUBLESHOOTING.md).
+More fixes in [Troubleshooting](TROUBLESHOOTING.md).
 
 ## Next steps
 
-- [Concepts](CONCEPTS.md): tasks, sessions, and what survives what.
-- [CLI reference](CLI.md): every command the `kobe` binary ships.
-- [kobe api](API.md): the scriptable surface — fan out, supervise, land,
-  from a script or another agent.
-- [Configuration](CONFIGURATION.md): engines, themes, notifications.
+- [Concepts](CONCEPTS.md) — tasks, sessions, and what survives what.
+- [CLI reference](CLI.md) — every `kobe` command.
+- [kobe api](API.md) — the scriptable surface for scripts and agents.
+- [Configuration](CONFIGURATION.md) — engines, themes, notifications.
