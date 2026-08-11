@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 12 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 13 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -85,13 +85,20 @@ kobe api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 # (sender + reply command); --plain sends verbatim.
 kobe api send --task-id <id> --prompt "<complete next turn>"
 
+# A task can hold several chat tabs. Enumerate them first (inspect's .tabs is
+# the sidebar's tab snapshot: id, kind, vendor, lastTitle), then address one:
+kobe api inspect --task-id <id>
+kobe api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
+kobe api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
+
 kobe api get-task --task-id <id>
 kobe api collect --task-ids <id1>,<id2>,<id3> --pretty
 kobe api list --pretty
 ```
 
 `.running` means the task's canonical Hosted PTY engine session is alive.
-`send` reuses it or auto-starts it when absent.
+`send` reuses it or auto-starts it when absent; omitting `--tab` targets that
+canonical engine tab.
 
 ## Terminal panes
 
