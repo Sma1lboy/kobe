@@ -113,6 +113,10 @@ const SPAWN_LOCK_WAIT_MS = 15_000
  *  someone else. Reclaims stale locks. Exported for tests. */
 export function tryAcquireSpawnLock(lockPath: string, staleMs: number = SPAWN_LOCK_STALE_MS): boolean {
   const create = (): boolean => {
+    // A fresh KOBE_HOME has no .kobe dir yet; without this, openSync throws
+    // ENOENT which the catch below misreads as "lock held by someone else"
+    // and the very first command stalls 15s then fails (issue #17).
+    mkdirSync(dirname(lockPath), { recursive: true })
     closeSync(openSync(lockPath, "wx"))
     return true
   }

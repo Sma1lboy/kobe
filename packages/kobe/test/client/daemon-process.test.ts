@@ -77,6 +77,16 @@ describe("testDaemonResponds", () => {
 })
 
 describe("tryAcquireSpawnLock", () => {
+  it("acquires on a fresh home whose .kobe dir does not exist yet", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kobe-spawn-lock-"))
+    try {
+      const lock = join(dir, "does-not-exist-yet", ".kobe", "daemon.pid.spawn-lock")
+      expect(tryAcquireSpawnLock(lock)).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it("second acquire loses while the lock is fresh", () => {
     const dir = mkdtempSync(join(tmpdir(), "kobe-spawn-lock-"))
     try {
