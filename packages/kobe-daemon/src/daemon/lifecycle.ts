@@ -17,7 +17,7 @@
 
 import { unlink } from "node:fs/promises"
 import { KobeDaemonClient } from "../client/index.ts"
-import { readPidFile } from "./server.ts"
+import { readPidFile } from "./socket-guard.ts"
 
 /**
  * How {@link stopDaemonProcess} stopped the daemon — the strongest signal
