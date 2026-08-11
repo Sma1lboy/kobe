@@ -169,20 +169,30 @@ describe("StatusKeyHintBar", () => {
     act(() => resetPrefixState())
   })
 
-  it("hides the whole bar — [settings] included — while a modal owns input", async () => {
-    // Barrier OUTERMOST: parent effects commit after children, so its
-    // registration lands on top of the stack — the same position an
-    // opening dialog's barrier takes in production.
-    const { frame } = await renderComponent(
-      <ModalBarrierDriver>
-        <WorkspaceDriver>
-          <StatusKeyHintBar onOpenSettings={NOOP} />
-        </WorkspaceDriver>
-      </ModalBarrierDriver>,
-      { providers: { focus: true, dialog: true } },
+  it("keeps the bar on screen but inert once F1 opens the help modal", async () => {
+    let settingsOpens = 0
+    const { frame, mockInput, mockMouse } = await renderComponent(
+      <WorkspaceFrame orchestrator={fakeOrchestrator()} onOpenSettings={() => settingsOpens++}>
+        <WorkspaceDriver />
+      </WorkspaceFrame>,
+      { width: 110, height: 30, providers: { focus: true, dialog: true } },
     )
     await settle()
-    expect((await frame()).trim()).toBe("")
+    expect(await frame()).toContain("F1 help")
+
+    act(() => mockInput.pressKey("F1"))
+    await settle()
+    const text = await frame()
+    // The hint row is the anchor the user navigates back by — it must not
+    // blink out from under the dialog.
+    expect(text).toContain("F1 help")
+    expect(text).toContain("[settings]")
+
+    // …but its segments are inert: no second dialog under the open one.
+    const at = locate(text, "[settings]")
+    await mockMouse.click(at.x + 1, at.y)
+    await settle()
+    expect(settingsOpens).toBe(0)
   })
 
   it("renders nothing when the master toggle is off", async () => {

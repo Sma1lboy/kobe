@@ -82,24 +82,41 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   // compare-and-set keeps the no-change case from looping.
   useEffect(() => {
     const enabled = keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))
-    const nextTokens = enabled ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : []
-    const nextModal = modalActive()
-    setSnapshot((prev) =>
-      prev.modal === nextModal &&
-      prev.tokens.length === nextTokens.length &&
-      prev.tokens.every((tok, i) => tok.chord === nextTokens[i]?.chord && tok.msg === nextTokens[i]?.msg)
+    // Two independent signals, both meaning "an overlay owns input": the
+    // registered modal barrier, and a non-empty dialog stack. The stack
+    // fills a render EARLIER (the workspace bindings gate themselves off
+    // it), so checking only the barrier catches one frame where
+    // reachability is already empty but nothing looks modal yet — and the
+    // footer blanks out for good.
+    const nextModal = modalActive() || (dialog?.stack.length ?? 0) > 0
+    const fresh =
+      enabled && !nextModal ? statusHintTokens(currentBindingReachability(), currentPrefixConfiguration().key) : null
+    setSnapshot((prev) => {
+      // A modal barrier cuts the reachability walk short, so recomputing
+      // under one yields an empty set and the footer row would vanish the
+      // moment F1/any dialog opens. Freeze the last non-modal tokens
+      // instead — the row stays put as a visual anchor; its segments go
+      // inert below, so nothing advertised there fires under the dialog.
+      const nextTokens = fresh ?? (enabled ? prev.tokens : [])
+      return prev.modal === nextModal &&
+        prev.tokens.length === nextTokens.length &&
+        prev.tokens.every((tok, i) => tok.chord === nextTokens[i]?.chord && tok.msg === nextTokens[i]?.msg)
         ? prev
-        : { tokens: nextTokens, modal: nextModal },
-    )
+        : { tokens: nextTokens, modal: nextModal }
+    })
   })
   // Click = the action the advertised key would run. Arming the prefix goes
   // through the REAL dispatcher state, so the which-key guide that appears
   // accepts a keyboard second stroke exactly like a pressed ctrl+a.
-  const actions: Record<StatusHintToken["msg"], (() => void) | undefined> = {
-    commands: () => void armPrefixFromCurrentStack(),
-    sidebar: focus ? () => focus.setFocused("sidebar") : undefined,
-    help: dialog ? () => HelpDialog.show(dialog, focus?.focused ?? "sidebar") : undefined,
-  }
+  // Inert under a modal: the row stays legible, but clicking a segment must
+  // not arm the prefix / open a second dialog under the open one.
+  const actions: Record<StatusHintToken["msg"], (() => void) | undefined> = snapshot.modal
+    ? { commands: undefined, sidebar: undefined, help: undefined }
+    : {
+        commands: () => void armPrefixFromCurrentStack(),
+        sidebar: focus ? () => focus.setFocused("sidebar") : undefined,
+        help: dialog ? () => HelpDialog.show(dialog, focus?.focused ?? "sidebar") : undefined,
+      }
   const items: StatusKeyHintItem[] = snapshot.tokens.map((tok) => ({
     text: t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
     onPress: actions[tok.msg],
@@ -107,10 +124,13 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   // Bracketed like the other clickable chips ([~] Zen, [enter] Send) — and
   // deliberately NO glyph: U+2699 ⚙ is East-Asian-Ambiguous width, so
   // terminals disagree on whether it takes 1 or 2 cells and the row
-  // misaligns per OS/font. Hidden while a modal owns input — Settings must
-  // not open under a dialog, same reason the keyboard tokens drop.
-  if (opts?.onOpenSettings && !snapshot.modal && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
-    items.push({ text: `[${t("hints.status.settings")}]`, onPress: opts.onOpenSettings })
+  // misaligns per OS/font. Stays on screen while a modal owns input, but
+  // inert — Settings must not open under a dialog.
+  if (opts?.onOpenSettings && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
+    items.push({
+      text: `[${t("hints.status.settings")}]`,
+      onPress: snapshot.modal ? undefined : opts.onOpenSettings,
+    })
   }
   return items
 }
