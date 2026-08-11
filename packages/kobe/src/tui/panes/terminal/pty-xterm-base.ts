@@ -80,9 +80,8 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.cwd = opts.cwd
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
-    // A restored (previously parked) screen brings its title with it —
-    // serialize streams don't carry OSC titles, and the tab strip must not
-    // flash back to "shell" on wake.
+    // Restored (parked) screens bring their title — serialize streams don't
+    // carry OSC titles; the tab strip must not flash "shell" on wake.
     if (opts.restore?.title) this._title = opts.restore.title
     this.scrollbackRows = opts.scrollback ?? persistedScrollbackRows()
     this.term = new XtermHeadless({
@@ -92,20 +91,17 @@ export abstract class XtermTaskPty implements TaskPtyLike {
       scrollback: this.scrollbackRows,
     })
     // Unicode 11 width tables: the default (Unicode 6) measures emoji as ONE
-    // cell while every modern app — and kobe's own cursor-overlay math in
-    // lib/display-width.ts — measures them as TWO, so any emoji in engine
-    // output desynced the emulator's cursor/wrap from the drawn overlay.
+    // cell while modern apps — and kobe's cursor-overlay math in
+    // lib/display-width.ts — measure TWO; emoji desynced cursor/wrap.
     this.term.loadAddon(new Unicode11Addon())
     this.term.unicode.activeVersion = "11"
     this.refreshTracker = new XtermRefreshTracker(this.term)
 
     wireXtermChannels(this.term, {
       // `muteReplies`: replies triggered while parsing a ring-buffer REPLAY
-      // are answers to queries the child asked in the PAST (it already got
-      // them, from whatever emulator was attached then). Sending fresh
-      // answers now injects unsolicited CPR/DA bytes into the child's
-      // stdin — an interactive claude read them as input and scrambled its
-      // renderer. Live queries still flow.
+      // answer queries the child asked in the PAST (already answered by the
+      // then-attached emulator); re-answering injects unsolicited CPR/DA
+      // into the child's stdin (scrambled claude's renderer). Live flows.
       onReply: (data) => {
         if (this._killed || this.muteReplies) return
         try {
@@ -239,6 +235,10 @@ export abstract class XtermTaskPty implements TaskPtyLike {
     this.term.resize(cols, rows)
     this.invalidateScrollbackCache()
     this.refreshTracker.markAll()
+  }
+
+  get size(): { cols: number; rows: number } {
+    return { cols: this.cols, rows: this.rows }
   }
 
   resize(cols: number, rows: number): void {

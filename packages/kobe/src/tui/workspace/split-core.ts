@@ -46,13 +46,60 @@ export interface SplitState<T> {
   readonly nextOrdinal: number
 }
 
-/** Max group-nesting depth — a split that would nest deeper no-ops.
- *  Same-orientation splits insert siblings and never deepen the tree,
- *  so this only bites on alternating row/column nesting. */
+/** FALLBACK max group-nesting depth, used only when the caller cannot
+ *  supply the active leaf's rendered size (tests, headless). With a real
+ *  size, `splitFits` replaces this entirely: how deep you can nest is
+ *  decided by the screen, not a fixed count. */
 export const MAX_SPLIT_DEPTH = 4
+
+/** Minimum usable pane size in cells. A split whose predicted panes would
+ *  fall below this is rejected — the caller keeps its fallback (chord
+ *  no-ops, pane-open falls back to a tab). The cols floor matches the
+ *  render clamp in `use-terminal-geometry`; rows sits above its 4-row
+ *  clamp so a pane never renders pinned at the degenerate minimum. */
+export const MIN_PANE_COLS = 20
+export const MIN_PANE_ROWS = 6
 
 function depth<T>(node: SplitNode<T>): number {
   return node.kind === "leaf" ? 0 : 1 + Math.max(...node.children.map(depth))
+}
+
+/** Same-orientation direct-sibling count of the active leaf — mirrors
+ *  `splitActive`'s insert rule: only a leaf sitting directly in a group of
+ *  the requested orientation gains a sibling; anywhere else it nests (1). */
+function siblingCount<T>(root: SplitNode<T>, id: string, orientation: "row" | "column"): number {
+  const find = (node: SplitNode<T>): number | null => {
+    if (node.kind === "leaf") return null
+    if (node.orientation === orientation && node.children.some((c) => c.kind === "leaf" && c.id === id)) {
+      return node.children.length
+    }
+    for (const child of node.children) {
+      const n = find(child)
+      if (n !== null) return n
+    }
+    return null
+  }
+  return find(root) ?? 1
+}
+
+/**
+ * Whether splitting the active leaf leaves every resulting pane at or above
+ * `MIN_PANE_COLS`×`MIN_PANE_ROWS`, judged from the active leaf's CURRENT
+ * rendered size. Even-flex prediction: a sibling insert re-divides the
+ * group's extent (≈ n × the active leaf's, all children `flexGrow=1
+ * flexBasis=0`) among n+1 children; a nesting split halves the leaf. One
+ * cell is charged for the new divider edge. Existing siblings shrink to the
+ * same predicted extent, so checking it covers them too.
+ */
+export function splitFits<T>(
+  state: SplitState<T>,
+  orientation: "row" | "column",
+  activeSize: { cols: number; rows: number },
+): boolean {
+  const extent = orientation === "row" ? activeSize.cols : activeSize.rows
+  const min = orientation === "row" ? MIN_PANE_COLS : MIN_PANE_ROWS
+  const n = siblingCount(state.root, state.activeLeafId, orientation)
+  return Math.floor((extent * n) / (n + 1)) - 1 >= min
 }
 
 /** The initial state: a single leaf (`leaf-1`) showing `content`. */
@@ -70,10 +117,20 @@ export function leaves<T>(node: SplitNode<T>): readonly SplitLeaf<T>[] {
  * laid out by `orientation`, and focus the new leaf (tmux focuses the
  * split it just created). Inside a group of the same orientation the
  * new leaf becomes a sibling; otherwise the active leaf is replaced by
- * a nested group of the two — exactly tmux's nesting behavior. A split
- * that would nest past `MAX_SPLIT_DEPTH` is a no-op (returns `state`).
+ * a nested group of the two — exactly tmux's nesting behavior.
+ *
+ * Gating: with `activeSize` (the active leaf's current rendered cells) the
+ * split is a no-op when `splitFits` predicts a pane below the minimum —
+ * screen size decides, not nesting count. Without it (tests, headless) the
+ * `MAX_SPLIT_DEPTH` fallback applies.
  */
-export function splitActive<T>(state: SplitState<T>, orientation: "row" | "column", content: T): SplitState<T> {
+export function splitActive<T>(
+  state: SplitState<T>,
+  orientation: "row" | "column",
+  content: T,
+  activeSize?: { cols: number; rows: number } | null,
+): SplitState<T> {
+  if (activeSize && !splitFits(state, orientation, activeSize)) return state
   const leaf: SplitLeaf<T> = { kind: "leaf", id: `leaf-${state.nextOrdinal}`, content }
   const insert = (node: SplitNode<T>): SplitNode<T> => {
     if (node.kind === "leaf") {
@@ -90,7 +147,7 @@ export function splitActive<T>(state: SplitState<T>, orientation: "row" | "colum
     return { ...node, children: node.children.map(insert) }
   }
   const root = insert(state.root)
-  if (depth(root) > MAX_SPLIT_DEPTH) return state
+  if (!activeSize && depth(root) > MAX_SPLIT_DEPTH) return state
   return { root, activeLeafId: leaf.id, nextOrdinal: state.nextOrdinal + 1 }
 }
 

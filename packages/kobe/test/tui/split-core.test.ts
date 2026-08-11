@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
   MAX_SPLIT_DEPTH,
+  MIN_PANE_COLS,
+  MIN_PANE_ROWS,
   type SplitGroup,
   cycleLeaf,
   focusLeaf,
@@ -9,6 +11,7 @@ import {
   removeLeaf,
   renameLeaf,
   splitActive,
+  splitFits,
 } from "../../src/tui/workspace/split-core"
 import { type EngineTab, splitLeafNames, splitLeafPtyKey, tabTitle } from "../../src/tui/workspace/terminal-tabs-core"
 
@@ -56,6 +59,43 @@ describe("split tree (content-agnostic)", () => {
     // A same-orientation split inserts a sibling (no deeper) — allowed.
     const sibling = splitActive(atCap, MAX_SPLIT_DEPTH % 2 === 0 ? "column" : "row", SH)
     expect(leaves(sibling.root)).toHaveLength(leaves(atCap.root).length + 1)
+  })
+
+  describe("size gate (activeSize replaces the depth cap)", () => {
+    const BIG = { cols: 200, rows: 60 }
+
+    it("splitFits: nesting halves the active extent minus a divider cell", () => {
+      const s = initialSplit(MAIN)
+      // floor(cols/2) - 1 must clear MIN_PANE_COLS.
+      expect(splitFits(s, "row", { cols: MIN_PANE_COLS * 2 + 2, rows: 24 })).toBe(true)
+      expect(splitFits(s, "row", { cols: MIN_PANE_COLS * 2 + 1, rows: 24 })).toBe(false)
+      expect(splitFits(s, "column", { cols: 80, rows: MIN_PANE_ROWS * 2 + 2 })).toBe(true)
+      expect(splitFits(s, "column", { cols: 80, rows: MIN_PANE_ROWS * 2 + 1 })).toBe(false)
+    })
+
+    it("splitFits: sibling insert re-divides the whole group's extent", () => {
+      // [1 | 2*]: group extent ≈ 2×active; a third sibling gets 2E/3 - 1.
+      const s = splitActive(initialSplit(MAIN), "row", SH)
+      const fits = (cols: number) => splitFits(s, "row", { cols, rows: 24 })
+      // floor(2*32/3)-1 = 20 ≥ 20; floor(2*31/3)-1 = 19 < 20.
+      expect(fits(32)).toBe(true)
+      expect(fits(31)).toBe(false)
+    })
+
+    it("too-small split is a no-op; a roomy one proceeds", () => {
+      const s = initialSplit(MAIN)
+      expect(splitActive(s, "row", SH, { cols: 30, rows: 24 })).toBe(s)
+      expect(leaves(splitActive(s, "row", SH, BIG).root)).toHaveLength(2)
+    })
+
+    it("with a real size, nesting past MAX_SPLIT_DEPTH is allowed", () => {
+      let s = initialSplit<string[] | null>(MAIN)
+      for (let i = 0; i <= MAX_SPLIT_DEPTH; i++) {
+        s = splitActive(s, i % 2 === 0 ? "row" : "column", SH, BIG)
+      }
+      // MAX_SPLIT_DEPTH+1 alternating splits all landed — screen decides.
+      expect(leaves(s.root)).toHaveLength(MAX_SPLIT_DEPTH + 2)
+    })
   })
 
   it("cross-orientation split nests a group under the active leaf (tmux nesting)", () => {

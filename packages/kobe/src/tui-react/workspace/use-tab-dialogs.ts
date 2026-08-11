@@ -39,6 +39,8 @@ export function useTabDialogs(deps: {
   liveTitles: ReadonlyMap<string, string>
   update: (next: TabsState) => void
   pinSession: (s: TabsState, vendor: VendorId | undefined) => TabsState
+  /** Active leaf's emulator cells for split-core's size gate (null = unknown). */
+  activeLeafSize: () => { cols: number; rows: number } | null
   onChooseEngine?: (vendor: VendorId) => void
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
   /** Toast for the two "nothing to continue from" refusals. */
@@ -83,7 +85,7 @@ export function useTabDialogs(deps: {
       if (picked === undefined) return
       const pane = panes.find((p) => `pane:${p.pluginId}.${p.paneId}` === picked)
       if (pane) {
-        update(openPluginPane(state, pane.argv, pane.title, pane.placement))
+        update(openPluginPane(state, pane.argv, pane.title, pane.placement, undefined, deps.activeLeafSize()))
         return
       }
       // "shell" = a plain terminal tab (kind "command"): no session pin, no

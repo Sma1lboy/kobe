@@ -36,6 +36,20 @@ describe("openPluginPane", () => {
     expect(active).toMatchObject({ kind: "command", command: ARGV, title: "lazygit" })
   })
 
+  it("falls back to a tab when the size gate rejects the split", () => {
+    const state = initialTabs()
+    // 30 cols can't hold two ≥20-col panes → command tab instead.
+    const next = openPluginPane(state, ARGV, "lazygit", "split", "right", { cols: 30, rows: 24 })
+    expect(next.tabs).toHaveLength(state.tabs.length + 1)
+    expect(next.tabs.find((t) => t.id === next.activeId)).toMatchObject({ kind: "command", command: ARGV })
+  })
+
+  it("splits normally when the size gate passes", () => {
+    const state = initialTabs()
+    const next = openPluginPane(state, ARGV, "lazygit", "split", "right", { cols: 120, rows: 40 })
+    expect(next.tabs).toHaveLength(state.tabs.length)
+  })
+
   it("falls back to a tab when the active tab cannot host a split", () => {
     const withContent = openContentTab(initialTabs(), "README.md", "README.md")
     const next = openPluginPane(withContent, ARGV, "lazygit")

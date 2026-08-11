@@ -149,6 +149,11 @@ export interface TaskPtyLike {
    */
   wheel(direction: "up" | "down", col: number, row: number): boolean
   resize(cols: number, rows: number): void
+  /** Current emulator geometry in cells — the last size pushed via
+   *  `resize()` (the spawn size before any resize). Backends without a
+   *  real emulator (mocks) may omit it; size-gated callers (split-core's
+   *  `splitFits`) then fall back to the depth cap. */
+  readonly size?: { cols: number; rows: number }
   capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null
   /** Address paired with `capture()`; null for backends without stable line ids. */

@@ -187,11 +187,17 @@ export function TerminalSplit(props: {
     props.onExit?.()
   }
 
+  /** The focused leaf's live emulator cells — feeds split-core's size gate
+   *  (split allowed while the resulting panes stay ≥ MIN_PANE_*; null for
+   *  a not-yet-spawned PTY falls back to the depth cap). */
+  const activeLeafSize = (): { cols: number; rows: number } | null =>
+    getDefaultPtyRegistry().get(splitLeafPtyKey(props.tabKey, activeLeaf))?.size ?? null
+
   useBindings(() => ({
     enabled: props.focused,
     bindings: bindByIds({
-      "workspace.split.right": () => update(splitActive(fullState(), "row", [defaultShell()])),
-      "workspace.split.down": () => update(splitActive(fullState(), "column", [defaultShell()])),
+      "workspace.split.right": () => update(splitActive(fullState(), "row", [defaultShell()], activeLeafSize())),
+      "workspace.split.down": () => update(splitActive(fullState(), "column", [defaultShell()], activeLeafSize())),
       // Focus cycle is LOCAL — no persist, no whole-tree re-render.
       "workspace.split.focus-next": () => setActiveLeaf(cycleLeaf(fullState(), 1).activeLeafId),
     }),

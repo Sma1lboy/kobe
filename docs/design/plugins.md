@@ -131,7 +131,8 @@ task places the pane. Default placement is **`split`** (owner semantics
 engine — herdr's `placement = "split"`. `placement = "tab"` opens a separate
 self-closing command tab instead; overlay/popup are tolerated with a warning
 and treated as split. Falls back to a tab when the active tab can't host a
-split (content tab / depth cap). The pane's cwd is the task worktree;
+split (content tab / min-pane-size gate). The pane's cwd is the task
+worktree;
 `$KOBE_PLUGIN_ROOT` in command elements is expanded by the CLI, and the
 plugin env contract rides an `env` prefix inside one `sh -lc` script, so no
 tab/PTY schema knows about plugins. Trust: same boundary as `pty.open` —

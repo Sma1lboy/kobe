@@ -65,6 +65,7 @@ import {
   selectTab,
   setTabSessionId,
   setTabSplit,
+  splitLeafPtyKey,
   tabCwdFor,
   tabExitAction,
   tabPtyKey,
@@ -202,6 +203,22 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // mounted) and on requests fired while already mounted. A request naming a
   // tab that no longer exists is dropped. Mount-only; reads via refs.
   const updateRef = useLatest(update)
+
+  /** The active tab's focused-leaf emulator cells — feeds split-core's size
+   *  gate (`splitFits`). Ref-reads only, so the mount-once consume() closure
+   *  below stays fresh; null (no PTY yet) → depth-cap fallback. */
+  const activeLeafSize = (): { cols: number; rows: number } | null => {
+    const s = stateRef.current
+    const tab = s.tabs.find((x) => x.id === s.activeId)
+    if (!tab) return null
+    const leafId = tab.splitTree?.activeLeafId ?? "leaf-1"
+    const key = splitLeafPtyKey(tabPtyKeyFor(propsRef.current.taskId, tab), leafId)
+    return getDefaultPtyRegistry().get(key)?.size ?? null
+  }
+  // Latest-render mirror for the mount-once consume() closure below — same
+  // freshness convention as updateRef.
+  const activeLeafSizeRef = useLatest(activeLeafSize)
+
   useEffect(() => {
     const consume = (): void => {
       const tabId = takeTabActivation(propsRef.current.taskId)
@@ -213,7 +230,16 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       // open a separate command tab — pane-split.ts owns the policy.
       const open = takeTabOpen(propsRef.current.taskId)
       if (open) {
-        updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement, open.direction))
+        updateRef.current(
+          openPluginPane(
+            stateRef.current,
+            open.argv,
+            open.title,
+            open.placement,
+            open.direction,
+            activeLeafSizeRef.current(),
+          ),
+        )
       }
       // Close-from-elsewhere (the sidebar tree's menu): claiming it here is
       // what keeps `closeTaskTab` from ALSO writing the background state —
@@ -357,6 +383,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     liveTitles,
     update,
     pinSession,
+    activeLeafSize,
     onChooseEngine: props.onChooseEngine,
     onQuickFork: props.onQuickFork,
     notifyError: (title) => notif.notify({ kind: "error", taskId: props.taskId, tabId: active.id, title }),

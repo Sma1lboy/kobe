@@ -149,8 +149,9 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   `sh -lc` and the pane closes when it exits; omit it for an interactive
   shell. Broadcast over the daemon's `tab.open` channel, so an attached TUI
   showing the task performs the split (headless, nothing happens). Task
-  defaults to `$KOBE_TASK_ID`, then the active task. Splits nest at most 4
-  levels deep; a split that can't nest further falls back to a tab.
+  defaults to `$KOBE_TASK_ID`, then the active task. How far splits can go
+  is decided by the terminal's size: a split that would shrink any pane
+  below the minimum usable size (20×6 cells) falls back to a tab.
 
 ## supervise
 
