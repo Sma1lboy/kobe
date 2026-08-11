@@ -123,4 +123,22 @@ describe("resolveEngineLaunchInit", () => {
     const wt = makeWorktree({ ".kobe/init.sh": "echo hi", ".kobe/init-prompt.md": "repo prompt" })
     expect(resolveEngineLaunchInit(wt, wt, { kind: "none" })).toEqual({ initScript: "sh .kobe/init.sh" })
   })
+
+  // Why: issue #8 — a freshly created worktree task carries an auto-generated
+  // placeholder branch; ONLY its first prompt gets the rename coda. Prompts
+  // into existing sessions (send / handoff) ride "explicit" and stay verbatim
+  // — pinned above by the explicit test's exact-equality assertion.
+  test("new-task intent appends the branch-rename coda with the task id baked in", () => {
+    const wt = makeWorktree()
+    const msg = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }, "task-9").firstMessage
+    expect(msg?.source).toBe("explicit")
+    expect(msg?.text.startsWith("fix the bug\n\n")).toBe(true)
+    expect(msg?.text).toContain("set-branch --task-id task-9 --branch")
+  })
+
+  test("new-task without a threaded task id falls back to the $KOBE_TASK_ID env", () => {
+    const wt = makeWorktree()
+    const msg = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }).firstMessage
+    expect(msg?.text).toContain('set-branch --task-id "$KOBE_TASK_ID" --branch')
+  })
 })

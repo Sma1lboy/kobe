@@ -345,9 +345,12 @@ describe("terminal tabs state", () => {
       worktreePath: "/repo/.worktrees/task-1",
       protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
     }
-    expect(engineTabSpawnFor(s, first, base, opts)).toEqual({
-      command: ["/bin/zsh", "-ilc", expect.stringContaining("claude 'fix the bug'; __rc=$?")],
-    })
+    const firstSpawn = engineTabSpawnFor(s, first, base, opts)
+    expect(firstSpawn.command.slice(0, 2)).toEqual(["/bin/zsh", "-ilc"])
+    expect(firstSpawn.command[2]).toContain("claude 'fix the bug")
+    // A quick-fork prompt is a fresh worktree task's FIRST prompt — it
+    // carries the branch-rename coda with this task's id (issue #8).
+    expect(firstSpawn.command[2]).toContain("set-branch --task-id task-1")
     // Second engine tab: never gets the prompt.
     expect(engineTabSpawnFor(s, second, base, opts).command[2]).not.toContain("fix the bug")
     // Already spawned: the conversation has begun — never re-deliver.
@@ -367,14 +370,12 @@ describe("terminal tabs state", () => {
       activeId: "tab-2",
       nextOrdinal: 3,
     }
-    expect(engineTabSpawnFor(mixed, mixed.tabs[1] as EngineTab, base, opts).command[2]).toContain(
-      "claude 'fix the bug'",
-    )
+    expect(engineTabSpawnFor(mixed, mixed.tabs[1] as EngineTab, base, opts).command[2]).toContain("claude 'fix the bug")
     // The prompt composes WITH the session pin: flags stay before the
     // positional first message so the vendor CLI parses both correctly.
     const pinned = setTabSessionId(s, "tab-1", "u1")
     expect(engineTabSpawnFor(pinned, pinned.tabs[0] as EngineTab, base, opts).command[2]).toContain(
-      "claude --session-id u1 'fix the bug'",
+      "claude --session-id u1 'fix the bug",
     )
   })
 

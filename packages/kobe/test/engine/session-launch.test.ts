@@ -42,6 +42,19 @@ describe("hosted engine session launch", () => {
     expect(launch.command[2]).toContain('exec "${SHELL:-/bin/sh}"')
   })
 
+  test("new-task intent bakes the launch task's id into the branch-rename coda", () => {
+    const launch = buildEngineSessionLaunch({
+      task: { id: "task-9", kind: "task", vendor: "claude", repo: "/repo" },
+      worktreePath: "/repo/.worktrees/task-9",
+      shell: "/bin/zsh",
+      argv: ["claude"],
+      promptIntent: { kind: "new-task", prompt: "fix it" },
+      protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
+    })
+    expect(launch.command[2]).toContain("fix it")
+    expect(launch.command[2]).toContain("set-branch --task-id task-9")
+  })
+
   test("is owned by the engine layer without importing the retiring tmux runtime", () => {
     const source = fs.readFileSync(new URL("../../src/engine/session-launch.ts", import.meta.url), "utf8")
     expect(source).not.toMatch(/from ["'][^"']*tmux/)

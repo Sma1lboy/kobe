@@ -275,6 +275,19 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
     })
   })
 
+  it("launches a newTask target as the new-task intent (branch-rename coda)", async () => {
+    // add / fan-out mark their first delivery with newTask — the launch spec
+    // then rides the "new-task" intent so the coda is appended (issue #8).
+    await deliverPrompt(
+      client,
+      { id: "t1", kind: "task", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x", newTask: true },
+      "go",
+    )
+    expect(mocks.buildEngineSessionLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go" } }),
+    )
+  })
+
   it("maps PTY RPC failures to SESSION_FAILED and always closes the client", async () => {
     mocks.deliverHostedPrompt.mockRejectedValue(new Error("socket closed"))
 

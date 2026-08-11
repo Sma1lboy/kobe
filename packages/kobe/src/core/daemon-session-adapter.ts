@@ -49,7 +49,7 @@ export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: st
  * the repo's `.kobe/init-prompt.md`. Used by the daemon's automation runner,
  * whose whole job is starting a session that says something specific.
  *
- * `promptIntent: {kind:"explicit"}` makes `buildEngineSessionLaunch` append the
+ * `promptIntent: {kind:"new-task"}` makes `buildEngineSessionLaunch` append the
  * text to the engine's OWN argv, so the prompt is part of the spawn rather
  * than a paste racing a cold TUI — the difference matters when no human is
  * watching to retype it.
@@ -60,7 +60,10 @@ export async function startTaskSessionWithPromptAdapter(
   prompt: string,
 ): Promise<boolean> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const launch = taskEngineLaunch(task, worktreePath, { kind: "explicit", prompt })
+  // "new-task", not "explicit": both callers (automation runner, work-item
+  // start) create the task right before this call, so the first prompt gets
+  // the branch-rename coda like every other new-worktree entry point.
+  const launch = taskEngineLaunch(task, worktreePath, { kind: "new-task", prompt })
   const host = await ensureHostedSessionHost()
   try {
     const opened = await ensureHostedEngine(host.rpc, worktreePath, launch)

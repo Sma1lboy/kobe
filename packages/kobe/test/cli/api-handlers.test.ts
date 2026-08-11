@@ -70,7 +70,12 @@ describe("add handler", () => {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })) as Record<string, unknown>
-    expect(calls[0]).toMatchObject({ target: { id: "t1", vendor: "codex", modelEffort: "high" }, prompt: "do it" })
+    // newTask marks this as a fresh worktree task's FIRST prompt — the
+    // delivery layer appends the branch-rename coda for it (issue #8).
+    expect(calls[0]).toMatchObject({
+      target: { id: "t1", vendor: "codex", modelEffort: "high", newTask: true },
+      prompt: "do it",
+    })
     expect(result).toMatchObject({ started: true, engineReady: true, delivered: true, session: "t1::tab-1" })
   })
 
@@ -108,6 +113,9 @@ describe("send handler", () => {
     })
     expect(client.subscribeCount).toBe(0)
     expect(calls[0].prompt).toBe("hi")
+    // send targets an EXISTING task — never flagged as a new-task first
+    // prompt, so the branch-rename coda can't reach it (issue #8).
+    expect(calls[0].target.newTask).toBeUndefined()
     expect(result).toMatchObject({ ok: true, taskId: "abc", started: true })
   })
 
@@ -263,6 +271,8 @@ describe("fan-out handler", () => {
     expect(result.count).toBe(3)
     expect(result.tasks.map((task) => task.taskId)).toEqual(["t1", "t2", "t3"])
     expect(calls.map((call) => call.prompt)).toEqual(["go", "go", "go"])
+    // Every sibling is a fresh worktree task → first-prompt coda applies.
+    expect(calls.every((call) => call.target.newTask === true)).toBe(true)
   })
 
   it("expands per-vendor agent counts in order", async () => {

@@ -57,7 +57,7 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       worktreePath: worktree,
       shell: process.env.SHELL?.trim() || "/bin/zsh",
       argv,
-      promptIntent: { kind: "explicit", prompt },
+      promptIntent: { kind: target.newTask ? "new-task" : "explicit", prompt },
       tabId: newTab,
     })
     const result = await deliverHostedPrompt(

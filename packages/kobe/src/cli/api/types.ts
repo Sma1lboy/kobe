@@ -105,6 +105,12 @@ export interface PromptTarget {
    * (TAB_NOT_FOUND when dead/absent). Undefined = canonical engine tab.
    */
   readonly tab?: string
+  /**
+   * This delivery is the FIRST prompt of a task the caller just created
+   * (`add --prompt` / `fan-out`) — it gets the branch-rename coda (see
+   * `PromptDeliveryIntent`'s `new-task` kind). `send` never sets it.
+   */
+  readonly newTask?: boolean
 }
 
 export interface DeliveredPrompt {

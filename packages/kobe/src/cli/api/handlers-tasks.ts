@@ -112,6 +112,7 @@ export async function add(ctx: VerbContext): Promise<unknown> {
       vendor: task.vendor as VendorId | undefined,
       modelEffort: task.modelEffort,
       repo: task.repo,
+      newTask: true,
     },
     prompt,
   )

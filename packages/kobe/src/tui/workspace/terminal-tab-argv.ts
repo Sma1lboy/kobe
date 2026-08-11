@@ -70,10 +70,14 @@ export function engineTabSpawnFor(
   const tabPrompt = fresh ? tab.initialPrompt?.trim() : undefined
   const wantsPrompt = !!prompt && tab.id === firstEngine?.id && fresh
   const isFreshFirstEngine = tab.id === firstEngine?.id && fresh
+  // Tab-owned prompts (cross-engine handoff on an existing worktree) stay
+  // "explicit"; the task-level prompt only exists on a freshly created
+  // worktree task (quick-fork, issue-chat), so it rides as "new-task" and
+  // picks up the branch-rename coda.
   const promptIntent = tabPrompt
     ? ({ kind: "explicit", prompt: tabPrompt } as const)
     : wantsPrompt
-      ? ({ kind: "explicit", prompt } as const)
+      ? ({ kind: "new-task", prompt } as const)
       : isFreshFirstEngine
         ? ({ kind: "repo-init" } as const)
         : ({ kind: "none" } as const)

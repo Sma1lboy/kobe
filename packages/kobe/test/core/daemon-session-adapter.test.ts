@@ -29,6 +29,7 @@ vi.mock("../../src/engine/session-launch.ts", () => ({ buildEngineSessionLaunch:
 import {
   engineSpecAdapter,
   ensureTaskSessionAdapter,
+  startTaskSessionWithPromptAdapter,
   tearDownTaskSessionAdapter,
   terminalSpecAdapter,
 } from "../../src/core/daemon-session-adapter.ts"
@@ -75,6 +76,15 @@ describe("daemon session adapter", () => {
     )
     expect(mocks.ensureEngine).toHaveBeenCalledWith(expect.anything(), "/worktrees/story", expect.anything())
     expect(mocks.close).toHaveBeenCalledOnce()
+  })
+
+  it("launches an explicit first prompt as a new-task intent (branch-rename coda)", async () => {
+    // Both callers (automation runner, work-item start) create the task right
+    // before this call, so the first prompt is a new-worktree entry (issue #8).
+    await expect(startTaskSessionWithPromptAdapter(link(), "task-1", "do the thing")).resolves.toBe(true)
+    expect(mocks.buildLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "do the thing" } }),
+    )
   })
 
   it("builds engine and terminal specs without duplicating the first prompt", async () => {

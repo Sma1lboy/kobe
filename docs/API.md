@@ -120,6 +120,11 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   [--vendor V] [--title T] [--base-branch B]`: spawn N tasks of one prompt
   in a single call (parallel attempts). Capped at 10.
 
+A new task's FIRST prompt (`add --prompt`, `fan-out`, quick-fork) gets a
+short coda appended asking the agent to `set-branch` the auto-generated
+placeholder branch to a descriptive name. Prompts into existing sessions
+(`send`, `send --tab new`, `dispatch`) are never modified.
+
 ## drive
 
 - `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a

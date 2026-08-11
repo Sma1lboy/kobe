@@ -135,7 +135,12 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   const protocolTaskId = input.task.kind === "main" ? undefined : input.task.id
   const dispatcherTaskId = input.task.kind === "main" ? input.task.id : undefined
   const gates = input.protocolGates
-  const launchInit = resolveEngineLaunchInit(input.task.repo ?? "", input.worktreePath, input.promptIntent)
+  const launchInit = resolveEngineLaunchInit(
+    input.task.repo ?? "",
+    input.worktreePath,
+    input.promptIntent,
+    input.task.id,
+  )
   // The repo's accumulated field notes ride along in the same
   // --append-system-prompt as the filing protocol, so a fresh worktree
   // session starts with what earlier sessions already learned. Read only for
