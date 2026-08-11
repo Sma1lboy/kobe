@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.68
+
+### Patch Changes
+
+- aa68c01: `kobe api pane-close --title <t>` — the inverse of `pane-open`: closes every split pane / command tab in the task whose label matches the title it was opened with, over a new daemon `tab.close` channel the attached TUI consumes. Engine panes are never closed. Previously agent-opened panes could only be closed by killing their processes from outside, which raced with the split tree's remount-respawn.
+- 7a5de0b: Split nesting is now bounded by screen size instead of a fixed 4-level depth cap: a split (chord, `pane-open`, or ctrl+e pane) is allowed as long as every resulting pane stays at or above the minimum usable size (20×6 cells), judged from the focused leaf's live terminal geometry. Big screens can nest deeper than before; small ones fall back to a tab sooner. The depth cap remains only as a fallback when no size is known.
+
 ## 0.8.67
 
 ### Patch Changes
