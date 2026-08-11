@@ -20,6 +20,44 @@ runs the committed browser journey on Linux, which compiles node-pty and can
 create a real PTY in the hosted environment. The Ubuntu V8 coverage job remains
 the fast/unit track; it does not pretend Node can execute OpenTUI components.
 
+## Golden ground truth
+
+Some behavior is a table, not a sentence. Where a surface has a state
+VOCABULARY — a priority ladder, a glyph set, a layout that must hold across a
+dozen combinations — the contract is a committed text file that the test
+regenerates and compares byte for byte. The file is the specification: any
+change to it lands as a reviewable diff instead of a silent behavior shift, and
+a combination nobody thought to write a case for is still covered.
+
+Goldens ride the existing tracks rather than adding one. `test/golden/` runs
+under `test:fast`; `test/render/golden/` runs under `test:render`.
+`test/golden/golden-file.ts` is the shared, framework-free plumbing both use.
+
+| Golden | Track | Locks |
+| --- | --- | --- |
+| `test/golden/sidebar-row-state.golden.txt` | fast | `buildSidebarRowView` over its full input space — activity state × seen bit × worktree job × deletion phase × vendor × transcript, plus spinner frame sets, the `withSpinnerFrame` overlay contract, the turn-complete/transcript grace boundary, subagent marks, subtitle truncation, the PR chip, and `tabRowActivity`. |
+| `test/render/golden/*.frame.txt` | render | Whole captured OpenTUI frames of the real `SidebarTree` — every state glyph, the per-level indent, the right-edge cluster, search pruning, view tabs, move mode, the recent-jump row, and the empty rail. |
+
+Rules:
+
+- **Regenerate deliberately, then read the diff.** `KOBE_UPDATE_GOLDEN=1 bun run
+  test:fast` / `KOBE_UPDATE_GOLDEN=1 bun run test:render`. An unexplained line
+  in that diff is the finding, not the noise.
+- **A missing golden fails.** It is never auto-created on first run — a golden
+  that writes itself would pass its own first CI run while asserting nothing.
+- **Pin anything ambient the capture depends on.** The sidebar goldens pin the
+  locale (subtitles come from `t()`) and every timestamp (the row view compares
+  `at` against transcript mtime). A frame that animates masks exactly its
+  animating cell and stays byte-exact everywhere else; a row whose label comes
+  from real git HEAD is kept out of the frames and covered by the pure matrix.
+- **A golden replaces the cases it subsumes.** Keeping a hand-written sample of
+  a row the table already enumerates leaves two sources of truth that can
+  disagree. What survives alongside a golden is what a table of outputs cannot
+  state: a collapse across an axis (all six `TaskStatus` values must produce ONE
+  runtime projection), agreement BETWEEN functions (`rowIsLoading` vs the view's
+  own `loading`), and a keypress proving a CALLBACK fired — a binding that was
+  never registered renders identically to one that works.
+
 ## Behavioral self-test
 
 `test/behavior/harness.ts` runs `dist/cli/index.js` in a disposable HOME and

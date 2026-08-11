@@ -1,0 +1,26 @@
+# sidebar frame: tab-permission-needed
+# blocked on the user — the one state whose glyph literally asks a question
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| kobe ─────────────────────── |
+|  feat/alpha                2 |
+|▌  ? build                  3 |
+|   ◌ review                 4 |
+|  feat/bravo                5 |
+|   ◌ tests                  6 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |

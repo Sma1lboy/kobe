@@ -1,0 +1,26 @@
+# sidebar frame: tab-rate-limited
+# quota exhausted — the subtitle spells out WHY the row is stuck, outranking the branch
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| kobe ─────────────────────── |
+|  feat/alpha                2 |
+|▌  ◷ build                  3 |
+|   ◌ review                 4 |
+|  feat/bravo                5 |
+|   ◌ tests                  6 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |

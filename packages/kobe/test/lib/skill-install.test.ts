@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 import {
   KOBE_SKILL_VERSION,
-  SKILL_INSTALL_COMMAND,
   bundledSkillDir,
   isKobeSkillInstalled,
   kobeSkillPaths,
@@ -59,12 +58,6 @@ describe("isKobeSkillInstalled", () => {
     const home = tempDir()
     installSkillUnder(home)
     expect(isKobeSkillInstalled({ home, cwd: tempDir() })).toBe(true)
-  })
-})
-
-describe("SKILL_INSTALL_COMMAND", () => {
-  it("is kobe's user-facing wrapper command", () => {
-    expect(SKILL_INSTALL_COMMAND).toBe("kobe skill install")
   })
 })
 

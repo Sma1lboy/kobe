@@ -1,12 +1,28 @@
+/**
+ * What's left here after the golden took over.
+ *
+ * `test/golden/sidebar-row-state.golden.txt` now enumerates
+ * `buildSidebarRowView` over its whole input space — every activity state ×
+ * seen bit × job × deletion phase × vendor × transcript, plus the spinner sets,
+ * the completion grace window, subagent marks and subtitle truncation. Every
+ * per-state assertion that used to live in this file was one sampled row of
+ * that table, so those cases were removed rather than kept as a second, less
+ * complete copy that could disagree with it.
+ *
+ * What stayed is what a table of outputs cannot say:
+ *
+ *  - a COLLAPSE across an axis the golden deliberately excludes (persisted
+ *    lifecycle status must have no effect on runtime chrome at all — the
+ *    assertion is "all six statuses produce ONE projection", which is a
+ *    property, not a row);
+ *  - agreement BETWEEN two functions (`rowIsLoading` / `anyRowLoading` vs the
+ *    view's own `loading`), which no single snapshot can express;
+ *  - `sweepBar`, which belongs to a different module entirely.
+ */
+
 import { describe, expect, it } from "vitest"
-import { CLAUDE_SPINNER_FRAMES, DEFAULT_SPINNER_FRAMES } from "../../src/engine/spinner-frames.ts"
 import { sweepBar } from "../../src/tui/lib/progress-bar.ts"
-import {
-  anyRowLoading,
-  buildSidebarRowView,
-  rowIsLoading,
-  withSpinnerFrame,
-} from "../../src/tui/panes/sidebar/row-view.ts"
+import { anyRowLoading, buildSidebarRowView, rowIsLoading } from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task, TaskStatus } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -38,20 +54,24 @@ function view(overrides: Parameters<typeof task>[0], activity?: Parameters<typeo
   })
 }
 
-describe("buildSidebarRowView", () => {
+/**
+ * The row is a RUNTIME projection. `TaskStatus` is the user-driven board
+ * lifecycle, and letting it leak in here is how a `done` task once rendered as
+ * finished while its engine was mid-turn. Stated as a collapse — all six
+ * statuses must yield ONE projection — so a new status added to the union is
+ * covered the day it lands, without anyone remembering to extend a table.
+ */
+describe("persisted lifecycle status never reaches the runtime row", () => {
   const lifecycleStatuses: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 
-  it("does not project task lifecycle status into a branched task's runtime chrome", () => {
-    const projections = lifecycleStatuses.map((status) => {
-      const row = view({ status })
-      return {
-        loading: row.loading,
-        stateGlyph: row.stateGlyph,
-        tone: row.tone,
-        subtitleText: row.subtitleText,
-      }
+  const projectionsFor = (extra: Parameters<typeof task>[0] = {}) =>
+    lifecycleStatuses.map((status) => {
+      const row = view({ ...extra, status })
+      return { loading: row.loading, stateGlyph: row.stateGlyph, tone: row.tone, subtitleText: row.subtitleText }
     })
 
+  it("does not project task lifecycle status into a branched task's runtime chrome", () => {
+    const projections = projectionsFor()
     expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
     expect(projections[0]).toEqual({
       loading: false,
@@ -62,256 +82,9 @@ describe("buildSidebarRowView", () => {
   })
 
   it("uses the same neutral fallback for every lifecycle status when a task has no branch", () => {
-    const projections = lifecycleStatuses.map((status) => {
-      const row = view({ status, branch: "" })
-      return {
-        loading: row.loading,
-        stateGlyph: row.stateGlyph,
-        tone: row.tone,
-        subtitleText: row.subtitleText,
-      }
-    })
-
+    const projections = projectionsFor({ branch: "" })
     expect(new Set(projections.map((projection) => JSON.stringify(projection))).size).toBe(1)
     expect(projections[0]).toEqual({ loading: false, stateGlyph: "○", tone: "textMuted", subtitleText: "—" })
-  })
-
-  it("keeps turn-complete as the ● lamp, and a SEEN completion is simply over", () => {
-    expect(view({ status: "in_progress" }, { state: "turn_complete", at: 1 })).toMatchObject({
-      loading: false,
-      stateGlyph: "●",
-      tone: "primary",
-    })
-    // Seen = consumed (owner 2026-08-02): back to the idle circle, no ✓
-    // lingering on the row forever.
-    expect(
-      buildSidebarRowView({
-        task: task({ status: "in_progress" }),
-        activity: { state: "turn_complete", at: 1 },
-        spinnerFrame: 0,
-        subtitleBudget: 80,
-        truncateBranch: (branch) => branch,
-        completionSeen: true,
-      }),
-    ).toMatchObject({ loading: false, stateGlyph: "○" })
-  })
-
-  it("does not use stale in-progress status for main project rows", () => {
-    // Project rows share the task glyph vocabulary — idle is `○`, not a
-    // project-shaped `★` (owner call 2026-07-30).
-    expect(view({ kind: "main", branch: "", status: "in_progress" })).toMatchObject({
-      loading: false,
-      stateGlyph: "○",
-      titleText: "kobe",
-    })
-  })
-
-  it("uses activity states before persisted lifecycle status", () => {
-    expect(view({ status: "done" }, { state: "permission_needed", at: 1 })).toMatchObject({
-      loading: false,
-      stateGlyph: "?",
-      tone: "warning",
-    })
-  })
-
-  it("spins (loading) while the engine reports a running turn", () => {
-    expect(view({ status: "backlog" }, { state: "running", at: 1 })).toMatchObject({
-      loading: true,
-      tone: "primary",
-    })
-  })
-
-  it("spells out rate-limited in the subtitle with the clock badge", () => {
-    expect(view({ status: "backlog" }, { state: "rate_limited", at: 1 })).toMatchObject({
-      loading: false,
-      stateGlyph: "◷",
-      tone: "warning",
-      subtitleText: "rate limited",
-    })
-  })
-
-  it("spells out an engine error in the subtitle with the error badge", () => {
-    expect(view({ status: "backlog" }, { state: "error", at: 1 })).toMatchObject({
-      loading: false,
-      stateGlyph: "✕",
-      tone: "error",
-      subtitleText: "error",
-    })
-  })
-
-  it("shows the repo-root branch (mainBranch) as a project row's subtitle", () => {
-    const v = buildSidebarRowView({
-      task: task({ kind: "main", branch: "", status: "backlog" }),
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-      mainBranch: "main",
-    })
-    expect(v).toMatchObject({ isMain: true, titleText: "kobe", subtitleText: "main" })
-  })
-
-  // Long daemon job feedback (issue #5): while the daemon's blocking
-  // `task.ensureWorktree` RPC runs a minutes-long `git worktree add`, the
-  // `task.jobs` channel marks the task in every attached pane; the row must
-  // spin with a "materializing" subtitle instead of sitting frozen on the
-  // backlog dot (or lying with a branch label that doesn't exist on disk yet).
-  it("spins with a materializing subtitle while a worktree job is in flight", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "backlog", branch: "", worktreePath: "" }),
-      job: { kind: "ensureWorktree" },
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(v).toMatchObject({
-      // Claude-vendor task → the engine-owned star frames (frame 0 = "·").
-      loading: true,
-      stateGlyph: CLAUDE_SPINNER_FRAMES[0],
-      tone: "primary",
-      subtitleText: "materializing",
-      materializing: true,
-    })
-  })
-
-  it("the materializing word outranks the branch label while the job runs", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "backlog", branch: "feature/sidebar" }),
-      job: { kind: "ensureWorktree" },
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(v.subtitleText).toBe("materializing")
-    expect(v.loading).toBe(true)
-  })
-
-  it("spins for a custom-engine task too while its worktree job runs (job is daemon truth, not engine telemetry)", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "backlog", vendor: "my-custom-engine", branch: "" }),
-      job: { kind: "ensureWorktree" },
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(v).toMatchObject({ loading: true, tone: "primary", subtitleText: "materializing" })
-  })
-
-  it("spins with a deleting subtitle while durable cleanup is queued or running", () => {
-    const v = buildSidebarRowView({
-      task: task({
-        deletion: { phase: "running", force: true, requestedAt: "2026-07-15T00:00:00.000Z" },
-      }),
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(v).toMatchObject({ loading: true, tone: "primary", subtitleText: "deleting", materializing: false })
-  })
-
-  it("renders a durable deletion failure without animation", () => {
-    const v = buildSidebarRowView({
-      task: task({
-        deletion: {
-          phase: "error",
-          force: false,
-          requestedAt: "2026-07-15T00:00:00.000Z",
-          error: "locked",
-        },
-      }),
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(v).toMatchObject({ loading: false, stateGlyph: "✕", tone: "error", subtitleText: "delete failed" })
-  })
-
-  it("falls back to a neutral dash for a project with no resolvable branch", () => {
-    const v = buildSidebarRowView({
-      task: task({ kind: "main", branch: "", status: "backlog" }),
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-      mainBranch: "",
-    })
-    expect(v.subtitleText).toBe("—")
-  })
-})
-
-// The spinner-frame overlay is what makes the 10Hz tick a CONDITIONAL
-// dependency in the Sidebar (waste audit): the frame accessor must only
-// be read for loading rows, so an idle sidebar does zero per-tick work
-// — Solid's dep collection drops the tick signal entirely when nothing
-// is spinning. These tests pin both halves: identity preservation +
-// accessor non-read for idle rows, exact frame overlay for loading ones.
-describe("withSpinnerFrame", () => {
-  function loadingView() {
-    return buildSidebarRowView({
-      task: task({ status: "backlog" }),
-      activity: { state: "running", at: 1 },
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-  }
-
-  it("returns an idle view UNCHANGED and never reads the frame accessor", () => {
-    const idle = view({ status: "done" })
-    expect(idle.loading).toBe(false)
-    let reads = 0
-    const out = withSpinnerFrame(idle, () => {
-      reads++
-      return 3
-    })
-    expect(out).toBe(idle) // identity preserved → downstream memos never notify
-    expect(reads).toBe(0) // the 10Hz signal is not a dependency of idle rows
-  })
-
-  it("overlays the live frame on a loading view's glyph", () => {
-    const base = loadingView()
-    expect(base.loading).toBe(true)
-    const out = withSpinnerFrame(base, () => 3)
-    // The overlay honours the view's OWN engine frame set (claude stars here).
-    expect(out.stateGlyph).toBe(base.spinnerFrames[3])
-    // Everything else is untouched — exactly what buildSidebarRowView
-    // would have produced with spinnerFrame: 3.
-    const direct = buildSidebarRowView({
-      task: task({ status: "backlog" }),
-      activity: { state: "running", at: 1 },
-      spinnerFrame: 3,
-      subtitleBudget: 80,
-      truncateBranch: (b) => b,
-    })
-    expect(out).toEqual(direct)
-  })
-
-  it("keeps identity when the frame resolves to the glyph already shown", () => {
-    const base = loadingView() // built with frame 0
-    const out = withSpinnerFrame(base, () => 0)
-    expect(out).toBe(base)
-  })
-
-  it("wraps out-of-range frames into the spinner cycle", () => {
-    const base = loadingView()
-    const out = withSpinnerFrame(base, () => base.spinnerFrames.length + 2)
-    expect(out.stateGlyph).toBe(base.spinnerFrames[2])
-  })
-
-  /**
-   * The bug this pins (2026-07-30): the removed reduced-motion frame set was
-   * `●●●●●·····`, and `●` is ALSO the static unseen-completion badge. A
-   * RUNNING row therefore rendered the exact glyph that means "finished,
-   * unread" — sending the user to an Inbox that (correctly) had nothing in
-   * it. No spinner frame may collide with a static badge glyph.
-   */
-  it("no spinner frame collides with a settled-state badge glyph", () => {
-    // The settled states a spinner must never impersonate: each one means
-    // "this row has STOPPED and wants you". `·` (no activity tracking) and
-    // `○` (idle) are deliberately NOT in this set — they mark absence, and
-    // claude's frame set legitimately passes through `·` mid-oscillation.
-    const settledBadges = new Set(["●", "✓", "✕", "?", "◷"])
-    for (const frames of [DEFAULT_SPINNER_FRAMES, CLAUDE_SPINNER_FRAMES]) {
-      for (const frame of frames) expect(settledBadges.has(frame)).toBe(false)
-    }
   })
 })
 
@@ -329,37 +102,10 @@ describe("sweepBar", () => {
   })
 })
 
-describe("buildSidebarRowView — runtime spinner visibility", () => {
-  const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
-
-  it("does not infer a running engine from in-progress lifecycle status", () => {
-    const v = buildSidebarRowView({ task: task({ status: "in_progress" }), ...base })
-    expect(v.loading).toBe(false)
-    expect(v.stateGlyph).toBe("○")
-  })
-
-  it("shows the spinner whenever runtime activity is running", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "in_progress" }),
-      activity: { state: "running", at: 1 },
-      ...base,
-    })
-    expect(v.loading).toBe(true)
-    expect(v.stateGlyph).not.toBe("○")
-  })
-
-  it("spins while its worktree materializes", () => {
-    const v = buildSidebarRowView({
-      task: task({ status: "in_progress" }),
-      ...base,
-      job: { kind: "ensureWorktree" },
-    })
-    expect(v.loading).toBe(true)
-  })
-})
-
 // O11: the pane-level spinner gate must be exactly the OR of the per-row
 // loading decisions the cards render, or a genuinely-loading row freezes.
+// This is an agreement between three functions, which is why it survived the
+// move to the golden — the table records outputs, not that they match.
 describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
   const base = { spinnerFrame: 0, subtitleBudget: 80, truncateBranch: (b: string) => b } as const
 
@@ -370,10 +116,15 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
       { task: task({ kind: "main", branch: "", status: "in_progress" }) },
       { task: task({ status: "done" }), job: { kind: "ensureWorktree" as const } },
       { task: task({}), activity: { state: "running" as const, at: 1 } },
+      // A custom engine has no transcript store to watch, so its rest state is
+      // "untracked" rather than idle — the one input where the two functions
+      // could plausibly have been written to disagree.
+      { task: task({ vendor: "my-custom-engine" }) },
+      { task: task({ deletion: { phase: "running" as const, force: true, requestedAt: "2026-07-15T00:00:00.000Z" } }) },
     ]
     for (const c of cases) {
-      const view = buildSidebarRowView({ ...base, ...c })
-      expect(rowIsLoading(c)).toBe(view.loading)
+      const built = buildSidebarRowView({ ...base, ...c })
+      expect(rowIsLoading(c)).toBe(built.loading)
     }
   })
 
@@ -387,43 +138,5 @@ describe("rowIsLoading / anyRowLoading (spinner gate)", () => {
     expect(anyRowLoading([idle], reads)).toBe(false)
     expect(anyRowLoading([idle, busy], reads)).toBe(true)
     expect(anyRowLoading([], reads)).toBe(false)
-  })
-
-  it("a running row keeps the pane spinner active", () => {
-    const busy = task({ id: "busy", status: "in_progress" })
-    const reads = {
-      activity: () => ({ state: "running" as const, at: 1 }),
-      job: () => undefined,
-    }
-    expect(anyRowLoading([busy], reads)).toBe(true)
-  })
-})
-
-describe("transient lifecycle marks (engine.lifecycle)", () => {
-  const lifecycleView = (lifecycle: { subagents: number }, activity?: { state: "running"; at: number }) =>
-    buildSidebarRowView({
-      task: task({}),
-      lifecycle,
-      ...(activity ? { activity } : {}),
-      spinnerFrame: 0,
-      subtitleBudget: 80,
-      truncateBranch: (branch) => branch,
-    })
-
-  it("subagent activity rides as a ◇N prefix while the row animates", () => {
-    const row = lifecycleView({ subagents: 2 }, { state: "running", at: 0 })
-    expect(row.subtitleText.startsWith("◇2 ")).toBe(true)
-  })
-
-  it("a mark left over on a QUIET row never shows — marks serve the animation", () => {
-    const plain = view({})
-    // subagent-stop never arrived (interrupted turn): the row is idle, so
-    // the stale count must not caption it.
-    expect(lifecycleView({ subagents: 2 }).subtitleText).toBe(plain.subtitleText)
-  })
-
-  it("no marks → unchanged branch subtitle", () => {
-    const plain = view({})
-    expect(lifecycleView({ subagents: 0 }).subtitleText).toBe(plain.subtitleText)
   })
 })

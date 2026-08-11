@@ -1,0 +1,26 @@
+# sidebar frame: search-pruned
+# the query row plus a tree pruned to matches and their ancestors — a hit never floats free
+# 30x22, keys: / bravo
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| /bravo█ 2/5                  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| kobe ─────────────────────── |
+|▌ feat/bravo                2 |
+|   ◌ tests                  3 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
