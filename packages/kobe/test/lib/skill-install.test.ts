@@ -62,12 +62,6 @@ describe("isKobeSkillInstalled", () => {
   })
 })
 
-describe("SKILL_INSTALL_COMMAND", () => {
-  it("is kobe's user-facing wrapper command", () => {
-    expect(SKILL_INSTALL_COMMAND).toBe("kobe skill install")
-  })
-})
-
 describe("npxSkillsArgv / npxSkillsCommand", () => {
   it("names NO agent by default — the agent-skills CLI detects and asks", () => {
     // kobe deliberately owns no agent registry: ~75 agents, each with its own

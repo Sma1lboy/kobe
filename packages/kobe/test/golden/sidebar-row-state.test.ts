@@ -1,0 +1,102 @@
+/**
+ * GOLDEN — the sidebar's row-state vocabulary, locked.
+ *
+ * `sidebar-row-state.golden.txt` is the ground truth for what a sidebar row
+ * shows in every state it can be in: the status glyph, its tone, whether the
+ * row animates, and what the subtitle reads. The enumeration lives in
+ * `sidebar-state-matrix.ts`; this file only pins its output.
+ *
+ * The point of a golden here rather than more prose assertions: the row view
+ * is a PRIORITY LADDER (deletion > materializing job > activity word > branch)
+ * whose rungs are individually reasonable and collectively easy to reorder by
+ * accident. A hand-written case proves the rung its author was thinking about.
+ * A committed table proves all of them at once — and turns any change into a
+ * reviewable diff instead of a silent behavior shift.
+ *
+ * Locale is pinned to English on purpose: several subtitles come from `t()`,
+ * so a golden captured under a different active language would be a different
+ * document. The locale cell is process-wide, so this restores it afterwards.
+ *
+ * After an INTENTIONAL change:
+ *     KOBE_UPDATE_GOLDEN=1 bun run test:fast
+ * then read the diff — every moved line should be one you meant to move.
+ */
+
+import { currentLang, setLocaleLang } from "@/tui/i18n"
+import { afterAll, beforeAll, expect, test } from "vitest"
+import { goldenDocument, goldenPath, matchGolden } from "./golden-file"
+import {
+  activityCrossProduct,
+  completionGraceBlock,
+  mainRowBlock,
+  prChipBlock,
+  spinnerBlock,
+  subagentBlock,
+  subtitleBudgetBlock,
+  tabActivityBlock,
+} from "./sidebar-state-matrix"
+
+const GOLDEN = goldenPath(import.meta.url, "sidebar-row-state.golden.txt")
+
+let restoreLang = "en"
+beforeAll(() => {
+  restoreLang = currentLang()
+  setLocaleLang("en")
+})
+afterAll(() => {
+  setLocaleLang(restoreLang as Parameters<typeof setLocaleLang>[0])
+})
+
+test("sidebar row state matrix matches the committed golden", () => {
+  const document = goldenDocument("sidebar row state — buildSidebarRowView over its full input space", [
+    {
+      title: "activity x completionSeen x job x deletion x vendor x transcript (full cross product)",
+      lines: activityCrossProduct(),
+    },
+    { title: "project (main) rows — branch resolved from the repo checkout", lines: mainRowBlock() },
+    { title: "engine-owned spinner frame sets + withSpinnerFrame overlay", lines: spinnerBlock() },
+    { title: "turn-complete vs transcript growth — the still-working grace window", lines: completionGraceBlock() },
+    { title: "subagent marks ride the animation only", lines: subagentBlock() },
+    { title: "subtitle truncation budget", lines: subtitleBudgetBlock() },
+    { title: "PR check chip", lines: prChipBlock() },
+    { title: "tabRowActivity — which entry a TAB row may read", lines: tabActivityBlock() },
+  ])
+
+  expect(matchGolden(GOLDEN, document)).toBeNull()
+})
+
+/**
+ * Two invariants the table cannot state about itself, checked against the same
+ * enumeration so they can never disagree with what the golden captured.
+ */
+test("no spinner frame collides with a settled-state badge glyph", () => {
+  // A running row that borrows `●`/`○`/`◌` reads as a finished one — this is
+  // why the reduced-motion pulse was removed, and the collision would
+  // otherwise be invisible in a golden full of correct-looking glyphs.
+  //
+  // `·` is deliberately NOT in this set. Claude's brand frames open and close
+  // on it (lifted from claude-code's own spinner), and the two other places
+  // `·` appears — the untracked-custom-engine rest glyph and the non-agent tab
+  // dot — are states this row cannot simultaneously be in: a builtin-vendor
+  // task is not an untracked custom engine, and a spinner only renders on an
+  // agent row. The ambiguity this guard exists to prevent is within ONE row's
+  // own vocabulary.
+  const settled = new Set(["●", "○", "◌", "✓", "?", "◷", "✕"])
+  const spinnerLines = spinnerBlock().filter((line) => line.includes("frames(0..25)="))
+  expect(spinnerLines.length).toBeGreaterThan(0)
+  for (const line of spinnerLines) {
+    const frames = line.split("frames(0..25)=")[1] ?? ""
+    for (const glyph of frames) {
+      expect({ line, glyph, collides: settled.has(glyph) }).toEqual({ line, glyph, collides: false })
+    }
+  }
+})
+
+test("every row the matrix produces has a non-empty glyph and subtitle", () => {
+  // A blank cell renders as a hole in the rail rather than a state, and the
+  // golden would happily record the hole. Cheap structural floor under it.
+  for (const line of activityCrossProduct()) {
+    expect(line).toMatch(/\| glyph=\S/)
+    expect(line).toMatch(/sub=\S/)
+  }
+})

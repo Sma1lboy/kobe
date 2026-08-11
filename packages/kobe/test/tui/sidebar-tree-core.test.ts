@@ -7,7 +7,6 @@ import {
   mainTaskIdOfProject,
   parseRowId,
   projectKeysOf,
-  tabRowActivity,
   tabRowId,
   treeFlatIds,
   withRecentRow,
@@ -227,50 +226,10 @@ describe("mainTaskIdOfProject", () => {
   })
 })
 
-// The daemon publishes activity per TAB and as a per-task last-event-wins
-// rollup. Which one names a tab row's glyph is the difference between "this
-// session is working" and "some sibling is".
-describe("tabRowActivity", () => {
-  test("a tab's own state always wins", () => {
-    expect(tabRowActivity({ tabActivity: "running", reportedTabCount: 3, taskActivity: "idle", active: true })).toBe(
-      "running",
-    )
-    // ...including on a row that is not the active tab.
-    expect(
-      tabRowActivity({ tabActivity: "running", reportedTabCount: 3, taskActivity: undefined, active: false }),
-    ).toBe("running")
-  })
-
-  // Regression (owner report 2026-08-10): switching to another tab of the
-  // SAME worktree span the new tab for ~2s. It had no state of its own yet,
-  // was active, and so borrowed the rollup — which was describing the tab
-  // that is actually running.
-  test("the active tab does NOT borrow the rollup once any tab has reported", () => {
-    expect(
-      tabRowActivity({ tabActivity: undefined, reportedTabCount: 1, taskActivity: "running", active: true }),
-    ).toBeUndefined()
-  })
-
-  // The rollup exists for engines with no tab identity at all: a `claude` the
-  // user typed into a shell reports task-level only.
-  test("the active tab uses the rollup when NO tab has reported", () => {
-    expect(tabRowActivity({ tabActivity: undefined, reportedTabCount: 0, taskActivity: "running", active: true })).toBe(
-      "running",
-    )
-  })
-
-  test("an inactive tab never borrows the rollup", () => {
-    expect(
-      tabRowActivity({ tabActivity: undefined, reportedTabCount: 0, taskActivity: "running", active: false }),
-    ).toBeUndefined()
-  })
-
-  test("nothing reported anywhere is quiet", () => {
-    expect(
-      tabRowActivity({ tabActivity: undefined, reportedTabCount: 0, taskActivity: undefined, active: true }),
-    ).toBeUndefined()
-  })
-})
+// `tabRowActivity` moved to the golden matrix
+// (`test/golden/sidebar-row-state.golden.txt`, "which entry a TAB row may
+// read"), which enumerates its whole truth table — tabActivity present/absent
+// x reportedTabCount 0/1/2 x active — instead of the five rows sampled here.
 
 describe("withRecentRow", () => {
   test("prepends a navigable recent row whose id no task can own", () => {

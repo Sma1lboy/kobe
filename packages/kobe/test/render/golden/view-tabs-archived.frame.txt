@@ -1,0 +1,26 @@
+# sidebar frame: view-tabs-archived
+# the Active/Archived row appears only once something is actually archived
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+|  Active   Archived           |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| kobe ─────────────────────── |
+|  feat/alpha                2 |
+|▌  ◌ build                  3 |
+|   ◌ review                 4 |
+|  feat/bravo                5 |
+|   ◌ tests                  6 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |

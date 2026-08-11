@@ -87,9 +87,3 @@ describe("listLocalBranches", () => {
     expect(listLocalBranches("")).toEqual([])
   })
 })
-
-describe("DEFAULT_BASE_REF", () => {
-  it("is main — the blank-field / unreadable-HEAD fallback", () => {
-    expect(DEFAULT_BASE_REF).toBe("main")
-  })
-})

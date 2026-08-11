@@ -1,0 +1,26 @@
+# sidebar frame: empty
+# no tasks at all — the rail still renders its chrome rather than collapsing
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+|                              |
+| No active tasks — create one |
+| above.                       |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
