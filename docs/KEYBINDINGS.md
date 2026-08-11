@@ -31,8 +31,8 @@ the actions that can actually run right now.
 
 | Sequence | Action |
 |---|---|
-| `ctrl+a` `f` | Fork a child task — new worktree, branched off this task's branch |
-| `ctrl+a` `c` | Continue this chat in a new tab of the same worktree |
+| `ctrl+a` `f` | New-conversation dialog, preset to "fork a child task" — new worktree, branched off this task's branch |
+| `ctrl+a` `c` | New-conversation dialog, preset to "continue this chat" in a new tab of the same worktree |
 | `ctrl+a` `i` | Open the Inbox |
 | `ctrl+a` `y` | Resume a prior engine session |
 | `ctrl+a` `h` / `l` | Move focus left / right across panes |
@@ -58,7 +58,7 @@ focus or dialog.
 | `F1` | The live keymap — works everywhere, including inside the terminal |
 | `ctrl+q` | Focus the sidebar; from the sidebar, quit |
 | `ctrl+t` | New engine tab |
-| `ctrl+e` | New tab, with an engine/shell picker |
+| `ctrl+e` | New-conversation dialog — engine/shell picker; inside it, `tab` switches the destination (new tab here ⇄ fork a child task) and `ctrl+f` the context (fresh ⇄ continue this chat) |
 | `ctrl+w` | Close the active split, otherwise the tab |
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 | `ctrl+\` | Split right |

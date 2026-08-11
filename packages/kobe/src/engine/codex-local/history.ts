@@ -46,7 +46,10 @@ export interface HistoryDeps {
 
 export const defaultHistoryDeps: HistoryDeps = {
   sessionsDir() {
-    return path.join(homedir(), ".codex", "sessions")
+    // `$CODEX_HOME` relocates the whole `~/.codex` dir (same contract
+    // account-detect's codexAuthPath honors); read per call, never cached.
+    const override = process.env.CODEX_HOME?.trim()
+    return path.join(override || path.join(homedir(), ".codex"), "sessions")
   },
   async readdir(p) {
     try {

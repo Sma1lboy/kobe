@@ -72,9 +72,7 @@ import {
   tabPtyKeyFor,
 } from "../../tui/workspace/terminal-tabs-core"
 import type { HookTabState } from "../../tui/workspace/turn-state-merge"
-import { EnginePickerDialog } from "../component/engine-picker-dialog"
-import { QuickTaskComposer, type QuickTaskResult } from "../component/quick-task-composer"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
+import type { QuickTaskResult } from "../component/quick-task-composer"
 import { bindByIds } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
@@ -86,7 +84,6 @@ import { PreviewScreen } from "../ops/preview"
 import { useDialog } from "../ui/dialog"
 import { TerminalSplit, releaseSplitLeaves } from "./TerminalSplit"
 import { noteEngineInput } from "./optimistic-activity"
-import { quickForkComposerOptions, quickForkDefaultVendor } from "./quick-fork"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { releaseClosedTabPtys } from "./terminal-tabs-close"
 import { terminalTabsKey } from "./terminal-tabs-persist"
@@ -376,9 +373,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // through a ref rather than the one from its first render.
   const tabCloseRef = useLatest(tabClose)
 
-  // Rename / choose-engine / quick-fork dialog flows — extracted verbatim
+  // Rename + the unified new-conversation dialog (issue #7) — extracted
   // (file-size cap split); recreated per render for state freshness.
-  const { requestRename, requestChooseEngine, requestChatFork, requestQuickFork } = useTabDialogs({
+  const { requestRename, requestNewChat } = useTabDialogs({
     dialog,
     t,
     state,
@@ -413,13 +410,15 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         const preferred = preferredTabVendor()
         update(pinSession(addTab(state, preferred), preferred))
       },
-      "chat.tab.chooseEngine": requestChooseEngine,
-      // Continue the CONVERSATION in a sibling tab (same worktree): same
-      // engine forks it natively, another engine gets a transcript handoff.
-      "chat.tab.fork": requestChatFork,
+      // One dialog, three entries (issue #7): ctrl+e opens it pristine,
+      // the prefix chords open it with a toggle pre-flipped — c dials
+      // context to "continue this conversation", f dials destination to
+      // "fork a child task worktree".
+      "chat.tab.chooseEngine": () => requestNewChat(),
+      "chat.tab.fork": () => requestNewChat({ context: "continue" }),
       "chat.tab.cycle-next": () => update(cycleTab(state, 1)),
       "chat.tab.cycle-prev": () => update(cycleTab(state, -1)),
-      "chat.fork.new": requestQuickFork,
+      "chat.fork.new": () => requestNewChat({ destination: "fork" }),
     }),
   }))
 

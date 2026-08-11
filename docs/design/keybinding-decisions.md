@@ -10,9 +10,6 @@ The user-facing vocabulary lives in [`../KEYBINDINGS.md`](../KEYBINDINGS.md).
 
 ## Open calls
 
-- **`ctrl+a` `c` (continue chat in a new tab)** — PROPOSED, awaiting owner
-  sign-off. `c` was freed when the Kanban moved to a digit; mnemonic
-  "continue".
 - **Inert table rows.** `sidebar.sort` (`t`), `sidebar.projectFilter`
   (`ctrl+p`), `sidebar.previewToggle` (`i`), and `tasks.toggleKeys` (`?`) are
   registered in the keymap table but have **no handler**, so pressing them
@@ -25,6 +22,40 @@ The user-facing vocabulary lives in [`../KEYBINDINGS.md`](../KEYBINDINGS.md).
     removed and `activeSortMode` is still read at startup, so today the sort
     mode changes only by hand-editing `state.json`.
   - `sidebar.projectFilter`'s project filter was a fold, and the fold is gone.
+
+## The unified new-conversation dialog
+
+**2026-08-10 — one dialog for every "start a new chat" shape (issue #7),
+owner-signed-off in the same turn.** Opening a conversation used to be four
+chords spreading three orthogonal switches (destination × context × engine)
+across separate flows. The resolution:
+
+- **`ctrl+e` stays the direct entry and its default state is byte-for-byte
+  the old picker**: engine list (+ shell + plugin panes), enter = fresh tab
+  in this worktree. Existing muscle memory pays zero cost.
+- **`tab` (in-dialog) toggles the destination** — new tab here ⇄ fork a
+  child task worktree. `tab` is the natural "next option" key inside a
+  dialog, is pane-passthrough (not a global chord) outside one, and the
+  QuickTaskComposer already uses it for field cycling, so the vocabulary
+  matches.
+- **`ctrl+f` (in-dialog) toggles the context** — fresh ⇄ continue this
+  conversation. `ctrl+f` ("fork") was `chat.fork.new`'s direct chord before
+  #308 moved it to prefix-only, and it is STILL in
+  `RESERVED_GLOBAL_CHORDS` (`keys-pure.ts`) — the embedded terminal
+  swallows it rather than forwarding emacs forward-char to the engine CLI.
+  Reusing it inside the dialog therefore collides with nothing: the PTY
+  never saw it, no keymap row binds it directly, and dialog bindings sit
+  above pane scope in the modal stack. The reservation stays so the byte
+  doesn't change meaning with focus.
+- **`ctrl+a` `c` and `ctrl+a` `f` survive as preset entries** into the same
+  dialog — `c` pre-flips context to "continue" (this also resolves the
+  former open call on `ctrl+a c`, now signed off), `f` pre-flips
+  destination to "fork". One implementation, three doors; behavior on
+  plain enter is unchanged from the old dedicated flows.
+- **`ctrl+t` is untouched** — the zero-dialog fast path stays sacred.
+
+The footer always shows both toggles' live state, so the dialog never
+silently means something different from what it shows.
 
 ## The prefix
 

@@ -188,11 +188,15 @@ const RESERVED_SPEC: ReadonlyArray<string | { id: string }> = [
   { id: "chat.tab.cycle-next" }, // ctrl+]
   { id: "chat.tab.cycle-prev" }, // ctrl+[
   { id: "chat.tab.rename" }, // f2
-  // Engine picker / quick-fork (ctrl+e, ctrl+f — prefix-only since #308;
-  // without the reservation the embedded terminal forwards them to the
-  // engine CLI, e.g. emacs-style forward-char on ctrl+f).
+  // Engine picker / quick-fork (without the reservation the embedded
+  // terminal forwards them to the engine CLI, e.g. emacs-style
+  // forward-char on ctrl+f). ctrl+e is the unified new-conversation
+  // dialog's direct chord (issue #7); ctrl+f has no direct binding
+  // anymore (chat.fork.new is prefix-only since #308) but STAYS reserved
+  // — it's the dialog's in-scope context toggle, and releasing it to the
+  // PTY would make the byte mean different things per focus.
   "ctrl+e", // chat.tab.chooseEngine
-  "ctrl+f", // chat.fork.new
+  "ctrl+f", // new-chat dialog context toggle (ex chat.fork.new direct)
   // Split panes inside the tab (tmux % / "): direct chords restored
   // (owner call 2026-07-22), so they derive from the table again.
   // Reserving ctrl+\ costs the embedded shell SIGQUIT — accepted trade,
