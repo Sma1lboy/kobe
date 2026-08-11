@@ -203,8 +203,10 @@ export async function getTask(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const taskId = ctx.args.require("task-id")
   const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
-  const running = await ctx.runtime.isTaskRunning(taskId)
-  return { task: res.task, running }
+  // One liveness read serves both: `.running` (any live engine tab) and the
+  // per-tab `.alive` an agent needs to pick a `send --tab tab-N` target.
+  const { tabs, running } = await ctx.runtime.taskTabs(taskId)
+  return { task: res.task, running, tabs }
 }
 
 export async function list(ctx: VerbContext): Promise<unknown> {

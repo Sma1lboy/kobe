@@ -116,7 +116,8 @@ export const VERBS: readonly VerbSpec[] = [
   { name: "list", summary: "List all tasks (incl. archived). Returns { tasks }.", flags: [], handler: list },
   {
     name: "get-task",
-    summary: "Read one task's metadata. `.running` = its hosted engine session is live.",
+    summary:
+      "Read one task's metadata + terminal tabs. `.running` = any hosted engine tab is live; `.tabs[]` (id/kind/vendor/liveVendor/lastTitle/alive) is the discovery read for `send --tab tab-N`.",
     flags: [F.taskId()],
     handler: getTask,
   },

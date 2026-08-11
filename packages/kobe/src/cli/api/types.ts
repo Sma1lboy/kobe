@@ -8,6 +8,7 @@
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import type { VerbArgs } from "./flags.ts"
+import type { TaskTabRow } from "./tab-snapshot.ts"
 
 export type Flags = Map<string, string>
 
@@ -135,8 +136,14 @@ export interface PromptDeliveryOps {
  * git.
  */
 export interface ApiRuntime {
-  /** True iff the task's canonical hosted engine session is live. */
+  /** True iff ANY of the task's hosted engine tabs is live (not just tab-1). */
   isTaskRunning(taskId: string): Promise<boolean>
+  /**
+   * The task's persisted terminal tabs joined with hosted-session liveness,
+   * plus the derived `.running` — the same answer {@link isTaskRunning}
+   * gives, from the same read (`get-task` needs both, one host round-trip).
+   */
+  taskTabs(taskId: string): Promise<{ tabs: readonly TaskTabRow[]; running: boolean }>
   /** Deliver a prompt into a task's engine pane (building the session if needed). */
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
   /** Canonical source repo for task creation and grouping. */

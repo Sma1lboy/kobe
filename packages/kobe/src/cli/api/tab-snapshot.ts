@@ -23,7 +23,85 @@
 
 import { loadStateFile, patchStateFile } from "../../state/store.ts"
 import { terminalTabsKey } from "../../tui-react/workspace/terminal-tabs-persist.ts"
-import { type TabsState, initialTabs } from "../../tui/workspace/terminal-tabs-core.ts"
+import { type TabsState, type TerminalTab, initialTabs } from "../../tui/workspace/terminal-tabs-core.ts"
+
+/**
+ * One tab row `get-task` returns: the persisted snapshot fields the sidebar
+ * renders from (same mapping as `inspect`'s tabs section) joined with whether
+ * the tab's OWN hosted session (`<taskId>::<tabId>`) is alive right now — the
+ * discovery read an agent needs to pick a `send --tab tab-N` target.
+ */
+export interface TaskTabRow {
+  readonly id: string
+  readonly kind: TerminalTab["kind"]
+  readonly title: string | null
+  readonly vendor: string | null
+  readonly liveVendor: string | null
+  readonly lastTitle: string | null
+  readonly autoTitle: string | null
+  readonly alive: boolean
+}
+
+/** The slice of a `pty.list` row the liveness joins below need. */
+export interface TaskSessionRow {
+  readonly key: string
+  readonly alive?: boolean
+}
+
+/** The task's persisted `terminalTabs.<taskId>` snapshot; undefined when absent/malformed/unreadable. */
+export function readTabsSnapshot(taskId: string): TabsState | undefined {
+  try {
+    const snap = loadStateFile()[terminalTabsKey(taskId)] as TabsState | undefined
+    return snap && Array.isArray(snap.tabs) ? snap : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const aliveKeysOf = (sessions: readonly TaskSessionRow[]): Set<string> =>
+  new Set(sessions.filter((s) => s.alive).map((s) => s.key))
+
+/**
+ * Persisted tabs joined with hosted-session liveness. Exact-key match on
+ * purpose: a split's extra shell leaves (`<taskId>::<tabId>::leaf-N`) never
+ * make the tab itself read alive — only the tab's own session does.
+ */
+export function joinTaskTabs(
+  snapshot: TabsState | undefined,
+  taskId: string,
+  sessions: readonly TaskSessionRow[],
+): TaskTabRow[] {
+  const alive = aliveKeysOf(sessions)
+  return (snapshot?.tabs ?? []).map((t) => ({
+    id: t.id,
+    kind: t.kind,
+    title: t.title ?? null,
+    vendor: (t as { vendor?: string }).vendor ?? null,
+    liveVendor: t.liveVendor ?? null,
+    lastTitle: t.lastTitle ?? null,
+    autoTitle: t.autoTitle ?? null,
+    alive: alive.has(`${taskId}::${t.id}`),
+  }))
+}
+
+/**
+ * A task is RUNNING when ANY of its engine tabs has a live hosted session —
+ * not just the canonical first one. The old `tab-1`-only rule reported
+ * `running:false` while later engine tabs (`send --tab new`, a TUI tab
+ * opened after tab-1 closed) were happily alive. The `tab-1` key stays as a
+ * snapshot-free floor: it is always an engine tab by construction
+ * (`initialTabs`), so it counts even when the snapshot write failed.
+ * Non-engine tabs (command/content) never count — same rule delivery uses.
+ */
+export function hasLiveEngineTab(
+  snapshot: TabsState | undefined,
+  taskId: string,
+  sessions: readonly TaskSessionRow[],
+): boolean {
+  const alive = aliveKeysOf(sessions)
+  if (alive.has(`${taskId}::tab-1`)) return true
+  return (snapshot?.tabs ?? []).some((t) => t.kind === "engine" && alive.has(`${taskId}::${t.id}`))
+}
 
 /**
  * Seed `terminalTabs.<taskId>` with the canonical first engine tab when the

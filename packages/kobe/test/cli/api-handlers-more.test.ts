@@ -44,6 +44,7 @@ class FakeClient implements DaemonRpc {
 function stubRuntime(): ApiRuntime {
   return {
     isTaskRunning: async () => false,
+    taskTabs: async () => ({ tabs: [], running: false }),
     deliverPrompt: async () => {
       throw new Error("deliverPrompt should not run in this test")
     },

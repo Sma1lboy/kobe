@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   findEngineKey: vi.fn(),
   taskKeys: vi.fn(),
   killTaskSessions: vi.fn(),
+  readTabsSnapshot: vi.fn(),
+  publishCliTabSnapshot: vi.fn(),
 }))
 
 vi.mock("../../src/state/repos.ts", async (importOriginal) => {
@@ -52,6 +54,18 @@ vi.mock("../../src/engine/interactive-command.ts", () => ({
 vi.mock("../../src/engine/session-launch.ts", () => ({
   buildEngineSessionLaunch: mocks.buildEngineSessionLaunch,
 }))
+
+// Real join/liveness logic, mocked STATE READ: unit tests must never touch
+// the developer's actual ~/.config/kobe/state.json (also silences the
+// publishCliTabSnapshot write deliverPrompt would otherwise attempt).
+vi.mock("../../src/cli/api/tab-snapshot.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/cli/api/tab-snapshot.ts")>()
+  return {
+    ...actual,
+    readTabsSnapshot: mocks.readTabsSnapshot,
+    publishCliTabSnapshot: mocks.publishCliTabSnapshot,
+  }
+})
 
 vi.mock("../../src/cli/api/pty-delivery.ts", () => ({
   openPtyHost: mocks.openPtyHost,
@@ -91,6 +105,8 @@ beforeEach(() => {
   mocks.findEngineKey.mockReset().mockReturnValue("t1::tab-1")
   mocks.taskKeys.mockReset().mockReturnValue(["t1::tab-1", "t1::tab-2"])
   mocks.killTaskSessions.mockReset().mockResolvedValue(undefined)
+  mocks.readTabsSnapshot.mockReset().mockReturnValue(undefined)
+  mocks.publishCliTabSnapshot.mockReset()
 })
 
 afterEach(() => {
@@ -98,14 +114,75 @@ afterEach(() => {
 })
 
 describe("defaultApiRuntime", () => {
-  it("isTaskRunning resolves only the canonical hosted engine key", async () => {
+  it("isTaskRunning is true on a live canonical tab-1 even without a snapshot", async () => {
     await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(true)
-    expect(mocks.findEngineKey).toHaveBeenCalledWith(expect.any(Array), "t1")
+  })
+
+  it("isTaskRunning is true when only a LATER engine tab is alive (issue #5)", async () => {
+    mocks.listSessions.mockResolvedValue([
+      { key: "t1::tab-1", alive: false },
+      { key: "t1::tab-2", alive: true },
+    ])
+    mocks.readTabsSnapshot.mockReturnValue({
+      tabs: [{ kind: "engine", id: "tab-2", title: null, ordinal: 2 }],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    })
+    await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(true)
+  })
+
+  it("isTaskRunning is false when only a non-engine tab is alive", async () => {
+    mocks.listSessions.mockResolvedValue([{ key: "t1::tab-2", alive: true }])
+    mocks.readTabsSnapshot.mockReturnValue({
+      tabs: [{ kind: "command", id: "tab-2", title: "editor", ordinal: 2, command: ["nvim"] }],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    })
+    await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(false)
   })
 
   it("isTaskRunning is false when no PTY Host is running", async () => {
     mocks.openPtyHost.mockResolvedValueOnce(null)
     await expect(defaultApiRuntime.isTaskRunning("t1")).resolves.toBe(false)
+  })
+
+  it("taskTabs joins the persisted snapshot with per-tab session liveness", async () => {
+    mocks.listSessions.mockResolvedValue([
+      { key: "t1::tab-1", alive: false },
+      { key: "t1::tab-2", alive: true },
+    ])
+    mocks.readTabsSnapshot.mockReturnValue({
+      tabs: [
+        { kind: "engine", id: "tab-1", title: null, ordinal: 1, lastTitle: "boot" },
+        { kind: "engine", id: "tab-2", title: null, ordinal: 2, liveVendor: "claude" },
+      ],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    })
+    const { tabs, running } = await defaultApiRuntime.taskTabs("t1")
+    expect(running).toBe(true)
+    expect(tabs).toEqual([
+      {
+        id: "tab-1",
+        kind: "engine",
+        title: null,
+        vendor: null,
+        liveVendor: null,
+        lastTitle: "boot",
+        autoTitle: null,
+        alive: false,
+      },
+      {
+        id: "tab-2",
+        kind: "engine",
+        title: null,
+        vendor: null,
+        liveVendor: "claude",
+        lastTitle: null,
+        autoTitle: null,
+        alive: true,
+      },
+    ])
   })
 
   it("resolveRepoRoot canonicalizes through state/repos resolveMainRepoRoot", async () => {

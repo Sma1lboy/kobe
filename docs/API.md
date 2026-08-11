@@ -83,8 +83,10 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 ## read
 
 - `list`: list all tasks (incl. archived). Returns `{ tasks }`.
-- `get-task --task-id <id>`: one task's metadata; `.running` = its hosted
-  engine session is live.
+- `get-task --task-id <id>`: one task's metadata; `.running` = any of its
+  hosted engine tabs is live (not just the first); `.tabs` = the task's
+  terminal tabs (`id`/`kind`/`title`/`vendor`/`liveVendor`/`lastTitle`/
+  `autoTitle` + per-tab `alive`) — the discovery read for `send --tab tab-N`.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
