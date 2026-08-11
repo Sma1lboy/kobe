@@ -61,6 +61,28 @@ export async function planChatContinuation(
 }
 
 /**
+ * "Continue this conversation" for the FORK destination (issue #7): the
+ * child task runs in a NEW worktree, and engine-native session forks are
+ * keyed to the source cwd — so this is ALWAYS a handoff (or a refusal),
+ * never `{ kind: "fork" }`. The brief names the source worktree, which is
+ * where the transcript's work actually happened.
+ */
+export async function planWorktreeHandoff(
+  active: TerminalTab,
+  source: VendorId,
+  worktree: string,
+): Promise<ChatForkPlan> {
+  const sessionId = await forkSourceSessionId(active, source, worktree)
+  if (!sessionId) return { kind: "no-session" }
+  const transcriptPath = await engineEntry(source).history.transcriptPath(sessionId, worktree)
+  if (!transcriptPath) return { kind: "no-transcript", engine: engineDisplayName(source) }
+  return {
+    kind: "handoff",
+    prompt: buildHandoffPrompt({ fromEngine: engineDisplayName(source), transcriptPath, worktree }),
+  }
+}
+
+/**
  * Session id the fork should open on: the tab's OWN pinned id when it has
  * one (claude tabs kobe launched itself), else the newest session the
  * engine recorded for this worktree — codex tabs and pre-`--session-id`

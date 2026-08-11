@@ -70,11 +70,16 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // `ctrl+e` mirrors the "engine" mnemonic the new-task dialog already
     // uses for its own vendor cycle chord. Direct-only (owner call
     // 2026-07-12): same reasoning as the tab-management rows above.
+    // Since issue #7 this opens the UNIFIED new-conversation dialog:
+    // default enter = the old "new tab with this engine", while in-dialog
+    // `tab` flips the destination (tab ⇄ fork a child task) and `ctrl+f`
+    // the context (fresh ⇄ continue) — owner sign-off 2026-08-10, see
+    // docs/design/keybinding-decisions.md.
     id: "chat.tab.chooseEngine",
     scope: "workspace",
     keys: ["ctrl+e"],
     category: "Workspace",
-    description: "New tab with a chosen engine or a plain shell",
+    description: "New conversation — engine/shell picker with destination + context toggles",
     hint: { keys: "ctrl+e" },
     presentation: "onePress",
   },
@@ -83,9 +88,9 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // worktree that opens on this tab's history and then diverges
     // (claude `--resume … --fork-session`, `codex fork`). Sibling of
     // `chat.fork.new`, which forks the WORKTREE into a child task.
-    // PROPOSED chord (needs owner sign-off): prefix + `c` for "continue" —
-    // `f` is taken by the task fork, and this is a lower-frequency action
-    // than the direct ctrl+t/ctrl+e tab chords.
+    // Chord signed off 2026-08-10 (issue #7): prefix + `c` ("continue")
+    // is a PRESET entry into the unified `chat.tab.chooseEngine` dialog
+    // with the context toggle pre-flipped to "continue".
     id: "chat.tab.fork",
     scope: "workspace",
     keys: [],
@@ -98,22 +103,17 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     // Quick-fork: from a focused chat tab, spin up a child
     // task that inherits repo + branch + model from the source. The
     // dialog asks only for a prompt; the fork's first turn fires
-    // immediately. `ctrl+t` is taken by `chat.tab.new` (same task,
-    // new tab) so the requested `ctrl+shift+t` would collide — the
-    // keymap layer drops `shift+` on letter keys (terminals deliver
-    // shift+letter as uppercase, not as a modifier event), making
-    // `ctrl+shift+t` and `ctrl+t` indistinguishable at match time.
-    // Picked `ctrl+f` ("fork") because it's free across the keymap,
-    // ctrl+letter has stable C0 byte mappings that work in every
-    // terminal, and the workspace scope keeps it from intruding on
-    // other panes.
+    // immediately. Since issue #7 a PRESET entry into the unified
+    // `chat.tab.chooseEngine` dialog with the destination toggle
+    // pre-flipped to "fork a child task"; enter continues into the
+    // same QuickTaskComposer as before.
     id: "chat.fork.new",
     scope: "workspace",
     keys: [],
     prefixKeys: ["f"],
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
-    hint: { keys: "ctrl+f" },
+    hint: { keys: "ctrl+a f" },
   },
   {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing
