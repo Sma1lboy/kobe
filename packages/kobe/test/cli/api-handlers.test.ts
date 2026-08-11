@@ -1,6 +1,6 @@
 /** Request-traffic tests for API creation, send, and fan-out handlers. */
 
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { ApiError, type ApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
 import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
@@ -85,6 +85,20 @@ describe("add handler", () => {
 })
 
 describe("send handler", () => {
+  // Provenance keys off $KOBE_TASK_ID — make the baseline tests deterministic
+  // even when the runner itself lives inside a kobe task.
+  const savedEnvTaskId = process.env.KOBE_TASK_ID
+  beforeEach(() => {
+    // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
+    delete process.env.KOBE_TASK_ID
+  })
+  afterEach(() => {
+    if (savedEnvTaskId === undefined) {
+      // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
+      delete process.env.KOBE_TASK_ID
+    } else process.env.KOBE_TASK_ID = savedEnvTaskId
+  })
+
   it("uses an explicit target without consulting active task", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
     const { calls, deliver } = recordingDelivery()
@@ -150,6 +164,86 @@ describe("send handler", () => {
         }),
       "BAD_TAB",
     )
+  })
+
+  describe("peer provenance ($KOBE_TASK_ID)", () => {
+    const saved = process.env.KOBE_TASK_ID
+    beforeEach(() => {
+      process.env.KOBE_TASK_ID = "sender-1"
+    })
+    afterEach(() => {
+      if (saved === undefined) {
+        // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
+        delete process.env.KOBE_TASK_ID
+      } else process.env.KOBE_TASK_ID = saved
+    })
+
+    const peerClient = () =>
+      new FakeClient({
+        "task.get": (payload) => {
+          const id = (payload as { taskId: string }).taskId
+          return { task: taskFixture({ id, title: id === "sender-1" ? "Auth attempt" : "T" }) }
+        },
+      })
+
+    it("prefixes cross-task sends with sender identity and a reply command", async () => {
+      const { calls, deliver } = recordingDelivery()
+      await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+        client: peerClient(),
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect(calls[0].prompt).toContain('[KOBE PEER] from "Auth attempt" (task sender-1')
+      expect(calls[0].prompt).toContain("send --task-id sender-1")
+      // The self-teach pointer: a receiver that has never seen kobe learns
+      // where the rest of the coordination verbs live.
+      expect(calls[0].prompt).toContain("kobe agent skill")
+      expect(calls[0].prompt).toMatch(/: hi$/)
+    })
+
+    it("--plain sends verbatim", async () => {
+      const { calls, deliver } = recordingDelivery()
+      await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--plain"], {
+        client: peerClient(),
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect(calls[0].prompt).toBe("hi")
+    })
+
+    it("a send to yourself stays untouched", async () => {
+      const { calls, deliver } = recordingDelivery()
+      await invokeVerb("send", ["--task-id", "sender-1", "--prompt", "hi"], {
+        client: peerClient(),
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect(calls[0].prompt).toBe("hi")
+    })
+
+    it("a stale sender id degrades to id-only provenance, never a failed send", async () => {
+      const client = new FakeClient({
+        "task.get": (payload) => {
+          const id = (payload as { taskId: string }).taskId
+          if (id === "sender-1") throw new ApiError("task not found", "RPC_ERROR")
+          return { task: taskFixture({ id }) }
+        },
+      })
+      const { calls, deliver } = recordingDelivery()
+      await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+        client,
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect(calls[0].prompt).toContain('from "sender-1" (task sender-1')
+    })
+
+    it("a send from outside any kobe task stays untouched", async () => {
+      // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
+      delete process.env.KOBE_TASK_ID
+      const { calls, deliver } = recordingDelivery()
+      await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi"], {
+        client: peerClient(),
+        runtime: stubRuntime({ deliverPrompt: deliver }),
+      })
+      expect(calls[0].prompt).toBe("hi")
+    })
   })
 })
 

@@ -15,7 +15,7 @@ import { type BoxRenderable, MouseButton } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
-import type { TreeTab } from "../../../tui/panes/sidebar/tree-core"
+import { type TreeTab, tabRowActivity } from "../../../tui/panes/sidebar/tree-core"
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { useTheme } from "../../context/theme"
@@ -183,11 +183,18 @@ export function TabTreeRow(props: {
   // Tab-level is the precise answer; the rollup stays the fallback for
   // sessions kobe didn't spawn as a tab (a hand-typed `claude` in a shell
   // reports task-level only — see the `engine-state` channel contract).
-  const tabActivity = isAgent ? shared.engineTabState?.get(props.task.id)?.get(props.tab.id) : undefined
-  const carriesActivity = isAgent && (tabActivity !== undefined || props.tab.active === true)
+  const taskTabStates = isAgent ? shared.engineTabState?.get(props.task.id) : undefined
+  // Rule (and the reason the rollup is gated) lives in `tabRowActivity`.
   const activity = isAgent
-    ? (tabActivity ?? (props.tab.active ? shared.engineState?.get(props.task.id) : undefined))
+    ? tabRowActivity({
+        tabActivity: taskTabStates?.get(props.tab.id),
+        reportedTabCount: taskTabStates?.size ?? 0,
+        taskActivity: shared.engineState?.get(props.task.id),
+        active: props.tab.active === true,
+      })
     : undefined
+  // One predicate now: "does this row have activity of its own". It used to
+  // also count "is the active tab", which is what let the rollup leak in.
   const carriesState = activity !== undefined
   // The unread lamp (herdr ● on turn_complete) is for sessions you are NOT
   // looking at — sitting in the tab digests it to ✓ on the same render.
@@ -197,7 +204,9 @@ export function TabTreeRow(props: {
   // would fire the delete branch and wipe the seen bit the active row just
   // recorded — the ✓ → ● → ✓ flip on every task switch.
   const viewing = shared.selectedTaskId === props.task.id && props.tab.active === true
-  const completionSeen = carriesActivity ? completionSeenFor(props.task.id, activity?.state, viewing) : false
+  // Per-TAB seen bit: sibling tab rows of the same task render in this very
+  // pass and would otherwise share (and clear) one task-wide mark.
+  const completionSeen = carriesState ? completionSeenFor(props.task.id, activity?.state, viewing, props.tab.id) : false
   const baseView = buildSidebarRowView({
     task: props.task,
     activity,

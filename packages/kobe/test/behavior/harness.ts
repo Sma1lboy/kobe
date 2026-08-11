@@ -142,3 +142,32 @@ export async function makeScratchRepo(env: BehaviorEnv): Promise<string> {
   git("commit", "-q", "-m", "init")
   return repo
 }
+
+/**
+ * The PTY-driving suites' shared gate: `node-pty` loaded AND able to spawn
+ * here.
+ *
+ * Presence alone is not capability. A sandboxed runner can have the module
+ * installed while every `posix_spawnp` is denied — the suite then failed with
+ * an environment error that looks exactly like a product regression, and
+ * (since `release.sh` runs the behavior suite) blocked releases on a machine
+ * where the test can never run. CI has a real PTY, so coverage there is
+ * unchanged; a machine that cannot spawn skips instead of failing.
+ *
+ * The probe spawns `/bin/sh -c :` once per process and caches the verdict.
+ */
+export async function loadNodePty(): Promise<typeof import("node-pty") | null> {
+  const mod = await import("node-pty").then(
+    (m) => m,
+    () => null,
+  )
+  if (!mod) return null
+  try {
+    const probe = mod.spawn("/bin/sh", ["-c", ":"], { cols: 80, rows: 24, env: process.env as Record<string, string> })
+    probe.kill()
+    return mod
+  } catch {
+    console.warn("[behavior] node-pty cannot spawn in this environment — skipping the PTY-driven suites")
+    return null
+  }
+}

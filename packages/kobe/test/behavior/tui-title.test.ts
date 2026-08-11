@@ -5,16 +5,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, DIST_CLI, makeBehaviorEnv } from "./harness.ts"
+import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv } from "./harness.ts"
 
 // node-pty is a native addon; CI's linux runner has no prebuild for it, so a
-// top-level import fails the whole suite before skip logic can run. Load it
-// lazily and skip the suite where the native module can't load — the pin
-// still runs on every dev machine (darwin prebuilds ship in the package).
-const nodePty = await import("node-pty").then(
-  (mod) => mod,
-  () => null,
-)
+// top-level import fails the whole suite before skip logic can run. The
+// shared loader also verifies it can actually SPAWN here (a sandboxed shell
+// can have the module and still be denied posix_spawnp) — see harness.ts.
+const nodePty = await loadNodePty()
 
 const TITLE_SEQUENCE = "\x1b]0;kobe\x07"
 

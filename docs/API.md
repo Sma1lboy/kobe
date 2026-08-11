@@ -120,14 +120,16 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 ## drive
 
-- `send [--task-id ID] --prompt TEXT [--tab TAB]`: paste a follow-up into a
-  task's running engine (one full turn). Defaults to the active task and its
-  canonical engine tab. `--tab new` spawns a fresh engine tab; `--tab tab-N`
-  targets that exact tab (`TAB_NOT_FOUND` if it's dead or absent).
-  Delivery needs a live engine in that tab — one that exited into the
-  keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint,
-  rather than pasting your prompt into a shell. Any registered engine passes,
-  so a tab may run a different vendor than its task.
+- `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a
+  follow-up into a task's running engine (one full turn). Defaults to the
+  active task and its canonical engine tab. From another kobe task, the
+  message includes `[KOBE PEER]` provenance and a reply command; `--plain`
+  skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
+  tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or absent).
+  Delivery needs a live engine in that tab: one that exited into the
+  keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
+  instead of pasting into a shell. Any registered engine passes, so a tab may
+  run a different vendor than its task.
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see

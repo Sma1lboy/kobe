@@ -9,7 +9,6 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { titleDisplayName } from "../../src/engine/registry"
 import { createTitleSubscriptions } from "../../src/tui-react/workspace/title-subscriptions"
 import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types"
 
@@ -76,7 +75,6 @@ describe("createTitleSubscriptions", () => {
       const store = createTitleSubscriptions((key) => (key === "k" ? pty : null))
       store.reconcile(["k"])
       expect(store.get("k")).toBe(raw)
-      expect(titleDisplayName(raw, null)).toBe(raw)
     }
   })
 
@@ -90,6 +88,20 @@ describe("createTitleSubscriptions", () => {
     a.emit("vim")
     expect(store.get("a")).toBe("vim")
     expect(store.get("b")).toBe("codex") // untouched
+  })
+
+  // Regression (owner report 2026-08-10): a PTY that has not reported a title
+  // YET must read as undefined, not "". The host records get()'s value onto
+  // the tab (`setTabLastTitle`), so an empty string overwrote the tab's real
+  // recorded name and the chattab fell back to "claude N" a beat after the
+  // correct title had rendered.
+  it("a PTY with no title yet reads as undefined, never an empty string", () => {
+    const pty = fakePty() // attached, nothing reported
+    const store = createTitleSubscriptions(() => pty)
+    store.reconcile(["k1"])
+    expect(store.get("k1")).toBeUndefined()
+    pty.emit("✳ 运行本地Codex处理图片")
+    expect(store.get("k1")).toBe("✳ 运行本地Codex处理图片")
   })
 
   it("drops a key that is no longer requested", () => {

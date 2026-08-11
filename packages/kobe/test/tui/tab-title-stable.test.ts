@@ -94,6 +94,25 @@ describe("tabTitleStable", () => {
     expect(tabTitleStable(named, "claude", "claude")).toBe("wire up the digest verb")
   })
 
+  // Regression (owner report 2026-08-10): "clicking into a tab shows what
+  // claude is working on for a second, then snaps back to its name." Landing
+  // on a tab records `lastTitle` at once, but the live vendor comes from a
+  // ~2s ps walk — for that one render the probe answers `undefined`, and
+  // without falling back to the tab's RECORDED identity the rule dropped to
+  // the raw-title branch and rendered the engine's own status line.
+  it("falls back to the RECORDED vendor so the status line never flashes", () => {
+    const tab = {
+      kind: "command",
+      command: ["/bin/zsh"],
+      id: "tab-1",
+      title: null,
+      ordinal: 1,
+      lastTitle: "⠐ Refactoring the parser",
+      liveVendor: "claude",
+    } as unknown as TerminalTab
+    expect(tabTitleStable(tab, "claude", undefined)).toBe("claude 1")
+  })
+
   it("undefined liveVendor (probe can't look) keeps the engine pin", () => {
     const tab = engineTab({ vendor: "codex", lastTitle: "Working ▌ t" })
     expect(tabTitleStable(tab, "codex")).toBe("codex 1")

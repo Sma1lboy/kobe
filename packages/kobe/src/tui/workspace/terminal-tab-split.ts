@@ -182,7 +182,16 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   if (liveVendor === null && tab.kind === "engine") {
     return tabTitle({ ...tab, kind: "command", lastTitle: null } as TerminalTab, taskVendor)
   }
-  const vendor = liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined)
+  // Resolution order for "whose title is this": the live probe, then the
+  // tab's own RECORDED identity, then an engine tab's creation pin. The
+  // recorded step matters for the flash (owner report 2026-08-10): clicking
+  // a tab writes `lastTitle` immediately, but the live probe is a ~2s ps
+  // walk, so for one render there is no live vendor — and without the
+  // recorded fallback this dropped to the raw-title branch below and flashed
+  // the engine's own status line ("⠐ Refactoring the parser") before
+  // settling back to "claude 1".
+  const vendor =
+    liveVendor ?? tab.liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined) ?? undefined
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
     return tabTitle(tab, taskVendor)
   }

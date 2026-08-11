@@ -6,11 +6,40 @@
  */
 
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { kobeApiInvocation } from "../../engine/interactive-command.ts"
 import type { TaskStatus } from "../../types/task.ts"
 import type { VendorId } from "../../types/vendor.ts"
+import type { DaemonRpc } from "../daemon-session.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
 import { ApiError, type VerbContext } from "./types.ts"
+
+/**
+ * Peer provenance: a `send` issued from INSIDE another kobe task is one
+ * agent messaging another, and the receiver needs what a bare paste never
+ * carries — who is talking and how to answer. Same convention as field
+ * notes (`[KOBE FIELD NOTE] from "<label>" (task <id>)`), plus the reply
+ * command so a peer conversation is symmetric without any coordinator.
+ * Sender identity comes from $KOBE_TASK_ID (exported into every engine
+ * tab); a send from a plain shell (no env) or to yourself stays untouched.
+ */
+async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, prompt: string): Promise<string> {
+  const senderId = process.env.KOBE_TASK_ID
+  if (!senderId || senderId === targetTaskId) return prompt
+  let label = senderId
+  try {
+    const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId: senderId })
+    label = res.task.title || res.task.branch || senderId
+  } catch {
+    /* stale env id — keep id-only provenance rather than dropping it */
+  }
+  const api = kobeApiInvocation()
+  // The trailing pointer closes the loop for a receiver that has never seen
+  // kobe: reply command baked in, and where to learn the rest (the herdr
+  // "--skill first" trick) — a pointer, not a curriculum, since every peer
+  // message pays for this prefix in context.
+  return `[KOBE PEER] from "${label}" (task ${senderId} — reply: \`${api} send --task-id ${senderId} --prompt "<text>"\`; more coordination verbs: the kobe agent skill or \`${api} schema\`): ${prompt}`
+}
 
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {
   const title = ctx.args.str("title")
@@ -123,6 +152,7 @@ export async function send(ctx: VerbContext): Promise<unknown> {
     throw new ApiError(`--tab must be "new" or a tab id like tab-2 (got ${JSON.stringify(tab)})`, "BAD_TAB")
   }
   const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
+  const text = ctx.args.bool("plain") ? prompt : await withPeerProvenance(daemon, taskId, prompt)
   const delivered = await ctx.runtime.deliverPrompt(
     daemon,
     {
@@ -134,7 +164,7 @@ export async function send(ctx: VerbContext): Promise<unknown> {
       repo: res.task.repo,
       tab,
     },
-    prompt,
+    text,
   )
   // A prompt that never landed in the composer is a delivery FAILURE the
   // script must see — non-zero exit, not a phantom `ok:true`.

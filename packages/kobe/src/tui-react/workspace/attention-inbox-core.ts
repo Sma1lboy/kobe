@@ -24,18 +24,32 @@ export function visitResolvedEpisodes(
   return items.filter((item) => item.taskId === visit.taskId && (item.tabId === null || item.tabId === visit.tabId))
 }
 
+/**
+ * Whether an episode's target still exists.
+ *
+ * `hasTab` is TRI-STATE, and the distinction is load-bearing: `false` means
+ * the tab list was readable and this tab is gone; `undefined` means the tab
+ * list could not be read at all (this process has never mounted that task's
+ * TerminalTabs, so its KV snapshot is absent). Callers treat unavailable
+ * episodes as garbage and DELETE them from the daemon, so answering "gone"
+ * for "don't know" destroyed live episodes — the owner-reported "two tabs
+ * are unread but the Inbox only lists one" (2026-08-10). Unknown keeps the
+ * episode.
+ */
 export function isAttentionInboxItemAvailable(
   item: AttentionInboxItem,
   task: Pick<Task, "archived"> | undefined,
-  hasTab: (tabId: string) => boolean,
+  hasTab: (tabId: string) => boolean | undefined,
 ): boolean {
-  return task !== undefined && !task.archived && (item.tabId === null || hasTab(item.tabId))
+  if (task === undefined || task.archived) return false
+  if (item.tabId === null) return true
+  return hasTab(item.tabId) !== false
 }
 
 export function partitionAttentionInboxAvailability(
   items: readonly AttentionInboxItem[],
   tasks: readonly Pick<Task, "id" | "archived">[],
-  hasTab: (taskId: string, tabId: string) => boolean,
+  hasTab: (taskId: string, tabId: string) => boolean | undefined,
 ): { availableItems: AttentionInboxItem[]; unavailableItems: AttentionInboxItem[] } {
   const tasksById = new Map<string, Pick<Task, "id" | "archived">>(tasks.map((task) => [task.id, task]))
   const availableItems: AttentionInboxItem[] = []
